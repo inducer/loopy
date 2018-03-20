@@ -54,6 +54,13 @@ class ArrayArgDescriptor(ArgDescriptor):
             shape=None,
             mem_scope=None,
             dim_tags=None):
+
+        # {{{ sanity checks
+
+        assert isinstance(shape, tuple)
+
+        # }}}
+
         super(ArgDescriptor, self).__init__(shape=None,
                 mem_scope=mem_scope,
                 dim_tags=dim_tags)
@@ -299,11 +306,11 @@ class InKernelCallable(ImmutableRecord):
                 raise NotImplementedError("InKernelCallable.with_types() for"
                         " %s target" % target)
 
-        # }}}
+            if new_arg_id_to_dtype is not None:
+                # got our speciliazed function
+                return self.copy(arg_id_to_dtype=new_arg_id_to_dtype)
 
-        if new_arg_id_to_dtype is not None:
-            # got our speciliazed function
-            return self.copy(arg_id_to_dtype=new_arg_id_to_dtype)
+        # }}}
 
         if self.subkernel is None:
             # did not find a scalar function and function prototype does not
@@ -326,7 +333,7 @@ class InKernelCallable(ImmutableRecord):
                 new_args.append(arg.copy(
                     dtype=arg_id_to_dtype[kw_to_pos[kw]]))
             else:
-                if kw in self.subkernel.read_variables():
+                if kw in self.subkernel.get_read_variables():
                     # need to know the type of the input arguments for type
                     # inference
                     raise LoopyError("Type of %s variable not supplied to the"
@@ -395,7 +402,7 @@ class InKernelCallable(ImmutableRecord):
             # in the array call.
 
             # Collecting the parameters
-            new_args = self.args.copy()
+            new_args = self.subkernel.args.copy()
             kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
             for id, descr in arg_id_to_descr.items():
@@ -441,20 +448,59 @@ class InKernelCallable(ImmutableRecord):
 
     def get_target_specific_name(self, target):
 
+        if self.subkernel is None:
+            raise NotImplementedError()
+        else:
+            return self.subkernel.name
+
         raise NotImplementedError()
 
-    def emit_call(self, target):
-        # two varieties of this call, when obtained in between a function and
-        # when obtained as a separate instruction statement.
+    def emit_call(self, insn, target, expression_to_code_mapper):
 
-        raise NotImplementedError()
+        from loopy.kernel.instruction import CallInstruction
+        from pymbolic.primitives import CallWithKwargs
+
+        assert isinstance(insn, CallInstruction)
+
+        parameters = insn.expression.parameters
+        kw_parameters = {}
+        if isinstance(insn.expression, CallWithKwargs):
+            kw_parameters = insn.expression.kw_parameters
+
+        assignees = insn.assignees
+
+        parameters = list(parameters)
+        par_dtypes = [self.arg_id_to_dtype[i] for i, _ in enumerate(parameters)]
+        kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
+        for i in range(len(parameters), len(parameters)+len(kw_parameters)):
+            parameters.append(kw_parameters[pos_to_kw[i]])
+            par_dtypes.append(self.arg_id_to_dtype[pos_to_kw[i]])
+
+        # TODO: currently no suppport for insn keywords.
+        parameters = parameters + list(assignees)
+        par_dtypes = par_dtypes + [self.arg_id_to_dtype[-i-1] for i, _ in
+                enumerate(assignees)]
+
+        # Note that we are not going to do any type casting in array calls.
+        from loopy.expression import dtype_to_type_context
+        from pymbolic.mapper.stringifier import PREC_NONE
+        c_parameters = [
+                expression_to_code_mapper(par, PREC_NONE,
+                    dtype_to_type_context(target, par_dtype),
+                    par_dtype).expr
+                for par, par_dtype in zip(
+                    parameters, par_dtypes)]
+
+        from pymbolic import var
+        return var(self.get_target_specific_name(target))(*c_parameters)
 
     # }}}
 
     def __eq__(self, other):
         return (self.name == other.name
                 and self.arg_id_to_descr == other.arg_id_to_descr
-                and self.arg_id_to_dtype == other.arg_id_to_dtype)
+                and self.arg_id_to_dtype == other.arg_id_to_dtype
+                and self.subkernel == other.subkernel)
 
     def __hash__(self):
         return hash((self.name, self.subkernel))
@@ -640,6 +686,13 @@ def register_pymbolic_calls_to_knl_callables(kernel,
                 unique_name = next_indexed_name(unique_name)
 
             # book-keeping of the functions and names mappings for later use
+            if in_knl_callable.subkernel is not None:
+                # changing the name of the subkenrel so that it emits a function
+                # with the name same as the name being used in the
+                # scoped_function.
+                new_subkernel = in_knl_callable.subkernel.copy(
+                        name=unique_name)
+                in_knl_callable = in_knl_callable.copy(subkernel=new_subkernel)
             scoped_names_to_functions[unique_name] = in_knl_callable
             scoped_functions_to_names[in_knl_callable] = unique_name
 

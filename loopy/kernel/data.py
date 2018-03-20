@@ -607,6 +607,13 @@ class SubstitutionRule(ImmutableRecord):
 # {{{ function call mangling
 
 class CallMangleInfo(ImmutableRecord):
+    def __init__(self):
+        raise NotImplementedError("New Mangler interface expected")
+
+
+# FIXME: Uncomment it once everything is done.
+# KK: Removed it for the duration the new mangler interface starts working.
+'''
     """
     .. attribute:: target_name
 
@@ -631,6 +638,7 @@ class CallMangleInfo(ImmutableRecord):
                 target_name=target_name,
                 result_dtypes=result_dtypes,
                 arg_dtypes=arg_dtypes)
+'''
 
 # }}}
 

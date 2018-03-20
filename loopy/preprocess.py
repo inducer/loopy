@@ -2135,7 +2135,7 @@ def get_arg_description_from_sub_array_ref(sub_array, kernel):
     """
     from loopy.kernel.function_interface import ArrayArgDescriptor
 
-    name = sub_array.subscript.attribute.name
+    name = sub_array.subscript.aggregate.name
 
     if name in kernel.temporary_variables:
         mem_scope = "LOCAL"
@@ -2161,8 +2161,8 @@ class ArgDescriptionInferer(CombineMapper):
     arguments.
     """
 
-    def __init__(self, scoped_functions):
-        self.scoped_functions = scoped_functions
+    def __init__(self, kernel):
+        self.kernel = kernel
 
     def combine(self, values):
         import operator
@@ -2173,7 +2173,8 @@ class ArgDescriptionInferer(CombineMapper):
         from loopy.symbolic import SubArrayRef
 
         # descriptors for the args
-        arg_id_to_descr = dict((i, get_arg_description_from_sub_array_ref(par))
+        arg_id_to_descr = dict((i,
+            get_arg_description_from_sub_array_ref(par, self.kernel))
                 if isinstance(par, SubArrayRef) else (i, ValueArgDescriptor())
                 for i, par in enumerate(expr.parameters))
 
@@ -2187,7 +2188,8 @@ class ArgDescriptionInferer(CombineMapper):
             for i, par in enumerate(assignees):
                 if isinstance(par, SubArrayRef):
                     assignee_id_to_descr[-i-1] = (
-                            get_arg_description_from_sub_array_ref(par))
+                            get_arg_description_from_sub_array_ref(par,
+                                self.kernel))
                 else:
                     assignee_id_to_descr[-i-1] = ValueArgDescriptor()
 
@@ -2196,20 +2198,21 @@ class ArgDescriptionInferer(CombineMapper):
 
         # specializing the function according to the parameter description
         new_scoped_function = (
-                self.scoped_functions[expr.function.name].with_descrs(
+                self.kernel.scoped_functions[expr.function.name].with_descrs(
                     combined_arg_id_to_dtype))
 
         # collecting the descriptors for args, kwargs, assignees
-        return (
-                frozenset(((expr, new_scoped_function), )) |
-                self.combine((self.rec(child) for child in expr.parameters)))
+        a = frozenset(((expr, new_scoped_function), ))
+        b = self.combine((self.rec(child) for child in expr.parameters))
+        return (a | b)
 
     def map_call_with_kwargs(self, expr, **kwargs):
         from loopy.kernel.function_intergace import ValueArgDescriptor
         from loopy.symbolic import SubArrayRef
 
         # descriptors for the args and kwargs:
-        arg_id_to_descr = dict((i, get_arg_description_from_sub_array_ref(par))
+        arg_id_to_descr = dict((i, get_arg_description_from_sub_array_ref(par,
+            self.kernel))
                 if isinstance(par, SubArrayRef) else ValueArgDescriptor()
                 for i, par in enumerate(expr.parameters) +
                 expr.kw_parameters.items())
@@ -2223,7 +2226,8 @@ class ArgDescriptionInferer(CombineMapper):
             for i, par in enumerate(assignees):
                 if isinstance(par, SubArrayRef):
                     assignee_id_to_descr[-i-1] = (
-                            get_arg_description_from_sub_array_ref(par))
+                            get_arg_description_from_sub_array_ref(par,
+                                self.kernel))
                 else:
                     assignee_id_to_descr[-i-1] = ValueArgDescriptor()
 
@@ -2232,7 +2236,7 @@ class ArgDescriptionInferer(CombineMapper):
 
         # specializing the function according to the parameter description
         new_scoped_function = (
-                self.scoped_functions[expr.function.name].with_descr(
+                self.kernel.scoped_functions[expr.function.name].with_descr(
                     combined_arg_id_to_descr))
 
         # collecting the descriptors for args, kwargs, assignees
@@ -2252,7 +2256,7 @@ def infer_arg_descr(kernel):
     shape and dimensions of the arguments too.
     """
 
-    arg_description_modifier = ArgDescriptionInferer(kernel.scoped_functions)
+    arg_description_modifier = ArgDescriptionInferer(kernel)
     pymbolic_calls_to_functions = set()
 
     for insn in kernel.instructions:
@@ -2264,8 +2268,7 @@ def infer_arg_descr(kernel):
                     arg_description_modifier(insn.expression,
                         assignees=insn.assignees))
         if isinstance(insn, (MultiAssignmentBase, CInstruction)):
-            a = arg_description_modifier(insn.expression)
-            pymbolic_calls_to_functions.update(a)
+            pymbolic_calls_to_functions.update(arg_description_modifier(insn.expression))
         elif isinstance(insn, _DataObliviousInstruction):
             pass
         else:
@@ -2392,9 +2395,10 @@ def preprocess_kernel(kernel, device=None):
     print(75*'-')
     print('Linked Functions:')
     for name, func in kernel.scoped_functions.items():
-        print(name, "=>", func)
+        print(name, "=>", (func.name, func.arg_id_to_dtype,
+            func.arg_id_to_descr, func.subkernel.args))
+        print()
     print(75*'-')
-    1/0
 
     kernel = kernel.target.preprocess(kernel)
 

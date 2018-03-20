@@ -253,9 +253,10 @@ class TypeInferenceMapper(CombineMapper):
 
     def map_call(self, expr, return_tuple=False):
         from pymbolic.primitives import Variable
+        from loopy.symbolic import ScopedFunction
 
         identifier = expr.function
-        if isinstance(identifier, Variable):
+        if isinstance(identifier, (Variable, ScopedFunction)):
             identifier = identifier.name
 
         if identifier in ["indexof", "indexof_vec"]:
@@ -297,7 +298,7 @@ class TypeInferenceMapper(CombineMapper):
 
         """
         # Letting this stay over here, as it maybe needed later for maintaining
-        # backward compatibility
+        # backward compatibility: ~KK
         mangle_result = self.kernel.mangle_function(identifier, arg_dtypes)
         if return_tuple:
             if mangle_result is not None:
@@ -428,6 +429,10 @@ class TypeInferenceMapper(CombineMapper):
             return [expr.operation.result_dtypes(self.kernel, rec_result)[0]
                     for rec_result in rec_results]
 
+    def map_sub_array_ref(self, expr):
+        return self.rec(expr.get_begin_subscript())
+
+
 # }}}
 
 
@@ -457,9 +462,16 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         if isinstance(writer_insn, lp.Assignment):
             result = type_inf_mapper(expr, return_dtype_set=True)
         elif isinstance(writer_insn, lp.CallInstruction):
-            return_dtype_set = type_inf_mapper(expr, return_tuple=True,
+            result = type_inf_mapper(expr, return_dtype_set=True)
+            """
+            # Maybe we need to alter this so that the type_inf_mapper returns a
+            # :class:`dict`?
+            # ask about this to Andreas Sir.
+            return_dtype_set = type_inf_mapper(expr, return_tuple=False,
                     return_dtype_set=True)
 
+            print(return_dtype_set)
+            print(writer_insn.assignee_var_names())
             result = []
             for return_dtype_set in return_dtype_set:
                 result_i = None
@@ -474,6 +486,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
                 assert found
                 if result_i is not None:
                     result.append(result_i)
+            """
 
         debug("             result: %s", result)
 
@@ -677,6 +690,18 @@ def infer_unknown_types(kernel, expect_completion=False):
             temporary_variables=new_temp_vars,
             args=[new_arg_dict[arg.name] for arg in kernel.args],
             )
+
+    #------------------------------------------------------------------------
+    # KK:
+    # FIXME: more type scoped function type specialization but needed for the
+    # specialization of the in kernel callables
+    # for example if an instruction is :
+    # `[i]:z[i] = a_kernel_function([j]:x[j], [k]: y[k])`
+    # and if the user already provided the types of the args: x, y, z.
+    # Then the instruction would not go through the TypeInferenceMapper and hence
+    # the function: `a_kernel_function` would not undergo type specialization,
+    # which would create problems in the future.
+    #------------------------------------------------------------------------
 
     from loopy.kernel.function_interface import (
             register_pymbolic_calls_to_knl_callables)

@@ -822,6 +822,10 @@ class CASTBuilder(ASTBuilderBase):
             lhs_expr, rhs_expr, lhs_dtype):
         raise NotImplementedError("atomic updates in %s" % type(self).__name__)
 
+    # FIXME: With the new mangler interface this should not be present,
+    # Commenting this part so that this does not get used anywhere in the
+    # meantime
+    '''
     def emit_tuple_assignment(self, codegen_state, insn):
         ecm = codegen_state.expression_to_code_mapper
 
@@ -844,84 +848,23 @@ class CASTBuilder(ASTBuilderBase):
             assignments.append(Assign(lhs_code, rhs_code))
 
         return block_if_necessary(assignments)
+    '''
 
     def emit_multiple_assignment(self, codegen_state, insn):
         ecm = codegen_state.expression_to_code_mapper
 
-        from pymbolic.primitives import Variable
-        from pymbolic.mapper.stringifier import PREC_NONE
+        func_id = insn.expression.function.name
 
-        func_id = insn.expression.function
-        parameters = insn.expression.parameters
+        in_knl_callable = codegen_state.kernel.scoped_functions[func_id]
+        in_knl_callable_as_call = in_knl_callable.emit_call(
+                insn=insn,
+                target=self.target,
+                expression_to_code_mapper=ecm)
 
-        if isinstance(func_id, Variable):
-            func_id = func_id.name
-
-        assignee_var_descriptors = [
-                codegen_state.kernel.get_var_descriptor(a)
-                for a in insn.assignee_var_names()]
-
-        par_dtypes = tuple(ecm.infer_type(par) for par in parameters)
-
-        mangle_result = codegen_state.kernel.mangle_function(func_id, par_dtypes)
-        if mangle_result is None:
-            raise RuntimeError("function '%s' unknown--"
-                    "maybe you need to register a function mangler?"
-                    % func_id)
-
-        assert mangle_result.arg_dtypes is not None
-
-        if mangle_result.target_name == "loopy_make_tuple":
-            # This shorcut avoids actually having to emit a 'make_tuple' function.
-            return self.emit_tuple_assignment(codegen_state, insn)
-
-        from loopy.expression import dtype_to_type_context
-        c_parameters = [
-                ecm(par, PREC_NONE,
-                    dtype_to_type_context(self.target, tgt_dtype),
-                    tgt_dtype).expr
-                for par, par_dtype, tgt_dtype in zip(
-                    parameters, par_dtypes, mangle_result.arg_dtypes)]
-
-        from loopy.codegen import SeenFunction
-        codegen_state.seen_functions.add(
-                SeenFunction(func_id,
-                    mangle_result.target_name,
-                    mangle_result.arg_dtypes))
-
-        from pymbolic import var
-        for i, (a, tgt_dtype) in enumerate(
-                zip(insn.assignees[1:], mangle_result.result_dtypes[1:])):
-            if tgt_dtype != ecm.infer_type(a):
-                raise LoopyError("type mismatch in %d'th (1-based) left-hand "
-                        "side of instruction '%s'" % (i+1, insn.id))
-            c_parameters.append(
-                        # TODO Yuck: The "where-at function": &(...)
-                        var("&")(
-                            ecm(a, PREC_NONE,
-                                dtype_to_type_context(self.target, tgt_dtype),
-                                tgt_dtype).expr))
-
-        from pymbolic import var
-        result = var(mangle_result.target_name)(*c_parameters)
-
-        # In case of no assignees, we are done
-        if len(mangle_result.result_dtypes) == 0:
-            from cgen import ExpressionStatement
-            return ExpressionStatement(
-                    CExpression(self.get_c_expression_to_code_mapper(), result))
-
-        result = ecm.wrap_in_typecast(
-                mangle_result.result_dtypes[0],
-                assignee_var_descriptors[0].dtype,
-                result)
-
-        lhs_code = ecm(insn.assignees[0], prec=PREC_NONE, type_context=None)
-
-        from cgen import Assign
-        return Assign(
-                lhs_code,
-                CExpression(self.get_c_expression_to_code_mapper(), result))
+        from cgen import ExpressionStatement
+        return ExpressionStatement(
+                CExpression(self.get_c_expression_to_code_mapper(),
+                    in_knl_callable_as_call))
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
             lbound, ubound, inner):

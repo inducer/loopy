@@ -189,6 +189,9 @@ class CombineMapper(CombineMapperBase):
     def map_reduction(self, expr):
         return self.rec(expr.expr)
 
+    def map_sub_array_ref(self, expr):
+        return self.rec(expr.get_begin_subscript())
+
     map_linear_subscript = CombineMapperBase.map_subscript
 
     map_scoped_function = CombineMapperBase.map_variable
@@ -738,7 +741,7 @@ class SubArrayRef(p.Expression):
                 sub_dim_tags.append(DimTag(dim_tag.stride))
                 sub_shape.append(axis_length)
 
-        return sub_dim_tags, sub_shape
+        return sub_dim_tags, tuple(sub_shape)
 
     def __getinitargs__(self):
         return (self.swept_inames, self.subscript)

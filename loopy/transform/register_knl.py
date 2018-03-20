@@ -25,9 +25,9 @@ THE SOFTWARE.
 from loopy.kernel import LoopKernel
 from loopy.kernel.creation import FunctionScoper
 from loopy.diagnostic import LoopyError
-from loopy.function_interface import InKernelCallable
+from loopy.kernel.function_interface import InKernelCallable
 
-from loopy.kenrel.instruction import (MultiAssignmentBase, CallInstruction,
+from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
 
 __doc__ = """
@@ -65,15 +65,11 @@ def register_callable_kernel(parent, function_name, child):
         tests so that both of them can be confirmed to be made for each other.
     """
 
-    # {{{ Sanity Checks
+    # {{{ sanity checks
 
     assert isinstance(parent, LoopKernel)
     assert isinstance(child, LoopKernel)
     assert isinstance(function_name, str)
-    assert function_name not in parent.auxiliary_kernels, (
-                "%s has already been used with some other kernel. One"
-                "function can only be associated with a single kernel" % (
-                    function_name))
 
     # }}}
 
@@ -105,7 +101,8 @@ def register_callable_kernel(parent, function_name, child):
         subkernel=child)
 
     # returning the parent kernel with the new scoped function dictionary
-    return parent.copy(scope_functions=scoped_functions)
+    return parent.copy(scoped_functions=scoped_functions,
+            instructions=new_insns)
 
 # }}}
 

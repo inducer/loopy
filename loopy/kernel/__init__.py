@@ -1339,7 +1339,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             "temporary_variables",
             "iname_to_tag",
             "substitutions",
-            "scoped_functions",
             "iname_slab_increments",
             "loop_priority",
             "silenced_warnings",
@@ -1362,6 +1361,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             "preamble_generators",
             "function_manglers",
             "symbol_manglers",
+            "scoped_functions",
             )
 
     def update_persistent_hash(self, key_hash, key_builder):

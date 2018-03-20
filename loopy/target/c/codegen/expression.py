@@ -165,6 +165,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     def map_tagged_variable(self, expr, type_context):
         return var(expr.name)
 
+    def map_sub_array_ref(self, expr, type_context):
+        return var("&")(self.rec(expr.get_begin_subscript(),
+            type_context))
+
     def map_subscript(self, expr, type_context):
         def base_impl(expr, type_context):
             return self.rec(expr.aggregate, type_context)[self.rec(expr.index, 'i')]
