@@ -856,7 +856,7 @@ class CASTBuilder(ASTBuilderBase):
         func_id = insn.expression.function.name
 
         in_knl_callable = codegen_state.kernel.scoped_functions[func_id]
-        in_knl_callable_as_call = in_knl_callable.emit_call(
+        in_knl_callable_as_call = in_knl_callable.emit_call_insn(
                 insn=insn,
                 target=self.target,
                 expression_to_code_mapper=ecm)

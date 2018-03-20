@@ -4,6 +4,8 @@ import re
 import six
 import numpy as np
 
+from six.moves import zip
+
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
@@ -274,13 +276,16 @@ class InKernelCallable(ImmutableRecord):
         """
 
         if self.arg_id_to_dtype:
-            # trying to specialize an already specialized function.
+            # specializing an already specialized function.
 
-            if self.arg_id_to_dtype == arg_id_to_dtype:
-                return self.copy()
-            else:
-                raise LoopyError("Overwriting a specialized function--maybe"
-                        " start with new instance of InKernelCallable?")
+            for id, dtype in arg_id_to_dtype.items():
+                # only checking for the ones which have been provided
+                if self.arg_id_to_dtype[id] != arg_id_to_dtype[id]:
+                    raise LoopyError("Overwriting a specialized"
+                            " function is illegal--maybe start with new instance of"
+                            " InKernelCallable?")
+            # TODO: Check if the arguments match. If yes then just
+            # return self.copy()
 
         # {{{ attempt to specialize using scalar functions
 
@@ -290,6 +295,7 @@ class InKernelCallable(ImmutableRecord):
             from loopy.target.pyopencl import PyOpenCLTarget
             from loopy.target.cuda import CudaTarget
 
+            # FIXME: Push this into the target
             if isinstance(target, CTarget):
                 new_arg_id_to_dtype = c_with_types(self.name, arg_id_to_dtype)
 
@@ -393,11 +399,11 @@ class InKernelCallable(ImmutableRecord):
             return self.copy(arg_id_to_descr=arg_id_to_descr)
 
         else:
-            # Now this ia a kernel call
+            # this ia a kernel call
             # tuning the subkernel so that we have the the matching shapes and
             # dim_tags.
             # FIXME: Although We receive input if the argument is
-            # local/global. We do not use it to set the subkernel function
+            # `local/global`. We do not use it to set the subkernel function
             # signature. Need to do it, so that we can handle teporary inputs
             # in the array call.
 
@@ -411,7 +417,6 @@ class InKernelCallable(ImmutableRecord):
                 assert isinstance(id, int)
                 new_args[id] = new_args[id].copy(shape=descr.shape,
                         dim_tags=descr.dim_tags)
-
 
             descriptor_specialized_knl = self.subkernel.copy(args=new_args)
 
@@ -450,13 +455,37 @@ class InKernelCallable(ImmutableRecord):
     def get_target_specific_name(self, target):
 
         if self.subkernel is None:
-            raise NotImplementedError()
+            return self.name
         else:
             return self.subkernel.name
 
         raise NotImplementedError()
 
-    def emit_call(self, insn, target, expression_to_code_mapper):
+    def emit_call(self, expression_to_code_mapper, expression, target):
+        if self.subkernel:
+            raise NotImplementedError()
+
+        # must have single assignee
+        assert len(expression.parameters) == len(self.arg_id_to_dtype) - 1
+        arg_dtypes = tuple(self.arg_id_to_dtype[id] for id in
+                range(len(self.arg_id_to_dtype)-1))
+
+        par_dtypes = tuple(expression_to_code_mapper.infer_type(par) for par in
+                expression.parameters)
+
+        from loopy.expression import dtype_to_type_context
+        # processing the parameters with the required dtypes
+        processed_parameters = tuple(
+                expression_to_code_mapper.rec(par,
+                    dtype_to_type_context(target, tgt_dtype),
+                    tgt_dtype)
+                for par, par_dtype, tgt_dtype in zip(
+                    expression.parameters, par_dtypes, arg_dtypes))
+
+        from pymbolic import var
+        return var(self.get_target_specific_name(target))(*processed_parameters)
+
+    def emit_call_insn(self, insn, target, expression_to_code_mapper):
 
         from loopy.kernel.instruction import CallInstruction
         from pymbolic.primitives import CallWithKwargs
