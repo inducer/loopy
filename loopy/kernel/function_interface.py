@@ -275,7 +275,8 @@ class InKernelCallable(ImmutableRecord):
             its keyword identifier.
         """
 
-        if self.arg_id_to_dtype:
+        if self.arg_id_to_dtype is not None:
+
             # specializing an already specialized function.
 
             for id, dtype in arg_id_to_dtype.items():

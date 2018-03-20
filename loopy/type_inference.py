@@ -120,6 +120,11 @@ class TypeInferenceMapper(CombineMapper):
                 0 <= len(dtype_set) <= 1
                 for dtype_set in dtype_sets)
 
+        # Can't infer types if one of the dtypes is unknown
+        for dtype_set in dtype_sets:
+            if dtype_set == []:
+                return []
+
         from pytools import is_single_valued
 
         dtypes = [dtype
@@ -667,8 +672,7 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     #------------------------------------------------------------------------
     # KK:
-    # FIXME: more type scoped function type specialization but needed for the
-    # specialization of the in kernel callables
+    # FIXME:
     # for example if an instruction is :
     # `[i]:z[i] = a_kernel_function([j]:x[j], [k]: y[k])`
     # and if the user already provided the types of the args: x, y, z.
