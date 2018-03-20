@@ -459,34 +459,8 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         expr = subst_expander(writer_insn.expression)
 
         debug("             via expr %s", expr)
-        if isinstance(writer_insn, lp.Assignment):
-            result = type_inf_mapper(expr, return_dtype_set=True)
-        elif isinstance(writer_insn, lp.CallInstruction):
-            result = type_inf_mapper(expr, return_dtype_set=True)
-            """
-            # Maybe we need to alter this so that the type_inf_mapper returns a
-            # :class:`dict`?
-            # ask about this to Andreas Sir.
-            return_dtype_set = type_inf_mapper(expr, return_tuple=False,
-                    return_dtype_set=True)
 
-            print(return_dtype_set)
-            print(writer_insn.assignee_var_names())
-            result = []
-            for return_dtype_set in return_dtype_set:
-                result_i = None
-                found = False
-                for assignee, comp_dtype_set in zip(
-                        writer_insn.assignee_var_names(), return_dtype_set):
-                    if assignee == var_name:
-                        found = True
-                        result_i = comp_dtype_set
-                        break
-
-                assert found
-                if result_i is not None:
-                    result.append(result_i)
-            """
+        result = type_inf_mapper(expr, return_dtype_set=True)
 
         debug("             result: %s", result)
 

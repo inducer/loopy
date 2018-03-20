@@ -2202,9 +2202,8 @@ class ArgDescriptionInferer(CombineMapper):
                     combined_arg_id_to_dtype))
 
         # collecting the descriptors for args, kwargs, assignees
-        a = frozenset(((expr, new_scoped_function), ))
-        b = self.combine((self.rec(child) for child in expr.parameters))
-        return (a | b)
+        return (frozenset(((expr, new_scoped_function), )) |
+                self.combine((self.rec(child) for child in expr.parameters)))
 
     def map_call_with_kwargs(self, expr, **kwargs):
         from loopy.kernel.function_intergace import ValueArgDescriptor
@@ -2267,8 +2266,9 @@ def infer_arg_descr(kernel):
             pymbolic_calls_to_functions.update(
                     arg_description_modifier(insn.expression,
                         assignees=insn.assignees))
-        if isinstance(insn, (MultiAssignmentBase, CInstruction)):
-            pymbolic_calls_to_functions.update(arg_description_modifier(insn.expression))
+        elif isinstance(insn, (MultiAssignmentBase, CInstruction)):
+            pymbolic_calls_to_functions.update(arg_description_modifier(
+                insn.expression))
         elif isinstance(insn, _DataObliviousInstruction):
             pass
         else:
@@ -2386,19 +2386,9 @@ def preprocess_kernel(kernel, device=None):
     # have been established
     kernel = check_atomic_loads(kernel)
 
+    # inferring the shape and dim_tags of the arguments involved in a function
+    # call.
     kernel = infer_arg_descr(kernel)
-
-    print(75*'-')
-    print("This is after Type Inference")
-    for insn in kernel.instructions:
-        print(insn)
-    print(75*'-')
-    print('Linked Functions:')
-    for name, func in kernel.scoped_functions.items():
-        print(name, "=>", (func.name, func.arg_id_to_dtype,
-            func.arg_id_to_descr, func.subkernel.args))
-        print()
-    print(75*'-')
 
     kernel = kernel.target.preprocess(kernel)
 

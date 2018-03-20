@@ -32,6 +32,13 @@ from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 
+from cgen import Collection
+
+from loopy.kernel.instruction import (
+        Assignment, NoOpInstruction, BarrierInstruction, CallInstruction,
+        CInstruction, _DataObliviousInstruction)
+
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -187,6 +194,12 @@ class CodeGenerationState(object):
         generated.
 
     .. attribute:: schedule_index_end
+
+    .. attribute:: is_generating_master_kernel
+
+        Can be either `True` or `False`. Indicating whether the code is being
+        generated for a master kernel or an auxiliary kernel.
+
     """
 
     def __init__(self, kernel,
@@ -196,7 +209,8 @@ class CodeGenerationState(object):
             vectorization_info=None, var_name_generator=None,
             is_generating_device_code=None,
             gen_program_name=None,
-            schedule_index_end=None):
+            schedule_index_end=None,
+            is_generating_master_kernel=None):
         self.kernel = kernel
         self.implemented_data_info = implemented_data_info
         self.implemented_domain = implemented_domain
@@ -211,6 +225,7 @@ class CodeGenerationState(object):
         self.is_generating_device_code = is_generating_device_code
         self.gen_program_name = gen_program_name
         self.schedule_index_end = schedule_index_end
+        self.is_generating_master_kernel = is_generating_master_kernel
 
     # {{{ copy helpers
 
@@ -219,7 +234,8 @@ class CodeGenerationState(object):
             var_subst_map=None, vectorization_info=None,
             is_generating_device_code=None,
             gen_program_name=None,
-            schedule_index_end=None):
+            schedule_index_end=None,
+            is_generating_master_kernel=None):
 
         if kernel is None:
             kernel = self.kernel
@@ -242,6 +258,9 @@ class CodeGenerationState(object):
         if schedule_index_end is None:
             schedule_index_end = self.schedule_index_end
 
+        if is_generating_master_kernel is None:
+            is_generating_master_kernel = self.is_generating_master_kernel
+
         return CodeGenerationState(
                 kernel=kernel,
                 implemented_data_info=implemented_data_info,
@@ -257,7 +276,8 @@ class CodeGenerationState(object):
                 var_name_generator=self.var_name_generator,
                 is_generating_device_code=is_generating_device_code,
                 gen_program_name=gen_program_name,
-                schedule_index_end=schedule_index_end)
+                schedule_index_end=schedule_index_end,
+                is_generating_master_kernel=is_generating_master_kernel)
 
     def copy_and_assign(self, name, value):
         """Make a copy of self with variable *name* fixed to *value*."""
@@ -470,12 +490,48 @@ def generate_code_v2(kernel):
                 kernel.target.host_program_name_prefix
                 + kernel.name
                 + kernel.target.host_program_name_suffix),
-            schedule_index_end=len(kernel.schedule))
+            schedule_index_end=len(kernel.schedule),
+            is_generating_master_kernel=True)
 
     from loopy.codegen.result import generate_host_or_device_program
+
+    # {{{ collecting ASTs of auxiliary kernels
+
+    auxiliary_dev_progs = []
+
+    from loopy.codegen.auxiliary_kernels import generate_auxiliary_kernel_device_code
+    for insn in kernel.instructions:
+        if isinstance(insn, CallInstruction):
+            in_knl_callable = kernel.scoped_functions[insn.expression.function.name]
+            if in_knl_callable.subkernel is not None:
+                auxiliary_dev_prog = generate_auxiliary_kernel_device_code(
+                        in_knl_callable.subkernel,
+                        kernel.target).device_programs[0].ast
+                auxiliary_dev_progs.append(auxiliary_dev_prog)
+        elif isinstance(insn, (Assignment, NoOpInstruction, Assignment,
+                               BarrierInstruction, CInstruction,
+                               _DataObliviousInstruction)):
+            pass
+        else:
+            raise NotImplementedError("register_knl not made for %s type of"
+                    "instruciton" % (str(type(insn))))
+
+    # }}}
+
     codegen_result = generate_host_or_device_program(
             codegen_state,
             schedule_index=0)
+
+    # {{{ pasting the auxiliary functions code to the first device program
+
+    new_dev_prog = codegen_result.device_programs[0]
+    for auxiliary_dev_prog in auxiliary_dev_progs:
+        new_dev_prog = new_dev_prog.copy(
+                ast=Collection([auxiliary_dev_prog, new_dev_prog.ast]))
+    new_device_programs = [new_dev_prog] + codegen_result.device_programs[1:]
+    codegen_result = codegen_result.copy(device_programs=new_device_programs)
+
+    # }}}
 
     device_code_str = codegen_result.device_code()
 

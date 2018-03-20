@@ -61,7 +61,7 @@ class ArrayArgDescriptor(ArgDescriptor):
 
         # }}}
 
-        super(ArgDescriptor, self).__init__(shape=None,
+        super(ArgDescriptor, self).__init__(shape=shape,
                 mem_scope=mem_scope,
                 dim_tags=dim_tags)
 
@@ -411,6 +411,7 @@ class InKernelCallable(ImmutableRecord):
                 assert isinstance(id, int)
                 new_args[id] = new_args[id].copy(shape=descr.shape,
                         dim_tags=descr.dim_tags)
+
 
             descriptor_specialized_knl = self.subkernel.copy(args=new_args)
 
