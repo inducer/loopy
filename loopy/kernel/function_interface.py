@@ -107,6 +107,10 @@ def get_kw_pos_association(kernel):
 # }}}
 
 
+
+# {{{ template class
+
+
 class InKernelCallable(ImmutableRecord):
     """
 
@@ -137,12 +141,9 @@ class InKernelCallable(ImmutableRecord):
         # {{{ sanity checks
 
         if not isinstance(name, str):
-            raise LoopyError("name of a InKernelCallable should be a string")
+            raise LoopyError("name of a CallableOnScalar should be a string")
 
         # }}}
-
-        if name_in_target is not None and subkernel is not None:
-            subkernel = subkernel.copy(name=name_in_target)
 
         super(InKernelCallable, self).__init__(name=name,
                 subkernel=subkernel,
@@ -168,6 +169,93 @@ class InKernelCallable(ImmutableRecord):
             its keyword identifier.
         """
 
+        raise NotImplementedError()
+
+    def with_descrs(self, arg_id_to_descr):
+        """
+        :arg arg_id_to_descr: a mapping from argument identifiers
+            (integers for positional arguments, names for keyword
+            arguments) to :class:`loopy.ArrayArgDescriptor` instances.
+            Unspecified/unknown types are not represented in *arg_id_to_descr*.
+
+            Return values are denoted by negative integers, with the
+            first returned value identified as *-1*.
+
+        :returns: a tuple ``(new_self, arg_id_to_type)``, where *new_self* is a
+            new :class:`InKernelCallable` specialized for the given types,
+            and *arg_id_to_descr* is a mapping of the same form as the
+            argument above, however it may have more information present.
+            Any argument information exists both by its positional and
+            its keyword identifier.
+        """
+
+        raise NotImplementedError()
+
+    def with_iname_tag_usage(self, unusable, concurrent_shape):
+        """
+        :arg unusable: a set of iname tags that may not be used in the callee.
+        :arg concurrent_shape: an list of tuples ``(iname_tag, bound)`` for
+            concurrent inames that are used in the calller but also available
+            for mapping by the callee. *bound* is given as a
+            :class:`islpy.PwAff`.
+
+        :returns: a list of the same type as *concurrent*, potentially modified
+            by increasing bounds or adding further iname tag entries.
+
+        All iname tags not explicitly listed in *concurrent* or *unusable* are
+        available for mapping by the callee.
+        """
+
+        raise NotImplementedError()
+
+    def is_ready_for_code_gen(self):
+
+        return (self.arg_id_to_dtype is not None and
+                self.arg_id_to_descr is not None and
+                self.name_in_target is not None)
+
+    # {{{ code generation
+
+    def generate_preambles(self, target):
+        """ This would generate the target specific preamble.
+        """
+        raise NotImplementedError()
+
+    def emit_call(self, expression_to_code_mapper, expression, target):
+
+        raise NotImplementedError()
+
+    def emit_call_insn(self, insn, target, expression_to_code_mapper):
+
+        raise NotImplementedError()
+
+    # }}}
+
+    def __eq__(self, other):
+        return (self.name == other.name
+                and self.arg_id_to_descr == other.arg_id_to_descr
+                and self.arg_id_to_dtype == other.arg_id_to_dtype
+                and self.subkernel == other.subkernel)
+
+    def __hash__(self):
+        return hash((self.name, self.subkernel, self.name_in_target))
+
+
+# }}}
+
+
+class CallableOnScalar(InKernelCallable):
+
+    def __init__(self, name, arg_id_to_dtype=None,
+            arg_id_to_descr=None, name_in_target=None):
+
+        super(CallableOnScalar, self).__init__(name=name,
+                subkernel=None,
+                arg_id_to_dtype=arg_id_to_dtype,
+                arg_id_to_descr=arg_id_to_descr,
+                name_in_target=name_in_target)
+
+    def with_types(self, arg_id_to_dtype, target):
         if self.arg_id_to_dtype is not None:
 
             # specializing an already specialized function.
@@ -177,9 +265,9 @@ class InKernelCallable(ImmutableRecord):
                 if self.arg_id_to_dtype[id] != arg_id_to_dtype[id]:
                     raise LoopyError("Overwriting a specialized"
                             " function is illegal--maybe start with new instance of"
-                            " InKernelCallable?")
+                            " CallableScalar?")
 
-        # {{{ attempt to specialize using scalar functions
+        # {{{ attempt to specialize using scalar functions present in target
 
         if self.name in target.get_device_ast_builder().function_identifiers():
             new_in_knl_callable = target.get_device_ast_builder().with_types(
@@ -190,13 +278,93 @@ class InKernelCallable(ImmutableRecord):
 
         # }}}
 
-        if self.subkernel is None:
-            # did not find a scalar function and function prototype does not
-            # even have  subkernel registered => no match found
-            raise LoopyError("Function %s not present within"
-                    " the %s namespace" % (self.name, target))
+        # did not find a scalar function and function prototype does not
+        # even have  subkernel registered => no match found
+        raise LoopyError("Function %s not present within"
+                " the %s namespace" % (self.name, target))
 
-        # {{{ attempt to specialization with array functions
+    def with_descrs(self, arg_id_to_descr):
+
+        # This is a scalar call
+        # need to assert that the name is in funtion indentifiers
+        arg_id_to_descr[-1] = ValueArgDescriptor()
+        return self.copy(arg_id_to_descr=arg_id_to_descr)
+
+    def with_iname_tag_usage(self, unusable, concurrent_shape):
+
+        raise NotImplementedError()
+
+    def is_ready_for_code_gen(self):
+
+        return (self.arg_id_to_dtype is not None and
+                self.arg_id_to_descr is not None and
+                self.name_in_target is not None)
+
+    # {{{ code generation
+
+    def generate_preambles(self, target):
+        """ This would generate the target specific preamble.
+        """
+        raise NotImplementedError()
+
+    def emit_call(self, expression_to_code_mapper, expression, target):
+
+        assert self.is_ready_for_code_gen()
+
+        # must have single assignee
+        assert len(expression.parameters) == len(self.arg_id_to_dtype) - 1
+        arg_dtypes = tuple(self.arg_id_to_dtype[id] for id in
+                range(len(self.arg_id_to_dtype)-1))
+
+        par_dtypes = tuple(expression_to_code_mapper.infer_type(par) for par in
+                expression.parameters)
+
+        from loopy.expression import dtype_to_type_context
+        # processing the parameters with the required dtypes
+        processed_parameters = tuple(
+                expression_to_code_mapper.rec(par,
+                    dtype_to_type_context(target, tgt_dtype),
+                    tgt_dtype)
+                for par, par_dtype, tgt_dtype in zip(
+                    expression.parameters, par_dtypes, arg_dtypes))
+
+        from pymbolic import var
+        return var(self.name_in_target)(*processed_parameters)
+
+    def emit_call_insn(self, insn, target, expression_to_code_mapper):
+        # TODO: Need to add support for functions like sincos(x)
+        # which would give multiple outputs but takes in scalar arguments
+
+        raise NotImplementedError("emit_call_insn only applies for"
+                " CallableKernels")
+
+    # }}}
+
+    def __eq__(self, other):
+        return (self.name == other.name
+                and self.arg_id_to_descr == other.arg_id_to_descr
+                and self.arg_id_to_dtype == other.arg_id_to_dtype
+                and self.subkernel == other.subkernel)
+
+    def __hash__(self):
+        return hash((self.name, self.subkernel, self.name_in_target))
+
+
+class CallableKernel(InKernelCallable):
+
+    def __init__(self, name, subkernel, arg_id_to_dtype=None,
+            arg_id_to_descr=None, name_in_target=None):
+
+        if name_in_target is not None and subkernel is not None:
+            subkernel = subkernel.copy(name=name_in_target)
+
+        super(CallableKernel, self).__init__(name=name,
+                subkernel=subkernel,
+                arg_id_to_dtype=arg_id_to_dtype,
+                arg_id_to_descr=arg_id_to_descr,
+                name_in_target=name_in_target)
+
+    def with_types(self, arg_id_to_dtype, target):
 
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
@@ -239,76 +407,37 @@ class InKernelCallable(ImmutableRecord):
                 new_arg_id_to_dtype[read_count] = arg.dtype
                 read_count += 1
 
-        # }}}
-
         # Returning the kernel call with specialized subkernel and the corresponding
         # new arg_id_to_dtype
         return self.copy(subkernel=specialized_kernel,
                 arg_id_to_dtype=new_arg_id_to_dtype)
 
     def with_descrs(self, arg_id_to_descr):
-        """
-        :arg arg_id_to_descr: a mapping from argument identifiers
-            (integers for positional arguments, names for keyword
-            arguments) to :class:`loopy.ArrayArgDescriptor` instances.
-            Unspecified/unknown types are not represented in *arg_id_to_descr*.
 
-            Return values are denoted by negative integers, with the
-            first returned value identified as *-1*.
+        # tuning the subkernel so that we have the the matching shapes and
+        # dim_tags.
+        # FIXME: Although We receive input if the argument is
+        # `local/global`. We do not use it to set the subkernel function
+        # signature. Need to do it, so that we can handle teporary inputs
+        # in the array call.
 
-        :returns: a tuple ``(new_self, arg_id_to_type)``, where *new_self* is a
-            new :class:`InKernelCallable` specialized for the given types,
-            and *arg_id_to_descr* is a mapping of the same form as the
-            argument above, however it may have more information present.
-            Any argument information exists both by its positional and
-            its keyword identifier.
-        """
+        # Collecting the parameters
+        new_args = self.subkernel.args.copy()
+        kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
-        if self.subkernel is None:
-            # This is a scalar call
-            # need to assert that the name is in funtion indentifiers
-            arg_id_to_descr[-1] = ValueArgDescriptor()
-            return self.copy(arg_id_to_descr=arg_id_to_descr)
+        for id, descr in arg_id_to_descr.items():
+            if isinstance(id, str):
+                id = kw_to_pos[id]
+            assert isinstance(id, int)
+            new_args[id] = new_args[id].copy(shape=descr.shape,
+                    dim_tags=descr.dim_tags)
 
-        else:
-            # this ia a kernel call
-            # tuning the subkernel so that we have the the matching shapes and
-            # dim_tags.
-            # FIXME: Although We receive input if the argument is
-            # `local/global`. We do not use it to set the subkernel function
-            # signature. Need to do it, so that we can handle teporary inputs
-            # in the array call.
+        descriptor_specialized_knl = self.subkernel.copy(args=new_args)
 
-            # Collecting the parameters
-            new_args = self.subkernel.args.copy()
-            kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
-
-            for id, descr in arg_id_to_descr.items():
-                if isinstance(id, str):
-                    id = kw_to_pos[id]
-                assert isinstance(id, int)
-                new_args[id] = new_args[id].copy(shape=descr.shape,
-                        dim_tags=descr.dim_tags)
-
-            descriptor_specialized_knl = self.subkernel.copy(args=new_args)
-
-            return self.copy(subkernel=descriptor_specialized_knl,
-                    arg_id_to_descr=arg_id_to_descr)
+        return self.copy(subkernel=descriptor_specialized_knl,
+                arg_id_to_descr=arg_id_to_descr)
 
     def with_iname_tag_usage(self, unusable, concurrent_shape):
-        """
-        :arg unusable: a set of iname tags that may not be used in the callee.
-        :arg concurrent_shape: an list of tuples ``(iname_tag, bound)`` for
-            concurrent inames that are used in the calller but also available
-            for mapping by the callee. *bound* is given as a
-            :class:`islpy.PwAff`.
-
-        :returns: a list of the same type as *concurrent*, potentially modified
-            by increasing bounds or adding further iname tag entries.
-
-        All iname tags not explicitly listed in *concurrent* or *unusable* are
-        available for mapping by the callee.
-        """
 
         raise NotImplementedError()
 
@@ -327,30 +456,7 @@ class InKernelCallable(ImmutableRecord):
 
     def emit_call(self, expression_to_code_mapper, expression, target):
 
-        assert self.is_ready_for_code_gen()
-
-        if self.subkernel:
-            raise NotImplementedError()
-
-        # must have single assignee
-        assert len(expression.parameters) == len(self.arg_id_to_dtype) - 1
-        arg_dtypes = tuple(self.arg_id_to_dtype[id] for id in
-                range(len(self.arg_id_to_dtype)-1))
-
-        par_dtypes = tuple(expression_to_code_mapper.infer_type(par) for par in
-                expression.parameters)
-
-        from loopy.expression import dtype_to_type_context
-        # processing the parameters with the required dtypes
-        processed_parameters = tuple(
-                expression_to_code_mapper.rec(par,
-                    dtype_to_type_context(target, tgt_dtype),
-                    tgt_dtype)
-                for par, par_dtype, tgt_dtype in zip(
-                    expression.parameters, par_dtypes, arg_dtypes))
-
-        from pymbolic import var
-        return var(self.name_in_target)(*processed_parameters)
+        raise NotImplementedError("emit_call only works on scalar operations")
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
 
@@ -402,111 +508,7 @@ class InKernelCallable(ImmutableRecord):
                 and self.subkernel == other.subkernel)
 
     def __hash__(self):
-        return hash((self.name, self.subkernel))
-
-# {{{ callable kernel
-
-
-class CallableKernel(InKernelCallable):
-    """
-
-    ..attribute:: name
-
-        This would be the name by which the function would be called in the loopy
-        kernel.
-
-    .. attribute:: subkernel
-
-        The subkernel associated with the call.
-
-    """
-
-    # {{{ constructor
-
-    def __init__(self, name=None, subkernel=None):
-
-        super(CallableKernel, self).__init__(name=name)
-
-        if not name == subkernel.name:
-            subkernel = subkernel.copy(name=name)
-
-        self.subkernel = subkernel
-
-    # }}}
-
-    # {{{ copy
-
-    def copy(self, name=None, subkernel=None):
-        if name is None:
-            name = self.name
-
-        if subkernel is None:
-            subkernel = self.subkernel
-
-        return self.__class__(name=name,
-                subkernel=subkernel)
-
-    # }}}
-
-    # {{{ with_types
-
-    def with_types(self, arg_id_to_dtype):
-
-        # {{{ sanity checks for arg_id_to_dtype
-
-        for id in arg_id_to_dtype:
-            if not isinstance(id, str):
-                raise LoopyError("For Callable kernels the input should be all given"
-                        "as KWargs")
-
-        # }}}
-
-    # }}}
-
-    # {{{ with_descriptors
-
-    def with_descriptors(self, arg_id_to_descr):
-        for id, arg_descr in arg_id_to_descr.items():
-            # The dimensions don't match => reject it
-            if len(arg_descr.dim_tags) != len(self.subkernel.arg_dict[id].shape):
-                raise LoopyError("The number of dimensions do not match between the"
-                        "caller kernel and callee kernel for the variable name %s in"
-                        "the callee kernel" % id)
-
-        new_args = []
-        for arg in self.subkernel.args:
-            if arg.name in arg_id_to_descr:
-                new_args.copy(arg.copy(dim_tags=arg_id_to_descr[arg.name]))
-                pass
-            else:
-                new_args.append(arg.copy())
-
-        specialized_kernel = self.subkernel.copy(args=new_args)
-
-        new_arg_id_to_descr = {}
-
-        for id, arg in specialized_kernel.arg_dict.items():
-            new_arg_id_to_descr[id] = ArrayArgDescriptor(arg.dim_tags, "GLOBAL")
-
-        return self.copy(subkernel=specialized_kernel), new_arg_id_to_descr
-
-    # }}}
-
-    # {{{ get_target_specific_name
-
-    def get_target_specific_name(self, target):
-        return self.subkernel.name
-
-    # }}}
-
-    # {{{ get preamble
-
-    def get_preamble(self, target):
-        return ""
-
-    # }}}
-
-# }}}
+        return hash((self.name, self.subkernel, self.name_in_target))
 
 
 # {{{ new pymbolic calls to scoped functions
