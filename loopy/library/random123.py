@@ -223,4 +223,46 @@ def random123_function_mangler(kernel, name, arg_dtypes):
     else:
         return None
 
+
+def random123_with_types(in_knl_callable, arg_id_to_dtype, target):
+    name = in_knl_callable.name
+
+    if name not in FUNC_NAMES_TO_RNG:
+        return None
+
+    rng_variant = FUNC_NAMES_TO_RNG[name]
+    1/0
+
+    from loopy.types import NumpyType
+    base_dtype = {32: np.uint32, 64: np.uint64}[rng_variant.bits]
+    ctr_dtype = target.vector_dtype(NumpyType(base_dtype), rng_variant.width)
+    key_dtype = target.vector_dtype(NumpyType(base_dtype), rng_variant.key_width)
+
+    from loopy.kernel.data import CallMangleInfo
+    fn = rng_variant.full_name
+    if name == fn:
+        return CallMangleInfo(
+                target_name=fn+"_gen",
+                result_dtypes=(ctr_dtype, ctr_dtype),
+                arg_dtypes=(ctr_dtype, key_dtype))
+
+    elif name == fn + "_f32":
+        return CallMangleInfo(
+                target_name=name,
+                result_dtypes=(
+                    target.vector_dtype(NumpyType(np.float32), rng_variant.width),
+                    ctr_dtype),
+                arg_dtypes=(ctr_dtype, key_dtype))
+
+    elif name == fn + "_f64":
+        return CallMangleInfo(
+                target_name=name,
+                result_dtypes=(
+                    target.vector_dtype(NumpyType(np.float64), rng_variant.width),
+                    ctr_dtype),
+                arg_dtypes=(ctr_dtype, key_dtype))
+
+    else:
+        return None
+
 # vim: foldmethod=marker

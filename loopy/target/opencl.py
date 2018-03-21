@@ -31,10 +31,12 @@ from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from pytools import memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
-from loopy.target.c import DTypeRegistryWrapper, c_math_identifiers
+from loopy.target.c import (DTypeRegistryWrapper, c_math_identifiers,
+        c_math_mangler, c_with_types)
 from loopy.kernel.data import temp_var_scope, CallMangleInfo
 from pymbolic import var
 
+from functools import partial
 
 # {{{ dtype registry wrappers
 
@@ -156,8 +158,8 @@ def opencl_function_identifiers():
 
 # }}}
 
-# {{{ function mangler
 
+# {{{ function mangler
 
 _CL_SIMPLE_MULTI_ARG_FUNCTIONS = {
         "clamp": 3,
@@ -238,6 +240,95 @@ def opencl_function_mangler(kernel, name, arg_dtypes):
                 arg_dtypes=(NumpyType(dtype),)*count)
 
     return None
+
+
+def opencl_with_types(in_knl_callable, arg_id_to_dtype):
+
+    name = in_knl_callable.name
+
+    if name in ["max", "min"]:
+        for id in arg_id_to_dtype:
+            if not -1 <= id <= 1:
+                raise LoopyError("%s can take only 2 arguments." % name)
+        if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype:
+            return None
+
+        dtype = np.find_common_type(
+                [], [dtype.numpy_dtype for id, dtype in
+                    arg_id_to_dtype.values() if id >= 0])
+
+        if dtype.kind == "i":
+            dtype = NumpyType(dtype)
+            return in_knl_callable.copy(name_in_target=name,
+                    arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype})
+
+    if name == "dot":
+        for id in arg_id_to_dtype:
+            if not -1 <= id <= 1:
+                raise LoopyError("%s can take only 2 arguments." % name)
+
+        if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
+                arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
+            # the types provided aren't mature enough to specialize the
+            # callable
+            return None
+
+        dtype = arg_id_to_dtype[0]
+        scalar_dtype, offset, field_name = dtype.numpy_dtype.fields["s0"]
+        return in_knl_callable.copy(name_in_target=name,
+                arg_id_to_dtype={-1: scalar_dtype, 0: dtype, 1: dtype})
+
+    if name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
+        num_args = _CL_SIMPLE_MULTI_ARG_FUNCTIONS[name]
+        for id in arg_id_to_dtype:
+            if not -1 <= id < num_args:
+                raise LoopyError("%s can take only %d arguments." % (name,
+                        num_args))
+
+        for i in range(num_args):
+            if i not in arg_id_to_dtype or arg_id_to_dtype[i] is not None:
+                # the types provided aren't mature enough to specialize the
+                # callable
+                return None
+
+        dtype = np.find_common_type(
+                [], [dtype.numpy_dtype for id, dtype in
+                    arg_id_to_dtype.values() if id >= 0])
+
+        if dtype.kind == "c":
+            raise LoopyError("%s does not support complex numbers"
+                    % name)
+
+        updated_arg_id_to_dtype = dict((id, NumpyType(dtype)) for id in range(-1,
+            num_args))
+
+        return in_knl_callable.copy(name_in_target=name,
+                arg_id_to_dtype=updated_arg_id_to_dtype)
+
+    if name in VECTOR_LITERAL_FUNCS:
+        base_tp_name, dtype, count = VECTOR_LITERAL_FUNCS[name]
+
+        for id in arg_id_to_dtype:
+            if not -1 <= id < count:
+                raise LoopyError("%s can take only %d arguments." % (name,
+                        num_args))
+
+        for i in range(count):
+            if i not in arg_id_to_dtype or arg_id_to_dtype[i] is not None:
+                # the types provided aren't mature enough to specialize the
+                # callable
+                return None
+
+        updated_arg_id_to_dtype = dict((id, NumpyType(dtype)) for id in
+                range(count))
+        updated_arg_id_to_dtype[-1] = OpenCLTarget().vector_dtype(
+                    NumpyType(dtype), count)
+
+        return in_knl_callable.copy(name_in_target="(%s%d) " % (base_tp_name, count),
+                arg_id_to_dtype=updated_arg_id_to_dtype)
+
+    return None
+
 
 # }}}
 
@@ -382,6 +473,14 @@ class OpenCLTarget(CTarget):
 class OpenCLCASTBuilder(CASTBuilder):
     # {{{ library
 
+    def function_manglers(self):
+        return (
+                [
+                    opencl_function_mangler,
+                    partial(c_math_mangler, modify_name=False)
+                ] +
+                super(OpenCLCASTBuilder, self).function_manglers())
+
     def function_identifiers(self):
         return (opencl_function_identifiers() | c_math_identifiers() |
                 super(OpenCLCASTBuilder, self).function_identifiers())
@@ -401,6 +500,17 @@ class OpenCLCASTBuilder(CASTBuilder):
                     reduction_preamble_generator,
                     ])
 
+    def with_types(self, in_knl_callable, arg_id_to_dtype):
+        new_callable = opencl_with_types(in_knl_callable, arg_id_to_dtype)
+        if new_callable is not None:
+            return new_callable
+
+        new_callable = c_with_types(in_knl_callable, arg_id_to_dtype)
+        if new_callable is not None:
+            return new_callable
+        return super(OpenCLCASTBuilder, self).with_types(in_knl_callable,
+                arg_id_to_dtype)
+
     # }}}
 
     # {{{ top-level codegen
@@ -412,6 +522,11 @@ class OpenCLCASTBuilder(CASTBuilder):
 
         from loopy.target.c import FunctionDeclarationWrapper
         assert isinstance(fdecl, FunctionDeclarationWrapper)
+        if not codegen_state.is_generating_master_kernel:
+            # auxiliary kernels need not mention opencl speicific qualifiers
+            # for a functions signature
+            return fdecl
+
         fdecl = fdecl.subdecl
 
         from cgen.opencl import CLKernel, CLRequiredWorkGroupSize

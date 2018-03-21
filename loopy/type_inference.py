@@ -120,11 +120,6 @@ class TypeInferenceMapper(CombineMapper):
                 0 <= len(dtype_set) <= 1
                 for dtype_set in dtype_sets)
 
-        # Can't infer types if one of the dtypes is unknown
-        for dtype_set in dtype_sets:
-            if dtype_set == []:
-                return []
-
         from pytools import is_single_valued
 
         dtypes = [dtype
@@ -291,15 +286,12 @@ class TypeInferenceMapper(CombineMapper):
         self.specialized_functions[expr] = in_knl_callable
 
         new_arg_id_to_dtype = in_knl_callable.arg_id_to_dtype
-        result_dtypes = []
 
         # collecting result dtypes in order of the assignees
+        if -1 in new_arg_id_to_dtype and new_arg_id_to_dtype[-1] is not None:
+            return [new_arg_id_to_dtype[-1]]
 
-        for i in range(len(new_arg_id_to_dtype)):
-            if -i-1 in new_arg_id_to_dtype:
-                result_dtypes.append(new_arg_id_to_dtype[-i-1])
-            else:
-                return result_dtypes
+        return []
 
         """
         # Letting this stay over here, as it maybe needed later for maintaining

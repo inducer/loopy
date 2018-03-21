@@ -162,6 +162,15 @@ class ASTBuilderBase(object):
     def preamble_generators(self):
         return []
 
+    def with_types(self, in_knl_callable, arg_id_to_dtype):
+        """
+        Checks the in-kernel callable with the target specific functions and then
+        returns either `None` when no match is found or returns a new type
+        specialized instance of :class:`InKernelCallable`.
+
+        """
+        return None
+
     # }}}
 
     # {{{ code generation guts

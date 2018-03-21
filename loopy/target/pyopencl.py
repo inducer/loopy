@@ -236,6 +236,43 @@ def pyopencl_function_mangler(target, name, arg_dtypes):
     return None
 
 
+def pyopencl_with_types(in_knl_callable, arg_id_to_dtype):
+
+    name = in_knl_callable.name
+
+    for id in arg_id_to_dtype:
+        if not -1 <= id <= 0:
+            raise LoopyError("%s can take only one argument." % name)
+
+    if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
+        # the types provided aren't mature enough to specialize the
+        # callable
+        return None
+
+    dtype = arg_id_to_dtype[0]
+
+    if dtype.is_complex():
+        if dtype.numpy_dtype == np.complex64:
+            tpname = "cfloat"
+        elif dtype.numpy_dtype == np.complex128:
+            tpname = "cdouble"
+        else:
+            raise RuntimeError("unexpected complex type '%s'" % dtype)
+
+        if name in ["sqrt", "exp", "log",
+                "sin", "cos", "tan",
+                "sinh", "cosh", "tanh",
+                "conj"]:
+            return in_knl_callable.copy(name_in_target="%s_%s" % (tpname, name),
+                    arg_id_to_dtype={0: dtype, -1: dtype})
+
+        if name in ["real", "imag", "abs"]:
+            return in_knl_callable.copy(name_in_target="%s_%s" % (tpname, name),
+                    arg_id_to_dtype={0: dtype, -1: dtype.numpy_dtype.type(0).real})
+
+    return None
+
+
 # {{{ preamble generator
 
 def pyopencl_preamble_generator(preamble_info):
@@ -763,6 +800,18 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
             pyopencl_preamble_generator,
             random123_preamble_generator,
             ] + super(PyOpenCLCASTBuilder, self).preamble_generators())
+
+    def with_types(self, in_knl_callable, arg_id_to_dtype):
+        from loopy.library.random123 import random123_with_types
+        new_callable = super(PyOpenCLCASTBuilder, self).with_types(in_knl_callable,
+                arg_id_to_dtype)
+        if new_callable is not None:
+            return new_callable
+
+        new_callable = pyopencl_with_types(in_knl_callable, arg_id_to_dtype)
+        if new_callable is not None:
+            return new_callable
+        return random123_with_types(in_knl_callable, arg_id_to_dtype)
 
     # }}}
 

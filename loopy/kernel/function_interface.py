@@ -2,13 +2,11 @@ from __future__ import division, absolute_import
 
 import re
 import six
-import numpy as np
 
 from six.moves import zip
 
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
-from loopy.types import NumpyType
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
                 _DataObliviousInstruction)
@@ -85,115 +83,6 @@ class ArrayArgDescriptor(ArgDescriptor):
 # }}}
 
 
-# {{{ c with types
-
-def c_with_types(name, arg_id_to_dtype):
-
-    # Specializing the type of the math function once they agree upon the
-    # function signature.
-
-    if name in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
-            "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor", "tan"]:
-        for id, dtype in arg_id_to_dtype.items():
-            if not -1 <= id <= 0:
-                raise LoopyError("%s can take only one argument." % name)
-
-        dtype = arg_id_to_dtype[0].numpy_dtype
-
-        if dtype.kind == 'f':
-            # generic type resolve we can go ahead and specialize
-            pass
-        elif dtype.kind in ['u', 'i']:
-            # int and unsigned are casted into float32
-            dtype = np.float32
-        else:
-            raise LoopyError("%s function cannot take arguments of the type %s"
-                    % (name, dtype))
-
-        # Done specializing. Returning the intended arg_id_to_dtype
-        dtype = NumpyType(dtype)
-        return {-1: dtype, 0: dtype}
-
-    # binary functions
-    elif name in ["max", "min"]:
-        for id, dtype in arg_id_to_dtype.items():
-            if not -1 <= id <= 1:
-                raise LoopyError("%s can take only two arguments." % name)
-
-        # finding the common type for all the dtypes involved
-        dtype = np.find_common_type(
-            [], [dtype.numpy_dtype for dtype in arg_id_to_dtype])
-
-        if dtype.kind == 'f':
-            # generic type resolve we can go ahead and specialize
-            pass
-        elif dtype.kind in ['u', 'i']:
-            # int and unsigned are implicitly casted into float32
-            dtype = np.float32
-        else:
-            raise LoopyError("%s function cannot take arguments of the type %s"
-                    % (name, dtype))
-
-        # Specialized into one of the known types
-        return {-1: NumpyType(dtype), 0: arg_id_to_dtype[0], 1: arg_id_to_dtype[1]}
-
-    else:
-        # could not specialize the function within the C namespace
-        # this would help when checking for OpenCL/CUDA function which are not
-        # present in C
-        return None
-
-# }}}
-
-
-# {{{ opencl with_types
-
-def opencl_with_types(name, arg_id_to_dtype):
-    new_arg_id_to_dtype = c_with_types(name, arg_id_to_dtype)
-    if new_arg_id_to_dtype is None:
-        # could not locate the function within C's namespace. Searching in
-        # OpenCL specific namespace
-
-        # FIXME: Need to add these functions over here
-        new_arg_id_to_dtype = None
-
-    return new_arg_id_to_dtype
-
-# }}}
-
-
-# {{{ pyopencl with_types
-
-def pyopencl_with_types(name, arg_id_to_dtype):
-    new_arg_id_to_dtype = opencl_with_types(name, arg_id_to_dtype)
-    if new_arg_id_to_dtype is None:
-        # could not locate the function within C's namespace. Searching in
-        # PyOpenCL specific namespace
-
-        # FIXME: Need to add these functions over here
-        new_arg_id_to_dtype = None
-
-    return new_arg_id_to_dtype
-
-# }}}
-
-
-# {{{ cuda with_types
-
-def cuda_with_types(name, arg_id_to_dtype):
-    new_arg_id_to_dtype = c_with_types(name, arg_id_to_dtype)
-    if new_arg_id_to_dtype is None:
-        # could not locate the function within C's namespace. Searching in
-        # CUDA specific namespace
-
-        # FIXME: Need to add these extra functions over here
-        new_arg_id_to_dtype = None
-
-    return new_arg_id_to_dtype
-
-# }}}
-
-
 # {{{ kw_to_pos
 
 def get_kw_pos_association(kernel):
@@ -243,7 +132,7 @@ class InKernelCallable(ImmutableRecord):
     """
 
     def __init__(self, name, subkernel=None, arg_id_to_dtype=None,
-            arg_id_to_descr=None):
+            arg_id_to_descr=None, name_in_target=None):
 
         # {{{ sanity checks
 
@@ -252,10 +141,14 @@ class InKernelCallable(ImmutableRecord):
 
         # }}}
 
+        if name_in_target is not None and subkernel is not None:
+            subkernel = subkernel.copy(name=name_in_target)
+
         super(InKernelCallable, self).__init__(name=name,
                 subkernel=subkernel,
                 arg_id_to_dtype=arg_id_to_dtype,
-                arg_id_to_descr=arg_id_to_descr)
+                arg_id_to_descr=arg_id_to_descr,
+                name_in_target=name_in_target)
 
     def with_types(self, arg_id_to_dtype, target):
         """
@@ -285,37 +178,15 @@ class InKernelCallable(ImmutableRecord):
                     raise LoopyError("Overwriting a specialized"
                             " function is illegal--maybe start with new instance of"
                             " InKernelCallable?")
-            # TODO: Check if the arguments match. If yes then just
-            # return self.copy()
 
         # {{{ attempt to specialize using scalar functions
 
         if self.name in target.get_device_ast_builder().function_identifiers():
-            from loopy.target.c import CTarget
-            from loopy.target.opencl import OpenCLTarget
-            from loopy.target.pyopencl import PyOpenCLTarget
-            from loopy.target.cuda import CudaTarget
-
-            # FIXME: Push this into the target
-            if isinstance(target, CTarget):
-                new_arg_id_to_dtype = c_with_types(self.name, arg_id_to_dtype)
-
-            elif isinstance(target, OpenCLTarget):
-                new_arg_id_to_dtype = opencl_with_types(self.name, arg_id_to_dtype)
-
-            elif isinstance(target, PyOpenCLTarget):
-                new_arg_id_to_dtype = pyopencl_with_types(self.name, arg_id_to_dtype)
-
-            elif isinstance(target, CudaTarget):
-                new_arg_id_to_dtype = cuda_with_types(self.name, arg_id_to_dtype)
-
-            else:
-                raise NotImplementedError("InKernelCallable.with_types() for"
-                        " %s target" % target)
-
-            if new_arg_id_to_dtype is not None:
-                # got our speciliazed function
-                return self.copy(arg_id_to_dtype=new_arg_id_to_dtype)
+            new_in_knl_callable = target.get_device_ast_builder().with_types(
+                    self, arg_id_to_dtype)
+            if new_in_knl_callable is None:
+                new_in_knl_callable = self.copy()
+            return new_in_knl_callable
 
         # }}}
 
@@ -444,7 +315,8 @@ class InKernelCallable(ImmutableRecord):
     def is_ready_for_code_gen(self):
 
         return (self.arg_id_to_dtype is not None and
-                self.arg_id_to_descr is not None)
+                self.arg_id_to_descr is not None and
+                self.name_in_target is not None)
 
     # {{{ code generation
 
@@ -453,16 +325,10 @@ class InKernelCallable(ImmutableRecord):
         """
         raise NotImplementedError()
 
-    def get_target_specific_name(self, target):
-
-        if self.subkernel is None:
-            return self.name
-        else:
-            return self.subkernel.name
-
-        raise NotImplementedError()
-
     def emit_call(self, expression_to_code_mapper, expression, target):
+
+        assert self.is_ready_for_code_gen()
+
         if self.subkernel:
             raise NotImplementedError()
 
@@ -484,9 +350,11 @@ class InKernelCallable(ImmutableRecord):
                     expression.parameters, par_dtypes, arg_dtypes))
 
         from pymbolic import var
-        return var(self.get_target_specific_name(target))(*processed_parameters)
+        return var(self.name_in_target)(*processed_parameters)
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
+
+        assert self.is_ready_for_code_gen()
 
         from loopy.kernel.instruction import CallInstruction
         from pymbolic.primitives import CallWithKwargs
@@ -507,7 +375,7 @@ class InKernelCallable(ImmutableRecord):
             parameters.append(kw_parameters[pos_to_kw[i]])
             par_dtypes.append(self.arg_id_to_dtype[pos_to_kw[i]])
 
-        # TODO: currently no suppport for insn keywords.
+        # TODO: currently no suppport for assignee keywords.
         parameters = parameters + list(assignees)
         par_dtypes = par_dtypes + [self.arg_id_to_dtype[-i-1] for i, _ in
                 enumerate(assignees)]
@@ -523,7 +391,7 @@ class InKernelCallable(ImmutableRecord):
                     parameters, par_dtypes)]
 
         from pymbolic import var
-        return var(self.get_target_specific_name(target))(*c_parameters)
+        return var(self.name_in_target)(*c_parameters)
 
     # }}}
 
@@ -718,12 +586,10 @@ def register_pymbolic_calls_to_knl_callables(kernel,
 
             # book-keeping of the functions and names mappings for later use
             if in_knl_callable.subkernel is not None:
-                # changing the name of the subkenrel so that it emits a function
-                # with the name same as the name being used in the
-                # scoped_function.
-                new_subkernel = in_knl_callable.subkernel.copy(
-                        name=unique_name)
-                in_knl_callable = in_knl_callable.copy(subkernel=new_subkernel)
+                # for array calls the name in the target is the name of the
+                # scoped funciton
+                in_knl_callable = in_knl_callable.copy(
+                        name_in_target=unique_name)
             scoped_names_to_functions[unique_name] = in_knl_callable
             scoped_functions_to_names[in_knl_callable] = unique_name
 
