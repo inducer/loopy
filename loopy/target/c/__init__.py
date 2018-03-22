@@ -953,6 +953,10 @@ class CASTBuilder(ASTBuilderBase):
                 expression_to_code_mapper=ecm)
 
         from cgen import ExpressionStatement
+        # FIXME: Depending on the function this can be either an
+        # ExpressionStatement or Assignment.
+        # Refer: CallableOnScalar::emit_call_insn. It is discussed in detail
+        # over there.
         return ExpressionStatement(
                 CExpression(self.get_c_expression_to_code_mapper(),
                     in_knl_callable_as_call))

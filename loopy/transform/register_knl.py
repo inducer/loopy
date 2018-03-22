@@ -25,7 +25,7 @@ THE SOFTWARE.
 from loopy.kernel import LoopKernel
 from loopy.kernel.creation import FunctionScoper
 from loopy.diagnostic import LoopyError
-from loopy.kernel.function_interface import InKernelCallable
+from loopy.kernel.function_interface import CallableKernel
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
@@ -97,7 +97,7 @@ def register_callable_kernel(parent, function_name, child):
         raise LoopyError("%s is already being used as a funciton name -- maybe"
                 "use a different name for registering the subkernel")
 
-    scoped_functions[function_name] = InKernelCallable(name=function_name,
+    scoped_functions[function_name] = CallableKernel(name=function_name,
         subkernel=child)
 
     # returning the parent kernel with the new scoped function dictionary

@@ -107,7 +107,6 @@ def get_kw_pos_association(kernel):
 # }}}
 
 
-
 # {{{ template class
 
 
@@ -141,9 +140,12 @@ class InKernelCallable(ImmutableRecord):
         # {{{ sanity checks
 
         if not isinstance(name, str):
-            raise LoopyError("name of a CallableOnScalar should be a string")
+            raise LoopyError("name of an InKernelCallable should be a string")
 
         # }}}
+
+        if name_in_target is not None and subkernel is not None:
+            subkernel = subkernel.copy(name=name_in_target)
 
         super(InKernelCallable, self).__init__(name=name,
                 subkernel=subkernel,
@@ -246,15 +248,6 @@ class InKernelCallable(ImmutableRecord):
 
 class CallableOnScalar(InKernelCallable):
 
-    def __init__(self, name, arg_id_to_dtype=None,
-            arg_id_to_descr=None, name_in_target=None):
-
-        super(CallableOnScalar, self).__init__(name=name,
-                subkernel=None,
-                arg_id_to_dtype=arg_id_to_dtype,
-                arg_id_to_descr=arg_id_to_descr,
-                name_in_target=name_in_target)
-
     def with_types(self, arg_id_to_dtype, target):
         if self.arg_id_to_dtype is not None:
 
@@ -335,34 +328,64 @@ class CallableOnScalar(InKernelCallable):
         # TODO: Need to add support for functions like sincos(x)
         # which would give multiple outputs but takes in scalar arguments
 
+        # FIXME: needs to get information about whether the callable has should
+        # do pass by reference by all values or should return one value for
+        # pass by value return.
+
+        # For example: The code generation of `sincos` would be different for
+        # C-Target and OpenCL-target.
+
+        # Currently doing pass by value for all the assignees.
+
+        assert self.is_ready_for_code_gen()
+
+        from loopy.kernel.instruction import CallInstruction
+
+        assert isinstance(insn, CallInstruction)
+
+        parameters = insn.expression.parameters
+        assignees = insn.assignees
+
+        par_dtypes = tuple(expression_to_code_mapper.infer_type(par) for par in
+                parameters)
+        arg_dtypes = tuple(self.arg_id_to_dtype[i] for i, _ in
+                enumerate(parameters))
+
+        assignee_dtypes = tuple(self.arg_id_to_dtype[-i-1] for i, _ in
+                enumerate(assignees))
+
+        from loopy.expression import dtype_to_type_context
+        from pymbolic.mapper.stringifier import PREC_NONE
+        from pymbolic import var
+
+        c_parameters = [
+                expression_to_code_mapper(par, PREC_NONE,
+                    dtype_to_type_context(self.target, tgt_dtype),
+                    tgt_dtype).expr
+                for par, par_dtype, tgt_dtype in zip(
+                    parameters, par_dtypes, arg_dtypes)]
+
+        for i, (a, tgt_dtype) in enumerate(zip(assignees, assignee_dtypes)):
+            if tgt_dtype != expression_to_code_mapper.infer_type(a):
+                raise LoopyError("Type Mismach in funciton %s. Expected: %s"
+                        "Got: %s" % (self.name, tgt_dtype,
+                            expression_to_code_mapper.infer_type(a)))
+            c_parameters.append(
+                        var("&")(
+                            expression_to_code_mapper(a, PREC_NONE,
+                                dtype_to_type_context(self.target, tgt_dtype),
+                                tgt_dtype).expr))
+
+        from pymbolic import var
+        return var(self.name_in_target)(*c_parameters)
+
         raise NotImplementedError("emit_call_insn only applies for"
                 " CallableKernels")
 
     # }}}
 
-    def __eq__(self, other):
-        return (self.name == other.name
-                and self.arg_id_to_descr == other.arg_id_to_descr
-                and self.arg_id_to_dtype == other.arg_id_to_dtype
-                and self.subkernel == other.subkernel)
-
-    def __hash__(self):
-        return hash((self.name, self.subkernel, self.name_in_target))
-
 
 class CallableKernel(InKernelCallable):
-
-    def __init__(self, name, subkernel, arg_id_to_dtype=None,
-            arg_id_to_descr=None, name_in_target=None):
-
-        if name_in_target is not None and subkernel is not None:
-            subkernel = subkernel.copy(name=name_in_target)
-
-        super(CallableKernel, self).__init__(name=name,
-                subkernel=subkernel,
-                arg_id_to_dtype=arg_id_to_dtype,
-                arg_id_to_descr=arg_id_to_descr,
-                name_in_target=name_in_target)
 
     def with_types(self, arg_id_to_dtype, target):
 
