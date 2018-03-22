@@ -24,12 +24,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 import numpy as np
 
-from pymbolic.mapper import CSECachingMapperMixin, Collector
+from pymbolic.mapper import CSECachingMapperMixin
 from loopy.tools import intern_frozenset_of_ids
-from loopy.symbolic import IdentityMapper, WalkMapper
+from loopy.symbolic import IdentityMapper, WalkMapper, CombineMapper
 from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
@@ -42,6 +41,8 @@ import six
 from six.moves import range, zip, intern
 
 import re
+
+from functools import reduce
 
 import logging
 logger = logging.getLogger(__name__)
@@ -1880,16 +1881,22 @@ class FunctionScoper(IdentityMapper):
         return IdentityMapper.map_call(self, expr)
 
 
-class ScopedFunctionCollector(Collector):
+class ScopedFunctionCollector(CombineMapper):
     """ This mapper would collect all the instances of :class:`ScopedFunction`
     occurring in the expression and written all of them as a :class:`set`.
     """
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, frozenset())
 
     def map_scoped_function(self, expr):
-        return set([expr.name])
+        return frozenset([expr.name])
 
-    def map_sub_array_ref(self, expr):
-        return set()
+    def map_constant(self, expr):
+        return frozenset()
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
 
 
 def scope_functions(kernel):

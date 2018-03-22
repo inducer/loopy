@@ -2105,12 +2105,36 @@ def check_atomic_loads(kernel):
 
 # {{{ check for unscoped calls
 
-class UnScopedCallCollector(Collector):
+class UnScopedCallCollector(CombineMapper):
+
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, frozenset())
+
     def map_call(self, expr):
         if not isinstance(expr.function, ScopedFunction):
-            return set([expr.function.name])
+            return (frozenset([expr.function.name]) |
+                    self.combine((self.rec(child) for child in expr.parameters)))
         else:
-            return set()
+            return self.combine((self.rec(child) for child in expr.parameters))
+
+    def map_call_with_kwargs(self, expr):
+        if not isinstance(expr.function, ScopedFunction):
+            return (frozenset([expr.function.name]) |
+                    self.combine((self.rec(child) for child in expr.parameters
+                        + expr.kw_parameter.values())))
+        else:
+            return self.combine((self.rec(child) for child in
+                expr.parameters+expr.kw_parameters.values()))
+
+    def map_scoped_function(self, expr):
+        return frozenset([expr.name])
+
+    def map_constant(self, expr):
+        return frozenset()
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
 
 
 def check_functions_are_scoped(kernel):
