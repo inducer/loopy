@@ -1944,8 +1944,10 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         *seq_dependencies* added.
     """
 
-    logger.info(
+    from time import time
+    logger.debug(
             "%s: kernel creation start" % kwargs.get("name", "(unnamed)"))
+    kernel_creation_start_time = time()
 
     defines = kwargs.pop("defines", {})
     default_order = kwargs.pop("default_order", "C")
@@ -2166,8 +2168,14 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     from loopy.preprocess import prepare_for_caching
     knl = prepare_for_caching(knl)
 
-    logger.info(
-            "%s: kernel creation done" % knl.name)
+    creation_elapsed = time() - kernel_creation_start_time
+    if creation_elapsed > 0.1:
+        time_logger = logger.info
+    else:
+        time_logger = logger.debug
+
+    time_logger(
+            "%s: kernel creation done after %g s", (knl.name, creation_elapsed))
 
     return knl
 
