@@ -269,27 +269,24 @@ class TypeInferenceMapper(CombineMapper):
             else:
                 return None
 
-        arg_dtypes = tuple(none_if_empty(self.rec(par)) for par in expr.parameters)
-        if None in arg_dtypes:
-            return []
-
-        arg_id_to_dtype = dict((i, dtype) for (i, dtype) in
-                enumerate(arg_dtypes))
+        arg_id_to_dtype = dict((i, none_if_empty(self.rec(par))) for (i, par) in
+                enumerate(expr.parameters))
 
         # specializing the known function wrt type
-        in_knl_callable = (
-                self.scoped_functions[expr.function.name].with_types(
-                    arg_id_to_dtype, self.kernel.target))
+        if isinstance(expr.function, ScopedFunction):
+            in_knl_callable = (
+                    self.scoped_functions[expr.function.name].with_types(
+                        arg_id_to_dtype, self.kernel.target))
 
-        # storing the type specialized function so that it can be used for
-        # later use
-        self.specialized_functions[expr] = in_knl_callable
+            # storing the type specialized function so that it can be used for
+            # later use
+            self.specialized_functions[expr] = in_knl_callable
 
-        new_arg_id_to_dtype = in_knl_callable.arg_id_to_dtype
+            new_arg_id_to_dtype = in_knl_callable.arg_id_to_dtype
 
-        # collecting result dtypes in order of the assignees
-        if -1 in new_arg_id_to_dtype and new_arg_id_to_dtype[-1] is not None:
-            return [new_arg_id_to_dtype[-1]]
+            # collecting result dtypes in order of the assignees
+            if -1 in new_arg_id_to_dtype and new_arg_id_to_dtype[-1] is not None:
+                return [new_arg_id_to_dtype[-1]]
 
         return []
 
@@ -500,6 +497,12 @@ def infer_unknown_types(kernel, expect_completion=False):
     """Infer types on temporaries and arguments."""
 
     logger.debug("%s: infer types" % kernel.name)
+
+    if expect_completion:
+        # if completion is expected, then it is important that all the
+        # callables are scoped.
+        from loopy.preprocess import check_functions_are_scoped
+        check_functions_are_scoped(kernel)
 
     from functools import partial
     debug = partial(_debug, kernel)

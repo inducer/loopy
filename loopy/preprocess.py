@@ -893,6 +893,7 @@ def _insert_subdomain_into_domain_tree(kernel, domains, subdomain):
 # }}}
 
 
+
 def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                       automagic_scans_ok=False, force_scan=False,
                       force_outer_iname_for_scan=None):
@@ -1092,6 +1093,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 within_inames=update_insn_iname_deps,
                 within_inames_is_final=insn.within_inames_is_final,
                 predicates=insn.predicates,)
+
+        reduction_insn = scope_function_in_insn(reduction_insn, kenrel)
 
         generated_insns.append(reduction_insn)
 
@@ -2145,7 +2148,7 @@ def check_functions_are_scoped(kernel):
         unscoped_calls = UnScopedCallCollector()(insn.expression)
         if unscoped_calls:
             raise LoopyError("Unknown function '%s' obtained -- register a function"
-                    " or a kernel corresponding to it." % unscoped_calls.pop())
+                    " or a kernel corresponding to it." % set(unscoped_calls).pop())
 
 # }}}
 
@@ -2362,10 +2365,6 @@ def preprocess_kernel(kernel, device=None):
     from loopy.transform.subst import expand_subst
     kernel = expand_subst(kernel)
 
-    # Checking if all the functions being used in the kernel and scoped to a
-    # finite namespace
-    check_functions_are_scoped(kernel)
-
     # Ordering restriction:
     # Type inference and reduction iname uniqueness don't handle substitutions.
     # Get them out of the way.
@@ -2381,6 +2380,10 @@ def preprocess_kernel(kernel, device=None):
 
     from loopy.kernel.creation import apply_single_writer_depencency_heuristic
     kernel = apply_single_writer_depencency_heuristic(kernel)
+
+    # inferring the shape and dim_tags of the arguments involved in a function
+    # call.
+    kernel = infer_arg_descr(kernel)
 
     # Ordering restrictions:
     #
@@ -2409,10 +2412,6 @@ def preprocess_kernel(kernel, device=None):
     # check for atomic loads, much easier to do here now that the dependencies
     # have been established
     kernel = check_atomic_loads(kernel)
-
-    # inferring the shape and dim_tags of the arguments involved in a function
-    # call.
-    kernel = infer_arg_descr(kernel)
 
     kernel = kernel.target.preprocess(kernel)
 
