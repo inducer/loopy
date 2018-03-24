@@ -134,8 +134,7 @@ class InKernelCallable(ImmutableRecord):
 
     """
 
-    def __init__(self, name, subkernel=None, arg_id_to_dtype=None,
-            arg_id_to_descr=None, name_in_target=None):
+    def __init__(self, name, arg_id_to_dtype=None, arg_id_to_descr=None):
 
         # {{{ sanity checks
 
@@ -144,14 +143,9 @@ class InKernelCallable(ImmutableRecord):
 
         # }}}
 
-        if name_in_target is not None and subkernel is not None:
-            subkernel = subkernel.copy(name=name_in_target)
-
         super(InKernelCallable, self).__init__(name=name,
-                subkernel=subkernel,
                 arg_id_to_dtype=arg_id_to_dtype,
-                arg_id_to_descr=arg_id_to_descr,
-                name_in_target=name_in_target)
+                arg_id_to_descr=arg_id_to_descr)
 
     def with_types(self, arg_id_to_dtype, target):
         """
@@ -233,20 +227,29 @@ class InKernelCallable(ImmutableRecord):
 
     # }}}
 
-    def __eq__(self, other):
-        return (self.name == other.name
-                and self.arg_id_to_descr == other.arg_id_to_descr
-                and self.arg_id_to_dtype == other.arg_id_to_dtype
-                and self.subkernel == other.subkernel)
-
-    def __hash__(self):
-        return hash((self.name, self.subkernel, self.name_in_target))
-
-
 # }}}
 
 
+# {{{ callables on scalar
+
 class CallableOnScalar(InKernelCallable):
+
+    fields = set(["name", "arg_id_to_dtype", "arg_id_to_descr", "name_in_target"])
+    init_arg_names = ("name", "arg_id_to_dtype", "arg_id_to_descr",
+            "name_in_target")
+
+    def __init__(self, name, arg_id_to_dtype=None,
+            arg_id_to_descr=None, name_in_target=None):
+
+        super(InKernelCallable, self).__init__(name=name,
+                arg_id_to_dtype=arg_id_to_dtype,
+                arg_id_to_descr=arg_id_to_descr)
+
+        self.name_in_target = name_in_target
+
+    def __getinitargs__(self):
+        return (self.name, self.arg_id_to_dtype, self.arg_id_to_descr,
+                self.name_in_target)
 
     def with_types(self, arg_id_to_dtype, target):
         if self.arg_id_to_dtype is not None:
@@ -384,8 +387,31 @@ class CallableOnScalar(InKernelCallable):
 
     # }}}
 
+# }}}
+
+
+# {{{ callable kernel
 
 class CallableKernel(InKernelCallable):
+
+    fields = set(["name", "subkernel", "arg_id_to_dtype", "arg_id_to_descr",
+        "name_in_target"])
+    init_arg_names = ("name", "subkernel", "arg_id_to_dtype", "arg_id_to_descr",
+            "name_in_target")
+
+    def __init__(self, name, subkernel, arg_id_to_dtype=None,
+            arg_id_to_descr=None, name_in_target=None):
+
+        super(InKernelCallable, self).__init__(name=name,
+                arg_id_to_dtype=arg_id_to_dtype,
+                arg_id_to_descr=arg_id_to_descr)
+
+        self.name_in_target = name_in_target
+        self.subkernel = subkernel
+
+    def __getinitargs__(self):
+        return (self.name, self.subkernel, self.arg_id_to_dtype,
+                self.arg_id_to_descr, self.name_in_target)
 
     def with_types(self, arg_id_to_dtype, target):
 
@@ -475,11 +501,8 @@ class CallableKernel(InKernelCallable):
     def generate_preambles(self, target):
         """ This would generate the target specific preamble.
         """
+        # Transfer the preambel of the subkernel over here
         raise NotImplementedError()
-
-    def emit_call(self, expression_to_code_mapper, expression, target):
-
-        raise NotImplementedError("emit_call only works on scalar operations")
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
 
@@ -524,14 +547,77 @@ class CallableKernel(InKernelCallable):
 
     # }}}
 
-    def __eq__(self, other):
-        return (self.name == other.name
-                and self.arg_id_to_descr == other.arg_id_to_descr
-                and self.arg_id_to_dtype == other.arg_id_to_dtype
-                and self.subkernel == other.subkernel)
+# }}}
 
-    def __hash__(self):
-        return hash((self.name, self.subkernel, self.name_in_target))
+
+
+
+
+
+class ReductionCallable(InKernelCallable):
+
+    fields = set(["name", "operation", "arg_id_to_dtype", "arg_id_to_descr"])
+    init_arg_names = ("name", "operation", "arg_id_to_dtype", "arg_id_to_descr")
+
+    def __init__(self, name, operation, arg_id_to_dtype=None,
+            arg_id_to_descr=None, name_in_target=None):
+
+        super(InKernelCallable, self).__init__(name=name,
+                arg_id_to_dtype=arg_id_to_dtype,
+                arg_id_to_descr=arg_id_to_descr)
+
+        self.operation = operation
+
+    def with_types(self, arg_id_to_dtype, target):
+        if self.arg_id_to_dtype is not None:
+
+            # specializing an already specialized function.
+
+            for id, dtype in arg_id_to_dtype.items():
+                # only checking for the ones which have been provided
+                if self.arg_id_to_dtype[id] != arg_id_to_dtype[id]:
+                    raise LoopyError("Overwriting a specialized"
+                            " function is illegal--maybe start with new instance of"
+                            " CallableScalar?")
+
+        if self.name in target.get_device_ast_builder().function_identifiers():
+            new_in_knl_callable = target.get_device_ast_builder().with_types(
+                    self, arg_id_to_dtype)
+            if new_in_knl_callable is None:
+                new_in_knl_callable = self.copy()
+            return new_in_knl_callable
+
+        # did not find a scalar function and function prototype does not
+        # even have  subkernel registered => no match found
+        raise LoopyError("Function %s not present within"
+                " the %s namespace" % (self.name, target))
+
+    def with_descrs(self, arg_id_to_descr):
+
+        # This is a scalar call
+        # need to assert that the name is in funtion indentifiers
+        arg_id_to_descr[-1] = ValueArgDescriptor()
+        return self.copy(arg_id_to_descr=arg_id_to_descr)
+
+    def with_iname_tag_usage(self, unusable, concurrent_shape):
+
+        raise NotImplementedError()
+
+    def is_ready_for_code_gen(self):
+
+        return (self.arg_id_to_dtype is not None and
+                self.arg_id_to_descr is not None and
+                self.name_in_target is not None)
+
+
+
+
+
+
+
+
+
+
 
 
 # {{{ new pymbolic calls to scoped functions

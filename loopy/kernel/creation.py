@@ -1832,7 +1832,7 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
 # }}}
 
 
-# {{{ lookup functions
+# {{{ scope functions
 
 class FunctionScoper(IdentityMapper):
     """
@@ -1880,6 +1880,29 @@ class FunctionScoper(IdentityMapper):
         # This is an unknown function as of yet, not modifying it.
         return IdentityMapper.map_call(self, expr)
 
+    def map_reduction(self, expr):
+        from pymbolic.primitives import Variable
+        from loopy.symbolic import ScopedFunction
+
+        mapped_inames = [self.rec(Variable(iname)) for iname in expr.inames]
+
+        new_inames = []
+        for iname, new_sym_iname in zip(expr.inames, mapped_inames):
+            if not isinstance(new_sym_iname, Variable):
+                from loopy.diagnostic import LoopyError
+                raise LoopyError("%s did not map iname '%s' to a variable"
+                        % (type(self).__name__, iname))
+
+            new_inames.append(new_sym_iname.name)
+
+        from loopy.symbolic import Reduction
+
+        return Reduction(
+                ScopedFunction(expr.operation.name),
+                tuple(new_inames),
+                self.rec(expr.expr),
+                allow_simultaneous=expr.allow_simultaneous)
+
 
 class ScopedFunctionCollector(CombineMapper):
     """ This mapper would collect all the instances of :class:`ScopedFunction`
@@ -1890,7 +1913,44 @@ class ScopedFunctionCollector(CombineMapper):
         return reduce(operator.or_, values, frozenset())
 
     def map_scoped_function(self, expr):
-        return frozenset([expr.name])
+        from loopy.kernel.function_interface import CallableOnScalar
+        return frozenset([(expr.name, CallableOnScalar(expr.name))])
+
+    def map_reduction(self, expr):
+        from loopy.kernel.reduction_callable import CallableReduction
+        from loopy.symbolic import Reduction
+
+        callable_reduction = CallableReduction(expr.operation.name)
+
+        # sanity checks
+
+        if isinstance(expr.expr, tuple):
+            num_args = len(expr.expr)
+        else:
+            num_args = 1
+
+        if num_args != callable_reduction.operation.arg_count:
+            raise RuntimeError("invalid invocation of "
+                    "reduction operation '%s': expected %d arguments, "
+                    "got %d instead" % (expr.function.name,
+                                        callable_reduction.operation.arg_count,
+                                        len(expr.parameters)))
+
+        if callable_reduction.operation.arg_count > 1:
+            from pymbolic.primitives import Call
+
+            if not isinstance(expr, (tuple, Reduction, Call)):
+                raise LoopyError("reduction argument must be one of "
+                                 "a tuple, reduction, or call; "
+                                 "got '%s'" % type(expr).__name__)
+        else:
+            if isinstance(expr, tuple):
+                raise LoopyError("got a tuple argument to a scalar reduction")
+            elif isinstance(expr, Reduction) and callable_reduction.is_tuple_typed:
+                raise LoopyError("got a tuple typed argument to a scalar reduction")
+
+        return frozenset([(expr.operation.name,
+            callable_reduction)])
 
     def map_constant(self, expr):
         return frozenset()
@@ -1921,10 +1981,7 @@ def scope_functions(kernel):
                     type(insn))
 
     # Need to combine the scoped functions into a dict
-    from loopy.kernel.function_interface import CallableOnScalar
-    scoped_function_dict = dict((func, CallableOnScalar(func)) for func in
-            scoped_functions)
-
+    scoped_function_dict = dict(scoped_functions)
     return kernel.copy(instructions=new_insns, scoped_functions=scoped_function_dict)
 
 # }}}
