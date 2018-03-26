@@ -428,8 +428,8 @@ def get_argext_preamble(kernel, func_id, arg_dtypes):
 _REDUCTION_OPS = {
         "sum": SumReductionOperation,
         "product": ProductReductionOperation,
-        "maximum": MaxReductionOperation,
-        "minimum": MinReductionOperation,
+        "max": MaxReductionOperation,
+        "min": MinReductionOperation,
         "argmax": ArgMaxReductionOperation,
         "argmin": ArgMinReductionOperation,
         "segmented(sum)": SegmentedSumReductionOperation,

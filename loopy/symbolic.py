@@ -616,7 +616,7 @@ class Reduction(p.Expression):
         self.allow_simultaneous = allow_simultaneous
 
     def __getinitargs__(self):
-        return (self.funciton, self.inames, self.expr, self.allow_simultaneous)
+        return (self.function, self.inames, self.expr, self.allow_simultaneous)
 
     def get_hash(self):
         return hash((self.__class__, self.function, self.inames, self.expr))

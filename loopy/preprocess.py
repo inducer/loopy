@@ -2357,7 +2357,22 @@ class ReadyForCodegen(CombineMapper):
     map_function_symbol = map_constant
 
 
-def try_making_callable_ready_for_codegen(kernel):
+def specializing_incomplete_callables(kernel):
+    """
+    Transformation necessary to type-specialize the callables which are missed
+    in type inference. For example consider:
+    ```
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<16}",
+        "a[i] = sin[b[i]]",
+        [lp.GlobalArg('a', dtype=np.float64),
+        lp.GlobalArg('b', dtype=np.float64)])
+    ```
+    In this case, none of the instructions undergo type inference as the type
+    inference is already resolved. But this would be a problem during
+    code-generation as `sin` is not type specialized.
+
+    """
     from loopy.type_inference import TypeInferenceMapper
     from loopy.symbolic import SubstitutionRuleExpander
     from loopy.kernel.function_interface import (
@@ -2462,7 +2477,6 @@ def preprocess_kernel(kernel, device=None):
     # - realize_reduction must happen after default dependencies are added
     #   because it manipulates the depends_on field, which could prevent
     #   defaults from being applied.
-
     kernel = realize_reduction(kernel, unknown_types_ok=False)
 
     # inferring the shape and dim_tags of the arguments involved in a function
@@ -2470,7 +2484,7 @@ def preprocess_kernel(kernel, device=None):
     kernel = infer_arg_descr(kernel)
 
     # try specializing callables one last time.
-    kernel = try_making_callable_ready_for_codegen(kernel)
+    kernel = specializing_incomplete_callables(kernel)
 
     # Ordering restriction:
     # add_axes_to_temporaries_for_ilp because reduction accumulators

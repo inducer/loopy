@@ -566,11 +566,14 @@ def next_indexed_name(name):
 
 
 class FunctionScopeChanger(IdentityMapper):
-    #TODO: Make it sophisticated as in I don't like the if-else systems. Needs
+    # TODO: Make it sophisticated as in I don't like the if-else systems. Needs
     # something else.
+    # Explain what this is doing.
+    # The name should be more like "NameChanger" more like "GameChanger" LOl.
+    # Wow my jokes are baaad. Anyways back to work!!
+
     def __init__(self, new_names):
         self.new_names = new_names
-        self.new_names_set = frozenset(new_names.values())
 
     def map_call(self, expr):
         if expr in self.new_names:
@@ -593,6 +596,18 @@ class FunctionScopeChanger(IdentityMapper):
                     )
         else:
             return IdentityMapper.map_call_with_kwargs(self, expr)
+
+    def map_reduction(self, expr):
+        from loopy.symbolic import Reduction
+
+        if self.new_names:
+            return Reduction(
+                    ScopedFunction(self.new_names[expr]),
+                    tuple(expr.inames),
+                    self.rec(expr.expr),
+                    allow_simultaneous=expr.allow_simultaneous)
+        else:
+            return IdentityMapper.map_reduction(self, expr)
 
 
 def register_pymbolic_calls_to_knl_callables(kernel,
@@ -652,7 +667,6 @@ def register_pymbolic_calls_to_knl_callables(kernel,
             instructions=new_insns)
 
 # }}}
-
 
 
 # vim: foldmethod=marker

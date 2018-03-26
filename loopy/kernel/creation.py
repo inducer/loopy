@@ -1897,8 +1897,12 @@ class FunctionScoper(IdentityMapper):
 
         from loopy.symbolic import Reduction
 
+        # Adding _reduce at the end of the reduction in order to avoid
+        # confusion between reduce(max, ...) and max(a, b) in the
+        # `scoped_functions` dictionary.
+
         return Reduction(
-                ScopedFunction(expr.function.name),
+                ScopedFunction(expr.function.name+"_reduce"),
                 tuple(new_inames),
                 self.rec(expr.expr),
                 allow_simultaneous=expr.allow_simultaneous)
@@ -1921,7 +1925,10 @@ class ScopedFunctionCollector(CombineMapper):
         from loopy.kernel.function_interface import CallableOnScalar
         from loopy.symbolic import Reduction
 
-        callable_reduction = CallableReduction(expr.function.name)
+        # Refer to map_reduction subroutine of FunctionScoper.
+        assert expr.function.name[-7:] == "_reduce"
+
+        callable_reduction = CallableReduction(expr.function.name[:-7])
 
         # sanity checks
 
@@ -1986,7 +1993,7 @@ def scope_functions(kernel):
         else:
             raise NotImplementedError("scope_functions not implemented for %s" %
                     type(insn))
-
+    
     # Need to combine the scoped functions into a dict
     scoped_function_dict = dict(scoped_functions)
     return kernel.copy(instructions=new_insns, scoped_functions=scoped_function_dict)
