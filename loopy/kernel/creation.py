@@ -2175,7 +2175,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         time_logger = logger.debug
 
     time_logger(
-            "%s: kernel creation done after %g s", (knl.name, creation_elapsed))
+            "%s: kernel creation done after %g s", knl.name, creation_elapsed)
 
     return knl
 
