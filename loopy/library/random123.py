@@ -225,6 +225,7 @@ def random123_function_mangler(kernel, name, arg_dtypes):
 
 
 def random123_with_types(in_knl_callable, arg_id_to_dtype, target):
+    # FIXME: Translate the mangler to this.
     name = in_knl_callable.name
 
     if name not in FUNC_NAMES_TO_RNG:

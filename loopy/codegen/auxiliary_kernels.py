@@ -153,7 +153,7 @@ def generate_auxiliary_kernel_device_code(kernel, target):
                                _DataObliviousInstruction)):
             pass
         else:
-            raise NotImplementedError("register_knl not made for %s type of"
+            raise NotImplementedError("register_knl not made for %s type of "
                     "instruciton" % (str(type(insn))))
 
     # }}}

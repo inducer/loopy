@@ -143,7 +143,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         to instances of :class:`loopy.kernel.data.IndexTag`.
 
     .. attribute:: function_manglers
-    .. attribute:: function_identifiers
     .. attribute:: symbol_manglers
 
     .. attribute:: substitutions
@@ -201,7 +200,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 default_function_mangler,
                 single_arg_function_mangler,
                 ],
-            function_identifiers=set(),
             scoped_functions={},
             symbol_manglers=[],
 
@@ -268,10 +266,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
 
-        # Populating the function identifiers based on the target and the default
-        # function identifiers
-        function_identifiers = target.get_device_ast_builder().function_identifiers()
-
         ImmutableRecordWithoutPickling.__init__(self,
                 domains=domains,
                 instructions=instructions,
@@ -291,7 +285,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 cache_manager=cache_manager,
                 applied_iname_rewrites=applied_iname_rewrites,
                 function_manglers=function_manglers,
-                function_identifiers=function_identifiers,
                 scoped_functions=scoped_functions,
                 symbol_manglers=symbol_manglers,
                 index_dtype=index_dtype,
@@ -347,6 +340,14 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                             % mangler.__name__)
 
         return None
+
+    # }}}
+
+    # {{{ target function identifiers
+
+    @property
+    def function_identifiers(self):
+        return self.target.get_device_ast_builder().function_identifiers()
 
     # }}}
 

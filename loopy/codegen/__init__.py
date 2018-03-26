@@ -513,7 +513,7 @@ def generate_code_v2(kernel):
                                _DataObliviousInstruction)):
             pass
         else:
-            raise NotImplementedError("register_knl not made for %s type of"
+            raise NotImplementedError("register_knl not made for %s type of "
                     "instruciton" % (str(type(insn))))
 
     # }}}

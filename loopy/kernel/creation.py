@@ -1974,7 +1974,7 @@ class ScopedFunctionCollector(CombineMapper):
 
 
 def scope_functions(kernel):
-    func_ids = kernel.function_identifiers.copy()
+    func_ids = kernel.function_identifiers
 
     from loopy.kernel.instruction import CInstruction, _DataObliviousInstruction
     function_scoper = FunctionScoper(func_ids)
