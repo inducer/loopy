@@ -2319,6 +2319,76 @@ def infer_arg_descr(kernel):
 # }}}
 
 
+# {{{ final sweep over the callables to make them ready for codegen
+
+class ReadyForCodegen(CombineMapper):
+    def __init__(self, kernel):
+        self.kernel = kernel
+
+    def combine(self, values):
+        return all(values)
+
+    def map_call(self, expr, *args, **kwargs):
+        is_ready_for_codegen = self.kernel.scoped_functions[
+                expr.function.name].is_ready_for_codegen()
+        return self.combine(
+                (is_ready_for_codegen,) +
+                tuple(
+                    self.rec(child, *args, **kwargs) for child in expr.parameters)
+                )
+
+    def map_call_with_kwargs(self, expr, *args, **kwargs):
+        is_ready_for_codegen = self.kernel.scoped_functions[
+                expr.function.name].is_ready_for_codegen()
+        return self.combine(
+                (is_ready_for_codegen,)
+                + tuple(
+                    self.rec(child, *args, **kwargs)
+                    for child in expr.parameters)
+                + tuple(
+                    self.rec(child, *args, **kwargs)
+                    for child in expr.kw_parameters.values())
+                )
+
+    def map_constant(self, expr):
+        return True
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
+
+
+def try_making_callable_ready_for_codegen(kernel):
+    from loopy.type_inference import TypeInferenceMapper
+    from loopy.symbolic import SubstitutionRuleExpander
+    from loopy.kernel.function_interface import (
+            register_pymbolic_calls_to_knl_callables)
+
+    ready_for_codegen = ReadyForCodegen(kernel)
+    subst_expander = SubstitutionRuleExpander(kernel.substitutions)
+    type_inf_mapper = TypeInferenceMapper(kernel)
+
+    inferred_functions = {}
+    for insn in kernel.instructions:
+        if isinstance(insn, (MultiAssignmentBase, CallInstruction)):
+            expr = subst_expander(insn.expression)
+            if not ready_for_codegen(expr):
+                # only trying to specialize the functions which are not ready
+                # for codegen
+                type_inf_mapper(expr)
+                inferred_functions = {**inferred_functions,
+                        **type_inf_mapper.specialized_functions}
+
+        elif isinstance(insn, (_DataObliviousInstruction)):
+            pass
+        else:
+            NotImplementedError("Unknown Instruction")
+
+    return register_pymbolic_calls_to_knl_callables(kernel,
+            inferred_functions)
+
+# }}}
+
+
 preprocess_cache = WriteOncePersistentDict(
         "loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
@@ -2398,6 +2468,9 @@ def preprocess_kernel(kernel, device=None):
     # inferring the shape and dim_tags of the arguments involved in a function
     # call.
     kernel = infer_arg_descr(kernel)
+
+    # try specializing callables one last time.
+    kernel = try_making_callable_ready_for_codegen(kernel)
 
     # Ordering restriction:
     # add_axes_to_temporaries_for_ilp because reduction accumulators

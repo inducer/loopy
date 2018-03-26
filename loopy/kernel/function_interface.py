@@ -203,7 +203,7 @@ class InKernelCallable(ImmutableRecord):
 
         raise NotImplementedError()
 
-    def is_ready_for_code_gen(self):
+    def is_ready_for_codegen(self):
 
         return (self.arg_id_to_dtype is not None and
                 self.arg_id_to_descr is not None)
@@ -289,7 +289,7 @@ class CallableOnScalar(InKernelCallable):
 
         raise NotImplementedError()
 
-    def is_ready_for_code_gen(self):
+    def is_ready_for_codegen(self):
 
         return (self.arg_id_to_dtype is not None and
                 self.arg_id_to_descr is not None and
@@ -304,7 +304,7 @@ class CallableOnScalar(InKernelCallable):
 
     def emit_call(self, expression_to_code_mapper, expression, target):
 
-        assert self.is_ready_for_code_gen()
+        assert self.is_ready_for_codegen()
 
         # must have single assignee
         assert len(expression.parameters) == len(self.arg_id_to_dtype) - 1
@@ -339,7 +339,7 @@ class CallableOnScalar(InKernelCallable):
 
         # Currently doing pass by value for all the assignees.
 
-        assert self.is_ready_for_code_gen()
+        assert self.is_ready_for_codegen()
 
         from loopy.kernel.instruction import CallInstruction
 
@@ -492,7 +492,7 @@ class CallableKernel(InKernelCallable):
 
         raise NotImplementedError()
 
-    def is_ready_for_code_gen(self):
+    def is_ready_for_codegen(self):
 
         return (self.arg_id_to_dtype is not None and
                 self.arg_id_to_descr is not None and
@@ -506,7 +506,7 @@ class CallableKernel(InKernelCallable):
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
 
-        assert self.is_ready_for_code_gen()
+        assert self.is_ready_for_codegen()
 
         from loopy.kernel.instruction import CallInstruction
         from pymbolic.primitives import CallWithKwargs
@@ -652,5 +652,7 @@ def register_pymbolic_calls_to_knl_callables(kernel,
             instructions=new_insns)
 
 # }}}
+
+
 
 # vim: foldmethod=marker
