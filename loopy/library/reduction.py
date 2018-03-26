@@ -52,6 +52,13 @@ class ReductionOperation(object):
         raise NotImplementedError
 
     def hidden_function(self):
+        """
+        A reduction may result into a scalar callable during the codegen phase.
+        This function would return an instance of :class:`str` to scope such
+        functions that may result during "realize_reduction". For example:
+        `reduce(max(...))` results into another callable `max(a, b)` which is
+        the "hidden function" the operation is pointing to.
+        """
         return None
 
     def __hash__(self):
