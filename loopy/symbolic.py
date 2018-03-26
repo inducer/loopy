@@ -96,7 +96,7 @@ class IdentityMapperMixin(object):
             new_inames.append(new_sym_iname.name)
 
         return Reduction(
-                expr.operation, tuple(new_inames),
+                expr.function, tuple(new_inames),
                 self.rec(expr.expr, *args),
                 allow_simultaneous=expr.allow_simultaneous)
 
@@ -226,7 +226,7 @@ class StringifyMapper(StringifyMapperBase):
 
         return "%sreduce(%s, [%s], %s)" % (
                 "simul_" if expr.allow_simultaneous else "",
-                expr.operation, ", ".join(expr.inames),
+                expr.function, ", ".join(expr.inames),
                 self.rec(expr.expr, PREC_NONE))
 
     def map_tagged_variable(self, expr, prec):
@@ -266,7 +266,7 @@ class UnidirectionalUnifier(UnidirectionalUnifierBase):
         if not isinstance(other, type(expr)):
             return self.treat_mismatch(expr, other, unis)
         if (expr.inames != other.inames
-                or type(expr.operation) != type(other.operation)  # noqa
+                or type(expr.function) != type(other.function)  # noqa
                 ):
             return []
 
@@ -537,7 +537,7 @@ class Reduction(p.Expression):
     """Represents a reduction operation on :attr:`exprs`
     across :attr:`inames`.
 
-    ..attribute:: operation
+    ..attribute:: function
 
         an instance of :class:`pymbolic.primitives.Variable` which indicates
         the reduction callable that the reduction would point to in the dict
@@ -562,10 +562,10 @@ class Reduction(p.Expression):
         in precisely one reduction, to avoid mis-nesting errors.
     """
 
-    init_arg_names = ("operation", "inames", "expr", "allow_simultaneous")
+    init_arg_names = ("function", "inames", "expr", "allow_simultaneous")
 
-    def __init__(self, operation, inames, expr, allow_simultaneous=False):
-        assert isinstance(operation, p.Variable)
+    def __init__(self, function, inames, expr, allow_simultaneous=False):
+        assert isinstance(function, p.Variable)
 
         if isinstance(inames, str):
             inames = tuple(iname.strip() for iname in inames.split(","))
@@ -610,20 +610,20 @@ class Reduction(p.Expression):
                 raise LoopyError("got a tuple typed argument to a scalar reduction")
         """
 
-        self.operation = operation
+        self.function = function
         self.inames = inames
         self.expr = expr
         self.allow_simultaneous = allow_simultaneous
 
     def __getinitargs__(self):
-        return (self.operation, self.inames, self.expr, self.allow_simultaneous)
+        return (self.funciton, self.inames, self.expr, self.allow_simultaneous)
 
     def get_hash(self):
-        return hash((self.__class__, self.operation, self.inames, self.expr))
+        return hash((self.__class__, self.function, self.inames, self.expr))
 
     def is_equal(self, other):
         return (other.__class__ == self.__class__
-                and other.operation == self.operation
+                and other.function == self.function
                 and other.inames == self.inames
                 and other.expr == self.expr)
 
@@ -1146,10 +1146,10 @@ class FunctionToPrimitiveMapper(IdentityMapper):
     turns those into the actual pymbolic primitives used for that.
     """
 
-    def _parse_reduction(self, operation, inames, red_exprs,
+    def _parse_reduction(self, function, inames, red_exprs,
             allow_simultaneous=False):
-        assert isinstance(operation, str)
-        operation = p.Variable(operation)
+        assert isinstance(function, str)
+        function = p.Variable(function)
         if isinstance(inames, p.Variable):
             inames = (inames,)
 
@@ -1168,7 +1168,7 @@ class FunctionToPrimitiveMapper(IdentityMapper):
         if len(red_exprs) == 1:
             red_exprs = red_exprs[0]
 
-        return Reduction(operation, tuple(processed_inames), red_exprs,
+        return Reduction(function, tuple(processed_inames), red_exprs,
                 allow_simultaneous=allow_simultaneous)
 
     def map_call(self, expr):
@@ -1194,10 +1194,10 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
         elif name in set(["reduce, simul_reduce"]):
             if len(expr.parameters) >= 3:
-                operation, inames = expr.parameters[:2]
+                function, inames = expr.parameters[:2]
                 red_exprs = expr.parameters[2:]
 
-                return self._parse_reduction(str(operation), inames,
+                return self._parse_reduction(str(function), inames,
                         tuple(self.rec(red_expr) for red_expr in red_exprs),
                         allow_simultaneous=(name == "simul_reduce"))
             else:

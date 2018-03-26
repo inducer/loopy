@@ -39,7 +39,6 @@ from loopy.kernel.data import make_assignment
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
 from loopy.symbolic import ScopedFunction, CombineMapper
-from pymbolic.mapper import Collector
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
@@ -893,7 +892,6 @@ def _insert_subdomain_into_domain_tree(kernel, domains, subdomain):
 # }}}
 
 
-
 def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                       automagic_scans_ok=False, force_scan=False,
                       force_outer_iname_for_scan=None):
@@ -1041,13 +1039,16 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         init_id = insn_id_gen(
                 "%s_%s_init" % (insn.id, "_".join(expr.inames)))
 
+        reduction_operation = kernel.scoped_functions[
+                expr.function.name].operation
+
         init_insn = make_assignment(
                 id=init_id,
                 assignees=acc_vars,
                 within_inames=outer_insn_inames - frozenset(expr.inames),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=init_insn_depends_on,
-                expression=expr.operation.neutral_element(*arg_dtypes),
+                expression=reduction_operation.neutral_element(*arg_dtypes),
                 predicates=insn.predicates,)
 
         generated_insns.append(init_insn)
@@ -1082,10 +1083,12 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         else:
             reduction_expr = expr.expr
 
+        reduction_operation = kernel.scoped_functions[
+                expr.function.name].operation
         reduction_insn = make_assignment(
                 id=update_id,
                 assignees=acc_vars,
-                expression=expr.operation(
+                expression=reduction_operation(
                     arg_dtypes,
                     _strip_if_scalar(acc_vars, acc_vars),
                     reduction_expr),
@@ -1093,8 +1096,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 within_inames=update_insn_iname_deps,
                 within_inames_is_final=insn.within_inames_is_final,
                 predicates=insn.predicates,)
-
-        reduction_insn = scope_function_in_insn(reduction_insn, kenrel)
 
         generated_insns.append(reduction_insn)
 
@@ -1944,6 +1945,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
     kernel = lp.tag_inames(kernel, new_iname_tags)
 
+    # making changes to the scoped function that are arising
+
     # TODO: remove unused inames...
 
     kernel = (
@@ -2381,10 +2384,6 @@ def preprocess_kernel(kernel, device=None):
     from loopy.kernel.creation import apply_single_writer_depencency_heuristic
     kernel = apply_single_writer_depencency_heuristic(kernel)
 
-    # inferring the shape and dim_tags of the arguments involved in a function
-    # call.
-    kernel = infer_arg_descr(kernel)
-
     # Ordering restrictions:
     #
     # - realize_reduction must happen after type inference because it needs
@@ -2395,6 +2394,10 @@ def preprocess_kernel(kernel, device=None):
     #   defaults from being applied.
 
     kernel = realize_reduction(kernel, unknown_types_ok=False)
+
+    # inferring the shape and dim_tags of the arguments involved in a function
+    # call.
+    kernel = infer_arg_descr(kernel)
 
     # Ordering restriction:
     # add_axes_to_temporaries_for_ilp because reduction accumulators

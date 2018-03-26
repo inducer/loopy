@@ -1898,7 +1898,7 @@ class FunctionScoper(IdentityMapper):
         from loopy.symbolic import Reduction
 
         return Reduction(
-                ScopedFunction(expr.operation.name),
+                ScopedFunction(expr.function.name),
                 tuple(new_inames),
                 self.rec(expr.expr),
                 allow_simultaneous=expr.allow_simultaneous)
@@ -1918,9 +1918,10 @@ class ScopedFunctionCollector(CombineMapper):
 
     def map_reduction(self, expr):
         from loopy.kernel.reduction_callable import CallableReduction
+        from loopy.kernel.function_interface import CallableOnScalar
         from loopy.symbolic import Reduction
 
-        callable_reduction = CallableReduction(expr.operation.name)
+        callable_reduction = CallableReduction(expr.function.name)
 
         # sanity checks
 
@@ -1949,8 +1950,14 @@ class ScopedFunctionCollector(CombineMapper):
             elif isinstance(expr, Reduction) and callable_reduction.is_tuple_typed:
                 raise LoopyError("got a tuple typed argument to a scalar reduction")
 
-        return frozenset([(expr.operation.name,
-            callable_reduction)])
+        hidden_function = callable_reduction.operation.hidden_function()
+        if hidden_function is not None:
+            return frozenset([(expr.function.name,
+                callable_reduction), (hidden_function,
+                    CallableOnScalar(hidden_function))])
+        else:
+            return frozenset([(expr.function.name,
+                callable_reduction)])
 
     def map_constant(self, expr):
         return frozenset()

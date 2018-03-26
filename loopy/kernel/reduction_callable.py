@@ -28,7 +28,7 @@ class CallableReduction(InKernelCallable):
 
         self.operation = operation
 
-        super(InKernelCallable, self).__init__(name="",
+        super(InKernelCallable, self).__init__(
                 arg_id_to_dtype=arg_id_to_dtype,
                 arg_id_to_descr=arg_id_to_descr)
 
@@ -47,39 +47,32 @@ class CallableReduction(InKernelCallable):
 
             for id, dtype in arg_id_to_dtype.items():
                 # only checking for the ones which have been provided
-                if self.arg_id_to_dtype[id] != arg_id_to_dtype[id]:
+                if id in self.arg_id_to_dtype and (
+                        self.arg_id_to_dtype[id] != arg_id_to_dtype[id]):
                     raise LoopyError("Overwriting a specialized"
                             " function is illegal--maybe start with new instance of"
-                            " CallableScalar?")
-
-        if self.name in target.get_device_ast_builder().function_identifiers():
-            new_in_knl_callable = target.get_device_ast_builder().with_types(
-                    self, arg_id_to_dtype)
-            if new_in_knl_callable is None:
-                new_in_knl_callable = self.copy()
-            return new_in_knl_callable
-
-        # did not find a scalar function and function prototype does not
-        # even have  subkernel registered => no match found
-        raise LoopyError("Function %s not present within"
-                " the %s namespace" % (self.name, target))
+                            " CallableReduction?")
+        updated_arg_id_to_dtype = self.operation.with_types(arg_id_to_dtype,
+                target)
+        return self.copy(arg_id_to_dtype=updated_arg_id_to_dtype)
 
     def with_descrs(self, arg_id_to_descr):
+        # not sure what would be the reson of having this over here
 
         # This is a scalar call
         # need to assert that the name is in funtion indentifiers
         arg_id_to_descr[-1] = ValueArgDescriptor()
         return self.copy(arg_id_to_descr=arg_id_to_descr)
 
-    def with_iname_tag_usage(self, unusable, concurrent_shape):
-
-        raise NotImplementedError()
+    def inline(self, kernel):
+        # Replaces the job of realize_reduction
+        raise NotImplementedError
 
     def is_ready_for_code_gen(self):
 
         return (self.arg_id_to_dtype is not None and
                 self.arg_id_to_descr is not None and
-                self.name_in_target is not None)
+                self.operation is not None)
 
 
 # vim: foldmethod=marker

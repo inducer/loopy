@@ -36,7 +36,7 @@ class ReductionOperation(object):
     equality-comparable.
     """
 
-    def result_dtypes(self, target, *arg_dtypes):
+    def with_types(self, arg_id_to_dtype, target):
         """
         :arg arg_dtypes: may be None if not known
         :returns: None if not known, otherwise the returned type
@@ -50,6 +50,9 @@ class ReductionOperation(object):
 
     def neutral_element(self, *dtypes):
         raise NotImplementedError
+
+    def hidden_function(self):
+        return None
 
     def __hash__(self):
         # Force subclasses to override
@@ -95,15 +98,22 @@ class ScalarReductionOperation(ReductionOperation):
     def arg_count(self):
         return 1
 
-    def result_dtypes(self, kernel, arg_dtype):
+    def with_types(self, arg_id_to_dtype, target):
+        if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
+            # do not have enough info to figure out the type.
+            return arg_id_to_dtype.copy()
+
+        arg_dtype = arg_id_to_dtype[0]
+
+        updated_arg_id_to_dtype = arg_id_to_dtype.copy()
         if self.forced_result_type is not None:
-            return (self.parse_result_type(
-                    kernel.target, self.forced_result_type),)
+            updated_arg_id_to_dtype[-1] = (self.parse_result_type(
+                target, self.forced_result_type),)
+            return updated_arg_id_to_dtype
 
-        if arg_dtype is None:
-            return None
+        updated_arg_id_to_dtype[-1] = arg_dtype
 
-        return (arg_dtype,)
+        return updated_arg_id_to_dtype
 
     def __hash__(self):
         return hash((type(self), self.forced_result_type))
@@ -180,7 +190,11 @@ class MaxReductionOperation(ScalarReductionOperation):
         return get_ge_neutral(dtype)
 
     def __call__(self, dtype, operand1, operand2):
-        return var("max")(operand1, operand2)
+        from loopy.symbolic import ScopedFunction
+        return ScopedFunction("max")(operand1, operand2)
+
+    def hidden_function(self):
+        return "max"
 
 
 class MinReductionOperation(ScalarReductionOperation):
@@ -188,7 +202,11 @@ class MinReductionOperation(ScalarReductionOperation):
         return get_le_neutral(dtype)
 
     def __call__(self, dtype, operand1, operand2):
-        return var("min")(operand1, operand2)
+        from loopy.symbolic import ScopedFunction
+        return ScopedFunction("min")(operand1, operand2)
+
+    def hidden_function(self):
+        return "min"
 
 
 # {{{ base class for symbolic reduction ops
@@ -233,9 +251,22 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         return var("make_tuple")(scalar_neutral_element,
                 segment_flag_dtype.numpy_dtype.type(0))
 
-    def result_dtypes(self, kernel, scalar_dtype, segment_flag_dtype):
-        return (self.inner_reduction.result_dtypes(kernel, scalar_dtype)
-                + (segment_flag_dtype,))
+    def with_types(self,  arg_id_to_dtype, target):
+        for id in range(self.arg_count):
+            if id not in arg_id_to_dtype or arg_id_to_dtype[id] is None:
+                # types of arguemnts not known => result type cannot be
+                # determined.
+                return arg_id_to_dtype.copy()
+
+        scalar_dtype = arg_id_to_dtype[0]
+        segment_flag_dtype = arg_id_to_dtype[1]
+
+        updated_arg_id_to_dtype = arg_id_to_dtype.copy()
+        updated_arg_id_to_dtype[-1] = self.inner_reduction.with_types(
+                {0: scalar_dtype}, target)[-1]
+        updated_arg_id_to_dtype[-2] = segment_flag_dtype
+
+        return updated_arg_id_to_dtype
 
     def __str__(self):
         return "segmented(%s)" % self.which
@@ -299,8 +330,22 @@ class _ArgExtremumReductionOperation(ReductionOperation):
                 scalar_dtype.numpy_dtype.type.__name__,
                 index_dtype.numpy_dtype.type.__name__)
 
-    def result_dtypes(self, kernel, scalar_dtype, index_dtype):
-        return (scalar_dtype, index_dtype)
+    def with_types(self, arg_id_to_dtype, target):
+        for id in range(self.arg_count):
+            if id not in arg_id_to_dtype or arg_id_to_dtype[id] is None:
+                # types of arguemnts not known => result type cannot be
+                # determined.
+                return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+
+        scalar_dtype = arg_id_to_dtype[0]
+        index_dtype = arg_id_to_dtype[1]
+
+        updated_arg_id_to_dtype = arg_id_to_dtype.copy()
+
+        updated_arg_id_to_dtype[-1] = scalar_dtype
+        updated_arg_id_to_dtype[-2] = index_dtype
+
+        return updated_arg_id_to_dtype
 
     def neutral_element(self, scalar_dtype, index_dtype):
         scalar_neutral_func = (
@@ -331,11 +376,17 @@ class ArgMaxReductionOperation(_ArgExtremumReductionOperation):
     update_comparison = ">="
     neutral_sign = -1
 
+    def hidden_function(self):
+        return "max"
+
 
 class ArgMinReductionOperation(_ArgExtremumReductionOperation):
     which = "min"
     update_comparison = "<="
     neutral_sign = +1
+
+    def hidden_function(self):
+        return "min"
 
 
 def get_argext_preamble(kernel, func_id, arg_dtypes):
@@ -377,8 +428,8 @@ def get_argext_preamble(kernel, func_id, arg_dtypes):
 _REDUCTION_OPS = {
         "sum": SumReductionOperation,
         "product": ProductReductionOperation,
-        "max": MaxReductionOperation,
-        "min": MinReductionOperation,
+        "maximum": MaxReductionOperation,
+        "minimum": MinReductionOperation,
         "argmax": ArgMaxReductionOperation,
         "argmin": ArgMinReductionOperation,
         "segmented(sum)": SegmentedSumReductionOperation,
@@ -430,6 +481,12 @@ def reduction_function_identifiers():
 
 
 def reduction_function_mangler(kernel, func_id, arg_dtypes):
+    raise NotImplementedError("Reduction Function Mangler!")
+
+
+'''
+# KK -- we will replace this with the new interface
+def reduction_function_mangler(kernel, func_id, arg_dtypes):
     if isinstance(func_id, ArgExtOp):
         from loopy.target.opencl import CTarget
         if not isinstance(kernel.target, CTarget):
@@ -475,6 +532,7 @@ def reduction_function_mangler(kernel, func_id, arg_dtypes):
                 )
 
     return None
+'''
 
 
 def reduction_preamble_generator(preamble_info):

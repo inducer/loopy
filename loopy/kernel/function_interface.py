@@ -134,23 +134,17 @@ class InKernelCallable(ImmutableRecord):
 
     """
 
-    fields = set(["name", "arg_id_to_dtype", "arg_id_to_descr"])
-    init_arg_names = ("name", "arg_id_to_dtype", "arg_id_to_descr")
+    fields = set(["arg_id_to_dtype", "arg_id_to_descr"])
+    init_arg_names = ("arg_id_to_dtype", "arg_id_to_descr")
 
-    def __init__(self, name, arg_id_to_dtype=None, arg_id_to_descr=None):
+    def __init__(self, arg_id_to_dtype=None, arg_id_to_descr=None):
 
-        # sanity checks
-
-        if not isinstance(name, str):
-            raise LoopyError("name of an InKernelCallable should be a string")
-
-        super(InKernelCallable, self).__init__(name=name,
+        super(InKernelCallable, self).__init__(
                 arg_id_to_dtype=arg_id_to_dtype,
                 arg_id_to_descr=arg_id_to_descr)
 
     def __getinitargs__(self):
-        return (self.name, self.arg_id_to_dtype, self.arg_id_to_descr,
-                self.name_in_target)
+        return (self.arg_id_to_dtype, self.arg_id_to_descr)
 
     def with_types(self, arg_id_to_dtype, target):
         """
@@ -245,10 +239,11 @@ class CallableOnScalar(InKernelCallable):
     def __init__(self, name, arg_id_to_dtype=None,
             arg_id_to_descr=None, name_in_target=None):
 
-        super(InKernelCallable, self).__init__(name=name,
+        super(InKernelCallable, self).__init__(
                 arg_id_to_dtype=arg_id_to_dtype,
                 arg_id_to_descr=arg_id_to_descr)
 
+        self.name = name
         self.name_in_target = name_in_target
 
     def __getinitargs__(self):
@@ -265,7 +260,7 @@ class CallableOnScalar(InKernelCallable):
                 if self.arg_id_to_dtype[id] != arg_id_to_dtype[id]:
                     raise LoopyError("Overwriting a specialized"
                             " function is illegal--maybe start with new instance of"
-                            " CallableScalar?")
+                            " CallableOnScalar?")
 
         # {{{ attempt to specialize using scalar functions present in target
 
@@ -406,12 +401,13 @@ class CallableKernel(InKernelCallable):
     def __init__(self, name, subkernel, arg_id_to_dtype=None,
             arg_id_to_descr=None, name_in_target=None):
 
-        super(InKernelCallable, self).__init__(name=name,
+        super(InKernelCallable, self).__init__(
                 arg_id_to_dtype=arg_id_to_dtype,
                 arg_id_to_descr=arg_id_to_descr)
         if name_in_target is not None:
             subkernel = subkernel.copy(name=name_in_target)
 
+        self.name = name
         self.name_in_target = name_in_target
         self.subkernel = subkernel
 
@@ -628,7 +624,7 @@ def register_pymbolic_calls_to_knl_callables(kernel,
                 unique_name = next_indexed_name(unique_name)
 
             # book-keeping of the functions and names mappings for later use
-            if in_knl_callable.subkernel is not None:
+            if isinstance(in_knl_callable, CallableKernel):
                 # for array calls the name in the target is the name of the
                 # scoped funciton
                 in_knl_callable = in_knl_callable.copy(

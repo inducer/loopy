@@ -255,7 +255,7 @@ def opencl_with_types(in_knl_callable, arg_id_to_dtype):
 
         dtype = np.find_common_type(
                 [], [dtype.numpy_dtype for id, dtype in
-                    arg_id_to_dtype.values() if id >= 0])
+                    arg_id_to_dtype.items() if id >= 0])
 
         if dtype.kind == "i":
             dtype = NumpyType(dtype)
