@@ -2384,7 +2384,7 @@ def specializing_incomplete_callables(kernel):
 
     inferred_functions = {}
     for insn in kernel.instructions:
-        if isinstance(insn, (MultiAssignmentBase, CallInstruction)):
+        if isinstance(insn, (MultiAssignmentBase, CInstruction)):
             expr = subst_expander(insn.expression)
             if not ready_for_codegen(expr):
                 # only trying to specialize the functions which are not ready

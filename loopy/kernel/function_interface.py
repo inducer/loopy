@@ -1,5 +1,26 @@
 from __future__ import division, absolute_import
 
+__copyright__ = "Copyright (C) 2018 Andreas Kloeckner, Kaushik Kulkarni"
+
+__license__ = """
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+"""
+
+
 import re
 import six
 
@@ -83,7 +104,7 @@ class ArrayArgDescriptor(ArgDescriptor):
 # }}}
 
 
-# {{{ kw_to_pos
+# {{{ helper function for callable kenrel -- kw_to_pos
 
 def get_kw_pos_association(kernel):
     kw_to_pos = {}
@@ -108,7 +129,6 @@ def get_kw_pos_association(kernel):
 
 
 # {{{ template class
-
 
 class InKernelCallable(ImmutableRecord):
     """
@@ -634,29 +654,29 @@ def next_indexed_name(name):
             num=int(match.group('num'))+1)
 
 
-class FunctionScopeChanger(IdentityMapper):
-    # TODO: Make it sophisticated as in I don't like the if-else systems. Needs
-    # something else.
-    # Explain what this is doing.
-    # The name should be more like "NameChanger" more like "GameChanger" LOl.
-    # Wow my jokes are baaad. Anyways back to work!!
+class ScopedFunctionNameChanger(IdentityMapper):
+    """
+    Mapper that takes in a mapping `expr_to_new_names` and maps the
+    corresponding expression to the new names, which correspond to the names in
+    `kernel.scoped_functions`.
+    """
 
-    def __init__(self, new_names):
-        self.new_names = new_names
+    def __init__(self, expr_to_new_names):
+        self.expr_to_new_names = expr_to_new_names
 
     def map_call(self, expr):
-        if expr in self.new_names:
+        if expr in self.expr_to_new_names:
             return type(expr)(
-                    ScopedFunction(self.new_names[expr]),
+                    ScopedFunction(self.expr_to_new_names[expr]),
                     tuple(self.rec(child)
                         for child in expr.parameters))
         else:
             return IdentityMapper.map_call(self, expr)
 
     def map_call_with_kwargs(self, expr):
-        if expr in self.new_names:
+        if expr in self.expr_to_new_names:
             return type(expr)(
-                ScopedFunction(self.new_names[expr]),
+                ScopedFunction(self.expr_to_new_names[expr]),
                 tuple(self.rec(child)
                     for child in expr.parameters),
                 dict(
@@ -669,9 +689,9 @@ class FunctionScopeChanger(IdentityMapper):
     def map_reduction(self, expr):
         from loopy.symbolic import Reduction
 
-        if self.new_names:
+        if self.expr_to_new_names:
             return Reduction(
-                    ScopedFunction(self.new_names[expr]),
+                    ScopedFunction(self.expr_to_new_names[expr]),
                     tuple(expr.inames),
                     self.rec(expr.expr),
                     allow_simultaneous=expr.allow_simultaneous)
@@ -680,8 +700,8 @@ class FunctionScopeChanger(IdentityMapper):
 
 
 def register_pymbolic_calls_to_knl_callables(kernel,
-        pymbolic_calls_to_knl_callables):
-    """ Takes in a mapping :arg:`pymbolic_calls_to_knl_callables` and returns a
+        pymbolic_exprs_to_knl_callables):
+    """ Takes in a mapping :arg:`pymbolic_exprs_to_knl_callables` and returns a
     new kernel which includes an association with the given pymbolic calls to
     instances of :class:`InKernelCallable`
     """
@@ -696,7 +716,7 @@ def register_pymbolic_calls_to_knl_callables(kernel,
     # corresponding pymbolic call
     pymbolic_calls_to_new_names = {}
 
-    for pymbolic_call, in_knl_callable in pymbolic_calls_to_knl_callables.items():
+    for pymbolic_call, in_knl_callable in pymbolic_exprs_to_knl_callables.items():
         # checking if such a in-kernel callable already exists.
         if in_knl_callable not in scoped_functions_to_names:
             # No matching in_knl_callable found => make a new one with a new
@@ -722,7 +742,7 @@ def register_pymbolic_calls_to_knl_callables(kernel,
     # Using the data populated in pymbolic_calls_to_new_names to change the
     # names of the scoped functions of all the calls in the kernel.
     new_insns = []
-    scope_changer = FunctionScopeChanger(pymbolic_calls_to_new_names)
+    scope_changer = ScopedFunctionNameChanger(pymbolic_calls_to_new_names)
     for insn in kernel.instructions:
         if isinstance(insn, (MultiAssignmentBase, CInstruction)):
             expr = scope_changer(insn.expression)

@@ -182,6 +182,54 @@ def test_add_barrier(ctx_factory):
     assert (np.linalg.norm(out-2*a.T) < 1e-16)
 
 
+def test_register_knl(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    n = 2 ** 4
+
+    x = np.random.rand(n, n, n, n, n)
+    y = np.random.rand(n, n, n, n, n)
+
+    grandchild_knl = lp.make_kernel(
+            "{[i, j]:0<= i, j< 16}",
+            """
+            c[i, j] = 2*a[i, j] + 3*b[i, j]
+            """)
+
+    child_knl = lp.make_kernel(
+            "{[i, j]:0<=i, j < 16}",
+            """
+            [i, j]: g[i, j] = linear_combo1([i, j]: e[i, j], [i, j]: f[i, j])
+            """)
+
+    parent_knl = lp.make_kernel(
+            "{[i, j, k, l, m]: 0<=i, j, k, l, m<16}",
+            """
+            [j, l]: z[i, j, k, l, m] = linear_combo2([j, l]: x[i, j, k, l, m],
+                                                     [j, l]: y[i, j, k, l, m])
+            """,
+            kernel_data=[
+                lp.GlobalArg(
+                    name='x',
+                    dtype=np.float64,
+                    shape=(16, 16, 16, 16, 16)),
+                lp.GlobalArg(
+                    name='y',
+                    dtype=np.float64,
+                    shape=(16, 16, 16, 16, 16)), '...'],
+            )
+
+    child_knl = lp.register_callable_kernel(
+            child_knl, 'linear_combo1', grandchild_knl)
+    knl = lp.register_callable_kernel(
+            parent_knl, 'linear_combo2', child_knl)
+
+    evt, (out, ) = knl(queue, x=x, y=y)
+
+    assert (np.linalg.norm(2*x+3*y-out)/(
+        np.linalg.norm(2*x+3*y))) < 1e-15
+
+
 def test_rename_argument(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)

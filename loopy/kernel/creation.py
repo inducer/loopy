@@ -1921,11 +1921,11 @@ class ScopedFunctionCollector(CombineMapper):
         return frozenset([(expr.name, CallableOnScalar(expr.name))])
 
     def map_reduction(self, expr):
-        from loopy.kernel.reduction_callable import CallableReduction
-        from loopy.kernel.function_interface import CallableOnScalar
+        from loopy.kernel.function_interface import (CallableOnScalar,
+                CallableReduction)
         from loopy.symbolic import Reduction
 
-        # Refer to map_reduction subroutine of FunctionScoper.
+        # Refer to `map_reduction` subroutine of `FunctionScoper`.
         assert expr.function.name[-7:] == "_reduce"
 
         callable_reduction = CallableReduction(expr.function.name[:-7])
