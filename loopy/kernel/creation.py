@@ -1993,7 +1993,7 @@ def scope_functions(kernel):
         else:
             raise NotImplementedError("scope_functions not implemented for %s" %
                     type(insn))
-    
+
     # Need to combine the scoped functions into a dict
     scoped_function_dict = dict(scoped_functions)
     return kernel.copy(instructions=new_insns, scoped_functions=scoped_function_dict)
