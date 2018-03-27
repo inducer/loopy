@@ -1046,22 +1046,27 @@ class CallInstruction(MultiAssignmentBase):
 # }}}
 
 
+def subscript_contains_slice(subscript):
+    from pymbolic.primitives import Subscript, Slice
+    assert isinstance(subscript, Subscript)
+    return any(isinstance(index, Slice) for index in subscript.index_tuple)
+
+
 def is_array_call(assignees, expression):
-    from pymbolic.primitives import Call, CallWithKwargs
+    from pymbolic.primitives import Call, CallWithKwargs, Subscript
     from loopy.symbolic import SubArrayRef
 
     if not isinstance(expression, (Call, CallWithKwargs)):
         return False
 
-    for assignee in assignees:
-        if isinstance(assignee, SubArrayRef):
+    for par in expression.parameters+assignees:
+        if isinstance(par, SubArrayRef):
             return True
+        elif isinstance(par, Subscript):
+            if subscript_contains_slice(par):
+                return True
 
-    for par in expression.parameters:
-        if isinstance(assignee, SubArrayRef):
-            return True
-
-    # did not encounter SubArrayRef, hence must be a normal call
+    # did not encounter SubArrayRef/Slice, hence must be a normal call
     return False
 
 

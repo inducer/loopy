@@ -34,7 +34,8 @@ from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
         SubstitutionRule)
-from loopy.kernel.instruction import CInstruction, _DataObliviousInstruction
+from loopy.kernel.instruction import (CInstruction, _DataObliviousInstruction,
+        CallInstruction)
 from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
 from islpy import dim_type
@@ -2095,10 +2096,13 @@ def realize_slices_as_sub_array_refs(kernel):
     new_insns = []
 
     for insn in kernel.instructions:
-        if isinstance(insn, (MultiAssignmentBase, CInstruction)):
+        if isinstance(insn, CallInstruction):
             new_expr = slice_replacer(insn.expression)
-            new_insns.append(insn.copy(expression=new_expr))
-        elif isinstance(insn, _DataObliviousInstruction):
+            new_assignees = slice_replacer(insn.assignees)
+            new_insns.append(insn.copy(assignees=new_assignees,
+                expression=new_expr))
+        elif isinstance(insn, (CInstruction, MultiAssignmentBase,
+                _DataObliviousInstruction)):
             new_insns.append(insn)
         else:
             raise NotImplementedError("parse_slices not implemented for %s" %
