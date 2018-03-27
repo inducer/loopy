@@ -1192,12 +1192,12 @@ class FunctionToPrimitiveMapper(IdentityMapper):
             else:
                 raise TypeError("cse takes two arguments")
 
-        elif name in set(["reduce, simul_reduce"]):
+        elif name in ["reduce", "simul_reduce"]:
             if len(expr.parameters) >= 3:
                 function, inames = expr.parameters[:2]
                 red_exprs = expr.parameters[2:]
 
-                return self._parse_reduction(str(function), inames,
+                return self._parse_reduction(str(function.name), inames,
                         tuple(self.rec(red_expr) for red_expr in red_exprs),
                         allow_simultaneous=(name == "simul_reduce"))
             else:

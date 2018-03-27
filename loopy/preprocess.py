@@ -2141,14 +2141,20 @@ class UnScopedCallCollector(CombineMapper):
 
     map_variable = map_constant
     map_function_symbol = map_constant
+    map_tagged_variable = map_constant
 
 
 def check_functions_are_scoped(kernel):
     """ Checks if all the calls in the instruction expression have been scoped,
     otherwise indicate to what all calls we await signature.
     """
+
+    from loopy.symbolic import SubstitutionRuleExpander
+    subst_expander = SubstitutionRuleExpander(kernel.substitutions)
+
     for insn in kernel.instructions:
-        unscoped_calls = UnScopedCallCollector()(insn.expression)
+        unscoped_calls = UnScopedCallCollector()(subst_expander(
+            insn.expression))
         if unscoped_calls:
             raise LoopyError("Unknown function '%s' obtained -- register a function"
                     " or a kernel corresponding to it." % set(unscoped_calls).pop())
@@ -2278,6 +2284,7 @@ class ArgDescriptionInferer(CombineMapper):
 
     map_variable = map_constant
     map_function_symbol = map_constant
+    map_tagged_variable = map_constant
 
 
 def infer_arg_descr(kernel):
@@ -2355,6 +2362,7 @@ class ReadyForCodegen(CombineMapper):
 
     map_variable = map_constant
     map_function_symbol = map_constant
+    map_tagged_variable = map_constant
 
 
 def specializing_incomplete_callables(kernel):
