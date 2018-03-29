@@ -682,7 +682,7 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
                         ScopedFunction(self.expr_to_new_names[expr]),
                         tuple(self.rec(child)
                             for child in expr.parameters))
-            elif expanded_expr in self.expr_to_names:
+            elif expanded_expr in self.expr_to_new_names:
                 return type(expr)(
                         ScopedFunction(self.expr_to_new_names[expanded_expr]),
                         tuple(self.rec(child)
@@ -703,7 +703,7 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
                     (key, self.rec(val, expn_state))
                     for key, val in six.iteritems(expr.kw_parameters))
                     )
-        elif expanded_expr in self.expr_to_names:
+        elif expanded_expr in self.expr_to_new_names:
             return type(expr)(
                 ScopedFunction(self.expr_to_new_names[expanded_expr]),
                 tuple(self.rec(child, expn_state)
