@@ -679,17 +679,6 @@ def infer_unknown_types(kernel, expect_completion=False):
             args=[new_arg_dict[arg.name] for arg in kernel.args],
             )
 
-    #------------------------------------------------------------------------
-    # KK:
-    # FIXME:
-    # for example if an instruction is :
-    # `[i]:z[i] = a_kernel_function([j]:x[j], [k]: y[k])`
-    # and if the user already provided the types of the args: x, y, z.
-    # Then the instruction would not go through the TypeInferenceMapper and hence
-    # the function: `a_kernel_function` would not undergo type specialization,
-    # which would create problems in the future.
-    #------------------------------------------------------------------------
-
     from loopy.kernel.function_interface import (
             register_pymbolic_calls_to_knl_callables)
     return register_pymbolic_calls_to_knl_callables(
