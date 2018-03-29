@@ -19,6 +19,7 @@ htmlcov
 .ipynb_checkpoints
 lextab.py
 yacctab.py
+.pytest_cache/*
 
 loopy/_git_rev.py
 
