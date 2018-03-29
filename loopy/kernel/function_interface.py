@@ -29,10 +29,13 @@ from six.moves import zip
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 
-from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
-                _DataObliviousInstruction)
+from pymbolic.primitives import Variable
+from loopy.symbolic import parse_tagged_name
 
-from loopy.symbolic import IdentityMapper, ScopedFunction
+
+from loopy.symbolic import (IdentityMapper, ScopedFunction,
+        SubstitutionRuleMappingContext, RuleAwareIdentityMapper,
+        SubstitutionRuleExpander)
 
 
 # {{{ argument descriptors
@@ -654,49 +657,82 @@ def next_indexed_name(name):
             num=int(match.group('num'))+1)
 
 
-class ScopedFunctionNameChanger(IdentityMapper):
+class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
     """
     Mapper that takes in a mapping `expr_to_new_names` and maps the
     corresponding expression to the new names, which correspond to the names in
     `kernel.scoped_functions`.
     """
 
-    def __init__(self, expr_to_new_names):
+    def __init__(self, rule_mapping_context, expr_to_new_names, subst_expander):
+        super(ScopedFunctionNameChanger, self).__init__(rule_mapping_context)
         self.expr_to_new_names = expr_to_new_names
+        self.subst_expander = subst_expander
 
-    def map_call(self, expr):
-        if expr in self.expr_to_new_names:
-            return type(expr)(
-                    ScopedFunction(self.expr_to_new_names[expr]),
-                    tuple(self.rec(child)
-                        for child in expr.parameters))
+    def map_call(self, expr, expn_state):
+        if not isinstance(expr.function, Variable):
+            return IdentityMapper.map_call(self, expr, expn_state)
+
+        name, tag = parse_tagged_name(expr.function)
+
+        if name not in self.rule_mapping_context.old_subst_rules:
+            expanded_expr = self.subst_expander(expr)
+            if expr in self.expr_to_new_names:
+                return type(expr)(
+                        ScopedFunction(self.expr_to_new_names[expr]),
+                        tuple(self.rec(child)
+                            for child in expr.parameters))
+            elif expanded_expr in self.expr_to_names:
+                return type(expr)(
+                        ScopedFunction(self.expr_to_new_names[expanded_expr]),
+                        tuple(self.rec(child)
+                            for child in expr.parameters))
+            else:
+                return IdentityMapper.map_call(self, expr)
         else:
-            return IdentityMapper.map_call(self, expr)
+            return self.map_substitution(name, tag, expr.parameters, expn_state)
 
-    def map_call_with_kwargs(self, expr):
+    def map_call_with_kwargs(self, expr, expn_state):
+        expanded_expr = self.subst_expander(expr)
         if expr in self.expr_to_new_names:
             return type(expr)(
                 ScopedFunction(self.expr_to_new_names[expr]),
-                tuple(self.rec(child)
+                tuple(self.rec(child, expn_state)
                     for child in expr.parameters),
                 dict(
-                    (key, self.rec(val))
+                    (key, self.rec(val, expn_state))
+                    for key, val in six.iteritems(expr.kw_parameters))
+                    )
+        elif expanded_expr in self.expr_to_names:
+            return type(expr)(
+                ScopedFunction(self.expr_to_new_names[expanded_expr]),
+                tuple(self.rec(child, expn_state)
+                    for child in expr.parameters),
+                dict(
+                    (key, self.rec(val, expn_state))
                     for key, val in six.iteritems(expr.kw_parameters))
                     )
         else:
             return IdentityMapper.map_call_with_kwargs(self, expr)
 
-    def map_reduction(self, expr):
+    def map_reduction(self, expr, expn_state):
         from loopy.symbolic import Reduction
+        expanded_expr = self.subst_expander(expr)
 
-        if self.expr_to_new_names:
+        if expr in self.expr_to_new_names:
             return Reduction(
                     ScopedFunction(self.expr_to_new_names[expr]),
                     tuple(expr.inames),
-                    self.rec(expr.expr),
+                    self.rec(expr.expr, expn_state),
+                    allow_simultaneous=expr.allow_simultaneous)
+        elif expanded_expr in self.expr_to_new_names:
+            return Reduction(
+                    ScopedFunction(self.expr_to_new_names[expanded_expr]),
+                    tuple(expr.inames),
+                    self.rec(expr.expr, expn_state),
                     allow_simultaneous=expr.allow_simultaneous)
         else:
-            return IdentityMapper.map_reduction(self, expr)
+            return IdentityMapper.map_reduction(self, expr, expn_state)
 
 
 def register_pymbolic_calls_to_knl_callables(kernel,
@@ -741,19 +777,14 @@ def register_pymbolic_calls_to_knl_callables(kernel,
 
     # Using the data populated in pymbolic_calls_to_new_names to change the
     # names of the scoped functions of all the calls in the kernel.
-    new_insns = []
-    scope_changer = ScopedFunctionNameChanger(pymbolic_calls_to_new_names)
-    for insn in kernel.instructions:
-        if isinstance(insn, (MultiAssignmentBase, CInstruction)):
-            expr = scope_changer(insn.expression)
-            new_insns.append(insn.copy(expression=expr))
-        elif isinstance(insn, _DataObliviousInstruction):
-            new_insns.append(insn)
-        else:
-            raise NotImplementedError("Type Inference Specialization not"
-                    "implemented for %s instruciton" % type(insn))
-    return kernel.copy(scoped_functions=scoped_names_to_functions,
-            instructions=new_insns)
+    rule_mapping_context = SubstitutionRuleMappingContext(
+                kernel.substitutions, kernel.get_var_name_generator())
+    subst_expander = SubstitutionRuleExpander(kernel.substitutions)
+    scope_changer = ScopedFunctionNameChanger(rule_mapping_context,
+            pymbolic_calls_to_new_names, subst_expander)
+    scoped_kernel = scope_changer.map_kernel(kernel)
+
+    return scoped_kernel.copy(scoped_functions=scoped_names_to_functions)
 
 # }}}
 

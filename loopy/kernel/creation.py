@@ -1974,6 +1974,7 @@ class ScopedFunctionCollector(CombineMapper):
 
     map_variable = map_constant
     map_function_symbol = map_constant
+    map_tagged_variable = map_constant
 
 
 def scope_functions(kernel):
@@ -1997,9 +1998,19 @@ def scope_functions(kernel):
             raise NotImplementedError("scope_functions not implemented for %s" %
                     type(insn))
 
+    scoped_substitutions = {}
+
+    for name, rule in kernel.substitutions.items():
+        scoped_rule = rule.copy(
+                expression=function_scoper(rule.expression))
+        scoped_substitutions[name] = scoped_rule
+        scoped_functions.update(scoped_function_collector(scoped_rule.expression))
+
     # Need to combine the scoped functions into a dict
     scoped_function_dict = dict(scoped_functions)
-    return kernel.copy(instructions=new_insns, scoped_functions=scoped_function_dict)
+    return kernel.copy(instructions=new_insns,
+            scoped_functions=scoped_function_dict,
+            substitutions=scoped_substitutions)
 
 # }}}
 
