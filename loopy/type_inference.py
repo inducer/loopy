@@ -475,7 +475,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         dtype_sets.append(result)
 
     if not dtype_sets:
-        return None, type_inf_mapper.symbols_with_unknown_types, None
+        return None, type_inf_mapper.symbols_with_unknown_types, {}
 
     result = type_inf_mapper.combine(dtype_sets)
 
@@ -630,8 +630,7 @@ def infer_unknown_types(kernel, expect_completion=False):
                         new_arg_dict[name] = item.copy(dtype=new_dtype)
                     else:
                         raise LoopyError("unexpected item type in type inference")
-                specialized_functions = {**specialized_functions,
-                        **new_specialized_functions}
+                specialized_functions.update(new_specialized_functions)
             else:
                 debug("     failure")
 
