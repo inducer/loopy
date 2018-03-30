@@ -264,11 +264,12 @@ def pyopencl_with_types(in_knl_callable, arg_id_to_dtype):
                 "sinh", "cosh", "tanh",
                 "conj"]:
             return in_knl_callable.copy(name_in_target="%s_%s" % (tpname, name),
-                    arg_id_to_dtype={0: dtype, -1: dtype})
+                    arg_id_to_dtype={0: NumpyType(dtype), -1: NumpyType(dtype)})
 
         if name in ["real", "imag", "abs"]:
             return in_knl_callable.copy(name_in_target="%s_%s" % (tpname, name),
-                    arg_id_to_dtype={0: dtype, -1: dtype.numpy_dtype.type(0).real})
+                    arg_id_to_dtype={0: NumpyType(dtype), -1: NumpyType(
+                        dtype.numpy_dtype.type(0).real)})
 
     return None
 

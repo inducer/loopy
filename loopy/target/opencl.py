@@ -276,7 +276,7 @@ def opencl_with_types(in_knl_callable, arg_id_to_dtype):
         dtype = arg_id_to_dtype[0]
         scalar_dtype, offset, field_name = dtype.numpy_dtype.fields["s0"]
         return in_knl_callable.copy(name_in_target=name,
-                arg_id_to_dtype={-1: scalar_dtype, 0: dtype, 1: dtype})
+                arg_id_to_dtype={-1: NumpyType(scalar_dtype), 0: dtype, 1: dtype})
 
     if name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
         num_args = _CL_SIMPLE_MULTI_ARG_FUNCTIONS[name]
