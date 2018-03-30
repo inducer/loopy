@@ -680,12 +680,12 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
             if expr in self.expr_to_new_names:
                 return type(expr)(
                         ScopedFunction(self.expr_to_new_names[expr]),
-                        tuple(self.rec(child)
+                        tuple(self.rec(child, expn_state)
                             for child in expr.parameters))
             elif expanded_expr in self.expr_to_new_names:
                 return type(expr)(
                         ScopedFunction(self.expr_to_new_names[expanded_expr]),
-                        tuple(self.rec(child)
+                        tuple(self.rec(child, expn_state)
                             for child in expr.parameters))
             else:
                 return IdentityMapper.map_call(self, expr, expn_state)
