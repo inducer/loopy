@@ -448,7 +448,7 @@ class TypeInferenceMapper(CombineMapper):
 
 def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
     if var_name in kernel.all_params():
-        return [kernel.index_dtype], []
+        return [kernel.index_dtype], [], {}
 
     from functools import partial
     debug = partial(_debug, kernel)
@@ -475,7 +475,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         dtype_sets.append(result)
 
     if not dtype_sets:
-        return None, type_inf_mapper.symbols_with_unknown_types, {}
+        return None, type_inf_mapper.symbols_with_unknown_types, None
 
     result = type_inf_mapper.combine(dtype_sets)
 
