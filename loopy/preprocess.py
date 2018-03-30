@@ -2153,8 +2153,15 @@ def check_functions_are_scoped(kernel):
     subst_expander = SubstitutionRuleExpander(kernel.substitutions)
 
     for insn in kernel.instructions:
-        unscoped_calls = UnScopedCallCollector()(subst_expander(
-            insn.expression))
+        if isinstance(insn, MultiAssignmentBase):
+            unscoped_calls = UnScopedCallCollector()(subst_expander(
+                insn.expression))
+        elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
+            pass
+        else:
+            raise NotImplementedError("check_function_are_scoped not "
+                    "implemented for %s type of instruction." % type(insn))
+
         if unscoped_calls:
             raise LoopyError("Unknown function '%s' obtained -- register a function"
                     " or a kernel corresponding to it." % set(unscoped_calls).pop())
