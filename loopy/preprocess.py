@@ -2270,7 +2270,10 @@ class ArgDescriptionInferer(CombineMapper):
                     assignee_id_to_descr[-i-1] = ValueArgDescriptor()
 
         # gathering all the descriptors
-        combined_arg_id_to_descr = {**arg_id_to_descr, **assignee_id_to_descr}
+        # TODO: I dont like in place updates. Change this to somthing else.
+        # Perhaps make a function?
+        combined_arg_id_to_descr = arg_id_to_descr.copy()
+        combined_arg_id_to_descr.update(assignee_id_to_descr)
 
         # specializing the function according to the parameter description
         new_scoped_function = (

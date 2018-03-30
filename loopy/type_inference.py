@@ -630,7 +630,7 @@ def infer_unknown_types(kernel, expect_completion=False):
                         new_arg_dict[name] = item.copy(dtype=new_dtype)
                     else:
                         raise LoopyError("unexpected item type in type inference")
-                # TODO: I dont like in place updates. Change this to something
+                # TODO: I dont like in-place updates. Change this to something
                 # else. Perhaps add a function for doing this, which does it
                 # using a bunch of copies?
                 specialized_functions.update(new_specialized_functions)
