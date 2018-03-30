@@ -144,7 +144,10 @@ class _InameSplitter(RuleAwareIdentityMapper):
             new_inames.extend([self.outer_iname, self.inner_iname])
 
             from loopy.symbolic import Reduction
-            return Reduction(expr.operation, tuple(new_inames),
+            reduction_callable = (
+                    self.rule_mapping_context.kernel.scoped_functions[
+                        expr.function.name])
+            return Reduction(reduction_callable.operation, tuple(new_inames),
                         self.rec(expr.expr, expn_state),
                         expr.allow_simultaneous)
         else:
