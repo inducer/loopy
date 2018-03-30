@@ -2404,8 +2404,7 @@ def specializing_incomplete_callables(kernel):
                 # only trying to specialize the functions which are not ready
                 # for codegen
                 type_inf_mapper(expr)
-                inferred_functions = {**inferred_functions,
-                        **type_inf_mapper.specialized_functions}
+                inferred_functions.update(type_inf_mapper.specialized_functions)
 
         elif isinstance(insn, (_DataObliviousInstruction)):
             pass
