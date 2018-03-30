@@ -496,7 +496,7 @@ class CallableKernel(InKernelCallable):
         # in the array call.
 
         # Collecting the parameters
-        new_args = self.subkernel.args.copy()
+        new_args = self.subkernel.args[:]
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
         for id, descr in arg_id_to_descr.items():
