@@ -565,6 +565,9 @@ class Reduction(p.Expression):
     init_arg_names = ("function", "inames", "expr", "allow_simultaneous")
 
     def __init__(self, function, inames, expr, allow_simultaneous=False):
+        if isinstance(function, str):
+            function = p.Variable(function)
+
         assert isinstance(function, p.Variable)
 
         if isinstance(inames, str):

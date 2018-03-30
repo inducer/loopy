@@ -2009,12 +2009,12 @@ def scope_functions(kernel):
     new_insns = []
 
     for insn in kernel.instructions:
-        if isinstance(insn, (MultiAssignmentBase, CInstruction)):
+        if isinstance(insn, MultiAssignmentBase):
             new_insn = insn.copy(expression=function_scoper(insn.expression))
             new_scoped_functions.update(scoped_function_collector(
                 new_insn.expression))
             new_insns.append(new_insn)
-        elif isinstance(insn, _DataObliviousInstruction):
+        elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
             new_insns.append(insn)
         else:
             raise NotImplementedError("scope_functions not implemented for %s" %

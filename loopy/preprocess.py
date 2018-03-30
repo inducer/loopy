@@ -2215,6 +2215,8 @@ class ArgDescriptionInferer(CombineMapper):
     def map_call(self, expr, **kwargs):
         from loopy.kernel.function_interface import ValueArgDescriptor
         from loopy.symbolic import SubArrayRef
+        if not isinstance(expr.function, ScopedFunction):
+            return CombineMapper.map_call(self, expr, **kwargs)
 
         # descriptors for the args
         arg_id_to_descr = dict((i,
@@ -2317,10 +2319,10 @@ def infer_arg_descr(kernel):
             pymbolic_calls_to_functions.update(
                     arg_description_modifier(insn.expression,
                         assignees=insn.assignees))
-        elif isinstance(insn, (MultiAssignmentBase, CInstruction)):
+        elif isinstance(insn, MultiAssignmentBase):
             pymbolic_calls_to_functions.update(arg_description_modifier(
                 insn.expression))
-        elif isinstance(insn, _DataObliviousInstruction):
+        elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
             pass
         else:
             raise NotImplementedError("arg_descr_inference for %s instruction" %
@@ -2379,7 +2381,7 @@ class ReadyForCodegen(CombineMapper):
     map_tagged_variable = map_constant
 
 
-def specializing_incomplete_callables(kernel):
+def specialize_incomplete_callables(kernel):
     """
     Transformation necessary to type-specialize the callables which are missed
     in type inference. For example consider:
@@ -2406,7 +2408,7 @@ def specializing_incomplete_callables(kernel):
 
     inferred_functions = {}
     for insn in kernel.instructions:
-        if isinstance(insn, (MultiAssignmentBase, CInstruction)):
+        if isinstance(insn, MultiAssignmentBase):
             expr = subst_expander(insn.expression)
             if not ready_for_codegen(expr):
                 # only trying to specialize the functions which are not ready
@@ -2414,7 +2416,7 @@ def specializing_incomplete_callables(kernel):
                 type_inf_mapper(expr)
                 inferred_functions.update(type_inf_mapper.specialized_functions)
 
-        elif isinstance(insn, (_DataObliviousInstruction)):
+        elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
             pass
         else:
             NotImplementedError("Unknown Instruction")
@@ -2505,7 +2507,7 @@ def preprocess_kernel(kernel, device=None):
     kernel = infer_arg_descr(kernel)
 
     # try specializing callables one last time.
-    kernel = specializing_incomplete_callables(kernel)
+    kernel = specialize_incomplete_callables(kernel)
 
     # Ordering restriction:
     # add_axes_to_temporaries_for_ilp because reduction accumulators
