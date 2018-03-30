@@ -688,7 +688,7 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
                         tuple(self.rec(child)
                             for child in expr.parameters))
             else:
-                return IdentityMapper.map_call(self, expr)
+                return IdentityMapper.map_call(self, expr, expn_state)
         else:
             return self.map_substitution(name, tag, expr.parameters, expn_state)
 
@@ -713,7 +713,7 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
                     for key, val in six.iteritems(expr.kw_parameters))
                     )
         else:
-            return IdentityMapper.map_call_with_kwargs(self, expr)
+            return IdentityMapper.map_call_with_kwargs(self, expr, expn_state)
 
     def map_reduction(self, expr, expn_state):
         from loopy.symbolic import Reduction
