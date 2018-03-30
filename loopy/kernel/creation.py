@@ -1962,12 +1962,16 @@ class ScopedFunctionCollector(CombineMapper):
 
         hidden_function = callable_reduction.operation.hidden_function()
         if hidden_function is not None:
-            return frozenset([(expr.function.name,
-                callable_reduction), (hidden_function,
-                    CallableOnScalar(hidden_function))])
+
+            return (
+                    frozenset([(expr.function.name, callable_reduction),
+                        (hidden_function, CallableOnScalar(hidden_function))]) |
+                    self.rec(expr.expr))
         else:
-            return frozenset([(expr.function.name,
-                callable_reduction)])
+            return (
+                    frozenset([(expr.function.name,
+                        callable_reduction)]) |
+                    self.rec(expr.expr))
 
     def map_constant(self, expr):
         return frozenset()
