@@ -144,7 +144,7 @@ class Array:
                 dtype=np.float32)
         shaped_array.reshape(-1, self.nattributes)[:nelements] = self.array
 
-        modulation = np.exp(-(self.ctx.timestamp-shaped_array[:, :, 0]))
+        modulation = np.exp(-0.75*(self.ctx.timestamp-shaped_array[:, :, 0]))
 
         subgroup = shaped_array[:, :, 1]/(self.ctx.nsubgroups()-1)
 
