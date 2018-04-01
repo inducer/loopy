@@ -1039,16 +1039,13 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         init_id = insn_id_gen(
                 "%s_%s_init" % (insn.id, "_".join(expr.inames)))
 
-        reduction_operation = kernel.scoped_functions[
-                expr.function.name].operation
-
         init_insn = make_assignment(
                 id=init_id,
                 assignees=acc_vars,
                 within_inames=outer_insn_inames - frozenset(expr.inames),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=init_insn_depends_on,
-                expression=reduction_operation.neutral_element(*arg_dtypes),
+                expression=expr.operation.neutral_element(*arg_dtypes),
                 predicates=insn.predicates,)
 
         generated_insns.append(init_insn)
@@ -1083,12 +1080,10 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         else:
             reduction_expr = expr.expr
 
-        reduction_operation = kernel.scoped_functions[
-                expr.function.name].operation
         reduction_insn = make_assignment(
                 id=update_id,
                 assignees=acc_vars,
-                expression=reduction_operation(
+                expression=expr.operation(
                     arg_dtypes,
                     _strip_if_scalar(acc_vars, acc_vars),
                     reduction_expr),
@@ -1944,8 +1939,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
     kernel = lp.replace_instruction_ids(kernel, insn_id_replacements)
 
     kernel = lp.tag_inames(kernel, new_iname_tags)
-
-    # making changes to the scoped function that are arising
 
     # TODO: remove unused inames...
 

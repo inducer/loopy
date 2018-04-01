@@ -96,7 +96,7 @@ class IdentityMapperMixin(object):
             new_inames.append(new_sym_iname.name)
 
         return Reduction(
-                expr.function, tuple(new_inames),
+                expr.operation, tuple(new_inames),
                 self.rec(expr.expr, *args),
                 allow_simultaneous=expr.allow_simultaneous)
 
@@ -226,7 +226,7 @@ class StringifyMapper(StringifyMapperBase):
 
         return "%sreduce(%s, [%s], %s)" % (
                 "simul_" if expr.allow_simultaneous else "",
-                expr.function, ", ".join(expr.inames),
+                expr.operation, ", ".join(expr.inames),
                 self.rec(expr.expr, PREC_NONE))
 
     def map_tagged_variable(self, expr, prec):
@@ -537,11 +537,8 @@ class Reduction(p.Expression):
     """Represents a reduction operation on :attr:`exprs`
     across :attr:`inames`.
 
-    ..attribute:: function
-
-        an instance of :class:`pymbolic.primitives.Variable` which indicates
-        the reduction callable that the reduction would point to in the dict
-        `kernel.scoped_functions`
+    .. attribute:: operation
+        an instance of :class:`loopy.library.reduction.ReductionOperation`
 
     .. attribute:: inames
 
@@ -562,14 +559,9 @@ class Reduction(p.Expression):
         in precisely one reduction, to avoid mis-nesting errors.
     """
 
-    init_arg_names = ("function", "inames", "expr", "allow_simultaneous")
+    init_arg_names = ("operation", "inames", "expr", "allow_simultaneous")
 
-    def __init__(self, function, inames, expr, allow_simultaneous=False):
-        if isinstance(function, str):
-            function = p.Variable(function)
-
-        assert isinstance(function, p.Variable)
-
+    def __init__(self, operation, inames, expr, allow_simultaneous=False):
         if isinstance(inames, str):
             inames = tuple(iname.strip() for iname in inames.split(","))
 
@@ -587,8 +579,6 @@ class Reduction(p.Expression):
 
         inames = tuple(strip_var(iname) for iname in inames)
 
-        """
-        # Removed by KK. In order to move to the new interface
         if isinstance(operation, str):
             from loopy.library.reduction import parse_reduction_op
             operation = parse_reduction_op(operation)
@@ -611,33 +601,30 @@ class Reduction(p.Expression):
                 raise LoopyError("got a tuple argument to a scalar reduction")
             elif isinstance(expr, Reduction) and expr.is_tuple_typed:
                 raise LoopyError("got a tuple typed argument to a scalar reduction")
-        """
 
-        self.function = function
+        self.operation = operation
         self.inames = inames
         self.expr = expr
         self.allow_simultaneous = allow_simultaneous
 
     def __getinitargs__(self):
-        return (self.function, self.inames, self.expr, self.allow_simultaneous)
+        return (self.operation, self.inames, self.expr, self.allow_simultaneous)
 
     def get_hash(self):
-        return hash((self.__class__, self.function, self.inames, self.expr))
+        return hash((self.__class__, self.operation, self.inames, self.expr))
 
     def is_equal(self, other):
         return (other.__class__ == self.__class__
-                and other.function == self.function
+                and other.operation == self.operation
                 and other.inames == self.inames
                 and other.expr == self.expr)
 
     def stringifier(self):
         return StringifyMapper
-    """
-    # Removed by KK. In order to move to the new interface
+
     @property
     def is_tuple_typed(self):
         return self.operation.arg_count > 1
-    """
 
     @property
     @memoize_method
@@ -1149,10 +1136,8 @@ class FunctionToPrimitiveMapper(IdentityMapper):
     turns those into the actual pymbolic primitives used for that.
     """
 
-    def _parse_reduction(self, function, inames, red_exprs,
+    def _parse_reduction(self, operation, inames, red_exprs,
             allow_simultaneous=False):
-        assert isinstance(function, str)
-        function = p.Variable(function)
         if isinstance(inames, p.Variable):
             inames = (inames,)
 
@@ -1171,11 +1156,11 @@ class FunctionToPrimitiveMapper(IdentityMapper):
         if len(red_exprs) == 1:
             red_exprs = red_exprs[0]
 
-        return Reduction(function, tuple(processed_inames), red_exprs,
+        return Reduction(operation, tuple(processed_inames), red_exprs,
                 allow_simultaneous=allow_simultaneous)
 
     def map_call(self, expr):
-        from loopy.library.reduction import reduction_function_identifiers
+        from loopy.library.reduction import parse_reduction_op
 
         if not isinstance(expr.function, p.Variable):
             return IdentityMapper.map_call(self, expr)
@@ -1196,21 +1181,17 @@ class FunctionToPrimitiveMapper(IdentityMapper):
                 raise TypeError("cse takes two arguments")
 
         elif name in ["reduce", "simul_reduce"]:
+
             if len(expr.parameters) >= 3:
-                function, inames = expr.parameters[:2]
+                operation, inames = expr.parameters[:2]
                 red_exprs = expr.parameters[2:]
 
-                return self._parse_reduction(str(function.name), inames,
+                operation = parse_reduction_op(str(operation))
+                return self._parse_reduction(operation, inames,
                         tuple(self.rec(red_expr) for red_expr in red_exprs),
                         allow_simultaneous=(name == "simul_reduce"))
             else:
-
                 raise TypeError("invalid 'reduce' calling sequence")
-        elif name in reduction_function_identifiers():
-            # KK -- maybe add a check for the arg count?
-            inames = expr.parameters[0]
-            red_exprs = tuple(self.rec(param) for param in expr.parameters[1:])
-            return self._parse_reduction(name, inames, red_exprs)
 
         elif name == "if":
             if len(expr.parameters) == 3:
@@ -1221,7 +1202,23 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
         else:
             # see if 'name' is an existing reduction op
-            return IdentityMapper.map_call(self, expr)
+
+            operation = parse_reduction_op(name)
+            if operation:
+                # arg_count counts arguments but not inames
+                if len(expr.parameters) != 1 + operation.arg_count:
+                    raise RuntimeError("invalid invocation of "
+                            "reduction operation '%s': expected %d arguments, "
+                            "got %d instead" % (expr.function.name,
+                                                1 + operation.arg_count,
+                                                len(expr.parameters)))
+
+                inames = expr.parameters[0]
+                red_exprs = tuple(self.rec(param) for param in expr.parameters[1:])
+                return self._parse_reduction(operation, inames, red_exprs)
+
+            else:
+                return IdentityMapper.map_call(self, expr)
 
     def map_call_with_kwargs(self, expr):
         for par in expr.kw_parameters.values():

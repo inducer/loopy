@@ -1885,37 +1885,6 @@ class FunctionScoper(IdentityMapper):
         # This is an unknown function as of yet, not modifying it.
         return IdentityMapper.map_call(self, expr)
 
-    def map_reduction(self, expr):
-        from pymbolic.primitives import Variable
-        from loopy.symbolic import ScopedFunction
-
-        if isinstance(expr.function, ScopedFunction):
-            # we have already scoped this function.
-            return IdentityMapper.map_reduction(self, expr)
-
-        mapped_inames = [self.rec(Variable(iname)) for iname in expr.inames]
-
-        new_inames = []
-        for iname, new_sym_iname in zip(expr.inames, mapped_inames):
-            if not isinstance(new_sym_iname, Variable):
-                from loopy.diagnostic import LoopyError
-                raise LoopyError("%s did not map iname '%s' to a variable"
-                        % (type(self).__name__, iname))
-
-            new_inames.append(new_sym_iname.name)
-
-        from loopy.symbolic import Reduction
-
-        # Adding _reduce at the end of the reduction in order to avoid
-        # confusion between reduce(max, ...) and max(a, b) in the
-        # `scoped_functions` dictionary.
-
-        return Reduction(
-                ScopedFunction(expr.function.name+"_reduce"),
-                tuple(new_inames),
-                self.rec(expr.expr),
-                allow_simultaneous=expr.allow_simultaneous)
-
 
 class ScopedFunctionCollector(CombineMapper):
     """ This mapper would collect all the instances of :class:`ScopedFunction`
@@ -1935,59 +1904,6 @@ class ScopedFunctionCollector(CombineMapper):
             return frozenset()
         else:
             return frozenset([(expr.name, CallableOnScalar(expr.name))])
-
-    def map_reduction(self, expr):
-        from loopy.kernel.function_interface import (CallableOnScalar,
-                CallableReduction)
-        from loopy.symbolic import Reduction
-
-        # Refer to `map_reduction` subroutine of `FunctionScoper`.
-        assert expr.function.name[-7:] == "_reduce"
-
-        if expr.function.name in self.already_scoped_functions:
-            # the function is already scoped
-            return self.rec(expr.expr)
-
-        callable_reduction = CallableReduction(expr.function.name[:-7])
-
-        # sanity checks
-
-        if isinstance(expr.expr, tuple):
-            num_args = len(expr.expr)
-        else:
-            num_args = 1
-
-        if num_args != callable_reduction.operation.arg_count:
-            raise RuntimeError("invalid invocation of "
-                    "reduction operation '%s': expected %d arguments, "
-                    "got %d instead" % (expr.function.name,
-                                        callable_reduction.operation.arg_count,
-                                        len(expr.parameters)))
-
-        if callable_reduction.operation.arg_count > 1:
-            from pymbolic.primitives import Call
-
-            if not isinstance(expr, (tuple, Reduction, Call)):
-                raise LoopyError("reduction argument must be one of "
-                                 "a tuple, reduction, or call; "
-                                 "got '%s'" % type(expr).__name__)
-        else:
-            if isinstance(expr, tuple):
-                raise LoopyError("got a tuple argument to a scalar reduction")
-            elif isinstance(expr, Reduction) and callable_reduction.is_tuple_typed:
-                raise LoopyError("got a tuple typed argument to a scalar reduction")
-
-        hidden_function = callable_reduction.operation.hidden_function()
-        if hidden_function is not None:
-            return (
-                    frozenset([(expr.function.name, callable_reduction),
-                        (hidden_function, CallableOnScalar(hidden_function))]) |
-                    self.rec(expr.expr))
-        else:
-            return (
-                    frozenset([(expr.function.name,
-                        callable_reduction)]) |
-                    self.rec(expr.expr))
 
     def map_constant(self, expr):
         return frozenset()
