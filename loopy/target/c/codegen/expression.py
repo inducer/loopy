@@ -390,14 +390,14 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         # {{{ implement indexof, indexof_vec
 
-        identifier = expr.function
-        if identifier.name in ["indexof", "indexof_vec"]:
+        identifier_name = self.kernel.scoped_functions[expr.function.name].name
+        if identifier_name in ["indexof", "indexof_vec"]:
             if len(expr.parameters) != 1:
-                raise LoopyError("%s takes exactly one argument" % identifier.name)
+                raise LoopyError("%s takes exactly one argument" % identifier_name)
             arg, = expr.parameters
             if not isinstance(arg, Subscript):
                 raise LoopyError(
-                        "argument to %s must be a subscript" % identifier.name)
+                        "argument to %s must be a subscript" % identifier_name)
 
             ary = self.find_array(arg)
 
@@ -409,11 +409,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
             from loopy.kernel.data import ImageArg
             if isinstance(ary, ImageArg):
-                raise LoopyError("%s does not support images" % identifier.name)
+                raise LoopyError("%s does not support images" % identifier_name)
 
-            if identifier.name == "indexof":
+            if identifier_name == "indexof":
                 return access_info.subscripts[0]
-            elif identifier.name == "indexof_vec":
+            elif identifier_name == "indexof_vec":
                 from loopy.kernel.array import VectorArrayDimTag
                 ivec = None
                 for iaxis, dim_tag in enumerate(ary.dim_tags):

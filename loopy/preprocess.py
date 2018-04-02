@@ -2135,6 +2135,7 @@ class UnScopedCallCollector(CombineMapper):
     map_variable = map_constant
     map_function_symbol = map_constant
     map_tagged_variable = map_constant
+    map_type_cast = map_constant
 
 
 def check_functions_are_scoped(kernel):
@@ -2288,12 +2289,13 @@ class ArgDescriptionInferer(CombineMapper):
                 frozenset(((expr, new_scoped_function), )) |
                 self.combine((self.rec(child) for child in expr.parameters)))
 
-    def map_constant(self, expr):
+    def map_constant(self, expr, **kwargs):
         return frozenset()
 
     map_variable = map_constant
     map_function_symbol = map_constant
     map_tagged_variable = map_constant
+    map_type_cast = map_constant
 
 
 def infer_arg_descr(kernel):
@@ -2372,6 +2374,7 @@ class ReadyForCodegen(CombineMapper):
     map_variable = map_constant
     map_function_symbol = map_constant
     map_tagged_variable = map_constant
+    map_type_cast = map_constant
 
 
 def specialize_incomplete_callables(kernel):

@@ -1911,6 +1911,7 @@ class ScopedFunctionCollector(CombineMapper):
     map_variable = map_constant
     map_function_symbol = map_constant
     map_tagged_variable = map_constant
+    map_type_cast = map_constant
 
 
 def scope_functions(kernel):

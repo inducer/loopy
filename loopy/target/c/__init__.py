@@ -540,7 +540,8 @@ class CASTBuilder(ASTBuilderBase):
                     ])
 
     def with_types(self, in_knl_callable, arg_id_to_dtype):
-        new_callable = c_with_types(in_knl_callable, arg_id_to_dtype)
+        new_callable = c_with_types(in_knl_callable, arg_id_to_dtype,
+                modify_name=True)
         if new_callable is not None:
             return new_callable
         return super(CASTBuilder, self).with_types(in_knl_callable,

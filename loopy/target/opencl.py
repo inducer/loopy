@@ -140,28 +140,10 @@ def _register_vector_types(dtype_registry):
 # }}}
 
 
-# {{{ function identifiers
-
-_CL_SIMPLE_MULTI_ARG_FUNC_IDS = set(["clamp", "atan2"])
-
-
-VECTOR_LITERAL_FUNC_IDS = set("make_%s%d" % (name, count)
-        for name in ['char', 'uchar', 'short', 'ushort', 'int', 'uint', 'long',
-            'ulong', 'float', 'double']
-        for count in [2, 3, 4, 8, 16]
-        )
-
-
-def opencl_function_identifiers():
-    return set(["max", "min", "dot"]) | (_CL_SIMPLE_MULTI_ARG_FUNC_IDS |
-            VECTOR_LITERAL_FUNC_IDS)
-
-# }}}
-
-
 # {{{ function mangler
 
 _CL_SIMPLE_MULTI_ARG_FUNCTIONS = {
+        "rsqrt": 1,
         "clamp": 3,
         "atan2": 2,
         }
@@ -183,6 +165,11 @@ VECTOR_LITERAL_FUNCS = dict(
             ]
         for count in [2, 3, 4, 8, 16]
         )
+
+
+def opencl_function_identifiers():
+    return set(["max", "min", "dot"]) | (set(_CL_SIMPLE_MULTI_ARG_FUNCTIONS) |
+            set(VECTOR_LITERAL_FUNCS))
 
 
 def opencl_function_mangler(kernel, name, arg_dtypes):
@@ -279,6 +266,7 @@ def opencl_with_types(in_knl_callable, arg_id_to_dtype):
                 arg_id_to_dtype={-1: NumpyType(scalar_dtype), 0: dtype, 1: dtype})
 
     if name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
+        print(arg_id_to_dtype)
         num_args = _CL_SIMPLE_MULTI_ARG_FUNCTIONS[name]
         for id in arg_id_to_dtype:
             if not -1 <= id < num_args:
@@ -286,14 +274,14 @@ def opencl_with_types(in_knl_callable, arg_id_to_dtype):
                         num_args))
 
         for i in range(num_args):
-            if i not in arg_id_to_dtype or arg_id_to_dtype[i] is not None:
+            if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
                 # the types provided aren't mature enough to specialize the
                 # callable
                 return None
 
         dtype = np.find_common_type(
                 [], [dtype.numpy_dtype for id, dtype in
-                    arg_id_to_dtype.values() if id >= 0])
+                    arg_id_to_dtype.items() if id >= 0])
 
         if dtype.kind == "c":
             raise LoopyError("%s does not support complex numbers"

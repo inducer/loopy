@@ -169,7 +169,7 @@ class InKernelCallable(ImmutableRecord):
     def __getinitargs__(self):
         return (self.arg_id_to_dtype, self.arg_id_to_descr)
 
-    def with_types(self, arg_id_to_dtype, target):
+    def with_types(self, arg_id_to_dtype, kernel):
         """
         :arg arg_id_to_type: a mapping from argument identifiers
             (integers for positional arguments, names for keyword
@@ -273,7 +273,7 @@ class CallableOnScalar(InKernelCallable):
         return (self.name, self.arg_id_to_dtype, self.arg_id_to_descr,
                 self.name_in_target)
 
-    def with_types(self, arg_id_to_dtype, target):
+    def with_types(self, arg_id_to_dtype, kernel):
         if self.arg_id_to_dtype is not None:
 
             # specializing an already specialized function.
@@ -285,21 +285,23 @@ class CallableOnScalar(InKernelCallable):
                             " function is illegal--maybe start with new instance of"
                             " CallableOnScalar?")
 
-        # {{{ attempt to specialize using scalar functions present in target
-
-        if self.name in target.get_device_ast_builder().function_identifiers():
-            new_in_knl_callable = target.get_device_ast_builder().with_types(
+        if self.name in kernel.target.get_device_ast_builder(
+                ).function_identifiers():
+            new_in_knl_callable = kernel.target.get_device_ast_builder().with_types(
                     self, arg_id_to_dtype)
             if new_in_knl_callable is None:
                 new_in_knl_callable = self.copy()
             return new_in_knl_callable
+        elif self.name in ["indexof", "indexof_vec"]:
+            new_arg_id_to_dtype = arg_id_to_dtype.copy()
+            new_arg_id_to_dtype[-1] = kernel.index_dtype
 
-        # }}}
-
-        # did not find a scalar function and function prototype does not
-        # even have  subkernel registered => no match found
-        raise LoopyError("Function %s not present within"
-                " the %s namespace" % (self.name, target))
+            return self.copy(arg_id_to_dtype=new_arg_id_to_dtype)
+        else:
+            # did not find a scalar function and function prototype does not
+            # even have  subkernel registered => no match found
+            raise LoopyError("Function %s not present within"
+                    " the %s namespace" % (self.name, kernel.target))
 
     def with_descrs(self, arg_id_to_descr):
 
@@ -308,15 +310,10 @@ class CallableOnScalar(InKernelCallable):
         arg_id_to_descr[-1] = ValueArgDescriptor()
         return self.copy(arg_id_to_descr=arg_id_to_descr)
 
-    def with_iname_tag_usage(self, unusable, concurrent_shape):
-
-        raise NotImplementedError()
-
     def is_ready_for_codegen(self):
 
         return (self.arg_id_to_dtype is not None and
-                self.arg_id_to_descr is not None and
-                self.name_in_target is not None)
+                self.arg_id_to_descr is not None)
 
     # {{{ code generation
 
@@ -438,7 +435,7 @@ class CallableKernel(InKernelCallable):
         return (self.name, self.subkernel, self.arg_id_to_dtype,
                 self.arg_id_to_descr, self.name_in_target)
 
-    def with_types(self, arg_id_to_dtype, target):
+    def with_types(self, arg_id_to_dtype, kernel):
 
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 

@@ -259,9 +259,6 @@ class TypeInferenceMapper(CombineMapper):
         if isinstance(identifier, (Variable, ScopedFunction)):
             identifier = identifier.name
 
-        if identifier in ["indexof", "indexof_vec"]:
-            return [self.kernel.index_dtype]
-
         def none_if_empty(d):
             if d:
                 d, = d
@@ -276,7 +273,7 @@ class TypeInferenceMapper(CombineMapper):
         if isinstance(expr.function, ScopedFunction):
             in_knl_callable = (
                     self.scoped_functions[expr.function.name].with_types(
-                        arg_id_to_dtype, self.kernel.target))
+                        arg_id_to_dtype, self.kernel))
 
             # storing the type specialized function so that it can be used for
             # later use
