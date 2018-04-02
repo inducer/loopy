@@ -231,7 +231,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
 
     def neutral_element(self, scalar_dtype, segment_flag_dtype):
         scalar_neutral_element = self.inner_reduction.neutral_element(scalar_dtype)
-        return var("make_tuple")(scalar_neutral_element,
+        return ScopedFunction("make_tuple")(scalar_neutral_element,
                 segment_flag_dtype.numpy_dtype.type(0))
 
     def result_dtypes(self, kernel, scalar_dtype, segment_flag_dtype):
@@ -307,7 +307,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         scalar_neutral_func = (
                 get_ge_neutral if self.neutral_sign < 0 else get_le_neutral)
         scalar_neutral_element = scalar_neutral_func(scalar_dtype)
-        return var("make_tuple")(scalar_neutral_element,
+        return ScopedFunction("make_tuple")(scalar_neutral_element,
                 index_dtype.numpy_dtype.type(-1))
 
     def __str__(self):

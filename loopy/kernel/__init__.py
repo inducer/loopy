@@ -348,7 +348,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     @property
     def function_identifiers(self):
         return self.target.get_device_ast_builder().function_identifiers() | (
-                set(["indexof", "indexof_vec"]))
+                set(["indexof", "indexof_vec", "make_tuple"]))
 
     # }}}
 

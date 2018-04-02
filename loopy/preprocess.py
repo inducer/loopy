@@ -2333,7 +2333,6 @@ def infer_arg_descr(kernel):
     return register_pymbolic_calls_to_knl_callables(kernel,
             pymbolic_calls_to_functions)
 
-
 # }}}
 
 
@@ -2479,8 +2478,7 @@ def preprocess_kernel(kernel, device=None):
     kernel = infer_unknown_types(kernel, expect_completion=False)
 
     # TODO: Specializng based on:
-    # 1. ArgDescriptors
-    # 2. InameTags
+    # 1. InameTags
 
     check_for_writes_to_predicates(kernel)
     check_reduction_iname_uniqueness(kernel)

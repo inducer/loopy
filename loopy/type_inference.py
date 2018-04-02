@@ -44,6 +44,19 @@ def _debug(kernel, s, *args):
         logger.debug("%s: %s" % (kernel.name, logstr))
 
 
+def get_return_types_as_tuple(arg_id_to_dtype):
+    """Returns the types of arguments in  a tuple format.
+
+    :param arg_id_to_dtype: An instance of :class:`dict` which denotes a
+                            mapping from the arguments to their inferred types.
+    """
+    return_arg_id_to_dtype = dict((id, dtype) for id, dtype in
+            arg_id_to_dtype.items() if (isinstance(id, int) and id < 0))
+    return_arg_pos = sorted(return_arg_id_to_dtype.keys())
+
+    return tuple(return_arg_id_to_dtype[id] for id in return_arg_pos)
+
+
 # {{{ type inference mapper
 
 class TypeInferenceMapper(CombineMapper):
@@ -283,7 +296,10 @@ class TypeInferenceMapper(CombineMapper):
 
             # collecting result dtypes in order of the assignees
             if -1 in new_arg_id_to_dtype and new_arg_id_to_dtype[-1] is not None:
-                return [new_arg_id_to_dtype[-1]]
+                if return_tuple:
+                    return [get_return_types_as_tuple(new_arg_id_to_dtype)]
+                else:
+                    return [new_arg_id_to_dtype[-1]]
 
         return []
 
@@ -450,8 +466,26 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         expr = subst_expander(writer_insn.expression)
 
         debug("             via expr %s", expr)
+        if isinstance(writer_insn, lp.Assignment):
+            result = type_inf_mapper(expr, return_dtype_set=True)
+        elif isinstance(writer_insn, lp.CallInstruction):
+            return_dtype_set = type_inf_mapper(expr, return_tuple=True,
+                    return_dtype_set=True)
 
-        result = type_inf_mapper(expr, return_dtype_set=True)
+            result = []
+            for return_dtype_set in return_dtype_set:
+                result_i = None
+                found = False
+                for assignee, comp_dtype_set in zip(
+                        writer_insn.assignee_var_names(), return_dtype_set):
+                    if assignee == var_name:
+                        found = True
+                        result_i = comp_dtype_set
+                        break
+
+                assert found
+                if result_i is not None:
+                    result.append(result_i)
 
         debug("             result: %s", result)
 

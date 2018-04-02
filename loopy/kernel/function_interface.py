@@ -297,6 +297,14 @@ class CallableOnScalar(InKernelCallable):
             new_arg_id_to_dtype[-1] = kernel.index_dtype
 
             return self.copy(arg_id_to_dtype=new_arg_id_to_dtype)
+        elif self.name == "make_tuple":
+            new_arg_id_to_dtype = arg_id_to_dtype.copy()
+            for i in range(len(arg_id_to_dtype)):
+                if i in arg_id_to_dtype and arg_id_to_dtype[i] is not None:
+                    new_arg_id_to_dtype[-i-1] = arg_id_to_dtype[i]
+
+            return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
+                    name_in_target="loopy_make_tuple")
         else:
             # did not find a scalar function and function prototype does not
             # even have  subkernel registered => no match found
@@ -347,8 +355,6 @@ class CallableOnScalar(InKernelCallable):
         return var(self.name_in_target)(*processed_parameters)
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
-        # TODO: Need to add support for functions like sincos(x)
-        # which would give multiple outputs but takes in scalar arguments
 
         # FIXME: needs to get information about whether the callable has should
         # do pass by reference by all values or should return one value for
@@ -382,7 +388,7 @@ class CallableOnScalar(InKernelCallable):
 
         c_parameters = [
                 expression_to_code_mapper(par, PREC_NONE,
-                    dtype_to_type_context(self.target, tgt_dtype),
+                    dtype_to_type_context(target, tgt_dtype),
                     tgt_dtype).expr
                 for par, par_dtype, tgt_dtype in zip(
                     parameters, par_dtypes, arg_dtypes)]
@@ -395,7 +401,7 @@ class CallableOnScalar(InKernelCallable):
             c_parameters.append(
                         var("&")(
                             expression_to_code_mapper(a, PREC_NONE,
-                                dtype_to_type_context(self.target, tgt_dtype),
+                                dtype_to_type_context(target, tgt_dtype),
                                 tgt_dtype).expr))
 
         from pymbolic import var

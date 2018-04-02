@@ -1910,13 +1910,19 @@ class ScopedFunctionCollector(CombineMapper):
         from loopy.library.reduction import (MaxReductionOperation,
                 MinReductionOperation, ArgMinReductionOperation,
                 ArgMaxReductionOperation)
-        if isinstance(expr.operation, (MaxReductionOperation,
-                ArgMaxReductionOperation)):
+        if isinstance(expr.operation, MaxReductionOperation):
             return frozenset([("max", CallableOnScalar("max"))]) | (
                     self.rec(expr.expr))
-        if isinstance(expr.operation, (MinReductionOperation,
-                ArgMinReductionOperation)):
+        elif isinstance(expr.operation, MinReductionOperation):
             return frozenset([("min", CallableOnScalar("min"))]) | (
+                    self.rec(expr.expr))
+        elif isinstance(expr.operation, ArgMaxReductionOperation):
+            return frozenset([("max", CallableOnScalar("min")), ("make_tuple",
+                CallableOnScalar("make_tuple"))]) | (
+                    self.rec(expr.expr))
+        elif isinstance(expr.operation, ArgMinReductionOperation):
+            return frozenset([("min", CallableOnScalar("min")), ("make_tuple",
+                CallableOnScalar("make_tuple"))]) | (
                     self.rec(expr.expr))
         else:
             return self.rec(expr.expr)

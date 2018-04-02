@@ -503,7 +503,8 @@ def generate_code_v2(kernel):
     for insn in kernel.instructions:
         if isinstance(insn, CallInstruction):
             in_knl_callable = kernel.scoped_functions[insn.expression.function.name]
-            if in_knl_callable.subkernel is not None:
+            from loopy.kernel.function_interface import CallableKernel
+            if isinstance(in_knl_callable, CallableKernel):
                 auxiliary_dev_prog = generate_auxiliary_kernel_device_code(
                         in_knl_callable.subkernel,
                         kernel.target).device_programs[0].ast
