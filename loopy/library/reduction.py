@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 
 from pymbolic import var
+from loopy.symbolic import ScopedFunction
 import numpy as np
 
 from loopy.symbolic import FunctionIdentifier
@@ -180,7 +181,7 @@ class MaxReductionOperation(ScalarReductionOperation):
         return get_ge_neutral(dtype)
 
     def __call__(self, dtype, operand1, operand2):
-        return var("max")(operand1, operand2)
+        return ScopedFunction("max")(operand1, operand2)
 
 
 class MinReductionOperation(ScalarReductionOperation):
@@ -188,7 +189,7 @@ class MinReductionOperation(ScalarReductionOperation):
         return get_le_neutral(dtype)
 
     def __call__(self, dtype, operand1, operand2):
-        return var("min")(operand1, operand2)
+        return ScopedFunction("min")(operand1, operand2)
 
 
 # {{{ base class for symbolic reduction ops

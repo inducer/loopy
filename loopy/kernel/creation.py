@@ -1905,6 +1905,20 @@ class ScopedFunctionCollector(CombineMapper):
         else:
             return frozenset([(expr.name, CallableOnScalar(expr.name))])
 
+    def map_reduction(self, expr):
+        from loopy.kernel.function_interface import CallableOnScalar
+        from loopy.library.reduction import (MaxReductionOperation,
+                MinReductionOperation, ArgMinReductionOperation,
+                ArgMaxReductionOperation)
+        if isinstance(expr.operation, (MaxReductionOperation,
+                ArgMaxReductionOperation)):
+            return frozenset([("max", CallableOnScalar("max"))])
+        if isinstance(expr.operation, (MinReductionOperation,
+                ArgMinReductionOperation)):
+            return frozenset([("min", CallableOnScalar("min"))])
+        else:
+            return frozenset()
+
     def map_constant(self, expr):
         return frozenset()
 
