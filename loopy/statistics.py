@@ -937,6 +937,8 @@ class GlobalMemAccessCounter(MemAccessCounter):
         from loopy.symbolic import CoefficientCollector
         from loopy.kernel.array import FixedStrideArrayDimTag
         from pymbolic.primitives import Variable
+        from loopy.symbolic import simplify_using_aff
+        from loopy.diagnostic import ExpressionNotAffineError
 
         lid_strides = {}
         for ltag, iname in six.iteritems(lid_to_iname):
@@ -944,8 +946,6 @@ class GlobalMemAccessCounter(MemAccessCounter):
             # check coefficient of this lid for each axis
             for idx, axis_tag in zip(index, array.dim_tags):
 
-                from loopy.symbolic import simplify_using_aff
-                from loopy.diagnostic import ExpressionNotAffineError
                 try:
                     coeffs = CoefficientCollector()(
                               simplify_using_aff(self.knl, idx))
@@ -980,8 +980,6 @@ class GlobalMemAccessCounter(MemAccessCounter):
             # check coefficient of this gid for each axis
             for idx, axis_tag in zip(index, array.dim_tags):
 
-                from loopy.symbolic import simplify_using_aff
-                from loopy.diagnostic import ExpressionNotAffineError
                 try:
                     coeffs = CoefficientCollector()(
                               simplify_using_aff(self.knl, idx))
