@@ -1883,7 +1883,7 @@ class FunctionScoper(IdentityMapper):
                         )
 
         # This is an unknown function as of yet, not modifying it.
-        return IdentityMapper.map_call(self, expr)
+        return IdentityMapper.map_call_with_kwargs(self, expr)
 
 
 class ScopedFunctionCollector(CombineMapper):
@@ -1912,12 +1912,14 @@ class ScopedFunctionCollector(CombineMapper):
                 ArgMaxReductionOperation)
         if isinstance(expr.operation, (MaxReductionOperation,
                 ArgMaxReductionOperation)):
-            return frozenset([("max", CallableOnScalar("max"))])
+            return frozenset([("max", CallableOnScalar("max"))]) | (
+                    self.rec(expr.expr))
         if isinstance(expr.operation, (MinReductionOperation,
                 ArgMinReductionOperation)):
-            return frozenset([("min", CallableOnScalar("min"))])
+            return frozenset([("min", CallableOnScalar("min"))]) | (
+                    self.rec(expr.expr))
         else:
-            return frozenset()
+            return self.rec(expr.expr)
 
     def map_constant(self, expr):
         return frozenset()
