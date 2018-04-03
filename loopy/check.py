@@ -168,9 +168,9 @@ def _is_racing_iname_tag(tv, tag):
 
 
 def check_for_write_races(kernel):
-    from loopy.kernel.data import ConcurrentTag
+    from loopy.kernel.data import ConcurrentTag, check_iname_tags
 
-    iname_to_tag = kernel.iname_to_tag.get
+    iname_to_tag = kernel.iname_to_tags.get
     for insn in kernel.instructions:
         for assignee_name, assignee_indices in zip(
                 insn.assignee_var_names(),
@@ -187,16 +187,17 @@ def check_for_write_races(kernel):
                 # will cause write races.
 
                 raceable_parallel_insn_inames = set(
-                        iname
-                        for iname in kernel.insn_inames(insn)
-                        if isinstance(iname_to_tag(iname), ConcurrentTag))
+                        iname for iname in kernel.insn_inames(insn)
+                        if check_iname_tags(
+                            kernel.iname_to_tags.get(iname, set()),
+                            ConcurrentTag))
 
             elif assignee_name in kernel.temporary_variables:
                 temp_var = kernel.temporary_variables[assignee_name]
                 raceable_parallel_insn_inames = set(
-                            iname
-                            for iname in kernel.insn_inames(insn)
-                            if _is_racing_iname_tag(temp_var, iname_to_tag(iname)))
+                        iname for iname in kernel.insn_inames(insn)
+                        if any(_is_racing_iname_tag(temp_var, tag)
+                            for tag in kernel.iname_to_tags.get(iname, set())))
 
             else:
                 raise LoopyError("invalid assignee name in instruction '%s'"
@@ -229,13 +230,14 @@ def check_for_orphaned_user_hardware_axes(kernel):
 
 
 def check_for_data_dependent_parallel_bounds(kernel):
-    from loopy.kernel.data import ConcurrentTag
+    from loopy.kernel.data import ConcurrentTag, check_iname_tags
 
     for i, dom in enumerate(kernel.domains):
         dom_inames = set(dom.get_var_names(dim_type.set))
         par_inames = set(iname
                 for iname in dom_inames
-                if isinstance(kernel.iname_to_tag.get(iname), ConcurrentTag))
+                if check_iname_tags(
+            kernel.iname_to_tags.get(iname, set()), ConcurrentTag))
 
         if not par_inames:
             continue
@@ -650,7 +652,8 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
 
     # alternative: just disregard length-1 dimensions?
 
-    from loopy.kernel.data import LocalIndexTag, AutoLocalIndexTagBase, GroupIndexTag
+    from loopy.kernel.data import (LocalIndexTag, AutoLocalIndexTagBase,
+                        GroupIndexTag, check_iname_tags, get_iname_tags)
 
     while i < loop_end_i:
         sched_item = kernel.schedule[i]
@@ -668,13 +671,21 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
             local_axes_used = set()
 
             for iname in kernel.insn_inames(insn):
-                tag = kernel.iname_to_tag.get(iname)
+                tags = kernel.iname_to_tags.get(iname, set())
 
-                if isinstance(tag, LocalIndexTag):
+                if check_iname_tags(tags, LocalIndexTag):
+                    tags = get_iname_tags(tags, LocalIndexTag)
+                    if len(tags) > 1:
+                        raise LoopyError("Can only have one LocalIndexTag")
+                    tag, = tags
                     local_axes_used.add(tag.axis)
-                elif isinstance(tag, GroupIndexTag):
+                elif check_iname_tags(tags, GroupIndexTag):
+                    tags = get_iname_tags(tags, GroupIndexTag)
+                    if len(tags) > 1:
+                        raise LoopyError("Can only have one GroupIndexTag")
+                    tag, = tags
                     group_axes_used.add(tag.axis)
-                elif isinstance(tag, AutoLocalIndexTagBase):
+                elif check_iname_tags(tags, AutoLocalIndexTagBase):
                     raise LoopyError("auto local tag encountered")
 
             if group_axes != group_axes_used:
