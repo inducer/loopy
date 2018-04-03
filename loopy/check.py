@@ -213,12 +213,15 @@ def check_for_write_races(kernel):
 
 
 def check_for_orphaned_user_hardware_axes(kernel):
-    from loopy.kernel.data import LocalIndexTag
+    from loopy.kernel.data import LocalIndexTag, check_iname_tags
     for axis in kernel.local_sizes:
         found = False
-        for tag in six.itervalues(kernel.iname_to_tag):
-            if isinstance(tag, LocalIndexTag) and tag.axis == axis:
-                found = True
+        for tags in six.itervalues(kernel.iname_to_tags):
+            for tag in tags:
+                if isinstance(tag, LocalIndexTag) and tag.axis == axis:
+                    found = True
+                    break
+            if found:
                 break
 
         if not found:
@@ -893,6 +896,8 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
 
     from islpy import align_two
 
+    from loopy.kernel.data import check_iname_tags
+
     last_idomains = None
     last_insn_inames = None
 
@@ -928,9 +933,8 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
         from loopy.kernel.data import LocalIndexTag
         if isinstance(insn, BarrierInstruction):
             # project out local-id-mapped inames, solves #94 on gitlab
-            non_lid_inames = frozenset(
-                [iname for iname in insn_inames if not isinstance(
-                    kernel.iname_to_tag.get(iname), LocalIndexTag)])
+            non_lid_inames = frozenset(iname for iname in insn_inames
+                if not check_iname_tags(kernel.iname_to_tags[iname], LocalIndexTag))
             insn_impl_domain = insn_impl_domain.project_out_except(
                 non_lid_inames, [dim_type.set])
 

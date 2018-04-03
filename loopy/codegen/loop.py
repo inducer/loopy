@@ -254,11 +254,16 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
     hw_inames_left = hw_inames_left[:]
     iname = hw_inames_left.pop()
 
-    tag = kernel.iname_to_tag.get(iname)
+    tags = kernel.iname_to_tags[iname]
 
     from loopy.symbolic import GroupHardwareAxisIndex, LocalHardwareAxisIndex
 
-    assert isinstance(tag, UniqueTag)
+    assert check_iname_tags(tags, UniqueTag)
+
+    if len(tags) > 1:
+        raise LoopyError("cannot have more than one UniqueTag")
+
+    tag, = tags
     if isinstance(tag, GroupIndexTag):
         hw_axis_expr = GroupHardwareAxisIndex(tag.axis)
     elif isinstance(tag, LocalIndexTag):
@@ -267,10 +272,10 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
         raise RuntimeError("unexpected hw tag type")
 
     other_inames_with_same_tag = [
-            other_iname for other_iname in kernel.all_inames()
-            if isinstance(kernel.iname_to_tag.get(other_iname), UniqueTag)
-            and kernel.iname_to_tag.get(other_iname).key == tag.key
-            and other_iname != iname]
+        other_iname for other_iname in kernel.all_inames()
+        if check_iname_tags(kernel.iname_to_tags[other_iname], UniqueTag)
+           and any(_tag.key == tag.key for _tag in kernel.iname_to_tags[other_iname])
+           and other_iname != iname]
 
     # {{{ 'implement' hardware axis boundaries
 
