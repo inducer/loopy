@@ -85,12 +85,16 @@ def privatize_temporaries_with_inames(
 
     Example::
 
+<<<<<<< HEAD:loopy/transform/privatize.py
         for imatrix, i
             acc = 0
             for k
                 acc = acc + a[imatrix, i, k] * vec[k]
             end
         end
+=======
+    from loopy.kernel.data import IlpBaseTag, VectorizeTag, check_iname_tags
+>>>>>>> d4c1d2e... change tags from set to tuple:loopy/transform/ilp.py
 
     might become::
 
@@ -188,7 +192,8 @@ def privatize_temporaries_with_inames(
 
         dim_tags = ["c"] * (len(shape) + len(extra_shape))
         for i, iname in enumerate(inames):
-            if isinstance(kernel.iname_to_tag.get(iname), VectorizeTag):
+            if check_iname_tags(kernel.iname_to_tags.get(iname, tuple()),
+                                VectorizeTag):
                 dim_tags[len(shape) + i] = "vec"
 
         new_temp_vars[tv.name] = tv.copy(shape=shape + extra_shape,

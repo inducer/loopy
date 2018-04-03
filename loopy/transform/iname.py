@@ -674,7 +674,7 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
     knl_iname_to_tags = kernel.iname_to_tags.copy()
     for iname, new_tag in six.iteritems(iname_to_tag):
-        old_tags = kernel.iname_to_tags.get(iname, set())
+        old_tags = kernel.iname_to_tags.get(iname, tuple())
 
         if iname not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % iname)
@@ -691,7 +691,10 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
                     "(likely because of participation in a precompute or "
                     "a reduction)" % iname)
 
-        knl_iname_to_tags[iname] = old_tags.union([new_tag])
+        if all(tag.key != new_tag.key for tag in old_tags):
+            old_tags = old_tags + (new_tag,)
+
+        knl_iname_to_tags[iname] = old_tags
 
     return kernel.copy(iname_to_tags=knl_iname_to_tags)
 

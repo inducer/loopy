@@ -242,7 +242,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
             all_inames_by_insns |= kernel.insn_inames(insn_id)
 
         hw_inames_left = [iname for iname in all_inames_by_insns
-                if check_iname_tags(kernel.iname_to_tags.get(iname, set()),
+                if check_iname_tags(kernel.iname_to_tags.get(iname, tuple()),
                                     HardwareConcurrentTag)]
 
     if not hw_inames_left:

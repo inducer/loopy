@@ -1132,7 +1132,7 @@ def get_visual_iname_order_embedding(kernel):
     # nest.
     ilp_inames = frozenset(iname
         for iname in kernel.iname_to_tags
-        if check_iname_tags(kernel.iname_to_tags.get(iname, set()), IlpBaseTag))
+        if check_iname_tags(kernel.iname_to_tags.get(iname, tuple()), IlpBaseTag))
 
     iname_trie = SetTrie()
 

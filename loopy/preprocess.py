@@ -147,7 +147,7 @@ def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
                 insn.assignee_subscript_deps())
             for iname in adeps & kernel.all_inames()
             if aname in tv_names
-            if isinstance(kernel.iname_to_tag.get(iname), tag_base))
+            if check_iname_tags(kernel.iname_to_tags.get(iname, tuple()), tag_base))
 
 
 def find_temporary_scope(kernel):
