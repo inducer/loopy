@@ -88,7 +88,7 @@ def get_usable_inames_for_conditional(kernel, sched_index):
         for iname in kernel.insn_inames(insn))
 
     for iname in inames_for_subkernel:
-        tags = kernel.iname_to_tags.get(iname, tuple())
+        tags = kernel.iname_to_tags[iname]
 
         # Parallel inames are defined within a subkernel, BUT:
         #

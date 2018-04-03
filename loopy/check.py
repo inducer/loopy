@@ -119,7 +119,7 @@ def check_for_double_use_of_hw_axes(kernel):
     for insn in kernel.instructions:
         insn_tag_keys = set()
         for iname in kernel.insn_inames(insn):
-            tags = kernel.iname_to_tags.get(iname, tuple())
+            tags = kernel.iname_to_tags[iname]
             for tag in get_iname_tags(tags, UniqueTag):
                 key = tag.key
                 if key in insn_tag_keys:
@@ -187,16 +187,14 @@ def check_for_write_races(kernel):
 
                 raceable_parallel_insn_inames = set(
                         iname for iname in kernel.insn_inames(insn)
-                        if check_iname_tags(
-                            kernel.iname_to_tags.get(iname, tuple()),
-                            ConcurrentTag))
+                        if check_iname_tags(kernel.iname_to_tags[iname], ConcurrentTag))
 
             elif assignee_name in kernel.temporary_variables:
                 temp_var = kernel.temporary_variables[assignee_name]
                 raceable_parallel_insn_inames = set(
                         iname for iname in kernel.insn_inames(insn)
                         if any(_is_racing_iname_tag(temp_var, tag)
-                            for tag in kernel.iname_to_tags.get(iname, tuple())))
+                            for tag in kernel.iname_to_tags[iname]))
 
             else:
                 raise LoopyError("invalid assignee name in instruction '%s'"
@@ -233,10 +231,8 @@ def check_for_data_dependent_parallel_bounds(kernel):
 
     for i, dom in enumerate(kernel.domains):
         dom_inames = set(dom.get_var_names(dim_type.set))
-        par_inames = set(iname
-                for iname in dom_inames
-                if check_iname_tags(
-            kernel.iname_to_tags.get(iname, tuple()), ConcurrentTag))
+        par_inames = set(iname for iname in dom_inames
+            if check_iname_tags(kernel.iname_to_tags[iname], ConcurrentTag))
 
         if not par_inames:
             continue
@@ -670,7 +666,7 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
             local_axes_used = set()
 
             for iname in kernel.insn_inames(insn):
-                tags = kernel.iname_to_tags.get(iname, tuple())
+                tags = kernel.iname_to_tags[iname]
 
                 if check_iname_tags(tags, LocalIndexTag):
                     tags = get_iname_tags(tags, LocalIndexTag)

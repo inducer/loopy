@@ -143,7 +143,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     .. attribute:: iname_to_tags
 
         A :class:`dict` mapping inames (as strings)
-        to set of instances of :class:`loopy.kernel.data.IndexTag`.
+        to tuple of instances of :class:`loopy.kernel.data.IndexTag`.
 
     .. attribute:: function_manglers
     .. attribute:: symbol_manglers
@@ -197,7 +197,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             assumptions=None,
             local_sizes={},
             temporary_variables={},
-            iname_to_tags={},
+            iname_to_tags=defaultdict(tuple),
             substitutions={},
             function_manglers=[
                 default_function_mangler,
@@ -711,7 +711,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         from loopy.kernel.data import HardwareConcurrentTag
 
         for iname in cond_inames:
-            tags = self.iname_to_tags.get(iname, tuple())
+            tags = self.iname_to_tags[iname]
             if check_iname_tags(tags, HardwareConcurrentTag):
                 tag_key_uses[tag.key].append(iname)
 
@@ -721,7 +721,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         multi_use_inames = set()
         for iname in cond_inames:
-            for tag in self.iname_to_tags.get(iname, tuple()):
+            for tag in self.iname_to_tags[iname]:
                 if isinstance(tag, HardwareConcurrentTag) and tag.key in multi_use_keys:
                     multi_use_inames.add(iname)
                     break
@@ -954,7 +954,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 AutoLocalIndexTagBase)
 
         for iname in all_inames_by_insns:
-            tags = self.iname_to_tags.get(iname, tuple())
+            tags = self.iname_to_tags[iname]
 
             if check_iname_tags(tags, GroupIndexTag):
                 tgt_dict = global_sizes
@@ -1179,7 +1179,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 lines.append("INAME IMPLEMENTATION TAGS:")
             for iname in natsorted(kernel.all_inames()):
                 line = "%s: %s" % (iname, ", ".join(
-                    tag.key for tag in kernel.iname_to_tags.get(iname, tuple())))
+                    tag.key for tag in kernel.iname_to_tags[iname]))
                 lines.append(line)
 
         if "variables" in what and kernel.temporary_variables:

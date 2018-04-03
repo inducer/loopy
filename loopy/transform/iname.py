@@ -674,7 +674,7 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
     knl_iname_to_tags = kernel.iname_to_tags.copy()
     for iname, new_tag in six.iteritems(iname_to_tag):
-        old_tags = kernel.iname_to_tags.get(iname, tuple())
+        old_tags = kernel.iname_to_tags[iname]
 
         if iname not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % iname)

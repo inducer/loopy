@@ -250,7 +250,7 @@ def find_loop_nest_around_map(kernel):
             if inner_iname == outer_iname:
                 continue
 
-            tags = kernel.iname_to_tags.get(outer_iname, tuple())
+            tags = kernel.iname_to_tags[outer_iname]
             if check_iname_tags(tags, IlpBaseTag):
                 # ILP tags are special because they are parallel tags
                 # and therefore 'in principle' nest around everything.
@@ -284,8 +284,7 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
                                    check_iname_tags)
     for insn in kernel.instructions:
         for iname in kernel.insn_inames(insn):
-            if check_iname_tags(kernel.iname_to_tags.get(iname, tuple()),
-                                ConcurrentTag):
+            if check_iname_tags(kernel.iname_to_tags[iname], ConcurrentTag):
                 continue
 
             iname_dep = result.setdefault(iname, set())
@@ -315,7 +314,7 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
                         # -> safe.
                         continue
 
-                    tags = kernel.iname_to_tags.get(dep_insn_iname, tuple())
+                    tags = kernel.iname_to_tags[dep_insn_iname]
                     if check_iname_tags(tags, (ConcurrentTag, IlpBaseTag, VectorizeTag)):
                         # Parallel tags don't really nest, so we'll disregard
                         # them here.

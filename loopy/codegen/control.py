@@ -128,7 +128,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
             ])
 
     elif isinstance(sched_item, EnterLoop):
-        tags = kernel.iname_to_tags.get(sched_item.iname, tuple())
+        tags = kernel.iname_to_tags[sched_item.iname]
 
         from loopy.codegen.loop import (
                 generate_unroll_loop,
