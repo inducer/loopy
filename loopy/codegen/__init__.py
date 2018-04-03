@@ -394,7 +394,7 @@ class PreambleInfo(ImmutableRecord):
 
 # {{{ main code generation entrypoint
 
-def generate_code_v2(kernel):
+def generate_code_v2(kernel, is_generating_master_kernel=True):
     """
     :returns: a :class:`CodeGenerationResult`
     """
@@ -491,7 +491,7 @@ def generate_code_v2(kernel):
                 + kernel.name
                 + kernel.target.host_program_name_suffix),
             schedule_index_end=len(kernel.schedule),
-            is_generating_master_kernel=True)
+            is_generating_master_kernel=is_generating_master_kernel)
 
     from loopy.codegen.result import generate_host_or_device_program
 
@@ -499,15 +499,14 @@ def generate_code_v2(kernel):
 
     auxiliary_dev_progs = []
 
-    from loopy.codegen.auxiliary_kernels import generate_auxiliary_kernel_device_code
     for insn in kernel.instructions:
         if isinstance(insn, CallInstruction):
             in_knl_callable = kernel.scoped_functions[insn.expression.function.name]
             from loopy.kernel.function_interface import CallableKernel
             if isinstance(in_knl_callable, CallableKernel):
-                auxiliary_dev_prog = generate_auxiliary_kernel_device_code(
-                        in_knl_callable.subkernel,
-                        kernel.target).device_programs[0].ast
+                auxiliary_dev_prog = generate_code_v2(
+                        in_knl_callable.subkernel.copy(target=kernel.target),
+                        is_generating_master_kernel=False).device_programs[0].ast
                 auxiliary_dev_progs.append(auxiliary_dev_prog)
         elif isinstance(insn, (Assignment, NoOpInstruction, Assignment,
                                BarrierInstruction, CInstruction,
@@ -515,7 +514,7 @@ def generate_code_v2(kernel):
             pass
         else:
             raise NotImplementedError("register_knl not made for %s type of "
-                    "instruciton" % (str(type(insn))))
+                    "instruction" % (str(type(insn))))
 
     # }}}
 
@@ -523,16 +522,12 @@ def generate_code_v2(kernel):
             codegen_state,
             schedule_index=0)
 
-    # {{{ pasting the auxiliary functions code to the first device program
-
     new_dev_prog = codegen_result.device_programs[0]
     for auxiliary_dev_prog in auxiliary_dev_progs:
         new_dev_prog = new_dev_prog.copy(
                 ast=Collection([auxiliary_dev_prog, new_dev_prog.ast]))
     new_device_programs = [new_dev_prog] + codegen_result.device_programs[1:]
     codegen_result = codegen_result.copy(device_programs=new_device_programs)
-
-    # }}}
 
     device_code_str = codegen_result.device_code()
 
