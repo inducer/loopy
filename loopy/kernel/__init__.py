@@ -27,6 +27,8 @@ THE SOFTWARE.
 import six
 from six.moves import range, zip, intern
 
+from collections import defaultdict
+
 import numpy as np
 from pytools import ImmutableRecordWithoutPickling, ImmutableRecord, memoize_method
 import islpy as isl
@@ -42,6 +44,7 @@ from loopy.library.function import (
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.tools import natsorted
 from loopy.diagnostic import StaticValueFindingError
+from loopy.kernel.data import check_iname_tags, get_iname_tags
 
 
 # {{{ unique var names
@@ -137,10 +140,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         :class:`loopy.TemporaryVariable`
         instances.
 
-    .. attribute:: iname_to_tag
+    .. attribute:: iname_to_tags
 
         A :class:`dict` mapping inames (as strings)
-        to instances of :class:`loopy.kernel.data.IndexTag`.
+        to set of instances of :class:`loopy.kernel.data.IndexTag`.
 
     .. attribute:: function_manglers
     .. attribute:: symbol_manglers
@@ -194,7 +197,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             assumptions=None,
             local_sizes={},
             temporary_variables={},
-            iname_to_tag={},
+            iname_to_tags={},
             substitutions={},
             function_manglers=[
                 default_function_mangler,
@@ -280,7 +283,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 silenced_warnings=silenced_warnings,
                 temporary_variables=temporary_variables,
                 local_sizes=local_sizes,
-                iname_to_tag=iname_to_tag,
+                iname_to_tags=iname_to_tags,
                 substitutions=substitutions,
                 cache_manager=cache_manager,
                 applied_iname_rewrites=applied_iname_rewrites,
@@ -703,15 +706,14 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         the other inames as well.)
         """
 
-        tag_key_uses = {}
+        tag_key_uses = defaultdict(list)
 
         from loopy.kernel.data import HardwareConcurrentTag
 
         for iname in cond_inames:
-            tag = self.iname_to_tag.get(iname)
-
-            if isinstance(tag, HardwareConcurrentTag):
-                tag_key_uses.setdefault(tag.key, []).append(iname)
+            tags = self.iname_to_tags.get(iname, set())
+            if check_iname_tags(tags, HardwareConcurrentTag):
+                tag_key_uses[tag.key].append(iname)
 
         multi_use_keys = set(
                 key for key, user_inames in six.iteritems(tag_key_uses)
@@ -719,9 +721,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         multi_use_inames = set()
         for iname in cond_inames:
-            tag = self.iname_to_tag.get(iname)
-            if isinstance(tag, HardwareConcurrentTag) and tag.key in multi_use_keys:
-                multi_use_inames.add(iname)
+            for tag in self.iname_to_tags.get(iname, set()):
+                if isinstance(tag, HardwareConcurrentTag) and tag.key in multi_use_keys:
+                    multi_use_inames.add(iname)
+                    break
 
         return frozenset(cond_inames - multi_use_inames)
 
@@ -951,20 +954,24 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 AutoLocalIndexTagBase)
 
         for iname in all_inames_by_insns:
-            tag = self.iname_to_tag.get(iname)
+            tags = self.iname_to_tags.get(iname, set())
 
-            if isinstance(tag, GroupIndexTag):
+            if check_iname_tags(tags, GroupIndexTag):
                 tgt_dict = global_sizes
-            elif isinstance(tag, LocalIndexTag):
+            elif check_iname_tags(tags, LocalIndexTag):
                 tgt_dict = local_sizes
-            elif isinstance(tag, AutoLocalIndexTagBase) and not ignore_auto:
+            elif check_iname_tags(tags, AutoLocalIndexTagBase) and not ignore_auto:
                 raise RuntimeError("cannot find grid sizes if automatic "
                         "local index tags are present")
             else:
-                tgt_dict = None
-
-            if tgt_dict is None:
                 continue
+
+            tags = get_iname_tags(tags, (GroupIndexTag, LocalIndexTag))
+
+            if len(tags) != 1:
+                raise LoopyError("Multiple axis tag not allowed")
+
+            tag, = tags
 
             size = self.get_iname_bounds(iname).size
 
@@ -1171,7 +1178,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             if show_labels:
                 lines.append("INAME IMPLEMENTATION TAGS:")
             for iname in natsorted(kernel.all_inames()):
-                line = "%s: %s" % (iname, kernel.iname_to_tag.get(iname))
+                line = "%s: %s" % (iname, ", ".join(kernel.iname_to_tags.get(iname, set())))
                 lines.append(line)
 
         if "variables" in what and kernel.temporary_variables:
@@ -1349,7 +1356,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             "assumptions",
             "local_sizes",
             "temporary_variables",
-            "iname_to_tag",
+            "iname_to_tags",
             "substitutions",
             "iname_slab_increments",
             "loop_priority",

@@ -36,6 +36,7 @@ from islpy import dim_type
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from pytools import memoize_on_first_arg
 from loopy.tools import natsorted
+from loopy.kernel.data import check_iname_tags
 
 import logging
 logger = logging.getLogger(__name__)
@@ -1129,9 +1130,9 @@ def get_visual_iname_order_embedding(kernel):
     from loopy.kernel.data import IlpBaseTag
     # Ignore ILP tagged inames, since they do not have to form a strict loop
     # nest.
-    ilp_inames = frozenset(
-        iname for iname in kernel.iname_to_tag
-        if isinstance(kernel.iname_to_tag[iname], IlpBaseTag))
+    ilp_inames = frozenset(iname
+        for iname in kernel.iname_to_tags
+        if check_iname_tags(kernel.iname_to_tags.get(iname, set()), IlpBaseTag))
 
     iname_trie = SetTrie()
 

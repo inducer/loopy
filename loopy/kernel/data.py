@@ -54,6 +54,15 @@ class auto(object):  # noqa
 
 # {{{ iname tags
 
+
+def check_iname_tags(tags, tag_type):
+    return any([isinstance(tag, tag_type) for tag in tags])
+
+
+def get_iname_tags(tags, tag_type):
+    return tuple(tag for tag in tags if isinstance(tag, tag_type))
+
+
 class IndexTag(ImmutableRecord):
     __slots__ = []
 

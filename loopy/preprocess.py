@@ -34,7 +34,7 @@ from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
-from loopy.kernel.data import make_assignment
+from loopy.kernel.data import make_assignment, check_iname_tags, get_iname_tags
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
 
@@ -135,9 +135,9 @@ def check_reduction_iname_uniqueness(kernel):
 # {{{ decide temporary scope
 
 def _get_compute_inames_tagged(kernel, insn, tag_base):
-    return set(iname
-            for iname in kernel.insn_inames(insn.id)
-            if isinstance(kernel.iname_to_tag.get(iname), tag_base))
+    return set(iname for iname in kernel.insn_inames(insn.id)
+               if check_iname_tags(kernel.iname_to_tags.get(iname, set()),
+                                   tag_base))
 
 
 def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
@@ -2154,8 +2154,8 @@ def preprocess_kernel(kernel, device=None):
     # {{{ check that there are no l.auto-tagged inames
 
     from loopy.kernel.data import AutoLocalIndexTagBase
-    for iname, tag in six.iteritems(kernel.iname_to_tag):
-        if (isinstance(tag, AutoLocalIndexTagBase)
+    for iname, tags in six.iteritems(kernel.iname_to_tags):
+        if (check_iname_tags(tags, AutoLocalIndexTagBase)
                  and iname in kernel.all_inames()):
             raise LoopyError("kernel with automatically-assigned "
                     "local axes passed to preprocessing")

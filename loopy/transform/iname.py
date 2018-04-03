@@ -33,6 +33,7 @@ from loopy.symbolic import (
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
+from loopy.kernel.data import check_iname_tags, get_iname_tags
 
 
 __doc__ = """
@@ -671,41 +672,28 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
     # }}}
 
-    knl_iname_to_tag = kernel.iname_to_tag.copy()
+    knl_iname_to_tags = kernel.iname_to_tags.copy()
     for iname, new_tag in six.iteritems(iname_to_tag):
-        old_tag = kernel.iname_to_tag.get(iname)
-
-        retag_ok = False
-
-        if isinstance(old_tag, (AutoLocalIndexTagBase, ForceSequentialTag)):
-            retag_ok = True
-
-        if not retag_ok and old_tag is not None and new_tag is None:
-            raise ValueError("cannot untag iname '%s'" % iname)
+        old_tags = kernel.iname_to_tags.get(iname, set())
 
         if iname not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % iname)
 
         if isinstance(new_tag, ConcurrentTag) \
-                and isinstance(old_tag, ForceSequentialTag):
+                and check_iname_tags(old_tags, ForceSequentialTag):
             raise ValueError("cannot tag '%s' as parallel--"
                     "iname requires sequential execution" % iname)
 
         if isinstance(new_tag, ForceSequentialTag) \
-                and isinstance(old_tag, ConcurrentTag):
+                and check_iname_tags(old_tags, ConcurrentTag):
             raise ValueError("'%s' is already tagged as parallel, "
                     "but is now prohibited from being parallel "
                     "(likely because of participation in a precompute or "
                     "a reduction)" % iname)
 
-        if (not retag_ok) and (not force) \
-                and old_tag is not None and (old_tag != new_tag):
-            raise LoopyError("'%s' is already tagged '%s'--cannot retag"
-                    % (iname, old_tag))
+        knl_iname_to_tags[iname] = old_tags.union([new_tag])
 
-        knl_iname_to_tag[iname] = new_tag
-
-    return kernel.copy(iname_to_tag=knl_iname_to_tag)
+    return kernel.copy(iname_to_tags=knl_iname_to_tags)
 
 # }}}
 

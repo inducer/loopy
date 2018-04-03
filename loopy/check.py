@@ -114,13 +114,13 @@ def check_loop_priority_inames_known(kernel):
 
 
 def check_for_double_use_of_hw_axes(kernel):
-    from loopy.kernel.data import UniqueTag
+    from loopy.kernel.data import UniqueTag, get_iname_tags
 
     for insn in kernel.instructions:
         insn_tag_keys = set()
         for iname in kernel.insn_inames(insn):
-            tag = kernel.iname_to_tag.get(iname)
-            if isinstance(tag, UniqueTag):
+            tags = kernel.iname_to_tags.get(iname, set())
+            for tag in get_iname_tags(tags, UniqueTag):
                 key = tag.key
                 if key in insn_tag_keys:
                     raise LoopyError("instruction '%s' has multiple "

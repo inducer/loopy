@@ -41,6 +41,7 @@ __doc__ = """
 # {{{ privatize temporaries with iname
 
 from loopy.symbolic import IdentityMapper
+from loopy.kernel.data import check_iname_tags, get_iname_tags
 
 
 class ExtraInameIndexInserter(IdentityMapper):
