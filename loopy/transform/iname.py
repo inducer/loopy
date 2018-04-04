@@ -44,6 +44,8 @@ __doc__ = """
 
 .. autofunction:: join_inames
 
+.. autofunction:: untag_inames
+
 .. autofunction:: tag_inames
 
 .. autofunction:: duplicate_inames
@@ -293,10 +295,9 @@ def _split_iname_backend(kernel, split_iname,
     kernel = ins.map_kernel(kernel)
     kernel = rule_mapping_context.finish_kernel(kernel)
 
-    if existing_tags:
-        for existing_tag in existing_tags:
-            kernel = tag_inames(kernel,
-                    {outer_iname: existing_tag, inner_iname: existing_tag})
+    for existing_tag in existing_tags:
+        kernel = tag_inames(kernel,
+                {outer_iname: existing_tag, inner_iname: existing_tag})
 
     return tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
 
@@ -592,6 +593,20 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
         kernel = tag_inames(kernel, {new_iname: tag})
 
     return kernel
+
+# }}}
+
+
+# {{{ untag inames
+
+def untag_inames(kernel, iname_to_untag, tag_type):
+
+    knl_iname_to_tags = kernel.iname_to_tags.copy()
+    old_tags = knl_iname_to_tags[iname_to_untag]
+    old_tags = set(tag for tag in old_tags if not isinstance(tag, tag_type))
+    knl_iname_to_tags[iname_to_untag] = old_tags
+
+    return kernel.copy(iname_to_tags=knl_iname_to_tags)
 
 # }}}
 

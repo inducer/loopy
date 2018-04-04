@@ -75,6 +75,8 @@ class LoopyKeyBuilder(KeyBuilderBase):
         for dict_key in sorted(six.iterkeys(key)):
             self.rec(key_hash, (dict_key, key[dict_key]))
 
+    update_for_defaultdict = update_for_dict
+
     def update_for_BasicSet(self, key_hash, key):  # noqa
         from islpy import Printer
         prn = Printer.to_str(key.get_ctx())

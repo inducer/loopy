@@ -779,7 +779,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             # Likely unbounded, automatic assignment is not
             # going to happen for this iname.
             new_iname_to_tags = kernel.iname_to_tags.copy()
-            new_iname_to_tags[iname] = tuple()
+            new_iname_to_tags[iname] = set()
             return assign_automatic_axes(
                     kernel.copy(iname_to_tags=new_iname_to_tags),
                     axis=recursion_axis)
@@ -821,13 +821,15 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         else:
             new_tag = LocalIndexTag(axis)
             if desired_length > local_size[axis]:
-                from loopy import split_iname
+                from loopy import split_iname, untag_inames
 
                 # Don't be tempted to switch the outer tag to unroll--this may
                 # generate tons of code on some examples.
 
                 return assign_automatic_axes(
-                        split_iname(kernel, iname, inner_length=local_size[axis],
+                        split_iname(
+                            lp.untag_inames(kernel, iname, AutoLocalIndexTagBase),
+                            iname, inner_length=local_size[axis],
                             outer_tag=None, inner_tag=new_tag,
                             do_tagged_check=False),
                         axis=recursion_axis, local_size=local_size)
@@ -836,7 +838,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             raise LoopyError("trying to reassign '%s'" % iname)
 
         new_iname_to_tags = kernel.iname_to_tags.copy()
-        new_iname_to_tags[iname] = (new_tag,)
+        new_iname_to_tags[iname] = set([new_tag])
         return assign_automatic_axes(kernel.copy(iname_to_tags=new_iname_to_tags),
                 axis=recursion_axis, local_size=local_size)
 
