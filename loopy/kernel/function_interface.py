@@ -1,6 +1,6 @@
 from __future__ import division, absolute_import
 
-__copyright__ = "Copyright (C) 2018 Andreas Kloeckner, Kaushik Kulkarni"
+__copyright__ = "Copyright (C) 2018 Andreas Klöckner, Kaushik Kulkarni"
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -407,9 +407,6 @@ class CallableOnScalar(InKernelCallable):
         from pymbolic import var
         return var(self.name_in_target)(*c_parameters)
 
-        raise NotImplementedError("emit_call_insn only applies for"
-                " CallableKernels")
-
     # }}}
 
 # }}}
@@ -456,12 +453,6 @@ class CallableKernel(InKernelCallable):
                 new_args.append(arg.copy(
                     dtype=arg_id_to_dtype[kw_to_pos[kw]]))
             else:
-                if kw in self.subkernel.get_read_variables():
-                    # need to know the type of the input arguments for type
-                    # inference
-                    raise LoopyError("Type of %s variable not supplied to the"
-                            " subkernel, which is needed for type"
-                            " inference." % kw)
                 new_args.append(arg)
 
         from loopy.type_inference import infer_unknown_types
@@ -472,6 +463,7 @@ class CallableKernel(InKernelCallable):
         # of the types of the arguments supplied
         specialized_kernel = infer_unknown_types(pre_specialized_subkernel,
                 expect_completion=True)
+
         new_arg_id_to_dtype = {}
         read_count = 0
         write_count = -1
@@ -506,8 +498,15 @@ class CallableKernel(InKernelCallable):
             if isinstance(id, str):
                 id = kw_to_pos[id]
             assert isinstance(id, int)
-            new_args[id] = new_args[id].copy(shape=descr.shape,
-                    dim_tags=descr.dim_tags)
+            if isinstance(descr, ArrayArgDescriptor):
+                new_args[id] = new_args[id].copy(shape=descr.shape,
+                        dim_tags=descr.dim_tags)
+            elif isinstance(descr, ValueArgDescriptor):
+                pass
+            else:
+                raise LoopyError("Descriptor must be either an instance of "
+                        "ArrayArgDescriptor or ValueArgDescriptor -- got %s." %
+                        type(descr))
 
         descriptor_specialized_knl = self.subkernel.copy(args=new_args)
 
@@ -561,7 +560,13 @@ class CallableKernel(InKernelCallable):
         # Note that we are not going to do any type casting in array calls.
         from loopy.expression import dtype_to_type_context
         from pymbolic.mapper.stringifier import PREC_NONE
+        from loopy.symbolic import SubArrayRef
+        from pymbolic import var
+
         c_parameters = [
+                expression_to_code_mapper(par, PREC_NONE,
+                    dtype_to_type_context(target, par_dtype),
+                    par_dtype).expr if isinstance(par, SubArrayRef) else
                 expression_to_code_mapper(par, PREC_NONE,
                     dtype_to_type_context(target, par_dtype),
                     par_dtype).expr

@@ -1842,13 +1842,11 @@ class FunctionScoper(IdentityMapper):
     Converts functions known to the kernel as instances of
     :class:`ScopedFunction`.
 
-    .. _example:
-
-        If given an expression of the form `sin(x) + unknown_function(y) +
-        log(z)`, then the mapper would return `ScopedFunction('sin')(x) +
-        unknown_function(y) + ScopedFunction('log')(z)`. Since the
-        `unknown_function` is not known to the kernel it is not marked as a
-        `ScopedFunction`.
+    **Example**: If given an expression of the form ``sin(x) + unknown_function(y) +
+    log(z)``, then the mapper would return ``ScopedFunction('sin')(x) +
+    unknown_function(y) + ScopedFunction('log')(z)``. Since the
+    ``unknown_function`` is not known to the kernel it is not marked as a
+    :class:`loopy.symbolic.ScopedFunction`.
     """
     def __init__(self, function_ids):
         self.function_ids = function_ids
@@ -1866,7 +1864,7 @@ class FunctionScoper(IdentityMapper):
                         for child in expr.parameters))
 
         # This is an unknown function as of yet, not modifying it.
-        return IdentityMapper.map_call(self, expr)
+        return super(FunctionScoper, self).map_call(expr)
 
     def map_call_with_kwargs(self, expr):
         from loopy.symbolic import ScopedFunction
@@ -1883,14 +1881,18 @@ class FunctionScoper(IdentityMapper):
                         )
 
         # This is an unknown function as of yet, not modifying it.
-        return IdentityMapper.map_call_with_kwargs(self, expr)
+        return super(FunctionScoper, self).map_call_with_kwargs(expr)
 
 
 class ScopedFunctionCollector(CombineMapper):
-    """ This mapper would collect all the instances of :class:`ScopedFunction`
-    occurring in the expression and written all of them as a :class:`set`.
     """
-    def __init__(self, already_scoped_functions={}):
+    Mapper to collect the instances of :class:`loopy.symbolic.ScopedFunction`
+    in an expression.
+
+    :returns: an instance of :class:`frozenset` of tuples ``(function_name,
+    in_kernel_callable)``
+    """
+    def __init__(self, already_scoped_functions=frozenset()):
         self.already_scoped_functions = already_scoped_functions
 
     def combine(self, values):

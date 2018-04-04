@@ -1070,6 +1070,20 @@ def is_array_call(assignees, expression):
     return False
 
 
+def get_array_call_assignee(assignee):
+    from pymbolic.primitives import Subscript, Variable
+    from loopy.symbolic import SubArrayRef
+    if isinstance(assignee, SubArrayRef):
+        return assignee
+    elif isinstance(assignee, Subscript):
+        return SubArrayRef((), assignee)
+    elif isinstance(assignee, Variable):
+        return SubArrayRef((), Subscript(assignee, 0))
+    else:
+        raise LoopyError("ArrayCall only takes Variable, Subscript or "
+                "SubArrayRef as its inputs")
+
+
 def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
     if len(assignees) > 1 or len(assignees) == 0 or is_array_call(assignees,
             expression):
@@ -1084,11 +1098,19 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
             raise LoopyError("right-hand side in multiple assignment must be "
                     "function call or reduction, got: '%s'" % expression)
 
-        return CallInstruction(
-                assignees=assignees,
-                expression=expression,
-                temp_var_types=temp_var_types,
-                **kwargs)
+        if not is_array_call(assignees, expression):
+            return CallInstruction(
+                    assignees=assignees,
+                    expression=expression,
+                    temp_var_types=temp_var_types,
+                    **kwargs)
+        else:
+            return CallInstruction(
+                    assignees=tuple(get_array_call_assignee(assignee) for
+                        assignee in assignees),
+                    expression=expression,
+                    temp_var_types=temp_var_types,
+                    **kwargs)
 
     else:
         return Assignment(

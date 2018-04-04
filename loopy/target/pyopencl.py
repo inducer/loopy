@@ -242,7 +242,7 @@ def pyopencl_with_types(in_knl_callable, arg_id_to_dtype):
 
     for id in arg_id_to_dtype:
         if not -1 <= id <= 0:
-            raise LoopyError("%s can take only one argument." % name)
+            return None
 
     if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
         # the types provided aren't mature enough to specialize the
@@ -809,10 +809,13 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
         if new_callable is not None:
             return new_callable
 
-        new_callable = pyopencl_with_types(in_knl_callable, arg_id_to_dtype)
+        return pyopencl_with_types(in_knl_callable, arg_id_to_dtype)
+        '''
+        # Till the time we have written the RNG with types
         if new_callable is not None:
             return new_callable
         return random123_with_types(in_knl_callable, arg_id_to_dtype)
+        '''
 
     # }}}
 

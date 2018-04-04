@@ -347,6 +347,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     @property
     def function_identifiers(self):
+        """
+        Returns the function identifiers as an instance of :class:`set` which
+        are known to the kernel at creation time.
+        """
         return self.target.get_device_ast_builder().function_identifiers() | (
                 set(["indexof", "indexof_vec", "make_tuple"]))
 

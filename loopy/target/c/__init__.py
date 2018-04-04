@@ -338,7 +338,7 @@ class _ConstRestrictPointer(Pointer):
 
 
 class _ConstPointer(Pointer):
-    def get_decl_pait(self):
+    def get_decl_pair(self):
         sub_tp, sub_decl = self.subdecl.get_decl_pair()
         return sub_tp, ("*const %s" % sub_decl)
 
@@ -828,6 +828,7 @@ class CASTBuilder(ASTBuilderBase):
         assert shape == ()
 
         result = POD(self, dtype, name)
+
         if not is_written:
             from cgen import Const
             result = Const(result)

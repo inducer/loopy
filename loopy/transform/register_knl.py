@@ -98,7 +98,7 @@ def register_callable_kernel(parent, function_name, child):
                 "use a different name for registering the subkernel")
 
     scoped_functions[function_name] = CallableKernel(name=function_name,
-        subkernel=child)
+        subkernel=child.copy(target=parent.target))
 
     # returning the parent kernel with the new scoped function dictionary
     return parent.copy(scoped_functions=scoped_functions,

@@ -52,7 +52,7 @@ def get_return_types_as_tuple(arg_id_to_dtype):
     """
     return_arg_id_to_dtype = dict((id, dtype) for id, dtype in
             arg_id_to_dtype.items() if (isinstance(id, int) and id < 0))
-    return_arg_pos = sorted(return_arg_id_to_dtype.keys())
+    return_arg_pos = sorted(return_arg_id_to_dtype.keys(), reverse=True)
 
     return tuple(return_arg_id_to_dtype[id] for id in return_arg_pos)
 
@@ -293,6 +293,9 @@ class TypeInferenceMapper(CombineMapper):
             self.specialized_functions[expr] = in_knl_callable
 
             new_arg_id_to_dtype = in_knl_callable.arg_id_to_dtype
+
+            if new_arg_id_to_dtype is None:
+                return []
 
             # collecting result dtypes in order of the assignees
             if -1 in new_arg_id_to_dtype and new_arg_id_to_dtype[-1] is not None:

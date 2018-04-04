@@ -1942,9 +1942,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
     # TODO: remove unused inames...
 
-    kernel = (
-            _hackily_ensure_multi_assignment_return_values_are_scoped_private(
-                kernel))
+    # kernel = (
+    #         _hackily_ensure_multi_assignment_return_values_are_scoped_private(
+    #             kernel))
 
     return kernel
 
