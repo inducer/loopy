@@ -828,7 +828,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 
                 return assign_automatic_axes(
                         split_iname(
-                            lp.untag_inames(kernel, iname, AutoLocalIndexTagBase),
+                            untag_inames(kernel, iname, AutoLocalIndexTagBase),
                             iname, inner_length=local_size[axis],
                             outer_tag=None, inner_tag=new_tag,
                             do_tagged_check=False),

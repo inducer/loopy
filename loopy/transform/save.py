@@ -241,14 +241,14 @@ class TemporarySaver(object):
         self.insn_name_gen = kernel.get_instruction_id_generator()
 
         # These fields keep track of updates to the kernel.
+        from collections import defaultdict
         self.insns_to_insert = []
         self.insns_to_update = {}
         self.extra_args_to_add = {}
-        self.updated_iname_to_tags = {}
+        self.updated_iname_to_tags = defaultdict(set)
         self.updated_temporary_variables = {}
 
         # temporary name -> save or reload insn ids
-        from collections import defaultdict
         self.temporary_to_save_ids = defaultdict(set)
         self.temporary_to_reload_ids = defaultdict(set)
         self.subkernel_to_newly_added_insn_ids = defaultdict(set)
@@ -677,7 +677,7 @@ class TemporarySaver(object):
                 # If the temporary has local scope, then loads / stores can
                 # be done in parallel.
                 from loopy.kernel.data import AutoFitLocalIndexTag
-                iname_to_tags[new_iname] = (AutoFitLocalIndexTag(),)
+                iname_to_tags[new_iname] = set(AutoFitLocalIndexTag())
 
             dim_inames.append(new_iname)
 
@@ -707,7 +707,7 @@ class TemporarySaver(object):
                 &
                 aff[new_iname].lt_set(aff_from_expr(domain.space, dim)))
 
-            self.updated_iname_to_tags[new_iname] = (hw_tag,)
+            self.updated_iname_to_tags[new_iname] = set([hw_tag])
             hw_inames.append(new_iname)
 
         # The operations on the domain above return a Set object, but the
