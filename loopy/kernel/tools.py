@@ -36,7 +36,7 @@ from islpy import dim_type
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from pytools import memoize_on_first_arg
 from loopy.tools import natsorted
-from loopy.kernel.data import check_iname_tags
+from loopy.kernel.data import get_iname_tags
 
 import logging
 logger = logging.getLogger(__name__)
@@ -632,7 +632,7 @@ def is_domain_dependent_on_inames(kernel, domain_index, inames):
 # {{{ rank inames by stride
 
 def get_auto_axis_iname_ranking_by_stride(kernel, insn):
-    from loopy.kernel.data import ImageArg, ValueArg, check_iname_tags
+    from loopy.kernel.data import ImageArg, ValueArg, get_iname_tags
 
     approximate_arg_values = {}
     for arg in kernel.args:
@@ -677,8 +677,8 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 
     from loopy.kernel.data import AutoLocalIndexTagBase
     auto_axis_inames = set(
-            iname for iname in kernel.insn_inames(insn)
-            if check_iname_tags(kernel.iname_to_tags[iname], AutoLocalIndexTagBase))
+        iname for iname in kernel.insn_inames(insn)
+        if get_iname_tags(kernel.iname_to_tags[iname], AutoLocalIndexTagBase))
 
     # }}}
 
@@ -754,7 +754,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
     # to set() from tuple()
 
     from loopy.kernel.data import (AutoLocalIndexTagBase, LocalIndexTag,
-                                   check_iname_tags, get_iname_tags)
+                                   get_iname_tags)
 
     # Realize that at this point in time, axis lengths are already
     # fixed. So we compute them once and pass them to our recursive
@@ -832,7 +832,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
                             do_tagged_check=False),
                         axis=recursion_axis, local_size=local_size)
 
-        if not check_iname_tags(kernel.iname_to_tags[iname], AutoLocalIndexTagBase):
+        if not get_iname_tags(kernel.iname_to_tags[iname], AutoLocalIndexTagBase):
             raise LoopyError("trying to reassign '%s'" % iname)
 
         new_iname_to_tags = kernel.iname_to_tags.copy()
@@ -855,7 +855,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 
         auto_axis_inames = [
             iname for iname in kernel.insn_inames(insn)
-            if check_iname_tags(kernel.iname_to_tags[iname], AutoLocalIndexTagBase)]
+            if get_iname_tags(kernel.iname_to_tags[iname], AutoLocalIndexTagBase)]
 
         if not auto_axis_inames:
             continue
@@ -878,7 +878,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
                 if iname_ranking is not None:
                     for iname in iname_ranking:
                         prev_tags = kernel.iname_to_tags[iname]
-                        if check_iname_tags(prev_tags, AutoLocalIndexTagBase):
+                        if get_iname_tags(prev_tags, AutoLocalIndexTagBase):
                             return assign_axis(axis, iname, axis)
 
         else:
@@ -1134,7 +1134,7 @@ def get_visual_iname_order_embedding(kernel):
     # nest.
     ilp_inames = frozenset(iname
         for iname in kernel.iname_to_tags
-        if check_iname_tags(kernel.iname_to_tags[iname], IlpBaseTag))
+        if get_iname_tags(kernel.iname_to_tags[iname], IlpBaseTag))
 
     iname_trie = SetTrie()
 

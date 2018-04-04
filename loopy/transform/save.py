@@ -403,26 +403,20 @@ class TemporarySaver(object):
                     continue
 
                 from loopy.kernel.data import (GroupIndexTag, LocalIndexTag,
-                        ConcurrentTag, get_iname_tags, check_iname_tags)
+                        ConcurrentTag, get_iname_tags)
 
-                if check_iname_tags(tags, GroupIndexTag):
-                    tags = get_iname_tags(tags, GroupIndexTag)
-                    if len(tags) > 1:
-                        raise LoopyError("cannot have more than one GroupIndexTags")
-                    tag, = tags
+                if get_iname_tags(tags, GroupIndexTag):
+                    tag, = get_iname_tags(tags, GroupIndexTag, 1)
                     my_group_tags.append(tag)
-                elif check_iname_tags(tags, LocalIndexTag):
-                    tags = get_iname_tags(tags, LocalIndexTag)
-                    if len(tags) > 1:
-                        raise LoopyError("cannot have more than one LocalIndexTags")
-                    tag, = tags
+                elif get_iname_tags(tags, LocalIndexTag):
+                    tag, = get_iname_tags(tags, LocalIndexTag, 1)
                     my_local_tags.append(tag)
-                elif check_iname_tags(tags, ConcurrentTag):
+                elif get_iname_tags(tags, ConcurrentTag):
                     raise LoopyError(
                         "iname '%s' is tagged with '%s' - only "
                         "group and local tags are supported for "
                         "auto save/reload of temporaries" %
-                        (iname, ", ".join(str(tag) for tag in tags)))
+                        (iname, tags))
 
             if group_tags is None:
                 group_tags = _sortedtags(my_group_tags)

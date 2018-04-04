@@ -418,33 +418,33 @@ class ISPCASTBuilder(CASTBuilder):
 
             new_terms = []
 
-            from loopy.kernel.data import LocalIndexTag, check_iname_tags, get_iname_tags
+            from loopy.kernel.data import LocalIndexTag, get_iname_tags
             from loopy.symbolic import get_dependencies
 
             saw_l0 = False
             for term in terms:
                 if (isinstance(term, Variable)
-                    and check_iname_tags(kernel.iname_to_tags[term.name], LocalIndexTag)):
-                        tags = get_iname_tags(kernel.iname_to_tags[term.name], LocalIndexTag)
-                        if len(tags) > 1:
-                            raise LoopyError("cannot have more than one LocalIndexTags")
-                        tag, = tags
+                        and get_iname_tags(
+                            kernel.iname_to_tags[term.name], LocalIndexTag)):
+                        tag, = get_iname_tags(kernel.iname_to_tags[term.name],
+                                              LocalIndexTag, 1)
                         if tag.axis == 0:
                             if saw_l0:
-                                raise LoopyError("streaming store must have stride 1 "
-                                        "in local index, got: %s" % subscript)
+                                raise LoopyError(
+                                    "streaming store must have stride 1 in "
+                                    "local index, got: %s" % subscript)
                             saw_l0 = True
                             continue
                 else:
                     for dep in get_dependencies(term):
-                        if check_iname_tags(kernel.iname_to_tags[dep], LocalIndexTag):
-                            tags = get_iname_tags(kernel.iname_to_tags[dep], LocalIndexTag)
-                            if len(tags) > 1:
-                                raise LoopyError("cannot have more than one LocalIndexTags")
-                            tag, = tags
+                        if get_iname_tags(
+                                kernel.iname_to_tags[dep], LocalIndexTag):
+                            tag, = get_iname_tags(kernel.iname_to_tags[dep],
+                                                  LocalIndexTag, 1)
                             if tag.axis == 0:
-                                raise LoopyError("streaming store must have stride 1 "
-                                        "in local index, got: %s" % subscript)
+                                raise LoopyError(
+                                    "streaming store must have stride 1 in "
+                                    "local index, got: %s" % subscript)
 
                     new_terms.append(term)
 

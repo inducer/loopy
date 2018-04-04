@@ -41,7 +41,6 @@ __doc__ = """
 # {{{ privatize temporaries with iname
 
 from loopy.symbolic import IdentityMapper
-from loopy.kernel.data import check_iname_tags, get_iname_tags
 
 
 class ExtraInameIndexInserter(IdentityMapper):
@@ -86,6 +85,7 @@ def privatize_temporaries_with_inames(
     Example::
 
 <<<<<<< HEAD:loopy/transform/privatize.py
+<<<<<<< HEAD:loopy/transform/privatize.py
         for imatrix, i
             acc = 0
             for k
@@ -95,6 +95,9 @@ def privatize_temporaries_with_inames(
 =======
     from loopy.kernel.data import IlpBaseTag, VectorizeTag, check_iname_tags
 >>>>>>> d4c1d2e... change tags from set to tuple:loopy/transform/ilp.py
+=======
+    from loopy.kernel.data import IlpBaseTag, VectorizeTag, get_iname_tags
+>>>>>>> 38a4424... change tags from tuple to set:loopy/transform/ilp.py
 
     might become::
 
@@ -192,7 +195,7 @@ def privatize_temporaries_with_inames(
 
         dim_tags = ["c"] * (len(shape) + len(extra_shape))
         for i, iname in enumerate(inames):
-            if check_iname_tags(kernel.iname_to_tags[iname], VectorizeTag):
+            if get_iname_tags(kernel.iname_to_tags[iname], VectorizeTag):
                 dim_tags[len(shape) + i] = "vec"
 
         new_temp_vars[tv.name] = tv.copy(shape=shape + extra_shape,

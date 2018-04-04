@@ -44,7 +44,7 @@ from loopy.library.function import (
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.tools import natsorted
 from loopy.diagnostic import StaticValueFindingError
-from loopy.kernel.data import check_iname_tags, get_iname_tags
+from loopy.kernel.data import get_iname_tags
 
 
 # {{{ unique var names
@@ -197,7 +197,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             assumptions=None,
             local_sizes={},
             temporary_variables={},
-            iname_to_tags=defaultdict(tuple),
+            iname_to_tags=defaultdict(set),
             substitutions={},
             function_manglers=[
                 default_function_mangler,
@@ -711,11 +711,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         from loopy.kernel.data import HardwareConcurrentTag
 
         for iname in cond_inames:
-            tags = self.iname_to_tags[iname]
-            if check_iname_tags(tags, HardwareConcurrentTag):
-                tags = get_iname_tags(tags, HardwareConcurrentTag)
-                if len(tags) > 1:
-                    raise LoopyError("cannot have more than one HardwareConcurentTags")
+            tags = get_iname_tags(self.iname_to_tags[iname],
+                                  HardwareConcurrentTag, 1)
+            if tags:
                 tag, = tags
                 tag_key_uses[tag.key].append(iname)
 
@@ -725,8 +723,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         multi_use_inames = set()
         for iname in cond_inames:
-            for tag in self.iname_to_tags[iname]:
-                if isinstance(tag, HardwareConcurrentTag) and tag.key in multi_use_keys:
+            tags = get_iname_tags(self.iname_to_tags[iname], HardwareConcurrentTag)
+            if tags:
+                tag, = get_iname_tags(tags, HardwareConcurrentTag, 1)
+                if tag.key in multi_use_keys:
                     multi_use_inames.add(iname)
                     break
 
@@ -960,22 +960,17 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         for iname in all_inames_by_insns:
             tags = self.iname_to_tags[iname]
 
-            if check_iname_tags(tags, GroupIndexTag):
+            if get_iname_tags(tags, GroupIndexTag):
                 tgt_dict = global_sizes
-            elif check_iname_tags(tags, LocalIndexTag):
+            elif get_iname_tags(tags, LocalIndexTag):
                 tgt_dict = local_sizes
-            elif check_iname_tags(tags, AutoLocalIndexTagBase) and not ignore_auto:
+            elif get_iname_tags(tags, AutoLocalIndexTagBase) and not ignore_auto:
                 raise RuntimeError("cannot find grid sizes if automatic "
                         "local index tags are present")
             else:
                 continue
 
-            tags = get_iname_tags(tags, (GroupIndexTag, LocalIndexTag))
-
-            if len(tags) != 1:
-                raise LoopyError("Multiple axis tag not allowed")
-
-            tag, = tags
+            tag, = get_iname_tags(tags, (GroupIndexTag, LocalIndexTag), 1)
 
             size = self.get_iname_bounds(iname).size
 

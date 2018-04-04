@@ -1182,12 +1182,11 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
     l_used = set()
 
     from loopy.kernel.data import (LocalIndexTag, GroupIndexTag,
-                                   get_iname_tags, check_iname_tags)
+                                   get_iname_tags)
     for iname in knl.insn_inames(insn):
-        tags = get_iname_tags(knl.iname_to_tags[iname], (LocalIndexTag, GroupIndexTag))
+        tags = get_iname_tags(knl.iname_to_tags[iname],
+                              (LocalIndexTag, GroupIndexTag), 1)
         if tags:
-            if len(tags) > 1:
-                raise LoopyError("cannot have more than one UniqueTags")
             tag, = tags
             if isinstance(tag, LocalIndexTag):
                 l_used.add(tag.axis)
@@ -1221,9 +1220,9 @@ def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False)
     insn_inames = knl.insn_inames(insn)
 
     if disregard_local_axes:
-        from loopy.kernel.data import LocalIndexTag, check_iname_tags
+        from loopy.kernel.data import LocalIndexTag, get_iname_tags
         insn_inames = [iname for iname in insn_inames if not
-                check_iname_tags(kernel.iname_to_tags[iname], LocalIndexTag)]
+                get_iname_tags(knl.iname_to_tags[iname], LocalIndexTag)]
 
     inames_domain = knl.get_inames_domain(insn_inames)
     domain = (inames_domain.project_out_except(

@@ -55,19 +55,24 @@ class auto(object):  # noqa
 # {{{ iname tags
 
 
-def check_iname_tags(tags, tag_type):
-    return any([isinstance(tag, tag_type) for tag in tags])
-
-
-def get_iname_tags(tags, tag_type):
-    return tuple(tag for tag in tags if isinstance(tag, tag_type))
+def get_iname_tags(tags, tag_type, max_num=None, min_num=None):
+    result = set(tag for tag in tags if isinstance(tag, tag_type))
+    if max_num:
+        if len(result) > max_num:
+            raise LoopyError("cannot have more than {0} tags"
+                    "of type(s): {1}".format(max_num, tag_type))
+    if min_num:
+        if len(result) < min_num:
+            raise LoopyError("must have more than {0} tags"
+                    "of type(s): {1}".format(max_num, tag_type))
+    return result
 
 
 class IndexTag(ImmutableRecord):
     __slots__ = []
 
     def __hash__(self):
-        raise RuntimeError("use .key to hash index tags")
+        return hash(self.key)
 
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with

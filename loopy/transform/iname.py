@@ -33,7 +33,6 @@ from loopy.symbolic import (
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
-from loopy.kernel.data import check_iname_tags, get_iname_tags
 
 
 __doc__ = """
@@ -177,9 +176,9 @@ def _split_iname_backend(kernel, split_iname,
     """
 
     existing_tags = kernel.iname_to_tags[split_iname]
-    from loopy.kernel.data import ForceSequentialTag, check_iname_tags
+    from loopy.kernel.data import ForceSequentialTag, get_iname_tags
     if (do_tagged_check and existing_tags
-            and not check_iname_tags(existing_tags, ForceSequentialTag)):
+            and not get_iname_tags(existing_tags, ForceSequentialTag)):
         raise LoopyError("cannot split already tagged iname '%s'" % split_iname)
 
     if split_iname not in kernel.all_inames():
@@ -648,8 +647,8 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
     iname_to_tag = [(iname, parse_tag(tag)) for iname, tag in iname_to_tag]
 
-    from loopy.kernel.data import (ConcurrentTag, AutoLocalIndexTagBase,
-            ForceSequentialTag)
+    from loopy.kernel.data import (ConcurrentTag, ForceSequentialTag,
+                                   get_iname_tags)
 
     # {{{ globbing
 
@@ -680,27 +679,27 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
     knl_iname_to_tags = kernel.iname_to_tags.copy()
     for iname, new_tag in six.iteritems(iname_to_tag):
+        if not new_tag:
+            continue
+
         old_tags = kernel.iname_to_tags[iname]
 
         if iname not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % iname)
 
-        if isinstance(new_tag, ConcurrentTag) \
-                and check_iname_tags(old_tags, ForceSequentialTag):
+        if (isinstance(new_tag, ConcurrentTag)
+                and get_iname_tags(old_tags, ForceSequentialTag)):
             raise ValueError("cannot tag '%s' as parallel--"
                     "iname requires sequential execution" % iname)
 
-        if isinstance(new_tag, ForceSequentialTag) \
-                and check_iname_tags(old_tags, ConcurrentTag):
+        if (isinstance(new_tag, ForceSequentialTag)
+                and get_iname_tags(old_tags, ConcurrentTag)):
             raise ValueError("'%s' is already tagged as parallel, "
                     "but is now prohibited from being parallel "
                     "(likely because of participation in a precompute or "
                     "a reduction)" % iname)
 
-        if new_tag and all(tag.key != new_tag.key for tag in old_tags):
-            old_tags = old_tags + (new_tag,)
-
-        knl_iname_to_tags[iname] = old_tags
+        knl_iname_to_tags[iname] = old_tags.union([new_tag])
 
     return kernel.copy(iname_to_tags=knl_iname_to_tags)
 
@@ -982,9 +981,9 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_iname_sets):
         # Check whether this iname has a parallel tag and discard it if so
-        from loopy.kernel.data import ConcurrentTag, check_iname_tags
+        from loopy.kernel.data import ConcurrentTag, get_iname_tags
         if (iname in knl.iname_to_tags
-                    and check_iname_tags(knl.iname_to_tags[iname], ConcurrentTag)):
+                and get_iname_tags(knl.iname_to_tags[iname], ConcurrentTag)):
             continue
 
         # If we find a duplication option and to not use boostable_into
@@ -1501,7 +1500,7 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
     """
     used_axes = set()
 
-    from loopy.kernel.data import GroupIndexTag, LocalIndexTag, check_iname_tags
+    from loopy.kernel.data import GroupIndexTag, LocalIndexTag, get_iname_tags
 
     if isinstance(kind, str):
         found = False
@@ -1521,7 +1520,7 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
     for insn in insns:
         for iname in kernel.insn_inames(insn):
             dim_tags = kernel.iname_to_tags[iname]
-            if check_iname_tags(dim_tags, kind):
+            if get_iname_tags(dim_tags, kind):
                 used_axes.add(kind.axis)
 
     i = 0

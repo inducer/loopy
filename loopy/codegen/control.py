@@ -41,7 +41,7 @@ def get_admissible_conditional_inames_for(codegen_state, sched_index):
     kernel = codegen_state.kernel
 
     from loopy.kernel.data import (LocalIndexTag, HardwareConcurrentTag,
-                                   check_iname_tags)
+                                   get_iname_tags)
 
     from loopy.schedule import find_active_inames_at, has_barrier_within
     result = find_active_inames_at(kernel, sched_index)
@@ -49,9 +49,9 @@ def get_admissible_conditional_inames_for(codegen_state, sched_index):
     has_barrier = has_barrier_within(kernel, sched_index)
 
     for iname, tags in six.iteritems(kernel.iname_to_tags):
-        if (check_iname_tags(tags, HardwareConcurrentTag)
+        if (get_iname_tags(tags, HardwareConcurrentTag)
                 and codegen_state.is_generating_device_code):
-            if not has_barrier or not check_iname_tags(tags, LocalIndexTag):
+            if not has_barrier or not get_iname_tags(tags, LocalIndexTag):
                 result.add(iname)
 
     return frozenset(result)
@@ -136,13 +136,14 @@ def generate_code_for_sched_index(codegen_state, sched_index):
                 generate_vectorize_loop,
                 generate_sequential_loop_dim_code)
 
-        from loopy.kernel.data import (UnrolledIlpTag, UnrollTag, ForceSequentialTag,
-                LoopedIlpTag, VectorizeTag, InOrderSequentialSequentialTag, check_iname_tags)
-        if check_iname_tags(tags, (UnrollTag, UnrolledIlpTag)):
+        from loopy.kernel.data import (UnrolledIlpTag, UnrollTag,
+                ForceSequentialTag, LoopedIlpTag, VectorizeTag,
+                InOrderSequentialSequentialTag, get_iname_tags)
+        if get_iname_tags(tags, (UnrollTag, UnrolledIlpTag)):
             func = generate_unroll_loop
-        elif check_iname_tags(tags, VectorizeTag):
+        elif get_iname_tags(tags, VectorizeTag):
             func = generate_vectorize_loop
-        elif len(tags) == 0 or check_iname_tags(tags, (LoopedIlpTag,
+        elif len(tags) == 0 or get_iname_tags(tags, (LoopedIlpTag,
                     ForceSequentialTag, InOrderSequentialSequentialTag)):
             func = generate_sequential_loop_dim_code
         else:

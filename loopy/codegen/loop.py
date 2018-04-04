@@ -231,7 +231,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
     kernel = codegen_state.kernel
 
     from loopy.kernel.data import (UniqueTag, HardwareConcurrentTag,
-                LocalIndexTag, GroupIndexTag, check_iname_tags)
+                LocalIndexTag, GroupIndexTag, get_iname_tags)
 
     from loopy.schedule import get_insn_ids_for_block_at
     insn_ids_for_block = get_insn_ids_for_block_at(kernel.schedule, schedule_index)
@@ -242,7 +242,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
             all_inames_by_insns |= kernel.insn_inames(insn_id)
 
         hw_inames_left = [iname for iname in all_inames_by_insns
-                if check_iname_tags(kernel.iname_to_tags[iname],
+                if get_iname_tags(kernel.iname_to_tags[iname],
                                     HardwareConcurrentTag)]
 
     if not hw_inames_left:
@@ -258,12 +258,8 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
 
     from loopy.symbolic import GroupHardwareAxisIndex, LocalHardwareAxisIndex
 
-    assert check_iname_tags(tags, UniqueTag)
+    tag, = get_iname_tags(tags, UniqueTag, max_num=1, min_num=1)
 
-    if len(tags) > 1:
-        raise LoopyError("cannot have more than one UniqueTag")
-
-    tag, = tags
     if isinstance(tag, GroupIndexTag):
         hw_axis_expr = GroupHardwareAxisIndex(tag.axis)
     elif isinstance(tag, LocalIndexTag):
@@ -271,11 +267,14 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
     else:
         raise RuntimeError("unexpected hw tag type")
 
+    # TODO: get rid of None
+
     other_inames_with_same_tag = [
         other_iname for other_iname in kernel.all_inames()
-        if check_iname_tags(kernel.iname_to_tags[other_iname], UniqueTag)
-           and any(_tag.key == tag.key for _tag in kernel.iname_to_tags[other_iname])
-           and other_iname != iname]
+        if (get_iname_tags(kernel.iname_to_tags[other_iname], UniqueTag)
+            and other_iname != iname
+            and any(_tag.key == tag.key
+                    for _tag in kernel.iname_to_tags[other_iname]))]
 
     # {{{ 'implement' hardware axis boundaries
 

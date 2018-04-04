@@ -34,7 +34,7 @@ from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
-from loopy.kernel.data import make_assignment, check_iname_tags, get_iname_tags
+from loopy.kernel.data import make_assignment, get_iname_tags
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
 
@@ -136,7 +136,7 @@ def check_reduction_iname_uniqueness(kernel):
 
 def _get_compute_inames_tagged(kernel, insn, tag_base):
     return set(iname for iname in kernel.insn_inames(insn.id)
-               if check_iname_tags(kernel.iname_to_tags[iname], tag_base))
+               if get_iname_tags(kernel.iname_to_tags[iname], tag_base))
 
 
 def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
@@ -146,7 +146,7 @@ def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
                 insn.assignee_subscript_deps())
             for iname in adeps & kernel.all_inames()
             if aname in tv_names
-            if check_iname_tags(kernel.iname_to_tags[iname], tag_base))
+            if get_iname_tags(kernel.iname_to_tags[iname], tag_base))
 
 
 def find_temporary_scope(kernel):
@@ -291,20 +291,20 @@ def _classify_reduction_inames(kernel, inames):
 
     from loopy.kernel.data import (
             LocalIndexTagBase, UnrolledIlpTag, UnrollTag, VectorizeTag,
-            ConcurrentTag, check_iname_tags)
+            ConcurrentTag, get_iname_tags)
 
     for iname in inames:
         iname_tags = kernel.iname_to_tags[iname]
 
-        if check_iname_tags(iname_tags, (UnrollTag, UnrolledIlpTag)):
+        if get_iname_tags(iname_tags, (UnrollTag, UnrolledIlpTag)):
             # These are nominally parallel, but we can live with
             # them as sequential.
             sequential.append(iname)
 
-        elif check_iname_tags(iname_tags, LocalIndexTagBase):
+        elif get_iname_tags(iname_tags, LocalIndexTagBase):
             local_par.append(iname)
 
-        elif check_iname_tags(iname_tags, (ConcurrentTag, VectorizeTag)):
+        elif get_iname_tags(iname_tags, (ConcurrentTag, VectorizeTag)):
             nonlocal_par.append(iname)
 
         else:
@@ -1136,9 +1136,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
-        from loopy.kernel.data import LocalIndexTagBase, check_iname_tags
+        from loopy.kernel.data import LocalIndexTagBase, get_iname_tags
         outer_local_inames = tuple(oiname for oiname in outer_insn_inames
-                if check_iname_tags(kernel.iname_to_tags[oiname], LocalIndexTagBase))
+                if get_iname_tags(kernel.iname_to_tags[oiname], LocalIndexTagBase))
 
         from pymbolic import var
         outer_local_iname_vars = tuple(
@@ -1471,9 +1471,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
-        from loopy.kernel.data import LocalIndexTagBase, check_iname_tags
+        from loopy.kernel.data import LocalIndexTagBase, get_iname_tags
         outer_local_inames = tuple(oiname for oiname in outer_insn_inames
-                if check_iname_tags(kernel.iname_to_tags[oiname], LocalIndexTagBase)
+                if get_iname_tags(kernel.iname_to_tags[oiname], LocalIndexTagBase)
                 and oiname != sweep_iname)
 
         from pymbolic import var
@@ -1740,7 +1740,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     "by reductions is 'local'--found iname(s) '%s' "
                     "respectively tagged '%s'"
                     % (", ".join(bad_inames),
-                       ", ".join(tag.key for tag in kernel.iname_to_tags[iname]
+                       ", ".join(str(kernel.iname_to_tags[iname])
                                  for iname in bad_inames)))
 
         if n_local_par == 0 and n_sequential == 0:
@@ -2150,7 +2150,7 @@ def preprocess_kernel(kernel, device=None):
 
     from loopy.kernel.data import AutoLocalIndexTagBase
     for iname, tags in six.iteritems(kernel.iname_to_tags):
-        if (check_iname_tags(tags, AutoLocalIndexTagBase)
+        if (get_iname_tags(tags, AutoLocalIndexTagBase)
                  and iname in kernel.all_inames()):
             raise LoopyError("kernel with automatically-assigned "
                     "local axes passed to preprocessing")
