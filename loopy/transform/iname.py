@@ -176,11 +176,10 @@ def _split_iname_backend(kernel, split_iname,
         for syntax.
     """
 
-    existing_tag = kernel.iname_to_tag.get(split_iname)
-    from loopy.kernel.data import ForceSequentialTag
-    if do_tagged_check and (
-            existing_tag is not None
-            and not isinstance(existing_tag, ForceSequentialTag)):
+    existing_tags = kernel.iname_to_tags[split_iname]
+    from loopy.kernel.data import ForceSequentialTag, check_iname_tags
+    if (do_tagged_check and existing_tags
+            and not check_iname_tags(existing_tags, ForceSequentialTag)):
         raise LoopyError("cannot split already tagged iname '%s'" % split_iname)
 
     if split_iname not in kernel.all_inames():
@@ -295,9 +294,9 @@ def _split_iname_backend(kernel, split_iname,
     kernel = ins.map_kernel(kernel)
     kernel = rule_mapping_context.finish_kernel(kernel)
 
-    if existing_tag is not None:
+    if existing_tags:
         kernel = tag_inames(kernel,
-                {outer_iname: existing_tag, inner_iname: existing_tag})
+                {outer_iname: existing_tags, inner_iname: existing_tags})
 
     return tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
 
@@ -632,7 +631,13 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
     def parse_tag(tag):
         if isinstance(tag, str):
             if tag.startswith("like."):
-                return kernel.iname_to_tag.get(tag[5:])
+                tags = kernel.iname_to_tags[tag[5:]]
+                if len(tags) == 0:
+                    return None
+                if len(tags) == 1:
+                    return tags[0]
+                else:
+                    raise LoopyError("cannot use like for multiple tags (for now)")
             elif tag == "unused.g":
                 return find_unused_axis_tag(kernel, "g")
             elif tag == "unused.l":
@@ -976,8 +981,9 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_iname_sets):
         # Check whether this iname has a parallel tag and discard it if so
-        if (iname in knl.iname_to_tag
-                    and isinstance(knl.iname_to_tag[iname], ConcurrentTag)):
+        from loopy.kernel.data import ConcurrentTag, check_iname_tags
+        if (iname in knl.iname_to_tags
+                    and check_iname_tags(knl.iname_to_tags[iname], ConcurrentTag)):
             continue
 
         # If we find a duplication option and to not use boostable_into
@@ -1494,7 +1500,7 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
     """
     used_axes = set()
 
-    from loopy.kernel.data import GroupIndexTag, LocalIndexTag
+    from loopy.kernel.data import GroupIndexTag, LocalIndexTag, check_iname_tags
 
     if isinstance(kind, str):
         found = False
@@ -1513,9 +1519,8 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
 
     for insn in insns:
         for iname in kernel.insn_inames(insn):
-            dim_tag = kernel.iname_to_tag.get(iname)
-
-            if isinstance(dim_tag, kind):
+            dim_tags = kernel.iname_to_tags[iname]
+            if check_iname_tags(dim_tags, kind):
                 used_axes.add(kind.axis)
 
     i = 0

@@ -244,7 +244,7 @@ class TemporarySaver(object):
         self.insns_to_insert = []
         self.insns_to_update = {}
         self.extra_args_to_add = {}
-        self.updated_iname_to_tag = {}
+        self.updated_iname_to_tags = {}
         self.updated_temporary_variables = {}
 
         # temporary name -> save or reload insn ids
@@ -397,24 +397,32 @@ class TemporarySaver(object):
             my_local_tags = []
 
             for iname in insn.within_inames:
-                tag = self.kernel.iname_to_tag.get(iname)
+                tags = self.kernel.iname_to_tags[iname]
 
-                if tag is None:
+                if not tags:
                     continue
 
-                from loopy.kernel.data import (
-                    GroupIndexTag, LocalIndexTag, ConcurrentTag)
+                from loopy.kernel.data import (GroupIndexTag, LocalIndexTag,
+                        ConcurrentTag, get_iname_tags, check_iname_tags)
 
-                if isinstance(tag, GroupIndexTag):
+                if check_iname_tags(tags, GroupIndexTag):
+                    tags = get_iname_tags(tags, GroupIndexTag)
+                    if len(tags) > 1:
+                        raise LoopyError("cannot have more than one GroupIndexTags")
+                    tag, = tags
                     my_group_tags.append(tag)
-                elif isinstance(tag, LocalIndexTag):
+                elif check_iname_tags(tags, LocalIndexTag):
+                    tags = get_iname_tags(tags, LocalIndexTag)
+                    if len(tags) > 1:
+                        raise LoopyError("cannot have more than one LocalIndexTags")
+                    tag, = tags
                     my_local_tags.append(tag)
-                elif isinstance(tag, ConcurrentTag):
+                elif check_iname_tags(tags, ConcurrentTag):
                     raise LoopyError(
                         "iname '%s' is tagged with '%s' - only "
                         "group and local tags are supported for "
                         "auto save/reload of temporaries" %
-                        (iname, tag))
+                        (iname, ", ".join(str(tag) for tag in tags)))
 
             if group_tags is None:
                 group_tags = _sortedtags(my_group_tags)
@@ -501,7 +509,7 @@ class TemporarySaver(object):
         if promoted_temporary is None:
             return
 
-        new_subdomain, hw_inames, dim_inames, iname_to_tag = (
+        new_subdomain, hw_inames, dim_inames, iname_to_tags = (
             self.augment_domain_for_save_or_reload(
                 self.new_subdomain, promoted_temporary, mode, subkernel))
 
@@ -581,7 +589,7 @@ class TemporarySaver(object):
         self.updated_temporary_variables[promoted_temporary.name] = (
             promoted_temporary.as_kernel_temporary(self.kernel))
 
-        self.updated_iname_to_tag.update(iname_to_tag)
+        self.updated_iname_to_tags.update(iname_to_tags)
 
     @memoize_method
     def finish(self):
@@ -597,7 +605,7 @@ class TemporarySaver(object):
         new_instructions.extend(
             sorted(insns_to_insert.values(), key=lambda insn: insn.id))
 
-        self.updated_iname_to_tag.update(self.kernel.iname_to_tag)
+        self.updated_iname_to_tags.update(self.kernel.iname_to_tags)
         self.updated_temporary_variables.update(self.kernel.temporary_variables)
 
         new_domains = list(self.kernel.domains)
@@ -608,7 +616,7 @@ class TemporarySaver(object):
         kernel = self.kernel.copy(
             domains=new_domains,
             instructions=new_instructions,
-            iname_to_tag=self.updated_iname_to_tag,
+            iname_to_tags=self.updated_iname_to_tags,
             temporary_variables=self.updated_temporary_variables,
             overridden_get_grid_sizes_for_insn_ids=None)
 
@@ -650,7 +658,7 @@ class TemporarySaver(object):
         orig_dim = domain.dim(isl.dim_type.set)
 
         # Tags for newly added inames
-        iname_to_tag = {}
+        iname_to_tags = {}
 
         from loopy.symbolic import aff_from_expr
 
@@ -675,7 +683,7 @@ class TemporarySaver(object):
                 # If the temporary has local scope, then loads / stores can
                 # be done in parallel.
                 from loopy.kernel.data import AutoFitLocalIndexTag
-                iname_to_tag[new_iname] = AutoFitLocalIndexTag()
+                iname_to_tags[new_iname] = (AutoFitLocalIndexTag(),)
 
             dim_inames.append(new_iname)
 
@@ -705,7 +713,7 @@ class TemporarySaver(object):
                 &
                 aff[new_iname].lt_set(aff_from_expr(domain.space, dim)))
 
-            self.updated_iname_to_tag[new_iname] = hw_tag
+            self.updated_iname_to_tags[new_iname] = (hw_tag,)
             hw_inames.append(new_iname)
 
         # The operations on the domain above return a Set object, but the
@@ -713,7 +721,7 @@ class TemporarySaver(object):
         domain_list = domain.get_basic_set_list()
         assert domain_list.n_basic_set() == 1
         domain = domain_list.get_basic_set(0)
-        return domain, hw_inames, dim_inames, iname_to_tag
+        return domain, hw_inames, dim_inames, iname_to_tags
 
 # }}}
 
