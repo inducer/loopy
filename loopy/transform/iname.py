@@ -295,8 +295,9 @@ def _split_iname_backend(kernel, split_iname,
     kernel = rule_mapping_context.finish_kernel(kernel)
 
     if existing_tags:
-        kernel = tag_inames(kernel,
-                {outer_iname: existing_tags, inner_iname: existing_tags})
+        for existing_tag in existing_tags:
+            kernel = tag_inames(kernel,
+                    {outer_iname: existing_tag, inner_iname: existing_tag})
 
     return tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
 
@@ -696,7 +697,7 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
                     "(likely because of participation in a precompute or "
                     "a reduction)" % iname)
 
-        if all(tag.key != new_tag.key for tag in old_tags):
+        if new_tag and all(tag.key != new_tag.key for tag in old_tags):
             old_tags = old_tags + (new_tag,)
 
         knl_iname_to_tags[iname] = old_tags

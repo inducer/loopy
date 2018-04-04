@@ -217,17 +217,15 @@ def find_loop_nest_with_map(kernel):
 
     all_nonpar_inames = set(
             iname for iname, tags in six.iteritems(kernel.iname_to_tags)
-            if not check_iname_tags(tags,
+            if tags and not check_iname_tags(tags,
                 (ConcurrentTag, IlpBaseTag, VectorizeTag)))
 
     iname_to_insns = kernel.iname_to_insns()
 
     for iname in all_nonpar_inames:
-        result[iname] = set([
-            other_iname
+        result[iname] = set(other_iname
             for insn in iname_to_insns[iname]
-            for other_iname in kernel.insn_inames(insn) & all_nonpar_inames
-            ])
+            for other_iname in kernel.insn_inames(insn) & all_nonpar_inames)
 
     return result
 

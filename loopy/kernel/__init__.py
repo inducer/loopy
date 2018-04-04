@@ -713,6 +713,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         for iname in cond_inames:
             tags = self.iname_to_tags[iname]
             if check_iname_tags(tags, HardwareConcurrentTag):
+                tags = get_iname_tags(tags, HardwareConcurrentTag)
+                if len(tags) > 1:
+                    raise LoopyError("cannot have more than one HardwareConcurentTags")
+                tag, = tags
                 tag_key_uses[tag.key].append(iname)
 
         multi_use_keys = set(
@@ -1179,7 +1183,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 lines.append("INAME IMPLEMENTATION TAGS:")
             for iname in natsorted(kernel.all_inames()):
                 line = "%s: %s" % (iname, ", ".join(
-                    tag.key for tag in kernel.iname_to_tags[iname]))
+                    str(tag) for tag in kernel.iname_to_tags[iname]))
                 lines.append(line)
 
         if "variables" in what and kernel.temporary_variables:

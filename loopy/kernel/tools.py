@@ -817,9 +817,9 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             # }}}
 
         if axis is None:
-            new_tag = tuple()
+            new_tag = None
         else:
-            new_tag = (LocalIndexTag(axis),)
+            new_tag = LocalIndexTag(axis)
             if desired_length > local_size[axis]:
                 from loopy import split_iname
 
@@ -836,7 +836,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             raise LoopyError("trying to reassign '%s'" % iname)
 
         new_iname_to_tags = kernel.iname_to_tags.copy()
-        new_iname_to_tags[iname] = new_tag
+        new_iname_to_tags[iname] = (new_tag,)
         return assign_automatic_axes(kernel.copy(iname_to_tags=new_iname_to_tags),
                 axis=recursion_axis, local_size=local_size)
 
@@ -863,7 +863,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         assigned_local_axes = set()
 
         for iname in kernel.insn_inames(insn):
-            tags = get(kernel.iname_to_tags[iname], LocalIndexTag)
+            tags = get_iname_tags(kernel.iname_to_tags[iname], LocalIndexTag)
             if tags:
                 if len(tags) > 1:
                     raise LoopyError("cannot have more than one LocalIndexTags")

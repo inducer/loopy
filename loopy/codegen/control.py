@@ -51,7 +51,7 @@ def get_admissible_conditional_inames_for(codegen_state, sched_index):
     for iname, tags in six.iteritems(kernel.iname_to_tags):
         if (check_iname_tags(tags, HardwareConcurrentTag)
                 and codegen_state.is_generating_device_code):
-            if not has_barrier or not isinstance(tag, LocalIndexTag):
+            if not has_barrier or not check_iname_tags(tags, LocalIndexTag):
                 result.add(iname)
 
     return frozenset(result)
@@ -129,6 +129,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
 
     elif isinstance(sched_item, EnterLoop):
         tags = kernel.iname_to_tags[sched_item.iname]
+        tags = tuple(tag for tag in tags if tag)
 
         from loopy.codegen.loop import (
                 generate_unroll_loop,
@@ -146,7 +147,8 @@ def generate_code_for_sched_index(codegen_state, sched_index):
             func = generate_sequential_loop_dim_code
         else:
             raise RuntimeError("encountered (invalid) EnterLoop "
-                    "for '%s', tagged '%s'" % (sched_item.iname, tag))
+                    "for '%s', tagged '%s'"
+                    % (sched_item.iname, ", ".join(str(tag) for tag in tags)))
 
         return func(codegen_state, sched_index)
 
