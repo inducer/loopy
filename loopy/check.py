@@ -113,6 +113,19 @@ def check_loop_priority_inames_known(kernel):
                 raise LoopyError("unknown iname '%s' in loop priorities" % iname)
 
 
+def check_multiple_tags_allowed(kernel):
+    from loopy.kernel.data import (GroupIndexTag, LocalIndexTag,
+                                   get_iname_tags)
+    illegal_combinations = [
+        (GroupIndexTag, LocalIndexTag)
+    ]
+    for iname, tags in six.iteritems(kernel.iname_to_tags):
+        for comb in illegal_combinations:
+            if len(get_iname_tags(tags, comb)) > 1:
+                raise LoopyError("iname {0} has illegal combination of "
+                                 "tags: {1}".format(iname, tags))
+
+
 def check_for_double_use_of_hw_axes(kernel):
     from loopy.kernel.data import UniqueTag, get_iname_tags
 
@@ -601,6 +614,7 @@ def pre_schedule_checks(kernel):
         check_for_double_use_of_hw_axes(kernel)
         check_insn_attributes(kernel)
         check_loop_priority_inames_known(kernel)
+        check_multiple_tags_allowed(kernel)
         check_for_inactive_iname_access(kernel)
         check_for_write_races(kernel)
         check_for_data_dependent_parallel_bounds(kernel)

@@ -600,6 +600,14 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
 # {{{ untag inames
 
 def untag_inames(kernel, iname_to_untag, tag_type):
+    """
+    Remove tags on *iname_to_untag* which matches *tag_type*.
+
+    :arg iname_to_untag: iname as string.
+    :arg tag_type: a subclass of :class:`loopy.kernel.data.IndexTag`.
+
+    .. versionadded:: 2018.1
+    """
 
     knl_iname_to_tags = kernel.iname_to_tags.copy()
     old_tags = knl_iname_to_tags[iname_to_untag]

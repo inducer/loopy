@@ -267,14 +267,12 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
     else:
         raise RuntimeError("unexpected hw tag type")
 
-    # TODO: get rid of None
-
     other_inames_with_same_tag = [
         other_iname for other_iname in kernel.all_inames()
         if (get_iname_tags(kernel.iname_to_tags[other_iname], UniqueTag)
             and other_iname != iname
             and any(_tag.key == tag.key
-                    for _tag in kernel.iname_to_tags[other_iname]))]
+                    for _tag in kernel.iname_to_tags[other_iname] if _tag))]
 
     # {{{ 'implement' hardware axis boundaries
 

@@ -56,6 +56,16 @@ class auto(object):  # noqa
 
 
 def get_iname_tags(tags, tag_type, max_num=None, min_num=None):
+    """Return a subset of *tags* that matches type *tag_type*. Raises exception
+    if the number of tags found were greater than *max_num* or less than
+    *min_num*W.
+
+    :arg tags: An iterable of tags.
+    :arg tag_type: a subclass of :class:`loopy.kernel.data.IndexTag`.
+    :arg max_num: the maximum number of tags expected to be found.
+    :arg min_num: the minimum number of tags expected to be found.
+    """
+
     result = set(tag for tag in tags if isinstance(tag, tag_type))
     if max_num:
         if len(result) > max_num:
