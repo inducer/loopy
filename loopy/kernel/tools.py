@@ -837,8 +837,12 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         if not get_iname_tags(kernel.iname_to_tags[iname], AutoLocalIndexTagBase):
             raise LoopyError("trying to reassign '%s'" % iname)
 
+        if new_tag:
+            new_tag = set([new_tag])
+        else:
+            new_tag = set()
         new_iname_to_tags = kernel.iname_to_tags.copy()
-        new_iname_to_tags[iname] = set([new_tag])
+        new_iname_to_tags[iname] = new_tag
         return assign_automatic_axes(kernel.copy(iname_to_tags=new_iname_to_tags),
                 axis=recursion_axis, local_size=local_size)
 
