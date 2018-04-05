@@ -628,7 +628,14 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
     """
 
     if isinstance(iname_to_tag, dict):
-        iname_to_tag = list(six.iteritems(iname_to_tag))
+        unpack_iname_to_tag = []
+        for iname, tags in six.iteritems(iname_to_tag):
+            if isinstance(tags, set):
+                for tag in tags:
+                    unpack_iname_to_tag.append((iname, tag))
+            else:
+                unpack_iname_to_tag.append((iname, tags))
+        iname_to_tag = unpack_iname_to_tag
     elif isinstance(iname_to_tag, str):
         def parse_kv(s):
             colon_index = s.find(":")
