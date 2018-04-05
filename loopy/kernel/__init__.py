@@ -728,7 +728,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 tag, = get_iname_tags(tags, HardwareConcurrentTag, 1)
                 if tag.key in multi_use_keys:
                     multi_use_inames.add(iname)
-                    break
 
         return frozenset(cond_inames - multi_use_inames)
 

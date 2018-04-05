@@ -677,7 +677,7 @@ class TemporarySaver(object):
                 # If the temporary has local scope, then loads / stores can
                 # be done in parallel.
                 from loopy.kernel.data import AutoFitLocalIndexTag
-                iname_to_tags[new_iname] = set(AutoFitLocalIndexTag())
+                iname_to_tags[new_iname] = set([AutoFitLocalIndexTag()])
 
             dim_inames.append(new_iname)
 
