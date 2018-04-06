@@ -84,6 +84,9 @@ class IndexTag(ImmutableRecord):
     def __hash__(self):
         return hash(self.key)
 
+    def __lt__(self, other):
+        return self.__hash__() < other.__hash__()
+
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.
