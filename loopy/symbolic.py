@@ -675,9 +675,14 @@ class RuleArgument(p.Expression):
     mapper_method = intern("map_rule_argument")
 
 
-class ScopedFunction(p.Variable):
+class ScopedFunction(p.Expression):
     """ Connects a call to a callable available in a kernel.
     """
+
+    def __init__(self, function):
+        from loopy.library.reduction import ArgExtOp
+        assert isinstance(function, (p.Variable, ArgExtOp))
+
     mapper_method = intern("map_scoped_function")
 
     def stringifier(self):
