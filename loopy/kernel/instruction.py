@@ -1047,6 +1047,9 @@ class CallInstruction(MultiAssignmentBase):
 
 
 def subscript_contains_slice(subscript):
+    """Return *True* if the *subscript* contains an instance of
+    :class:`pymbolic.primitives.Slice` as of its indices.
+    """
     from pymbolic.primitives import Subscript, Slice
     assert isinstance(subscript, Subscript)
     return any(isinstance(index, Slice) for index in subscript.index_tuple)
@@ -1071,12 +1074,20 @@ def is_array_call(assignees, expression):
 
 
 def get_array_call_assignee(assignee):
+    """
+    Converts the assignee subscript or variable as a SubArrayRef.
+    """
     from pymbolic.primitives import Subscript, Variable
     from loopy.symbolic import SubArrayRef
     if isinstance(assignee, SubArrayRef):
         return assignee
     elif isinstance(assignee, Subscript):
-        return SubArrayRef((), assignee)
+        if subscript_contains_slice(assignee):
+            # Slice subscripted array are treated as SubArrayRef in the kernel
+            # Hence, making the behavior similar to that of `SubArrayref`
+            return assignee
+        else:
+            return SubArrayRef((), assignee)
     elif isinstance(assignee, Variable):
         return SubArrayRef((), Subscript(assignee, 0))
     else:
@@ -1105,6 +1116,9 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
                     temp_var_types=temp_var_types,
                     **kwargs)
         else:
+            # In the case of an array call, it is important to have each
+            # assignee as an instance of SubArrayRef. If not given as a
+            # SubArrayRef
             return CallInstruction(
                     assignees=tuple(get_array_call_assignee(assignee) for
                         assignee in assignees),

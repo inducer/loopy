@@ -32,7 +32,7 @@ from pytools import memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 from loopy.target.c import (DTypeRegistryWrapper, c_math_identifiers,
-        c_math_mangler, c_with_types)
+        c_math_mangler, with_types_for_c_target)
 from loopy.kernel.data import temp_var_scope, CallMangleInfo
 from pymbolic import var
 
@@ -229,7 +229,20 @@ def opencl_function_mangler(kernel, name, arg_dtypes):
     return None
 
 
-def opencl_with_types(in_knl_callable, arg_id_to_dtype):
+def with_types_for_opencl_target(in_knl_callable, arg_id_to_dtype):
+    """Returns an updated ``in_knl_callable`` specifically tuned for OpenCL
+    targets. Returns *None*, if does not match with any of the OpenCL function
+    signatures.
+
+    .. arg in_knl_callable::
+
+        An instance of :class:`loopy.kernel.function_interface.ScalarCallable`.
+
+    .. arg arg_id_to_dtype::
+
+        A mapping which provides information from argument id to its type. Same
+        format as in :meth:`ScalarCallable.with_types`.
+    """
 
     name = in_knl_callable.name
 
@@ -489,11 +502,11 @@ class OpenCLCASTBuilder(CASTBuilder):
                     ])
 
     def with_types(self, in_knl_callable, arg_id_to_dtype):
-        new_callable = opencl_with_types(in_knl_callable, arg_id_to_dtype)
+        new_callable = with_types_for_opencl_target(in_knl_callable, arg_id_to_dtype)
         if new_callable is not None:
             return new_callable
 
-        new_callable = c_with_types(in_knl_callable, arg_id_to_dtype)
+        new_callable = with_types_for_c_target(in_knl_callable, arg_id_to_dtype)
         if new_callable is not None:
             return new_callable
         return super(OpenCLCASTBuilder, self).with_types(in_knl_callable,

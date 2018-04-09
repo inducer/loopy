@@ -30,7 +30,7 @@ from pytools import memoize_method
 
 from loopy.target.c import CTarget, CASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from loopy.target.c import (c_math_identifiers, c_with_types)
+from loopy.target.c import (c_math_identifiers, with_types_for_c_target)
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 from loopy.kernel.data import temp_var_scope
@@ -295,7 +295,7 @@ class CUDACASTBuilder(CASTBuilder):
         if new_callable is not None:
             return new_callable
 
-        new_callable = c_with_types(in_knl_callable, arg_id_to_dtype,
+        new_callable = with_types_for_c_target(in_knl_callable, arg_id_to_dtype,
                 modify_name=True)
         if new_callable is not None:
             return new_callable

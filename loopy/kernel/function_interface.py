@@ -9,8 +9,10 @@ in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
+
 The above copyright notice and this permission notice shall be included in
 all copies or substantial portions of the Software.
+
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -40,52 +42,46 @@ from loopy.symbolic import (IdentityMapper, ScopedFunction,
 
 # {{{ argument descriptors
 
-class ArgDescriptor(ImmutableRecord):
-    """Base type of argument description about the variable type that is supposed to
-    be encountered in a function signature.
+class ValueArgDescriptor(ImmutableRecord):
+    pass
+
+
+class ArrayArgDescriptor(ImmutableRecord):
+    """
+    Records information about an array argument to an in-kernel callable, to be
+    passed to and returned from
+    :meth:`loopy.kernel.function_interface.InKernelCallable.with_descrs`, used
+    for matching shape and scope of caller and callee kernels.
+
+    ..attribute:: shape
+
+        Shape of the array.
+
     .. attribute:: mem_scope
-    .. attribute:: shape
+
+        Can be either "LOCAL" or "GLOBAL", definiing where the argument is
+        supposed to reside in the device memory.
+
     .. attribute:: dim_tags
+
+        A tuple of instances of :class:`loopy.kernel.array._StrideArrayDimTagBase`
     """
 
-    def __init__(self,
-            mem_scope=None,
-            shape=None,
-            dim_tags=None):
-        super(ArgDescriptor, self).__init__(mem_scope=mem_scope,
-                shape=shape,
-                dim_tags=dim_tags)
-
-
-class ValueArgDescriptor(ArgDescriptor):
-    def __init__(self):
-        super(ValueArgDescriptor, self).__init__()
-
-    def __str__(self):
-        return "ValueArgDescriptor"
-
-    def __repr__(self):
-        return "ValueArgDescriptor"
-
-
-class ArrayArgDescriptor(ArgDescriptor):
-    """
-    .. attribute:: mem_scope
-    .. attribute:: dim_tags
-    """
-
-    def __init__(self,
-            shape=None,
-            mem_scope=None,
-            dim_tags=None):
+    def __init__(self, shape, mem_scope, dim_tags):
 
         # {{{ sanity checks
 
+        from loopy.kernel.array import FixedStrideArrayDimTag
+
         assert isinstance(shape, tuple)
+        assert isinstance(mem_scope, str)
+        assert isinstance(dim_tags, tuple)
+        assert all(isinstance(dim_tag, FixedStrideArrayDimTag) for dim_tag in
+                dim_tags)
 
         # }}}
 
-        super(ArgDescriptor, self).__init__(shape=shape,
+        super(ArrayArgDescriptor, self).__init__(shape=shape,
                 mem_scope=mem_scope,
                 dim_tags=dim_tags)
 
@@ -110,6 +106,10 @@ class ArrayArgDescriptor(ArgDescriptor):
 # {{{ helper function for callable kenrel -- kw_to_pos
 
 def get_kw_pos_association(kernel):
+    """
+    Returns a tuple of ``(kw_to_pos, pos_to_kw)`` for the arguments present of
+    the kernel.
+    """
     kw_to_pos = {}
     pos_to_kw = {}
 
@@ -117,14 +117,18 @@ def get_kw_pos_association(kernel):
     write_count = -1
 
     for arg in kernel.args:
-        if arg.name in kernel.get_written_variables():
-            kw_to_pos[arg.name] = write_count
-            pos_to_kw[write_count] = arg.name
-            write_count -= 1
-        else:
+        # FIXME: Confused about the written and read variables ordering.
+        # Confirm it with Prof. Andreas.
+        if arg.name not in kernel.get_written_variables():
             kw_to_pos[arg.name] = read_count
             pos_to_kw[read_count] = arg.name
             read_count += 1
+        else:
+            # These args are not read in the kernel. Hence, assuming that they
+            # must be returned.
+            kw_to_pos[arg.name] = write_count
+            pos_to_kw[write_count] = arg.name
+            write_count -= 1
 
     return kw_to_pos, pos_to_kw
 
@@ -135,6 +139,7 @@ def get_kw_pos_association(kernel):
 
 class InKernelCallable(ImmutableRecord):
     """
+    Describes a callable encountered in a kernel.
 
     .. attribute:: name
 
@@ -147,9 +152,9 @@ class InKernelCallable(ImmutableRecord):
 
     .. attribute:: arg_id_to_descr
 
-        A mapping which gives indicates the argument shape and `dim_tags` it
+        A mapping which gives indicates the argument shape and ``dim_tags`` it
         would be responsible for generating code. These parameters would be set,
-        once it is shape and stride(`dim_tags`) specialized.
+        once it is shape and stride(``dim_tags``) specialized.
 
     .. note::
 
@@ -253,7 +258,12 @@ class InKernelCallable(ImmutableRecord):
 
 # {{{ callables on scalar
 
-class CallableOnScalar(InKernelCallable):
+class ScalarCallable(InKernelCallable):
+    """
+    Records the information about a scalar callable encountered in a kernel.
+    The :meth:`ScalarCallable.with_types` is intended to assist with type
+    specialization of the funciton.
+    """
 
     fields = set(["name", "arg_id_to_dtype", "arg_id_to_descr", "name_in_target"])
     init_arg_names = ("name", "arg_id_to_dtype", "arg_id_to_descr",
@@ -283,7 +293,7 @@ class CallableOnScalar(InKernelCallable):
                 if self.arg_id_to_dtype[id] != arg_id_to_dtype[id]:
                     raise LoopyError("Overwriting a specialized"
                             " function is illegal--maybe start with new instance of"
-                            " CallableOnScalar?")
+                            " ScalarCallable?")
 
         if self.name in kernel.target.get_device_ast_builder(
                 ).function_identifiers():
@@ -313,8 +323,6 @@ class CallableOnScalar(InKernelCallable):
 
     def with_descrs(self, arg_id_to_descr):
 
-        # This is a scalar call
-        # need to assert that the name is in funtion indentifiers
         arg_id_to_descr[-1] = ValueArgDescriptor()
         return self.copy(arg_id_to_descr=arg_id_to_descr)
 
@@ -324,11 +332,6 @@ class CallableOnScalar(InKernelCallable):
                 self.arg_id_to_descr is not None)
 
     # {{{ code generation
-
-    def generate_preambles(self, target):
-        """ This would generate the target specific preamble.
-        """
-        raise NotImplementedError()
 
     def emit_call(self, expression_to_code_mapper, expression, target):
 
@@ -395,7 +398,7 @@ class CallableOnScalar(InKernelCallable):
 
         for i, (a, tgt_dtype) in enumerate(zip(assignees, assignee_dtypes)):
             if tgt_dtype != expression_to_code_mapper.infer_type(a):
-                raise LoopyError("Type Mismach in funciton %s. Expected: %s"
+                raise LoopyError("Type Mismatch in funciton %s. Expected: %s"
                         "Got: %s" % (self.name, tgt_dtype,
                             expression_to_code_mapper.infer_type(a)))
             c_parameters.append(
@@ -415,6 +418,20 @@ class CallableOnScalar(InKernelCallable):
 # {{{ callable kernel
 
 class CallableKernel(InKernelCallable):
+    """
+    Records information about in order to make the callee kernel compatible to be
+    called from a caller kernel. The :meth:`loopy.register_callable_kernel`
+    should be called in order to initiate association between a funciton in
+    caller kernel and the callee kernel.
+
+    The :meth:`CallableKernel.with_types` should be called in order to match
+    the ``dtypes`` of the arguments that are shared between the caller and the
+    callee kernel.
+
+    The :meth:`CallableKernel.with_descrs` should be called in order to match
+    the ``dim_tags, shape, mem_scopes`` of the arguments shared between the
+    caller and the callee kernel.
+    """
 
     fields = set(["name", "subkernel", "arg_id_to_dtype", "arg_id_to_descr",
         "name_in_target"])
@@ -465,16 +482,11 @@ class CallableKernel(InKernelCallable):
                 expect_completion=True)
 
         new_arg_id_to_dtype = {}
-        read_count = 0
-        write_count = -1
         for arg in specialized_kernel.args:
+            # associating the updated_arg_id_to_dtype with keyword as well as
+            # positional id.
             new_arg_id_to_dtype[arg.name] = arg.dtype
-            if arg.name in specialized_kernel.get_written_variables():
-                new_arg_id_to_dtype[write_count] = arg.dtype
-                write_count -= 1
-            else:
-                new_arg_id_to_dtype[read_count] = arg.dtype
-                read_count += 1
+            new_arg_id_to_dtype[kw_to_pos[arg.name]] = arg.dtype
 
         # Returning the kernel call with specialized subkernel and the corresponding
         # new arg_id_to_dtype
@@ -573,7 +585,6 @@ class CallableKernel(InKernelCallable):
                 for par, par_dtype in zip(
                     parameters, par_dtypes)]
 
-        from pymbolic import var
         return var(self.name_in_target)(*c_parameters)
 
 # }}}
@@ -598,9 +609,9 @@ def next_indexed_name(name):
 
 class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
     """
-    Mapper that takes in a mapping `expr_to_new_names` and maps the
+    Mapper that takes in a mapping ``expr_to_new_names`` and maps the
     corresponding expression to the new names, which correspond to the names in
-    `kernel.scoped_functions`.
+    ``kernel.scoped_functions``.
     """
 
     def __init__(self, rule_mapping_context, expr_to_new_names, subst_expander):

@@ -427,18 +427,37 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
     return None
 
 
-def c_with_types(in_knl_callable, arg_id_to_dtype, modify_name=False):
-    # Function mangler for math functions defined in C standard
+def with_types_for_c_target(in_knl_callable, arg_id_to_dtype, modify_name=False):
+    """Target facing function for C-like targets in order to map the math
+    functions encountered in a kernel to the equivalent function signature.
+
+    .. arg in_knl_callable::
+
+        An instance of :class:`loopy.kernel.function_interface.ScalarCallable`,
+        which is supposed to be mapped in the target.
+
+    .. arg arg_id_to_dtype::
+
+        Same as the maapping in :meth:`ScalarCallable.with_types`
+
+    .. arg modify_name::
+
+        Must be set *True* for C and Cuda targets and *False* for OpenCL targets.
+
+    :return: An updated instance of
+        :class:`loopy.kernel.function_interface.ScalarCallable` tuned for the
+        target. Or *None* if could not find a corresponding C-function for the given
+        pair *in_knl_callable*, *arg_id_to_dtype*.
+    """
     # Convert abs, min, max to fabs, fmin, fmax.
     # If modify_name is set to True, function names are modified according to
     # floating point types of the arguments (e.g. cos(double), cosf(float))
-    # This should be set to True for C and Cuda, False for OpenCL
     name = in_knl_callable.name
 
     if name in ["abs", "min", "max"]:
         name = "f" + name
 
-    # unitary functions
+    # unary functions
     if name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
                 "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor", "tan"]:
 
@@ -540,7 +559,7 @@ class CASTBuilder(ASTBuilderBase):
                     ])
 
     def with_types(self, in_knl_callable, arg_id_to_dtype):
-        new_callable = c_with_types(in_knl_callable, arg_id_to_dtype,
+        new_callable = with_types_for_c_target(in_knl_callable, arg_id_to_dtype,
                 modify_name=True)
         if new_callable is not None:
             return new_callable
@@ -957,7 +976,7 @@ class CASTBuilder(ASTBuilderBase):
         from cgen import ExpressionStatement
         # FIXME: Depending on the function this can be either an
         # ExpressionStatement or Assignment.
-        # Refer: CallableOnScalar::emit_call_insn. It is discussed in detail
+        # Refer: ScalarCallable::emit_call_insn. It is discussed in detail
         # over there.
         return ExpressionStatement(
                 CExpression(self.get_c_expression_to_code_mapper(),

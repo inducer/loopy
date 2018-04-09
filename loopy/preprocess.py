@@ -2102,68 +2102,6 @@ def check_atomic_loads(kernel):
 # }}}
 
 
-# {{{ check for unscoped calls
-
-class UnScopedCallCollector(CombineMapper):
-
-    def combine(self, values):
-        import operator
-        return reduce(operator.or_, values, frozenset())
-
-    def map_call(self, expr):
-        if not isinstance(expr.function, ScopedFunction):
-            return (frozenset([expr.function.name]) |
-                    self.combine((self.rec(child) for child in expr.parameters)))
-        else:
-            return self.combine((self.rec(child) for child in expr.parameters))
-
-    def map_call_with_kwargs(self, expr):
-        if not isinstance(expr.function, ScopedFunction):
-            return (frozenset([expr.function.name]) |
-                    self.combine((self.rec(child) for child in expr.parameters
-                        + expr.kw_parameter.values())))
-        else:
-            return self.combine((self.rec(child) for child in
-                expr.parameters+expr.kw_parameters.values()))
-
-    def map_scoped_function(self, expr):
-        return frozenset([expr.name])
-
-    def map_constant(self, expr):
-        return frozenset()
-
-    map_variable = map_constant
-    map_function_symbol = map_constant
-    map_tagged_variable = map_constant
-    map_type_cast = map_constant
-
-
-def check_functions_are_scoped(kernel):
-    """ Checks if all the calls in the instruction expression have been scoped,
-    otherwise indicate to what all calls we await signature.
-    """
-
-    from loopy.symbolic import SubstitutionRuleExpander
-    subst_expander = SubstitutionRuleExpander(kernel.substitutions)
-
-    for insn in kernel.instructions:
-        if isinstance(insn, MultiAssignmentBase):
-            unscoped_calls = UnScopedCallCollector()(subst_expander(
-                insn.expression))
-            if unscoped_calls:
-                raise LoopyError("Unknown function '%s' obtained -- register a "
-                        "function or a kernel corresponding to it." %
-                        set(unscoped_calls).pop())
-        elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
-            pass
-        else:
-            raise NotImplementedError("check_function_are_scoped not "
-                    "implemented for %s type of instruction." % type(insn))
-
-
-# }}}
-
-
 # {{{ arg_descr_inference
 
 def get_arg_description_from_sub_array_ref(sub_array, kernel):
@@ -2172,15 +2110,18 @@ def get_arg_description_from_sub_array_ref(sub_array, kernel):
     :class:`ArrayArgDescriptor`.
     """
     from loopy.kernel.function_interface import ArrayArgDescriptor
+    # from loopy.kernel.data import temp_var_scope
 
     name = sub_array.subscript.aggregate.name
 
     if name in kernel.temporary_variables:
+        # mem_scope = temp_var_scope.LOCAL
         mem_scope = "LOCAL"
         arg = kernel.temporary_variables[name]
         assert name not in kernel.arg_dict
     else:
         assert name in kernel.arg_dict
+        # mem_scope = temp_var_scope.GLOBAL
         mem_scope = "GLOBAL"
         arg = kernel.arg_dict[name]
 
@@ -2192,7 +2133,7 @@ def get_arg_description_from_sub_array_ref(sub_array, kernel):
             shape=sub_shape)
 
 
-class ArgDescriptionInferer(CombineMapper):
+class ArgDescrInferenceMapper(CombineMapper):
     """ Returns a set with elements as instances of :class:`tuple` (expr,
     in_kenrel_callable). The mapped `in_kenrel_callable` of the
     :class:`InKernelCallable` are descriptor specialized for the given
@@ -2303,7 +2244,7 @@ def infer_arg_descr(kernel):
     shape and dimensions of the arguments too.
     """
 
-    arg_description_modifier = ArgDescriptionInferer(kernel)
+    arg_description_modifier = ArgDescrInferenceMapper(kernel)
     pymbolic_calls_to_functions = set()
 
     for insn in kernel.instructions:
@@ -2336,9 +2277,13 @@ def infer_arg_descr(kernel):
 # }}}
 
 
-# {{{ final sweep over the callables to make them ready for codegen
+# {{{ catching functions that are not ready for codegen
 
-class ReadyForCodegen(CombineMapper):
+class FunctionsNotReadyForCodegenCollector(CombineMapper):
+    """
+    Returns all instances of function calls in an expression which are
+    not ready for code generation.
+    """
     def __init__(self, kernel):
         self.kernel = kernel
 
@@ -2376,48 +2321,48 @@ class ReadyForCodegen(CombineMapper):
     map_type_cast = map_constant
 
 
-def specialize_incomplete_callables(kernel):
+def make_functions_ready_for_codegen(kernel):
     """
-    Transformation necessary to type-specialize the callables which are missed
-    in type inference. For example consider:
-    ```
-    knl = lp.make_kernel(
-        "{[i]: 0<=i<16}",
-        "a[i] = sin[b[i]]",
-        [lp.GlobalArg('a', dtype=np.float64),
-        lp.GlobalArg('b', dtype=np.float64)])
-    ```
-    In this case, none of the instructions undergo type inference as the type
-    inference is already resolved. But this would be a problem during
-    code-generation as `sin` is not type specialized.
+    Specializes the functions in the kernel that are missed during type
+    inference.
 
+    .. code:: python
+
+        knl = lp.make_kernel(
+            "{[i]: 0<=i<16}",
+            "a[i] = sin(b[i])",
+            [lp.GlobalArg('a', dtype=np.float64),
+            lp.GlobalArg('b', dtype=np.float64)])
+
+    In the above case, none of the instructions undergo type-specialization, as
+    all the arguments' types have been realized. But, this would be a problem
+    during the code generation phase as ``sin`` did not undergo type
+    specialization, and hence must be fixed through this function.
     """
     from loopy.type_inference import TypeInferenceMapper
     from loopy.symbolic import SubstitutionRuleExpander
     from loopy.kernel.function_interface import (
             register_pymbolic_calls_to_knl_callables)
 
-    ready_for_codegen = ReadyForCodegen(kernel)
+    unready_functions_collector = FunctionsNotReadyForCodegenCollector(kernel)
     subst_expander = SubstitutionRuleExpander(kernel.substitutions)
     type_inf_mapper = TypeInferenceMapper(kernel)
 
-    inferred_functions = {}
     for insn in kernel.instructions:
         if isinstance(insn, MultiAssignmentBase):
             expr = subst_expander(insn.expression)
-            if not ready_for_codegen(expr):
-                # only trying to specialize the functions which are not ready
-                # for codegen
+            if not unready_functions_collector(expr):
+                # Infer the type of the functions that are not type specialized.
                 type_inf_mapper(expr)
-                inferred_functions.update(type_inf_mapper.specialized_functions)
 
         elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
             pass
+
         else:
             NotImplementedError("Unknown Instruction")
 
     return register_pymbolic_calls_to_knl_callables(kernel,
-            inferred_functions)
+            type_inf_mapper.specialized_functions)
 
 # }}}
 
@@ -2500,8 +2445,8 @@ def preprocess_kernel(kernel, device=None):
     # call.
     kernel = infer_arg_descr(kernel)
 
-    # try specializing callables one last time.
-    kernel = specialize_incomplete_callables(kernel)
+    # type specialize functions that were missed during the type inference.
+    kernel = make_functions_ready_for_codegen(kernel)
 
     # Ordering restriction:
     # add_axes_to_temporaries_for_ilp because reduction accumulators

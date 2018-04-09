@@ -108,7 +108,8 @@ class IdentityMapperMixin(object):
         return type(expr)(expr.type, self.rec(expr.child))
 
     def map_sub_array_ref(self, expr, *args):
-        return SubArrayRef(expr.swept_inames, expr.subscript)
+        return SubArrayRef(self.rec(expr.swept_inames, *args),
+                self.rec(expr.subscript, *args))
 
     map_type_cast = map_type_annotation
 
@@ -683,6 +684,35 @@ class ScopedFunction(p.Variable):
         return StringifyMapper
 
 
+class EvaluatorWithDeficientContext(PartialEvaluationMapper):
+    """Evaluation Mapper that does not need values of all the variables
+    involved in the expression.
+
+    Returns the expression with the values mapped from :attr:`context`.
+    """
+    def map_variable(self, expr):
+        if expr.name in self.context:
+            return self.context[expr.name]
+        else:
+            return expr
+
+
+class VariableInAnExpression(CombineMapper):
+    def __init__(self, variables_to_search):
+        assert(all(isinstance(variable, p.Variable) for variable in
+            variables_to_search))
+        self.variables_to_search = variables_to_search
+
+    def combine(self, values):
+        return any(values)
+
+    def map_variable(self, expr):
+        return expr in self.variables_to_search
+
+    def map_constant(self, expr):
+        return False
+
+
 class SubArrayRef(p.Expression):
     """Represents a generalized sliced notation of an array.
 
@@ -697,7 +727,7 @@ class SubArrayRef(p.Expression):
 
     init_arg_names = ("swept_inames", "subscript")
 
-    def __init__(self, swept_inames=None, subscript=None):
+    def __init__(self, swept_inames, subscript):
 
         # {{{ sanity checks
 
@@ -717,20 +747,52 @@ class SubArrayRef(p.Expression):
         self.subscript = subscript
 
     def get_begin_subscript(self):
-        starting_inames = []
-        for iname in self.subscript.index_tuple:
-            if iname in self.swept_inames:
-                starting_inames.append(parse('0'))
-            else:
-                starting_inames.append(iname)
-        return p.Subscript(self.subscript.aggregate, tuple(starting_inames))
+        """
+        Returns an instance of :class:`pymbolic.primitives.Subscript`, the
+        beginning subscript of the array swept by the *SubArrayRef*.
+
+        **Example:** Consider ``[i, k]: a[i, j, k, l]``. The beginning
+        subscript would be ``a[0, j, 0, l]``
+        """
+        swept_inames_to_zeros = dict(
+                (swept_iname.name, 0) for swept_iname in self.swept_inames)
+
+        return EvaluatorWithDeficientContext(swept_inames_to_zeros)(
+                self.subscript)
 
     def get_sub_array_dim_tags_and_shape(self, arg_dim_tags, arg_shape):
-        """ Gives the dim tags for the inner inames.
-        This would be used for stride calculation in the child kernel.
-        This might need to go, once we start calculating the stride length
-        using the upper and lower bounds of the involved inames.
+        """Returns the dim tags for the inner inames.
+
+        .. arg:: arg_dim_tags
+
+            a list of :class:`loopy.kernel.array.FixedStrideArrayDimTag` of the
+            argument referred by the *SubArrayRef*.
+
+        .. arg:: arg_shape
+
+            a tuple indicating the shape of the argument referred by the
+            *SubArrayRef*.
         """
+        from loopy.kernel.array import FixedStrideArrayDimTag as DimTag
+        sub_dim_tags = []
+        sub_shape = []  # need to figure out an elegant way of finding this out.
+        linearized_index = sum(dim_tag.stride*iname for dim_tag, iname in
+                zip(arg_dim_tags, self.subscript.index_tuple))
+
+        print(self.subscript)
+        print(linearized_index)
+
+        strides_as_dict = CoefficientCollector(tuple(iname.name for iname in
+            self.swept_inames))(linearized_index)
+        sub_dim_tags = tuple(DimTag(strides_as_dict[iname]) for iname in
+                self.swept_inames)
+        sub_shape = tuple(dim_shape for dim_shape, index in zip(
+            arg_shape, self.subscript.index_tuple) if VariableInAnExpression(
+                self.swept_inames)(index))
+
+        return sub_dim_tags, sub_shape
+        """
+        # Trying out new things
         from loopy.kernel.array import FixedStrideArrayDimTag as DimTag
         sub_dim_tags = []
         sub_shape = []
@@ -740,7 +802,8 @@ class SubArrayRef(p.Expression):
                 sub_dim_tags.append(DimTag(dim_tag.stride))
                 sub_shape.append(axis_length)
 
-        return sub_dim_tags, tuple(sub_shape)
+        return tuple(sub_dim_tags), tuple(sub_shape)
+        """
 
     def __getinitargs__(self):
         return (self.swept_inames, self.subscript)

@@ -27,8 +27,12 @@ from six.moves import range
 
 from islpy import dim_type
 import islpy as isl
-from loopy.symbolic import WalkMapper
+from loopy.symbolic import WalkMapper, CombineMapper, ScopedFunction
 from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_kernel
+
+from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
+        _DataObliviousInstruction)
+from functools import reduce
 
 import logging
 logger = logging.getLogger(__name__)
@@ -54,6 +58,63 @@ def check_identifiers_in_subst_rules(knl):
                     "identifier(s) '%s' which are neither rule arguments nor "
                     "kernel-global identifiers"
                     % (knl.name, ", ".join(deps-rule_allowed_identifiers)))
+
+
+class UnScopedCallCollector(CombineMapper):
+
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, frozenset())
+
+    def map_call(self, expr):
+        if not isinstance(expr.function, ScopedFunction):
+            return (frozenset([expr.function.name]) |
+                    self.combine((self.rec(child) for child in expr.parameters)))
+        else:
+            return self.combine((self.rec(child) for child in expr.parameters))
+
+    def map_call_with_kwargs(self, expr):
+        if not isinstance(expr.function, ScopedFunction):
+            return (frozenset([expr.function.name]) |
+                    self.combine((self.rec(child) for child in expr.parameters
+                        + expr.kw_parameter.values())))
+        else:
+            return self.combine((self.rec(child) for child in
+                expr.parameters+expr.kw_parameters.values()))
+
+    def map_scoped_function(self, expr):
+        return frozenset([expr.name])
+
+    def map_constant(self, expr):
+        return frozenset()
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
+    map_tagged_variable = map_constant
+    map_type_cast = map_constant
+
+
+def check_functions_are_scoped(kernel):
+    """ Checks if all the calls in the instruction expression have been scoped,
+    otherwise indicate to what all calls we await signature.
+    """
+
+    from loopy.symbolic import SubstitutionRuleExpander
+    subst_expander = SubstitutionRuleExpander(kernel.substitutions)
+
+    for insn in kernel.instructions:
+        if isinstance(insn, MultiAssignmentBase):
+            unscoped_calls = UnScopedCallCollector()(subst_expander(
+                insn.expression))
+            if unscoped_calls:
+                raise LoopyError("Unknown function '%s' obtained -- register a "
+                        "function or a kernel corresponding to it." %
+                        set(unscoped_calls).pop())
+        elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
+            pass
+        else:
+            raise NotImplementedError("check_function_are_scoped not "
+                    "implemented for %s type of instruction." % type(insn))
 
 # }}}
 

@@ -29,7 +29,9 @@ import numpy as np
 from pymbolic.mapper import CSECachingMapperMixin
 from pymbolic.primitives import Slice, Variable, Subscript
 from loopy.tools import intern_frozenset_of_ids
-from loopy.symbolic import IdentityMapper, WalkMapper, CombineMapper, SubArrayRef
+from loopy.symbolic import (
+        IdentityMapper, WalkMapper, SubArrayRef,
+        RuleAwareIdentityMapper)
 from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
@@ -44,8 +46,6 @@ import six
 from six.moves import range, zip, intern
 
 import re
-
-from functools import reduce
 
 import logging
 logger = logging.getLogger(__name__)
@@ -1837,172 +1837,174 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
 
 # {{{ scope functions
 
-class FunctionScoper(IdentityMapper):
+class FunctionScoper(RuleAwareIdentityMapper):
     """
     Converts functions known to the kernel as instances of
-    :class:`ScopedFunction`.
+    :class:`loopy.symbolic.ScopedFunction`.
 
     **Example**: If given an expression of the form ``sin(x) + unknown_function(y) +
     log(z)``, then the mapper would return ``ScopedFunction('sin')(x) +
-    unknown_function(y) + ScopedFunction('log')(z)``. Since the
-    ``unknown_function`` is not known to the kernel it is not marked as a
-    :class:`loopy.symbolic.ScopedFunction`.
+    unknown_function(y) + ScopedFunction('log')(z)``.
     """
-    def __init__(self, function_ids):
+    def __init__(self, rule_mapping_context, function_ids):
+        super(FunctionScoper, self).__init__(rule_mapping_context)
         self.function_ids = function_ids
+        self.scoped_functions = {}
 
-    def map_call(self, expr):
+    def map_call(self, expr, expn_state):
         from loopy.symbolic import ScopedFunction
         if not isinstance(expr.function, ScopedFunction) and (
                 expr.function.name in self.function_ids):
             # The function is one of the known function hence scoping it.
             from pymbolic.primitives import Call
+            from loopy.kernel.function_interface import ScalarCallable
+
+            # Associating the newly created ScopedFunction with a `CallableScalar`
+            self.scoped_functions[expr.function.name] = ScalarCallable(
+                    expr.function.name)
 
             return Call(
                     ScopedFunction(expr.function.name),
-                    tuple(self.rec(child)
+                    tuple(self.rec(child, expn_state)
                         for child in expr.parameters))
 
-        # This is an unknown function as of yet, not modifying it.
-        return super(FunctionScoper, self).map_call(expr)
+        # This is an unknown function as of yet, hence not modifying it.
+        return super(FunctionScoper, self).map_call(expr, expn_state)
 
-    def map_call_with_kwargs(self, expr):
+    def map_call_with_kwargs(self, expr, expn_state):
         from loopy.symbolic import ScopedFunction
         if not isinstance(expr.function, ScopedFunction) and (
                 expr.function.name in self.function_ids):
             from pymbolic.primitives import CallWithKwargs
+            from loopy.kernel.function_interface import ScalarCallable
+
+            # Associating the newly created ScopedFunction with a `CallableScalar`
+            self.scoped_functions[expr.function.name] = ScalarCallable(
+                    expr.function.name)
             return CallWithKwargs(
                     ScopedFunction(expr.function.name),
-                    tuple(self.rec(child)
+                    tuple(self.rec(child, expn_state)
                         for child in expr.parameters),
                     dict(
-                        (key, self.rec(val))
+                        (key, self.rec(val, expn_state))
                         for key, val in six.iteritems(expr.kw_parameters))
                         )
 
-        # This is an unknown function as of yet, not modifying it.
-        return super(FunctionScoper, self).map_call_with_kwargs(expr)
+        # This is an unknown function as of yet, hence not modifying it.
+        return super(FunctionScoper, self).map_call_with_kwargs(expr,
+                expn_state)
 
-
-class ScopedFunctionCollector(CombineMapper):
-    """
-    Mapper to collect the instances of :class:`loopy.symbolic.ScopedFunction`
-    in an expression.
-
-    :returns: an instance of :class:`frozenset` of tuples ``(function_name,
-    in_kernel_callable)``
-    """
-    def __init__(self, already_scoped_functions=frozenset()):
-        self.already_scoped_functions = already_scoped_functions
-
-    def combine(self, values):
-        import operator
-        return reduce(operator.or_, values, frozenset())
-
-    def map_scoped_function(self, expr):
-        from loopy.kernel.function_interface import CallableOnScalar
-        if expr.name in self.already_scoped_functions:
-            # functions is already scoped
-            return frozenset()
-        else:
-            return frozenset([(expr.name, CallableOnScalar(expr.name))])
-
-    def map_reduction(self, expr):
-        from loopy.kernel.function_interface import CallableOnScalar
+    def map_reduction(self, expr, expn_state):
+        from loopy.kernel.function_interface import ScalarCallable
         from loopy.library.reduction import (MaxReductionOperation,
                 MinReductionOperation, ArgMinReductionOperation,
                 ArgMaxReductionOperation)
+
         if isinstance(expr.operation, MaxReductionOperation):
-            return frozenset([("max", CallableOnScalar("max"))]) | (
-                    self.rec(expr.expr))
+            self.scoped_functions["max"] = ScalarCallable("max")
         elif isinstance(expr.operation, MinReductionOperation):
-            return frozenset([("min", CallableOnScalar("min"))]) | (
-                    self.rec(expr.expr))
+            self.scoped_functions["min"] = ScalarCallable("min")
         elif isinstance(expr.operation, ArgMaxReductionOperation):
-            return frozenset([("max", CallableOnScalar("min")), ("make_tuple",
-                CallableOnScalar("make_tuple"))]) | (
-                    self.rec(expr.expr))
+            self.scoped_functions["max"] = ScalarCallable("max")
+            self.scoped_functions["make_tuple"] = ScalarCallable("make_tuple")
         elif isinstance(expr.operation, ArgMinReductionOperation):
-            return frozenset([("min", CallableOnScalar("min")), ("make_tuple",
-                CallableOnScalar("make_tuple"))]) | (
-                    self.rec(expr.expr))
-        else:
-            return self.rec(expr.expr)
+            self.scoped_functions["min"] = ScalarCallable("min")
+            self.scoped_functions["make_tuple"] = ScalarCallable("make_tuple")
 
-    def map_constant(self, expr):
-        return frozenset()
-
-    map_variable = map_constant
-    map_function_symbol = map_constant
-    map_tagged_variable = map_constant
-    map_type_cast = map_constant
+        return super(FunctionScoper, self).map_reduction(expr, expn_state)
 
 
-def scope_functions(kernel):
-    func_ids = kernel.function_identifiers
+def scope_functions(kernel, function_identifiers=None):
+    """
+    Returns a kernel with the pymbolic nodes involving known functions realized
+    as instances of :class:`loopy.symbolic.ScopedFunction`.
 
-    from loopy.kernel.instruction import CInstruction, _DataObliviousInstruction
-    function_scoper = FunctionScoper(func_ids)
-    scoped_function_collector = ScopedFunctionCollector(
-            kernel.scoped_functions)
-    new_scoped_functions = set()
+    :arg function_identifiers: The functions which are to be looked up in the
+        kernel.
+    """
+    if function_identifiers is None:
+        # Adding the default fucnction identifiers if none provided
+        function_identifiers = kernel.function_identifiers
 
-    new_insns = []
+    from loopy.symbolic import SubstitutionRuleMappingContext
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
 
-    for insn in kernel.instructions:
-        if isinstance(insn, MultiAssignmentBase):
-            new_insn = insn.copy(expression=function_scoper(insn.expression))
-            new_scoped_functions.update(scoped_function_collector(
-                new_insn.expression))
-            new_insns.append(new_insn)
-        elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
-            new_insns.append(insn)
-        else:
-            raise NotImplementedError("scope_functions not implemented for %s" %
-                    type(insn))
+    function_scoper = FunctionScoper(rule_mapping_context, function_identifiers)
 
-    substitutions_with_scoped_expr = {}
+    # scoping fucntions and collecting the scoped functions
+    kernel_with_scoped_functions = function_scoper.map_kernel(kernel)
 
-    for name, rule in kernel.substitutions.items():
-        scoped_rule = rule.copy(
-                expression=function_scoper(rule.expression))
-        substitutions_with_scoped_expr[name] = scoped_rule
-        new_scoped_functions.update(scoped_function_collector(
-            scoped_rule.expression))
-
-    # Need to combine the scoped functions into a dict
+    # updating the functions collected during the scoped functions
     updated_scoped_functions = kernel.scoped_functions.copy()
-    updated_scoped_functions.update(dict(new_scoped_functions))
-    return kernel.copy(instructions=new_insns,
-            scoped_functions=updated_scoped_functions,
-            substitutions=substitutions_with_scoped_expr)
+    updated_scoped_functions.update(function_scoper.scoped_functions)
+
+    return kernel_with_scoped_functions.copy(
+            scoped_functions=updated_scoped_functions)
 
 # }}}
 
 
 # {{{ slice to sub array ref
 
-def get_slice_params(expr, domain_length):
+def get_slice_params(slice, dimension_length):
     """
-    Either reads the params from the slice or initiates the value to defaults.
+    Returns the slice parameters across an axes spanning *domain_length* as a
+    tuple of ``(start, stop, step)``.
+
+    :arg slice: An instance of :class:`pymbolic.primitives.Slice`.
+    :arg dimension_length: The axes length swept by *slice*.
     """
-    start, stop, step = expr.start, expr.stop, expr.step
-
-    if start is None:
-        start = 0
-
-    if stop is None:
-        stop = domain_length
+    from pymbolic.primitives import Slice
+    assert isinstance(slice, Slice)
+    start, stop, step = slice.start, slice.stop, slice.step
 
     if step is None:
         step = 1
+
+    if step == 0:
+        raise LoopyError("Slice cannot have 0 step size.")
+
+    if start is None:
+        if step > 0:
+            start = 0
+        else:
+            start = dimension_length-1
+
+    if stop is None:
+        if step > 0:
+            stop = dimension_length
+        else:
+            stop = -1
 
     return start, stop, step
 
 
 class SliceToInameReplacer(IdentityMapper):
     """
-    Mapper that converts slices to instances of :class:`SubArrayRef`.
+    Converts slices to instances of :class:`loopy.symbolic.SubArrayRef`.
+
+    :attribute var_name_gen:
+
+        Variable name generator, in order to generate unique inames within the
+        kernel domain.
+
+    :attribute knl:
+
+        An instance of :clas:`loopy.LoopKernel`
+
+    :attribute iname_domains:
+
+        An instance of :class:`dict` to store the slices enountered in the
+        expressions as a mapping from ``iname`` to a tuple of ``(start, stop,
+        step)``, which describes the affine constraint imposed on the ``iname``
+        by the corresponding slice notation its intended to replace.
+
+    :Example:
+
+        ``x[:, i, :, j]`` would be mapped to ``[islice_0, islice_1]:
+        x[islice_0, i, islice_1, j]``
+
     """
     def __init__(self, knl, var_name_gen):
         self.var_name_gen = var_name_gen
@@ -2028,7 +2030,11 @@ class SliceToInameReplacer(IdentityMapper):
                         index, domain_length)
                 self.iname_domains[unique_var_name] = (start, stop, step)
 
-                updated_index.append(step*Variable(unique_var_name))
+                if step > 0:
+                    updated_index.append(step*Variable(unique_var_name))
+                else:
+                    updated_index.append(start+step*Variable(unique_var_name))
+
                 swept_inames.append(Variable(unique_var_name))
             else:
                 updated_index.append(index)
@@ -2042,7 +2048,8 @@ class SliceToInameReplacer(IdentityMapper):
 
     def get_iname_domain_as_isl_set(self):
         """
-        Returns the extra domain constraints imposed by the slice inames.
+        Returns the extra domain constraints imposed by the slice inames,
+        recorded in :attr:`iname_domains`
         """
         if not self.iname_domains:
             return None
@@ -2052,20 +2059,17 @@ class SliceToInameReplacer(IdentityMapper):
                 set=list(self.iname_domains.keys()))
         iname_set = isl.BasicSet.universe(space)
 
+        from loopy.isl_helpers import make_slab
         for iname, (start, stop, step) in self.iname_domains.items():
-            iname_set = (iname_set
-                    .add_constraint(isl.Constraint.ineq_from_names(space, {1:
-                        -start, iname: step}))
-                    .add_constraint(isl.Constraint.ineq_from_names(space, {1:
-                        stop-1, iname: -step})))
+            iname_set = iname_set & make_slab(space, iname, start, stop, step)
 
         return iname_set
 
 
 def realize_slices_as_sub_array_refs(kernel):
     """
-    Transformation that returns a kernel with the instances of
-    :class:`pymbolic.primitives.Slice` to `loopy.symbolic.SubArrayRef`
+    Returns a kernel with the instances of :class:`pymbolic.primitives.Slice`
+    interpreted as `loopy.symbolic.SubArrayRef`.
     """
     unique_var_name_generator = kernel.get_var_name_generator()
     slice_replacer = SliceToInameReplacer(kernel, unique_var_name_generator)
@@ -2074,14 +2078,15 @@ def realize_slices_as_sub_array_refs(kernel):
     for insn in kernel.instructions:
         if isinstance(insn, CallInstruction):
             new_expr = slice_replacer(insn.expression)
-            new_assignees = slice_replacer(insn.assignees)
+            new_assignees = tuple(slice_replacer(assignee) for assignee in
+                    insn.assignees)
             new_insns.append(insn.copy(assignees=new_assignees,
                 expression=new_expr))
         elif isinstance(insn, (CInstruction, MultiAssignmentBase,
                 _DataObliviousInstruction)):
             new_insns.append(insn)
         else:
-            raise NotImplementedError("parse_slices not implemented for %s" %
+            raise NotImplementedError("Unknown type of instruction -- %s" %
                     type(insn))
 
     slice_iname_domains = slice_replacer.get_iname_domain_as_isl_set()
@@ -2435,7 +2440,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_written_variable_names(knl)
 
     # Function Lookup
-    knl = scope_functions(knl)
+    knl = scope_functions(knl, knl.function_identifiers)
 
     from loopy.preprocess import prepare_for_caching
     knl = prepare_for_caching(knl)

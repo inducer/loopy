@@ -23,12 +23,8 @@ THE SOFTWARE.
 """
 
 from loopy.kernel import LoopKernel
-from loopy.kernel.creation import FunctionScoper
 from loopy.diagnostic import LoopyError
 from loopy.kernel.function_interface import CallableKernel
-
-from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
-        CInstruction, _DataObliviousInstruction)
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -39,70 +35,42 @@ __doc__ = """
 
 # {{{ main entrypoint
 
-def register_callable_kernel(parent, function_name, child):
-    """
-    The purpose of this transformation is so that one can inoke the child
-    kernel in the parent kernel.
+def register_callable_kernel(caller_kernel, function_name, callee_kernel):
+    """Returns a copy of *caller_kernel* which identifies *function_name* in an
+    expression as a call to *callee_kernel*.
 
-    :arg parent
-
-        This is the "main" kernel which will mostly remain unaltered and one
-        can interpret it as stitching up the child kernel in the parent kernel.
-
-    :arg function_name
-
-        The name of the function call with which the child kernel must be
-        associated in the parent kernel
-
-    :arg child
-
-        This is like a function in every other language and this might be
-        invoked in one of the instructions of the parent kernel.
-
-    ..note::
-
-        One should note that the kernels would go under stringent compatibilty
-        tests so that both of them can be confirmed to be made for each other.
+    :arg caller_kernel: An instance of :class:`loopy.kernel.LoopKernel`.
+    :arg function_name: An instance of :class:`str`.
+    :arg callee_kernel: An instance of :class:`loopy.kernel.LoopKernel`.
     """
 
     # {{{ sanity checks
 
-    assert isinstance(parent, LoopKernel)
-    assert isinstance(child, LoopKernel)
+    assert isinstance(caller_kernel, LoopKernel)
+    assert isinstance(callee_kernel, LoopKernel)
     assert isinstance(function_name, str)
+
+    if function_name in caller_kernel.function_identifiers:
+        raise LoopyError("%s is being used a default function "
+                "identifier--maybe use a different function name in order to "
+                "associate with a callable kernel." % function_name)
 
     # }}}
 
-    # scoping the function
-    function_scoper = FunctionScoper(set([function_name]))
-    new_insns = []
+    # now we know some new functions, and hence scoping them.
+    from loopy.kernel.creation import scope_functions
 
-    for insn in parent.instructions:
-        if isinstance(insn, CallInstruction):
-            new_insn = insn.copy(expression=function_scoper(insn.expression))
-            new_insns.append(new_insn)
-        elif isinstance(insn, (_DataObliviousInstruction, MultiAssignmentBase,
-                CInstruction)):
-            new_insns.append(insn)
-        else:
-            raise NotImplementedError("scope_functions not implemented for %s" %
-                    type(insn))
+    # scoping the function corresponding to kernel call
+    caller_kernel = scope_functions(caller_kernel, set([function_name]))
+    updated_scoped_functions = caller_kernel.scoped_functions
 
-    # adding the scoped function to the scoped function dict of the parent
+    # making the target of the child kernel to be same as the target of parent
     # kernel.
-
-    scoped_functions = parent.scoped_functions.copy()
-
-    if function_name in scoped_functions:
-        raise LoopyError("%s is already being used as a funciton name -- maybe"
-                "use a different name for registering the subkernel")
-
-    scoped_functions[function_name] = CallableKernel(name=function_name,
-        subkernel=child.copy(target=parent.target))
+    updated_scoped_functions[function_name] = CallableKernel(name=function_name,
+        subkernel=callee_kernel.copy(target=caller_kernel.target))
 
     # returning the parent kernel with the new scoped function dictionary
-    return parent.copy(scoped_functions=scoped_functions,
-            instructions=new_insns)
+    return caller_kernel.copy(scoped_functions=updated_scoped_functions)
 
 # }}}
 
