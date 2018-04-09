@@ -300,7 +300,6 @@ class TypeInferenceMapper(CombineMapper):
             # collecting result dtypes in order of the assignees
             if -1 in new_arg_id_to_dtype and new_arg_id_to_dtype[-1] is not None:
                 if return_tuple:
-                    print(get_return_types_as_tuple(new_arg_id_to_dtype))
                     return [get_return_types_as_tuple(new_arg_id_to_dtype)]
                 else:
                     return [new_arg_id_to_dtype[-1]]

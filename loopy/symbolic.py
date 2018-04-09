@@ -775,12 +775,9 @@ class SubArrayRef(p.Expression):
         """
         from loopy.kernel.array import FixedStrideArrayDimTag as DimTag
         sub_dim_tags = []
-        sub_shape = []  # need to figure out an elegant way of finding this out.
+        sub_shape = []
         linearized_index = sum(dim_tag.stride*iname for dim_tag, iname in
                 zip(arg_dim_tags, self.subscript.index_tuple))
-
-        print(self.subscript)
-        print(linearized_index)
 
         strides_as_dict = CoefficientCollector(tuple(iname.name for iname in
             self.swept_inames))(linearized_index)
@@ -790,20 +787,12 @@ class SubArrayRef(p.Expression):
             arg_shape, self.subscript.index_tuple) if VariableInAnExpression(
                 self.swept_inames)(index))
 
-        return sub_dim_tags, sub_shape
-        """
-        # Trying out new things
-        from loopy.kernel.array import FixedStrideArrayDimTag as DimTag
-        sub_dim_tags = []
-        sub_shape = []
-        for dim_tag, axis_length, iname in zip(
-                arg_dim_tags, arg_shape, self.subscript.index_tuple):
-            if iname in self.swept_inames:
-                sub_dim_tags.append(DimTag(dim_tag.stride))
-                sub_shape.append(axis_length)
+        if len(sub_shape) != len(self.swept_inames):
+            # Not allowed something like: [i]: a[i, i]
+            raise LoopyError("Number of axes swept must be equal to the number "
+                    "of inames declared for sweeping.")
 
-        return tuple(sub_dim_tags), tuple(sub_shape)
-        """
+        return sub_dim_tags, sub_shape
 
     def __getinitargs__(self):
         return (self.swept_inames, self.subscript)
