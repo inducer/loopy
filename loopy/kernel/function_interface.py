@@ -619,10 +619,7 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
         self.subst_expander = subst_expander
 
     def map_call(self, expr, expn_state):
-        if not isinstance(expr.function, Variable):
-            return IdentityMapper.map_call(self, expr, expn_state)
-
-        name, tag = parse_tagged_name(expr.function)
+        name, tag = parse_tagged_name(expr.function.function)
 
         if name not in self.rule_mapping_context.old_subst_rules:
             expanded_expr = self.subst_expander(expr)
@@ -641,47 +638,7 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
         else:
             return self.map_substitution(name, tag, expr.parameters, expn_state)
 
-    def map_call_with_kwargs(self, expr, expn_state):
-        expanded_expr = self.subst_expander(expr)
-        if expr in self.expr_to_new_names:
-            return type(expr)(
-                ScopedFunction(self.expr_to_new_names[expr]),
-                tuple(self.rec(child, expn_state)
-                    for child in expr.parameters),
-                dict(
-                    (key, self.rec(val, expn_state))
-                    for key, val in six.iteritems(expr.kw_parameters))
-                    )
-        elif expanded_expr in self.expr_to_new_names:
-            return type(expr)(
-                ScopedFunction(self.expr_to_new_names[expanded_expr]),
-                tuple(self.rec(child, expn_state)
-                    for child in expr.parameters),
-                dict(
-                    (key, self.rec(val, expn_state))
-                    for key, val in six.iteritems(expr.kw_parameters))
-                    )
-        else:
-            return IdentityMapper.map_call_with_kwargs(self, expr, expn_state)
-
-    def map_reduction(self, expr, expn_state):
-        from loopy.symbolic import Reduction
-        expanded_expr = self.subst_expander(expr)
-
-        if expr in self.expr_to_new_names:
-            return Reduction(
-                    ScopedFunction(self.expr_to_new_names[expr]),
-                    tuple(expr.inames),
-                    self.rec(expr.expr, expn_state),
-                    allow_simultaneous=expr.allow_simultaneous)
-        elif expanded_expr in self.expr_to_new_names:
-            return Reduction(
-                    ScopedFunction(self.expr_to_new_names[expanded_expr]),
-                    tuple(expr.inames),
-                    self.rec(expr.expr, expn_state),
-                    allow_simultaneous=expr.allow_simultaneous)
-        else:
-            return IdentityMapper.map_reduction(self, expr, expn_state)
+    # TODO: Add a method map_call_with_kwargs
 
 
 def register_pymbolic_calls_to_knl_callables(kernel,

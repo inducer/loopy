@@ -68,6 +68,8 @@ class UnScopedCallCollector(CombineMapper):
 
     def map_call(self, expr):
         if not isinstance(expr.function, ScopedFunction):
+            print(expr)
+            print(type(expr.function))
             return (frozenset([expr.function.name]) |
                     self.combine((self.rec(child) for child in expr.parameters)))
         else:
@@ -81,9 +83,6 @@ class UnScopedCallCollector(CombineMapper):
         else:
             return self.combine((self.rec(child) for child in
                 expr.parameters+expr.kw_parameters.values()))
-
-    def map_scoped_function(self, expr):
-        return frozenset([expr.name])
 
     def map_constant(self, expr):
         return frozenset()
@@ -99,7 +98,7 @@ def check_functions_are_scoped(kernel):
     otherwise indicate to what all calls we await signature.
     """
 
-    from loopy.symbolic import SubstitutionRuleExpander
+    from loopy.symbolic import SubstitutionRuleExpander, IdentityMapper
     subst_expander = SubstitutionRuleExpander(kernel.substitutions)
 
     for insn in kernel.instructions:

@@ -111,13 +111,17 @@ class IdentityMapperMixin(object):
         return SubArrayRef(self.rec(expr.swept_inames, *args),
                 self.rec(expr.subscript, *args))
 
+    def map_scoped_function(self, expr, *args):
+        if isinstance(expr.function, p.Variable):
+            return ScopedFunction(self.rec(expr.function, *args))
+        else:
+            return ScopedFunction(expr.function, *args)
+
     map_type_cast = map_type_annotation
 
     map_linear_subscript = IdentityMapperBase.map_subscript
 
     map_rule_argument = map_group_hw_index
-
-    map_scoped_function = IdentityMapperBase.map_variable
 
 
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
@@ -131,8 +135,6 @@ class PartialEvaluationMapper(
 
     def map_common_subexpression_uncached(self, expr):
         return type(expr)(self.rec(expr.child), expr.prefix, expr.scope)
-
-    map_scoped_function = map_variable
 
 
 class WalkMapper(WalkMapperBase):
@@ -172,14 +174,19 @@ class WalkMapper(WalkMapperBase):
 
     map_rule_argument = map_group_hw_index
 
-    map_scoped_function = WalkMapperBase.map_variable
-
     def map_sub_array_ref(self, expr, *args):
         if not self.visit(expr):
             return
 
         self.rec(expr.swept_inames, *args)
         self.rec(expr.subscript, *args)
+
+    def map_scoped_function(self, expr, *args):
+        if not self.visit(expr):
+            return
+
+        if isinstance(expr.function, p.Variable):
+            self.rec(expr.function, *args)
 
 
 class CallbackMapper(CallbackMapperBase, IdentityMapper):
@@ -193,9 +200,10 @@ class CombineMapper(CombineMapperBase):
     def map_sub_array_ref(self, expr):
         return self.rec(expr.get_begin_subscript())
 
-    map_linear_subscript = CombineMapperBase.map_subscript
+    def map_scoped_function(self, expr):
+        return self.rec(expr.funciton)
 
-    map_scoped_function = CombineMapperBase.map_variable
+    map_linear_subscript = CombineMapperBase.map_subscript
 
 
 class SubstitutionMapper(
@@ -254,7 +262,7 @@ class StringifyMapper(StringifyMapperBase):
         return "cast(%s, %s)" % (repr(expr.type), self.rec(expr.child, PREC_NONE))
 
     def map_scoped_function(self, expr, prec):
-        return "ScopedFunction('%s')" % expr.name
+        return "ScopedFunction('%s')" % self.rec(expr.function, prec)
 
     def map_sub_array_ref(self, expr, prec):
         return "SubArrayRef({inames}, ({subscr}))".format(
@@ -358,8 +366,6 @@ class SubstitutionRuleExpander(IdentityMapper):
         expr = submap(rule.expression)
 
         return self.rec(expr)
-
-    map_scoped_function = map_variable
 
 # }}}
 
@@ -675,13 +681,33 @@ class RuleArgument(p.Expression):
     mapper_method = intern("map_rule_argument")
 
 
-class ScopedFunction(p.Variable):
+class ScopedFunction(p.Expression):
     """ Connects a call to a callable available in a kernel.
+
+    .. attribute:: function
+
+        An instance of :class:`pymbolic.primitives.Variable` or
+        `loopy.library.reduction.ArgExtOp`.
     """
-    mapper_method = intern("map_scoped_function")
+    init_arg_names = ("function", )
+
+    def __init__(self, function):
+        if isinstance(function, str):
+            function = p.Variable(function)
+        assert isinstance(function, p.Variable)
+        self.function = function
+
+    @property
+    def name(self):
+        return self.function.name
 
     def stringifier(self):
         return StringifyMapper
+
+    def __getinitargs__(self):
+        return self.function,
+
+    mapper_method = intern("map_scoped_function")
 
 
 class EvaluatorWithDeficientContext(PartialEvaluationMapper):
