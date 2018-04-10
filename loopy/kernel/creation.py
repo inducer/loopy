@@ -2092,9 +2092,9 @@ def realize_slices_as_sub_array_refs(kernel):
     slice_iname_domains = slice_replacer.get_iname_domain_as_isl_set()
 
     if slice_iname_domains:
-        d1, d2 = isl.align_two(kernel.domains[0], slice_iname_domains)
-        return kernel.copy(domains=[d1 & d2],
-                instructions=new_insns)
+        from loopy.kernel.tools import DomainChanger
+        domch = DomainChanger(kernel.copy(instructions=new_insns), frozenset())
+        return domch.get_kernel_with(slice_iname_domains)
     else:
         return kernel.copy(instructions=new_insns)
 
