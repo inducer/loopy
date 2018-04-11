@@ -60,16 +60,15 @@ def check_identifiers_in_subst_rules(knl):
                     % (knl.name, ", ".join(deps-rule_allowed_identifiers)))
 
 
-class UnScopedCallCollector(CombineMapper):
+class UnscopedCallCollector(CombineMapper):
 
     def combine(self, values):
         import operator
         return reduce(operator.or_, values, frozenset())
 
     def map_call(self, expr):
-        if not isinstance(expr.function, ScopedFunction):
-            print(expr)
-            print(type(expr.function))
+        from loopy.library.reduction import ArgExtOp
+        if not isinstance(expr.function, (ScopedFunction, ArgExtOp)):
             return (frozenset([expr.function.name]) |
                     self.combine((self.rec(child) for child in expr.parameters)))
         else:
@@ -98,12 +97,12 @@ def check_functions_are_scoped(kernel):
     otherwise indicate to what all calls we await signature.
     """
 
-    from loopy.symbolic import SubstitutionRuleExpander, IdentityMapper
+    from loopy.symbolic import SubstitutionRuleExpander
     subst_expander = SubstitutionRuleExpander(kernel.substitutions)
 
     for insn in kernel.instructions:
         if isinstance(insn, MultiAssignmentBase):
-            unscoped_calls = UnScopedCallCollector()(subst_expander(
+            unscoped_calls = UnscopedCallCollector()(subst_expander(
                 insn.expression))
             if unscoped_calls:
                 raise LoopyError("Unknown function '%s' obtained -- register a "

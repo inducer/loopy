@@ -38,7 +38,7 @@ from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
-from loopy.symbolic import ScopedFunction, CombineMapper
+from loopy.symbolic import CombineMapper
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
@@ -1942,9 +1942,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
     # TODO: remove unused inames...
 
-    # kernel = (
-    #         _hackily_ensure_multi_assignment_return_values_are_scoped_private(
-    #             kernel))
+    kernel = (
+            _hackily_ensure_multi_assignment_return_values_are_scoped_private(
+                kernel))
 
     return kernel
 
@@ -2150,8 +2150,11 @@ class ArgDescrInferenceMapper(CombineMapper):
     def map_call(self, expr, **kwargs):
         from loopy.kernel.function_interface import ValueArgDescriptor
         from loopy.symbolic import SubArrayRef
-        if not isinstance(expr.function, ScopedFunction):
-            return CombineMapper.map_call(self, expr, **kwargs)
+        from loopy.library.reduction import ArgExtOp
+
+        if isinstance(expr.function, ArgExtOp):
+            # Special treatment to ArgExtOp
+            return self.combine((self.rec(child) for child in expr.parameters))
 
         # descriptors for the args
         arg_id_to_descr = dict((i,
@@ -2291,6 +2294,13 @@ class FunctionsNotReadyForCodegenCollector(CombineMapper):
         return all(values)
 
     def map_call(self, expr, *args, **kwargs):
+        from loopy.library.reduction import ArgExtOp
+        if isinstance(expr.function, ArgExtOp):
+            return self.combine(
+                    tuple(
+                        self.rec(child, *args, **kwargs) for child in
+                        expr.parameters))
+
         is_ready_for_codegen = self.kernel.scoped_functions[
                 expr.function.name].is_ready_for_codegen()
         return self.combine(

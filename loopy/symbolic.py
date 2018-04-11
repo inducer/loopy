@@ -115,7 +115,7 @@ class IdentityMapperMixin(object):
         if isinstance(expr.function, p.Variable):
             return ScopedFunction(self.rec(expr.function, *args))
         else:
-            return ScopedFunction(expr.function, *args)
+            return ScopedFunction(expr.function)
 
     map_type_cast = map_type_annotation
 
@@ -694,7 +694,8 @@ class ScopedFunction(p.Expression):
     def __init__(self, function):
         if isinstance(function, str):
             function = p.Variable(function)
-        assert isinstance(function, p.Variable)
+        from loopy.library.reduction import ArgExtOp
+        assert isinstance(function, (p.Variable, ArgExtOp))
         self.function = function
 
     @property

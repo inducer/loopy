@@ -501,6 +501,9 @@ def generate_code_v2(kernel, is_generating_master_kernel=True):
 
     for insn in kernel.instructions:
         if isinstance(insn, CallInstruction):
+            from loopy.library.reduction import ArgExtOp
+            if isinstance(insn.expression.function, ArgExtOp):
+                continue
             in_knl_callable = kernel.scoped_functions[insn.expression.function.name]
             from loopy.kernel.function_interface import CallableKernel
             if isinstance(in_knl_callable, CallableKernel):
