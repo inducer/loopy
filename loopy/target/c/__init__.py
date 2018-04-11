@@ -934,7 +934,7 @@ class CASTBuilder(ASTBuilderBase):
             lhs_expr, rhs_expr, lhs_dtype):
         raise NotImplementedError("atomic updates in %s" % type(self).__name__)
 
-    def emit_code_specially_for_the_special_arg_extop(self, codegen_state,
+    def emit_arg_extop(self, codegen_state,
             insn):
 
         ecm = codegen_state.expression_to_code_mapper
@@ -1040,7 +1040,7 @@ class CASTBuilder(ASTBuilderBase):
     def emit_multiple_assignment(self, codegen_state, insn):
         from loopy.library.reduction import ArgExtOp
         if isinstance(insn.expression.function, ArgExtOp):
-            return self.emit_code_specially_for_the_special_arg_extop(codegen_state,
+            return self.emit_arg_extop(codegen_state,
                     insn)
 
         ecm = codegen_state.expression_to_code_mapper
