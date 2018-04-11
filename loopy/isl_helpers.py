@@ -63,6 +63,26 @@ def dump_space(ls):
 # {{{ make_slab
 
 def make_slab(space, iname, start, stop, step=1):
+    """
+    Returns an instance of :class:`islpy._isl.BasicSet`, which satisfies the
+    constraint ``start <= step*iname < stop``.
+
+    :arg space: An instance of :class:`islpy._isl.Space`.
+
+    :arg iname:
+        Either an instance of :class:`str` as a name of the ``iname`` or a
+        tuple of ``(iname_dt, iname_dx)`` indicating the *iname* in the space.
+
+    :arg start:
+        An instance of :class:`int`  or an instance of
+        :class:`islpy._isl.Aff` indicating the lower bound of
+        ``step*iname``(inclusive).
+
+    :arg stop:
+        An instance of :class:`int`  or an instance of
+        :class:`islpy._isl.Aff` indicating the upper bound of
+        ``step*iname``.
+    """
     zero = isl.Aff.zero_on_domain(space)
 
     if isinstance(start, (isl.Aff, isl.PwAff)):
@@ -93,21 +113,22 @@ def make_slab(space, iname, start, stop, step=1):
 
     if step > 0:
         result = (isl.BasicSet.universe(space)
-                # start <= iname
+                # start <= step*iname
                 .add_constraint(isl.Constraint.inequality_from_aff(
                     step*iname_aff - start))
-                # iname < stop
+                # step*iname < stop
                 .add_constraint(isl.Constraint.inequality_from_aff(
                     stop-1 - step*iname_aff)))
     elif step < 0:
         result = (isl.BasicSet.universe(space)
-                # start <= iname
+                # start >= (-step)*iname
                 .add_constraint(isl.Constraint.inequality_from_aff(
                     step*iname_aff + start))
-                # iname < stop
+                # (-step)*iname > stop
                 .add_constraint(isl.Constraint.inequality_from_aff(
                     -stop-1 - step*iname_aff)))
     else:
+        # step = 0
         raise LoopyError("0 step not allowed in make_slab.")
 
     return result
