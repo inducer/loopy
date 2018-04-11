@@ -1047,7 +1047,7 @@ class CASTBuilder(ASTBuilderBase):
         func_id = insn.expression.function.name
         in_knl_callable = codegen_state.kernel.scoped_functions[func_id]
 
-        if in_knl_callable.name == 'make_tuple':
+        if in_knl_callable.name_in_target == 'loopy_make_tuple':
             return self.emit_tuple_assignment(codegen_state, insn)
 
         in_knl_callable_as_call = in_knl_callable.emit_call_insn(

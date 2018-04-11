@@ -754,12 +754,15 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
     # }}}
 
-    from loopy.kernel.instruction import CallInstruction
+    from loopy.kernel.instruction import CallInstruction, is_array_call
     for insn in kernel.instructions:
         if not isinstance(insn, CallInstruction):
             continue
 
         if len(insn.assignees) <= 1:
+            continue
+
+        if is_array_call(insn.assignees, insn.expression):
             continue
 
         assignees = insn.assignees
@@ -1687,6 +1690,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         arg_dtypes, reduction_dtypes = (
                 infer_arg_and_reduction_dtypes_for_reduction_expression(
                         temp_kernel, expr, unknown_types_ok))
+        print(type(expr))
+        print(rec)
 
         outer_insn_inames = temp_kernel.insn_inames(insn)
         bad_inames = frozenset(expr.inames) & outer_insn_inames
