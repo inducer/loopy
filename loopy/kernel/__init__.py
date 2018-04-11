@@ -1298,7 +1298,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 persistent_hash_key_getter=_get_insn_hash_key)
 
         # Cache written variables to avoid having to unpickle instructions in
-        # order to compute the written variables. This is neede d on the
+        # order to compute the written variables. This is needed on the
         # cache-to-execution path.
         result["_cached_written_variables"] = self.get_written_variables()
 
