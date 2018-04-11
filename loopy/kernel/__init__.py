@@ -214,7 +214,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             state=kernel_state.INITIAL,
             target=None,
 
-            overridden_get_grid_sizes_for_insn_ids=None):
+            overridden_get_grid_sizes_for_insn_ids=None,
+            _cached_written_variables=None):
         """
         :arg overridden_get_grid_sizes_for_insn_ids: A callable. When kernels get
             intersected in slab decomposition, their grid sizes shouldn't
@@ -290,7 +291,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 state=state,
                 target=target,
                 overridden_get_grid_sizes_for_insn_ids=(
-                    overridden_get_grid_sizes_for_insn_ids))
+                    overridden_get_grid_sizes_for_insn_ids),
+                _cached_written_variables=_cached_written_variables)
 
         self._kernel_executor_cache = {}
 
@@ -801,6 +803,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     @memoize_method
     def get_written_variables(self):
+        if self._cached_written_variables is not None:
+            return self._cached_written_variables
+
         return frozenset(
                 var_name
                 for insn in self.instructions
@@ -1277,7 +1282,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         result = dict(
                 (key, getattr(self, key))
                 for key in self.__class__.fields
-                if hasattr(self, key) and key != "instructions")
+                if hasattr(self, key))
 
         result.pop("cache_manager", None)
 
@@ -1291,6 +1296,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 self.instructions,
                 eq_key_getter=_get_insn_eq_key,
                 persistent_hash_key_getter=_get_insn_hash_key)
+
+        # Cache written variables to avoid having to unpickle instructions in
+        # order to compute the written variables. This is needed on the
+        # cache-to-execution path.
+        result["_cached_written_variables"] = self.get_written_variables()
 
         # make sure that kernels are pickled with a cached hash key in place
         from loopy.tools import LoopyKeyBuilder
