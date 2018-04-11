@@ -230,7 +230,7 @@ def test_register_knl(ctx_factory):
         np.linalg.norm(2*x+3*y))) < 1e-15
 
 
-def test_slices(ctx_factory):
+def test_slices_with_negative_step(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     n = 2 ** 4
@@ -247,7 +247,8 @@ def test_slices(ctx_factory):
     parent_knl = lp.make_kernel(
             "{[i, k, m]: 0<=i, k, m<16}",
             """
-            z[i, :, k, :, m] = linear_combo(x[i, :, k, :, m], y[i, :, k, :, m])
+            z[i, 15:-1:-1, k, :, m] = linear_combo(x[i, :, k, :, m],
+                                                   y[i, :, k, :, m])
             """,
             kernel_data=[
                 lp.GlobalArg(
@@ -269,8 +270,51 @@ def test_slices(ctx_factory):
 
     evt, (out, ) = knl(queue, x=x, y=y)
 
-    assert (np.linalg.norm(2*x+3*y-out)/(
+    assert (np.linalg.norm(2*x+3*y-out[:, ::-1, :, :, :])/(
         np.linalg.norm(2*x+3*y))) < 1e-15
+
+
+def test_multi_arg_array_call(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    import pymbolic.primitives as p
+    n = 10
+    acc_i = p.Variable("acc_i")
+    i = p.Variable("i")
+    index = p.Variable("index")
+    a_i = p.Subscript(p.Variable("a"), p.Variable("i"))
+    argmin_kernel = lp.make_kernel(
+            "{[i]: 0 <= i < n}",
+            [
+                lp.Assignment(id="init2", assignee=index,
+                    expression=0),
+                lp.Assignment(id="init1", assignee=acc_i,
+                    expression="214748367"),
+                lp.Assignment(id="insn", assignee=index,
+                    expression=p.If(p.Expression.eq(acc_i, a_i), i, index),
+                    depends_on="update"),
+                lp.Assignment(id="update", assignee=acc_i,
+                    expression=p.Variable("min")(acc_i, a_i),
+                    depends_on="init1,init2")])
+
+    argmin_kernel = lp.fix_parameters(argmin_kernel, n=n)
+
+    knl = lp.make_kernel(
+            "{[i]:0<=i<n}",
+            """
+            min_val, min_index = custom_argmin([i]:b[i])
+            """)
+
+    knl = lp.fix_parameters(knl, n=n)
+    knl = lp.set_options(knl, return_dict=True)
+
+    knl = lp.register_callable_kernel(knl, "custom_argmin", argmin_kernel)
+    b = np.random.randn(n)
+    evt, out_dict = knl(queue, b=b)
+    tol = 1e-15
+    from numpy.linalg import norm
+    assert(norm(out_dict['min_val'][0] - np.min(b)) < tol)
+    assert(norm(out_dict['min_index'][0] - np.argmin(b)) < tol)
 
 
 def test_rename_argument(ctx_factory):
