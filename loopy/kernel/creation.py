@@ -1864,7 +1864,7 @@ class FunctionScoper(RuleAwareIdentityMapper):
                     expr.function.name)
 
             return Call(
-                    ScopedFunction(expr.function),
+                    ScopedFunction(expr.function.name),
                     tuple(self.rec(child, expn_state)
                         for child in expr.parameters))
 

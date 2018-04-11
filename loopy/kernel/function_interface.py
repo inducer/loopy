@@ -623,7 +623,7 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
         if isinstance(expr.function, ArgExtOp):
             return IdentityMapper.map_call(self, expr, expn_state)
 
-        name, tag = parse_tagged_name(expr.function.function)
+        name, tag = parse_tagged_name(expr.function)
 
         if name not in self.rule_mapping_context.old_subst_rules:
             expanded_expr = self.subst_expander(expr)

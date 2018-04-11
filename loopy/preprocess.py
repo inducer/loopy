@@ -1690,8 +1690,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         arg_dtypes, reduction_dtypes = (
                 infer_arg_and_reduction_dtypes_for_reduction_expression(
                         temp_kernel, expr, unknown_types_ok))
-        print(type(expr))
-        print(rec)
 
         outer_insn_inames = temp_kernel.insn_inames(insn)
         bad_inames = frozenset(expr.inames) & outer_insn_inames

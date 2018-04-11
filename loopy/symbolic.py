@@ -111,11 +111,7 @@ class IdentityMapperMixin(object):
         return SubArrayRef(self.rec(expr.swept_inames, *args),
                 self.rec(expr.subscript, *args))
 
-    def map_scoped_function(self, expr, *args):
-        if isinstance(expr.function, p.Variable):
-            return ScopedFunction(self.rec(expr.function, *args))
-        else:
-            return ScopedFunction(expr.function)
+    map_scoped_function = IdentityMapperBase.map_variable
 
     map_type_cast = map_type_annotation
 
@@ -181,12 +177,7 @@ class WalkMapper(WalkMapperBase):
         self.rec(expr.swept_inames, *args)
         self.rec(expr.subscript, *args)
 
-    def map_scoped_function(self, expr, *args):
-        if not self.visit(expr):
-            return
-
-        if isinstance(expr.function, p.Variable):
-            self.rec(expr.function, *args)
+    map_scoped_function = WalkMapperBase.map_variable
 
 
 class CallbackMapper(CallbackMapperBase, IdentityMapper):
@@ -200,8 +191,7 @@ class CombineMapper(CombineMapperBase):
     def map_sub_array_ref(self, expr):
         return self.rec(expr.get_begin_subscript())
 
-    def map_scoped_function(self, expr):
-        return self.rec(expr.funciton)
+    map_scoped_function = CombineMapperBase.map_variable
 
     map_linear_subscript = CombineMapperBase.map_subscript
 
@@ -262,7 +252,7 @@ class StringifyMapper(StringifyMapperBase):
         return "cast(%s, %s)" % (repr(expr.type), self.rec(expr.child, PREC_NONE))
 
     def map_scoped_function(self, expr, prec):
-        return "ScopedFunction('%s')" % self.rec(expr.function, prec)
+        return "ScopedFunction('%s')" % expr.name
 
     def map_sub_array_ref(self, expr, prec):
         return "SubArrayRef({inames}, ({subscr}))".format(
@@ -681,32 +671,17 @@ class RuleArgument(p.Expression):
     mapper_method = intern("map_rule_argument")
 
 
-class ScopedFunction(p.Expression):
+class ScopedFunction(p.Variable):
     """ Connects a call to a callable available in a kernel.
 
-    .. attribute:: function
+    .. attribute:: name
 
         An instance of :class:`pymbolic.primitives.Variable` or
         `loopy.library.reduction.ArgExtOp`.
     """
-    init_arg_names = ("function", )
-
-    def __init__(self, function):
-        if isinstance(function, str):
-            function = p.Variable(function)
-        from loopy.library.reduction import ArgExtOp
-        assert isinstance(function, (p.Variable, ArgExtOp))
-        self.function = function
-
-    @property
-    def name(self):
-        return self.function.name
 
     def stringifier(self):
         return StringifyMapper
-
-    def __getinitargs__(self):
-        return self.function,
 
     mapper_method = intern("map_scoped_function")
 
