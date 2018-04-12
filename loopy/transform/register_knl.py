@@ -112,8 +112,7 @@ def register_callable_kernel(parent, function_name, child):
 # }}}
 
 
-
-def inline_kernel(kernel, function, arg_map=None):
+def inline_kernel(kernel, function, arg_map):
 
     child = kernel.scoped_functions[function].subkernel
     vng = kernel.get_var_name_generator()
@@ -138,7 +137,7 @@ def inline_kernel(kernel, function, arg_map=None):
             new_domain = new_domain.set_dim_name(dim_type, i, new_iname)
         new_domains.append(new_domain)
 
-    kernel = kernel.copy(domains= kernel.domains + new_domains)
+    kernel = kernel.copy(domains=kernel.domains + new_domains)
 
     # rename temporaries
 
@@ -152,8 +151,11 @@ def inline_kernel(kernel, function, arg_map=None):
     kernel = kernel.copy(temporary_variables=new_temps)
 
     # rename arguments
+    # TODO: automatically figuring out arg map
     # TODO: put this in a loop
-    calls = [insn for insn in kernel.instructions if isinstance(insn, CallInstruction) and insn.expression.function.name == function]
+    calls = [insn for insn in kernel.instructions
+             if isinstance(insn, CallInstruction)
+             and insn.expression.function.name == function]
     assert len(calls) == 1
     call, = calls
 
@@ -161,8 +163,8 @@ def inline_kernel(kernel, function, arg_map=None):
 
     child_arg_map = {}  # arg -> SubArrayRef
     for inside, outside in six.iteritems(arg_map):
-        child_arg_map[inside], = [p for p in parameters if p.subscript.aggregate.name == outside]
-
+        child_arg_map[inside], = [p for p in parameters
+                                  if p.subscript.aggregate.name == outside]
 
     # Rewrite instructions
 
@@ -185,17 +187,21 @@ def inline_kernel(kernel, function, arg_map=None):
             else:
                 return super(KernelInliner, self).map_subscript(expr)
 
-    var_map = dict((p.Variable(k), p.Variable(v)) for k, v in six.iteritems(child_iname_map))
-    var_map.update(dict((p.Variable(k), p.Variable(v)) for k, v in six.iteritems(child_temp_map)))
-    var_map.update(dict((p.Variable(k), p.Variable(v)) for k, v in six.iteritems(arg_map)))
-    subst_mapper =  KernelInliner(make_subst_func(var_map))
+    var_map = dict((p.Variable(k), p.Variable(v))
+                   for k, v in six.iteritems(child_iname_map))
+    var_map.update(dict((p.Variable(k), p.Variable(v))
+                        for k, v in six.iteritems(child_temp_map)))
+    var_map.update(dict((p.Variable(k), p.Variable(v))
+                        for k, v in six.iteritems(arg_map)))
+    subst_mapper = KernelInliner(make_subst_func(var_map))
 
     inner_insns = []
     for insn in child.instructions:
         new_insn = insn.with_transformed_expressions(subst_mapper)
         within_inames = [child_iname_map[iname] for iname in insn.within_inames]
         within_inames.extend(call.within_inames)
-        new_insn = new_insn.copy(within_inames=frozenset(within_inames), priority=call.priority)
+        new_insn = new_insn.copy(within_inames=frozenset(within_inames),
+                                 priority=call.priority)
         # TODO: depends on?
         inner_insns.append(new_insn)
 
