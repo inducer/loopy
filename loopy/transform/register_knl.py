@@ -180,21 +180,21 @@ def inline_kernel(kernel, function, arg_map):
         from loopy.symbolic import SubstitutionMapper
 
         class KernelInliner(SubstitutionMapper):
+            """
+            Mapper to replace variables (indices, temporaries, arguments) in
+            the inner kernel.
+            """
             def map_subscript(self, expr):
                 if expr.aggregate.name in child_arg_map:
                     aggregate = self.subst_func(expr.aggregate)
                     sar = child_arg_map[expr.aggregate.name]  # SubArrayRef
-                    indices = []
-                    for index in sar.subscript.index_tuple:
-                        if index in sar.swept_inames:
-                            # map sweeping index to inner kernel index
-                            pos = sar.swept_inames.index(index)
-                            new_index = self.subst_func(expr.index_tuple[pos])
-                        else:
-                            # non-sweepting index from outter kernel
-                            new_index = index
-                        indices.append(new_index)
-                    return aggregate.index(tuple(indices))
+                    # first, map inner inames to outer inames
+                    outer_indices = [self.subst_func(i) for i in expr.index_tuple]
+                    # then, map index expressions in SubArrayRef to outer inames
+                    index_map = dict(zip(sar.swept_inames, outer_indices))
+                    index_mapper = SubstitutionMapper(make_subst_func(index_map))
+                    new_indices = index_mapper.map_tuple(sar.subscript.index_tuple)
+                    return aggregate.index(tuple(new_indices))
                 else:
                     return super(KernelInliner, self).map_subscript(expr)
 
