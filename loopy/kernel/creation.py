@@ -1860,7 +1860,7 @@ class FunctionScoper(RuleAwareIdentityMapper):
             from loopy.kernel.function_interface import ScalarCallable
 
             # Associating the newly created ScopedFunction with a `CallableScalar`
-            self.scoped_functions[expr.function.name] = ScalarCallable(
+            self.scoped_functions[expr.function] = ScalarCallable(
                     expr.function.name)
 
             return Call(
@@ -1879,7 +1879,7 @@ class FunctionScoper(RuleAwareIdentityMapper):
             from loopy.kernel.function_interface import ScalarCallable
 
             # Associating the newly created ScopedFunction with a `CallableScalar`
-            self.scoped_functions[expr.function.name] = ScalarCallable(
+            self.scoped_functions[expr.function.function] = ScalarCallable(
                     expr.function.name)
             return CallWithKwargs(
                     ScopedFunction(expr.function.name),
@@ -1899,17 +1899,22 @@ class FunctionScoper(RuleAwareIdentityMapper):
         from loopy.library.reduction import (MaxReductionOperation,
                 MinReductionOperation, ArgMinReductionOperation,
                 ArgMaxReductionOperation)
+        from pymbolic import var
+        from loopy.library.reduction import ArgExtOp
 
         if isinstance(expr.operation, MaxReductionOperation):
-            self.scoped_functions["max"] = ScalarCallable("max")
+            self.scoped_functions[var("max")] = ScalarCallable("max")
         elif isinstance(expr.operation, MinReductionOperation):
-            self.scoped_functions["min"] = ScalarCallable("min")
+            self.scoped_functions[var("min")] = ScalarCallable("min")
         elif isinstance(expr.operation, ArgMaxReductionOperation):
-            self.scoped_functions["max"] = ScalarCallable("max")
-            self.scoped_functions["make_tuple"] = ScalarCallable("make_tuple")
+            self.scoped_functions[var("max")] = ScalarCallable("max")
+            self.scoped_functions[var("make_tuple")] = ScalarCallable("make_tuple")
+
         elif isinstance(expr.operation, ArgMinReductionOperation):
-            self.scoped_functions["min"] = ScalarCallable("min")
-            self.scoped_functions["make_tuple"] = ScalarCallable("make_tuple")
+            self.scoped_functions[var("min")] = ScalarCallable("min")
+            self.scoped_functions[var("make_tuple")] = ScalarCallable("make_tuple")
+            self.scoped_functions[ArgExtOp(expr.operation)] = ScalarCallable(
+                    expr.operation)
 
         return super(FunctionScoper, self).map_reduction(expr, expn_state)
 

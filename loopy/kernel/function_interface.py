@@ -24,7 +24,6 @@ THE SOFTWARE.
 
 
 import re
-import six
 
 from six.moves import zip
 
@@ -34,6 +33,8 @@ from loopy.diagnostic import LoopyError
 from pymbolic.primitives import Variable
 from loopy.symbolic import parse_tagged_name
 
+from loopy.library.reduction import ArgExtOp
+from loopy.library.reduction import _ArgExtremumReductionOperation
 
 from loopy.symbolic import (IdentityMapper, ScopedFunction,
         SubstitutionRuleMappingContext, RuleAwareIdentityMapper,
@@ -315,6 +316,19 @@ class ScalarCallable(InKernelCallable):
 
             return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
                     name_in_target="loopy_make_tuple")
+        elif isinstance(self.name, _ArgExtremumReductionOperation):
+            scalar_dtype = arg_id_to_dtype[0]
+            index_dtype = arg_id_to_dtype[1]
+            result_dtypes = self.name.result_dtypes(kernel, scalar_dtype,
+                    index_dtype)
+            new_arg_id_to_dtype = arg_id_to_dtype.copy()
+            new_arg_id_to_dtype[-1] = result_dtypes[0]
+            new_arg_id_to_dtype[-2] = result_dtypes[1]
+            return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
+                    name_in_target="loopy_arg%s_%s_%s_op" % (self.name.which,
+                scalar_dtype.numpy_dtype.type.__name__,
+                index_dtype.numpy_dtype.type.__name__))
+
         else:
             # did not find a scalar function and function prototype does not
             # even have  subkernel registered => no match found
@@ -398,7 +412,7 @@ class ScalarCallable(InKernelCallable):
 
         for i, (a, tgt_dtype) in enumerate(zip(assignees, assignee_dtypes)):
             if tgt_dtype != expression_to_code_mapper.infer_type(a):
-                raise LoopyError("Type Mismatch in funciton %s. Expected: %s"
+                raise LoopyError("Type Mismatch in function %s. Expected: %s"
                         "Got: %s" % (self.name, tgt_dtype,
                             expression_to_code_mapper.infer_type(a)))
             c_parameters.append(
@@ -409,6 +423,40 @@ class ScalarCallable(InKernelCallable):
 
         from pymbolic import var
         return var(self.name_in_target)(*c_parameters)
+
+    def generate_preambles(self, target):
+        if isinstance(self.name, _ArgExtremumReductionOperation):
+            op = self.name
+            scalar_dtype = self.arg_id_to_dtype[-1]
+            index_dtype = self.arg_id_to_dtype[-2]
+
+            prefix = op.prefix(scalar_dtype, index_dtype)
+
+            yield (prefix, """
+            inline void %(prefix)s_op(
+                %(scalar_t)s op1, %(index_t)s index1,
+                %(scalar_t)s op2, %(index_t)s index2,
+                %(scalar_t)s *op, %(index_t)s *index_out)
+            {
+                if (op2 %(comp)s op1)
+                {
+                    *index_out = index2;
+                    *op = op2;
+                }
+                else
+                {
+                    *index_out = index1;
+                    *op = op1;
+                }
+            }
+            """ % dict(
+                    scalar_t=target.dtype_to_typename(scalar_dtype),
+                    prefix=prefix,
+                    index_t=target.dtype_to_typename(index_dtype),
+                    comp=op.update_comparison,
+                    ))
+
+        return
 
     # }}}
 
@@ -537,7 +585,6 @@ class CallableKernel(InKernelCallable):
     def generate_preambles(self, target):
         """ This would generate the target specific preamble.
         """
-        # TODO: Transfer the preamble of the subkernel over here
         raise NotImplementedError()
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
@@ -591,19 +638,21 @@ class CallableKernel(InKernelCallable):
 
 # {{{ new pymbolic calls to scoped functions
 
-def next_indexed_name(name):
+def next_indexed_variable(function):
+    if isinstance(function, ArgExtOp):
+        return function.copy()
     func_name = re.compile(r"^(?P<alpha>\S+?)_(?P<num>\d+?)$")
 
-    match = func_name.match(name)
+    match = func_name.match(function.name)
 
     if match is None:
-        if name[-1] == '_':
-            return "{old_name}0".format(old_name=name)
+        if function.name[-1] == '_':
+            return Variable("{old_name}0".format(old_name=function.name))
         else:
-            return "{old_name}_0".format(old_name=name)
+            return Variable("{old_name}_0".format(old_name=function.name))
 
-    return "{alpha}_{num}".format(alpha=match.group('alpha'),
-            num=int(match.group('num'))+1)
+    return Variable("{alpha}_{num}".format(alpha=match.group('alpha'),
+            num=int(match.group('num'))+1))
 
 
 class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
@@ -619,11 +668,7 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
         self.subst_expander = subst_expander
 
     def map_call(self, expr, expn_state):
-        from loopy.library.reduction import ArgExtOp
-        if isinstance(expr.function, ArgExtOp):
-            return IdentityMapper.map_call(self, expr, expn_state)
-
-        name, tag = parse_tagged_name(expr.function)
+        name, tag = parse_tagged_name(expr.function.function)
 
         if name not in self.rule_mapping_context.old_subst_rules:
             expanded_expr = self.subst_expander(expr)
@@ -668,19 +713,20 @@ def register_pymbolic_calls_to_knl_callables(kernel,
             # No matching in_knl_callable found => make a new one with a new
             # name.
 
-            unique_name = next_indexed_name(pymbolic_call.function.name)
-            while unique_name in scoped_names_to_functions:
+            unique_var = next_indexed_variable(pymbolic_call.function.function)
+            while unique_var in scoped_names_to_functions and not isinstance(
+                    unique_var, ArgExtOp):
                 # keep on finding new names till one a unique one is found.
-                unique_name = next_indexed_name(unique_name)
+                unique_var = next_indexed_variable(unique_var)
 
             # book-keeping of the functions and names mappings for later use
             if isinstance(in_knl_callable, CallableKernel):
                 # for array calls the name in the target is the name of the
                 # scoped funciton
                 in_knl_callable = in_knl_callable.copy(
-                        name_in_target=unique_name)
-            scoped_names_to_functions[unique_name] = in_knl_callable
-            scoped_functions_to_names[in_knl_callable] = unique_name
+                        name_in_target=unique_var.name)
+            scoped_names_to_functions[unique_var] = in_knl_callable
+            scoped_functions_to_names[in_knl_callable] = unique_var
 
         pymbolic_calls_to_new_names[pymbolic_call] = (
                 scoped_functions_to_names[in_knl_callable])

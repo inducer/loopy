@@ -2153,11 +2153,6 @@ class ArgDescrInferenceMapper(CombineMapper):
     def map_call(self, expr, **kwargs):
         from loopy.kernel.function_interface import ValueArgDescriptor
         from loopy.symbolic import SubArrayRef
-        from loopy.library.reduction import ArgExtOp
-
-        if isinstance(expr.function, ArgExtOp):
-            # Special treatment to ArgExtOp
-            return self.combine((self.rec(child) for child in expr.parameters))
 
         # descriptors for the args
         arg_id_to_descr = dict((i,
@@ -2188,7 +2183,7 @@ class ArgDescrInferenceMapper(CombineMapper):
 
         # specializing the function according to the parameter description
         new_scoped_function = (
-                self.kernel.scoped_functions[expr.function.name].with_descrs(
+                self.kernel.scoped_functions[expr.function.function].with_descrs(
                     combined_arg_id_to_descr))
 
         # collecting the descriptors for args, kwargs, assignees
@@ -2305,7 +2300,7 @@ class FunctionsNotReadyForCodegenCollector(CombineMapper):
                         expr.parameters))
 
         is_ready_for_codegen = self.kernel.scoped_functions[
-                expr.function.name].is_ready_for_codegen()
+                expr.function.function].is_ready_for_codegen()
         return self.combine(
                 (is_ready_for_codegen,) +
                 tuple(

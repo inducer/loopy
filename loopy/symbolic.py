@@ -111,7 +111,8 @@ class IdentityMapperMixin(object):
         return SubArrayRef(self.rec(expr.swept_inames, *args),
                 self.rec(expr.subscript, *args))
 
-    map_scoped_function = IdentityMapperBase.map_variable
+    def map_scoped_function(self, expr, *args):
+        return ScopedFunction(self.rec(expr.function, *args))
 
     map_type_cast = map_type_annotation
 
@@ -177,7 +178,11 @@ class WalkMapper(WalkMapperBase):
         self.rec(expr.swept_inames, *args)
         self.rec(expr.subscript, *args)
 
-    map_scoped_function = WalkMapperBase.map_variable
+    def map_scoped_function(self, expr, *args):
+        if not self.visit(expr):
+            return
+
+        self.rec(expr.function, *args)
 
 
 class CallbackMapper(CallbackMapperBase, IdentityMapper):
@@ -190,8 +195,6 @@ class CombineMapper(CombineMapperBase):
 
     def map_sub_array_ref(self, expr):
         return self.rec(expr.get_begin_subscript())
-
-    map_scoped_function = CombineMapperBase.map_variable
 
     map_linear_subscript = CombineMapperBase.map_subscript
 
@@ -320,7 +323,8 @@ class DependencyMapper(DependencyMapperBase):
     def map_type_cast(self, expr):
         return self.rec(expr.child)
 
-    map_scoped_function = DependencyMapperBase.map_variable
+    def map_scoped_function(self, expr):
+        return self.rec(expr.function)
 
 
 class SubstitutionRuleExpander(IdentityMapper):
@@ -671,14 +675,29 @@ class RuleArgument(p.Expression):
     mapper_method = intern("map_rule_argument")
 
 
-class ScopedFunction(p.Variable):
+class ScopedFunction(p.Expression):
     """ Connects a call to a callable available in a kernel.
 
-    .. attribute:: name
+    .. attribute:: function
 
         An instance of :class:`pymbolic.primitives.Variable` or
         `loopy.library.reduction.ArgExtOp`.
     """
+    init_arg_names = ("function", )
+
+    def __init__(self, function):
+        if isinstance(function, str):
+            function = p.Variable(function)
+        from loopy.library.reduction import ArgExtOp
+        assert isinstance(function, (p.Variable, ArgExtOp))
+        self.function = function
+
+    @property
+    def name(self):
+        return self.function.name
+
+    def __getinitargs__(self):
+        return (self.function, )
 
     def stringifier(self):
         return StringifyMapper
@@ -824,9 +843,10 @@ def get_dependencies(expr):
 # {{{ rule-aware mappers
 
 def parse_tagged_name(expr):
+    from loopy.library.reduction import ArgExtOp
     if isinstance(expr, TaggedVariable):
         return expr.name, expr.tag
-    elif isinstance(expr, p.Variable):
+    elif isinstance(expr, (p.Variable, ArgExtOp)):
         return expr.name, None
     else:
         raise RuntimeError("subst rule name not understood: %s" % expr)

@@ -390,7 +390,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         # {{{ implement indexof, indexof_vec
 
-        identifier_name = self.kernel.scoped_functions[expr.function.name].name
+        identifier_name = self.kernel.scoped_functions[expr.function.function].name
         if identifier_name in ["indexof", "indexof_vec"]:
             if len(expr.parameters) != 1:
                 raise LoopyError("%s takes exactly one argument" % identifier_name)
@@ -432,7 +432,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         # }}}
 
-        return self.kernel.scoped_functions[expr.function.name].emit_call(
+        return self.kernel.scoped_functions[expr.function.function].emit_call(
                 expression_to_code_mapper=self,
                 expression=expr,
                 target=self.kernel.target)

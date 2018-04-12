@@ -33,10 +33,13 @@ from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 
 from cgen import Collection
+from loopy.symbolic import CombineMapper
 
 from loopy.kernel.instruction import (
         Assignment, NoOpInstruction, BarrierInstruction, CallInstruction,
-        CInstruction, _DataObliviousInstruction)
+        CInstruction, _DataObliviousInstruction, MultiAssignmentBase)
+
+from functools import reduce
 
 
 import logging
@@ -259,6 +262,8 @@ class CodeGenerationState(object):
             schedule_index_end = self.schedule_index_end
 
         if is_generating_master_kernel is None:
+            # By default assumes that code is being generated for a master
+            # kernel.
             is_generating_master_kernel = self.is_generating_master_kernel
 
         return CodeGenerationState(
@@ -382,6 +387,30 @@ code_gen_cache = WriteOncePersistentDict(
          key_builder=LoopyKeyBuilder())
 
 
+class InKernelCallablesCollector(CombineMapper):
+    """
+    Yields the preambles from all the scoped functions in the kernel.
+    """
+    def __init__(self, kernel):
+        self.kernel = kernel
+
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, frozenset())
+
+    def map_scoped_function(self, expr):
+        return frozenset([self.kernel.scoped_functions[
+            expr.function]])
+
+    def map_constant(self, expr):
+        return frozenset()
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
+    map_tagged_variable = map_constant
+    map_type_cast = map_constant
+
+
 class PreambleInfo(ImmutableRecord):
     """
     .. attribute:: kernel
@@ -396,6 +425,9 @@ class PreambleInfo(ImmutableRecord):
 
 def generate_code_v2(kernel, is_generating_master_kernel=True):
     """
+    :arg is_generating_master_kernel: An instance of :class:`bool`. *True* if
+        the code is being generated for a master kernel, otherwise *False*.
+
     :returns: a :class:`CodeGenerationResult`
     """
 
@@ -501,10 +533,8 @@ def generate_code_v2(kernel, is_generating_master_kernel=True):
 
     for insn in kernel.instructions:
         if isinstance(insn, CallInstruction):
-            from loopy.library.reduction import ArgExtOp
-            if isinstance(insn.expression.function, ArgExtOp):
-                continue
-            in_knl_callable = kernel.scoped_functions[insn.expression.function.name]
+            in_knl_callable = kernel.scoped_functions[
+                    insn.expression.function.function]
             from loopy.kernel.function_interface import CallableKernel
             if isinstance(in_knl_callable, CallableKernel):
                 auxiliary_dev_prog = generate_code_v2(
@@ -523,6 +553,8 @@ def generate_code_v2(kernel, is_generating_master_kernel=True):
             codegen_state,
             schedule_index=0)
 
+    # Modifying the first device program to add the auxiliary kernels
+    # as functions.
     new_dev_prog = codegen_result.device_programs[0]
     for auxiliary_dev_prog in auxiliary_dev_progs:
         new_dev_prog = new_dev_prog.copy(
@@ -560,6 +592,18 @@ def generate_code_v2(kernel, is_generating_master_kernel=True):
             + kernel.target.get_device_ast_builder().preamble_generators())
     for prea_gen in preamble_generators:
         preambles.extend(prea_gen(preamble_info))
+
+    in_knl_callable_collector = InKernelCallablesCollector(kernel)
+
+    for insn in kernel.instructions:
+        if isinstance(insn, MultiAssignmentBase):
+            for in_knl_callable in in_knl_callable_collector(insn.expression):
+                preambles.extend(in_knl_callable.generate_preambles(kernel.target))
+
+        elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
+            pass
+        else:
+            raise NotImplementedError("Unkown instruction %s" % type(insn))
 
     codegen_result = codegen_result.copy(device_preambles=preambles)
 

@@ -61,6 +61,17 @@ def check_identifiers_in_subst_rules(knl):
 
 
 class UnscopedCallCollector(CombineMapper):
+    """
+    Collects all the unscoped calls within a kernel.
+
+    :returns:
+        An :class:`frozenset` of function names that are not scoped in
+        the kernel.
+
+    .. note::
+        :class:`loopy.library.reduction.ArgExtOp` are ignored, as they are
+        never scoped in the pipeline.
+    """
 
     def combine(self, values):
         import operator
@@ -94,7 +105,7 @@ class UnscopedCallCollector(CombineMapper):
 
 def check_functions_are_scoped(kernel):
     """ Checks if all the calls in the instruction expression have been scoped,
-    otherwise indicate to what all calls we await signature.
+    otherwise indicates to what all calls we await signature.
     """
 
     from loopy.symbolic import SubstitutionRuleExpander

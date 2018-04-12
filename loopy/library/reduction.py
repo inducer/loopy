@@ -207,6 +207,13 @@ class ReductionOpFunction(FunctionIdentifier):
     def name(self):
         return self.__class__.__name__
 
+    def copy(self, reduction_op=None):
+        if reduction_op is None:
+            reduction_op = self.reduction_op
+
+        return type(self)(reduction_op)
+
+
 # }}}
 
 
@@ -324,7 +331,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         return 2
 
     def __call__(self, dtypes, operand1, operand2):
-        return ArgExtOp(self)(*(operand1 + operand2))
+        return ScopedFunction(ArgExtOp(self))(*(operand1 + operand2))
 
 
 class ArgMaxReductionOperation(_ArgExtremumReductionOperation):
