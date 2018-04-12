@@ -114,105 +114,124 @@ def register_callable_kernel(parent, function_name, child):
 
 def inline_kernel(kernel, function, arg_map):
 
+    if function not in kernel.scoped_functions:
+        raise LoopyError("function: {0} does not exist".format(function))
+
     child = kernel.scoped_functions[function].subkernel
     vng = kernel.get_var_name_generator()
 
-    # duplicate and rename inames
+    for call in kernel.instructions:
+        if not isinstance(call, CallInstruction):
+            continue
+        if call.expression.function.name != function:
+            continue
 
-    import islpy as isl
+        # {{{ duplicate and rename inames
 
-    dim_type = isl.dim_type.set
+        import islpy as isl
 
-    child_iname_map = {}
-    for iname in child.all_inames():
-        child_iname_map[iname] = vng(iname)
+        dim_type = isl.dim_type.set
 
-    new_domains = []
-    for domain in child.domains:
-        new_domain = domain.copy()
-        n_dim = new_domain.n_dim()
-        for i in range(n_dim):
-            iname = new_domain.get_dim_name(dim_type, i)
-            new_iname = child_iname_map[iname]
-            new_domain = new_domain.set_dim_name(dim_type, i, new_iname)
-        new_domains.append(new_domain)
+        child_iname_map = {}
+        for iname in child.all_inames():
+            child_iname_map[iname] = vng(iname)
 
-    kernel = kernel.copy(domains=kernel.domains + new_domains)
+        new_domains = []
+        for domain in child.domains:
+            new_domain = domain.copy()
+            n_dim = new_domain.n_dim()
+            for i in range(n_dim):
+                iname = new_domain.get_dim_name(dim_type, i)
+                new_iname = child_iname_map[iname]
+                new_domain = new_domain.set_dim_name(dim_type, i, new_iname)
+            new_domains.append(new_domain)
 
-    # rename temporaries
+        kernel = kernel.copy(domains=kernel.domains + new_domains)
 
-    child_temp_map = {}
-    new_temps = kernel.temporary_variables.copy()
-    for name, temp in six.iteritems(child.temporary_variables):
-        new_name = vng(name)
-        child_temp_map[name] = new_name
-        new_temps[new_name] = temp.copy(name=new_name)
+        # }}}
 
-    kernel = kernel.copy(temporary_variables=new_temps)
+        # {{{ rename temporaries
 
-    # rename arguments
-    # TODO: automatically figuring out arg map
-    # TODO: put this in a loop
-    calls = [insn for insn in kernel.instructions
-             if isinstance(insn, CallInstruction)
-             and insn.expression.function.name == function]
-    assert len(calls) == 1
-    call, = calls
+        child_temp_map = {}
+        new_temps = kernel.temporary_variables.copy()
+        for name, temp in six.iteritems(child.temporary_variables):
+            new_name = vng(name)
+            child_temp_map[name] = new_name
+            new_temps[new_name] = temp.copy(name=new_name)
 
-    parameters = call.assignees + call.expression.parameters
+        kernel = kernel.copy(temporary_variables=new_temps)
 
-    child_arg_map = {}  # arg -> SubArrayRef
-    for inside, outside in six.iteritems(arg_map):
-        child_arg_map[inside], = [p for p in parameters
-                                  if p.subscript.aggregate.name == outside]
+        # }}}
 
-    # Rewrite instructions
+        # {{{ arguments
+        # TODO: automatically figuring out arg map
+        parameters = call.assignees + call.expression.parameters
 
-    import pymbolic.primitives as p
-    from pymbolic.mapper.substitutor import make_subst_func
-    from loopy.symbolic import SubstitutionMapper
+        child_arg_map = {}  # arg -> SubArrayRef
+        for inside, outside in six.iteritems(arg_map):
+            child_arg_map[inside], = [p for p in parameters
+                                      if p.subscript.aggregate.name == outside]
+        # }}}
 
-    class KernelInliner(SubstitutionMapper):
-        def map_subscript(self, expr):
-            if expr.aggregate.name in child_arg_map:
-                aggregate = self.subst_func(expr.aggregate)
-                indices = [self.subst_func(i) for i in expr.index_tuple]
-                sar = child_arg_map[expr.aggregate.name]  # SubArrayRef
-                # insert non-sweeping indices from outter kernel
-                # TODO: sweeping indices might flip: [i,j]: A[j, i]
-                for i, index in enumerate(sar.subscript.index_tuple):
-                    if index not in sar.swept_inames:
-                        indices.insert(i, index)
-                return aggregate.index(tuple(indices))
+        # {{{ rewrite instructions
+
+        import pymbolic.primitives as p
+        from pymbolic.mapper.substitutor import make_subst_func
+        from loopy.symbolic import SubstitutionMapper
+
+        class KernelInliner(SubstitutionMapper):
+            def map_subscript(self, expr):
+                if expr.aggregate.name in child_arg_map:
+                    aggregate = self.subst_func(expr.aggregate)
+                    sar = child_arg_map[expr.aggregate.name]  # SubArrayRef
+                    indices = []
+                    for index in sar.subscript.index_tuple:
+                        if index in sar.swept_inames:
+                            # map sweeping index to inner kernel index
+                            pos = sar.swept_inames.index(index)
+                            new_index = self.subst_func(expr.index_tuple[pos])
+                        else:
+                            # non-sweepting index from outter kernel
+                            new_index = index
+                        indices.append(new_index)
+                    return aggregate.index(tuple(indices))
+                else:
+                    return super(KernelInliner, self).map_subscript(expr)
+
+        var_map = dict((p.Variable(k), p.Variable(v))
+                       for k, v in six.iteritems(child_iname_map))
+        var_map.update(dict((p.Variable(k), p.Variable(v))
+                            for k, v in six.iteritems(child_temp_map)))
+        var_map.update(dict((p.Variable(k), p.Variable(v))
+                            for k, v in six.iteritems(arg_map)))
+        subst_mapper = KernelInliner(make_subst_func(var_map))
+
+        inner_insns = []
+        for insn in child.instructions:
+            new_insn = insn.with_transformed_expressions(subst_mapper)
+            within_inames = [child_iname_map[iname] for iname in insn.within_inames]
+            within_inames.extend(call.within_inames)
+            id = vng(new_insn.id)
+            new_insn = new_insn.copy(
+                id=id,
+                within_inames=frozenset(within_inames),
+                priority=call.priority,
+                depends_on=new_insn.depends_on | call.depends_on
+            )
+            # TODO: depends on is too conservative?
+            inner_insns.append(new_insn)
+
+        new_insns = []
+        for insn in kernel.instructions:
+            if insn == call:
+                new_insns.extend(inner_insns)
             else:
-                return super(KernelInliner, self).map_subscript(expr)
+                new_insns.append(insn)
 
-    var_map = dict((p.Variable(k), p.Variable(v))
-                   for k, v in six.iteritems(child_iname_map))
-    var_map.update(dict((p.Variable(k), p.Variable(v))
-                        for k, v in six.iteritems(child_temp_map)))
-    var_map.update(dict((p.Variable(k), p.Variable(v))
-                        for k, v in six.iteritems(arg_map)))
-    subst_mapper = KernelInliner(make_subst_func(var_map))
+        kernel = kernel.copy(instructions=new_insns)
 
-    inner_insns = []
-    for insn in child.instructions:
-        new_insn = insn.with_transformed_expressions(subst_mapper)
-        within_inames = [child_iname_map[iname] for iname in insn.within_inames]
-        within_inames.extend(call.within_inames)
-        new_insn = new_insn.copy(within_inames=frozenset(within_inames),
-                                 priority=call.priority)
-        # TODO: depends on?
-        inner_insns.append(new_insn)
+        # }}}
 
-    new_insns = []
-    for insn in kernel.instructions:
-        if insn == call:
-            new_insns.extend(inner_insns)
-        else:
-            new_insns.append(insn)
-
-    kernel = kernel.copy(instructions=new_insns)
     return kernel
 
 
