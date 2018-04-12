@@ -37,6 +37,8 @@ __doc__ = """
 .. currentmodule:: loopy
 
 .. autofunction:: register_callable_kernel
+
+.. autofunction:: inline_kernel
 """
 
 
@@ -139,6 +141,7 @@ def inline_kernel(kernel, function, arg_map=None):
     kernel = kernel.copy(domains= kernel.domains + new_domains)
 
     # rename temporaries
+
     child_temp_map = {}
     new_temps = kernel.temporary_variables.copy()
     for name, temp in six.iteritems(child.temporary_variables):
@@ -149,7 +152,7 @@ def inline_kernel(kernel, function, arg_map=None):
     kernel = kernel.copy(temporary_variables=new_temps)
 
     # rename arguments
-
+    # TODO: put this in a loop
     calls = [insn for insn in kernel.instructions if isinstance(insn, CallInstruction) and insn.expression.function.name == function]
     assert len(calls) == 1
     call, = calls
@@ -174,6 +177,7 @@ def inline_kernel(kernel, function, arg_map=None):
                 indices = [self.subst_func(i) for i in expr.index_tuple]
                 sar = child_arg_map[expr.aggregate.name]  # SubArrayRef
                 # insert non-sweeping indices from outter kernel
+                # TODO: sweeping indices might flip: [i,j]: A[j, i]
                 for i, index in enumerate(sar.subscript.index_tuple):
                     if index not in sar.swept_inames:
                         indices.insert(i, index)
@@ -191,7 +195,8 @@ def inline_kernel(kernel, function, arg_map=None):
         new_insn = insn.with_transformed_expressions(subst_mapper)
         within_inames = [child_iname_map[iname] for iname in insn.within_inames]
         within_inames.extend(call.within_inames)
-        new_insn = new_insn.copy(within_inames=frozenset(within_inames))
+        new_insn = new_insn.copy(within_inames=frozenset(within_inames), priority=call.priority)
+        # TODO: depends on?
         inner_insns.append(new_insn)
 
     new_insns = []

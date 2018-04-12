@@ -424,6 +424,44 @@ def test_multi_arg_array_call(ctx_factory):
     assert(norm(out_dict['min_index'][0] - np.argmin(b)) < tol)
 
 
+def test_inlining_kernel(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    n = 16
+
+    x = np.random.rand(n)
+    y = np.random.rand(n)
+
+    knl1 = lp.make_kernel(
+        "{[i]: 0 <= i < 16}",
+        """
+        for i
+            c[i] = a[i] + 2*b[i]
+        end
+        """
+    )
+    knl2 = lp.make_kernel(
+        "{[i, j]: 0 <= i, j < 16}",
+        """
+        for j
+            [i]: z[j, i] = func([i]: x[i], [i]: y[i])
+        end
+        """,
+        kernel_data=[
+            lp.GlobalArg("x", np.float64, (16,)),
+            lp.GlobalArg("y", np.float64, (16,)), "..."
+        ]
+    )
+
+    knl2 = lp.register_callable_kernel(knl2, 'func', knl1)
+    knl3 = lp.inline_kernel(knl2, "func", {"a": "x", "b": "y", "c": "z"})
+
+    evt, (out, ) = knl3(queue, x=x, y=y)
+    z = np.tile(x + y*2, [16, 1])
+
+    assert np.allclose(out, z)
+
+
 def test_rename_argument(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
