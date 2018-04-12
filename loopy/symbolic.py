@@ -187,6 +187,7 @@ class WalkMapper(WalkMapperBase):
 
 class CallbackMapper(CallbackMapperBase, IdentityMapper):
     map_reduction = CallbackMapperBase.map_constant
+    map_scoped_function = CallbackMapperBase.map_constant
 
 
 class CombineMapper(CombineMapperBase):
@@ -846,6 +847,8 @@ def parse_tagged_name(expr):
     from loopy.library.reduction import ArgExtOp
     if isinstance(expr, TaggedVariable):
         return expr.name, expr.tag
+    elif isinstance(expr, ScopedFunction):
+        return parse_tagged_name(expr.function)
     elif isinstance(expr, (p.Variable, ArgExtOp)):
         return expr.name, None
     else:
