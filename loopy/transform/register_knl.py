@@ -112,10 +112,12 @@ def register_callable_kernel(parent, function_name, child):
 # }}}
 
 
-def inline_kernel(kernel, function, arg_map):
+def inline_kernel(knl, function, arg_map=None):
 
-    if function not in kernel.scoped_functions:
+    if function not in knl.scoped_functions:
         raise LoopyError("function: {0} does not exist".format(function))
+
+    kernel = knl.copy()
 
     child = kernel.scoped_functions[function].subkernel
     vng = kernel.get_var_name_generator()
@@ -163,14 +165,48 @@ def inline_kernel(kernel, function, arg_map):
 
         # }}}
 
-        # {{{ arguments
-        # TODO: automatically figuring out arg map
-        parameters = call.assignees + call.expression.parameters
+        # {{{ match kernel arguments
 
-        child_arg_map = {}  # arg -> SubArrayRef
-        for inside, outside in six.iteritems(arg_map):
-            child_arg_map[inside], = [p for p in parameters
-                                      if p.subscript.aggregate.name == outside]
+        child_arg_map = {}  # child arg name -> SubArrayRef
+
+        # for kernel call: out1, out2 = func(in1, in2), we match out1, out2 to
+        # the written arguments, and in1, in2 to the readonly arguments in
+        # child kernel, according the order they appear in child.args
+        writes = child.get_written_variables()
+        reads = [arg.name for arg in child.args if arg.name not in writes]
+        writes = [arg.name for arg in child.args if arg.name in writes]
+
+        if arg_map:
+            for inside, outside in six.iteritems(arg_map):
+                if inside not in child.arg_dict:
+                    raise LoopyError("arg named '{0}' not in the child "
+                                     "kernel".format(inside))
+                if inside in writes:
+                    sar = [sar for sar in call.assignees
+                           if sar.subscript.aggregate.name == outside]
+                    if len(sar) != 1:
+                        raise LoopyError("wrong number of variables "
+                                         "named '{0}'".format(outside))
+                    child_arg_map[inside], = sar
+                else:
+                    sar = [sar for sar in call.expression.parameters
+                           if sar.subscript.aggregate.name == outside]
+                    if len(sar) != 1:
+                        raise LoopyError("wrong number of variables "
+                                         "named '{0}'".format(outside))
+                    child_arg_map[inside], = sar
+        else:
+            if len(call.assignees) != len(writes):
+                raise LoopyError("expect {0} output variable(s), got {1}".format(
+                    len(writes), len(call.assignees)))
+            if len(call.expression.parameters) != len(reads):
+                raise LoopyError("expect {0} input variable(s), got {1}".format(
+                    len(reads), len(call.expression.parameters)))
+            for arg_name, sar in zip(writes, call.assignees):
+                child_arg_map[arg_name] = sar
+            for arg_name, sar in zip(reads, call.expression.parameters):
+                child_arg_map[arg_name] = sar
+
         # }}}
 
         # {{{ rewrite instructions
@@ -202,8 +238,8 @@ def inline_kernel(kernel, function, arg_map):
                        for k, v in six.iteritems(child_iname_map))
         var_map.update(dict((p.Variable(k), p.Variable(v))
                             for k, v in six.iteritems(child_temp_map)))
-        var_map.update(dict((p.Variable(k), p.Variable(v))
-                            for k, v in six.iteritems(arg_map)))
+        var_map.update(dict((p.Variable(k), p.Variable(v.subscript.aggregate.name))
+                            for k, v in six.iteritems(child_arg_map)))
         subst_mapper = KernelInliner(make_subst_func(var_map))
 
         inner_insns = []

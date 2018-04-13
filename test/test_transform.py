@@ -481,9 +481,14 @@ def test_inline_kernel(ctx_factory):
     )
 
     knl2 = lp.register_callable_kernel(knl2, 'func', knl1)
-    knl2 = lp.inline_kernel(knl2, "func", {"a": "x", "b": "y", "c": "z"})
-    evt, (out, ) = knl2(queue, x=x, y=y)
     z = np.tile(x + y * 2, [16, 1])
+
+    knl2_arg_map = lp.inline_kernel(knl2, "func", {"a": "x", "b": "y", "c": "z"})
+    evt, (out, ) = knl2_arg_map(queue, x=x, y=y)
+    assert np.allclose(out, z)
+
+    knl2_no_arg_map = lp.inline_kernel(knl2, "func")
+    evt, (out, ) = knl2_no_arg_map(queue, x=x, y=y)
     assert np.allclose(out, z)
 
     knl3 = lp.register_callable_kernel(knl3, 'func', knl1)
