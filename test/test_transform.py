@@ -467,6 +467,19 @@ def test_inline_kernel(ctx_factory):
         ]
     )
 
+    knl4 = lp.make_kernel(
+        "{[i, j]: 0 <= i, j < 16}",
+        """
+        for j
+            [i]: z[j, 15-i] = func([i]: x[i], [i]: y[i])
+        end
+        """,
+        kernel_data=[
+            lp.GlobalArg("x", np.float64, (16,)),
+            lp.GlobalArg("y", np.float64, (16,)), "..."
+        ]
+    )
+
     knl2 = lp.register_callable_kernel(knl2, 'func', knl1)
     knl2 = lp.inline_kernel(knl2, "func", {"a": "x", "b": "y", "c": "z"})
     evt, (out, ) = knl2(queue, x=x, y=y)
@@ -479,6 +492,11 @@ def test_inline_kernel(ctx_factory):
     z = np.tile(x + y * 2, [16, 1]).transpose()
     assert np.allclose(out, z)
 
+    knl4 = lp.register_callable_kernel(knl4, 'func', knl1)
+    knl4 = lp.inline_kernel(knl4, "func", {"a": "x", "b": "y", "c": "z"})
+    evt, (out,) = knl4(queue, x=x, y=y)
+    z = np.tile(np.flip(x + y * 2, 0), [16, 1])
+    assert np.allclose(out, z)
 
 def test_inline_kernel_2d(ctx_factory):
     ctx = ctx_factory()
