@@ -118,9 +118,8 @@ def inline_kernel(knl, function, arg_map=None):
         raise LoopyError("function: {0} does not exist".format(function))
 
     kernel = knl.copy()
-
     child = kernel.scoped_functions[function].subkernel
-    vng = kernel.get_var_name_generator()
+
 
     for call in kernel.instructions:
         if not isinstance(call, CallInstruction):
@@ -131,6 +130,8 @@ def inline_kernel(knl, function, arg_map=None):
         # {{{ duplicate and rename inames
 
         import islpy as isl
+
+        vng = kernel.get_var_name_generator()
 
         dim_type = isl.dim_type.set
 
@@ -243,24 +244,38 @@ def inline_kernel(knl, function, arg_map=None):
         subst_mapper = KernelInliner(make_subst_func(var_map))
 
         inner_insns = []
+
+        ing = kernel.get_instruction_id_generator()
+        insn_id = {}
         for insn in child.instructions:
-            new_insn = insn.with_transformed_expressions(subst_mapper)
-            within_inames = [child_iname_map[iname] for iname in insn.within_inames]
-            within_inames.extend(call.within_inames)
-            id = vng(new_insn.id)
-            new_insn = new_insn.copy(
-                id=id,
+            insn_id[insn.id] = ing(insn.id)
+
+        for _insn in child.instructions:
+            insn = _insn.with_transformed_expressions(subst_mapper)
+            within_inames = insn.dependency_names() & kernel.all_inames()
+            within_inames = within_inames | call.within_inames
+            depends_on = frozenset(insn_id[dep] for dep in insn.depends_on)
+            depends_on = depends_on | call.depends_on
+            insn = insn.copy(
+                id=insn_id[insn.id],
                 within_inames=frozenset(within_inames),
                 priority=call.priority,
-                depends_on=new_insn.depends_on | call.depends_on
+                depends_on=depends_on
             )
             # TODO: depends on is too conservative?
-            inner_insns.append(new_insn)
+            inner_insns.append(insn)
 
+        from loopy.kernel.instruction import NoOpInstruction
         new_insns = []
         for insn in kernel.instructions:
             if insn == call:
                 new_insns.extend(inner_insns)
+                noop = NoOpInstruction(
+                    id=call.id,
+                    within_inames=call.within_inames,
+                    depends_on=call.depends_on
+                )
+                new_insns.append(noop)
             else:
                 new_insns.append(insn)
 
