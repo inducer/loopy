@@ -1909,7 +1909,8 @@ class FunctionScoper(RuleAwareIdentityMapper):
         elif isinstance(expr.operation, ArgMaxReductionOperation):
             self.scoped_functions[var("max")] = ScalarCallable("max")
             self.scoped_functions[var("make_tuple")] = ScalarCallable("make_tuple")
-
+            self.scoped_functions[ArgExtOp(expr.operation)] = ScalarCallable(
+                    expr.operation)
         elif isinstance(expr.operation, ArgMinReductionOperation):
             self.scoped_functions[var("min")] = ScalarCallable("min")
             self.scoped_functions[var("make_tuple")] = ScalarCallable("make_tuple")
