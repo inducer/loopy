@@ -625,8 +625,6 @@ class CallMangleInfo(ImmutableRecord):
     """
 
     def __init__(self, target_name, result_dtypes, arg_dtypes):
-        # added for debugging
-        raise NotImplementedError("Please use the new interface! :-)")
         assert isinstance(result_dtypes, tuple)
 
         super(CallMangleInfo, self).__init__(

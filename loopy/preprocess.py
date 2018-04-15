@@ -2152,7 +2152,11 @@ class ArgDescrInferenceMapper(CombineMapper):
 
     def map_call(self, expr, **kwargs):
         from loopy.kernel.function_interface import ValueArgDescriptor
-        from loopy.symbolic import SubArrayRef
+        from loopy.symbolic import SubArrayRef, ScopedFunction
+
+        # ignoring if the call is not to a ScopedFunction
+        if not isinstance(expr.function, ScopedFunction):
+            return self.combine((self.rec(child) for child in expr.parameters))
 
         # descriptors for the args
         arg_id_to_descr = dict((i,
@@ -2293,19 +2297,30 @@ class FunctionsNotReadyForCodegenCollector(CombineMapper):
 
     def map_call(self, expr, *args, **kwargs):
         from loopy.library.reduction import ArgExtOp
+        from pymbolic.primitives import Variable
+        from loopy.symbolic import ScopedFunction
+
         if isinstance(expr.function, ArgExtOp):
             return self.combine(
                     tuple(
                         self.rec(child, *args, **kwargs) for child in
                         expr.parameters))
+        elif isinstance(expr.function, Variable):
+            # UnScopedFunction obtained and hence clearly not ready for
+            # codegen.
+            return False
 
-        is_ready_for_codegen = self.kernel.scoped_functions[
-                expr.function.function].is_ready_for_codegen()
-        return self.combine(
-                (is_ready_for_codegen,) +
-                tuple(
-                    self.rec(child, *args, **kwargs) for child in expr.parameters)
-                )
+        elif isinstance(expr.function, ScopedFunction):
+            is_ready_for_codegen = self.kernel.scoped_functions[
+                    expr.function.function].is_ready_for_codegen()
+            return self.combine(
+                    (is_ready_for_codegen,) +
+                    tuple(
+                        self.rec(child, *args, **kwargs)
+                        for child in expr.parameters))
+        else:
+            raise LoopyError("Unexpected function type %s obtained in %s"
+                    % (type(expr.function), expr))
 
     def map_call_with_kwargs(self, expr, *args, **kwargs):
         is_ready_for_codegen = self.kernel.scoped_functions[
@@ -2361,7 +2376,8 @@ def make_functions_ready_for_codegen(kernel):
             expr = subst_expander(insn.expression)
             if not unready_functions_collector(expr):
                 # Infer the type of the functions that are not type specialized.
-                type_inf_mapper(expr)
+                type_inf_mapper(expr, return_tuple=isinstance(insn,
+                    CallInstruction), return_dtype_set=True)
 
         elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
             pass

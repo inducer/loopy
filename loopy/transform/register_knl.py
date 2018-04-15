@@ -66,7 +66,8 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel):
 
     # making the target of the child kernel to be same as the target of parent
     # kernel.
-    updated_scoped_functions[function_name] = CallableKernel(
+    from pymbolic.primitives import Variable
+    updated_scoped_functions[Variable(function_name)] = CallableKernel(
         subkernel=callee_kernel.copy(target=caller_kernel.target))
 
     # returning the parent kernel with the new scoped function dictionary

@@ -304,27 +304,56 @@ class TypeInferenceMapper(CombineMapper):
                 else:
                     return [new_arg_id_to_dtype[-1]]
 
+        elif isinstance(expr.function, Variable):
+            # Since, the function is not "scoped", attempt to infer using
+            # kernel.function_manlgers
+            arg_dtypes = tuple(none_if_empty(self.rec(par)) for par in
+                    expr.parameters)
+
+            # finding the function_mangler which would be associated with the
+            # realized function.
+            mangle_result = None
+            for function_mangler in self.kernel.function_manglers:
+                mangle_result = function_mangler(self.kernel.target, identifier,
+                        arg_dtypes)
+                if mangle_result:
+                    # found a match.
+                    break
+
+            if mangle_result is not None:
+                from loopy.kernel.function_interface import (ManglerCallable,
+                        ValueArgDescriptor)
+
+                # creating arg_id_to_dtype, arg_id_to_descr from arg_dtypes
+                arg_id_to_dtype = dict(enumerate(mangle_result.arg_dtypes))
+                arg_id_to_dtype.update(dict((-i-1, dtype) for i, dtype in
+                    enumerate(mangle_result.result_dtypes)))
+                arg_descrs = tuple((i, ValueArgDescriptor()) for i, _ in
+                        enumerate(mangle_result.arg_dtypes))
+                res_descrs = tuple((-i-1, ValueArgDescriptor()) for i, _ in
+                        enumerate(mangle_result.result_dtypes))
+                arg_id_to_descr = dict(arg_descrs+res_descrs)
+
+                # creating the ManglerCallable object corresponding to the
+                # function.
+                self.specialized_functions[expr] = ManglerCallable(
+                        identifier, function_mangler, arg_id_to_dtype,
+                        arg_id_to_descr, mangle_result.target_name)
+
+            # Returning the type.
+            if return_tuple:
+                if mangle_result is not None:
+                    return [mangle_result.result_dtypes]
+            else:
+                if mangle_result is not None:
+                    if len(mangle_result.result_dtypes) != 1 and not return_tuple:
+                        raise LoopyError("functions with more or fewer than one "
+                                "return value may only be used in direct "
+                                "assignments")
+
+                    return [mangle_result.result_dtypes[0]]
+
         return []
-
-        """
-        # Letting this stay over here, as it maybe needed later for maintaining
-        # backward compatibility: ~KK
-        mangle_result = self.kernel.mangle_function(identifier, arg_dtypes)
-        if return_tuple:
-            if mangle_result is not None:
-                return [mangle_result.result_dtypes]
-        else:
-            if mangle_result is not None:
-                if len(mangle_result.result_dtypes) != 1 and not return_tuple:
-                    raise LoopyError("functions with more or fewer than one "
-                            "return value may only be used in direct assignments")
-
-                return [mangle_result.result_dtypes[0]]
-
-        raise RuntimeError("unable to resolve "
-                "function '%s' with %d given arguments"
-                % (identifier, len(arg_dtypes)))
-        """
 
     def map_variable(self, expr):
         if expr.name in self.kernel.all_inames():
@@ -532,12 +561,6 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     logger.debug("%s: infer types" % kernel.name)
 
-    if expect_completion:
-        # if completion is expected, then it is important that all the
-        # callables are scoped.
-        from loopy.check import check_functions_are_scoped
-        check_functions_are_scoped(kernel)
-
     from functools import partial
     debug = partial(_debug, kernel)
 
@@ -703,9 +726,15 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     from loopy.kernel.function_interface import (
             register_pymbolic_calls_to_knl_callables)
-    return register_pymbolic_calls_to_knl_callables(
+    type_specialized_kernel = register_pymbolic_calls_to_knl_callables(
             pre_type_specialized_knl, specialized_functions)
+    if expect_completion:
+        # if completion is expected, then it is important that all the
+        # callables are scoped.
+        from loopy.check import check_functions_are_scoped
+        check_functions_are_scoped(type_specialized_kernel)
 
+    return type_specialized_kernel
 
 # }}}
 

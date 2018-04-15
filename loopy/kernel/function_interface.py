@@ -257,7 +257,7 @@ class InKernelCallable(ImmutableRecord):
 # }}}
 
 
-# {{{ callables on scalar
+# {{{ scalar callable
 
 class ScalarCallable(InKernelCallable):
     """
@@ -585,7 +585,13 @@ class CallableKernel(InKernelCallable):
     def generate_preambles(self, target):
         """ This would generate the target specific preamble.
         """
-        raise NotImplementedError()
+        # FIXME: This is not correct, as the code code preamble generated
+        # during the code generationg of the child kernel, does not guarantee
+        # that this thing would be updated.
+        for preamble in self.subkernel.preambles:
+            yield preamble
+
+        return
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
 
@@ -634,6 +640,72 @@ class CallableKernel(InKernelCallable):
         return var(self.name_in_target)(*c_parameters)
 
 # }}}
+
+
+class ManglerCallable(ScalarCallable):
+    """
+    A callable whose characateristic is defined by a function mangler.
+
+    .. attribute function_mangler::
+
+        A function of signature ``(target, name , arg_dtypes)`` and returns an
+        instance of ``loopy.CallMangleInfo``.
+    """
+    fields = set(["name", "function_mangler", "arg_id_to_dtype", "arg_id_to_descr",
+        "name_in_target"])
+    init_arg_names = ("name", "function_mangler", "arg_id_to_dtype",
+            "arg_id_to_descr", "name_in_target")
+
+    def __init__(self, name, function_mangler, arg_id_to_dtype=None,
+            arg_id_to_descr=None, name_in_target=None):
+
+        self.function_mangler = function_mangler
+
+        super(ManglerCallable, self).__init__(
+                name=name,
+                arg_id_to_dtype=arg_id_to_dtype,
+                arg_id_to_descr=arg_id_to_descr,
+                name_in_target=name_in_target)
+
+    def __getinitargs__(self):
+        return (self.name, self.function_mangler, self.arg_id_to_dtype,
+                self.arg_id_to_descr, self.name_in_target)
+
+    def with_types(self, arg_id_to_dtype, kernel):
+        if self.arg_id_to_dtype is not None:
+            # specializing an already specialized function.
+            for id, dtype in arg_id_to_dtype.items():
+                # only checking for the ones which have been provided
+                # if does not match, returns an error.
+                if self.arg_id_to_dtype[id] != arg_id_to_dtype[id]:
+                    raise LoopyError("Overwriting a specialized"
+                            " function is illegal--maybe start with new instance of"
+                            " ManglerCallable?")
+
+        sorted_keys = sorted(arg_id_to_dtype.keys())
+        arg_dtypes = tuple(arg_id_to_dtype[key] for key in sorted_keys if
+                key >= 0)
+
+        mangle_result = self.function_mangler(kernel.target, self.name,
+                arg_dtypes)
+        if mangle_result:
+            new_arg_id_to_dtype = dict(enumerate(mangle_result.arg_dtypes))
+            new_arg_id_to_dtype.update(dict((-i-1, dtype) for i, dtype in
+                enumerate(mangle_result.result_dtypes)))
+            return self.copy(name_in_target=mangle_result.target_name,
+                    arg_id_to_dtype=new_arg_id_to_dtype)
+        else:
+            # The function mangler does not agree with the arg id to dtypes
+            # provided. Indicating that is illegal.
+            raise LoopyError("Function %s not coherent with the provided types." % (
+                self.name, kernel.target))
+
+    def mangle_result(self, kernel):
+        sorted_keys = sorted(self.arg_id_to_dtype.keys())
+        arg_dtypes = tuple(self.arg_id_to_dtype[key] for key in sorted_keys if
+                key >= 0)
+
+        return self.function_mangler(kernel.target, self.name, arg_dtypes)
 
 
 # {{{ new pymbolic calls to scoped functions
@@ -712,8 +784,15 @@ def register_pymbolic_calls_to_knl_callables(kernel,
         if in_knl_callable not in scoped_functions_to_names:
             # No matching in_knl_callable found => make a new one with a new
             # name.
+            if isinstance(pymbolic_call.function, Variable):
+                pymbolic_call_function = pymbolic_call.function
+            elif isinstance(pymbolic_call.function, ScopedFunction):
+                pymbolic_call_function = pymbolic_call.function.function
+            else:
+                raise NotImplementedError("Unknown type %s for pymbolic call "
+                        "function." % type(pymbolic_call))
 
-            unique_var = next_indexed_variable(pymbolic_call.function.function)
+            unique_var = next_indexed_variable(pymbolic_call_function)
             while unique_var in scoped_names_to_functions and not isinstance(
                     unique_var, ArgExtOp):
                 # keep on finding new names till one a unique one is found.

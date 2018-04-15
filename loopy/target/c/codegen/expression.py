@@ -431,6 +431,16 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 raise RuntimeError("should not get here")
 
         # }}}
+        from loopy.kernel.function_interface import ManglerCallable
+        if isinstance(self.kernel.scoped_functions[expr.function.function],
+                ManglerCallable):
+            from loopy.codegen import SeenFunction
+            in_knl_callable = self.kernel.scoped_functions[expr.function.function]
+            mangle_result = in_knl_callable.mangle_result(self.kernel)
+            self.codegen_state.seen_functions.add(
+                    SeenFunction(identifier_name,
+                        mangle_result.target_name,
+                        mangle_result.arg_dtypes))
 
         return self.kernel.scoped_functions[expr.function.function].emit_call(
                 expression_to_code_mapper=self,
