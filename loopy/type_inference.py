@@ -325,9 +325,11 @@ class TypeInferenceMapper(CombineMapper):
                         ValueArgDescriptor)
 
                 # creating arg_id_to_dtype, arg_id_to_descr from arg_dtypes
-                arg_id_to_dtype = dict(enumerate(mangle_result.arg_dtypes))
-                arg_id_to_dtype.update(dict((-i-1, dtype) for i, dtype in
-                    enumerate(mangle_result.result_dtypes)))
+                arg_id_to_dtype = dict((i, dt.with_target(self.kernel.target))
+                        for i, dt in enumerate(mangle_result.arg_dtypes))
+                arg_id_to_dtype.update(dict((-i-1,
+                    dtype.with_target(self.kernel.target)) for i, dtype in enumerate(
+                        mangle_result.result_dtypes)))
                 arg_descrs = tuple((i, ValueArgDescriptor()) for i, _ in
                         enumerate(mangle_result.arg_dtypes))
                 res_descrs = tuple((-i-1, ValueArgDescriptor()) for i, _ in
