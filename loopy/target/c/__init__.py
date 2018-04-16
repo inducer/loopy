@@ -971,11 +971,21 @@ class CASTBuilder(ASTBuilderBase):
                 target=self.target,
                 expression_to_code_mapper=ecm)
 
-        from cgen import Assign
-        lhs_code = ecm(insn.assignees[0], prec=PREC_NONE, type_context=None)
-        return Assign(lhs_code,
-                CExpression(self.get_c_expression_to_code_mapper(),
-                in_knl_callable_as_call))
+        from loopy.kernel.function_interface import (ScalarCallable,
+                CallableKernel)
+        if isinstance(in_knl_callable, ScalarCallable):
+            from cgen import Assign
+            lhs_code = ecm(insn.assignees[0], prec=PREC_NONE, type_context=None)
+            return Assign(lhs_code,
+                    CExpression(self.get_c_expression_to_code_mapper(),
+                    in_knl_callable_as_call))
+        elif isinstance(in_knl_callable, CallableKernel):
+            from cgen import ExpressionStatement
+            return ExpressionStatement(
+                    CExpression(self.get_c_expression_to_code_mapper(),
+                    in_knl_callable_as_call))
+        else:
+            raise NotImplementedError("Unexpected type of In Kernel Callable.")
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
             lbound, ubound, inner):

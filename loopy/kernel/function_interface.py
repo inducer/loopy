@@ -438,7 +438,6 @@ class ScalarCallable(InKernelCallable):
         return var(self.name_in_target)(*c_parameters)
 
     def generate_preambles(self, target):
-        print(self.name)
         if isinstance(self.name, _ArgExtremumReductionOperation):
             op = self.name
             scalar_dtype = self.arg_id_to_dtype[-1]
@@ -470,12 +469,10 @@ class ScalarCallable(InKernelCallable):
                     comp=op.update_comparison,
                     ))
         elif isinstance(self.name, _SegmentedScalarReductionOperation):
-            print('Danda')
             op = self.name
             scalar_dtype = self.arg_id_to_dtype[-1]
             segment_flag_dtype = self.arg_id_to_dtype[-2]
             prefix = op.prefix(scalar_dtype, segment_flag_dtype)
-            print(prefix)
 
             yield (prefix, """
             inline %(scalar_t)s %(prefix)s_op(
