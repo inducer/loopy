@@ -956,25 +956,35 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
     Use :func:`has_schedulable_iname_nesting` to decide whether an iname needs to be
     duplicated in a given kernel.
     """
+    from loopy.kernel.data import ConcurrentTag
+
+    concurrent_inames = set(
+            iname
+            for iname in knl.all_inames()
+            if isinstance(knl.iname_to_tag.get(iname), ConcurrentTag))
+
     # First we extract the minimal necessary information from the kernel
     if use_boostable_into:
         insn_iname_sets = (
-            frozenset(insn.within_inames.union(
-                insn.boostable_into if insn.boostable_into is not None
-                else frozenset([]))
+            frozenset(
+                (insn.within_inames
+                    | insn.boostable_into if insn.boostable_into is not None
+                    else frozenset([]))
+                - concurrent_inames
                 for insn in knl.instructions)
             -
             frozenset([frozenset([])]))
     else:
         insn_iname_sets = (
-            frozenset(insn.within_inames for insn in knl.instructions)
+            frozenset(
+                insn.within_inames - concurrent_inames
+                for insn in knl.instructions)
             -
             frozenset([frozenset([])]))
 
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_iname_sets):
         # Check whether this iname has a parallel tag and discard it if so
-        from loopy.kernel.data import ConcurrentTag
         if (iname in knl.iname_to_tag
                     and isinstance(knl.iname_to_tag[iname], ConcurrentTag)):
             continue
