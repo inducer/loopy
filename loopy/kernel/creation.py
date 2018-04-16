@@ -1939,7 +1939,8 @@ def scope_functions(kernel, function_identifiers=None):
     function_scoper = FunctionScoper(rule_mapping_context, function_identifiers)
 
     # scoping fucntions and collecting the scoped functions
-    kernel_with_scoped_functions = function_scoper.map_kernel(kernel)
+    kernel_with_scoped_functions = rule_mapping_context.finish_kernel(
+            function_scoper.map_kernel(kernel))
 
     # updating the functions collected during the scoped functions
     updated_scoped_functions = kernel.scoped_functions.copy()
