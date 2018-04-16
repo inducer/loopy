@@ -971,14 +971,11 @@ class CASTBuilder(ASTBuilderBase):
                 target=self.target,
                 expression_to_code_mapper=ecm)
 
-        from cgen import ExpressionStatement
-        # FIXME: Depending on the function this can be either an
-        # ExpressionStatement or Assignment.
-        # Refer: ScalarCallable::emit_call_insn. It is discussed in detail
-        # over there.
-        return ExpressionStatement(
+        from cgen import Assign
+        lhs_code = ecm(insn.assignees[0], prec=PREC_NONE, type_context=None)
+        return Assign(lhs_code,
                 CExpression(self.get_c_expression_to_code_mapper(),
-                    in_knl_callable_as_call))
+                in_knl_callable_as_call))
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
             lbound, ubound, inner):

@@ -34,7 +34,8 @@ from pymbolic.primitives import Variable
 from loopy.symbolic import parse_tagged_name
 
 from loopy.library.reduction import ArgExtOp
-from loopy.library.reduction import _ArgExtremumReductionOperation
+from loopy.library.reduction import (_ArgExtremumReductionOperation,
+        _SegmentedScalarReductionOperation)
 
 from loopy.symbolic import (IdentityMapper, ScopedFunction,
         SubstitutionRuleMappingContext, RuleAwareIdentityMapper,
@@ -328,7 +329,18 @@ class ScalarCallable(InKernelCallable):
                     name_in_target="loopy_arg%s_%s_%s_op" % (self.name.which,
                 scalar_dtype.numpy_dtype.type.__name__,
                 index_dtype.numpy_dtype.type.__name__))
-
+        elif isinstance(self.name, _SegmentedScalarReductionOperation):
+            scalar_dtype = arg_id_to_dtype[0]
+            index_dtype = arg_id_to_dtype[1]
+            result_dtypes = self.name.result_dtypes(kernel, scalar_dtype,
+                    index_dtype)
+            new_arg_id_to_dtype = arg_id_to_dtype.copy()
+            new_arg_id_to_dtype[-1] = result_dtypes[0]
+            new_arg_id_to_dtype[-2] = result_dtypes[1]
+            return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
+                    name_in_target="loopy_segmented_%s_%s_%s_op" % (self.name.which,
+                scalar_dtype.numpy_dtype.type.__name__,
+                index_dtype.numpy_dtype.type.__name__))
         else:
             # did not find a scalar function and function prototype does not
             # even have  subkernel registered => no match found
@@ -380,7 +392,8 @@ class ScalarCallable(InKernelCallable):
         # For example: The code generation of `sincos` would be different for
         # C-Target and OpenCL-target.
 
-        # Currently doing pass by value for all the assignees.
+        # Currently this is formulated such that the first argument is returned
+        # and rest all are passed by reference as arguments to the function.
 
         assert self.is_ready_for_codegen()
 
@@ -389,14 +402,14 @@ class ScalarCallable(InKernelCallable):
         assert isinstance(insn, CallInstruction)
 
         parameters = insn.expression.parameters
-        assignees = insn.assignees
+        assignees = insn.assignees[1:]
 
         par_dtypes = tuple(expression_to_code_mapper.infer_type(par) for par in
                 parameters)
         arg_dtypes = tuple(self.arg_id_to_dtype[i] for i, _ in
                 enumerate(parameters))
 
-        assignee_dtypes = tuple(self.arg_id_to_dtype[-i-1] for i, _ in
+        assignee_dtypes = tuple(self.arg_id_to_dtype[-i-2] for i, _ in
                 enumerate(assignees))
 
         from loopy.expression import dtype_to_type_context
@@ -425,6 +438,7 @@ class ScalarCallable(InKernelCallable):
         return var(self.name_in_target)(*c_parameters)
 
     def generate_preambles(self, target):
+        print(self.name)
         if isinstance(self.name, _ArgExtremumReductionOperation):
             op = self.name
             scalar_dtype = self.arg_id_to_dtype[-1]
@@ -433,20 +447,20 @@ class ScalarCallable(InKernelCallable):
             prefix = op.prefix(scalar_dtype, index_dtype)
 
             yield (prefix, """
-            inline void %(prefix)s_op(
+            inline %(scalar_t)s %(prefix)s_op(
                 %(scalar_t)s op1, %(index_t)s index1,
                 %(scalar_t)s op2, %(index_t)s index2,
-                %(scalar_t)s *op, %(index_t)s *index_out)
+                %(index_t)s *index_out)
             {
                 if (op2 %(comp)s op1)
                 {
                     *index_out = index2;
-                    *op = op2;
+                    return op2;
                 }
                 else
                 {
                     *index_out = index1;
-                    *op = op1;
+                    return op1;
                 }
             }
             """ % dict(
@@ -454,6 +468,29 @@ class ScalarCallable(InKernelCallable):
                     prefix=prefix,
                     index_t=target.dtype_to_typename(index_dtype),
                     comp=op.update_comparison,
+                    ))
+        elif isinstance(self.name, _SegmentedScalarReductionOperation):
+            print('Danda')
+            op = self.name
+            scalar_dtype = self.arg_id_to_dtype[-1]
+            segment_flag_dtype = self.arg_id_to_dtype[-2]
+            prefix = op.prefix(scalar_dtype, segment_flag_dtype)
+            print(prefix)
+
+            yield (prefix, """
+            inline %(scalar_t)s %(prefix)s_op(
+                %(scalar_t)s op1, %(segment_flag_t)s segment_flag1,
+                %(scalar_t)s op2, %(segment_flag_t)s segment_flag2,
+                %(segment_flag_t)s *segment_flag_out)
+            {
+                *segment_flag_out = segment_flag1 | segment_flag2;
+                return segment_flag2 ? op2 : %(combined)s;
+            }
+            """ % dict(
+                    scalar_t=target.dtype_to_typename(scalar_dtype),
+                    prefix=prefix,
+                    segment_flag_t=target.dtype_to_typename(segment_flag_dtype),
+                    combined=op.op % ("op1", "op2"),
                     ))
 
         return
@@ -642,6 +679,8 @@ class CallableKernel(InKernelCallable):
 # }}}
 
 
+# {{{ mangler callable
+
 class ManglerCallable(ScalarCallable):
     """
     A callable whose characateristic is defined by a function mangler.
@@ -706,6 +745,8 @@ class ManglerCallable(ScalarCallable):
                 key >= 0)
 
         return self.function_mangler(kernel.target, self.name, arg_dtypes)
+
+# }}}
 
 
 # {{{ new pymbolic calls to scoped functions

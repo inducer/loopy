@@ -1898,7 +1898,8 @@ class FunctionScoper(RuleAwareIdentityMapper):
         from loopy.kernel.function_interface import ScalarCallable
         from loopy.library.reduction import (MaxReductionOperation,
                 MinReductionOperation, ArgMinReductionOperation,
-                ArgMaxReductionOperation)
+                ArgMaxReductionOperation, _SegmentedScalarReductionOperation,
+                SegmentedOp)
         from pymbolic import var
         from loopy.library.reduction import ArgExtOp
 
@@ -1915,6 +1916,10 @@ class FunctionScoper(RuleAwareIdentityMapper):
             self.scoped_functions[var("min")] = ScalarCallable("min")
             self.scoped_functions[var("make_tuple")] = ScalarCallable("make_tuple")
             self.scoped_functions[ArgExtOp(expr.operation)] = ScalarCallable(
+                    expr.operation)
+        elif isinstance(expr.operation, _SegmentedScalarReductionOperation):
+            self.scoped_functions[var("make_tuple")] = ScalarCallable("make_tuple")
+            self.scoped_functions[SegmentedOp(expr.operation)] = ScalarCallable(
                     expr.operation)
 
         return super(FunctionScoper, self).map_reduction(expr, expn_state)

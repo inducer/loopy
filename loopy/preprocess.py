@@ -2296,11 +2296,11 @@ class FunctionsNotReadyForCodegenCollector(CombineMapper):
         return all(values)
 
     def map_call(self, expr, *args, **kwargs):
-        from loopy.library.reduction import ArgExtOp
+        from loopy.library.reduction import ArgExtOp, SegmentedOp
         from pymbolic.primitives import Variable
         from loopy.symbolic import ScopedFunction
 
-        if isinstance(expr.function, ArgExtOp):
+        if isinstance(expr.function, (ArgExtOp, SegmentedOp)):
             return self.combine(
                     tuple(
                         self.rec(child, *args, **kwargs) for child in

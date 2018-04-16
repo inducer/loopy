@@ -255,7 +255,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         return type(self) == type(other)
 
     def __call__(self, dtypes, operand1, operand2):
-        return SegmentedOp(self)(*(operand1 + operand2))
+        return ScopedFunction(SegmentedOp(self))(*(operand1 + operand2))
 
 
 class SegmentedSumReductionOperation(_SegmentedScalarReductionOperation):

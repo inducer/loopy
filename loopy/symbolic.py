@@ -689,8 +689,8 @@ class ScopedFunction(p.Expression):
     def __init__(self, function):
         if isinstance(function, str):
             function = p.Variable(function)
-        from loopy.library.reduction import ArgExtOp
-        assert isinstance(function, (p.Variable, ArgExtOp))
+        from loopy.library.reduction import ArgExtOp, SegmentedOp
+        assert isinstance(function, (p.Variable, ArgExtOp, SegmentedOp))
         self.function = function
 
     @property
@@ -844,12 +844,12 @@ def get_dependencies(expr):
 # {{{ rule-aware mappers
 
 def parse_tagged_name(expr):
-    from loopy.library.reduction import ArgExtOp
+    from loopy.library.reduction import ArgExtOp, SegmentedOp
     if isinstance(expr, TaggedVariable):
         return expr.name, expr.tag
     elif isinstance(expr, ScopedFunction):
         return parse_tagged_name(expr.function)
-    elif isinstance(expr, (p.Variable, ArgExtOp)):
+    elif isinstance(expr, (p.Variable, ArgExtOp, SegmentedOp)):
         return expr.name, None
     else:
         raise RuntimeError("subst rule name not understood: %s" % expr)
