@@ -279,7 +279,6 @@ def with_types_for_opencl_target(in_knl_callable, arg_id_to_dtype):
                 arg_id_to_dtype={-1: NumpyType(scalar_dtype), 0: dtype, 1: dtype})
 
     if name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
-        print(arg_id_to_dtype)
         num_args = _CL_SIMPLE_MULTI_ARG_FUNCTIONS[name]
         for id in arg_id_to_dtype:
             if not -1 <= id < num_args:
