@@ -711,9 +711,16 @@ class ExpressionOpCounter(CounterBase):
     map_variable = map_constant
 
     def map_call(self, expr):
+        from loopy.symbolic import ScopedFunction
+        if isinstance(expr.function, ScopedFunction):
+            function_identifier = self.knl.scoped_functions[
+                    expr.function.function].name
+        else:
+            function_identifier = expr.function.name
+
         return ToCountMap(
                     {Op(dtype=self.type_inf(expr),
-                        name='func:'+str(expr.function),
+                        name='func:'+function_identifier,
                         count_granularity=CountGranularity.WORKITEM): 1}
                     ) + self.rec(expr.parameters)
 
