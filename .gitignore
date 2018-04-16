@@ -23,3 +23,5 @@ yacctab.py
 loopy/_git_rev.py
 
 .cache
+.env
+virtualenv-[0-9]*[0-9]
