@@ -56,12 +56,14 @@ DATA_MODEL_VERSION = "%s-islpy%s-%s-v0" % (VERSION_TEXT, _islpy_version, _git_re
 
 
 FALLBACK_LANGUAGE_VERSION = (2017, 2, 1)
-MOST_RECENT_LANGUAGE_VERSION = (2018, 1)
+MOST_RECENT_LANGUAGE_VERSION = (2018, 2)
 
+LOOPY_USE_LANGUAGE_VERSION_2018_2 = (2018, 2)
 LOOPY_USE_LANGUAGE_VERSION_2018_1 = (2018, 1)
 LOOPY_USE_LANGUAGE_VERSION_2017_2_1 = (2017, 2, 1)
 
 LANGUAGE_VERSION_SYMBOLS = [
+        "LOOPY_USE_LANGUAGE_VERSION_2018_2",
         "LOOPY_USE_LANGUAGE_VERSION_2018_1",
         "LOOPY_USE_LANGUAGE_VERSION_2017_2_1",
         ]
@@ -115,6 +117,10 @@ will work hard to avoid backward-incompatible language changes.)
 
 History of Language Versions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. data:: LOOPY_USE_LANGUAGE_VERSION_2018_2
+
+    :attr:`loopy.Options.ignore_boostable_into` is turned on by default.
 
 .. data:: LOOPY_USE_LANGUAGE_VERSION_2018_1
 

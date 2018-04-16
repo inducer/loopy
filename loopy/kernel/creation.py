@@ -2030,6 +2030,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     if lang_version >= (2018, 1):
         options = options.copy(enforce_variable_access_ordered=True)
+    if lang_version >= (2018, 2):
+        options = options.copy(ignore_boostable_into=True)
 
     if isinstance(silenced_warnings, str):
         silenced_warnings = silenced_warnings.split(";")
