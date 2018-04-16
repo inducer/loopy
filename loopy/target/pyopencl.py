@@ -803,7 +803,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
             ] + super(PyOpenCLCASTBuilder, self).preamble_generators())
 
     def with_types(self, in_knl_callable, arg_id_to_dtype):
-        from loopy.library.random123 import random123_with_types
+        # from loopy.library.random123 import random123_with_types
         new_callable = super(PyOpenCLCASTBuilder, self).with_types(in_knl_callable,
                 arg_id_to_dtype)
         if new_callable is not None:
