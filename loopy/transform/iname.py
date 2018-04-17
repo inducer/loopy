@@ -454,7 +454,7 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
 
     def map_reduction(self, expr, expn_state):
         expr_inames = set(expr.inames)
-        overlap = (self.join_inames & expr_inames
+        overlap = (self.joined_inames & expr_inames
                 - set(expn_state.arg_context))
         if overlap and self.within(
                 expn_state.kernel,
