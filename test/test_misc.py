@@ -32,7 +32,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_compute_sccs():

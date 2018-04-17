@@ -97,7 +97,7 @@ will (indefinitely) default to language version 2017.2.1.  If passing a
 language version to :func:`make_kernel` is impractical, you may also import
 one of the ``LOOPY_USE_LANGUAGE_VERSION_...`` symbols given below using::
 
-    from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1
+    from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
 
 in the global namespace of the function calling :func:`make_kernel`. If
 *lang_version* in that call is not explicitly given, this value will be used.

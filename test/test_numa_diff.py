@@ -44,7 +44,7 @@ __all__ = [
         ]
 
 
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 @pytest.mark.parametrize("Nq", [7])

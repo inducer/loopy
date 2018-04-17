@@ -1925,7 +1925,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         To set the kernel version for all :mod:`loopy` kernels in a (Python) source
         file, you may simply say::
 
-            from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1
+            from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
 
         If *lang_version* is not explicitly given, that version value will be used.
 
