@@ -3,9 +3,9 @@
 set -e
 set -x
 
-VENV_VERSION="virtualenv-1.9.1"
+VENV_VERSION="virtualenv-15.2.0"
 rm -Rf "$VENV_VERSION"
-curl -k https://pypi.python.org/packages/source/v/virtualenv/$VENV_VERSION.tar.gz | tar xfz -
+curl -k https://files.pythonhosted.org/packages/b1/72/2d70c5a1de409ceb3a27ff2ec007ecdd5cc52239e7c74990e32af57affe9/$VENV_VERSION.tar.gz | tar xfz -
 
 $VENV_VERSION/virtualenv.py --system-site-packages --no-setuptools .env
 
