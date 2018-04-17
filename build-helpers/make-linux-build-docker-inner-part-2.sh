@@ -11,7 +11,7 @@ $VENV_VERSION/virtualenv.py --system-site-packages --no-setuptools .env
 
 source .env/bin/activate
 
-curl -k https://ssl.tiker.net/software/ez_setup.py | python -
+curl -k https://bootstrap.pypa.io/ez_setup.py | python -
 curl -k https://gitlab.tiker.net/inducer/pip/raw/7.0.3/contrib/get-pip.py | python -
 
 pip install packaging
