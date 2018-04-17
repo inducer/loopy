@@ -146,7 +146,7 @@ def with_target(in_knl_callable, target):
         else:
             return None
 
-    new_arg_id_to_dtype = in_knl_callable.arg_id_to_dtype.copy()
+    new_arg_id_to_dtype = None
     if in_knl_callable.arg_id_to_dtype:
         new_arg_id_to_dtype = dict((id, with_target_if_not_None(dtype)) for id,
                 dtype in in_knl_callable.arg_id_to_dtype.items())
