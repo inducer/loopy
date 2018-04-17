@@ -314,7 +314,7 @@ def with_types_for_opencl_target(in_knl_callable, arg_id_to_dtype):
                         num_args))
 
         for i in range(count):
-            if i not in arg_id_to_dtype or arg_id_to_dtype[i] is not None:
+            if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
                 # the types provided aren't mature enough to specialize the
                 # callable
                 return None
