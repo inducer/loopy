@@ -105,7 +105,7 @@ class IdentityMapperMixin(object):
         return expr
 
     def map_type_annotation(self, expr, *args):
-        return type(expr)(expr.type, self.rec(expr.child))
+        return type(expr)(expr.type, self.rec(expr.child, *args))
 
     def map_sub_array_ref(self, expr, *args):
         return SubArrayRef(self.rec(expr.swept_inames, *args),
