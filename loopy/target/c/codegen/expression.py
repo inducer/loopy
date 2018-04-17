@@ -431,6 +431,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 raise RuntimeError("should not get here")
 
         # }}}
+
         from loopy.kernel.function_interface import ManglerCallable
         if isinstance(self.kernel.scoped_functions[expr.function.function],
                 ManglerCallable):
