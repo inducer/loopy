@@ -262,8 +262,6 @@ class CodeGenerationState(object):
             schedule_index_end = self.schedule_index_end
 
         if is_generating_master_kernel is None:
-            # By default assumes that code is being generated for a master
-            # kernel.
             is_generating_master_kernel = self.is_generating_master_kernel
 
         return CodeGenerationState(
