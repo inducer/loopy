@@ -35,10 +35,6 @@ import re
 
 from pytools import UniqueNameGenerator, generate_unique_names
 
-# from loopy.library.function import (
-#         default_function_mangler,
-#         single_arg_function_mangler)
-
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.tools import natsorted
 from loopy.diagnostic import StaticValueFindingError
@@ -196,10 +192,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             temporary_variables={},
             iname_to_tag={},
             substitutions={},
-            function_manglers=[
-                # default_function_mangler,
-                # single_arg_function_mangler,
-                ],
+            function_manglers=[],
             scoped_functions={},
             symbol_manglers=[],
 
