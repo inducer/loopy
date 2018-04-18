@@ -1845,6 +1845,11 @@ class FunctionScoper(RuleAwareIdentityMapper):
     **Example**: If given an expression of the form ``sin(x) + unknown_function(y) +
     log(z)``, then the mapper would return ``ScopedFunction('sin')(x) +
     unknown_function(y) + ScopedFunction('log')(z)``.
+
+    :arg rule_mapping_context: An instance of
+        :class:`loopy.symbolic.RuleMappingContext`.
+    :arg function_ids: A container with instances of :class:`str` indicating
+        the function identifiers to look for while scoping functions.
     """
     def __init__(self, rule_mapping_context, function_ids):
         super(FunctionScoper, self).__init__(rule_mapping_context)
@@ -1903,6 +1908,7 @@ class FunctionScoper(RuleAwareIdentityMapper):
         from pymbolic import var
         from loopy.library.reduction import ArgExtOp
 
+        # Noting down the extra functions arising due to certain reductions.
         if isinstance(expr.operation, MaxReductionOperation):
             self.scoped_functions[var("max")] = ScalarCallable("max")
         elif isinstance(expr.operation, MinReductionOperation):
@@ -1971,6 +1977,8 @@ def get_slice_params(slice, dimension_length):
     assert isinstance(slice, Slice)
     start, stop, step = slice.start, slice.stop, slice.step
 
+    # {{{ defaulting parameters
+
     if step is None:
         step = 1
 
@@ -1989,6 +1997,8 @@ def get_slice_params(slice, dimension_length):
         else:
             stop = -1
 
+    # }}}
+
     return start, stop, step
 
 
@@ -2003,7 +2013,7 @@ class SliceToInameReplacer(IdentityMapper):
 
     :attribute knl:
 
-        An instance of :clas:`loopy.LoopKernel`
+        An instance of :class:`loopy.LoopKernel`
 
     :attribute iname_domains:
 
@@ -2061,7 +2071,7 @@ class SliceToInameReplacer(IdentityMapper):
     def get_iname_domain_as_isl_set(self):
         """
         Returns the extra domain constraints imposed by the slice inames,
-        recorded in :attr:`iname_domains`
+        recorded in :attr:`iname_domains`.
         """
         if not self.iname_domains:
             return None
@@ -2081,7 +2091,7 @@ class SliceToInameReplacer(IdentityMapper):
 def realize_slices_as_sub_array_refs(kernel):
     """
     Returns a kernel with the instances of :class:`pymbolic.primitives.Slice`
-    interpreted as `loopy.symbolic.SubArrayRef`.
+    encountered in expressions replaced as `loopy.symbolic.SubArrayRef`.
     """
     unique_var_name_generator = kernel.get_var_name_generator()
     slice_replacer = SliceToInameReplacer(kernel, unique_var_name_generator)
