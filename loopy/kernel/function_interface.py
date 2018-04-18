@@ -120,7 +120,6 @@ def get_kw_pos_association(kernel):
 
     for arg in kernel.args:
         # FIXME: Confused about the written and read variables ordering.
-        # Confirm it with Prof. Andreas.
         if arg.name not in kernel.get_written_variables():
             kw_to_pos[arg.name] = read_count
             pos_to_kw[read_count] = arg.name
@@ -136,11 +135,24 @@ def get_kw_pos_association(kernel):
 
 
 def with_target(in_knl_callable, target):
+    """
+    Returns a copy of :arg:`in_knl_callable` with all the ``dtypes`` in
+    ``in_knl_callable.arg_id_to_dtype`` as instances of
+    :class:`loopy.LoopyType`.
+
+    :arg in_knl_callable: An instance of
+        :class:`loopy.kernel.function_interface.InKernelCallable`.
+    :arg target: An instance of :class:`loopy.target.TargetBase`.
+    """
 
     if target is None:
         raise RuntimeError()
 
     def with_target_if_not_None(dtype):
+        """
+        Returns a copy of :arg:`dtype` associated with the target. If
+        ``dtype`` is *None* returns *None*.
+        """
         if dtype:
             return dtype.with_target(target)
         else:
