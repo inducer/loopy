@@ -284,8 +284,10 @@ class TypeInferenceMapper(CombineMapper):
 
         # specializing the known function wrt type
         if isinstance(expr.function, ScopedFunction):
+            in_knl_callable = self.scoped_functions[expr.function.function]
+
             in_knl_callable = (
-                    self.scoped_functions[expr.function.function].with_types(
+                    in_knl_callable.with_types(
                         arg_id_to_dtype, self.kernel))
 
             # storing the type specialized function so that it can be used for
