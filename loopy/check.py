@@ -122,8 +122,7 @@ def check_functions_are_scoped(kernel):
         elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
             pass
         else:
-            raise NotImplementedError("check_function_are_scoped not "
-                    "implemented for %s type of instruction." % type(insn))
+            raise NotImplementedError("Unknown type of instruction %s." % type(insn))
 
 # }}}
 
