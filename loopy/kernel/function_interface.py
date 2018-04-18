@@ -525,7 +525,6 @@ class ScalarCallable(InKernelCallable):
                     combined=op.op % ("op1", "op2"),
                     ))
 
-
         return
 
     # }}}
