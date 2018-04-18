@@ -312,6 +312,14 @@ class ScalarCallable(InKernelCallable):
             for id, dtype in arg_id_to_dtype.items():
                 # only checking for the ones which have been provided
                 if self.arg_id_to_dtype[id] != arg_id_to_dtype[id]:
+                    import numpy as np
+                    if self.arg_id_to_dtype[id].dtype.type == np.uint32 and (
+                            arg_id_to_dtype[id].dtype.type == np.int32):
+                        continue
+                    if self.arg_id_to_dtype[id].dtype.type == np.uint64 and (
+                            arg_id_to_dtype[id].dtype.type == np.int64):
+                        continue
+
                     raise LoopyError("Overwriting a specialized"
                             " function is illegal--maybe start with new instance of"
                             " ScalarCallable?")
@@ -460,7 +468,12 @@ class ScalarCallable(InKernelCallable):
         return var(self.name_in_target)(*c_parameters)
 
     def generate_preambles(self, target):
-        if isinstance(self.name, _ArgExtremumReductionOperation):
+        from loopy.library.random123 import (random123_function_identifiers,
+                random123_preamble_generator)
+        if self.name in random123_function_identifiers():
+            yield random123_preamble_generator(self.name, target)
+
+        elif isinstance(self.name, _ArgExtremumReductionOperation):
             op = self.name
             scalar_dtype = self.arg_id_to_dtype[-1]
             index_dtype = self.arg_id_to_dtype[-2]
@@ -511,6 +524,7 @@ class ScalarCallable(InKernelCallable):
                     segment_flag_t=target.dtype_to_typename(segment_flag_dtype),
                     combined=op.op % ("op1", "op2"),
                     ))
+
 
         return
 
