@@ -2106,7 +2106,8 @@ def realize_slices_as_sub_array_refs(kernel):
     if slice_iname_domains:
         from loopy.kernel.tools import DomainChanger
         domch = DomainChanger(kernel.copy(instructions=new_insns), frozenset())
-        return domch.get_kernel_with(slice_iname_domains)
+        return kernel.copy(domains=domch.get_domains_with(slice_iname_domains),
+                instructions=new_insns)
     else:
         return kernel.copy(instructions=new_insns)
 
