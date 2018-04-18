@@ -163,21 +163,18 @@ double${ width } ${ name }_f64(
 # }}}
 
 
-def random123_preamble_generator(preamble_info):
-    for f in preamble_info.seen_functions:
-        try:
-            rng_variant = FUNC_NAMES_TO_RNG[f.name]
-        except KeyError:
-            continue
+def random123_preamble_generator(name, target):
 
-        from loopy.target.pyopencl import PyOpenCLTarget
-        yield ("90-random123-"+rng_variant.full_name,
-                PREAMBLE_TEMPLATE.render(
-                    is_pyopencl_target=isinstance(
-                        preamble_info.kernel.target,
-                        PyOpenCLTarget),
-                    rng_variant=rng_variant,
-                    ))
+    rng_variant = FUNC_NAMES_TO_RNG[name]
+
+    from loopy.target.pyopencl import PyOpenCLTarget
+    return ("90-random123-"+rng_variant.full_name,
+            PREAMBLE_TEMPLATE.render(
+                is_pyopencl_target=isinstance(
+                    target,
+                    PyOpenCLTarget),
+                rng_variant=rng_variant,
+                ))
 
 
 def random123_function_identifiers():
@@ -225,44 +222,54 @@ def random123_function_mangler(kernel, name, arg_dtypes):
 
 
 def random123_with_types(in_knl_callable, arg_id_to_dtype, target):
-    # FIXME: Translate the mangler to this.
     name = in_knl_callable.name
 
     if name not in FUNC_NAMES_TO_RNG:
         return None
 
     rng_variant = FUNC_NAMES_TO_RNG[name]
-    1/0
 
     from loopy.types import NumpyType
     base_dtype = {32: np.uint32, 64: np.uint64}[rng_variant.bits]
     ctr_dtype = target.vector_dtype(NumpyType(base_dtype), rng_variant.width)
     key_dtype = target.vector_dtype(NumpyType(base_dtype), rng_variant.key_width)
 
-    from loopy.kernel.data import CallMangleInfo
     fn = rng_variant.full_name
     if name == fn:
-        return CallMangleInfo(
-                target_name=fn+"_gen",
-                result_dtypes=(ctr_dtype, ctr_dtype),
-                arg_dtypes=(ctr_dtype, key_dtype))
+        new_arg_id_to_dtype = {-1: ctr_dtype, -2: ctr_dtype, 0: ctr_dtype, 1:
+                key_dtype}
+        return in_knl_callable.copy(arg_id_to_dtype=new_arg_id_to_dtype,
+                name_in_target=fn+"_gen")
 
     elif name == fn + "_f32":
-        return CallMangleInfo(
-                target_name=name,
-                result_dtypes=(
-                    target.vector_dtype(NumpyType(np.float32), rng_variant.width),
-                    ctr_dtype),
-                arg_dtypes=(ctr_dtype, key_dtype))
+        if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
+                arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
+            # the types provided aren't mature enough to specialize the
+            # callable
+            return None
+        new_arg_id_to_dtype = {-1: target.vector_dtype(NumpyType(np.float32),
+            rng_variant.width),
+                -2: ctr_dtype, 0: ctr_dtype, 1:
+                key_dtype}
+        if arg_id_to_dtype[0] != new_arg_id_to_dtype[0]:
+            print(arg_id_to_dtype)
+            print(new_arg_id_to_dtype)
+            1/0
+
+        if arg_id_to_dtype[1] != new_arg_id_to_dtype[1]:
+            print(arg_id_to_dtype)
+            print(new_arg_id_to_dtype)
+            1/0
+        return in_knl_callable.copy(arg_id_to_dtype=new_arg_id_to_dtype,
+                name_in_target=name)
 
     elif name == fn + "_f64":
-        return CallMangleInfo(
-                target_name=name,
-                result_dtypes=(
-                    target.vector_dtype(NumpyType(np.float64), rng_variant.width),
-                    ctr_dtype),
-                arg_dtypes=(ctr_dtype, key_dtype))
-
+        new_arg_id_to_dtype = {-1: target.vector_dtype(NumpyType(np.float64),
+            rng_variant.width),
+                -2: ctr_dtype, 0: ctr_dtype, 1:
+                key_dtype}
+        return in_knl_callable.copy(arg_id_to_dtype=new_arg_id_to_dtype,
+                name_in_target=name)
     else:
         return None
 
