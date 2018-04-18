@@ -796,26 +796,22 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
                     ])
 
     def preamble_generators(self):
-        from loopy.library.random123 import random123_preamble_generator
         return ([
             pyopencl_preamble_generator,
-            random123_preamble_generator,
             ] + super(PyOpenCLCASTBuilder, self).preamble_generators())
 
     def with_types(self, in_knl_callable, arg_id_to_dtype):
-        # from loopy.library.random123 import random123_with_types
         new_callable = super(PyOpenCLCASTBuilder, self).with_types(in_knl_callable,
                 arg_id_to_dtype)
         if new_callable is not None:
             return new_callable
 
-        return pyopencl_with_types(in_knl_callable, arg_id_to_dtype)
-        '''
-        # Till the time we have written the RNG with types
+        new_callable = pyopencl_with_types(in_knl_callable, arg_id_to_dtype)
         if new_callable is not None:
             return new_callable
-        return random123_with_types(in_knl_callable, arg_id_to_dtype)
-        '''
+        from loopy.library.random123 import random123_with_types
+        return random123_with_types(in_knl_callable, arg_id_to_dtype,
+                self.target)
 
     # }}}
 
