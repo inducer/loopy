@@ -31,7 +31,7 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_tim2d(ctx_factory):

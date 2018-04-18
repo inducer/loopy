@@ -56,12 +56,14 @@ DATA_MODEL_VERSION = "%s-islpy%s-%s-v0" % (VERSION_TEXT, _islpy_version, _git_re
 
 
 FALLBACK_LANGUAGE_VERSION = (2017, 2, 1)
-MOST_RECENT_LANGUAGE_VERSION = (2018, 1)
+MOST_RECENT_LANGUAGE_VERSION = (2018, 2)
 
+LOOPY_USE_LANGUAGE_VERSION_2018_2 = (2018, 2)
 LOOPY_USE_LANGUAGE_VERSION_2018_1 = (2018, 1)
 LOOPY_USE_LANGUAGE_VERSION_2017_2_1 = (2017, 2, 1)
 
 LANGUAGE_VERSION_SYMBOLS = [
+        "LOOPY_USE_LANGUAGE_VERSION_2018_2",
         "LOOPY_USE_LANGUAGE_VERSION_2018_1",
         "LOOPY_USE_LANGUAGE_VERSION_2017_2_1",
         ]
@@ -95,7 +97,7 @@ will (indefinitely) default to language version 2017.2.1.  If passing a
 language version to :func:`make_kernel` is impractical, you may also import
 one of the ``LOOPY_USE_LANGUAGE_VERSION_...`` symbols given below using::
 
-    from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1
+    from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
 
 in the global namespace of the function calling :func:`make_kernel`. If
 *lang_version* in that call is not explicitly given, this value will be used.
@@ -115,6 +117,10 @@ will work hard to avoid backward-incompatible language changes.)
 
 History of Language Versions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. data:: LOOPY_USE_LANGUAGE_VERSION_2018_2
+
+    :attr:`loopy.Options.ignore_boostable_into` is turned on by default.
 
 .. data:: LOOPY_USE_LANGUAGE_VERSION_2018_1
 
