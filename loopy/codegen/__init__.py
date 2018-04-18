@@ -529,6 +529,8 @@ def generate_code_v2(kernel, is_generating_master_kernel=True):
 
     auxiliary_dev_progs = []
 
+    # scanning through all the call instructions if there is any instance of
+    # CallableKernel, whose code is to be generated.
     for insn in kernel.instructions:
         if isinstance(insn, CallInstruction):
             in_knl_callable = kernel.scoped_functions[
@@ -544,8 +546,8 @@ def generate_code_v2(kernel, is_generating_master_kernel=True):
                                _DataObliviousInstruction)):
             pass
         else:
-            raise NotImplementedError("register_knl not made for %s type of "
-                    "instruction" % (str(type(insn))))
+            raise NotImplementedError("Unknown type of instruction %s." % (
+                str(type(insn))))
 
     codegen_result = generate_host_or_device_program(
             codegen_state,
@@ -591,6 +593,8 @@ def generate_code_v2(kernel, is_generating_master_kernel=True):
     for prea_gen in preamble_generators:
         preambles.extend(prea_gen(preamble_info))
 
+    # {{{ collecting preambles from all the in kernel callables.
+
     in_knl_callable_collector = InKernelCallablesCollector(kernel)
 
     for insn in kernel.instructions:
@@ -602,6 +606,8 @@ def generate_code_v2(kernel, is_generating_master_kernel=True):
             pass
         else:
             raise NotImplementedError("Unkown instruction %s" % type(insn))
+
+    # }}}
 
     codegen_result = codegen_result.copy(device_preambles=preambles)
 
