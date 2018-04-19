@@ -151,6 +151,11 @@ class ASTBuilderBase(object):
     # {{{ library
 
     def function_identifiers(self):
+        """
+        Returns an instance of :class:`set` containing instances of
+        :class:`str` indicating the names of the functions known to the
+        :attr:`ASTBuilderBase.target`.
+        """
         return set()
 
     def function_manglers(self):
@@ -164,10 +169,14 @@ class ASTBuilderBase(object):
 
     def with_types(self, in_knl_callable, arg_id_to_dtype):
         """
-        Checks the in-kernel callable with the target specific functions and then
-        returns either `None` when no match is found or returns a new type
-        specialized instance of :class:`InKernelCallable`.
+        Returns a copy of :arg:`in_knl_callable` along with the return type for
+        the argument types specified by :arg:`arg_id_to_dtype`. Returns *None*
+        if no such function exists for the given types.
 
+        :arg in_knl_callable: An instance of
+            :class:`loopy.kernel.function_interface`.
+        :arg arg_id_to_dtype: A mapping similar
+            :meth:`loopy.kernel.function_interface.with_types()`
         """
         return None
 
