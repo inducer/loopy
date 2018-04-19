@@ -33,7 +33,7 @@ from loopy.diagnostic import LoopyError
 from pymbolic.primitives import Variable
 from loopy.symbolic import parse_tagged_name
 
-from loopy.library.reduction import ArgExtOp
+from loopy.library.reduction import ArgExtOp, SegmentedOp
 from loopy.library.reduction import (_ArgExtremumReductionOperation,
         _SegmentedScalarReductionOperation)
 
@@ -320,7 +320,6 @@ class ScalarCallable(InKernelCallable):
         if self.arg_id_to_dtype is not None:
 
             # specializing an already specialized function.
-
             for id, dtype in arg_id_to_dtype.items():
                 # only checking for the ones which have been provided
                 if self.arg_id_to_dtype[id] != arg_id_to_dtype[id]:
@@ -336,21 +335,31 @@ class ScalarCallable(InKernelCallable):
                             " function is illegal--maybe start with new instance of"
                             " ScalarCallable?")
 
+        # {{{ target specific callables
+
         if self.name in kernel.target.get_device_ast_builder(
                 ).function_identifiers():
-            # Searching the function within the namespace of the target.
             new_in_knl_callable = kernel.target.get_device_ast_builder().with_types(
                     self, arg_id_to_dtype)
             # adding target attribute to the NumpyTypes
             if new_in_knl_callable is None:
                 new_in_knl_callable = self.copy()
             return with_target(new_in_knl_callable, kernel.target)
+
+        # }}}
+
+        # {{{ indexof, indexof_vec
+
         elif self.name in ["indexof", "indexof_vec"]:
             new_arg_id_to_dtype = arg_id_to_dtype.copy()
             new_arg_id_to_dtype[-1] = kernel.index_dtype
 
             return with_target(self.copy(arg_id_to_dtype=new_arg_id_to_dtype),
                     kernel.target)
+        # }}}
+
+        # {{{ make_tuple
+
         elif self.name == "make_tuple":
             new_arg_id_to_dtype = arg_id_to_dtype.copy()
             for i in range(len(arg_id_to_dtype)):
@@ -359,6 +368,11 @@ class ScalarCallable(InKernelCallable):
 
             return with_target(self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
                 name_in_target="loopy_make_tuple"), kernel.target)
+
+        # }}}
+
+        # {{{ ArgExtOp, SegmentedOp
+
         elif isinstance(self.name, _ArgExtremumReductionOperation):
             scalar_dtype = arg_id_to_dtype[0]
             index_dtype = arg_id_to_dtype[1]
@@ -383,6 +397,9 @@ class ScalarCallable(InKernelCallable):
                     name_in_target="loopy_segmented_%s_%s_%s_op" % (self.name.which,
                 scalar_dtype.numpy_dtype.type.__name__,
                 index_dtype.numpy_dtype.type.__name__)), kernel.target)
+
+        # }}}
+
         else:
             # did not find a scalar function and function prototype does not
             # even have  subkernel registered => no match found
@@ -426,6 +443,20 @@ class ScalarCallable(InKernelCallable):
         return var(self.name_in_target)(*processed_parameters)
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
+        """
+        Returns a pymbolic call for C-based targets, when the instructions
+        involve multiple return values along with the required type casting.
+        The first assignee is returned, but the rest of them are appended to
+        the parameters and passed by reference.
+
+        :Example: ``c, d = f(a, b)`` is returned as ``c = f(a, b, &d)``
+
+        :arg insn: An instance of :class:`loopy.kernel.instructions.CallInstruction`.
+        :arg target: An instance of :class:`loopy.target.TargetBase`.
+        :arg expression_to_code_mapper: An instance of :class:`IdentityMapper`
+            responsible for code mapping from :mod:`loopy` syntax to the
+            **target syntax**.
+        """
 
         # FIXME: needs to get information about whether the callable has should
         # do pass by reference by all values or should return one value for
@@ -476,7 +507,6 @@ class ScalarCallable(InKernelCallable):
                                 dtype_to_type_context(target, tgt_dtype),
                                 tgt_dtype).expr))
 
-        from pymbolic import var
         return var(self.name_in_target)(*c_parameters)
 
     def generate_preambles(self, target):
@@ -786,6 +816,10 @@ class ManglerCallable(ScalarCallable):
                 self.name, kernel.target))
 
     def mangle_result(self, kernel):
+        """
+        Returns an instance of :class:`loopy.kernel.data.CallMangleInfo` for
+        the given pair :attr:`function_mangler` and :attr:`arg_id_to_dtype`.
+        """
         sorted_keys = sorted(self.arg_id_to_dtype.keys())
         arg_dtypes = tuple(self.arg_id_to_dtype[key] for key in sorted_keys if
                 key >= 0)
@@ -798,7 +832,17 @@ class ManglerCallable(ScalarCallable):
 # {{{ new pymbolic calls to scoped functions
 
 def next_indexed_variable(function):
-    if isinstance(function, ArgExtOp):
+    """
+    Returns a copy a :arg:`function` with the next indexed-name in the
+    sequence.
+
+    :Example: ``Variable('sin_0')`` will return ``Variable('sin_1').
+
+    :arg function: Either an instance of :class:`pymbolic.primitives.Variable`
+        or :class:`loopy.reduction.ArgExtOp` or
+        :class:`loopy.reduction.SegmentedOp`.
+    """
+    if isinstance(function, (ArgExtOp, SegmentedOp)):
         return function.copy()
     func_name = re.compile(r"^(?P<alpha>\S+?)_(?P<num>\d+?)$")
 
@@ -851,9 +895,16 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
 
 def register_pymbolic_calls_to_knl_callables(kernel,
         pymbolic_exprs_to_knl_callables):
-    """ Takes in a mapping :arg:`pymbolic_exprs_to_knl_callables` and returns a
-    new kernel which includes an association with the given pymbolic calls to
-    instances of :class:`InKernelCallable`
+    """
+    Returns a copy of :arg:`kernel` which includes an association with the given
+    pymbolic expressions to  the instances of :class:`InKernelCallable` for the
+    mapping given by :arg:`pymbolic_exprs_to_knl_calllables`.
+
+    :arg kernel: An instance of :class:`loopy.kernel.LoopKernel`.
+
+    :arg pymbolic_exprs_to_knl_callables: A mapping from pymbolic expressions
+        to the instances of
+        :class:`loopy.kernel.function_interface.InKernelCallable`.
     """
 
     scoped_names_to_functions = kernel.scoped_functions.copy()
