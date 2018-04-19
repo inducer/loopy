@@ -44,7 +44,7 @@ from loopy.library.function import (
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.tools import natsorted
 from loopy.diagnostic import StaticValueFindingError
-from loopy.kernel.data import get_iname_tags
+from loopy.kernel.data import filter_iname_by_type
 
 
 # {{{ unique var names
@@ -143,7 +143,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     .. attribute:: iname_to_tags
 
         A :class:`dict` mapping inames (as strings)
-        to tuple of instances of :class:`loopy.kernel.data.IndexTag`.
+        to set of instances of :class:`loopy.kernel.data.IndexTag`.
+        .. versionadded:: 2018.1
 
     .. attribute:: function_manglers
     .. attribute:: symbol_manglers
@@ -298,6 +299,18 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 _cached_written_variables=_cached_written_variables)
 
         self._kernel_executor_cache = {}
+
+    # }}}
+
+    # {{{ compatibility wrapper for iname_to_tag.get("iname")
+
+    @property
+    def iname_to_tag(self):
+        from warnings import warn
+        warn("Since version 2018.1, inames can hold multiple tags. Use "
+             "iname_to_tags['iname'] instead. iname_to_tag.get('iname') will be "
+             "deprecated at version 2019.0.", DeprecationWarning)
+        return dict((k, list(v)[0]) for k, v in six.iteritems(self.iname_to_tags))
 
     # }}}
 
@@ -711,8 +724,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         from loopy.kernel.data import HardwareConcurrentTag
 
         for iname in cond_inames:
-            tags = get_iname_tags(self.iname_to_tags[iname],
-                                  HardwareConcurrentTag, 1)
+            tags = filter_iname_by_type(self.iname_to_tags[iname],
+                                        HardwareConcurrentTag, 1)
             if tags:
                 tag, = tags
                 tag_key_uses[tag.key].append(iname)
@@ -723,9 +736,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         multi_use_inames = set()
         for iname in cond_inames:
-            tags = get_iname_tags(self.iname_to_tags[iname], HardwareConcurrentTag)
+            tags = filter_iname_by_type(self.iname_to_tags[iname],
+                                        HardwareConcurrentTag)
             if tags:
-                tag, = get_iname_tags(tags, HardwareConcurrentTag, 1)
+                tag, = filter_iname_by_type(tags, HardwareConcurrentTag, 1)
                 if tag.key in multi_use_keys:
                     multi_use_inames.add(iname)
 
@@ -959,17 +973,18 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         for iname in all_inames_by_insns:
             tags = self.iname_to_tags[iname]
 
-            if get_iname_tags(tags, GroupIndexTag):
+            if filter_iname_by_type(tags, GroupIndexTag):
                 tgt_dict = global_sizes
-            elif get_iname_tags(tags, LocalIndexTag):
+            elif filter_iname_by_type(tags, LocalIndexTag):
                 tgt_dict = local_sizes
-            elif get_iname_tags(tags, AutoLocalIndexTagBase) and not ignore_auto:
+            elif (filter_iname_by_type(tags, AutoLocalIndexTagBase)
+                  and not ignore_auto):
                 raise RuntimeError("cannot find grid sizes if automatic "
                         "local index tags are present")
             else:
                 continue
 
-            tag, = get_iname_tags(tags, (GroupIndexTag, LocalIndexTag), 1)
+            tag, = filter_iname_by_type(tags, (GroupIndexTag, LocalIndexTag), 1)
 
             size = self.get_iname_bounds(iname).size
 
@@ -1176,8 +1191,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             if show_labels:
                 lines.append("INAME IMPLEMENTATION TAGS:")
             for iname in natsorted(kernel.all_inames()):
-                line = "%s: %s" % (iname, ", ".join(
-                    str(tag) for tag in kernel.iname_to_tags[iname]))
+                if not kernel.iname_to_tags[iname]:
+                    tags = "None"
+                else:
+                    tags = ", ".join(str(tag) for tag in kernel.iname_to_tags[iname])
+                line = "%s: %s" % (iname, tags)
                 lines.append(line)
 
         if "variables" in what and kernel.temporary_variables:

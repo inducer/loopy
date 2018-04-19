@@ -120,7 +120,7 @@ always see loopy's view of a kernel by printing it.
     [n] -> { [i] : 0 <= i < n }
     ---------------------------------------------------------------------------
     INAME IMPLEMENTATION TAGS:
-    i: 
+    i: None
     ---------------------------------------------------------------------------
     INSTRUCTIONS:
     for i
@@ -693,7 +693,7 @@ Iname implementation tags are also printed along with the entire kernel:
     ...
     INAME IMPLEMENTATION TAGS:
     i_inner: unr
-    i_outer: 
+    i_outer: None
     ---------------------------------------------------------------------------
     ...
 

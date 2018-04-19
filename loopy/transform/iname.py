@@ -178,9 +178,9 @@ def _split_iname_backend(kernel, split_iname,
     """
 
     existing_tags = kernel.iname_to_tags[split_iname]
-    from loopy.kernel.data import ForceSequentialTag, get_iname_tags
+    from loopy.kernel.data import ForceSequentialTag, filter_iname_by_type
     if (do_tagged_check and existing_tags
-            and not get_iname_tags(existing_tags, ForceSequentialTag)):
+            and not filter_iname_by_type(existing_tags, ForceSequentialTag)):
         raise LoopyError("cannot split already tagged iname '%s'" % split_iname)
 
     if split_iname not in kernel.all_inames():
@@ -678,7 +678,7 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
     iname_to_tag = [(iname, parse_tag(tag)) for iname, tag in iname_to_tag]
 
     from loopy.kernel.data import (ConcurrentTag, ForceSequentialTag,
-                                   get_iname_tags)
+                                   filter_iname_by_type)
 
     # {{{ globbing
 
@@ -718,12 +718,12 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
             raise ValueError("cannot tag '%s'--not known" % iname)
 
         if (isinstance(new_tag, ConcurrentTag)
-                and get_iname_tags(old_tags, ForceSequentialTag)):
+                and filter_iname_by_type(old_tags, ForceSequentialTag)):
             raise ValueError("cannot tag '%s' as parallel--"
                     "iname requires sequential execution" % iname)
 
         if (isinstance(new_tag, ForceSequentialTag)
-                and get_iname_tags(old_tags, ConcurrentTag)):
+                and filter_iname_by_type(old_tags, ConcurrentTag)):
             raise ValueError("'%s' is already tagged as parallel, "
                     "but is now prohibited from being parallel "
                     "(likely because of participation in a precompute or "
@@ -1011,9 +1011,9 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_iname_sets):
         # Check whether this iname has a parallel tag and discard it if so
-        from loopy.kernel.data import ConcurrentTag, get_iname_tags
+        from loopy.kernel.data import ConcurrentTag, filter_iname_by_type
         if (iname in knl.iname_to_tags
-                and get_iname_tags(knl.iname_to_tags[iname], ConcurrentTag)):
+                and filter_iname_by_type(knl.iname_to_tags[iname], ConcurrentTag)):
             continue
 
         # If we find a duplication option and to not use boostable_into
@@ -1530,7 +1530,7 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
     """
     used_axes = set()
 
-    from loopy.kernel.data import GroupIndexTag, LocalIndexTag, get_iname_tags
+    from loopy.kernel.data import GroupIndexTag, LocalIndexTag, filter_iname_by_type
 
     if isinstance(kind, str):
         found = False
@@ -1550,7 +1550,7 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
     for insn in insns:
         for iname in kernel.insn_inames(insn):
             dim_tags = kernel.iname_to_tags[iname]
-            if get_iname_tags(dim_tags, kind):
+            if filter_iname_by_type(dim_tags, kind):
                 used_axes.add(kind.axis)
 
     i = 0

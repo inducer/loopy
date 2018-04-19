@@ -101,6 +101,7 @@ def privatize_temporaries_with_inames(
 
     might become::
 
+<<<<<<< HEAD:loopy/transform/privatize.py
         for imatrix, i
             acc[imatrix] = 0
             for k
@@ -123,6 +124,9 @@ def privatize_temporaries_with_inames(
                 for s in only_var_names.split(","))
 
     wmap = kernel.writer_map()
+=======
+    from loopy.kernel.data import IlpBaseTag, VectorizeTag, filter_iname_by_type
+>>>>>>> dcbda4e... update based on feedback on MR:loopy/transform/ilp.py
 
     var_to_new_priv_axis_iname = {}
 
@@ -195,7 +199,7 @@ def privatize_temporaries_with_inames(
 
         dim_tags = ["c"] * (len(shape) + len(extra_shape))
         for i, iname in enumerate(inames):
-            if get_iname_tags(kernel.iname_to_tags[iname], VectorizeTag):
+            if filter_iname_by_type(kernel.iname_to_tags[iname], VectorizeTag):
                 dim_tags[len(shape) + i] = "vec"
 
         new_temp_vars[tv.name] = tv.copy(shape=shape + extra_shape,

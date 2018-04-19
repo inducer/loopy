@@ -418,15 +418,15 @@ class ISPCASTBuilder(CASTBuilder):
 
             new_terms = []
 
-            from loopy.kernel.data import LocalIndexTag, get_iname_tags
+            from loopy.kernel.data import LocalIndexTag, filter_iname_by_type
             from loopy.symbolic import get_dependencies
 
             saw_l0 = False
             for term in terms:
                 if (isinstance(term, Variable)
-                        and get_iname_tags(
+                        and filter_iname_by_type(
                             kernel.iname_to_tags[term.name], LocalIndexTag)):
-                        tag, = get_iname_tags(kernel.iname_to_tags[term.name],
+                        tag, = filter_iname_by_type(kernel.iname_to_tags[term.name],
                                               LocalIndexTag, 1)
                         if tag.axis == 0:
                             if saw_l0:
@@ -437,9 +437,9 @@ class ISPCASTBuilder(CASTBuilder):
                             continue
                 else:
                     for dep in get_dependencies(term):
-                        if get_iname_tags(
+                        if filter_iname_by_type(
                                 kernel.iname_to_tags[dep], LocalIndexTag):
-                            tag, = get_iname_tags(kernel.iname_to_tags[dep],
+                            tag, = filter_iname_by_type(kernel.iname_to_tags[dep],
                                                   LocalIndexTag, 1)
                             if tag.axis == 0:
                                 raise LoopyError(
