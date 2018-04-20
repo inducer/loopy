@@ -226,7 +226,7 @@ def inline_kernel(knl, function, arg_map=None):
                     aggregate = self.subst_func(expr.aggregate)
                     sar = child_arg_map[expr.aggregate.name]  # SubArrayRef
                     # first, map inner inames to outer inames
-                    outer_indices = [self.subst_func(i) for i in expr.index_tuple]
+                    outer_indices = self.map_tuple(expr.index_tuple)
                     # then, map index expressions in SubArrayRef to outer inames
                     index_map = dict(zip(sar.swept_inames, outer_indices))
                     index_mapper = SubstitutionMapper(make_subst_func(index_map))
@@ -250,19 +250,20 @@ def inline_kernel(knl, function, arg_map=None):
         for insn in child.instructions:
             insn_id[insn.id] = ing(insn.id)
 
+        new_inames = []
+
         for _insn in child.instructions:
             insn = _insn.with_transformed_expressions(subst_mapper)
-            within_inames = insn.dependency_names() & kernel.all_inames()
+            within_inames = frozenset(child_iname_map[iname] for iname in insn.within_inames)
             within_inames = within_inames | call.within_inames
             depends_on = frozenset(insn_id[dep] for dep in insn.depends_on)
             depends_on = depends_on | call.depends_on
             insn = insn.copy(
                 id=insn_id[insn.id],
-                within_inames=frozenset(within_inames),
+                within_inames=within_inames,
                 priority=call.priority,
                 depends_on=depends_on
             )
-            # TODO: depends on is too conservative?
             inner_insns.append(insn)
 
         from loopy.kernel.instruction import NoOpInstruction
