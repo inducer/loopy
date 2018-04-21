@@ -41,6 +41,7 @@ from pytools import ProcessLogger
 
 import six
 from six.moves import range, zip, intern
+import loopy.version
 
 import re
 
@@ -1981,11 +1982,17 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     from loopy.options import make_options
     options = make_options(options)
 
+    # {{{ handle kernel language version
+
+    from loopy.version import LANGUAGE_VERSION_SYMBOLS
+
+    version_to_symbol = dict(
+            (getattr(loopy.version, lvs), lvs)
+            for lvs in LANGUAGE_VERSION_SYMBOLS)
+
     lang_version = kwargs.pop("lang_version", None)
     if lang_version is None:
         # {{{ peek into caller's module to look for LOOPY_KERNEL_LANGUAGE_VERSION
-
-        from loopy.version import LANGUAGE_VERSION_SYMBOLS
 
         # This *is* gross. But it seems like the right thing interface-wise.
         import inspect
@@ -1999,11 +2006,6 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
                 pass
 
         # }}}
-
-        import loopy.version
-        version_to_symbol = dict(
-                (getattr(loopy.version, lvs), lvs)
-                for lvs in LANGUAGE_VERSION_SYMBOLS)
 
         if lang_version is None:
             from warnings import warn
@@ -2025,13 +2027,14 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
             lang_version = FALLBACK_LANGUAGE_VERSION
 
-        if lang_version not in version_to_symbol:
-            raise LoopyError("Language version '%s' is not known." % lang_version)
-
+    if lang_version not in version_to_symbol:
+        raise LoopyError("Language version '%s' is not known." % (lang_version,))
     if lang_version >= (2018, 1):
         options = options.copy(enforce_variable_access_ordered=True)
     if lang_version >= (2018, 2):
         options = options.copy(ignore_boostable_into=True)
+
+    # }}}
 
     if isinstance(silenced_warnings, str):
         silenced_warnings = silenced_warnings.split(";")
