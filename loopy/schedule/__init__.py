@@ -29,7 +29,7 @@ import sys
 import islpy as isl
 from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
-from pytools import MinRecursionLimit
+from pytools import MinRecursionLimit, ProcessLogger
 
 from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
@@ -2066,16 +2066,9 @@ def get_one_scheduled_kernel(kernel):
             pass
 
     if not from_cache:
-        from time import time
-        start_time = time()
-
-        logger.info("%s: schedule start" % kernel.name)
-
-        with MinRecursionLimitForScheduling(kernel):
-            result = _get_one_scheduled_kernel_inner(kernel)
-
-        logger.info("%s: scheduling done after %.2f s" % (
-            kernel.name, time()-start_time))
+        with ProcessLogger(logger, "%s: schedule" % kernel.name):
+            with MinRecursionLimitForScheduling(kernel):
+                result = _get_one_scheduled_kernel_inner(kernel)
 
     if CACHING_ENABLED and not from_cache:
         schedule_cache.store_if_not_present(sched_cache_key, result)

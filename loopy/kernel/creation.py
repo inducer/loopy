@@ -37,6 +37,7 @@ from loopy.kernel.data import (
 from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
 from islpy import dim_type
+from pytools import ProcessLogger
 
 import six
 from six.moves import range, zip, intern
@@ -1944,10 +1945,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         *seq_dependencies* added.
     """
 
-    from time import time
-    logger.debug(
-            "%s: kernel creation start" % kwargs.get("name", "(unnamed)"))
-    kernel_creation_start_time = time()
+    creation_plog = ProcessLogger(
+            logger,
+            "%s: instantiate" % kwargs.get("name", "(unnamed)"))
 
     defines = kwargs.pop("defines", {})
     default_order = kwargs.pop("default_order", "C")
@@ -2170,14 +2170,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     from loopy.preprocess import prepare_for_caching
     knl = prepare_for_caching(knl)
 
-    creation_elapsed = time() - kernel_creation_start_time
-    if creation_elapsed > 0.1:
-        time_logger = logger.info
-    else:
-        time_logger = logger.debug
-
-    time_logger(
-            "%s: kernel creation done after %g s", knl.name, creation_elapsed)
+    creation_plog.done()
 
     return knl
 
