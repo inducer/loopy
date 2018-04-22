@@ -89,7 +89,7 @@ setup(name="loo.py",
           ],
 
       install_requires=[
-          "pytools>=2018.3",
+          "pytools>=2018.4",
           "pymbolic>=2016.2",
           "genpy>=2016.1.2",
           "cgen>=2016.1",

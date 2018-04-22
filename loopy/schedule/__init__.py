@@ -29,7 +29,7 @@ import sys
 import islpy as isl
 from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
-from pytools import MinRecursionLimit
+from pytools import MinRecursionLimit, ProcessLogger
 
 from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
@@ -1930,14 +1930,9 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
             uses_of_boostability=[])
 
-    generators = []
-
-    if not kernel.options.ignore_boostable_into:
-        generators.append(generate_loop_schedules_internal(sched_state,
-                             debug=debug, allow_boost=None))
-
-    generators.append(generate_loop_schedules_internal(sched_state,
-                          debug=debug))
+    schedule_gen_kwargs = {}
+    if kernel.options.ignore_boostable_into:
+        schedule_gen_kwargs["allow_boost"] = None
 
     def print_longest_dead_end():
         if debug.interactive:
@@ -1957,8 +1952,8 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             debug.debug_length = len(debug.longest_rejected_schedule)
             while True:
                 try:
-                    for _ in generate_loop_schedules_internal(sched_state,
-                            debug=debug):
+                    for _ in generate_loop_schedules_internal(
+                            sched_state, debug=debug, **schedule_gen_kwargs):
                         pass
 
                 except ScheduleDebugInput as e:
@@ -1968,48 +1963,44 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
                 break
 
     try:
-        for gen in generators:
-            for gen_sched in gen:
-                debug.stop()
+        for gen_sched in generate_loop_schedules_internal(
+                sched_state, debug=debug, **schedule_gen_kwargs):
+            debug.stop()
 
-                gen_sched = filter_nops_from_schedule(kernel, gen_sched)
-                gen_sched = convert_barrier_instructions_to_barriers(
-                        kernel, gen_sched)
+            gen_sched = filter_nops_from_schedule(kernel, gen_sched)
+            gen_sched = convert_barrier_instructions_to_barriers(
+                    kernel, gen_sched)
 
-                gsize, lsize = kernel.get_grid_size_upper_bounds()
+            gsize, lsize = kernel.get_grid_size_upper_bounds()
 
-                if (gsize or lsize):
-                    if not kernel.options.disable_global_barriers:
-                        logger.debug("%s: barrier insertion: global" % kernel.name)
-                        gen_sched = insert_barriers(kernel, gen_sched,
-                                synchronization_kind="global", verify_only=True)
-
-                    logger.debug("%s: barrier insertion: local" % kernel.name)
+            if (gsize or lsize):
+                if not kernel.options.disable_global_barriers:
+                    logger.debug("%s: barrier insertion: global" % kernel.name)
                     gen_sched = insert_barriers(kernel, gen_sched,
-                        synchronization_kind="local", verify_only=False)
-                    logger.debug("%s: barrier insertion: done" % kernel.name)
+                            synchronization_kind="global", verify_only=True)
 
-                new_kernel = kernel.copy(
-                        schedule=gen_sched,
-                        state=kernel_state.SCHEDULED)
+                logger.debug("%s: barrier insertion: local" % kernel.name)
+                gen_sched = insert_barriers(kernel, gen_sched,
+                    synchronization_kind="local", verify_only=False)
+                logger.debug("%s: barrier insertion: done" % kernel.name)
 
-                from loopy.schedule.device_mapping import \
-                        map_schedule_onto_host_or_device
-                if kernel.state != kernel_state.SCHEDULED:
-                    # Device mapper only gets run once.
-                    new_kernel = map_schedule_onto_host_or_device(new_kernel)
+            new_kernel = kernel.copy(
+                    schedule=gen_sched,
+                    state=kernel_state.SCHEDULED)
 
-                from loopy.schedule.tools import add_extra_args_to_schedule
-                new_kernel = add_extra_args_to_schedule(new_kernel)
-                yield new_kernel
+            from loopy.schedule.device_mapping import \
+                    map_schedule_onto_host_or_device
+            if kernel.state != kernel_state.SCHEDULED:
+                # Device mapper only gets run once.
+                new_kernel = map_schedule_onto_host_or_device(new_kernel)
 
-                debug.start()
+            from loopy.schedule.tools import add_extra_args_to_schedule
+            new_kernel = add_extra_args_to_schedule(new_kernel)
+            yield new_kernel
 
-                schedule_count += 1
+            debug.start()
 
-            # if no-boost mode yielded a viable schedule, stop now
-            if schedule_count:
-                break
+            schedule_count += 1
 
     except KeyboardInterrupt:
         print()
@@ -2066,16 +2057,9 @@ def get_one_scheduled_kernel(kernel):
             pass
 
     if not from_cache:
-        from time import time
-        start_time = time()
-
-        logger.info("%s: schedule start" % kernel.name)
-
-        with MinRecursionLimitForScheduling(kernel):
-            result = _get_one_scheduled_kernel_inner(kernel)
-
-        logger.info("%s: scheduling done after %.2f s" % (
-            kernel.name, time()-start_time))
+        with ProcessLogger(logger, "%s: schedule" % kernel.name):
+            with MinRecursionLimitForScheduling(kernel):
+                result = _get_one_scheduled_kernel_inner(kernel)
 
     if CACHING_ENABLED and not from_cache:
         schedule_cache.store_if_not_present(sched_cache_key, result)
