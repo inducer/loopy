@@ -180,8 +180,8 @@ class PythonASTBuilderBase(ASTBuilderBase):
     def function_scopers(self):
         from loopy.target.c import scope_c_math_functions
         return (
-                super(PythonASTBuilderBase, self).function_scopers() |
-                frozenset([scope_c_math_functions]))
+                super(PythonASTBuilderBase, self).function_scopers() +
+                [scope_c_math_functions])
 
     def preamble_generators(self):
         return (

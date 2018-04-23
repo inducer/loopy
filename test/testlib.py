@@ -1,4 +1,5 @@
 import loopy as lp
+import numpy as np
 
 
 # {{{ test_barrier_in_overridden_get_grid_size_expanded_kernel
@@ -111,6 +112,45 @@ class SeparateTemporariesPreambleTestHelper:
                 codegen_state, var, var.initializer))
         # return generated code
         yield (desc, '\n'.join([str(decl), code]))
+
+# }}}
+
+
+# {{{ test_register_function_lookup
+
+class Log2Callable(lp.ScalarCallable):
+
+    def with_types(self, arg_id_to_dtype, kernel):
+
+        if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
+            # the types provided aren't mature enough to specialize the
+            # callable
+            return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+
+        dtype = arg_id_to_dtype[0].numpy_dtype
+
+        if dtype.kind in ('u', 'i'):
+            # ints and unsigned casted to float32
+            dtype = np.float32
+
+        from loopy.target.opencl import OpenCLTarget
+        name_in_target = "log2"
+        if not isinstance(kernel.target, OpenCLTarget):
+            # for CUDA, C Targets the name must be modified
+            if dtype == np.float32:
+                name_in_target = "log2f"
+            elif dtype == np.float128:
+                name_in_target = "log2l"
+
+        from loopy.types import NumpyType
+        return self.copy(name_in_target=name_in_target,
+                arg_id_to_dtype={0: NumpyType(dtype), -1: NumpyType(dtype)})
+
+
+def register_log2_lookup(target, identifier):
+    if identifier == 'log2':
+        return Log2Callable(name='log2')
+    return None
 
 # }}}
 

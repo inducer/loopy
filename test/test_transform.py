@@ -182,6 +182,28 @@ def test_add_barrier(ctx_factory):
     assert (np.linalg.norm(out-2*a.T) < 1e-16)
 
 
+def test_register_function_lookup(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    from testlib import register_log2_lookup
+
+    x = np.random.rand(10)
+    ctx = cl.create_some_context()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<10}",
+            """
+            y[i] = log2(x[i])
+            """)
+    knl = lp.register_function_lookup(knl, register_log2_lookup)
+
+    evt, (out, ) = knl(queue, x=x)
+
+    assert np.linalg.norm(np.log2(x)-out)/np.linalg.norm(np.log2(x)) < 1e-15
+
+
 def test_register_knl(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)

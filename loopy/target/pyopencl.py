@@ -784,8 +784,8 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     def function_scopers(self):
         from loopy.library.random123 import random123_function_scoper
         return (
-                frozenset([pyopencl_function_scoper, random123_function_scoper]) |
-                super(PyOpenCLCASTBuilder, self).function_scopers())
+                [pyopencl_function_scoper, random123_function_scoper] + super(
+                    PyOpenCLCASTBuilder, self).function_scopers())
 
     def preamble_generators(self):
         return ([

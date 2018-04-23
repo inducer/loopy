@@ -23,7 +23,6 @@ THE SOFTWARE.
 """
 
 from loopy.kernel import LoopKernel
-from loopy.diagnostic import LoopyError
 from loopy.kernel.function_interface import CallableKernel
 
 __doc__ = """
@@ -31,6 +30,28 @@ __doc__ = """
 
 .. autofunction:: register_callable_kernel
 """
+
+
+# {{{ register function lookup
+
+def register_function_lookup(kernel, function_lookup):
+    """
+    Returns a copy of *kernel* with the *function_lookup* registered.
+
+    :arg function_lookup: A function of signature ``(target, identifier)``
+        returning a :class:`loopy.kernel.function_interface.InKernelCallable`.
+    """
+
+    # adding the function lookup to the set of function lookers in the kernel.
+    new_function_scopers = kernel.function_scopers + [function_lookup]
+    registered_kernel = kernel.copy(function_scopers=new_function_scopers)
+    from loopy.kernel.creation import scope_functions
+
+    # returning the scoped_version of the kernel, as new functions maybe
+    # resolved.
+    return scope_functions(registered_kernel)
+
+# }}}
 
 
 # {{{ register_callable_kernel
@@ -50,50 +71,20 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel):
     assert isinstance(callee_kernel, LoopKernel)
     assert isinstance(function_name, str)
 
-    if function_name in caller_kernel.function_identifiers:
-        raise LoopyError("%s is being used a default function "
-                "identifier--maybe use a different function name in order to "
-                "associate with a callable kernel." % function_name)
-
     # }}}
-
-    # now we know some new functions, and hence scoping them.
-    from loopy.kernel.creation import scope_functions
-
-    # scoping the function corresponding to kernel call
-    caller_kernel = scope_functions(caller_kernel, set([function_name]))
-    updated_scoped_functions = caller_kernel.scoped_functions
 
     # making the target of the child kernel to be same as the target of parent
     # kernel.
-    from pymbolic.primitives import Variable
-    updated_scoped_functions[Variable(function_name)] = CallableKernel(
-        subkernel=callee_kernel.copy(target=caller_kernel.target))
+    callable_kernel = CallableKernel(subkernel=callee_kernel.copy(
+                        target=caller_kernel.target))
 
-    # returning the parent kernel with the new scoped function dictionary
-    return caller_kernel.copy(scoped_functions=updated_scoped_functions)
+    def register_callee_kernel(target, identifier):
+        if identifier == function_name:
+            return callable_kernel
+        return None
 
-# }}}
-
-
-# {{{ register scalar callable
-
-def register_function_lookup(kernel, function_lookup):
-    """
-    Returns a copy of *kernel* with the *function_lookup* registered.
-
-    :arg function_lookup: A function of signature ``(target, identifier)``
-        returning a :class:`loopy.kernel.function_interface.InKernelCallable`.
-    """
-
-    # adding the function lookup to the set of function lookers in the kernel.
-    new_function_scopers = kernel.function_scopers | frozenset([function_lookup])
-    registered_kernel = kernel.copy(function_scopers=new_function_scopers)
-    from loopy.kernel.creation import scope_functions
-
-    # returning the scoped_version of the kernel, as new functions maybe
-    # resolved.
-    return scope_functions(registered_kernel)
+    return register_function_lookup(caller_kernel,
+            register_callee_kernel)
 
 # }}}
 

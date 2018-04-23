@@ -173,7 +173,7 @@ class CudaCallable(ScalarCallable):
 
 
 def scope_cuda_functions(target, identifier):
-    if identifier in frozenset(["dot"]) | frozenset(
+    if identifier in set(["dot"]) | set(
             _CUDA_SPECIFIC_FUNCTIONS):
         return CudaCallable(name=identifier)
 
@@ -263,7 +263,7 @@ class CUDACASTBuilder(CASTBuilder):
     # {{{ library
 
     def function_scopers(self):
-        return frozenset([scope_cuda_functions]) | (
+        return [scope_cuda_functions] + (
                 super(CUDACASTBuilder, self).function_scopers())
 
     # }}}

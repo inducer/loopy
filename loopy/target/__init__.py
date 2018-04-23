@@ -152,11 +152,11 @@ class ASTBuilderBase(object):
 
     def function_scopers(self):
         """
-        Returns an instance of :class:`frozenset` of the functions of signature
+        Returns an instance of list of the functions of signature
         ``(target, identifiers)`` returning either an instance of
         :class:`InKernelCallable` if a match is found or *None*.
         """
-        return frozenset()
+        return []
 
     def symbol_manglers(self):
         return []

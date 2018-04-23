@@ -474,8 +474,8 @@ class CASTBuilder(ASTBuilderBase):
 
     def function_scopers(self):
         return (
-                super(CASTBuilder, self).function_scopers() | frozenset([
-                    scope_c_math_functions]))
+                super(CASTBuilder, self).function_scopers() + [
+                    scope_c_math_functions])
 
     # }}}
 

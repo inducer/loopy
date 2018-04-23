@@ -272,8 +272,8 @@ def scope_opencl_functions(target, identifier):
     Returns an instance of :class:`InKernelCallable` if the function defined by
     *identifier* is known in OpenCL.
     """
-    opencl_function_ids = frozenset(["max", "min", "dot"]) | frozenset(
-            _CL_SIMPLE_MULTI_ARG_FUNCTIONS) | frozenset(VECTOR_LITERAL_FUNCS)
+    opencl_function_ids = set(["max", "min", "dot"]) | set(
+            _CL_SIMPLE_MULTI_ARG_FUNCTIONS) | set(VECTOR_LITERAL_FUNCS)
 
     if identifier in opencl_function_ids:
         return OpenCLCallable(name=identifier)
@@ -425,8 +425,8 @@ class OpenCLCASTBuilder(CASTBuilder):
 
     def function_scopers(self):
         return (
-                frozenset([scope_opencl_functions]) |
-                super(OpenCLCASTBuilder, self).function_scopers())
+                [scope_opencl_functions] + super(
+                    OpenCLCASTBuilder, self).function_scopers())
 
     def symbol_manglers(self):
         return (

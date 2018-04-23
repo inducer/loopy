@@ -269,7 +269,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             from loopy.library.function import loopy_specific_callable_scopers
             # populating the function scopers from the target and the loopy
             # specific callable scopers
-            function_scopers = frozenset([loopy_specific_callable_scopers]) | (
+            function_scopers = [loopy_specific_callable_scopers] + (
                     target.get_device_ast_builder().function_scopers())
 
         ImmutableRecordWithoutPickling.__init__(self,
