@@ -25,6 +25,8 @@ THE SOFTWARE.
 
 import six
 
+import numpy as np
+
 from loopy.kernel import LoopKernel
 from loopy.kernel.creation import FunctionScoper
 from loopy.diagnostic import LoopyError
@@ -137,7 +139,7 @@ def inline_kernel(knl, function, arg_map=None):
 
         child_iname_map = {}
         for iname in child.all_inames():
-            child_iname_map[iname] = vng(iname)
+            child_iname_map[iname] = vng("child_"+iname)
 
         new_domains = []
         for domain in child.domains:
@@ -158,7 +160,7 @@ def inline_kernel(knl, function, arg_map=None):
         child_temp_map = {}
         new_temps = kernel.temporary_variables.copy()
         for name, temp in six.iteritems(child.temporary_variables):
-            new_name = vng(name)
+            new_name = vng("child_"+name)
             child_temp_map[name] = new_name
             new_temps[new_name] = temp.copy(name=new_name)
 
@@ -215,6 +217,8 @@ def inline_kernel(knl, function, arg_map=None):
         import pymbolic.primitives as p
         from pymbolic.mapper.substitutor import make_subst_func
         from loopy.symbolic import SubstitutionMapper
+        from loopy.isl_helpers import simplify_via_aff
+        from functools import reduce
 
         class KernelInliner(SubstitutionMapper):
             """
@@ -224,13 +228,33 @@ def inline_kernel(knl, function, arg_map=None):
             def map_subscript(self, expr):
                 if expr.aggregate.name in child_arg_map:
                     aggregate = self.subst_func(expr.aggregate)
-                    sar = child_arg_map[expr.aggregate.name]  # SubArrayRef
+                    sar = child_arg_map[expr.aggregate.name]  # SubArrayRef (parent)
+                    arg_in = child.arg_dict[expr.aggregate.name]  # Arg (child)
+
                     # first, map inner inames to outer inames
                     outer_indices = self.map_tuple(expr.index_tuple)
-                    # then, map index expressions in SubArrayRef to outer inames
-                    index_map = dict(zip(sar.swept_inames, outer_indices))
+
+                    # next, reshape to match dimension of outer arrays
+                    inner_sizes = [int(np.prod(arg_in.shape[i+1:])) for i in range(len(arg_in.shape))]
+                    make_sum = lambda x, y: p.Sum((x, y))  # TODO: can be more functional?
+                    flatten_index = reduce(make_sum, map(p.Product, zip(outer_indices, inner_sizes)))
+                    flatten_index = simplify_via_aff(flatten_index)
+
+                    from loopy.symbolic import pw_aff_to_expr
+                    bounds = [kernel.get_iname_bounds(i.name) for i in sar.swept_inames]
+                    sizes = [pw_aff_to_expr(b.size) for b in bounds]
+                    sizes = [int(np.prod(sizes[i+1:])) for i in range(len(sizes))]
+                    new_indices = []
+                    for s in sizes:
+                        ind = flatten_index // s
+                        flatten_index = flatten_index - s * ind
+                        new_indices.append(ind)
+
+                    # lastly, map sweeping indices to indices in Subscripts in SubArrayRef
+                    index_map = dict(zip(sar.swept_inames, new_indices))
                     index_mapper = SubstitutionMapper(make_subst_func(index_map))
                     new_indices = index_mapper.map_tuple(sar.subscript.index_tuple)
+                    new_indices = tuple(simplify_via_aff(i) for i in new_indices)
                     return aggregate.index(tuple(new_indices))
                 else:
                     return super(KernelInliner, self).map_subscript(expr)
@@ -248,7 +272,7 @@ def inline_kernel(knl, function, arg_map=None):
         ing = kernel.get_instruction_id_generator()
         insn_id = {}
         for insn in child.instructions:
-            insn_id[insn.id] = ing(insn.id)
+            insn_id[insn.id] = ing("child_"+insn.id)
 
         new_inames = []
 
@@ -274,7 +298,7 @@ def inline_kernel(knl, function, arg_map=None):
                 noop = NoOpInstruction(
                     id=call.id,
                     within_inames=call.within_inames,
-                    depends_on=call.depends_on
+                    depends_on=call.depends_on | set(insn.id for insn in inner_insns)
                 )
                 new_insns.append(noop)
             else:
