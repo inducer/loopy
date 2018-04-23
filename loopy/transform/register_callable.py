@@ -33,7 +33,7 @@ __doc__ = """
 """
 
 
-# {{{ main entrypoint
+# {{{ register_callable_kernel
 
 def register_callable_kernel(caller_kernel, function_name, callee_kernel):
     """Returns a copy of *caller_kernel* which identifies *function_name* in an
@@ -72,6 +72,28 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel):
 
     # returning the parent kernel with the new scoped function dictionary
     return caller_kernel.copy(scoped_functions=updated_scoped_functions)
+
+# }}}
+
+
+# {{{ register scalar callable
+
+def register_function_lookup(kernel, function_lookup):
+    """
+    Returns a copy of *kernel* with the *function_lookup* registered.
+
+    :arg function_lookup: A function of signature ``(target, identifier)``
+        returning a :class:`loopy.kernel.function_interface.InKernelCallable`.
+    """
+
+    # adding the function lookup to the set of function lookers in the kernel.
+    new_function_scopers = kernel.function_scopers | frozenset([function_lookup])
+    registered_kernel = kernel.copy(function_scopers=new_function_scopers)
+    from loopy.kernel.creation import scope_functions
+
+    # returning the scoped_version of the kernel, as new functions maybe
+    # resolved.
+    return scope_functions(registered_kernel)
 
 # }}}
 

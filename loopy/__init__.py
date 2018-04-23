@@ -45,6 +45,8 @@ from loopy.kernel.data import (
         temp_var_scope, TemporaryVariable,
         SubstitutionRule,
         CallMangleInfo)
+from loopy.kernel.function_interface import (
+        ScalarCallable)
 
 from loopy.kernel import LoopKernel, kernel_state
 from loopy.kernel.tools import (
@@ -113,7 +115,8 @@ from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.add_barrier import add_barrier
-from loopy.transform.register_knl import register_callable_kernel
+from loopy.transform.register_callable import (register_callable_kernel,
+        register_function_lookup)
 
 # }}}
 
@@ -159,6 +162,8 @@ __all__ = [
         "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
         "CallInstruction", "CInstruction", "NoOpInstruction",
         "BarrierInstruction",
+
+        "ScalarCallable",
 
         "KernelArgument",
         "ValueArg", "GlobalArg", "ConstantArg", "ImageArg",
@@ -221,7 +226,7 @@ __all__ = [
 
         "add_barrier",
 
-        "register_callable_kernel",
+        "register_callable_kernel", "register_function_lookup",
 
         # }}}
 

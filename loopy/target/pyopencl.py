@@ -230,14 +230,15 @@ class PyOpenCLCallable(ScalarCallable):
                     tpname = "cdouble"
                 else:
                     raise LoopyTypeError("unexpected complex type '%s'" % dtype)
-            return self.copy(name_in_target="%s_%s" % (tpname, name),
-                    arg_id_to_dtype={0: dtype, -1: NumpyType(
-                            np.dtype(dtype.numpy_dtype.type(0).real))})
+
+                return self.copy(name_in_target="%s_%s" % (tpname, name),
+                        arg_id_to_dtype={0: dtype, -1: NumpyType(
+                                np.dtype(dtype.numpy_dtype.type(0).real))})
 
         if name in ["sqrt", "exp", "log",
                 "sin", "cos", "tan",
                 "sinh", "cosh", "tanh",
-                "conj"]:
+                "conj", "abs"]:
             if dtype.is_complex():
                 # function parameters are complex.
                 if dtype.numpy_dtype == np.complex64:
@@ -250,9 +251,12 @@ class PyOpenCLCallable(ScalarCallable):
                 return self.copy(name_in_target="%s_%s" % (tpname, name),
                         arg_id_to_dtype={0: NumpyType(dtype), -1: NumpyType(dtype)})
             else:
-                # function calls for real parameters.
+                # function calls for floating parameters.
+                dtype = dtype.numpy_dtype
                 if dtype.kind in ('u', 'i'):
                     dtype = np.float32
+                if name == 'abs':
+                    name = 'fabs'
                 return self.copy(name_in_target=name,
                     arg_id_to_dtype={0: NumpyType(dtype), -1: NumpyType(dtype)})
 

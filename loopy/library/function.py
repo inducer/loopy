@@ -65,9 +65,8 @@ class MakeTupleCallable(ScalarCallable):
             if i in arg_id_to_dtype and arg_id_to_dtype[i] is not None:
                 new_arg_id_to_dtype[-i-1] = new_arg_id_to_dtype[i]
 
-        from loopy.kernel.function_interface import with_target
-        return with_target(self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-            name_in_target="loopy_make_tuple"), kernel.target)
+        return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
+            name_in_target="loopy_make_tuple")
 
     def with_descrs(self, arg_id_to_descr):
         from loopy.kernel.function_interface import ValueArgDescriptor
@@ -82,9 +81,7 @@ class IndexOfCallable(ScalarCallable):
         new_arg_id_to_dtype = arg_id_to_dtype.copy()
         new_arg_id_to_dtype[-1] = kernel.index_dtype
 
-        from loopy.kernel.function_interface import with_target
-        return with_target(self.copy(arg_id_to_dtype=new_arg_id_to_dtype),
-                kernel.target)
+        return self.copy(arg_id_to_dtype=new_arg_id_to_dtype)
 
 
 def loopy_specific_callable_scopers(target, identifier):
@@ -94,11 +91,8 @@ def loopy_specific_callable_scopers(target, identifier):
     if identifier in ["indexof", "indexof_vec"]:
         return IndexOfCallable(name=identifier)
 
-    return None
-    # FIXME: Reduction callables are an important part, but there are some
-    # import related issues, which I am planning to handle later!
-    # from loopy.library.reduction import reduction_specific_callables
-    # return reduction_specific_callables(target, identifier)
+    from loopy.library.reduction import reduction_scoper
+    return reduction_scoper(target, identifier)
 
 
 # vim: foldmethod=marker

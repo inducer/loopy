@@ -1900,7 +1900,6 @@ class FunctionScoper(RuleAwareIdentityMapper):
                 expn_state)
 
     def map_reduction(self, expr, expn_state):
-        from loopy.kernel.function_interface import ScalarCallable
         from loopy.library.reduction import (MaxReductionOperation,
                 MinReductionOperation, ArgMinReductionOperation,
                 ArgMaxReductionOperation, _SegmentedScalarReductionOperation,
@@ -1910,23 +1909,26 @@ class FunctionScoper(RuleAwareIdentityMapper):
 
         # Noting down the extra functions arising due to certain reductions.
         if isinstance(expr.operation, MaxReductionOperation):
-            self.scoped_functions[var("max")] = ScalarCallable("max")
+            self.scoped_functions[var("max")] = self.kernel.lookup_function("max")
         elif isinstance(expr.operation, MinReductionOperation):
-            self.scoped_functions[var("min")] = ScalarCallable("min")
+            self.scoped_functions[var("min")] = self.kernel.lookup_function("min")
         elif isinstance(expr.operation, ArgMaxReductionOperation):
-            self.scoped_functions[var("max")] = ScalarCallable("max")
-            self.scoped_functions[var("make_tuple")] = ScalarCallable("make_tuple")
-            self.scoped_functions[ArgExtOp(expr.operation)] = ScalarCallable(
-                    expr.operation)
+            self.scoped_functions[var("max")] = self.kernel.lookup_function("max")
+            self.scoped_functions[var("make_tuple")] = self.kernel.lookup_function(
+                    "make_tuple")
+            self.scoped_functions[ArgExtOp(expr.operation)] = (
+                    self.kernel.lookup_function(expr.operation))
         elif isinstance(expr.operation, ArgMinReductionOperation):
-            self.scoped_functions[var("min")] = ScalarCallable("min")
-            self.scoped_functions[var("make_tuple")] = ScalarCallable("make_tuple")
-            self.scoped_functions[ArgExtOp(expr.operation)] = ScalarCallable(
-                    expr.operation)
+            self.scoped_functions[var("min")] = self.kernel.lookup_function("min")
+            self.scoped_functions[var("make_tuple")] = self.kernel.lookup_function(
+                    "make_tuple")
+            self.scoped_functions[ArgExtOp(expr.operation)] = (
+                    self.kernel.lookup_function(expr.operation))
         elif isinstance(expr.operation, _SegmentedScalarReductionOperation):
-            self.scoped_functions[var("make_tuple")] = ScalarCallable("make_tuple")
-            self.scoped_functions[SegmentedOp(expr.operation)] = ScalarCallable(
-                    expr.operation)
+            self.scoped_functions[var("make_tuple")] = self.kernel.lookup_function(
+                    "make_tuple")
+            self.scoped_functions[SegmentedOp(expr.operation)] = (
+                    self.kernel.lookup_function(expr.operation))
 
         return super(FunctionScoper, self).map_reduction(expr, expn_state)
 

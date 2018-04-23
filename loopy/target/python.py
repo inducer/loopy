@@ -177,25 +177,11 @@ class PythonASTBuilderBase(ASTBuilderBase):
 
     # {{{ code generation guts
 
-    def function_manglers(self):
+    def function_scopers(self):
+        from loopy.target.c import scope_c_math_functions
         return (
-                super(PythonASTBuilderBase, self).function_manglers() + [
-                    _numpy_single_arg_function_mangler,
-                    ])
-
-    def function_identifiers(self):
-        from loopy.target.c import c_math_identifiers
-        return (
-                super(PythonASTBuilderBase, self).function_identifiers() |
-                c_math_identifiers())
-
-    def with_types(self, in_knl_callable, arg_id_to_dtype):
-        from loopy.target.c import with_types_for_c_target
-        new_callable = with_types_for_c_target(in_knl_callable, arg_id_to_dtype)
-        if new_callable is not None:
-            return new_callable
-        return super(PythonASTBuilderBase, self).with_types(in_knl_callable,
-                arg_id_to_dtype)
+                super(PythonASTBuilderBase, self).function_scopers() |
+                frozenset([scope_c_math_functions]))
 
     def preamble_generators(self):
         return (

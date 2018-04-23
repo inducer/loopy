@@ -1,4 +1,4 @@
-from __future__ import division
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 from pymbolic import var
 from loopy.symbolic import ScopedFunction
-# from loopy.kernel.function_interface import ScalarCallable
+from loopy.kernel.function_interface import ScalarCallable
 import numpy as np
 
 from loopy.symbolic import FunctionIdentifier
@@ -378,9 +378,8 @@ def parse_reduction_op(name):
 
 # {{{ reduction specific callables
 
-'''
 class ReductionCallable(ScalarCallable):
-    def with_types(self, arg_id_to_dtype, in_knl_callable, kernel):
+    def with_types(self, arg_id_to_dtype, kernel):
         scalar_dtype = arg_id_to_dtype[0]
         index_dtype = arg_id_to_dtype[1]
         result_dtypes = self.name.result_dtypes(kernel, scalar_dtype,
@@ -388,12 +387,10 @@ class ReductionCallable(ScalarCallable):
         new_arg_id_to_dtype = arg_id_to_dtype.copy()
         new_arg_id_to_dtype[-1] = result_dtypes[0]
         new_arg_id_to_dtype[-2] = result_dtypes[1]
-        name_in_target = self.name.prefix(scalar_dtype, index_dtype)
+        name_in_target = self.name.prefix(scalar_dtype, index_dtype) + "_op"
 
-        from loopy.library.kernel.function_interface import with_target
-
-        return with_target(self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-                name_in_target=name_in_target), kernel.target)
+        return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
+                name_in_target=name_in_target)
 
     def with_descr(self, arg_id_to_descr):
         from loopy.library.kernel.function_interface import ValueArgDescriptor
@@ -457,13 +454,13 @@ class ReductionCallable(ScalarCallable):
         return
 
 
-def reduction_specific_callable(target, identifier):
+def reduction_scoper(target, identifier):
     if isinstance(identifier, (_ArgExtremumReductionOperation,
             _SegmentedScalarReductionOperation)):
         return ReductionCallable(name=identifier)
 
     return None
-'''
+
 # }}}
 
 # vim: fdm=marker

@@ -187,6 +187,8 @@ class OpenCLCallable(ScalarCallable):
                         if (id >= 0 and dtype is not None)])
 
             if dtype.kind in ['u', 'i', 'f']:
+                if dtype.kind == 'f':
+                    name = 'f'+name
                 dtype = NumpyType(dtype)
                 return self.copy(name_in_target=name,
                         arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype})
@@ -433,13 +435,10 @@ class OpenCLCASTBuilder(CASTBuilder):
                     ])
 
     def preamble_generators(self):
-        from loopy.library.reduction import reduction_preamble_generator
 
         return (
                 super(OpenCLCASTBuilder, self).preamble_generators() + [
-                    opencl_preamble_generator,
-                    reduction_preamble_generator,
-                    ])
+                    opencl_preamble_generator])
 
     # }}}
 

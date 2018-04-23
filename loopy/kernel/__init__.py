@@ -198,7 +198,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             iname_to_tag={},
             substitutions={},
             function_manglers=[],
-            function_scopers=frozenset(),
+            function_scopers=None,
             scoped_functions={},
             symbol_manglers=[],
 
@@ -265,11 +265,12 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
 
-        from loopy.library.function import loopy_specific_callable_scopers
-        # populating the function scopers from the target and the loopy
-        # specific callable scopers
-        function_scopers = frozenset([loopy_specific_callable_scopers]) | (
-                target.get_device_ast_builder().function_scopers())
+        if function_scopers is None:
+            from loopy.library.function import loopy_specific_callable_scopers
+            # populating the function scopers from the target and the loopy
+            # specific callable scopers
+            function_scopers = frozenset([loopy_specific_callable_scopers]) | (
+                    target.get_device_ast_builder().function_scopers())
 
         ImmutableRecordWithoutPickling.__init__(self,
                 domains=domains,

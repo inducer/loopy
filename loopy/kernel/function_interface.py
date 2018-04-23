@@ -33,7 +33,6 @@ from loopy.diagnostic import LoopyError
 from pymbolic.primitives import Variable
 from loopy.symbolic import parse_tagged_name
 
-from loopy.library.reduction import ArgExtOp, SegmentedOp
 
 from loopy.symbolic import (IdentityMapper, ScopedFunction,
         SubstitutionRuleMappingContext, RuleAwareIdentityMapper,
@@ -420,6 +419,7 @@ class ScalarCallable(InKernelCallable):
 
     def generate_preambles(self, target):
         return
+        yield
 
     # }}}
 
@@ -694,6 +694,7 @@ def next_indexed_variable(function):
         or :class:`loopy.reduction.ArgExtOp` or
         :class:`loopy.reduction.SegmentedOp`.
     """
+    from loopy.library.reduction import ArgExtOp, SegmentedOp
     if isinstance(function, (ArgExtOp, SegmentedOp)):
         return function.copy()
     func_name = re.compile(r"^(?P<alpha>\S+?)_(?P<num>\d+?)$")
@@ -783,8 +784,9 @@ def register_pymbolic_calls_to_knl_callables(kernel,
                         "function." % type(pymbolic_call))
 
             unique_var = next_indexed_variable(pymbolic_call_function)
+            from loopy.library.reduction import ArgExtOp, SegmentedOp
             while unique_var in scoped_names_to_functions and not isinstance(
-                    unique_var, ArgExtOp):
+                    unique_var, (ArgExtOp, SegmentedOp)):
                 # keep on finding new names till one a unique one is found.
                 unique_var = next_indexed_variable(unique_var)
 
