@@ -1946,6 +1946,25 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 # }}}
 
 
+# {{{ realize_ilp
+
+def realize_ilp(kernel):
+    logger.debug("%s: add axes to temporaries for ilp" % kernel.name)
+
+    from loopy.kernel.data import IlpBaseTag, VectorizeTag
+
+    privatizing_inames = frozenset(iname
+            for iname in kernel.all_inames()
+            if isinstance(
+                kernel.iname_to_tag.get(iname),
+                (IlpBaseTag, VectorizeTag)))
+
+    from loopy.transform.privatize import privatize_temporaries_with_inames
+    return privatize_temporaries_with_inames(kernel, privatizing_inames)
+
+# }}}
+
+
 # {{{ find idempotence ("boostability") of instructions
 
 def find_idempotence(kernel):
@@ -2173,8 +2192,7 @@ def preprocess_kernel(kernel, device=None):
     # add_axes_to_temporaries_for_ilp because reduction accumulators
     # need to be duplicated by this.
 
-    from loopy.transform.ilp import add_axes_to_temporaries_for_ilp_and_vec
-    kernel = add_axes_to_temporaries_for_ilp_and_vec(kernel)
+    kernel = realize_ilp(kernel)
 
     kernel = find_temporary_scope(kernel)
 

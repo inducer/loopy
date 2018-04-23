@@ -30,7 +30,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# {{{ duplicate private vars for ilp and vec
+__doc__ = """
+
+.. currentmodule:: loopy
+
+.. autofunction:: privatize_temporaries_with_inames
+"""
+
+
+# {{{ privatize temporaries with iname
 
 from loopy.symbolic import IdentityMapper
 
@@ -38,7 +46,7 @@ from loopy.symbolic import IdentityMapper
 class ExtraInameIndexInserter(IdentityMapper):
     def __init__(self, var_to_new_inames):
         self.var_to_new_inames = var_to_new_inames
-        self.seen_ilp_inames = set()
+        self.seen_priv_axis_inames = set()
 
     def map_subscript(self, expr):
         try:
@@ -51,7 +59,7 @@ class ExtraInameIndexInserter(IdentityMapper):
                 index = (index,)
             index = tuple(self.rec(i) for i in index)
 
-            self.seen_ilp_inames.update(v.name for v in new_idx)
+            self.seen_priv_axis_inames.update(v.name for v in new_idx)
             return expr.aggregate.index(index + new_idx)
 
     def map_variable(self, expr):
@@ -60,61 +68,87 @@ class ExtraInameIndexInserter(IdentityMapper):
         except KeyError:
             return expr
         else:
-            self.seen_ilp_inames.update(v.name for v in new_idx)
+            self.seen_priv_axis_inames.update(v.name for v in new_idx)
             return expr.index(new_idx)
 
 
-def add_axes_to_temporaries_for_ilp_and_vec(kernel, iname=None):
-    if iname is not None:
-        logger.debug("%s: add axes to temporaries for ilp" % kernel.name)
+def privatize_temporaries_with_inames(
+        kernel, privatizing_inames, only_var_names=None):
+    """This function provides each loop iteration of the *privatizing_inames*
+    with its own private entry in the temporaries it accesses (possibly
+    restricted to *only_var_names*).
+
+    This is accomplished implicitly as part of generating instruction-level
+    parallelism by the "ILP" tag and accessible separately through this
+    transformation.
+
+    Example::
+
+        for imatrix, i
+            acc = 0
+            for k
+                acc = acc + a[imatrix, i, k] * vec[k]
+            end
+        end
+
+    might become::
+
+        for imatrix, i
+            acc[imatrix] = 0
+            for k
+                acc[imatrix] = acc[imatrix] + a[imatrix, i, k] * vec[k]
+            end
+        end
+
+    facilitating loop interchange of the *imatrix* loop.
+
+    .. versionadded:: 2018.1
+    """
+    if isinstance(privatizing_inames, str):
+        privatizing_inames = frozenset(
+                s.strip()
+                for s in privatizing_inames.split(","))
+
+    if isinstance(only_var_names, str):
+        only_var_names = frozenset(
+                s.strip()
+                for s in only_var_names.split(","))
 
     wmap = kernel.writer_map()
 
-    from loopy.kernel.data import IlpBaseTag, VectorizeTag
-
-    var_to_new_ilp_inames = {}
+    var_to_new_priv_axis_iname = {}
 
     # {{{ find variables that need extra indices
 
     for tv in six.itervalues(kernel.temporary_variables):
+        if only_var_names is not None and tv.name not in only_var_names:
+            continue
+
         for writer_insn_id in wmap.get(tv.name, []):
             writer_insn = kernel.id_to_insn[writer_insn_id]
 
-            if iname is None:
-                ilp_inames = frozenset(iname
-                        for iname in kernel.insn_inames(writer_insn)
-                        if isinstance(
-                            kernel.iname_to_tag.get(iname),
-                            (IlpBaseTag, VectorizeTag)))
-            else:
-                if not isinstance(
-                        kernel.iname_to_tag.get(iname),
-                        (IlpBaseTag, VectorizeTag)):
-                    raise LoopyError(
-                            "'%s' is not an ILP iname"
-                            % iname)
+            priv_axis_inames = kernel.insn_inames(writer_insn) & privatizing_inames
 
-                ilp_inames = frozenset([iname])
-
-            referenced_ilp_inames = (ilp_inames
+            referenced_priv_axis_inames = (priv_axis_inames
                     & writer_insn.write_dependency_names())
 
-            new_ilp_inames = ilp_inames - referenced_ilp_inames
+            new_priv_axis_inames = priv_axis_inames - referenced_priv_axis_inames
 
-            if not new_ilp_inames:
+            if not new_priv_axis_inames:
                 break
 
-            if tv.name in var_to_new_ilp_inames:
-                if new_ilp_inames != set(var_to_new_ilp_inames[tv.name]):
+            if tv.name in var_to_new_priv_axis_iname:
+                if new_priv_axis_inames != set(var_to_new_priv_axis_iname[tv.name]):
                     raise LoopyError("instruction '%s' requires adding "
-                            "indices for ILP inames '%s' on var '%s', but previous "
-                            "instructions required inames '%s'"
-                            % (writer_insn_id, ", ".join(new_ilp_inames),
-                                ", ".join(var_to_new_ilp_inames[tv.name])))
+                            "indices for privatizing var '%s' on iname(s) '%s', "
+                            "but previous instructions required inames '%s'"
+                            % (writer_insn_id, tv.name,
+                                ", ".join(new_priv_axis_inames),
+                                ", ".join(var_to_new_priv_axis_iname[tv.name])))
 
                 continue
 
-            var_to_new_ilp_inames[tv.name] = set(new_ilp_inames)
+            var_to_new_priv_axis_iname[tv.name] = set(new_priv_axis_inames)
 
     # }}}
 
@@ -123,15 +157,15 @@ def add_axes_to_temporaries_for_ilp_and_vec(kernel, iname=None):
     from loopy.isl_helpers import static_max_of_pw_aff
     from loopy.symbolic import pw_aff_to_expr
 
-    ilp_iname_to_length = {}
-    for ilp_inames in six.itervalues(var_to_new_ilp_inames):
-        for iname in ilp_inames:
-            if iname in ilp_iname_to_length:
+    priv_axis_iname_to_length = {}
+    for priv_axis_inames in six.itervalues(var_to_new_priv_axis_iname):
+        for iname in priv_axis_inames:
+            if iname in priv_axis_iname_to_length:
                 continue
 
-            bounds = kernel.get_iname_bounds(iname, constants_only=True)
-            ilp_iname_to_length[iname] = int(pw_aff_to_expr(
-                        static_max_of_pw_aff(bounds.size, constants_only=True)))
+            bounds = kernel.get_iname_bounds(iname, constants_only=False)
+            priv_axis_iname_to_length[iname] = pw_aff_to_expr(
+                        static_max_of_pw_aff(bounds.size, constants_only=False))
 
             assert static_max_of_pw_aff(
                     bounds.lower_bound_pw_aff, constants_only=True).plain_is_zero()
@@ -140,10 +174,12 @@ def add_axes_to_temporaries_for_ilp_and_vec(kernel, iname=None):
 
     # {{{ change temporary variables
 
+    from loopy.kernel.data import VectorizeTag
+
     new_temp_vars = kernel.temporary_variables.copy()
-    for tv_name, inames in six.iteritems(var_to_new_ilp_inames):
+    for tv_name, inames in six.iteritems(var_to_new_priv_axis_iname):
         tv = new_temp_vars[tv_name]
-        extra_shape = tuple(ilp_iname_to_length[iname] for iname in inames)
+        extra_shape = tuple(priv_axis_iname_to_length[iname] for iname in inames)
 
         shape = tv.shape
         if shape is None:
@@ -165,56 +201,28 @@ def add_axes_to_temporaries_for_ilp_and_vec(kernel, iname=None):
     from pymbolic import var
     var_to_extra_iname = dict(
             (var_name, tuple(var(iname) for iname in inames))
-            for var_name, inames in six.iteritems(var_to_new_ilp_inames))
+            for var_name, inames in six.iteritems(var_to_new_priv_axis_iname))
 
     new_insns = []
 
     for insn in kernel.instructions:
         eiii = ExtraInameIndexInserter(var_to_extra_iname)
         new_insn = insn.with_transformed_expressions(eiii)
-        if not eiii.seen_ilp_inames <= insn.within_inames:
-
-            from loopy.diagnostic import warn_with_kernel
-            warn_with_kernel(
-                    kernel,
-                    "implicit_ilp_iname",
-                    "Instruction '%s': touched variable that (for ILP) "
+        if not eiii.seen_priv_axis_inames <= insn.within_inames:
+            raise LoopyError(
+                    "Kernel '%s': Instruction '%s': touched variable that "
+                    "(for privatization, e.g. as performed for ILP) "
                     "required iname(s) '%s', but that the instruction was not "
-                    "previously within the iname(s). Previously, this would "
-                    "implicitly promote the instruction, but that behavior is "
-                    "deprecated and will stop working in 2018.1."
-                    % (insn.id, ", ".join(
-                        eiii.seen_ilp_inames - insn.within_inames)))
+                    "previously within the iname(s). To remedy this, first promote"
+                    "the instruction into the iname."
+                    % (kernel.name, insn.id, ", ".join(
+                        eiii.seen_priv_axis_inames - insn.within_inames)))
 
         new_insns.append(new_insn)
 
     return kernel.copy(
         temporary_variables=new_temp_vars,
         instructions=new_insns)
-
-# }}}
-
-
-# {{{ realize_ilp
-
-def realize_ilp(kernel, iname):
-    """Instruction-level parallelism (as realized by the loopy iname
-    tag ``"ilp"``) provides the illusion that multiple concurrent
-    program instances execute in lockstep within a single instruction
-    stream.
-
-    To do so, storage that is private to each instruction stream needs to be
-    duplicated so that each program instance receives its own copy.  Storage
-    that is written to in an instruction using an ILP iname but whose left-hand
-    side indices do not contain said ILP iname is marked for duplication.
-
-    This storage duplication is carried out automatically at code generation
-    time, but, using this function, can also be carried out ahead of time
-    on a per-iname basis (so that, for instance, data layout of the duplicated
-    storage can be controlled explicitly.
-    """
-    from loopy.transform.ilp import add_axes_to_temporaries_for_ilp_and_vec
-    return add_axes_to_temporaries_for_ilp_and_vec(kernel, iname)
 
 # }}}
 
