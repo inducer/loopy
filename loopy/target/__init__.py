@@ -150,35 +150,19 @@ class ASTBuilderBase(object):
 
     # {{{ library
 
-    def function_identifiers(self):
+    def function_scopers(self):
         """
-        Returns an instance of :class:`set` containing instances of
-        :class:`str` indicating the names of the functions known to the
-        :attr:`ASTBuilderBase.target`.
+        Returns an instance of :class:`frozenset` of the functions of signature
+        ``(target, identifiers)`` returning either an instance of
+        :class:`InKernelCallable` if a match is found or *None*.
         """
-        return set()
-
-    def function_manglers(self):
-        return []
+        return frozenset()
 
     def symbol_manglers(self):
         return []
 
     def preamble_generators(self):
         return []
-
-    def with_types(self, in_knl_callable, arg_id_to_dtype):
-        """
-        Returns a copy of :arg:`in_knl_callable` along with the return type for
-        the argument types specified by :arg:`arg_id_to_dtype`. Returns *None*
-        if no such function exists for the given types.
-
-        :arg in_knl_callable: An instance of
-            :class:`loopy.kernel.function_interface`.
-        :arg arg_id_to_dtype: A mapping similar
-            :meth:`loopy.kernel.function_interface.with_types()`
-        """
-        return None
 
     # }}}
 

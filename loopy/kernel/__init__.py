@@ -141,6 +141,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     .. attribute:: function_manglers
     .. attribute:: symbol_manglers
 
+    .. attribute:: function_scopers
+
+        A list of functions of signature ``(target, name)`` returning a
+        :class:`loopy.kernel.function_interface.InKernelCallable` or *None*.
+
     .. attribute:: substitutions
 
         a mapping from substitution names to
@@ -193,6 +198,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             iname_to_tag={},
             substitutions={},
             function_manglers=[],
+            function_scopers=frozenset(),
             scoped_functions={},
             symbol_manglers=[],
 
@@ -259,6 +265,12 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
 
+        from loopy.library.function import loopy_specific_callable_scopers
+        # populating the function scopers from the target and the loopy
+        # specific callable scopers
+        function_scopers = frozenset([loopy_specific_callable_scopers]) | (
+                target.get_device_ast_builder().function_scopers())
+
         ImmutableRecordWithoutPickling.__init__(self,
                 domains=domains,
                 instructions=instructions,
@@ -278,6 +290,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 cache_manager=cache_manager,
                 applied_iname_rewrites=applied_iname_rewrites,
                 function_manglers=function_manglers,
+                function_scopers=function_scopers,
                 scoped_functions=scoped_functions,
                 symbol_manglers=symbol_manglers,
                 index_dtype=index_dtype,
@@ -291,7 +304,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     # }}}
 
-    # {{{ function mangling
+    # {{{ function mangling/scoping
 
     def mangle_function(self, identifier, arg_dtypes, ast_builder=None):
         if ast_builder is None:
@@ -334,18 +347,19 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return None
 
-    # }}}
-
-    # {{{ target function identifiers
-
-    @property
-    def function_identifiers(self):
+    def lookup_function(self, identifier, ast_builder=None):
         """
-        Returns the function identifiers as an instance of :class:`set` which
-        are known to the kernel at creation time.
+        Returns an instance of
+        :class:`loopy.kernel.function_interface.InKernelCallable` if the
+        :arg:`identifier` is known to any kernel function scoper, otherwise returns
+        *None*.
         """
-        return self.target.get_device_ast_builder().function_identifiers() | (
-                set(["indexof", "indexof_vec", "make_tuple"]))
+        for scoper in self.function_scopers:
+            in_knl_callable = scoper(self.target, identifier)
+            if in_knl_callable:
+                return in_knl_callable
+
+        return None
 
     # }}}
 
@@ -1359,6 +1373,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
             "preamble_generators",
             "function_manglers",
+            "function_scopers",
             "symbol_manglers",
             "scoped_functions",
             )

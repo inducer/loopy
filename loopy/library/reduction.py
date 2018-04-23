@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 from pymbolic import var
 from loopy.symbolic import ScopedFunction
+# from loopy.kernel.function_interface import ScalarCallable
 import numpy as np
 
 from loopy.symbolic import FunctionIdentifier
@@ -269,29 +270,6 @@ class SegmentedProductReductionOperation(_SegmentedScalarReductionOperation):
     op = "((%s) * (%s))"
     which = "product"
 
-
-def get_segmented_function_preamble(kernel, func_id, arg_dtypes):
-    op = func_id.reduction_op
-    scalar_dtype = arg_dtypes[0]
-    segment_flag_dtype = arg_dtypes[1]
-    prefix = op.prefix(scalar_dtype, segment_flag_dtype)
-
-    return (prefix, """
-    inline %(scalar_t)s %(prefix)s_op(
-        %(scalar_t)s op1, %(segment_flag_t)s segment_flag1,
-        %(scalar_t)s op2, %(segment_flag_t)s segment_flag2,
-        %(segment_flag_t)s *segment_flag_out)
-    {
-        *segment_flag_out = segment_flag1 | segment_flag2;
-        return segment_flag2 ? op2 : %(combined)s;
-    }
-    """ % dict(
-            scalar_t=kernel.target.dtype_to_typename(scalar_dtype),
-            prefix=prefix,
-            segment_flag_t=kernel.target.dtype_to_typename(segment_flag_dtype),
-            combined=op.op % ("op1", "op2"),
-            ))
-
 # }}}
 
 
@@ -344,38 +322,6 @@ class ArgMinReductionOperation(_ArgExtremumReductionOperation):
     which = "min"
     update_comparison = "<="
     neutral_sign = +1
-
-
-def get_argext_preamble(kernel, func_id, arg_dtypes):
-    op = func_id.reduction_op
-    scalar_dtype = arg_dtypes[0]
-    index_dtype = arg_dtypes[1]
-
-    prefix = op.prefix(scalar_dtype, index_dtype)
-
-    return (prefix, """
-    inline %(scalar_t)s %(prefix)s_op(
-        %(scalar_t)s op1, %(index_t)s index1,
-        %(scalar_t)s op2, %(index_t)s index2,
-        %(index_t)s *index_out)
-    {
-        if (op2 %(comp)s op1)
-        {
-            *index_out = index2;
-            return op2;
-        }
-        else
-        {
-            *index_out = index1;
-            return op1;
-        }
-    }
-    """ % dict(
-            scalar_t=kernel.target.dtype_to_typename(scalar_dtype),
-            prefix=prefix,
-            index_t=kernel.target.dtype_to_typename(index_dtype),
-            comp=op.update_comparison,
-            ))
 
 # }}}
 
@@ -430,70 +376,94 @@ def parse_reduction_op(name):
 # }}}
 
 
-def reduction_function_mangler(kernel, func_id, arg_dtypes):
-    if isinstance(func_id, ArgExtOp):
-        from loopy.target.opencl import CTarget
-        if not isinstance(kernel.target, CTarget):
-            raise LoopyError("%s: only C-like targets supported for now" % func_id)
+# {{{ reduction specific callables
 
-        op = func_id.reduction_op
-        scalar_dtype = arg_dtypes[0]
-        index_dtype = arg_dtypes[1]
+'''
+class ReductionCallable(ScalarCallable):
+    def with_types(self, arg_id_to_dtype, in_knl_callable, kernel):
+        scalar_dtype = arg_id_to_dtype[0]
+        index_dtype = arg_id_to_dtype[1]
+        result_dtypes = self.name.result_dtypes(kernel, scalar_dtype,
+                index_dtype)
+        new_arg_id_to_dtype = arg_id_to_dtype.copy()
+        new_arg_id_to_dtype[-1] = result_dtypes[0]
+        new_arg_id_to_dtype[-2] = result_dtypes[1]
+        name_in_target = self.name.prefix(scalar_dtype, index_dtype)
 
-        from loopy.kernel.data import CallMangleInfo
-        return CallMangleInfo(
-                target_name="%s_op" % op.prefix(
-                    scalar_dtype, index_dtype),
-                result_dtypes=op.result_dtypes(
-                    kernel, scalar_dtype, index_dtype),
-                arg_dtypes=(
-                    scalar_dtype,
-                    index_dtype,
-                    scalar_dtype,
-                    index_dtype),
-                )
+        from loopy.library.kernel.function_interface import with_target
 
-    elif isinstance(func_id, SegmentedOp):
-        from loopy.target.opencl import CTarget
-        if not isinstance(kernel.target, CTarget):
-            raise LoopyError("%s: only C-like targets supported for now" % func_id)
+        return with_target(self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
+                name_in_target=name_in_target), kernel.target)
 
-        op = func_id.reduction_op
-        scalar_dtype = arg_dtypes[0]
-        segment_flag_dtype = arg_dtypes[1]
+    def with_descr(self, arg_id_to_descr):
+        from loopy.library.kernel.function_interface import ValueArgDescriptor
+        new_arg_id_to_descr = arg_id_to_descr.copy()
+        new_arg_id_to_descr[-1] = ValueArgDescriptor()
+        return self.copy(arg_id_to_descr=arg_id_to_descr)
 
-        from loopy.kernel.data import CallMangleInfo
-        return CallMangleInfo(
-                target_name="%s_op" % op.prefix(
-                    scalar_dtype, segment_flag_dtype),
-                result_dtypes=op.result_dtypes(
-                    kernel, scalar_dtype, segment_flag_dtype),
-                arg_dtypes=(
-                    scalar_dtype,
-                    segment_flag_dtype,
-                    scalar_dtype,
-                    segment_flag_dtype),
-                )
+    def generate_preambles(self, target):
+        if isinstance(self.name, _ArgExtremumReductionOperation):
+            op = self.name
+            scalar_dtype = self.arg_id_to_dtype[-1]
+            index_dtype = self.arg_id_to_dtype[-2]
+
+            prefix = op.prefix(scalar_dtype, index_dtype)
+
+            yield (prefix, """
+            inline %(scalar_t)s %(prefix)s_op(
+                %(scalar_t)s op1, %(index_t)s index1,
+                %(scalar_t)s op2, %(index_t)s index2,
+                %(index_t)s *index_out)
+            {
+                if (op2 %(comp)s op1)
+                {
+                    *index_out = index2;
+                    return op2;
+                }
+                else
+                {
+                    *index_out = index1;
+                    return op1;
+                }
+            }
+            """ % dict(
+                    scalar_t=target.dtype_to_typename(scalar_dtype),
+                    prefix=prefix,
+                    index_t=target.dtype_to_typename(index_dtype),
+                    comp=op.update_comparison,
+                    ))
+        elif isinstance(self.name, _SegmentedScalarReductionOperation):
+            op = self.name
+            scalar_dtype = self.arg_id_to_dtype[-1]
+            segment_flag_dtype = self.arg_id_to_dtype[-2]
+            prefix = op.prefix(scalar_dtype, segment_flag_dtype)
+
+            yield (prefix, """
+            inline %(scalar_t)s %(prefix)s_op(
+                %(scalar_t)s op1, %(segment_flag_t)s segment_flag1,
+                %(scalar_t)s op2, %(segment_flag_t)s segment_flag2,
+                %(segment_flag_t)s *segment_flag_out)
+            {
+                *segment_flag_out = segment_flag1 | segment_flag2;
+                return segment_flag2 ? op2 : %(combined)s;
+            }
+            """ % dict(
+                    scalar_t=target.dtype_to_typename(scalar_dtype),
+                    prefix=prefix,
+                    segment_flag_t=target.dtype_to_typename(segment_flag_dtype),
+                    combined=op.op % ("op1", "op2"),
+                    ))
+
+        return
+
+
+def reduction_specific_callable(target, identifier):
+    if isinstance(identifier, (_ArgExtremumReductionOperation,
+            _SegmentedScalarReductionOperation)):
+        return ReductionCallable(name=identifier)
 
     return None
-
-
-def reduction_preamble_generator(preamble_info):
-    from loopy.target.opencl import OpenCLTarget
-
-    for func in preamble_info.seen_functions:
-        if isinstance(func.name, ArgExtOp):
-            if not isinstance(preamble_info.kernel.target, OpenCLTarget):
-                raise LoopyError("only OpenCL supported for now")
-
-            yield get_argext_preamble(preamble_info.kernel, func.name,
-                    func.arg_dtypes)
-
-        elif isinstance(func.name, SegmentedOp):
-            if not isinstance(preamble_info.kernel.target, OpenCLTarget):
-                raise LoopyError("only OpenCL supported for now")
-
-            yield get_segmented_function_preamble(preamble_info.kernel, func.name,
-                    func.arg_dtypes)
+'''
+# }}}
 
 # vim: fdm=marker

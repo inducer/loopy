@@ -34,8 +34,6 @@ from pymbolic.primitives import Variable
 from loopy.symbolic import parse_tagged_name
 
 from loopy.library.reduction import ArgExtOp, SegmentedOp
-from loopy.library.reduction import (_ArgExtremumReductionOperation,
-        _SegmentedScalarReductionOperation)
 
 from loopy.symbolic import (IdentityMapper, ScopedFunction,
         SubstitutionRuleMappingContext, RuleAwareIdentityMapper,
@@ -133,38 +131,6 @@ def get_kw_pos_association(kernel):
 
     return kw_to_pos, pos_to_kw
 
-
-def with_target(in_knl_callable, target):
-    """
-    Returns a copy of :arg:`in_knl_callable` with all the ``dtypes`` in
-    ``in_knl_callable.arg_id_to_dtype`` as instances of
-    :class:`loopy.LoopyType`.
-
-    :arg in_knl_callable: An instance of
-        :class:`loopy.kernel.function_interface.InKernelCallable`.
-    :arg target: An instance of :class:`loopy.target.TargetBase`.
-    """
-
-    if target is None:
-        raise RuntimeError()
-
-    def with_target_if_not_None(dtype):
-        """
-        Returns a copy of :arg:`dtype` associated with the target. If
-        ``dtype`` is *None* returns *None*.
-        """
-        if dtype:
-            return dtype.with_target(target)
-        else:
-            return None
-
-    new_arg_id_to_dtype = None
-    if in_knl_callable.arg_id_to_dtype:
-        new_arg_id_to_dtype = dict((id, with_target_if_not_None(dtype)) for id,
-                dtype in in_knl_callable.arg_id_to_dtype.items())
-
-    return in_knl_callable.copy(arg_id_to_dtype=new_arg_id_to_dtype)
-
 # }}}
 
 
@@ -247,6 +213,35 @@ class InKernelCallable(ImmutableRecord):
 
         raise NotImplementedError()
 
+    def with_target(self, target):
+        """
+        Returns a copy with all the ``dtypes`` in
+        ``in_knl_callable.arg_id_to_dtype`` as instances of
+        :class:`loopy.LoopyType`.
+
+        :arg target: An instance of :class:`loopy.target.TargetBase`.
+        """
+
+        if target is None:
+            raise RuntimeError()
+
+        def with_target_if_not_None(dtype):
+            """
+            Returns a copy of :arg:`dtype` associated with the target. If
+            ``dtype`` is *None* returns *None*.
+            """
+            if dtype:
+                return dtype.with_target(target)
+            else:
+                return None
+
+        new_arg_id_to_dtype = None
+        if self.arg_id_to_dtype:
+            new_arg_id_to_dtype = dict((id, with_target_if_not_None(dtype)) for id,
+                    dtype in self.arg_id_to_dtype.items())
+
+        return self.copy(arg_id_to_dtype=new_arg_id_to_dtype)
+
     def with_iname_tag_usage(self, unusable, concurrent_shape):
         """
         :arg unusable: a set of iname tags that may not be used in the callee.
@@ -317,94 +312,8 @@ class ScalarCallable(InKernelCallable):
                 self.name_in_target)
 
     def with_types(self, arg_id_to_dtype, kernel):
-        if self.arg_id_to_dtype is not None:
-
-            # specializing an already specialized function.
-            for id, dtype in arg_id_to_dtype.items():
-                # only checking for the ones which have been provided
-                if self.arg_id_to_dtype[id] != arg_id_to_dtype[id]:
-                    import numpy as np
-                    if self.arg_id_to_dtype[id].dtype.type == np.uint32 and (
-                            arg_id_to_dtype[id].dtype.type == np.int32):
-                        continue
-                    if self.arg_id_to_dtype[id].dtype.type == np.uint64 and (
-                            arg_id_to_dtype[id].dtype.type == np.int64):
-                        continue
-
-                    raise LoopyError("Overwriting a specialized"
-                            " function is illegal--maybe start with new instance of"
-                            " ScalarCallable?")
-
-        # {{{ target specific callables
-
-        if self.name in kernel.target.get_device_ast_builder(
-                ).function_identifiers():
-            new_in_knl_callable = kernel.target.get_device_ast_builder().with_types(
-                    self, arg_id_to_dtype)
-            # adding target attribute to the NumpyTypes
-            if new_in_knl_callable is None:
-                new_in_knl_callable = self.copy()
-            return with_target(new_in_knl_callable, kernel.target)
-
-        # }}}
-
-        # {{{ indexof, indexof_vec
-
-        elif self.name in ["indexof", "indexof_vec"]:
-            new_arg_id_to_dtype = arg_id_to_dtype.copy()
-            new_arg_id_to_dtype[-1] = kernel.index_dtype
-
-            return with_target(self.copy(arg_id_to_dtype=new_arg_id_to_dtype),
-                    kernel.target)
-        # }}}
-
-        # {{{ make_tuple
-
-        elif self.name == "make_tuple":
-            new_arg_id_to_dtype = arg_id_to_dtype.copy()
-            for i in range(len(arg_id_to_dtype)):
-                if i in arg_id_to_dtype and arg_id_to_dtype[i] is not None:
-                    new_arg_id_to_dtype[-i-1] = new_arg_id_to_dtype[i]
-
-            return with_target(self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-                name_in_target="loopy_make_tuple"), kernel.target)
-
-        # }}}
-
-        # {{{ ArgExtOp, SegmentedOp
-
-        elif isinstance(self.name, _ArgExtremumReductionOperation):
-            scalar_dtype = arg_id_to_dtype[0]
-            index_dtype = arg_id_to_dtype[1]
-            result_dtypes = self.name.result_dtypes(kernel, scalar_dtype,
-                    index_dtype)
-            new_arg_id_to_dtype = arg_id_to_dtype.copy()
-            new_arg_id_to_dtype[-1] = result_dtypes[0]
-            new_arg_id_to_dtype[-2] = result_dtypes[1]
-            return with_target(self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-                    name_in_target="loopy_arg%s_%s_%s_op" % (self.name.which,
-                scalar_dtype.numpy_dtype.type.__name__,
-                index_dtype.numpy_dtype.type.__name__)), kernel.target)
-        elif isinstance(self.name, _SegmentedScalarReductionOperation):
-            scalar_dtype = arg_id_to_dtype[0]
-            index_dtype = arg_id_to_dtype[1]
-            result_dtypes = self.name.result_dtypes(kernel, scalar_dtype,
-                    index_dtype)
-            new_arg_id_to_dtype = arg_id_to_dtype.copy()
-            new_arg_id_to_dtype[-1] = result_dtypes[0]
-            new_arg_id_to_dtype[-2] = result_dtypes[1]
-            return with_target(self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-                    name_in_target="loopy_segmented_%s_%s_%s_op" % (self.name.which,
-                scalar_dtype.numpy_dtype.type.__name__,
-                index_dtype.numpy_dtype.type.__name__)), kernel.target)
-
-        # }}}
-
-        else:
-            # did not find a scalar function and function prototype does not
-            # even have  subkernel registered => no match found
-            raise LoopyError("Function %s not present within"
-                    " the %s namespace" % (self.name, kernel.target))
+        raise LoopyError("No type inference information present for "
+                "the function %s." % (self.name))
 
     def with_descrs(self, arg_id_to_descr):
 
@@ -510,63 +419,6 @@ class ScalarCallable(InKernelCallable):
         return var(self.name_in_target)(*c_parameters)
 
     def generate_preambles(self, target):
-        from loopy.library.random123 import (random123_function_identifiers,
-                random123_preamble_generator)
-        if self.name in random123_function_identifiers():
-            yield random123_preamble_generator(self.name, target)
-
-        elif isinstance(self.name, _ArgExtremumReductionOperation):
-            op = self.name
-            scalar_dtype = self.arg_id_to_dtype[-1]
-            index_dtype = self.arg_id_to_dtype[-2]
-
-            prefix = op.prefix(scalar_dtype, index_dtype)
-
-            yield (prefix, """
-            inline %(scalar_t)s %(prefix)s_op(
-                %(scalar_t)s op1, %(index_t)s index1,
-                %(scalar_t)s op2, %(index_t)s index2,
-                %(index_t)s *index_out)
-            {
-                if (op2 %(comp)s op1)
-                {
-                    *index_out = index2;
-                    return op2;
-                }
-                else
-                {
-                    *index_out = index1;
-                    return op1;
-                }
-            }
-            """ % dict(
-                    scalar_t=target.dtype_to_typename(scalar_dtype),
-                    prefix=prefix,
-                    index_t=target.dtype_to_typename(index_dtype),
-                    comp=op.update_comparison,
-                    ))
-        elif isinstance(self.name, _SegmentedScalarReductionOperation):
-            op = self.name
-            scalar_dtype = self.arg_id_to_dtype[-1]
-            segment_flag_dtype = self.arg_id_to_dtype[-2]
-            prefix = op.prefix(scalar_dtype, segment_flag_dtype)
-
-            yield (prefix, """
-            inline %(scalar_t)s %(prefix)s_op(
-                %(scalar_t)s op1, %(segment_flag_t)s segment_flag1,
-                %(scalar_t)s op2, %(segment_flag_t)s segment_flag2,
-                %(segment_flag_t)s *segment_flag_out)
-            {
-                *segment_flag_out = segment_flag1 | segment_flag2;
-                return segment_flag2 ? op2 : %(combined)s;
-            }
-            """ % dict(
-                    scalar_t=target.dtype_to_typename(scalar_dtype),
-                    prefix=prefix,
-                    segment_flag_t=target.dtype_to_typename(segment_flag_dtype),
-                    combined=op.op % ("op1", "op2"),
-                    ))
-
         return
 
     # }}}
@@ -650,8 +502,8 @@ class CallableKernel(InKernelCallable):
 
         # Returning the kernel call with specialized subkernel and the corresponding
         # new arg_id_to_dtype
-        return with_target(self.copy(subkernel=specialized_kernel,
-                arg_id_to_dtype=new_arg_id_to_dtype), kernel.target)
+        return self.copy(subkernel=specialized_kernel,
+                arg_id_to_dtype=new_arg_id_to_dtype)
 
     def with_descrs(self, arg_id_to_descr):
 
@@ -807,8 +659,8 @@ class ManglerCallable(ScalarCallable):
             new_arg_id_to_dtype = dict(enumerate(mangle_result.arg_dtypes))
             new_arg_id_to_dtype.update(dict((-i-1, dtype) for i, dtype in
                 enumerate(mangle_result.result_dtypes)))
-            return with_target(self.copy(name_in_target=mangle_result.target_name,
-                    arg_id_to_dtype=new_arg_id_to_dtype), kernel.target)
+            return self.copy(name_in_target=mangle_result.target_name,
+                    arg_id_to_dtype=new_arg_id_to_dtype)
         else:
             # The function mangler does not agree with the arg id to dtypes
             # provided. Indicating that is illegal.

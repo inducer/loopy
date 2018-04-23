@@ -30,11 +30,11 @@ from pytools import memoize_method
 
 from loopy.target.c import CTarget, CASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from loopy.target.c import (c_math_identifiers, with_types_for_c_target)
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 from loopy.kernel.data import temp_var_scope
 from pymbolic import var
+from loopy.kernel.function_interface import ScalarCallable
 
 
 # {{{ vector types
@@ -111,7 +111,7 @@ def _register_vector_types(dtype_registry):
 # }}}
 
 
-# {{{ function mangler
+# {{{ function scoper
 
 _CUDA_SPECIFIC_FUNCTIONS = {
         "rsqrt": 1,
@@ -119,84 +119,65 @@ _CUDA_SPECIFIC_FUNCTIONS = {
         }
 
 
-def cuda_function_identifiers():
-    return set(_CUDA_SPECIFIC_FUNCTIONS)
+class CudaCallable(ScalarCallable):
 
+    def cuda_with_types(self, arg_id_to_dtype, kernel):
 
-def cuda_function_mangler(kernel, name, arg_dtypes):
-    if not isinstance(name, str):
-        return None
+        name = self.name
 
-    if name in ["max", "min"] and len(arg_dtypes) == 2:
-        dtype = np.find_common_type([], arg_dtypes)
+        if name == "dot":
+            for id in arg_id_to_dtype:
+                if not -1 <= id <= 1:
+                    raise LoopyError("%s can take only 2 arguments." % name)
 
-        if dtype.kind == "c":
-            raise RuntimeError("min/max do not support complex numbers")
-
-        if dtype.kind == "f":
-            name = "f" + name
-
-        return dtype, name
-
-    if name in "atan2" and len(arg_dtypes) == 2:
-        return arg_dtypes[0], name
-
-    if name == "dot":
-        scalar_dtype, offset, field_name = arg_dtypes[0].fields["x"]
-        return scalar_dtype, name
-
-    return None
-
-
-def cuda_with_types(in_knl_callable, arg_id_to_dtype):
-
-    name = in_knl_callable.name
-
-    if name == "dot":
-        for id in arg_id_to_dtype:
-            if not -1 <= id <= 1:
-                raise LoopyError("%s can take only 2 arguments." % name)
-
-        if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
-                arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
-            # the types provided aren't mature enough to specialize the
-            # callable
-            return None
-
-        dtype = arg_id_to_dtype[0]
-        scalar_dtype, offset, field_name = dtype.numpy_dtype.fields["x"]
-        return in_knl_callable.copy(name_in_target=name,
-                arg_id_to_dtype={-1: NumpyType(scalar_dtype), 0: dtype, 1: dtype})
-
-    if name in _CUDA_SPECIFIC_FUNCTIONS:
-        num_args = _CUDA_SPECIFIC_FUNCTIONS[name]
-        for id in arg_id_to_dtype:
-            if not -1 <= id < num_args:
-                raise LoopyError("%s can take only %d arguments." % (name,
-                        num_args))
-
-        for i in range(num_args):
-            if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
+            if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
+                    arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
                 # the types provided aren't mature enough to specialize the
                 # callable
-                return None
+                return self.copy(arg_id_to_dtype=arg_id_to_dtype)
 
-        dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for id, dtype in
-                    arg_id_to_dtype.items() if id >= 0])
+            dtype = arg_id_to_dtype[0]
+            scalar_dtype, offset, field_name = dtype.numpy_dtype.fields["x"]
+            return self.copy(name_in_target=name,
+                    arg_id_to_dtype={-1: NumpyType(scalar_dtype),
+                        0: dtype, 1: dtype})
 
-        if dtype.kind == "c":
-            raise LoopyError("%s does not support complex numbers"
-                    % name)
+        if name in _CUDA_SPECIFIC_FUNCTIONS:
+            num_args = _CUDA_SPECIFIC_FUNCTIONS[name]
+            for id in arg_id_to_dtype:
+                if not -1 <= id < num_args:
+                    raise LoopyError("%s can take only %d arguments." % (name,
+                            num_args))
 
-        updated_arg_id_to_dtype = dict((id, NumpyType(dtype)) for id in range(-1,
-            num_args))
+            for i in range(num_args):
+                if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
+                    # the types provided aren't mature enough to specialize the
+                    # callable
+                    return self.copy(arg_id_to_dtype=arg_id_to_dtype)
 
-        return in_knl_callable.copy(name_in_target=name,
-                arg_id_to_dtype=updated_arg_id_to_dtype)
+            dtype = np.find_common_type(
+                    [], [dtype.numpy_dtype for id, dtype in
+                        arg_id_to_dtype.items() if id >= 0])
+
+            if dtype.kind == "c":
+                raise LoopyError("%s does not support complex numbers"
+                        % name)
+
+            updated_arg_id_to_dtype = dict((id, NumpyType(dtype)) for id in range(-1,
+                num_args))
+
+            return self.copy(name_in_target=name,
+                    arg_id_to_dtype=updated_arg_id_to_dtype)
+
+        return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+
+
+def scope_cuda_functions(target, identifier):
+    if identifier in frozenset(["dot"]) | frozenset(
+            _CUDA_SPECIFIC_FUNCTIONS):
+        return CudaCallable(name=identifier)
 
     return None
-
 
 # }}}
 
@@ -278,29 +259,13 @@ class CudaTarget(CTarget):
 # {{{ ast builder
 
 class CUDACASTBuilder(CASTBuilder):
+
     # {{{ library
 
-    def function_manglers(self):
-        return (
-                super(CUDACASTBuilder, self).function_manglers() + [
-                    cuda_function_mangler
-                    ])
+    def function_scopers(self):
+        return frozenset([scope_cuda_functions]) | (
+                super(CUDACASTBuilder, self).function_scopers())
 
-    def function_identifiers(self):
-        return (cuda_function_identifiers() | c_math_identifiers() |
-                super(CUDACASTBuilder, self).function_identifiers())
-
-    def with_types(self, in_knl_callable, arg_id_to_dtype):
-        new_callable = cuda_with_types(in_knl_callable, arg_id_to_dtype)
-        if new_callable is not None:
-            return new_callable
-
-        new_callable = with_types_for_c_target(in_knl_callable, arg_id_to_dtype,
-                modify_name=True)
-        if new_callable is not None:
-            return new_callable
-        return super(CUDACASTBuilder, self).with_types(in_knl_callable,
-                arg_id_to_dtype)
     # }}}
 
     # {{{ top-level codegen

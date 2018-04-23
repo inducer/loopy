@@ -1851,49 +1851,49 @@ class FunctionScoper(RuleAwareIdentityMapper):
     :arg function_ids: A container with instances of :class:`str` indicating
         the function identifiers to look for while scoping functions.
     """
-    def __init__(self, rule_mapping_context, function_ids):
+    def __init__(self, rule_mapping_context, kernel):
         super(FunctionScoper, self).__init__(rule_mapping_context)
-        self.function_ids = function_ids
+        self.kernel = kernel
         self.scoped_functions = {}
 
     def map_call(self, expr, expn_state):
         from loopy.symbolic import ScopedFunction
-        if not isinstance(expr.function, ScopedFunction) and (
-                expr.function.name in self.function_ids):
-            # The function is one of the known function hence scoping it.
-            from pymbolic.primitives import Call
-            from loopy.kernel.function_interface import ScalarCallable
+        if not isinstance(expr.function, ScopedFunction):
 
-            # Associating the newly created ScopedFunction with a `CallableScalar`
-            self.scoped_functions[expr.function] = ScalarCallable(
-                    expr.function.name)
+            # searching the kernel for the function.
+            in_knl_callable = self.kernel.lookup_function(expr.function.name)
+            if in_knl_callable:
+                # Associating the newly created ScopedFunction with the
+                # resolved in-kernel callable.
+                self.scoped_functions[expr.function] = in_knl_callable
 
-            return Call(
-                    ScopedFunction(expr.function.name),
-                    tuple(self.rec(child, expn_state)
-                        for child in expr.parameters))
+                return type(expr)(
+                        ScopedFunction(expr.function.name),
+                        tuple(self.rec(child, expn_state)
+                            for child in expr.parameters))
 
         # This is an unknown function as of yet, hence not modifying it.
         return super(FunctionScoper, self).map_call(expr, expn_state)
 
     def map_call_with_kwargs(self, expr, expn_state):
         from loopy.symbolic import ScopedFunction
-        if not isinstance(expr.function, ScopedFunction) and (
-                expr.function.name in self.function_ids):
-            from pymbolic.primitives import CallWithKwargs
-            from loopy.kernel.function_interface import ScalarCallable
+        if not isinstance(expr.function, ScopedFunction):
 
-            # Associating the newly created ScopedFunction with a `CallableScalar`
-            self.scoped_functions[expr.function.function] = ScalarCallable(
-                    expr.function.name)
-            return CallWithKwargs(
-                    ScopedFunction(expr.function.name),
-                    tuple(self.rec(child, expn_state)
-                        for child in expr.parameters),
-                    dict(
-                        (key, self.rec(val, expn_state))
-                        for key, val in six.iteritems(expr.kw_parameters))
-                        )
+            # searching the kernel for the function.
+            in_knl_callable = self.kernel.lookup_function(expr.function.name)
+
+            if in_knl_callable:
+                # Associating the newly created ScopedFunction with the
+                # resolved in-kernel callable.
+                self.scoped_functions[expr.function.function] = in_knl_callable
+                return type(expr)(
+                        ScopedFunction(expr.function.name),
+                        tuple(self.rec(child, expn_state)
+                            for child in expr.parameters),
+                        dict(
+                            (key, self.rec(val, expn_state))
+                            for key, val in six.iteritems(expr.kw_parameters))
+                            )
 
         # This is an unknown function as of yet, hence not modifying it.
         return super(FunctionScoper, self).map_call_with_kwargs(expr,
@@ -1931,23 +1931,19 @@ class FunctionScoper(RuleAwareIdentityMapper):
         return super(FunctionScoper, self).map_reduction(expr, expn_state)
 
 
-def scope_functions(kernel, function_identifiers=None):
+def scope_functions(kernel):
     """
     Returns a kernel with the pymbolic nodes involving known functions realized
-    as instances of :class:`loopy.symbolic.ScopedFunction`.
-
-    :arg function_identifiers: The functions which are to be looked up in the
-        kernel.
+    as instances of :class:`loopy.symbolic.ScopedFunction`, along with the
+    resolved functions being added to the ``scoped_functions`` dictionary of
+    the kernel.
     """
-    if function_identifiers is None:
-        # Adding the default fucnction identifiers if none provided
-        function_identifiers = kernel.function_identifiers
 
     from loopy.symbolic import SubstitutionRuleMappingContext
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
 
-    function_scoper = FunctionScoper(rule_mapping_context, function_identifiers)
+    function_scoper = FunctionScoper(rule_mapping_context, kernel)
 
     # scoping fucntions and collecting the scoped functions
     kernel_with_scoped_functions = rule_mapping_context.finish_kernel(
@@ -2463,7 +2459,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_written_variable_names(knl)
 
     # Function Lookup
-    knl = scope_functions(knl, knl.function_identifiers)
+    knl = scope_functions(knl)
 
     from loopy.preprocess import prepare_for_caching
     knl = prepare_for_caching(knl)

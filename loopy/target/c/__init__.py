@@ -27,7 +27,6 @@ THE SOFTWARE.
 import six
 
 import numpy as np  # noqa
-from loopy.kernel.data import CallMangleInfo
 from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from cgen import Pointer, NestedDeclarator, Block
@@ -35,6 +34,7 @@ from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
 from loopy.symbolic import IdentityMapper
 from loopy.types import NumpyType
+from loopy.kernel.function_interface import ScalarCallable
 import pymbolic.primitives as p
 
 from pytools import memoize_method
@@ -354,179 +354,104 @@ def c_symbol_mangler(kernel, name):
 # }}}
 
 
-# {{{ function mangler
+# {{{ function scoping
 
-def c_math_identifiers():
-    return set(["abs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh", "tanh",
-        "exp", "log", "log10", "sqrt", "ceil", "floor", "max", "min"])
-
-
-def c_math_mangler(target, name, arg_dtypes, modify_name=True):
-    # Function mangler for math functions defined in C standard
-    # Convert abs, min, max to fabs, fmin, fmax.
-    # If modify_name is set to True, function names are modified according to
-    # floating point types of the arguments (e.g. cos(double), cosf(float))
-    # This should be set to True for C and Cuda, False for OpenCL
-    if not isinstance(name, str):
-        return None
-
-    if name in ["abs", "min", "max"]:
-        name = "f" + name
-
-    # unitary functions
-    if (name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
-                 "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor"]
-            and len(arg_dtypes) == 1
-            and arg_dtypes[0].numpy_dtype.kind == "f"):
-
-        dtype = arg_dtypes[0].numpy_dtype
-
-        if modify_name:
-            if dtype == np.float64:
-                pass  # fabs
-            elif dtype == np.float32:
-                name = name + "f"  # fabsf
-            elif dtype == np.float128:
-                name = name + "l"  # fabsl
-            else:
-                raise LoopyTypeError("%s does not support type %s" % (name, dtype))
-
-        return CallMangleInfo(
-                target_name=name,
-                result_dtypes=arg_dtypes,
-                arg_dtypes=arg_dtypes)
-
-    # binary functions
-    if (name in ["fmax", "fmin"]
-            and len(arg_dtypes) == 2):
-
-        dtype = np.find_common_type(
-            [], [dtype.numpy_dtype for dtype in arg_dtypes])
-
-        if dtype.kind == "c":
-            raise LoopyTypeError("%s does not support complex numbers")
-
-        elif dtype.kind == "f":
-            if modify_name:
-                if dtype == np.float64:
-                    pass  # fmin
-                elif dtype == np.float32:
-                    name = name + "f"  # fminf
-                elif dtype == np.float128:
-                    name = name + "l"  # fminl
-                else:
-                    raise LoopyTypeError("%s does not support type %s"
-                                         % (name, dtype))
-
-            result_dtype = NumpyType(dtype)
-            return CallMangleInfo(
-                    target_name=name,
-                    result_dtypes=(result_dtype,),
-                    arg_dtypes=2*(result_dtype,))
-
-    return None
-
-
-def with_types_for_c_target(in_knl_callable, arg_id_to_dtype, modify_name=False):
-    """Target facing function for C-like targets in order to map the math
-    functions encountered in a kernel to the equivalent function signature.
-
-    .. arg in_knl_callable::
-
-        An instance of :class:`loopy.kernel.function_interface.ScalarCallable`,
-        which is supposed to be mapped in the target.
-
-    .. arg arg_id_to_dtype::
-
-        Same as the maapping in :meth:`ScalarCallable.with_types`
-
-    .. arg modify_name::
-
-        Must be set *True* for C and Cuda targets and *False* for OpenCL targets.
-
-    :return: An updated instance of
-        :class:`loopy.kernel.function_interface.ScalarCallable` tuned for the
-        target. Or *None* if could not find a corresponding C-function for the given
-        pair *in_knl_callable*, *arg_id_to_dtype*.
+class CMathCallable(ScalarCallable):
     """
-    # Convert abs, min, max to fabs, fmin, fmax.
-    # If modify_name is set to True, function names are modified according to
-    # floating point types of the arguments (e.g. cos(double), cosf(float))
-    name = in_knl_callable.name
+    An umbrella callable for all the math functions which can be seen in a
+    C-Target.
+    """
 
-    if name in ["abs", "min", "max"]:
-        name = "f" + name
+    def with_types(self, arg_id_to_dtype, kernel):
+        name = self.name
 
-    # unary functions
-    if name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
-                "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor", "tan"]:
+        if name in ["abs", "min", "max"]:
+            name = "f" + name
 
-        for id in arg_id_to_dtype:
-            if not -1 <= id <= 0:
-                raise LoopyError("%s can take only one argument." % name)
+        # unary functions
+        if name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
+                    "tan", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor"]:
 
-        if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
-            # the types provided aren't mature enough to specialize the
-            # callable
-            return None
+            for id in arg_id_to_dtype:
+                if not -1 <= id <= 0:
+                    raise LoopyError("%s can take only one argument." % name)
 
-        dtype = arg_id_to_dtype[0]
-        dtype = dtype.numpy_dtype
+            if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
+                # the types provided aren't mature enough to specialize the
+                # callable
+                return self.copy(arg_id_to_dtype=arg_id_to_dtype)
 
-        if dtype.kind in ('u', 'i'):
-            # ints and unsigned casted to float32
-            dtype = np.float32
-        elif dtype.kind == 'c':
-            raise LoopyTypeError("%s does not support type %s" % (name, dtype))
+            dtype = arg_id_to_dtype[0]
+            dtype = dtype.numpy_dtype
 
-        if modify_name:
-            if dtype == np.float64:
-                pass  # fabs
-            elif dtype == np.float32:
-                name = name + "f"  # fabsf
-            elif dtype == np.float128:
-                name = name + "l"  # fabsl
-            else:
+            if dtype.kind in ('u', 'i'):
+                # ints and unsigned casted to float32
+                dtype = np.float32
+            elif dtype.kind == 'c':
                 raise LoopyTypeError("%s does not support type %s" % (name, dtype))
 
-        return in_knl_callable.copy(name_in_target=name,
-                arg_id_to_dtype={0: NumpyType(dtype), -1: NumpyType(dtype)})
-
-    # binary functions
-    if name in ["fmax", "fmin"]:
-
-        for id in arg_id_to_dtype:
-            if not -1 <= id <= 1:
-                raise LoopyError("%s can take only two arguments." % name)
-
-        if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
-                arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
-            # the types provided aren't mature enough to specialize the
-            # callable
-            return None
-
-        dtype = np.find_common_type(
-            [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                 if id >= 0])
-
-        if dtype.kind == "c":
-            raise LoopyTypeError("%s does not support complex numbers")
-
-        elif dtype.kind == "f":
-            if modify_name:
+            from loopy.target.opencl import OpenCLTarget
+            if not isinstance(kernel.target, OpenCLTarget):
+                # for CUDA, C Targets the name must be modified
                 if dtype == np.float64:
-                    pass  # fmin
+                    pass  # fabs
                 elif dtype == np.float32:
-                    name = name + "f"  # fminf
+                    name = name + "f"  # fabsf
                 elif dtype == np.float128:
-                    name = name + "l"  # fminl
+                    name = name + "l"  # fabsl
                 else:
-                    raise LoopyTypeError("%s does not support type %s"
-                                         % (name, dtype))
-        dtype = NumpyType(dtype)
-        return in_knl_callable.copy(name_in_target=name,
-                arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype})
+                    raise LoopyTypeError("%s does not support type %s" % (name,
+                        dtype))
 
+            return self.copy(name_in_target=name,
+                    arg_id_to_dtype={0: NumpyType(dtype), -1: NumpyType(dtype)})
+
+        # binary functions
+        if name in ["fmax", "fmin"]:
+
+            for id in arg_id_to_dtype:
+                if not -1 <= id <= 1:
+                    raise LoopyError("%s can take only two arguments." % name)
+
+            if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
+                    arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
+                # the types provided aren't mature enough to specialize the
+                # callable
+                return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+
+            dtype = np.find_common_type(
+                [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                     if id >= 0])
+
+            if dtype.kind == "c":
+                raise LoopyTypeError("%s does not support complex numbers")
+
+            elif dtype.kind == "f":
+                if not isinstance(kernel.target, (OpenCLTarget)):
+                    if dtype == np.float64:
+                        pass  # fmin
+                    elif dtype == np.float32:
+                        name = name + "f"  # fminf
+                    elif dtype == np.float128:
+                        name = name + "l"  # fminl
+                    else:
+                        raise LoopyTypeError("%s does not support type %s"
+                                             % (name, dtype))
+            dtype = NumpyType(dtype)
+            return self.copy(name_in_target=name,
+                    arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype})
+
+        return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+
+
+def scope_c_math_functions(target, identifier):
+    """
+    Returns an instance of :class:`InKernelCallable` if the function
+    represented by :arg:`identifier` is known in C, otherwise returns *None*.
+    """
+    if identifier in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
+            "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor", "max", "min"]:
+        return CMathCallable(name=identifier)
     return None
 
 # }}}
@@ -534,17 +459,6 @@ def with_types_for_c_target(in_knl_callable, arg_id_to_dtype, modify_name=False)
 
 class CASTBuilder(ASTBuilderBase):
     # {{{ library
-
-    def function_identifiers(self):
-        return (
-                super(CASTBuilder, self).function_identifiers() |
-                c_math_identifiers())
-
-    def function_manglers(self):
-        return (
-                super(CASTBuilder, self).function_manglers() + [
-                    c_math_mangler
-                    ])
 
     def symbol_manglers(self):
         return (
@@ -558,13 +472,10 @@ class CASTBuilder(ASTBuilderBase):
                     _preamble_generator,
                     ])
 
-    def with_types(self, in_knl_callable, arg_id_to_dtype):
-        new_callable = with_types_for_c_target(in_knl_callable, arg_id_to_dtype,
-                modify_name=True)
-        if new_callable is not None:
-            return new_callable
-        return super(CASTBuilder, self).with_types(in_knl_callable,
-                arg_id_to_dtype)
+    def function_scopers(self):
+        return (
+                super(CASTBuilder, self).function_scopers() | frozenset([
+                    scope_c_math_functions]))
 
     # }}}
 

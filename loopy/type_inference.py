@@ -286,13 +286,40 @@ class TypeInferenceMapper(CombineMapper):
         if isinstance(expr.function, ScopedFunction):
             in_knl_callable = self.scoped_functions[expr.function.function]
 
+            # {{{ checking that there is no overwriting of in_knl_callable
+
+            if in_knl_callable.arg_id_to_dtype is not None:
+
+                # specializing an already specialized function.
+                for id, dtype in arg_id_to_dtype.items():
+                    # Ignoring the the cases when there is a discrepancy
+                    # between np.uint and np.int
+                    if in_knl_callable.arg_id_to_dtype[id] != arg_id_to_dtype[id]:
+                        import numpy as np
+                        if in_knl_callable.arg_id_to_dtype[id].dtype.type == (
+                                np.uint32) and (
+                                        arg_id_to_dtype[id].dtype.type == np.int32):
+                            continue
+                        if in_knl_callable.arg_id_to_dtype[id].dtype.type == (
+                                np.uint64) and (
+                                        arg_id_to_dtype[id].dtype.type ==
+                                        np.int64):
+                            continue
+
+                        raise LoopyError("Overwriting a specialized function "
+                                "is illegal--maybe start with new instance of "
+                                "InKernelCallable?")
+
+            # }}}
+
             in_knl_callable = (
                     in_knl_callable.with_types(
                         arg_id_to_dtype, self.kernel))
 
             # storing the type specialized function so that it can be used for
             # later use
-            self.specialized_functions[expr] = in_knl_callable
+            self.specialized_functions[expr] = in_knl_callable.with_target(
+                    self.kernel.target)
 
             new_arg_id_to_dtype = in_knl_callable.arg_id_to_dtype
 

@@ -31,12 +31,12 @@ from six.moves import range
 
 import numpy as np
 
-from loopy.kernel.data import CallMangleInfo
 from loopy.target.opencl import OpenCLTarget, OpenCLCASTBuilder
 from loopy.target.python import PythonASTBuilderBase
 from loopy.types import NumpyType
-from loopy.diagnostic import LoopyError, warn_with_kernel
+from loopy.diagnostic import LoopyError, warn_with_kernel, LoopyTypeError
 from warnings import warn
+from loopy.kernel.function_interface import ScalarCallable
 
 import logging
 logger = logging.getLogger(__name__)
@@ -199,79 +199,74 @@ def check_sizes(kernel, device):
 # }}}
 
 
-def pyopencl_function_identifiers():
-    return set(["sqrt", "exp", "log", "sin", "cos", "tan", "sinh", "cosh", "tanh",
-        "conj", "real", "imag", "abs"])
+# {{{ pyopencl function scopers
 
+class PyOpenCLCallable(ScalarCallable):
+    """
+    Records information about the callables which are not covered by
+    :class:`loopy.target.opencl.OpenCLCallable`
+    """
+    def with_types(self, arg_id_to_dtype, kernel):
 
-def pyopencl_function_mangler(target, name, arg_dtypes):
-    if len(arg_dtypes) == 1 and isinstance(name, str):
-        arg_dtype, = arg_dtypes
+        name = self.name
 
-        if arg_dtype.is_complex():
-            if arg_dtype.numpy_dtype == np.complex64:
-                tpname = "cfloat"
-            elif arg_dtype.numpy_dtype == np.complex128:
-                tpname = "cdouble"
-            else:
-                raise RuntimeError("unexpected complex type '%s'" % arg_dtype)
+        for id in arg_id_to_dtype:
+            # since all the below functions are single arg.
+            if not -1 <= id <= 0:
+                raise LoopyError("%s can only take one argument." % name)
 
-            if name in ["sqrt", "exp", "log",
-                    "sin", "cos", "tan",
-                    "sinh", "cosh", "tanh",
-                    "conj"]:
-                return CallMangleInfo(
-                        target_name="%s_%s" % (tpname, name),
-                        result_dtypes=(arg_dtype,),
-                        arg_dtypes=(arg_dtype,))
+        if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
+            # the types provided aren't mature enough to specialize the
+            # callable
+            return self.copy(arg_id_to_dtype=arg_id_to_dtype)
 
-            if name in ["real", "imag", "abs"]:
-                return CallMangleInfo(
-                        target_name="%s_%s" % (tpname, name),
-                        result_dtypes=(NumpyType(
-                            np.dtype(arg_dtype.numpy_dtype.type(0).real)),
-                            ),
-                        arg_dtypes=(arg_dtype,))
+        dtype = arg_id_to_dtype[0]
 
-    return None
-
-
-def pyopencl_with_types(in_knl_callable, arg_id_to_dtype):
-
-    name = in_knl_callable.name
-
-    for id in arg_id_to_dtype:
-        if not -1 <= id <= 0:
-            return None
-
-    if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
-        # the types provided aren't mature enough to specialize the
-        # callable
-        return None
-
-    dtype = arg_id_to_dtype[0]
-
-    if dtype.is_complex():
-        if dtype.numpy_dtype == np.complex64:
-            tpname = "cfloat"
-        elif dtype.numpy_dtype == np.complex128:
-            tpname = "cdouble"
-        else:
-            raise RuntimeError("unexpected complex type '%s'" % dtype)
+        if name in ["real", "imag", "abs"]:
+            if dtype.is_complex():
+                if dtype.numpy_dtype == np.complex64:
+                    tpname = "cfloat"
+                elif dtype.numpy_dtype == np.complex128:
+                    tpname = "cdouble"
+                else:
+                    raise LoopyTypeError("unexpected complex type '%s'" % dtype)
+            return self.copy(name_in_target="%s_%s" % (tpname, name),
+                    arg_id_to_dtype={0: dtype, -1: NumpyType(
+                            np.dtype(dtype.numpy_dtype.type(0).real))})
 
         if name in ["sqrt", "exp", "log",
                 "sin", "cos", "tan",
                 "sinh", "cosh", "tanh",
                 "conj"]:
-            return in_knl_callable.copy(name_in_target="%s_%s" % (tpname, name),
+            if dtype.is_complex():
+                # function parameters are complex.
+                if dtype.numpy_dtype == np.complex64:
+                    tpname = "cfloat"
+                elif dtype.numpy_dtype == np.complex128:
+                    tpname = "cdouble"
+                else:
+                    raise LoopyTypeError("unexpected complex type '%s'" % dtype)
+
+                return self.copy(name_in_target="%s_%s" % (tpname, name),
+                        arg_id_to_dtype={0: NumpyType(dtype), -1: NumpyType(dtype)})
+            else:
+                # function calls for real parameters.
+                if dtype.kind in ('u', 'i'):
+                    dtype = np.float32
+                return self.copy(name_in_target=name,
                     arg_id_to_dtype={0: NumpyType(dtype), -1: NumpyType(dtype)})
 
-        if name in ["real", "imag", "abs"]:
-            return in_knl_callable.copy(name_in_target="%s_%s" % (tpname, name),
-                    arg_id_to_dtype={0: dtype, -1: NumpyType(
-                            np.dtype(dtype.numpy_dtype.type(0).real))})
+        return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+
+
+def pyopencl_function_scoper(target, identifier):
+    if identifier in ["sqrt", "exp", "log", "sin", "cos", "tan", "sinh", "cosh",
+            "tanh", "conj", "real", "imag", "abs"]:
+        return PyOpenCLCallable(name=identifier)
 
     return None
+
+# }}}
 
 
 # {{{ preamble generator
@@ -782,36 +777,16 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
     # {{{ library
 
-    def function_identifiers(self):
-        from loopy.library.random123 import random123_function_identifiers
-        return (super(PyOpenCLCASTBuilder, self).function_identifiers() |
-                pyopencl_function_identifiers() | random123_function_identifiers())
-
-    def function_manglers(self):
-        from loopy.library.random123 import random123_function_mangler
+    def function_scopers(self):
+        from loopy.library.random123 import random123_function_scoper
         return (
-                super(PyOpenCLCASTBuilder, self).function_manglers() + [
-                    pyopencl_function_mangler,
-                    random123_function_mangler
-                    ])
+                frozenset([pyopencl_function_scoper, random123_function_scoper]) |
+                super(PyOpenCLCASTBuilder, self).function_scopers())
 
     def preamble_generators(self):
         return ([
             pyopencl_preamble_generator,
             ] + super(PyOpenCLCASTBuilder, self).preamble_generators())
-
-    def with_types(self, in_knl_callable, arg_id_to_dtype):
-        new_callable = super(PyOpenCLCASTBuilder, self).with_types(in_knl_callable,
-                arg_id_to_dtype)
-        if new_callable is not None:
-            return new_callable
-
-        new_callable = pyopencl_with_types(in_knl_callable, arg_id_to_dtype)
-        if new_callable is not None:
-            return new_callable
-        from loopy.library.random123 import random123_with_types
-        return random123_with_types(in_knl_callable, arg_id_to_dtype,
-                self.target)
 
     # }}}
 
