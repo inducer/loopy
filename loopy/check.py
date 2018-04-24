@@ -182,8 +182,21 @@ def check_loop_priority_inames_known(kernel):
                 raise LoopyError("unknown iname '%s' in loop priorities" % iname)
 
 
+def _get_all_unique_iname_tags(kernel):
+    """ Returns a frozenset of all the unique iname tags in the *kernel*.
+    """
+    from loopy.kernel.data import UniqueTag
+    iname_tags = frozenset(kernel.iname_to_tag.get(iname) for iname in
+        kernel.all_inames()) - frozenset([None])
+    unique_iname_tags = frozenset([tag for tag in iname_tags if
+        isinstance(tag, UniqueTag)])
+    return unique_iname_tags
+
+
 def check_for_double_use_of_hw_axes(kernel):
     from loopy.kernel.data import UniqueTag
+    from loopy.kernel.instructions import CallInstruction
+    from loopy.kernel.function_interface import CallableKernel
 
     for insn in kernel.instructions:
         insn_tag_keys = set()
@@ -196,6 +209,21 @@ def check_for_double_use_of_hw_axes(kernel):
                             "inames tagged '%s'" % (insn.id, tag))
 
                 insn_tag_keys.add(key)
+
+        # checking usage of iname tags in the callee kernel.
+        if isinstance(insn, CallInstruction):
+            in_knl_callable = kernel.scoped_functions[
+                    insn.expression.function.function]
+            if isinstance(in_knl_callable, CallableKernel):
+                # checking for collision in iname_tag keys in the instruction
+                # due to the callee kernel.
+                common_iname_tags = frozenset(tag for tag in
+                        _get_all_unique_iname_tags(in_knl_callable.subkernel)
+                        if tag.key in insn_tag_keys)
+                if common_iname_tags:
+                    raise LoopyError("instruction '%s' has multiple "
+                            "inames tagged '%s'" % (insn.id,
+                                common_iname_tags.pop()))
 
 
 def check_for_inactive_iname_access(kernel):
