@@ -2245,8 +2245,10 @@ class ArgDescrInferenceMapper(CombineMapper):
 
 
 def infer_arg_descr(kernel):
-    """ Specializes the kernel functions in way that the functions agree upon
-    shape and dimensions of the arguments too.
+    """
+    Returns a copy of *kernel* with the argument shapes and strides matching for
+    scoped functions in the *kernel*. Refer
+    :meth:`loopy.kernel.function_interface.InKernelCallable.with_descrs`.
     """
 
     arg_description_modifier = ArgDescrInferenceMapper(kernel)
