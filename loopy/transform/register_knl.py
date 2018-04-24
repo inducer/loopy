@@ -114,14 +114,12 @@ def register_callable_kernel(parent, function_name, child):
 # }}}
 
 
-def inline_kernel(knl, function, arg_map=None):
+def inline_kernel(kernel, function, arg_map=None):
 
-    if function not in knl.scoped_functions:
+    if function not in kernel.scoped_functions:
         raise LoopyError("function: {0} does not exist".format(function))
 
-    kernel = knl.copy()
     child = kernel.scoped_functions[function].subkernel
-
 
     for call in kernel.instructions:
         if not isinstance(call, CallInstruction):
@@ -134,7 +132,6 @@ def inline_kernel(knl, function, arg_map=None):
         import islpy as isl
 
         vng = kernel.get_var_name_generator()
-
         dim_type = isl.dim_type.set
 
         child_iname_map = {}
@@ -144,11 +141,10 @@ def inline_kernel(knl, function, arg_map=None):
         new_domains = []
         for domain in child.domains:
             new_domain = domain.copy()
-            n_dim = new_domain.n_dim()
-            for i in range(n_dim):
+            for i in range(new_domain.n_dim()):
                 iname = new_domain.get_dim_name(dim_type, i)
-                new_iname = child_iname_map[iname]
-                new_domain = new_domain.set_dim_name(dim_type, i, new_iname)
+                new_domain = new_domain.set_dim_name(
+                    dim_type, i, child_iname_map[iname])
             new_domains.append(new_domain)
 
         kernel = kernel.copy(domains=kernel.domains + new_domains)
@@ -231,26 +227,43 @@ def inline_kernel(knl, function, arg_map=None):
                     sar = child_arg_map[expr.aggregate.name]  # SubArrayRef (parent)
                     arg_in = child.arg_dict[expr.aggregate.name]  # Arg (child)
 
-                    # first, map inner inames to outer inames
+                    # Firstly, map inner inames to outer inames.
                     outer_indices = self.map_tuple(expr.index_tuple)
 
-                    # next, reshape to match dimension of outer arrays
-                    inner_sizes = [int(np.prod(arg_in.shape[i+1:])) for i in range(len(arg_in.shape))]
-                    make_sum = lambda x, y: p.Sum((x, y))  # TODO: can be more functional?
-                    flatten_index = reduce(make_sum, map(p.Product, zip(outer_indices, inner_sizes)))
+                    # Next, reshape to match dimension of outer arrays.
+                    # We can have e.g. A[3, 2] from outside and B[6] from inside
+                    from numbers import Integral
+                    if not all(isinstance(d, Integral) for d in arg_in.shape):
+                        raise LoopyError(
+                            "Argument: {0} in child kernel: {1} does not have "
+                            "constant shape.".format(arg_in, child.name))
+                    inner_sizes = [int(np.prod(arg_in.shape[i+1:]))
+                                   for i in range(len(arg_in.shape))]
+                    flatten_index = reduce(
+                        lambda x, y: p.Sum((x, y)),
+                        map(p.Product, zip(outer_indices, inner_sizes)))
                     flatten_index = simplify_via_aff(flatten_index)
 
                     from loopy.symbolic import pw_aff_to_expr
-                    bounds = [kernel.get_iname_bounds(i.name) for i in sar.swept_inames]
+                    bounds = [kernel.get_iname_bounds(i.name)
+                              for i in sar.swept_inames]
                     sizes = [pw_aff_to_expr(b.size) for b in bounds]
+                    if not all(isinstance(d, Integral) for d in sizes):
+                        raise LoopyError(
+                            "SubArrayRef: {0} in parent kernel: {1} does not have "
+                            "swept inames with constant size.".format(
+                                sar, kernel.name))
+
                     sizes = [int(np.prod(sizes[i+1:])) for i in range(len(sizes))]
+
                     new_indices = []
                     for s in sizes:
                         ind = flatten_index // s
                         flatten_index = flatten_index - s * ind
                         new_indices.append(ind)
 
-                    # lastly, map sweeping indices to indices in Subscripts in SubArrayRef
+                    # Lastly, map sweeping indices to indices in Subscripts
+                    # This takes care of cases such as [i, j]: A[i+j, i-j]
                     index_map = dict(zip(sar.swept_inames, new_indices))
                     index_mapper = SubstitutionMapper(make_subst_func(index_map))
                     new_indices = index_mapper.map_tuple(sar.subscript.index_tuple)
@@ -267,40 +280,63 @@ def inline_kernel(knl, function, arg_map=None):
                             for k, v in six.iteritems(child_arg_map)))
         subst_mapper = KernelInliner(make_subst_func(var_map))
 
-        inner_insns = []
-
         ing = kernel.get_instruction_id_generator()
         insn_id = {}
         for insn in child.instructions:
             insn_id[insn.id] = ing("child_"+insn.id)
 
-        new_inames = []
+        # {{{ root and leave instructions in child kernel
+
+        dep_map = child.recursive_insn_dep_map()
+        # roots depend on nothing
+        heads = set(insn for insn, deps in six.iteritems(dep_map) if not deps)
+        # leaves have nothing that depends on them
+        tails = set(dep_map.keys())
+        for insn, deps in six.iteritems(dep_map):
+            tails = tails - deps
+
+        # }}}
+
+        # {{{ use NoOp to mark the start and end of child kernel
+
+        from loopy.kernel.instruction import NoOpInstruction
+
+        noop_start = NoOpInstruction(
+            id=ing("child_start"),
+            within_inames=call.within_inames,
+            depends_on=call.depends_on
+        )
+        noop_end = NoOpInstruction(
+            id=call.id,
+            within_inames=call.within_inames,
+            depends_on=frozenset(insn_id[insn] for insn in tails)
+        )
+        # }}}
+
+        inner_insns = [noop_start]
 
         for _insn in child.instructions:
             insn = _insn.with_transformed_expressions(subst_mapper)
-            within_inames = frozenset(child_iname_map[iname] for iname in insn.within_inames)
+            within_inames = frozenset(map(child_iname_map.get, insn.within_inames))
             within_inames = within_inames | call.within_inames
-            depends_on = frozenset(insn_id[dep] for dep in insn.depends_on)
-            depends_on = depends_on | call.depends_on
+            depends_on = frozenset(map(insn_id.get, insn.depends_on))
+            if insn.id in heads:
+                depends_on = depends_on | set([noop_start.id])
             insn = insn.copy(
                 id=insn_id[insn.id],
                 within_inames=within_inames,
+                # TODO: probaby need to keep priority in child kernel
                 priority=call.priority,
                 depends_on=depends_on
             )
             inner_insns.append(insn)
 
-        from loopy.kernel.instruction import NoOpInstruction
+        inner_insns.append(noop_end)
+
         new_insns = []
         for insn in kernel.instructions:
             if insn == call:
                 new_insns.extend(inner_insns)
-                noop = NoOpInstruction(
-                    id=call.id,
-                    within_inames=call.within_inames,
-                    depends_on=call.depends_on | set(insn.id for insn in inner_insns)
-                )
-                new_insns.append(noop)
             else:
                 new_insns.append(insn)
 
