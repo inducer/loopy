@@ -681,10 +681,10 @@ class ManglerCallable(ScalarCallable):
 
 def next_indexed_variable(function):
     """
-    Returns a copy a :arg:`function` with the next indexed-name in the
-    sequence.
+    Returns an instance of :class:`str` with the next indexed-name in the
+    sequence for the name of *function*.
 
-    :Example: ``Variable('sin_0')`` will return ``Variable('sin_1').
+    :Example: ``Variable('sin_0')`` will return ``'sin_1'``.
 
     :arg function: Either an instance of :class:`pymbolic.primitives.Variable`
         or :class:`loopy.reduction.ArgExtOp` or
@@ -784,7 +784,7 @@ def register_pymbolic_calls_to_knl_callables(kernel,
             while unique_var in scoped_names_to_functions and not isinstance(
                     unique_var, (ArgExtOp, SegmentedOp)):
                 # keep on finding new names till one a unique one is found.
-                unique_var = next_indexed_variable(unique_var)
+                unique_var = next_indexed_variable(Variable(unique_var))
 
             # book-keeping of the functions and names mappings for later use
             if isinstance(in_knl_callable, CallableKernel):
