@@ -115,9 +115,10 @@ def check_loop_priority_inames_known(kernel):
 
 def check_multiple_tags_allowed(kernel):
     from loopy.kernel.data import (GroupIndexTag, LocalIndexTag, VectorizeTag,
-                UnrollTag, ForceSequentialTag, filter_iname_by_type)
+                UnrollTag, ForceSequentialTag, IlpBaseTag, filter_iname_by_type)
     illegal_combinations = [
-        (GroupIndexTag, LocalIndexTag, VectorizeTag, UnrollTag, ForceSequentialTag)
+        (GroupIndexTag, LocalIndexTag, VectorizeTag, UnrollTag, ForceSequentialTag),
+        (IlpBaseTag, ForceSequentialTag)
     ]
     for iname, tags in six.iteritems(kernel.iname_to_tags):
         for comb in illegal_combinations:

@@ -84,24 +84,15 @@ def privatize_temporaries_with_inames(
 
     Example::
 
-<<<<<<< HEAD:loopy/transform/privatize.py
-<<<<<<< HEAD:loopy/transform/privatize.py
         for imatrix, i
             acc = 0
             for k
                 acc = acc + a[imatrix, i, k] * vec[k]
             end
         end
-=======
-    from loopy.kernel.data import IlpBaseTag, VectorizeTag, check_iname_tags
->>>>>>> d4c1d2e... change tags from set to tuple:loopy/transform/ilp.py
-=======
-    from loopy.kernel.data import IlpBaseTag, VectorizeTag, get_iname_tags
->>>>>>> 38a4424... change tags from tuple to set:loopy/transform/ilp.py
 
     might become::
 
-<<<<<<< HEAD:loopy/transform/privatize.py
         for imatrix, i
             acc[imatrix] = 0
             for k
@@ -110,9 +101,9 @@ def privatize_temporaries_with_inames(
         end
 
     facilitating loop interchange of the *imatrix* loop.
-
     .. versionadded:: 2018.1
     """
+
     if isinstance(privatizing_inames, str):
         privatizing_inames = frozenset(
                 s.strip()
@@ -124,9 +115,6 @@ def privatize_temporaries_with_inames(
                 for s in only_var_names.split(","))
 
     wmap = kernel.writer_map()
-=======
-    from loopy.kernel.data import IlpBaseTag, VectorizeTag, filter_iname_by_type
->>>>>>> dcbda4e... update based on feedback on MR:loopy/transform/ilp.py
 
     var_to_new_priv_axis_iname = {}
 
@@ -186,7 +174,7 @@ def privatize_temporaries_with_inames(
 
     # {{{ change temporary variables
 
-    from loopy.kernel.data import VectorizeTag
+    from loopy.kernel.data import VectorizeTag, filter_iname_by_type
 
     new_temp_vars = kernel.temporary_variables.copy()
     for tv_name, inames in six.iteritems(var_to_new_priv_axis_iname):
