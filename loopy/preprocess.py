@@ -2113,19 +2113,18 @@ def get_arg_description_from_sub_array_ref(sub_array, kernel):
     :class:`ArrayArgDescriptor`.
     """
     from loopy.kernel.function_interface import ArrayArgDescriptor
-    # from loopy.kernel.data import temp_var_scope
+    from loopy.kernel.data import mem_address_space
 
     name = sub_array.subscript.aggregate.name
 
     if name in kernel.temporary_variables:
-        # mem_scope = temp_var_scope.LOCAL
-        mem_scope = "LOCAL"
         arg = kernel.temporary_variables[name]
+        mem_scope = arg.mem_scope
         assert name not in kernel.arg_dict
     else:
         assert name in kernel.arg_dict
-        # mem_scope = temp_var_scope.GLOBAL
-        mem_scope = "GLOBAL"
+        mem_scope = mem_address_space
+        mem_scope = kernel.arg_dict[name].mem_scope
         arg = kernel.arg_dict[name]
 
     sub_dim_tags, sub_shape = sub_array.get_sub_array_dim_tags_and_shape(

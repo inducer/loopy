@@ -310,10 +310,10 @@ class InameArg(ValueArg):
 # }}}
 
 
-# {{{ temporary variable
+# {{{ memory address space
 
-class temp_var_scope:  # noqa
-    """Storage location of a temporary
+class mem_address_space:  # noqa
+    """Storage location of a variable.
 
     .. attribute:: PRIVATE
     .. attribute:: LOCAL
@@ -336,7 +336,42 @@ class temp_var_scope:  # noqa
         elif val == cls.GLOBAL:
             return "global"
         else:
-            raise ValueError("unexpected value of temp_var_scope")
+            raise ValueError("unexpected value of mem_address_space.")
+
+# }}}
+
+
+# {{{ temporary variable
+
+class _deprecated_temp_var_scope_property(property):  # noqa
+    def __get__(self, cls, owner):
+        from warnings import warn
+        warn("'temp_var_scope' is deprecated. Use 'mem_address_space'.",
+                DeprecationWarning, stacklevel=2)
+        return classmethod(self.fget).__get__(None, owner)()
+
+class temp_var_scope:  # noqa
+    """Deprecated. Use :class:`mem_adress_space` instead.
+    """
+
+    @_deprecated_temp_var_scope_property
+    def PRIVATE(self):
+        return mem_address_space.PRIVATE
+
+    @_deprecated_temp_var_scope_property
+    def LOCAL(self):
+        return mem_address_space.LOCAL
+
+    @_deprecated_temp_var_scope_property
+    def GLOBAL(self):
+        return mem_address_space.GLOBAL
+
+    @classmethod
+    def stringify(cls, val):
+        from warnings import warn
+        warn("'temp_var_scope' is deprecated. Use 'mem_address_space'.",
+                DeprecationWarning, stacklevel=2)
+        return mem_address_space.stringify(cls, val)
 
 
 class TemporaryVariable(ArrayBase):
