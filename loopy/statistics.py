@@ -714,7 +714,7 @@ class ExpressionOpCounter(CounterBase):
         from loopy.symbolic import ScopedFunction
         if isinstance(expr.function, ScopedFunction):
             function_identifier = self.knl.scoped_functions[
-                    expr.function.function].name
+                    expr.function.name].name
         else:
             function_identifier = expr.function.name
 

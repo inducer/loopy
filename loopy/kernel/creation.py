@@ -1865,7 +1865,7 @@ class FunctionScoper(RuleAwareIdentityMapper):
             if in_knl_callable:
                 # Associating the newly created ScopedFunction with the
                 # resolved in-kernel callable.
-                self.scoped_functions[expr.function] = in_knl_callable
+                self.scoped_functions[expr.function.name] = in_knl_callable
 
                 return type(expr)(
                         ScopedFunction(expr.function.name),
@@ -1885,7 +1885,7 @@ class FunctionScoper(RuleAwareIdentityMapper):
             if in_knl_callable:
                 # Associating the newly created ScopedFunction with the
                 # resolved in-kernel callable.
-                self.scoped_functions[expr.function.function] = in_knl_callable
+                self.scoped_functions[expr.function.name] = in_knl_callable
                 return type(expr)(
                         ScopedFunction(expr.function.name),
                         tuple(self.rec(child, expn_state)
@@ -1904,28 +1904,27 @@ class FunctionScoper(RuleAwareIdentityMapper):
                 MinReductionOperation, ArgMinReductionOperation,
                 ArgMaxReductionOperation, _SegmentedScalarReductionOperation,
                 SegmentedOp)
-        from pymbolic import var
         from loopy.library.reduction import ArgExtOp
 
         # Noting down the extra functions arising due to certain reductions.
         if isinstance(expr.operation, MaxReductionOperation):
-            self.scoped_functions[var("max")] = self.kernel.lookup_function("max")
+            self.scoped_functions["max"] = self.kernel.lookup_function("max")
         elif isinstance(expr.operation, MinReductionOperation):
-            self.scoped_functions[var("min")] = self.kernel.lookup_function("min")
+            self.scoped_functions["min"] = self.kernel.lookup_function("min")
         elif isinstance(expr.operation, ArgMaxReductionOperation):
-            self.scoped_functions[var("max")] = self.kernel.lookup_function("max")
-            self.scoped_functions[var("make_tuple")] = self.kernel.lookup_function(
+            self.scoped_functions["max"] = self.kernel.lookup_function("max")
+            self.scoped_functions["make_tuple"] = self.kernel.lookup_function(
                     "make_tuple")
             self.scoped_functions[ArgExtOp(expr.operation)] = (
                     self.kernel.lookup_function(expr.operation))
         elif isinstance(expr.operation, ArgMinReductionOperation):
-            self.scoped_functions[var("min")] = self.kernel.lookup_function("min")
-            self.scoped_functions[var("make_tuple")] = self.kernel.lookup_function(
+            self.scoped_functions["min"] = self.kernel.lookup_function("min")
+            self.scoped_functions["make_tuple"] = self.kernel.lookup_function(
                     "make_tuple")
             self.scoped_functions[ArgExtOp(expr.operation)] = (
                     self.kernel.lookup_function(expr.operation))
         elif isinstance(expr.operation, _SegmentedScalarReductionOperation):
-            self.scoped_functions[var("make_tuple")] = self.kernel.lookup_function(
+            self.scoped_functions["make_tuple"] = self.kernel.lookup_function(
                     "make_tuple")
             self.scoped_functions[SegmentedOp(expr.operation)] = (
                     self.kernel.lookup_function(expr.operation))

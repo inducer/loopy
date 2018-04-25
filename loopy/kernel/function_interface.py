@@ -537,10 +537,6 @@ class CallableKernel(InKernelCallable):
         return self.copy(subkernel=descriptor_specialized_knl,
                 arg_id_to_descr=arg_id_to_descr)
 
-    def with_iname_tag_usage(self, unusable, concurrent_shape):
-
-        raise NotImplementedError()
-
     def is_ready_for_codegen(self):
 
         return (self.arg_id_to_dtype is not None and
@@ -703,12 +699,12 @@ def next_indexed_variable(function):
 
     if match is None:
         if function.name[-1] == '_':
-            return Variable("{old_name}0".format(old_name=function.name))
+            return "{old_name}0".format(old_name=function.name)
         else:
-            return Variable("{old_name}_0".format(old_name=function.name))
+            return "{old_name}_0".format(old_name=function.name)
 
-    return Variable("{alpha}_{num}".format(alpha=match.group('alpha'),
-            num=int(match.group('num'))+1))
+    return "{alpha}_{num}".format(alpha=match.group('alpha'),
+            num=int(match.group('num'))+1)
 
 
 class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
@@ -795,7 +791,7 @@ def register_pymbolic_calls_to_knl_callables(kernel,
                 # for array calls the name in the target is the name of the
                 # scoped funciton
                 in_knl_callable = in_knl_callable.copy(
-                        name_in_target=unique_var.name)
+                        name_in_target=unique_var)
             scoped_names_to_functions[unique_var] = in_knl_callable
             scoped_functions_to_names[in_knl_callable] = unique_var
 

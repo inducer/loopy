@@ -2187,7 +2187,7 @@ class ArgDescrInferenceMapper(CombineMapper):
 
         # specializing the function according to the parameter description
         new_scoped_function = (
-                self.kernel.scoped_functions[expr.function.function].with_descrs(
+                self.kernel.scoped_functions[expr.function.name].with_descrs(
                     combined_arg_id_to_descr))
 
         # collecting the descriptors for args, kwargs, assignees
@@ -2314,7 +2314,7 @@ class FunctionsNotReadyForCodegenCollector(CombineMapper):
 
         elif isinstance(expr.function, ScopedFunction):
             is_ready_for_codegen = self.kernel.scoped_functions[
-                    expr.function.function].is_ready_for_codegen()
+                    expr.function.name].is_ready_for_codegen()
             return self.combine(
                     (is_ready_for_codegen,) +
                     tuple(

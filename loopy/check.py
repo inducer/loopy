@@ -183,19 +183,19 @@ def check_loop_priority_inames_known(kernel):
 
 
 def _get_all_unique_iname_tags(kernel):
-    """ Returns a frozenset of all the unique iname tags in the *kernel*.
+    """ Returns a list of all the unique iname tags in the *kernel*.
     """
     from loopy.kernel.data import UniqueTag
-    iname_tags = frozenset(kernel.iname_to_tag.get(iname) for iname in
-        kernel.all_inames()) - frozenset([None])
-    unique_iname_tags = frozenset([tag for tag in iname_tags if
-        isinstance(tag, UniqueTag)])
+    iname_tags = [kernel.iname_to_tag.get(iname) for iname in
+        kernel.all_inames()]
+    unique_iname_tags = [tag for tag in iname_tags if
+        isinstance(tag, UniqueTag)]
     return unique_iname_tags
 
 
 def check_for_double_use_of_hw_axes(kernel):
     from loopy.kernel.data import UniqueTag
-    from loopy.kernel.instructions import CallInstruction
+    from loopy.kernel.instruction import CallInstruction
     from loopy.kernel.function_interface import CallableKernel
 
     for insn in kernel.instructions:
@@ -213,13 +213,13 @@ def check_for_double_use_of_hw_axes(kernel):
         # checking usage of iname tags in the callee kernel.
         if isinstance(insn, CallInstruction):
             in_knl_callable = kernel.scoped_functions[
-                    insn.expression.function.function]
+                    insn.expression.function.name]
             if isinstance(in_knl_callable, CallableKernel):
                 # checking for collision in iname_tag keys in the instruction
                 # due to the callee kernel.
-                common_iname_tags = frozenset(tag for tag in
+                common_iname_tags = [tag for tag in
                         _get_all_unique_iname_tags(in_knl_callable.subkernel)
-                        if tag.key in insn_tag_keys)
+                        if tag.key in insn_tag_keys]
                 if common_iname_tags:
                     raise LoopyError("instruction '%s' has multiple "
                             "inames tagged '%s'" % (insn.id,

@@ -398,7 +398,7 @@ class InKernelCallablesCollector(CombineMapper):
 
     def map_scoped_function(self, expr):
         return frozenset([self.kernel.scoped_functions[
-            expr.function]])
+            expr.name]])
 
     def map_constant(self, expr):
         return frozenset()
@@ -534,7 +534,7 @@ def generate_code_v2(kernel, is_generating_master_kernel=True):
     for insn in kernel.instructions:
         if isinstance(insn, CallInstruction):
             in_knl_callable = kernel.scoped_functions[
-                    insn.expression.function.function]
+                    insn.expression.function.name]
             from loopy.kernel.function_interface import CallableKernel
             if isinstance(in_knl_callable, CallableKernel):
                 auxiliary_dev_prog = generate_code_v2(

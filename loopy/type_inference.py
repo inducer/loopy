@@ -284,7 +284,7 @@ class TypeInferenceMapper(CombineMapper):
 
         # specializing the known function wrt type
         if isinstance(expr.function, ScopedFunction):
-            in_knl_callable = self.scoped_functions[expr.function.function]
+            in_knl_callable = self.scoped_functions[expr.function.name]
 
             # {{{ checking that there is no overwriting of in_knl_callable
 

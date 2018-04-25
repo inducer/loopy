@@ -695,7 +695,14 @@ class ScopedFunction(p.Expression):
 
     @property
     def name(self):
-        return self.function.name
+        from loopy.library.reduction import ArgExtOp, SegmentedOp
+        if isinstance(self.function, p.Variable):
+            return self.function.name
+        elif isinstance(self.function, (ArgExtOp, SegmentedOp)):
+            return self.function
+        else:
+            raise LoopyError("Unexpected function type %s in ScopedFunction." %
+                    type(self.function))
 
     def __getinitargs__(self):
         return (self.function, )
