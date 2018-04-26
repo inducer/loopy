@@ -2119,12 +2119,16 @@ def get_arg_description_from_sub_array_ref(sub_array, kernel):
 
     if name in kernel.temporary_variables:
         arg = kernel.temporary_variables[name]
-        mem_scope = arg.mem_scope
+        # FIXME: This is temporary change them back to the necessary ones.
+        # mem_scope = arg.mem_scope
+        mem_scope = 'Local'
         assert name not in kernel.arg_dict
     else:
         assert name in kernel.arg_dict
-        mem_scope = mem_address_space
-        mem_scope = kernel.arg_dict[name].mem_scope
+        # FIXME: This is just temporary, change them back to the needed
+        # changes.
+        # mem_scope = kernel.arg_dict[name].mem_scope
+        mem_scope = 'Global'
         arg = kernel.arg_dict[name]
 
     sub_dim_tags, sub_shape = sub_array.get_sub_array_dim_tags_and_shape(

@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
+from pytools import ImmutableRecord
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -56,6 +57,24 @@ def register_function_lookup(kernel, function_lookup):
 
 # {{{ register_callable_kernel
 
+class RegisterCalleeKernel(ImmutableRecord):
+    """
+    Helper class to make the function scoper from
+    :func:`loopy.transform.register_callable_kernel` picklable. As python
+    cannot pickle lexical closures.
+    """
+    fields = set(['function_name', 'callable_kernel'])
+
+    def __init__(self, function_name, callable_kernel):
+        self.function_name = function_name
+        self.callable_kernel = callable_kernel
+
+    def __call__(self, target, identifier):
+        if identifier == self.function_name:
+            return self.callable_kernel
+        return None
+
+
 def register_callable_kernel(caller_kernel, function_name, callee_kernel):
     """Returns a copy of *caller_kernel* which identifies *function_name* in an
     expression as a call to *callee_kernel*.
@@ -78,13 +97,8 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel):
     callable_kernel = CallableKernel(subkernel=callee_kernel.copy(
                         target=caller_kernel.target))
 
-    def register_callee_kernel(target, identifier):
-        if identifier == function_name:
-            return callable_kernel
-        return None
-
     return register_function_lookup(caller_kernel,
-            register_callee_kernel)
+            RegisterCalleeKernel(function_name, callable_kernel))
 
 # }}}
 
