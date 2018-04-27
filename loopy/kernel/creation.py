@@ -1143,7 +1143,7 @@ class ArgumentGuesser:
     def make_new_arg(self, arg_name):
         arg_name = arg_name.strip()
 
-        from loopy.kernel.data import ValueArg, GlobalArg
+        from loopy.kernel.data import ValueArg, ArrayArg
         import loopy as lp
 
         if arg_name in self.all_params:
@@ -1153,7 +1153,7 @@ class ArgumentGuesser:
             # It's not a temp var, and thereby not a domain parameter--the only
             # other writable type of variable is an argument.
 
-            return GlobalArg(arg_name,
+            return ArrayArg(arg_name,
                     shape=lp.auto, offset=self.default_offset)
 
         irank = self.find_index_rank(arg_name)
@@ -1161,7 +1161,7 @@ class ArgumentGuesser:
             # read-only, no indices
             return ValueArg(arg_name)
         else:
-            return GlobalArg(arg_name, shape=lp.auto, offset=self.default_offset)
+            return ArrayArg(arg_name, shape=lp.auto, offset=self.default_offset)
 
     def convert_names_to_full_args(self, kernel_args):
         new_kernel_args = []
@@ -2144,7 +2144,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     :arg kernel_data:
 
-        A list of :class:`ValueArg`, :class:`GlobalArg`, ... (etc.) instances.
+        A list of :class:`ValueArg`, :class:`ArrayArg`, ... (etc.) instances.
         The order of these arguments determines the order of the arguments
         to the generated kernel.
 
@@ -2175,7 +2175,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         (name, c_name, arg_dtypes), generating extra entries for *preambles*.
     :arg default_order: "C" (default) or "F"
     :arg default_offset: 0 or :class:`loopy.auto`. The default value of
-        *offset* in :attr:`GlobalArg` for guessed arguments.
+        *offset* in :attr:`ArrayArg` for guessed arguments.
         Defaults to 0.
     :arg function_manglers: list of functions of signature
         ``(target, name, arg_dtypes)``

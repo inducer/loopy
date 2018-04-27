@@ -63,7 +63,7 @@ def synthesize_idis_for_extra_args(kernel, schedule_index):
     sched_item = kernel.schedule[schedule_index]
 
     from loopy.codegen import ImplementedDataInfo
-    from loopy.kernel.data import InameArg, temp_var_scope
+    from loopy.kernel.data import InameArg, MemoryAddressSpace
 
     assert isinstance(sched_item, CallKernel)
 
@@ -71,7 +71,7 @@ def synthesize_idis_for_extra_args(kernel, schedule_index):
 
     for arg in sched_item.extra_args:
         temporary = kernel.temporary_variables[arg]
-        assert temporary.scope == temp_var_scope.GLOBAL
+        assert temporary.scope == MemoryAddressSpace.GLOBAL
         idis.extend(
             temporary.decl_info(
                 kernel.target,

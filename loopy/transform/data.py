@@ -175,7 +175,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
     :arg rule_name: base name of the generated temporary variable.
     :arg temporary_name: The name of the temporary to be used.
-    :arg temporary_scope: The :class:`temp_var_scope` to use for the
+    :arg temporary_scope: The :class:`MemoryAddressSpace` to use for the
         temporary.
     :arg temporary_is_local: Deprecated, use *temporary_scope* instead.
     :arg footprint_subscripts: A list of tuples indicating the index (i.e.
@@ -647,24 +647,24 @@ def set_temporary_scope(kernel, temp_var_names, scope):
     :arg temp_var_names: a container with membership checking,
         or a comma-separated string of variables for which the
         scope is to be set.
-    :arg scope: One of the values from :class:`temp_var_scope`, or one
+    :arg scope: One of the values from :class:`MemoryAddressSpace`, or one
         of the strings ``"private"``, ``"local"``, or ``"global"``.
     """
 
     if isinstance(temp_var_names, str):
         temp_var_names = [s.strip() for s in temp_var_names.split(",")]
 
-    from loopy.kernel.data import temp_var_scope
+    from loopy.kernel.data import MemoryAddressSpace
     if isinstance(scope, str):
         try:
-            scope = getattr(temp_var_scope, scope.upper())
+            scope = getattr(MemoryAddressSpace, scope.upper())
         except AttributeError:
             raise LoopyError("scope '%s' unknown" % scope)
 
     if not isinstance(scope, int) or scope not in [
-            temp_var_scope.PRIVATE,
-            temp_var_scope.LOCAL,
-            temp_var_scope.GLOBAL]:
+            MemoryAddressSpace.PRIVATE,
+            MemoryAddressSpace.LOCAL,
+            MemoryAddressSpace.GLOBAL]:
         raise LoopyError("invalid scope '%s'" % scope)
 
     new_temp_vars = kernel.temporary_variables.copy()

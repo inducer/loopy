@@ -52,11 +52,11 @@ def adjust_local_temp_var_storage(kernel, device):
 
     new_temp_vars = {}
 
-    from loopy.kernel.data import temp_var_scope
+    from loopy.kernel.data import MemoryAddressSpace
 
     lmem_size = cl_char.usable_local_mem_size(device)
     for temp_var in six.itervalues(kernel.temporary_variables):
-        if temp_var.scope != temp_var_scope.LOCAL:
+        if temp_var.scope != MemoryAddressSpace.LOCAL:
             new_temp_vars[temp_var.name] = \
                     temp_var.copy(storage_shape=temp_var.shape)
             continue
@@ -69,7 +69,7 @@ def adjust_local_temp_var_storage(kernel, device):
         other_loctemp_nbytes = [
                 tv.nbytes
                 for tv in six.itervalues(kernel.temporary_variables)
-                if tv.scope == temp_var_scope.LOCAL
+                if tv.scope == MemoryAddressSpace.LOCAL
                 and tv.name != temp_var.name]
 
         storage_shape = temp_var.storage_shape
@@ -698,11 +698,11 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             from operator import mul
             return tv.dtype.numpy_dtype.itemsize * reduce(mul, tv.shape, 1)
 
-        from loopy.kernel.data import temp_var_scope
+        from loopy.kernel.data import MemoryAddressSpace
 
         global_temporaries = sorted(
             (tv for tv in six.itervalues(codegen_state.kernel.temporary_variables)
-            if tv.scope == temp_var_scope.GLOBAL),
+            if tv.scope == MemoryAddressSpace.GLOBAL),
             key=lambda tv: tv.name)
 
         from pymbolic.mapper.stringifier import PREC_NONE

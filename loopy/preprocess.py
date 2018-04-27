@@ -160,7 +160,7 @@ def find_temporary_scope(kernel):
 
     new_temp_vars = {}
     from loopy.kernel.data import (LocalIndexTagBase, GroupIndexTag,
-            temp_var_scope)
+            MemoryAddressSpace)
     import loopy as lp
 
     writers = kernel.writer_map()
@@ -221,12 +221,12 @@ def find_temporary_scope(kernel):
             assert locparallel_assignee_inames <= locparallel_compute_inames
             assert grpparallel_assignee_inames <= grpparallel_compute_inames
 
-            desired_scope = temp_var_scope.PRIVATE
+            desired_scope = MemoryAddressSpace.PRIVATE
             for iname_descr, scope_descr, apin, cpin, scope in [
                     ("local", "local", locparallel_assignee_inames,
-                        locparallel_compute_inames, temp_var_scope.LOCAL),
+                        locparallel_compute_inames, MemoryAddressSpace.LOCAL),
                     ("group", "global", grpparallel_assignee_inames,
-                        grpparallel_compute_inames, temp_var_scope.GLOBAL),
+                        grpparallel_compute_inames, MemoryAddressSpace.GLOBAL),
                     ]:
 
                 if (apin != cpin and bool(apin)):
@@ -774,7 +774,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
         last_added_insn_id = insn.id
 
-        from loopy.kernel.data import temp_var_scope, TemporaryVariable
+        from loopy.kernel.data import MemoryAddressSpace, TemporaryVariable
 
         FIRST_POINTER_ASSIGNEE_IDX = 1  # noqa
 
@@ -787,7 +787,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
                     assignee_var_name in kernel.temporary_variables
                     and
                     (kernel.temporary_variables[assignee_var_name].scope
-                         == temp_var_scope.PRIVATE)):
+                         == MemoryAddressSpace.PRIVATE)):
                 new_assignees.append(assignee)
                 continue
 
@@ -809,7 +809,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
                     TemporaryVariable(
                         name=new_assignee_name,
                         dtype=None,
-                        scope=temp_var_scope.PRIVATE))
+                        scope=MemoryAddressSpace.PRIVATE))
 
             from pymbolic import var
             new_assignee = var(new_assignee_name)
@@ -990,12 +990,12 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 for i in range(nresults)]
 
         for name in temp_var_names:
-            from loopy.kernel.data import TemporaryVariable, temp_var_scope
+            from loopy.kernel.data import TemporaryVariable, MemoryAddressSpace
             new_temporary_variables[name] = TemporaryVariable(
                     name=name,
                     shape=(),
                     dtype=None,
-                    scope=temp_var_scope.PRIVATE)
+                    scope=MemoryAddressSpace.PRIVATE)
 
         from pymbolic import var
         temp_vars = tuple(var(n) for n in temp_var_names)
@@ -1021,13 +1021,13 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             reduction_dtypes):
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
-        from loopy.kernel.data import temp_var_scope
+        from loopy.kernel.data import MemoryAddressSpace
         acc_var_names = make_temporaries(
                 name_based_on="acc_"+"_".join(expr.inames),
                 nvars=nresults,
                 shape=(),
                 dtypes=reduction_dtypes,
-                scope=temp_var_scope.PRIVATE)
+                scope=MemoryAddressSpace.PRIVATE)
 
         init_insn_depends_on = frozenset()
 
@@ -1159,21 +1159,21 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 _get_int_iname_size(oiname)
                 for oiname in outer_local_inames)
 
-        from loopy.kernel.data import temp_var_scope
+        from loopy.kernel.data import MemoryAddressSpace
 
         neutral_var_names = make_temporaries(
                 name_based_on="neutral_"+red_iname,
                 nvars=nresults,
                 shape=(),
                 dtypes=reduction_dtypes,
-                scope=temp_var_scope.PRIVATE)
+                scope=MemoryAddressSpace.PRIVATE)
 
         acc_var_names = make_temporaries(
                 name_based_on="acc_"+red_iname,
                 nvars=nresults,
                 shape=outer_local_iname_sizes + (size,),
                 dtypes=reduction_dtypes,
-                scope=temp_var_scope.LOCAL)
+                scope=MemoryAddressSpace.LOCAL)
 
         acc_vars = tuple(var(n) for n in acc_var_names)
 
@@ -1393,13 +1393,13 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 scan_iname, sweep_iname, sweep_min_value, scan_min_value,
                 stride, track_iname)
 
-        from loopy.kernel.data import temp_var_scope
+        from loopy.kernel.data import MemoryAddressSpace
         acc_var_names = make_temporaries(
                 name_based_on="acc_" + scan_iname,
                 nvars=nresults,
                 shape=(),
                 dtypes=reduction_dtypes,
-                scope=temp_var_scope.PRIVATE)
+                scope=MemoryAddressSpace.PRIVATE)
 
         from pymbolic import var
         acc_vars = tuple(var(n) for n in acc_var_names)
@@ -1518,21 +1518,21 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         # }}}
 
-        from loopy.kernel.data import temp_var_scope
+        from loopy.kernel.data import MemoryAddressSpace
 
         read_var_names = make_temporaries(
                 name_based_on="read_"+scan_iname+"_arg_{index}",
                 nvars=nresults,
                 shape=(),
                 dtypes=reduction_dtypes,
-                scope=temp_var_scope.PRIVATE)
+                scope=MemoryAddressSpace.PRIVATE)
 
         acc_var_names = make_temporaries(
                 name_based_on="acc_"+scan_iname,
                 nvars=nresults,
                 shape=outer_local_iname_sizes + (scan_size,),
                 dtypes=reduction_dtypes,
-                scope=temp_var_scope.LOCAL)
+                scope=MemoryAddressSpace.LOCAL)
 
         acc_vars = tuple(var(n) for n in acc_var_names)
         read_vars = tuple(var(n) for n in read_var_names)
@@ -2113,23 +2113,17 @@ def get_arg_description_from_sub_array_ref(sub_array, kernel):
     :class:`ArrayArgDescriptor`.
     """
     from loopy.kernel.function_interface import ArrayArgDescriptor
-    from loopy.kernel.data import mem_address_space
 
     name = sub_array.subscript.aggregate.name
 
     if name in kernel.temporary_variables:
         arg = kernel.temporary_variables[name]
-        # FIXME: This is temporary change them back to the necessary ones.
-        # mem_scope = arg.mem_scope
-        mem_scope = 'Local'
+        mem_scope = arg.scope
         assert name not in kernel.arg_dict
     else:
         assert name in kernel.arg_dict
-        # FIXME: This is just temporary, change them back to the needed
-        # changes.
-        # mem_scope = kernel.arg_dict[name].mem_scope
-        mem_scope = 'Global'
         arg = kernel.arg_dict[name]
+        mem_scope = arg.memory_address_space
 
     sub_dim_tags, sub_shape = sub_array.get_sub_array_dim_tags_and_shape(
             arg.dim_tags, arg.shape)
@@ -2140,8 +2134,9 @@ def get_arg_description_from_sub_array_ref(sub_array, kernel):
 
 
 class ArgDescrInferenceMapper(CombineMapper):
-    """ Returns a set with elements as instances of :class:`tuple` (expr,
-    in_kenrel_callable). The mapped `in_kenrel_callable` of the
+    """
+    Returns a set of instances of :class:`tuple` (expr,
+    in_kernel_callable). The mapped `in_kernel_callable` of the
     :class:`InKernelCallable` are descriptor specialized for the given
     arguments.
     """
@@ -2359,8 +2354,8 @@ def make_functions_ready_for_codegen(kernel):
         knl = lp.make_kernel(
             "{[i]: 0<=i<16}",
             "a[i] = sin(b[i])",
-            [lp.GlobalArg('a', dtype=np.float64),
-            lp.GlobalArg('b', dtype=np.float64)])
+            [lp.ArrayArg('a', dtype=np.float64),
+            lp.ArrayArg('b', dtype=np.float64)])
 
     In the above case, none of the instructions undergo type-specialization, as
     all the arguments' types have been realized. But, this would be a problem
@@ -2470,10 +2465,6 @@ def preprocess_kernel(kernel, device=None):
     #   defaults from being applied.
     kernel = realize_reduction(kernel, unknown_types_ok=False)
 
-    # inferring the shape and dim_tags of the arguments involved in a function
-    # call.
-    kernel = infer_arg_descr(kernel)
-
     # type specialize functions that were missed during the type inference.
     kernel = make_functions_ready_for_codegen(kernel)
 
@@ -2485,6 +2476,10 @@ def preprocess_kernel(kernel, device=None):
     kernel = add_axes_to_temporaries_for_ilp_and_vec(kernel)
 
     kernel = find_temporary_scope(kernel)
+
+    # inferring the shape and dim_tags of the arguments involved in a function
+    # call.
+    kernel = infer_arg_descr(kernel)
 
     # boostability should be removed in 2017.x.
     kernel = find_idempotence(kernel)

@@ -27,7 +27,7 @@ from loopy.diagnostic import LoopyError
 import loopy as lp
 import six
 
-from loopy.kernel.data import auto, temp_var_scope
+from loopy.kernel.data import auto, MemoryAddressSpace
 from pytools import memoize_method, Record
 from loopy.schedule import (
             EnterLoop, LeaveLoop, RunInstruction,
@@ -228,7 +228,7 @@ class TemporarySaver(object):
             return TemporaryVariable(
                 name=self.name,
                 dtype=temporary.dtype,
-                scope=temp_var_scope.GLOBAL,
+                scope=MemoryAddressSpace.GLOBAL,
                 shape=self.new_shape)
 
         @property
@@ -439,7 +439,7 @@ class TemporarySaver(object):
         group_sizes, local_sizes = (
             self.kernel.get_grid_sizes_for_insn_ids_as_exprs(accessor_insn_ids))
 
-        if temporary.scope == lp.temp_var_scope.LOCAL:
+        if temporary.scope == lp.MemoryAddressSpace.LOCAL:
             # Elide local axes in the save slot for local temporaries.
             del local_tags[:]
             local_sizes = ()
@@ -452,7 +452,7 @@ class TemporarySaver(object):
     def auto_promote_temporary(self, temporary_name):
         temporary = self.kernel.temporary_variables[temporary_name]
 
-        if temporary.scope == temp_var_scope.GLOBAL:
+        if temporary.scope == MemoryAddressSpace.GLOBAL:
             # Nothing to be done for global temporaries (I hope)
             return None
 

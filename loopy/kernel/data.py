@@ -207,6 +207,38 @@ def parse_tag(tag):
 # }}}
 
 
+# {{{ memory address space
+
+class MemoryAddressSpace:
+    """
+    Storage location of a variable.
+
+    .. attribute:: PRIVATE
+    .. attribute:: LOCAL
+    .. attribute:: GLOBAL
+    """
+
+    # These must occur in ascending order of 'globality' so that
+    # max(scope) does the right thing.
+
+    PRIVATE = 0
+    LOCAL = 1
+    GLOBAL = 2
+
+    @classmethod
+    def stringify(cls, val):
+        if val == cls.PRIVATE:
+            return "private"
+        elif val == cls.LOCAL:
+            return "local"
+        elif val == cls.GLOBAL:
+            return "global"
+        else:
+            raise ValueError("unexpected value of MemoryAddressScope")
+
+# }}}
+
+
 # {{{ arguments
 
 class KernelArgument(ImmutableRecord):
@@ -236,14 +268,34 @@ class KernelArgument(ImmutableRecord):
         ImmutableRecord.__init__(self, **kwargs)
 
 
-class GlobalArg(ArrayBase, KernelArgument):
+class ArrayArg(ArrayBase, KernelArgument):
+
+    allowed_extra_kwargs = [
+            "memory_address_space"]
+
+    def __init__(self, *args, **kwargs):
+        # Defaulting the memory_address_space to be GLOBAL.
+        kwargs["memory_address_space"] = kwargs.pop(
+                "memory_address_space", MemoryAddressSpace.GLOBAL)
+
+        super(ArrayArg, self).__init__(*args, **kwargs)
+
     __doc__ = ArrayBase.__doc__
     min_target_axes = 0
     max_target_axes = 1
 
     def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
-        return ast_builder.get_global_arg_decl(self.name + name_suffix, shape,
-                dtype, is_written)
+        return ast_builder.get_array_arg_decl(self.name + name_suffix,
+                self.memory_address_space, shape, dtype, is_written)
+
+
+class GlobalArg(ArrayBase, KernelArgument):
+    def __new__(cls, *args, **kwargs):
+        from warnings import warn
+        warn("Use of 'GlobalArg' is deprecated use 'ArrayArg' instead.",
+                DeprecationWarning, stacklevel=2)
+
+        return ArrayArg(*args, **kwargs)
 
 
 class ConstantArg(ArrayBase, KernelArgument):
@@ -310,44 +362,14 @@ class InameArg(ValueArg):
 # }}}
 
 
-# {{{ memory address space
-
-class mem_address_space:  # noqa
-    """Storage location of a variable.
-
-    .. attribute:: PRIVATE
-    .. attribute:: LOCAL
-    .. attribute:: GLOBAL
-    """
-
-    # These must occur in ascending order of 'globality' so that
-    # max(scope) does the right thing.
-
-    PRIVATE = 0
-    LOCAL = 1
-    GLOBAL = 2
-
-    @classmethod
-    def stringify(cls, val):
-        if val == cls.PRIVATE:
-            return "private"
-        elif val == cls.LOCAL:
-            return "local"
-        elif val == cls.GLOBAL:
-            return "global"
-        else:
-            raise ValueError("unexpected value of mem_address_space.")
-
-# }}}
-
-
 # {{{ temporary variable
 
 class _deprecated_temp_var_scope_property(property):  # noqa
     def __get__(self, cls, owner):
         from warnings import warn
-        warn("'temp_var_scope' is deprecated. Use 'mem_address_space'.",
+        warn("'temp_var_scope' is deprecated. Use 'MemoryAddressSpace'.",
                 DeprecationWarning, stacklevel=2)
+
         return classmethod(self.fget).__get__(None, owner)()
 
 class temp_var_scope:  # noqa
@@ -356,22 +378,22 @@ class temp_var_scope:  # noqa
 
     @_deprecated_temp_var_scope_property
     def PRIVATE(self):
-        return mem_address_space.PRIVATE
+        return MemoryAddressSpace.PRIVATE
 
     @_deprecated_temp_var_scope_property
     def LOCAL(self):
-        return mem_address_space.LOCAL
+        return MemoryAddressSpace.LOCAL
 
     @_deprecated_temp_var_scope_property
     def GLOBAL(self):
-        return mem_address_space.GLOBAL
+        return MemoryAddressSpace.GLOBAL
 
     @classmethod
     def stringify(cls, val):
         from warnings import warn
-        warn("'temp_var_scope' is deprecated. Use 'mem_address_space'.",
+        warn("'temp_var_scope' is deprecated. Use 'MemoryAddressSpace'.",
                 DeprecationWarning, stacklevel=2)
-        return mem_address_space.stringify(cls, val)
+        return MemoryAddressSpace.stringify
 
 
 class TemporaryVariable(ArrayBase):
@@ -381,7 +403,7 @@ class TemporaryVariable(ArrayBase):
     .. attribute:: scope
 
         What memory this temporary variable lives in.
-        One of the values in :class:`temp_var_scope`,
+        One of the values in :class:`MemoryAddressSpace`,
         or :class:`loopy.auto` if this is
         to be automatically determined.
 
@@ -393,7 +415,7 @@ class TemporaryVariable(ArrayBase):
 
     .. attribute:: scope
 
-        One of :class:`temp_var_scope`.
+        One of :class:`MemoryAddressSpace`.
 
     .. attribute:: initializer
 
@@ -509,15 +531,15 @@ class TemporaryVariable(ArrayBase):
 
     @property
     def is_local(self):
-        """One of :class:`loopy.temp_var_scope`."""
+        """One of :class:`loopy.MemoryAddressSpace`."""
 
         if self.scope is auto:
             return auto
-        elif self.scope == temp_var_scope.LOCAL:
+        elif self.scope == MemoryAddressSpace.LOCAL:
             return True
-        elif self.scope == temp_var_scope.PRIVATE:
+        elif self.scope == MemoryAddressSpace.PRIVATE:
             return False
-        elif self.scope == temp_var_scope.GLOBAL:
+        elif self.scope == MemoryAddressSpace.GLOBAL:
             raise LoopyError("TemporaryVariable.is_local called on "
                              "global temporary variable '%s'" % self.name)
         else:
@@ -538,7 +560,7 @@ class TemporaryVariable(ArrayBase):
                 shape_override=self.storage_shape)
 
     def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
-        if self.scope == temp_var_scope.GLOBAL:
+        if self.scope == MemoryAddressSpace.GLOBAL:
             return ast_builder.get_global_arg_decl(self.name + name_suffix, shape,
                     dtype, is_written)
         else:
@@ -549,7 +571,7 @@ class TemporaryVariable(ArrayBase):
         if self.scope is auto:
             scope_str = "auto"
         else:
-            scope_str = temp_var_scope.stringify(self.scope)
+            scope_str = MemoryAddressSpace.stringify(self.scope)
 
         return (
                 self.stringify(include_typename=False)
@@ -598,11 +620,11 @@ def iname_tag_to_temp_var_scope(iname_tag):
     iname_tag = parse_tag(iname_tag)
 
     if isinstance(iname_tag, GroupIndexTag):
-        return temp_var_scope.GLOBAL
+        return MemoryAddressSpace.GLOBAL
     elif isinstance(iname_tag, LocalIndexTag):
-        return temp_var_scope.LOCAL
+        return MemoryAddressSpace.LOCAL
     else:
-        return temp_var_scope.PRIVATE
+        return MemoryAddressSpace.PRIVATE
 
 
 # {{{ substitution rule

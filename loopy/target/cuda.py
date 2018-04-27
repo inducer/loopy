@@ -32,7 +32,7 @@ from loopy.target.c import CTarget, CASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
-from loopy.kernel.data import temp_var_scope
+from loopy.kernel.data import MemoryAddressSpace
 from pymbolic import var
 from loopy.kernel.function_interface import ScalarCallable
 
@@ -351,10 +351,10 @@ class CUDACASTBuilder(CASTBuilder):
             raise LoopyError("unknown barrier kind")
 
     def wrap_temporary_decl(self, decl, scope):
-        if scope == temp_var_scope.LOCAL:
+        if scope == MemoryAddressSpace.LOCAL:
             from cgen.cuda import CudaShared
             return CudaShared(decl)
-        elif scope == temp_var_scope.PRIVATE:
+        elif scope == MemoryAddressSpace.PRIVATE:
             return decl
         else:
             raise ValueError("unexpected temporary variable scope: %s"
@@ -364,7 +364,7 @@ class CUDACASTBuilder(CASTBuilder):
         from cgen.cuda import CudaConstant
         return CudaConstant(decl)
 
-    def get_global_arg_decl(self, name, shape, dtype, is_written):
+    def get_array_arg_decl(self, name, shape, dtype, is_written):
         from loopy.target.c import POD  # uses the correct complex type
         from cgen import Const
         from cgen.cuda import CudaRestrictPointer
@@ -375,6 +375,8 @@ class CUDACASTBuilder(CASTBuilder):
             arg_decl = Const(arg_decl)
 
         return arg_decl
+
+    get_global_arg_decl = get_array_arg_decl
 
     def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
         raise NotImplementedError("not yet: texture arguments in CUDA")

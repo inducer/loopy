@@ -873,17 +873,17 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     @memoize_method
     def global_var_names(self):
-        from loopy.kernel.data import temp_var_scope
+        from loopy.kernel.data import MemoryAddressSpace
 
-        from loopy.kernel.data import GlobalArg
+        from loopy.kernel.data import ArrayArg
         return (
                 set(
                     arg.name for arg in self.args
-                    if isinstance(arg, GlobalArg))
+                    if isinstance(arg, ArrayArg))
                 | set(
                     tv.name
                     for tv in six.itervalues(self.temporary_variables)
-                    if tv.scope == temp_var_scope.GLOBAL))
+                    if tv.scope == MemoryAddressSpace.GLOBAL))
 
     # }}}
 
@@ -1075,17 +1075,17 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     @memoize_method
     def local_var_names(self):
-        from loopy.kernel.data import temp_var_scope
+        from loopy.kernel.data import MemoryAddressSpace
         return set(
             tv.name
             for tv in six.itervalues(self.temporary_variables)
-            if tv.scope == temp_var_scope.LOCAL)
+            if tv.scope == MemoryAddressSpace.LOCAL)
 
     def local_mem_use(self):
-        from loopy.kernel.data import temp_var_scope
+        from loopy.kernel.data import MemoryAddressSpace
         return sum(
                 tv.nbytes for tv in six.itervalues(self.temporary_variables)
-                if tv.scope == temp_var_scope.LOCAL)
+                if tv.scope == MemoryAddressSpace.LOCAL)
 
     # }}}
 

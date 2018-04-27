@@ -73,7 +73,6 @@ class ArrayArgDescriptor(ImmutableRecord):
         from loopy.kernel.array import FixedStrideArrayDimTag
 
         assert isinstance(shape, tuple)
-        assert isinstance(mem_scope, str)
         assert isinstance(dim_tags, tuple)
         assert all(isinstance(dim_tag, FixedStrideArrayDimTag) for dim_tag in
                 dim_tags)
@@ -522,16 +521,17 @@ class CallableKernel(InKernelCallable):
             if isinstance(id, str):
                 id = kw_to_pos[id]
             assert isinstance(id, int)
+
             if isinstance(descr, ArrayArgDescriptor):
                 new_args[id] = new_args[id].copy(shape=descr.shape,
-                        dim_tags=descr.dim_tags)
+                        dim_tags=descr.dim_tags,
+                        memory_address_space=descr.mem_scope)
             elif isinstance(descr, ValueArgDescriptor):
                 pass
             else:
                 raise LoopyError("Descriptor must be either an instance of "
                         "ArrayArgDescriptor or ValueArgDescriptor -- got %s." %
                         type(descr))
-
         descriptor_specialized_knl = self.subkernel.copy(args=new_args)
 
         return self.copy(subkernel=descriptor_specialized_knl,

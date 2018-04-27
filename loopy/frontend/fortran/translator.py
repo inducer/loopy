@@ -679,7 +679,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
                 if dims is not None:
                     # default order is set to "F" in kernel creation below
                     kernel_data.append(
-                            lp.GlobalArg(
+                            lp.ArrayArg(
                                 arg_name,
                                 dtype=sub.get_type(arg_name),
                                 shape=sub.get_loopy_shape(arg_name),

@@ -44,8 +44,8 @@ from loopy.kernel.instruction import (
 from loopy.kernel.data import (
         auto,
         KernelArgument,
-        ValueArg, GlobalArg, ConstantArg, ImageArg,
-        temp_var_scope, TemporaryVariable,
+        ValueArg, ArrayArg, GlobalArg, ConstantArg, ImageArg,
+        temp_var_scope, TemporaryVariable, MemoryAddressSpace,
         SubstitutionRule,
         CallMangleInfo)
 from loopy.kernel.function_interface import (
@@ -169,8 +169,8 @@ __all__ = [
         "ScalarCallable",
 
         "KernelArgument",
-        "ValueArg", "GlobalArg", "ConstantArg", "ImageArg",
-        "temp_var_scope", "TemporaryVariable",
+        "ValueArg", "ArrayArg", "GlobalArg", "ConstantArg", "ImageArg",
+        "MemoryAddressSpace", "temp_var_scope", "TemporaryVariable",
         "SubstitutionRule",
         "CallMangleInfo",
 

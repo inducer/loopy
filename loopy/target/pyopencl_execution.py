@@ -160,9 +160,9 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                 """)
 
             gen("")
-            from loopy.kernel.data import GlobalArg
+            from loopy.kernel.data import ArrayArg
             for arg in implemented_data_info:
-                if issubclass(arg.arg_class, GlobalArg):
+                if issubclass(arg.arg_class, ArrayArg):
                     gen(
                             "wait_for.extend({arg_name}.events)"
                             .format(arg_name=arg.name))
@@ -179,9 +179,9 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         if kernel.options.cl_exec_manage_array_events:
             gen("")
-            from loopy.kernel.data import GlobalArg
+            from loopy.kernel.data import ArrayArg
             for arg in implemented_data_info:
-                if (issubclass(arg.arg_class, GlobalArg)
+                if (issubclass(arg.arg_class, ArrayArg)
                         and arg.base_name in kernel.get_written_variables()):
                     gen("{arg_name}.add_event(_lpy_evt)".format(arg_name=arg.name))
 

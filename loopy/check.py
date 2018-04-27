@@ -239,20 +239,20 @@ def check_for_inactive_iname_access(kernel):
 
 
 def _is_racing_iname_tag(tv, tag):
-    from loopy.kernel.data import (temp_var_scope,
+    from loopy.kernel.data import (MemoryAddressSpace,
             LocalIndexTagBase, GroupIndexTag, ConcurrentTag, auto)
 
-    if tv.scope == temp_var_scope.PRIVATE:
+    if tv.scope == MemoryAddressSpace.PRIVATE:
         return (
                 isinstance(tag, ConcurrentTag)
                 and not isinstance(tag, (LocalIndexTagBase, GroupIndexTag)))
 
-    elif tv.scope == temp_var_scope.LOCAL:
+    elif tv.scope == MemoryAddressSpace.LOCAL:
         return (
                 isinstance(tag, ConcurrentTag)
                 and not isinstance(tag, GroupIndexTag))
 
-    elif tv.scope == temp_var_scope.GLOBAL:
+    elif tv.scope == MemoryAddressSpace.GLOBAL:
         return isinstance(tag, ConcurrentTag)
 
     elif tv.scope == auto:
@@ -517,15 +517,15 @@ class IndirectDependencyEdgeFinder(object):
 
 
 def declares_nosync_with(kernel, var_scope, dep_a, dep_b):
-    from loopy.kernel.data import temp_var_scope
-    if var_scope == temp_var_scope.GLOBAL:
+    from loopy.kernel.data import MemoryAddressSpace
+    if var_scope == MemoryAddressSpace.GLOBAL:
         search_scopes = ["global", "any"]
-    elif var_scope == temp_var_scope.LOCAL:
+    elif var_scope == MemoryAddressSpace.LOCAL:
         search_scopes = ["local", "any"]
-    elif var_scope == temp_var_scope.PRIVATE:
+    elif var_scope == MemoryAddressSpace.PRIVATE:
         search_scopes = ["any"]
     else:
-        raise ValueError("unexpected value of 'temp_var_scope'")
+        raise ValueError("unexpected value of 'MemoryAddressSpace'")
 
     ab_nosync = False
     ba_nosync = False
@@ -548,7 +548,7 @@ def _check_variable_access_ordered_inner(kernel):
     wmap = kernel.writer_map()
     rmap = kernel.reader_map()
 
-    from loopy.kernel.data import GlobalArg, ValueArg, temp_var_scope
+    from loopy.kernel.data import ValueArg, MemoryAddressSpace, ArrayArg
     from loopy.kernel.tools import find_aliasing_equivalence_classes
 
     depfind = IndirectDependencyEdgeFinder(kernel)
@@ -574,10 +574,10 @@ def _check_variable_access_ordered_inner(kernel):
             scope = kernel.temporary_variables[name].scope
         else:
             arg = kernel.arg_dict[name]
-            if isinstance(arg, GlobalArg):
-                scope = temp_var_scope.GLOBAL
+            if isinstance(arg, ArrayArg):
+                scope = arg.memory_address_space
             elif isinstance(arg, ValueArg):
-                scope = temp_var_scope.PRIVATE
+                scope = MemoryAddressSpace.PRIVATE
             else:
                 # No need to consider ConstantArg and ImageArg (for now)
                 # because those won't be written.
@@ -843,7 +843,7 @@ def check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel):
 # {{{ check that temporaries are defined in subkernels where used
 
 def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
-    from loopy.kernel.data import temp_var_scope
+    from loopy.kernel.data import MemoryAddressSpace
     from loopy.kernel.tools import get_subkernels
 
     for subkernel in get_subkernels(kernel):
@@ -874,7 +874,7 @@ def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
                             "aliases have a definition" % (temporary, subkernel))
                 continue
 
-            if tval.scope in (temp_var_scope.PRIVATE, temp_var_scope.LOCAL):
+            if tval.scope in (MemoryAddressSpace.PRIVATE, MemoryAddressSpace.LOCAL):
                 from loopy.diagnostic import MissingDefinitionError
                 raise MissingDefinitionError("temporary variable '%s' gets used "
                         "in subkernel '%s' without a definition (maybe you forgot "
