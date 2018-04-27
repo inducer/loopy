@@ -512,7 +512,8 @@ class CASTBuilder(ASTBuilderBase):
                     six.itervalues(kernel.temporary_variables),
                     key=lambda tv: tv.name):
 
-                if tv.scope == MemoryAddressSpace.GLOBAL and tv.initializer is not None:
+                if tv.scope == MemoryAddressSpace.GLOBAL and (
+                        tv.initializer is not None):
                     assert tv.read_only
 
                     decl_info, = tv.decl_info(self.target,
