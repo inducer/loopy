@@ -508,10 +508,6 @@ class CallableKernel(InKernelCallable):
 
         # tuning the subkernel so that we have the the matching shapes and
         # dim_tags.
-        # FIXME: Although We receive input if the argument is
-        # `local/global`. We do not use it to set the subkernel function
-        # signature. Need to do it, so that we can handle teporary inputs
-        # in the array call.
 
         # Collecting the parameters
         new_args = self.subkernel.args[:]
