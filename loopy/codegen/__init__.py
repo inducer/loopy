@@ -197,12 +197,6 @@ class CodeGenerationState(object):
         generated.
 
     .. attribute:: schedule_index_end
-
-    .. attribute:: is_generating_master_kernel
-
-        Can be either `True` or `False`. Indicating whether the code is being
-        generated for a master kernel or an auxiliary kernel.
-
     """
 
     def __init__(self, kernel,
@@ -212,8 +206,7 @@ class CodeGenerationState(object):
             vectorization_info=None, var_name_generator=None,
             is_generating_device_code=None,
             gen_program_name=None,
-            schedule_index_end=None,
-            is_generating_master_kernel=None):
+            schedule_index_end=None):
         self.kernel = kernel
         self.implemented_data_info = implemented_data_info
         self.implemented_domain = implemented_domain
@@ -228,7 +221,6 @@ class CodeGenerationState(object):
         self.is_generating_device_code = is_generating_device_code
         self.gen_program_name = gen_program_name
         self.schedule_index_end = schedule_index_end
-        self.is_generating_master_kernel = is_generating_master_kernel
 
     # {{{ copy helpers
 
@@ -237,8 +229,7 @@ class CodeGenerationState(object):
             var_subst_map=None, vectorization_info=None,
             is_generating_device_code=None,
             gen_program_name=None,
-            schedule_index_end=None,
-            is_generating_master_kernel=None):
+            schedule_index_end=None):
 
         if kernel is None:
             kernel = self.kernel
@@ -261,9 +252,6 @@ class CodeGenerationState(object):
         if schedule_index_end is None:
             schedule_index_end = self.schedule_index_end
 
-        if is_generating_master_kernel is None:
-            is_generating_master_kernel = self.is_generating_master_kernel
-
         return CodeGenerationState(
                 kernel=kernel,
                 implemented_data_info=implemented_data_info,
@@ -279,8 +267,7 @@ class CodeGenerationState(object):
                 var_name_generator=self.var_name_generator,
                 is_generating_device_code=is_generating_device_code,
                 gen_program_name=gen_program_name,
-                schedule_index_end=schedule_index_end,
-                is_generating_master_kernel=is_generating_master_kernel)
+                schedule_index_end=schedule_index_end)
 
     def copy_and_assign(self, name, value):
         """Make a copy of self with variable *name* fixed to *value*."""
@@ -421,11 +408,8 @@ class PreambleInfo(ImmutableRecord):
 
 # {{{ main code generation entrypoint
 
-def generate_code_v2(kernel, is_generating_master_kernel=True):
+def generate_code_v2(kernel):
     """
-    :arg is_generating_master_kernel: An instance of :class:`bool`. *True* if
-        the code is being generated for a master kernel, otherwise *False*.
-
     :returns: a :class:`CodeGenerationResult`
     """
 
@@ -520,8 +504,7 @@ def generate_code_v2(kernel, is_generating_master_kernel=True):
                 kernel.target.host_program_name_prefix
                 + kernel.name
                 + kernel.target.host_program_name_suffix),
-            schedule_index_end=len(kernel.schedule),
-            is_generating_master_kernel=is_generating_master_kernel)
+            schedule_index_end=len(kernel.schedule))
 
     from loopy.codegen.result import generate_host_or_device_program
 
@@ -538,8 +521,8 @@ def generate_code_v2(kernel, is_generating_master_kernel=True):
             from loopy.kernel.function_interface import CallableKernel
             if isinstance(in_knl_callable, CallableKernel):
                 auxiliary_dev_prog = generate_code_v2(
-                        in_knl_callable.subkernel.copy(target=kernel.target),
-                        is_generating_master_kernel=False).device_programs[0].ast
+                        in_knl_callable.subkernel.copy(target=kernel.target)
+                        ).device_programs[0].ast
                 auxiliary_dev_progs.append(auxiliary_dev_prog)
         elif isinstance(insn, (Assignment, NoOpInstruction, Assignment,
                                BarrierInstruction, CInstruction,
