@@ -561,8 +561,8 @@ class TemporaryVariable(ArrayBase):
 
     def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
         if self.scope == MemoryAddressSpace.GLOBAL:
-            return ast_builder.get_global_arg_decl(self.name + name_suffix, shape,
-                    dtype, is_written)
+            return ast_builder.get_array_arg_decl(self.name + name_suffix,
+                    MemoryAddressSpace.GLOBAL, shape, dtype, is_written)
         else:
             raise LoopyError("unexpected request for argument declaration of "
                     "non-global temporary")

@@ -536,19 +536,22 @@ class OpenCLCASTBuilder(CASTBuilder):
 
         if mem_address_space == MemoryAddressSpace.LOCAL:
             return CLLocal(super(OpenCLCASTBuilder, self).get_array_arg_decl(
-                name, shape, dtype, is_written))
+                name, mem_address_space, shape, dtype, is_written))
         elif mem_address_space == MemoryAddressSpace.PRIVATE:
             return super(OpenCLCASTBuilder, self).get_array_arg_decl(
-                name, shape, dtype, is_written)
+                name, mem_address_space, shape, dtype, is_written)
         elif mem_address_space == MemoryAddressSpace.GLOBAL:
             return CLGlobal(super(OpenCLCASTBuilder, self).get_array_arg_decl(
-                name, shape, dtype, is_written))
+                name, mem_address_space, shape, dtype, is_written))
         else:
             raise ValueError("unexpected array argument scope: %s"
                     % mem_address_space)
 
     def get_global_arg_decl(self, name, shape, dtype, is_written):
         from loopy.kernel.data import MemoryAddressSpace
+        from warnings import warn
+        warn("get_global_arg_decl is deprecated use get_array_arg_decl "
+                "instead.", DeprecationWarning, stacklevel=2)
 
         return self.get_array_arg_decl(name, MemoryAddressSpace.GLOBAL, shape,
                 dtype, is_written)

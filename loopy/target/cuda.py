@@ -364,7 +364,7 @@ class CUDACASTBuilder(CASTBuilder):
         from cgen.cuda import CudaConstant
         return CudaConstant(decl)
 
-    def get_array_arg_decl(self, name, shape, dtype, is_written):
+    def get_array_arg_decl(self, name, mem_address_space, shape, dtype, is_written):
         from loopy.target.c import POD  # uses the correct complex type
         from cgen import Const
         from cgen.cuda import CudaRestrictPointer
@@ -376,7 +376,12 @@ class CUDACASTBuilder(CASTBuilder):
 
         return arg_decl
 
-    get_global_arg_decl = get_array_arg_decl
+    def get_global_arg_decl(self, name, shape, dtype, is_written):
+        from warnings import warn
+        warn("get_global_arg_decl is deprecated use get_array_arg_decl "
+                "instead.", DeprecationWarning, stacklevel=2)
+        return self.get_array_arg_decl(name, MemoryAddressSpace.GLOBAL, shape,
+                dtype, is_written)
 
     def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
         raise NotImplementedError("not yet: texture arguments in CUDA")

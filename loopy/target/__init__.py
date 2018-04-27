@@ -202,6 +202,9 @@ class ASTBuilderBase(object):
         """
         raise NotImplementedError()
 
+    def get_array_arg_decl(self, name, mem_address_space, shape, dtype, is_written):
+        raise NotImplementedError()
+
     def get_global_arg_decl(self, name, shape, dtype, is_written):
         raise NotImplementedError()
 

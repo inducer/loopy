@@ -771,7 +771,7 @@ class CASTBuilder(ASTBuilderBase):
 
         return result
 
-    def get_array_arg_decl(self, name, shape, dtype, is_written):
+    def get_array_arg_decl(self, name, mem_address_space, shape, dtype, is_written):
         from cgen import RestrictPointer, Const
 
         arg_decl = RestrictPointer(POD(self, dtype, name))
@@ -781,7 +781,13 @@ class CASTBuilder(ASTBuilderBase):
 
         return arg_decl
 
-    get_global_arg_decl = get_array_arg_decl
+    def get_global_arg_decl(self, name, shape, dtype, is_written):
+        from warnings import warn
+        warn("get_global_arg_decl is deprecated use get_array_arg_decl "
+                "instead.", DeprecationWarning, stacklevel=2)
+        from loopy.kernel.data import MemoryAddressSpace
+        return self.get_array_arg_decl(name, MemoryAddressSpace.GLOBAL, shape,
+                dtype, is_written)
 
     def get_constant_arg_decl(self, name, shape, dtype, is_written):
         from loopy.target.c import POD  # uses the correct complex type

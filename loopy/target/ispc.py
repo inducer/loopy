@@ -329,7 +329,7 @@ class ISPCASTBuilder(CASTBuilder):
         from cgen.ispc import ISPCUniform
         return ISPCUniform(decl)
 
-    def get_array_arg_decl(self, name, shape, dtype, is_written):
+    def get_array_arg_decl(self, name, mem_address_space, shape, dtype, is_written):
         from loopy.target.c import POD  # uses the correct complex type
         from cgen import Const
         from cgen.ispc import ISPCUniformPointer, ISPCUniform
@@ -343,7 +343,12 @@ class ISPCASTBuilder(CASTBuilder):
 
         return arg_decl
 
-    get_global_arg_decl = get_array_arg_decl
+    def get_global_arg_decl(self, name, shape, dtype, is_written):
+        from warnings import warn
+        warn("get_global_arg_decl is deprecated use get_array_arg_decl "
+                "instead.", DeprecationWarning, stacklevel=2)
+        return self.get_array_arg_decl(name, MemoryAddressSpace.GLOBAL, shape,
+                dtype, is_written)
 
     def get_value_arg_decl(self, name, shape, dtype, is_written):
         result = super(ISPCASTBuilder, self).get_value_arg_decl(
