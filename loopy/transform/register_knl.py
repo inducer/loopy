@@ -115,6 +115,31 @@ def register_callable_kernel(parent, function_name, child):
 
 
 def inline_kernel(kernel, function, arg_map=None):
+    """
+    This transformation inlines a callable child kernel into the parent kernel.
+
+    :arg: kernel
+
+        The parent kernel.
+
+    :arg: function
+
+        The name of the function call to which the callable kernel is inlined.
+
+    :arg: arg_map
+
+        Dictionary which maps argument names in the child kernel to variables
+        in the parnet kernel. If not provided, the arguments will be mapped
+        according to their access and position, i.e. the first argument in the
+        child kernel with write access will be mapped to the first assignee in
+        the function call, and so on.
+
+    """
+
+    assert isinstance(kernel, LoopKernel)
+    assert isinstance(function, str)
+    if not arg_map:
+        assert isinstance(arg_map, dict)
 
     if function not in kernel.scoped_functions:
         raise LoopyError("function: {0} does not exist".format(function))

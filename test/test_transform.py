@@ -500,8 +500,11 @@ def test_inline_kernel(ctx_factory):
     knl4 = lp.register_callable_kernel(knl4, 'func', knl1)
     knl4 = lp.inline_kernel(knl4, "func", {"a": "x", "b": "y", "c": "z"})
     evt, (out,) = knl4(queue, x=x, y=y)
-    z = np.tile(np.flip(x + y * 2, 0), [16, 1])
+    z = x + y * 2
+    z = z[::-1]
+    z = np.tile(z, [16, 1])
     assert np.allclose(out, z)
+
 
 def test_inline_kernel_2d(ctx_factory):
     ctx = ctx_factory()
@@ -561,6 +564,7 @@ def test_inline_kernel_2d(ctx_factory):
     evt, (out,) = knl3(queue, x=x, y=y)
     z = np.tile(np.transpose(x + y * 2), [16, 1, 1])
     assert np.allclose(out, z)
+
 
 def test_rename_argument(ctx_factory):
     ctx = ctx_factory()
