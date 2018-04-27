@@ -184,6 +184,18 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     .. attribute:: target
 
         A subclass of :class:`loopy.TargetBase`.
+
+    .. attribute:: is_master_kernel
+
+        # TODO: Naming suggestions?
+        # is_top_level_kernel
+        # is_caller_kernel
+        # is_called_from_host
+        # is_root_kernel
+
+        An instance of :class:`bool`. Will be set *False* for the kernel which
+        would be called from another top level kernels. Default value is
+        *True*.
     """
 
     # {{{ constructor
@@ -212,6 +224,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             options=None,
 
             state=kernel_state.INITIAL,
+            is_master_kernel=True,
             target=None,
 
             overridden_get_grid_sizes_for_insn_ids=None):
@@ -297,6 +310,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 index_dtype=index_dtype,
                 options=options,
                 state=state,
+                is_master_kernel=is_master_kernel,
                 target=target,
                 overridden_get_grid_sizes_for_insn_ids=(
                     overridden_get_grid_sizes_for_insn_ids))
@@ -1358,6 +1372,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             "silenced_warnings",
             "options",
             "state",
+            "is_master_kernel",
             "target",
             )
 
