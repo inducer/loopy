@@ -1827,15 +1827,16 @@ def get_callee_kernels(kernel, insn_ids=None):
         from loopy.kernel.instruction import (CallInstruction,
                 MultiAssignmentBase, CInstruction, _DataObliviousInstruction)
         if isinstance(insn, CallInstruction):
-            in_knl_callable = kernel.scoped_functions[
-                    insn.expression.function.name]
-            if isinstance(in_knl_callable, CallableKernel):
-                return in_knl_callable.subkernel
+            if insn.expression.function.name in kernel.scoped_functions:
+                in_knl_callable = kernel.scoped_functions[
+                        insn.expression.function.name]
+                if isinstance(in_knl_callable, CallableKernel):
+                    return in_knl_callable.subkernel
         elif isinstance(insn, (MultiAssignmentBase,
                 CInstruction, _DataObliviousInstruction)):
             pass
         else:
-            raise NotImplementedError("Unknoown type of instruction %s." %
+            raise NotImplementedError("Unknown type of instruction %s." %
                     type(insn))
 
         return None
