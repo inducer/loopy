@@ -374,7 +374,9 @@ code_gen_cache = WriteOncePersistentDict(
 
 class InKernelCallablesCollector(CombineMapper):
     """
-    Yields the preambles from all the scoped functions in the kernel.
+    Returns an instance of :class:`frozenset` containing instances of
+    :class:`loopy.kernel.function_interface.InKernelCallable` in the
+    :attr:``kernel`.
     """
     def __init__(self, kernel):
         self.kernel = kernel
