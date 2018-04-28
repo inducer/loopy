@@ -1976,18 +1976,20 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
                 gen_sched = convert_barrier_instructions_to_barriers(
                         kernel, gen_sched)
 
-                gsize, lsize = kernel.get_grid_size_upper_bounds()
+                if kernel.is_master_kernel:
+                    gsize, lsize = kernel.get_grid_size_upper_bounds()
 
-                if (gsize or lsize):
-                    if not kernel.options.disable_global_barriers:
-                        logger.debug("%s: barrier insertion: global" % kernel.name)
+                    if (gsize or lsize):
+                        if not kernel.options.disable_global_barriers:
+                            logger.debug("%s: barrier insertion: global" % (
+                                kernel.name))
+                            gen_sched = insert_barriers(kernel, gen_sched,
+                                    synchronization_kind="global", verify_only=True)
+
+                        logger.debug("%s: barrier insertion: local" % kernel.name)
                         gen_sched = insert_barriers(kernel, gen_sched,
-                                synchronization_kind="global", verify_only=True)
-
-                    logger.debug("%s: barrier insertion: local" % kernel.name)
-                    gen_sched = insert_barriers(kernel, gen_sched,
-                        synchronization_kind="local", verify_only=False)
-                    logger.debug("%s: barrier insertion: done" % kernel.name)
+                            synchronization_kind="local", verify_only=False)
+                        logger.debug("%s: barrier insertion: done" % kernel.name)
 
                 new_kernel = kernel.copy(
                         schedule=gen_sched,

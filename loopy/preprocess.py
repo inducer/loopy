@@ -2282,6 +2282,92 @@ def infer_arg_descr(kernel):
 # }}}
 
 
+# {{{
+
+class HWAxesInferenceMapper(CombineMapper):
+    """
+    Returns a set of instances of :class:`tuple` (expr,
+    in_kernel_callable). The mapped `in_kernel_callable` of the
+    :class:`InKernelCallable` are specialized for the the grid sizes of
+    :attr:`kernel`.
+    """
+
+    def __init__(self, kernel):
+        self.kernel = kernel
+        self.local_size, self.global_size = kernel.get_grid_size_upper_bounds()
+
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, frozenset())
+
+    def map_call(self, expr, **kwargs):
+        # ignoring if the call is not to a ScopedFunction
+        from loopy.symbolic import ScopedFunction
+        if not isinstance(expr.function, ScopedFunction):
+            return self.combine((self.rec(child) for child in expr.parameters))
+
+        new_scoped_function = (
+                self.kernel.scoped_functions[expr.function.name].with_hw_axes_sizes(
+                    self.local_size, self.global_size))
+
+        return (frozenset(((expr, new_scoped_function), )) |
+                self.combine((self.rec(child) for child in expr.parameters)))
+
+    def map_call_with_kwargs(self, expr, **kwargs):
+        from loopy.symbolic import ScopedFunction
+        # ignoring if the call is not to a ScopedFunction
+        if not isinstance(expr.function, ScopedFunction):
+            return self.combine((self.rec(child) for child in expr.parameters))
+
+        new_scoped_function = (
+                self.kernel.scoped_functions[expr.function.name].with_hw_axes_sizes(
+                    self.local_size, self.global_size))
+
+        return (frozenset(((expr, new_scoped_function), )) |
+                self.combine((self.rec(child) for child in
+                    expr.parameters+tuple(expr.kw_parameters.values()))))
+
+    def map_constant(self, expr, **kwargs):
+        return frozenset()
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
+    map_tagged_variable = map_constant
+    map_type_cast = map_constant
+
+
+def infer_hw_axes_sizes(kernel):
+    """
+    Returns a copy of *kernel* with the hardware axes matching for
+    scoped functions in the *kernel*. Refer
+    :meth:`loopy.kernel.function_interface.InKernelCallable.with_hw_axes_sizes`.
+    """
+    hw_axes_modifier = HWAxesInferenceMapper(kernel)
+    pymbolic_calls_to_functions = set()
+
+    for insn in kernel.instructions:
+        if isinstance(insn, MultiAssignmentBase):
+            pymbolic_calls_to_functions.update(hw_axes_modifier(
+                insn.expression))
+        elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
+            pass
+        else:
+            raise NotImplementedError("unknown type of instruction %s." %
+                    type(insn))
+
+    # making it the set of tuples a dict
+    pymbolic_calls_to_functions = dict(pymbolic_calls_to_functions)
+
+    # Now do the similar treatment as done for type inference.
+    from loopy.kernel.function_interface import (
+            register_pymbolic_calls_to_knl_callables)
+
+    return register_pymbolic_calls_to_knl_callables(kernel,
+            pymbolic_calls_to_functions)
+
+# }}}
+
+
 # {{{ catching functions that are not ready for codegen
 
 class FunctionsNotReadyForCodegenCollector(CombineMapper):
@@ -2480,6 +2566,7 @@ def preprocess_kernel(kernel, device=None):
     # inferring the shape and dim_tags of the arguments involved in a function
     # call.
     kernel = infer_arg_descr(kernel)
+    kernel = infer_hw_axes_sizes(kernel)
 
     # boostability should be removed in 2017.x.
     kernel = find_idempotence(kernel)

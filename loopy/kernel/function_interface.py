@@ -129,6 +129,17 @@ def get_kw_pos_association(kernel):
 
     return kw_to_pos, pos_to_kw
 
+
+class GridOverride(ImmutableRecord):
+    fields = set(["local_size", "global_size"])
+
+    def __init__(self, local_size, global_size):
+        self.local_size = local_size
+        self.global_size = global_size
+
+    def __call__(self, insn_ids, ignore_auto=True):
+        return self.local_size, self.global_size
+
 # }}}
 
 
@@ -240,19 +251,11 @@ class InKernelCallable(ImmutableRecord):
 
         return self.copy(arg_id_to_dtype=new_arg_id_to_dtype)
 
-    def with_iname_tag_usage(self, unusable, concurrent_shape):
+    def with_hw_axes_sizes(self, local_size, global_size):
         """
-        :arg unusable: a set of iname tags that may not be used in the callee.
-        :arg concurrent_shape: an list of tuples ``(iname_tag, bound)`` for
-            concurrent inames that are used in the calller but also available
-            for mapping by the callee. *bound* is given as a
-            :class:`islpy.PwAff`.
-
-        :returns: a list of the same type as *concurrent*, potentially modified
-            by increasing bounds or adding further iname tag entries.
-
-        All iname tags not explicitly listed in *concurrent* or *unusable* are
-        available for mapping by the callee.
+        # TODO: docs
+        :arg local_size:
+        :arg global_size:
         """
 
         raise NotImplementedError()
@@ -317,6 +320,9 @@ class ScalarCallable(InKernelCallable):
 
         arg_id_to_descr[-1] = ValueArgDescriptor()
         return self.copy(arg_id_to_descr=arg_id_to_descr)
+
+    def with_hw_axes_sizes(self, global_size, local_size):
+        return self.copy()
 
     def is_ready_for_codegen(self):
 
@@ -532,6 +538,17 @@ class CallableKernel(InKernelCallable):
 
         return self.copy(subkernel=descriptor_specialized_knl,
                 arg_id_to_descr=arg_id_to_descr)
+
+    def with_hw_axes_sizes(self, gsize, lsize):
+        """
+        # TODO: docs
+        :arg gsize:
+        :arg lsize:
+        """
+        return self.copy(
+                subkernel=self.subkernel.copy(
+                    overridden_get_grid_sizes_for_insn_ids=GridOverride(
+                        lsize, gsize)))
 
     def is_ready_for_codegen(self):
 
