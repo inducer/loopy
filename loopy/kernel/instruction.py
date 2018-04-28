@@ -1127,8 +1127,8 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
             # assignee as an instance of SubArrayRef. If not given as a
             # SubArrayRef
             return CallInstruction(
-                    assignees=tuple(get_array_call_assignee(assignee) for
-                        assignee in assignees),
+                    assignees=tuple(modify_assignee_assignee_for_array_call(
+                        assignee) for assignee in assignees),
                     expression=expression,
                     temp_var_types=temp_var_types,
                     **kwargs)

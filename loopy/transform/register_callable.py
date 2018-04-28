@@ -98,6 +98,10 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel):
                         target=caller_kernel.target,
                         is_master_kernel=False))
 
+    # disabling global barriers for callee kernel
+    from loopy import set_options
+    callee_kernel = set_options(callee_kernel, "disable_global_barriers")
+
     return register_function_lookup(caller_kernel,
             RegisterCalleeKernel(function_name, callable_kernel))
 
