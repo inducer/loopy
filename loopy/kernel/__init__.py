@@ -362,7 +362,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return None
 
-    def lookup_function(self, identifier, ast_builder=None):
+    def lookup_function(self, identifier):
         """
         Returns an instance of
         :class:`loopy.kernel.function_interface.InKernelCallable` if the
@@ -1068,7 +1068,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 assert cur_axis is not None
 
                 if cur_axis > len(size_list):
-                    raise RuntimeError("%s axis %d unused for %s" % (
+                    raise LoopyError("%s axis %d unused for %s" % (
                         which, len(size_list), self.name))
 
                 size_list.append(size_dict[cur_axis])
