@@ -1056,6 +1056,13 @@ def subscript_contains_slice(subscript):
 
 
 def is_array_call(assignees, expression):
+    """
+    Returns *True* is the instruction is an array call.
+
+    An array call is a function call applied to array type objects. If any of
+    the arguemnts or assignees to the function is an array,
+    :meth:`is_array_call` will return *True*.
+    """
     from pymbolic.primitives import Call, CallWithKwargs, Subscript
     from loopy.symbolic import SubArrayRef
 
@@ -1073,7 +1080,7 @@ def is_array_call(assignees, expression):
     return False
 
 
-def get_array_call_assignee(assignee):
+def modify_assignee_assignee_for_array_call(assignee):
     """
     Converts the assignee subscript or variable as a SubArrayRef.
     """

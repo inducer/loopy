@@ -292,7 +292,7 @@ class ArrayArg(ArrayBase, KernelArgument):
 class GlobalArg(ArrayBase, KernelArgument):
     def __new__(cls, *args, **kwargs):
         from warnings import warn
-        warn("Use of 'GlobalArg' is deprecated use 'ArrayArg' instead.",
+        warn("Use of 'GlobalArg' is deprecated, use 'ArrayArg' instead.",
                 DeprecationWarning, stacklevel=2)
 
         return ArrayArg(*args, **kwargs)
