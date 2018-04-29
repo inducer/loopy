@@ -58,13 +58,13 @@ class ArrayArgDescriptor(ImmutableRecord):
 
     .. attribute:: mem_scope
 
-        Can be either "LOCAL" or "GLOBAL", definiing where the argument is
-        supposed to reside in the device memory.
+        An attribute of :class:`loopy.kernel.data.MemoryAddressSpace`.
 
     .. attribute:: dim_tags
 
         A tuple of instances of :class:`loopy.kernel.array._StrideArrayDimTagBase`
     """
+    fields = set(['shape', 'mem_scope', 'dim_tags'])
 
     def __init__(self, shape, mem_scope, dim_tags):
 
@@ -79,24 +79,10 @@ class ArrayArgDescriptor(ImmutableRecord):
 
         # }}}
 
-        super(ArrayArgDescriptor, self).__init__(shape=shape,
+        super(ArrayArgDescriptor, self).__init__(
+                shape=shape,
                 mem_scope=mem_scope,
                 dim_tags=dim_tags)
-
-    def copy(self, dtype=None, mem_scope=None, shape=None, dim_tags=None):
-        if dtype is None:
-            dtype = self.dtype
-
-        if mem_scope is None:
-            mem_scope = self.mem_scope
-
-        if dim_tags is None:
-            dim_tags = self.dim_tags
-
-        return ArrayArgDescriptor(
-                mem_scope=mem_scope,
-                dim_tags=dim_tags)
-
 
 # }}}
 
@@ -105,8 +91,8 @@ class ArrayArgDescriptor(ImmutableRecord):
 
 def get_kw_pos_association(kernel):
     """
-    Returns a tuple of ``(kw_to_pos, pos_to_kw)`` for the arguments present of
-    the kernel.
+    Returns a tuple of ``(kw_to_pos, pos_to_kw)`` for the arguments in the
+    *kernel*.
     """
     kw_to_pos = {}
     pos_to_kw = {}
@@ -130,7 +116,7 @@ def get_kw_pos_association(kernel):
     return kw_to_pos, pos_to_kw
 
 
-class GridOverride(ImmutableRecord):
+class GridOverrideForCalleeKernel(ImmutableRecord):
     fields = set(["local_size", "global_size"])
 
     def __init__(self, local_size, global_size):
@@ -232,7 +218,7 @@ class InKernelCallable(ImmutableRecord):
         """
 
         if target is None:
-            raise RuntimeError()
+            raise LoopyError("target cannot be None for with_target")
 
         def with_target_if_not_None(dtype):
             """
@@ -253,9 +239,8 @@ class InKernelCallable(ImmutableRecord):
 
     def with_hw_axes_sizes(self, local_size, global_size):
         """
-        # TODO: docs
-        :arg local_size:
-        :arg global_size:
+        :arg local_size: An instance of :class:`islpy.PwAff`.
+        :arg global_size: An instance of :class:`islpy.PwAff`.
         """
 
         raise NotImplementedError()
@@ -540,15 +525,10 @@ class CallableKernel(InKernelCallable):
                 arg_id_to_descr=arg_id_to_descr)
 
     def with_hw_axes_sizes(self, gsize, lsize):
-        """
-        # TODO: docs
-        :arg gsize:
-        :arg lsize:
-        """
         return self.copy(
                 subkernel=self.subkernel.copy(
-                    overridden_get_grid_sizes_for_insn_ids=GridOverride(
-                        lsize, gsize)))
+                    overridden_get_grid_sizes_for_insn_ids=(
+                        GridOverrideForCalleeKernel(lsize, gsize))))
 
     def is_ready_for_codegen(self):
 
@@ -590,12 +570,11 @@ class CallableKernel(InKernelCallable):
             parameters.append(kw_parameters[pos_to_kw[i]])
             par_dtypes.append(self.arg_id_to_dtype[pos_to_kw[i]])
 
-        # TODO: currently no suppport for assignee keywords.
         parameters = parameters + list(assignees)
         par_dtypes = par_dtypes + [self.arg_id_to_dtype[-i-1] for i, _ in
                 enumerate(assignees)]
 
-        # Note that we are not going to do any type casting in array calls.
+        # we are not going to do any type casting in array calls.
         from loopy.expression import dtype_to_type_context
         from pymbolic.mapper.stringifier import PREC_NONE
         from loopy.symbolic import SubArrayRef
@@ -622,7 +601,7 @@ class ManglerCallable(ScalarCallable):
     """
     A callable whose characateristic is defined by a function mangler.
 
-    .. attribute function_mangler::
+    .. attribute:: function_mangler
 
         A function of signature ``(target, name , arg_dtypes)`` and returns an
         instance of ``loopy.CallMangleInfo``.
@@ -722,9 +701,8 @@ def next_indexed_variable(function):
 
 class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
     """
-    Mapper that takes in a mapping ``expr_to_new_names`` and maps the
-    corresponding expression to the new names, which correspond to the names in
-    ``kernel.scoped_functions``.
+    Changes the names of scoped functions in calls of expressions according to
+    the mapping ``expr_to_new_names``
     """
 
     def __init__(self, rule_mapping_context, expr_to_new_names, subst_expander):
@@ -751,8 +729,6 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
                 return IdentityMapper.map_call(self, expr, expn_state)
         else:
             return self.map_substitution(name, tag, expr.parameters, expn_state)
-
-    # TODO: Add a method map_call_with_kwargs
 
 
 def register_pymbolic_calls_to_knl_callables(kernel,

@@ -2532,9 +2532,6 @@ def preprocess_kernel(kernel, device=None):
 
     kernel = infer_unknown_types(kernel, expect_completion=False)
 
-    # TODO: Specializng based on:
-    # 1. InameTags
-
     check_for_writes_to_predicates(kernel)
     check_reduction_iname_uniqueness(kernel)
 
@@ -2566,6 +2563,7 @@ def preprocess_kernel(kernel, device=None):
     # inferring the shape and dim_tags of the arguments involved in a function
     # call.
     kernel = infer_arg_descr(kernel)
+    # tuning the functions in the kernel to align with the grid sizes.
     kernel = infer_hw_axes_sizes(kernel)
 
     # boostability should be removed in 2017.x.
