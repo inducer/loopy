@@ -432,6 +432,9 @@ class CallableKernel(InKernelCallable):
     The :meth:`CallableKernel.with_descrs` should be called in order to match
     the ``dim_tags, shape, mem_scopes`` of the arguments shared between the
     caller and the callee kernel.
+
+    The :meth:`CallableKernel.with_hw_axes` should be called to set the grid
+    sizes for the :attr:`subkernel` of the callable.
     """
 
     fields = set(["subkernel", "arg_id_to_dtype", "arg_id_to_descr",

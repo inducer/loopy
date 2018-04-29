@@ -76,7 +76,7 @@ class RegisterCalleeKernel(ImmutableRecord):
 
 
 def register_callable_kernel(caller_kernel, function_name, callee_kernel):
-    """Returns a copy of *caller_kernel* which identifies *function_name* in an
+    """Returns a copy of *caller_kernel*, which would resolve *function_name* in an
     expression as a call to *callee_kernel*.
 
     :arg caller_kernel: An instance of :class:`loopy.kernel.LoopKernel`.
