@@ -575,9 +575,12 @@ class CallableKernel(InKernelCallable):
             parameters.append(kw_parameters[pos_to_kw[i]])
             par_dtypes.append(self.arg_id_to_dtype[pos_to_kw[i]])
 
-        parameters = parameters + list(assignees)
-        par_dtypes = par_dtypes + [self.arg_id_to_dtype[-i-1] for i, _ in
-                enumerate(assignees)]
+        assignee_write_count = -1
+        for i, arg in enumerate(self.subkernel.args):
+            if arg.direction == 'out':
+                assignee = assignees[-assignee_write_count-1]
+                parameters.insert(i, assignee)
+                par_dtypes.insert(i, self.arg_id_to_dtype[assignee_write_count])
 
         # we are not going to do any type casting in array calls.
         from loopy.expression import dtype_to_type_context
