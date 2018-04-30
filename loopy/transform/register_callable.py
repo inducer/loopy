@@ -25,6 +25,9 @@ THE SOFTWARE.
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
 from pytools import ImmutableRecord
+from loopy.diagnostic import LoopyError
+from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
+        CInstruction, _DataObliviousInstruction)
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -89,6 +92,26 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel):
     assert isinstance(caller_kernel, LoopKernel)
     assert isinstance(callee_kernel, LoopKernel)
     assert isinstance(function_name, str)
+
+    # check to make sure that the variables with 'out' direction is equal to
+    # the number of assigness in the callee kernel intructions.
+    from loopy.kernel.tools import infer_arg_direction
+    callee_kernel = infer_arg_direction(callee_kernel)
+    expected_num_assignees = len([arg for arg in callee_kernel.args if
+        arg.direction == 'out'])
+    for insn in caller_kernel.instructions:
+        if isinstance(insn, CallInstruction) and (
+                insn.expression.function.name == 'function_name'):
+            if insn.assignees != expected_num_assignees:
+                raise LoopyError("The number of arguments with 'out' direction "
+                        "in callee kernel %s and the number of assignees in "
+                        "instruction %s do not match." % (
+                            callee_kernel.name, insn.id))
+        elif isinstance(insn, (MultiAssignmentBase, CInstruction,
+                _DataObliviousInstruction)):
+            pass
+        else:
+            raise NotImplementedError("unknown instruction %s" % type(insn))
 
     # }}}
 

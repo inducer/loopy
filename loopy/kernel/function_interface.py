@@ -87,13 +87,15 @@ class ArrayArgDescriptor(ImmutableRecord):
 # }}}
 
 
-# {{{ helper function for in kernel callables
+# {{{ helper function for in-kernel callables
 
 def get_kw_pos_association(kernel):
     """
-    Returns a tuple of ``(kw_to_pos, pos_to_kw)`` for the arguments in the
+    Returns a tuple of ``(kw_to_pos, pos_to_kw)`` for the arguments in
     *kernel*.
     """
+    from loopy.kernel.tools import infer_arg_direction
+    kernel = infer_arg_direction(kernel)
     kw_to_pos = {}
     pos_to_kw = {}
 
@@ -101,17 +103,17 @@ def get_kw_pos_association(kernel):
     write_count = -1
 
     for arg in kernel.args:
-        # FIXME: Confused about the written and read variables ordering.
-        if arg.name not in kernel.get_written_variables():
+        if arg.direction == 'in':
             kw_to_pos[arg.name] = read_count
             pos_to_kw[read_count] = arg.name
             read_count += 1
-        else:
-            # These args are not read in the kernel. Hence, assuming that they
-            # must be returned.
+        elif arg.direction == 'out':
             kw_to_pos[arg.name] = write_count
             pos_to_kw[write_count] = arg.name
             write_count -= 1
+        else:
+            raise LoopyError("Unknown value of kernel argument direction %s for "
+                    "%s" % (arg.direction, arg.name))
 
     return kw_to_pos, pos_to_kw
 

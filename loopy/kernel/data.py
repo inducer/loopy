@@ -264,6 +264,7 @@ class KernelArgument(ImmutableRecord):
             dtype = None
 
         kwargs["dtype"] = dtype
+        kwargs["direction"] = kwargs.pop("direction", None)
 
         ImmutableRecord.__init__(self, **kwargs)
 
@@ -271,12 +272,14 @@ class KernelArgument(ImmutableRecord):
 class ArrayArg(ArrayBase, KernelArgument):
 
     allowed_extra_kwargs = [
-            "memory_address_space"]
+            "memory_address_space",
+            "direction"]
 
     def __init__(self, *args, **kwargs):
         # Defaulting the memory_address_space to be GLOBAL.
         kwargs["memory_address_space"] = kwargs.pop(
                 "memory_address_space", MemoryAddressSpace.GLOBAL)
+        kwargs["direction"] = kwargs.pop("direction", None)
 
         super(ArrayArg, self).__init__(*args, **kwargs)
 

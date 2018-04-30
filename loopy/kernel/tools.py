@@ -1847,4 +1847,44 @@ def get_callee_kernels(kernel, insn_ids=None):
 # }}}
 
 
+# {{{ direction helper tools
+
+def infer_arg_direction(kernel):
+    """
+    Returns a copy of *kernel* with the directions of the argument inferred.
+
+    .. note::
+        Implements a simple heuristic -- if the argument direction is not
+        specified by the user then if the argument is written at any point
+        during in the kernel then its direction is set to be ``out``, otherwise
+        ``in``.
+    """
+    from loopy.kernel.data import ArrayArg, ValueArg, ConstantArg, ImageArg
+    direction_inferred_args = []
+    for arg in kernel.args:
+        if isinstance(arg, (ArrayArg, ImageArg)):
+            if arg.direction is not None:
+                if arg.direction not in ['in', 'out']:
+                    raise LoopyError("Unknown value of direction %s for %s." % (
+                            arg.direction, arg.name))
+                direction_inferred_args.append(arg)
+            else:
+                if arg.name in kernel.get_written_variables():
+                    direction_inferred_args.append(arg.copy(direction='out'))
+                else:
+                    direction_inferred_args.append(arg.copy(direction='in'))
+        elif isinstance(arg, (ValueArg, ConstantArg)):
+            # For ValueArg, ConstantArg the direction always has to be in.
+            if arg.direction is not None and arg.direction == 'out':
+                raise LoopyError("Argument %s cannot have 'out' direction." %
+                        arg.name)
+            else:
+                direction_inferred_args.append(arg.copy(direction='in'))
+        else:
+            raise NotImplementedError("Unkonwn argument type %s." % type(arg))
+
+    return kernel.copy(args=direction_inferred_args)
+
+# }}}
+
 # vim: foldmethod=marker
