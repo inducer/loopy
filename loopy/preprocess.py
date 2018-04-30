@@ -2193,15 +2193,15 @@ class ArgDescrInferenceMapper(CombineMapper):
                 self.combine((self.rec(child) for child in expr.parameters)))
 
     def map_call_with_kwargs(self, expr, **kwargs):
-        from loopy.kernel.function_intergace import ValueArgDescriptor
+        from loopy.kernel.function_interface import ValueArgDescriptor
         from loopy.symbolic import SubArrayRef
 
         # descriptors for the args and kwargs:
         arg_id_to_descr = dict((i, get_arg_description_from_sub_array_ref(par,
             self.kernel))
                 if isinstance(par, SubArrayRef) else ValueArgDescriptor()
-                for i, par in enumerate(expr.parameters) +
-                expr.kw_parameters.items())
+                for i, par in tuple(enumerate(expr.parameters)) +
+                tuple(expr.kw_parameters.items()))
 
         assignee_id_to_descr = {}
 
@@ -2225,7 +2225,7 @@ class ArgDescrInferenceMapper(CombineMapper):
 
         # specializing the function according to the parameter description
         new_scoped_function = (
-                self.kernel.scoped_functions[expr.function.name].with_descr(
+                self.kernel.scoped_functions[expr.function.name].with_descrs(
                     combined_arg_id_to_descr))
 
         # collecting the descriptors for args, kwargs, assignees

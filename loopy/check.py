@@ -89,10 +89,10 @@ class UnscopedCallCollector(CombineMapper):
         if not isinstance(expr.function, ScopedFunction):
             return (frozenset([expr.function.name]) |
                     self.combine((self.rec(child) for child in expr.parameters
-                        + expr.kw_parameter.values())))
+                        + tuple(expr.kw_parameters.values()))))
         else:
             return self.combine((self.rec(child) for child in
-                expr.parameters+expr.kw_parameters.values()))
+                expr.parameters+tuple(expr.kw_parameters.values())))
 
     def map_constant(self, expr):
         return frozenset()

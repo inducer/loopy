@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 
 import re
+import six
 
 from six.moves import zip
 
@@ -34,9 +35,8 @@ from pymbolic.primitives import Variable
 from loopy.symbolic import parse_tagged_name
 
 
-from loopy.symbolic import (IdentityMapper, ScopedFunction,
-        SubstitutionRuleMappingContext, RuleAwareIdentityMapper,
-        SubstitutionRuleExpander)
+from loopy.symbolic import (ScopedFunction, SubstitutionRuleMappingContext,
+        RuleAwareIdentityMapper, SubstitutionRuleExpander)
 
 
 # {{{ argument descriptors
@@ -731,7 +731,37 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
                         tuple(self.rec(child, expn_state)
                             for child in expr.parameters))
             else:
-                return IdentityMapper.map_call(self, expr, expn_state)
+                return super(ScopedFunctionNameChanger, self).map_call(
+                        self, expr, expn_state)
+        else:
+            return self.map_substitution(name, tag, expr.parameters, expn_state)
+
+    def map_call_with_kwargs(self, expr, expn_state):
+        name, tag = parse_tagged_name(expr.function)
+
+        if name not in self.rule_mapping_context.old_subst_rules:
+            expanded_expr = self.subst_expander(expr)
+            if expr in self.expr_to_new_names:
+                return type(expr)(
+                    ScopedFunction(self.expr_to_new_names[expr]),
+                    tuple(self.rec(child, expn_state)
+                        for child in expr.parameters),
+                    dict(
+                        (key, self.rec(val, expn_state))
+                        for key, val in six.iteritems(expr.kw_parameters))
+                        )
+            elif expanded_expr in self.expr_to_new_names:
+                return type(expr)(
+                    ScopedFunction(self.expr_to_new_names[expanded_expr]),
+                    tuple(self.rec(child, expn_state)
+                        for child in expr.parameters),
+                    dict(
+                        (key, self.rec(val, expn_state))
+                        for key, val in six.iteritems(expr.kw_parameters))
+                        )
+            else:
+                return super(ScopedFunctionNameChanger, self).map_call_with_kwargs(
+                        expr, expn_state)
         else:
             return self.map_substitution(name, tag, expr.parameters, expn_state)
 

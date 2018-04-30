@@ -265,8 +265,13 @@ class TypeInferenceMapper(CombineMapper):
         return self.rec(expr.aggregate)
 
     def map_call(self, expr, return_tuple=False):
-        from pymbolic.primitives import Variable
+        from pymbolic.primitives import Variable, CallWithKwargs
         from loopy.symbolic import ScopedFunction
+
+        if isinstance(expr, CallWithKwargs):
+            kw_parameters = expr.kw_parameters
+        else:
+            kw_parameters = {}
 
         identifier = expr.function
         if isinstance(identifier, (Variable, ScopedFunction)):
@@ -280,21 +285,23 @@ class TypeInferenceMapper(CombineMapper):
                 return None
 
         arg_id_to_dtype = dict((i, none_if_empty(self.rec(par))) for (i, par) in
-                enumerate(expr.parameters))
+                tuple(enumerate(expr.parameters)) + tuple(kw_parameters.items()))
 
         # specializing the known function wrt type
         if isinstance(expr.function, ScopedFunction):
             in_knl_callable = self.scoped_functions[expr.function.name]
 
-            # {{{ checking that there is no overwriting of in_knl_callable
+            # {{{ checking that there is no overwriting of types of in_knl_callable
 
             if in_knl_callable.arg_id_to_dtype is not None:
 
                 # specializing an already specialized function.
                 for id, dtype in arg_id_to_dtype.items():
-                    # Ignoring the the cases when there is a discrepancy
-                    # between np.uint and np.int
                     if in_knl_callable.arg_id_to_dtype[id] != arg_id_to_dtype[id]:
+
+                        # {{{ ignoring the the cases when there is a discrepancy
+                        # between np.uint and np.int
+
                         import numpy as np
                         if in_knl_callable.arg_id_to_dtype[id].dtype.type == (
                                 np.uint32) and (
@@ -306,15 +313,16 @@ class TypeInferenceMapper(CombineMapper):
                                         np.int64):
                             continue
 
+                        # }}}
+
                         raise LoopyError("Overwriting a specialized function "
                                 "is illegal--maybe start with new instance of "
                                 "InKernelCallable?")
 
             # }}}
 
-            in_knl_callable = (
-                    in_knl_callable.with_types(
-                        arg_id_to_dtype, self.kernel))
+            in_knl_callable = in_knl_callable.with_types(
+                        arg_id_to_dtype, self.kernel)
 
             # storing the type specialized function so that it can be used for
             # later use
@@ -335,7 +343,10 @@ class TypeInferenceMapper(CombineMapper):
 
         elif isinstance(expr.function, Variable):
             # Since, the function is not "scoped", attempt to infer using
-            # kernel.function_manlgers
+            # kernel.function_manglers
+
+            # {{{ trying to infer using function manglers
+
             arg_dtypes = tuple(none_if_empty(self.rec(par)) for par in
                     expr.parameters)
 
@@ -383,8 +394,11 @@ class TypeInferenceMapper(CombineMapper):
                                 "assignments")
 
                     return [mangle_result.result_dtypes[0]]
+            # }}}
 
         return []
+
+    map_call_with_kwargs = map_call
 
     def map_variable(self, expr):
         if expr.name in self.kernel.all_inames():
