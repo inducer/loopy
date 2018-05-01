@@ -326,11 +326,29 @@ class ImageArg(ArrayBase, KernelArgument):
 
 
 class ValueArg(KernelArgument):
-    def __init__(self, name, dtype=None, approximately=1000, target=None):
+    def __init__(self, name, dtype=None, approximately=1000, target=None,
+            direction=None):
+
+        # {{{ sanity checks for direction
+
+        if direction == 'out':
+            # TODO: Is this only valid for C-like targets?
+            # Do we need to move this to target.precodegen_checks?
+            raise LoopyError("ValueArg cannot have 'out' as the direction.")
+        elif direction is None:
+            direction = 'in'
+        elif direction == 'in':
+            pass
+        else:
+            raise LoopyError("Unknown type for direction of %s." % name)
+
+        # }}}
+
         KernelArgument.__init__(self, name=name,
                 dtype=dtype,
                 approximately=approximately,
-                target=target)
+                target=target,
+                direction=direction)
 
     def __str__(self):
         import loopy as lp
