@@ -505,19 +505,22 @@ class CallableKernel(InKernelCallable):
         # tuning the subkernel so that we have the the matching shapes and
         # dim_tags.
 
-        # Collecting the parameters
         new_args = self.subkernel.args[:]
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
         for id, descr in arg_id_to_descr.items():
-            if isinstance(id, str):
-                id = kw_to_pos[id]
-            assert isinstance(id, int)
+            if isinstance(id, int):
+                id = pos_to_kw[id]
+            assert isinstance(id, str)
 
             if isinstance(descr, ArrayArgDescriptor):
-                new_args[id] = new_args[id].copy(shape=descr.shape,
+                new_arg = self.subkernel.arg_dict[id].copy(
+                        shape=descr.shape,
                         dim_tags=descr.dim_tags,
                         memory_address_space=descr.mem_scope)
+                # replacing the new arg with the arg of the same name
+                new_args = [new_arg if arg.name == id else arg for arg in
+                        new_args]
             elif isinstance(descr, ValueArgDescriptor):
                 pass
             else:
