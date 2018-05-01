@@ -303,7 +303,7 @@ def test_register_knl_with_call_with_kwargs(ctx_factory):
     n = 2 ** 2
 
     a_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float32)
-    b_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.int)
+    b_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float32)
     c_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
 
     callee_knl = lp.make_kernel(
