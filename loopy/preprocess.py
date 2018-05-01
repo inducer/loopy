@@ -2284,6 +2284,147 @@ def infer_arg_descr(kernel):
 
 # {{{
 
+def need_packing(tags_needed, tags):
+    if len(tags_needed) != len(tags):
+        return True
+
+    strides_needed = (tag.stride for tag in tags_needed)
+    strides = (tag.stride for tag in tags)
+    return any(s1!=s2 for s1, s2 in zip(strides_needed, strides))
+
+def add_pack_and_unpack(kernel):
+    """
+    """
+
+    new_domains = []
+    new_tmps = kernel.temporary_variables.copy()
+    new_calls = {}
+
+    for call in kernel.instructions:
+        if not isinstance(call, CallInstruction):
+            continue
+
+        callable = kernel.scoped_functions[call.expression.function.name]
+        from loopy.kernel.function_interface import CallableKernel
+        if isinstance(callable, CallableKernel):
+            # Not external functions
+            continue
+
+        vng = kernel.get_var_name_generator()
+        ing = kernel.get_instruction_id_generator()
+
+        parameters = call.expression.parameters
+        packing = []
+        new_params = []
+
+        from loopy.kernel.data import IlpBaseTag, VectorizeTag
+        import islpy as isl
+        from pymbolic import var
+
+        dim_type = isl.dim_type.set
+        ilp_inames = set(iname for iname in call.within_inames if isinstance(kernel.iname_to_tag.get(iname), (IlpBaseTag, VectorizeTag)))
+        new_ilp_inames = set()
+        ilp_inames_map = {}
+        for iname in ilp_inames:
+            new_iname_name = vng(iname + "_ilp")
+            ilp_inames_map[var(iname)] = var(new_iname_name)
+            new_ilp_inames.add(new_iname_name)
+        for iname in ilp_inames:
+            new_domain = kernel.get_inames_domain(iname).copy()
+            for i in range(new_domain.n_dim()):
+                old_iname = new_domain.get_dim_name(dim_type, i)
+                if old_iname in ilp_inames:
+                    new_domain = new_domain.set_dim_name(
+                        dim_type, i, ilp_inames_map[var(old_iname)].name)
+            new_domains.append(new_domain)
+
+        from loopy.symbolic import SubArrayRef
+        from pymbolic.mapper.substitutor import make_subst_func
+        from loopy.symbolic import SubstitutionMapper
+
+        for i,p in enumerate(parameters):
+            if isinstance(p, SubArrayRef):
+                des = callable.arg_id_to_descr[i]
+                name = p.subscript.aggregate.name
+                if name in kernel.temporary_variables:
+                    array = kernel.temporary_variables[name]
+                else:
+                    assert name in kernel.arg_dict
+                    array = kernel.arg_dict[name]
+                dim_tags, _ = p.get_sub_array_dim_tags_and_shape(array.dim_tags, array.shape)
+                # Check if memory layout match
+                if need_packing(des.dim_tags, dim_tags):
+                    new_swept_inames = ilp_inames_map.copy()
+                    for iname in p.swept_inames:
+                        new_swept_inames[iname] = var(vng(iname.name + "_pack"))
+                        new_domain = kernel.get_inames_domain(iname.name).copy()
+                        for i in range(new_domain.n_dim()):
+                            old_iname = new_domain.get_dim_name(dim_type, i)
+                            new_domain = new_domain.set_dim_name(
+                                dim_type, i, new_swept_inames[var(old_iname)].name)
+                        new_domains.append(new_domain)
+
+                    pack_name = vng(name + "_pack")
+
+                    from loopy.kernel.data import TemporaryVariable
+
+                    pack_tmp = TemporaryVariable(
+                        name=pack_name,
+                        shape=des.shape,
+                        dtype=array.dtype,
+                        scope=array.scope,
+                        dim_tags=des.dim_tags
+                    )
+                    new_tmps[pack_name] = pack_tmp
+
+                    from loopy import Assignment
+                    subst_mapper = SubstitutionMapper(make_subst_func(new_swept_inames))
+
+                    packing.append(Assignment(
+                        assignee=var(pack_name).index(tuple(new_swept_inames[i] for i in p.swept_inames)),
+                        expression=subst_mapper.map_subscript(p.subscript),
+                        within_inames=call.within_inames - ilp_inames | set(new_swept_inames[i].name for i in p.swept_inames) | new_ilp_inames,
+                        depends_on=call.depends_on,
+                        id=ing(call.id+"_pack")
+                    ))
+                    new_params.append(SubArrayRef(p.swept_inames, var(pack_name).index(p.swept_inames)))
+                else:
+                    new_params.append(p)
+            else:
+                new_params.append(p)
+        if packing:
+            subst_mapper = SubstitutionMapper(make_subst_func(ilp_inames_map))
+            _call = call.with_transformed_expressions(subst_mapper)
+            new_expr = _call.expression.function()
+            new_params = list(map(subst_mapper, new_params))
+            packing.append(
+                _call.copy(
+                    depends_on=_call.depends_on | set(pack.id for pack in packing),
+                    within_inames=_call.within_inames - ilp_inames | new_ilp_inames,
+                    expression=_call.expression.function(*new_params)
+                )
+            )
+            new_calls[call] = packing
+
+    if new_calls:
+        new_instructions = []
+        for insn in kernel.instructions:
+            if insn in new_calls:
+                new_instructions.extend(new_calls[insn])
+            else:
+                new_instructions.append(insn)
+        kernel = kernel.copy(
+            domains=kernel.domains + new_domains,
+            instructions=new_instructions,
+            temporary_variables=new_tmps
+        )
+    return kernel
+
+# }}}
+
+
+# {{{
+
 class HWAxesInferenceMapper(CombineMapper):
     """
     Returns a set of instances of :class:`tuple` (expr,
@@ -2813,6 +2954,9 @@ def preprocess_kernel(kernel, device=None):
     # inferring the shape and dim_tags of the arguments involved in a function
     # call.
     kernel = infer_arg_descr(kernel)
+
+    # packing args for external functions if necessary
+    kernel = add_pack_and_unpack(kernel)
 
     # tuning the functions in the kernel to align with the grid sizes.
     kernel = infer_hw_axes_sizes(kernel)
