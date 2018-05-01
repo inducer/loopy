@@ -314,7 +314,7 @@ def test_register_knl_with_call_with_kwargs(ctx_factory):
             p[i, j] = 7 * e[i, j] + 4*f1[i, j] + 2*g[i, j]
             """,
             [lp.ArrayArg('f'), lp.ArrayArg('e'), lp.ArrayArg('h'),
-                lp.ArrayArg('g'), ...])
+                lp.ArrayArg('g'), '...'])
 
     caller_knl = lp.make_kernel(
             "{[i, j, k, l, m]: 0<=i, j, k, l, m<%d}" % n,
