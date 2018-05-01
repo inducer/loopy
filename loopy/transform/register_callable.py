@@ -99,6 +99,7 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel):
     callee_kernel = infer_arg_direction(callee_kernel)
     expected_num_assignees = len([arg for arg in callee_kernel.args if
         arg.direction == 'out'])
+    expected_num_parameters = len(callee_kernel.args) - expected_num_assignees
     for insn in caller_kernel.instructions:
         if isinstance(insn, CallInstruction) and (
                 insn.expression.function.name == 'function_name'):
@@ -107,6 +108,12 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel):
                         "in callee kernel %s and the number of assignees in "
                         "instruction %s do not match." % (
                             callee_kernel.name, insn.id))
+            if insn.expression.prameters != expected_num_parameters:
+                raise LoopyError("The number of expected arguments "
+                        "for the callee kernel %s and the number of parameters in "
+                        "instruction %s do not match." % (
+                            callee_kernel.name, insn.id))
+
         elif isinstance(insn, (MultiAssignmentBase, CInstruction,
                 _DataObliviousInstruction)):
             pass

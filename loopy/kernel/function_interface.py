@@ -737,7 +737,7 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
                             for child in expr.parameters))
             else:
                 return super(ScopedFunctionNameChanger, self).map_call(
-                        self, expr, expn_state)
+                        expr, expn_state)
         else:
             return self.map_substitution(name, tag, expr.parameters, expn_state)
 
