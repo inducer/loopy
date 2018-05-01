@@ -575,14 +575,16 @@ class CallableKernel(InKernelCallable):
             parameters.append(kw_parameters[pos_to_kw[i]])
             par_dtypes.append(self.arg_id_to_dtype[pos_to_kw[i]])
 
+        # inserting the assigness at the required positions.
         assignee_write_count = -1
         for i, arg in enumerate(self.subkernel.args):
             if arg.direction == 'out':
                 assignee = assignees[-assignee_write_count-1]
                 parameters.insert(i, assignee)
                 par_dtypes.insert(i, self.arg_id_to_dtype[assignee_write_count])
+                assignee_write_count -= 1
 
-        # we are not going to do any type casting in array calls.
+        # no type casting in array calls.
         from loopy.expression import dtype_to_type_context
         from pymbolic.mapper.stringifier import PREC_NONE
         from loopy.symbolic import SubArrayRef
