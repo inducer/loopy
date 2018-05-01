@@ -244,7 +244,6 @@ def inline_kernel(kernel, function, arg_map=None):
         from pymbolic.mapper.substitutor import make_subst_func
         from loopy.symbolic import SubstitutionMapper
         from loopy.isl_helpers import simplify_via_aff
-        from functools import reduce
 
         class KernelInliner(SubstitutionMapper):
             """
@@ -267,11 +266,9 @@ def inline_kernel(kernel, function, arg_map=None):
                         raise LoopyError(
                             "Argument: {0} in child kernel: {1} does not have "
                             "constant shape.".format(arg_in, child.name))
-                    inner_sizes = [int(np.prod(arg_in.shape[i+1:]))
-                                   for i in range(len(arg_in.shape))]
-                    flatten_index = reduce(
-                        lambda x, y: p.Sum((x, y)),
-                        map(p.Product, zip(outer_indices, inner_sizes)))
+                    flatten_index = sum(
+                        idx * tag.stride
+                        for idx, tag in zip(outer_indices, arg_in.dim_tags))
                     flatten_index = simplify_via_aff(flatten_index)
 
                     from loopy.symbolic import pw_aff_to_expr
@@ -289,7 +286,7 @@ def inline_kernel(kernel, function, arg_map=None):
                     new_indices = []
                     for s in sizes:
                         ind = flatten_index // s
-                        flatten_index = flatten_index - s * ind
+                        flatten_index -= s * ind
                         new_indices.append(ind)
 
                     # Lastly, map sweeping indices to indices in Subscripts
