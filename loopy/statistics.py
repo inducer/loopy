@@ -918,7 +918,7 @@ class GlobalMemAccessCounter(MemAccessCounter):
 
         from loopy.symbolic import get_dependencies
         from loopy.kernel.data import (LocalIndexTag, GroupIndexTag,
-                                       filter_iname_by_type)
+                                       filter_iname_tags_by_type)
 
         my_inames = get_dependencies(index) & self.knl.all_inames()
 
@@ -926,10 +926,11 @@ class GlobalMemAccessCounter(MemAccessCounter):
         lid_to_iname = {}
         gid_to_iname = {}
         for iname in my_inames:
-            tags = filter_iname_by_type(self.knl.iname_to_tags[iname],
+            tags = filter_iname_tags_by_type(self.knl.iname_to_tags[iname],
                                   (GroupIndexTag, LocalIndexTag))
             if tags:
-                tag, = filter_iname_by_type(tags, (GroupIndexTag, LocalIndexTag), 1)
+                tag, = filter_iname_tags_by_type(
+                    tags, (GroupIndexTag, LocalIndexTag), 1)
                 if isinstance(tag, LocalIndexTag):
                     lid_to_iname[tag.axis] = iname
                 else:
@@ -1183,9 +1184,9 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
     l_used = set()
 
     from loopy.kernel.data import (LocalIndexTag, GroupIndexTag,
-                                   filter_iname_by_type)
+                                   filter_iname_tags_by_type)
     for iname in knl.insn_inames(insn):
-        tags = filter_iname_by_type(knl.iname_to_tags[iname],
+        tags = filter_iname_tags_by_type(knl.iname_to_tags[iname],
                               (LocalIndexTag, GroupIndexTag), 1)
         if tags:
             tag, = tags
@@ -1221,9 +1222,9 @@ def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False)
     insn_inames = knl.insn_inames(insn)
 
     if disregard_local_axes:
-        from loopy.kernel.data import LocalIndexTag, filter_iname_by_type
+        from loopy.kernel.data import LocalIndexTag, filter_iname_tags_by_type
         insn_inames = [iname for iname in insn_inames if not
-                filter_iname_by_type(knl.iname_to_tags[iname], LocalIndexTag)]
+                filter_iname_tags_by_type(knl.iname_to_tags[iname], LocalIndexTag)]
 
     inames_domain = knl.get_inames_domain(insn_inames)
     domain = (inames_domain.project_out_except(

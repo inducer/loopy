@@ -44,7 +44,7 @@ from loopy.library.function import (
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.tools import natsorted
 from loopy.diagnostic import StaticValueFindingError
-from loopy.kernel.data import filter_iname_by_type
+from loopy.kernel.data import filter_iname_tags_by_type
 
 
 # {{{ unique var names
@@ -725,7 +725,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         from loopy.kernel.data import HardwareConcurrentTag
 
         for iname in cond_inames:
-            tags = filter_iname_by_type(self.iname_to_tags[iname],
+            tags = filter_iname_tags_by_type(self.iname_to_tags[iname],
                                         HardwareConcurrentTag, 1)
             if tags:
                 tag, = tags
@@ -737,10 +737,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         multi_use_inames = set()
         for iname in cond_inames:
-            tags = filter_iname_by_type(self.iname_to_tags[iname],
+            tags = filter_iname_tags_by_type(self.iname_to_tags[iname],
                                         HardwareConcurrentTag)
             if tags:
-                tag, = filter_iname_by_type(tags, HardwareConcurrentTag, 1)
+                tag, = filter_iname_tags_by_type(tags, HardwareConcurrentTag, 1)
                 if tag.key in multi_use_keys:
                     multi_use_inames.add(iname)
 
@@ -974,18 +974,18 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         for iname in all_inames_by_insns:
             tags = self.iname_to_tags[iname]
 
-            if filter_iname_by_type(tags, GroupIndexTag):
+            if filter_iname_tags_by_type(tags, GroupIndexTag):
                 tgt_dict = global_sizes
-            elif filter_iname_by_type(tags, LocalIndexTag):
+            elif filter_iname_tags_by_type(tags, LocalIndexTag):
                 tgt_dict = local_sizes
-            elif (filter_iname_by_type(tags, AutoLocalIndexTagBase)
+            elif (filter_iname_tags_by_type(tags, AutoLocalIndexTagBase)
                   and not ignore_auto):
                 raise RuntimeError("cannot find grid sizes if automatic "
                         "local index tags are present")
             else:
                 continue
 
-            tag, = filter_iname_by_type(tags, (GroupIndexTag, LocalIndexTag), 1)
+            tag, = filter_iname_tags_by_type(tags, (GroupIndexTag, LocalIndexTag), 1)
 
             size = self.get_iname_bounds(iname).size
 

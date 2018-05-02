@@ -55,7 +55,7 @@ class auto(object):  # noqa
 # {{{ iname tags
 
 
-def filter_iname_by_type(tags, tag_type, max_num=None, min_num=None):
+def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
     """Return a subset of *tags* that matches type *tag_type*. Raises exception
     if the number of tags found were greater than *max_num* or less than
     *min_num*W.

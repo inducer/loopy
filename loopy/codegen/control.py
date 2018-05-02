@@ -41,7 +41,7 @@ def get_admissible_conditional_inames_for(codegen_state, sched_index):
     kernel = codegen_state.kernel
 
     from loopy.kernel.data import (LocalIndexTag, HardwareConcurrentTag,
-                                   filter_iname_by_type)
+                                   filter_iname_tags_by_type)
 
     from loopy.schedule import find_active_inames_at, has_barrier_within
     result = find_active_inames_at(kernel, sched_index)
@@ -49,9 +49,9 @@ def get_admissible_conditional_inames_for(codegen_state, sched_index):
     has_barrier = has_barrier_within(kernel, sched_index)
 
     for iname, tags in six.iteritems(kernel.iname_to_tags):
-        if (filter_iname_by_type(tags, HardwareConcurrentTag)
+        if (filter_iname_tags_by_type(tags, HardwareConcurrentTag)
                 and codegen_state.is_generating_device_code):
-            if not has_barrier or not filter_iname_by_type(tags, LocalIndexTag):
+            if not has_barrier or not filter_iname_tags_by_type(tags, LocalIndexTag):
                 result.add(iname)
 
     return frozenset(result)
@@ -138,12 +138,12 @@ def generate_code_for_sched_index(codegen_state, sched_index):
 
         from loopy.kernel.data import (UnrolledIlpTag, UnrollTag,
                 ForceSequentialTag, LoopedIlpTag, VectorizeTag,
-                InOrderSequentialSequentialTag, filter_iname_by_type)
-        if filter_iname_by_type(tags, (UnrollTag, UnrolledIlpTag)):
+                InOrderSequentialSequentialTag, filter_iname_tags_by_type)
+        if filter_iname_tags_by_type(tags, (UnrollTag, UnrolledIlpTag)):
             func = generate_unroll_loop
-        elif filter_iname_by_type(tags, VectorizeTag):
+        elif filter_iname_tags_by_type(tags, VectorizeTag):
             func = generate_vectorize_loop
-        elif len(tags) == 0 or filter_iname_by_type(tags, (LoopedIlpTag,
+        elif len(tags) == 0 or filter_iname_tags_by_type(tags, (LoopedIlpTag,
                     ForceSequentialTag, InOrderSequentialSequentialTag)):
             func = generate_sequential_loop_dim_code
         else:
