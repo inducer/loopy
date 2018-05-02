@@ -310,6 +310,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         warn("Since version 2018.1, inames can hold multiple tags. Use "
              "iname_to_tags['iname'] instead. iname_to_tag.get('iname') will be "
              "deprecated at version 2019.0.", DeprecationWarning)
+        for iname, tags in six.iteritems(self.iname_to_tags):
+            if len(tags) > 1:
+                raise LoopyError(
+                    "iname {0} has multiple tags: {1}. "
+                    "Use iname_to_tags['iname'] instead.".format(iname, tags))
         return dict((k, next(iter(v)))
                     for k, v in six.iteritems(self.iname_to_tags) if v)
 
