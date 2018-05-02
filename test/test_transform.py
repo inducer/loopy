@@ -480,25 +480,17 @@ def test_inline_kernel(ctx_factory):
         ]
     )
 
-    knl2 = lp.register_callable_kernel(knl2, 'func', knl1)
+    knl2 = lp.register_callable_kernel(knl2, 'func', knl1, inline=True)
     z = np.tile(x + y * 2, [16, 1])
-
-    knl2_arg_map = lp.inline_kernel(knl2, "func", {"a": "x", "b": "y", "c": "z"})
-    evt, (out, ) = knl2_arg_map(queue, x=x, y=y)
+    evt, (out, ) = knl2(queue, x=x, y=y)
     assert np.allclose(out, z)
 
-    knl2_no_arg_map = lp.inline_kernel(knl2, "func")
-    evt, (out, ) = knl2_no_arg_map(queue, x=x, y=y)
-    assert np.allclose(out, z)
-
-    knl3 = lp.register_callable_kernel(knl3, 'func', knl1)
-    knl3 = lp.inline_kernel(knl3, "func", {"a": "x", "b": "y", "c": "z"})
+    knl3 = lp.register_callable_kernel(knl3, 'func', knl1, inline=True)
     evt, (out,) = knl3(queue, x=x, y=y)
     z = np.tile(x + y * 2, [16, 1]).transpose()
     assert np.allclose(out, z)
 
-    knl4 = lp.register_callable_kernel(knl4, 'func', knl1)
-    knl4 = lp.inline_kernel(knl4, "func", {"a": "x", "b": "y", "c": "z"})
+    knl4 = lp.register_callable_kernel(knl4, 'func', knl1, inline=True)
     evt, (out,) = knl4(queue, x=x, y=y)
     z = x + y * 2
     z = z[::-1]
@@ -553,14 +545,12 @@ def test_inline_kernel_2d(ctx_factory):
         ]
     )
 
-    knl2 = lp.register_callable_kernel(knl2, 'func', knl1)
-    knl2 = lp.inline_kernel(knl2, "func", {"a": "x", "b": "y", "c": "z"})
+    knl2 = lp.register_callable_kernel(knl2, 'func', knl1, inline=True)
     evt, (out, ) = knl2(queue, x=x, y=y)
     z = np.tile(x + y * 2, [16, 1, 1])
     assert np.allclose(out, z)
 
-    knl3 = lp.register_callable_kernel(knl3, 'func', knl1)
-    knl3 = lp.inline_kernel(knl3, "func", {"a": "x", "b": "y", "c": "z"})
+    knl3 = lp.register_callable_kernel(knl3, 'func', knl1, inline=True)
     evt, (out,) = knl3(queue, x=x, y=y)
     z = np.tile(np.transpose(x + y * 2), [16, 1, 1])
     assert np.allclose(out, z)

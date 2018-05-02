@@ -440,12 +440,12 @@ class CallableKernel(InKernelCallable):
     """
 
     fields = set(["subkernel", "arg_id_to_dtype", "arg_id_to_descr",
-        "name_in_target"])
+        "name_in_target", "inline"])
     init_arg_names = ("subkernel", "arg_id_to_dtype", "arg_id_to_descr",
-            "name_in_target")
+            "name_in_target", "inline")
 
     def __init__(self, subkernel, arg_id_to_dtype=None,
-            arg_id_to_descr=None, name_in_target=None):
+            arg_id_to_descr=None, name_in_target=None, inline=False):
 
         super(CallableKernel, self).__init__(
                 arg_id_to_dtype=arg_id_to_dtype,
@@ -454,6 +454,7 @@ class CallableKernel(InKernelCallable):
             subkernel = subkernel.copy(name=name_in_target)
 
         self.name_in_target = name_in_target
+        self.inline = inline
         self.subkernel = subkernel.copy(
                 args=[arg.copy(dtype=arg.dtype.with_target(subkernel.target))
                     if arg.dtype is not None else arg for arg in subkernel.args])

@@ -38,7 +38,7 @@ from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
-from loopy.symbolic import CombineMapper
+from loopy.symbolic import CombineMapper, SubstitutionMapper, pw_aff_to_expr
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
@@ -2477,6 +2477,239 @@ def make_functions_ready_for_codegen(kernel):
 # }}}
 
 
+# {{{ inline callable kernel
+
+class KernelInliner(SubstitutionMapper):
+    """Mapper to replace variables (indices, temporaries, arguments) in the
+    callee kernel with variables in the caller kernel.
+
+    :arg caller: the caller kernel
+    :arg arg_map: dict of argument name to variables in caller
+    :arg arg_dict: dict of argument name to arguments in callee
+    """
+
+    def __init__(self, subst_func, caller, arg_map, arg_dict):
+        super(KernelInliner, self).__init__(subst_func)
+        self.caller = caller
+        self.arg_map = arg_map
+        self.arg_dict = arg_dict
+
+    def map_subscript(self, expr):
+        if expr.aggregate.name in self.arg_map:
+            import numpy as np
+            from pymbolic.mapper.substitutor import make_subst_func
+
+            aggregate = self.subst_func(expr.aggregate)
+            sar = self.arg_map[expr.aggregate.name]  # SubArrayRef in caller
+            arg = self.arg_dict[expr.aggregate.name]  # Arg in callee
+
+            # Firstly, map inner inames to outer inames.
+            outer_indices = self.map_tuple(expr.index_tuple)
+
+            # Next, reshape to match dimension of outer arrays.
+            # We can have e.g. A[3, 2] from outside and B[6] from inside
+            from numbers import Integral
+            if not all(isinstance(d, Integral) for d in arg.shape):
+                raise LoopyError(
+                    "Argument: {0} in callee kernel: {1} does not have "
+                    "constant shape.".format(arg))
+            flatten_index = sum(
+                idx * tag.stride
+                for idx, tag in zip(outer_indices, arg.dim_tags))
+            from loopy.isl_helpers import simplify_via_aff
+            flatten_index = simplify_via_aff(flatten_index)
+
+            bounds = [self.caller.get_iname_bounds(i.name)
+                      for i in sar.swept_inames]
+            sizes = [pw_aff_to_expr(b.size) for b in bounds]
+            if not all(isinstance(d, Integral) for d in sizes):
+                raise LoopyError(
+                    "SubArrayRef: {0} in caller kernel does not have "
+                    "swept inames with constant size.".format(sar))
+
+            sizes = [int(np.prod(sizes[i + 1:])) for i in range(len(sizes))]
+
+            new_indices = []
+            for s in sizes:
+                ind = flatten_index // s
+                flatten_index -= s * ind
+                new_indices.append(ind)
+
+            # Lastly, map sweeping indices to indices in Subscripts
+            # This takes care of cases such as [i, j]: A[i+j, i-j]
+            index_map = dict(zip(sar.swept_inames, new_indices))
+            index_mapper = SubstitutionMapper(make_subst_func(index_map))
+            new_indices = index_mapper.map_tuple(sar.subscript.index_tuple)
+            new_indices = tuple(simplify_via_aff(i) for i in new_indices)
+            return aggregate.index(tuple(new_indices))
+        else:
+            return super(KernelInliner, self).map_subscript(expr)
+
+
+def inline_callable_kernels(kernel):
+
+    from loopy import CallInstruction
+    import islpy as isl
+
+    for call in kernel.instructions:
+        if not isinstance(call, CallInstruction):
+            continue
+
+        callable = kernel.scoped_functions[call.expression.function.name]
+        if not callable.inline:
+            continue
+
+        callee = callable.subkernel
+        callee_label = callee.name[:4] + "_"  # label used to generate new names
+
+        # {{{ duplicate and rename inames
+
+        vng = kernel.get_var_name_generator()
+        ing = kernel.get_instruction_id_generator()
+        dim_type = isl.dim_type.set
+
+        iname_map = {}
+        for iname in callee.all_inames():
+            iname_map[iname] = vng(callee_label+iname)
+
+        new_domains = []
+        for domain in callee.domains:
+            new_domain = domain.copy()
+            for i in range(new_domain.n_dim()):
+                iname = new_domain.get_dim_name(dim_type, i)
+                new_domain = new_domain.set_dim_name(
+                    dim_type, i, iname_map[iname])
+            new_domains.append(new_domain)
+
+        kernel = kernel.copy(domains=kernel.domains + new_domains)
+
+        # }}}
+
+        # {{{ rename temporaries
+
+        temp_map = {}
+        new_temps = kernel.temporary_variables.copy()
+        for name, temp in six.iteritems(callee.temporary_variables):
+            new_name = vng(callee_label+name)
+            temp_map[name] = new_name
+            new_temps[new_name] = temp.copy(name=new_name)
+
+        kernel = kernel.copy(temporary_variables=new_temps)
+
+        # }}}
+
+        # {{{ match kernel arguments
+
+        arg_map = {}  # callee arg name -> caller symbols (e.g. SubArrayRef)
+
+        assignees = call.assignees  # writes
+        parameters = call.expression.parameters  # reads
+
+        # add keyword parameters
+        from pymbolic.primitives import CallWithKwargs
+
+        if isinstance(call.expression, CallWithKwargs):
+            from loopy.kernel.function_interface import get_kw_pos_association
+
+            _, pos_to_kw = get_kw_pos_association(callee)
+            kw_parameters = call.expression.kw_parameters
+            for i in range(len(parameters), len(parameters) + len(kw_parameters)):
+                parameters = parameters + (kw_parameters[pos_to_kw[i]],)
+
+        assignee_pos = 0
+        parameter_pos = 0
+        for i, arg in enumerate(callee.args):
+            if arg.direction == "out":
+                arg_map[arg.name] = assignees[assignee_pos]
+                assignee_pos += 1
+            else:
+                arg_map[arg.name] = parameters[parameter_pos]
+                parameter_pos += 1
+
+        # }}}
+
+        # {{{ rewrite instructions
+
+        import pymbolic.primitives as p
+        from pymbolic.mapper.substitutor import make_subst_func
+
+        var_map = dict((p.Variable(k), p.Variable(v))
+                       for k, v in six.iteritems(iname_map))
+        var_map.update(dict((p.Variable(k), p.Variable(v))
+                            for k, v in six.iteritems(temp_map)))
+        var_map.update(dict((p.Variable(k), p.Variable(v.subscript.aggregate.name))
+                            for k, v in six.iteritems(arg_map)))
+        subst_mapper = KernelInliner(
+            make_subst_func(var_map), kernel, arg_map, callee.arg_dict)
+
+        insn_id = {}
+        for insn in callee.instructions:
+            insn_id[insn.id] = ing(callee_label+insn.id)
+
+        # {{{ root and leave instructions in callee kernel
+
+        dep_map = callee.recursive_insn_dep_map()
+        # roots depend on nothing
+        heads = set(insn for insn, deps in six.iteritems(dep_map) if not deps)
+        # leaves have nothing that depends on them
+        tails = set(dep_map.keys())
+        for insn, deps in six.iteritems(dep_map):
+            tails = tails - deps
+
+        # }}}
+
+        # {{{ use NoOp to mark the start and end of callee kernel
+
+        from loopy.kernel.instruction import NoOpInstruction
+
+        noop_start = NoOpInstruction(
+            id=ing(callee_label+"_start"),
+            within_inames=call.within_inames,
+            depends_on=call.depends_on
+        )
+        noop_end = NoOpInstruction(
+            id=call.id,
+            within_inames=call.within_inames,
+            depends_on=frozenset(insn_id[insn] for insn in tails)
+        )
+        # }}}
+
+        inner_insns = [noop_start]
+
+        for _insn in callee.instructions:
+            insn = _insn.with_transformed_expressions(subst_mapper)
+            within_inames = frozenset(map(iname_map.get, insn.within_inames))
+            within_inames = within_inames | call.within_inames
+            depends_on = frozenset(map(insn_id.get, insn.depends_on))
+            if insn.id in heads:
+                depends_on = depends_on | set([noop_start.id])
+            insn = insn.copy(
+                id=insn_id[insn.id],
+                within_inames=within_inames,
+                # TODO: probaby need to keep priority in callee kernel
+                priority=call.priority,
+                depends_on=depends_on
+            )
+            inner_insns.append(insn)
+
+        inner_insns.append(noop_end)
+
+        new_insns = []
+        for insn in kernel.instructions:
+            if insn == call:
+                new_insns.extend(inner_insns)
+            else:
+                new_insns.append(insn)
+
+        kernel = kernel.copy(instructions=new_insns)
+
+        # }}}
+
+    return kernel
+
+# }}}
+
+
 preprocess_cache = WriteOncePersistentDict(
         "loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
@@ -2548,6 +2781,9 @@ def preprocess_kernel(kernel, device=None):
     #   defaults from being applied.
     kernel = realize_reduction(kernel, unknown_types_ok=False)
 
+    # inlining callable kernels that are marked with inline=True.
+    kernel = inline_callable_kernels(kernel)
+
     # type specialize functions that were missed during the type inference.
     kernel = make_functions_ready_for_codegen(kernel)
 
@@ -2563,6 +2799,7 @@ def preprocess_kernel(kernel, device=None):
     # inferring the shape and dim_tags of the arguments involved in a function
     # call.
     kernel = infer_arg_descr(kernel)
+
     # tuning the functions in the kernel to align with the grid sizes.
     kernel = infer_hw_axes_sizes(kernel)
 
