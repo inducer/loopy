@@ -2550,10 +2550,15 @@ def inline_callable_kernels(kernel):
 
     from loopy import CallInstruction
     from loopy.kernel.function_interface import CallableKernel
+    from pymbolic.primitives import Call
+
     import islpy as isl
 
     for call in kernel.instructions:
         if not isinstance(call, CallInstruction):
+            continue
+
+        if not isinstance(call.expression, Call):
             continue
 
         if call.expression.function.name not in kernel.scoped_functions:
