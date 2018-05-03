@@ -2549,6 +2549,7 @@ class KernelInliner(SubstitutionMapper):
 def inline_callable_kernels(kernel):
 
     from loopy import CallInstruction
+    from loopy.kernel.function_interface import CallableKernel
     import islpy as isl
 
     for call in kernel.instructions:
@@ -2556,6 +2557,10 @@ def inline_callable_kernels(kernel):
             continue
 
         callable = kernel.scoped_functions[call.expression.function.name]
+
+        if not isinstance(callable, CallableKernel):
+            continue
+
         if not callable.inline:
             continue
 
