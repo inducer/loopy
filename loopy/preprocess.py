@@ -2556,6 +2556,9 @@ def inline_callable_kernels(kernel):
         if not isinstance(call, CallInstruction):
             continue
 
+        if call.expression.function.name not in kernel.scoped_functions:
+            continue
+
         callable = kernel.scoped_functions[call.expression.function.name]
 
         if not isinstance(callable, CallableKernel):
@@ -2773,6 +2776,10 @@ def preprocess_kernel(kernel, device=None):
     check_for_writes_to_predicates(kernel)
     check_reduction_iname_uniqueness(kernel)
 
+    # Inlining callable kernels that are marked with inline=True.
+    # This should happen after type inference but before other transformations.
+    kernel = inline_callable_kernels(kernel)
+
     from loopy.kernel.creation import apply_single_writer_depencency_heuristic
     kernel = apply_single_writer_depencency_heuristic(kernel)
 
@@ -2785,9 +2792,6 @@ def preprocess_kernel(kernel, device=None):
     #   because it manipulates the depends_on field, which could prevent
     #   defaults from being applied.
     kernel = realize_reduction(kernel, unknown_types_ok=False)
-
-    # inlining callable kernels that are marked with inline=True.
-    kernel = inline_callable_kernels(kernel)
 
     # type specialize functions that were missed during the type inference.
     kernel = make_functions_ready_for_codegen(kernel)
