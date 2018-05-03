@@ -113,14 +113,28 @@ def check_loop_priority_inames_known(kernel):
                 raise LoopyError("unknown iname '%s' in loop priorities" % iname)
 
 
+def check_multiple_tags_allowed(kernel):
+    from loopy.kernel.data import (GroupIndexTag, LocalIndexTag, VectorizeTag,
+                UnrollTag, ForceSequentialTag, IlpBaseTag, filter_iname_tags_by_type)
+    illegal_combinations = [
+        (GroupIndexTag, LocalIndexTag, VectorizeTag, UnrollTag, ForceSequentialTag),
+        (IlpBaseTag, ForceSequentialTag)
+    ]
+    for iname, tags in six.iteritems(kernel.iname_to_tags):
+        for comb in illegal_combinations:
+            if len(filter_iname_tags_by_type(tags, comb)) > 1:
+                raise LoopyError("iname {0} has illegal combination of "
+                                 "tags: {1}".format(iname, tags))
+
+
 def check_for_double_use_of_hw_axes(kernel):
-    from loopy.kernel.data import UniqueTag
+    from loopy.kernel.data import UniqueTag, filter_iname_tags_by_type
 
     for insn in kernel.instructions:
         insn_tag_keys = set()
         for iname in kernel.insn_inames(insn):
-            tag = kernel.iname_to_tag.get(iname)
-            if isinstance(tag, UniqueTag):
+            tags = kernel.iname_to_tags[iname]
+            for tag in filter_iname_tags_by_type(tags, UniqueTag):
                 key = tag.key
                 if key in insn_tag_keys:
                     raise LoopyError("instruction '%s' has multiple "
@@ -168,9 +182,8 @@ def _is_racing_iname_tag(tv, tag):
 
 
 def check_for_write_races(kernel):
-    from loopy.kernel.data import ConcurrentTag
+    from loopy.kernel.data import ConcurrentTag, filter_iname_tags_by_type
 
-    iname_to_tag = kernel.iname_to_tag.get
     for insn in kernel.instructions:
         for assignee_name, assignee_indices in zip(
                 insn.assignee_var_names(),
@@ -187,16 +200,16 @@ def check_for_write_races(kernel):
                 # will cause write races.
 
                 raceable_parallel_insn_inames = set(
-                        iname
-                        for iname in kernel.insn_inames(insn)
-                        if isinstance(iname_to_tag(iname), ConcurrentTag))
+                    iname for iname in kernel.insn_inames(insn)
+                    if filter_iname_tags_by_type(kernel.iname_to_tags[iname],
+                                      ConcurrentTag))
 
             elif assignee_name in kernel.temporary_variables:
                 temp_var = kernel.temporary_variables[assignee_name]
                 raceable_parallel_insn_inames = set(
-                            iname
-                            for iname in kernel.insn_inames(insn)
-                            if _is_racing_iname_tag(temp_var, iname_to_tag(iname)))
+                        iname for iname in kernel.insn_inames(insn)
+                        if any(_is_racing_iname_tag(temp_var, tag)
+                            for tag in kernel.iname_to_tags[iname]))
 
             else:
                 raise LoopyError("invalid assignee name in instruction '%s'"
@@ -218,9 +231,12 @@ def check_for_orphaned_user_hardware_axes(kernel):
     from loopy.kernel.data import LocalIndexTag
     for axis in kernel.local_sizes:
         found = False
-        for tag in six.itervalues(kernel.iname_to_tag):
-            if isinstance(tag, LocalIndexTag) and tag.axis == axis:
-                found = True
+        for tags in six.itervalues(kernel.iname_to_tags):
+            for tag in tags:
+                if isinstance(tag, LocalIndexTag) and tag.axis == axis:
+                    found = True
+                    break
+            if found:
                 break
 
         if not found:
@@ -229,13 +245,12 @@ def check_for_orphaned_user_hardware_axes(kernel):
 
 
 def check_for_data_dependent_parallel_bounds(kernel):
-    from loopy.kernel.data import ConcurrentTag
+    from loopy.kernel.data import ConcurrentTag, filter_iname_tags_by_type
 
     for i, dom in enumerate(kernel.domains):
         dom_inames = set(dom.get_var_names(dim_type.set))
-        par_inames = set(iname
-                for iname in dom_inames
-                if isinstance(kernel.iname_to_tag.get(iname), ConcurrentTag))
+        par_inames = set(iname for iname in dom_inames
+            if filter_iname_tags_by_type(kernel.iname_to_tags[iname], ConcurrentTag))
 
         if not par_inames:
             continue
@@ -600,6 +615,7 @@ def pre_schedule_checks(kernel):
         check_for_double_use_of_hw_axes(kernel)
         check_insn_attributes(kernel)
         check_loop_priority_inames_known(kernel)
+        check_multiple_tags_allowed(kernel)
         check_for_inactive_iname_access(kernel)
         check_for_write_races(kernel)
         check_for_data_dependent_parallel_bounds(kernel)
@@ -650,7 +666,8 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
 
     # alternative: just disregard length-1 dimensions?
 
-    from loopy.kernel.data import LocalIndexTag, AutoLocalIndexTagBase, GroupIndexTag
+    from loopy.kernel.data import (LocalIndexTag, AutoLocalIndexTagBase,
+                        GroupIndexTag, filter_iname_tags_by_type)
 
     while i < loop_end_i:
         sched_item = kernel.schedule[i]
@@ -668,13 +685,15 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
             local_axes_used = set()
 
             for iname in kernel.insn_inames(insn):
-                tag = kernel.iname_to_tag.get(iname)
+                tags = kernel.iname_to_tags[iname]
 
-                if isinstance(tag, LocalIndexTag):
+                if filter_iname_tags_by_type(tags, LocalIndexTag):
+                    tag, = filter_iname_tags_by_type(tags, LocalIndexTag, 1)
                     local_axes_used.add(tag.axis)
-                elif isinstance(tag, GroupIndexTag):
+                elif filter_iname_tags_by_type(tags, GroupIndexTag):
+                    tag, = filter_iname_tags_by_type(tags, GroupIndexTag, 1)
                     group_axes_used.add(tag.axis)
-                elif isinstance(tag, AutoLocalIndexTagBase):
+                elif filter_iname_tags_by_type(tags, AutoLocalIndexTagBase):
                     raise LoopyError("auto local tag encountered")
 
             if group_axes != group_axes_used:
@@ -919,12 +938,12 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                 .project_out_except(insn_inames, [dim_type.set]))
 
         from loopy.kernel.instruction import BarrierInstruction
-        from loopy.kernel.data import LocalIndexTag
+        from loopy.kernel.data import LocalIndexTag, filter_iname_tags_by_type
         if isinstance(insn, BarrierInstruction):
             # project out local-id-mapped inames, solves #94 on gitlab
-            non_lid_inames = frozenset(
-                [iname for iname in insn_inames if not isinstance(
-                    kernel.iname_to_tag.get(iname), LocalIndexTag)])
+            non_lid_inames = frozenset(iname for iname in insn_inames
+                if not filter_iname_tags_by_type(
+                    kernel.iname_to_tags[iname], LocalIndexTag))
             insn_impl_domain = insn_impl_domain.project_out_except(
                 non_lid_inames, [dim_type.set])
 

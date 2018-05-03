@@ -44,6 +44,8 @@ __doc__ = """
 
 .. autofunction:: join_inames
 
+.. autofunction:: untag_inames
+
 .. autofunction:: tag_inames
 
 .. autofunction:: duplicate_inames
@@ -175,11 +177,10 @@ def _split_iname_backend(kernel, split_iname,
         for syntax.
     """
 
-    existing_tag = kernel.iname_to_tag.get(split_iname)
-    from loopy.kernel.data import ForceSequentialTag
-    if do_tagged_check and (
-            existing_tag is not None
-            and not isinstance(existing_tag, ForceSequentialTag)):
+    existing_tags = kernel.iname_to_tags[split_iname]
+    from loopy.kernel.data import ForceSequentialTag, filter_iname_tags_by_type
+    if (do_tagged_check and existing_tags
+            and not filter_iname_tags_by_type(existing_tags, ForceSequentialTag)):
         raise LoopyError("cannot split already tagged iname '%s'" % split_iname)
 
     if split_iname not in kernel.all_inames():
@@ -294,7 +295,7 @@ def _split_iname_backend(kernel, split_iname,
     kernel = ins.map_kernel(kernel)
     kernel = rule_mapping_context.finish_kernel(kernel)
 
-    if existing_tag is not None:
+    for existing_tag in existing_tags:
         kernel = tag_inames(kernel,
                 {outer_iname: existing_tag, inner_iname: existing_tag})
 
@@ -596,25 +597,49 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
 # }}}
 
 
+# {{{ untag inames
+
+def untag_inames(kernel, iname_to_untag, tag_type):
+    """
+    Remove tags on *iname_to_untag* which matches *tag_type*.
+
+    :arg iname_to_untag: iname as string.
+    :arg tag_type: a subclass of :class:`loopy.kernel.data.IndexTag`.
+
+    .. versionadded:: 2018.1
+    """
+
+    knl_iname_to_tags = kernel.iname_to_tags.copy()
+    old_tags = knl_iname_to_tags[iname_to_untag]
+    old_tags = set(tag for tag in old_tags if not isinstance(tag, tag_type))
+    knl_iname_to_tags[iname_to_untag] = old_tags
+
+    return kernel.copy(iname_to_tags=knl_iname_to_tags)
+
+# }}}
+
+
 # {{{ tag inames
 
 def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
     """Tag an iname
 
     :arg iname_to_tag: a list of tuples ``(iname, new_tag)``. *new_tag* is given
-        as an instance of a subclass of :class:`loopy.kernel.data.IndexTag` or
-        as a string as shown in :ref:`iname-tags`. May also be a dictionary
-        for backwards compatibility. *iname* may also be a wildcard using ``*``
-        and ``?``.
+        as an instance of a subclass of :class:`loopy.kernel.data.IndexTag` or an
+        iterable of which, or as a string as shown in :ref:`iname-tags`. May also
+        be a dictionary for backwards compatibility. *iname* may also be a wildcard
+        using ``*`` and ``?``.
 
     .. versionchanged:: 2016.3
 
         Added wildcards.
+
+    .. versionchanged:: 2018.1
+
+        Added iterable of tags
     """
 
-    if isinstance(iname_to_tag, dict):
-        iname_to_tag = list(six.iteritems(iname_to_tag))
-    elif isinstance(iname_to_tag, str):
+    if isinstance(iname_to_tag, str):
         def parse_kv(s):
             colon_index = s.find(":")
             if colon_index == -1:
@@ -626,12 +651,33 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
                 parse_kv(s) for s in iname_to_tag.split(",")
                 if s.strip()]
 
+    # convert dict to list of tuples
+    if isinstance(iname_to_tag, dict):
+        iname_to_tag = list(six.iteritems(iname_to_tag))
+
+    # flatten iterables of tags for each iname
+    from collections import Iterable
+    unpack_iname_to_tag = []
+    for iname, tags in iname_to_tag:
+        if isinstance(tags, Iterable) and not isinstance(tags, str):
+            for tag in tags:
+                unpack_iname_to_tag.append((iname, tag))
+        else:
+            unpack_iname_to_tag.append((iname, tags))
+    iname_to_tag = unpack_iname_to_tag
+
     from loopy.kernel.data import parse_tag as inner_parse_tag
 
     def parse_tag(tag):
         if isinstance(tag, str):
             if tag.startswith("like."):
-                return kernel.iname_to_tag.get(tag[5:])
+                tags = kernel.iname_to_tags[tag[5:]]
+                if len(tags) == 0:
+                    return None
+                if len(tags) == 1:
+                    return tags[0]
+                else:
+                    raise LoopyError("cannot use like for multiple tags (for now)")
             elif tag == "unused.g":
                 return find_unused_axis_tag(kernel, "g")
             elif tag == "unused.l":
@@ -641,8 +687,8 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
     iname_to_tag = [(iname, parse_tag(tag)) for iname, tag in iname_to_tag]
 
-    from loopy.kernel.data import (ConcurrentTag, AutoLocalIndexTagBase,
-            ForceSequentialTag)
+    from loopy.kernel.data import (ConcurrentTag, ForceSequentialTag,
+                                   filter_iname_tags_by_type)
 
     # {{{ globbing
 
@@ -671,41 +717,31 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
     # }}}
 
-    knl_iname_to_tag = kernel.iname_to_tag.copy()
+    knl_iname_to_tags = kernel.iname_to_tags.copy()
     for iname, new_tag in six.iteritems(iname_to_tag):
-        old_tag = kernel.iname_to_tag.get(iname)
+        if not new_tag:
+            continue
 
-        retag_ok = False
-
-        if isinstance(old_tag, (AutoLocalIndexTagBase, ForceSequentialTag)):
-            retag_ok = True
-
-        if not retag_ok and old_tag is not None and new_tag is None:
-            raise ValueError("cannot untag iname '%s'" % iname)
+        old_tags = kernel.iname_to_tags[iname]
 
         if iname not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % iname)
 
-        if isinstance(new_tag, ConcurrentTag) \
-                and isinstance(old_tag, ForceSequentialTag):
+        if (isinstance(new_tag, ConcurrentTag)
+                and filter_iname_tags_by_type(old_tags, ForceSequentialTag)):
             raise ValueError("cannot tag '%s' as parallel--"
                     "iname requires sequential execution" % iname)
 
-        if isinstance(new_tag, ForceSequentialTag) \
-                and isinstance(old_tag, ConcurrentTag):
+        if (isinstance(new_tag, ForceSequentialTag)
+                and filter_iname_tags_by_type(old_tags, ConcurrentTag)):
             raise ValueError("'%s' is already tagged as parallel, "
                     "but is now prohibited from being parallel "
                     "(likely because of participation in a precompute or "
                     "a reduction)" % iname)
 
-        if (not retag_ok) and (not force) \
-                and old_tag is not None and (old_tag != new_tag):
-            raise LoopyError("'%s' is already tagged '%s'--cannot retag"
-                    % (iname, old_tag))
+        knl_iname_to_tags[iname] = old_tags.union([new_tag])
 
-        knl_iname_to_tag[iname] = new_tag
-
-    return kernel.copy(iname_to_tag=knl_iname_to_tag)
+    return kernel.copy(iname_to_tags=knl_iname_to_tags)
 
 # }}}
 
@@ -956,12 +992,12 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
     Use :func:`has_schedulable_iname_nesting` to decide whether an iname needs to be
     duplicated in a given kernel.
     """
-    from loopy.kernel.data import ConcurrentTag
+    from loopy.kernel.data import ConcurrentTag, filter_iname_tags_by_type
 
     concurrent_inames = set(
             iname
-            for iname in knl.all_inames()
-            if isinstance(knl.iname_to_tag.get(iname), ConcurrentTag))
+            for iname in knl.all_inames() if filter_iname_tags_by_type(
+                knl.iname_to_tags[iname], ConcurrentTag))
 
     # First we extract the minimal necessary information from the kernel
     if use_boostable_into:
@@ -985,8 +1021,8 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_iname_sets):
         # Check whether this iname has a parallel tag and discard it if so
-        if (iname in knl.iname_to_tag
-                    and isinstance(knl.iname_to_tag[iname], ConcurrentTag)):
+        if (iname in knl.iname_to_tags and filter_iname_tags_by_type(
+                knl.iname_to_tags[iname], ConcurrentTag)):
             continue
 
         # If we find a duplication option and to not use boostable_into
@@ -1503,7 +1539,8 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
     """
     used_axes = set()
 
-    from loopy.kernel.data import GroupIndexTag, LocalIndexTag
+    from loopy.kernel.data import (GroupIndexTag, LocalIndexTag,
+                                   filter_iname_tags_by_type)
 
     if isinstance(kind, str):
         found = False
@@ -1522,9 +1559,8 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
 
     for insn in insns:
         for iname in kernel.insn_inames(insn):
-            dim_tag = kernel.iname_to_tag.get(iname)
-
-            if isinstance(dim_tag, kind):
+            dim_tags = kernel.iname_to_tags[iname]
+            if filter_iname_tags_by_type(dim_tags, kind):
                 used_axes.add(kind.axis)
 
     i = 0

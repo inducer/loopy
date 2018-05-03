@@ -212,22 +212,20 @@ def find_loop_nest_with_map(kernel):
     """
     result = {}
 
-    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
+    from loopy.kernel.data import (ConcurrentTag, IlpBaseTag, VectorizeTag,
+                                   filter_iname_tags_by_type)
 
-    all_nonpar_inames = set([
-            iname
-            for iname in kernel.all_inames()
-            if not isinstance(kernel.iname_to_tag.get(iname),
-                (ConcurrentTag, IlpBaseTag, VectorizeTag))])
+    all_nonpar_inames = set(
+            iname for iname in kernel.all_inames()
+            if not filter_iname_tags_by_type(kernel.iname_to_tags[iname],
+                    (ConcurrentTag, IlpBaseTag, VectorizeTag)))
 
     iname_to_insns = kernel.iname_to_insns()
 
     for iname in all_nonpar_inames:
-        result[iname] = set([
-            other_iname
+        result[iname] = set(other_iname
             for insn in iname_to_insns[iname]
-            for other_iname in kernel.insn_inames(insn) & all_nonpar_inames
-            ])
+            for other_iname in kernel.insn_inames(insn) & all_nonpar_inames)
 
     return result
 
@@ -243,15 +241,15 @@ def find_loop_nest_around_map(kernel):
     iname_to_insns = kernel.iname_to_insns()
 
     # examine pairs of all inames--O(n**2), I know.
-    from loopy.kernel.data import IlpBaseTag
+    from loopy.kernel.data import IlpBaseTag, filter_iname_tags_by_type
     for inner_iname in all_inames:
         result[inner_iname] = set()
         for outer_iname in all_inames:
             if inner_iname == outer_iname:
                 continue
 
-            tag = kernel.iname_to_tag.get(outer_iname)
-            if isinstance(tag, IlpBaseTag):
+            tags = kernel.iname_to_tags[outer_iname]
+            if filter_iname_tags_by_type(tags, IlpBaseTag):
                 # ILP tags are special because they are parallel tags
                 # and therefore 'in principle' nest around everything.
                 # But they're realized by the scheduler as a loop
@@ -280,10 +278,11 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
 
     result = {}
 
-    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
+    from loopy.kernel.data import (ConcurrentTag, IlpBaseTag, VectorizeTag,
+                                   filter_iname_tags_by_type)
     for insn in kernel.instructions:
         for iname in kernel.insn_inames(insn):
-            if isinstance(kernel.iname_to_tag.get(iname), ConcurrentTag):
+            if filter_iname_tags_by_type(kernel.iname_to_tags[iname], ConcurrentTag):
                 continue
 
             iname_dep = result.setdefault(iname, set())
@@ -313,8 +312,9 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
                         # -> safe.
                         continue
 
-                    tag = kernel.iname_to_tag.get(dep_insn_iname)
-                    if isinstance(tag, (ConcurrentTag, IlpBaseTag, VectorizeTag)):
+                    tags = kernel.iname_to_tags[dep_insn_iname]
+                    if filter_iname_tags_by_type(tags,
+                                (ConcurrentTag, IlpBaseTag, VectorizeTag)):
                         # Parallel tags don't really nest, so we'll disregard
                         # them here.
                         continue
@@ -1878,18 +1878,20 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
         for item in preschedule
         for insn_id in sched_item_to_insn_id(item))
 
-    from loopy.kernel.data import IlpBaseTag, ConcurrentTag, VectorizeTag
+    from loopy.kernel.data import (IlpBaseTag, ConcurrentTag, VectorizeTag,
+                                   filter_iname_tags_by_type)
     ilp_inames = set(
             iname
-            for iname in kernel.all_inames()
-            if isinstance(kernel.iname_to_tag.get(iname), IlpBaseTag))
+            for iname, tags in six.iteritems(kernel.iname_to_tags)
+            if filter_iname_tags_by_type(tags, IlpBaseTag))
     vec_inames = set(
             iname
-            for iname in kernel.all_inames()
-            if isinstance(kernel.iname_to_tag.get(iname), VectorizeTag))
+            for iname, tags in six.iteritems(kernel.iname_to_tags)
+            if filter_iname_tags_by_type(tags, VectorizeTag))
     parallel_inames = set(
-            iname for iname in kernel.all_inames()
-            if isinstance(kernel.iname_to_tag.get(iname), ConcurrentTag))
+            iname
+            for iname, tags in six.iteritems(kernel.iname_to_tags)
+            if filter_iname_tags_by_type(tags, ConcurrentTag))
 
     loop_nest_with_map = find_loop_nest_with_map(kernel)
     loop_nest_around_map = find_loop_nest_around_map(kernel)

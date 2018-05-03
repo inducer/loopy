@@ -917,18 +917,24 @@ class GlobalMemAccessCounter(MemAccessCounter):
             index = (index,)
 
         from loopy.symbolic import get_dependencies
-        from loopy.kernel.data import LocalIndexTag, GroupIndexTag
+        from loopy.kernel.data import (LocalIndexTag, GroupIndexTag,
+                                       filter_iname_tags_by_type)
+
         my_inames = get_dependencies(index) & self.knl.all_inames()
 
         # find all local and global index tags and corresponding inames
         lid_to_iname = {}
         gid_to_iname = {}
         for iname in my_inames:
-            tag = self.knl.iname_to_tag.get(iname)
-            if isinstance(tag, LocalIndexTag):
-                lid_to_iname[tag.axis] = iname
-            elif isinstance(tag, GroupIndexTag):
-                gid_to_iname[tag.axis] = iname
+            tags = filter_iname_tags_by_type(self.knl.iname_to_tags[iname],
+                                  (GroupIndexTag, LocalIndexTag))
+            if tags:
+                tag, = filter_iname_tags_by_type(
+                    tags, (GroupIndexTag, LocalIndexTag), 1)
+                if isinstance(tag, LocalIndexTag):
+                    lid_to_iname[tag.axis] = iname
+                else:
+                    gid_to_iname[tag.axis] = iname
 
         # create lid_strides and gid_strides dicts
 
@@ -1177,14 +1183,17 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
     g_used = set()
     l_used = set()
 
-    from loopy.kernel.data import LocalIndexTag, GroupIndexTag
+    from loopy.kernel.data import (LocalIndexTag, GroupIndexTag,
+                                   filter_iname_tags_by_type)
     for iname in knl.insn_inames(insn):
-        tag = knl.iname_to_tag.get(iname)
-
-        if isinstance(tag, LocalIndexTag):
-            l_used.add(tag.axis)
-        elif isinstance(tag, GroupIndexTag):
-            g_used.add(tag.axis)
+        tags = filter_iname_tags_by_type(knl.iname_to_tags[iname],
+                              (LocalIndexTag, GroupIndexTag), 1)
+        if tags:
+            tag, = tags
+            if isinstance(tag, LocalIndexTag):
+                l_used.add(tag.axis)
+            elif isinstance(tag, GroupIndexTag):
+                g_used.add(tag.axis)
 
     def mult_grid_factor(used_axes, size):
         result = 1
@@ -1213,9 +1222,9 @@ def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False)
     insn_inames = knl.insn_inames(insn)
 
     if disregard_local_axes:
-        from loopy.kernel.data import LocalIndexTag
+        from loopy.kernel.data import LocalIndexTag, filter_iname_tags_by_type
         insn_inames = [iname for iname in insn_inames if not
-                       isinstance(knl.iname_to_tag.get(iname), LocalIndexTag)]
+                filter_iname_tags_by_type(knl.iname_to_tags[iname], LocalIndexTag)]
 
     inames_domain = knl.get_inames_domain(insn_inames)
     domain = (inames_domain.project_out_except(
