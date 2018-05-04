@@ -1946,13 +1946,13 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 def realize_ilp(kernel):
     logger.debug("%s: add axes to temporaries for ilp" % kernel.name)
 
-    from loopy.kernel.data import IlpBaseTag, VectorizeTag
+    from loopy.kernel.data import (IlpBaseTag, VectorizeTag,
+                                   filter_iname_tags_by_type)
 
-    privatizing_inames = frozenset(iname
-            for iname in kernel.all_inames()
-            if isinstance(
-                kernel.iname_to_tag.get(iname),
-                (IlpBaseTag, VectorizeTag)))
+    privatizing_inames = frozenset(
+        iname for iname, tags in six.iteritems(kernel.iname_to_tags)
+        if filter_iname_tags_by_type(tags, (IlpBaseTag, VectorizeTag))
+    )
 
     from loopy.transform.privatize import privatize_temporaries_with_inames
     return privatize_temporaries_with_inames(kernel, privatizing_inames)
