@@ -78,13 +78,15 @@ class RegisterCalleeKernel(ImmutableRecord):
         return None
 
 
-def register_callable_kernel(caller_kernel, function_name, callee_kernel):
+def register_callable_kernel(caller_kernel, function_name, callee_kernel,
+                             inline=False):
     """Returns a copy of *caller_kernel*, which would resolve *function_name* in an
     expression as a call to *callee_kernel*.
 
     :arg caller_kernel: An instance of :class:`loopy.kernel.LoopKernel`.
     :arg function_name: An instance of :class:`str`.
     :arg callee_kernel: An instance of :class:`loopy.kernel.LoopKernel`.
+    :arg inline: Boolean flag of inlining callee kernel into caller.
     """
 
     # {{{ sanity checks
@@ -126,7 +128,7 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel):
     # kernel.
     callable_kernel = CallableKernel(subkernel=callee_kernel.copy(
                         target=caller_kernel.target,
-                        is_master_kernel=False))
+                        is_master_kernel=False), inline=inline)
 
     # disabling global barriers for callee kernel
     from loopy import set_options
