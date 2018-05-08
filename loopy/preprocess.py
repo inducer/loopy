@@ -51,13 +51,17 @@ logger = logging.getLogger(__name__)
 
 def prepare_for_caching(kernel):
     import loopy as lp
+    from loopy.types import OpaqueType
     new_args = []
 
     tgt = kernel.target
 
     for arg in kernel.args:
         dtype = arg.dtype
-        if dtype is not None and dtype is not lp.auto and dtype.target is not tgt:
+        if (dtype is not None
+                and not isinstance(dtype, OpaqueType)
+                and dtype is not lp.auto
+                and dtype.target is not tgt):
             arg = arg.copy(dtype=dtype.with_target(kernel.target))
 
         new_args.append(arg)

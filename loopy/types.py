@@ -177,6 +177,22 @@ class AtomicNumpyType(NumpyType, AtomicType):
 # }}}
 
 
+# {{{
+
+class OpaqueType(LoopyType):
+    def __init__(self, name):
+        assert isinstance(name, str)
+        self.name = name
+
+    def is_integral(self):
+        return False
+
+    def is_complex(self):
+        return False
+
+# }}}
+
+
 def to_loopy_type(dtype, allow_auto=False, allow_none=False, for_atomic=False,
         target=None):
     from loopy.kernel.data import auto

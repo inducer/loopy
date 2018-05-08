@@ -62,11 +62,13 @@ class DTypeRegistryWrapper(object):
             return self.wrapped_registry.get_or_register_dtype(names, dtype)
 
     def dtype_to_ctype(self, dtype):
-        from loopy.types import LoopyType, NumpyType
+        from loopy.types import LoopyType, NumpyType, OpaqueType
         assert isinstance(dtype, LoopyType)
 
         if isinstance(dtype, NumpyType):
             return self.wrapped_registry.dtype_to_ctype(dtype)
+        elif isinstance(dtype, OpaqueType):
+            return dtype.name
         else:
             raise LoopyError(
                     "unable to convert type '%s' to C"

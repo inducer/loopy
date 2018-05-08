@@ -478,9 +478,12 @@ def generate_code_v2(kernel):
         else:
             raise ValueError("argument type not understood: '%s'" % type(arg))
 
+    from loopy.types import OpaqueType
+
     allow_complex = False
     for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):
-        if var.dtype.involves_complex():
+        dtype = var.dtype
+        if not isinstance(dtype, OpaqueType) and dtype.involves_complex():
             allow_complex = True
 
     # }}}
