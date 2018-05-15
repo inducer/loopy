@@ -36,8 +36,7 @@ from loopy.symbolic import parse_tagged_name
 
 
 from loopy.symbolic import (ScopedFunction, SubstitutionRuleMappingContext,
-        RuleAwareIdentityMapper, SubstitutionRuleExpander, SubstitutionMapper,
-        pw_aff_to_expr, )
+        RuleAwareIdentityMapper, SubstitutionRuleExpander, SubstitutionMapper)
 
 
 # {{{ argument descriptors
@@ -464,12 +463,14 @@ class KernelInliner(SubstitutionMapper):
 
     def map_subscript(self, expr):
         if expr.aggregate.name in self.arg_map:
-            import numpy as np
-            from pymbolic.mapper.substitutor import make_subst_func
 
             aggregate = self.subst_func(expr.aggregate)
             sar = self.arg_map[expr.aggregate.name]  # SubArrayRef in caller
-            arg = self.arg_dict[expr.aggregate.name]  # Arg in callee
+            callee_arg = self.arg_dict[expr.aggregate.name]  # Arg in callee
+            if aggregate.name in self.caller.arg_dict:
+                caller_arg = self.caller.arg_dict[aggregate.name]  # Arg in caller
+            else:
+                caller_arg = self.caller.temporary_variables[aggregate.name]
 
             # Firstly, map inner inames to outer inames.
             outer_indices = self.map_tuple(expr.index_tuple)
@@ -477,39 +478,30 @@ class KernelInliner(SubstitutionMapper):
             # Next, reshape to match dimension of outer arrays.
             # We can have e.g. A[3, 2] from outside and B[6] from inside
             from numbers import Integral
-            print(arg.shape)
-            if not all(isinstance(d, Integral) for d in arg.shape):
+            if not all(isinstance(d, Integral) for d in callee_arg.shape):
                 raise LoopyError(
                     "Argument: {0} in callee kernel: {1} does not have "
-                    "constant shape.".format(arg))
-            flatten_index = sum(
+                    "constant shape.".format(callee_arg))
+
+            flatten_index = 0
+            for i, idx in enumerate(sar.get_begin_subscript().index_tuple):
+                flatten_index += idx*caller_arg.dim_tags[i].stride
+
+            flatten_index += sum(
                 idx * tag.stride
-                for idx, tag in zip(outer_indices, arg.dim_tags))
+                for idx, tag in zip(outer_indices, callee_arg.dim_tags))
+
             from loopy.isl_helpers import simplify_via_aff
             flatten_index = simplify_via_aff(flatten_index)
 
-            bounds = [self.caller.get_iname_bounds(i.name)
-                      for i in sar.swept_inames]
-            sizes = [pw_aff_to_expr(b.size) for b in bounds]
-            if not all(isinstance(d, Integral) for d in sizes):
-                raise LoopyError(
-                    "SubArrayRef: {0} in caller kernel does not have "
-                    "swept inames with constant size.".format(sar))
-
-            sizes = [int(np.prod(sizes[i + 1:])) for i in range(len(sizes))]
-
             new_indices = []
-            for s in sizes:
-                ind = flatten_index // s
-                flatten_index -= s * ind
+            for dim_tag in caller_arg.dim_tags:
+                ind = flatten_index // dim_tag.stride
+                flatten_index -= (dim_tag.stride * ind)
                 new_indices.append(ind)
 
-            # Lastly, map sweeping indices to indices in Subscripts
-            # This takes care of cases such as [i, j]: A[i+j, i-j]
-            index_map = dict(zip(sar.swept_inames, new_indices))
-            index_mapper = SubstitutionMapper(make_subst_func(index_map))
-            new_indices = index_mapper.map_tuple(sar.subscript.index_tuple)
             new_indices = tuple(simplify_via_aff(i) for i in new_indices)
+
             return aggregate.index(tuple(new_indices))
         else:
             return super(KernelInliner, self).map_subscript(expr)
@@ -782,8 +774,6 @@ class CallableKernel(InKernelCallable):
         inner_insns = [noop_start]
 
         for insn in callee_knl.instructions:
-            print(insn)
-            print('Hurrah')
             insn = insn.with_transformed_expressions(subst_mapper)
             within_inames = frozenset(map(iname_map.get, insn.within_inames))
             within_inames = within_inames | instruction.within_inames
