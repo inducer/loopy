@@ -2486,11 +2486,13 @@ def inline_callable_kernels(kernel):
     old_insns = kernel.instructions
     for insn in old_insns:
         if isinstance(insn, CallInstruction):
-            in_knl_callable = kernel.scoped_functions[insn.expression.function.name]
-            from loopy.kernel.function_interface import CallableKernel
-            if isinstance(in_knl_callable, CallableKernel) and (
-                    in_knl_callable.should_inline):
-                kernel = in_knl_callable.inline_within_kernel(kernel, insn)
+            if insn.expression.function.name in kernel.scoped_functions:
+                in_knl_callable = kernel.scoped_functions[
+                        insn.expression.function.name]
+                from loopy.kernel.function_interface import CallableKernel
+                if isinstance(in_knl_callable, CallableKernel) and (
+                        in_knl_callable.should_inline):
+                    kernel = in_knl_callable.inline_within_kernel(kernel, insn)
 
     return kernel
 
