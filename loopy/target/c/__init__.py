@@ -887,35 +887,22 @@ class CASTBuilder(ASTBuilderBase):
         if in_knl_callable.name_in_target == 'loopy_make_tuple':
             return self.emit_tuple_assignment(codegen_state, insn)
 
-        in_knl_callable_as_call = in_knl_callable.emit_call_insn(
+        in_knl_callable_as_call, is_returned = in_knl_callable.emit_call_insn(
                 insn=insn,
                 target=self.target,
                 expression_to_code_mapper=ecm)
 
-        from loopy.kernel.function_interface import (ScalarCallable,
-                CallableKernel)
-        if isinstance(in_knl_callable, ScalarCallable):
-            if insn.assignees:
-                from cgen import Assign
-                lhs_code = ecm(insn.assignees[0], prec=PREC_NONE, type_context=None)
-                return Assign(lhs_code,
-                        CExpression(self.get_c_expression_to_code_mapper(),
-                        in_knl_callable_as_call))
-            else:
-                # No return scalar callables
-                from cgen import ExpressionStatement
-                return ExpressionStatement(
-                        CExpression(self.get_c_expression_to_code_mapper(),
-                        in_knl_callable_as_call))
-
-        elif isinstance(in_knl_callable, CallableKernel):
+        if is_returned:
+            from cgen import Assign
+            lhs_code = ecm(insn.assignees[0], prec=PREC_NONE, type_context=None)
+            return Assign(lhs_code,
+                    CExpression(self.get_c_expression_to_code_mapper(),
+                    in_knl_callable_as_call))
+        else:
             from cgen import ExpressionStatement
             return ExpressionStatement(
                     CExpression(self.get_c_expression_to_code_mapper(),
                     in_knl_callable_as_call))
-        else:
-            raise NotImplementedError("Unexpected type %s of In Kernel "
-                    "Callable." % type(in_knl_callable))
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
             lbound, ubound, inner):

@@ -156,6 +156,15 @@ class InKernelCallable(ImmutableRecord):
 
         Negative ids in the mapping attributes indicate the result arguments
 
+    .. automethod:: __init__
+    .. automethod:: with_types
+    .. automethod:: with_descrs
+    .. automethod:: with_target
+    .. automethod:: with_hw_axes_sizes
+    .. automethod:: generate_preambles
+    .. automethod:: emit_call
+    .. automethod:: emit_call_insn
+    .. automethod:: is_ready_for_codegen
     """
 
     fields = set(["arg_id_to_dtype", "arg_id_to_descr"])
@@ -200,21 +209,20 @@ class InKernelCallable(ImmutableRecord):
             Return values are denoted by negative integers, with the
             first returned value identified as *-1*.
 
-        :returns: a tuple ``(new_self, arg_id_to_type)``, where *new_self* is a
-            new :class:`InKernelCallable` specialized for the given types,
-            and *arg_id_to_descr* is a mapping of the same form as the
-            argument above, however it may have more information present.
-            Any argument information exists both by its positional and
-            its keyword identifier.
+        :returns: a copy of *self* which is a new instance of
+            :class:`InKernelCallable` specialized for the given types, and
+            *arg_id_to_descr* is a mapping of the same form as the argument above,
+            however it may have more information present.  Any argument information
+            exists both by its positional and its keyword identifier.
         """
 
         raise NotImplementedError()
 
     def with_target(self, target):
         """
-        Returns a copy with all the ``dtypes`` in
-        ``in_knl_callable.arg_id_to_dtype`` as instances of
-        :class:`loopy.LoopyType`.
+        Returns a copy of *self* with all the ``dtypes`` in
+        ``in_knl_callable.arg_id_to_dtype`` associated with the *target*. Refer
+        :meth:`loopy.types.LoopyType.with_target`.
 
         :arg target: An instance of :class:`loopy.target.TargetBase`.
         """
@@ -241,10 +249,13 @@ class InKernelCallable(ImmutableRecord):
 
     def with_hw_axes_sizes(self, local_size, global_size):
         """
+        Returns a copy of *self* with modifications to comply with the grid
+        sizes ``(local_size, global_size)`` of the kernel in which it is
+        supposed to be called.
+
         :arg local_size: An instance of :class:`islpy.PwAff`.
         :arg global_size: An instance of :class:`islpy.PwAff`.
         """
-
         raise NotImplementedError()
 
     def is_ready_for_codegen(self):
@@ -253,7 +264,7 @@ class InKernelCallable(ImmutableRecord):
                 self.arg_id_to_descr is not None)
 
     def generate_preambles(self, target):
-        """ This would generate the target specific preamble.
+        """ Yields the target specific preamble.
         """
         raise NotImplementedError()
 
@@ -262,6 +273,18 @@ class InKernelCallable(ImmutableRecord):
         raise NotImplementedError()
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
+        """
+        Returns a tuple of ``(call, assignee_is_returned)`` which is the target
+        facing function call that would be seen in the generated code. ``call``
+        is an instance of ``pymbolic.primitives.Call`` ``assignee_is_returned``
+        is an instance of :class:`bool` to indicate if the assignee is returned
+        by value of C-type targets.
+
+        :Example: If ``assignee_is_returned=True``, then ``a, b = f(c, d)`` is
+            interpreted in the target as ``a = f(c, d, &b)``. If
+            ``assignee_is_returned=False``, then ``a, b = f(c, d)`` is interpreted
+            in the target as the statement ``f(c, d, &a, &b)``.
+        """
 
         raise NotImplementedError()
 
@@ -407,7 +430,10 @@ class ScalarCallable(InKernelCallable):
                                 dtype_to_type_context(target, tgt_dtype),
                                 tgt_dtype).expr))
 
-        return var(self.name_in_target)(*c_parameters)
+        # assignee is returned whenever the size of assignees is non zero.
+        assignee_is_returned = len(assignees) > 0
+
+        return var(self.name_in_target)(*c_parameters), assignee_is_returned
 
     def generate_preambles(self, target):
         return
@@ -604,7 +630,7 @@ class CallableKernel(InKernelCallable):
                 for par, par_dtype in zip(
                     parameters, par_dtypes)]
 
-        return var(self.name_in_target)(*c_parameters)
+        return var(self.name_in_target)(*c_parameters), False
 
 # }}}
 
