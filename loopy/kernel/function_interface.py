@@ -135,7 +135,7 @@ class GridOverrideForCalleeKernel(ImmutableRecord):
 
 class InKernelCallable(ImmutableRecord):
     """
-    Describes a callable encountered in a kernel.
+    An abstract interface to define a callable encountered in a kernel.
 
     .. attribute:: name
 
@@ -513,10 +513,11 @@ class KernelInliner(SubstitutionMapper):
 
 class CallableKernel(InKernelCallable):
     """
-    Records information about in order to make the callee kernel compatible to be
-    called from a caller kernel. The :meth:`loopy.register_callable_kernel`
-    should be called in order to initiate association between a funciton in
-    caller kernel and the callee kernel.
+    Records informations about a callee kernel. Also provides interface through
+    member methods to make the callee kernel compatible to be called from a
+    caller kernel. The :meth:`loopy.register_callable_kernel` should be called
+    in order to initiate association between a function in caller kernel and
+    the callee kernel.
 
     The :meth:`CallableKernel.with_types` should be called in order to match
     the ``dtypes`` of the arguments that are shared between the caller and the
