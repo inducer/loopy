@@ -873,7 +873,7 @@ class ManglerCallable(ScalarCallable):
 
     .. attribute:: function_mangler
 
-        A function of signature ``(target, name , arg_dtypes)`` and returns an
+        A function of signature ``(kernel, name , arg_dtypes)`` and returns an
         instance of ``loopy.CallMangleInfo``.
     """
     fields = set(["name", "function_mangler", "arg_id_to_dtype", "arg_id_to_descr",
@@ -911,7 +911,7 @@ class ManglerCallable(ScalarCallable):
         arg_dtypes = tuple(arg_id_to_dtype[key] for key in sorted_keys if
                 key >= 0)
 
-        mangle_result = self.function_mangler(kernel.target, self.name,
+        mangle_result = self.function_mangler(kernel, self.name,
                 arg_dtypes)
         if mangle_result:
             new_arg_id_to_dtype = dict(enumerate(mangle_result.arg_dtypes))
@@ -934,7 +934,7 @@ class ManglerCallable(ScalarCallable):
         arg_dtypes = tuple(self.arg_id_to_dtype[key] for key in sorted_keys if
                 key >= 0)
 
-        return self.function_mangler(kernel.target, self.name, arg_dtypes)
+        return self.function_mangler(kernel, self.name, arg_dtypes)
 
 # }}}
 

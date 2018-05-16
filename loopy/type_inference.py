@@ -354,7 +354,7 @@ class TypeInferenceMapper(CombineMapper):
             # realized function.
             mangle_result = None
             for function_mangler in self.kernel.function_manglers:
-                mangle_result = function_mangler(self.kernel.target, identifier,
+                mangle_result = function_mangler(self.kernel, identifier,
                         arg_dtypes)
                 if mangle_result:
                     # found a match.

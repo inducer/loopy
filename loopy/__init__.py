@@ -359,7 +359,7 @@ def register_symbol_manglers(kernel, manglers):
 
 def register_function_manglers(kernel, manglers):
     """
-    :arg manglers: list of functions of signature ``(target, name, arg_dtypes)``
+    :arg manglers: list of functions of signature ``(kernel, name, arg_dtypes)``
         returning a :class:`loopy.CallMangleInfo`.
     :returns: *kernel* with *manglers* registered
     """
