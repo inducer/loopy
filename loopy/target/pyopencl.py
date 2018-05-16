@@ -249,7 +249,7 @@ class PyOpenCLCallable(ScalarCallable):
                     raise LoopyTypeError("unexpected complex type '%s'" % dtype)
 
                 return self.copy(name_in_target="%s_%s" % (tpname, name),
-                        arg_id_to_dtype={0: NumpyType(dtype), -1: NumpyType(dtype)})
+                        arg_id_to_dtype={0: dtype, -1: dtype})
             else:
                 # function calls for floating parameters.
                 dtype = dtype.numpy_dtype
