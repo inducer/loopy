@@ -749,6 +749,20 @@ class VariableInAnExpression(CombineMapper):
         return False
 
 
+class SweptInameStrideCollector(CoefficientCollectorBase):
+    """
+    Mapper to compute the coefficient swept inames for :class:`SubArrayRef`.
+    """
+    def map_algebraic_leaf(self, expr):
+        # subscripts that are not involved in :attr:`target_names` are treated
+        # as constants.
+        if isinstance(expr, p.Subscript) and (self.target_names is None or
+                expr.aggregate.name not in self.target_names):
+            return {1: expr}
+
+        return super(SweptInameStrideCollector, self).map_algebraic_leaf(expr)
+
+
 class SubArrayRef(p.Expression):
     """Represents a generalized sliced notation of an array.
 
@@ -790,6 +804,7 @@ class SubArrayRef(p.Expression):
         **Example:** Consider ``[i, k]: a[i, j, k, l]``. The beginning
         subscript would be ``a[0, j, 0, l]``
         """
+        # TODO: Set the zero to the minimum value of the iname.
         swept_inames_to_zeros = dict(
                 (swept_iname.name, 0) for swept_iname in self.swept_inames)
 
@@ -815,7 +830,7 @@ class SubArrayRef(p.Expression):
         linearized_index = sum(dim_tag.stride*iname for dim_tag, iname in
                 zip(arg_dim_tags, self.subscript.index_tuple))
 
-        strides_as_dict = CoefficientCollector(tuple(iname.name for iname in
+        strides_as_dict = SweptInameStrideCollector(tuple(iname.name for iname in
             self.swept_inames))(linearized_index)
         sub_dim_tags = tuple(DimTag(strides_as_dict[iname]) for iname in
                 self.swept_inames)
