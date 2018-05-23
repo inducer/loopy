@@ -250,9 +250,16 @@ class KernelArgument(ImmutableRecord):
         target = kwargs.pop("target", None)
 
         dtype = kwargs.pop("dtype", None)
+
+        if 'for_atomic' in kwargs:
+            for_atomic = kwargs['for_atomic']
+        else:
+            for_atomic = False
+
         from loopy.types import to_loopy_type
         dtype = to_loopy_type(
-                dtype, allow_auto=True, allow_none=True, target=target)
+                dtype, allow_auto=True, allow_none=True, for_atomic=for_atomic,
+                target=target)
 
         import loopy as lp
         if dtype is lp.auto:

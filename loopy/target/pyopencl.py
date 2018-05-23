@@ -252,13 +252,13 @@ class PyOpenCLCallable(ScalarCallable):
                         arg_id_to_dtype={0: dtype, -1: dtype})
             else:
                 # function calls for floating parameters.
-                dtype = dtype.numpy_dtype
-                if dtype.kind in ('u', 'i'):
-                    dtype = np.float32
+                numpy_dtype = dtype.numpy_dtype
+                if numpy_dtype.kind in ('u', 'i'):
+                    dtype = dtype.copy(numpy_dtype=np.float32)
                 if name == 'abs':
                     name = 'fabs'
                 return self.copy(name_in_target=name,
-                    arg_id_to_dtype={0: NumpyType(dtype), -1: NumpyType(dtype)})
+                    arg_id_to_dtype={0: dtype, -1: dtype})
 
         return self.copy(arg_id_to_dtype=arg_id_to_dtype)
 

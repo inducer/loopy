@@ -2570,9 +2570,6 @@ def preprocess_kernel(kernel, device=None):
     #   defaults from being applied.
     kernel = realize_reduction(kernel, unknown_types_ok=False)
 
-    # type specialize functions that were missed during the type inference.
-    kernel = make_functions_ready_for_codegen(kernel)
-
     # Ordering restriction:
     # add_axes_to_temporaries_for_ilp because reduction accumulators
     # need to be duplicated by this.
@@ -2585,6 +2582,9 @@ def preprocess_kernel(kernel, device=None):
     # inferring the shape and dim_tags of the arguments involved in a function
     # call.
     kernel = infer_arg_descr(kernel)
+
+    # type specialize functions that were missed during the type inference.
+    kernel = make_functions_ready_for_codegen(kernel)
 
     # tuning the functions in the kernel to align with the grid sizes.
     kernel = infer_hw_axes_sizes(kernel)
