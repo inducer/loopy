@@ -314,6 +314,7 @@ class TypeInferenceMapper(CombineMapper):
                             continue
 
                         # }}}
+                        continue
 
                         raise LoopyError("Overwriting a specialized function "
                                 "is illegal--maybe start with new instance of "
