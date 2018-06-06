@@ -1258,8 +1258,10 @@ def draw_dependencies_as_unicode_arrows(
         rdeps = reverse_deps.get(insn.id, set()).copy() - processed_ids
         assert insn.id not in rdeps
 
-        if insn.id in dep_to_column:
-            columns_in_use[insn.id][0].update(rdeps)
+        col = dep_to_column.get(insn.id)
+        if col is not None:
+            columns_in_use[col][0].update(rdeps)
+        del col
 
         # }}}
 
