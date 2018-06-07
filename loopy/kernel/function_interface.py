@@ -518,15 +518,20 @@ class KernelInliner(SubstitutionMapper):
                 for idx, tag in zip(outer_indices, callee_arg.dim_tags))
 
             from loopy.isl_helpers import simplify_via_aff
-            flatten_index = simplify_via_aff(flatten_index)
+            try:
+                flatten_index = simplify_via_aff(flatten_index)
+            except:
+                pass
 
             new_indices = []
             for dim_tag in caller_arg.dim_tags:
                 ind = flatten_index // dim_tag.stride
                 flatten_index -= (dim_tag.stride * ind)
+                try:
+                    ind = simplify_via_aff(ind)
+                except:
+                    pass
                 new_indices.append(ind)
-
-            new_indices = tuple(simplify_via_aff(i) for i in new_indices)
 
             return aggregate.index(tuple(new_indices))
         else:
@@ -696,7 +701,10 @@ class CallableKernel(InKernelCallable):
                 raise LoopyError("Descriptor must be either an instance of "
                         "ArrayArgDescriptor or ValueArgDescriptor -- got %s." %
                         type(descr))
-        descriptor_specialized_knl = self.subkernel.copy(args=new_args)
+        if self.should_inline:
+            descriptor_specialized_knl = self.subkernel.copy()
+        else:
+            descriptor_specialized_knl = self.subkernel.copy(args=new_args)
 
         return self.copy(subkernel=descriptor_specialized_knl,
                 arg_id_to_descr=arg_id_to_descr)
@@ -900,6 +908,8 @@ class CallableKernel(InKernelCallable):
                 new_insns.append(insn)
 
         kernel = kernel.copy(instructions=new_insns)
+        # TODO: resolve name clash here
+        kernel.scoped_functions.update(callee_knl.scoped_functions)
 
         # }}}
 
