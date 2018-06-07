@@ -992,16 +992,31 @@ def test_all_counters_parallel_matmul():
     local_mem_map = lp.get_mem_access_map(knl,
                         count_redundant_work=True,
                         subgroup_size=32).filter_by(mtype=['local'])
-    local_mem_l = local_mem_map[lp.MemAccess('local', np.dtype(np.float32),
-                                             direction='load',
-                                             count_granularity=CG.WORKITEM)
-                                ].eval_with_dict(params)
+
+    local_mem_l = local_mem_map.filter_by(direction=['load']
+                                          ).eval_and_sum(params)
     assert local_mem_l == n*m*ell*2
 
-    local_mem_s = local_mem_map[lp.MemAccess('local', np.dtype(np.float32),
-                                             direction='store',
-                                             count_granularity=CG.WORKITEM)
-                                ].eval_with_dict(params)
+    local_mem_l_a = local_mem_map[lp.MemAccess('local', np.dtype(np.float32),
+                                               direction='load',
+                                               lid_strides={1: 16},
+                                               gid_strides={},
+                                               variable='a_fetch',
+                                               count_granularity=CG.WORKITEM)
+                                  ].eval_with_dict(params)
+    local_mem_l_b = local_mem_map[lp.MemAccess('local', np.dtype(np.float32),
+                                               direction='load',
+                                               lid_strides={0: 1},
+                                               gid_strides={},
+                                               variable='b_fetch',
+                                               count_granularity=CG.WORKITEM)
+                                  ].eval_with_dict(params)
+
+    assert local_mem_l_a == local_mem_l_b == n*m*ell
+
+    local_mem_s = local_mem_map.filter_by(direction=['store']
+                                          ).eval_and_sum(params)
+
     assert local_mem_s == n*m*ell*2/bsize
 
 
