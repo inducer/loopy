@@ -556,6 +556,52 @@ def test_inline_kernel_2d(ctx_factory):
     assert np.allclose(out, z)
 
 
+@pytest.mark.parametrize("inline", [False, True])
+def test_packing_unpacking(ctx_factory, inline):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    x1 = cl.clrandom.rand(queue, (3, 2), dtype=np.float64)
+    x2 = cl.clrandom.rand(queue, (6, ), dtype=np.float64)
+
+    callee1 = lp.make_kernel(
+            "{[i]: 0<=i<6}",
+            """
+            a[i] = 2*b[i]
+            """)
+
+    callee2 = lp.make_kernel(
+            "{[i, j]: 0<=i<2 and 0 <= j < 3}",
+            """
+            a[i, j] = 3*b[i, j]
+            """)
+
+    knl = lp.make_kernel(
+            "{[i, j, k]:  0<= i < 3 and 0 <= j < 2 and 0 <= k < 6}",
+            """
+            [i, j]: y1[i, j] = callee_fn1([i, j]: x1[i, j])
+            [k]: y2[k] = callee_fn2([k]: x2[k])
+            """)
+
+    knl = lp.register_callable_kernel(knl, 'callee_fn1', callee1, inline=inline)
+    knl = lp.register_callable_kernel(knl, 'callee_fn2', callee2, inline=inline)
+
+    knl = lp.pack_and_unpack_args_for_call(knl, 'callee_fn1')
+    knl = lp.pack_and_unpack_args_for_call(knl, 'callee_fn2')
+
+    knl = lp.set_options(knl, "write_cl")
+    knl = lp.set_options(knl, "return_dict")
+    evt, out_dict = knl(queue, x1=x1, x2=x2)
+
+    y1 = out_dict['y1'].get()
+    y2 = out_dict['y2'].get()
+
+    assert np.linalg.norm(2*x1.get()-y1)/np.linalg.norm(
+            2*x1.get()) < 1e-15
+    assert np.linalg.norm(3*x2.get()-y2)/np.linalg.norm(
+            3*x2.get()) < 1e-15
+
+
 def test_rename_argument(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
