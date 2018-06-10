@@ -439,12 +439,12 @@ class CallableKernel(InKernelCallable):
     sizes for the :attr:`subkernel` of the callable.
     """
 
-    fields = set(["subkernel", "arg_id_to_dtype", "arg_id_to_descr",
+    fields = set(["name", "subkernel", "arg_id_to_dtype", "arg_id_to_descr",
         "name_in_target", "inline"])
-    init_arg_names = ("subkernel", "arg_id_to_dtype", "arg_id_to_descr",
+    init_arg_names = ("name", "subkernel", "arg_id_to_dtype", "arg_id_to_descr",
             "name_in_target", "inline")
 
-    def __init__(self, subkernel, arg_id_to_dtype=None,
+    def __init__(self, name, subkernel, arg_id_to_dtype=None,
             arg_id_to_descr=None, name_in_target=None, inline=False):
 
         super(CallableKernel, self).__init__(
@@ -453,6 +453,7 @@ class CallableKernel(InKernelCallable):
         if name_in_target is not None:
             subkernel = subkernel.copy(name=name_in_target)
 
+        self.name = name
         self.name_in_target = name_in_target
         self.inline = inline
         self.subkernel = subkernel.copy(
@@ -531,6 +532,23 @@ class CallableKernel(InKernelCallable):
         descriptor_specialized_knl = self.subkernel.copy(args=new_args)
 
         return self.copy(subkernel=descriptor_specialized_knl,
+                arg_id_to_descr=arg_id_to_descr)
+
+    def with_packing_for_args(self):
+        from loopy.preprocess import preprocess_kernel
+        subkernel = preprocess_kernel(self.subkernel)
+        kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
+
+        arg_id_to_descr = {}
+
+        for pos, kw in pos_to_kw.items():
+            arg = subkernel.arg_dict[kw]
+            arg_id_to_descr[pos] = ArrayArgDescriptor(
+                    shape=arg.shape,
+                    dim_tags=arg.dim_tags,
+                    mem_scope='Global')
+
+        return self.copy(subkernel=subkernel,
                 arg_id_to_descr=arg_id_to_descr)
 
     def with_hw_axes_sizes(self, gsize, lsize):

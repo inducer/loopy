@@ -126,9 +126,11 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel,
 
     # making the target of the child kernel to be same as the target of parent
     # kernel.
-    callable_kernel = CallableKernel(subkernel=callee_kernel.copy(
-                        target=caller_kernel.target,
-                        is_master_kernel=False), inline=inline)
+    callable_kernel = CallableKernel(name=function_name,
+                        subkernel=callee_kernel.copy(
+                            target=caller_kernel.target,
+                            is_master_kernel=False),
+                        inline=inline)
 
     # disabling global barriers for callee kernel
     from loopy import set_options
