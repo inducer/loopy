@@ -120,6 +120,7 @@ from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.add_barrier import add_barrier
 from loopy.transform.register_callable import (register_callable_kernel,
         register_function_lookup)
+from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
 
 # }}}
 
@@ -230,6 +231,8 @@ __all__ = [
         "add_barrier",
 
         "register_callable_kernel", "register_function_lookup",
+
+        "pack_and_unpack_args_for_call",
 
         # }}}
 

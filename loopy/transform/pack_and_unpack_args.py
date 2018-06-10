@@ -37,10 +37,20 @@ __doc__ = """
 
 def pack_and_unpack_args_for_call(kernel, call_name, args=None):
     """
+    Returns a a copy of *kernel* with instructions appended to copy the
+    arguments in *args* to match the alignment expected by the *call_name* in
+    the kernel. The arguments are copied back to *args* with the appropriate
+    data layout.
+
+    :arg call_name: An instance of :class:`str` denoting the function call in
+        the *kernel*.
+    :arg args: A list of the arguments as instances of :class:`str` which must
+        be packed and unpacked. If set *None*, it is interpreted that all the
+        array arguments would be packed anf unpacked.
     """
     new_domains = []
     new_tmps = kernel.temporary_variables.copy()
-    new_calls = {}
+    old_insn_to_new_insns = {}
 
     for insn in kernel.instructions:
         if not isinstance(insn, CallInstruction):
@@ -66,6 +76,8 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
 
         # {{{ sanity checks for args
 
+        assert isinstance(args, list)
+
         for arg in args:
             found_sub_array_ref = False
             for par in parameters + insn.assignees:
@@ -81,7 +93,6 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
 
         packing = []
         unpacking = []
-        new_id_to_parameters = {}
 
         from loopy.kernel.data import IlpBaseTag, VectorizeTag
         import islpy as isl
@@ -108,24 +119,31 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
         from pymbolic.mapper.substitutor import make_subst_func
         from loopy.symbolic import SubstitutionMapper
 
+        # dict to store the new assignees and parameters, the mapping pattern
+        # from id to parameters is identical to InKernelCallable.arg_id_to_dtype
         id_to_parameters = tuple(enumerate(parameters)) + tuple(
                 (-i-1, assignee) for i, assignee in enumerate(insn.assignees))
+        new_id_to_parameters = {}
 
         for id, p in id_to_parameters:
             if isinstance(p, SubArrayRef) and p.subscript.aggregate.name in args:
-                new_pack_inames = ilp_inames_map.copy()
-                new_unpack_inames = ilp_inames_map.copy()
+                new_pack_inames = ilp_inames_map.copy()  # packing-specific inames
+                new_unpack_inames = ilp_inames_map.copy()  # unpacking-specific iname
+
                 for iname in p.swept_inames:
                     new_pack_inames[iname] = var(vng(iname.name + "_pack"))
                     new_unpack_inames[iname] = var(vng(iname.name + "_unpack"))
+
+                # Updating the domains corresponding to the new inames.
                 new_domain_pack = kernel.get_inames_domain(iname.name).copy()
                 new_domain_unpack = kernel.get_inames_domain(iname.name).copy()
                 for i in range(new_domain_pack.n_dim()):
                     old_iname = new_domain_pack.get_dim_name(dim_type, i)
-                    new_domain_pack = new_domain_pack.set_dim_name(
-                        dim_type, i, new_pack_inames[var(old_iname)].name)
-                    new_domain_unpack = new_domain_unpack.set_dim_name(
-                        dim_type, i, new_unpack_inames[var(old_iname)].name)
+                    if var(old_iname) in new_pack_inames:
+                        new_domain_pack = new_domain_pack.set_dim_name(
+                            dim_type, i, new_pack_inames[var(old_iname)].name)
+                        new_domain_unpack = new_domain_unpack.set_dim_name(
+                            dim_type, i, new_unpack_inames[var(old_iname)].name)
                 new_domains.append(new_domain_pack)
                 new_domains.append(new_domain_unpack)
 
@@ -151,7 +169,7 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
                 unpack_subst_mapper = SubstitutionMapper(make_subst_func(
                     new_unpack_inames))
 
-                # {{{ getting the lhs assignee
+                # {{{ getting the lhs for packing and rhs for unpacking
 
                 arg_in_caller = kernel.arg_dict[arg]
 
@@ -194,10 +212,11 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
                         new_unpack_inames[i].name for i in p.swept_inames) | (
                             new_ilp_inames),
                     id=ing(insn.id+"_unpack"),
+                    depends_on=frozenset([insn.id]),
                     depends_on_is_final=True
                 ))
 
-                # {{{ getting the new swept inames
+                # {{{ creating the sweep inames for the new sub array refs
 
                 updated_swept_inames = []
 
@@ -225,12 +244,10 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
         if packing:
             subst_mapper = SubstitutionMapper(make_subst_func(ilp_inames_map))
             new_insn = insn.with_transformed_expressions(subst_mapper)
-            new_params = [new_id_to_parameters[i] for i, _ in
-                    enumerate(parameters)]
-            new_assignees = [new_id_to_parameters[-i-1] for i, _ in
-                    enumerate(insn.assignees)]
-            new_params = [subst_mapper(p) for p in new_params]
-            new_assignees = tuple(subst_mapper(a) for a in new_assignees)
+            new_params = tuple(subst_mapper(new_id_to_parameters[i]) for i, _ in
+                    enumerate(parameters))
+            new_assignees = tuple(subst_mapper(new_id_to_parameters[-i-1])
+                    for i, _ in enumerate(insn.assignees))
             packing.append(
                 new_insn.copy(
                     depends_on=new_insn.depends_on | set(
@@ -241,15 +258,15 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
                     assignees=new_assignees
                 )
             )
-            new_unpacking = [unpack.copy(depends_on=frozenset(
-                pack.id for pack in packing)) for unpack in unpacking]
-            new_calls[insn] = packing + new_unpacking
+            old_insn_to_new_insns[insn] = packing + unpacking
 
-    if new_calls:
+    if old_insn_to_new_insns:
         new_instructions = []
         for insn in kernel.instructions:
-            if insn in new_calls:
-                new_instructions.extend(new_calls[insn])
+            if insn in old_insn_to_new_insns:
+                # Replacing the current instruction with the group of
+                # instructions including the packing and unpacking instructions
+                new_instructions.extend(old_insn_to_new_insns[insn])
             else:
                 new_instructions.append(insn)
         kernel = kernel.copy(
