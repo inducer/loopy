@@ -113,15 +113,21 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
 
         for id, p in id_to_parameters:
             if isinstance(p, SubArrayRef) and p.subscript.aggregate.name in args:
-                new_swept_inames = ilp_inames_map.copy()
+                new_pack_inames = ilp_inames_map.copy()
+                new_unpack_inames = ilp_inames_map.copy()
                 for iname in p.swept_inames:
-                    new_swept_inames[iname] = var(vng(iname.name + "_pack"))
-                new_domain = kernel.get_inames_domain(iname.name).copy()
-                for i in range(new_domain.n_dim()):
-                    old_iname = new_domain.get_dim_name(dim_type, i)
-                    new_domain = new_domain.set_dim_name(
-                        dim_type, i, new_swept_inames[var(old_iname)].name)
-                new_domains.append(new_domain)
+                    new_pack_inames[iname] = var(vng(iname.name + "_pack"))
+                    new_unpack_inames[iname] = var(vng(iname.name + "_unpack"))
+                new_domain_pack = kernel.get_inames_domain(iname.name).copy()
+                new_domain_unpack = kernel.get_inames_domain(iname.name).copy()
+                for i in range(new_domain_pack.n_dim()):
+                    old_iname = new_domain_pack.get_dim_name(dim_type, i)
+                    new_domain_pack = new_domain_pack.set_dim_name(
+                        dim_type, i, new_pack_inames[var(old_iname)].name)
+                    new_domain_unpack = new_domain_unpack.set_dim_name(
+                        dim_type, i, new_unpack_inames[var(old_iname)].name)
+                new_domains.append(new_domain_pack)
+                new_domains.append(new_domain_unpack)
 
                 arg = p.subscript.aggregate.name
                 pack_name = vng(arg + "_pack")
@@ -132,14 +138,18 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
                 pack_tmp = TemporaryVariable(
                     name=pack_name,
                     dtype=kernel.arg_dict[arg].dtype,
+                    dim_tags=in_knl_callable.arg_id_to_descr[id].dim_tags,
+                    shape=in_knl_callable.arg_id_to_descr[id].shape,
                     scope=temp_var_scope.PRIVATE,
                 )
 
                 new_tmps[pack_name] = pack_tmp
 
                 from loopy import Assignment
-                subst_mapper = SubstitutionMapper(make_subst_func(
-                    new_swept_inames))
+                pack_subst_mapper = SubstitutionMapper(make_subst_func(
+                    new_pack_inames))
+                unpack_subst_mapper = SubstitutionMapper(make_subst_func(
+                    new_unpack_inames))
 
                 # {{{ getting the lhs assignee
 
@@ -159,28 +169,32 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
 
                 new_indices = tuple(simplify_via_aff(i) for i in new_indices)
 
-                lhs_assignee = subst_mapper(var(pack_name).index(new_indices))
+                pack_lhs_assignee = pack_subst_mapper(
+                        var(pack_name).index(new_indices))
+                unpack_rhs = unpack_subst_mapper(
+                        var(pack_name).index(new_indices))
 
                 # }}}
 
                 packing.append(Assignment(
-                    assignee=lhs_assignee,
-                    expression=subst_mapper.map_subscript(p.subscript),
+                    assignee=pack_lhs_assignee,
+                    expression=pack_subst_mapper.map_subscript(p.subscript),
                     within_inames=insn.within_inames - ilp_inames | set(
-                        new_swept_inames[i].name for i in p.swept_inames) | (
+                        new_pack_inames[i].name for i in p.swept_inames) | (
                             new_ilp_inames),
                     depends_on=insn.depends_on,
-                    id=ing(insn.id+"_pack")
+                    id=ing(insn.id+"_pack"),
+                    depends_on_is_final=True
                 ))
 
                 unpacking.append(Assignment(
-                    expression=lhs_assignee,
-                    assignee=subst_mapper.map_subscript(p.subscript),
+                    expression=unpack_rhs,
+                    assignee=unpack_subst_mapper.map_subscript(p.subscript),
                     within_inames=insn.within_inames - ilp_inames | set(
-                        new_swept_inames[i].name for i in p.swept_inames) | (
+                        new_unpack_inames[i].name for i in p.swept_inames) | (
                             new_ilp_inames),
-                    depends_on=frozenset([insn.id]),
-                    id=ing(insn.id+"_unpack")
+                    id=ing(insn.id+"_unpack"),
+                    depends_on_is_final=True
                 ))
 
                 # {{{ getting the new swept inames
@@ -227,7 +241,9 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
                     assignees=new_assignees
                 )
             )
-            new_calls[insn] = packing + unpacking
+            new_unpacking = [unpack.copy(depends_on=frozenset(
+                pack.id for pack in packing)) for unpack in unpacking]
+            new_calls[insn] = packing + new_unpacking
 
     if new_calls:
         new_instructions = []

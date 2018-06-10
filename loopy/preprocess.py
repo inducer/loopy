@@ -2815,7 +2815,7 @@ def preprocess_kernel(kernel, device=None):
     kernel = infer_arg_descr(kernel)
 
     # tuning the functions in the kernel to align with the grid sizes.
-    # kernel = infer_hw_axes_sizes(kernel)
+    kernel = infer_hw_axes_sizes(kernel)
 
     # boostability should be removed in 2017.x.
     kernel = find_idempotence(kernel)

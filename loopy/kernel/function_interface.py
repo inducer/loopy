@@ -535,20 +535,18 @@ class CallableKernel(InKernelCallable):
                 arg_id_to_descr=arg_id_to_descr)
 
     def with_packing_for_args(self):
-        from loopy.preprocess import preprocess_kernel
-        subkernel = preprocess_kernel(self.subkernel)
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
         arg_id_to_descr = {}
 
         for pos, kw in pos_to_kw.items():
-            arg = subkernel.arg_dict[kw]
+            arg = self.subkernel.arg_dict[kw]
             arg_id_to_descr[pos] = ArrayArgDescriptor(
                     shape=arg.shape,
                     dim_tags=arg.dim_tags,
                     mem_scope='Global')
 
-        return self.copy(subkernel=subkernel,
+        return self.copy(subkernel=self.subkernel,
                 arg_id_to_descr=arg_id_to_descr)
 
     def with_hw_axes_sizes(self, gsize, lsize):
