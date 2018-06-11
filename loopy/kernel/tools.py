@@ -1205,9 +1205,11 @@ def draw_dependencies_as_unicode_arrows(
         instances
     :arg fore: if given, will be used like a :mod:`colorama` ``Fore`` object
         to color-code dependencies. (E.g. red for downward edges)
-    :returns: A list of tuples (arrows, extender) with Unicode-drawn dependency
-        arrows, one per entry of *instructions*. *extender* can be used to
-        extend arrows below the line of an instruction.
+    :returns: A tuple ``(uniform_length, rows)``, where *rows* is a list of
+        tuples (arrows, extender) with Unicode-drawn dependency arrows, one per
+        entry of *instructions*. *extender* can be used to extend arrows below the
+        line of an instruction. *uniform_length* is the length of the *arrows* and
+        *extender* strings.
     """
     reverse_deps = {}
 
