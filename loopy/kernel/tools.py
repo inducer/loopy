@@ -1219,9 +1219,11 @@ def draw_dependencies_as_unicode_arrows(
         instances
     :arg fore: if given, will be used like a :mod:`colorama` ``Fore`` object
         to color-code dependencies. (E.g. red for downward edges)
-    :returns: A list of tuples (arrows, extender) with Unicode-drawn dependency
-        arrows, one per entry of *instructions*. *extender* can be used to
-        extend arrows below the line of an instruction.
+    :returns: A tuple ``(uniform_length, rows)``, where *rows* is a list of
+        tuples (arrows, extender) with Unicode-drawn dependency arrows, one per
+        entry of *instructions*. *extender* can be used to extend arrows below the
+        line of an instruction. *uniform_length* is the length of the *arrows* and
+        *extender* strings.
     """
     reverse_deps = {}
 
@@ -1235,6 +1237,8 @@ def draw_dependencies_as_unicode_arrows(
     # {{{ find column assignments
 
     # mapping from column indices to (end_insn_ids, pointed_at_insn_id)
+    # end_insn_ids is a set that gets modified in-place to remove 'ends'
+    # (arrow origins) as they are being passed.
     columns_in_use = {}
 
     n_columns = [0]
@@ -1272,8 +1276,10 @@ def draw_dependencies_as_unicode_arrows(
         rdeps = reverse_deps.get(insn.id, set()).copy() - processed_ids
         assert insn.id not in rdeps
 
-        if insn.id in dep_to_column:
-            columns_in_use[insn.id][0].update(rdeps)
+        col = dep_to_column.get(insn.id)
+        if col is not None:
+            columns_in_use[col][0].update(rdeps)
+        del col
 
         # }}}
 
@@ -1329,7 +1335,11 @@ def draw_dependencies_as_unicode_arrows(
             dep_key = dep
             if dep_key not in dep_to_column:
                 col = dep_to_column[dep_key] = find_free_column()
-                columns_in_use[col] = (set([insn.id]), dep)
+
+                # No need to add current instruction to end_insn_ids set, as
+                # we're currently handling it.
+                columns_in_use[col] = (set(), dep)
+
                 row[col] = do_flag_downward(u"┌", dep)
 
         # }}}
@@ -1354,12 +1364,30 @@ def draw_dependencies_as_unicode_arrows(
 
     added_ellipsis = [False]
 
+    def len_without_color_escapes(s):
+        s = (s
+                .replace(fore.RED, "")
+                .replace(style.RESET_ALL, ""))
+        return len(s)
+
+    def truncate_without_color_escapes(s, l):
+        # FIXME: This is a bit dumb--it removes color escapes when truncation
+        # is needed.
+
+        s = (s
+                .replace(fore.RED, "")
+                .replace(style.RESET_ALL, ""))
+
+        return s[:l] + u"…"
+
     def conform_to_uniform_length(s):
-        if len(s) <= uniform_length:
-            return s + " "*(uniform_length-len(s))
+        len_s = len_without_color_escapes(s)
+
+        if len_s <= uniform_length:
+            return s + " "*(uniform_length-len_s)
         else:
             added_ellipsis[0] = True
-            return s[:uniform_length] + u"…"
+            return truncate_without_color_escapes(s, uniform_length)
 
     rows = [
             (conform_to_uniform_length(row),
@@ -1369,10 +1397,10 @@ def draw_dependencies_as_unicode_arrows(
     if added_ellipsis[0]:
         uniform_length += 1
 
-    rows = [
-            (conform_to_uniform_length(row),
-                conform_to_uniform_length(extender))
-            for row, extender in rows]
+        rows = [
+                (conform_to_uniform_length(row),
+                    conform_to_uniform_length(extender))
+                for row, extender in rows]
 
     return uniform_length, rows
 

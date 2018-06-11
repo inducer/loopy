@@ -415,9 +415,18 @@ class IndirectDependencyEdgeFinder(object):
         cache_key = (depender_id, dependee_id)
 
         try:
-            return self.dep_edge_cache[cache_key]
+            result = self.dep_edge_cache[cache_key]
         except KeyError:
             pass
+        else:
+            if result is None:
+                from loopy.diagnostic import DependencyCycleFound
+                raise DependencyCycleFound("when "
+                        "checking for dependency edge between "
+                        "depender '%s' and dependee '%s'"
+                        % (depender_id, dependee_id))
+            else:
+                return result
 
         depender = self.kernel.id_to_insn[depender_id]
 
@@ -425,6 +434,7 @@ class IndirectDependencyEdgeFinder(object):
             self.dep_edge_cache[cache_key] = True
             return True
 
+        self.dep_edge_cache[cache_key] = None
         for dep in depender.depends_on:
             if self(dep, dependee_id):
                 self.dep_edge_cache[cache_key] = True
