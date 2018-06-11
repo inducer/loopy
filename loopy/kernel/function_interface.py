@@ -38,6 +38,14 @@ from loopy.symbolic import parse_tagged_name
 from loopy.symbolic import (ScopedFunction, SubstitutionRuleMappingContext,
         RuleAwareIdentityMapper, SubstitutionRuleExpander)
 
+from loopy.symbolic import (ScopedFunction, SubstitutionRuleMappingContext,
+        RuleAwareIdentityMapper, SubstitutionRuleExpander, SubstitutionMapper,
+        CombineMapper)
+
+from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
+        _DataObliviousInstruction)
+from functools import reduce
+
 
 # {{{ argument descriptors
 
