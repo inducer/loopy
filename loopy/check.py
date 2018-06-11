@@ -404,7 +404,7 @@ class IndirectDependencyEdgeFinder(object):
         except KeyError:
             pass
         else:
-            if result is not None:
+            if result is None:
                 from loopy.diagnostic import DependencyCycleFound
                 raise DependencyCycleFound("when "
                         "checking for dependency edge between "
