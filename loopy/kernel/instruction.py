@@ -872,7 +872,8 @@ class Assignment(MultiAssignmentBase):
             result += " {%s}" % (": ".join(options))
 
         if self.predicates:
-            result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
+            result += "\n" + 10*" " + "if (%s)" % " and ".join(
+                    str(p) for p in self.predicates)
         return result
 
     # {{{ for interface uniformity with CallInstruction
