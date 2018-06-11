@@ -1374,10 +1374,10 @@ def draw_dependencies_as_unicode_arrows(
     if added_ellipsis[0]:
         uniform_length += 1
 
-    rows = [
-            (conform_to_uniform_length(row),
-                conform_to_uniform_length(extender))
-            for row, extender in rows]
+        rows = [
+                (conform_to_uniform_length(row),
+                    conform_to_uniform_length(extender))
+                for row, extender in rows]
 
     return uniform_length, rows
 
