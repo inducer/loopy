@@ -1223,6 +1223,8 @@ def draw_dependencies_as_unicode_arrows(
     # {{{ find column assignments
 
     # mapping from column indices to (end_insn_ids, pointed_at_insn_id)
+    # end_insn_ids is a set that gets modified in-place to remove 'ends'
+    # (arrow origins) as they are being passed.
     columns_in_use = {}
 
     n_columns = [0]
@@ -1355,6 +1357,9 @@ def draw_dependencies_as_unicode_arrows(
         return len(s)
 
     def truncate_without_color_escapes(s, l):
+        # FIXME: This is a bit dumb--it removes color escapes when truncation
+        # is needed.
+
         s = (s
                 .replace(fore.RED, "")
                 .replace(style.RESET_ALL, ""))
