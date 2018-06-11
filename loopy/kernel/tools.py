@@ -1344,12 +1344,27 @@ def draw_dependencies_as_unicode_arrows(
 
     added_ellipsis = [False]
 
+    def len_without_color_escapes(s):
+        s = (s
+                .replace(fore.RED, "")
+                .replace(style.RESET_ALL, ""))
+        return len(s)
+
+    def truncate_without_color_escapes(s, l):
+        s = (s
+                .replace(fore.RED, "")
+                .replace(style.RESET_ALL, ""))
+
+        return s[:l] + u"…"
+
     def conform_to_uniform_length(s):
-        if len(s) <= uniform_length:
-            return s + " "*(uniform_length-len(s))
+        len_s = len_without_color_escapes(s)
+
+        if len_s <= uniform_length:
+            return s + " "*(uniform_length-len_s)
         else:
             added_ellipsis[0] = True
-            return s[:uniform_length] + u"…"
+            return truncate_without_color_escapes(s, uniform_length)
 
     rows = [
             (conform_to_uniform_length(row),
