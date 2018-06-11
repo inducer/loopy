@@ -56,6 +56,8 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
         if not isinstance(insn, CallInstruction):
             # pack and unpack call only be done for CallInstructions.
             continue
+        if insn.expression.function.name not in kernel.scoped_functions:
+            continue
 
         in_knl_callable = kernel.scoped_functions[
                 insn.expression.function.name]
@@ -70,9 +72,9 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
 
         parameters = insn.expression.parameters
         if args is None:
-            args = [par.subscript.aggregate.name for par in parameters if
-            isinstance(par, SubArrayRef)] + [assignee.subscript.aggregate.name for
-                    assignee in insn.assignees if isinstance(assignee, SubArrayRef)]
+            args = [par.subscript.aggregate.name for par in
+                    parameters+insn.assignees if isinstance(par, SubArrayRef)
+                    and (par.swept_inames)]
 
         # {{{ sanity checks for args
 
@@ -130,22 +132,24 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
                 new_pack_inames = ilp_inames_map.copy()  # packing-specific inames
                 new_unpack_inames = ilp_inames_map.copy()  # unpacking-specific iname
 
-                for iname in p.swept_inames:
-                    new_pack_inames[iname] = var(vng(iname.name + "_pack"))
-                    new_unpack_inames[iname] = var(vng(iname.name + "_unpack"))
+                new_pack_inames = dict((iname, var(vng(iname.name +
+                    "_pack"))) for iname in p.swept_inames)
+                new_unpack_inames = dict((iname, var(vng(iname.name +
+                    "_unpack"))) for iname in p.swept_inames)
 
                 # Updating the domains corresponding to the new inames.
-                new_domain_pack = kernel.get_inames_domain(iname.name).copy()
-                new_domain_unpack = kernel.get_inames_domain(iname.name).copy()
-                for i in range(new_domain_pack.n_dim()):
-                    old_iname = new_domain_pack.get_dim_name(dim_type, i)
-                    if var(old_iname) in new_pack_inames:
-                        new_domain_pack = new_domain_pack.set_dim_name(
-                            dim_type, i, new_pack_inames[var(old_iname)].name)
-                        new_domain_unpack = new_domain_unpack.set_dim_name(
-                            dim_type, i, new_unpack_inames[var(old_iname)].name)
-                new_domains.append(new_domain_pack)
-                new_domains.append(new_domain_unpack)
+                for iname in p.swept_inames:
+                    new_domain_pack = kernel.get_inames_domain(iname.name).copy()
+                    new_domain_unpack = kernel.get_inames_domain(iname.name).copy()
+                    for i in range(new_domain_pack.n_dim()):
+                        old_iname = new_domain_pack.get_dim_name(dim_type, i)
+                        if var(old_iname) in new_pack_inames:
+                            new_domain_pack = new_domain_pack.set_dim_name(
+                                dim_type, i, new_pack_inames[var(old_iname)].name)
+                            new_domain_unpack = new_domain_unpack.set_dim_name(
+                                dim_type, i, new_unpack_inames[var(old_iname)].name)
+                    new_domains.append(new_domain_pack)
+                    new_domains.append(new_domain_unpack)
 
                 arg = p.subscript.aggregate.name
                 pack_name = vng(arg + "_pack")
@@ -153,9 +157,14 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
                 from loopy.kernel.data import (TemporaryVariable,
                         temp_var_scope)
 
+                if arg in kernel.arg_dict:
+                    arg_in_caller = kernel.arg_dict[arg]
+                else:
+                    arg_in_caller = kernel.temporary_variables[arg]
+
                 pack_tmp = TemporaryVariable(
                     name=pack_name,
-                    dtype=kernel.arg_dict[arg].dtype,
+                    dtype=arg_in_caller.dtype,
                     dim_tags=in_knl_callable.arg_id_to_descr[id].dim_tags,
                     shape=in_knl_callable.arg_id_to_descr[id].shape,
                     scope=temp_var_scope.PRIVATE,
@@ -170,8 +179,6 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
                     new_unpack_inames))
 
                 # {{{ getting the lhs for packing and rhs for unpacking
-
-                arg_in_caller = kernel.arg_dict[arg]
 
                 from loopy.isl_helpers import simplify_via_aff, make_slab
 
