@@ -123,6 +123,10 @@ class ExpressionToAffineConversionError(LoopyError):
 class VariableAccessNotOrdered(LoopyError):
     pass
 
+
+class DependencyCycleFound(LoopyError):
+    pass
+
 # }}}
 
 
