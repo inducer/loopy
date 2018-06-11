@@ -275,7 +275,19 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
                 # instructions including the packing and unpacking instructions
                 new_instructions.extend(old_insn_to_new_insns[insn])
             else:
-                new_instructions.append(insn)
+                # for the instructions that depend on the call instruction that
+                # are to be packed and unpacked, we need to add the complete
+                # instruction block as a dependency for them.
+                new_depends_on = insn.depends_on
+                if insn.depends_on & set(
+                        old_insn.id for old_insn in old_insn_to_new_insns):
+                    # need to add the unpack instructions on dependencies.
+                    for old_insn_id in insn.depends_on & set(
+                            old_insn.id for old_insn in old_insn_to_new_insns):
+                        old_insn = kernel.id_to_insn[old_insn_id]
+                        new_depends_on |= frozenset(i.id for i
+                                in old_insn_to_new_insns[old_insn])
+                new_instructions.append(insn.copy(depends_on=new_depends_on))
         kernel = kernel.copy(
             domains=kernel.domains + new_domains,
             instructions=new_instructions,
