@@ -2869,6 +2869,42 @@ def test_half_complex_conditional(ctx_factory):
     knl(queue)
 
 
+def test_dep_cycle_printing_and_error():
+    # https://gitlab.tiker.net/inducer/loopy/issues/140
+    # This kernel has two dep cycles.
+
+    knl = lp.make_kernel('{[i,j,k]: 0 <= i,j,k < 12}',
+    """
+        for j
+            for i
+                <> nu = i - 4
+                if nu > 0
+                    <> P_val = a[i, j] {id=pset0}
+                else
+                    P_val = 0.1 * a[i, j] {id=pset1}
+                end
+                <> B_sum = 0
+                for k
+                    B_sum = B_sum + k * P_val {id=bset, dep=pset*}
+                end
+                # here, we are testing that Kc is properly promoted to a vector dtype
+                <> Kc = P_val * B_sum {id=kset, dep=bset}
+                a[i, j] = Kc {dep=kset}
+            end
+        end
+    """,
+    [lp.GlobalArg('a', shape=(12, 12), dtype=np.int32)])
+
+    knl = lp.split_iname(knl, 'j', 4, inner_tag='vec')
+    knl = lp.split_array_axis(knl, 'a', 1, 4)
+    knl = lp.tag_array_axes(knl, 'a', 'N1,N0,vec')
+    knl = lp.preprocess_kernel(knl)
+
+    from loopy.diagnostic import DependencyCycleFound
+    with pytest.raises(DependencyCycleFound):
+        print(lp.generate_code(knl)[0])
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
