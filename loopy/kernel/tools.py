@@ -1319,7 +1319,11 @@ def draw_dependencies_as_unicode_arrows(
             dep_key = dep
             if dep_key not in dep_to_column:
                 col = dep_to_column[dep_key] = find_free_column()
-                columns_in_use[col] = (set([insn.id]), dep)
+
+                # No need to add current instruction to end_insn_ids set, as
+                # we're currently handling it.
+                columns_in_use[col] = (set(), dep)
+
                 row[col] = do_flag_downward(u"┌", dep)
 
         # }}}
