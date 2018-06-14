@@ -825,25 +825,21 @@ class SubArrayRef(p.Expression):
             *SubArrayRef*.
         """
         from loopy.kernel.array import FixedStrideArrayDimTag as DimTag
+        from loopy.isl_helpers import simplify_via_aff
         sub_dim_tags = []
         sub_shape = []
-        linearized_index = simplify_using_aff(kernel,
+        linearized_index = simplify_via_aff(
                 sum(dim_tag.stride*iname for dim_tag, iname in
                 zip(arg_dim_tags, self.subscript.index_tuple)))
 
         strides_as_dict = SweptInameStrideCollector(tuple(iname.name for iname in
             self.swept_inames))(linearized_index)
-        sub_dim_tags = tuple(DimTag(strides_as_dict[iname]) for iname in
-                self.swept_inames)
+        sub_dim_tags = tuple(
+                DimTag(strides_as_dict[iname]) for iname in self.swept_inames)
         sub_shape = tuple(
                 pw_aff_to_expr(
                     kernel.get_iname_bounds(iname.name).upper_bound_pw_aff)+1
                 for iname in self.swept_inames)
-
-        if len(sub_shape) != len(self.swept_inames):
-            # Not allowed something like: [i]: a[i, i]
-            raise LoopyError("Number of axes swept must be equal to the number "
-                    "of inames declared for sweeping.")
 
         return sub_dim_tags, sub_shape
 
