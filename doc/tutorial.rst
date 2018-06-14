@@ -800,9 +800,9 @@ enabling some cost savings:
       for (int i_outer = 0; i_outer <= -2 + ((3 + n) / 4); ++i_outer)
       {
         a[4 * i_outer] = 0.0f;
-        a[4 * i_outer + 1] = 0.0f;
-        a[4 * i_outer + 2] = 0.0f;
-        a[4 * i_outer + 3] = 0.0f;
+        a[1 + 4 * i_outer] = 0.0f;
+        a[2 + 4 * i_outer] = 0.0f;
+        a[3 + 4 * i_outer] = 0.0f;
       }
       /* final slab for 'i_outer' */
       {
@@ -812,11 +812,11 @@ enabling some cost savings:
         {
           a[4 * i_outer] = 0.0f;
           if (-2 + -4 * i_outer + n >= 0)
-            a[4 * i_outer + 1] = 0.0f;
+            a[1 + 4 * i_outer] = 0.0f;
           if (-3 + -4 * i_outer + n >= 0)
-            a[4 * i_outer + 2] = 0.0f;
+            a[2 + 4 * i_outer] = 0.0f;
           if (4 + 4 * i_outer + -1 * n == 0)
-            a[4 * i_outer + 3] = 0.0f;
+            a[3 + 4 * i_outer] = 0.0f;
         }
       }
     ...
