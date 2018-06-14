@@ -650,9 +650,9 @@ loop's tag to ``"unr"``:
       for (int i_outer = 0; i_outer <= int_floor_div_pos_b(-4 + n, 4); ++i_outer)
       {
         a[4 * i_outer] = 0.0f;
-        a[4 * i_outer + 1] = 0.0f;
-        a[4 * i_outer + 2] = 0.0f;
-        a[4 * i_outer + 3] = 0.0f;
+        a[1 + 4 * i_outer] = 0.0f;
+        a[2 + 4 * i_outer] = 0.0f;
+        a[3 + 4 * i_outer] = 0.0f;
       }
     ...
 
