@@ -771,11 +771,11 @@ assumption:
       {
         a[4 * i_outer] = 0.0f;
         if (-2 + -4 * i_outer + n >= 0)
-          a[4 * i_outer + 1] = 0.0f;
+          a[1 + 4 * i_outer] = 0.0f;
         if (-3 + -4 * i_outer + n >= 0)
-          a[4 * i_outer + 2] = 0.0f;
+          a[2 + 4 * i_outer] = 0.0f;
         if (-4 + -4 * i_outer + n >= 0)
-          a[4 * i_outer + 3] = 0.0f;
+          a[3 + 4 * i_outer] = 0.0f;
       }
     ...
 
