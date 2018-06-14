@@ -385,6 +385,58 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
             2*x_host+3*y_host) < 1e-15
 
 
+@pytest.mark.parametrize("inline", [False, True])
+def test_shape_translation_through_sub_array_ref(ctx_factory, inline):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    x1 = cl.clrandom.rand(queue, (3, 2), dtype=np.float64)
+    x2 = cl.clrandom.rand(queue, (6, ), dtype=np.float64)
+    x3 = cl.clrandom.rand(queue, (6, 6), dtype=np.float64)
+
+    callee1 = lp.make_kernel(
+            "{[i]: 0<=i<6}",
+            """
+            a[i] = 2*abs(b[i])
+            """)
+
+    callee2 = lp.make_kernel(
+            "{[i, j]: 0<=i<3 and 0 <= j < 2}",
+            """
+            a[i, j] = 3*b[i, j]
+            """)
+
+    callee3 = lp.make_kernel(
+            "{[i]: 0<=i<6}",
+            """
+            a[i] = 5*b[i]
+            """)
+
+    knl = lp.make_kernel(
+            "{[i, j, k, l]:  0<= i < 6 and 0 <= j < 3 and 0 <= k < 2 and 0<=l<6}",
+            """
+            [i]: y1[i//2, i%2] = callee_fn1([i]: x1[i//2, i%2])
+            [j, k]: y2[2*j+k] = callee_fn2([j, k]: x2[2*j+k])
+            [l]: y3[l, l] = callee_fn3([l]: x3[l, l])
+            """)
+
+    knl = lp.register_callable_kernel(knl, 'callee_fn1', callee1, True)
+    knl = lp.register_callable_kernel(knl, 'callee_fn2', callee2, True)
+    knl = lp.register_callable_kernel(knl, 'callee_fn3', callee3, True)
+
+    knl = lp.set_options(knl, "write_cl")
+    knl = lp.set_options(knl, "return_dict")
+    evt, out_dict = knl(queue, x1=x1, x2=x2, x3=x3)
+
+    y1 = out_dict['y1'].get()
+    y2 = out_dict['y2'].get()
+    y3 = out_dict['y3'].get()
+
+    assert (np.linalg.norm(y1-2*x1.get())) < 1e-15
+    assert (np.linalg.norm(y2-3*x2.get())) < 1e-15
+    assert (np.linalg.norm(np.diag(y3-5*x3.get()))) < 1e-15
+
+
 def test_multi_arg_array_call(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)

@@ -2126,7 +2126,7 @@ def get_arg_description_from_sub_array_ref(sub_array, kernel):
         mem_scope = arg.memory_address_space
 
     sub_dim_tags, sub_shape = sub_array.get_sub_array_dim_tags_and_shape(
-            arg.dim_tags, arg.shape)
+            kernel, arg.dim_tags, arg.shape)
 
     return ArrayArgDescriptor(mem_scope=mem_scope,
             dim_tags=sub_dim_tags,

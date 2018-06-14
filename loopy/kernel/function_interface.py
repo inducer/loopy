@@ -34,9 +34,14 @@ from loopy.diagnostic import LoopyError
 from pymbolic.primitives import Variable
 from loopy.symbolic import parse_tagged_name
 
-
 from loopy.symbolic import (ScopedFunction, SubstitutionRuleMappingContext,
-        RuleAwareIdentityMapper, SubstitutionRuleExpander, SubstitutionMapper)
+        RuleAwareIdentityMapper, SubstitutionRuleExpander, SubstitutionMapper,
+        CombineMapper)
+
+from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
+        _DataObliviousInstruction)
+
+from functools import reduce
 
 
 # {{{ argument descriptors
@@ -506,6 +511,55 @@ class KernelInliner(SubstitutionMapper):
         else:
             return super(KernelInliner, self).map_subscript(expr)
 
+
+class CalleeScopedCallsCollector(CombineMapper):
+    """
+    Collects the scoped functions which are a part of the callee kernel and
+    must be transferred to the caller kernel before inlining.
+
+    :returns:
+        An :class:`frozenset` of function names that are not scoped in
+        the caller kernel.
+
+    .. note::
+        :class:`loopy.library.reduction.ArgExtOp` are ignored, as they are
+        never scoped in the pipeline.
+    """
+
+    def __init__(self, callee_scoped_functions):
+        self.callee_scoped_functions = callee_scoped_functions
+
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, frozenset())
+
+    def map_call(self, expr):
+        if expr.function.name in self.callee_scoped_functions:
+            return (frozenset([(expr,
+                self.callee_scoped_functions[expr.function.name])]) |
+                    self.combine((self.rec(child) for child in expr.parameters)))
+        else:
+            return self.combine((self.rec(child) for child in expr.parameters))
+
+    def map_call_with_kwargs(self, expr):
+        if expr.function.name in self.callee_scoped_functions:
+            return (frozenset([(expr,
+                self.callee_scoped_functions[expr.function.name])]) |
+                    self.combine((self.rec(child) for child in expr.parameters
+                        + tuple(expr.kw_parameters.values()))))
+        else:
+            return self.combine((self.rec(child) for child in
+                expr.parameters+tuple(expr.kw_parameters.values())))
+
+    def map_constant(self, expr):
+        return frozenset()
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
+    map_tagged_variable = map_constant
+    map_type_cast = map_constant
+
+
 # }}}
 
 
@@ -807,6 +861,29 @@ class CallableKernel(InKernelCallable):
                 new_insns.append(insn)
 
         kernel = kernel.copy(instructions=new_insns)
+
+        # }}}
+
+        # {{{ transferring the scoped functions from callee to caller
+
+        callee_scoped_calls_collector = CalleeScopedCallsCollector(
+                callee_knl.scoped_functions)
+        callee_scoped_calls_dict = {}
+
+        for insn in kernel.instructions:
+            if isinstance(insn, MultiAssignmentBase):
+                callee_scoped_calls_dict.update(dict(callee_scoped_calls_collector(
+                    insn.expression)))
+            elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
+                pass
+            else:
+                raise NotImplementedError("Unknown type of instruction %s." % type(
+                    insn))
+
+        from loopy.kernel.function_interface import (
+                register_pymbolic_calls_to_knl_callables)
+        kernel = register_pymbolic_calls_to_knl_callables(kernel,
+                callee_scoped_calls_dict)
 
         # }}}
 

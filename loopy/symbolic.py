@@ -811,7 +811,7 @@ class SubArrayRef(p.Expression):
         return EvaluatorWithDeficientContext(swept_inames_to_zeros)(
                 self.subscript)
 
-    def get_sub_array_dim_tags_and_shape(self, arg_dim_tags, arg_shape):
+    def get_sub_array_dim_tags_and_shape(self, kernel, arg_dim_tags, arg_shape):
         """Returns the dim tags for the inner inames.
 
         .. arg:: arg_dim_tags
@@ -827,16 +827,18 @@ class SubArrayRef(p.Expression):
         from loopy.kernel.array import FixedStrideArrayDimTag as DimTag
         sub_dim_tags = []
         sub_shape = []
-        linearized_index = sum(dim_tag.stride*iname for dim_tag, iname in
-                zip(arg_dim_tags, self.subscript.index_tuple))
+        linearized_index = simplify_using_aff(kernel,
+                sum(dim_tag.stride*iname for dim_tag, iname in
+                zip(arg_dim_tags, self.subscript.index_tuple)))
 
         strides_as_dict = SweptInameStrideCollector(tuple(iname.name for iname in
             self.swept_inames))(linearized_index)
         sub_dim_tags = tuple(DimTag(strides_as_dict[iname]) for iname in
                 self.swept_inames)
-        sub_shape = tuple(dim_shape for dim_shape, index in zip(
-            arg_shape, self.subscript.index_tuple) if VariableInAnExpression(
-                self.swept_inames)(index))
+        sub_shape = tuple(
+                pw_aff_to_expr(
+                    kernel.get_iname_bounds(iname.name).upper_bound_pw_aff)+1
+                for iname in self.swept_inames)
 
         if len(sub_shape) != len(self.swept_inames):
             # Not allowed something like: [i]: a[i, i]
