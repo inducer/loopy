@@ -2477,28 +2477,6 @@ def make_functions_ready_for_codegen(kernel):
 # }}}
 
 
-# {{{ inline callable kernel
-
-def inline_callable_kernels(kernel):
-    """
-    Returns a copy of *kernel* with the callable kernels inlined.
-    """
-    old_insns = kernel.instructions
-    for insn in old_insns:
-        if isinstance(insn, CallInstruction):
-            if insn.expression.function.name in kernel.scoped_functions:
-                in_knl_callable = kernel.scoped_functions[
-                        insn.expression.function.name]
-                from loopy.kernel.function_interface import CallableKernel
-                if isinstance(in_knl_callable, CallableKernel) and (
-                        in_knl_callable.should_inline):
-                    kernel = in_knl_callable.inline_within_kernel(kernel, insn)
-
-    return kernel
-
-# }}}
-
-
 preprocess_cache = WriteOncePersistentDict(
         "loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
@@ -2588,10 +2566,6 @@ def preprocess_kernel(kernel, device=None):
 
     # tuning the functions in the kernel to align with the grid sizes.
     kernel = infer_hw_axes_sizes(kernel)
-
-    # Inlining callable kernels that are marked with inline=True.
-    # This should happen after type inference but before other transformations.
-    kernel = inline_callable_kernels(kernel)
 
     # boostability should be removed in 2017.x.
     kernel = find_idempotence(kernel)

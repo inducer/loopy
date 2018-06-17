@@ -78,15 +78,13 @@ class RegisterCalleeKernel(ImmutableRecord):
         return None
 
 
-def register_callable_kernel(caller_kernel, function_name, callee_kernel,
-                             should_inline=False):
+def register_callable_kernel(caller_kernel, function_name, callee_kernel):
     """Returns a copy of *caller_kernel*, which would resolve *function_name* in an
     expression as a call to *callee_kernel*.
 
     :arg caller_kernel: An instance of :class:`loopy.kernel.LoopKernel`.
     :arg function_name: An instance of :class:`str`.
     :arg callee_kernel: An instance of :class:`loopy.kernel.LoopKernel`.
-    :arg should_inline: Boolean flag of inlining callee kernel into caller.
     """
 
     # {{{ sanity checks
@@ -129,7 +127,7 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel,
     callable_kernel = CallableKernel(subkernel=callee_kernel.copy(
                         target=caller_kernel.target,
                         name=function_name,
-                        is_master_kernel=False), should_inline=should_inline)
+                        is_master_kernel=False))
 
     # disabling global barriers for callee kernel
     from loopy import set_options
@@ -137,6 +135,32 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel,
 
     return register_function_lookup(caller_kernel,
             RegisterCalleeKernel(function_name, callable_kernel))
+
+# }}}
+
+
+# {{{ inline callable kernel
+
+def inline_callable(kernel, function_name):
+    """
+    Returns a copy of *kernel* with the callable addresed by *function_name* inlined.
+    """
+    from loopy.preprocess import infer_arg_descr
+    kernel = infer_arg_descr(kernel)
+
+    old_insns = kernel.instructions
+    for insn in old_insns:
+        if isinstance(insn, CallInstruction):
+            if insn.expression.function.name in kernel.scoped_functions:
+                in_knl_callable = kernel.scoped_functions[
+                        insn.expression.function.name]
+                print(in_knl_callable.subkernel.name)
+                from loopy.kernel.function_interface import CallableKernel
+                if isinstance(in_knl_callable, CallableKernel) and (
+                        in_knl_callable.subkernel.name == function_name):
+                    kernel = in_knl_callable.inline_within_kernel(kernel, insn)
+
+    return kernel
 
 # }}}
 

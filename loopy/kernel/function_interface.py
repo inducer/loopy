@@ -586,21 +586,18 @@ class CallableKernel(InKernelCallable):
     """
 
     fields = set(["subkernel", "arg_id_to_dtype", "arg_id_to_descr",
-        "name_in_target", "should_inline"])
+        "name_in_target"])
     init_arg_names = ("subkernel", "arg_id_to_dtype", "arg_id_to_descr",
-            "name_in_target", "should_inline")
+            "name_in_target")
 
     def __init__(self, subkernel, arg_id_to_dtype=None,
-            arg_id_to_descr=None, name_in_target=None, should_inline=False):
+            arg_id_to_descr=None, name_in_target=None):
 
         super(CallableKernel, self).__init__(
                 arg_id_to_dtype=arg_id_to_dtype,
                 arg_id_to_descr=arg_id_to_descr)
-        if name_in_target is not None:
-            subkernel = subkernel.copy(name=name_in_target)
 
         self.name_in_target = name_in_target
-        self.should_inline = should_inline
         self.subkernel = subkernel.copy(
                 args=[arg.copy(dtype=arg.dtype.with_target(subkernel.target))
                     if arg.dtype is not None else arg for arg in subkernel.args])
@@ -707,8 +704,7 @@ class CallableKernel(InKernelCallable):
         Returns a copy of *kernel* with the *instruction* in the *kernel*
         replaced by inlining :attr:`subkernel` within it.
         """
-        from loopy.preprocess import preprocess_kernel
-        callee_knl = preprocess_kernel(self.subkernel)
+        callee_knl = self.subkernel
 
         import islpy as isl
 
