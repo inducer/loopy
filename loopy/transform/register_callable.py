@@ -128,6 +128,7 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel,
     # kernel.
     callable_kernel = CallableKernel(subkernel=callee_kernel.copy(
                         target=caller_kernel.target,
+                        name=function_name,
                         is_master_kernel=False), should_inline=should_inline)
 
     # disabling global barriers for callee kernel
