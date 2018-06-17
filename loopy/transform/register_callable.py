@@ -28,6 +28,12 @@ from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
         CInstruction, _DataObliviousInstruction)
+from loopy.symbolic import IdentityMapper
+from loopy.isl_helpers import simplify_via_aff
+from pymbolic.primitives import CallWithKwargs
+from loopy.kernel.function_interface import (get_kw_pos_association,
+        register_pymbolic_calls_to_knl_callables)
+
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -168,4 +174,91 @@ def inline_callable(kernel, function_name):
 
 # }}}
 
+
+# {{{ matching caller to callee args if dimenstions dont match
+
+class DimChanger(IdentityMapper):
+    def __init__(self, callee_arg_dict, desired_dim_tag_dict):
+        self.callee_arg_dict = callee_arg_dict
+        self.desired_dim_tag_dict = desired_dim_tag_dict
+
+    def map_subscript(self, expr):
+        callee_arg_dim_tags = self.callee_arg_dict[expr.aggregate.name].dim_tags
+        flattened_index = sum(dim_tag.stride*idx for dim_tag, idx in
+                zip(callee_arg_dim_tags, expr.index_tuple))
+        new_indices = []
+
+        for dim_tag in self.desired_dim_tag_dict[expr.aggregate.name]:
+            ind = flattened_index // dim_tag.stride
+            flattened_index -= (dim_tag.stride * ind)
+            new_indices.append(simplify_via_aff(ind))
+
+        return expr.aggregate.index(tuple(new_indices))
+
+
+def _match_caller_callee_argument_dimension(caller_knl, callee_fn):
+    """
+    #TODO: Fix docs.
+    One must call this after registering the callee kernel into the caller
+    kernel.
+    """
+    pymbolic_calls_to_new_callables = {}
+    for insn in caller_knl.instructions:
+        if not isinstance(insn, CallInstruction) or (
+                insn.expression.function.name not in
+                caller_knl.scoped_functions):
+            continue
+
+        in_knl_callable = caller_knl.scoped_functions[
+                insn.expression.function.name]
+
+        if in_knl_callable.subkernel.name != callee_fn:
+            continue
+
+        # getting the caller callee arg association
+
+        parameters = insn.expression.parameters[:]
+        kw_parameters = {}
+        if isinstance(insn.expression, CallWithKwargs):
+            kw_parameters = insn.expression.kw_parameters
+
+        assignees = insn.assignees
+
+        parameter_dim_tags = [par.get_array_arg_descriptor(caller_knl).dim_tags
+                for par in parameters]
+        kw_to_pos, pos_to_kw = get_kw_pos_association(in_knl_callable.subkernel)
+        for i in range(len(parameters), len(parameters)+len(kw_parameters)):
+            parameter_dim_tags.append(kw_parameters[pos_to_kw[i]]
+                    .get_array_arg_descriptor(caller_knl).dim_tags)
+
+        # inserting the assigness at the required positions.
+        assignee_write_count = -1
+        for i, arg in enumerate(in_knl_callable.subkernel.args):
+            if arg.direction == 'out':
+                assignee = assignees[-assignee_write_count-1]
+                parameter_dim_tags.insert(i, assignee
+                        .get_array_arg_descriptor(caller_knl).dim_tags)
+                assignee_write_count -= 1
+
+        callee_arg_to_desired_dim_tag = dict(zip([arg.name for arg in
+            in_knl_callable.subkernel.args], parameter_dim_tags))
+        dim_changer = DimChanger(in_knl_callable.subkernel.arg_dict,
+                callee_arg_to_desired_dim_tag)
+        new_callee_insns = []
+        for callee_insn in in_knl_callable.subkernel.instructions:
+            if isinstance(callee_insn, MultiAssignmentBase):
+                new_callee_insns.append(callee_insn.copy(expression=dim_changer(
+                    callee_insn.expression),
+                    assignee=dim_changer(callee_insn.assignee)))
+
+        new_subkernel = in_knl_callable.subkernel.copy(instructions=new_callee_insns)
+
+        new_in_knl_callable = in_knl_callable.copy(subkernel=new_subkernel)
+
+        pymbolic_calls_to_new_callables[insn.expression] = new_in_knl_callable
+
+    return register_pymbolic_calls_to_knl_callables(caller_knl,
+            pymbolic_calls_to_new_callables)
+
+# }}}
 # vim: foldmethod=marker

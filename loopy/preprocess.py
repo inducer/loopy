@@ -2107,32 +2107,6 @@ def check_atomic_loads(kernel):
 
 # {{{ arg_descr_inference
 
-def get_arg_description_from_sub_array_ref(sub_array, kernel):
-    """ Gets the dim_tags, memory scope, shape informations of a
-    :class:`SubArrayRef` argument in the caller kernel packed into
-    :class:`ArrayArgDescriptor`.
-    """
-    from loopy.kernel.function_interface import ArrayArgDescriptor
-
-    name = sub_array.subscript.aggregate.name
-
-    if name in kernel.temporary_variables:
-        arg = kernel.temporary_variables[name]
-        mem_scope = arg.scope
-        assert name not in kernel.arg_dict
-    else:
-        assert name in kernel.arg_dict
-        arg = kernel.arg_dict[name]
-        mem_scope = arg.memory_address_space
-
-    sub_dim_tags, sub_shape = sub_array.get_sub_array_dim_tags_and_shape(
-            kernel, arg.dim_tags, arg.shape)
-
-    return ArrayArgDescriptor(mem_scope=mem_scope,
-            dim_tags=sub_dim_tags,
-            shape=sub_shape)
-
-
 class ArgDescrInferenceMapper(CombineMapper):
     """
     Returns a set of instances of :class:`tuple` (expr,
@@ -2157,8 +2131,7 @@ class ArgDescrInferenceMapper(CombineMapper):
             return self.combine((self.rec(child) for child in expr.parameters))
 
         # descriptors for the args
-        arg_id_to_descr = dict((i,
-            get_arg_description_from_sub_array_ref(par, self.kernel))
+        arg_id_to_descr = dict((i, par.get_array_arg_descriptor(self.kernel))
                 if isinstance(par, SubArrayRef) else (i, ValueArgDescriptor())
                 for i, par in enumerate(expr.parameters))
 
@@ -2172,8 +2145,7 @@ class ArgDescrInferenceMapper(CombineMapper):
             for i, par in enumerate(assignees):
                 if isinstance(par, SubArrayRef):
                     assignee_id_to_descr[-i-1] = (
-                            get_arg_description_from_sub_array_ref(par,
-                                self.kernel))
+                            par.get_array_arg_descriptor(self.kernel))
                 else:
                     assignee_id_to_descr[-i-1] = ValueArgDescriptor()
 
@@ -2197,8 +2169,7 @@ class ArgDescrInferenceMapper(CombineMapper):
         from loopy.symbolic import SubArrayRef
 
         # descriptors for the args and kwargs:
-        arg_id_to_descr = dict((i, get_arg_description_from_sub_array_ref(par,
-            self.kernel))
+        arg_id_to_descr = dict((i, par.get_array_arg_descriptor(self.kernel))
                 if isinstance(par, SubArrayRef) else ValueArgDescriptor()
                 for i, par in tuple(enumerate(expr.parameters)) +
                 tuple(expr.kw_parameters.items()))
@@ -2212,8 +2183,7 @@ class ArgDescrInferenceMapper(CombineMapper):
             for i, par in enumerate(assignees):
                 if isinstance(par, SubArrayRef):
                     assignee_id_to_descr[-i-1] = (
-                            get_arg_description_from_sub_array_ref(par,
-                                self.kernel))
+                            par.get_array_arg_descriptor(self.kernel))
                 else:
                     assignee_id_to_descr[-i-1] = ValueArgDescriptor()
 
