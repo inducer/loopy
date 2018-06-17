@@ -523,7 +523,9 @@ def generate_code_v2(kernel):
             from loopy.kernel.function_interface import CallableKernel
             if isinstance(in_knl_callable, CallableKernel):
                 auxiliary_dev_prog = generate_code_v2(
-                        in_knl_callable.subkernel.copy(target=kernel.target)
+                        in_knl_callable.subkernel.copy(
+                            name=in_knl_callable.name_in_target,
+                            target=kernel.target)
                         ).device_programs[0].ast
                 auxiliary_dev_progs.append(auxiliary_dev_prog)
         elif isinstance(insn, (Assignment, NoOpInstruction, Assignment,

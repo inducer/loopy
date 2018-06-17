@@ -154,7 +154,6 @@ def inline_callable(kernel, function_name):
             if insn.expression.function.name in kernel.scoped_functions:
                 in_knl_callable = kernel.scoped_functions[
                         insn.expression.function.name]
-                print(in_knl_callable.subkernel.name)
                 from loopy.kernel.function_interface import CallableKernel
                 if isinstance(in_knl_callable, CallableKernel) and (
                         in_knl_callable.subkernel.name == function_name):
