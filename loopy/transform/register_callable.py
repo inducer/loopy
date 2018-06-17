@@ -158,6 +158,11 @@ def inline_callable(kernel, function_name):
                 if isinstance(in_knl_callable, CallableKernel) and (
                         in_knl_callable.subkernel.name == function_name):
                     kernel = in_knl_callable.inline_within_kernel(kernel, insn)
+        elif isinstance(insn, (MultiAssignmentBase, CInstruction,
+                _DataObliviousInstruction)):
+            pass
+        else:
+            raise NotImplementedError("Unknown instruction %s." % type(insn))
 
     return kernel
 
