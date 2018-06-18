@@ -701,10 +701,7 @@ class CallableKernel(InKernelCallable):
                 raise LoopyError("Descriptor must be either an instance of "
                         "ArrayArgDescriptor or ValueArgDescriptor -- got %s." %
                         type(descr))
-        if self.should_inline:
-            descriptor_specialized_knl = self.subkernel.copy()
-        else:
-            descriptor_specialized_knl = self.subkernel.copy(args=new_args)
+        descriptor_specialized_knl = self.subkernel.copy()
 
         return self.copy(subkernel=descriptor_specialized_knl,
                 arg_id_to_descr=arg_id_to_descr)

@@ -729,7 +729,7 @@ def pre_schedule_checks(kernel):
         check_for_data_dependent_parallel_bounds(kernel)
         check_bounds(kernel)
         check_write_destinations(kernel)
-        check_has_schedulable_iname_nesting(kernel)
+        # check_has_schedulable_iname_nesting(kernel)
         check_variable_access_ordered(kernel)
 
         logger.debug("%s: pre-schedule check: done" % kernel.name)
