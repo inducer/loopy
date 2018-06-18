@@ -564,6 +564,13 @@ class MemAccess(Record):
        when no local id 0 is found, in which case the 0 key will not be
        present in lid_strides.
 
+    .. attribute:: gid_strides
+
+       A :class:`dict` of **{** :class:`int` **:**
+       :class:`pymbolic.primitives.Expression` or :class:`int` **}** that
+       specifies global strides for each global id in the memory access index.
+       global ids not found will not be present in ``gid_strides.keys()``.
+
     .. attribute:: direction
 
        A :class:`str` that specifies the direction of memory access as
@@ -589,18 +596,8 @@ class MemAccess(Record):
 
     """
 
-    def __init__(self, mtype=None, dtype=None, lid_strides=None, direction=None,
-                 variable=None, count_granularity=None):
-
-        #TODO currently giving all lmem access lid_strides=None
-        if mtype == 'local' and lid_strides is not None:
-            raise NotImplementedError("MemAccess: lid_strides must be None when "
-                                      "mtype is 'local'")
-
-        #TODO currently giving all lmem access variable=None
-        if (mtype == 'local') and (variable is not None):
-            raise NotImplementedError("MemAccess: variable must be None when "
-                                      "mtype is 'local'")
+    def __init__(self, mtype=None, dtype=None, lid_strides=None, gid_strides=None,
+                 direction=None, variable=None, count_granularity=None):
 
         if count_granularity not in CountGranularity.ALL+[None]:
             raise ValueError("Op.__init__: count_granularity '%s' is "
@@ -609,25 +606,29 @@ class MemAccess(Record):
 
         if dtype is None:
             Record.__init__(self, mtype=mtype, dtype=dtype, lid_strides=lid_strides,
-                            direction=direction, variable=variable,
-                            count_granularity=count_granularity)
+                            gid_strides=gid_strides, direction=direction,
+                            variable=variable, count_granularity=count_granularity)
         else:
             from loopy.types import to_loopy_type
             Record.__init__(self, mtype=mtype, dtype=to_loopy_type(dtype),
-                            lid_strides=lid_strides, direction=direction,
-                            variable=variable, count_granularity=count_granularity)
+                            lid_strides=lid_strides, gid_strides=gid_strides,
+                            direction=direction, variable=variable,
+                            count_granularity=count_granularity)
 
     def __hash__(self):
-        # Note that this means lid_strides must be sorted in self.__repr__()
+        # Note that this means lid_strides and gid_strides must be sorted
+        # in self.__repr__()
         return hash(repr(self))
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
-        return "MemAccess(%s, %s, %s, %s, %s, %s)" % (
+        return "MemAccess(%s, %s, %s, %s, %s, %s, %s)" % (
             self.mtype,
             self.dtype,
             None if self.lid_strides is None else dict(
                 sorted(six.iteritems(self.lid_strides))),
+            None if self.gid_strides is None else dict(
+                sorted(six.iteritems(self.gid_strides))),
             self.direction,
             self.variable,
             self.count_granularity)
@@ -836,6 +837,77 @@ class ExpressionOpCounter(CounterBase):
 # }}}
 
 
+def _get_lid_and_gid_strides(knl, array, index):
+    # find all local and global index tags and corresponding inames
+    from loopy.symbolic import get_dependencies
+    my_inames = get_dependencies(index) & knl.all_inames()
+
+    from loopy.kernel.data import (LocalIndexTag, GroupIndexTag,
+                                   filter_iname_tags_by_type)
+    lid_to_iname = {}
+    gid_to_iname = {}
+    for iname in my_inames:
+        tags = filter_iname_tags_by_type(knl.iname_to_tags[iname],
+                              (GroupIndexTag, LocalIndexTag))
+        if tags:
+            tag, = filter_iname_tags_by_type(
+                tags, (GroupIndexTag, LocalIndexTag), 1)
+            if isinstance(tag, LocalIndexTag):
+                lid_to_iname[tag.axis] = iname
+            else:
+                gid_to_iname[tag.axis] = iname
+
+    # create lid_strides and gid_strides dicts
+
+    # strides are coefficents in flattened index, i.e., we want
+    # lid_strides = {0:l0, 1:l1, 2:l2, ...} and
+    # gid_strides = {0:g0, 1:g1, 2:g2, ...},
+    # where l0, l1, l2, g0, g1, and g2 come from flattened index
+    # [... + g2*gid2 + g1*gid1 + g0*gid0 + ... + l2*lid2 + l1*lid1 + l0*lid0]
+
+    from loopy.symbolic import CoefficientCollector
+    from loopy.kernel.array import FixedStrideArrayDimTag
+    from pymbolic.primitives import Variable
+    from loopy.symbolic import simplify_using_aff
+    from loopy.diagnostic import ExpressionNotAffineError
+
+    def get_iname_strides(tag_to_iname_dict):
+        tag_to_stride_dict = {}
+        for tag, iname in six.iteritems(tag_to_iname_dict):
+            total_iname_stride = 0
+            # find total stride of this iname for each axis
+            for idx, axis_tag in zip(index, array.dim_tags):
+                # collect index coefficients
+                try:
+                    coeffs = CoefficientCollector()(
+                              simplify_using_aff(knl, idx))
+                except ExpressionNotAffineError:
+                    total_iname_stride = None
+                    break
+
+                # check if idx contains this iname
+                try:
+                    coeff = coeffs[Variable(tag_to_iname_dict[tag])]
+                except KeyError:
+                    # idx does not contain this iname
+                    continue
+
+                # found coefficient of this iname
+                # now determine stride
+                if isinstance(axis_tag, FixedStrideArrayDimTag):
+                    axis_tag_stride = axis_tag.stride
+                else:
+                    continue
+
+                total_iname_stride += axis_tag_stride*coeff
+
+            tag_to_stride_dict[tag] = total_iname_stride
+
+        return tag_to_stride_dict
+
+    return get_iname_strides(lid_to_iname), get_iname_strides(gid_to_iname)
+
+
 class MemAccessCounter(CounterBase):
     pass
 
@@ -843,14 +915,39 @@ class MemAccessCounter(CounterBase):
 # {{{ LocalMemAccessCounter
 
 class LocalMemAccessCounter(MemAccessCounter):
-    def count_var_access(self, dtype, name, subscript):
+    def count_var_access(self, dtype, name, index):
         sub_map = ToCountMap()
         if name in self.knl.temporary_variables:
             array = self.knl.temporary_variables[name]
             if isinstance(array, TemporaryVariable) and (
                     array.scope == MemoryAddressSpace.LOCAL):
-                sub_map[MemAccess(mtype='local', dtype=dtype,
-                                  count_granularity=CountGranularity.WORKITEM)] = 1
+                if index is None:
+                    # no subscript
+                    sub_map[MemAccess(
+                                mtype='local',
+                                dtype=dtype,
+                                count_granularity=CountGranularity.WORKITEM)
+                            ] = 1
+                    return sub_map
+
+                array = self.knl.temporary_variables[name]
+
+                # could be tuple or scalar index
+                index_tuple = index
+                if not isinstance(index_tuple, tuple):
+                    index_tuple = (index_tuple,)
+
+                lid_strides, gid_strides = _get_lid_and_gid_strides(
+                                                self.knl, array, index_tuple)
+
+                sub_map[MemAccess(
+                        mtype='local',
+                        dtype=dtype,
+                        lid_strides=dict(sorted(six.iteritems(lid_strides))),
+                        gid_strides=dict(sorted(six.iteritems(gid_strides))),
+                        variable=name,
+                        count_granularity=CountGranularity.WORKITEM)] = 1
+
         return sub_map
 
     def map_variable(self, expr):
@@ -860,9 +957,9 @@ class LocalMemAccessCounter(MemAccessCounter):
     map_tagged_variable = map_variable
 
     def map_subscript(self, expr):
-        return (
-                self.count_var_access(
-                    self.type_inf(expr), expr.aggregate.name, expr.index)
+        return (self.count_var_access(self.type_inf(expr),
+                                      expr.aggregate.name,
+                                      expr.index)
                 + self.rec(expr.index))
 
 # }}}
@@ -886,7 +983,7 @@ class GlobalMemAccessCounter(MemAccessCounter):
 
         return ToCountMap({MemAccess(mtype='global',
                                      dtype=self.type_inf(expr), lid_strides={},
-                                     variable=name,
+                                     gid_strides={}, variable=name,
                                      count_granularity=CountGranularity.WORKITEM): 1}
                           ) + self.rec(expr.index)
 
@@ -903,80 +1000,12 @@ class GlobalMemAccessCounter(MemAccessCounter):
             # this array is not in global memory
             return self.rec(expr.index)
 
-        index = expr.index  # could be tuple or scalar index
-        if not isinstance(index, tuple):
-            index = (index,)
+        index_tuple = expr.index  # could be tuple or scalar index
+        if not isinstance(index_tuple, tuple):
+            index_tuple = (index_tuple,)
 
-        from loopy.symbolic import get_dependencies
-        from loopy.kernel.data import LocalIndexTag
-        my_inames = get_dependencies(index) & self.knl.all_inames()
-
-        # find all local index tags and corresponding inames
-        lid_to_iname = {}
-        for iname in my_inames:
-            tag = self.knl.iname_to_tag.get(iname)
-            if isinstance(tag, LocalIndexTag):
-                lid_to_iname[tag.axis] = iname
-
-        if not lid_to_iname:
-
-            # no local id found, count as uniform access
-            # Note, a few different cases may be considered uniform:
-            # lid_strides={} if no local ids were found,
-            # lid_strides={1:1, 2:32} if no local id 0 was found,
-            # lid_strides={0:0, ...} if a local id 0 is found and its stride is 0
-            warn_with_kernel(self.knl, "no_lid_found",
-                             "GlobalSubscriptCounter: No local id found, "
-                             "setting lid_strides to {}. Expression: %s"
-                             % (expr))
-
-            return ToCountMap({MemAccess(
-                                mtype='global',
-                                dtype=self.type_inf(expr), lid_strides={},
-                                variable=name,
-                                count_granularity=CountGranularity.SUBGROUP): 1}
-                              ) + self.rec(expr.index)
-
-        # create lid_strides dict (strides are coefficents in flattened index)
-        # i.e., we want {0:A, 1:B, 2:C, ...} where A, B, & C
-        # come from flattened index [... + C*lid2 + B*lid1 + A*lid0]
-
-        from loopy.symbolic import CoefficientCollector
-        from loopy.kernel.array import FixedStrideArrayDimTag
-        from pymbolic.primitives import Variable
-
-        lid_strides = {}
-
-        for ltag, iname in six.iteritems(lid_to_iname):
-            ltag_stride = 0
-            # check coefficient of this lid for each axis
-            for idx, axis_tag in zip(index, array.dim_tags):
-
-                from loopy.symbolic import simplify_using_aff
-                from loopy.diagnostic import ExpressionNotAffineError
-                try:
-                    coeffs = CoefficientCollector()(
-                              simplify_using_aff(self.knl, idx))
-                except ExpressionNotAffineError:
-                    ltag_stride = None
-                    break
-
-                # check if idx contains this lid
-                try:
-                    coeff_lid = coeffs[Variable(lid_to_iname[ltag])]
-                except KeyError:
-                    # idx does not contain this lid
-                    continue
-
-                # found coefficient of this lid
-                # now determine stride
-                if isinstance(axis_tag, FixedStrideArrayDimTag):
-                    stride = axis_tag.stride
-                else:
-                    continue
-
-                ltag_stride += stride*coeff_lid
-            lid_strides[ltag] = ltag_stride
+        lid_strides, gid_strides = _get_lid_and_gid_strides(
+                                        self.knl, array, index_tuple)
 
         count_granularity = CountGranularity.WORKITEM if (
                                 0 in lid_strides and lid_strides[0] != 0
@@ -986,10 +1015,11 @@ class GlobalMemAccessCounter(MemAccessCounter):
                             mtype='global',
                             dtype=self.type_inf(expr),
                             lid_strides=dict(sorted(six.iteritems(lid_strides))),
+                            gid_strides=dict(sorted(six.iteritems(gid_strides))),
                             variable=name,
                             count_granularity=count_granularity
                             ): 1}
-                          ) + self.rec(expr.index)
+                          ) + self.rec(expr.index_tuple)
 
 # }}}
 
@@ -1173,14 +1203,17 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
     g_used = set()
     l_used = set()
 
-    from loopy.kernel.data import LocalIndexTag, GroupIndexTag
+    from loopy.kernel.data import (LocalIndexTag, GroupIndexTag,
+                                   filter_iname_tags_by_type)
     for iname in knl.insn_inames(insn):
-        tag = knl.iname_to_tag.get(iname)
-
-        if isinstance(tag, LocalIndexTag):
-            l_used.add(tag.axis)
-        elif isinstance(tag, GroupIndexTag):
-            g_used.add(tag.axis)
+        tags = filter_iname_tags_by_type(knl.iname_to_tags[iname],
+                              (LocalIndexTag, GroupIndexTag), 1)
+        if tags:
+            tag, = tags
+            if isinstance(tag, LocalIndexTag):
+                l_used.add(tag.axis)
+            elif isinstance(tag, GroupIndexTag):
+                g_used.add(tag.axis)
 
     def mult_grid_factor(used_axes, size):
         result = 1
@@ -1209,9 +1242,9 @@ def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False)
     insn_inames = knl.insn_inames(insn)
 
     if disregard_local_axes:
-        from loopy.kernel.data import LocalIndexTag
+        from loopy.kernel.data import LocalIndexTag, filter_iname_tags_by_type
         insn_inames = [iname for iname in insn_inames if not
-                       isinstance(knl.iname_to_tag.get(iname), LocalIndexTag)]
+                filter_iname_tags_by_type(knl.iname_to_tags[iname], LocalIndexTag)]
 
     inames_domain = knl.get_inames_domain(insn_inames)
     domain = (inames_domain.project_out_except(
@@ -1292,6 +1325,10 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
         # (now use these counts to, e.g., predict performance)
 
     """
+
+    if not knl.options.ignore_boostable_into:
+        raise LoopyError("Kernel '%s': Using operation counting requires the option "
+                "ignore_boostable_into to be set." % knl.name)
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     from loopy.kernel.instruction import (
@@ -1397,6 +1434,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                                     mtype='global',
                                     dtype=np.float32,
                                     lid_strides={0: 1},
+                                    gid_strides={0: 256},
                                     direction='load',
                                     variable='a',
                                     count_granularity=CountGranularity.WORKITEM)
@@ -1405,6 +1443,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                                     mtype='global',
                                     dtype=np.float32,
                                     lid_strides={0: 1},
+                                    gid_strides={0: 256},
                                     direction='store',
                                     variable='a',
                                     count_granularity=CountGranularity.WORKITEM)
@@ -1413,6 +1452,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                                     mtype='local',
                                     dtype=np.float32,
                                     lid_strides={0: 1},
+                                    gid_strides={0: 256},
                                     direction='load',
                                     variable='x',
                                     count_granularity=CountGranularity.WORKITEM)
@@ -1421,6 +1461,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                                     mtype='local',
                                     dtype=np.float32,
                                     lid_strides={0: 1},
+                                    gid_strides={0: 256},
                                     direction='store',
                                     variable='x',
                                     count_granularity=CountGranularity.WORKITEM)
@@ -1430,6 +1471,10 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
 
     """
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
+
+    if not knl.options.ignore_boostable_into:
+        raise LoopyError("Kernel '%s': Using operation counting requires the option "
+                "ignore_boostable_into to be set." % knl.name)
 
     if not isinstance(subgroup_size, int):
         # try to find subgroup_size
@@ -1569,6 +1614,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                             mtype=mem_access.mtype,
                             dtype=mem_access.dtype.numpy_dtype,
                             lid_strides=mem_access.lid_strides,
+                            gid_strides=mem_access.gid_strides,
                             direction=mem_access.direction,
                             variable=mem_access.variable,
                             count_granularity=mem_access.count_granularity),
@@ -1621,6 +1667,10 @@ def get_synchronization_map(knl, subgroup_size=None):
         # (now use this count to, e.g., predict performance)
 
     """
+
+    if not knl.options.ignore_boostable_into:
+        raise LoopyError("Kernel '%s': Using operation counting requires the option "
+                "ignore_boostable_into to be set." % knl.name)
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier,

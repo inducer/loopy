@@ -50,6 +50,8 @@ Influencing data access
 
 .. autofunction:: set_array_axis_names
 
+.. automodule:: loopy.transform.privatize
+
 Padding Data
 ------------
 

@@ -625,9 +625,10 @@ class ExecutionWrapperGeneratorBase(object):
         :codegen_result: the loopy :class:`CodeGenerationResult` created
         by code generation
 
-        :returns: py_func, a python function that handles excution of this
-        kernel
+        :returns: A python callable that handles execution of this
+            kernel
         """
+
         options = kernel.options
         implemented_data_info = codegen_result.implemented_data_info
 
@@ -677,7 +678,7 @@ class ExecutionWrapperGeneratorBase(object):
                 with open(options.write_wrapper, "w") as outf:
                     outf.write(output)
 
-        return gen.get_function()
+        return gen.get_picklable_function()
 
 # }}}
 
@@ -697,6 +698,11 @@ typed_and_scheduled_cache = WriteOncePersistentDict(
         key_builder=LoopyKeyBuilder())
 
 
+invoker_cache = WriteOncePersistentDict(
+        "loopy-invoker-cache-v1-"+DATA_MODEL_VERSION,
+        key_builder=LoopyKeyBuilder())
+
+
 # {{{ kernel executor
 
 class KernelExecutorBase(object):
@@ -707,7 +713,7 @@ class KernelExecutorBase(object):
     .. automethod:: __call__
     """
 
-    def __init__(self, kernel, invoker):
+    def __init__(self, kernel):
         """
         :arg kernel: a loopy.LoopKernel
         """
@@ -722,8 +728,6 @@ class KernelExecutorBase(object):
         self.has_runtime_typed_args = any(
                 arg.dtype is None
                 for arg in kernel.args)
-
-        self.invoker = invoker
 
     def get_typed_and_scheduled_kernel_uncached(self, arg_to_dtype_set):
         from loopy.kernel.tools import add_dtypes
@@ -832,6 +836,29 @@ class KernelExecutorBase(object):
         from loopy.codegen import generate_code_v2
         code = generate_code_v2(kernel)
         return code.device_code()
+
+    def get_invoker_uncached(self, kernel, *args):
+        raise NotImplementedError()
+
+    def get_invoker(self, kernel, *args):
+        from loopy import CACHING_ENABLED
+
+        cache_key = (self.__class__.__name__, kernel)
+
+        if CACHING_ENABLED:
+            try:
+                return invoker_cache[cache_key]
+            except KeyError:
+                pass
+
+        logger.debug("%s: invoker cache miss" % kernel.name)
+
+        invoker = self.get_invoker_uncached(kernel, *args)
+
+        if CACHING_ENABLED:
+            invoker_cache.store_if_not_present(cache_key, invoker)
+
+        return invoker
 
     # }}}
 

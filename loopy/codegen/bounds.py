@@ -58,7 +58,8 @@ def get_approximate_convex_bounds_checks(domain, check_inames, implemented_domai
 def get_usable_inames_for_conditional(kernel, sched_index):
     from loopy.schedule import (
         find_active_inames_at, get_insn_ids_for_block_at, has_barrier_within)
-    from loopy.kernel.data import ConcurrentTag, LocalIndexTagBase, IlpBaseTag
+    from loopy.kernel.data import (ConcurrentTag, LocalIndexTagBase,
+                                   IlpBaseTag, filter_iname_tags_by_type)
 
     result = find_active_inames_at(kernel, sched_index)
     crosses_barrier = has_barrier_within(kernel, sched_index)
@@ -87,7 +88,7 @@ def get_usable_inames_for_conditional(kernel, sched_index):
         for iname in kernel.insn_inames(insn))
 
     for iname in inames_for_subkernel:
-        tag = kernel.iname_to_tag.get(iname)
+        tags = kernel.iname_to_tags[iname]
 
         # Parallel inames are defined within a subkernel, BUT:
         #
@@ -97,10 +98,11 @@ def get_usable_inames_for_conditional(kernel, sched_index):
         #   at the innermost level of nesting.
 
         if (
-                isinstance(tag, ConcurrentTag)
-                and not (isinstance(tag, LocalIndexTagBase) and crosses_barrier)
-                and not isinstance(tag, IlpBaseTag)
-                ):
+                filter_iname_tags_by_type(tags, ConcurrentTag)
+                and not (filter_iname_tags_by_type(tags, LocalIndexTagBase)
+                and crosses_barrier)
+                and not filter_iname_tags_by_type(tags, IlpBaseTag)
+        ):
             result.add(iname)
 
     return frozenset(result)

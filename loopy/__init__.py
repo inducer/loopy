@@ -70,7 +70,7 @@ from loopy.library.reduction import register_reduction_parser
 from loopy.version import VERSION, MOST_RECENT_LANGUAGE_VERSION
 
 from loopy.transform.iname import (
-        set_loop_priority, prioritize_loops,
+        set_loop_priority, prioritize_loops, untag_inames,
         split_iname, chunk_iname, join_inames, tag_inames, duplicate_inames,
         rename_iname, remove_unused_inames,
         split_reduction_inward, split_reduction_outward,
@@ -113,7 +113,7 @@ from loopy.transform.padding import (
         find_padding_multiple,
         add_padding)
 
-from loopy.transform.ilp import realize_ilp
+from loopy.transform.privatize import privatize_temporaries_with_inames
 from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
@@ -184,7 +184,7 @@ __all__ = [
 
         # {{{ transforms
 
-        "set_loop_priority", "prioritize_loops",
+        "set_loop_priority", "prioritize_loops", "untag_inames",
         "split_iname", "chunk_iname", "join_inames", "tag_inames",
         "duplicate_inames",
         "rename_iname", "remove_unused_inames",
@@ -219,7 +219,7 @@ __all__ = [
         "split_array_axis", "split_array_dim", "split_arg_axis",
         "find_padding_multiple", "add_padding",
 
-        "realize_ilp",
+        "privatize_temporaries_with_inames",
 
         "to_batched",
 

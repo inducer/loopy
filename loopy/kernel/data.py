@@ -54,11 +54,38 @@ class auto(object):  # noqa
 
 # {{{ iname tags
 
+
+def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
+    """Return a subset of *tags* that matches type *tag_type*. Raises exception
+    if the number of tags found were greater than *max_num* or less than
+    *min_num*W.
+
+    :arg tags: An iterable of tags.
+    :arg tag_type: a subclass of :class:`loopy.kernel.data.IndexTag`.
+    :arg max_num: the maximum number of tags expected to be found.
+    :arg min_num: the minimum number of tags expected to be found.
+    """
+
+    result = set(tag for tag in tags if isinstance(tag, tag_type))
+    if max_num:
+        if len(result) > max_num:
+            raise LoopyError("cannot have more than {0} tags"
+                    "of type(s): {1}".format(max_num, tag_type))
+    if min_num:
+        if len(result) < min_num:
+            raise LoopyError("must have more than {0} tags"
+                    "of type(s): {1}".format(max_num, tag_type))
+    return result
+
+
 class IndexTag(ImmutableRecord):
     __slots__ = []
 
     def __hash__(self):
-        raise RuntimeError("use .key to hash index tags")
+        return hash(self.key)
+
+    def __lt__(self, other):
+        return self.__hash__() < other.__hash__()
 
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with

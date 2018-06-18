@@ -1,18 +1,3 @@
-Python 2.6 POCL:
-  script:
-  - export PY_EXE=python2.6
-  - export PYOPENCL_TEST=portable
-  - export EXTRA_INSTALL="numpy mako"
-  - export LOOPY_NO_CACHE=1
-  - export NO_DOCTESTS=1
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
-  tags:
-  - python2.6
-  - pocl
-  except:
-  - tags
-
 Python 2.7 POCL:
   script:
   - export PY_EXE=python2.7
@@ -102,19 +87,19 @@ Python 3.6 POCL Examples:
   except:
   - tags
 
-CentOS binary:
-  script:
-  - (cd build-helpers; ./make-linux-build-docker.sh --nodate)
-  - (cd ./build-helpers; ./loopy-centos6 ../examples/fortran/sparse.floopy)
-  artifacts:
-    expire_in: 4 weeks
-    paths:
-    - build-helpers/loopy-centos6
-  tags:
-  - docker
-  only:
-  - master
-  retry: 2
+# CentOS binary:
+#   script:
+#   - (cd build-helpers; ./make-linux-build-docker.sh --nodate)
+#   - (cd ./build-helpers; ./loopy-centos6 ../examples/fortran/sparse.floopy)
+#   artifacts:
+#     expire_in: 4 weeks
+#     paths:
+#     - build-helpers/loopy-centos6
+#   tags:
+#   - docker
+#   only:
+#   - master
+#   retry: 2
 
 Documentation:
   script:
