@@ -247,8 +247,8 @@ def test_register_knl(ctx_factory, inline):
     knl = lp.register_callable_kernel(
             parent_knl, 'linear_combo2', child_knl)
     if inline:
-        knl = lp.inline_callable(knl, 'linear_combo2')
-        knl = lp.inline_callable(knl, 'linear_combo1')
+        knl = lp.inline_callable_kernel(knl, 'linear_combo2')
+        knl = lp.inline_callable_kernel(knl, 'linear_combo1')
 
     evt, (out, ) = knl(queue, x=x, y=y)
 
@@ -295,7 +295,7 @@ def test_slices_with_negative_step(ctx_factory, inline):
     knl = lp.register_callable_kernel(
             parent_knl, 'linear_combo', child_knl)
     if inline:
-        knl = lp.inline_callable(knl, 'linear_combo')
+        knl = lp.inline_callable_kernel(knl, 'linear_combo')
 
     evt, (out, ) = knl(queue, x=x, y=y)
 
@@ -337,7 +337,7 @@ def test_register_knl_with_call_with_kwargs(ctx_factory, inline):
     knl = lp.register_callable_kernel(
             caller_knl, 'linear_combo', callee_knl)
     if inline:
-        knl = lp.inline_callable(knl, 'linear_combo')
+        knl = lp.inline_callable_kernel(knl, 'linear_combo')
 
     evt, (out1, out2, ) = knl(queue, a=a_dev, b=b_dev, c=c_dev)
 
@@ -385,7 +385,7 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
             caller_knl, 'linear_combo', callee_knl)
 
     if inline:
-        knl = lp.inline_callable(knl, 'linear_combo')
+        knl = lp.inline_callable_kernel(knl, 'linear_combo')
 
     evt, (out, ) = knl(queue, x=x_dev, y=y_dev)
 
@@ -436,9 +436,9 @@ def test_shape_translation_through_sub_array_ref(ctx_factory, inline):
     knl = lp.register_callable_kernel(knl, 'callee_fn3', callee3)
 
     if inline:
-        knl = lp.inline_callable(knl, 'callee_fn1')
-        knl = lp.inline_callable(knl, 'callee_fn2')
-        knl = lp.inline_callable(knl, 'callee_fn3')
+        knl = lp.inline_callable_kernel(knl, 'callee_fn1')
+        knl = lp.inline_callable_kernel(knl, 'callee_fn2')
+        knl = lp.inline_callable_kernel(knl, 'callee_fn3')
 
     knl = lp.set_options(knl, "write_cl")
     knl = lp.set_options(knl, "return_dict")
