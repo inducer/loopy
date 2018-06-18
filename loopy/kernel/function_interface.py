@@ -721,22 +721,24 @@ class CallableKernel(InKernelCallable):
             iname_map[iname] = vng(callee_label+iname)
 
         new_domains = []
-        new_iname_to_tag = {}
+        new_iname_to_tags = {}
+
+        # transferring iname tags info from callee to the caller kernel.
         for domain in callee_knl.domains:
             new_domain = domain.copy()
             for i in range(new_domain.n_dim()):
                 iname = new_domain.get_dim_name(dim_type, i)
                 if iname in callee_knl.iname_to_tag:
-                    new_iname_to_tag[iname_map[iname]] = (
+                    new_iname_to_tags[iname_map[iname]] = (
                             callee_knl.iname_to_tag[iname])
                 new_domain = new_domain.set_dim_name(
                     dim_type, i, iname_map[iname])
             new_domains.append(new_domain)
 
-        new_iname_to_tag.update(kernel.iname_to_tag)
+        new_iname_to_tags.update(kernel.iname_to_tag)
 
         kernel = kernel.copy(domains=kernel.domains + new_domains,
-                iname_to_tag=new_iname_to_tag)
+                iname_to_tags=new_iname_to_tags)
 
         # }}}
 
