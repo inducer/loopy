@@ -212,12 +212,11 @@ def find_loop_nest_with_map(kernel):
     """
     result = {}
 
-    from loopy.kernel.data import (ConcurrentTag, IlpBaseTag, VectorizeTag,
-                                   filter_iname_tags_by_type)
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
 
     all_nonpar_inames = set(
             iname for iname in kernel.all_inames()
-            if not filter_iname_tags_by_type(kernel.iname_to_tags[iname],
+            if not kernel.iname_tags_of_type(iname,
                     (ConcurrentTag, IlpBaseTag, VectorizeTag)))
 
     iname_to_insns = kernel.iname_to_insns()
@@ -241,15 +240,14 @@ def find_loop_nest_around_map(kernel):
     iname_to_insns = kernel.iname_to_insns()
 
     # examine pairs of all inames--O(n**2), I know.
-    from loopy.kernel.data import IlpBaseTag, filter_iname_tags_by_type
+    from loopy.kernel.data import IlpBaseTag
     for inner_iname in all_inames:
         result[inner_iname] = set()
         for outer_iname in all_inames:
             if inner_iname == outer_iname:
                 continue
 
-            tags = kernel.iname_to_tags[outer_iname]
-            if filter_iname_tags_by_type(tags, IlpBaseTag):
+            if kernel.iname_tags_of_type(outer_iname, IlpBaseTag):
                 # ILP tags are special because they are parallel tags
                 # and therefore 'in principle' nest around everything.
                 # But they're realized by the scheduler as a loop
@@ -278,11 +276,10 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
 
     result = {}
 
-    from loopy.kernel.data import (ConcurrentTag, IlpBaseTag, VectorizeTag,
-                                   filter_iname_tags_by_type)
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
     for insn in kernel.instructions:
         for iname in kernel.insn_inames(insn):
-            if filter_iname_tags_by_type(kernel.iname_to_tags[iname], ConcurrentTag):
+            if kernel.iname_tags_of_type(iname, ConcurrentTag):
                 continue
 
             iname_dep = result.setdefault(iname, set())
@@ -312,8 +309,7 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
                         # -> safe.
                         continue
 
-                    tags = kernel.iname_to_tags[dep_insn_iname]
-                    if filter_iname_tags_by_type(tags,
+                    if kernel.iname_tags_of_type(dep_insn_iname,
                                 (ConcurrentTag, IlpBaseTag, VectorizeTag)):
                         # Parallel tags don't really nest, so we'll disregard
                         # them here.

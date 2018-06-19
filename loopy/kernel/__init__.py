@@ -108,6 +108,12 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     """These correspond more or less directly to arguments of
     :func:`loopy.make_kernel`.
 
+    .. note::
+
+        This data structure and its attributes should be considered immutable,
+        even if it contains mutable data types. See :method:`copy` for an easy
+        way of producing a modified copy.
+
     .. attribute:: domains
 
         a list of :class:`islpy.BasicSet` instances
@@ -191,26 +197,23 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     # {{{ constructor
 
-    def __init__(self, domains, instructions, args=[], schedule=None,
+    def __init__(self, domains, instructions, args=None, schedule=None,
             name="loopy_kernel",
-            preambles=[],
-            preamble_generators=[],
+            preambles=None,
+            preamble_generators=None,
             assumptions=None,
-            local_sizes={},
-            temporary_variables={},
-            iname_to_tags=defaultdict(set),
-            substitutions={},
-            function_manglers=[
-                default_function_mangler,
-                single_arg_function_mangler,
-                ],
+            local_sizes=None,
+            temporary_variables=None,
+            iname_to_tags=None,
+            substitutions=None,
+            function_manglers=None,
             symbol_manglers=[],
 
-            iname_slab_increments={},
+            iname_slab_increments=None,
             loop_priority=frozenset(),
-            silenced_warnings=[],
+            silenced_warnings=None,
 
-            applied_iname_rewrites=[],
+            applied_iname_rewrites=None,
             cache_manager=None,
             index_dtype=np.int32,
             options=None,
@@ -226,9 +229,45 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             change. This provides a way to forward sub-kernel grid size requests.
         """
 
+        # {{{ process constructor arguments
+
+        if args is None:
+            args = []
+        if preambles is None:
+            preambles = []
+        if preamble_generators is None:
+            preamble_generators = []
+        if local_sizes is None:
+            local_sizes = {}
+        if temporary_variables is None:
+            temporary_variables = {}
+        if iname_to_tags is None:
+            iname_to_tags = {}
+        if substitutions is None:
+            substitutions = {}
+        if function_manglers is None:
+            function_manglers = [
+                default_function_mangler,
+                single_arg_function_mangler,
+                ]
+        if symbol_manglers is None:
+            function_manglers = [
+                default_function_mangler,
+                single_arg_function_mangler,
+                ]
+        if iname_slab_increments is None:
+            iname_slab_increments = {}
+
+        if silenced_warnings is None:
+            silenced_warnings = []
+        if applied_iname_rewrites is None:
+            applied_iname_rewrites = []
+
         if cache_manager is None:
             from loopy.kernel.tools import SetOperationCacheManager
             cache_manager = SetOperationCacheManager()
+
+        # }}}
 
         # {{{ process assumptions
 
@@ -267,6 +306,14 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 ]:
             raise ValueError("invalid value for 'state'")
 
+        from collections import defaultdict
+        assert not isinstance(iname_to_tags, defaultdict)
+
+        for iname, tags in six.iteritems(iname_to_tags):
+            # don't tolerate empty sets
+            assert tags
+            assert isinstance(tags, frozenset)
+
         assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
 
@@ -299,24 +346,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 _cached_written_variables=_cached_written_variables)
 
         self._kernel_executor_cache = {}
-
-    # }}}
-
-    # {{{ compatibility wrapper for iname_to_tag.get("iname")
-
-    @property
-    def iname_to_tag(self):
-        from warnings import warn
-        warn("Since version 2018.1, inames can hold multiple tags. Use "
-             "iname_to_tags['iname'] instead. iname_to_tag.get('iname') will be "
-             "deprecated at version 2019.0.", DeprecationWarning)
-        for iname, tags in six.iteritems(self.iname_to_tags):
-            if len(tags) > 1:
-                raise LoopyError(
-                    "iname {0} has multiple tags: {1}. "
-                    "Use iname_to_tags['iname'] instead.".format(iname, tags))
-        return dict((k, next(iter(v)))
-                    for k, v in six.iteritems(self.iname_to_tags) if v)
 
     # }}}
 
@@ -651,6 +680,26 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     # {{{ iname wrangling
 
+    def iname_tags(self, iname):
+        return self.iname_to_tags.get(iname, frozenset())
+
+    def iname_tags_of_type(self, iname, tag_type_or_types,
+            max_num=None, min_num=None):
+        """Return a subset of *tags* that matches type *tag_type*. Raises exception
+        if the number of tags found were greater than *max_num* or less than
+        *min_num*.
+
+        :arg tags: An iterable of tags.
+        :arg tag_type_or_types: a subclass of :class:`loopy.kernel.data.IndexTag`.
+        :arg max_num: the maximum number of tags expected to be found.
+        :arg min_num: the minimum number of tags expected to be found.
+        """
+
+        from loopy.kernel.data import filter_iname_tags_by_type
+        return filter_iname_tags_by_type(
+                self.iname_to_tags.get(iname, frozenset()),
+                tag_type_or_types, max_num=max_num, min_num=min_num)
+
     @memoize_method
     def all_inames(self):
         result = set()
@@ -717,7 +766,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return result
 
     @memoize_method
-    def remove_inames_for_shared_hw_axes(self, cond_inames):
+    def _remove_inames_for_shared_hw_axes(self, cond_inames):
         """
         See if cond_inames contains references to two (or more) inames that
         boil down to the same tag. If so, exclude them. (We shouldn't be writing
@@ -730,8 +779,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         from loopy.kernel.data import HardwareConcurrentTag
 
         for iname in cond_inames:
-            tags = filter_iname_tags_by_type(self.iname_to_tags[iname],
-                                        HardwareConcurrentTag, 1)
+            tags = self.iname_tags_of_type(iname, HardwareConcurrentTag, max_num=1)
             if tags:
                 tag, = tags
                 tag_key_uses[tag.key].append(iname)
@@ -742,14 +790,31 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         multi_use_inames = set()
         for iname in cond_inames:
-            tags = filter_iname_tags_by_type(self.iname_to_tags[iname],
-                                        HardwareConcurrentTag)
+            tags = self.iname_tags_of_type(iname, HardwareConcurrentTag)
             if tags:
                 tag, = filter_iname_tags_by_type(tags, HardwareConcurrentTag, 1)
                 if tag.key in multi_use_keys:
                     multi_use_inames.add(iname)
 
         return frozenset(cond_inames - multi_use_inames)
+
+    # {{{ compatibility wrapper for iname_to_tag.get("iname")
+
+    @property
+    def iname_to_tag(self):
+        from warnings import warn
+        warn("Since version 2018.1, inames can hold multiple tags. Use "
+             "iname_to_tags['iname'] instead. iname_to_tag.get('iname') will be "
+             "removed at version 2019.0.", DeprecationWarning)
+        for iname, tags in six.iteritems(self.iname_to_tags):
+            if len(tags) > 1:
+                raise LoopyError(
+                    "iname {0} has multiple tags: {1}. "
+                    "Use iname_to_tags['iname'] instead.".format(iname, tags))
+        return dict((k, next(iter(v)))
+                    for k, v in six.iteritems(self.iname_to_tags) if v)
+
+    # }}}
 
     # }}}
 
@@ -977,20 +1042,24 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 AutoLocalIndexTagBase)
 
         for iname in all_inames_by_insns:
-            tags = self.iname_to_tags[iname]
+            tags = self.iname_tags_of_type(
+                    iname,
+                    (AutoLocalIndexTagBase, GroupIndexTag, LocalIndexTag), max_num=1)
 
-            if filter_iname_tags_by_type(tags, GroupIndexTag):
-                tgt_dict = global_sizes
-            elif filter_iname_tags_by_type(tags, LocalIndexTag):
-                tgt_dict = local_sizes
-            elif (filter_iname_tags_by_type(tags, AutoLocalIndexTagBase)
-                  and not ignore_auto):
-                raise RuntimeError("cannot find grid sizes if automatic "
-                        "local index tags are present")
-            else:
+            if not tags:
                 continue
 
-            tag, = filter_iname_tags_by_type(tags, (GroupIndexTag, LocalIndexTag), 1)
+            tag, = tags
+
+            if isinstance(tag, AutoLocalIndexTagBase) and not ignore_auto:
+                raise RuntimeError("cannot find grid sizes if automatic "
+                        "local index tags are present")
+            elif isinstance(tag, GroupIndexTag):
+                tgt_dict = global_sizes
+            elif isinstance(tag, LocalIndexTag):
+                tgt_dict = local_sizes
+            else:
+                continue
 
             size = self.get_iname_bounds(iname).size
 
@@ -1197,11 +1266,14 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             if show_labels:
                 lines.append("INAME IMPLEMENTATION TAGS:")
             for iname in natsorted(kernel.all_inames()):
-                if not kernel.iname_to_tags[iname]:
-                    tags = "None"
+                tags = kernel.iname_tags(iname)
+
+                if not tags:
+                    tags_str = "None"
                 else:
-                    tags = ", ".join(str(tag) for tag in kernel.iname_to_tags[iname])
-                line = "%s: %s" % (iname, tags)
+                    tags_str = ", ".join(str(tag) for tag in tags)
+
+                line = "%s: %s" % (iname, tags_str)
                 lines.append(line)
 
         if "variables" in what and kernel.temporary_variables:
