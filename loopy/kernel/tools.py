@@ -778,6 +778,15 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             # Likely unbounded, automatic assignment is not
             # going to happen for this iname.
             new_iname_to_tags = kernel.iname_to_tags.copy()
+            new_tags = new_iname_to_tags.get(iname, frozenset())
+            new_tags = frozenset(tag for tag in new_tags
+                    if not isinstance(tag, AutoLocalIndexTagBase))
+
+            if new_tags:
+                new_iname_to_tags[iname] = new_tags
+            else:
+                del new_iname_to_tags[iname]
+
             return assign_automatic_axes(
                     kernel.copy(iname_to_tags=new_iname_to_tags),
                     axis=recursion_axis)
@@ -889,7 +898,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
                 iname_ranking = get_auto_axis_iname_ranking_by_stride(kernel, insn)
                 if iname_ranking is not None:
                     for iname in iname_ranking:
-                        prev_tags = kernel.iname_tags[iname]
+                        prev_tags = kernel.iname_tags(iname)
                         if filter_iname_tags_by_type(
                                 prev_tags, AutoLocalIndexTagBase):
                             return assign_axis(axis, iname, axis)
