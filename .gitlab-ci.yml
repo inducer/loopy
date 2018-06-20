@@ -60,18 +60,18 @@ Python 3.6 POCL Twice With Cache:
   except:
   - tags
 
-PyPy POCL:
-  script:
-  - export PY_EXE=pypy
-  - export PYOPENCL_TEST=portable
-  - export EXTRA_INSTALL="numpy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
-  tags:
-  - pypy
-  - pocl
-  except:
-  - tags
+# PyPy POCL:
+#   script:
+#   - export PY_EXE=pypy
+#   - export PYOPENCL_TEST=portable
+#   - export EXTRA_INSTALL="numpy mako"
+#   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+#   - ". ./build-and-test-py-project.sh"
+#   tags:
+#   - pypy
+#   - pocl
+#   except:
+#   - tags
 
 Python 3.6 POCL Examples:
   script:
