@@ -177,7 +177,7 @@ def _split_iname_backend(kernel, split_iname,
         for syntax.
     """
 
-    existing_tags = kernel.iname_to_tags[split_iname]
+    existing_tags = kernel.iname_tags(split_iname)
     from loopy.kernel.data import ForceSequentialTag, filter_iname_tags_by_type
     if (do_tagged_check and existing_tags
             and not filter_iname_tags_by_type(existing_tags, ForceSequentialTag)):
@@ -610,9 +610,13 @@ def untag_inames(kernel, iname_to_untag, tag_type):
     """
 
     knl_iname_to_tags = kernel.iname_to_tags.copy()
-    old_tags = knl_iname_to_tags[iname_to_untag]
+    old_tags = knl_iname_to_tags.get(iname_to_untag, frozenset())
     old_tags = set(tag for tag in old_tags if not isinstance(tag, tag_type))
-    knl_iname_to_tags[iname_to_untag] = old_tags
+
+    if old_tags:
+        knl_iname_to_tags[iname_to_untag] = old_tags
+    else:
+        del knl_iname_to_tags[iname_to_untag]
 
     return kernel.copy(iname_to_tags=knl_iname_to_tags)
 
@@ -671,7 +675,7 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
     def parse_tag(tag):
         if isinstance(tag, str):
             if tag.startswith("like."):
-                tags = kernel.iname_to_tags[tag[5:]]
+                tags = kernel.iname_tags(tag[5:])
                 if len(tags) == 0:
                     return None
                 if len(tags) == 1:
@@ -722,7 +726,7 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
         if not new_tag:
             continue
 
-        old_tags = kernel.iname_to_tags[iname]
+        old_tags = kernel.iname_tags(iname)
 
         if iname not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % iname)
@@ -739,7 +743,7 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
                     "(likely because of participation in a precompute or "
                     "a reduction)" % iname)
 
-        knl_iname_to_tags[iname] = old_tags.union([new_tag])
+        knl_iname_to_tags[iname] = old_tags | frozenset([new_tag])
 
     return kernel.copy(iname_to_tags=knl_iname_to_tags)
 
@@ -992,12 +996,12 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
     Use :func:`has_schedulable_iname_nesting` to decide whether an iname needs to be
     duplicated in a given kernel.
     """
-    from loopy.kernel.data import ConcurrentTag, filter_iname_tags_by_type
+    from loopy.kernel.data import ConcurrentTag
 
     concurrent_inames = set(
             iname
-            for iname in knl.all_inames() if filter_iname_tags_by_type(
-                knl.iname_to_tags[iname], ConcurrentTag))
+            for iname in knl.all_inames()
+            if knl.iname_tags_of_type(iname, ConcurrentTag))
 
     # First we extract the minimal necessary information from the kernel
     if use_boostable_into:
@@ -1021,8 +1025,8 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_iname_sets):
         # Check whether this iname has a parallel tag and discard it if so
-        if (iname in knl.iname_to_tags and filter_iname_tags_by_type(
-                knl.iname_to_tags[iname], ConcurrentTag)):
+        if (iname in knl.iname_to_tags
+                and knl.iname_tags_of_type(iname, ConcurrentTag)):
             continue
 
         # If we find a duplication option and to not use boostable_into
@@ -1539,8 +1543,7 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
     """
     used_axes = set()
 
-    from loopy.kernel.data import (GroupIndexTag, LocalIndexTag,
-                                   filter_iname_tags_by_type)
+    from loopy.kernel.data import GroupIndexTag, LocalIndexTag
 
     if isinstance(kind, str):
         found = False
@@ -1559,8 +1562,7 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
 
     for insn in insns:
         for iname in kernel.insn_inames(insn):
-            dim_tags = kernel.iname_to_tags[iname]
-            if filter_iname_tags_by_type(dim_tags, kind):
+            if kernel.iname_tags_of_type(iname, kind):
                 used_axes.add(kind.axis)
 
     i = 0

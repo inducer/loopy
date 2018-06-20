@@ -424,10 +424,9 @@ class ISPCASTBuilder(CASTBuilder):
             saw_l0 = False
             for term in terms:
                 if (isinstance(term, Variable)
-                        and filter_iname_tags_by_type(
-                            kernel.iname_to_tags[term.name], LocalIndexTag)):
-                        tag, = filter_iname_tags_by_type(
-                            kernel.iname_to_tags[term.name], LocalIndexTag, 1)
+                            and kernel.iname_tags_of_type(term.name, LocalIndexTag)):
+                        tag, = kernel.iname_tags_of_type(
+                            term.name, LocalIndexTag, min_num=1, max_num=1)
                         if tag.axis == 0:
                             if saw_l0:
                                 raise LoopyError(
@@ -458,7 +457,7 @@ class ISPCASTBuilder(CASTBuilder):
 
             rhs_has_programindex = any(
                 isinstance(tag, LocalIndexTag) and tag.axis == 0
-                for tag in kernel.iname_to_tags[dep]
+                for tag in kernel.iname_tags(dep)
                 for dep in get_dependencies(insn.expression))
 
             if not rhs_has_programindex:
