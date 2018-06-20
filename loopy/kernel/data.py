@@ -68,14 +68,20 @@ def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
 
     result = set(tag for tag in tags if isinstance(tag, tag_type))
 
+    def strify_tag_type():
+        if isinstance(tag_type, tuple):
+            return ", ".join(t.__name__ for t in tag_type)
+        else:
+            return tag_type.__name__
+
     if max_num is not None:
         if len(result) > max_num:
-            raise LoopyError("cannot have more than {0} tags"
-                    "of type(s): {1}".format(max_num, tag_type))
+            raise LoopyError("cannot have more than {0} tags "
+                    "of type(s): {1}".format(max_num, strify_tag_type()))
     if min_num is not None:
         if len(result) < min_num:
-            raise LoopyError("must have more than {0} tags"
-                    "of type(s): {1}".format(max_num, tag_type))
+            raise LoopyError("must have more than {0} tags "
+                    "of type(s): {1}".format(max_num, strify_tag_type()))
     return result
 
 

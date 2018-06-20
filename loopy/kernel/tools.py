@@ -850,8 +850,9 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             new_tag_set = frozenset()
         new_iname_to_tags = kernel.iname_to_tags.copy()
         new_tags = (
-                new_iname_to_tags.get(iname, frozenset())
-                | new_tag_set) - frozenset([AutoLocalIndexTagBase()])
+                frozenset(tag for tag in new_iname_to_tags.get(iname, frozenset())
+                    if not isinstance(tag, AutoLocalIndexTagBase))
+                | new_tag_set)
 
         if new_tags:
             new_iname_to_tags[iname] = new_tags
@@ -884,10 +885,8 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         assigned_local_axes = set()
 
         for iname in kernel.insn_inames(insn):
-            tags = kernel.iname_tags_of_type(iname, LocalIndexTag)
+            tags = kernel.iname_tags_of_type(iname, LocalIndexTag, max_num=1)
             if tags:
-                if len(tags) > 1:
-                    raise LoopyError("cannot have more than one LocalIndexTags")
                 tag, = tags
                 assigned_local_axes.add(tag.axis)
 
