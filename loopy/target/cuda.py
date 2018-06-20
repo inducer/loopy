@@ -45,7 +45,8 @@ class vec:  # noqa
 def _create_vector_types():
     field_names = ["x", "y", "z", "w"]
 
-    if tuple.__itemsize__ * 8 == 32:
+    import sys
+    if sys.maxsize <= 2**33:
         long_dtype = np.int32
         ulong_dtype = np.uint32
     else:

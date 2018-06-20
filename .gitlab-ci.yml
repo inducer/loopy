@@ -60,16 +60,16 @@ Python 3.6 POCL Twice With Cache:
   except:
   - tags
 
-# PyPy AMD CPU:
+# PyPy POCL:
 #   script:
 #   - export PY_EXE=pypy
-#   - export PYOPENCL_TEST="amd:pu"
+#   - export PYOPENCL_TEST=portable
 #   - export EXTRA_INSTALL="numpy mako"
 #   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
 #   - ". ./build-and-test-py-project.sh"
 #   tags:
 #   - pypy
-#   - amd-cl-cpu
+#   - pocl
 #   except:
 #   - tags
 
@@ -87,19 +87,19 @@ Python 3.6 POCL Examples:
   except:
   - tags
 
-# CentOS binary:
-#   script:
-#   - (cd build-helpers; ./make-linux-build-docker.sh --nodate)
-#   - (cd ./build-helpers; ./loopy-centos6 ../examples/fortran/sparse.floopy)
-#   artifacts:
-#     expire_in: 4 weeks
-#     paths:
-#     - build-helpers/loopy-centos6
-#   tags:
-#   - docker
-#   only:
-#   - master
-#   retry: 2
+CentOS binary:
+  script:
+  - (cd build-helpers; ./make-linux-build-docker.sh --nodate)
+  - (cd ./build-helpers; ./loopy-centos6 ../examples/fortran/sparse.floopy)
+  artifacts:
+    expire_in: 4 weeks
+    paths:
+    - build-helpers/loopy-centos6
+  tags:
+  - docker
+  only:
+  - master
+  retry: 2
 
 Documentation:
   script:
