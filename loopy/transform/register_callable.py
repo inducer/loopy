@@ -206,6 +206,8 @@ class DimChanger(IdentityMapper):
         self.desired_shape = desired_shape
 
     def map_subscript(self, expr):
+        if expr.aggregate.name not in self.callee_arg_dict:
+            return super(DimChanger, self).map_subscript(expr)
         callee_arg_dim_tags = self.callee_arg_dict[expr.aggregate.name].dim_tags
         flattened_index = sum(dim_tag.stride*idx for dim_tag, idx in
                 zip(callee_arg_dim_tags, expr.index_tuple))

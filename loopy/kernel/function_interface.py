@@ -517,9 +517,9 @@ class KernelInliner(SubstitutionMapper):
                 idx * tag.stride
                 for idx, tag in zip(outer_indices, callee_arg.dim_tags))
 
-            from loopy.isl_helpers import simplify_via_aff
+            from loopy.symbolic import simplify_using_aff
             try:
-                flatten_index = simplify_via_aff(flatten_index)
+                flatten_index = simplify_using_aff(self.caller, flatten_index)
             except:
                 pass
 
@@ -528,7 +528,7 @@ class KernelInliner(SubstitutionMapper):
                 ind = flatten_index // dim_tag.stride
                 flatten_index -= (dim_tag.stride * ind)
                 try:
-                    ind = simplify_via_aff(ind)
+                    ind = simplify_using_aff(self.caller, ind)
                 except:
                     pass
                 new_indices.append(ind)

@@ -1671,7 +1671,8 @@ def guarded_pwaff_from_expr(space, expr, vars_to_zero=None):
 # {{{ simplify using aff
 
 def simplify_using_aff(kernel, expr):
-    inames = get_dependencies(expr) & kernel.all_inames()
+    deps = get_dependencies(expr)
+    inames = deps & kernel.all_inames()
 
     domain = kernel.get_inames_domain(inames)
 
@@ -1685,7 +1686,16 @@ def simplify_using_aff(kernel, expr):
     except TypeError:
         return expr
     except UnknownVariableError:
-        return expr
+        integers = deps & set(t for t, v in kernel.temporary_variables.items() if np.issubdtype(v.dtype, np.integer))
+        names = sorted(list(integers))  # need to sort for deterministic code generation
+        nd = domain.dim(isl.dim_type.set)
+        domain = domain.add_dims(isl.dim_type.set, len(names))
+        for i, name in enumerate(names):
+            domain = domain.set_dim_name(isl.dim_type.set, nd + i, name)
+        try:
+            aff = aff_from_expr(domain.space, expr)
+        except:
+            return expr
 
     # FIXME: Deal with assumptions, too.
     aff = aff.gist(domain)
