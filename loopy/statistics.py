@@ -847,8 +847,7 @@ def _get_lid_and_gid_strides(knl, array, index):
     lid_to_iname = {}
     gid_to_iname = {}
     for iname in my_inames:
-        tags = filter_iname_tags_by_type(knl.iname_to_tags[iname],
-                              (GroupIndexTag, LocalIndexTag))
+        tags = knl.iname_tags_of_type(iname, (GroupIndexTag, LocalIndexTag))
         if tags:
             tag, = filter_iname_tags_by_type(
                 tags, (GroupIndexTag, LocalIndexTag), 1)
@@ -1203,11 +1202,10 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
     g_used = set()
     l_used = set()
 
-    from loopy.kernel.data import (LocalIndexTag, GroupIndexTag,
-                                   filter_iname_tags_by_type)
+    from loopy.kernel.data import LocalIndexTag, GroupIndexTag
     for iname in knl.insn_inames(insn):
-        tags = filter_iname_tags_by_type(knl.iname_to_tags[iname],
-                              (LocalIndexTag, GroupIndexTag), 1)
+        tags = knl.iname_tags_of_type(iname,
+                              (LocalIndexTag, GroupIndexTag), max_num=1)
         if tags:
             tag, = tags
             if isinstance(tag, LocalIndexTag):
@@ -1242,9 +1240,10 @@ def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False)
     insn_inames = knl.insn_inames(insn)
 
     if disregard_local_axes:
-        from loopy.kernel.data import LocalIndexTag, filter_iname_tags_by_type
-        insn_inames = [iname for iname in insn_inames if not
-                filter_iname_tags_by_type(knl.iname_to_tags[iname], LocalIndexTag)]
+        from loopy.kernel.data import LocalIndexTag
+        insn_inames = [iname
+                for iname in insn_inames
+                if not knl.iname_tags_of_type(iname, LocalIndexTag)]
 
     inames_domain = knl.get_inames_domain(insn_inames)
     domain = (inames_domain.project_out_except(

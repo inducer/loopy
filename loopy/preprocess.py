@@ -141,7 +141,7 @@ def check_reduction_iname_uniqueness(kernel):
 
 def _get_compute_inames_tagged(kernel, insn, tag_base):
     return set(iname for iname in kernel.insn_inames(insn.id)
-               if filter_iname_tags_by_type(kernel.iname_to_tags[iname], tag_base))
+               if kernel.iname_tags_of_type(iname, tag_base))
 
 
 def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
@@ -151,7 +151,7 @@ def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
                 insn.assignee_subscript_deps())
             for iname in adeps & kernel.all_inames()
             if aname in tv_names
-            if filter_iname_tags_by_type(kernel.iname_to_tags[iname], tag_base))
+            if kernel.iname_tags_of_type(iname, tag_base))
 
 
 def find_temporary_scope(kernel):
@@ -299,7 +299,7 @@ def _classify_reduction_inames(kernel, inames):
             ConcurrentTag, filter_iname_tags_by_type)
 
     for iname in inames:
-        iname_tags = kernel.iname_to_tags[iname]
+        iname_tags = kernel.iname_tags(iname)
 
         if filter_iname_tags_by_type(iname_tags, (UnrollTag, UnrolledIlpTag)):
             # These are nominally parallel, but we can live with
@@ -1142,10 +1142,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
-        from loopy.kernel.data import LocalIndexTagBase, filter_iname_tags_by_type
+        from loopy.kernel.data import LocalIndexTagBase
         outer_local_inames = tuple(oiname for oiname in outer_insn_inames
-                if filter_iname_tags_by_type(
-                    kernel.iname_to_tags[oiname], LocalIndexTagBase))
+                if kernel.iname_tags_of_type(oiname, LocalIndexTagBase))
 
         from pymbolic import var
         outer_local_iname_vars = tuple(
@@ -1180,7 +1179,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         base_exec_iname = var_name_gen("red_"+red_iname)
         domains.append(_make_slab_set(base_exec_iname, size))
-        new_iname_tags[base_exec_iname] = kernel.iname_to_tags[red_iname]
+        new_iname_tags[base_exec_iname] = kernel.iname_tags(red_iname)
 
         # }}}
 
@@ -1275,7 +1274,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
             stage_exec_iname = var_name_gen("red_%s_s%d" % (red_iname, istage))
             domains.append(_make_slab_set(stage_exec_iname, bound-new_size))
-            new_iname_tags[stage_exec_iname] = kernel.iname_to_tags[red_iname]
+            new_iname_tags[stage_exec_iname] = kernel.iname_tags(red_iname)
 
             stage_id = insn_id_gen("red_%s_stage_%d" % (red_iname, istage))
             stage_insn = make_assignment(
@@ -1478,10 +1477,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
-        from loopy.kernel.data import LocalIndexTagBase, filter_iname_tags_by_type
+        from loopy.kernel.data import LocalIndexTagBase
         outer_local_inames = tuple(oiname for oiname in outer_insn_inames
-                if filter_iname_tags_by_type(kernel.iname_to_tags[oiname],
-                                        LocalIndexTagBase)
+                if kernel.iname_tags_of_type(oiname, LocalIndexTagBase)
                 and oiname != sweep_iname)
 
         from pymbolic import var
@@ -1507,7 +1505,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         base_exec_iname = var_name_gen(sweep_iname + "__scan")
         domains.append(_make_slab_set(base_exec_iname, scan_size))
-        new_iname_tags[base_exec_iname] = kernel.iname_to_tags[sweep_iname]
+        new_iname_tags[base_exec_iname] = kernel.iname_tags(sweep_iname)
 
         # }}}
 
@@ -1598,7 +1596,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             stage_exec_iname = var_name_gen("%s__scan_s%d" % (sweep_iname, istage))
             domains.append(
                     _make_slab_set_from_range(stage_exec_iname, cur_size, scan_size))
-            new_iname_tags[stage_exec_iname] = kernel.iname_to_tags[sweep_iname]
+            new_iname_tags[stage_exec_iname] = kernel.iname_tags(sweep_iname)
 
             for read_var, acc_var in zip(read_vars, acc_vars):
                 read_stage_id = insn_id_gen(
@@ -1748,7 +1746,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     "by reductions is 'local'--found iname(s) '%s' "
                     "respectively tagged '%s'"
                     % (", ".join(bad_inames),
-                       ", ".join(str(kernel.iname_to_tags[iname])
+                       ", ".join(str(kernel.iname_tags(iname))
                                  for iname in bad_inames)))
 
         if n_local_par == 0 and n_sequential == 0:
@@ -1788,7 +1786,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                             "- the only parallelism allowed is 'local'." %
                             (sweep_iname,
                              ", ".join(tag.key
-                            for tag in temp_kernel.iname_to_tags[sweep_iname])))
+                            for tag in temp_kernel.iname_tags(sweep_iname))))
                 elif parallel:
                     return map_scan_local(
                             expr, rec, nresults, arg_dtypes, reduction_dtypes,
