@@ -1841,8 +1841,12 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
 
 class FunctionScoper(RuleAwareIdentityMapper):
     """
-    Converts functions known to the kernel as instances of
-    :class:`loopy.symbolic.ScopedFunction`.
+    Mapper to convert the  ``function`` attribute of a
+    :class:`pymbolic.primitives.Call` known in the kernel as instances of
+    :class:`loopy.symbolic.ScopedFunction`. A function is known in the
+    *kernel*, :func:`loopy.kernel.LoopKernel.find_scoped_function_identifier`
+    returns an instance of
+    :class:`loopy.kernel.function_interface.InKernelCallable`.
 
     **Example**: If given an expression of the form ``sin(x) + unknown_function(y) +
     log(z)``, then the mapper would return ``ScopedFunction('sin')(x) +
