@@ -32,7 +32,7 @@ from loopy.target.c import CTarget, CASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
-from loopy.kernel.data import MemoryAddressSpace
+from loopy.kernel.data import AddressSpace
 from pymbolic import var
 from loopy.kernel.function_interface import ScalarCallable
 
@@ -351,10 +351,10 @@ class CUDACASTBuilder(CASTBuilder):
             raise LoopyError("unknown barrier kind")
 
     def wrap_temporary_decl(self, decl, scope):
-        if scope == MemoryAddressSpace.LOCAL:
+        if scope == AddressSpace.LOCAL:
             from cgen.cuda import CudaShared
             return CudaShared(decl)
-        elif scope == MemoryAddressSpace.PRIVATE:
+        elif scope == AddressSpace.PRIVATE:
             return decl
         else:
             raise ValueError("unexpected temporary variable scope: %s"
@@ -380,7 +380,7 @@ class CUDACASTBuilder(CASTBuilder):
         from warnings import warn
         warn("get_global_arg_decl is deprecated use get_array_arg_decl "
                 "instead.", DeprecationWarning, stacklevel=2)
-        return self.get_array_arg_decl(name, MemoryAddressSpace.GLOBAL, shape,
+        return self.get_array_arg_decl(name, AddressSpace.GLOBAL, shape,
                 dtype, is_written)
 
     def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):

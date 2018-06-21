@@ -30,7 +30,7 @@ import islpy as isl
 from pymbolic.mapper import CombineMapper
 from functools import reduce
 from loopy.kernel.data import (
-        MultiAssignmentBase, TemporaryVariable, MemoryAddressSpace)
+        MultiAssignmentBase, TemporaryVariable, AddressSpace)
 from loopy.diagnostic import warn_with_kernel, LoopyError
 from pytools import Record
 
@@ -920,7 +920,7 @@ class LocalMemAccessCounter(MemAccessCounter):
         if name in self.knl.temporary_variables:
             array = self.knl.temporary_variables[name]
             if isinstance(array, TemporaryVariable) and (
-                    array.scope == MemoryAddressSpace.LOCAL):
+                    array.scope == AddressSpace.LOCAL):
                 if index is None:
                     # no subscript
                     sub_map[MemAccess(

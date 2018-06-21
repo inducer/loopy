@@ -236,7 +236,7 @@ def parse_tag(tag):
 
 # {{{ memory address space
 
-class MemoryAddressSpace:
+class AddressSpace:
     """
     Storage location of a variable.
 
@@ -298,26 +298,38 @@ class KernelArgument(ImmutableRecord):
             dtype = None
 
         kwargs["dtype"] = dtype
-        kwargs["direction"] = kwargs.pop("direction", None)
+        kwargs["is_output_only"] = kwargs.pop("is_output_only", None)
 
         ImmutableRecord.__init__(self, **kwargs)
 
 
 class ArrayArg(ArrayBase, KernelArgument):
+    __doc__ = ArrayBase.__doc__ + (
+        """
+        .. attribute:: memory_address_space
+
+            An attribute of :class:`AddressSpace` defining the address
+            space in which the array resides in the target memory layout.
+            Defaults to ``AddressSpace.GLOBAL``
+
+        .. attribute:: is_output_only
+
+            An instance of :class:`bool`. If set to *TRUE*, recorded to be
+            returned from the kernel.
+        """)
 
     allowed_extra_kwargs = [
             "memory_address_space",
-            "direction"]
+            "is_output_only"]
 
     def __init__(self, *args, **kwargs):
         # Defaulting the memory_address_space to be GLOBAL.
         kwargs["memory_address_space"] = kwargs.pop(
-                "memory_address_space", MemoryAddressSpace.GLOBAL)
-        kwargs["direction"] = kwargs.pop("direction", None)
+                "memory_address_space", AddressSpace.GLOBAL)
+        kwargs["is_output_only"] = kwargs.pop("is_output_only", None)
 
         super(ArrayArg, self).__init__(*args, **kwargs)
 
-    __doc__ = ArrayBase.__doc__
     min_target_axes = 0
     max_target_axes = 1
 
@@ -361,28 +373,13 @@ class ImageArg(ArrayBase, KernelArgument):
 
 class ValueArg(KernelArgument):
     def __init__(self, name, dtype=None, approximately=1000, target=None,
-            direction=None):
-
-        # {{{ sanity checks for direction
-
-        if direction == 'out':
-            # TODO: Is this only valid for C-like targets?
-            # Do we need to move this to target.precodegen_checks?
-            raise LoopyError("ValueArg cannot have 'out' as the direction.")
-        elif direction is None:
-            direction = 'in'
-        elif direction == 'in':
-            pass
-        else:
-            raise LoopyError("Unknown type for direction of %s." % name)
-
-        # }}}
+            is_output_only=None):
 
         KernelArgument.__init__(self, name=name,
                 dtype=dtype,
                 approximately=approximately,
                 target=target,
-                direction=direction)
+                is_output_only=is_output_only)
 
     def __str__(self):
         import loopy as lp
@@ -422,7 +419,7 @@ class InameArg(ValueArg):
 class _deprecated_temp_var_scope_property(property):  # noqa
     def __get__(self, cls, owner):
         from warnings import warn
-        warn("'temp_var_scope' is deprecated. Use 'MemoryAddressSpace'.",
+        warn("'temp_var_scope' is deprecated. Use 'AddressSpace'.",
                 DeprecationWarning, stacklevel=2)
 
         return classmethod(self.fget).__get__(None, owner)()
@@ -433,22 +430,22 @@ class temp_var_scope:  # noqa
 
     @_deprecated_temp_var_scope_property
     def PRIVATE(self):
-        return MemoryAddressSpace.PRIVATE
+        return AddressSpace.PRIVATE
 
     @_deprecated_temp_var_scope_property
     def LOCAL(self):
-        return MemoryAddressSpace.LOCAL
+        return AddressSpace.LOCAL
 
     @_deprecated_temp_var_scope_property
     def GLOBAL(self):
-        return MemoryAddressSpace.GLOBAL
+        return AddressSpace.GLOBAL
 
     @classmethod
     def stringify(cls, val):
         from warnings import warn
-        warn("'temp_var_scope' is deprecated. Use 'MemoryAddressSpace'.",
+        warn("'temp_var_scope' is deprecated. Use 'AddressSpace'.",
                 DeprecationWarning, stacklevel=2)
-        return MemoryAddressSpace.stringify
+        return AddressSpace.stringify
 
 
 class TemporaryVariable(ArrayBase):
@@ -458,7 +455,7 @@ class TemporaryVariable(ArrayBase):
     .. attribute:: scope
 
         What memory this temporary variable lives in.
-        One of the values in :class:`MemoryAddressSpace`,
+        One of the values in :class:`AddressSpace`,
         or :class:`loopy.auto` if this is
         to be automatically determined.
 
@@ -470,7 +467,7 @@ class TemporaryVariable(ArrayBase):
 
     .. attribute:: scope
 
-        One of :class:`MemoryAddressSpace`.
+        One of :class:`AddressSpace`.
 
     .. attribute:: initializer
 
@@ -586,15 +583,15 @@ class TemporaryVariable(ArrayBase):
 
     @property
     def is_local(self):
-        """One of :class:`loopy.MemoryAddressSpace`."""
+        """One of :class:`loopy.AddressSpace`."""
 
         if self.scope is auto:
             return auto
-        elif self.scope == MemoryAddressSpace.LOCAL:
+        elif self.scope == AddressSpace.LOCAL:
             return True
-        elif self.scope == MemoryAddressSpace.PRIVATE:
+        elif self.scope == AddressSpace.PRIVATE:
             return False
-        elif self.scope == MemoryAddressSpace.GLOBAL:
+        elif self.scope == AddressSpace.GLOBAL:
             raise LoopyError("TemporaryVariable.is_local called on "
                              "global temporary variable '%s'" % self.name)
         else:
@@ -615,9 +612,9 @@ class TemporaryVariable(ArrayBase):
                 shape_override=self.storage_shape)
 
     def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
-        if self.scope == MemoryAddressSpace.GLOBAL:
+        if self.scope == AddressSpace.GLOBAL:
             return ast_builder.get_array_arg_decl(self.name + name_suffix,
-                    MemoryAddressSpace.GLOBAL, shape, dtype, is_written)
+                    AddressSpace.GLOBAL, shape, dtype, is_written)
         else:
             raise LoopyError("unexpected request for argument declaration of "
                     "non-global temporary")
@@ -626,7 +623,7 @@ class TemporaryVariable(ArrayBase):
         if self.scope is auto:
             scope_str = "auto"
         else:
-            scope_str = MemoryAddressSpace.stringify(self.scope)
+            scope_str = AddressSpace.stringify(self.scope)
 
         return (
                 self.stringify(include_typename=False)
@@ -675,11 +672,11 @@ def iname_tag_to_temp_var_scope(iname_tag):
     iname_tag = parse_tag(iname_tag)
 
     if isinstance(iname_tag, GroupIndexTag):
-        return MemoryAddressSpace.GLOBAL
+        return AddressSpace.GLOBAL
     elif isinstance(iname_tag, LocalIndexTag):
-        return MemoryAddressSpace.LOCAL
+        return AddressSpace.LOCAL
     else:
-        return MemoryAddressSpace.PRIVATE
+        return AddressSpace.PRIVATE
 
 
 # {{{ substitution rule

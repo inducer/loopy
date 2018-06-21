@@ -32,7 +32,7 @@ from loopy.diagnostic import LoopyError
 from loopy.symbolic import Literal
 from pymbolic import var
 import pymbolic.primitives as p
-from loopy.kernel.data import MemoryAddressSpace
+from loopy.kernel.data import AddressSpace
 from pymbolic.mapper.stringifier import PREC_NONE
 
 from pytools import memoize_method
@@ -82,7 +82,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
     def map_variable(self, expr, type_context):
         tv = self.kernel.temporary_variables.get(expr.name)
 
-        if tv is not None and tv.scope == MemoryAddressSpace.PRIVATE:
+        if tv is not None and tv.scope == AddressSpace.PRIVATE:
             # FIXME: This is a pretty coarse way of deciding what
             # private temporaries get duplicated. Refine? (See also
             # below in decl generation)
@@ -102,7 +102,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
         ary = self.find_array(expr)
 
         if (isinstance(ary, TemporaryVariable)
-                and ary.scope == MemoryAddressSpace.PRIVATE):
+                and ary.scope == AddressSpace.PRIVATE):
             # generate access code for acccess to private-index temporaries
 
             gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
@@ -308,7 +308,7 @@ class ISPCASTBuilder(CASTBuilder):
 
         shape = decl_info.shape
 
-        if temp_var.scope == MemoryAddressSpace.PRIVATE:
+        if temp_var.scope == AddressSpace.PRIVATE:
             # FIXME: This is a pretty coarse way of deciding what
             # private temporaries get duplicated. Refine? (See also
             # above in expr to code mapper)
@@ -347,7 +347,7 @@ class ISPCASTBuilder(CASTBuilder):
         from warnings import warn
         warn("get_global_arg_decl is deprecated use get_array_arg_decl "
                 "instead.", DeprecationWarning, stacklevel=2)
-        return self.get_array_arg_decl(name, MemoryAddressSpace.GLOBAL, shape,
+        return self.get_array_arg_decl(name, AddressSpace.GLOBAL, shape,
                 dtype, is_written)
 
     def get_value_arg_decl(self, name, shape, dtype, is_written):

@@ -189,13 +189,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         A subclass of :class:`loopy.TargetBase`.
 
-    .. attribute:: is_master_kernel
-
-        # FIXME: Naming suggestions?
-        # is_top_level_kernel
-        # is_caller_kernel
-        # is_called_from_host
-        # is_root_kernel
+    .. attribute:: is_called_from_host
 
         An instance of :class:`bool`. Will be set *False* for the kernel which
         would be called from another top level kernels. Default value is
@@ -228,7 +222,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             options=None,
 
             state=kernel_state.INITIAL,
-            is_master_kernel=True,
+            is_called_from_host=True,
             target=None,
 
             overridden_get_grid_sizes_for_insn_ids=None,
@@ -315,7 +309,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 index_dtype=index_dtype,
                 options=options,
                 state=state,
-                is_master_kernel=is_master_kernel,
+                is_called_from_host=is_called_from_host,
                 target=target,
                 overridden_get_grid_sizes_for_insn_ids=(
                     overridden_get_grid_sizes_for_insn_ids),
@@ -386,7 +380,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return None
 
-    def lookup_function(self, identifier):
+    def find_scoped_function_identifier(self, identifier):
         """
         Returns an instance of
         :class:`loopy.kernel.function_interface.InKernelCallable` if the
@@ -918,7 +912,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     @memoize_method
     def global_var_names(self):
-        from loopy.kernel.data import MemoryAddressSpace
+        from loopy.kernel.data import AddressSpace
 
         from loopy.kernel.data import ArrayArg
         return (
@@ -928,7 +922,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 | set(
                     tv.name
                     for tv in six.itervalues(self.temporary_variables)
-                    if tv.scope == MemoryAddressSpace.GLOBAL))
+                    if tv.scope == AddressSpace.GLOBAL))
 
     # }}}
 
@@ -1074,7 +1068,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                     insn_ids,
                     ignore_auto=ignore_auto)
 
-        assert self.is_master_kernel, ("Callee kernels do not have sufficient "
+        assert self.is_called_from_host, ("Callee kernels do not have sufficient "
                 "information to compute grid sizes.")
 
         global_sizes, local_sizes = self.get_grid_sizes_for_insn_ids_as_dicts(
@@ -1155,17 +1149,17 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     @memoize_method
     def local_var_names(self):
-        from loopy.kernel.data import MemoryAddressSpace
+        from loopy.kernel.data import AddressSpace
         return set(
             tv.name
             for tv in six.itervalues(self.temporary_variables)
-            if tv.scope == MemoryAddressSpace.LOCAL)
+            if tv.scope == AddressSpace.LOCAL)
 
     def local_mem_use(self):
-        from loopy.kernel.data import MemoryAddressSpace
+        from loopy.kernel.data import AddressSpace
         return sum(
                 tv.nbytes for tv in six.itervalues(self.temporary_variables)
-                if tv.scope == MemoryAddressSpace.LOCAL)
+                if tv.scope == AddressSpace.LOCAL)
 
     # }}}
 
@@ -1458,7 +1452,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             "silenced_warnings",
             "options",
             "state",
-            "is_master_kernel",
+            "is_called_from_host",
             "target",
             )
 

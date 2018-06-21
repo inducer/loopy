@@ -497,7 +497,7 @@ class CASTBuilder(ASTBuilderBase):
 
         result = []
 
-        from loopy.kernel.data import MemoryAddressSpace
+        from loopy.kernel.data import AddressSpace
         from loopy.schedule import CallKernel
         # We only need to write declarations for global variables with
         # the first device program. `is_first_dev_prog` determines
@@ -512,7 +512,7 @@ class CASTBuilder(ASTBuilderBase):
                     six.itervalues(kernel.temporary_variables),
                     key=lambda tv: tv.name):
 
-                if tv.scope == MemoryAddressSpace.GLOBAL and (
+                if tv.scope == AddressSpace.GLOBAL and (
                         tv.initializer is not None):
                     assert tv.read_only
 
@@ -574,7 +574,7 @@ class CASTBuilder(ASTBuilderBase):
         return None
 
     def get_temporary_decls(self, codegen_state, schedule_index):
-        from loopy.kernel.data import MemoryAddressSpace
+        from loopy.kernel.data import AddressSpace
 
         kernel = codegen_state.kernel
 
@@ -606,7 +606,7 @@ class CASTBuilder(ASTBuilderBase):
             if not tv.base_storage:
                 for idi in decl_info:
                     # global temp vars are mapped to arguments or global declarations
-                    if tv.scope != MemoryAddressSpace.GLOBAL and (
+                    if tv.scope != AddressSpace.GLOBAL and (
                             tv.name in sub_knl_temps):
                         decl = self.wrap_temporary_decl(
                                 self.get_temporary_decl(
@@ -785,8 +785,8 @@ class CASTBuilder(ASTBuilderBase):
         from warnings import warn
         warn("get_global_arg_decl is deprecated use get_array_arg_decl "
                 "instead.", DeprecationWarning, stacklevel=2)
-        from loopy.kernel.data import MemoryAddressSpace
-        return self.get_array_arg_decl(name, MemoryAddressSpace.GLOBAL, shape,
+        from loopy.kernel.data import AddressSpace
+        return self.get_array_arg_decl(name, AddressSpace.GLOBAL, shape,
                 dtype, is_written)
 
     def get_constant_arg_decl(self, name, shape, dtype, is_written):
