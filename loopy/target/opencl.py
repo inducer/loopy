@@ -451,7 +451,7 @@ class OpenCLCASTBuilder(CASTBuilder):
 
         from loopy.target.c import FunctionDeclarationWrapper
         assert isinstance(fdecl, FunctionDeclarationWrapper)
-        if not codegen_state.kernel.is_master_kernel:
+        if not codegen_state.kernel.is_called_from_host:
             # auxiliary kernels need not mention opencl speicific qualifiers
             # for a functions signature
             return fdecl

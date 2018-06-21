@@ -271,26 +271,38 @@ class KernelArgument(ImmutableRecord):
             dtype = None
 
         kwargs["dtype"] = dtype
-        kwargs["direction"] = kwargs.pop("direction", None)
+        kwargs["is_output_only"] = kwargs.pop("is_output_only", None)
 
         ImmutableRecord.__init__(self, **kwargs)
 
 
 class ArrayArg(ArrayBase, KernelArgument):
+    __doc__ = ArrayBase.__doc__ + (
+        """
+        .. attribute:: memory_address_space
+
+            An attribute of :class:`MemoryAddressSpace` defining the address
+            space in which the array resides in the target memory layout.
+            Defaults to ``MemoryAddressSpace.GLOBAL``
+
+        .. attribute:: is_output_only
+
+            An instance of :class:`bool`. If set to *TRUE*, recorded to be
+            returned from the kernel.
+        """)
 
     allowed_extra_kwargs = [
             "memory_address_space",
-            "direction"]
+            "is_output_only"]
 
     def __init__(self, *args, **kwargs):
         # Defaulting the memory_address_space to be GLOBAL.
         kwargs["memory_address_space"] = kwargs.pop(
                 "memory_address_space", MemoryAddressSpace.GLOBAL)
-        kwargs["direction"] = kwargs.pop("direction", None)
+        kwargs["is_output_only"] = kwargs.pop("is_output_only", None)
 
         super(ArrayArg, self).__init__(*args, **kwargs)
 
-    __doc__ = ArrayBase.__doc__
     min_target_axes = 0
     max_target_axes = 1
 
@@ -334,28 +346,13 @@ class ImageArg(ArrayBase, KernelArgument):
 
 class ValueArg(KernelArgument):
     def __init__(self, name, dtype=None, approximately=1000, target=None,
-            direction=None):
-
-        # {{{ sanity checks for direction
-
-        if direction == 'out':
-            # TODO: Is this only valid for C-like targets?
-            # Do we need to move this to target.precodegen_checks?
-            raise LoopyError("ValueArg cannot have 'out' as the direction.")
-        elif direction is None:
-            direction = 'in'
-        elif direction == 'in':
-            pass
-        else:
-            raise LoopyError("Unknown type for direction of %s." % name)
-
-        # }}}
+            is_output_only=None):
 
         KernelArgument.__init__(self, name=name,
                 dtype=dtype,
                 approximately=approximately,
                 target=target,
-                direction=direction)
+                is_output_only=is_output_only)
 
     def __str__(self):
         import loopy as lp

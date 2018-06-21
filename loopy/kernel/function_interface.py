@@ -99,8 +99,8 @@ def get_kw_pos_association(kernel):
     Returns a tuple of ``(kw_to_pos, pos_to_kw)`` for the arguments in
     *kernel*.
     """
-    from loopy.kernel.tools import infer_arg_direction
-    kernel = infer_arg_direction(kernel)
+    from loopy.kernel.tools import infer_arg_is_output_only
+    kernel = infer_arg_is_output_only(kernel)
     kw_to_pos = {}
     pos_to_kw = {}
 
@@ -108,22 +108,39 @@ def get_kw_pos_association(kernel):
     write_count = -1
 
     for arg in kernel.args:
-        if arg.direction == 'in':
+        if not arg.is_output_only:
             kw_to_pos[arg.name] = read_count
             pos_to_kw[read_count] = arg.name
             read_count += 1
-        elif arg.direction == 'out':
+        else:
             kw_to_pos[arg.name] = write_count
             pos_to_kw[write_count] = arg.name
             write_count -= 1
-        else:
-            raise LoopyError("Unknown value of kernel argument direction %s for "
-                    "%s" % (arg.direction, arg.name))
 
     return kw_to_pos, pos_to_kw
 
 
 class GridOverrideForCalleeKernel(ImmutableRecord):
+    """
+    Helper class to set the
+    :attr:`loopy.kernel.LoopKernel.override_get_grid_size_for_insn_ids` of the
+    callee kernels. Refer
+    :func:`loopy.kernel.function_interface.GridOverrideForCalleeKernel.__call__`,
+    :func:`loopy.kernel.function_interface.CallbleKernel.with_hw_axes_sizes`.
+
+    .. attribute:: local_size
+
+        The local work group size that has to be set in the callee kernel.
+
+    .. attribute:: global_size
+
+        The global work group size that to be set in the callee kernel.
+
+    .. note::
+
+        This class acts as a pseduo-callable and its significance lies in
+        solving picklability issues.
+    """
     fields = set(["local_size", "global_size"])
 
     def __init__(self, local_size, global_size):
@@ -304,9 +321,13 @@ class InKernelCallable(ImmutableRecord):
 
 class ScalarCallable(InKernelCallable):
     """
-    Records the information about a scalar callable encountered in a kernel.
-    The :meth:`ScalarCallable.with_types` is intended to assist with type
-    specialization of the funciton.
+    An abstranct interface the to a scalar callable encountered in a kernel.
+
+    .. note::
+
+        The :meth:`ScalarCallable.with_types` is intended to assist with type
+        specialization of the funciton and is expected to be supplemented in the
+        derived subclasses.
     """
 
     fields = set(["name", "arg_id_to_dtype", "arg_id_to_descr", "name_in_target"])
@@ -774,7 +795,7 @@ class CallableKernel(InKernelCallable):
         assignee_pos = 0
         parameter_pos = 0
         for i, arg in enumerate(callee_knl.args):
-            if arg.direction == "out":
+            if arg.is_output_only:
                 arg_map[arg.name] = assignees[assignee_pos]
                 assignee_pos += 1
             else:
@@ -911,7 +932,7 @@ class CallableKernel(InKernelCallable):
         # inserting the assigness at the required positions.
         assignee_write_count = -1
         for i, arg in enumerate(self.subkernel.args):
-            if arg.direction == 'out':
+            if arg.is_output_only:
                 assignee = assignees[-assignee_write_count-1]
                 parameters.insert(i, assignee)
                 par_dtypes.insert(i, self.arg_id_to_dtype[assignee_write_count])

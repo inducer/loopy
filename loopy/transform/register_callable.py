@@ -101,10 +101,10 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel):
 
     # check to make sure that the variables with 'out' direction is equal to
     # the number of assigness in the callee kernel intructions.
-    from loopy.kernel.tools import infer_arg_direction
-    callee_kernel = infer_arg_direction(callee_kernel)
+    from loopy.kernel.tools import infer_arg_is_output_only
+    callee_kernel = infer_arg_is_output_only(callee_kernel)
     expected_num_assignees = len([arg for arg in callee_kernel.args if
-        arg.direction == 'out'])
+        arg.is_output_only])
     expected_num_parameters = len(callee_kernel.args) - expected_num_assignees
     for insn in caller_kernel.instructions:
         if isinstance(insn, CallInstruction) and (
@@ -133,7 +133,7 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel):
     callable_kernel = CallableKernel(subkernel=callee_kernel.copy(
                         target=caller_kernel.target,
                         name=function_name,
-                        is_master_kernel=False))
+                        is_called_from_host=False))
 
     # disabling global barriers for callee kernel
     from loopy import set_options
@@ -257,7 +257,7 @@ def _match_caller_callee_argument_dimension(caller_knl, callee_function_name):
         # inserting the assigness at the required positions.
         assignee_write_count = -1
         for i, arg in enumerate(in_knl_callable.subkernel.args):
-            if arg.direction == 'out':
+            if arg.is_output_only:
                 assignee = assignees[-assignee_write_count-1]
                 parameter_shapes.insert(i, assignee
                         .get_array_arg_descriptor(caller_knl).shape)

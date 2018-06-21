@@ -1849,41 +1849,38 @@ def get_callee_kernels(kernel, insn_ids=None):
 
 # {{{ direction helper tools
 
-def infer_arg_direction(kernel):
+def infer_arg_is_output_only(kernel):
     """
-    Returns a copy of *kernel* with the directions of the argument inferred.
+    Returns a copy of *kernel* with the attribute ``is_output_only`` set.
 
     .. note::
-        Implements a simple heuristic -- if the argument direction is not
-        specified by the user then if the argument is written at any point
-        during in the kernel then its direction is set to be ``out``, otherwise
-        ``in``.
+
+        If the attribute ``is_output_only`` is not supplied from an user, then
+        infers it as an output argument if it is written at some point in the
+        kernel.
     """
     from loopy.kernel.data import ArrayArg, ValueArg, ConstantArg, ImageArg
-    direction_inferred_args = []
+    new_args = []
     for arg in kernel.args:
-        if isinstance(arg, (ArrayArg, ImageArg)):
-            if arg.direction is not None:
-                if arg.direction not in ['in', 'out']:
-                    raise LoopyError("Unknown value of direction %s for %s." % (
-                            arg.direction, arg.name))
-                direction_inferred_args.append(arg)
+        if isinstance(arg, (ArrayArg, ImageArg, ValueArg)):
+            if arg.is_output_only is not None:
+                assert isinstance(arg.is_output_only, bool)
+                new_args.append(arg)
             else:
                 if arg.name in kernel.get_written_variables():
-                    direction_inferred_args.append(arg.copy(direction='out'))
+                    new_args.append(arg.copy(is_output_only=True))
                 else:
-                    direction_inferred_args.append(arg.copy(direction='in'))
-        elif isinstance(arg, (ValueArg, ConstantArg)):
-            # For ValueArg, ConstantArg the direction always has to be in.
-            if arg.direction is not None and arg.direction == 'out':
-                raise LoopyError("Argument %s cannot have 'out' direction." %
-                        arg.name)
+                    new_args.append(arg.copy(is_output_only=False))
+        elif isinstance(arg, ConstantArg):
+            if arg.is_output_only:
+                raise LoopyError("Constant Argument %s cannot have "
+                        "is_output_only True" % arg.name)
             else:
-                direction_inferred_args.append(arg.copy(direction='in'))
+                new_args.append(arg.copy(is_output_only=False))
         else:
             raise NotImplementedError("Unkonwn argument type %s." % type(arg))
 
-    return kernel.copy(args=direction_inferred_args)
+    return kernel.copy(args=new_args)
 
 # }}}
 
