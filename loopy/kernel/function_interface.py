@@ -749,8 +749,10 @@ class CallableKernel(InKernelCallable):
             new_domain = domain.copy()
             for i in range(new_domain.n_dim()):
                 iname = new_domain.get_dim_name(dim_type, i)
-                new_iname_to_tags[iname_map[iname]] = (
-                        callee_knl.iname_to_tags[iname])
+
+                if iname in callee_knl.iname_to_tags:
+                    new_iname_to_tags[iname_map[iname]] = (
+                            callee_knl.iname_to_tags[iname])
                 new_domain = new_domain.set_dim_name(
                     dim_type, i, iname_map[iname])
             new_domains.append(new_domain)
