@@ -105,7 +105,9 @@ class UnscopedCallCollector(CombineMapper):
 
 def check_functions_are_scoped(kernel):
     """ Checks if all the calls in the instruction expression have been scoped,
-    otherwise indicates to what all calls we await signature.
+    otherwise indicates to what all calls we await signature. Refer
+    :class:`loopy.symbolic.ScopedFunction` for a detailed explanation of a
+    scoped function.
     """
 
     from loopy.symbolic import SubstitutionRuleExpander

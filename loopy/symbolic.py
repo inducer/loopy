@@ -684,12 +684,18 @@ class RuleArgument(p.Expression):
 
 
 class ScopedFunction(p.Expression):
-    """ Connects a call to a callable available in a kernel.
+    """
+    A function invocation whose definition is known in a :mod:`loopy` kernel.
+    Each instance of :class:`loopy.symbolic.ScopedFunction` in an expression
+    points to an instance of
+    :class:`loopy.kernel.function_interface.InKernelCallable` through the
+    mapping :attr:`loopy.kernel.LoopKernel.scoped_functions`.
 
     .. attribute:: function
 
-        An instance of :class:`pymbolic.primitives.Variable` or
-        `loopy.library.reduction.ArgExtOp`.
+        An instance of :class:`pymbolic.primitives.Variable`,
+        :class:`loopy.library.reduction.ArgExtOp` or
+        :class:`loopy.library.reduction.SegmentedOp`.
     """
     init_arg_names = ("function", )
 
