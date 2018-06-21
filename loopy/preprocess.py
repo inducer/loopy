@@ -160,7 +160,7 @@ def find_temporary_scope(kernel):
 
     new_temp_vars = {}
     from loopy.kernel.data import (LocalIndexTagBase, GroupIndexTag,
-            MemoryAddressSpace)
+            AddressSpace)
     import loopy as lp
 
     writers = kernel.writer_map()
@@ -221,12 +221,12 @@ def find_temporary_scope(kernel):
             assert locparallel_assignee_inames <= locparallel_compute_inames
             assert grpparallel_assignee_inames <= grpparallel_compute_inames
 
-            desired_scope = MemoryAddressSpace.PRIVATE
+            desired_scope = AddressSpace.PRIVATE
             for iname_descr, scope_descr, apin, cpin, scope in [
                     ("local", "local", locparallel_assignee_inames,
-                        locparallel_compute_inames, MemoryAddressSpace.LOCAL),
+                        locparallel_compute_inames, AddressSpace.LOCAL),
                     ("group", "global", grpparallel_assignee_inames,
-                        grpparallel_compute_inames, MemoryAddressSpace.GLOBAL),
+                        grpparallel_compute_inames, AddressSpace.GLOBAL),
                     ]:
 
                 if (apin != cpin and bool(apin)):
@@ -774,7 +774,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
         last_added_insn_id = insn.id
 
-        from loopy.kernel.data import MemoryAddressSpace, TemporaryVariable
+        from loopy.kernel.data import AddressSpace, TemporaryVariable
 
         FIRST_POINTER_ASSIGNEE_IDX = 1  # noqa
 
@@ -787,7 +787,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
                     assignee_var_name in kernel.temporary_variables
                     and
                     (kernel.temporary_variables[assignee_var_name].scope
-                         == MemoryAddressSpace.PRIVATE)):
+                         == AddressSpace.PRIVATE)):
                 new_assignees.append(assignee)
                 continue
 
@@ -809,7 +809,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
                     TemporaryVariable(
                         name=new_assignee_name,
                         dtype=None,
-                        scope=MemoryAddressSpace.PRIVATE))
+                        scope=AddressSpace.PRIVATE))
 
             from pymbolic import var
             new_assignee = var(new_assignee_name)
@@ -990,12 +990,12 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 for i in range(nresults)]
 
         for name in temp_var_names:
-            from loopy.kernel.data import TemporaryVariable, MemoryAddressSpace
+            from loopy.kernel.data import TemporaryVariable, AddressSpace
             new_temporary_variables[name] = TemporaryVariable(
                     name=name,
                     shape=(),
                     dtype=None,
-                    scope=MemoryAddressSpace.PRIVATE)
+                    scope=AddressSpace.PRIVATE)
 
         from pymbolic import var
         temp_vars = tuple(var(n) for n in temp_var_names)
@@ -1021,13 +1021,13 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             reduction_dtypes):
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
-        from loopy.kernel.data import MemoryAddressSpace
+        from loopy.kernel.data import AddressSpace
         acc_var_names = make_temporaries(
                 name_based_on="acc_"+"_".join(expr.inames),
                 nvars=nresults,
                 shape=(),
                 dtypes=reduction_dtypes,
-                scope=MemoryAddressSpace.PRIVATE)
+                scope=AddressSpace.PRIVATE)
 
         init_insn_depends_on = frozenset()
 
@@ -1159,21 +1159,21 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 _get_int_iname_size(oiname)
                 for oiname in outer_local_inames)
 
-        from loopy.kernel.data import MemoryAddressSpace
+        from loopy.kernel.data import AddressSpace
 
         neutral_var_names = make_temporaries(
                 name_based_on="neutral_"+red_iname,
                 nvars=nresults,
                 shape=(),
                 dtypes=reduction_dtypes,
-                scope=MemoryAddressSpace.PRIVATE)
+                scope=AddressSpace.PRIVATE)
 
         acc_var_names = make_temporaries(
                 name_based_on="acc_"+red_iname,
                 nvars=nresults,
                 shape=outer_local_iname_sizes + (size,),
                 dtypes=reduction_dtypes,
-                scope=MemoryAddressSpace.LOCAL)
+                scope=AddressSpace.LOCAL)
 
         acc_vars = tuple(var(n) for n in acc_var_names)
 
@@ -1393,13 +1393,13 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 scan_iname, sweep_iname, sweep_min_value, scan_min_value,
                 stride, track_iname)
 
-        from loopy.kernel.data import MemoryAddressSpace
+        from loopy.kernel.data import AddressSpace
         acc_var_names = make_temporaries(
                 name_based_on="acc_" + scan_iname,
                 nvars=nresults,
                 shape=(),
                 dtypes=reduction_dtypes,
-                scope=MemoryAddressSpace.PRIVATE)
+                scope=AddressSpace.PRIVATE)
 
         from pymbolic import var
         acc_vars = tuple(var(n) for n in acc_var_names)
@@ -1518,21 +1518,21 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         # }}}
 
-        from loopy.kernel.data import MemoryAddressSpace
+        from loopy.kernel.data import AddressSpace
 
         read_var_names = make_temporaries(
                 name_based_on="read_"+scan_iname+"_arg_{index}",
                 nvars=nresults,
                 shape=(),
                 dtypes=reduction_dtypes,
-                scope=MemoryAddressSpace.PRIVATE)
+                scope=AddressSpace.PRIVATE)
 
         acc_var_names = make_temporaries(
                 name_based_on="acc_"+scan_iname,
                 nvars=nresults,
                 shape=outer_local_iname_sizes + (scan_size,),
                 dtypes=reduction_dtypes,
-                scope=MemoryAddressSpace.LOCAL)
+                scope=AddressSpace.LOCAL)
 
         acc_vars = tuple(var(n) for n in acc_var_names)
         read_vars = tuple(var(n) for n in read_var_names)

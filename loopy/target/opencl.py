@@ -32,7 +32,7 @@ from pytools import memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 from loopy.target.c import DTypeRegistryWrapper
-from loopy.kernel.data import MemoryAddressSpace
+from loopy.kernel.data import AddressSpace
 from loopy.kernel.function_interface import ScalarCallable
 from pymbolic import var
 
@@ -517,10 +517,10 @@ class OpenCLCASTBuilder(CASTBuilder):
             raise LoopyError("unknown barrier kind")
 
     def wrap_temporary_decl(self, decl, scope):
-        if scope == MemoryAddressSpace.LOCAL:
+        if scope == AddressSpace.LOCAL:
             from cgen.opencl import CLLocal
             return CLLocal(decl)
-        elif scope == MemoryAddressSpace.PRIVATE:
+        elif scope == AddressSpace.PRIVATE:
             return decl
         else:
             raise ValueError("unexpected temporary variable scope: %s"
@@ -532,15 +532,15 @@ class OpenCLCASTBuilder(CASTBuilder):
 
     def get_array_arg_decl(self, name, mem_address_space, shape, dtype, is_written):
         from cgen.opencl import CLGlobal, CLLocal
-        from loopy.kernel.data import MemoryAddressSpace
+        from loopy.kernel.data import AddressSpace
 
-        if mem_address_space == MemoryAddressSpace.LOCAL:
+        if mem_address_space == AddressSpace.LOCAL:
             return CLLocal(super(OpenCLCASTBuilder, self).get_array_arg_decl(
                 name, mem_address_space, shape, dtype, is_written))
-        elif mem_address_space == MemoryAddressSpace.PRIVATE:
+        elif mem_address_space == AddressSpace.PRIVATE:
             return super(OpenCLCASTBuilder, self).get_array_arg_decl(
                 name, mem_address_space, shape, dtype, is_written)
-        elif mem_address_space == MemoryAddressSpace.GLOBAL:
+        elif mem_address_space == AddressSpace.GLOBAL:
             return CLGlobal(super(OpenCLCASTBuilder, self).get_array_arg_decl(
                 name, mem_address_space, shape, dtype, is_written))
         else:
@@ -548,12 +548,12 @@ class OpenCLCASTBuilder(CASTBuilder):
                     % mem_address_space)
 
     def get_global_arg_decl(self, name, shape, dtype, is_written):
-        from loopy.kernel.data import MemoryAddressSpace
+        from loopy.kernel.data import AddressSpace
         from warnings import warn
         warn("get_global_arg_decl is deprecated use get_array_arg_decl "
                 "instead.", DeprecationWarning, stacklevel=2)
 
-        return self.get_array_arg_decl(name, MemoryAddressSpace.GLOBAL, shape,
+        return self.get_array_arg_decl(name, AddressSpace.GLOBAL, shape,
                 dtype, is_written)
 
     def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
@@ -605,7 +605,7 @@ class OpenCLCASTBuilder(CASTBuilder):
             old_val_var = codegen_state.var_name_generator("loopy_old_val")
             new_val_var = codegen_state.var_name_generator("loopy_new_val")
 
-            from loopy.kernel.data import TemporaryVariable, MemoryAddressSpace
+            from loopy.kernel.data import TemporaryVariable, AddressSpace
             ecm = codegen_state.expression_to_code_mapper.with_assignments(
                     {
                         old_val_var: TemporaryVariable(old_val_var, lhs_dtype),
@@ -647,20 +647,20 @@ class OpenCLCASTBuilder(CASTBuilder):
                 if (
                         isinstance(lhs_var, ArrayArg)
                         and
-                        lhs_var.memory_address_space == MemoryAddressSpace.GLOBAL):
+                        lhs_var.memory_address_space == AddressSpace.GLOBAL):
                     var_kind = "__global"
                 elif (
                         isinstance(lhs_var, ArrayArg)
                         and
-                        lhs_var.memory_address_space == MemoryAddressSpace.LOCAL):
+                        lhs_var.memory_address_space == AddressSpace.LOCAL):
                     var_kind = "__local"
                 elif (
                         isinstance(lhs_var, TemporaryVariable)
-                        and lhs_var.scope == MemoryAddressSpace.LOCAL):
+                        and lhs_var.scope == AddressSpace.LOCAL):
                     var_kind = "__local"
                 elif (
                         isinstance(lhs_var, TemporaryVariable)
-                        and lhs_var.scope == MemoryAddressSpace.GLOBAL):
+                        and lhs_var.scope == AddressSpace.GLOBAL):
                     var_kind = "__global"
                 else:
                     raise LoopyError("unexpected kind of variable '%s' in "

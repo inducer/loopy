@@ -341,7 +341,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # {{{ unify temporary_scope / temporary_is_local
 
-    from loopy.kernel.data import MemoryAddressSpace
+    from loopy.kernel.data import AddressSpace
     if temporary_is_local is not None:
         from warnings import warn
         warn("temporary_is_local is deprecated. Use temporary_scope instead",
@@ -352,9 +352,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                     "temporary_scope")
 
         if temporary_is_local:
-            temporary_scope = MemoryAddressSpace.LOCAL
+            temporary_scope = AddressSpace.LOCAL
         else:
-            temporary_scope = MemoryAddressSpace.PRIVATE
+            temporary_scope = AddressSpace.PRIVATE
 
     del temporary_is_local
 
@@ -804,7 +804,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     compute_dep_id = compute_insn_id
     added_compute_insns = [compute_insn]
 
-    if temporary_scope == MemoryAddressSpace.GLOBAL:
+    if temporary_scope == AddressSpace.GLOBAL:
         barrier_insn_id = kernel.make_unique_instruction_id(
                 based_on=c_subst_name+"_barrier")
         from loopy.kernel.instruction import BarrierInstruction
@@ -976,8 +976,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             raise LoopyError("Existing and new temporary '%s' do not "
                     "have matching scopes (existing: %s, new: %s)"
                     % (temporary_name,
-                        MemoryAddressSpace.stringify(temp_var.scope),
-                        MemoryAddressSpace.stringify(temporary_scope)))
+                        AddressSpace.stringify(temp_var.scope),
+                        AddressSpace.stringify(temporary_scope)))
 
         temp_var = temp_var.copy(scope=temporary_scope)
 

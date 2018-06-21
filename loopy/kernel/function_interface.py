@@ -63,7 +63,7 @@ class ArrayArgDescriptor(ImmutableRecord):
 
     .. attribute:: mem_scope
 
-        An attribute of :class:`loopy.kernel.data.MemoryAddressSpace`.
+        An attribute of :class:`loopy.kernel.data.AddressSpace`.
 
     .. attribute:: dim_tags
 
