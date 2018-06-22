@@ -17,14 +17,29 @@ class GridOverride(object):
 
 # {{{ test_preamble_with_separate_temporaries
 
-class SeparateTemporariesPreambleTestHelper:
+class SeparateTemporariesPreambleTestDataHolder:
     def __init__(self, func_name, func_arg_dtypes, func_result_dtypes, arr):
         self.func_name = func_name
         self.func_arg_dtypes = func_arg_dtypes
         self.func_result_dtypes = func_result_dtypes
         self.arr = arr
 
-    def mangler(self, kernel, name, arg_dtypes):
+    def __eq__(self, other):
+        import numpy as np
+        return (
+                isinstance(other, type(self))
+                and self.func_name == other.func_name
+                and self.func_arg_dtypes == other.func_arg_dtypes
+                and self.func_result_dtypes == other.func_result_dtypes
+                and np.array_equal(self.arr, other.arr))
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+
+class SeparateTemporariesPreambleTestMangler(
+        SeparateTemporariesPreambleTestDataHolder):
+    def __call__(self, kernel, name, arg_dtypes):
         """
         A function that will return a :class:`loopy.kernel.data.CallMangleInfo`
         to interface with the calling :class:`loopy.LoopKernel`
@@ -61,7 +76,10 @@ class SeparateTemporariesPreambleTestHelper:
                                 self.func_result_dtypes),
             arg_dtypes=arg_dtypes)
 
-    def preamble_gen(self, preamble_info):
+
+class SeparateTemporariesPreambleTestPreambleGenerator(
+        SeparateTemporariesPreambleTestDataHolder):
+    def __call__(self, preamble_info):
         from loopy.kernel.data import temp_var_scope as scopes
 
         # find a function matching our name
