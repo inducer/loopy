@@ -646,7 +646,8 @@ def test_vector_ilp_with_prefetch(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 128, inner_tag="l.0")
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
-    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"])
+    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"],
+            default_tag="l.auto")
 
     cknl = lp.CompiledKernel(ctx, knl)
     cknl.kernel_info()
@@ -1722,7 +1723,8 @@ def test_finite_difference_expr_subst(ctx_factory):
             fused0_knl, "inew", 128, outer_tag="g.0", inner_tag="l.0")
 
     precomp_knl = lp.precompute(
-            gpu_knl, "f_subst", "inew_inner", fetch_bounding_box=True)
+            gpu_knl, "f_subst", "inew_inner", fetch_bounding_box=True,
+            default_tag="l.auto")
 
     precomp_knl = lp.tag_inames(precomp_knl, {"j_0_outer": "unr"})
     precomp_knl = lp.set_options(precomp_knl, return_dict=True)
@@ -2794,7 +2796,7 @@ def test_add_prefetch_works_in_lhs_index():
                 "..."
             ])
 
-    knl = lp.add_prefetch(knl, "a1_map", "k")
+    knl = lp.add_prefetch(knl, "a1_map", "k", default_tag="l.auto")
 
     from loopy.symbolic import get_dependencies
     for insn in knl.instructions:

@@ -99,14 +99,16 @@ def test_dg_volume(ctx_factory):
     def variant_prefetch_d(knl):
         knl = lp.tag_inames(knl, dict(n="l.0"))
         knl = lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="l.1")
-        knl = lp.add_prefetch(knl, "DrDsDt[:,:]")
+        knl = lp.add_prefetch(knl, "DrDsDt[:,:]",
+                default_tag="l.auto")
         return knl
 
     def variant_prefetch_fields(knl):
         knl = lp.tag_inames(knl, dict(n="l.0"))
         knl = lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="l.1")
         for name in ["u", "v", "w", "p"]:
-            knl = lp.add_prefetch(knl, "%s[k,:]" % name, ["k_inner"])
+            knl = lp.add_prefetch(knl, "%s[k,:]" % name, ["k_inner"],
+                    default_tag="l.auto")
 
         return knl
 

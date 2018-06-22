@@ -932,8 +932,8 @@ def test_all_counters_parallel_matmul():
     knl = lp.split_iname(knl, "i", bsize, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_iname(knl, "j", bsize, outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_iname(knl, "k", bsize)
-    knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
-    knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"])
+    knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"], default_tag="l.auto")
+    knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"], default_tag="l.auto")
 
     n = 512
     m = 256

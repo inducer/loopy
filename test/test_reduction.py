@@ -238,7 +238,8 @@ def test_global_parallel_reduction(ctx_factory, size):
     from loopy.transform.data import reduction_arg_to_subst_rule
     knl = reduction_arg_to_subst_rule(knl, "i_outer")
     knl = lp.precompute(knl, "red_i_outer_arg", "i_outer",
-            temporary_scope=lp.temp_var_scope.GLOBAL)
+            temporary_scope=lp.temp_var_scope.GLOBAL,
+            default_tag="l.auto")
     knl = lp.realize_reduction(knl)
     knl = lp.add_dependency(
             knl, "writes:acc_i_outer",
@@ -278,7 +279,8 @@ def test_global_mc_parallel_reduction(ctx_factory, size):
     from loopy.transform.data import reduction_arg_to_subst_rule
     knl = reduction_arg_to_subst_rule(knl, "i_outer")
     knl = lp.precompute(knl, "red_i_outer_arg", "i_outer",
-            temporary_scope=lp.temp_var_scope.GLOBAL)
+            temporary_scope=lp.temp_var_scope.GLOBAL,
+            default_tag="l.auto")
     knl = lp.realize_reduction(knl)
     knl = lp.add_dependency(
             knl, "writes:acc_i_outer",

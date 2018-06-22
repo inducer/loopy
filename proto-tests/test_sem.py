@@ -79,17 +79,17 @@ def test_laplacian(ctx_factory):
 
     if 0:
         pass
-        #seq_knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]")
-        #seq_knl = lp.add_prefetch(seq_knl, "D", ["m", "j"])
-        #seq_knl = lp.add_prefetch(seq_knl, "u", ["i", "j", "k"], "u[*,i,j,k]")
+        #seq_knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]", default_tag="l.auto")
+        #seq_knl = lp.add_prefetch(seq_knl, "D", ["m", "j"], default_tag="l.auto")
+        #seq_knl = lp.add_prefetch(seq_knl, "u", ["i", "j", "k"], "u[*,i,j,k]", default_tag="l.auto")
     else:
         seq_knl = knl
 
     knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
 
-    knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]")
-    knl = lp.add_prefetch(knl, "D", ["m", "j"])
-    #knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[*,i,j,k]")
+    knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]", default_tag="l.auto")
+    knl = lp.add_prefetch(knl, "D", ["m", "j"], default_tag="l.auto")
+    #knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[*,i,j,k]", default_tag="l.auto")
 
     #knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
 
@@ -154,17 +154,23 @@ def test_laplacian_lmem(ctx_factory):
     knl = lp.realize_cse(knl, "ut", np.float32, ["i", "j", "m"])
 
     if 0:
-        seq_knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]")
-        seq_knl = lp.add_prefetch(seq_knl, "D", ["m", "j"])
-        seq_knl = lp.add_prefetch(seq_knl, "u", ["i", "j", "k"], "u[*,i,j,k]")
+        seq_knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]",
+                default_tag="l.auto")
+        seq_knl = lp.add_prefetch(seq_knl, "D", ["m", "j"],
+                default_tag="l.auto")
+        seq_knl = lp.add_prefetch(seq_knl, "u", ["i", "j", "k"], "u[*,i,j,k]",
+                default_tag="l.auto")
     else:
         seq_knl = knl
 
-    knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
+    knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")  #, slabs=(0, 1))
 
-    knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]")
-    knl = lp.add_prefetch(knl, "D", ["m", "j"])
-    knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[*,i,j,k]")
+    knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]",
+            default_tag="l.auto")
+    knl = lp.add_prefetch(knl, "D", ["m", "j"],
+            default_tag="l.auto")
+    knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[*,i,j,k]",
+            default_tag="l.auto")
     #knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
 
     #print seq_knl
@@ -230,14 +236,20 @@ def test_laplacian_lmem_ilp(ctx_factory):
     knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
     knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
 
-    knl = lp.add_prefetch(knl, "u", [1, 2, 3, "e_inner_inner"])
+    knl = lp.add_prefetch(knl, "u", [1, 2, 3, "e_inner_inner"],
+            default_tag="l.auto")
 
-    knl = lp.precompute(knl, "ur", np.float32, [0, 1, 2, "e_inner_inner"])
-    knl = lp.precompute(knl, "us", np.float32, [0, 1, 2, "e_inner_inner"])
-    knl = lp.precompute(knl, "ut", np.float32, [0, 1, 2, "e_inner_inner"])
+    knl = lp.precompute(knl, "ur", np.float32, [0, 1, 2, "e_inner_inner"],
+            default_tag="l.auto")
+    knl = lp.precompute(knl, "us", np.float32, [0, 1, 2, "e_inner_inner"],
+            default_tag="l.auto")
+    knl = lp.precompute(knl, "ut", np.float32, [0, 1, 2, "e_inner_inner"],
+            default_tag="l.auto")
 
-    knl = lp.add_prefetch(knl, "G", ["m", "i", "j", "k", "e_inner_inner"])
-    knl = lp.add_prefetch(knl, "D", ["m", "j"])
+    knl = lp.add_prefetch(knl, "G", ["m", "i", "j", "k", "e_inner_inner"],
+            default_tag="l.auto")
+    knl = lp.add_prefetch(knl, "D", ["m", "j"],
+            default_tag="l.auto")
 
     #print seq_knl
     #1/0

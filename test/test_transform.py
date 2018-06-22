@@ -234,9 +234,9 @@ def test_alias_temporaries(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.0")
 
-    knl = lp.precompute(knl, "times2", "i_inner")
-    knl = lp.precompute(knl, "times3", "i_inner")
-    knl = lp.precompute(knl, "times4", "i_inner")
+    knl = lp.precompute(knl, "times2", "i_inner", default_tag="l.auto")
+    knl = lp.precompute(knl, "times3", "i_inner", default_tag="l.auto")
+    knl = lp.precompute(knl, "times4", "i_inner", default_tag="l.auto")
 
     knl = lp.alias_temporaries(knl, ["times2_0", "times3_0", "times4_0"])
 
@@ -307,7 +307,7 @@ def test_join_inames(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.add_prefetch(knl, "a", sweep_inames=["i", "j"])
+    knl = lp.add_prefetch(knl, "a", sweep_inames=["i", "j"], default_tag="l.auto")
     knl = lp.join_inames(knl, ["a_dim_0", "a_dim_1"])
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, print_ref_code=True)
@@ -401,7 +401,7 @@ def test_precompute_nested_subst(ctx_factory):
 
     from loopy.symbolic import get_dependencies
     assert "i_inner" not in get_dependencies(knl.substitutions["D"].expression)
-    knl = lp.precompute(knl, "D", "i_inner")
+    knl = lp.precompute(knl, "D", "i_inner", default_tag="l.auto")
 
     # There's only one surviving 'E' rule.
     assert len([

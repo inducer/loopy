@@ -90,7 +90,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     if opt_level == 0:
         tap_hsv = hsv
 
-    hsv = lp.add_prefetch(hsv, "D[:,:]")
+    hsv = lp.add_prefetch(hsv, "D[:,:]", default_tag="l.auto")
 
     if opt_level == 1:
         tap_hsv = hsv
@@ -169,12 +169,14 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
         if prep_var_name.startswith("Jinv") or "_s" in prep_var_name:
             continue
         hsv = lp.precompute(hsv,
-            lp.find_one_rule_matching(hsv, prep_var_name+"_*subst*"))
+            lp.find_one_rule_matching(hsv, prep_var_name+"_*subst*"),
+            default_tag="l.auto")
 
     if opt_level == 3:
         tap_hsv = hsv
 
-    hsv = lp.add_prefetch(hsv, "Q[ii,jj,k,:,:,e]", sweep_inames=ilp_inames)
+    hsv = lp.add_prefetch(hsv, "Q[ii,jj,k,:,:,e]", sweep_inames=ilp_inames,
+            default_tag="l.auto")
 
     if opt_level == 4:
         tap_hsv = hsv
