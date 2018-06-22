@@ -1,7 +1,5 @@
 import loopy as lp
 
-from collections import namedtuple
-
 
 # {{{ test_barrier_in_overridden_get_grid_size_expanded_kernel
 
