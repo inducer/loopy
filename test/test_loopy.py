@@ -2719,9 +2719,13 @@ def test_preamble_with_separate_temporaries(ctx_factory):
         read_only=True),
      lp.GlobalArg('data', shape=(data.size,), dtype=np.float64)],
     )
+
     # fixt params, and add manglers / preamble
-    from testlib import SeparateTemporariesPreambleTestHelper
-    preamble_with_sep_helper = SeparateTemporariesPreambleTestHelper(
+    from testlib import (
+            SeparateTemporariesPreambleTestMangler,
+            SeparateTemporariesPreambleTestPreambleGenerator,
+            )
+    func_info = dict(
             func_name='indirect',
             func_arg_dtypes=(np.int32, np.int32, np.int32),
             func_result_dtypes=(np.int32,),
@@ -2730,9 +2734,9 @@ def test_preamble_with_separate_temporaries(ctx_factory):
 
     kernel = lp.fix_parameters(kernel, **{'n': n})
     kernel = lp.register_preamble_generators(
-            kernel, [preamble_with_sep_helper.preamble_gen])
+            kernel, [SeparateTemporariesPreambleTestPreambleGenerator(**func_info)])
     kernel = lp.register_function_manglers(
-            kernel, [preamble_with_sep_helper.mangler])
+            kernel, [SeparateTemporariesPreambleTestMangler(**func_info)])
 
     print(lp.generate_code(kernel)[0])
     # and call (functionality unimportant, more that it compiles)
