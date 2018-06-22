@@ -38,6 +38,8 @@ from loopy.kernel.function_interface import (get_kw_pos_association,
 __doc__ = """
 .. currentmodule:: loopy
 
+.. autofunction:: register_function_lookup
+
 .. autofunction:: register_callable_kernel
 """
 
@@ -53,7 +55,14 @@ def register_function_lookup(kernel, function_lookup):
     """
 
     # adding the function lookup to the set of function lookers in the kernel.
-    new_function_scopers = kernel.function_scopers + [function_lookup]
+    if function_lookup not in kernel.function_scopers:
+        from loopy.tools import unpickles_equally
+        if not unpickles_equally(function_lookup):
+            raise LoopyError("function '%s' does not "
+                    "compare equally after being upickled "
+                    "and would disrupt loopy's caches"
+                    % function_lookup)
+        new_function_scopers = kernel.function_scopers + [function_lookup]
     registered_kernel = kernel.copy(function_scopers=new_function_scopers)
     from loopy.kernel.creation import scope_functions
 
