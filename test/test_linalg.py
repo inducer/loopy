@@ -430,7 +430,8 @@ def test_intel_matrix_mul(ctx_factory):
             default_tag="l.auto")
 
     # FIXME: Grouped prefetch
-    #knl = lp.add_prefetch(knl, 'a', ["k_inner", ("i_inner_inner", "i_inner_outer")], default_tag="l.auto")
+    #knl = lp.add_prefetch(knl, 'a', ["k_inner", ("i_inner_inner", "i_inner_outer")],
+    #           default_tag="l.auto")
     #knl = lp.add_prefetch(knl, 'b',
     # ["k_inner", ("j_inner_inner", "j_inner_outer"),], default_tag="l.auto")
 
@@ -483,7 +484,8 @@ def test_magma_fermi_matrix_mul(ctx_factory):
     knl = lp.split_iname(knl, "k", 16)
     knl = lp.split_iname(knl, "k_inner", 8, outer_tag="unr")
     # FIXME
-    #knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner_inner", "i_inner_outer"], default_tag="l.auto")
+    #knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner_inner", "i_inner_outer"],
+    #           default_tag="l.auto")
     #knl = lp.add_prefetch(knl, 'b',
     #    ["k_inner", ("j_inner_inner", "j_inner_outer"),], default_tag="l.auto")
 
