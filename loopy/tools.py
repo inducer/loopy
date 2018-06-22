@@ -1,5 +1,4 @@
 from __future__ import division, absolute_import
-import six
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -22,6 +21,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
+
+import six
 
 import collections
 import numpy as np
@@ -579,6 +580,11 @@ class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList):
                 "persistent_hash_key_getter": self.persistent_hash_key_getter}
 
 # }}}
+
+
+def unpickles_equally(obj):
+    from six.moves.cPickle import loads, dumps
+    return loads(dumps(obj)) == obj
 
 
 def is_interned(s):

@@ -331,18 +331,34 @@ def register_preamble_generators(kernel, preamble_generators):
 
     :returns: *kernel* with *manglers* registered
     """
+    from loopy.tools import unpickles_equally
+
     new_pgens = kernel.preamble_generators[:]
     for pgen in preamble_generators:
         if pgen not in new_pgens:
+            if not unpickles_equally(pgen):
+                raise LoopyError("preamble generator '%s' does not "
+                        "compare equally after being upickled "
+                        "and would thus disrupt loopy's caches"
+                        % pgen)
+
             new_pgens.insert(0, pgen)
 
     return kernel.copy(preamble_generators=new_pgens)
 
 
 def register_symbol_manglers(kernel, manglers):
+    from loopy.tools import unpickles_equally
+
     new_manglers = kernel.symbol_manglers[:]
     for m in manglers:
         if m not in new_manglers:
+            if not unpickles_equally(m):
+                raise LoopyError("mangler '%s' does not "
+                        "compare equally after being upickled "
+                        "and would disrupt loopy's caches"
+                        % m)
+
             new_manglers.insert(0, m)
 
     return kernel.copy(symbol_manglers=new_manglers)
@@ -354,9 +370,17 @@ def register_function_manglers(kernel, manglers):
         returning a :class:`loopy.CallMangleInfo`.
     :returns: *kernel* with *manglers* registered
     """
+    from loopy.tools import unpickles_equally
+
     new_manglers = kernel.function_manglers[:]
     for m in manglers:
         if m not in new_manglers:
+            if not unpickles_equally(m):
+                raise LoopyError("mangler '%s' does not "
+                        "compare equally after being upickled "
+                        "and would disrupt loopy's caches"
+                        % m)
+
             new_manglers.insert(0, m)
 
     return kernel.copy(function_manglers=new_manglers)
