@@ -39,14 +39,14 @@ __doc__ = """
 # {{{ to_batched
 
 def temp_needs_batching_if_not_sequential(tv, batch_varying_args):
-    from loopy.kernel.data import MemoryAddressSpace
+    from loopy.kernel.data import AddressSpace
     if tv.name in batch_varying_args:
         return True
     if tv.initializer is not None and tv.read_only:
         # do not batch read_only temps  if not in
         # `batch_varying_args`
         return False
-    if tv.scope == MemoryAddressSpace.PRIVATE:
+    if tv.scope == AddressSpace.PRIVATE:
         # do not batch private temps if not in `batch_varying args`
         return False
     return True

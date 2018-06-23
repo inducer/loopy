@@ -1,5 +1,4 @@
 from __future__ import division, absolute_import
-import six
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -23,8 +22,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
+
 import collections
 import numpy as np
+from pytools import memoize_method
 from pytools.persistent_dict import KeyBuilder as KeyBuilderBase
 from loopy.symbolic import WalkMapper as LoopyWalkMapper
 from pymbolic.mapper.persistent_hash import (
@@ -73,6 +75,8 @@ class LoopyKeyBuilder(KeyBuilderBase):
         # Order matters for the hash--insert in sorted order.
         for dict_key in sorted(six.iterkeys(key)):
             self.rec(key_hash, (dict_key, key[dict_key]))
+
+    update_for_defaultdict = update_for_dict
 
     def update_for_BasicSet(self, key_hash, key):  # noqa
         from islpy import Printer
@@ -155,13 +159,23 @@ class LoopyEqKeyBuilder(object):
         self.field_dict[field_name] = str(value).encode("utf-8")
 
     def key(self):
+        """A key suitable for equality comparison."""
         return (self.class_.__name__.encode("utf-8"), self.field_dict)
 
+    @memoize_method
     def hash_key(self):
-        """Similar to key(), but excludes field names for faster hashing.
+        """A key suitable for hashing.
         """
-        return (self.class_.__name__.encode("utf-8"),) + tuple(
-                self.field_dict[k] for k in sorted(self.field_dict.keys()))
+        # To speed up any calculations that repeatedly use the return value,
+        # this method returns a hash.
+
+        kb = LoopyKeyBuilder()
+        # Build the key. For faster hashing, avoid hashing field names.
+        key = (
+            (self.class_.__name__.encode("utf-8"),) +
+            tuple(self.field_dict[k] for k in sorted(self.field_dict.keys())))
+
+        return kb(key)
 
 # }}}
 
@@ -566,6 +580,11 @@ class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList):
                 "persistent_hash_key_getter": self.persistent_hash_key_getter}
 
 # }}}
+
+
+def unpickles_equally(obj):
+    from six.moves.cPickle import loads, dumps
+    return loads(dumps(obj)) == obj
 
 
 def is_interned(s):

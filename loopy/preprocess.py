@@ -35,10 +35,10 @@ from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
-from loopy.kernel.data import make_assignment
+from loopy.kernel.data import make_assignment, filter_iname_tags_by_type
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
-from loopy.symbolic import CombineMapper, SubstitutionMapper, pw_aff_to_expr
+from loopy.symbolic import CombineMapper
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
@@ -140,9 +140,8 @@ def check_reduction_iname_uniqueness(kernel):
 # {{{ decide temporary scope
 
 def _get_compute_inames_tagged(kernel, insn, tag_base):
-    return set(iname
-            for iname in kernel.insn_inames(insn.id)
-            if isinstance(kernel.iname_to_tag.get(iname), tag_base))
+    return set(iname for iname in kernel.insn_inames(insn.id)
+               if kernel.iname_tags_of_type(iname, tag_base))
 
 
 def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
@@ -152,7 +151,7 @@ def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
                 insn.assignee_subscript_deps())
             for iname in adeps & kernel.all_inames()
             if aname in tv_names
-            if isinstance(kernel.iname_to_tag.get(iname), tag_base))
+            if kernel.iname_tags_of_type(iname, tag_base))
 
 
 def find_temporary_scope(kernel):
@@ -160,7 +159,7 @@ def find_temporary_scope(kernel):
 
     new_temp_vars = {}
     from loopy.kernel.data import (LocalIndexTagBase, GroupIndexTag,
-            MemoryAddressSpace)
+            AddressSpace)
     import loopy as lp
 
     writers = kernel.writer_map()
@@ -221,12 +220,12 @@ def find_temporary_scope(kernel):
             assert locparallel_assignee_inames <= locparallel_compute_inames
             assert grpparallel_assignee_inames <= grpparallel_compute_inames
 
-            desired_scope = MemoryAddressSpace.PRIVATE
+            desired_scope = AddressSpace.PRIVATE
             for iname_descr, scope_descr, apin, cpin, scope in [
                     ("local", "local", locparallel_assignee_inames,
-                        locparallel_compute_inames, MemoryAddressSpace.LOCAL),
+                        locparallel_compute_inames, AddressSpace.LOCAL),
                     ("group", "global", grpparallel_assignee_inames,
-                        grpparallel_compute_inames, MemoryAddressSpace.GLOBAL),
+                        grpparallel_compute_inames, AddressSpace.GLOBAL),
                     ]:
 
                 if (apin != cpin and bool(apin)):
@@ -297,20 +296,20 @@ def _classify_reduction_inames(kernel, inames):
 
     from loopy.kernel.data import (
             LocalIndexTagBase, UnrolledIlpTag, UnrollTag, VectorizeTag,
-            ConcurrentTag)
+            ConcurrentTag, filter_iname_tags_by_type)
 
     for iname in inames:
-        iname_tag = kernel.iname_to_tag.get(iname)
+        iname_tags = kernel.iname_tags(iname)
 
-        if isinstance(iname_tag, (UnrollTag, UnrolledIlpTag)):
+        if filter_iname_tags_by_type(iname_tags, (UnrollTag, UnrolledIlpTag)):
             # These are nominally parallel, but we can live with
             # them as sequential.
             sequential.append(iname)
 
-        elif isinstance(iname_tag, LocalIndexTagBase):
+        elif filter_iname_tags_by_type(iname_tags, LocalIndexTagBase):
             local_par.append(iname)
 
-        elif isinstance(iname_tag, (ConcurrentTag, VectorizeTag)):
+        elif filter_iname_tags_by_type(iname_tags, (ConcurrentTag, VectorizeTag)):
             nonlocal_par.append(iname)
 
         else:
@@ -774,7 +773,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
         last_added_insn_id = insn.id
 
-        from loopy.kernel.data import MemoryAddressSpace, TemporaryVariable
+        from loopy.kernel.data import AddressSpace, TemporaryVariable
 
         FIRST_POINTER_ASSIGNEE_IDX = 1  # noqa
 
@@ -787,7 +786,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
                     assignee_var_name in kernel.temporary_variables
                     and
                     (kernel.temporary_variables[assignee_var_name].scope
-                         == MemoryAddressSpace.PRIVATE)):
+                         == AddressSpace.PRIVATE)):
                 new_assignees.append(assignee)
                 continue
 
@@ -809,7 +808,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
                     TemporaryVariable(
                         name=new_assignee_name,
                         dtype=None,
-                        scope=MemoryAddressSpace.PRIVATE))
+                        scope=AddressSpace.PRIVATE))
 
             from pymbolic import var
             new_assignee = var(new_assignee_name)
@@ -990,12 +989,12 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 for i in range(nresults)]
 
         for name in temp_var_names:
-            from loopy.kernel.data import TemporaryVariable, MemoryAddressSpace
+            from loopy.kernel.data import TemporaryVariable, AddressSpace
             new_temporary_variables[name] = TemporaryVariable(
                     name=name,
                     shape=(),
                     dtype=None,
-                    scope=MemoryAddressSpace.PRIVATE)
+                    scope=AddressSpace.PRIVATE)
 
         from pymbolic import var
         temp_vars = tuple(var(n) for n in temp_var_names)
@@ -1021,13 +1020,13 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             reduction_dtypes):
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
-        from loopy.kernel.data import MemoryAddressSpace
+        from loopy.kernel.data import AddressSpace
         acc_var_names = make_temporaries(
                 name_based_on="acc_"+"_".join(expr.inames),
                 nvars=nresults,
                 shape=(),
                 dtypes=reduction_dtypes,
-                scope=MemoryAddressSpace.PRIVATE)
+                scope=AddressSpace.PRIVATE)
 
         init_insn_depends_on = frozenset()
 
@@ -1144,12 +1143,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
         from loopy.kernel.data import LocalIndexTagBase
-        outer_local_inames = tuple(
-                oiname
-                for oiname in outer_insn_inames
-                if isinstance(
-                    kernel.iname_to_tag.get(oiname),
-                    LocalIndexTagBase))
+        outer_local_inames = tuple(oiname for oiname in outer_insn_inames
+                if kernel.iname_tags_of_type(oiname, LocalIndexTagBase))
 
         from pymbolic import var
         outer_local_iname_vars = tuple(
@@ -1159,21 +1154,21 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 _get_int_iname_size(oiname)
                 for oiname in outer_local_inames)
 
-        from loopy.kernel.data import MemoryAddressSpace
+        from loopy.kernel.data import AddressSpace
 
         neutral_var_names = make_temporaries(
                 name_based_on="neutral_"+red_iname,
                 nvars=nresults,
                 shape=(),
                 dtypes=reduction_dtypes,
-                scope=MemoryAddressSpace.PRIVATE)
+                scope=AddressSpace.PRIVATE)
 
         acc_var_names = make_temporaries(
                 name_based_on="acc_"+red_iname,
                 nvars=nresults,
                 shape=outer_local_iname_sizes + (size,),
                 dtypes=reduction_dtypes,
-                scope=MemoryAddressSpace.LOCAL)
+                scope=AddressSpace.LOCAL)
 
         acc_vars = tuple(var(n) for n in acc_var_names)
 
@@ -1184,7 +1179,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         base_exec_iname = var_name_gen("red_"+red_iname)
         domains.append(_make_slab_set(base_exec_iname, size))
-        new_iname_tags[base_exec_iname] = kernel.iname_to_tag[red_iname]
+        new_iname_tags[base_exec_iname] = kernel.iname_tags(red_iname)
 
         # }}}
 
@@ -1279,7 +1274,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
             stage_exec_iname = var_name_gen("red_%s_s%d" % (red_iname, istage))
             domains.append(_make_slab_set(stage_exec_iname, bound-new_size))
-            new_iname_tags[stage_exec_iname] = kernel.iname_to_tag[red_iname]
+            new_iname_tags[stage_exec_iname] = kernel.iname_tags(red_iname)
 
             stage_id = insn_id_gen("red_%s_stage_%d" % (red_iname, istage))
             stage_insn = make_assignment(
@@ -1393,13 +1388,13 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 scan_iname, sweep_iname, sweep_min_value, scan_min_value,
                 stride, track_iname)
 
-        from loopy.kernel.data import MemoryAddressSpace
+        from loopy.kernel.data import AddressSpace
         acc_var_names = make_temporaries(
                 name_based_on="acc_" + scan_iname,
                 nvars=nresults,
                 shape=(),
                 dtypes=reduction_dtypes,
-                scope=MemoryAddressSpace.PRIVATE)
+                scope=AddressSpace.PRIVATE)
 
         from pymbolic import var
         acc_vars = tuple(var(n) for n in acc_var_names)
@@ -1483,12 +1478,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
         from loopy.kernel.data import LocalIndexTagBase
-        outer_local_inames = tuple(
-                oiname
-                for oiname in outer_insn_inames
-                if isinstance(
-                    kernel.iname_to_tag.get(oiname),
-                    LocalIndexTagBase)
+        outer_local_inames = tuple(oiname for oiname in outer_insn_inames
+                if kernel.iname_tags_of_type(oiname, LocalIndexTagBase)
                 and oiname != sweep_iname)
 
         from pymbolic import var
@@ -1514,25 +1505,25 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         base_exec_iname = var_name_gen(sweep_iname + "__scan")
         domains.append(_make_slab_set(base_exec_iname, scan_size))
-        new_iname_tags[base_exec_iname] = kernel.iname_to_tag[sweep_iname]
+        new_iname_tags[base_exec_iname] = kernel.iname_tags(sweep_iname)
 
         # }}}
 
-        from loopy.kernel.data import MemoryAddressSpace
+        from loopy.kernel.data import AddressSpace
 
         read_var_names = make_temporaries(
                 name_based_on="read_"+scan_iname+"_arg_{index}",
                 nvars=nresults,
                 shape=(),
                 dtypes=reduction_dtypes,
-                scope=MemoryAddressSpace.PRIVATE)
+                scope=AddressSpace.PRIVATE)
 
         acc_var_names = make_temporaries(
                 name_based_on="acc_"+scan_iname,
                 nvars=nresults,
                 shape=outer_local_iname_sizes + (scan_size,),
                 dtypes=reduction_dtypes,
-                scope=MemoryAddressSpace.LOCAL)
+                scope=AddressSpace.LOCAL)
 
         acc_vars = tuple(var(n) for n in acc_var_names)
         read_vars = tuple(var(n) for n in read_var_names)
@@ -1605,7 +1596,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             stage_exec_iname = var_name_gen("%s__scan_s%d" % (sweep_iname, istage))
             domains.append(
                     _make_slab_set_from_range(stage_exec_iname, cur_size, scan_size))
-            new_iname_tags[stage_exec_iname] = kernel.iname_to_tag[sweep_iname]
+            new_iname_tags[stage_exec_iname] = kernel.iname_tags(sweep_iname)
 
             for read_var, acc_var in zip(read_vars, acc_vars):
                 read_stage_id = insn_id_gen(
@@ -1755,7 +1746,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     "by reductions is 'local'--found iname(s) '%s' "
                     "respectively tagged '%s'"
                     % (", ".join(bad_inames),
-                       ", ".join(kernel.iname_to_tag[iname]
+                       ", ".join(str(kernel.iname_tags(iname))
                                  for iname in bad_inames)))
 
         if n_local_par == 0 and n_sequential == 0:
@@ -1793,7 +1784,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     _error_if_force_scan_on(LoopyError,
                             "Sweep iname '%s' has an unsupported parallel tag '%s' "
                             "- the only parallelism allowed is 'local'." %
-                            (sweep_iname, temp_kernel.iname_to_tag[sweep_iname]))
+                            (sweep_iname,
+                             ", ".join(tag.key
+                            for tag in temp_kernel.iname_tags(sweep_iname))))
                 elif parallel:
                     return map_scan_local(
                             expr, rec, nresults, arg_dtypes, reduction_dtypes,
@@ -1954,6 +1947,25 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 # }}}
 
 
+# {{{ realize_ilp
+
+def realize_ilp(kernel):
+    logger.debug("%s: add axes to temporaries for ilp" % kernel.name)
+
+    from loopy.kernel.data import (IlpBaseTag, VectorizeTag,
+                                   filter_iname_tags_by_type)
+
+    privatizing_inames = frozenset(
+        iname for iname, tags in six.iteritems(kernel.iname_to_tags)
+        if filter_iname_tags_by_type(tags, (IlpBaseTag, VectorizeTag))
+    )
+
+    from loopy.transform.privatize import privatize_temporaries_with_inames
+    return privatize_temporaries_with_inames(kernel, privatizing_inames)
+
+# }}}
+
+
 # {{{ find idempotence ("boostability") of instructions
 
 def find_idempotence(kernel):
@@ -2107,32 +2119,6 @@ def check_atomic_loads(kernel):
 
 # {{{ arg_descr_inference
 
-def get_arg_description_from_sub_array_ref(sub_array, kernel):
-    """ Gets the dim_tags, memory scope, shape informations of a
-    :class:`SubArrayRef` argument in the caller kernel packed into
-    :class:`ArrayArgDescriptor`.
-    """
-    from loopy.kernel.function_interface import ArrayArgDescriptor
-
-    name = sub_array.subscript.aggregate.name
-
-    if name in kernel.temporary_variables:
-        arg = kernel.temporary_variables[name]
-        mem_scope = arg.scope
-        assert name not in kernel.arg_dict
-    else:
-        assert name in kernel.arg_dict
-        arg = kernel.arg_dict[name]
-        mem_scope = arg.memory_address_space
-
-    sub_dim_tags, sub_shape = sub_array.get_sub_array_dim_tags_and_shape(
-            arg.dim_tags, arg.shape)
-
-    return ArrayArgDescriptor(mem_scope=mem_scope,
-            dim_tags=sub_dim_tags,
-            shape=sub_shape)
-
-
 class ArgDescrInferenceMapper(CombineMapper):
     """
     Returns a set of instances of :class:`tuple` (expr,
@@ -2157,8 +2143,7 @@ class ArgDescrInferenceMapper(CombineMapper):
             return self.combine((self.rec(child) for child in expr.parameters))
 
         # descriptors for the args
-        arg_id_to_descr = dict((i,
-            get_arg_description_from_sub_array_ref(par, self.kernel))
+        arg_id_to_descr = dict((i, par.get_array_arg_descriptor(self.kernel))
                 if isinstance(par, SubArrayRef) else (i, ValueArgDescriptor())
                 for i, par in enumerate(expr.parameters))
 
@@ -2172,8 +2157,7 @@ class ArgDescrInferenceMapper(CombineMapper):
             for i, par in enumerate(assignees):
                 if isinstance(par, SubArrayRef):
                     assignee_id_to_descr[-i-1] = (
-                            get_arg_description_from_sub_array_ref(par,
-                                self.kernel))
+                            par.get_array_arg_descriptor(self.kernel))
                 else:
                     assignee_id_to_descr[-i-1] = ValueArgDescriptor()
 
@@ -2197,8 +2181,7 @@ class ArgDescrInferenceMapper(CombineMapper):
         from loopy.symbolic import SubArrayRef
 
         # descriptors for the args and kwargs:
-        arg_id_to_descr = dict((i, get_arg_description_from_sub_array_ref(par,
-            self.kernel))
+        arg_id_to_descr = dict((i, par.get_array_arg_descriptor(self.kernel))
                 if isinstance(par, SubArrayRef) else ValueArgDescriptor()
                 for i, par in tuple(enumerate(expr.parameters)) +
                 tuple(expr.kw_parameters.items()))
@@ -2212,8 +2195,7 @@ class ArgDescrInferenceMapper(CombineMapper):
             for i, par in enumerate(assignees):
                 if isinstance(par, SubArrayRef):
                     assignee_id_to_descr[-i-1] = (
-                            get_arg_description_from_sub_array_ref(par,
-                                self.kernel))
+                            par.get_array_arg_descriptor(self.kernel))
                 else:
                     assignee_id_to_descr[-i-1] = ValueArgDescriptor()
 
@@ -2477,323 +2459,6 @@ def make_functions_ready_for_codegen(kernel):
 # }}}
 
 
-# {{{ inline callable kernel
-
-class KernelInliner(SubstitutionMapper):
-    """Mapper to replace variables (indices, temporaries, arguments) in the
-    callee kernel with variables in the caller kernel.
-
-    :arg caller: the caller kernel
-    :arg arg_map: dict of argument name to variables in caller
-    :arg arg_dict: dict of argument name to arguments in callee
-    """
-
-    def __init__(self, subst_func, caller, arg_map, arg_dict):
-        super(KernelInliner, self).__init__(subst_func)
-        self.caller = caller
-        self.arg_map = arg_map
-        self.arg_dict = arg_dict
-
-    def map_subscript(self, expr):
-        if expr.aggregate.name in self.arg_map:
-            import numpy as np
-            from pymbolic.mapper.substitutor import make_subst_func
-
-            aggregate = self.subst_func(expr.aggregate)
-            sar = self.arg_map[expr.aggregate.name]  # SubArrayRef in caller
-            arg = self.arg_dict[expr.aggregate.name]  # Arg in callee
-
-            # Firstly, map inner inames to outer inames.
-            outer_indices = self.map_tuple(expr.index_tuple)
-
-            # Next, reshape to match dimension of outer arrays.
-            # We can have e.g. A[3, 2] from outside and B[6] from inside
-            from numbers import Integral
-            if not all(isinstance(d, Integral) for d in arg.shape):
-                raise LoopyError(
-                    "Argument: {0} in callee kernel: {1} does not have "
-                    "constant shape.".format(arg))
-            flatten_index = sum(
-                idx * tag.stride
-                for idx, tag in zip(outer_indices, arg.dim_tags))
-            from loopy.isl_helpers import simplify_via_aff
-            flatten_index = simplify_via_aff(flatten_index)
-
-            bounds = [self.caller.get_iname_bounds(i.name)
-                      for i in sar.swept_inames]
-            sizes = [pw_aff_to_expr(b.size) for b in bounds]
-            if not all(isinstance(d, Integral) for d in sizes):
-                raise LoopyError(
-                    "SubArrayRef: {0} in caller kernel does not have "
-                    "swept inames with constant size.".format(sar))
-
-            sizes = [int(np.prod(sizes[i + 1:])) for i in range(len(sizes))]
-
-            new_indices = []
-            for s in sizes:
-                ind = flatten_index // s
-                flatten_index -= s * ind
-                new_indices.append(ind)
-
-            # Lastly, map sweeping indices to indices in Subscripts
-            # This takes care of cases such as [i, j]: A[i+j, i-j]
-            index_map = dict(zip(sar.swept_inames, new_indices))
-            index_mapper = SubstitutionMapper(make_subst_func(index_map))
-            new_indices = index_mapper.map_tuple(sar.subscript.index_tuple)
-            new_indices = tuple(simplify_via_aff(i) for i in new_indices)
-            return aggregate.index(tuple(new_indices))
-        else:
-            return super(KernelInliner, self).map_subscript(expr)
-
-
-class CalleeScopedCallsCollector(CombineMapper):
-    """
-    Collects the scoped functions which are a part of the callee kernel and
-    must be transferred to the caller kernel before inlining.
-
-    :returns:
-        An :class:`frozenset` of function names that are not scoped in
-        the caller kernel.
-
-    .. note::
-        :class:`loopy.library.reduction.ArgExtOp` are ignored, as they are
-        never scoped in the pipeline.
-    """
-
-    def __init__(self, callee_scoped_functions):
-        self.callee_scoped_functions = callee_scoped_functions
-
-    def combine(self, values):
-        import operator
-        return reduce(operator.or_, values, frozenset())
-
-    def map_call(self, expr):
-        if expr.function.name in self.callee_scoped_functions:
-            return (frozenset([(expr,
-                self.callee_scoped_functions[expr.function.name])]) |
-                    self.combine((self.rec(child) for child in expr.parameters)))
-        else:
-            return self.combine((self.rec(child) for child in expr.parameters))
-
-    def map_call_with_kwargs(self, expr):
-        if expr.function.name in self.callee_scoped_functions:
-            return (frozenset([(expr,
-                self.callee_scoped_functions[expr.function.name])]) |
-                    self.combine((self.rec(child) for child in expr.parameters
-                        + tuple(expr.kw_parameters.values()))))
-        else:
-            return self.combine((self.rec(child) for child in
-                expr.parameters+tuple(expr.kw_parameters.values())))
-
-    def map_constant(self, expr):
-        return frozenset()
-
-    map_variable = map_constant
-    map_function_symbol = map_constant
-    map_tagged_variable = map_constant
-    map_type_cast = map_constant
-
-
-def inline_callable_kernels(kernel):
-
-    from loopy import CallInstruction
-    from loopy.kernel.function_interface import CallableKernel
-    from pymbolic.primitives import Call
-
-    import islpy as isl
-
-    for call in kernel.instructions:
-        if not isinstance(call, CallInstruction):
-            continue
-
-        if not isinstance(call.expression, Call):
-            continue
-
-        if call.expression.function.name not in kernel.scoped_functions:
-            continue
-
-        callable = kernel.scoped_functions[call.expression.function.name]
-
-        if not isinstance(callable, CallableKernel):
-            continue
-
-        if not callable.inline:
-            continue
-
-        callee = callable.subkernel
-        callee_label = callee.name[:4] + "_"  # label used to generate new names
-
-        # {{{ duplicate and rename inames
-
-        vng = kernel.get_var_name_generator()
-        ing = kernel.get_instruction_id_generator()
-        dim_type = isl.dim_type.set
-
-        iname_map = {}
-        for iname in callee.all_inames():
-            iname_map[iname] = vng(callee_label+iname)
-
-        new_domains = []
-        for domain in callee.domains:
-            new_domain = domain.copy()
-            for i in range(new_domain.n_dim()):
-                iname = new_domain.get_dim_name(dim_type, i)
-                new_domain = new_domain.set_dim_name(
-                    dim_type, i, iname_map[iname])
-            new_domains.append(new_domain)
-
-        kernel = kernel.copy(domains=kernel.domains + new_domains)
-
-        # }}}
-
-        # {{{ rename temporaries
-
-        temp_map = {}
-        new_temps = kernel.temporary_variables.copy()
-        for name, temp in six.iteritems(callee.temporary_variables):
-            new_name = vng(callee_label+name)
-            temp_map[name] = new_name
-            new_temps[new_name] = temp.copy(name=new_name)
-
-        kernel = kernel.copy(temporary_variables=new_temps)
-
-        # }}}
-
-        # {{{ match kernel arguments
-
-        arg_map = {}  # callee arg name -> caller symbols (e.g. SubArrayRef)
-
-        assignees = call.assignees  # writes
-        parameters = call.expression.parameters  # reads
-
-        # add keyword parameters
-        from pymbolic.primitives import CallWithKwargs
-
-        if isinstance(call.expression, CallWithKwargs):
-            from loopy.kernel.function_interface import get_kw_pos_association
-
-            _, pos_to_kw = get_kw_pos_association(callee)
-            kw_parameters = call.expression.kw_parameters
-            for i in range(len(parameters), len(parameters) + len(kw_parameters)):
-                parameters = parameters + (kw_parameters[pos_to_kw[i]],)
-
-        assignee_pos = 0
-        parameter_pos = 0
-        for i, arg in enumerate(callee.args):
-            if arg.direction == "out":
-                arg_map[arg.name] = assignees[assignee_pos]
-                assignee_pos += 1
-            else:
-                arg_map[arg.name] = parameters[parameter_pos]
-                parameter_pos += 1
-
-        # }}}
-
-        # {{{ rewrite instructions
-
-        import pymbolic.primitives as p
-        from pymbolic.mapper.substitutor import make_subst_func
-
-        var_map = dict((p.Variable(k), p.Variable(v))
-                       for k, v in six.iteritems(iname_map))
-        var_map.update(dict((p.Variable(k), p.Variable(v))
-                            for k, v in six.iteritems(temp_map)))
-        var_map.update(dict((p.Variable(k), p.Variable(v.subscript.aggregate.name))
-                            for k, v in six.iteritems(arg_map)))
-        subst_mapper = KernelInliner(
-            make_subst_func(var_map), kernel, arg_map, callee.arg_dict)
-
-        insn_id = {}
-        for insn in callee.instructions:
-            insn_id[insn.id] = ing(callee_label+insn.id)
-
-        # {{{ root and leave instructions in callee kernel
-
-        dep_map = callee.recursive_insn_dep_map()
-        # roots depend on nothing
-        heads = set(insn for insn, deps in six.iteritems(dep_map) if not deps)
-        # leaves have nothing that depends on them
-        tails = set(dep_map.keys())
-        for insn, deps in six.iteritems(dep_map):
-            tails = tails - deps
-
-        # }}}
-
-        # {{{ use NoOp to mark the start and end of callee kernel
-
-        from loopy.kernel.instruction import NoOpInstruction
-
-        noop_start = NoOpInstruction(
-            id=ing(callee_label+"_start"),
-            within_inames=call.within_inames,
-            depends_on=call.depends_on
-        )
-        noop_end = NoOpInstruction(
-            id=call.id,
-            within_inames=call.within_inames,
-            depends_on=frozenset(insn_id[insn] for insn in tails)
-        )
-        # }}}
-
-        inner_insns = [noop_start]
-
-        for _insn in callee.instructions:
-            insn = _insn.with_transformed_expressions(subst_mapper)
-            within_inames = frozenset(map(iname_map.get, insn.within_inames))
-            within_inames = within_inames | call.within_inames
-            depends_on = frozenset(map(insn_id.get, insn.depends_on))
-            if insn.id in heads:
-                depends_on = depends_on | set([noop_start.id])
-            insn = insn.copy(
-                id=insn_id[insn.id],
-                within_inames=within_inames,
-                # TODO: probaby need to keep priority in callee kernel
-                priority=call.priority,
-                depends_on=depends_on
-            )
-            inner_insns.append(insn)
-
-        inner_insns.append(noop_end)
-
-        new_insns = []
-        for insn in kernel.instructions:
-            if insn == call:
-                new_insns.extend(inner_insns)
-            else:
-                new_insns.append(insn)
-
-        kernel = kernel.copy(instructions=new_insns)
-
-        # }}}
-
-        # {{{ transferring the scoped functions from callee to caller
-
-        callee_scoped_calls_collector = CalleeScopedCallsCollector(
-                callee.scoped_functions)
-        callee_scoped_calls_dict = {}
-
-        for insn in kernel.instructions:
-            if isinstance(insn, MultiAssignmentBase):
-                callee_scoped_calls_dict.update(dict(callee_scoped_calls_collector(
-                    insn.expression)))
-            elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
-                pass
-            else:
-                raise NotImplementedError("Unknown type of instruction %s." % type(
-                    insn))
-
-        from loopy.kernel.function_interface import (
-                register_pymbolic_calls_to_knl_callables)
-        kernel = register_pymbolic_calls_to_knl_callables(kernel,
-                callee_scoped_calls_dict)
-
-        # }}}
-
-    return kernel
-
-# }}}
-
-
 preprocess_cache = WriteOncePersistentDict(
         "loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
@@ -2832,8 +2497,8 @@ def preprocess_kernel(kernel, device=None):
     # {{{ check that there are no l.auto-tagged inames
 
     from loopy.kernel.data import AutoLocalIndexTagBase
-    for iname, tag in six.iteritems(kernel.iname_to_tag):
-        if (isinstance(tag, AutoLocalIndexTagBase)
+    for iname, tags in six.iteritems(kernel.iname_to_tags):
+        if (filter_iname_tags_by_type(tags, AutoLocalIndexTagBase)
                  and iname in kernel.all_inames()):
             raise LoopyError("kernel with automatically-assigned "
                     "local axes passed to preprocessing")
@@ -2852,10 +2517,6 @@ def preprocess_kernel(kernel, device=None):
     check_for_writes_to_predicates(kernel)
     check_reduction_iname_uniqueness(kernel)
 
-    # Inlining callable kernels that are marked with inline=True.
-    # This should happen after type inference but before other transformations.
-    kernel = inline_callable_kernels(kernel)
-
     from loopy.kernel.creation import apply_single_writer_depencency_heuristic
     kernel = apply_single_writer_depencency_heuristic(kernel)
 
@@ -2869,21 +2530,20 @@ def preprocess_kernel(kernel, device=None):
     #   defaults from being applied.
     kernel = realize_reduction(kernel, unknown_types_ok=False)
 
-    # type specialize functions that were missed during the type inference.
-    kernel = make_functions_ready_for_codegen(kernel)
-
     # Ordering restriction:
     # add_axes_to_temporaries_for_ilp because reduction accumulators
     # need to be duplicated by this.
 
-    from loopy.transform.ilp import add_axes_to_temporaries_for_ilp_and_vec
-    kernel = add_axes_to_temporaries_for_ilp_and_vec(kernel)
+    kernel = realize_ilp(kernel)
 
     kernel = find_temporary_scope(kernel)
 
     # inferring the shape and dim_tags of the arguments involved in a function
     # call.
     kernel = infer_arg_descr(kernel)
+
+    # type specialize functions that were missed during the type inference.
+    kernel = make_functions_ready_for_codegen(kernel)
 
     # tuning the functions in the kernel to align with the grid sizes.
     kernel = infer_hw_axes_sizes(kernel)

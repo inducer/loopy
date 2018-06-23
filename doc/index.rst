@@ -68,6 +68,7 @@ Please check :ref:`installation` to get started.
     ref_creation
     ref_kernel
     ref_transform
+    ref_scoped_functions
     ref_other
     misc
 

@@ -52,7 +52,7 @@ __all__ = [
         ]
 
 
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_globals_decl_once_with_multi_subprogram(ctx_factory):
@@ -646,7 +646,8 @@ def test_vector_ilp_with_prefetch(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 128, inner_tag="l.0")
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
-    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"])
+    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"],
+            default_tag="l.auto")
 
     cknl = lp.CompiledKernel(ctx, knl)
     cknl.kernel_info()
@@ -1722,7 +1723,8 @@ def test_finite_difference_expr_subst(ctx_factory):
             fused0_knl, "inew", 128, outer_tag="g.0", inner_tag="l.0")
 
     precomp_knl = lp.precompute(
-            gpu_knl, "f_subst", "inew_inner", fetch_bounding_box=True)
+            gpu_knl, "f_subst", "inew_inner", fetch_bounding_box=True,
+            default_tag="l.auto")
 
     precomp_knl = lp.tag_inames(precomp_knl, {"j_0_outer": "unr"})
     precomp_knl = lp.set_options(precomp_knl, return_dict=True)
@@ -2719,9 +2721,13 @@ def test_preamble_with_separate_temporaries(ctx_factory):
         read_only=True),
      lp.GlobalArg('data', shape=(data.size,), dtype=np.float64)],
     )
+
     # fixt params, and add manglers / preamble
-    from testlib import SeparateTemporariesPreambleTestHelper
-    preamble_with_sep_helper = SeparateTemporariesPreambleTestHelper(
+    from testlib import (
+            SeparateTemporariesPreambleTestMangler,
+            SeparateTemporariesPreambleTestPreambleGenerator,
+            )
+    func_info = dict(
             func_name='indirect',
             func_arg_dtypes=(np.int32, np.int32, np.int32),
             func_result_dtypes=(np.int32,),
@@ -2730,9 +2736,9 @@ def test_preamble_with_separate_temporaries(ctx_factory):
 
     kernel = lp.fix_parameters(kernel, **{'n': n})
     kernel = lp.register_preamble_generators(
-            kernel, [preamble_with_sep_helper.preamble_gen])
+            kernel, [SeparateTemporariesPreambleTestPreambleGenerator(**func_info)])
     kernel = lp.register_function_manglers(
-            kernel, [preamble_with_sep_helper.mangler])
+            kernel, [SeparateTemporariesPreambleTestMangler(**func_info)])
 
     print(lp.generate_code(kernel)[0])
     # and call (functionality unimportant, more that it compiles)
@@ -2790,7 +2796,7 @@ def test_add_prefetch_works_in_lhs_index():
                 "..."
             ])
 
-    knl = lp.add_prefetch(knl, "a1_map", "k")
+    knl = lp.add_prefetch(knl, "a1_map", "k", default_tag="l.auto")
 
     from loopy.symbolic import get_dependencies
     for insn in knl.instructions:
@@ -2867,6 +2873,42 @@ def test_half_complex_conditional(ctx_factory):
            """)
 
     knl(queue)
+
+
+def test_dep_cycle_printing_and_error():
+    # https://gitlab.tiker.net/inducer/loopy/issues/140
+    # This kernel has two dep cycles.
+
+    knl = lp.make_kernel('{[i,j,k]: 0 <= i,j,k < 12}',
+    """
+        for j
+            for i
+                <> nu = i - 4
+                if nu > 0
+                    <> P_val = a[i, j] {id=pset0}
+                else
+                    P_val = 0.1 * a[i, j] {id=pset1}
+                end
+                <> B_sum = 0
+                for k
+                    B_sum = B_sum + k * P_val {id=bset, dep=pset*}
+                end
+                # here, we are testing that Kc is properly promoted to a vector dtype
+                <> Kc = P_val * B_sum {id=kset, dep=bset}
+                a[i, j] = Kc {dep=kset}
+            end
+        end
+    """,
+    [lp.GlobalArg('a', shape=(12, 12), dtype=np.int32)])
+
+    knl = lp.split_iname(knl, 'j', 4, inner_tag='vec')
+    knl = lp.split_array_axis(knl, 'a', 1, 4)
+    knl = lp.tag_array_axes(knl, 'a', 'N1,N0,vec')
+    knl = lp.preprocess_kernel(knl)
+
+    from loopy.diagnostic import DependencyCycleFound
+    with pytest.raises(DependencyCycleFound):
+        print(lp.generate_code(knl)[0])
 
 
 if __name__ == "__main__":

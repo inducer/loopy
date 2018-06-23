@@ -684,12 +684,18 @@ class RuleArgument(p.Expression):
 
 
 class ScopedFunction(p.Expression):
-    """ Connects a call to a callable available in a kernel.
+    """
+    A function invocation whose definition is known in a :mod:`loopy` kernel.
+    Each instance of :class:`loopy.symbolic.ScopedFunction` in an expression
+    points to an instance of
+    :class:`loopy.kernel.function_interface.InKernelCallable` through the
+    mapping :attr:`loopy.kernel.LoopKernel.scoped_functions`.
 
     .. attribute:: function
 
-        An instance of :class:`pymbolic.primitives.Variable` or
-        `loopy.library.reduction.ArgExtOp`.
+        An instance of :class:`pymbolic.primitives.Variable`,
+        :class:`loopy.library.reduction.ArgExtOp` or
+        :class:`loopy.library.reduction.SegmentedOp`.
     """
     init_arg_names = ("function", )
 
@@ -749,16 +755,35 @@ class VariableInAnExpression(CombineMapper):
         return False
 
 
+class SweptInameStrideCollector(CoefficientCollectorBase):
+    """
+    Mapper to compute the coefficient swept inames for :class:`SubArrayRef`.
+    """
+    def map_algebraic_leaf(self, expr):
+        # subscripts that are not involved in :attr:`target_names` are treated
+        # as constants.
+        if isinstance(expr, p.Subscript) and (self.target_names is None or
+                expr.aggregate.name not in self.target_names):
+            return {1: expr}
+
+        return super(SweptInameStrideCollector, self).map_algebraic_leaf(expr)
+
+
 class SubArrayRef(p.Expression):
-    """Represents a generalized sliced notation of an array.
+    """
+    An algebraic expression to map an affine memory layout pattern (known as
+    sub-arary) as consecutive elements of the sweeping axes which are defined
+    using :attr:`SubArrayRef.swept_inames`.
 
     .. attribute:: swept_inames
 
-        These are a tuple of sweeping inames over the array.
+        An instance of :class:`tuple` denoting the axes to which the sub array
+        is supposed to be mapper to.
 
     .. attribute:: subscript
 
-        The subscript whose adress space is to be referenced
+        An instance of :class:`pymbolic.primitives.Subscript` denoting the
+        array in the kernel.
     """
 
     init_arg_names = ("swept_inames", "subscript")
@@ -790,45 +815,53 @@ class SubArrayRef(p.Expression):
         **Example:** Consider ``[i, k]: a[i, j, k, l]``. The beginning
         subscript would be ``a[0, j, 0, l]``
         """
+        # TODO: Set the zero to the minimum value of the iname.
         swept_inames_to_zeros = dict(
                 (swept_iname.name, 0) for swept_iname in self.swept_inames)
 
         return EvaluatorWithDeficientContext(swept_inames_to_zeros)(
                 self.subscript)
 
-    def get_sub_array_dim_tags_and_shape(self, arg_dim_tags, arg_shape):
-        """Returns the dim tags for the inner inames.
-
-        .. arg:: arg_dim_tags
-
-            a list of :class:`loopy.kernel.array.FixedStrideArrayDimTag` of the
-            argument referred by the *SubArrayRef*.
-
-        .. arg:: arg_shape
-
-            a tuple indicating the shape of the argument referred by the
-            *SubArrayRef*.
+    def get_array_arg_descriptor(self, kernel):
         """
+        Returns the dim_tags, memory scope, shape informations of a
+        :class:`SubArrayRef` argument in the caller kernel packed into
+        :class:`ArrayArgDescriptor` for the instance of :class:`SubArrayRef` in
+        the given *kernel*.
+        """
+        from loopy.kernel.function_interface import ArrayArgDescriptor
+
+        name = self.subscript.aggregate.name
+
+        if name in kernel.temporary_variables:
+            arg = kernel.temporary_variables[name]
+            mem_scope = arg.scope
+            assert name not in kernel.arg_dict
+        else:
+            assert name in kernel.arg_dict
+            arg = kernel.arg_dict[name]
+            mem_scope = arg.memory_address_space
+
         from loopy.kernel.array import FixedStrideArrayDimTag as DimTag
+        from loopy.isl_helpers import simplify_via_aff
         sub_dim_tags = []
         sub_shape = []
-        linearized_index = sum(dim_tag.stride*iname for dim_tag, iname in
-                zip(arg_dim_tags, self.subscript.index_tuple))
+        linearized_index = simplify_via_aff(
+                sum(dim_tag.stride*iname for dim_tag, iname in
+                zip(arg.dim_tags, self.subscript.index_tuple)))
 
-        strides_as_dict = CoefficientCollector(tuple(iname.name for iname in
+        strides_as_dict = SweptInameStrideCollector(tuple(iname.name for iname in
             self.swept_inames))(linearized_index)
-        sub_dim_tags = tuple(DimTag(strides_as_dict[iname]) for iname in
-                self.swept_inames)
-        sub_shape = tuple(dim_shape for dim_shape, index in zip(
-            arg_shape, self.subscript.index_tuple) if VariableInAnExpression(
-                self.swept_inames)(index))
+        sub_dim_tags = tuple(
+                DimTag(strides_as_dict[iname]) for iname in self.swept_inames)
+        sub_shape = tuple(
+                pw_aff_to_expr(
+                    kernel.get_iname_bounds(iname.name).upper_bound_pw_aff)+1
+                for iname in self.swept_inames)
 
-        if len(sub_shape) != len(self.swept_inames):
-            # Not allowed something like: [i]: a[i, i]
-            raise LoopyError("Number of axes swept must be equal to the number "
-                    "of inames declared for sweeping.")
-
-        return sub_dim_tags, sub_shape
+        return ArrayArgDescriptor(mem_scope=mem_scope,
+                dim_tags=sub_dim_tags,
+                shape=sub_shape)
 
     def __getinitargs__(self):
         return (self.swept_inames, self.subscript)

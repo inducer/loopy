@@ -112,10 +112,10 @@ def test_laplacian_stiffness(ctx_factory):
                 outer_iname="Ko", inner_iname="Kloc",
                 outer_tag="g.0")
         knl = lp.tag_inames(knl, {"i": "l.1", "j": "l.0"})
-        knl = lp.add_prefetch(knl, "w", ["q"])
-        knl = lp.add_prefetch(knl, "DPsi", [0, 1, 2])
-        knl = lp.add_prefetch(knl, "jacInv", [0, 1, 3])
-        knl = lp.add_prefetch(knl, "jacDet", [1])
+        knl = lp.add_prefetch(knl, "w", ["q"], default_tag="l.auto")
+        knl = lp.add_prefetch(knl, "DPsi", [0, 1, 2], default_tag="l.auto")
+        knl = lp.add_prefetch(knl, "jacInv", [0, 1, 3], default_tag="l.auto")
+        knl = lp.add_prefetch(knl, "jacDet", [1], default_tag="l.auto")
         return knl, ["K", "i", "j", "q", "ax_b_insn"]
 
     # Plug in variant name here

@@ -56,7 +56,7 @@ __all__ = [
 # - scan(a) + scan(b)
 # - test for badly tagged inames
 
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 @pytest.mark.parametrize("n", [1, 2, 3, 16])

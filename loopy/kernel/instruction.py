@@ -881,7 +881,8 @@ class Assignment(MultiAssignmentBase):
             result += " {%s}" % (": ".join(options))
 
         if self.predicates:
-            result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
+            result += "\n" + 10*" " + "if (%s)" % " and ".join(
+                    str(p) for p in self.predicates)
         return result
 
     # {{{ for interface uniformity with CallInstruction
@@ -1463,6 +1464,18 @@ class BarrierInstruction(_DataObliviousInstruction):
         warn("BarrierInstruction.kind is deprecated, use synchronization_kind "
              "instead", DeprecationWarning, stacklevel=2)
         return self.synchronization_kind
+
+# }}}
+
+
+# {{{ key getters
+
+def _get_insn_eq_key(insn):
+    return insn._key_builder.key()
+
+
+def _get_insn_hash_key(insn):
+    return insn._key_builder.hash_key()
 
 # }}}
 

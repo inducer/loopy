@@ -246,7 +246,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
             else:
                 subscript, = access_info.subscripts
-                result = make_var(access_info.array_name)[self.rec(subscript, 'i')]
+                result = make_var(access_info.array_name)[simplify_using_aff(
+                    self.kernel, self.rec(subscript, 'i'))]
 
             if access_info.vector_index is not None:
                 return self.codegen_state.ast_builder.add_vector_access(

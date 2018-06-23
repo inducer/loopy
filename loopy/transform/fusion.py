@@ -248,10 +248,10 @@ def _fuse_two_kernels(knla, knlb):
             local_sizes=_merge_dicts(
                 "local size", knla.local_sizes, knlb.local_sizes),
             temporary_variables=new_temporaries,
-            iname_to_tag=_merge_dicts(
+            iname_to_tags=_merge_dicts(
                 "iname-to-tag mapping",
-                knla.iname_to_tag,
-                knlb.iname_to_tag),
+                knla.iname_to_tags,
+                knlb.iname_to_tags),
             substitutions=_merge_dicts(
                 "substitution",
                 knla.substitutions,

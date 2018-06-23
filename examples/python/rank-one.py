@@ -43,8 +43,8 @@ evt, (c,) = knl(queue, a=a, b=b)
 knl = split_knl
 
 # PREFETCH2BEGIN
-knl = lp.add_prefetch(knl, "a", ["i_inner"])
-knl = lp.add_prefetch(knl, "b", ["j_inner"])
+knl = lp.add_prefetch(knl, "a", ["i_inner"], default_tag="l.0")
+knl = lp.add_prefetch(knl, "b", ["j_inner"], default_tag="l.0")
 # PREFETCH2END
 
 knl = lp.set_options(knl, write_code=True)

@@ -45,7 +45,7 @@ from loopy.kernel.data import (
         auto,
         KernelArgument,
         ValueArg, ArrayArg, GlobalArg, ConstantArg, ImageArg,
-        temp_var_scope, TemporaryVariable, MemoryAddressSpace,
+        temp_var_scope, TemporaryVariable, AddressSpace,
         SubstitutionRule,
         CallMangleInfo)
 from loopy.kernel.function_interface import (
@@ -70,7 +70,7 @@ from loopy.library.reduction import register_reduction_parser
 from loopy.version import VERSION, MOST_RECENT_LANGUAGE_VERSION
 
 from loopy.transform.iname import (
-        set_loop_priority, prioritize_loops,
+        set_loop_priority, prioritize_loops, untag_inames,
         split_iname, chunk_iname, join_inames, tag_inames, duplicate_inames,
         rename_iname, remove_unused_inames,
         split_reduction_inward, split_reduction_outward,
@@ -113,13 +113,13 @@ from loopy.transform.padding import (
         find_padding_multiple,
         add_padding)
 
-from loopy.transform.ilp import realize_ilp
+from loopy.transform.privatize import privatize_temporaries_with_inames
 from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.add_barrier import add_barrier
 from loopy.transform.register_callable import (register_callable_kernel,
-        register_function_lookup)
+        register_function_lookup, inline_callable_kernel)
 from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
 
 # }}}
@@ -171,7 +171,7 @@ __all__ = [
 
         "KernelArgument",
         "ValueArg", "ArrayArg", "GlobalArg", "ConstantArg", "ImageArg",
-        "MemoryAddressSpace", "temp_var_scope", "TemporaryVariable",
+        "AddressSpace", "temp_var_scope", "TemporaryVariable",
         "SubstitutionRule",
         "CallMangleInfo",
 
@@ -185,7 +185,7 @@ __all__ = [
 
         # {{{ transforms
 
-        "set_loop_priority", "prioritize_loops",
+        "set_loop_priority", "prioritize_loops", "untag_inames",
         "split_iname", "chunk_iname", "join_inames", "tag_inames",
         "duplicate_inames",
         "rename_iname", "remove_unused_inames",
@@ -220,7 +220,7 @@ __all__ = [
         "split_array_axis", "split_array_dim", "split_arg_axis",
         "find_padding_multiple", "add_padding",
 
-        "realize_ilp",
+        "privatize_temporaries_with_inames",
 
         "to_batched",
 
@@ -231,6 +231,7 @@ __all__ = [
         "add_barrier",
 
         "register_callable_kernel", "register_function_lookup",
+        "inline_callable_kernel",
 
         "pack_and_unpack_args_for_call",
 
@@ -343,18 +344,34 @@ def register_preamble_generators(kernel, preamble_generators):
 
     :returns: *kernel* with *manglers* registered
     """
+    from loopy.tools import unpickles_equally
+
     new_pgens = kernel.preamble_generators[:]
     for pgen in preamble_generators:
         if pgen not in new_pgens:
+            if not unpickles_equally(pgen):
+                raise LoopyError("preamble generator '%s' does not "
+                        "compare equally after being upickled "
+                        "and would thus disrupt loopy's caches"
+                        % pgen)
+
             new_pgens.insert(0, pgen)
 
     return kernel.copy(preamble_generators=new_pgens)
 
 
 def register_symbol_manglers(kernel, manglers):
+    from loopy.tools import unpickles_equally
+
     new_manglers = kernel.symbol_manglers[:]
     for m in manglers:
         if m not in new_manglers:
+            if not unpickles_equally(m):
+                raise LoopyError("mangler '%s' does not "
+                        "compare equally after being upickled "
+                        "and would disrupt loopy's caches"
+                        % m)
+
             new_manglers.insert(0, m)
 
     return kernel.copy(symbol_manglers=new_manglers)
@@ -362,13 +379,21 @@ def register_symbol_manglers(kernel, manglers):
 
 def register_function_manglers(kernel, manglers):
     """
-    :arg manglers: list of functions of signature ``(target, name, arg_dtypes)``
+    :arg manglers: list of functions of signature ``(kernel, name, arg_dtypes)``
         returning a :class:`loopy.CallMangleInfo`.
     :returns: *kernel* with *manglers* registered
     """
+    from loopy.tools import unpickles_equally
+
     new_manglers = kernel.function_manglers[:]
     for m in manglers:
         if m not in new_manglers:
+            if not unpickles_equally(m):
+                raise LoopyError("mangler '%s' does not "
+                        "compare equally after being upickled "
+                        "and would disrupt loopy's caches"
+                        % m)
+
             new_manglers.insert(0, m)
 
     return kernel.copy(function_manglers=new_manglers)

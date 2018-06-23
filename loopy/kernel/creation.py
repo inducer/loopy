@@ -41,9 +41,11 @@ from loopy.kernel.instruction import (CInstruction, _DataObliviousInstruction,
 from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
 from islpy import dim_type
+from pytools import ProcessLogger
 
 import six
 from six.moves import range, zip, intern
+import loopy.version
 
 import re
 
@@ -1839,8 +1841,12 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
 
 class FunctionScoper(RuleAwareIdentityMapper):
     """
-    Converts functions known to the kernel as instances of
-    :class:`loopy.symbolic.ScopedFunction`.
+    Mapper to convert the  ``function`` attribute of a
+    :class:`pymbolic.primitives.Call` known in the kernel as instances of
+    :class:`loopy.symbolic.ScopedFunction`. A function is known in the
+    *kernel*, :func:`loopy.kernel.LoopKernel.find_scoped_function_identifier`
+    returns an instance of
+    :class:`loopy.kernel.function_interface.InKernelCallable`.
 
     **Example**: If given an expression of the form ``sin(x) + unknown_function(y) +
     log(z)``, then the mapper would return ``ScopedFunction('sin')(x) +
@@ -1861,7 +1867,8 @@ class FunctionScoper(RuleAwareIdentityMapper):
         if not isinstance(expr.function, ScopedFunction):
 
             # searching the kernel for the function.
-            in_knl_callable = self.kernel.lookup_function(expr.function.name)
+            in_knl_callable = self.kernel.find_scoped_function_identifier(
+                    expr.function.name)
             if in_knl_callable:
                 # Associating the newly created ScopedFunction with the
                 # resolved in-kernel callable.
@@ -1880,7 +1887,8 @@ class FunctionScoper(RuleAwareIdentityMapper):
         if not isinstance(expr.function, ScopedFunction):
 
             # searching the kernel for the function.
-            in_knl_callable = self.kernel.lookup_function(expr.function.name)
+            in_knl_callable = self.kernel.find_scoped_function_identifier(
+                    expr.function.name)
 
             if in_knl_callable:
                 # Associating the newly created ScopedFunction with the
@@ -1908,26 +1916,30 @@ class FunctionScoper(RuleAwareIdentityMapper):
 
         # Noting down the extra functions arising due to certain reductions.
         if isinstance(expr.operation, MaxReductionOperation):
-            self.scoped_functions["max"] = self.kernel.lookup_function("max")
+            self.scoped_functions["max"] = (
+                    self.kernel.find_scoped_function_identifier("max"))
         elif isinstance(expr.operation, MinReductionOperation):
-            self.scoped_functions["min"] = self.kernel.lookup_function("min")
+            self.scoped_functions["min"] = (
+                    self.kernel.find_scoped_function_identifier("min"))
         elif isinstance(expr.operation, ArgMaxReductionOperation):
-            self.scoped_functions["max"] = self.kernel.lookup_function("max")
-            self.scoped_functions["make_tuple"] = self.kernel.lookup_function(
-                    "make_tuple")
+            self.scoped_functions["max"] = (
+                    self.kernel.find_scoped_function_identifier("max"))
+            self.scoped_functions["make_tuple"] = (
+                    self.kernel.find_scoped_function_identifier("make_tuple"))
             self.scoped_functions[ArgExtOp(expr.operation)] = (
-                    self.kernel.lookup_function(expr.operation))
+                    self.kernel.find_scoped_function_identifier(expr.operation))
         elif isinstance(expr.operation, ArgMinReductionOperation):
-            self.scoped_functions["min"] = self.kernel.lookup_function("min")
-            self.scoped_functions["make_tuple"] = self.kernel.lookup_function(
-                    "make_tuple")
+            self.scoped_functions["min"] = (
+                    self.kernel.find_scoped_function_identifier("min"))
+            self.scoped_functions["make_tuple"] = (
+                    self.kernel.find_scoped_function_identifier("make_tuple"))
             self.scoped_functions[ArgExtOp(expr.operation)] = (
-                    self.kernel.lookup_function(expr.operation))
+                    self.kernel.find_scoped_function_identifier(expr.operation))
         elif isinstance(expr.operation, _SegmentedScalarReductionOperation):
-            self.scoped_functions["make_tuple"] = self.kernel.lookup_function(
-                    "make_tuple")
+            self.scoped_functions["make_tuple"] = (
+                    self.kernel.find_scoped_function_identifier("make_tuple"))
             self.scoped_functions[SegmentedOp(expr.operation)] = (
-                    self.kernel.lookup_function(expr.operation))
+                    self.kernel.find_scoped_function_identifier(expr.operation))
 
         return super(FunctionScoper, self).map_reduction(expr, expn_state)
 
@@ -2217,7 +2229,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         To set the kernel version for all :mod:`loopy` kernels in a (Python) source
         file, you may simply say::
 
-            from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1
+            from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
 
         If *lang_version* is not explicitly given, that version value will be used.
 
@@ -2236,8 +2248,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         *seq_dependencies* added.
     """
 
-    logger.info(
-            "%s: kernel creation start" % kwargs.get("name", "(unnamed)"))
+    creation_plog = ProcessLogger(
+            logger,
+            "%s: instantiate" % kwargs.get("name", "(unnamed)"))
 
     defines = kwargs.pop("defines", {})
     default_order = kwargs.pop("default_order", "C")
@@ -2271,11 +2284,17 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     from loopy.options import make_options
     options = make_options(options)
 
+    # {{{ handle kernel language version
+
+    from loopy.version import LANGUAGE_VERSION_SYMBOLS
+
+    version_to_symbol = dict(
+            (getattr(loopy.version, lvs), lvs)
+            for lvs in LANGUAGE_VERSION_SYMBOLS)
+
     lang_version = kwargs.pop("lang_version", None)
     if lang_version is None:
         # {{{ peek into caller's module to look for LOOPY_KERNEL_LANGUAGE_VERSION
-
-        from loopy.version import LANGUAGE_VERSION_SYMBOLS
 
         # This *is* gross. But it seems like the right thing interface-wise.
         import inspect
@@ -2289,11 +2308,6 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
                 pass
 
         # }}}
-
-        import loopy.version
-        version_to_symbol = dict(
-                (getattr(loopy.version, lvs), lvs)
-                for lvs in LANGUAGE_VERSION_SYMBOLS)
 
         if lang_version is None:
             from warnings import warn
@@ -2315,11 +2329,14 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
             lang_version = FALLBACK_LANGUAGE_VERSION
 
-        if lang_version not in version_to_symbol:
-            raise LoopyError("Language version '%s' is not known." % lang_version)
-
+    if lang_version not in version_to_symbol:
+        raise LoopyError("Language version '%s' is not known." % (lang_version,))
     if lang_version >= (2018, 1):
         options = options.copy(enforce_variable_access_ordered=True)
+    if lang_version >= (2018, 2):
+        options = options.copy(ignore_boostable_into=True)
+
+    # }}}
 
     if isinstance(silenced_warnings, str):
         silenced_warnings = silenced_warnings.split(";")
@@ -2465,8 +2482,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     from loopy.preprocess import prepare_for_caching
     knl = prepare_for_caching(knl)
 
-    logger.info(
-            "%s: kernel creation done" % knl.name)
+    creation_plog.done()
 
     return knl
 

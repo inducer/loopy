@@ -49,7 +49,7 @@ __all__ = [
         ]
 
 
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_chunk_iname(ctx_factory):
@@ -204,7 +204,8 @@ def test_register_function_lookup(ctx_factory):
     assert np.linalg.norm(np.log2(x)-out)/np.linalg.norm(np.log2(x)) < 1e-15
 
 
-def test_register_knl(ctx_factory):
+@pytest.mark.parametrize("inline", [False, True])
+def test_register_knl(ctx_factory, inline):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     n = 2 ** 4
@@ -245,6 +246,9 @@ def test_register_knl(ctx_factory):
             child_knl, 'linear_combo1', grandchild_knl)
     knl = lp.register_callable_kernel(
             parent_knl, 'linear_combo2', child_knl)
+    if inline:
+        knl = lp.inline_callable_kernel(knl, 'linear_combo2')
+        knl = lp.inline_callable_kernel(knl, 'linear_combo1')
 
     evt, (out, ) = knl(queue, x=x, y=y)
 
@@ -252,7 +256,8 @@ def test_register_knl(ctx_factory):
         np.linalg.norm(2*x+3*y))) < 1e-15
 
 
-def test_slices_with_negative_step(ctx_factory):
+@pytest.mark.parametrize("inline", [False, True])
+def test_slices_with_negative_step(ctx_factory, inline):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     n = 2 ** 4
@@ -289,6 +294,8 @@ def test_slices_with_negative_step(ctx_factory):
 
     knl = lp.register_callable_kernel(
             parent_knl, 'linear_combo', child_knl)
+    if inline:
+        knl = lp.inline_callable_kernel(knl, 'linear_combo')
 
     evt, (out, ) = knl(queue, x=x, y=y)
 
@@ -296,7 +303,8 @@ def test_slices_with_negative_step(ctx_factory):
         np.linalg.norm(2*x+3*y))) < 1e-15
 
 
-def test_register_knl_with_call_with_kwargs(ctx_factory):
+@pytest.mark.parametrize("inline", [False, True])
+def test_register_knl_with_call_with_kwargs(ctx_factory, inline):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -325,8 +333,11 @@ def test_register_knl_with_call_with_kwargs(ctx_factory):
                                                      g=[j, l]: d[i, j, k, l, m],
                                                      e=[j, l]: c[i, j, k, l, m])
             """)
+
     knl = lp.register_callable_kernel(
             caller_knl, 'linear_combo', callee_knl)
+    if inline:
+        knl = lp.inline_callable_kernel(knl, 'linear_combo')
 
     evt, (out1, out2, ) = knl(queue, a=a_dev, b=b_dev, c=c_dev)
 
@@ -343,7 +354,8 @@ def test_register_knl_with_call_with_kwargs(ctx_factory):
     assert np.linalg.norm(p-p_exact)/np.linalg.norm(p_exact) < 1e-7
 
 
-def test_register_knl_with_hw_axes(ctx_factory):
+@pytest.mark.parametrize("inline", [False, True])
+def test_register_knl_with_hw_axes(ctx_factory, inline):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -372,6 +384,9 @@ def test_register_knl_with_hw_axes(ctx_factory):
     knl = lp.register_callable_kernel(
             caller_knl, 'linear_combo', callee_knl)
 
+    if inline:
+        knl = lp.inline_callable_kernel(knl, 'linear_combo')
+
     evt, (out, ) = knl(queue, x=x_dev, y=y_dev)
 
     x_host = x_dev.get()
@@ -379,6 +394,63 @@ def test_register_knl_with_hw_axes(ctx_factory):
 
     assert np.linalg.norm(2*x_host+3*y_host-out.get())/np.linalg.norm(
             2*x_host+3*y_host) < 1e-15
+
+
+@pytest.mark.parametrize("inline", [False, True])
+def test_shape_translation_through_sub_array_ref(ctx_factory, inline):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    x1 = cl.clrandom.rand(queue, (3, 2), dtype=np.float64)
+    x2 = cl.clrandom.rand(queue, (6, ), dtype=np.float64)
+    x3 = cl.clrandom.rand(queue, (6, 6), dtype=np.float64)
+
+    callee1 = lp.make_kernel(
+            "{[i]: 0<=i<6}",
+            """
+            a[i] = 2*abs(b[i])
+            """)
+
+    callee2 = lp.make_kernel(
+            "{[i, j]: 0<=i<3 and 0 <= j < 2}",
+            """
+            a[i, j] = 3*b[i, j]
+            """)
+
+    callee3 = lp.make_kernel(
+            "{[i]: 0<=i<6}",
+            """
+            a[i] = 5*b[i]
+            """)
+
+    knl = lp.make_kernel(
+            "{[i, j, k, l]:  0<= i < 6 and 0 <= j < 3 and 0 <= k < 2 and 0<=l<6}",
+            """
+            [i]: y1[i//2, i%2] = callee_fn1([i]: x1[i//2, i%2])
+            [j, k]: y2[2*j+k] = callee_fn2([j, k]: x2[2*j+k])
+            [l]: y3[l, l] = callee_fn3([l]: x3[l, l])
+            """)
+
+    knl = lp.register_callable_kernel(knl, 'callee_fn1', callee1)
+    knl = lp.register_callable_kernel(knl, 'callee_fn2', callee2)
+    knl = lp.register_callable_kernel(knl, 'callee_fn3', callee3)
+
+    if inline:
+        knl = lp.inline_callable_kernel(knl, 'callee_fn1')
+        knl = lp.inline_callable_kernel(knl, 'callee_fn2')
+        knl = lp.inline_callable_kernel(knl, 'callee_fn3')
+
+    knl = lp.set_options(knl, "write_cl")
+    knl = lp.set_options(knl, "return_dict")
+    evt, out_dict = knl(queue, x1=x1, x2=x2, x3=x3)
+
+    y1 = out_dict['y1'].get()
+    y2 = out_dict['y2'].get()
+    y3 = out_dict['y3'].get()
+
+    assert (np.linalg.norm(y1-2*x1.get())) < 1e-15
+    assert (np.linalg.norm(y2-3*x2.get())) < 1e-15
+    assert (np.linalg.norm(np.diag(y3-5*x3.get()))) < 1e-15
 
 
 def test_multi_arg_array_call(ctx_factory):
@@ -422,138 +494,6 @@ def test_multi_arg_array_call(ctx_factory):
     from numpy.linalg import norm
     assert(norm(out_dict['min_val'][0] - np.min(b)) < tol)
     assert(norm(out_dict['min_index'][0] - np.argmin(b)) < tol)
-
-
-def test_inline_kernel(ctx_factory):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    n = 16
-
-    x = np.random.rand(n)
-    y = np.random.rand(n)
-
-    knl1 = lp.make_kernel(
-        "{[i]: 0 <= i < 16}",
-        """
-        for i
-            c[i] = a[i] + 2*b[i]
-        end
-        """
-    )
-
-    knl2 = lp.make_kernel(
-        "{[i, j]: 0 <= i, j < 16}",
-        """
-        for j
-            [i]: z[j, i] = func([i]: x[i], [i]: y[i])
-        end
-        """,
-        kernel_data=[
-            lp.GlobalArg("x", np.float64, (16,)),
-            lp.GlobalArg("y", np.float64, (16,)), "..."
-        ]
-    )
-
-    knl3 = lp.make_kernel(
-        "{[i, j]: 0 <= i, j < 16}",
-        """
-        for j
-            [i]: z[i, j] = func([i]: x[i], [i]: y[i])
-        end
-        """,
-        kernel_data=[
-            lp.GlobalArg("x", np.float64, (16,)),
-            lp.GlobalArg("y", np.float64, (16,)), "..."
-        ]
-    )
-
-    knl4 = lp.make_kernel(
-        "{[i, j]: 0 <= i, j < 16}",
-        """
-        for j
-            [i]: z[j, 15-i] = func([i]: x[i], [i]: y[i])
-        end
-        """,
-        kernel_data=[
-            lp.GlobalArg("x", np.float64, (16,)),
-            lp.GlobalArg("y", np.float64, (16,)), "..."
-        ]
-    )
-
-    knl2 = lp.register_callable_kernel(knl2, 'func', knl1, inline=True)
-    z = np.tile(x + y * 2, [16, 1])
-    evt, (out, ) = knl2(queue, x=x, y=y)
-    assert np.allclose(out, z)
-
-    knl3 = lp.register_callable_kernel(knl3, 'func', knl1, inline=True)
-    evt, (out,) = knl3(queue, x=x, y=y)
-    z = np.tile(x + y * 2, [16, 1]).transpose()
-    assert np.allclose(out, z)
-
-    knl4 = lp.register_callable_kernel(knl4, 'func', knl1, inline=True)
-    evt, (out,) = knl4(queue, x=x, y=y)
-    z = x + y * 2
-    z = z[::-1]
-    z = np.tile(z, [16, 1])
-    assert np.allclose(out, z)
-
-
-def test_inline_kernel_2d(ctx_factory):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    n = 16
-
-    x = np.random.rand(n ** 2).reshape((n, n))
-    y = np.random.rand(n ** 2).reshape((n, n))
-
-    knl1 = lp.make_kernel(
-        "{[i, j]: 0 <= i, j < 16}",
-        """
-        for i, j
-            c[i, j] = a[i, j] + 2*b[i, j]
-        end
-        """,
-        kernel_data=[
-            lp.GlobalArg("a", np.float64, (16, 16)),
-            lp.GlobalArg("b", np.float64, (16, 16)), "..."
-        ]
-    )
-
-    knl2 = lp.make_kernel(
-        "{[i, j, k]: 0 <= i, j, k < 16}",
-        """
-        for k
-            [i, j]: z[k, i, j] = func([i, j]: x[i, j], [i, j]: y[i, j])
-        end
-        """,
-        kernel_data=[
-            lp.GlobalArg("x", np.float64, (16, 16)),
-            lp.GlobalArg("y", np.float64, (16, 16)), "..."
-        ]
-    )
-
-    knl3 = lp.make_kernel(
-        "{[i, j, k]: 0 <= i, j, k < 16}",
-        """
-        for k
-            [i, j]: z[k, j, i] = func([i, j]: x[i, j], [i, j]: y[i, j])
-        end
-        """,
-        kernel_data=[
-            lp.GlobalArg("x", np.float64, (16, 16)),
-            lp.GlobalArg("y", np.float64, (16, 16)), "..."
-        ]
-    )
-
-    knl2 = lp.register_callable_kernel(knl2, 'func', knl1, inline=True)
-    evt, (out, ) = knl2(queue, x=x, y=y)
-    z = np.tile(x + y * 2, [16, 1, 1])
-    assert np.allclose(out, z)
-
-    knl3 = lp.register_callable_kernel(knl3, 'func', knl1, inline=True)
-    evt, (out,) = knl3(queue, x=x, y=y)
-    z = np.tile(np.transpose(x + y * 2), [16, 1, 1])
-    assert np.allclose(out, z)
 
 
 @pytest.mark.parametrize("inline", [False, True])
@@ -654,9 +594,9 @@ def test_alias_temporaries(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.0")
 
-    knl = lp.precompute(knl, "times2", "i_inner")
-    knl = lp.precompute(knl, "times3", "i_inner")
-    knl = lp.precompute(knl, "times4", "i_inner")
+    knl = lp.precompute(knl, "times2", "i_inner", default_tag="l.auto")
+    knl = lp.precompute(knl, "times3", "i_inner", default_tag="l.auto")
+    knl = lp.precompute(knl, "times4", "i_inner", default_tag="l.auto")
 
     knl = lp.alias_temporaries(knl, ["times2_0", "times3_0", "times4_0"])
 
@@ -727,7 +667,7 @@ def test_join_inames(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.add_prefetch(knl, "a", sweep_inames=["i", "j"])
+    knl = lp.add_prefetch(knl, "a", sweep_inames=["i", "j"], default_tag="l.auto")
     knl = lp.join_inames(knl, ["a_dim_0", "a_dim_1"])
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, print_ref_code=True)
@@ -821,7 +761,7 @@ def test_precompute_nested_subst(ctx_factory):
 
     from loopy.symbolic import get_dependencies
     assert "i_inner" not in get_dependencies(knl.substitutions["D"].expression)
-    knl = lp.precompute(knl, "D", "i_inner")
+    knl = lp.precompute(knl, "D", "i_inner", default_tag="l.auto")
 
     # There's only one surviving 'E' rule.
     assert len([

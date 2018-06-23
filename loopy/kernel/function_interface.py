@@ -34,16 +34,13 @@ from loopy.diagnostic import LoopyError
 from pymbolic.primitives import Variable
 from loopy.symbolic import parse_tagged_name
 
-
-from loopy.symbolic import (ScopedFunction, SubstitutionRuleMappingContext,
-        RuleAwareIdentityMapper, SubstitutionRuleExpander)
-
 from loopy.symbolic import (ScopedFunction, SubstitutionRuleMappingContext,
         RuleAwareIdentityMapper, SubstitutionRuleExpander, SubstitutionMapper,
         CombineMapper)
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         _DataObliviousInstruction)
+
 from functools import reduce
 
 
@@ -66,7 +63,7 @@ class ArrayArgDescriptor(ImmutableRecord):
 
     .. attribute:: mem_scope
 
-        An attribute of :class:`loopy.kernel.data.MemoryAddressSpace`.
+        An attribute of :class:`loopy.kernel.data.AddressSpace`.
 
     .. attribute:: dim_tags
 
@@ -102,8 +99,8 @@ def get_kw_pos_association(kernel):
     Returns a tuple of ``(kw_to_pos, pos_to_kw)`` for the arguments in
     *kernel*.
     """
-    from loopy.kernel.tools import infer_arg_direction
-    kernel = infer_arg_direction(kernel)
+    from loopy.kernel.tools import infer_arg_is_output_only
+    kernel = infer_arg_is_output_only(kernel)
     kw_to_pos = {}
     pos_to_kw = {}
 
@@ -111,22 +108,39 @@ def get_kw_pos_association(kernel):
     write_count = -1
 
     for arg in kernel.args:
-        if arg.direction == 'in':
+        if not arg.is_output_only:
             kw_to_pos[arg.name] = read_count
             pos_to_kw[read_count] = arg.name
             read_count += 1
-        elif arg.direction == 'out':
+        else:
             kw_to_pos[arg.name] = write_count
             pos_to_kw[write_count] = arg.name
             write_count -= 1
-        else:
-            raise LoopyError("Unknown value of kernel argument direction %s for "
-                    "%s" % (arg.direction, arg.name))
 
     return kw_to_pos, pos_to_kw
 
 
 class GridOverrideForCalleeKernel(ImmutableRecord):
+    """
+    Helper class to set the
+    :attr:`loopy.kernel.LoopKernel.override_get_grid_size_for_insn_ids` of the
+    callee kernels. Refer
+    :func:`loopy.kernel.function_interface.GridOverrideForCalleeKernel.__call__`,
+    :func:`loopy.kernel.function_interface.CallbleKernel.with_hw_axes_sizes`.
+
+    .. attribute:: local_size
+
+        The local work group size that has to be set in the callee kernel.
+
+    .. attribute:: global_size
+
+        The global work group size that to be set in the callee kernel.
+
+    .. note::
+
+        This class acts as a pseduo-callable and its significance lies in
+        solving picklability issues.
+    """
     fields = set(["local_size", "global_size"])
 
     def __init__(self, local_size, global_size):
@@ -143,7 +157,7 @@ class GridOverrideForCalleeKernel(ImmutableRecord):
 
 class InKernelCallable(ImmutableRecord):
     """
-    Describes a callable encountered in a kernel.
+    An abstract interface to define a callable encountered in a kernel.
 
     .. attribute:: name
 
@@ -164,6 +178,15 @@ class InKernelCallable(ImmutableRecord):
 
         Negative ids in the mapping attributes indicate the result arguments
 
+    .. automethod:: __init__
+    .. automethod:: with_types
+    .. automethod:: with_descrs
+    .. automethod:: with_target
+    .. automethod:: with_hw_axes_sizes
+    .. automethod:: generate_preambles
+    .. automethod:: emit_call
+    .. automethod:: emit_call_insn
+    .. automethod:: is_ready_for_codegen
     """
 
     fields = set(["arg_id_to_dtype", "arg_id_to_descr"])
@@ -208,21 +231,20 @@ class InKernelCallable(ImmutableRecord):
             Return values are denoted by negative integers, with the
             first returned value identified as *-1*.
 
-        :returns: a tuple ``(new_self, arg_id_to_type)``, where *new_self* is a
-            new :class:`InKernelCallable` specialized for the given types,
-            and *arg_id_to_descr* is a mapping of the same form as the
-            argument above, however it may have more information present.
-            Any argument information exists both by its positional and
-            its keyword identifier.
+        :returns: a copy of *self* which is a new instance of
+            :class:`InKernelCallable` specialized for the given types, and
+            *arg_id_to_descr* is a mapping of the same form as the argument above,
+            however it may have more information present.  Any argument information
+            exists both by its positional and its keyword identifier.
         """
 
         raise NotImplementedError()
 
     def with_target(self, target):
         """
-        Returns a copy with all the ``dtypes`` in
-        ``in_knl_callable.arg_id_to_dtype`` as instances of
-        :class:`loopy.LoopyType`.
+        Returns a copy of *self* with all the ``dtypes`` in
+        ``in_knl_callable.arg_id_to_dtype`` associated with the *target*. Refer
+        :meth:`loopy.types.LoopyType.with_target`.
 
         :arg target: An instance of :class:`loopy.target.TargetBase`.
         """
@@ -249,10 +271,13 @@ class InKernelCallable(ImmutableRecord):
 
     def with_hw_axes_sizes(self, local_size, global_size):
         """
+        Returns a copy of *self* with modifications to comply with the grid
+        sizes ``(local_size, global_size)`` of the kernel in which it is
+        supposed to be called.
+
         :arg local_size: An instance of :class:`islpy.PwAff`.
         :arg global_size: An instance of :class:`islpy.PwAff`.
         """
-
         raise NotImplementedError()
 
     def is_ready_for_codegen(self):
@@ -261,7 +286,7 @@ class InKernelCallable(ImmutableRecord):
                 self.arg_id_to_descr is not None)
 
     def generate_preambles(self, target):
-        """ This would generate the target specific preamble.
+        """ Yields the target specific preamble.
         """
         raise NotImplementedError()
 
@@ -270,6 +295,18 @@ class InKernelCallable(ImmutableRecord):
         raise NotImplementedError()
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
+        """
+        Returns a tuple of ``(call, assignee_is_returned)`` which is the target
+        facing function call that would be seen in the generated code. ``call``
+        is an instance of ``pymbolic.primitives.Call`` ``assignee_is_returned``
+        is an instance of :class:`bool` to indicate if the assignee is returned
+        by value of C-type targets.
+
+        :Example: If ``assignee_is_returned=True``, then ``a, b = f(c, d)`` is
+            interpreted in the target as ``a = f(c, d, &b)``. If
+            ``assignee_is_returned=False``, then ``a, b = f(c, d)`` is interpreted
+            in the target as the statement ``f(c, d, &a, &b)``.
+        """
 
         raise NotImplementedError()
 
@@ -284,9 +321,13 @@ class InKernelCallable(ImmutableRecord):
 
 class ScalarCallable(InKernelCallable):
     """
-    Records the information about a scalar callable encountered in a kernel.
-    The :meth:`ScalarCallable.with_types` is intended to assist with type
-    specialization of the funciton.
+    An abstranct interface the to a scalar callable encountered in a kernel.
+
+    .. note::
+
+        The :meth:`ScalarCallable.with_types` is intended to assist with type
+        specialization of the funciton and is expected to be supplemented in the
+        derived subclasses.
     """
 
     fields = set(["arg_id_to_dtype", "arg_id_to_descr", "name_in_target"])
@@ -417,7 +458,10 @@ class ScalarCallable(InKernelCallable):
                                 dtype_to_type_context(target, tgt_dtype),
                                 tgt_dtype).expr))
 
-        return var(self.name_in_target)(*c_parameters)
+        # assignee is returned whenever the size of assignees is non zero.
+        assignee_is_returned = len(assignees) > 0
+
+        return var(self.name_in_target)(*c_parameters), assignee_is_returned
 
     def generate_preambles(self, target):
         return
@@ -428,14 +472,129 @@ class ScalarCallable(InKernelCallable):
 # }}}
 
 
+# {{{ kernel inliner mapper
+
+class KernelInliner(SubstitutionMapper):
+    """Mapper to replace variables (indices, temporaries, arguments) in the
+    callee kernel with variables in the caller kernel.
+
+    :arg caller: the caller kernel
+    :arg arg_map: dict of argument name to variables in caller
+    :arg arg_dict: dict of argument name to arguments in callee
+    """
+
+    def __init__(self, subst_func, caller, arg_map, arg_dict):
+        super(KernelInliner, self).__init__(subst_func)
+        self.caller = caller
+        self.arg_map = arg_map
+        self.arg_dict = arg_dict
+
+    def map_subscript(self, expr):
+        if expr.aggregate.name in self.arg_map:
+
+            aggregate = self.subst_func(expr.aggregate)
+            sar = self.arg_map[expr.aggregate.name]  # SubArrayRef in caller
+            callee_arg = self.arg_dict[expr.aggregate.name]  # Arg in callee
+            if aggregate.name in self.caller.arg_dict:
+                caller_arg = self.caller.arg_dict[aggregate.name]  # Arg in caller
+            else:
+                caller_arg = self.caller.temporary_variables[aggregate.name]
+
+            # Firstly, map inner inames to outer inames.
+            outer_indices = self.map_tuple(expr.index_tuple)
+
+            # Next, reshape to match dimension of outer arrays.
+            # We can have e.g. A[3, 2] from outside and B[6] from inside
+            from numbers import Integral
+            if not all(isinstance(d, Integral) for d in callee_arg.shape):
+                raise LoopyError(
+                    "Argument: {0} in callee kernel: {1} does not have "
+                    "constant shape.".format(callee_arg))
+
+            flatten_index = 0
+            for i, idx in enumerate(sar.get_begin_subscript().index_tuple):
+                flatten_index += idx*caller_arg.dim_tags[i].stride
+
+            flatten_index += sum(
+                idx * tag.stride
+                for idx, tag in zip(outer_indices, callee_arg.dim_tags))
+
+            from loopy.isl_helpers import simplify_via_aff
+            flatten_index = simplify_via_aff(flatten_index)
+
+            new_indices = []
+            for dim_tag in caller_arg.dim_tags:
+                ind = flatten_index // dim_tag.stride
+                flatten_index -= (dim_tag.stride * ind)
+                new_indices.append(ind)
+
+            new_indices = tuple(simplify_via_aff(i) for i in new_indices)
+
+            return aggregate.index(tuple(new_indices))
+        else:
+            return super(KernelInliner, self).map_subscript(expr)
+
+
+class CalleeScopedCallsCollector(CombineMapper):
+    """
+    Collects the scoped functions which are a part of the callee kernel and
+    must be transferred to the caller kernel before inlining.
+
+    :returns:
+        An :class:`frozenset` of function names that are not scoped in
+        the caller kernel.
+
+    .. note::
+        :class:`loopy.library.reduction.ArgExtOp` are ignored, as they are
+        never scoped in the pipeline.
+    """
+
+    def __init__(self, callee_scoped_functions):
+        self.callee_scoped_functions = callee_scoped_functions
+
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, frozenset())
+
+    def map_call(self, expr):
+        if expr.function.name in self.callee_scoped_functions:
+            return (frozenset([(expr,
+                self.callee_scoped_functions[expr.function.name])]) |
+                    self.combine((self.rec(child) for child in expr.parameters)))
+        else:
+            return self.combine((self.rec(child) for child in expr.parameters))
+
+    def map_call_with_kwargs(self, expr):
+        if expr.function.name in self.callee_scoped_functions:
+            return (frozenset([(expr,
+                self.callee_scoped_functions[expr.function.name])]) |
+                    self.combine((self.rec(child) for child in expr.parameters
+                        + tuple(expr.kw_parameters.values()))))
+        else:
+            return self.combine((self.rec(child) for child in
+                expr.parameters+tuple(expr.kw_parameters.values())))
+
+    def map_constant(self, expr):
+        return frozenset()
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
+    map_tagged_variable = map_constant
+    map_type_cast = map_constant
+
+
+# }}}
+
+
 # {{{ callable kernel
 
 class CallableKernel(InKernelCallable):
     """
-    Records information about in order to make the callee kernel compatible to be
-    called from a caller kernel. The :meth:`loopy.register_callable_kernel`
-    should be called in order to initiate association between a funciton in
-    caller kernel and the callee kernel.
+    Records informations about a callee kernel. Also provides interface through
+    member methods to make the callee kernel compatible to be called from a
+    caller kernel. The :meth:`loopy.register_callable_kernel` should be called
+    in order to initiate association between a function in caller kernel and
+    the callee kernel.
 
     The :meth:`CallableKernel.with_types` should be called in order to match
     the ``dtypes`` of the arguments that are shared between the caller and the
@@ -449,23 +608,19 @@ class CallableKernel(InKernelCallable):
     sizes for the :attr:`subkernel` of the callable.
     """
 
-    fields = set(["name", "subkernel", "arg_id_to_dtype", "arg_id_to_descr",
-        "name_in_target", "inline"])
-    init_arg_names = ("name", "subkernel", "arg_id_to_dtype", "arg_id_to_descr",
-            "name_in_target", "inline")
+    fields = set(["subkernel", "arg_id_to_dtype", "arg_id_to_descr",
+        "name_in_target"])
+    init_arg_names = ("subkernel", "arg_id_to_dtype", "arg_id_to_descr",
+            "name_in_target")
 
-    def __init__(self, name, subkernel, arg_id_to_dtype=None,
-            arg_id_to_descr=None, name_in_target=None, inline=False):
+    def __init__(self, subkernel, arg_id_to_dtype=None,
+            arg_id_to_descr=None, name_in_target=None):
 
         super(CallableKernel, self).__init__(
                 arg_id_to_dtype=arg_id_to_dtype,
                 arg_id_to_descr=arg_id_to_descr)
-        if name_in_target is not None:
-            subkernel = subkernel.copy(name=name_in_target)
 
-        self.name = name
         self.name_in_target = name_in_target
-        self.inline = inline
         self.subkernel = subkernel.copy(
                 args=[arg.copy(dtype=arg.dtype.with_target(subkernel.target))
                     if arg.dtype is not None else arg for arg in subkernel.args])
@@ -572,15 +727,202 @@ class CallableKernel(InKernelCallable):
                 self.name_in_target is not None)
 
     def generate_preambles(self, target):
-        """ This would generate the target specific preamble.
+        """ Yields the *target* specific preambles.
         """
-        # FIXME: This is not correct, as the code code preamble generated
+        # TODO: This is not correct, as the code code preamble generated
         # during the code generationg of the child kernel, does not guarantee
         # that this thing would be updated.
         for preamble in self.subkernel.preambles:
             yield preamble
 
         return
+
+    def inline_within_kernel(self, kernel, instruction):
+        """
+        Returns a copy of *kernel* with the *instruction* in the *kernel*
+        replaced by inlining :attr:`subkernel` within it.
+        """
+        callee_knl = self.subkernel
+
+        import islpy as isl
+
+        callee_label = callee_knl.name[:4] + "_"
+
+        # {{{ duplicate and rename inames
+
+        vng = kernel.get_var_name_generator()
+        ing = kernel.get_instruction_id_generator()
+        dim_type = isl.dim_type.set
+
+        iname_map = {}
+        for iname in callee_knl.all_inames():
+            iname_map[iname] = vng(callee_label+iname)
+
+        new_domains = []
+        new_iname_to_tags = kernel.iname_to_tags.copy()
+
+        # transferring iname tags info from the callee to the caller kernel
+        for domain in callee_knl.domains:
+            new_domain = domain.copy()
+            for i in range(new_domain.n_dim()):
+                iname = new_domain.get_dim_name(dim_type, i)
+
+                if iname in callee_knl.iname_to_tags:
+                    new_iname_to_tags[iname_map[iname]] = (
+                            callee_knl.iname_to_tags[iname])
+                new_domain = new_domain.set_dim_name(
+                    dim_type, i, iname_map[iname])
+            new_domains.append(new_domain)
+
+        kernel = kernel.copy(domains=kernel.domains + new_domains,
+                iname_to_tags=new_iname_to_tags)
+
+        # }}}
+
+        # {{{ rename temporaries
+
+        temp_map = {}
+        new_temps = kernel.temporary_variables.copy()
+        for name, temp in six.iteritems(callee_knl.temporary_variables):
+            new_name = vng(callee_label+name)
+            temp_map[name] = new_name
+            new_temps[new_name] = temp.copy(name=new_name)
+
+        kernel = kernel.copy(temporary_variables=new_temps)
+
+        # }}}
+
+        # {{{ match kernel arguments
+
+        arg_map = {}  # callee arg name -> caller symbols (e.g. SubArrayRef)
+
+        assignees = instruction.assignees  # writes
+        parameters = instruction.expression.parameters  # reads
+
+        # add keyword parameters
+        from pymbolic.primitives import CallWithKwargs
+
+        if isinstance(instruction.expression, CallWithKwargs):
+            from loopy.kernel.function_interface import get_kw_pos_association
+
+            _, pos_to_kw = get_kw_pos_association(callee_knl)
+            kw_parameters = instruction.expression.kw_parameters
+            for i in range(len(parameters), len(parameters) + len(kw_parameters)):
+                parameters = parameters + (kw_parameters[pos_to_kw[i]],)
+
+        assignee_pos = 0
+        parameter_pos = 0
+        for i, arg in enumerate(callee_knl.args):
+            if arg.is_output_only:
+                arg_map[arg.name] = assignees[assignee_pos]
+                assignee_pos += 1
+            else:
+                arg_map[arg.name] = parameters[parameter_pos]
+                parameter_pos += 1
+
+        # }}}
+
+        # {{{ rewrite instructions
+
+        import pymbolic.primitives as p
+        from pymbolic.mapper.substitutor import make_subst_func
+
+        var_map = dict((p.Variable(k), p.Variable(v))
+                       for k, v in six.iteritems(iname_map))
+        var_map.update(dict((p.Variable(k), p.Variable(v))
+                            for k, v in six.iteritems(temp_map)))
+        var_map.update(dict((p.Variable(k), p.Variable(v.subscript.aggregate.name))
+                            for k, v in six.iteritems(arg_map)))
+        subst_mapper = KernelInliner(
+            make_subst_func(var_map), kernel, arg_map, callee_knl.arg_dict)
+
+        insn_id = {}
+        for insn in callee_knl.instructions:
+            insn_id[insn.id] = ing(callee_label+insn.id)
+
+        # {{{ root and leave instructions in callee kernel
+
+        dep_map = callee_knl.recursive_insn_dep_map()
+        # roots depend on nothing
+        heads = set(insn for insn, deps in six.iteritems(dep_map) if not deps)
+        # leaves have nothing that depends on them
+        tails = set(dep_map.keys())
+        for insn, deps in six.iteritems(dep_map):
+            tails = tails - deps
+
+        # }}}
+
+        # {{{ use NoOp to mark the start and end of callee kernel
+
+        from loopy.kernel.instruction import NoOpInstruction
+
+        noop_start = NoOpInstruction(
+            id=ing(callee_label+"_start"),
+            within_inames=instruction.within_inames,
+            depends_on=instruction.depends_on
+        )
+        noop_end = NoOpInstruction(
+            id=instruction.id,
+            within_inames=instruction.within_inames,
+            depends_on=frozenset(insn_id[insn] for insn in tails)
+        )
+        # }}}
+
+        inner_insns = [noop_start]
+
+        for insn in callee_knl.instructions:
+            insn = insn.with_transformed_expressions(subst_mapper)
+            within_inames = frozenset(map(iname_map.get, insn.within_inames))
+            within_inames = within_inames | instruction.within_inames
+            depends_on = frozenset(map(insn_id.get, insn.depends_on))
+            if insn.id in heads:
+                depends_on = depends_on | set([noop_start.id])
+            insn = insn.copy(
+                id=insn_id[insn.id],
+                within_inames=within_inames,
+                # TODO: probaby need to keep priority in callee kernel
+                priority=instruction.priority,
+                depends_on=depends_on
+            )
+            inner_insns.append(insn)
+
+        inner_insns.append(noop_end)
+
+        new_insns = []
+        for insn in kernel.instructions:
+            if insn == instruction:
+                new_insns.extend(inner_insns)
+            else:
+                new_insns.append(insn)
+
+        kernel = kernel.copy(instructions=new_insns)
+
+        # }}}
+
+        # {{{ transferring the scoped functions from callee to caller
+
+        callee_scoped_calls_collector = CalleeScopedCallsCollector(
+                callee_knl.scoped_functions)
+        callee_scoped_calls_dict = {}
+
+        for insn in kernel.instructions:
+            if isinstance(insn, MultiAssignmentBase):
+                callee_scoped_calls_dict.update(dict(callee_scoped_calls_collector(
+                    insn.expression)))
+            elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
+                pass
+            else:
+                raise NotImplementedError("Unknown type of instruction %s." % type(
+                    insn))
+
+        from loopy.kernel.function_interface import (
+                register_pymbolic_calls_to_knl_callables)
+        kernel = register_pymbolic_calls_to_knl_callables(kernel,
+                callee_scoped_calls_dict)
+
+        # }}}
+
+        return kernel
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
 
@@ -608,7 +950,7 @@ class CallableKernel(InKernelCallable):
         # inserting the assigness at the required positions.
         assignee_write_count = -1
         for i, arg in enumerate(self.subkernel.args):
-            if arg.direction == 'out':
+            if arg.is_output_only:
                 assignee = assignees[-assignee_write_count-1]
                 parameters.insert(i, assignee)
                 par_dtypes.insert(i, self.arg_id_to_dtype[assignee_write_count])
@@ -630,7 +972,7 @@ class CallableKernel(InKernelCallable):
                 for par, par_dtype in zip(
                     parameters, par_dtypes)]
 
-        return var(self.name_in_target)(*c_parameters)
+        return var(self.name_in_target)(*c_parameters), False
 
 # }}}
 
@@ -643,7 +985,7 @@ class ManglerCallable(ScalarCallable):
 
     .. attribute:: function_mangler
 
-        A function of signature ``(target, name , arg_dtypes)`` and returns an
+        A function of signature ``(kernel, name , arg_dtypes)`` and returns an
         instance of ``loopy.CallMangleInfo``.
     """
     fields = set(["name", "function_mangler", "arg_id_to_dtype", "arg_id_to_descr",
@@ -681,7 +1023,7 @@ class ManglerCallable(ScalarCallable):
         arg_dtypes = tuple(arg_id_to_dtype[key] for key in sorted_keys if
                 key >= 0)
 
-        mangle_result = self.function_mangler(kernel.target, self.name,
+        mangle_result = self.function_mangler(kernel, self.name,
                 arg_dtypes)
         if mangle_result:
             new_arg_id_to_dtype = dict(enumerate(mangle_result.arg_dtypes))
@@ -704,7 +1046,7 @@ class ManglerCallable(ScalarCallable):
         arg_dtypes = tuple(self.arg_id_to_dtype[key] for key in sorted_keys if
                 key >= 0)
 
-        return self.function_mangler(kernel.target, self.name, arg_dtypes)
+        return self.function_mangler(kernel, self.name, arg_dtypes)
 
 # }}}
 

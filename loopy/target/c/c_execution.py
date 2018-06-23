@@ -382,8 +382,11 @@ class CKernelExecutor(KernelExecutorBase):
         """
 
         self.compiler = compiler if compiler else CCompiler()
-        super(CKernelExecutor, self).__init__(kernel,
-                                              CExecutionWrapperGenerator())
+        super(CKernelExecutor, self).__init__(kernel)
+
+    def get_invoker_uncached(self, kernel, codegen_result):
+        generator = CExecutionWrapperGenerator()
+        return generator(kernel, codegen_result)
 
     @memoize_method
     def kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
@@ -423,7 +426,7 @@ class CKernelExecutor(KernelExecutorBase):
                 kernel=kernel,
                 c_kernels=c_kernels,
                 implemented_data_info=codegen_result.implemented_data_info,
-                invoker=self.invoker(kernel, codegen_result))
+                invoker=self.get_invoker(kernel, codegen_result))
 
     # }}}
 

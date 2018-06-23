@@ -254,10 +254,19 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 # }}}
 
 
+class _not_provided(object):  # noqa: N801
+    pass
+
+
 def precompute(kernel, subst_use, sweep_inames=[], within=None,
         storage_axes=None, temporary_name=None, precompute_inames=None,
         precompute_outer_inames=None,
-        storage_axis_to_tag={}, default_tag="l.auto", dtype=None,
+        storage_axis_to_tag={},
+
+        # "None" is a valid value here, distinct from the default.
+        default_tag=_not_provided,
+
+        dtype=None,
         fetch_bounding_box=False,
         temporary_scope=None, temporary_is_local=None,
         compute_insn_id=None):
@@ -305,11 +314,11 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     :arg sweep_inames: A :class:`list` of inames to be swept.
         May also equivalently be a comma-separated string.
+    :arg within: a stack match as understood by
+        :func:`loopy.match.parse_stack_match`.
     :arg storage_axes: A :class:`list` of inames and/or rule argument
         names/indices to be used as storage axes.
         May also equivalently be a comma-separated string.
-    :arg within: a stack match as understood by
-        :func:`loopy.match.parse_stack_match`.
     :arg temporary_name:
         The temporary variable name to use for storing the precomputed data.
         If it does not exist, it will be created. If it does exist, its properties
@@ -328,6 +337,13 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         the compute instruction is nested. If *None*, make an educated guess.
         May also be specified as a comma-separated string.
 
+    :arg default_tag: The :ref:`iname tag <iname-tags>` to be applied to the
+        inames created to perform the precomputation. The current default will
+        make them local axes and automatically split them to fit the work
+        group size, but this default will disappear in favor of simply leaving them
+        untagged in 2019. For 2018, a warning will be issued if no *default_tag* is
+        specified.
+
     :arg compute_insn_id: The ID of the instruction generated to perform the
         precomputation.
 
@@ -341,7 +357,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # {{{ unify temporary_scope / temporary_is_local
 
-    from loopy.kernel.data import MemoryAddressSpace
+    from loopy.kernel.data import AddressSpace
     if temporary_is_local is not None:
         from warnings import warn
         warn("temporary_is_local is deprecated. Use temporary_scope instead",
@@ -352,9 +368,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                     "temporary_scope")
 
         if temporary_is_local:
-            temporary_scope = MemoryAddressSpace.LOCAL
+            temporary_scope = AddressSpace.LOCAL
         else:
-            temporary_scope = MemoryAddressSpace.PRIVATE
+            temporary_scope = AddressSpace.PRIVATE
 
     del temporary_is_local
 
@@ -426,9 +442,6 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     from loopy.match import parse_stack_match
     within = parse_stack_match(within)
 
-    from loopy.kernel.data import parse_tag
-    default_tag = parse_tag(default_tag)
-
     try:
         subst = kernel.substitutions[subst_name]
     except KeyError:
@@ -436,6 +449,36 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 % subst_name)
 
     c_subst_name = subst_name.replace(".", "_")
+
+    # {{{ handle default_tag
+
+    from loopy.transform.data import _not_provided \
+            as transform_data_not_provided
+
+    if default_tag is _not_provided or default_tag is transform_data_not_provided:
+        # no need to warn for scalar precomputes
+        if sweep_inames:
+            from warnings import warn
+            warn(
+                    "Not specifying default_tag is deprecated, and default_tag "
+                    "will become mandatory in 2019.x. "
+                    "Pass 'default_tag=\"l.auto\" to match the current default, "
+                    "or Pass 'default_tag=None to leave the loops untagged, which "
+                    "is the recommended behavior.",
+                    DeprecationWarning, stacklevel=(
+
+                        # In this case, we came here through add_prefetch. Increase
+                        # the stacklevel.
+                        3 if default_tag is transform_data_not_provided
+
+                        else 2))
+
+        default_tag = "l.auto"
+
+    from loopy.kernel.data import parse_tag
+    default_tag = parse_tag(default_tag)
+
+    # }}}
 
     # }}}
 
@@ -804,7 +847,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     compute_dep_id = compute_insn_id
     added_compute_insns = [compute_insn]
 
-    if temporary_scope == MemoryAddressSpace.GLOBAL:
+    if temporary_scope == AddressSpace.GLOBAL:
         barrier_insn_id = kernel.make_unique_instruction_id(
                 based_on=c_subst_name+"_barrier")
         from loopy.kernel.instruction import BarrierInstruction
@@ -976,8 +1019,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             raise LoopyError("Existing and new temporary '%s' do not "
                     "have matching scopes (existing: %s, new: %s)"
                     % (temporary_name,
-                        MemoryAddressSpace.stringify(temp_var.scope),
-                        MemoryAddressSpace.stringify(temporary_scope)))
+                        AddressSpace.stringify(temp_var.scope),
+                        AddressSpace.stringify(temporary_scope)))
 
         temp_var = temp_var.copy(scope=temporary_scope)
 
@@ -993,12 +1036,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     from loopy import tag_inames
     kernel = tag_inames(kernel, new_iname_to_tag)
 
-    from loopy.kernel.data import AutoFitLocalIndexTag
-    has_automatic_axes = any(
-            isinstance(tag, AutoFitLocalIndexTag)
-            for tag in new_iname_to_tag.values())
+    from loopy.kernel.data import AutoFitLocalIndexTag, filter_iname_tags_by_type
 
-    if has_automatic_axes:
+    if filter_iname_tags_by_type(new_iname_to_tag.values(), AutoFitLocalIndexTag):
         from loopy.kernel.tools import assign_automatic_axes
         kernel = assign_automatic_axes(kernel)
 

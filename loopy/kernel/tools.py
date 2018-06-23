@@ -676,10 +676,8 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 
     from loopy.kernel.data import AutoLocalIndexTagBase
     auto_axis_inames = set(
-            iname
-            for iname in kernel.insn_inames(insn)
-            if isinstance(kernel.iname_to_tag.get(iname),
-                AutoLocalIndexTagBase))
+        iname for iname in kernel.insn_inames(insn)
+        if kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase))
 
     # }}}
 
@@ -751,8 +749,11 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 
 def assign_automatic_axes(kernel, axis=0, local_size=None):
     logger.debug("%s: assign automatic axes" % kernel.name)
+    # TODO: do the tag removal rigorously, might be easier after switching
+    # to set() from tuple()
 
-    from loopy.kernel.data import (AutoLocalIndexTagBase, LocalIndexTag)
+    from loopy.kernel.data import (AutoLocalIndexTagBase, LocalIndexTag,
+                                   filter_iname_tags_by_type)
 
     # Realize that at this point in time, axis lengths are already
     # fixed. So we compute them once and pass them to our recursive
@@ -776,10 +777,18 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         except isl.Error:
             # Likely unbounded, automatic assignment is not
             # going to happen for this iname.
-            new_iname_to_tag = kernel.iname_to_tag.copy()
-            new_iname_to_tag[iname] = None
+            new_iname_to_tags = kernel.iname_to_tags.copy()
+            new_tags = new_iname_to_tags.get(iname, frozenset())
+            new_tags = frozenset(tag for tag in new_tags
+                    if not isinstance(tag, AutoLocalIndexTagBase))
+
+            if new_tags:
+                new_iname_to_tags[iname] = new_tags
+            else:
+                del new_iname_to_tags[iname]
+
             return assign_automatic_axes(
-                    kernel.copy(iname_to_tag=new_iname_to_tag),
+                    kernel.copy(iname_to_tags=new_iname_to_tags),
                     axis=recursion_axis)
 
         if axis is None:
@@ -819,23 +828,38 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         else:
             new_tag = LocalIndexTag(axis)
             if desired_length > local_size[axis]:
-                from loopy import split_iname
+                from loopy import split_iname, untag_inames
 
                 # Don't be tempted to switch the outer tag to unroll--this may
                 # generate tons of code on some examples.
 
                 return assign_automatic_axes(
-                        split_iname(kernel, iname, inner_length=local_size[axis],
+                        split_iname(
+                            untag_inames(kernel, iname, AutoLocalIndexTagBase),
+                            iname, inner_length=local_size[axis],
                             outer_tag=None, inner_tag=new_tag,
                             do_tagged_check=False),
                         axis=recursion_axis, local_size=local_size)
 
-        if not isinstance(kernel.iname_to_tag.get(iname), AutoLocalIndexTagBase):
+        if not kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase):
             raise LoopyError("trying to reassign '%s'" % iname)
 
-        new_iname_to_tag = kernel.iname_to_tag.copy()
-        new_iname_to_tag[iname] = new_tag
-        return assign_automatic_axes(kernel.copy(iname_to_tag=new_iname_to_tag),
+        if new_tag:
+            new_tag_set = frozenset([new_tag])
+        else:
+            new_tag_set = frozenset()
+        new_iname_to_tags = kernel.iname_to_tags.copy()
+        new_tags = (
+                frozenset(tag for tag in new_iname_to_tags.get(iname, frozenset())
+                    if not isinstance(tag, AutoLocalIndexTagBase))
+                | new_tag_set)
+
+        if new_tags:
+            new_iname_to_tags[iname] = new_tags
+        else:
+            del new_iname_to_tags[iname]
+
+        return assign_automatic_axes(kernel.copy(iname_to_tags=new_iname_to_tags),
                 axis=recursion_axis, local_size=local_size)
 
     # }}}
@@ -852,10 +876,8 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             continue
 
         auto_axis_inames = [
-                iname
-                for iname in kernel.insn_inames(insn)
-                if isinstance(kernel.iname_to_tag.get(iname),
-                    AutoLocalIndexTagBase)]
+            iname for iname in kernel.insn_inames(insn)
+            if kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase)]
 
         if not auto_axis_inames:
             continue
@@ -863,8 +885,9 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         assigned_local_axes = set()
 
         for iname in kernel.insn_inames(insn):
-            tag = kernel.iname_to_tag.get(iname)
-            if isinstance(tag, LocalIndexTag):
+            tags = kernel.iname_tags_of_type(iname, LocalIndexTag, max_num=1)
+            if tags:
+                tag, = tags
                 assigned_local_axes.add(tag.axis)
 
         if axis < len(local_size):
@@ -874,8 +897,9 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
                 iname_ranking = get_auto_axis_iname_ranking_by_stride(kernel, insn)
                 if iname_ranking is not None:
                     for iname in iname_ranking:
-                        prev_tag = kernel.iname_to_tag.get(iname)
-                        if isinstance(prev_tag, AutoLocalIndexTagBase):
+                        prev_tags = kernel.iname_tags(iname)
+                        if filter_iname_tags_by_type(
+                                prev_tags, AutoLocalIndexTagBase):
                             return assign_axis(axis, iname, axis)
 
         else:
@@ -1129,9 +1153,9 @@ def get_visual_iname_order_embedding(kernel):
     from loopy.kernel.data import IlpBaseTag
     # Ignore ILP tagged inames, since they do not have to form a strict loop
     # nest.
-    ilp_inames = frozenset(
-        iname for iname in kernel.iname_to_tag
-        if isinstance(kernel.iname_to_tag[iname], IlpBaseTag))
+    ilp_inames = frozenset(iname
+        for iname in kernel.iname_to_tags
+        if kernel.iname_tags_of_type(iname, IlpBaseTag))
 
     iname_trie = SetTrie()
 
@@ -1205,9 +1229,11 @@ def draw_dependencies_as_unicode_arrows(
         instances
     :arg fore: if given, will be used like a :mod:`colorama` ``Fore`` object
         to color-code dependencies. (E.g. red for downward edges)
-    :returns: A list of tuples (arrows, extender) with Unicode-drawn dependency
-        arrows, one per entry of *instructions*. *extender* can be used to
-        extend arrows below the line of an instruction.
+    :returns: A tuple ``(uniform_length, rows)``, where *rows* is a list of
+        tuples (arrows, extender) with Unicode-drawn dependency arrows, one per
+        entry of *instructions*. *extender* can be used to extend arrows below the
+        line of an instruction. *uniform_length* is the length of the *arrows* and
+        *extender* strings.
     """
     reverse_deps = {}
 
@@ -1221,6 +1247,8 @@ def draw_dependencies_as_unicode_arrows(
     # {{{ find column assignments
 
     # mapping from column indices to (end_insn_ids, pointed_at_insn_id)
+    # end_insn_ids is a set that gets modified in-place to remove 'ends'
+    # (arrow origins) as they are being passed.
     columns_in_use = {}
 
     n_columns = [0]
@@ -1258,8 +1286,10 @@ def draw_dependencies_as_unicode_arrows(
         rdeps = reverse_deps.get(insn.id, set()).copy() - processed_ids
         assert insn.id not in rdeps
 
-        if insn.id in dep_to_column:
-            columns_in_use[insn.id][0].update(rdeps)
+        col = dep_to_column.get(insn.id)
+        if col is not None:
+            columns_in_use[col][0].update(rdeps)
+        del col
 
         # }}}
 
@@ -1315,7 +1345,11 @@ def draw_dependencies_as_unicode_arrows(
             dep_key = dep
             if dep_key not in dep_to_column:
                 col = dep_to_column[dep_key] = find_free_column()
-                columns_in_use[col] = (set([insn.id]), dep)
+
+                # No need to add current instruction to end_insn_ids set, as
+                # we're currently handling it.
+                columns_in_use[col] = (set(), dep)
+
                 row[col] = do_flag_downward(u"┌", dep)
 
         # }}}
@@ -1340,12 +1374,30 @@ def draw_dependencies_as_unicode_arrows(
 
     added_ellipsis = [False]
 
+    def len_without_color_escapes(s):
+        s = (s
+                .replace(fore.RED, "")
+                .replace(style.RESET_ALL, ""))
+        return len(s)
+
+    def truncate_without_color_escapes(s, l):
+        # FIXME: This is a bit dumb--it removes color escapes when truncation
+        # is needed.
+
+        s = (s
+                .replace(fore.RED, "")
+                .replace(style.RESET_ALL, ""))
+
+        return s[:l] + u"…"
+
     def conform_to_uniform_length(s):
-        if len(s) <= uniform_length:
-            return s + " "*(uniform_length-len(s))
+        len_s = len_without_color_escapes(s)
+
+        if len_s <= uniform_length:
+            return s + " "*(uniform_length-len_s)
         else:
             added_ellipsis[0] = True
-            return s[:uniform_length] + u"…"
+            return truncate_without_color_escapes(s, uniform_length)
 
     rows = [
             (conform_to_uniform_length(row),
@@ -1355,10 +1407,10 @@ def draw_dependencies_as_unicode_arrows(
     if added_ellipsis[0]:
         uniform_length += 1
 
-    rows = [
-            (conform_to_uniform_length(row),
-                conform_to_uniform_length(extender))
-            for row, extender in rows]
+        rows = [
+                (conform_to_uniform_length(row),
+                    conform_to_uniform_length(extender))
+                for row, extender in rows]
 
     return uniform_length, rows
 
@@ -1849,41 +1901,38 @@ def get_callee_kernels(kernel, insn_ids=None):
 
 # {{{ direction helper tools
 
-def infer_arg_direction(kernel):
+def infer_arg_is_output_only(kernel):
     """
-    Returns a copy of *kernel* with the directions of the argument inferred.
+    Returns a copy of *kernel* with the attribute ``is_output_only`` set.
 
     .. note::
-        Implements a simple heuristic -- if the argument direction is not
-        specified by the user then if the argument is written at any point
-        during in the kernel then its direction is set to be ``out``, otherwise
-        ``in``.
+
+        If the attribute ``is_output_only`` is not supplied from an user, then
+        infers it as an output argument if it is written at some point in the
+        kernel.
     """
     from loopy.kernel.data import ArrayArg, ValueArg, ConstantArg, ImageArg
-    direction_inferred_args = []
+    new_args = []
     for arg in kernel.args:
-        if isinstance(arg, (ArrayArg, ImageArg)):
-            if arg.direction is not None:
-                if arg.direction not in ['in', 'out']:
-                    raise LoopyError("Unknown value of direction %s for %s." % (
-                            arg.direction, arg.name))
-                direction_inferred_args.append(arg)
+        if isinstance(arg, (ArrayArg, ImageArg, ValueArg)):
+            if arg.is_output_only is not None:
+                assert isinstance(arg.is_output_only, bool)
+                new_args.append(arg)
             else:
                 if arg.name in kernel.get_written_variables():
-                    direction_inferred_args.append(arg.copy(direction='out'))
+                    new_args.append(arg.copy(is_output_only=True))
                 else:
-                    direction_inferred_args.append(arg.copy(direction='in'))
-        elif isinstance(arg, (ValueArg, ConstantArg)):
-            # For ValueArg, ConstantArg the direction always has to be in.
-            if arg.direction is not None and arg.direction == 'out':
-                raise LoopyError("Argument %s cannot have 'out' direction." %
-                        arg.name)
+                    new_args.append(arg.copy(is_output_only=False))
+        elif isinstance(arg, ConstantArg):
+            if arg.is_output_only:
+                raise LoopyError("Constant Argument %s cannot have "
+                        "is_output_only True" % arg.name)
             else:
-                direction_inferred_args.append(arg.copy(direction='in'))
+                new_args.append(arg.copy(is_output_only=False))
         else:
             raise NotImplementedError("Unkonwn argument type %s." % type(arg))
 
-    return kernel.copy(args=direction_inferred_args)
+    return kernel.copy(args=new_args)
 
 # }}}
 

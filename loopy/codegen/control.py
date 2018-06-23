@@ -40,17 +40,18 @@ def get_admissible_conditional_inames_for(codegen_state, sched_index):
 
     kernel = codegen_state.kernel
 
-    from loopy.kernel.data import LocalIndexTag, HardwareConcurrentTag
+    from loopy.kernel.data import (LocalIndexTag, HardwareConcurrentTag,
+                                   filter_iname_tags_by_type)
 
     from loopy.schedule import find_active_inames_at, has_barrier_within
     result = find_active_inames_at(kernel, sched_index)
 
     has_barrier = has_barrier_within(kernel, sched_index)
 
-    for iname, tag in six.iteritems(kernel.iname_to_tag):
-        if (isinstance(tag, HardwareConcurrentTag)
+    for iname, tags in six.iteritems(kernel.iname_to_tags):
+        if (filter_iname_tags_by_type(tags, HardwareConcurrentTag)
                 and codegen_state.is_generating_device_code):
-            if not has_barrier or not isinstance(tag, LocalIndexTag):
+            if not has_barrier or not filter_iname_tags_by_type(tags, LocalIndexTag):
                 result.add(iname)
 
     return frozenset(result)
@@ -63,7 +64,7 @@ def synthesize_idis_for_extra_args(kernel, schedule_index):
     sched_item = kernel.schedule[schedule_index]
 
     from loopy.codegen import ImplementedDataInfo
-    from loopy.kernel.data import InameArg, MemoryAddressSpace
+    from loopy.kernel.data import InameArg, AddressSpace
 
     assert isinstance(sched_item, CallKernel)
 
@@ -71,7 +72,7 @@ def synthesize_idis_for_extra_args(kernel, schedule_index):
 
     for arg in sched_item.extra_args:
         temporary = kernel.temporary_variables[arg]
-        assert temporary.scope == MemoryAddressSpace.GLOBAL
+        assert temporary.scope == AddressSpace.GLOBAL
         idis.extend(
             temporary.decl_info(
                 kernel.target,
@@ -127,25 +128,28 @@ def generate_code_for_sched_index(codegen_state, sched_index):
             ])
 
     elif isinstance(sched_item, EnterLoop):
-        tag = kernel.iname_to_tag.get(sched_item.iname)
+        tags = kernel.iname_tags(sched_item.iname)
+        tags = tuple(tag for tag in tags if tag)
 
         from loopy.codegen.loop import (
                 generate_unroll_loop,
                 generate_vectorize_loop,
                 generate_sequential_loop_dim_code)
 
-        from loopy.kernel.data import (UnrolledIlpTag, UnrollTag, ForceSequentialTag,
-                LoopedIlpTag, VectorizeTag, InOrderSequentialSequentialTag)
-        if isinstance(tag, (UnrollTag, UnrolledIlpTag)):
+        from loopy.kernel.data import (UnrolledIlpTag, UnrollTag,
+                ForceSequentialTag, LoopedIlpTag, VectorizeTag,
+                InOrderSequentialSequentialTag, filter_iname_tags_by_type)
+        if filter_iname_tags_by_type(tags, (UnrollTag, UnrolledIlpTag)):
             func = generate_unroll_loop
-        elif isinstance(tag, VectorizeTag):
+        elif filter_iname_tags_by_type(tags, VectorizeTag):
             func = generate_vectorize_loop
-        elif tag is None or isinstance(tag, (
-                LoopedIlpTag, ForceSequentialTag, InOrderSequentialSequentialTag)):
+        elif not tags or filter_iname_tags_by_type(tags, (LoopedIlpTag,
+                    ForceSequentialTag, InOrderSequentialSequentialTag)):
             func = generate_sequential_loop_dim_code
         else:
             raise RuntimeError("encountered (invalid) EnterLoop "
-                    "for '%s', tagged '%s'" % (sched_item.iname, tag))
+                    "for '%s', tagged '%s'"
+                    % (sched_item.iname, ", ".join(str(tag) for tag in tags)))
 
         return func(codegen_state, sched_index)
 
@@ -419,7 +423,7 @@ def build_loop_nest(codegen_state, schedule_index):
 
             # }}}
 
-            only_unshared_inames = kernel.remove_inames_for_shared_hw_axes(
+            only_unshared_inames = kernel._remove_inames_for_shared_hw_axes(
                     current_iname_set & used_inames)
 
             bounds_checks = bounds_check_cache(only_unshared_inames)
