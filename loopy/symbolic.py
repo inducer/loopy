@@ -770,15 +770,20 @@ class SweptInameStrideCollector(CoefficientCollectorBase):
 
 
 class SubArrayRef(p.Expression):
-    """Represents a generalized sliced notation of an array.
+    """
+    An algebraic expression to map an affine memory layout pattern (known as
+    sub-arary) as consecutive elements of the sweeping axes which are defined
+    using :attr:`SubArrayRef.swept_inames`.
 
     .. attribute:: swept_inames
 
-        These are a tuple of sweeping inames over the array.
+        An instance of :class:`tuple` denoting the axes to which the sub array
+        is supposed to be mapper to.
 
     .. attribute:: subscript
 
-        The subscript whose adress space is to be referenced
+        An instance of :class:`pymbolic.primitives.Subscript` denoting the
+        array in the kernel.
     """
 
     init_arg_names = ("swept_inames", "subscript")
