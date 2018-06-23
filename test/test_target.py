@@ -69,7 +69,8 @@ def test_ispc_target(occa_mode=False):
 
     knl = lp.split_iname(knl, "i", 8, inner_tag="l.0")
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
-    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"])
+    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"],
+            default_tag="l.auto")
 
     codegen_result = lp.generate_code_v2(
                 lp.get_one_scheduled_kernel(
@@ -93,7 +94,8 @@ def test_cuda_target():
 
     knl = lp.split_iname(knl, "i", 8, inner_tag="l.0")
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
-    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"])
+    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"],
+            default_tag="l.auto")
 
     print(
             lp.generate_code(
@@ -278,7 +280,7 @@ def test_numba_cuda_target():
     knl = lp.assume(knl, "M>0")
     knl = lp.split_iname(knl, "i", 16, outer_tag='g.0')
     knl = lp.split_iname(knl, "j", 128, inner_tag='l.0', slabs=(0, 1))
-    knl = lp.add_prefetch(knl, "X[i,:]")
+    knl = lp.add_prefetch(knl, "X[i,:]", default_tag="l.auto")
     knl = lp.fix_parameters(knl, N=3)
     knl = lp.prioritize_loops(knl, "i_inner,j_outer")
     knl = lp.tag_inames(knl, "k:unr")

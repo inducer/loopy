@@ -1038,7 +1038,7 @@ earlier:
 
 .. doctest::
 
-    >>> knl_pf = lp.add_prefetch(knl, "a", ["i_inner"])
+    >>> knl_pf = lp.add_prefetch(knl, "a", ["i_inner"], default_tag="l.0")
     >>> evt, (out,) = knl_pf(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...

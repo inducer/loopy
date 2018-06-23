@@ -136,8 +136,16 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
 # }}}
 
 
+class _not_provided:  # noqa: N801
+    pass
+
+
 def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
-        default_tag="l.auto", rule_name=None,
+
+        # "None" is a valid value here, distinct from the default.
+        default_tag=_not_provided,
+
+        rule_name=None,
         temporary_name=None,
         temporary_scope=None, temporary_is_local=None,
         footprint_subscripts=None,
@@ -168,10 +176,11 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
     :arg default_tag: The :ref:`implementation tag <iname-tags>` to
         assign to the inames driving the prefetch code. Use *None* to
-        leave them undefined (to assign them later by hand). The
-        default values of ``"l.auto"`` will automatically determine
-        what it deems 'reasonable' inames to map to 'local' axes and
-        map the rest to sequential loops.
+        leave them undefined (to assign them later by hand). The current
+        default will make them local axes and automatically split them to
+        fit the work group size, but this default will disappear in favor
+        of simply leaving them untagged in 2019.x. For 2018.x, a warning
+        will be issued if no *default_tag* is specified.
 
     :arg rule_name: base name of the generated temporary variable.
     :arg temporary_name: The name of the temporary to be used.
@@ -315,6 +324,10 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
             _process_footprint_subscripts(
                     kernel,  rule_name, sweep_inames,
                     footprint_subscripts, arg)
+
+    # Our _not_provided is actually a different object from the one in the
+    # precompute module, but precompute acutally uses that to adjust its
+    # warning message.
 
     from loopy.transform.precompute import precompute
     new_kernel = precompute(kernel, subst_use, sweep_inames,
