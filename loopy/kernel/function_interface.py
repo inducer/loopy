@@ -626,8 +626,12 @@ class CallableKernel(InKernelCallable):
                     if arg.dtype is not None else arg for arg in subkernel.args])
 
     def __getinitargs__(self):
-        return (self.name, self.subkernel, self.arg_id_to_dtype,
+        return (self.subkernel, self.arg_id_to_dtype,
                 self.arg_id_to_descr, self.name_in_target)
+
+    @property
+    def name(self):
+        return self.subkernel.name
 
     def with_types(self, arg_id_to_dtype, kernel):
 
@@ -874,7 +878,8 @@ class CallableKernel(InKernelCallable):
             insn = insn.with_transformed_expressions(subst_mapper)
             within_inames = frozenset(map(iname_map.get, insn.within_inames))
             within_inames = within_inames | instruction.within_inames
-            depends_on = frozenset(map(insn_id.get, insn.depends_on))
+            depends_on = frozenset(map(insn_id.get, insn.depends_on)) | (
+                    instruction.depends_on)
             if insn.id in heads:
                 depends_on = depends_on | set([noop_start.id])
             insn = insn.copy(
