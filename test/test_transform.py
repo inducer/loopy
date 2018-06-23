@@ -583,8 +583,8 @@ def test_packing_unpacking(ctx_factory, inline):
             [k]: y2[k] = callee_fn2([k]: x2[k])
             """)
 
-    knl = lp.register_callable_kernel(knl, 'callee_fn1', callee1, inline=inline)
-    knl = lp.register_callable_kernel(knl, 'callee_fn2', callee2, inline=inline)
+    knl = lp.register_callable_kernel(knl, 'callee_fn1', callee1, inline)
+    knl = lp.register_callable_kernel(knl, 'callee_fn2', callee2, inline)
 
     knl = lp.pack_and_unpack_args_for_call(knl, 'callee_fn1')
     knl = lp.pack_and_unpack_args_for_call(knl, 'callee_fn2')

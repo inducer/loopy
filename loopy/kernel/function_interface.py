@@ -289,23 +289,25 @@ class ScalarCallable(InKernelCallable):
     specialization of the funciton.
     """
 
-    fields = set(["name", "arg_id_to_dtype", "arg_id_to_descr", "name_in_target"])
-    init_arg_names = ("name", "arg_id_to_dtype", "arg_id_to_descr",
+    fields = set(["arg_id_to_dtype", "arg_id_to_descr", "name_in_target"])
+    init_arg_names = ("arg_id_to_dtype", "arg_id_to_descr",
             "name_in_target")
 
-    def __init__(self, name, arg_id_to_dtype=None,
+    def __init__(self, arg_id_to_dtype=None,
             arg_id_to_descr=None, name_in_target=None):
 
         super(ScalarCallable, self).__init__(
                 arg_id_to_dtype=arg_id_to_dtype,
                 arg_id_to_descr=arg_id_to_descr)
 
-        self.name = name
         self.name_in_target = name_in_target
 
     def __getinitargs__(self):
-        return (self.name, self.arg_id_to_dtype, self.arg_id_to_descr,
+        return (self.arg_id_to_dtype, self.arg_id_to_descr,
                 self.name_in_target)
+
+    def name(self):
+        return self.subkernel.name
 
     def with_types(self, arg_id_to_dtype, kernel):
         raise LoopyError("No type inference information present for "

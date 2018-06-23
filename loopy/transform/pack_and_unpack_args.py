@@ -35,7 +35,8 @@ __doc__ = """
 
 # {{{ main entrypoint
 
-def pack_and_unpack_args_for_call(kernel, call_name, args=None):
+def pack_and_unpack_args_for_call(kernel, call_name, args_to_pack=None,
+        args_to_unpack=None):
     """
     Returns a a copy of *kernel* with instructions appended to copy the
     arguments in *args* to match the alignment expected by the *call_name* in
@@ -44,9 +45,12 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
 
     :arg call_name: An instance of :class:`str` denoting the function call in
         the *kernel*.
-    :arg args: A list of the arguments as instances of :class:`str` which must
-        be packed and unpacked. If set *None*, it is interpreted that all the
-        array arguments would be packed anf unpacked.
+    :arg args_to_unpack: A list of the arguments as instances of :class:`str` which
+        must be packed. If set *None*, it is interpreted that all the array
+        arguments would be packed.
+    :arg args_to_unpack: A list of the arguments as instances of :class:`str`
+        which must be unpacked. If set *None*, it is interpreted that
+        all the array arguments should be unpacked.
     """
     new_domains = []
     new_tmps = kernel.temporary_variables.copy()
@@ -71,18 +75,25 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
         ing = kernel.get_instruction_id_generator()
 
         parameters = insn.expression.parameters
-        if args is None:
-            args = [par.subscript.aggregate.name for par in
+        if args_to_pack is None:
+            args_to_pack = [par.subscript.aggregate.name for par in
+                    parameters+insn.assignees if isinstance(par, SubArrayRef)
+                    and (par.swept_inames)]
+        if args_to_unpack is None:
+            args_to_unpack = [par.subscript.aggregate.name for par in
                     parameters+insn.assignees if isinstance(par, SubArrayRef)
                     and (par.swept_inames)]
 
         # {{{ sanity checks for args
 
-        assert isinstance(args, list)
+        assert isinstance(args_to_pack, list)
+        assert isinstance(args_to_unpack, list)
 
-        for arg in args:
+        for arg in args_to_pack:
             found_sub_array_ref = False
+
             for par in parameters + insn.assignees:
+                # checking that the given args is a sub array ref
                 if isinstance(par, SubArrayRef) and (
                         par.subscript.aggregate.name == arg):
                     found_sub_array_ref = True
@@ -90,11 +101,17 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
             if not found_sub_array_ref:
                 raise LoopyError("No match found for packing arg '%s' of call '%s' "
                         "at insn '%s'." % (arg, call_name, insn.id))
+        for arg in args_to_unpack:
+            if arg not in args_to_pack:
+                raise LoopyError("Argument %s should be packed in order to be "
+                        "unpacked." % arg)
 
         # }}}
 
-        packing = []
-        unpacking = []
+        packing_insns = []
+        unpacking_insns = []
+
+        # {{{ handling ilp tags
 
         from loopy.kernel.data import IlpBaseTag, VectorizeTag
         import islpy as isl
@@ -118,6 +135,8 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
                         dim_type, i, ilp_inames_map[var(old_iname)].name)
             new_domains.append(new_domain)
 
+        # }}}
+
         from pymbolic.mapper.substitutor import make_subst_func
         from loopy.symbolic import SubstitutionMapper
 
@@ -128,7 +147,8 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
         new_id_to_parameters = {}
 
         for id, p in id_to_parameters:
-            if isinstance(p, SubArrayRef) and p.subscript.aggregate.name in args:
+            if isinstance(p, SubArrayRef) and (p.subscript.aggregate.name in
+                    args_to_pack):
                 new_pack_inames = ilp_inames_map.copy()  # packing-specific inames
                 new_unpack_inames = ilp_inames_map.copy()  # unpacking-specific iname
 
@@ -201,7 +221,7 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
 
                 # }}}
 
-                packing.append(Assignment(
+                packing_insns.append(Assignment(
                     assignee=pack_lhs_assignee,
                     expression=pack_subst_mapper.map_subscript(p.subscript),
                     within_inames=insn.within_inames - ilp_inames | set(
@@ -212,16 +232,17 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
                     depends_on_is_final=True
                 ))
 
-                unpacking.append(Assignment(
-                    expression=unpack_rhs,
-                    assignee=unpack_subst_mapper.map_subscript(p.subscript),
-                    within_inames=insn.within_inames - ilp_inames | set(
-                        new_unpack_inames[i].name for i in p.swept_inames) | (
-                            new_ilp_inames),
-                    id=ing(insn.id+"_unpack"),
-                    depends_on=frozenset([insn.id]),
-                    depends_on_is_final=True
-                ))
+                if p.subscript.aggregate.name in args_to_unpack:
+                    unpacking_insns.append(Assignment(
+                        expression=unpack_rhs,
+                        assignee=unpack_subst_mapper.map_subscript(p.subscript),
+                        within_inames=insn.within_inames - ilp_inames | set(
+                            new_unpack_inames[i].name for i in p.swept_inames) | (
+                                new_ilp_inames),
+                        id=ing(insn.id+"_unpack"),
+                        depends_on=frozenset([insn.id]),
+                        depends_on_is_final=True
+                    ))
 
                 # {{{ creating the sweep inames for the new sub array refs
 
@@ -248,24 +269,22 @@ def pack_and_unpack_args_for_call(kernel, call_name, args=None):
             else:
                 new_id_to_parameters[id] = p
 
-        if packing:
+        if packing_insns:
             subst_mapper = SubstitutionMapper(make_subst_func(ilp_inames_map))
-            new_insn = insn.with_transformed_expressions(subst_mapper)
+            new_call_insn = insn.with_transformed_expressions(subst_mapper)
             new_params = tuple(subst_mapper(new_id_to_parameters[i]) for i, _ in
                     enumerate(parameters))
             new_assignees = tuple(subst_mapper(new_id_to_parameters[-i-1])
                     for i, _ in enumerate(insn.assignees))
-            packing.append(
-                new_insn.copy(
-                    depends_on=new_insn.depends_on | set(
-                        pack.id for pack in packing),
-                    within_inames=new_insn.within_inames - ilp_inames | (
+            new_call_insn = new_call_insn.copy(
+                    depends_on=new_call_insn.depends_on | set(
+                        pack.id for pack in packing_insns),
+                    within_inames=new_call_insn.within_inames - ilp_inames | (
                         new_ilp_inames),
-                    expression=new_insn.expression.function(*new_params),
-                    assignees=new_assignees
-                )
-            )
-            old_insn_to_new_insns[insn] = packing + unpacking
+                    expression=new_call_insn.expression.function(*new_params),
+                    assignees=new_assignees)
+            old_insn_to_new_insns[insn] = (packing_insns + [new_call_insn] +
+                    unpacking_insns)
 
     if old_insn_to_new_insns:
         new_instructions = []
