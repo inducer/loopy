@@ -702,6 +702,7 @@ class CallableKernel(InKernelCallable):
                 arg_id_to_descr=arg_id_to_descr)
 
     def with_packing_for_args(self):
+        from loopy.kernel.data import AddressSpace
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
         arg_id_to_descr = {}
@@ -711,7 +712,7 @@ class CallableKernel(InKernelCallable):
             arg_id_to_descr[pos] = ArrayArgDescriptor(
                     shape=arg.shape,
                     dim_tags=arg.dim_tags,
-                    mem_scope='Global')
+                    mem_scope=AddressSpace.GLOBAL)
 
         return self.copy(subkernel=self.subkernel,
                 arg_id_to_descr=arg_id_to_descr)

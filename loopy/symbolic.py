@@ -689,7 +689,9 @@ class ScopedFunction(p.Expression):
     Each instance of :class:`loopy.symbolic.ScopedFunction` in an expression
     points to an instance of
     :class:`loopy.kernel.function_interface.InKernelCallable` through the
-    mapping :attr:`loopy.kernel.LoopKernel.scoped_functions`.
+    mapping :attr:`loopy.kernel.LoopKernel.scoped_functions`. Refer
+    :ref:`ref_scoped_function` for a slightly detailed explanation on scoped
+    functions.
 
     .. attribute:: function
 
