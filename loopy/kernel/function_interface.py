@@ -905,7 +905,6 @@ class CallableKernel(InKernelCallable):
                 new_insns.append(insn)
 
         kernel = kernel.copy(instructions=new_insns)
-        # TODO: resolve name clash here
         kernel.scoped_functions.update(callee_knl.scoped_functions)
 
         # }}}
