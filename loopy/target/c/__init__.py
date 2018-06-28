@@ -453,7 +453,7 @@ def scope_c_math_functions(target, identifier):
     represented by :arg:`identifier` is known in C, otherwise returns *None*.
     """
     if identifier in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
-            "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor", "max", "min"]:
+            "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin"]:
         return CMathCallable(name=identifier)
     return None
 

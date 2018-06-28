@@ -1686,8 +1686,8 @@ def simplify_using_aff(kernel, expr):
     except TypeError:
         return expr
     except UnknownVariableError:
-        integers = deps & set(t for t, v in kernel.temporary_variables.items() if np.issubdtype(v.dtype, np.integer))
-        names = sorted(list(integers))  # need to sort for deterministic code generation
+        integer_vars = deps & set(t for t, v in kernel.temporary_variables.items() if np.issubdtype(v.dtype, np.integer))
+        names = sorted(list(integer_vars))  # need to sort for deterministic code generation
         nd = domain.dim(isl.dim_type.set)
         domain = domain.add_dims(isl.dim_type.set, len(names))
         for i, name in enumerate(names):
