@@ -1404,12 +1404,7 @@ def simplify_using_aff(kernel, expr):
     domain = kernel.get_inames_domain(inames)
 
     try:
-        with isl.SuppressedWarnings(kernel.isl_context):
-            aff = aff_from_expr(domain.space, expr)
-    except isl.Error:
-        return expr
-    except TypeError:
-        return expr
+        aff = guarded_aff_from_expr(domain.space, expr)
     except ExpressionToAffineConversionError:
         return expr
 
