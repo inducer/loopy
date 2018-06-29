@@ -43,6 +43,8 @@ else:
 from pyopencl.tools import pytest_generate_tests_for_pyopencl \
         as pytest_generate_tests
 
+from loopy.diagnostic import LoopyError
+
 __all__ = [
         "pytest_generate_tests",
         "cl"  # 'cl.create_some_context'
@@ -668,6 +670,26 @@ def test_domain_tree_nesting():
 
     for i in range(len(parents_per_domain)):
         assert depth(i) < 2
+
+
+def test_prefetch_through_indirect_access():
+    knl = lp.make_kernel("{[i, j, k]: 0 <= i,k < 10 and 0<=j<2}",
+        """
+        for i, j, k
+            a[map1[indirect[i], j], k] = 2
+        end
+        """,
+        [
+            lp.GlobalArg("a", strides=(2, 1), dtype=int),
+            lp.GlobalArg("map1", shape=(10, 10), dtype=int),
+            "..."
+            ],
+        target=lp.CTarget())
+
+    knl = lp.prioritize_loops(knl, "i,j,k")
+
+    with pytest.raises(LoopyError):
+        knl = lp.add_prefetch(knl, "map1[:, j]")
 
 
 if __name__ == "__main__":
