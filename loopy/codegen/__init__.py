@@ -415,8 +415,8 @@ def generate_code_v2(kernel):
     :returns: a :class:`CodeGenerationResult`
     """
 
-    from loopy.kernel import kernel_state
-    if kernel.state == kernel_state.INITIAL:
+    from loopy.kernel import KernelState
+    if kernel.state == KernelState.INITIAL:
         from loopy.preprocess import preprocess_kernel
         kernel = preprocess_kernel(kernel)
 
@@ -424,7 +424,7 @@ def generate_code_v2(kernel):
         from loopy.schedule import get_one_scheduled_kernel
         kernel = get_one_scheduled_kernel(kernel)
 
-    if kernel.state != kernel_state.SCHEDULED:
+    if kernel.state != KernelState.SCHEDULED:
         raise LoopyError("cannot generate code for a kernel that has not been "
                 "scheduled")
 
@@ -510,17 +510,18 @@ def generate_code_v2(kernel):
 
     from loopy.codegen.result import generate_host_or_device_program
 
-    # {{{ collecting ASTs of auxiliary kernels
+    # {{{ collect ASTs of auxiliary kernels
 
     auxiliary_dev_progs = []
 
-    # scanning through all the call instructions if there is any instance of
+    # scan through all the call instructions if there is any instance of
     # CallableKernel, whose code is to be generated.
+    from loopy.kernel.function_interface import CallableKernel
+
     for insn in kernel.instructions:
         if isinstance(insn, CallInstruction):
             in_knl_callable = kernel.scoped_functions[
                     insn.expression.function.name]
-            from loopy.kernel.function_interface import CallableKernel
             if isinstance(in_knl_callable, CallableKernel):
                 auxiliary_dev_prog = generate_code_v2(
                         in_knl_callable.subkernel.copy(
@@ -528,20 +529,22 @@ def generate_code_v2(kernel):
                             target=kernel.target)
                         ).device_programs[0].ast
                 auxiliary_dev_progs.append(auxiliary_dev_prog)
+
         elif isinstance(insn, (Assignment, NoOpInstruction, Assignment,
                                BarrierInstruction, CInstruction,
                                _DataObliviousInstruction)):
             pass
+
         else:
-            raise NotImplementedError("Unknown type of instruction %s." % (
-                str(type(insn))))
+            raise NotImplementedError("Unknown type of instruction %s" % (
+                type(insn).__name__))
 
     codegen_result = generate_host_or_device_program(
             codegen_state,
             schedule_index=0)
 
-    # Modifying the first device program to add the auxiliary kernels
-    # as functions.
+    # Modify the first device program to add the auxiliary kernels
+    # as functions
     new_dev_prog = codegen_result.device_programs[0]
     for auxiliary_dev_prog in auxiliary_dev_progs:
         new_dev_prog = new_dev_prog.copy(
@@ -580,7 +583,7 @@ def generate_code_v2(kernel):
     for prea_gen in preamble_generators:
         preambles.extend(prea_gen(preamble_info))
 
-    # {{{ collecting preambles from all the in kernel callables.
+    # {{{ collect preambles from all the in kernel callables.
 
     in_knl_callable_collector = InKernelCallablesCollector(kernel)
 
@@ -592,7 +595,9 @@ def generate_code_v2(kernel):
         elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
             pass
         else:
-            raise NotImplementedError("Unkown instruction %s" % type(insn))
+            raise NotImplementedError(
+                    "Unknown instruction type '%s'"
+                    % type(insn).__name__)
 
     # }}}
 

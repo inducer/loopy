@@ -32,8 +32,8 @@ from loopy.kernel.array import ArrayBase
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (  # noqa
         InstructionBase,
-        memory_ordering,
-        memory_scope,
+        MemoryOrdering,
+        MemoryScope,
         VarAtomicity,
         AtomicInit,
         AtomicUpdate,
@@ -43,11 +43,12 @@ from loopy.kernel.instruction import (  # noqa
         CallInstruction,
         make_assignment,
         CInstruction)
+from warnings import warn
 
 
 class auto(object):  # noqa
     """A generic placeholder object for something that should be automatically
-    detected.  See, for example, the *shape* or *strides* argument of
+    determined.  See, for example, the *shape* or *strides* argument of
     :class:`GlobalArg`.
     """
 
@@ -243,9 +244,8 @@ def parse_tag(tag):
 
 # {{{ memory address space
 
-class AddressSpace:
-    """
-    Storage location of a variable.
+class AddressSpace(object):
+    """Storage location of a variable.
 
     .. attribute:: PRIVATE
     .. attribute:: LOCAL
@@ -268,7 +268,38 @@ class AddressSpace:
         elif val == cls.GLOBAL:
             return "global"
         else:
-            raise ValueError("unexpected value of MemoryAddressScope")
+            raise ValueError("unexpected value of AddressSpace")
+
+
+class _deprecated_temp_var_scope_property(property):  # noqa
+    def __get__(self, cls, owner):
+        warn("'temp_var_scope' is deprecated. Use 'AddressSpace'.",
+                DeprecationWarning, stacklevel=2)
+
+        return classmethod(self.fget).__get__(None, owner)()
+
+
+class temp_var_scope(object):  # noqa
+    """Deprecated. Use :class:`AddressSpace` instead.
+    """
+
+    @_deprecated_temp_var_scope_property
+    def PRIVATE(self):
+        return AddressSpace.PRIVATE
+
+    @_deprecated_temp_var_scope_property
+    def LOCAL(self):
+        return AddressSpace.LOCAL
+
+    @_deprecated_temp_var_scope_property
+    def GLOBAL(self):
+        return AddressSpace.GLOBAL
+
+    @classmethod
+    def stringify(cls, val):
+        warn("'temp_var_scope' is deprecated. Use 'AddressSpace'.",
+                DeprecationWarning, stacklevel=2)
+        return AddressSpace.stringify(val)
 
 # }}}
 
@@ -297,7 +328,6 @@ class KernelArgument(ImmutableRecord):
 
         import loopy as lp
         if dtype is lp.auto:
-            from warnings import warn
             warn("Argument/temporary data type should be None if unspecified, "
                     "not auto. This usage will be disallowed in 2018.",
                     DeprecationWarning, stacklevel=2)
@@ -313,26 +343,24 @@ class KernelArgument(ImmutableRecord):
 class ArrayArg(ArrayBase, KernelArgument):
     __doc__ = ArrayBase.__doc__ + (
         """
-        .. attribute:: memory_address_space
+        .. attribute:: address_space
 
             An attribute of :class:`AddressSpace` defining the address
-            space in which the array resides in the target memory layout.
-            Defaults to ``AddressSpace.GLOBAL``
+            space in which the array resides.
 
         .. attribute:: is_output_only
 
-            An instance of :class:`bool`. If set to *TRUE*, recorded to be
+            An instance of :class:`bool`. If set to *True*, recorded to be
             returned from the kernel.
         """)
 
     allowed_extra_kwargs = [
-            "memory_address_space",
+            "address_space",
             "is_output_only"]
 
     def __init__(self, *args, **kwargs):
-        # Defaulting the memory_address_space to be GLOBAL.
-        kwargs["memory_address_space"] = kwargs.pop(
-                "memory_address_space", AddressSpace.GLOBAL)
+        if "address_space" not in kwargs:
+            raise TypeError("'address_space' must be specified")
         kwargs["is_output_only"] = kwargs.pop("is_output_only", None)
 
         super(ArrayArg, self).__init__(*args, **kwargs)
@@ -342,16 +370,19 @@ class ArrayArg(ArrayBase, KernelArgument):
 
     def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
         return ast_builder.get_array_arg_decl(self.name + name_suffix,
-                self.memory_address_space, shape, dtype, is_written)
+                self.address_space, shape, dtype, is_written)
 
 
-class GlobalArg(ArrayBase, KernelArgument):
-    def __new__(cls, *args, **kwargs):
-        from warnings import warn
-        warn("Use of 'GlobalArg' is deprecated, use 'ArrayArg' instead.",
-                DeprecationWarning, stacklevel=2)
+# Making this a function prevents incorrect use in isinstance.
+# Note: This is *not* deprecated, as it is super-common and
+# incrementally more convenient to use than ArrayArg directly.
+def GlobalArg(*args, **kwargs):
+    address_space = kwargs.pop("address_space", None)
+    if address_space is not None:
+        raise TypeError("may not pass 'address_space' to GlobalArg")
+    kwargs["address_space"] = AddressSpace.GLOBAL
 
-        return ArrayArg(*args, **kwargs)
+    return ArrayArg(*args, **kwargs)
 
 
 class ConstantArg(ArrayBase, KernelArgument):
@@ -423,43 +454,12 @@ class InameArg(ValueArg):
 
 # {{{ temporary variable
 
-class _deprecated_temp_var_scope_property(property):  # noqa
-    def __get__(self, cls, owner):
-        from warnings import warn
-        warn("'temp_var_scope' is deprecated. Use 'AddressSpace'.",
-                DeprecationWarning, stacklevel=2)
-
-        return classmethod(self.fget).__get__(None, owner)()
-
-class temp_var_scope:  # noqa
-    """Deprecated. Use :class:`mem_adress_space` instead.
-    """
-
-    @_deprecated_temp_var_scope_property
-    def PRIVATE(self):
-        return AddressSpace.PRIVATE
-
-    @_deprecated_temp_var_scope_property
-    def LOCAL(self):
-        return AddressSpace.LOCAL
-
-    @_deprecated_temp_var_scope_property
-    def GLOBAL(self):
-        return AddressSpace.GLOBAL
-
-    @classmethod
-    def stringify(cls, val):
-        from warnings import warn
-        warn("'temp_var_scope' is deprecated. Use 'AddressSpace'.",
-                DeprecationWarning, stacklevel=2)
-        return AddressSpace.stringify
-
 
 class TemporaryVariable(ArrayBase):
     __doc__ = ArrayBase.__doc__ + """
     .. attribute:: storage_shape
     .. attribute:: base_indices
-    .. attribute:: scope
+    .. attribute:: address_space
 
         What memory this temporary variable lives in.
         One of the values in :class:`AddressSpace`,
@@ -471,10 +471,6 @@ class TemporaryVariable(ArrayBase):
         The name of a storage array that is to be used to actually
         hold the data in this temporary. Note that this storage
         array must not match any existing variable names.
-
-    .. attribute:: scope
-
-        One of :class:`AddressSpace`.
 
     .. attribute:: initializer
 
@@ -501,14 +497,14 @@ class TemporaryVariable(ArrayBase):
     allowed_extra_kwargs = [
             "storage_shape",
             "base_indices",
-            "scope",
+            "address_space",
             "base_storage",
             "initializer",
             "read_only",
             "_base_storage_access_may_be_aliasing",
             ]
 
-    def __init__(self, name, dtype=None, shape=(), scope=auto,
+    def __init__(self, name, dtype=None, shape=(), address_space=None,
             dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
             base_indices=None, storage_shape=None,
             base_storage=None, initializer=None, read_only=False,
@@ -518,6 +514,28 @@ class TemporaryVariable(ArrayBase):
         :arg shape: :class:`loopy.auto` or a shape tuple
         :arg base_indices: :class:`loopy.auto` or a tuple of base indices
         """
+
+        scope = kwargs.pop("scope", None)
+        if scope is not None:
+            warn("Passing 'scope' is deprecated. Use 'address_space' instead.",
+                    DeprecationWarning, stacklevel=2)
+
+            if address_space is not None:
+                raise ValueError("only one of 'scope' and 'address_space' "
+                        "may be specified")
+            else:
+                address_space = scope
+
+        del scope
+
+        if address_space is None:
+            address_space = auto
+
+        if address_space is None:
+            raise LoopyError(
+                    "temporary variable '%s': "
+                    "address_space must not be None"
+                    % name)
 
         if initializer is None:
             pass
@@ -579,7 +597,8 @@ class TemporaryVariable(ArrayBase):
                 dtype=dtype, shape=shape, strides=strides,
                 dim_tags=dim_tags, offset=offset, dim_names=dim_names,
                 order=order,
-                base_indices=base_indices, scope=scope,
+                base_indices=base_indices,
+                address_space=address_space,
                 storage_shape=storage_shape,
                 base_storage=base_storage,
                 initializer=initializer,
@@ -589,20 +608,33 @@ class TemporaryVariable(ArrayBase):
                 **kwargs)
 
     @property
-    def is_local(self):
-        """One of :class:`loopy.AddressSpace`."""
+    def scope(self):
+        warn("Use of 'TemporaryVariable.scope' is deprecated, "
+                "use 'TemporaryVariable.address_space' instead.",
+                DeprecationWarning, stacklevel=2)
 
-        if self.scope is auto:
-            return auto
-        elif self.scope == AddressSpace.LOCAL:
-            return True
-        elif self.scope == AddressSpace.PRIVATE:
-            return False
-        elif self.scope == AddressSpace.GLOBAL:
-            raise LoopyError("TemporaryVariable.is_local called on "
-                             "global temporary variable '%s'" % self.name)
-        else:
-            raise LoopyError("unexpected value of TemporaryVariable.scope")
+        return self.address_space
+
+    def copy(self, **kwargs):
+        address_space = kwargs.pop("address_space", None)
+        scope = kwargs.pop("scope", None)
+
+        if scope is not None:
+            warn("Passing 'scope' is deprecated. Use 'address_space' instead.",
+                    DeprecationWarning, stacklevel=2)
+
+            if address_space is not None:
+                raise ValueError("only one of 'scope' and 'address_space' "
+                        "may be specified")
+            else:
+                address_space = scope
+
+        del scope
+
+        if address_space is not None:
+            kwargs["address_space"] = address_space
+
+        return super(TemporaryVariable, self).copy(**kwargs)
 
     @property
     def nbytes(self):
@@ -619,7 +651,7 @@ class TemporaryVariable(ArrayBase):
                 shape_override=self.storage_shape)
 
     def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
-        if self.scope == AddressSpace.GLOBAL:
+        if self.address_space == AddressSpace.GLOBAL:
             return ast_builder.get_array_arg_decl(self.name + name_suffix,
                     AddressSpace.GLOBAL, shape, dtype, is_written)
         else:
@@ -627,10 +659,10 @@ class TemporaryVariable(ArrayBase):
                     "non-global temporary")
 
     def __str__(self):
-        if self.scope is auto:
+        if self.address_space is auto:
             scope_str = "auto"
         else:
-            scope_str = AddressSpace.stringify(self.scope)
+            scope_str = AddressSpace.stringify(self.address_space)
 
         return (
                 self.stringify(include_typename=False)
@@ -642,7 +674,7 @@ class TemporaryVariable(ArrayBase):
                 super(TemporaryVariable, self).__eq__(other)
                 and self.storage_shape == other.storage_shape
                 and self.base_indices == other.base_indices
-                and self.scope == other.scope
+                and self.address_space == other.address_space
                 and self.base_storage == other.base_storage
                 and (
                     (self.initializer is None and other.initializer is None)
@@ -661,7 +693,7 @@ class TemporaryVariable(ArrayBase):
         self.update_persistent_hash_for_shape(key_hash, key_builder,
                 self.storage_shape)
         key_builder.rec(key_hash, self.base_indices)
-        key_builder.rec(key_hash, self.scope)
+        key_builder.rec(key_hash, self.address_space)
         key_builder.rec(key_hash, self.base_storage)
 
         initializer = self.initializer

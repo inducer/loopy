@@ -94,10 +94,14 @@ class _UniqueVarNameGenerator(UniqueNameGenerator):
 
 # {{{ loop kernel object
 
-class kernel_state:  # noqa
+class KernelState:  # noqa
     INITIAL = 0
     PREPROCESSED = 1
     SCHEDULED = 2
+
+
+# FIXME Introduce noisy deprecation goop
+kernel_state = KernelState
 
 
 class LoopKernel(ImmutableRecordWithoutPickling):
@@ -189,7 +193,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     .. attribute:: state
 
-        A value from :class:`kernel_state`.
+        A value from :class:`KernelState`.
 
     .. attribute:: target
 
@@ -227,7 +231,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             index_dtype=np.int32,
             options=None,
 
-            state=kernel_state.INITIAL,
+            state=KernelState.INITIAL,
             is_called_from_host=True,
             target=None,
 
@@ -302,9 +306,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             raise TypeError("index_dtype must be signed")
 
         if state not in [
-                kernel_state.INITIAL,
-                kernel_state.PREPROCESSED,
-                kernel_state.SCHEDULED,
+                KernelState.INITIAL,
+                KernelState.PREPROCESSED,
+                KernelState.SCHEDULED,
                 ]:
             raise ValueError("invalid value for 'state'")
 
@@ -320,9 +324,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
 
         if function_scopers is None:
-            from loopy.library.function import loopy_specific_callable_scopers
-            # populating the function scopers from the target and the loopy
+            # populate the function scopers from the target and the loopy
             # specific callable scopers
+
+            from loopy.library.function import loopy_specific_callable_scopers
             function_scopers = [loopy_specific_callable_scopers] + (
                     target.get_device_ast_builder().function_scopers())
 
@@ -982,7 +987,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 | set(
                     tv.name
                     for tv in six.itervalues(self.temporary_variables)
-                    if tv.scope == AddressSpace.GLOBAL))
+                    if tv.address_space == AddressSpace.GLOBAL))
 
     # }}}
 
@@ -1217,13 +1222,13 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return set(
             tv.name
             for tv in six.itervalues(self.temporary_variables)
-            if tv.scope == AddressSpace.LOCAL)
+            if tv.address_space == AddressSpace.LOCAL)
 
     def local_mem_use(self):
         from loopy.kernel.data import AddressSpace
         return sum(
                 tv.nbytes for tv in six.itervalues(self.temporary_variables)
-                if tv.scope == AddressSpace.LOCAL)
+                if tv.address_space == AddressSpace.LOCAL)
 
     # }}}
 

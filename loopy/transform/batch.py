@@ -46,7 +46,7 @@ def temp_needs_batching_if_not_sequential(tv, batch_varying_args):
         # do not batch read_only temps  if not in
         # `batch_varying_args`
         return False
-    if tv.scope == AddressSpace.PRIVATE:
+    if tv.address_space == AddressSpace.PRIVATE:
         # do not batch private temps if not in `batch_varying args`
         return False
     return True

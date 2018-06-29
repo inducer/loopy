@@ -72,7 +72,7 @@ def synthesize_idis_for_extra_args(kernel, schedule_index):
 
     for arg in sched_item.extra_args:
         temporary = kernel.temporary_variables[arg]
-        assert temporary.scope == AddressSpace.GLOBAL
+        assert temporary.address_space == AddressSpace.GLOBAL
         idis.extend(
             temporary.decl_info(
                 kernel.target,

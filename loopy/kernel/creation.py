@@ -35,7 +35,7 @@ from loopy.symbolic import (
 from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
-        SubstitutionRule)
+        SubstitutionRule, AddressSpace)
 from loopy.kernel.instruction import (CInstruction, _DataObliviousInstruction,
         CallInstruction)
 from loopy.diagnostic import LoopyError, warn_with_kernel
@@ -1156,14 +1156,18 @@ class ArgumentGuesser:
             # other writable type of variable is an argument.
 
             return ArrayArg(arg_name,
-                    shape=lp.auto, offset=self.default_offset)
+                    shape=lp.auto,
+                    offset=self.default_offset,
+                    address_space=AddressSpace.GLOBAL)
 
         irank = self.find_index_rank(arg_name)
         if irank == 0:
             # read-only, no indices
             return ValueArg(arg_name)
         else:
-            return ArrayArg(arg_name, shape=lp.auto, offset=self.default_offset)
+            return ArrayArg(
+                    arg_name, shape=lp.auto, offset=self.default_offset,
+                    address_space=AddressSpace.GLOBAL)
 
     def convert_names_to_full_args(self, kernel_args):
         new_kernel_args = []
@@ -1449,7 +1453,7 @@ def create_temporaries(knl, default_order):
                 new_temp_vars[assignee_name] = lp.TemporaryVariable(
                         name=assignee_name,
                         dtype=temp_var_type,
-                        scope=lp.auto,
+                        address_space=lp.auto,
                         base_indices=lp.auto,
                         shape=lp.auto,
                         order=default_order,
@@ -1848,7 +1852,7 @@ class FunctionScoper(RuleAwareIdentityMapper):
     returns an instance of
     :class:`loopy.kernel.function_interface.InKernelCallable`.
 
-    **Example**: If given an expression of the form ``sin(x) + unknown_function(y) +
+    **Example:** If given an expression of the form ``sin(x) + unknown_function(y) +
     log(z)``, then the mapper would return ``ScopedFunction('sin')(x) +
     unknown_function(y) + ScopedFunction('log')(z)``.
 
@@ -1866,12 +1870,12 @@ class FunctionScoper(RuleAwareIdentityMapper):
         from loopy.symbolic import ScopedFunction
         if not isinstance(expr.function, ScopedFunction):
 
-            # searching the kernel for the function.
+            # search the kernel for the function
             in_knl_callable = self.kernel.find_scoped_function_identifier(
                     expr.function.name)
             if in_knl_callable:
-                # Associating the newly created ScopedFunction with the
-                # resolved in-kernel callable.
+                # associate the newly created ScopedFunction with the
+                # resolved in-kernel callable
                 self.scoped_functions[expr.function.name] = in_knl_callable
 
                 return type(expr)(
@@ -1879,20 +1883,22 @@ class FunctionScoper(RuleAwareIdentityMapper):
                         tuple(self.rec(child, expn_state)
                             for child in expr.parameters))
 
-        # This is an unknown function as of yet, hence not modifying it.
+        # this is an unknown function as of yet, do not modify it
         return super(FunctionScoper, self).map_call(expr, expn_state)
 
     def map_call_with_kwargs(self, expr, expn_state):
+        # FIXME duplicated logic with map_call
+
         from loopy.symbolic import ScopedFunction
         if not isinstance(expr.function, ScopedFunction):
 
-            # searching the kernel for the function.
+            # search the kernel for the function.
             in_knl_callable = self.kernel.find_scoped_function_identifier(
                     expr.function.name)
 
             if in_knl_callable:
-                # Associating the newly created ScopedFunction with the
-                # resolved in-kernel callable.
+                # associate the newly created ScopedFunction with the
+                # resolved in-kernel callable
                 self.scoped_functions[expr.function.name] = in_knl_callable
                 return type(expr)(
                         ScopedFunction(expr.function.name),
@@ -1903,7 +1909,7 @@ class FunctionScoper(RuleAwareIdentityMapper):
                             for key, val in six.iteritems(expr.kw_parameters))
                             )
 
-        # This is an unknown function as of yet, hence not modifying it.
+        # this is an unknown function as of yet, do not modify it
         return super(FunctionScoper, self).map_call_with_kwargs(expr,
                 expn_state)
 
@@ -1914,7 +1920,12 @@ class FunctionScoper(RuleAwareIdentityMapper):
                 SegmentedOp)
         from loopy.library.reduction import ArgExtOp
 
-        # Noting down the extra functions arising due to certain reductions.
+        # note down the extra functions arising due to certain reductions
+
+        # FIXME Discuss this. It cannot stay the way it is, because non-built-in
+        # reductions cannot add themselves to this list. We may need to change
+        # the reduction interface. Why don't reductions generate scoped functions
+        # in the first place?
         if isinstance(expr.operation, MaxReductionOperation):
             self.scoped_functions["max"] = (
                     self.kernel.find_scoped_function_identifier("max"))
@@ -2015,16 +2026,16 @@ class SliceToInameReplacer(IdentityMapper):
     """
     Converts slices to instances of :class:`loopy.symbolic.SubArrayRef`.
 
-    :attribute var_name_gen:
+    .. attribute:: var_name_gen
 
         Variable name generator, in order to generate unique inames within the
         kernel domain.
 
-    :attribute knl:
+    .. attribute:: knl
 
         An instance of :class:`loopy.LoopKernel`
 
-    :attribute iname_domains:
+    .. attribute:: iname_domains
 
         An instance of :class:`dict` to store the slices enountered in the
         expressions as a mapping from ``iname`` to a tuple of ``(start, stop,
@@ -2047,7 +2058,7 @@ class SliceToInameReplacer(IdentityMapper):
         swept_inames = []
         for i, index in enumerate(expr.index_tuple):
             if isinstance(index, Slice):
-                unique_var_name = self.var_name_gen(based_on="islice")
+                unique_var_name = self.var_name_gen(based_on="i")
                 if expr.aggregate.name in self.knl.arg_dict:
                     domain_length = self.knl.arg_dict[expr.aggregate.name].shape[i]
                 elif expr.aggregate.name in self.knl.temporary_variables:
@@ -2436,7 +2447,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     knl = create_temporaries(knl, default_order)
 
-    # Convert slices to iname domains
+    # convert slices to iname domains
     knl = realize_slices_as_sub_array_refs(knl)
 
     # -------------------------------------------------------------------------
@@ -2476,7 +2487,6 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_for_duplicate_names(knl)
     check_written_variable_names(knl)
 
-    # Function Lookup
     knl = scope_functions(knl)
 
     from loopy.preprocess import prepare_for_caching

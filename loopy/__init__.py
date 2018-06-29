@@ -37,7 +37,9 @@ from loopy.library.function import (
         default_function_mangler, single_arg_function_mangler)
 
 from loopy.kernel.instruction import (
-        memory_ordering, memory_scope, VarAtomicity, AtomicInit, AtomicUpdate,
+        MemoryOrdering, memory_ordering,
+        MemoryScope, memory_scope,
+        VarAtomicity, AtomicInit, AtomicUpdate,
         InstructionBase,
         MultiAssignmentBase, Assignment, ExpressionInstruction,
         CallInstruction, CInstruction, NoOpInstruction, BarrierInstruction)
@@ -45,13 +47,14 @@ from loopy.kernel.data import (
         auto,
         KernelArgument,
         ValueArg, ArrayArg, GlobalArg, ConstantArg, ImageArg,
-        temp_var_scope, TemporaryVariable, AddressSpace,
+        AddressSpace, temp_var_scope,
+        TemporaryVariable,
         SubstitutionRule,
         CallMangleInfo)
 from loopy.kernel.function_interface import (
         ScalarCallable)
 
-from loopy.kernel import LoopKernel, kernel_state
+from loopy.kernel import LoopKernel, KernelState, kernel_state
 from loopy.kernel.tools import (
         get_dot_dependency_graph,
         show_dependency_graph,
@@ -118,7 +121,7 @@ from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.add_barrier import add_barrier
-from loopy.transform.register_callable import (register_callable_kernel,
+from loopy.transform.callable import (register_callable_kernel,
         register_function_lookup, inline_callable_kernel)
 from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
 
@@ -158,9 +161,13 @@ __all__ = [
 
         "auto",
 
-        "LoopKernel", "kernel_state",
+        "LoopKernel",
+        "KernelState", "kernel_state",  # lower case is deprecated
 
-        "memory_ordering", "memory_scope", "VarAtomicity",
+        "MemoryOrdering", "memory_ordering",  # lower case is deprecated
+        "MemoryScope", "memory_scope",  # lower case is deprecated
+
+        "VarAtomicity",
         "AtomicInit", "AtomicUpdate",
         "InstructionBase",
         "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
@@ -171,7 +178,8 @@ __all__ = [
 
         "KernelArgument",
         "ValueArg", "ArrayArg", "GlobalArg", "ConstantArg", "ImageArg",
-        "AddressSpace", "temp_var_scope", "TemporaryVariable",
+        "AddressSpace", "temp_var_scope",   # temp_var_scope is deprecated
+        "TemporaryVariable",
         "SubstitutionRule",
         "CallMangleInfo",
 

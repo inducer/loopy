@@ -647,20 +647,20 @@ class OpenCLCASTBuilder(CASTBuilder):
                 if (
                         isinstance(lhs_var, ArrayArg)
                         and
-                        lhs_var.memory_address_space == AddressSpace.GLOBAL):
+                        lhs_var.address_space == AddressSpace.GLOBAL):
                     var_kind = "__global"
                 elif (
                         isinstance(lhs_var, ArrayArg)
                         and
-                        lhs_var.memory_address_space == AddressSpace.LOCAL):
+                        lhs_var.address_space == AddressSpace.LOCAL):
                     var_kind = "__local"
                 elif (
                         isinstance(lhs_var, TemporaryVariable)
-                        and lhs_var.scope == AddressSpace.LOCAL):
+                        and lhs_var.address_space == AddressSpace.LOCAL):
                     var_kind = "__local"
                 elif (
                         isinstance(lhs_var, TemporaryVariable)
-                        and lhs_var.scope == AddressSpace.GLOBAL):
+                        and lhs_var.address_space == AddressSpace.GLOBAL):
                     var_kind = "__global"
                 else:
                     raise LoopyError("unexpected kind of variable '%s' in "

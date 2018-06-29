@@ -82,7 +82,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
     def map_variable(self, expr, type_context):
         tv = self.kernel.temporary_variables.get(expr.name)
 
-        if tv is not None and tv.scope == AddressSpace.PRIVATE:
+        if tv is not None and tv.address_space == AddressSpace.PRIVATE:
             # FIXME: This is a pretty coarse way of deciding what
             # private temporaries get duplicated. Refine? (See also
             # below in decl generation)
@@ -102,7 +102,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
         ary = self.find_array(expr)
 
         if (isinstance(ary, TemporaryVariable)
-                and ary.scope == AddressSpace.PRIVATE):
+                and ary.address_space == AddressSpace.PRIVATE):
             # generate access code for acccess to private-index temporaries
 
             gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
@@ -308,7 +308,7 @@ class ISPCASTBuilder(CASTBuilder):
 
         shape = decl_info.shape
 
-        if temp_var.scope == AddressSpace.PRIVATE:
+        if temp_var.address_space == AddressSpace.PRIVATE:
             # FIXME: This is a pretty coarse way of deciding what
             # private temporaries get duplicated. Refine? (See also
             # above in expr to code mapper)

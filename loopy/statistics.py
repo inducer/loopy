@@ -919,7 +919,7 @@ class LocalMemAccessCounter(MemAccessCounter):
         if name in self.knl.temporary_variables:
             array = self.knl.temporary_variables[name]
             if isinstance(array, TemporaryVariable) and (
-                    array.scope == AddressSpace.LOCAL):
+                    array.address_space == AddressSpace.LOCAL):
                 if index is None:
                     # no subscript
                     sub_map[MemAccess(
@@ -1739,8 +1739,8 @@ def gather_access_footprints(kernel, ignore_uncountable=False):
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     kernel = infer_unknown_types(kernel, expect_completion=True)
 
-    from loopy.kernel import kernel_state
-    if kernel.state < kernel_state.PREPROCESSED:
+    from loopy.kernel import KernelState
+    if kernel.state < KernelState.PREPROCESSED:
         kernel = preprocess_kernel(kernel)
 
     write_footprints = []
@@ -1793,8 +1793,8 @@ def gather_access_footprint_bytes(kernel, ignore_uncountable=False):
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     kernel = infer_unknown_types(kernel, expect_completion=True)
 
-    from loopy.kernel import kernel_state
-    if kernel.state < kernel_state.PREPROCESSED:
+    from loopy.kernel import KernelState
+    if kernel.state < KernelState.PREPROCESSED:
         kernel = preprocess_kernel(kernel)
 
     result = {}

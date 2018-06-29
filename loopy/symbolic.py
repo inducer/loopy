@@ -836,13 +836,13 @@ class SubArrayRef(p.Expression):
         name = self.subscript.aggregate.name
 
         if name in kernel.temporary_variables:
-            arg = kernel.temporary_variables[name]
-            mem_scope = arg.scope
             assert name not in kernel.arg_dict
+            arg = kernel.temporary_variables[name]
         else:
             assert name in kernel.arg_dict
             arg = kernel.arg_dict[name]
-            mem_scope = arg.memory_address_space
+
+        aspace = arg.address_space
 
         from loopy.kernel.array import FixedStrideArrayDimTag as DimTag
         from loopy.isl_helpers import simplify_via_aff
@@ -861,7 +861,8 @@ class SubArrayRef(p.Expression):
                     kernel.get_iname_bounds(iname.name).upper_bound_pw_aff)+1
                 for iname in self.swept_inames)
 
-        return ArrayArgDescriptor(mem_scope=mem_scope,
+        return ArrayArgDescriptor(
+                address_space=aspace,
                 dim_tags=sub_dim_tags,
                 shape=sub_shape)
 

@@ -336,7 +336,7 @@ class DifferentiationContext(object):
 
         if var_name in self.kernel.arg_dict:
             self.new_args.append(
-                lp.ArrayArg(
+                lp.GlobalArg(
                     new_var_name,
                     arg.dtype,
                     shape=shape,

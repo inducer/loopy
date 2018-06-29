@@ -82,6 +82,9 @@ def make_slab(space, iname, start, stop, step=1):
         An instance of :class:`int`  or an instance of
         :class:`islpy._isl.Aff` indicating the upper bound of
         ``step*iname``.
+
+    :arg step:
+        An instance of :class:`int`.
     """
     zero = isl.Aff.zero_on_domain(space)
 

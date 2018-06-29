@@ -515,11 +515,11 @@ def auto_test_vs_ref(
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     args = None
-    from loopy.kernel import kernel_state
+    from loopy.kernel import KernelState
     from loopy.target.pyopencl import PyOpenCLTarget
     if test_knl.state not in [
-            kernel_state.PREPROCESSED,
-            kernel_state.SCHEDULED]:
+            KernelState.PREPROCESSED,
+            KernelState.SCHEDULED]:
         if isinstance(test_knl.target, PyOpenCLTarget):
             test_knl = test_knl.copy(target=PyOpenCLTarget(ctx.devices[0]))
 

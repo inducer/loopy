@@ -1725,8 +1725,8 @@ def get_subkernels(kernel):
 
     See also :class:`loopy.schedule.CallKernel`.
     """
-    from loopy.kernel import kernel_state
-    if kernel.state != kernel_state.SCHEDULED:
+    from loopy.kernel import KernelState
+    if kernel.state != KernelState.SCHEDULED:
         raise LoopyError("Kernel must be scheduled")
 
     from loopy.schedule import CallKernel
@@ -1742,8 +1742,8 @@ def get_subkernel_to_insn_id_map(kernel):
     consisting of the instruction ids scheduled within the subkernel. The
     kernel must be scheduled.
     """
-    from loopy.kernel import kernel_state
-    if kernel.state != kernel_state.SCHEDULED:
+    from loopy.kernel import KernelState
+    if kernel.state != KernelState.SCHEDULED:
         raise LoopyError("Kernel must be scheduled")
 
     from loopy.schedule import (

@@ -512,7 +512,7 @@ class CASTBuilder(ASTBuilderBase):
                     six.itervalues(kernel.temporary_variables),
                     key=lambda tv: tv.name):
 
-                if tv.scope == AddressSpace.GLOBAL and (
+                if tv.address_space == AddressSpace.GLOBAL and (
                         tv.initializer is not None):
                     assert tv.read_only
 
@@ -606,12 +606,12 @@ class CASTBuilder(ASTBuilderBase):
             if not tv.base_storage:
                 for idi in decl_info:
                     # global temp vars are mapped to arguments or global declarations
-                    if tv.scope != AddressSpace.GLOBAL and (
+                    if tv.address_space != AddressSpace.GLOBAL and (
                             tv.name in sub_knl_temps):
                         decl = self.wrap_temporary_decl(
                                 self.get_temporary_decl(
                                     codegen_state, schedule_index, tv, idi),
-                                tv.scope)
+                                tv.address_space)
 
                         if tv.initializer is not None:
                             assert tv.read_only
@@ -627,7 +627,7 @@ class CASTBuilder(ASTBuilderBase):
                 base_storage_sizes.setdefault(tv.base_storage, []).append(
                         tv.nbytes)
                 base_storage_to_scope.setdefault(tv.base_storage, []).append(
-                        tv.scope)
+                        tv.address_space)
 
                 align_size = tv.dtype.itemsize
 
@@ -643,9 +643,9 @@ class CASTBuilder(ASTBuilderBase):
                     cast_decl = POD(self, idi.dtype, "")
                     temp_var_decl = POD(self, idi.dtype, idi.name)
 
-                    cast_decl = self.wrap_temporary_decl(cast_decl, tv.scope)
+                    cast_decl = self.wrap_temporary_decl(cast_decl, tv.address_space)
                     temp_var_decl = self.wrap_temporary_decl(
-                            temp_var_decl, tv.scope)
+                            temp_var_decl, tv.address_space)
 
                     if tv._base_storage_access_may_be_aliasing:
                         ptrtype = _ConstPointer
