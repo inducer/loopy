@@ -90,11 +90,11 @@ def build_per_access_storage_to_domain_map(storage_axis_exprs, domain,
 
     stor2sweep = None
 
-    from loopy.symbolic import aff_from_expr
+    from loopy.symbolic import guarded_aff_from_expr
 
     for saxis, sa_expr in zip(storage_axis_names, storage_axis_exprs):
         cns_expr = var(saxis+"'") - prime_sweep_inames(sa_expr)
-        cns_aff = aff_from_expr(set_space, cns_expr)
+        cns_aff = guarded_aff_from_expr(set_space, cns_expr)
         cns = isl.Constraint.equality_from_aff(cns_aff)
 
         cns_map = isl.BasicMap.from_constraint(cns)

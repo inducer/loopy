@@ -49,6 +49,9 @@ __all__ = [
         ]
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
+
+
 def test_nonsense_reduction(ctx_factory):
     ctx = ctx_factory()
 
@@ -235,7 +238,8 @@ def test_global_parallel_reduction(ctx_factory, size):
     from loopy.transform.data import reduction_arg_to_subst_rule
     knl = reduction_arg_to_subst_rule(knl, "i_outer")
     knl = lp.precompute(knl, "red_i_outer_arg", "i_outer",
-            temporary_scope=lp.temp_var_scope.GLOBAL)
+            temporary_scope=lp.temp_var_scope.GLOBAL,
+            default_tag="l.auto")
     knl = lp.realize_reduction(knl)
     knl = lp.add_dependency(
             knl, "writes:acc_i_outer",
@@ -275,7 +279,8 @@ def test_global_mc_parallel_reduction(ctx_factory, size):
     from loopy.transform.data import reduction_arg_to_subst_rule
     knl = reduction_arg_to_subst_rule(knl, "i_outer")
     knl = lp.precompute(knl, "red_i_outer_arg", "i_outer",
-            temporary_scope=lp.temp_var_scope.GLOBAL)
+            temporary_scope=lp.temp_var_scope.GLOBAL,
+            default_tag="l.auto")
     knl = lp.realize_reduction(knl)
     knl = lp.add_dependency(
             knl, "writes:acc_i_outer",
@@ -414,21 +419,22 @@ def test_parallel_multi_output_reduction(ctx_factory):
 
 
 def test_reduction_with_conditional():
-    # Test whether realization of a reduction inherits predicates
-    # of the original instruction. Tested with the CTarget, because
-    # the PyOpenCL target will hoist the conditional into the host
-    # code in this minimal example.
+    # The purpose of the 'l' iname is to force the entire kernel (including the
+    # predicate) into device code.
+
     knl = lp.make_kernel(
-                "{ [i] : 0<=i<42 }",
+                "{ [l,i] : 0<=l,i<42 }",
                 """
-                if n > 0
-                    <>b = sum(i, a[i])
+                if l > 0
+                    b[l] = sum(i, l*a[i])
                 end
                 """,
-                [lp.GlobalArg("a", dtype=np.float32, shape=(42,)),
-                 lp.GlobalArg("n", dtype=np.float32, shape=())],
-                target=lp.CTarget())
-    code = lp.generate_body(knl)
+                [lp.ValueArg("n", dtype=np.int32), "..."])
+
+    knl = lp.tag_inames(knl, "l:g.0")
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+    code = lp.generate_code_v2(knl).device_code()
+    print(code)
 
     # Check that the if appears before the loop that realizes the reduction.
     assert code.index("if") < code.index("for")
@@ -438,7 +444,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        from py.test.cmdline import main
+        from pytest import main
         main([__file__])
 
 # vim: foldmethod=marker

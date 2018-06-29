@@ -54,11 +54,45 @@ class auto(object):  # noqa
 
 # {{{ iname tags
 
+
+def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
+    """Return a subset of *tags* that matches type *tag_type*. Raises exception
+    if the number of tags found were greater than *max_num* or less than
+    *min_num*.
+
+    :arg tags: An iterable of tags.
+    :arg tag_type: a subclass of :class:`loopy.kernel.data.IndexTag`.
+    :arg max_num: the maximum number of tags expected to be found.
+    :arg min_num: the minimum number of tags expected to be found.
+    """
+
+    result = set(tag for tag in tags if isinstance(tag, tag_type))
+
+    def strify_tag_type():
+        if isinstance(tag_type, tuple):
+            return ", ".join(t.__name__ for t in tag_type)
+        else:
+            return tag_type.__name__
+
+    if max_num is not None:
+        if len(result) > max_num:
+            raise LoopyError("cannot have more than {0} tags "
+                    "of type(s): {1}".format(max_num, strify_tag_type()))
+    if min_num is not None:
+        if len(result) < min_num:
+            raise LoopyError("must have more than {0} tags "
+                    "of type(s): {1}".format(max_num, strify_tag_type()))
+    return result
+
+
 class IndexTag(ImmutableRecord):
     __slots__ = []
 
     def __hash__(self):
-        raise RuntimeError("use .key to hash index tags")
+        return hash(self.key)
+
+    def __lt__(self, other):
+        return self.__hash__() < other.__hash__()
 
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
@@ -219,8 +253,19 @@ class KernelArgument(ImmutableRecord):
 
         dtype = kwargs.pop("dtype", None)
         from loopy.types import to_loopy_type
-        kwargs["dtype"] = to_loopy_type(
+        dtype = to_loopy_type(
                 dtype, allow_auto=True, allow_none=True, target=target)
+
+        import loopy as lp
+        if dtype is lp.auto:
+            from warnings import warn
+            warn("Argument/temporary data type should be None if unspecified, "
+                    "not auto. This usage will be disallowed in 2018.",
+                    DeprecationWarning, stacklevel=2)
+
+            dtype = None
+
+        kwargs["dtype"] = dtype
 
         ImmutableRecord.__init__(self, **kwargs)
 
@@ -268,10 +313,10 @@ class ValueArg(KernelArgument):
 
     def __str__(self):
         import loopy as lp
-        if self.dtype is lp.auto:
-            type_str = "<auto>"
-        elif self.dtype is None:
-            type_str = "<runtime>"
+        assert self.dtype is not lp.auto
+
+        if self.dtype is None:
+            type_str = "<auto/runtime>"
         else:
             type_str = str(self.dtype)
 
@@ -449,7 +494,7 @@ class TemporaryVariable(ArrayBase):
                     % name)
 
         ArrayBase.__init__(self, name=intern(name),
-                dtype=dtype, shape=shape,
+                dtype=dtype, shape=shape, strides=strides,
                 dim_tags=dim_tags, offset=offset, dim_names=dim_names,
                 order=order,
                 base_indices=base_indices, scope=scope,
@@ -473,7 +518,7 @@ class TemporaryVariable(ArrayBase):
             return False
         elif self.scope == temp_var_scope.GLOBAL:
             raise LoopyError("TemporaryVariable.is_local called on "
-                    "global temporary variable '%s'" % self.name)
+                             "global temporary variable '%s'" % self.name)
         else:
             raise LoopyError("unexpected value of TemporaryVariable.scope")
 

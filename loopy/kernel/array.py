@@ -549,14 +549,54 @@ class ArrayBase(ImmutableRecord):
     .. attribute :: name
 
     .. attribute :: dtype
+        the :class:`loopy.loopytype` of the array.
+        if this is *none*, :mod:`loopy` will try to continue without
+        knowing the type of this array, where the idea is that precise
+        knowledge of the type will become available at invocation time.
+        :class:`loopy.compiledkernel` (and thereby
+        :meth:`loopy.loopkernel.__call__`) automatically add this type
+        information based on invocation arguments.
+
+        note that some transformations, such as :func:`loopy.add_padding`
+        cannot be performed without knowledge of the exact *dtype*.
 
     .. attribute :: shape
+
+        May be one of the following:
+
+        * *None*. In this case, no shape is intended to be specified,
+          only the strides will be used to access the array. Bounds checking
+          will not be performed.
+
+        * :class:`loopy.auto`. The shape will be determined by finding the
+          access footprint.
+
+        * a tuple like like :attr:`numpy.ndarray.shape`.
+
+          Each entry of the tuple is also allowed to be a :mod:`pymbolic`
+          expression involving kernel parameters, or a (potentially-comma
+          separated) or a string that can be parsed to such an expression.
+
+          Any element of the shape tuple not used to compute strides
+          may be *None*.
 
     .. attribute:: dim_tags
 
         See :ref:`data-dim-tags`.
 
     .. attribute:: offset
+
+        Offset from the beginning of the buffer to the point from
+            which the strides are counted. May be one of
+
+            * 0 or None
+            * a string (that is interpreted as an argument name).
+            * a pymbolic expression
+            * :class:`loopy.auto`, in which case an offset argument
+              is added automatically, immediately following this argument.
+              :class:`loopy.CompiledKernel` is even smarter in its treatment of
+              this case and will compile custom versions of the kernel based on
+              whether the passed arrays have offsets or not.
 
     .. attribute:: dim_names
 
@@ -567,6 +607,21 @@ class ArrayBase(ImmutableRecord):
         informational/documentational purpose. On occasion, they are used
         to generate more informative names than could be achieved by
         axis numbers.
+
+    .. attribute:: alignment
+
+        Memory alignment of the array in bytes. For temporary arrays,
+        this ensures they are allocated with this alignment. For arguments,
+        this entails a promise that the incoming array obeys this alignment
+        restriction.
+
+        Defaults to *None*.
+
+        If an integer N is given, the array would be declared
+        with ``__attribute__((aligned(N)))`` in code generation for
+        :class:`loopy.CTarget`.
+
+        .. versionadded:: 2018.1
 
     .. automethod:: __init__
     .. automethod:: __eq__
@@ -584,46 +639,18 @@ class ArrayBase(ImmutableRecord):
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
             dim_names=None, strides=None, order=None, for_atomic=False,
-            target=None,
+            target=None, alignment=None,
             **kwargs):
         """
         All of the following (except *name*) are optional.
         Specify either strides or shape.
 
-        :arg name: May contain multiple names separated by
-            commas, in which case multiple arguments,
-            each with identical properties, are created
-            for each name.
-        :arg dtype: the :class:`numpy.dtype` of the array.
-            If this is *None*, :mod:`loopy` will try to continue without
-            knowing the type of this array, where the idea is that precise
-            knowledge of the type will become available at invocation time.
-            :class:`loopy.CompiledKernel` (and thereby
-            :meth:`loopy.LoopKernel.__call__`) automatically add this type
-            information based on invocation arguments.
+        :arg name: When passed to :class:`loopy.make_kernel`, this may contain
+            multiple names separated by commas, in which case multiple arguments,
+            each with identical properties, are created for each name.
 
-            Note that some transformations, such as :func:`loopy.add_padding`
-            cannot be performed without knowledge of the exact *dtype*.
-
-        :arg shape: May be one of the following:
-
-            * *None*. In this case, no shape is intended to be specified,
-              only the strides will be used to access the array. Bounds checking
-              will not be performed.
-
-            * :class:`loopy.auto`. The shape will be determined by finding the
-              access footprint.
-
-            * a tuple like like :attr:`numpy.ndarray.shape`.
-
-              Each entry of the tuple is also allowed to be a :mod:`pymbolic`
-              expression involving kernel parameters, or a (potentially-comma
-              separated) or a string that can be parsed to such an expression.
-
-              Any element of the shape tuple not used to compute strides
-              may be *None*.
-
-            * A string which can be parsed into the previous form.
+        :arg shape: May be any of the things specified under :attr:`shape`,
+            or a string which can be parsed into the previous form.
 
         :arg dim_tags: A comma-separated list of tags as understood by
             :func:`parse_array_dim_tag`.
@@ -649,17 +676,9 @@ class ArrayBase(ImmutableRecord):
         :arg for_atomic:
             Whether the array is declared for atomic access, and, if necessary,
             using atomic-capable data types.
-        :arg offset: Offset from the beginning of the buffer to the point from
-            which the strides are counted. May be one of
+        :arg offset: (See :attr:`offset`)
+        :arg alignment: memory alignment in bytes
 
-            * 0 or None
-            * a string (that is interpreted as an argument name).
-            * a pymbolic expression
-            * :class:`loopy.auto`, in which case an offset argument
-              is added automatically, immediately following this argument.
-              :class:`loopy.CompiledKernel` is even smarter in its treatment of
-              this case and will compile custom versions of the kernel based on
-              whether the passed arrays have offsets or not.
         """
 
         for kwarg_name in kwargs:
@@ -671,6 +690,14 @@ class ArrayBase(ImmutableRecord):
         from loopy.types import to_loopy_type
         dtype = to_loopy_type(dtype, allow_auto=True, allow_none=True,
                 for_atomic=for_atomic, target=target)
+
+        if dtype is lp.auto:
+            from warnings import warn
+            warn("Argument/temporary data type should be None if unspecified, "
+                    "not auto. This usage will be disallowed in 2018.",
+                    DeprecationWarning, stacklevel=2)
+
+            dtype = None
 
         strides_known = strides is not None and strides is not lp.auto
         shape_known = shape is not None and shape is not lp.auto
@@ -805,6 +832,7 @@ class ArrayBase(ImmutableRecord):
                 offset=offset,
                 dim_names=dim_names,
                 order=order,
+                alignment=alignment,
                 **kwargs)
 
     def __eq__(self, other):
@@ -832,10 +860,10 @@ class ArrayBase(ImmutableRecord):
         if include_typename:
             info_entries.append(type(self).__name__)
 
-        if self.dtype is lp.auto:
-            type_str = "<auto>"
-        elif self.dtype is None:
-            type_str = "<runtime>"
+        assert self.dtype is not lp.auto
+
+        if self.dtype is None:
+            type_str = "<auto/runtime>"
         else:
             type_str = str(self.dtype)
 

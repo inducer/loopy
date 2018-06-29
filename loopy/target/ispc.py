@@ -418,28 +418,32 @@ class ISPCASTBuilder(CASTBuilder):
 
             new_terms = []
 
-            from loopy.kernel.data import LocalIndexTag
+            from loopy.kernel.data import LocalIndexTag, filter_iname_tags_by_type
             from loopy.symbolic import get_dependencies
 
             saw_l0 = False
             for term in terms:
                 if (isinstance(term, Variable)
-                        and isinstance(
-                            kernel.iname_to_tag.get(term.name), LocalIndexTag)
-                        and kernel.iname_to_tag.get(term.name).axis == 0):
-                    if saw_l0:
-                        raise LoopyError("streaming store must have stride 1 "
-                                "in local index, got: %s" % subscript)
-                    saw_l0 = True
-                    continue
+                            and kernel.iname_tags_of_type(term.name, LocalIndexTag)):
+                        tag, = kernel.iname_tags_of_type(
+                            term.name, LocalIndexTag, min_num=1, max_num=1)
+                        if tag.axis == 0:
+                            if saw_l0:
+                                raise LoopyError(
+                                    "streaming store must have stride 1 in "
+                                    "local index, got: %s" % subscript)
+                            saw_l0 = True
+                            continue
                 else:
                     for dep in get_dependencies(term):
-                        if (
-                                isinstance(
-                                    kernel.iname_to_tag.get(dep), LocalIndexTag)
-                                and kernel.iname_to_tag.get(dep).axis == 0):
-                            raise LoopyError("streaming store must have stride 1 "
-                                    "in local index, got: %s" % subscript)
+                        if filter_iname_tags_by_type(
+                                kernel.iname_to_tags[dep], LocalIndexTag):
+                            tag, = filter_iname_tags_by_type(
+                                kernel.iname_to_tags[dep], LocalIndexTag, 1)
+                            if tag.axis == 0:
+                                raise LoopyError(
+                                    "streaming store must have stride 1 in "
+                                    "local index, got: %s" % subscript)
 
                     new_terms.append(term)
 
@@ -452,10 +456,9 @@ class ISPCASTBuilder(CASTBuilder):
                         "data type")
 
             rhs_has_programindex = any(
-                    isinstance(
-                        kernel.iname_to_tag.get(dep), LocalIndexTag)
-                    and kernel.iname_to_tag.get(dep).axis == 0
-                    for dep in get_dependencies(insn.expression))
+                isinstance(tag, LocalIndexTag) and tag.axis == 0
+                for tag in kernel.iname_tags(dep)
+                for dep in get_dependencies(insn.expression))
 
             if not rhs_has_programindex:
                 rhs_code = "broadcast(%s, 0)" % rhs_code

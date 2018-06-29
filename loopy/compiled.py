@@ -24,8 +24,7 @@ THE SOFTWARE.
 
 
 from loopy.target.pyopencl_execution import (  # noqa
-        PyOpenCLKernelExecutor,
-        get_highlighted_cl_code)
+        PyOpenCLKernelExecutor)
 
 
 # {{{ compatibility

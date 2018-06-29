@@ -28,6 +28,7 @@ import pytest
 import loopy as lp
 import pyopencl as cl
 import sys
+import os
 
 pytestmark = pytest.mark.importorskip("fparser")
 
@@ -43,26 +44,30 @@ __all__ = [
         ]
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
+
+
 @pytest.mark.parametrize("Nq", [7])
 @pytest.mark.parametrize("ilp_multiple", [1, 2])
 @pytest.mark.parametrize("opt_level", [11])
 def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     ctx = ctx_factory()
 
-    filename = "strongVolumeKernels.f90"
+    filename = os.path.join(os.path.dirname(__file__), "strongVolumeKernels.f90")
     with open(filename, "r") as sourcef:
         source = sourcef.read()
 
     source = source.replace("datafloat", "real*4")
 
     hsv_r, hsv_s = [
-           knl for knl in lp.parse_fortran(source, filename, auto_dependencies=False)
+           knl for knl in lp.parse_fortran(source, filename, seq_dependencies=False)
            if "KernelR" in knl.name or "KernelS" in knl.name
            ]
     hsv_r = lp.tag_instructions(hsv_r, "rknl")
     hsv_s = lp.tag_instructions(hsv_s, "sknl")
     hsv = lp.fuse_kernels([hsv_r, hsv_s], ["_r", "_s"])
     #hsv = hsv_s
+    hsv = lp.add_nosync(hsv, "any", "writes:rhsQ", "writes:rhsQ", force=True)
 
     from gnuma_loopy_transforms import (
           fix_euler_parameters,
@@ -85,7 +90,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     if opt_level == 0:
         tap_hsv = hsv
 
-    hsv = lp.add_prefetch(hsv, "D[:,:]")
+    hsv = lp.add_prefetch(hsv, "D[:,:]", default_tag="l.auto")
 
     if opt_level == 1:
         tap_hsv = hsv
@@ -164,12 +169,14 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
         if prep_var_name.startswith("Jinv") or "_s" in prep_var_name:
             continue
         hsv = lp.precompute(hsv,
-            lp.find_one_rule_matching(hsv, prep_var_name+"_*subst*"))
+            lp.find_one_rule_matching(hsv, prep_var_name+"_*subst*"),
+            default_tag="l.auto")
 
     if opt_level == 3:
         tap_hsv = hsv
 
-    hsv = lp.add_prefetch(hsv, "Q[ii,jj,k,:,:,e]", sweep_inames=ilp_inames)
+    hsv = lp.add_prefetch(hsv, "Q[ii,jj,k,:,:,e]", sweep_inames=ilp_inames,
+            default_tag="l.auto")
 
     if opt_level == 4:
         tap_hsv = hsv
@@ -228,7 +235,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
         print(lp.stringify_stats_mapping(op_map))
 
         print("MEM")
-        gmem_map = lp.get_mem_access_map(hsv).to_bytes()
+        gmem_map = lp.get_mem_access_map(hsv, subgroup_size=32).to_bytes()
         print(lp.stringify_stats_mapping(gmem_map))
 
     hsv = lp.set_options(hsv, cl_build_options=[
@@ -253,7 +260,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        from py.test.cmdline import main
+        from pytest import main
         main([__file__])
 
 # vim: foldmethod=marker

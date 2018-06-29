@@ -52,6 +52,34 @@ __all__ = [
         ]
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
+
+
+def test_globals_decl_once_with_multi_subprogram(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    np.random.seed(17)
+    a = np.random.randn(16)
+    cnst = np.random.randn(16)
+    knl = lp.make_kernel(
+            "{[i, ii]: 0<=i, ii<n}",
+            """
+            out[i] = a[i]+cnst[i]{id=first}
+            out[ii] = 2*out[ii]+cnst[ii]{id=second}
+            """,
+            [lp.TemporaryVariable(
+                'cnst', shape=('n'), initializer=cnst,
+                scope=lp.temp_var_scope.GLOBAL,
+                read_only=True), '...'])
+    knl = lp.fix_parameters(knl, n=16)
+    knl = lp.add_barrier(knl, "id:first", "id:second")
+
+    knl = lp.split_iname(knl, "i", 2, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.split_iname(knl, "ii", 2, outer_tag="g.0", inner_tag="l.0")
+    evt, (out,) = knl(queue, a=a)
+    assert np.linalg.norm(out-((2*(a+cnst)+cnst))) <= 1e-15
+
+
 def test_complicated_subst(ctx_factory):
     #ctx = ctx_factory()
 
@@ -542,7 +570,7 @@ def test_unknown_arg_shape(ctx_factory):
         assumptions="m<=%d and m>=1 and n mod %d = 0" % (bsize[0], bsize[0]))
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
-    cl_kernel_info = CompiledKernel(ctx, knl).cl_kernel_info(frozenset())  # noqa
+    kernel_info = CompiledKernel(ctx, knl).kernel_info(frozenset())  # noqa
 
 # }}}
 
@@ -618,10 +646,11 @@ def test_vector_ilp_with_prefetch(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 128, inner_tag="l.0")
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
-    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"])
+    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"],
+            default_tag="l.auto")
 
     cknl = lp.CompiledKernel(ctx, knl)
-    cknl.cl_kernel_info()
+    cknl.kernel_info()
 
     import re
     code = cknl.get_code()
@@ -1035,6 +1064,77 @@ def test_atomic(ctx_factory, dtype):
     knl = lp.split_iname(knl, "i", 512)
     knl = lp.split_iname(knl, "i_inner", 128, outer_tag="unr", inner_tag="g.0")
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=10000))
+
+
+@pytest.mark.parametrize("dtype", [np.int32, np.int64, np.float32, np.float64])
+def test_atomic_load(ctx_factory, dtype):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    from loopy.kernel.data import temp_var_scope as scopes
+    n = 10
+    vec_width = 4
+
+    if (
+            np.dtype(dtype).itemsize == 8
+            and "cl_khr_int64_base_atomics" not in ctx.devices[0].extensions):
+        pytest.skip("64-bit atomics not supported on device")
+
+    import pyopencl.version  # noqa
+    if (
+            cl.version.VERSION < (2015, 2)
+            and dtype == np.int64):
+        pytest.skip("int64 RNG not supported in PyOpenCL < 2015.2")
+
+    knl = lp.make_kernel(
+            "{ [i,j]: 0<=i,j<n}",
+            """
+            for j
+                <> upper = 0  {id=init_upper}
+                <> lower = 0  {id=init_lower}
+                temp = 0 {id=init, atomic}
+                for i
+                    upper = upper + i * a[i] {id=sum0,dep=init_upper}
+                    lower = lower - b[i] {id=sum1,dep=init_lower}
+                end
+                temp = temp + lower {id=temp_sum, dep=sum*:init, atomic,\
+                                           nosync=init}
+                ... lbarrier {id=lb2, dep=temp_sum}
+                out[j] = upper / temp {id=final, dep=lb2, atomic,\
+                                           nosync=init:temp_sum}
+            end
+            """,
+            [
+                lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
+                lp.GlobalArg("a", dtype, shape=lp.auto),
+                lp.GlobalArg("b", dtype, shape=lp.auto),
+                lp.TemporaryVariable('temp', dtype, for_atomic=True,
+                                     scope=scopes.LOCAL),
+                "..."
+                ],
+            silenced_warnings=["write_race(init)", "write_race(temp_sum)"])
+    knl = lp.fix_parameters(knl, n=n)
+    knl = lp.split_iname(knl, "j", vec_width, inner_tag="l.0")
+    _, out = knl(queue, a=np.arange(n, dtype=dtype), b=np.arange(n, dtype=dtype))
+    assert np.allclose(out, np.full_like(out, ((1 - 2 * n) / 3.0)))
+
+
+@pytest.mark.parametrize("dtype", [np.int32, np.int64, np.float32, np.float64])
+def test_atomic_init(dtype):
+    vec_width = 4
+
+    knl = lp.make_kernel(
+            "{ [i,j]: 0<=i<100 }",
+            """
+            out[i%4] = 0 {id=init, atomic=init}
+            """,
+            [
+                lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
+                "..."
+                ],
+            silenced_warnings=["write_race(init)"])
+    knl = lp.split_iname(knl, 'i', vec_width, inner_tag='l.0')
+    print(knl)
+    print(lp.generate_code_v2(knl).device_code())
 
 
 def test_within_inames_and_reduction():
@@ -1512,8 +1612,10 @@ def test_missing_temporary_definition_detection():
 def test_missing_definition_check_respects_aliases():
     # Based on https://github.com/inducer/loopy/issues/69
     knl = lp.make_kernel("{ [i] : 0<=i<n }",
-         ["a[i] = 0",
-          "c[i] = b[i]"],
+            """
+            a[i] = 0
+            c[i] = b[i]  {dep_query=writes:a}
+            """,
          temporary_variables={
              "a": lp.TemporaryVariable("a",
                         dtype=np.float64, shape=("n",), base_storage="base"),
@@ -1621,7 +1723,8 @@ def test_finite_difference_expr_subst(ctx_factory):
             fused0_knl, "inew", 128, outer_tag="g.0", inner_tag="l.0")
 
     precomp_knl = lp.precompute(
-            gpu_knl, "f_subst", "inew_inner", fetch_bounding_box=True)
+            gpu_knl, "f_subst", "inew_inner", fetch_bounding_box=True,
+            default_tag="l.auto")
 
     precomp_knl = lp.tag_inames(precomp_knl, {"j_0_outer": "unr"})
     precomp_knl = lp.set_options(precomp_knl, return_dict=True)
@@ -1750,7 +1853,7 @@ def test_nop(ctx_factory):
                 <> z[i] = z[i+1] + z[i]  {id=wr_z}
                 <> v[i] = 11  {id=wr_v}
                 ... nop {dep=wr_z:wr_v,id=yoink}
-                z[i] = z[i] - z[i+1] + v[i]
+                z[i] = z[i] - z[i+1] + v[i]  {dep=yoink}
             end
             """)
 
@@ -1774,7 +1877,7 @@ def test_global_barrier(ctx_factory):
                     <> z[i] = z[i+1] + z[i]  {id=wr_z,dep=top}
                     <> v[i] = 11  {id=wr_v,dep=top}
                     ... gbarrier {dep=wr_z:wr_v,id=yoink}
-                    z[i] = z[i] - z[i+1] + v[i] {id=iupd}
+                    z[i] = z[i] - z[i+1] + v[i] {id=iupd, dep=wr_z}
                 end
                 ... gbarrier {dep=iupd,id=postloop}
                 z[i] = z[i] - z[i+1] + v[i]  {dep=postloop}
@@ -2011,11 +2114,11 @@ def test_if_else(ctx_factory):
             "{ [i]: 0<=i<50}",
             """
             if i % 3 == 0
-                a[i] = 15
+                a[i] = 15  {nosync_query=writes:a}
             elif i % 3 == 1
-                a[i] = 11
+                a[i] = 11  {nosync_query=writes:a}
             else
-                a[i] = 3
+                a[i] = 3  {nosync_query=writes:a}
             end
             """
             )
@@ -2035,14 +2138,14 @@ def test_if_else(ctx_factory):
             for i
                 if i % 2 == 0
                     if i % 3 == 0
-                        a[i] = 15
+                        a[i] = 15  {nosync_query=writes:a}
                     elif i % 3 == 1
-                        a[i] = 11
+                        a[i] = 11  {nosync_query=writes:a}
                     else
-                        a[i] = 3
+                        a[i] = 3  {nosync_query=writes:a}
                     end
                 else
-                    a[i] = 4
+                    a[i] = 4  {nosync_query=writes:a}
                 end
             end
             """
@@ -2063,17 +2166,17 @@ def test_if_else(ctx_factory):
                 if i < 25
                     for j
                         if j % 2 == 0
-                            a[i, j] = 1
+                            a[i, j] = 1  {nosync_query=writes:a}
                         else
-                            a[i, j] = 0
+                            a[i, j] = 0  {nosync_query=writes:a}
                         end
                     end
                 else
                     for j
                         if j % 2 == 0
-                            a[i, j] = 0
+                            a[i, j] = 0  {nosync_query=writes:a}
                         else
-                            a[i, j] = 1
+                            a[i, j] = 1  {nosync_query=writes:a}
                         end
                     end
                 end
@@ -2267,8 +2370,9 @@ def test_nosync_option_parsing():
     assert "id=insn5, no_sync_with=insn1@any" in kernel_str
 
 
-def assert_barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
-    from loopy.schedule import (RunInstruction, Barrier, EnterLoop, LeaveLoop)
+def barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
+    from loopy.schedule import (RunInstruction, Barrier, EnterLoop, LeaveLoop,
+            CallKernel, ReturnFromKernel)
     watch_for_barrier = False
     seen_barrier = False
     loop_level = 0
@@ -2278,9 +2382,7 @@ def assert_barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
             if sched_item.insn_id == id1:
                 watch_for_barrier = True
             elif sched_item.insn_id == id2:
-                assert watch_for_barrier
-                assert seen_barrier
-                return
+                return watch_for_barrier and seen_barrier
         elif isinstance(sched_item, Barrier):
             if watch_for_barrier and loop_level not in ignore_barriers_in_levels:
                 seen_barrier = True
@@ -2288,6 +2390,11 @@ def assert_barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
             loop_level += 1
         elif isinstance(sched_item, LeaveLoop):
             loop_level -= 1
+        elif isinstance(sched_item, (CallKernel, ReturnFromKernel)):
+            pass
+        else:
+            raise RuntimeError("schedule item type '%s' not understood"
+                    % type(sched_item).__name__)
 
     raise RuntimeError("id2 was not seen")
 
@@ -2314,9 +2421,9 @@ def test_barrier_insertion_near_top_of_loop():
 
     print(knl)
 
-    assert_barrier_between(knl, "ainit", "tcomp")
-    assert_barrier_between(knl, "tcomp", "bcomp1")
-    assert_barrier_between(knl, "bcomp1", "bcomp2")
+    assert barrier_between(knl, "ainit", "tcomp")
+    assert barrier_between(knl, "tcomp", "bcomp1")
+    assert barrier_between(knl, "bcomp1", "bcomp2")
 
 
 def test_barrier_insertion_near_bottom_of_loop():
@@ -2341,8 +2448,8 @@ def test_barrier_insertion_near_bottom_of_loop():
 
     print(knl)
 
-    assert_barrier_between(knl, "bcomp1", "bcomp2")
-    assert_barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
+    assert barrier_between(knl, "bcomp1", "bcomp2")
+    assert barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
 
 
 def test_barrier_in_overridden_get_grid_size_expanded_kernel():
@@ -2366,16 +2473,9 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
     vecsize = 16
     knl = lp.split_iname(knl, 'i', vecsize, inner_tag='l.0')
 
+    from testlib import GridOverride
+
     # artifically expand via overridden_get_grid_sizes_for_insn_ids
-    class GridOverride(object):
-        def __init__(self, clean, vecsize=vecsize):
-            self.clean = clean
-            self.vecsize = vecsize
-
-        def __call__(self, insn_ids, ignore_auto=True):
-            gsize, _ = self.clean.get_grid_sizes_for_insn_ids(insn_ids, ignore_auto)
-            return gsize, (self.vecsize,)
-
     knl = knl.copy(overridden_get_grid_sizes_for_insn_ids=GridOverride(
         knl.copy(), vecsize))
     # make sure we can generate the code
@@ -2481,10 +2581,10 @@ def test_struct_assignment(ctx_factory):
         "{ [i]: 0<=i<N }",
         """
         for i
-            result[i].hit = i % 2
-            result[i].tmin = i
-            result[i].tmax = i+10
-            result[i].bi = i
+            result[i].hit = i % 2  {nosync_query=writes:result}
+            result[i].tmin = i  {nosync_query=writes:result}
+            result[i].tmax = i+10  {nosync_query=writes:result}
+            result[i].bi = i  {nosync_query=writes:result}
         end
         """,
         [
@@ -2540,8 +2640,8 @@ def test_fixed_parameters(ctx_factory):
     knl = lp.make_kernel(
             "[n] -> {[i]: 0 <= i < n}",
             """
-            <>tmp[i] = i
-            tmp[0] = 0
+            <>tmp[i] = i  {id=init}
+            tmp[0] = 0  {dep=init}
             """,
             fixed_parameters=dict(n=1))
 
@@ -2568,100 +2668,30 @@ def test_execution_backend_can_cache_dtypes(ctx_factory):
     knl(queue)
 
 
+def test_wildcard_dep_matching():
+    knl = lp.make_kernel(
+            "{[i]: 0 <= i < 10}",
+            """
+            <>a = 0 {id=insn1}
+            <>b = 0 {id=insn2,dep=insn?}
+            <>c = 0 {id=insn3,dep=insn*}
+            <>d = 0 {id=insn4,dep=insn[12]}
+            <>e = 0 {id=insn5,dep=insn[!1]}
+            """,
+            "...")
+
+    all_insns = set("insn%d" % i for i in range(1, 6))
+
+    assert knl.id_to_insn["insn1"].depends_on == set()
+    assert knl.id_to_insn["insn2"].depends_on == all_insns - set(["insn2"])
+    assert knl.id_to_insn["insn3"].depends_on == all_insns - set(["insn3"])
+    assert knl.id_to_insn["insn4"].depends_on == set(["insn1", "insn2"])
+    assert knl.id_to_insn["insn5"].depends_on == all_insns - set(["insn1", "insn5"])
+
+
 def test_preamble_with_separate_temporaries(ctx_factory):
     from loopy.kernel.data import temp_var_scope as scopes
     # create a function mangler
-
-    func_name = 'indirect'
-    func_arg_dtypes = (np.int32, np.int32, np.int32)
-    func_result_dtypes = (np.int32,)
-
-    def __indirectmangler(kernel, name, arg_dtypes):
-        """
-        A function that will return a :class:`loopy.kernel.data.CallMangleInfo`
-        to interface with the calling :class:`loopy.LoopKernel`
-        """
-        if name != func_name:
-            return None
-
-        from loopy.types import to_loopy_type
-        from loopy.kernel.data import CallMangleInfo
-
-        def __compare(d1, d2):
-            # compare dtypes ignoring atomic
-            return to_loopy_type(d1, for_atomic=True) == \
-                to_loopy_type(d2, for_atomic=True)
-
-        # check types
-        if len(arg_dtypes) != len(arg_dtypes):
-            raise Exception('Unexpected number of arguments provided to mangler '
-                            '{}, expected {}, got {}'.format(
-                                func_name, len(func_arg_dtypes), len(arg_dtypes)))
-
-        for i, (d1, d2) in enumerate(zip(func_arg_dtypes, arg_dtypes)):
-            if not __compare(d1, d2):
-                raise Exception('Argument at index {} for mangler {} does not '
-                                'match expected dtype.  Expected {}, got {}'.
-                                format(i, func_name, str(d1), str(d2)))
-
-        # get target for creation
-        target = arg_dtypes[0].target
-        return CallMangleInfo(
-            target_name=func_name,
-            result_dtypes=tuple(to_loopy_type(x, target=target) for x in
-                                func_result_dtypes),
-            arg_dtypes=arg_dtypes)
-
-    # create the preamble generator
-    def create_preamble(arr):
-        def __indirectpreamble(preamble_info):
-            # find a function matching our name
-            func_match = next(
-                (x for x in preamble_info.seen_functions
-                 if x.name == func_name), None)
-            desc = 'custom_funcs_indirect'
-            if func_match is not None:
-                from loopy.types import to_loopy_type
-                # check types
-                if tuple(to_loopy_type(x) for x in func_arg_dtypes) == \
-                        func_match.arg_dtypes:
-                    # if match, create our temporary
-                    var = lp.TemporaryVariable(
-                        'lookup', initializer=arr, dtype=arr.dtype, shape=arr.shape,
-                        scope=scopes.GLOBAL, read_only=True)
-                    # and code
-                    code = """
-            int {name}(int start, int end, int match)
-            {{
-                int result = start;
-                for (int i = start + 1; i < end; ++i)
-                {{
-                    if (lookup[i] == match)
-                        result = i;
-                }}
-                return result;
-            }}
-            """.format(name=func_name)
-
-            # generate temporary variable code
-            from cgen import Initializer
-            from loopy.target.c import generate_array_literal
-            codegen_state = preamble_info.codegen_state.copy(
-                is_generating_device_code=True)
-            kernel = preamble_info.kernel
-            ast_builder = codegen_state.ast_builder
-            target = kernel.target
-            decl_info, = var.decl_info(target, index_dtype=kernel.index_dtype)
-            decl = ast_builder.wrap_global_constant(
-                    ast_builder.get_temporary_decl(
-                        codegen_state, None, var,
-                        decl_info))
-            if var.initializer is not None:
-                decl = Initializer(decl, generate_array_literal(
-                    codegen_state, var, var.initializer))
-            # return generated code
-            yield (desc, '\n'.join([str(decl), code]))
-        return __indirectpreamble
 
     # and finally create a test
     n = 10
@@ -2691,10 +2721,24 @@ def test_preamble_with_separate_temporaries(ctx_factory):
         read_only=True),
      lp.GlobalArg('data', shape=(data.size,), dtype=np.float64)],
     )
+
     # fixt params, and add manglers / preamble
+    from testlib import (
+            SeparateTemporariesPreambleTestMangler,
+            SeparateTemporariesPreambleTestPreambleGenerator,
+            )
+    func_info = dict(
+            func_name='indirect',
+            func_arg_dtypes=(np.int32, np.int32, np.int32),
+            func_result_dtypes=(np.int32,),
+            arr=lookup
+            )
+
     kernel = lp.fix_parameters(kernel, **{'n': n})
-    kernel = lp.register_preamble_generators(kernel, [create_preamble(lookup)])
-    kernel = lp.register_function_manglers(kernel, [__indirectmangler])
+    kernel = lp.register_preamble_generators(
+            kernel, [SeparateTemporariesPreambleTestPreambleGenerator(**func_info)])
+    kernel = lp.register_function_manglers(
+            kernel, [SeparateTemporariesPreambleTestMangler(**func_info)])
 
     print(lp.generate_code(kernel)[0])
     # and call (functionality unimportant, more that it compiles)
@@ -2703,6 +2747,36 @@ def test_preamble_with_separate_temporaries(ctx_factory):
     # check that it actually performs the lookup correctly
     assert np.allclose(kernel(
         queue, data=data.flatten('C'))[1][0], data[offsets[:-1] + 1])
+
+
+def test_arg_inference_for_predicates():
+    knl = lp.make_kernel("{[i]: 0 <= i < 10}",
+            """
+            if incr[i]
+              a = a + 1
+            end
+            """)
+
+    assert "incr" in knl.arg_dict
+    assert knl.arg_dict["incr"].shape == (10,)
+
+
+def test_relaxed_stride_checks(ctx_factory):
+    # Check that loopy is compatible with numpy's relaxed stride rules.
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel("{[i,j]: 0 <= i <= n and 0 <= j <= m}",
+             """
+             a[i] = sum(j, A[i,j] * b[j])
+             """)
+
+    with cl.CommandQueue(ctx) as queue:
+        mat = np.zeros((1, 10), order="F")
+        b = np.zeros(10)
+
+        evt, (a,) = knl(queue, A=mat, b=b)
+
+        assert a == 0
 
 
 def test_add_prefetch_works_in_lhs_index():
@@ -2722,18 +2796,126 @@ def test_add_prefetch_works_in_lhs_index():
                 "..."
             ])
 
-    knl = lp.add_prefetch(knl, "a1_map", "k")
+    knl = lp.add_prefetch(knl, "a1_map", "k", default_tag="l.auto")
 
     from loopy.symbolic import get_dependencies
     for insn in knl.instructions:
         assert "a1_map" not in get_dependencies(insn.assignees)
 
 
+def test_check_for_variable_access_ordering():
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            """
+            a[i] = 12
+            a[i+1] = 13
+            """)
+
+    knl = lp.preprocess_kernel(knl)
+
+    from loopy.diagnostic import VariableAccessNotOrdered
+    with pytest.raises(VariableAccessNotOrdered):
+        lp.get_one_scheduled_kernel(knl)
+
+
+def test_check_for_variable_access_ordering_with_aliasing():
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            """
+            a[i] = 12
+            b[i+1] = 13
+            """,
+            [
+                lp.TemporaryVariable("a", shape="n+1", base_storage="tmp"),
+                lp.TemporaryVariable("b", shape="n+1", base_storage="tmp"),
+                ])
+
+    knl = lp.preprocess_kernel(knl)
+
+    from loopy.diagnostic import VariableAccessNotOrdered
+    with pytest.raises(VariableAccessNotOrdered):
+        lp.get_one_scheduled_kernel(knl)
+
+
+@pytest.mark.parametrize(("second_index", "expect_barrier"),
+        [
+            ("2*i", True),
+            ("2*i+1", False),
+            ])
+def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<128}",
+            """
+            a[2*i] = 12  {id=first}
+            a[%s] = 13  {id=second,dep=first}
+            """ % second_index,
+            [
+                lp.TemporaryVariable("a", lp.auto, shape=(256,),
+                    scope=lp.temp_var_scope.LOCAL),
+                ])
+
+    knl = lp.tag_inames(knl, "i:l.0")
+
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+
+    assert barrier_between(knl, "first", "second") == expect_barrier
+
+
+def test_half_complex_conditional(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[i]: 0 <= i < 10}",
+            """
+           tmp[i] = if(i < 5, 0, 0j)
+           """)
+
+    knl(queue)
+
+
+def test_dep_cycle_printing_and_error():
+    # https://gitlab.tiker.net/inducer/loopy/issues/140
+    # This kernel has two dep cycles.
+
+    knl = lp.make_kernel('{[i,j,k]: 0 <= i,j,k < 12}',
+    """
+        for j
+            for i
+                <> nu = i - 4
+                if nu > 0
+                    <> P_val = a[i, j] {id=pset0}
+                else
+                    P_val = 0.1 * a[i, j] {id=pset1}
+                end
+                <> B_sum = 0
+                for k
+                    B_sum = B_sum + k * P_val {id=bset, dep=pset*}
+                end
+                # here, we are testing that Kc is properly promoted to a vector dtype
+                <> Kc = P_val * B_sum {id=kset, dep=bset}
+                a[i, j] = Kc {dep=kset}
+            end
+        end
+    """,
+    [lp.GlobalArg('a', shape=(12, 12), dtype=np.int32)])
+
+    knl = lp.split_iname(knl, 'j', 4, inner_tag='vec')
+    knl = lp.split_array_axis(knl, 'a', 1, 4)
+    knl = lp.tag_array_axes(knl, 'a', 'N1,N0,vec')
+    knl = lp.preprocess_kernel(knl)
+
+    from loopy.diagnostic import DependencyCycleFound
+    with pytest.raises(DependencyCycleFound):
+        print(lp.generate_code(knl)[0])
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        from py.test.cmdline import main
+        from pytest import main
         main([__file__])
 
 # vim: foldmethod=marker

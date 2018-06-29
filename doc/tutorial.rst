@@ -25,6 +25,7 @@ import a few modules and set up a :class:`pyopencl.Context` and a
 
     >>> import loopy as lp
     >>> lp.set_caching_enabled(False)
+    >>> from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
 
     >>> from warnings import filterwarnings, catch_warnings
     >>> filterwarnings('error', category=lp.LoopyWarning)
@@ -111,9 +112,9 @@ always see loopy's view of a kernel by printing it.
     KERNEL: loopy_kernel
     ---------------------------------------------------------------------------
     ARGUMENTS:
-    a: GlobalArg, type: <runtime>, shape: (n), dim_tags: (N0:stride:1)
-    n: ValueArg, type: <runtime>
-    out: GlobalArg, type: <runtime>, shape: (n), dim_tags: (N0:stride:1)
+    a: GlobalArg, type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1)
+    n: ValueArg, type: <auto/runtime>
+    out: GlobalArg, type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1)
     ---------------------------------------------------------------------------
     DOMAINS:
     [n] -> { [i] : 0 <= i < n }
@@ -154,7 +155,7 @@ following:
   See :ref:`specifying-arguments`.
 
 * Loopy has not determined the type of ``a`` and ``out``. The data type is
-  given as ``<runtime>``, which means that these types will be determined
+  given as ``<auto/runtime>``, which means that these types will be determined
   by the data passed in when the kernel is invoked. Loopy generates (and
   caches!) a copy of the kernel for each combination of types passed in.
 
@@ -1037,7 +1038,7 @@ earlier:
 
 .. doctest::
 
-    >>> knl_pf = lp.add_prefetch(knl, "a", ["i_inner"])
+    >>> knl_pf = lp.add_prefetch(knl, "a", ["i_inner"], default_tag="l.0")
     >>> evt, (out,) = knl_pf(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -1157,7 +1158,7 @@ this, :mod:`loopy` will complain that global barrier needs to be inserted:
    >>> cgr = lp.generate_code_v2(knl)
    Traceback (most recent call last):
    ...
-   MissingBarrierError: Dependency 'rotate depends on maketmp' (for variable 'arr') requires synchronization by a global barrier (add a 'no_sync_with' instruction option to state that no synchronization is needed)
+   loopy.diagnostic.MissingBarrierError: Dependency 'rotate depends on maketmp' (for variable 'arr') requires synchronization by a global barrier (add a 'no_sync_with' instruction option to state that no synchronization is needed)
 
 The syntax for a inserting a global barrier instruction is
 ``... gbarrier``. :mod:`loopy` also supports manually inserting local
@@ -1200,7 +1201,7 @@ Here is what happens when we try to generate code for the kernel:
    >>> cgr = lp.generate_code_v2(knl)
    Traceback (most recent call last):
    ...
-   MissingDefinitionError: temporary variable 'tmp' gets used in subkernel 'rotate_v2_0' without a definition (maybe you forgot to call loopy.save_and_reload_temporaries?)
+   loopy.diagnostic.MissingDefinitionError: temporary variable 'tmp' gets used in subkernel 'rotate_v2_0' without a definition (maybe you forgot to call loopy.save_and_reload_temporaries?)
 
 This happens due to the kernel splitting done by :mod:`loopy`. The splitting
 happens when the instruction schedule is generated. To see the schedule, we
@@ -1396,7 +1397,7 @@ Attempting to create this kernel results in an error:
     ... # While trying to find shape axis 0 of argument 'out', the following exception occurred:
     Traceback (most recent call last):
     ...
-    StaticValueFindingError: a static maximum was not found for PwAff '[n] -> { [(1)] : n <= 1; [(n)] : n >= 2 }'
+    loopy.diagnostic.StaticValueFindingError: a static maximum was not found for PwAff '[n] -> { [(1)] : n <= 1; [(n)] : n >= 2 }'
 
 The problem is that loopy cannot find a simple, universally valid expression
 for the length of *out* in this case. Notice how the kernel accesses both the
@@ -1462,7 +1463,7 @@ sign that something is amiss:
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     Traceback (most recent call last):
     ...
-    WriteRaceConditionWarning: in kernel transpose: instruction 'a_fetch_rule' looks invalid: it assigns to indices based on local IDs, but its temporary 'a_fetch' cannot be made local because a write race across the iname(s) 'j_inner' would emerge. (Do you need to add an extra iname to your prefetch?) (add 'write_race_local(a_fetch_rule)' to silenced_warnings kernel attribute to disable)
+    loopy.diagnostic.WriteRaceConditionWarning: in kernel transpose: instruction 'a_fetch_rule' looks invalid: it assigns to indices based on local IDs, but its temporary 'a_fetch' cannot be made local because a write race across the iname(s) 'j_inner' would emerge. (Do you need to add an extra iname to your prefetch?) (add 'write_race_local(a_fetch_rule)' to silenced_warnings kernel attribute to disable)
 
 When we ask to see the code, the issue becomes apparent:
 
@@ -1545,20 +1546,18 @@ containing different types of data:
     >>> knl = lp.add_and_infer_dtypes(knl,
     ...     dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
 
-Note that loopy will infer the data types for arrays c and e from the
+Note that loopy will infer the data types for arrays ``c`` and ``e`` from the
 information provided. Now we will count the operations:
 
 .. doctest::
 
     >>> op_map = lp.get_op_map(knl)
     >>> print(lp.stringify_stats_mapping(op_map))
-    Op(np:dtype('float32'), add) : [m, l, n] -> { m * l * n : m > 0 and l > 0 and n > 0 }
-    Op(np:dtype('float32'), div) : [m, l, n] -> { m * l * n : m > 0 and l > 0 and n > 0 }
-    Op(np:dtype('float32'), mul) : [m, l, n] -> { m * l * n : m > 0 and l > 0 and n > 0 }
-    Op(np:dtype('float64'), add) : [m, l, n] -> { m * n : m > 0 and l > 0 and n > 0 }
-    Op(np:dtype('float64'), mul) : [m, l, n] -> { m * n : m > 0 and l > 0 and n > 0 }
-    Op(np:dtype('int32'), add) : [m, l, n] -> { m * n : m > 0 and l > 0 and n > 0 }
-    <BLANKLINE>
+    Op(np:dtype('float32'), add, workitem) : ...
+
+Each line of output will look roughly like::
+
+    Op(np:dtype('float32'), add, workitem) : [l, m, n] -> { l * m * n : l > 0 and m > 0 and n > 0 }
 
 :func:`loopy.get_op_map` returns a :class:`loopy.ToCountMap` of **{**
 :class:`loopy.Op` **:** :class:`islpy.PwQPolynomial` **}**. A
@@ -1579,12 +1578,13 @@ One way to evaluate these polynomials is with :func:`islpy.eval_with_dict`:
 .. doctest::
 
     >>> param_dict = {'n': 256, 'm': 256, 'l': 8}
-    >>> f32add = op_map[lp.Op(np.float32, 'add')].eval_with_dict(param_dict)
-    >>> f32div = op_map[lp.Op(np.float32, 'div')].eval_with_dict(param_dict)
-    >>> f32mul = op_map[lp.Op(np.float32, 'mul')].eval_with_dict(param_dict)
-    >>> f64add = op_map[lp.Op(np.float64, 'add')].eval_with_dict(param_dict)
-    >>> f64mul = op_map[lp.Op(np.float64, 'mul')].eval_with_dict(param_dict)
-    >>> i32add = op_map[lp.Op(np.int32, 'add')].eval_with_dict(param_dict)
+    >>> from loopy.statistics import CountGranularity as CG
+    >>> f32add = op_map[lp.Op(np.float32, 'add', CG.WORKITEM)].eval_with_dict(param_dict)
+    >>> f32div = op_map[lp.Op(np.float32, 'div', CG.WORKITEM)].eval_with_dict(param_dict)
+    >>> f32mul = op_map[lp.Op(np.float32, 'mul', CG.WORKITEM)].eval_with_dict(param_dict)
+    >>> f64add = op_map[lp.Op(np.float64, 'add', CG.WORKITEM)].eval_with_dict(param_dict)
+    >>> f64mul = op_map[lp.Op(np.float64, 'mul', CG.WORKITEM)].eval_with_dict(param_dict)
+    >>> i32add = op_map[lp.Op(np.int32, 'add', CG.WORKITEM)].eval_with_dict(param_dict)
     >>> print("%i\n%i\n%i\n%i\n%i\n%i" %
     ...     (f32add, f32div, f32mul, f64add, f64mul, i32add))
     524288
@@ -1615,14 +1615,17 @@ together into keys containing only the specified fields:
 
     >>> op_map_dtype = op_map.group_by('dtype')
     >>> print(lp.stringify_stats_mapping(op_map_dtype))
-    Op(np:dtype('float32'), None) : [m, l, n] -> { 3 * m * l * n : m > 0 and l > 0 and n > 0 }
-    Op(np:dtype('float64'), None) : [m, l, n] -> { 2 * m * n : m > 0 and l > 0 and n > 0 }
-    Op(np:dtype('int32'), None) : [m, l, n] -> { m * n : m > 0 and l > 0 and n > 0 }
+    Op(np:dtype('float32'), None, None) : ...
     <BLANKLINE>
     >>> f32op_count = op_map_dtype[lp.Op(dtype=np.float32)
     ...                           ].eval_with_dict(param_dict)
     >>> print(f32op_count)
     1572864
+
+The lines of output above might look like::
+
+    Op(np:dtype('float32'), None, None) : [m, l, n] -> { 3 * m * l * n : m > 0 and l > 0 and n > 0 }
+    Op(np:dtype('float64'), None, None) : [m, l, n] -> { 2 * m * n : m > 0 and l > 0 and n > 0 }
 
 See the reference page for :class:`loopy.ToCountMap` and :class:`loopy.Op` for
 more information on these functions.
@@ -1636,15 +1639,17 @@ we'll continue using the kernel from the previous example:
 
 .. doctest::
 
-    >>> mem_map = lp.get_mem_access_map(knl)
+    >>> mem_map = lp.get_mem_access_map(knl, subgroup_size=32)
     >>> print(lp.stringify_stats_mapping(mem_map))
-    MemAccess(global, np:dtype('float32'), 0, load, a) : [m, l, n] -> { 2 * m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float32'), 0, load, b) : [m, l, n] -> { m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float32'), 0, store, c) : [m, l, n] -> { m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float64'), 0, load, g) : [m, l, n] -> { m * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float64'), 0, load, h) : [m, l, n] -> { m * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float64'), 0, store, e) : [m, l, n] -> { m * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), {}, {}, load, a, subgroup) : ...
     <BLANKLINE>
+
+Each line of output will look roughly like::
+
+
+    MemAccess(global, np:dtype('float32'), {}, {}, load, a, subgroup) : [m, l, n] -> { 2 * m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), {}, {}, load, b, subgroup) : [m, l, n] -> { m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), {}, {}, store, c, subgroup) : [m, l, n] -> { m * l * n : m > 0 and l > 0 and n > 0 }
 
 :func:`loopy.get_mem_access_map` returns a :class:`loopy.ToCountMap` of **{**
 :class:`loopy.MemAccess` **:** :class:`islpy.PwQPolynomial` **}**.
@@ -1656,8 +1661,18 @@ we'll continue using the kernel from the previous example:
 - dtype: A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
   data type accessed.
 
-- stride: An :class:`int` that specifies stride of the memory access. A stride
-  of 0 indicates a uniform access (i.e. all threads access the same item).
+- lid_strides: A :class:`dict` of **{** :class:`int` **:**
+  :class:`pymbolic.primitives.Expression` or :class:`int` **}** that specifies
+  local strides for each local id in the memory access index. Local ids not
+  found will not be present in ``lid_strides.keys()``. Uniform access (i.e.
+  work-items within a sub-group access the same item) is indicated by setting
+  ``lid_strides[0]=0``, but may also occur when no local id 0 is found, in
+  which case the 0 key will not be present in lid_strides.
+
+- gid_strides: A :class:`dict` of **{** :class:`int` **:**
+  :class:`pymbolic.primitives.Expression` or :class:`int` **}** that specifies
+  global strides for each global id in the memory access index. Global ids not
+  found will not be present in ``gid_strides.keys()``.
 
 - direction: A :class:`str` that specifies the direction of memory access as
   **load** or **store**.
@@ -1669,13 +1684,13 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
 
 .. doctest::
 
-    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 0, 'load', 'g')
+    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, {}, {}, 'load', 'g', CG.SUBGROUP)
     ...                  ].eval_with_dict(param_dict)
-    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 0, 'store', 'e')
+    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, {}, {}, 'store', 'e', CG.SUBGROUP)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 0, 'load', 'a')
+    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, {}, {}, 'load', 'a', CG.SUBGROUP)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 0, 'store', 'c')
+    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, {}, {}, 'store', 'c', CG.SUBGROUP)
     ...                  ].eval_with_dict(param_dict)
     >>> print("f32 ld a: %i\nf32 st c: %i\nf64 ld g: %i\nf64 st e: %i" %
     ...       (f32ld_a, f32st_c, f64ld_g, f64st_e))
@@ -1693,18 +1708,13 @@ using :func:`loopy.ToCountMap.to_bytes` and :func:`loopy.ToCountMap.group_by`:
 
     >>> bytes_map = mem_map.to_bytes()
     >>> print(lp.stringify_stats_mapping(bytes_map))
-    MemAccess(global, np:dtype('float32'), 0, load, a) : [m, l, n] -> { 8 * m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float32'), 0, load, b) : [m, l, n] -> { 4 * m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float32'), 0, store, c) : [m, l, n] -> { 4 * m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float64'), 0, load, g) : [m, l, n] -> { 8 * m * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float64'), 0, load, h) : [m, l, n] -> { 8 * m * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float64'), 0, store, e) : [m, l, n] -> { 8 * m * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), {}, {}, load, a, subgroup) : ...
     <BLANKLINE>
     >>> global_ld_st_bytes = bytes_map.filter_by(mtype=['global']
     ...                                         ).group_by('direction')
     >>> print(lp.stringify_stats_mapping(global_ld_st_bytes))
-    MemAccess(None, None, None, load, None) : [m, l, n] -> { (16 * m + 12 * m * l) * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(None, None, None, store, None) : [m, l, n] -> { (8 * m + 4 * m * l) * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(None, None, None, None, load, None, None) : ...
+    MemAccess(None, None, None, None, store, None, None) : ...
     <BLANKLINE>
     >>> loaded = global_ld_st_bytes[lp.MemAccess(direction='load')
     ...                            ].eval_with_dict(param_dict)
@@ -1714,45 +1724,55 @@ using :func:`loopy.ToCountMap.to_bytes` and :func:`loopy.ToCountMap.group_by`:
     bytes loaded: 7340032
     bytes stored: 2621440
 
+The lines of output above might look like::
+
+    MemAccess(global, np:dtype('float32'), {}, {}, load, a, subgroup) : [m, l, n] -> { 8 * m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), {}, {}, load, b, subgroup) : [m, l, n] -> { 4 * m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), {}, {}, store, c, subgroup) : [m, l, n] -> { 4 * m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float64'), {}, {}, load, g, subgroup) : [m, l, n] -> { 8 * m * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float64'), {}, {}, load, h, subgroup) : [m, l, n] -> { 8 * m * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float64'), {}, {}, store, e, subgroup) : [m, l, n] -> { 8 * m * n : m > 0 and l > 0 and n > 0 }
+
 One can see how these functions might be useful in computing, for example,
 achieved memory bandwidth in byte/sec or performance in FLOP/sec.
 
 ~~~~~~~~~~~
 
 Since we have not tagged any of the inames or parallelized the kernel across
-threads (which would have produced iname tags), :func:`loopy.get_mem_access_map`
-considers the memory accesses *uniform*, so the *stride* of each access is 0.
-Now we'll parallelize the kernel and count the array accesses again. The
-resulting :class:`islpy.PwQPolynomial` will be more complicated this time.
+work-items (which would have produced iname tags), :func:`loopy.get_mem_access_map`
+finds no local or global id strides, leaving ``lid_strides`` and ``gid_strides``
+empty for each memory access. Now we'll parallelize the kernel and count the array
+accesses again. The resulting :class:`islpy.PwQPolynomial` will be more complicated
+this time.
 
 .. doctest::
 
     >>> knl_consec = lp.split_iname(knl, "k", 128,
     ...                             outer_tag="l.1", inner_tag="l.0")
-    >>> mem_map = lp.get_mem_access_map(knl_consec)
+    >>> mem_map = lp.get_mem_access_map(knl_consec, subgroup_size=32)
     >>> print(lp.stringify_stats_mapping(mem_map))
-    MemAccess(global, np:dtype('float32'), 1, load, a) : [m, l, n] -> { ... }
-    MemAccess(global, np:dtype('float32'), 1, load, b) : [m, l, n] -> { ... }
-    MemAccess(global, np:dtype('float32'), 1, store, c) : [m, l, n] -> { ... }
-    MemAccess(global, np:dtype('float64'), 1, load, g) : [m, l, n] -> { ... }
-    MemAccess(global, np:dtype('float64'), 1, load, h) : [m, l, n] -> { ... }
-    MemAccess(global, np:dtype('float64'), 1, store, e) : [m, l, n] -> { ... }
+    MemAccess(global, np:dtype('float32'), {0: 1, 1: 128}, {}, load, a, workitem) : ...
+    MemAccess(global, np:dtype('float32'), {0: 1, 1: 128}, {}, load, b, workitem) : ...
+    MemAccess(global, np:dtype('float32'), {0: 1, 1: 128}, {}, store, c, workitem) : ...
+    MemAccess(global, np:dtype('float64'), {0: 1, 1: 128}, {}, load, g, workitem) : ...
+    MemAccess(global, np:dtype('float64'), {0: 1, 1: 128}, {}, load, h, workitem) : ...
+    MemAccess(global, np:dtype('float64'), {0: 1, 1: 128}, {}, store, e, workitem) : ...
     <BLANKLINE>
 
-With this parallelization, consecutive threads will access consecutive array
+With this parallelization, consecutive work-items will access consecutive array
 elements in memory. The polynomials are a bit more complicated now due to the
 parallelization, but when we evaluate them, we see that the total number of
 array accesses has not changed:
 
 .. doctest::
 
-    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 1, 'load', 'g')
+    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, {0: 1, 1: 128}, {}, 'load', 'g', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 1, 'store', 'e')
+    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, {0: 1, 1: 128}, {}, 'store', 'e', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 1, 'load', 'a')
+    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, {0: 1, 1: 128}, {}, 'load', 'a', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 1, 'store', 'c')
+    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, {0: 1, 1: 128}, {}, 'store', 'c', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
     >>> print("f32 ld a: %i\nf32 st c: %i\nf64 ld g: %i\nf64 st e: %i" %
     ...       (f32ld_a, f32st_c, f64ld_g, f64st_e))
@@ -1763,36 +1783,36 @@ array accesses has not changed:
 
 ~~~~~~~~~~~
 
-To produce *nonconsecutive* array accesses with stride greater than 1, we'll
-switch the inner and outer tags in our parallelization of the kernel:
+To produce *nonconsecutive* array accesses with local id 0 stride greater than 1,
+we'll switch the inner and outer tags in our parallelization of the kernel:
 
 .. doctest::
 
     >>> knl_nonconsec = lp.split_iname(knl, "k", 128,
     ...                                outer_tag="l.0", inner_tag="l.1")
-    >>> mem_map = lp.get_mem_access_map(knl_nonconsec)
+    >>> mem_map = lp.get_mem_access_map(knl_nonconsec, subgroup_size=32)
     >>> print(lp.stringify_stats_mapping(mem_map))
-    MemAccess(global, np:dtype('float32'), 128, load, a) : [m, l, n] -> { ... }
-    MemAccess(global, np:dtype('float32'), 128, load, b) : [m, l, n] -> { ... }
-    MemAccess(global, np:dtype('float32'), 128, store, c) : [m, l, n] -> { ... }
-    MemAccess(global, np:dtype('float64'), 128, load, g) : [m, l, n] -> { ... }
-    MemAccess(global, np:dtype('float64'), 128, load, h) : [m, l, n] -> { ... }
-    MemAccess(global, np:dtype('float64'), 128, store, e) : [m, l, n] -> { ... }
+    MemAccess(global, np:dtype('float32'), {0: 128, 1: 1}, {}, load, a, workitem) : ...
+    MemAccess(global, np:dtype('float32'), {0: 128, 1: 1}, {}, load, b, workitem) : ...
+    MemAccess(global, np:dtype('float32'), {0: 128, 1: 1}, {}, store, c, workitem) : ...
+    MemAccess(global, np:dtype('float64'), {0: 128, 1: 1}, {}, load, g, workitem) : ...
+    MemAccess(global, np:dtype('float64'), {0: 128, 1: 1}, {}, load, h, workitem) : ...
+    MemAccess(global, np:dtype('float64'), {0: 128, 1: 1}, {}, store, e, workitem) : ...
     <BLANKLINE>
 
-With this parallelization, consecutive threads will access *nonconsecutive*
+With this parallelization, consecutive work-items will access *nonconsecutive*
 array elements in memory. The total number of array accesses still has not
 changed:
 
 .. doctest::
 
-    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 128, 'load', 'g')
+    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, {0: 128, 1: 1}, {}, 'load', 'g', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 128, 'store', 'e')
+    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, {0: 128, 1: 1}, {}, 'store', 'e', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 128, 'load', 'a')
+    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, {0: 128, 1: 1}, {}, 'load', 'a', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 128, 'store', 'c')
+    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, {0: 128, 1: 1}, {}, 'store', 'c', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
     >>> print("f32 ld a: %i\nf32 st c: %i\nf64 ld g: %i\nf64 st e: %i" %
     ...       (f32ld_a, f32st_c, f64ld_g, f64st_e))
@@ -1810,7 +1830,7 @@ criteria are more complicated than a simple list of allowable values:
     >>> def f(key):
     ...     from loopy.types import to_loopy_type
     ...     return key.dtype == to_loopy_type(np.float32) and \
-    ...            key.stride > 1
+    ...            key.lid_strides[0] > 1
     >>> count = mem_map.filter_by_func(f).eval_and_sum(param_dict)
     >>> print(count)
     2097152
@@ -1819,7 +1839,7 @@ Counting synchronization events
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :func:`loopy.get_synchronization_map` counts the number of synchronization
-events per **thread** in a kernel. First, we'll call this function on the
+events per **work-item** in a kernel. First, we'll call this function on the
 kernel from the previous example:
 
 .. doctest::
@@ -1877,8 +1897,8 @@ Now to make things more interesting, we'll create a kernel with barriers:
       }
     }
 
-In this kernel, when a thread performs the second instruction it uses data
-produced by *different* threads during the first instruction. Because of this,
+In this kernel, when a work-item performs the second instruction it uses data
+produced by *different* work-items during the first instruction. Because of this,
 barriers are required for correct execution, so loopy inserts them. Now we'll
 count the barriers using :func:`loopy.get_synchronization_map`:
 
@@ -1890,7 +1910,7 @@ count the barriers using :func:`loopy.get_synchronization_map`:
     kernel_launch : { 1 }
     <BLANKLINE>
 
-Based on the kernel code printed above, we would expect each thread to
+Based on the kernel code printed above, we would expect each work-item to
 encounter 50x10x2 barriers, which matches the result from
 :func:`loopy.get_synchronization_map`. In this case, the number of barriers
 does not depend on any inames, so we can pass an empty dictionary to

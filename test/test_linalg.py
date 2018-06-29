@@ -62,6 +62,9 @@ def check_float4(result, ref_result):
                 ref_result[comp], result[comp], rtol=1e-3, atol=1e-3), None
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
+
+
 def test_axpy(ctx_factory):
     logging.basicConfig(level="INFO")
     ctx = ctx_factory()
@@ -145,7 +148,8 @@ def test_transpose(ctx_factory):
             outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_iname(knl, "j", 16,
             outer_tag="g.1", inner_tag="l.0")
-    knl = lp.add_prefetch(knl, 'a', ["i_inner", "j_inner"])
+    knl = lp.add_prefetch(knl, 'a', ["i_inner", "j_inner"],
+            default_tag="l.auto")
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[dtype.itemsize*n**2*2/1e9], op_label=["GByte"],
@@ -181,8 +185,10 @@ def test_plain_matrix_mul(ctx_factory):
         knl = lp.split_iname(knl, "j", 16,
                 outer_tag="g.1", inner_tag="l.0")
         knl = lp.split_iname(knl, "k", 16)
-        knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
-        knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner", ])
+        knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"],
+                default_tag="l.auto")
+        knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner", ],
+                default_tag="l.auto")
 
         lp.auto_test_vs_ref(ref_knl, ctx, knl,
                 op_count=[vec_size*2*n**3/1e9], op_label=["GFlops"],
@@ -217,8 +223,8 @@ def test_variable_size_matrix_mul(ctx_factory):
             slabs=(0, 1))
     knl = lp.split_iname(knl, "k", 8, slabs=(0, 1))
 
-    knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
-    knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"])
+    knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"], default_tag="l.auto")
+    knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"], default_tag="l.auto")
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
@@ -252,12 +258,14 @@ def test_funny_shape_matrix_mul(ctx_factory):
             outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_iname(knl, "k", 32)
 
-    #knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
-    #knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"])
+    #knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"], default_tag="l.auto")
+    #knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"], default_tag="l.auto")
     knl = lp.extract_subst(knl, "a_acc", "a[i1,i2]", parameters="i1, i2")
     knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")
-    knl = lp.precompute(knl, "a_acc", "k_inner,i_inner")
-    knl = lp.precompute(knl, "b_acc", "j_inner,k_inner")
+    knl = lp.precompute(knl, "a_acc", "k_inner,i_inner",
+            default_tag="l.auto")
+    knl = lp.precompute(knl, "b_acc", "j_inner,k_inner",
+            default_tag="l.auto")
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
@@ -287,8 +295,8 @@ def test_rank_one(ctx_factory):
             assumptions="n >= 16")
 
     def variant_1(knl):
-        knl = lp.add_prefetch(knl, "a")
-        knl = lp.add_prefetch(knl, "b")
+        knl = lp.add_prefetch(knl, "a", default_tag="l.auto")
+        knl = lp.add_prefetch(knl, "b", default_tag="l.auto")
         knl = lp.prioritize_loops(knl, ["i", "j"])
         knl = lp.add_inames_to_insn(knl, "i", "writes:b_fetch")
         return knl
@@ -309,8 +317,8 @@ def test_rank_one(ctx_factory):
         knl = lp.split_iname(knl, "j", 16,
                 outer_tag="g.1", inner_tag="l.1")
 
-        knl = lp.add_prefetch(knl, "a", ["i_inner"])
-        knl = lp.add_prefetch(knl, "b", ["j_inner"])
+        knl = lp.add_prefetch(knl, "a", ["i_inner"], default_tag="l.auto")
+        knl = lp.add_prefetch(knl, "b", ["j_inner"], default_tag="l.auto")
         return knl
 
     def variant_4(knl):
@@ -376,7 +384,8 @@ def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
     knl = lp.split_iname(knl, "j", j_reg*j_chunks, outer_tag="g.1")
     knl = lp.split_iname(knl, "j_inner", j_reg, outer_tag="l.1", inner_tag="ilp")
     knl = lp.split_iname(knl, "k", 16)
-    knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner_inner", "i_inner_outer"])
+    knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner_inner", "i_inner_outer"],
+            default_tag="l.auto")
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
@@ -415,13 +424,16 @@ def test_intel_matrix_mul(ctx_factory):
     knl = lp.split_iname(knl, "k", 16)
     #knl = lp.split_iname(knl, "k_inner", 8, outer_tag="unr")
 
-    knl = lp.add_prefetch(knl, 'a', ["i_inner_inner", "k_inner", "i_inner_outer"])
-    knl = lp.add_prefetch(knl, 'b', ["j_inner_inner", "k_inner", "j_inner_outer"])
+    knl = lp.add_prefetch(knl, 'a', ["i_inner_inner", "k_inner", "i_inner_outer"],
+            default_tag="l.auto")
+    knl = lp.add_prefetch(knl, 'b', ["j_inner_inner", "k_inner", "j_inner_outer"],
+            default_tag="l.auto")
 
     # FIXME: Grouped prefetch
-    #knl = lp.add_prefetch(knl, 'a', ["k_inner", ("i_inner_inner", "i_inner_outer")])
+    #knl = lp.add_prefetch(knl, 'a', ["k_inner", ("i_inner_inner", "i_inner_outer")],
+    #           default_tag="l.auto")
     #knl = lp.add_prefetch(knl, 'b',
-    # ["k_inner", ("j_inner_inner", "j_inner_outer"),])
+    # ["k_inner", ("j_inner_inner", "j_inner_outer"),], default_tag="l.auto")
 
     #hints=["k_outer", "k_inner_outer", "k_inner_inner"]
 
@@ -472,9 +484,10 @@ def test_magma_fermi_matrix_mul(ctx_factory):
     knl = lp.split_iname(knl, "k", 16)
     knl = lp.split_iname(knl, "k_inner", 8, outer_tag="unr")
     # FIXME
-    #knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner_inner", "i_inner_outer"])
+    #knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner_inner", "i_inner_outer"],
+    #           default_tag="l.auto")
     #knl = lp.add_prefetch(knl, 'b',
-    #    ["k_inner", ("j_inner_inner", "j_inner_outer"),])
+    #    ["k_inner", ("j_inner_inner", "j_inner_outer"),], default_tag="l.auto")
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
@@ -515,8 +528,8 @@ def test_image_matrix_mul(ctx_factory):
     knl = lp.split_iname(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_iname(knl, "k", 32)
     # conflict-free
-    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
-    knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner"])
+    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"], default_tag="l.auto")
+    knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner"], default_tag="l.auto")
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
@@ -561,8 +574,9 @@ def no_test_image_matrix_mul_ilp(ctx_factory):
             outer_tag="ilp", inner_tag="l.0")
     knl = lp.split_iname(knl, "k", 2)
     # conflict-free?
-    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
-    knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
+    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"], default_tag="l.auto")
+    knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"],
+            default_tag="l.auto")
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
@@ -594,8 +608,8 @@ def test_fancy_matrix_mul(ctx_factory):
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_iname(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_iname(knl, "k", 16, slabs=(0, 1))
-    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
-    knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
+    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"], default_tag="l.auto")
+    knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"], default_tag="l.auto")
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
@@ -626,7 +640,7 @@ def test_small_batched_matvec(ctx_factory):
     seq_knl = knl
 
     align_bytes = 64
-    knl = lp.add_prefetch(knl, 'd[:,:]')
+    knl = lp.add_prefetch(knl, 'd[:,:]', default_tag="l.auto")
     pad_mult = lp.find_padding_multiple(knl, "f", 0, align_bytes)
     knl = lp.split_array_dim(knl, ("f", 0), pad_mult)
     knl = lp.add_padding(knl, "f", 0, align_bytes)
@@ -640,5 +654,5 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        from py.test.cmdline import main
+        from pytest import main
         main([__file__])

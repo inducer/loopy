@@ -91,7 +91,7 @@ class InstructionBase(ImmutableRecord):
 
     .. attribute:: no_sync_with
 
-        a :class:`frozenset` of tuples of the form `(insn_id, scope)`, where
+        a :class:`frozenset` of tuples of the form ``(insn_id, scope)``, where
         `insn_id` refers to :attr:`id` of :class:`Instruction` instances
         and `scope` is one of the following strings:
 
@@ -99,12 +99,19 @@ class InstructionBase(ImmutableRecord):
            - `"global"`
            - `"any"`.
 
-        This indicates no barrier synchronization is necessary with the given
-        instruction using barriers of type `scope`, even given the existence of
-        a dependency chain and apparently conflicting access.
+        An element ``(insn_id, scope)`` means "do not consider any variable
+        access conflicting for variables of ``scope`` between this instruction
+        and ``insn_id``".
+        Specifically, loopy will not complain even if it detects that accesses
+        potentially requiring ordering (e.g. by dependencies) exist, and it
+        will not emit barriers to guard any dependencies from this
+        instruction on ``insn_id`` that may exist.
 
         Note, that :attr:`no_sync_with` allows instruction matching through wildcards
         and match expression, just like :attr:`depends_on`.
+
+        This data is used specifically by barrier insertion and
+        :func:`loopy.check.enforce_variable_access_ordered`.
 
     .. rubric:: Conditionals
 
@@ -607,27 +614,7 @@ class VarAtomicity(object):
         return not self.__eq__(other)
 
 
-class AtomicInit(VarAtomicity):
-    """Describes initialization of an atomic variable. A subclass of
-    :class:`VarAtomicity`.
-    """
-
-    def update_persistent_hash(self, key_hash, key_builder):
-        """Custom hash computation function for use with
-        :class:`pytools.persistent_dict.PersistentDict`.
-        """
-
-        super(AtomicInit, self).update_persistent_hash(key_hash, key_builder)
-        key_builder.rec(key_hash, "AtomicInit")
-
-    def __str__(self):
-        return "update[%s]%s/%s" % (
-                self.var_name,
-                memory_ordering.to_string(self.ordering),
-                memory_scope.to_string(self.scope))
-
-
-class AtomicUpdate(VarAtomicity):
+class OrderedAtomic(VarAtomicity):
     """Properties of an atomic operation. A subclass of :class:`VarAtomicity`.
 
     .. attribute:: ordering
@@ -647,21 +634,65 @@ class AtomicUpdate(VarAtomicity):
         :class:`pytools.persistent_dict.PersistentDict`.
         """
 
-        super(AtomicUpdate, self).update_persistent_hash(key_hash, key_builder)
-        key_builder.rec(key_hash, "AtomicUpdate")
+        super(OrderedAtomic, self).update_persistent_hash(key_hash, key_builder)
+        key_builder.rec(key_hash, str(self.__class__.__name__))
         key_builder.rec(key_hash, self.ordering)
         key_builder.rec(key_hash, self.scope)
 
     def __eq__(self, other):
-        return (super(AtomicUpdate, self).__eq__(other)
+        return (super(OrderedAtomic, self).__eq__(other)
                 and self.ordering == other.ordering
                 and self.scope == other.scope)
 
     def __str__(self):
-        return "update[%s]%s/%s" % (
+        return "%s[%s]%s/%s" % (
+                self.op_name,
                 self.var_name,
                 memory_ordering.to_string(self.ordering),
                 memory_scope.to_string(self.scope))
+
+
+class AtomicInit(OrderedAtomic):
+    """Describes initialization of an atomic variable. A subclass of
+    :class:`OrderedAtomic`.
+
+    .. attribute:: ordering
+
+        One of the values from :class:`memory_ordering`
+
+    .. attribute:: scope
+
+        One of the values from :class:`memory_scope`
+    """
+    op_name = 'init'
+
+
+class AtomicUpdate(OrderedAtomic):
+    """Properties of an atomic update. A subclass of :class:`OrderedAtomic`.
+
+    .. attribute:: ordering
+
+        One of the values from :class:`memory_ordering`
+
+    .. attribute:: scope
+
+        One of the values from :class:`memory_scope`
+    """
+    op_name = 'update'
+
+
+class AtomicLoad(OrderedAtomic):
+    """Properties of an atomic load. A subclass of :class:`OrderedAtomic`.
+
+    .. attribute:: ordering
+
+        One of the values from :class:`memory_ordering`
+
+    .. attribute:: scope
+
+        One of the values from :class:`memory_scope`
+    """
+    op_name = 'load'
 
 # }}}
 
@@ -841,7 +872,8 @@ class Assignment(MultiAssignmentBase):
             result += " {%s}" % (": ".join(options))
 
         if self.predicates:
-            result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
+            result += "\n" + 10*" " + "if (%s)" % " and ".join(
+                    str(p) for p in self.predicates)
         return result
 
     # {{{ for interface uniformity with CallInstruction
@@ -1353,6 +1385,18 @@ class BarrierInstruction(_DataObliviousInstruction):
         warn("BarrierInstruction.kind is deprecated, use synchronization_kind "
              "instead", DeprecationWarning, stacklevel=2)
         return self.synchronization_kind
+
+# }}}
+
+
+# {{{ key getters
+
+def _get_insn_eq_key(insn):
+    return insn._key_builder.key()
+
+
+def _get_insn_hash_key(insn):
+    return insn._key_builder.hash_key()
 
 # }}}
 

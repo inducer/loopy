@@ -31,6 +31,9 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
+
+
 def test_tim2d(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
@@ -79,17 +82,17 @@ def test_tim2d(ctx_factory):
     def variant_orig(knl):
         knl = lp.tag_inames(knl, dict(i="l.0", j="l.1", e="g.0"))
 
-        knl = lp.add_prefetch(knl, "D[:,:]")
-        knl = lp.add_prefetch(knl, "u[e, :, :]")
+        knl = lp.add_prefetch(knl, "D[:,:]", default_tag="l.auto")
+        knl = lp.add_prefetch(knl, "u[e, :, :]", default_tag="l.auto")
 
-        knl = lp.precompute(knl, "ur(m,j)", ["m", "j"])
-        knl = lp.precompute(knl, "us(i,m)", ["i", "m"])
+        knl = lp.precompute(knl, "ur(m,j)", ["m", "j"], default_tag="l.auto")
+        knl = lp.precompute(knl, "us(i,m)", ["i", "m"], default_tag="l.auto")
 
-        knl = lp.precompute(knl, "Gux(m,j)", ["m", "j"])
-        knl = lp.precompute(knl, "Guy(i,m)", ["i", "m"])
+        knl = lp.precompute(knl, "Gux(m,j)", ["m", "j"], default_tag="l.auto")
+        knl = lp.precompute(knl, "Guy(i,m)", ["i", "m"], default_tag="l.auto")
 
-        knl = lp.add_prefetch(knl, "G$x[:,e,:,:]")
-        knl = lp.add_prefetch(knl, "G$y[:,e,:,:]")
+        knl = lp.add_prefetch(knl, "G$x[:,e,:,:]", default_tag="l.auto")
+        knl = lp.add_prefetch(knl, "G$y[:,e,:,:]", default_tag="l.auto")
 
         knl = lp.tag_inames(knl, dict(o="unr"))
         knl = lp.tag_inames(knl, dict(m="unr"))
@@ -112,5 +115,5 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        from py.test.cmdline import main
+        from pytest import main
         main([__file__])

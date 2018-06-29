@@ -37,9 +37,11 @@ from loopy.kernel.data import (
 from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
 from islpy import dim_type
+from pytools import ProcessLogger
 
 import six
 from six.moves import range, zip, intern
+import loopy.version
 
 import re
 
@@ -804,7 +806,7 @@ def parse_instructions(instructions, defines):
                             insn.groups
                             | insn_options_stack[-1]["groups"]),
                         conflicts_with_groups=(
-                            insn.groups
+                            insn.conflicts_with_groups
                             | insn_options_stack[-1]["conflicts_with_groups"]),
                         **kwargs)
 
@@ -1004,7 +1006,7 @@ def _find_existentially_quantified_inames(dom_str):
 
 
 def parse_domains(domains, defines):
-    if isinstance(domains, str):
+    if isinstance(domains, (isl.BasicSet, str)):
         domains = [domains]
 
     result = []
@@ -1106,6 +1108,9 @@ class ArgumentGuesser:
         self.all_written_names = set()
         from loopy.symbolic import get_dependencies
         for insn in instructions:
+            for pred in insn.predicates:
+                self.all_names.update(get_dependencies(self.submap(pred)))
+
             if isinstance(insn, MultiAssignmentBase):
                 for assignee_var_name in insn.assignee_var_names():
                     self.all_written_names.add(assignee_var_name)
@@ -1656,7 +1661,14 @@ def apply_default_order_to_args(kernel, default_order):
 
 # {{{ resolve instruction dependencies
 
-def _resolve_dependencies(knl, insn, deps):
+WILDCARD_SYMBOLS = "*?["
+
+
+def _is_wildcard(s):
+    return any(c in s for c in WILDCARD_SYMBOLS)
+
+
+def _resolve_dependencies(what, knl, insn, deps):
     from loopy import find_instructions
     from loopy.match import MatchExpressionBase
 
@@ -1670,18 +1682,23 @@ def _resolve_dependencies(knl, insn, deps):
                 if new_dep.id != insn.id:
                     new_deps.append(new_dep.id)
                     found_any = True
-        else:
+        elif _is_wildcard(dep):
             from fnmatch import fnmatchcase
             for other_insn in knl.instructions:
-                if fnmatchcase(other_insn.id, dep):
+                if other_insn.id != insn.id and fnmatchcase(other_insn.id, dep):
                     new_deps.append(other_insn.id)
                     found_any = True
+        else:
+            if dep in knl.id_to_insn:
+                new_deps.append(dep)
+                found_any = True
 
         if not found_any and knl.options.check_dep_resolution:
-            raise LoopyError("instruction '%s' declared a depency on '%s', "
+            raise LoopyError("instruction '%s' declared %s on '%s', "
                     "which did not resolve to any instruction present in the "
                     "kernel '%s'. Set the kernel option 'check_dep_resolution'"
-                    "to False to disable this check." % (insn.id, dep, knl.name))
+                    "to False to disable this check."
+                    % (insn.id, what, dep, knl.name))
 
     for dep_id in new_deps:
         if dep_id not in knl.id_to_insn:
@@ -1696,13 +1713,14 @@ def resolve_dependencies(knl):
 
     for insn in knl.instructions:
         new_insns.append(insn.copy(
-                    depends_on=_resolve_dependencies(knl, insn, insn.depends_on),
-                    no_sync_with=frozenset(
-                        (resolved_insn_id, nosync_scope)
-                        for nosync_dep, nosync_scope in insn.no_sync_with
-                        for resolved_insn_id in
-                        _resolve_dependencies(knl, insn, (nosync_dep,))),
-                    ))
+            depends_on=_resolve_dependencies(
+                "a dependency", knl, insn, insn.depends_on),
+            no_sync_with=frozenset(
+                (resolved_insn_id, nosync_scope)
+                for nosync_dep, nosync_scope in insn.no_sync_with
+                for resolved_insn_id in
+                _resolve_dependencies("nosync", knl, insn, (nosync_dep,))),
+            ))
 
     return knl.copy(instructions=new_insns)
 
@@ -1895,6 +1913,30 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         will be fixed to *value*. *name* may refer to :ref:`domain-parameters`
         or :ref:`arguments`. See also :func:`loopy.fix_parameters`.
 
+    :arg lang_version: The language version against which the kernel was
+        written, a tuple. To ensure future compatibility, copy the current value of
+        :data:`loopy.MOST_RECENT_LANGUAGE_VERSION` and pass that value.
+
+        (If you just pass :data:`loopy.MOST_RECENT_LANGUAGE_VERSION` directly,
+        breaking language changes *will* apply to your kernel without asking,
+        likely breaking your code.)
+
+        If not given, this value defaults to version **(2017, 2, 1)** and
+        a warning will be issued.
+
+        To set the kernel version for all :mod:`loopy` kernels in a (Python) source
+        file, you may simply say::
+
+            from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
+
+        If *lang_version* is not explicitly given, that version value will be used.
+
+        See also :ref:`language-versioning`.
+
+    .. versionchanged:: 2017.2.1
+
+        *lang_version* added.
+
     .. versionchanged:: 2017.2
 
         *fixed_parameters* added.
@@ -1904,8 +1946,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         *seq_dependencies* added.
     """
 
-    logger.info(
-            "%s: kernel creation start" % kwargs.get("name", "(unnamed)"))
+    creation_plog = ProcessLogger(
+            logger,
+            "%s: instantiate" % kwargs.get("name", "(unnamed)"))
 
     defines = kwargs.pop("defines", {})
     default_order = kwargs.pop("default_order", "C")
@@ -1938,6 +1981,60 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     from loopy.options import make_options
     options = make_options(options)
+
+    # {{{ handle kernel language version
+
+    from loopy.version import LANGUAGE_VERSION_SYMBOLS
+
+    version_to_symbol = dict(
+            (getattr(loopy.version, lvs), lvs)
+            for lvs in LANGUAGE_VERSION_SYMBOLS)
+
+    lang_version = kwargs.pop("lang_version", None)
+    if lang_version is None:
+        # {{{ peek into caller's module to look for LOOPY_KERNEL_LANGUAGE_VERSION
+
+        # This *is* gross. But it seems like the right thing interface-wise.
+        import inspect
+        caller_globals = inspect.currentframe().f_back.f_globals
+
+        for ver_sym in LANGUAGE_VERSION_SYMBOLS:
+            try:
+                lang_version = caller_globals[ver_sym]
+                break
+            except KeyError:
+                pass
+
+        # }}}
+
+        if lang_version is None:
+            from warnings import warn
+            from loopy.diagnostic import LoopyWarning
+            from loopy.version import (
+                    MOST_RECENT_LANGUAGE_VERSION,
+                    FALLBACK_LANGUAGE_VERSION)
+            warn("'lang_version' was not passed to make_kernel(). "
+                    "To avoid this warning, pass "
+                    "lang_version={ver} in this invocation. "
+                    "(Or say 'from loopy.version import "
+                    "{sym_ver}' in "
+                    "the global scope of the calling frame.)"
+                    .format(
+                        ver=MOST_RECENT_LANGUAGE_VERSION,
+                        sym_ver=version_to_symbol[MOST_RECENT_LANGUAGE_VERSION]
+                        ),
+                    LoopyWarning, stacklevel=2)
+
+            lang_version = FALLBACK_LANGUAGE_VERSION
+
+    if lang_version not in version_to_symbol:
+        raise LoopyError("Language version '%s' is not known." % (lang_version,))
+    if lang_version >= (2018, 1):
+        options = options.copy(enforce_variable_access_ordered=True)
+    if lang_version >= (2018, 2):
+        options = options.copy(ignore_boostable_into=True)
+
+    # }}}
 
     if isinstance(silenced_warnings, str):
         silenced_warnings = silenced_warnings.split(";")
@@ -2076,8 +2173,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     from loopy.preprocess import prepare_for_caching
     knl = prepare_for_caching(knl)
 
-    logger.info(
-            "%s: kernel creation done" % knl.name)
+    creation_plog.done()
 
     return knl
 

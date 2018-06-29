@@ -237,6 +237,12 @@ class TypeInferenceMapper(CombineMapper):
         else:
             raise TypeInferenceFailure("Cannot deduce type of constant '%s'" % expr)
 
+    def map_type_cast(self, expr):
+        subtype, = self.rec(expr.child)
+        if not issubclass(subtype.dtype.type, np.number):
+            raise LoopyError("Can't cast a '%s' to '%s'" % (subtype, expr.type))
+        return [expr.type]
+
     def map_subscript(self, expr):
         return self.rec(expr.aggregate)
 
@@ -306,15 +312,8 @@ class TypeInferenceMapper(CombineMapper):
 
         from loopy.kernel.data import TemporaryVariable, KernelArgument
         import loopy as lp
-        if isinstance(obj, TemporaryVariable):
-            result = [obj.dtype]
-            if result[0] is lp.auto:
-                self.symbols_with_unknown_types.add(expr.name)
-                return []
-            else:
-                return result
-
-        elif isinstance(obj, KernelArgument):
+        if isinstance(obj, (KernelArgument, TemporaryVariable)):
+            assert obj.dtype is not lp.auto
             result = [obj.dtype]
             if result[0] is None:
                 self.symbols_with_unknown_types.add(expr.name)
@@ -338,7 +337,7 @@ class TypeInferenceMapper(CombineMapper):
         if fields is None:
             raise LoopyError("cannot look up attribute '%s' in "
                     "non-aggregate expression '%s'"
-                    % (expr.aggregate, expr.name))
+                    % (expr.name, expr.aggregate))
 
         try:
             field = fields[expr.name]
@@ -509,10 +508,12 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     import loopy as lp
     for tv in six.itervalues(kernel.temporary_variables):
-        if tv.dtype is lp.auto:
+        assert tv.dtype is not lp.auto
+        if tv.dtype is None:
             names_for_type_inference.append(tv.name)
 
     for arg in kernel.args:
+        assert arg.dtype is not lp.auto
         if arg.dtype is None:
             names_for_type_inference.append(arg.name)
 
@@ -582,6 +583,9 @@ def infer_unknown_types(kernel, expect_completion=False):
             failed = not result
             if not failed:
                 new_dtype, = result
+                if new_dtype.target is None:
+                    new_dtype = new_dtype.with_target(kernel.target)
+
                 debug("     success: %s", new_dtype)
                 if new_dtype != item.dtype:
                     debug("     changed from: %s", item.dtype)

@@ -27,7 +27,7 @@ import six
 from six.moves import range, zip
 
 from loopy.symbolic import (
-        TaggedVariable, Reduction, LinearSubscript, )
+        TaggedVariable, Reduction, LinearSubscript, TypeCast)
 from loopy.diagnostic import LoopyError, LoopyWarning
 
 
@@ -59,13 +59,16 @@ from loopy.kernel.tools import (
         find_most_recent_global_barrier,
         get_subkernels,
         get_subkernel_to_insn_id_map)
+from loopy.types import to_loopy_type
 from loopy.kernel.creation import make_kernel, UniqueName
 from loopy.library.reduction import register_reduction_parser
 
 # {{{ import transforms
 
+from loopy.version import VERSION, MOST_RECENT_LANGUAGE_VERSION
+
 from loopy.transform.iname import (
-        set_loop_priority, prioritize_loops,
+        set_loop_priority, prioritize_loops, untag_inames,
         split_iname, chunk_iname, join_inames, tag_inames, duplicate_inames,
         rename_iname, remove_unused_inames,
         split_reduction_inward, split_reduction_outward,
@@ -108,7 +111,7 @@ from loopy.transform.padding import (
         find_padding_multiple,
         add_padding)
 
-from loopy.transform.ilp import realize_ilp
+from loopy.transform.privatize import privatize_temporaries_with_inames
 from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
@@ -118,8 +121,8 @@ from loopy.transform.add_barrier import add_barrier
 from loopy.type_inference import infer_unknown_types
 from loopy.preprocess import preprocess_kernel, realize_reduction
 from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
-from loopy.statistics import (ToCountMap, stringify_stats_mapping, Op,
-        MemAccess, get_op_poly, get_op_map, get_lmem_access_poly,
+from loopy.statistics import (ToCountMap, CountGranularity, stringify_stats_mapping,
+        Op, MemAccess, get_op_poly, get_op_map, get_lmem_access_poly,
         get_DRAM_access_poly, get_gmem_access_poly, get_mem_access_map,
         get_synchronization_poly, get_synchronization_map,
         gather_access_footprints, gather_access_footprint_bytes)
@@ -136,7 +139,7 @@ from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
         parse_fortran)
 
 from loopy.target import TargetBase, ASTBuilderBase
-from loopy.target.c import CTarget, generate_header
+from loopy.target.c import CTarget, ExecutableCTarget, generate_header
 from loopy.target.cuda import CudaTarget
 from loopy.target.opencl import OpenCLTarget
 from loopy.target.pyopencl import PyOpenCLTarget
@@ -145,7 +148,7 @@ from loopy.target.numba import NumbaTarget, NumbaCudaTarget
 
 
 __all__ = [
-        "TaggedVariable", "Reduction", "LinearSubscript",
+        "TaggedVariable", "Reduction", "LinearSubscript", "TypeCast",
 
         "auto",
 
@@ -170,9 +173,11 @@ __all__ = [
 
         "register_reduction_parser",
 
+        "VERSION", "MOST_RECENT_LANGUAGE_VERSION",
+
         # {{{ transforms
 
-        "set_loop_priority", "prioritize_loops",
+        "set_loop_priority", "prioritize_loops", "untag_inames",
         "split_iname", "chunk_iname", "join_inames", "tag_inames",
         "duplicate_inames",
         "rename_iname", "remove_unused_inames",
@@ -207,7 +212,7 @@ __all__ = [
         "split_array_axis", "split_array_dim", "split_arg_axis",
         "find_padding_multiple", "add_padding",
 
-        "realize_ilp",
+        "privatize_temporaries_with_inames",
 
         "to_batched",
 
@@ -228,6 +233,8 @@ __all__ = [
         "get_subkernels",
         "get_subkernel_to_insn_id_map",
 
+        "to_loopy_type",
+
         "infer_unknown_types",
 
         "preprocess_kernel", "realize_reduction",
@@ -236,8 +243,8 @@ __all__ = [
         "PreambleInfo",
         "generate_code", "generate_code_v2", "generate_body",
 
-        "ToCountMap", "stringify_stats_mapping", "Op", "MemAccess",
-        "get_op_poly", "get_op_map", "get_lmem_access_poly",
+        "ToCountMap", "CountGranularity", "stringify_stats_mapping", "Op",
+        "MemAccess", "get_op_poly", "get_op_map", "get_lmem_access_poly",
         "get_DRAM_access_poly", "get_gmem_access_poly", "get_mem_access_map",
         "get_synchronization_poly", "get_synchronization_map",
         "gather_access_footprints", "gather_access_footprint_bytes",
@@ -254,7 +261,7 @@ __all__ = [
         "LoopyError", "LoopyWarning",
 
         "TargetBase",
-        "CTarget", "generate_header",
+        "CTarget", "ExecutableCTarget", "generate_header",
         "CudaTarget", "OpenCLTarget",
         "PyOpenCLTarget", "ISPCTarget",
         "NumbaTarget", "NumbaCudaTarget",
@@ -324,18 +331,34 @@ def register_preamble_generators(kernel, preamble_generators):
 
     :returns: *kernel* with *manglers* registered
     """
+    from loopy.tools import unpickles_equally
+
     new_pgens = kernel.preamble_generators[:]
     for pgen in preamble_generators:
         if pgen not in new_pgens:
+            if not unpickles_equally(pgen):
+                raise LoopyError("preamble generator '%s' does not "
+                        "compare equally after being upickled "
+                        "and would thus disrupt loopy's caches"
+                        % pgen)
+
             new_pgens.insert(0, pgen)
 
     return kernel.copy(preamble_generators=new_pgens)
 
 
 def register_symbol_manglers(kernel, manglers):
+    from loopy.tools import unpickles_equally
+
     new_manglers = kernel.symbol_manglers[:]
     for m in manglers:
         if m not in new_manglers:
+            if not unpickles_equally(m):
+                raise LoopyError("mangler '%s' does not "
+                        "compare equally after being upickled "
+                        "and would disrupt loopy's caches"
+                        % m)
+
             new_manglers.insert(0, m)
 
     return kernel.copy(symbol_manglers=new_manglers)
@@ -347,9 +370,17 @@ def register_function_manglers(kernel, manglers):
         returning a :class:`loopy.CallMangleInfo`.
     :returns: *kernel* with *manglers* registered
     """
+    from loopy.tools import unpickles_equally
+
     new_manglers = kernel.function_manglers[:]
     for m in manglers:
         if m not in new_manglers:
+            if not unpickles_equally(m):
+                raise LoopyError("mangler '%s' does not "
+                        "compare equally after being upickled "
+                        "and would disrupt loopy's caches"
+                        % m)
+
             new_manglers.insert(0, m)
 
     return kernel.copy(function_manglers=new_manglers)

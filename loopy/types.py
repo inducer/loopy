@@ -177,13 +177,20 @@ class AtomicNumpyType(NumpyType, AtomicType):
 # }}}
 
 
-def to_loopy_type(dtype, allow_none=False, allow_auto=False, for_atomic=False,
+def to_loopy_type(dtype, allow_auto=False, allow_none=False, for_atomic=False,
         target=None):
     from loopy.kernel.data import auto
-    if allow_none and dtype is None:
-        return dtype
-    elif allow_auto and dtype is auto:
-        return dtype
+    if dtype is None:
+        if allow_none:
+            return None
+        else:
+            raise LoopyError("dtype may not be none")
+
+    elif dtype is auto:
+        if allow_auto:
+            return dtype
+        else:
+            raise LoopyError("dtype may not be auto")
 
     numpy_dtype = None
 

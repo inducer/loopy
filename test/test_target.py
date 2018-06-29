@@ -30,6 +30,9 @@ import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
 import pytest
 
+from loopy.target.c import CTarget
+from loopy.target.opencl import OpenCLTarget
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -49,6 +52,9 @@ __all__ = [
         ]
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
+
+
 def test_ispc_target(occa_mode=False):
     from loopy.target.ispc import ISPCTarget
 
@@ -63,7 +69,8 @@ def test_ispc_target(occa_mode=False):
 
     knl = lp.split_iname(knl, "i", 8, inner_tag="l.0")
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
-    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"])
+    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"],
+            default_tag="l.auto")
 
     codegen_result = lp.generate_code_v2(
                 lp.get_one_scheduled_kernel(
@@ -87,7 +94,8 @@ def test_cuda_target():
 
     knl = lp.split_iname(knl, "i", 8, inner_tag="l.0")
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
-    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"])
+    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"],
+            default_tag="l.auto")
 
     print(
             lp.generate_code(
@@ -96,8 +104,6 @@ def test_cuda_target():
 
 
 def test_generate_c_snippet():
-    from loopy.target.c import CTarget
-
     from pymbolic import var
     I = var("I")  # noqa
     f = var("f")
@@ -140,6 +146,51 @@ def test_generate_c_snippet():
     print(lp.generate_body(knl))
 
 
+@pytest.mark.parametrize("target", [CTarget, OpenCLTarget])
+@pytest.mark.parametrize("tp", ["f32", "f64"])
+def test_math_function(target, tp):
+    # Test correct maths functions are generated for C and OpenCL
+    # backend instead for different data type
+
+    data_type = {"f32": np.float32,
+                 "f64": np.float64}[tp]
+
+    import pymbolic.primitives as p
+
+    i = p.Variable("i")
+    xi = p.Subscript(p.Variable("x"), i)
+    yi = p.Subscript(p.Variable("y"), i)
+    zi = p.Subscript(p.Variable("z"), i)
+
+    n = 100
+    domain = "{[i]: 0<=i<%d}" % n
+    data = [lp.GlobalArg("x", data_type, shape=(n,)),
+            lp.GlobalArg("y", data_type, shape=(n,)),
+            lp.GlobalArg("z", data_type, shape=(n,))]
+
+    inst = [lp.Assignment(xi, p.Variable("min")(yi, zi))]
+    knl = lp.make_kernel(domain, inst, data, target=target())
+    code = lp.generate_code_v2(knl).device_code()
+
+    assert "fmin" in code
+
+    if tp == "f32" and target == CTarget:
+        assert "fminf" in code
+    else:
+        assert "fminf" not in code
+
+    inst = [lp.Assignment(xi, p.Variable("max")(yi, zi))]
+    knl = lp.make_kernel(domain, inst, data, target=target())
+    code = lp.generate_code_v2(knl).device_code()
+
+    assert "fmax" in code
+
+    if tp == "f32" and target == CTarget:
+        assert "fmaxf" in code
+    else:
+        assert "fmaxf" not in code
+
+
 @pytest.mark.parametrize("tp", ["f32", "f64"])
 def test_random123(ctx_factory, tp):
     ctx = ctx_factory()
@@ -157,8 +208,8 @@ def test_random123(ctx_factory, tp):
             <> key2 = make_uint2(i, 324830944) {inames=i}
             <> key4 = make_uint4(i, 324830944, 234181, 2233) {inames=i}
             <> ctr = make_uint4(0, 1, 2, 3)  {inames=i,id=init_ctr}
-            <> real, ctr = philox4x32_TYPE(ctr, key2)  {dep=init_ctr}
-            <> imag, ctr = threefry4x32_TYPE(ctr, key4)  {dep=init_ctr}
+            <> real, ctr = philox4x32_TYPE(ctr, key2)  {id=realpart,dep=init_ctr}
+            <> imag, ctr = threefry4x32_TYPE(ctr, key4)  {dep=init_ctr:realpart}
 
             out[i, 0] = real.s0 + 1j * imag.s0
             out[i, 1] = real.s1 + 1j * imag.s1
@@ -229,7 +280,7 @@ def test_numba_cuda_target():
     knl = lp.assume(knl, "M>0")
     knl = lp.split_iname(knl, "i", 16, outer_tag='g.0')
     knl = lp.split_iname(knl, "j", 128, inner_tag='l.0', slabs=(0, 1))
-    knl = lp.add_prefetch(knl, "X[i,:]")
+    knl = lp.add_prefetch(knl, "X[i,:]", default_tag="l.auto")
     knl = lp.fix_parameters(knl, N=3)
     knl = lp.prioritize_loops(knl, "i_inner,j_outer")
     knl = lp.tag_inames(knl, "k:unr")
@@ -240,11 +291,49 @@ def test_numba_cuda_target():
     print(lp.generate_code_v2(knl).all_code())
 
 
+def test_sized_integer_c_codegen(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    from pymbolic import var
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        [lp.Assignment("a[i]", lp.TypeCast(np.int64, 1) << var("i"))]
+        )
+
+    knl = lp.set_options(knl, write_code=True)
+    n = 40
+
+    evt, (a,) = knl(queue, n=n)
+
+    a_ref = 1 << np.arange(n, dtype=np.int64)
+
+    assert np.array_equal(a_ref, a.get())
+
+
+def test_child_invalid_type_cast():
+    from pymbolic import var
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        ["<> ctr = make_uint2(0, 0)",
+         lp.Assignment("a[i]", lp.TypeCast(np.int64, var("ctr")) << var("i"))]
+        )
+
+    with pytest.raises(lp.LoopyError):
+        knl = lp.preprocess_kernel(knl)
+
+
+def test_target_invalid_type_cast():
+    dtype = np.dtype([('', '<u4'), ('', '<i4')])
+    with pytest.raises(lp.LoopyError):
+        lp.TypeCast(dtype, 1)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        from py.test.cmdline import main
+        from pytest import main
         main([__file__])
 
 # vim: foldmethod=marker

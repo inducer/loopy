@@ -51,6 +51,9 @@ __all__ = [
         ]
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+
+
 # {{{ convolutions
 
 def test_convolution(ctx_factory):
@@ -98,8 +101,9 @@ def test_convolution(ctx_factory):
         knl = lp.split_iname(knl, "im_x", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.split_iname(knl, "im_y", 16, outer_tag="g.1", inner_tag="l.1")
         knl = lp.tag_inames(knl, dict(ifeat="g.2"))
-        knl = lp.add_prefetch(knl, "f[ifeat,:,:,:]")
-        knl = lp.add_prefetch(knl, "img", "im_x_inner, im_y_inner, f_x, f_y")
+        knl = lp.add_prefetch(knl, "f[ifeat,:,:,:]", default_tag="l.auto")
+        knl = lp.add_prefetch(knl, "img", "im_x_inner, im_y_inner, f_x, f_y",
+                default_tag="l.auto")
         return knl
 
     for variant in [
@@ -196,7 +200,7 @@ def test_rob_stroud_bernstein(ctx_factory):
 
                     for alpha2
                         tmp[el,alpha1,i2] = tmp[el,alpha1,i2] + w * coeffs[aind] \
-                                {id=write_tmp}
+                                {id=write_tmp,dep=init_w:aind_init}
                         w = w * r * ( deg - alpha1 - alpha2 ) / (1 + alpha2) \
                                 {id=update_w,dep=init_w:write_tmp}
                         aind = aind + 1 \
@@ -257,7 +261,7 @@ def test_rob_stroud_bernstein_full(ctx_factory):
                     <> w = s**(deg-alpha1) {id=init_w}
 
                     <> tmp[alpha1,i2] = tmp[alpha1,i2] + w * coeffs[aind] \
-                            {id=write_tmp}
+                            {id=write_tmp,dep=init_w:aind_init}
                     for alpha2
                         w = w * r * ( deg - alpha1 - alpha2 ) / (1 + alpha2) \
                             {id=update_w,dep=init_w:write_tmp}
@@ -271,15 +275,16 @@ def test_rob_stroud_bernstein_full(ctx_factory):
                 <> xi2 = qpts[0, i1_2] {dep=aind_incr}
                 <> s2 = 1-xi2
                 <> r2 = xi2/s2
-                <> w2 = s2**deg
+                <> w2 = s2**deg  {id=w2_init}
 
                 for alpha1_2
                     for i2_2
                         result[el, i1_2, i2_2] = result[el, i1_2, i2_2] + \
-                                w2 * tmp[alpha1_2, i2_2]
+                                w2 * tmp[alpha1_2, i2_2]  {id=res2,dep=w2_init}
                     end
 
-                    w2 = w2 * r2 * (deg-alpha1_2) / (1+alpha1_2)
+                    w2 = w2 * r2 * (deg-alpha1_2) / (1+alpha1_2)  \
+                            {id=w2_update, dep=res2}
                 end
             end
         end
@@ -342,7 +347,7 @@ def test_stencil(ctx_factory):
     def variant_1(knl):
         knl = lp.split_iname(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
         knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
-        knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"])
+        knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"], default_tag="l.auto")
         knl = lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
         return knl
 
@@ -350,7 +355,7 @@ def test_stencil(ctx_factory):
         knl = lp.split_iname(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
         knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
-                fetch_bounding_box=True)
+                fetch_bounding_box=True, default_tag="l.auto")
         knl = lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
         return knl
 
@@ -397,7 +402,7 @@ def test_stencil_with_overfetch(ctx_factory):
         knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0",
                slabs=(1, 1))
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
-                fetch_bounding_box=True)
+                fetch_bounding_box=True, default_tag="l.auto")
         knl = lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
         return knl
 
@@ -499,7 +504,8 @@ def test_lbm(ctx_factory):
     knl = lp.split_iname(knl, "ii", 16, outer_tag="g.1", inner_tag="l.1")
     knl = lp.split_iname(knl, "jj", 16, outer_tag="g.0", inner_tag="l.0")
     knl = lp.expand_subst(knl)
-    knl = lp.add_prefetch(knl, "f", "ii_inner,jj_inner", fetch_bounding_box=True)
+    knl = lp.add_prefetch(knl, "f", "ii_inner,jj_inner", fetch_bounding_box=True,
+            default_tag="l.auto")
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"nx": 20, "ny": 20})
 
@@ -517,7 +523,8 @@ def test_fd_demo():
             "j", 16, outer_tag="g.0", inner_tag="l.0")
     knl = lp.add_prefetch(knl, "u",
             ["i_inner", "j_inner"],
-            fetch_bounding_box=True)
+            fetch_bounding_box=True,
+            default_tag="l.auto")
 
     #n = 1000
     #u = cl.clrandom.rand(queue, (n+2, n+2), dtype=np.float32)
@@ -689,7 +696,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        from py.test.cmdline import main
+        from pytest import main
         main([__file__])
 
 # vim: foldmethod=marker

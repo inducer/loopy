@@ -49,6 +49,9 @@ __all__ = [
         ]
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
+
+
 def test_chunk_iname(ctx_factory):
     ctx = ctx_factory()
 
@@ -75,7 +78,8 @@ def test_collect_common_factors(ctx_factory):
             """
             <float32> out_tmp = 0 {id=out_init,inames=i}
             out_tmp = out_tmp + alpha[i]*a[i,j]*b1[j] {id=out_up1,dep=out_init}
-            out_tmp = out_tmp + alpha[i]*a[j,i]*b2[j] {id=out_up2,dep=out_init}
+            out_tmp = out_tmp + alpha[i]*a[j,i]*b2[j] \
+                    {id=out_up2,dep=out_init,nosync=out_up1}
             out[i] = out_tmp {dep=out_up1:out_up2}
             """)
     knl = lp.add_and_infer_dtypes(knl,
@@ -96,13 +100,65 @@ def test_to_batched(ctx_factory):
     knl = lp.make_kernel(
          ''' { [i,j]: 0<=i,j<n } ''',
          ''' out[i] = sum(j, a[i,j]*x[j])''')
+    knl = lp.add_and_infer_dtypes(knl, dict(out=np.float32,
+                                            x=np.float32,
+                                            a=np.float32))
 
     bknl = lp.to_batched(knl, "nbatches", "out,x")
+
+    ref_knl = lp.make_kernel(
+         ''' { [i,j,k]: 0<=i,j<n and 0<=k<nbatches} ''',
+         '''out[k, i] = sum(j, a[i,j]*x[k, j])''')
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, dict(out=np.float32,
+                                                    x=np.float32,
+                                                    a=np.float32))
+
+    a = np.random.randn(5, 5).astype(np.float32)
+    x = np.random.randn(7, 5).astype(np.float32)
+
+    # Running both the kernels
+    evt, (out1, ) = bknl(queue, a=a, x=x, n=5, nbatches=7)
+    evt, (out2, ) = ref_knl(queue, a=a, x=x, n=5, nbatches=7)
+
+    # checking that the outputs are same
+    assert np.linalg.norm(out1-out2) < 1e-15
+
+
+def test_to_batched_temp(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+         ''' { [i,j]: 0<=i,j<n } ''',
+         ''' cnst = 2.0
+         out[i] = sum(j, cnst*a[i,j]*x[j])''',
+         [lp.TemporaryVariable(
+             "cnst",
+             dtype=np.float32,
+             shape=(),
+             scope=lp.temp_var_scope.PRIVATE), '...'])
+    knl = lp.add_and_infer_dtypes(knl, dict(out=np.float32,
+                                            x=np.float32,
+                                            a=np.float32))
+    ref_knl = lp.make_kernel(
+         ''' { [i,j]: 0<=i,j<n } ''',
+         '''out[i] = sum(j, 2.0*a[i,j]*x[j])''')
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, dict(out=np.float32,
+                                                    x=np.float32,
+                                                    a=np.float32))
+
+    bknl = lp.to_batched(knl, "nbatches", "out,x")
+    bref_knl = lp.to_batched(ref_knl, "nbatches", "out,x")
+
+    # checking that cnst is not being bathced
+    assert bknl.temporary_variables['cnst'].shape == ()
 
     a = np.random.randn(5, 5)
     x = np.random.randn(7, 5)
 
-    bknl(queue, a=a, x=x)
+    # Checking that the program compiles and the logic is correct
+    lp.auto_test_vs_ref(
+            bref_knl, ctx, bknl,
+            parameters=dict(a=a, x=x, n=5, nbatches=7))
 
 
 def test_add_barrier(ctx_factory):
@@ -178,9 +234,9 @@ def test_alias_temporaries(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.0")
 
-    knl = lp.precompute(knl, "times2", "i_inner")
-    knl = lp.precompute(knl, "times3", "i_inner")
-    knl = lp.precompute(knl, "times4", "i_inner")
+    knl = lp.precompute(knl, "times2", "i_inner", default_tag="l.auto")
+    knl = lp.precompute(knl, "times3", "i_inner", default_tag="l.auto")
+    knl = lp.precompute(knl, "times4", "i_inner", default_tag="l.auto")
 
     knl = lp.alias_temporaries(knl, ["times2_0", "times3_0", "times4_0"])
 
@@ -251,7 +307,7 @@ def test_join_inames(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.add_prefetch(knl, "a", sweep_inames=["i", "j"])
+    knl = lp.add_prefetch(knl, "a", sweep_inames=["i", "j"], default_tag="l.auto")
     knl = lp.join_inames(knl, ["a_dim_0", "a_dim_1"])
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, print_ref_code=True)
@@ -345,7 +401,7 @@ def test_precompute_nested_subst(ctx_factory):
 
     from loopy.symbolic import get_dependencies
     assert "i_inner" not in get_dependencies(knl.substitutions["D"].expression)
-    knl = lp.precompute(knl, "D", "i_inner")
+    knl = lp.precompute(knl, "D", "i_inner", default_tag="l.auto")
 
     # There's only one surviving 'E' rule.
     assert len([
@@ -440,7 +496,8 @@ def test_add_nosync():
     orig_knl = lp.set_temporary_scope(orig_knl, "tmp5", "local")
 
     # No dependency present - don't add nosync
-    knl = lp.add_nosync(orig_knl, "any", "writes:tmp", "writes:tmp2")
+    knl = lp.add_nosync(orig_knl, "any", "writes:tmp", "writes:tmp2",
+            empty_ok=True)
     assert frozenset() == knl.id_to_insn["insn2"].no_sync_with
 
     # Dependency present
@@ -480,7 +537,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        from py.test.cmdline import main
+        from pytest import main
         main([__file__])
 
 # vim: foldmethod=marker

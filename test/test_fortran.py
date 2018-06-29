@@ -310,8 +310,8 @@ def test_matmul(ctx_factory, buffer_inames):
 
     knl = lp.extract_subst(knl, "a_acc", "a[i1,i2]", parameters="i1, i2")
     knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")
-    knl = lp.precompute(knl, "a_acc", "k_inner,i_inner")
-    knl = lp.precompute(knl, "b_acc", "j_inner,k_inner")
+    knl = lp.precompute(knl, "a_acc", "k_inner,i_inner", default_tag="l.auto")
+    knl = lp.precompute(knl, "b_acc", "j_inner,k_inner", default_tag="l.auto")
 
     knl = lp.buffer_array(knl, "c", buffer_inames=buffer_inames,
             init_expression="0", store_expression="base+buffer")
@@ -360,8 +360,10 @@ def test_batched_sparse():
     knl = lp.split_iname(knl, "i", 128)
     knl = lp.tag_inames(knl, {"i_outer": "g.0"})
     knl = lp.tag_inames(knl, {"i_inner": "l.0"})
-    knl = lp.add_prefetch(knl, "values")
-    knl = lp.add_prefetch(knl, "colindices")
+    knl = lp.add_prefetch(knl, "values",
+            default_tag="l.auto")
+    knl = lp.add_prefetch(knl, "colindices",
+            default_tag="l.auto")
     knl = lp.fix_parameters(knl, nvecs=4)
 
 
@@ -405,14 +407,10 @@ def test_fuse_kernels(ctx_factory):
             fortran_template.format(
                 inner=(xd_line + "\n" + yd_line), name="xyderiv"))
 
-    knl = lp.fuse_kernels((xderiv, yderiv))
+    knl = lp.fuse_kernels((xderiv, yderiv), data_flow=[("result", 0, 1)])
     knl = lp.prioritize_loops(knl, "e,i,j,k")
 
     assert len(knl.temporary_variables) == 2
-
-    # This is needed for correctness, otherwise ordering could foul things up.
-    knl = lp.assignment_to_subst(knl, "prev")
-    knl = lp.assignment_to_subst(knl, "prev_0")
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(xyderiv, ctx, knl, parameters=dict(nelements=20, ndofs=4))
@@ -488,9 +486,11 @@ def test_precompute_some_exist(ctx_factory):
     knl = lp.extract_subst(knl, "a_acc", "a[i1,i2]", parameters="i1, i2")
     knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")
     knl = lp.precompute(knl, "a_acc", "k_inner,i_inner",
-            precompute_inames="ktemp,itemp")
+            precompute_inames="ktemp,itemp",
+            default_tag="l.auto")
     knl = lp.precompute(knl, "b_acc", "j_inner,k_inner",
-            precompute_inames="itemp,k2temp")
+            precompute_inames="itemp,k2temp",
+            default_tag="l.auto")
 
     ref_knl = knl
 
@@ -502,7 +502,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        from py.test.cmdline import main
+        from pytest import main
         main([__file__])
 
 # vim: foldmethod=marker

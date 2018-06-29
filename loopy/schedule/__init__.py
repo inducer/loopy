@@ -29,6 +29,8 @@ import sys
 import islpy as isl
 from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
+from pytools import MinRecursionLimit, ProcessLogger
+
 from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
@@ -212,20 +214,17 @@ def find_loop_nest_with_map(kernel):
 
     from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
 
-    all_nonpar_inames = set([
-            iname
-            for iname in kernel.all_inames()
-            if not isinstance(kernel.iname_to_tag.get(iname),
-                (ConcurrentTag, IlpBaseTag, VectorizeTag))])
+    all_nonpar_inames = set(
+            iname for iname in kernel.all_inames()
+            if not kernel.iname_tags_of_type(iname,
+                    (ConcurrentTag, IlpBaseTag, VectorizeTag)))
 
     iname_to_insns = kernel.iname_to_insns()
 
     for iname in all_nonpar_inames:
-        result[iname] = set([
-            other_iname
+        result[iname] = set(other_iname
             for insn in iname_to_insns[iname]
-            for other_iname in kernel.insn_inames(insn) & all_nonpar_inames
-            ])
+            for other_iname in kernel.insn_inames(insn) & all_nonpar_inames)
 
     return result
 
@@ -248,8 +247,7 @@ def find_loop_nest_around_map(kernel):
             if inner_iname == outer_iname:
                 continue
 
-            tag = kernel.iname_to_tag.get(outer_iname)
-            if isinstance(tag, IlpBaseTag):
+            if kernel.iname_tags_of_type(outer_iname, IlpBaseTag):
                 # ILP tags are special because they are parallel tags
                 # and therefore 'in principle' nest around everything.
                 # But they're realized by the scheduler as a loop
@@ -281,7 +279,7 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
     from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
     for insn in kernel.instructions:
         for iname in kernel.insn_inames(insn):
-            if isinstance(kernel.iname_to_tag.get(iname), ConcurrentTag):
+            if kernel.iname_tags_of_type(iname, ConcurrentTag):
                 continue
 
             iname_dep = result.setdefault(iname, set())
@@ -311,8 +309,8 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
                         # -> safe.
                         continue
 
-                    tag = kernel.iname_to_tag.get(dep_insn_iname)
-                    if isinstance(tag, (ConcurrentTag, IlpBaseTag, VectorizeTag)):
+                    if kernel.iname_tags_of_type(dep_insn_iname,
+                                (ConcurrentTag, IlpBaseTag, VectorizeTag)):
                         # Parallel tags don't really nest, so we'll disregard
                         # them here.
                         continue
@@ -657,7 +655,6 @@ def generate_loop_schedules_internal(
         sched_state, allow_boost=False, debug=None):
     # allow_insn is set to False initially and after entering each loop
     # to give loops containing high-priority instructions a chance.
-
     kernel = sched_state.kernel
     Fore = kernel.options._fore  # noqa
     Style = kernel.options._style  # noqa
@@ -776,10 +773,14 @@ def generate_loop_schedules_internal(
         # schedule generation order.
         return (insn.priority, len(active_groups & insn.groups), insn.id)
 
-    insn_ids_to_try = sorted(
-            # Non-prescheduled instructions go first.
-            sched_state.unscheduled_insn_ids - sched_state.prescheduled_insn_ids,
-            key=insn_sort_key, reverse=True)
+    # Use previous instruction sorting result if it is available
+    if sched_state.insn_ids_to_try is None:
+        insn_ids_to_try = sorted(
+                # Non-prescheduled instructions go first.
+                sched_state.unscheduled_insn_ids - sched_state.prescheduled_insn_ids,
+                key=insn_sort_key, reverse=True)
+    else:
+        insn_ids_to_try = sched_state.insn_ids_to_try
 
     insn_ids_to_try.extend(
         insn_id
@@ -898,9 +899,20 @@ def generate_loop_schedules_internal(
                     else:
                         new_active_group_counts[grp] = (
                                 sched_state.group_insn_counts[grp] - 1)
-
             else:
                 new_active_group_counts = sched_state.active_group_counts
+
+            # }}}
+
+            # {{{ update instruction_ids_to_try
+
+            new_insn_ids_to_try = list(insn_ids_to_try)
+            new_insn_ids_to_try.remove(insn.id)
+
+            # invalidate instruction_ids_to_try when active group changes
+            if set(new_active_group_counts.keys()) != set(
+                    sched_state.active_group_counts.keys()):
+                new_insn_ids_to_try = None
 
             # }}}
 
@@ -913,6 +925,7 @@ def generate_loop_schedules_internal(
             new_sched_state = sched_state.copy(
                     scheduled_insn_ids=sched_state.scheduled_insn_ids | iid_set,
                     unscheduled_insn_ids=sched_state.unscheduled_insn_ids - iid_set,
+                    insn_ids_to_try=new_insn_ids_to_try,
                     schedule=(
                         sched_state.schedule + (RunInstruction(insn_id=insn.id),)),
                     preschedule=(
@@ -928,7 +941,6 @@ def generate_loop_schedules_internal(
             # Don't be eager about entering/leaving loops--if progress has been
             # made, revert to top of scheduler and see if more progress can be
             # made.
-
             for sub_sched in generate_loop_schedules_internal(
                     new_sched_state,
                     allow_boost=rec_allow_boost, debug=debug):
@@ -1419,6 +1431,9 @@ class DependencyTracker(object):
         self.reverse = reverse
         self.var_kind = var_kind
 
+        from loopy.symbolic import AccessRangeOverlapChecker
+        self.overlap_checker = AccessRangeOverlapChecker(kernel)
+
         if var_kind == "local":
             self.relevant_vars = kernel.local_var_names()
         elif var_kind == "global":
@@ -1427,8 +1442,8 @@ class DependencyTracker(object):
             raise ValueError("unknown 'var_kind': %s" % var_kind)
 
         from collections import defaultdict
-        self.writer_map = defaultdict(set)
-        self.reader_map = defaultdict(set)
+        self.base_writer_map = defaultdict(set)
+        self.base_access_map = defaultdict(set)
         self.temp_to_base_storage = kernel.get_temporary_to_base_storage_map()
 
     def map_to_base_storage(self, var_names):
@@ -1442,23 +1457,27 @@ class DependencyTracker(object):
         return result
 
     def discard_all_sources(self):
-        self.writer_map.clear()
-        self.reader_map.clear()
+        self.base_writer_map.clear()
+        self.base_access_map.clear()
+
+    # Anything with 'base' in the name in this class contains names normalized
+    # to their 'base_storage'.
 
     def add_source(self, source):
         """
-        Specify that an instruction may be used as the source of a dependency edge.
+        Specify that an instruction used as the source (depended-upon
+        part) of a dependency edge is of interest to this tracker.
         """
         # If source is an insn ID, look up the actual instruction.
         source = self.kernel.id_to_insn.get(source, source)
 
         for written in self.map_to_base_storage(
                 set(source.assignee_var_names()) & self.relevant_vars):
-            self.writer_map[written].add(source.id)
+            self.base_writer_map[written].add(source.id)
 
         for read in self.map_to_base_storage(
-                source.read_dependency_names() & self.relevant_vars):
-            self.reader_map[read].add(source.id)
+                source.dependency_names() & self.relevant_vars):
+            self.base_access_map[read].add(source.id)
 
     def gen_dependencies_with_target_at(self, target):
         """
@@ -1471,51 +1490,86 @@ class DependencyTracker(object):
         # If target is an insn ID, look up the actual instruction.
         target = self.kernel.id_to_insn.get(target, target)
 
-        tgt_write = self.map_to_base_storage(
-            set(target.assignee_var_names()) & self.relevant_vars)
-        tgt_read = self.map_to_base_storage(
-            target.read_dependency_names() & self.relevant_vars)
-
-        for (accessed_vars, accessor_map) in [
-                (tgt_read, self.writer_map),
-                (tgt_write, self.reader_map),
-                (tgt_write, self.writer_map)]:
+        for (
+                tgt_dir, src_dir, src_base_var_to_accessor_map
+                ) in [
+                ("any", "w", self.base_writer_map),
+                ("w", "any", self.base_access_map),
+                ]:
 
             for dep in self.get_conflicting_accesses(
-                    accessed_vars, accessor_map, target.id):
+                    target, tgt_dir, src_dir, src_base_var_to_accessor_map):
                 yield dep
 
-    def get_conflicting_accesses(
-            self, accessed_vars, var_to_accessor_map, target):
+    def get_conflicting_accesses(self, target, tgt_dir, src_dir,
+            src_base_var_to_accessor_map):
 
-        def determine_conflict_nature(source, target):
-            if (not self.reverse and source in
-                    self.kernel.get_nosync_set(target, scope=self.var_kind)):
-                return None
-            if (self.reverse and target in
-                    self.kernel.get_nosync_set(source, scope=self.var_kind)):
-                return None
-            return self.describe_dependency(source, target)
+        def get_written_names(insn):
+            return set(insn.assignee_var_names()) & self.relevant_vars
 
-        for var in sorted(accessed_vars):
-            for source in sorted(var_to_accessor_map[var]):
-                dep_descr = determine_conflict_nature(source, target)
+        def get_accessed_names(insn):
+            return insn.dependency_names() & self.relevant_vars
 
+        dir_to_getter = {"w": get_written_names, "any": get_accessed_names}
+
+        def filter_var_set_for_base_storage(var_name_set, base_storage_name):
+            return set(
+                    name
+                    for name in var_name_set
+                    if (self.temp_to_base_storage.get(name, name)
+                        == base_storage_name))
+
+        tgt_accessed_vars = dir_to_getter[tgt_dir](target)
+        tgt_accessed_vars_base = self.map_to_base_storage(tgt_accessed_vars)
+
+        for race_var_base in sorted(tgt_accessed_vars_base):
+            for source_id in sorted(
+                    src_base_var_to_accessor_map[race_var_base]):
+
+                # {{{ no barrier if nosync
+
+                if (not self.reverse and source_id in
+                        self.kernel.get_nosync_set(target.id, scope=self.var_kind)):
+                    continue
+                if (self.reverse and target.id in
+                        self.kernel.get_nosync_set(source_id, scope=self.var_kind)):
+                    continue
+
+                # }}}
+
+                dep_descr = self.describe_dependency(source_id, target)
                 if dep_descr is None:
                     continue
 
+                source = self.kernel.id_to_insn[source_id]
+                src_race_vars = filter_var_set_for_base_storage(
+                        dir_to_getter[src_dir](source), race_var_base)
+                tgt_race_vars = filter_var_set_for_base_storage(
+                        tgt_accessed_vars, race_var_base)
+
+                race_var = race_var_base
+
+                # Only one (non-base_storage) race variable name: Data is not
+                # being passed between aliases, so we may look at indices.
+                if src_race_vars == tgt_race_vars and len(src_race_vars) == 1:
+                    race_var, = src_race_vars
+
+                    if not (
+                        self.overlap_checker.do_access_ranges_overlap_conservative(
+                                target.id, tgt_dir, source_id, src_dir, race_var)):
+                        continue
+
                 yield DependencyRecord(
-                        source=self.kernel.id_to_insn[source],
-                        target=self.kernel.id_to_insn[target],
+                        source=source,
+                        target=target,
                         dep_descr=dep_descr,
-                        variable=var,
+                        variable=race_var,
                         var_kind=self.var_kind)
 
-    def describe_dependency(self, source, target):
+    def describe_dependency(self, source_id, target):
         dep_descr = None
 
-        source = self.kernel.id_to_insn[source]
-        target = self.kernel.id_to_insn[target]
+        source = self.kernel.id_to_insn[source_id]
 
         if self.reverse:
             source, target = target, source
@@ -1770,12 +1824,27 @@ def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0
 # }}}
 
 
+class MinRecursionLimitForScheduling(MinRecursionLimit):
+    def __init__(self, kernel):
+        MinRecursionLimit.__init__(self,
+                len(kernel.instructions) * 2 + len(kernel.all_inames()) * 4)
+
+
 # {{{ main scheduling entrypoint
 
 def generate_loop_schedules(kernel, debug_args={}):
-    from pytools import MinRecursionLimit
-    with MinRecursionLimit(max(len(kernel.instructions) * 2,
-                               len(kernel.all_inames()) * 4)):
+    """
+    .. warning::
+
+        This function needs to be called inside (another layer) of a
+        :class:`MinRecursionLimitForScheduling` context manager, and the
+        context manager needs to end *after* the last reference to the
+        generators has gone out of scope. Otherwise, the high-recursion-limit
+        generator chain may not be successfully garbage-collected and cause an
+        internal error in the Python runtime.
+    """
+
+    with MinRecursionLimitForScheduling(kernel):
         for sched in generate_loop_schedules_inner(kernel, debug_args=debug_args):
             yield sched
 
@@ -1805,18 +1874,20 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
         for item in preschedule
         for insn_id in sched_item_to_insn_id(item))
 
-    from loopy.kernel.data import IlpBaseTag, ConcurrentTag, VectorizeTag
+    from loopy.kernel.data import (IlpBaseTag, ConcurrentTag, VectorizeTag,
+                                   filter_iname_tags_by_type)
     ilp_inames = set(
             iname
-            for iname in kernel.all_inames()
-            if isinstance(kernel.iname_to_tag.get(iname), IlpBaseTag))
+            for iname, tags in six.iteritems(kernel.iname_to_tags)
+            if filter_iname_tags_by_type(tags, IlpBaseTag))
     vec_inames = set(
             iname
-            for iname in kernel.all_inames()
-            if isinstance(kernel.iname_to_tag.get(iname), VectorizeTag))
+            for iname, tags in six.iteritems(kernel.iname_to_tags)
+            if filter_iname_tags_by_type(tags, VectorizeTag))
     parallel_inames = set(
-            iname for iname in kernel.all_inames()
-            if isinstance(kernel.iname_to_tag.get(iname), ConcurrentTag))
+            iname
+            for iname, tags in six.iteritems(kernel.iname_to_tags)
+            if filter_iname_tags_by_type(tags, ConcurrentTag))
 
     loop_nest_with_map = find_loop_nest_with_map(kernel)
     loop_nest_around_map = find_loop_nest_around_map(kernel)
@@ -1847,6 +1918,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             may_schedule_global_barriers=True,
 
             preschedule=preschedule,
+            insn_ids_to_try=None,
 
             # ilp and vec are not parallel for the purposes of the scheduler
             parallel_inames=parallel_inames - ilp_inames - vec_inames,
@@ -1856,14 +1928,9 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
             uses_of_boostability=[])
 
-    generators = []
-
-    if not kernel.options.ignore_boostable_into:
-        generators.append(generate_loop_schedules_internal(sched_state,
-                             debug=debug, allow_boost=None))
-
-    generators.append(generate_loop_schedules_internal(sched_state,
-                          debug=debug))
+    schedule_gen_kwargs = {}
+    if kernel.options.ignore_boostable_into:
+        schedule_gen_kwargs["allow_boost"] = None
 
     def print_longest_dead_end():
         if debug.interactive:
@@ -1883,8 +1950,8 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             debug.debug_length = len(debug.longest_rejected_schedule)
             while True:
                 try:
-                    for _ in generate_loop_schedules_internal(sched_state,
-                            debug=debug):
+                    for _ in generate_loop_schedules_internal(
+                            sched_state, debug=debug, **schedule_gen_kwargs):
                         pass
 
                 except ScheduleDebugInput as e:
@@ -1894,48 +1961,44 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
                 break
 
     try:
-        for gen in generators:
-            for gen_sched in gen:
-                debug.stop()
+        for gen_sched in generate_loop_schedules_internal(
+                sched_state, debug=debug, **schedule_gen_kwargs):
+            debug.stop()
 
-                gen_sched = filter_nops_from_schedule(kernel, gen_sched)
-                gen_sched = convert_barrier_instructions_to_barriers(
-                        kernel, gen_sched)
+            gen_sched = filter_nops_from_schedule(kernel, gen_sched)
+            gen_sched = convert_barrier_instructions_to_barriers(
+                    kernel, gen_sched)
 
-                gsize, lsize = kernel.get_grid_size_upper_bounds()
+            gsize, lsize = kernel.get_grid_size_upper_bounds()
 
-                if (gsize or lsize):
-                    if not kernel.options.disable_global_barriers:
-                        logger.debug("%s: barrier insertion: global" % kernel.name)
-                        gen_sched = insert_barriers(kernel, gen_sched,
-                                synchronization_kind="global", verify_only=True)
-
-                    logger.debug("%s: barrier insertion: local" % kernel.name)
+            if (gsize or lsize):
+                if not kernel.options.disable_global_barriers:
+                    logger.debug("%s: barrier insertion: global" % kernel.name)
                     gen_sched = insert_barriers(kernel, gen_sched,
-                        synchronization_kind="local", verify_only=False)
-                    logger.debug("%s: barrier insertion: done" % kernel.name)
+                            synchronization_kind="global", verify_only=True)
 
-                new_kernel = kernel.copy(
-                        schedule=gen_sched,
-                        state=kernel_state.SCHEDULED)
+                logger.debug("%s: barrier insertion: local" % kernel.name)
+                gen_sched = insert_barriers(kernel, gen_sched,
+                    synchronization_kind="local", verify_only=False)
+                logger.debug("%s: barrier insertion: done" % kernel.name)
 
-                from loopy.schedule.device_mapping import \
-                        map_schedule_onto_host_or_device
-                if kernel.state != kernel_state.SCHEDULED:
-                    # Device mapper only gets run once.
-                    new_kernel = map_schedule_onto_host_or_device(new_kernel)
+            new_kernel = kernel.copy(
+                    schedule=gen_sched,
+                    state=kernel_state.SCHEDULED)
 
-                from loopy.schedule.tools import add_extra_args_to_schedule
-                new_kernel = add_extra_args_to_schedule(new_kernel)
-                yield new_kernel
+            from loopy.schedule.device_mapping import \
+                    map_schedule_onto_host_or_device
+            if kernel.state != kernel_state.SCHEDULED:
+                # Device mapper only gets run once.
+                new_kernel = map_schedule_onto_host_or_device(new_kernel)
 
-                debug.start()
+            from loopy.schedule.tools import add_extra_args_to_schedule
+            new_kernel = add_extra_args_to_schedule(new_kernel)
+            yield new_kernel
 
-                schedule_count += 1
+            debug.start()
 
-            # if no-boost mode yielded a viable schedule, stop now
-            if schedule_count:
-                break
+            schedule_count += 1
 
     except KeyboardInterrupt:
         print()
@@ -1963,6 +2026,19 @@ schedule_cache = WriteOncePersistentDict(
         key_builder=LoopyKeyBuilder())
 
 
+def _get_one_scheduled_kernel_inner(kernel):
+    # This helper function exists to ensure that the generator chain is fully
+    # out of scope after the function returns. This allows it to be
+    # garbage-collected in the exit handler of the
+    # MinRecursionLimitForScheduling context manager in the surrounding
+    # function, because it possilby cannot be safely collected with a lower
+    # recursion limit without crashing the Python runtime.
+    #
+    # See https://gitlab.tiker.net/inducer/sumpy/issues/31 for context.
+
+    return next(iter(generate_loop_schedules(kernel)))
+
+
 def get_one_scheduled_kernel(kernel):
     from loopy import CACHING_ENABLED
 
@@ -1979,15 +2055,9 @@ def get_one_scheduled_kernel(kernel):
             pass
 
     if not from_cache:
-        from time import time
-        start_time = time()
-
-        logger.info("%s: schedule start" % kernel.name)
-
-        result = next(iter(generate_loop_schedules(kernel)))
-
-        logger.info("%s: scheduling done after %.2f s" % (
-            kernel.name, time()-start_time))
+        with ProcessLogger(logger, "%s: schedule" % kernel.name):
+            with MinRecursionLimitForScheduling(kernel):
+                result = _get_one_scheduled_kernel_inner(kernel)
 
     if CACHING_ENABLED and not from_cache:
         schedule_cache.store_if_not_present(sched_cache_key, result)

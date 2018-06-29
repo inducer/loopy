@@ -108,7 +108,23 @@ class ReductionIsNotTriangularError(LoopyError):
     pass
 
 
-class UnableToConvertToAffineExpression(LoopyError):
+class LoopyTypeError(LoopyError):
+    pass
+
+
+class ExpressionNotAffineError(LoopyError):
+    pass
+
+
+class ExpressionToAffineConversionError(LoopyError):
+    pass
+
+
+class VariableAccessNotOrdered(LoopyError):
+    pass
+
+
+class DependencyCycleFound(LoopyError):
     pass
 
 # }}}

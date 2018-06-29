@@ -128,9 +128,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
             else:
                 strides = evaluate(arg.unvec_strides, parameters)
 
-                from pytools import all
-                assert all(s > 0 for s in strides)
-                alloc_size = sum(astrd*(alen-1)
+                alloc_size = sum(astrd*(alen-1) if astrd != 0 else alen-1
                         for alen, astrd in zip(shape, strides)) + 1
 
                 if dtype is None:
@@ -241,8 +239,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
             itemsize = dtype.itemsize
             numpy_strides = [itemsize*s for s in strides]
 
-            assert all(s > 0 for s in strides)
-            alloc_size = sum(astrd*(alen-1)
+            alloc_size = sum(astrd*(alen-1) if astrd != 0 else alen-1
                     for alen, astrd in zip(shape, strides)) + 1
 
             # use contiguous array to transfer to host
@@ -403,7 +400,8 @@ def auto_test_vs_ref(
             raise LoopyError("ref_knl and test_knl argument lists disagree at index "
                     "%d (1-based)" % (i+1))
 
-    from loopy.compiled import CompiledKernel, get_highlighted_cl_code
+    from loopy.compiled import CompiledKernel
+    from loopy.target.execution import get_highlighted_code
 
     if isinstance(op_count, (int, float)):
         warn("op_count should be a list", stacklevel=2)
@@ -448,15 +446,15 @@ def auto_test_vs_ref(
             print(75*"-")
             print("Reference Code:")
             print(75*"-")
-            print(get_highlighted_cl_code(ref_compiled.get_code()))
+            print(get_highlighted_code(ref_compiled.get_code()))
             print(75*"-")
 
-        ref_cl_kernel_info = ref_compiled.cl_kernel_info(frozenset())
+        ref_kernel_info = ref_compiled.kernel_info(frozenset())
 
         try:
             ref_args, ref_arg_data = \
                     make_ref_args(ref_sched_kernel,
-                            ref_cl_kernel_info.implemented_data_info,
+                            ref_kernel_info.implemented_data_info,
                             ref_queue, parameters)
             ref_args["out_host"] = False
         except cl.RuntimeError as e:
@@ -545,10 +543,10 @@ def auto_test_vs_ref(
         compiled = CompiledKernel(ctx, kernel)
 
         if args is None:
-            cl_kernel_info = compiled.cl_kernel_info(frozenset())
+            kernel_info = compiled.kernel_info(frozenset())
 
             args = make_args(kernel,
-                    cl_kernel_info.implemented_data_info,
+                    kernel_info.implemented_data_info,
                     queue, ref_arg_data, parameters)
         args["out_host"] = False
 

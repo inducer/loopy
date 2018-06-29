@@ -107,7 +107,7 @@ def get_arguments_with_incomplete_dtype(knl):
             if arg.dtype is None]
 
 
-def add_and_infer_dtypes(knl, dtype_dict):
+def add_and_infer_dtypes(knl, dtype_dict, expect_completion=False):
     processed_dtype_dict = {}
 
     for k, v in six.iteritems(dtype_dict):
@@ -119,7 +119,7 @@ def add_and_infer_dtypes(knl, dtype_dict):
     knl = add_dtypes(knl, processed_dtype_dict)
 
     from loopy.type_inference import infer_unknown_types
-    return infer_unknown_types(knl, expect_completion=True)
+    return infer_unknown_types(knl, expect_completion=expect_completion)
 
 
 def _add_and_infer_dtypes_overdetermined(knl, dtype_dict):
@@ -590,71 +590,6 @@ def show_dependency_graph(*args, **kwargs):
 # }}}
 
 
-# {{{ domain parameter finder
-
-class DomainParameterFinder(object):
-    """Finds parameters from shapes of passed arguments."""
-
-    def __init__(self, kernel):
-        # a mapping from parameter names to a list of tuples
-        # (arg_name, axis_nr, function), where function is a
-        # unary function of kernel.arg_dict[arg_name].shape[axis_nr]
-        # returning the desired parameter.
-        self.param_to_sources = param_to_sources = {}
-
-        param_names = kernel.all_params()
-
-        from loopy.kernel.data import GlobalArg
-        from loopy.symbolic import DependencyMapper
-        from pymbolic import compile
-        dep_map = DependencyMapper()
-
-        from pymbolic import var
-        for arg in kernel.args:
-            if isinstance(arg, GlobalArg):
-                for axis_nr, shape_i in enumerate(arg.shape):
-                    deps = dep_map(shape_i)
-                    if len(deps) == 1:
-                        dep, = deps
-
-                        if dep.name in param_names:
-                            from pymbolic.algorithm import solve_affine_equations_for
-                            try:
-                                # overkill :)
-                                param_expr = solve_affine_equations_for(
-                                        [dep.name], [(shape_i, var("shape_i"))]
-                                        )[dep.name]
-                            except Exception:
-                                # went wrong? oh well
-                                pass
-                            else:
-                                param_func = compile(param_expr, ["shape_i"])
-                                param_to_sources.setdefault(dep.name, []).append(
-                                        (arg.name, axis_nr, param_func))
-
-    def __call__(self, kwargs):
-        result = {}
-
-        for param_name, sources in six.iteritems(self.param_to_sources):
-            if param_name not in kwargs:
-                for arg_name, axis_nr, shape_func in sources:
-                    if arg_name in kwargs:
-                        try:
-                            shape_axis = kwargs[arg_name].shape[axis_nr]
-                        except IndexError:
-                            raise RuntimeError("Argument '%s' has unexpected shape. "
-                                    "Tried to access axis %d (0-based), only %d "
-                                    "axes present." %
-                                    (arg_name, axis_nr, len(kwargs[arg_name].shape)))
-
-                        result[param_name] = shape_func(shape_axis)
-                        continue
-
-        return result
-
-# }}}
-
-
 # {{{ is domain dependent on inames
 
 def is_domain_dependent_on_inames(kernel, domain_index, inames):
@@ -741,10 +676,8 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 
     from loopy.kernel.data import AutoLocalIndexTagBase
     auto_axis_inames = set(
-            iname
-            for iname in kernel.insn_inames(insn)
-            if isinstance(kernel.iname_to_tag.get(iname),
-                AutoLocalIndexTagBase))
+        iname for iname in kernel.insn_inames(insn)
+        if kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase))
 
     # }}}
 
@@ -816,8 +749,11 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 
 def assign_automatic_axes(kernel, axis=0, local_size=None):
     logger.debug("%s: assign automatic axes" % kernel.name)
+    # TODO: do the tag removal rigorously, might be easier after switching
+    # to set() from tuple()
 
-    from loopy.kernel.data import (AutoLocalIndexTagBase, LocalIndexTag)
+    from loopy.kernel.data import (AutoLocalIndexTagBase, LocalIndexTag,
+                                   filter_iname_tags_by_type)
 
     # Realize that at this point in time, axis lengths are already
     # fixed. So we compute them once and pass them to our recursive
@@ -841,10 +777,18 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         except isl.Error:
             # Likely unbounded, automatic assignment is not
             # going to happen for this iname.
-            new_iname_to_tag = kernel.iname_to_tag.copy()
-            new_iname_to_tag[iname] = None
+            new_iname_to_tags = kernel.iname_to_tags.copy()
+            new_tags = new_iname_to_tags.get(iname, frozenset())
+            new_tags = frozenset(tag for tag in new_tags
+                    if not isinstance(tag, AutoLocalIndexTagBase))
+
+            if new_tags:
+                new_iname_to_tags[iname] = new_tags
+            else:
+                del new_iname_to_tags[iname]
+
             return assign_automatic_axes(
-                    kernel.copy(iname_to_tag=new_iname_to_tag),
+                    kernel.copy(iname_to_tags=new_iname_to_tags),
                     axis=recursion_axis)
 
         if axis is None:
@@ -884,23 +828,38 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         else:
             new_tag = LocalIndexTag(axis)
             if desired_length > local_size[axis]:
-                from loopy import split_iname
+                from loopy import split_iname, untag_inames
 
                 # Don't be tempted to switch the outer tag to unroll--this may
                 # generate tons of code on some examples.
 
                 return assign_automatic_axes(
-                        split_iname(kernel, iname, inner_length=local_size[axis],
+                        split_iname(
+                            untag_inames(kernel, iname, AutoLocalIndexTagBase),
+                            iname, inner_length=local_size[axis],
                             outer_tag=None, inner_tag=new_tag,
                             do_tagged_check=False),
                         axis=recursion_axis, local_size=local_size)
 
-        if not isinstance(kernel.iname_to_tag.get(iname), AutoLocalIndexTagBase):
+        if not kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase):
             raise LoopyError("trying to reassign '%s'" % iname)
 
-        new_iname_to_tag = kernel.iname_to_tag.copy()
-        new_iname_to_tag[iname] = new_tag
-        return assign_automatic_axes(kernel.copy(iname_to_tag=new_iname_to_tag),
+        if new_tag:
+            new_tag_set = frozenset([new_tag])
+        else:
+            new_tag_set = frozenset()
+        new_iname_to_tags = kernel.iname_to_tags.copy()
+        new_tags = (
+                frozenset(tag for tag in new_iname_to_tags.get(iname, frozenset())
+                    if not isinstance(tag, AutoLocalIndexTagBase))
+                | new_tag_set)
+
+        if new_tags:
+            new_iname_to_tags[iname] = new_tags
+        else:
+            del new_iname_to_tags[iname]
+
+        return assign_automatic_axes(kernel.copy(iname_to_tags=new_iname_to_tags),
                 axis=recursion_axis, local_size=local_size)
 
     # }}}
@@ -917,10 +876,8 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             continue
 
         auto_axis_inames = [
-                iname
-                for iname in kernel.insn_inames(insn)
-                if isinstance(kernel.iname_to_tag.get(iname),
-                    AutoLocalIndexTagBase)]
+            iname for iname in kernel.insn_inames(insn)
+            if kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase)]
 
         if not auto_axis_inames:
             continue
@@ -928,8 +885,9 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         assigned_local_axes = set()
 
         for iname in kernel.insn_inames(insn):
-            tag = kernel.iname_to_tag.get(iname)
-            if isinstance(tag, LocalIndexTag):
+            tags = kernel.iname_tags_of_type(iname, LocalIndexTag, max_num=1)
+            if tags:
+                tag, = tags
                 assigned_local_axes.add(tag.axis)
 
         if axis < len(local_size):
@@ -939,8 +897,9 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
                 iname_ranking = get_auto_axis_iname_ranking_by_stride(kernel, insn)
                 if iname_ranking is not None:
                     for iname in iname_ranking:
-                        prev_tag = kernel.iname_to_tag.get(iname)
-                        if isinstance(prev_tag, AutoLocalIndexTagBase):
+                        prev_tags = kernel.iname_tags(iname)
+                        if filter_iname_tags_by_type(
+                                prev_tags, AutoLocalIndexTagBase):
                             return assign_axis(axis, iname, axis)
 
         else:
@@ -1194,9 +1153,9 @@ def get_visual_iname_order_embedding(kernel):
     from loopy.kernel.data import IlpBaseTag
     # Ignore ILP tagged inames, since they do not have to form a strict loop
     # nest.
-    ilp_inames = frozenset(
-        iname for iname in kernel.iname_to_tag
-        if isinstance(kernel.iname_to_tag[iname], IlpBaseTag))
+    ilp_inames = frozenset(iname
+        for iname in kernel.iname_to_tags
+        if kernel.iname_tags_of_type(iname, IlpBaseTag))
 
     iname_trie = SetTrie()
 
@@ -1270,22 +1229,26 @@ def draw_dependencies_as_unicode_arrows(
         instances
     :arg fore: if given, will be used like a :mod:`colorama` ``Fore`` object
         to color-code dependencies. (E.g. red for downward edges)
-    :returns: A list of tuples (arrows, extender) with Unicode-drawn dependency
-        arrows, one per entry of *instructions*. *extender* can be used to
-        extend arrows below the line of an instruction.
+    :returns: A tuple ``(uniform_length, rows)``, where *rows* is a list of
+        tuples (arrows, extender) with Unicode-drawn dependency arrows, one per
+        entry of *instructions*. *extender* can be used to extend arrows below the
+        line of an instruction. *uniform_length* is the length of the *arrows* and
+        *extender* strings.
     """
     reverse_deps = {}
 
     for insn in instructions:
         for dep in insn.depends_on:
-            reverse_deps.setdefault(dep, []).append(insn.id)
+            reverse_deps.setdefault(dep, set()).add(insn.id)
 
     # mapping of (from_id, to_id) tuples to column_index
     dep_to_column = {}
 
     # {{{ find column assignments
 
-    # mapping from column indices to (end_insn_id, updown)
+    # mapping from column indices to (end_insn_ids, pointed_at_insn_id)
+    # end_insn_ids is a set that gets modified in-place to remove 'ends'
+    # (arrow origins) as they are being passed.
     columns_in_use = {}
 
     n_columns = [0]
@@ -1299,47 +1262,107 @@ def draw_dependencies_as_unicode_arrows(
             row.append(" ")
         return i
 
-    def do_flag_downward(s, updown):
-        if flag_downward and updown == "down":
+    def do_flag_downward(s, pointed_at_insn_id):
+        if flag_downward and pointed_at_insn_id not in processed_ids:
             return fore.RED+s+style.RESET_ALL
         else:
             return s
 
     def make_extender():
         result = n_columns[0] * [" "]
-        for col, (_, updown) in six.iteritems(columns_in_use):
-            result[col] = do_flag_downward(u"│", updown)
+        for col, (_, pointed_at_insn_id) in six.iteritems(columns_in_use):
+            result[col] = do_flag_downward(u"│", pointed_at_insn_id)
 
         return result
+
+    processed_ids = set()
 
     rows = []
     for insn in instructions:
         row = make_extender()
 
-        for rdep in reverse_deps.get(insn.id, []):
-            assert rdep != insn.id
+        # {{{ add rdeps for already existing columns
 
-            dep_key = (rdep, insn.id)
-            if dep_key not in dep_to_column:
-                col = dep_to_column[dep_key] = find_free_column()
-                columns_in_use[col] = (rdep, "up")
-                row[col] = u"↱"
+        rdeps = reverse_deps.get(insn.id, set()).copy() - processed_ids
+        assert insn.id not in rdeps
+
+        col = dep_to_column.get(insn.id)
+        if col is not None:
+            columns_in_use[col][0].update(rdeps)
+        del col
+
+        # }}}
+
+        # {{{ add deps for already existing columns
+
+        for dep in insn.depends_on:
+            dep_key = dep
+            if dep_key in dep_to_column:
+                col = dep_to_column[dep]
+                columns_in_use[col][0].add(insn.id)
+
+        # }}}
+
+        for col, (starts, pointed_at_insn_id) in list(six.iteritems(columns_in_use)):
+            if insn.id == pointed_at_insn_id:
+                if starts:
+                    # will continue downward
+                    row[col] = do_flag_downward(u">", pointed_at_insn_id)
+                else:
+                    # stops here
+
+                    # placeholder, pending deletion
+                    columns_in_use[col] = None
+
+                    row[col] = do_flag_downward(u"↳", pointed_at_insn_id)
+
+            elif insn.id in starts:
+                starts.remove(insn.id)
+                if starts:
+                    # will continue downward
+                    row[col] = do_flag_downward(u"├", pointed_at_insn_id)
+
+                else:
+                    # stops here
+                    row[col] = u"└"
+                    # placeholder, pending deletion
+                    columns_in_use[col] = None
+
+        # {{{ start arrows by reverse dep
+
+        dep_key = insn.id
+        if dep_key not in dep_to_column and rdeps:
+            col = dep_to_column[dep_key] = find_free_column()
+            columns_in_use[col] = (rdeps, insn.id)
+            row[col] = u"↱"
+
+        # }}}
+
+        # {{{ start arrows by forward dep
 
         for dep in insn.depends_on:
             assert dep != insn.id
-            dep_key = (insn.id, dep)
+            dep_key = dep
             if dep_key not in dep_to_column:
                 col = dep_to_column[dep_key] = find_free_column()
-                columns_in_use[col] = (dep, "down")
-                row[col] = do_flag_downward(u"┌", "down")
 
-        for col, (end, updown) in list(six.iteritems(columns_in_use)):
-            if insn.id == end:
+                # No need to add current instruction to end_insn_ids set, as
+                # we're currently handling it.
+                columns_in_use[col] = (set(), dep)
+
+                row[col] = do_flag_downward(u"┌", dep)
+
+        # }}}
+
+        # {{{ delete columns_in_use entry for end-of-life columns
+
+        for col, value in list(six.iteritems(columns_in_use)):
+            if value is None:
                 del columns_in_use[col]
-                if updown == "up":
-                    row[col] = u"└"
-                else:
-                    row[col] = do_flag_downward(u"↳", updown)
+
+        # }}}
+
+        processed_ids.add(insn.id)
 
         extender = make_extender()
 
@@ -1351,12 +1374,30 @@ def draw_dependencies_as_unicode_arrows(
 
     added_ellipsis = [False]
 
+    def len_without_color_escapes(s):
+        s = (s
+                .replace(fore.RED, "")
+                .replace(style.RESET_ALL, ""))
+        return len(s)
+
+    def truncate_without_color_escapes(s, l):
+        # FIXME: This is a bit dumb--it removes color escapes when truncation
+        # is needed.
+
+        s = (s
+                .replace(fore.RED, "")
+                .replace(style.RESET_ALL, ""))
+
+        return s[:l] + u"…"
+
     def conform_to_uniform_length(s):
-        if len(s) <= uniform_length:
-            return s + " "*(uniform_length-len(s))
+        len_s = len_without_color_escapes(s)
+
+        if len_s <= uniform_length:
+            return s + " "*(uniform_length-len_s)
         else:
             added_ellipsis[0] = True
-            return s[:uniform_length] + u"…"
+            return truncate_without_color_escapes(s, uniform_length)
 
     rows = [
             (conform_to_uniform_length(row),
@@ -1366,10 +1407,10 @@ def draw_dependencies_as_unicode_arrows(
     if added_ellipsis[0]:
         uniform_length += 1
 
-    rows = [
-            (conform_to_uniform_length(row),
-                conform_to_uniform_length(extender))
-            for row, extender in rows]
+        rows = [
+                (conform_to_uniform_length(row),
+                    conform_to_uniform_length(extender))
+                for row, extender in rows]
 
     return uniform_length, rows
 
@@ -1727,6 +1768,86 @@ def get_subkernel_to_insn_id_map(kernel):
         result[subkernel] = frozenset(result[subkernel])
 
     return result
+
+# }}}
+
+
+# {{{ find aliasing equivalence classes
+
+class DisjointSets(object):
+    """
+    .. automethod:: __getitem__
+    .. automethod:: find_leader_or_create_group
+    .. automethod:: union
+    .. automethod:: union_many
+    """
+
+    # https://en.wikipedia.org/wiki/Disjoint-set_data_structure
+
+    def __init__(self):
+        self.leader_to_group = {}
+        self.element_to_leader = {}
+
+    def __getitem__(self, item):
+        """
+        :arg item: A representative of an equivalence class.
+        :returns: the equivalence class, given as a set of elements
+        """
+        try:
+            leader = self.element_to_leader[item]
+        except KeyError:
+            return set([item])
+        else:
+            return self.leader_to_group[leader]
+
+    def find_leader_or_create_group(self, el):
+        try:
+            return self.element_to_leader[el]
+        except KeyError:
+            pass
+
+        self.element_to_leader[el] = el
+        self.leader_to_group[el] = set([el])
+        return el
+
+    def union(self, a, b):
+        leader_a = self.find_leader_or_create_group(a)
+        leader_b = self.find_leader_or_create_group(b)
+
+        if leader_a == leader_b:
+            return
+
+        new_leader = leader_a
+
+        for b_el in self.leader_to_group[leader_b]:
+            self.element_to_leader[b_el] = new_leader
+
+        self.leader_to_group[leader_a].update(self.leader_to_group[leader_b])
+        del self.leader_to_group[leader_b]
+
+    def union_many(self, relation):
+        """
+        :arg relation: an iterable of 2-tuples enumerating the elements of the
+            relation. The relation is assumed to be an equivalence relation
+            (transitive, reflexive, symmetric) but need not explicitly contain
+            all elements to make it that.
+
+            The first elements of the tuples become group leaders.
+
+        :returns: *self*
+        """
+
+        for a, b in relation:
+            self.union(a, b)
+
+        return self
+
+
+def find_aliasing_equivalence_classes(kernel):
+    return DisjointSets().union_many(
+            (tv.base_storage, tv.name)
+            for tv in six.itervalues(kernel.temporary_variables)
+            if tv.base_storage is not None)
 
 # }}}
 

@@ -29,7 +29,7 @@ def test_tim2d(ctx_factory):
            [
             "ur(a,b) := sum_float32(@o, D[a,o]*u[e,o,b])",
             "us(a,b) := sum_float32(@o, D[b,o]*u[e,a,o])",
-            
+
             "lap[e,i,j]  = "
             "  sum_float32(m, D[m,i]*(G[0,e,m,j]*ur(m,j) + G[1,e,m,j]*us(m,j)))"
             "+ sum_float32(m, D[m,j]*(G[1,e,i,m]*ur(i,m) + G[2,e,i,m]*us(i,m)))"
@@ -47,21 +47,21 @@ def test_tim2d(ctx_factory):
              name="semlap2D", assumptions="K>=1")
 
     unroll = 32
-    
+
     seq_knl = knl
-    knl = lp.add_prefetch(knl, "D", ["m", "j", "i","o"])
-    knl = lp.add_prefetch(knl, "u", ["i", "j",  "o"])
-    knl = lp.precompute(knl, "ur", np.float32, ["a", "b"])
-    knl = lp.precompute(knl, "us", np.float32, ["a", "b"])
+    knl = lp.add_prefetch(knl, "D", ["m", "j", "i","o"], default_tag="l.auto")
+    knl = lp.add_prefetch(knl, "u", ["i", "j",  "o"], default_tag="l.auto")
+    knl = lp.precompute(knl, "ur", np.float32, ["a", "b"], default_tag="l.auto")
+    knl = lp.precompute(knl, "us", np.float32, ["a", "b"], default_tag="l.auto")
     knl = lp.split_iname(knl, "e", 1, outer_tag="g.0")#, slabs=(0, 1))
 
     knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
     knl = lp.tag_inames(knl, dict(o="unr"))
     knl = lp.tag_inames(knl, dict(m="unr"))
 
-    
+
 #    knl = lp.add_prefetch(knl, "G", [2,3], default_tag=None) # axis/argument indices on G
-    knl = lp.add_prefetch(knl, "G", [2,3]) # axis/argument indices on G
+    knl = lp.add_prefetch(knl, "G", [2,3], default_tag="l.auto") # axis/argument indices on G
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
@@ -109,13 +109,16 @@ def test_red2d(ctx_factory):
              name="semlap2D", assumptions="K>=1")
 
     unroll = 32
-    
+
     seq_knl = knl
-    knl = lp.add_prefetch(knl, "D", ["m", "j", "i","o"])
-    knl = lp.add_prefetch(knl, "u", ["i", "j",  "o"])
-    knl = lp.precompute(knl, "ue", np.float32, ["a", "b", "m"])
-    knl = lp.precompute(knl, "ur", np.float32, ["a", "b"])
-    knl = lp.precompute(knl, "us", np.float32, ["a", "b"])
+    knl = lp.add_prefetch(knl, "D", ["m", "j", "i","o"], default_tag="l.auto")
+    knl = lp.add_prefetch(knl, "u", ["i", "j",  "o"], default_tag="l.auto")
+    knl = lp.precompute(knl, "ue", np.float32, ["a", "b", "m"],
+            default_tag="l.auto")
+    knl = lp.precompute(knl, "ur", np.float32, ["a", "b"],
+            default_tag="l.auto")
+    knl = lp.precompute(knl, "us", np.float32, ["a", "b"],
+            default_tag="l.auto")
     knl = lp.split_iname(knl, "e", 2, outer_tag="g.0")
     knl = lp.split_iname(knl, "j", n, inner_tag="l.0")#, slabs=(0, 1))
     knl = lp.split_iname(knl, "i", n, inner_tag="l.1")#, slabs=(0, 1))
@@ -123,8 +126,8 @@ def test_red2d(ctx_factory):
     knl = lp.tag_inames(knl, dict(o="unr"))
     knl = lp.tag_inames(knl, dict(m="unr"))
 
-    
-    knl = lp.add_prefetch(knl, "G", [2,3]) # axis/argument indices on G
+
+    knl = lp.add_prefetch(knl, "G", [2,3], default_tag="l.auto") # axis/argument indices on G
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
@@ -175,13 +178,16 @@ def test_tim3d(ctx_factory):
             lp.ValueArg("K", np.int32, approximately=1000),
             ],
              name="semlap3D", assumptions="K>=1")
-    
+
     seq_knl = knl
-    knl = lp.add_prefetch(knl, "D", ["m", "j", "i", "k","o"])
-    knl = lp.add_prefetch(knl, "u", ["i", "j",  "o", "k"])
-    knl = lp.precompute(knl, "ur", np.float32, ["a", "b", "c"])
-    knl = lp.precompute(knl, "us", np.float32, ["a", "b", "c"])
-    knl = lp.precompute(knl, "ut", np.float32, ["a", "b", "c"])
+    knl = lp.add_prefetch(knl, "D", ["m", "j", "i", "k","o"], default_tag="l.auto")
+    knl = lp.add_prefetch(knl, "u", ["i", "j",  "o", "k"], default_tag="l.auto")
+    knl = lp.precompute(knl, "ur", np.float32, ["a", "b", "c"],
+            default_tag="l.auto")
+    knl = lp.precompute(knl, "us", np.float32, ["a", "b", "c"],
+            default_tag="l.auto")
+    knl = lp.precompute(knl, "ut", np.float32, ["a", "b", "c"],
+            default_tag="l.auto")
     knl = lp.split_iname(knl, "e", 1, outer_tag="g.0")#, slabs=(0, 1))
     knl = lp.split_iname(knl, "k", n, inner_tag="l.2")#, slabs=(0, 1))
     knl = lp.split_iname(knl, "j", n, inner_tag="l.1")#, slabs=(0, 1))
@@ -193,7 +199,7 @@ def test_tim3d(ctx_factory):
     knl = lp.tag_inames(knl, dict(m="unr"))
 #    knl = lp.tag_inames(knl, dict(i="unr"))
 
-    knl = lp.add_prefetch(knl, "G", [2,3,4]) # axis/argument indices on G
+    knl = lp.add_prefetch(knl, "G", [2,3,4], default_tag="l.auto") # axis/argument indices on G
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))

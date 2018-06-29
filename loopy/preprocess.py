@@ -34,7 +34,7 @@ from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
-from loopy.kernel.data import make_assignment
+from loopy.kernel.data import make_assignment, filter_iname_tags_by_type
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
 
@@ -135,9 +135,8 @@ def check_reduction_iname_uniqueness(kernel):
 # {{{ decide temporary scope
 
 def _get_compute_inames_tagged(kernel, insn, tag_base):
-    return set(iname
-            for iname in kernel.insn_inames(insn.id)
-            if isinstance(kernel.iname_to_tag.get(iname), tag_base))
+    return set(iname for iname in kernel.insn_inames(insn.id)
+               if kernel.iname_tags_of_type(iname, tag_base))
 
 
 def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
@@ -147,7 +146,7 @@ def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
                 insn.assignee_subscript_deps())
             for iname in adeps & kernel.all_inames()
             if aname in tv_names
-            if isinstance(kernel.iname_to_tag.get(iname), tag_base))
+            if kernel.iname_tags_of_type(iname, tag_base))
 
 
 def find_temporary_scope(kernel):
@@ -292,20 +291,20 @@ def _classify_reduction_inames(kernel, inames):
 
     from loopy.kernel.data import (
             LocalIndexTagBase, UnrolledIlpTag, UnrollTag, VectorizeTag,
-            ConcurrentTag)
+            ConcurrentTag, filter_iname_tags_by_type)
 
     for iname in inames:
-        iname_tag = kernel.iname_to_tag.get(iname)
+        iname_tags = kernel.iname_tags(iname)
 
-        if isinstance(iname_tag, (UnrollTag, UnrolledIlpTag)):
+        if filter_iname_tags_by_type(iname_tags, (UnrollTag, UnrolledIlpTag)):
             # These are nominally parallel, but we can live with
             # them as sequential.
             sequential.append(iname)
 
-        elif isinstance(iname_tag, LocalIndexTagBase):
+        elif filter_iname_tags_by_type(iname_tags, LocalIndexTagBase):
             local_par.append(iname)
 
-        elif isinstance(iname_tag, (ConcurrentTag, VectorizeTag)):
+        elif filter_iname_tags_by_type(iname_tags, (ConcurrentTag, VectorizeTag)):
             nonlocal_par.append(iname)
 
         else:
@@ -797,11 +796,10 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
             newly_added_assignments_ids.add(new_assignment_id)
 
-            import loopy as lp
             new_temporaries[new_assignee_name] = (
                     TemporaryVariable(
                         name=new_assignee_name,
-                        dtype=lp.auto,
+                        dtype=None,
                         scope=temp_var_scope.PRIVATE))
 
             from pymbolic import var
@@ -987,7 +985,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             new_temporary_variables[name] = TemporaryVariable(
                     name=name,
                     shape=(),
-                    dtype=lp.auto,
+                    dtype=None,
                     scope=temp_var_scope.PRIVATE)
 
         from pymbolic import var
@@ -1137,12 +1135,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
         from loopy.kernel.data import LocalIndexTagBase
-        outer_local_inames = tuple(
-                oiname
-                for oiname in outer_insn_inames
-                if isinstance(
-                    kernel.iname_to_tag.get(oiname),
-                    LocalIndexTagBase))
+        outer_local_inames = tuple(oiname for oiname in outer_insn_inames
+                if kernel.iname_tags_of_type(oiname, LocalIndexTagBase))
 
         from pymbolic import var
         outer_local_iname_vars = tuple(
@@ -1177,7 +1171,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         base_exec_iname = var_name_gen("red_"+red_iname)
         domains.append(_make_slab_set(base_exec_iname, size))
-        new_iname_tags[base_exec_iname] = kernel.iname_to_tag[red_iname]
+        new_iname_tags[base_exec_iname] = kernel.iname_tags(red_iname)
 
         # }}}
 
@@ -1272,7 +1266,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
             stage_exec_iname = var_name_gen("red_%s_s%d" % (red_iname, istage))
             domains.append(_make_slab_set(stage_exec_iname, bound-new_size))
-            new_iname_tags[stage_exec_iname] = kernel.iname_to_tag[red_iname]
+            new_iname_tags[stage_exec_iname] = kernel.iname_tags(red_iname)
 
             stage_id = insn_id_gen("red_%s_stage_%d" % (red_iname, istage))
             stage_insn = make_assignment(
@@ -1476,12 +1470,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
         from loopy.kernel.data import LocalIndexTagBase
-        outer_local_inames = tuple(
-                oiname
-                for oiname in outer_insn_inames
-                if isinstance(
-                    kernel.iname_to_tag.get(oiname),
-                    LocalIndexTagBase)
+        outer_local_inames = tuple(oiname for oiname in outer_insn_inames
+                if kernel.iname_tags_of_type(oiname, LocalIndexTagBase)
                 and oiname != sweep_iname)
 
         from pymbolic import var
@@ -1507,7 +1497,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         base_exec_iname = var_name_gen(sweep_iname + "__scan")
         domains.append(_make_slab_set(base_exec_iname, scan_size))
-        new_iname_tags[base_exec_iname] = kernel.iname_to_tag[sweep_iname]
+        new_iname_tags[base_exec_iname] = kernel.iname_tags(sweep_iname)
 
         # }}}
 
@@ -1598,7 +1588,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             stage_exec_iname = var_name_gen("%s__scan_s%d" % (sweep_iname, istage))
             domains.append(
                     _make_slab_set_from_range(stage_exec_iname, cur_size, scan_size))
-            new_iname_tags[stage_exec_iname] = kernel.iname_to_tag[sweep_iname]
+            new_iname_tags[stage_exec_iname] = kernel.iname_tags(sweep_iname)
 
             for read_var, acc_var in zip(read_vars, acc_vars):
                 read_stage_id = insn_id_gen(
@@ -1748,7 +1738,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     "by reductions is 'local'--found iname(s) '%s' "
                     "respectively tagged '%s'"
                     % (", ".join(bad_inames),
-                       ", ".join(kernel.iname_to_tag[iname]
+                       ", ".join(str(kernel.iname_tags(iname))
                                  for iname in bad_inames)))
 
         if n_local_par == 0 and n_sequential == 0:
@@ -1786,7 +1776,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     _error_if_force_scan_on(LoopyError,
                             "Sweep iname '%s' has an unsupported parallel tag '%s' "
                             "- the only parallelism allowed is 'local'." %
-                            (sweep_iname, temp_kernel.iname_to_tag[sweep_iname]))
+                            (sweep_iname,
+                             ", ".join(tag.key
+                            for tag in temp_kernel.iname_tags(sweep_iname))))
                 elif parallel:
                     return map_scan_local(
                             expr, rec, nresults, arg_dtypes, reduction_dtypes,
@@ -1862,9 +1854,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             # An expansion happened, so insert the generated stuff plus
             # ourselves back into the queue.
 
+            result_assignment_dep_on = \
+                    insn.depends_on | frozenset(new_insn_add_depends_on)
             kwargs = insn.get_copy_kwargs(
-                    depends_on=insn.depends_on
-                    | frozenset(new_insn_add_depends_on),
                     no_sync_with=insn.no_sync_with
                     | frozenset(new_insn_add_no_sync_with),
                     within_inames=(
@@ -1872,6 +1864,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                         | new_insn_add_within_inames))
 
             kwargs.pop("id")
+            kwargs.pop("depends_on")
             kwargs.pop("expression")
             kwargs.pop("assignee", None)
             kwargs.pop("assignees", None)
@@ -1879,20 +1872,27 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             kwargs.pop("temp_var_types", None)
 
             if isinstance(insn.expression, Reduction) and nresults > 1:
+                result_assignment_ids = [
+                        insn_id_gen(insn.id) for i in range(nresults)]
                 replacement_insns = [
                         lp.Assignment(
-                            id=insn_id_gen(insn.id),
+                            id=result_assignment_ids[i],
+                            depends_on=(
+                                result_assignment_dep_on
+                                | (frozenset([result_assignment_ids[i-1]])
+                                    if i else frozenset())),
                             assignee=assignee,
                             expression=new_expr,
                             **kwargs)
-                        for assignee, new_expr in zip(
-                            insn.assignees, new_expressions)]
+                        for i, (assignee, new_expr) in enumerate(zip(
+                            insn.assignees, new_expressions))]
 
             else:
                 new_expr, = new_expressions
                 replacement_insns = [
                         make_assignment(
                             id=insn_id_gen(insn.id),
+                            depends_on=result_assignment_dep_on,
                             assignees=insn.assignees,
                             expression=new_expr,
                             **kwargs)
@@ -1935,6 +1935,25 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 kernel))
 
     return kernel
+
+# }}}
+
+
+# {{{ realize_ilp
+
+def realize_ilp(kernel):
+    logger.debug("%s: add axes to temporaries for ilp" % kernel.name)
+
+    from loopy.kernel.data import (IlpBaseTag, VectorizeTag,
+                                   filter_iname_tags_by_type)
+
+    privatizing_inames = frozenset(
+        iname for iname, tags in six.iteritems(kernel.iname_to_tags)
+        if filter_iname_tags_by_type(tags, (IlpBaseTag, VectorizeTag))
+    )
+
+    from loopy.transform.privatize import privatize_temporaries_with_inames
+    return privatize_temporaries_with_inames(kernel, privatizing_inames)
 
 # }}}
 
@@ -2047,6 +2066,49 @@ def limit_boostability(kernel):
 # }}}
 
 
+# {{{ check for loads of atomic variables
+
+def check_atomic_loads(kernel):
+    """Find instances of AtomicInit or AtomicUpdate with use of other atomic
+    variables to update the atomicity
+    """
+
+    logger.debug("%s: check atomic loads" % kernel.name)
+    from loopy.types import AtomicType
+    from loopy.kernel.array import ArrayBase
+    from loopy.kernel.instruction import Assignment, AtomicLoad
+
+    # find atomic variables
+    atomicity_candidates = (
+            set(v.name for v in six.itervalues(kernel.temporary_variables)
+                if isinstance(v.dtype, AtomicType))
+            |
+            set(v.name for v in kernel.args
+                if isinstance(v, ArrayBase)
+                and isinstance(v.dtype, AtomicType)))
+
+    new_insns = []
+    for insn in kernel.instructions:
+        if isinstance(insn, Assignment):
+            # look for atomic variables
+            atomic_accesses = set(a.var_name for a in insn.atomicity)
+            accessed_atomic_vars = (insn.dependency_names() & atomicity_candidates)\
+                - set([insn.assignee_var_names()[0]])
+            if not accessed_atomic_vars <= atomic_accesses:
+                #if we're missing some
+                missed = accessed_atomic_vars - atomic_accesses
+                for x in missed:
+                    if set([x]) & atomicity_candidates:
+                        insn = insn.copy(
+                            atomicity=insn.atomicity + (AtomicLoad(x),))
+
+        new_insns.append(insn)
+
+    return kernel.copy(instructions=new_insns)
+
+# }}}
+
+
 preprocess_cache = WriteOncePersistentDict(
         "loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
@@ -2085,8 +2147,8 @@ def preprocess_kernel(kernel, device=None):
     # {{{ check that there are no l.auto-tagged inames
 
     from loopy.kernel.data import AutoLocalIndexTagBase
-    for iname, tag in six.iteritems(kernel.iname_to_tag):
-        if (isinstance(tag, AutoLocalIndexTagBase)
+    for iname, tags in six.iteritems(kernel.iname_to_tags):
+        if (filter_iname_tags_by_type(tags, AutoLocalIndexTagBase)
                  and iname in kernel.all_inames()):
             raise LoopyError("kernel with automatically-assigned "
                     "local axes passed to preprocessing")
@@ -2123,14 +2185,17 @@ def preprocess_kernel(kernel, device=None):
     # add_axes_to_temporaries_for_ilp because reduction accumulators
     # need to be duplicated by this.
 
-    from loopy.transform.ilp import add_axes_to_temporaries_for_ilp_and_vec
-    kernel = add_axes_to_temporaries_for_ilp_and_vec(kernel)
+    kernel = realize_ilp(kernel)
 
     kernel = find_temporary_scope(kernel)
 
     # boostability should be removed in 2017.x.
     kernel = find_idempotence(kernel)
     kernel = limit_boostability(kernel)
+
+    # check for atomic loads, much easier to do here now that the dependencies
+    # have been established
+    kernel = check_atomic_loads(kernel)
 
     kernel = kernel.target.preprocess(kernel)
 

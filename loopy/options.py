@@ -112,6 +112,15 @@ class Options(ImmutableRecord):
         Do not check for or accept :mod:`numpy` arrays as
         arguments.
 
+        Defaults to *False*.
+
+    .. attribute:: cl_exec_manage_array_events
+
+        Within the PyOpenCL executor, respect and udpate
+        :attr:`pyopencl.array.Array.event`.
+
+        Defaults to *True*.
+
     .. attribute:: return_dict
 
         Have kernels return a :class:`dict` instead of a tuple as
@@ -153,6 +162,16 @@ class Options(ImmutableRecord):
     .. rubric:: Features
 
     .. attribute:: disable_global_barriers
+
+    .. attribute:: enforce_variable_access_ordered
+
+        If *True*, require that
+        :func:`loopy.check.check_variable_access_ordered` passes.
+        Required for language versions 2018.1 and above. This check
+        helps find and eliminate unintentionally unordered access
+        to variables.
+
+        If equal to ``"no_check"``, then no check is performed.
     """
 
     _legacy_options_map = {
@@ -196,6 +215,7 @@ class Options(ImmutableRecord):
 
                 skip_arg_checks=kwargs.get("skip_arg_checks", False),
                 no_numpy=kwargs.get("no_numpy", False),
+                cl_exec_manage_array_events=kwargs.get("no_numpy", True),
                 return_dict=kwargs.get("return_dict", False),
                 write_wrapper=kwargs.get("write_wrapper", False),
                 write_code=kwargs.get("write_code", False),
@@ -206,6 +226,9 @@ class Options(ImmutableRecord):
                 disable_global_barriers=kwargs.get("disable_global_barriers",
                     False),
                 check_dep_resolution=kwargs.get("check_dep_resolution", True),
+
+                enforce_variable_access_ordered=kwargs.get(
+                    "enforce_variable_access_ordered", False),
                 )
 
     # {{{ legacy compatibility
