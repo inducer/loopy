@@ -196,6 +196,9 @@ class OpaqueType(LoopyType):
     def is_complex(self):
         return False
 
+    def involves_complex(self):
+        return False
+
 # }}}
 
 
