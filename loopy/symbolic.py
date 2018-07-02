@@ -57,6 +57,8 @@ from pymbolic.mapper.constant_folder import \
 
 from pymbolic.parser import Parser as ParserBase
 
+from loopy.diagnostic import ExpressionToAffineConversionError
+
 import islpy as isl
 from islpy import dim_type
 
@@ -1401,16 +1403,9 @@ def simplify_using_aff(kernel, expr):
 
     domain = kernel.get_inames_domain(inames)
 
-    from pymbolic.mapper.evaluator import UnknownVariableError
-
     try:
-        with isl.SuppressedWarnings(kernel.isl_context):
-            aff = aff_from_expr(domain.space, expr)
-    except isl.Error:
-        return expr
-    except TypeError:
-        return expr
-    except UnknownVariableError:
+        aff = guarded_aff_from_expr(domain.space, expr)
+    except ExpressionToAffineConversionError:
         return expr
 
     # FIXME: Deal with assumptions, too.
