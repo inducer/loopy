@@ -2179,6 +2179,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     creation_plog.done()
 
+    from loopy.kernel.tools import infer_arg_is_output_only
+    knl = infer_arg_is_output_only(knl)
+
     return knl
 
 # }}}

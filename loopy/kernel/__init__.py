@@ -223,7 +223,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             options=None,
 
             state=KernelState.INITIAL,
-            is_called_from_host=True,
             target=None,
 
             overridden_get_grid_sizes_for_insn_ids=None,
