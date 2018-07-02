@@ -147,7 +147,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
         rule_name=None,
         temporary_name=None,
-        temporary_scope=None, temporary_is_local=None,
+        temporary_address_space=None, temporary_scope=None,
         footprint_subscripts=None,
         fetch_bounding_box=False,
         fetch_outer_inames=None):
@@ -184,9 +184,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
     :arg rule_name: base name of the generated temporary variable.
     :arg temporary_name: The name of the temporary to be used.
-    :arg temporary_scope: The :class:`temp_var_scope` to use for the
+    :arg temporary_address_space: The :class:`AddressSpace` to use for the
         temporary.
-    :arg temporary_is_local: Deprecated, use *temporary_scope* instead.
     :arg footprint_subscripts: A list of tuples indicating the index (i.e.
         subscript) tuples used to generate the footprint.
 
@@ -335,7 +334,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
             default_tag=default_tag, dtype=arg.dtype,
             fetch_bounding_box=fetch_bounding_box,
             temporary_name=temporary_name,
-            temporary_scope=temporary_scope, temporary_is_local=temporary_is_local,
+            temporary_address_space=temporary_address_space,
+            temporary_scope=temporary_scope,
             precompute_outer_inames=fetch_outer_inames)
 
     # {{{ remove inames that were temporarily added by slice sweeps
@@ -660,24 +660,24 @@ def set_temporary_scope(kernel, temp_var_names, scope):
     :arg temp_var_names: a container with membership checking,
         or a comma-separated string of variables for which the
         scope is to be set.
-    :arg scope: One of the values from :class:`temp_var_scope`, or one
+    :arg scope: One of the values from :class:`AddressSpace`, or one
         of the strings ``"private"``, ``"local"``, or ``"global"``.
     """
 
     if isinstance(temp_var_names, str):
         temp_var_names = [s.strip() for s in temp_var_names.split(",")]
 
-    from loopy.kernel.data import temp_var_scope
+    from loopy.kernel.data import AddressSpace
     if isinstance(scope, str):
         try:
-            scope = getattr(temp_var_scope, scope.upper())
+            scope = getattr(AddressSpace, scope.upper())
         except AttributeError:
             raise LoopyError("scope '%s' unknown" % scope)
 
     if not isinstance(scope, int) or scope not in [
-            temp_var_scope.PRIVATE,
-            temp_var_scope.LOCAL,
-            temp_var_scope.GLOBAL]:
+            AddressSpace.PRIVATE,
+            AddressSpace.LOCAL,
+            AddressSpace.GLOBAL]:
         raise LoopyError("invalid scope '%s'" % scope)
 
     new_temp_vars = kernel.temporary_variables.copy()

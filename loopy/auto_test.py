@@ -79,7 +79,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
 
-    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg, \
+    from loopy.kernel.data import ValueArg, ArrayArg, ImageArg, \
             TemporaryVariable, ConstantArg
 
     from pymbolic import evaluate
@@ -108,7 +108,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
 
             ref_arg_data.append(None)
 
-        elif arg.arg_class is GlobalArg or arg.arg_class is ImageArg \
+        elif arg.arg_class is ArrayArg or arg.arg_class is ImageArg \
                 or arg.arg_class is ConstantArg:
             if arg.shape is None or any(saxis is None for saxis in arg.shape):
                 raise LoopyError("array '%s' needs known shape to use automatic "
@@ -183,7 +183,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
             pass
 
         else:
-            raise LoopyError("arg type not understood")
+            raise LoopyError("arg type %s not understood" % type(arg))
 
     return ref_args, ref_arg_data
 
@@ -196,7 +196,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
 
-    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg,\
+    from loopy.kernel.data import ValueArg, ArrayArg, ImageArg,\
             TemporaryVariable, ConstantArg
 
     from pymbolic import evaluate
@@ -230,7 +230,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
             args[arg.name] = cl.image_from_array(
                     queue.context, arg_desc.ref_pre_run_array.get())
 
-        elif arg.arg_class is GlobalArg or\
+        elif arg.arg_class is ArrayArg or\
                 arg.arg_class is ConstantArg:
             shape = evaluate(arg.unvec_shape, parameters)
             strides = evaluate(arg.unvec_strides, parameters)
@@ -515,11 +515,11 @@ def auto_test_vs_ref(
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     args = None
-    from loopy.kernel import kernel_state
+    from loopy.kernel import KernelState
     from loopy.target.pyopencl import PyOpenCLTarget
     if test_knl.state not in [
-            kernel_state.PREPROCESSED,
-            kernel_state.SCHEDULED]:
+            KernelState.PREPROCESSED,
+            KernelState.SCHEDULED]:
         if isinstance(test_knl.target, PyOpenCLTarget):
             test_knl = test_knl.copy(target=PyOpenCLTarget(ctx.devices[0]))
 

@@ -45,6 +45,7 @@ from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.tools import natsorted
 from loopy.diagnostic import StaticValueFindingError
 from loopy.kernel.data import filter_iname_tags_by_type
+from warnings import warn
 
 
 # {{{ unique var names
@@ -98,10 +99,40 @@ class _UniqueVarNameGenerator(UniqueNameGenerator):
 
 # {{{ loop kernel object
 
-class kernel_state:  # noqa
+class KernelState:  # noqa
     INITIAL = 0
     PREPROCESSED = 1
     SCHEDULED = 2
+
+# {{{ kernel_state, KernelState compataibility
+
+class _deperecated_kernel_state_class_method(object):  # noqa
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, klass):
+        warn("'temp_var_scope' is deprecated. Use 'AddressSpace'.",
+                DeprecationWarning, stacklevel=2)
+        return self.f()
+
+
+class kernel_state(object):  # noqa
+    """Deprecated. Use :class:`loopy.kernel.KernelState` instead.
+    """
+
+    @_deperecated_kernel_state_class_method
+    def INITIAL():
+        return KernelState.INITITAL
+
+    @_deperecated_kernel_state_class_method
+    def PREPROCESSED():
+        return KernelState.PREPROCESSED
+
+    @_deperecated_kernel_state_class_method
+    def SCHEDULED():
+        return KernelState.SCHEDULED
+
+# }}}
 
 
 class LoopKernel(ImmutableRecordWithoutPickling):
@@ -188,7 +219,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     .. attribute:: state
 
-        A value from :class:`kernel_state`.
+        A value from :class:`KernelState`.
 
     .. attribute:: target
 
@@ -218,7 +249,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             index_dtype=np.int32,
             options=None,
 
-            state=kernel_state.INITIAL,
+            state=KernelState.INITIAL,
             target=None,
 
             overridden_get_grid_sizes_for_insn_ids=None,
@@ -300,9 +331,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             raise TypeError("index_dtype must be signed")
 
         if state not in [
-                kernel_state.INITIAL,
-                kernel_state.PREPROCESSED,
-                kernel_state.SCHEDULED,
+                KernelState.INITIAL,
+                KernelState.PREPROCESSED,
+                KernelState.SCHEDULED,
                 ]:
             raise ValueError("invalid value for 'state'")
 
@@ -946,17 +977,17 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     @memoize_method
     def global_var_names(self):
-        from loopy.kernel.data import temp_var_scope
+        from loopy.kernel.data import AddressSpace
 
-        from loopy.kernel.data import GlobalArg
+        from loopy.kernel.data import ArrayArg
         return (
                 set(
                     arg.name for arg in self.args
-                    if isinstance(arg, GlobalArg))
+                    if isinstance(arg, ArrayArg))
                 | set(
                     tv.name
                     for tv in six.itervalues(self.temporary_variables)
-                    if tv.scope == temp_var_scope.GLOBAL))
+                    if tv.address_space == AddressSpace.GLOBAL))
 
     # }}}
 
@@ -1096,8 +1127,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 assert cur_axis is not None
 
                 if cur_axis > len(size_list):
-                    raise RuntimeError("%s axis %d unused" % (
-                        which, len(size_list)))
+                    raise LoopyError("%s axis %d unused for %s" % (
+                        which, len(size_list), self.name))
 
                 size_list.append(size_dict[cur_axis])
 
@@ -1152,17 +1183,17 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     @memoize_method
     def local_var_names(self):
-        from loopy.kernel.data import temp_var_scope
+        from loopy.kernel.data import AddressSpace
         return set(
             tv.name
             for tv in six.itervalues(self.temporary_variables)
-            if tv.scope == temp_var_scope.LOCAL)
+            if tv.address_space == AddressSpace.LOCAL)
 
     def local_mem_use(self):
-        from loopy.kernel.data import temp_var_scope
+        from loopy.kernel.data import AddressSpace
         return sum(
                 tv.nbytes for tv in six.itervalues(self.temporary_variables)
-                if tv.scope == temp_var_scope.LOCAL)
+                if tv.address_space == AddressSpace.LOCAL)
 
     # }}}
 

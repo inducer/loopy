@@ -137,7 +137,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     """Replace accesses to *var_name* with ones to a temporary, which is
     created and acts as a buffer. To perform this transformation, the access
     footprint to *var_name* is determined and a temporary of a suitable
-    :class:`loopy.temp_var_scope` and shape is created.
+    :class:`loopy.AddressSpace` and shape is created.
 
     By default, the value of the buffered cells in *var_name* are read prior to
     any (read/write) use, and the modified values are written out after use has
@@ -159,8 +159,8 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     :arg within: If not None, limit the action of the transformation to
         matching contexts.  See :func:`loopy.match.parse_stack_match`
         for syntax.
-    :arg temp_var_scope: If given, override the choice of :class:`temp_var_scope`
-        for the created temporary.
+    :arg temporary_scope: If given, override the choice of
+    :class:`AddressSpace` for the created temporary.
     :arg default_tag: The default :ref:`iname-tags` to be assigned to the
         inames used for fetching and storing
     :arg fetch_bounding_box: If the access footprint is non-convex
@@ -171,7 +171,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
 
     # {{{ unify temporary_scope / temporary_is_local
 
-    from loopy.kernel.data import temp_var_scope
+    from loopy.kernel.data import AddressSpace
     if temporary_is_local is not None:
         from warnings import warn
         warn("temporary_is_local is deprecated. Use temporary_scope instead",
@@ -182,9 +182,9 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
                     "temporary_scope")
 
         if temporary_is_local:
-            temporary_scope = temp_var_scope.LOCAL
+            temporary_scope = AddressSpace.LOCAL
         else:
-            temporary_scope = temp_var_scope.PRIVATE
+            temporary_scope = AddressSpace.PRIVATE
 
     del temporary_is_local
 

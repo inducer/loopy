@@ -1725,8 +1725,8 @@ def get_subkernels(kernel):
 
     See also :class:`loopy.schedule.CallKernel`.
     """
-    from loopy.kernel import kernel_state
-    if kernel.state != kernel_state.SCHEDULED:
+    from loopy.kernel import KernelState
+    if kernel.state != KernelState.SCHEDULED:
         raise LoopyError("Kernel must be scheduled")
 
     from loopy.schedule import CallKernel
@@ -1742,8 +1742,8 @@ def get_subkernel_to_insn_id_map(kernel):
     consisting of the instruction ids scheduled within the subkernel. The
     kernel must be scheduled.
     """
-    from loopy.kernel import kernel_state
-    if kernel.state != kernel_state.SCHEDULED:
+    from loopy.kernel import KernelState
+    if kernel.state != KernelState.SCHEDULED:
         raise LoopyError("Kernel must be scheduled")
 
     from loopy.schedule import (
@@ -1851,5 +1851,38 @@ def find_aliasing_equivalence_classes(kernel):
 
 # }}}
 
+
+# {{{ direction helper tools
+
+def infer_arg_is_output_only(kernel):
+    """
+    Returns a copy of *kernel* with the attribute ``is_output_only`` set.
+
+    .. note::
+
+        If the attribute ``is_output_only`` is not supplied from an user, then
+        infers it as an output argument if it is written at some point in the
+        kernel.
+    """
+    from loopy.kernel.data import ArrayArg, ValueArg, ConstantArg, ImageArg
+    new_args = []
+    for arg in kernel.args:
+        if isinstance(arg, (ArrayArg, ImageArg, ValueArg)):
+            if arg.is_output_only is not None:
+                assert isinstance(arg.is_output_only, bool)
+                new_args.append(arg)
+            else:
+                if arg.name in kernel.get_written_variables():
+                    new_args.append(arg.copy(is_output_only=True))
+                else:
+                    new_args.append(arg.copy(is_output_only=False))
+        elif isinstance(arg, ConstantArg):
+            new_args.append(arg)
+        else:
+            raise NotImplementedError("Unkonwn argument type %s." % type(arg))
+
+    return kernel.copy(args=new_args)
+
+# }}}
 
 # vim: foldmethod=marker

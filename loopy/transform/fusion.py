@@ -130,8 +130,8 @@ def _merge_values(item_name, val_a, val_b):
 # {{{ two-kernel fusion
 
 def _fuse_two_kernels(knla, knlb):
-    from loopy.kernel import kernel_state
-    if knla.state != kernel_state.INITIAL or knlb.state != kernel_state.INITIAL:
+    from loopy.kernel import KernelState
+    if knla.state != KernelState.INITIAL or knlb.state != KernelState.INITIAL:
         raise LoopyError("can only fuse kernels in INITIAL state")
 
     # {{{ fuse domains

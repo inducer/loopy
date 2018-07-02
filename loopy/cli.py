@@ -205,7 +205,7 @@ def main():
         new_kernels = []
         for kernel in kernels:
             new_args = [
-                    lp.GlobalArg("occa_info", np.int32, shape=None)
+                    lp.ArrayArg("occa_info", np.int32, shape=None)
                     ] + kernel.args
             new_kernels.append(kernel.copy(args=new_args))
 

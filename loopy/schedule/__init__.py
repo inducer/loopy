@@ -1850,8 +1850,8 @@ def generate_loop_schedules(kernel, debug_args={}):
 
 
 def generate_loop_schedules_inner(kernel, debug_args={}):
-    from loopy.kernel import kernel_state
-    if kernel.state not in (kernel_state.PREPROCESSED, kernel_state.SCHEDULED):
+    from loopy.kernel import KernelState
+    if kernel.state not in (KernelState.PREPROCESSED, KernelState.SCHEDULED):
         raise LoopyError("cannot schedule a kernel that has not been "
                 "preprocessed")
 
@@ -1862,7 +1862,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
     debug = ScheduleDebugger(**debug_args)
 
-    preschedule = kernel.schedule if kernel.state == kernel_state.SCHEDULED else ()
+    preschedule = kernel.schedule if kernel.state == KernelState.SCHEDULED else ()
 
     prescheduled_inames = set(
             insn.iname
@@ -1914,7 +1914,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
             unscheduled_insn_ids=set(insn.id for insn in kernel.instructions),
             scheduled_insn_ids=frozenset(),
-            within_subkernel=kernel.state != kernel_state.SCHEDULED,
+            within_subkernel=kernel.state != KernelState.SCHEDULED,
             may_schedule_global_barriers=True,
 
             preschedule=preschedule,
@@ -1984,11 +1984,11 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
             new_kernel = kernel.copy(
                     schedule=gen_sched,
-                    state=kernel_state.SCHEDULED)
+                    state=KernelState.SCHEDULED)
 
             from loopy.schedule.device_mapping import \
                     map_schedule_onto_host_or_device
-            if kernel.state != kernel_state.SCHEDULED:
+            if kernel.state != KernelState.SCHEDULED:
                 # Device mapper only gets run once.
                 new_kernel = map_schedule_onto_host_or_device(new_kernel)
 

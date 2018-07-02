@@ -37,19 +37,22 @@ from loopy.library.function import (
         default_function_mangler, single_arg_function_mangler)
 
 from loopy.kernel.instruction import (
-        memory_ordering, memory_scope, VarAtomicity, AtomicInit, AtomicUpdate,
+        MemoryOrdering, memory_ordering,
+        MemoryScope, memory_scope,
+        VarAtomicity, AtomicInit, AtomicUpdate,
         InstructionBase,
         MultiAssignmentBase, Assignment, ExpressionInstruction,
         CallInstruction, CInstruction, NoOpInstruction, BarrierInstruction)
 from loopy.kernel.data import (
         auto,
         KernelArgument,
-        ValueArg, GlobalArg, ConstantArg, ImageArg,
-        temp_var_scope, TemporaryVariable,
+        ValueArg, ArrayArg, GlobalArg, ConstantArg, ImageArg,
+        AddressSpace, temp_var_scope,
+        TemporaryVariable,
         SubstitutionRule,
         CallMangleInfo)
 
-from loopy.kernel import LoopKernel, kernel_state
+from loopy.kernel import LoopKernel, KernelState, kernel_state
 from loopy.kernel.tools import (
         get_dot_dependency_graph,
         show_dependency_graph,
@@ -152,9 +155,13 @@ __all__ = [
 
         "auto",
 
-        "LoopKernel", "kernel_state",
+        "LoopKernel",
+        "KernelState", "kernel_state",  # lower case is deprecated
 
-        "memory_ordering", "memory_scope", "VarAtomicity",
+        "MemoryOrdering", "memory_ordering",  # lower case is deprecated
+        "MemoryScope", "memory_scope",  # lower case is deprecated
+
+        "VarAtomicity",
         "AtomicInit", "AtomicUpdate",
         "InstructionBase",
         "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
@@ -162,8 +169,9 @@ __all__ = [
         "BarrierInstruction",
 
         "KernelArgument",
-        "ValueArg", "GlobalArg", "ConstantArg", "ImageArg",
-        "temp_var_scope", "TemporaryVariable",
+        "ValueArg", "ArrayArg", "GlobalArg", "ConstantArg", "ImageArg",
+        "AddressSpace", "temp_var_scope",   # temp_var_scope is deprecated
+        "TemporaryVariable",
         "SubstitutionRule",
         "CallMangleInfo",
 
@@ -366,7 +374,7 @@ def register_symbol_manglers(kernel, manglers):
 
 def register_function_manglers(kernel, manglers):
     """
-    :arg manglers: list of functions of signature ``(target, name, arg_dtypes)``
+    :arg manglers: list of functions of signature ``(kernel, name, arg_dtypes)``
         returning a :class:`loopy.CallMangleInfo`.
     :returns: *kernel* with *manglers* registered
     """
