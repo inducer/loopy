@@ -335,7 +335,6 @@ class KernelArgument(ImmutableRecord):
             dtype = None
 
         kwargs["dtype"] = dtype
-        kwargs["is_output_only"] = kwargs.pop("is_output_only", None)
 
         ImmutableRecord.__init__(self, **kwargs)
 
@@ -361,7 +360,7 @@ class ArrayArg(ArrayBase, KernelArgument):
     def __init__(self, *args, **kwargs):
         if "address_space" not in kwargs:
             raise TypeError("'address_space' must be specified")
-        kwargs["is_output_only"] = kwargs.pop("is_output_only", None)
+        kwargs["is_output_only"] = kwargs.pop("is_output_only", False)
 
         super(ArrayArg, self).__init__(*args, **kwargs)
 
@@ -411,7 +410,7 @@ class ImageArg(ArrayBase, KernelArgument):
 
 class ValueArg(KernelArgument):
     def __init__(self, name, dtype=None, approximately=1000, target=None,
-            is_output_only=None):
+            is_output_only=False):
 
         KernelArgument.__init__(self, name=name,
                 dtype=dtype,
