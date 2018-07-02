@@ -1,5 +1,4 @@
 from __future__ import division, absolute_import
-from six.moves import range, zip
 
 __copyright__ = "Copyright (C) 2012-2015 Andreas Kloeckner"
 
@@ -22,6 +21,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
+
+from six.moves import range, zip
 
 import islpy as isl
 from islpy import dim_type
@@ -89,12 +90,12 @@ def build_per_access_storage_to_domain_map(storage_axis_exprs, domain,
 
     stor2sweep = None
 
-    from loopy.symbolic import aff_from_expr
+    from loopy.symbolic import guarded_aff_from_expr
 
     for saxis, sa_expr in zip(storage_axis_names, storage_axis_exprs):
-        cns = isl.Constraint.equality_from_aff(
-                aff_from_expr(set_space,
-                    var(saxis+"'") - prime_sweep_inames(sa_expr)))
+        cns_expr = var(saxis+"'") - prime_sweep_inames(sa_expr)
+        cns_aff = guarded_aff_from_expr(set_space, cns_expr)
+        cns = isl.Constraint.equality_from_aff(cns_aff)
 
         cns_map = isl.BasicMap.from_constraint(cns)
         if stor2sweep is None:
@@ -352,13 +353,11 @@ class ArrayToBufferMap(object):
                 self.stor2sweep,
                 except_inames=frozenset(self.primed_sweep_inames)).domain()
 
-        arg_inames = (
-                set(global_s2s_par_dom.get_var_names(dim_type.param))
-                & self.kernel.all_inames())
+        arg_inames = set(global_s2s_par_dom.get_var_names(dim_type.param))
 
         for arg in storage_axis_exprs:
             arg_inames.update(get_dependencies(arg))
-        arg_inames = frozenset(arg_inames)
+        arg_inames = frozenset(arg_inames & self.kernel.all_inames())
 
         from loopy.kernel import CannotBranchDomainTree
         try:
