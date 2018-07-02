@@ -112,9 +112,9 @@ always see loopy's view of a kernel by printing it.
     KERNEL: loopy_kernel
     ---------------------------------------------------------------------------
     ARGUMENTS:
-    a: ArrayArg, type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1)
+    a: GlobalArg, type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1)
     n: ValueArg, type: <auto/runtime>
-    out: ArrayArg, type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1)
+    out: GlobalArg, type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1)
     ---------------------------------------------------------------------------
     DOMAINS:
     [n] -> { [i] : 0 <= i < n }
@@ -1145,7 +1145,7 @@ the right by 1 in parallel:
    ...     end
    ...     """,
    ...      [
-   ...         lp.ArrayArg("arr", shape=("n",), dtype=np.int32),
+   ...         lp.GlobalArg("arr", shape=("n",), dtype=np.int32),
    ...          "...",
    ...      ],
    ...     name="rotate_v1",
@@ -1189,7 +1189,7 @@ Let us start with an example. Consider the kernel from above with a
    ...     end
    ...     """,
    ...      [
-   ...         lp.ArrayArg("arr", shape=("n",), dtype=np.int32),
+   ...         lp.GlobalArg("arr", shape=("n",), dtype=np.int32),
    ...          "...",
    ...      ],
    ...     name="rotate_v2",
@@ -1321,8 +1321,8 @@ tagged, as in the following example::
             "{ [i]: 0<=i<n }",
             "out[i%20] = out[i%20] + 2*a[i] {atomic}",
             [
-                lp.ArrayArg("out", dtype, shape=lp.auto, for_atomic=True),
-                lp.ArrayArg("a", dtype, shape=lp.auto),
+                lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
+                lp.GlobalArg("a", dtype, shape=lp.auto),
                 "..."
                 ],
             assumptions="n>0")
