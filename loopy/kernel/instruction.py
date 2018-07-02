@@ -529,64 +529,78 @@ def _get_assignee_subscript_deps(expr):
 
 # {{{ atomic ops
 
-class memory_ordering:  # noqa
+class MemoryOrdering:  # noqa
     """Ordering of atomic operations, defined as in C11 and OpenCL.
 
-    .. attribute:: relaxed
-    .. attribute:: acquire
-    .. attribute:: release
-    .. attribute:: acq_rel
-    .. attribute:: seq_cst
+    .. attribute:: RELAXED
+    .. attribute:: ACQUIRE
+    .. attribute:: RELEASE
+    .. attribute:: ACQ_REL
+    .. attribute:: SEQ_CST
     """
 
-    relaxed = 0
-    acquire = 1
-    release = 2
-    acq_rel = 3
-    seq_cst = 4
+    RELAXED = 0
+    ACQUIRE = 1
+    RELEASE = 2
+    ACQ_REL = 3
+    SEQ_CST = 4
+
+    # FIXME Introduce compat/deprecation goop for now-upper-case enum
+    # constants
 
     @staticmethod
     def to_string(v):
-        for i in dir(memory_ordering):
+        for i in dir(MemoryOrdering):
             if i.startswith("_"):
                 continue
 
-            if getattr(memory_ordering, i) == v:
+            if getattr(MemoryOrdering, i) == v:
                 return i
 
-        raise ValueError("Unknown value of memory_ordering")
+        raise ValueError("Unknown value of MemoryOrdering")
 
 
-class memory_scope:  # noqa
+# FIXME Introduce noisy deprecation goop
+memory_ordering = MemoryOrdering
+
+
+class MemoryScope:  # noqa
     """Scope of atomicity, defined as in OpenCL.
 
     .. attribute:: auto
 
         Scope matches the accessibility of the variable.
 
-    .. attribute:: work_item
-    .. attribute:: work_group
-    .. attribute:: work_device
-    .. attribute:: all_svm_devices
+    .. attribute:: WORK_ITEM
+    .. attribute:: WORK_GROUP
+    .. attribute:: WORK_DEVICE
+    .. attribute:: ALL_SVM_DEVICES
     """
 
-    work_item = 0
-    work_group = 1
-    device = 2
-    all_svm_devices = 2
+    WORK_ITEM = 0
+    WORK_GROUP = 1
+    DEVICE = 2
+    ALL_SVM_DEVICES = 2
+
+    # FIXME Introduce compat/deprecation goop for now-upper-case enum
+    # constants
 
     auto = -1
 
     @staticmethod
     def to_string(v):
-        for i in dir(memory_scope):
+        for i in dir(MemoryScope):
             if i.startswith("_"):
                 continue
 
-            if getattr(memory_scope, i) == v:
+            if getattr(MemoryScope, i) == v:
                 return i
 
-        raise ValueError("Unknown value of memory_scope")
+        raise ValueError("Unknown value of MemoryScope")
+
+
+# FIXME Introduce noisy deprecation goop
+memory_scope = MemoryScope
 
 
 class VarAtomicity(object):
@@ -619,15 +633,15 @@ class OrderedAtomic(VarAtomicity):
 
     .. attribute:: ordering
 
-        One of the values from :class:`memory_ordering`
+        One of the values from :class:`MemoryOrdering`
 
     .. attribute:: scope
 
-        One of the values from :class:`memory_scope`
+        One of the values from :class:`MemoryScope`
     """
 
-    ordering = memory_ordering.seq_cst
-    scope = memory_scope.auto
+    ordering = MemoryOrdering.SEQ_CST
+    scope = MemoryScope.auto
 
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
@@ -648,8 +662,8 @@ class OrderedAtomic(VarAtomicity):
         return "%s[%s]%s/%s" % (
                 self.op_name,
                 self.var_name,
-                memory_ordering.to_string(self.ordering),
-                memory_scope.to_string(self.scope))
+                MemoryOrdering.to_string(self.ordering),
+                MemoryScope.to_string(self.scope))
 
 
 class AtomicInit(OrderedAtomic):
@@ -658,11 +672,11 @@ class AtomicInit(OrderedAtomic):
 
     .. attribute:: ordering
 
-        One of the values from :class:`memory_ordering`
+        One of the values from :class:`MemoryOrdering`
 
     .. attribute:: scope
 
-        One of the values from :class:`memory_scope`
+        One of the values from :class:`MemoryScope`
     """
     op_name = 'init'
 
@@ -672,11 +686,11 @@ class AtomicUpdate(OrderedAtomic):
 
     .. attribute:: ordering
 
-        One of the values from :class:`memory_ordering`
+        One of the values from :class:`MemoryOrdering`
 
     .. attribute:: scope
 
-        One of the values from :class:`memory_scope`
+        One of the values from :class:`MemoryScope`
     """
     op_name = 'update'
 
@@ -686,11 +700,11 @@ class AtomicLoad(OrderedAtomic):
 
     .. attribute:: ordering
 
-        One of the values from :class:`memory_ordering`
+        One of the values from :class:`MemoryOrdering`
 
     .. attribute:: scope
 
-        One of the values from :class:`memory_scope`
+        One of the values from :class:`MemoryScope`
     """
     op_name = 'load'
 

@@ -27,7 +27,7 @@ from loopy.diagnostic import LoopyError
 import loopy as lp
 import six
 
-from loopy.kernel.data import auto, temp_var_scope
+from loopy.kernel.data import auto, AddressSpace
 from pytools import memoize_method, Record
 from loopy.schedule import (
             EnterLoop, LeaveLoop, RunInstruction,
@@ -228,7 +228,7 @@ class TemporarySaver(object):
             return TemporaryVariable(
                 name=self.name,
                 dtype=temporary.dtype,
-                scope=temp_var_scope.GLOBAL,
+                scope=AddressSpace.GLOBAL,
                 shape=self.new_shape)
 
         @property
@@ -441,7 +441,7 @@ class TemporarySaver(object):
         group_sizes, local_sizes = (
             self.kernel.get_grid_sizes_for_insn_ids_as_exprs(accessor_insn_ids))
 
-        if temporary.scope == lp.temp_var_scope.LOCAL:
+        if temporary.address_space == lp.AddressSpace.LOCAL:
             # Elide local axes in the save slot for local temporaries.
             del local_tags[:]
             local_sizes = ()
@@ -454,7 +454,7 @@ class TemporarySaver(object):
     def auto_promote_temporary(self, temporary_name):
         temporary = self.kernel.temporary_variables[temporary_name]
 
-        if temporary.scope == temp_var_scope.GLOBAL:
+        if temporary.address_space == AddressSpace.GLOBAL:
             # Nothing to be done for global temporaries (I hope)
             return None
 
@@ -673,7 +673,7 @@ class TemporarySaver(object):
             domain = domain.set_dim_name(
                 isl.dim_type.set, orig_dim + dim_idx, new_iname)
 
-            if orig_temporary.is_local:
+            if orig_temporary.address_space == AddressSpace.LOCAL:
                 # If the temporary has local scope, then loads / stores can
                 # be done in parallel.
                 from loopy.kernel.data import AutoFitLocalIndexTag

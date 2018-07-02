@@ -351,7 +351,7 @@ def test_argmax(ctx_factory, i_tag):
     knl = lp.make_kernel(
             "{[i,j]: 0<=i<%d and 0<=j<=i}" % n,
             """
-            max_vals[i], max_indices[i] = argmax(j, fabs(a[j]), j)
+            max_vals[i], max_indices[i] = argmax(j, abs(a[j]), j)
             """)
 
     knl = lp.tag_inames(knl, dict(i=i_tag))

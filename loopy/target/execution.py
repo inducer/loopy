@@ -150,14 +150,14 @@ class ExecutionWrapperGeneratorBase(object):
         # returning the desired integer argument.
         iarg_to_sources = {}
 
-        from loopy.kernel.data import GlobalArg
+        from loopy.kernel.data import ArrayArg
         from loopy.symbolic import DependencyMapper, StringifyMapper
         from loopy.diagnostic import ParameterFinderWarning
         dep_map = DependencyMapper()
 
         from pymbolic import var
         for arg in implemented_data_info:
-            if arg.arg_class is GlobalArg:
+            if arg.arg_class is ArrayArg:
                 sym_shape = var(arg.name).attr("shape")
                 for axis_nr, shape_i in enumerate(arg.shape):
                     if shape_i is None:
@@ -432,7 +432,7 @@ class ExecutionWrapperGeneratorBase(object):
 
             # {{{ allocate written arrays, if needed
 
-            if is_written and arg.arg_class in [lp.GlobalArg, lp.ConstantArg] \
+            if is_written and arg.arg_class in [lp.ArrayArg, lp.ConstantArg] \
                     and arg.shape is not None \
                     and all(si is not None for si in arg.shape):
 
@@ -455,7 +455,7 @@ class ExecutionWrapperGeneratorBase(object):
 
             # {{{ argument checking
 
-            if arg.arg_class in [lp.GlobalArg, lp.ConstantArg] \
+            if arg.arg_class in [lp.ArrayArg, lp.ConstantArg] \
                     and not options.skip_arg_checks:
                 if possibly_made_by_loopy:
                     gen("if not _lpy_made_by_loopy:")
@@ -568,7 +568,7 @@ class ExecutionWrapperGeneratorBase(object):
                 gen("del _lpy_made_by_loopy")
                 gen("")
 
-            if arg.arg_class in [lp.GlobalArg, lp.ConstantArg]:
+            if arg.arg_class in [lp.ArrayArg, lp.ConstantArg]:
                 args.append(self.get_arg_pass(arg))
             else:
                 args.append("%s" % arg.name)

@@ -26,7 +26,7 @@ THE SOFTWARE.
 import six
 
 from loopy.symbolic import (RuleAwareIdentityMapper, SubstitutionRuleMappingContext)
-from loopy.kernel.data import ValueArg, GlobalArg
+from loopy.kernel.data import ValueArg, ArrayArg
 import islpy as isl
 
 __doc__ = """
@@ -39,14 +39,14 @@ __doc__ = """
 # {{{ to_batched
 
 def temp_needs_batching_if_not_sequential(tv, batch_varying_args):
-    from loopy.kernel.data import temp_var_scope
+    from loopy.kernel.data import AddressSpace
     if tv.name in batch_varying_args:
         return True
     if tv.initializer is not None and tv.read_only:
         # do not batch read_only temps  if not in
         # `batch_varying_args`
         return False
-    if tv.scope == temp_var_scope.PRIVATE:
+    if tv.address_space == AddressSpace.PRIVATE:
         # do not batch private temps if not in `batch_varying args`
         return False
     return True
@@ -147,7 +147,7 @@ def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
     for arg in knl.args:
         if arg.name in batch_varying_args:
             if isinstance(arg, ValueArg):
-                arg = GlobalArg(arg.name, arg.dtype, shape=(nbatches_expr,),
+                arg = ArrayArg(arg.name, arg.dtype, shape=(nbatches_expr,),
                         dim_tags="c")
             else:
                 arg = arg.copy(

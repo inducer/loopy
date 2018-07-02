@@ -1725,8 +1725,8 @@ def get_subkernels(kernel):
 
     See also :class:`loopy.schedule.CallKernel`.
     """
-    from loopy.kernel import kernel_state
-    if kernel.state != kernel_state.SCHEDULED:
+    from loopy.kernel import KernelState
+    if kernel.state != KernelState.SCHEDULED:
         raise LoopyError("Kernel must be scheduled")
 
     from loopy.schedule import CallKernel
@@ -1742,8 +1742,8 @@ def get_subkernel_to_insn_id_map(kernel):
     consisting of the instruction ids scheduled within the subkernel. The
     kernel must be scheduled.
     """
-    from loopy.kernel import kernel_state
-    if kernel.state != kernel_state.SCHEDULED:
+    from loopy.kernel import KernelState
+    if kernel.state != KernelState.SCHEDULED:
         raise LoopyError("Kernel must be scheduled")
 
     from loopy.schedule import (
@@ -1851,5 +1851,89 @@ def find_aliasing_equivalence_classes(kernel):
 
 # }}}
 
+
+# {{{ callee kernel tools
+
+def get_callee_kernels(kernel, insn_ids=None):
+    """
+    Returns an instance of :class:`frozenset` of all the callee kernels
+    called in instructions in the *kernel* whose IDs are given in *insn_ids*.
+
+    :arg kernel: An instance of :class:`LoopKernel`.
+    :arg insn_ids: An instance of :class:`frozenset`.
+
+    If *insn_ids* is *None* returns all the callee kernels called by *kernel*.
+    """
+
+    if insn_ids is None:
+        insn_ids = frozenset(insn.id for insn in kernel.instructions)
+
+    from loopy.kernel.function_interface import CallableKernel
+
+    def _get_callee_kernel_if_insn_has_callable_kernel(insn_id):
+        """Returns callee kernel if the instruction has a call to a
+        :class:`loopy.kernel.function_interface.CallableKernel`. Otherwise
+        returns *None*.
+        """
+        insn = kernel.id_to_insn[insn_id]
+        from loopy.kernel.instruction import (CallInstruction,
+                MultiAssignmentBase, CInstruction, _DataObliviousInstruction)
+        if isinstance(insn, CallInstruction):
+            if insn.expression.function.name in kernel.scoped_functions:
+                in_knl_callable = kernel.scoped_functions[
+                        insn.expression.function.name]
+                if isinstance(in_knl_callable, CallableKernel):
+                    return in_knl_callable.subkernel
+        elif isinstance(insn, (MultiAssignmentBase,
+                CInstruction, _DataObliviousInstruction)):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of instruction %s." %
+                    type(insn))
+
+        return None
+
+    return frozenset([_get_callee_kernel_if_insn_has_callable_kernel(id)
+            for id in insn_ids]) - frozenset([None])
+
+# }}}
+
+
+# {{{ direction helper tools
+
+def infer_arg_is_output_only(kernel):
+    """
+    Returns a copy of *kernel* with the attribute ``is_output_only`` set.
+
+    .. note::
+
+        If the attribute ``is_output_only`` is not supplied from an user, then
+        infers it as an output argument if it is written at some point in the
+        kernel.
+    """
+    from loopy.kernel.data import ArrayArg, ValueArg, ConstantArg, ImageArg
+    new_args = []
+    for arg in kernel.args:
+        if isinstance(arg, (ArrayArg, ImageArg, ValueArg)):
+            if arg.is_output_only is not None:
+                assert isinstance(arg.is_output_only, bool)
+                new_args.append(arg)
+            else:
+                if arg.name in kernel.get_written_variables():
+                    new_args.append(arg.copy(is_output_only=True))
+                else:
+                    new_args.append(arg.copy(is_output_only=False))
+        elif isinstance(arg, ConstantArg):
+            if arg.is_output_only:
+                raise LoopyError("Constant Argument %s cannot have "
+                        "is_output_only True" % arg.name)
+            else:
+                new_args.append(arg.copy(is_output_only=False))
+        else:
+            raise NotImplementedError("Unkonwn argument type %s." % type(arg))
+
+    return kernel.copy(args=new_args)
+
+# }}}
 
 # vim: foldmethod=marker

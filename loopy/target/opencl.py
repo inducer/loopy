@@ -32,7 +32,7 @@ from pytools import memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 from loopy.target.c import DTypeRegistryWrapper, c_math_mangler
-from loopy.kernel.data import temp_var_scope, CallMangleInfo
+from loopy.kernel.data import AddressSpace, CallMangleInfo
 from pymbolic import var
 
 from functools import partial
@@ -142,6 +142,7 @@ def _register_vector_types(dtype_registry):
 # {{{ function mangler
 
 _CL_SIMPLE_MULTI_ARG_FUNCTIONS = {
+        "rsqrt": 1,
         "clamp": 3,
         "atan2": 2,
         }
@@ -356,8 +357,6 @@ class OpenCLTarget(CTarget):
                 vec.types[base.numpy_dtype, count],
                 target=self)
 
-    # }}}
-
 # }}}
 
 
@@ -461,10 +460,10 @@ class OpenCLCASTBuilder(CASTBuilder):
             raise LoopyError("unknown barrier kind")
 
     def wrap_temporary_decl(self, decl, scope):
-        if scope == temp_var_scope.LOCAL:
+        if scope == AddressSpace.LOCAL:
             from cgen.opencl import CLLocal
             return CLLocal(decl)
-        elif scope == temp_var_scope.PRIVATE:
+        elif scope == AddressSpace.PRIVATE:
             return decl
         else:
             raise ValueError("unexpected temporary variable scope: %s"
@@ -474,11 +473,31 @@ class OpenCLCASTBuilder(CASTBuilder):
         from cgen.opencl import CLConstant
         return CLConstant(decl)
 
-    def get_global_arg_decl(self, name, shape, dtype, is_written):
-        from cgen.opencl import CLGlobal
+    def get_array_arg_decl(self, name, mem_address_space, shape, dtype, is_written):
+        from cgen.opencl import CLGlobal, CLLocal
+        from loopy.kernel.data import AddressSpace
 
-        return CLGlobal(super(OpenCLCASTBuilder, self).get_global_arg_decl(
-            name, shape, dtype, is_written))
+        if mem_address_space == AddressSpace.LOCAL:
+            return CLLocal(super(OpenCLCASTBuilder, self).get_array_arg_decl(
+                name, mem_address_space, shape, dtype, is_written))
+        elif mem_address_space == AddressSpace.PRIVATE:
+            return super(OpenCLCASTBuilder, self).get_array_arg_decl(
+                name, mem_address_space, shape, dtype, is_written)
+        elif mem_address_space == AddressSpace.GLOBAL:
+            return CLGlobal(super(OpenCLCASTBuilder, self).get_array_arg_decl(
+                name, mem_address_space, shape, dtype, is_written))
+        else:
+            raise ValueError("unexpected array argument scope: %s"
+                    % mem_address_space)
+
+    def get_global_arg_decl(self, name, shape, dtype, is_written):
+        from loopy.kernel.data import AddressSpace
+        from warnings import warn
+        warn("get_global_arg_decl is deprecated use get_array_arg_decl "
+                "instead.", DeprecationWarning, stacklevel=2)
+
+        return self.get_array_arg_decl(name, AddressSpace.GLOBAL, shape,
+                dtype, is_written)
 
     def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
         if is_written:
@@ -529,7 +548,7 @@ class OpenCLCASTBuilder(CASTBuilder):
             old_val_var = codegen_state.var_name_generator("loopy_old_val")
             new_val_var = codegen_state.var_name_generator("loopy_new_val")
 
-            from loopy.kernel.data import TemporaryVariable, temp_var_scope
+            from loopy.kernel.data import TemporaryVariable, AddressSpace
             ecm = codegen_state.expression_to_code_mapper.with_assignments(
                     {
                         old_val_var: TemporaryVariable(old_val_var, lhs_dtype),
@@ -567,16 +586,24 @@ class OpenCLCASTBuilder(CASTBuilder):
                 else:
                     assert False
 
-                from loopy.kernel.data import TemporaryVariable, GlobalArg
-                if isinstance(lhs_var, GlobalArg):
+                from loopy.kernel.data import (TemporaryVariable, ArrayArg)
+                if (
+                        isinstance(lhs_var, ArrayArg)
+                        and
+                        lhs_var.address_space == AddressSpace.GLOBAL):
                     var_kind = "__global"
                 elif (
-                        isinstance(lhs_var, TemporaryVariable)
-                        and lhs_var.scope == temp_var_scope.LOCAL):
+                        isinstance(lhs_var, ArrayArg)
+                        and
+                        lhs_var.address_space == AddressSpace.LOCAL):
                     var_kind = "__local"
                 elif (
                         isinstance(lhs_var, TemporaryVariable)
-                        and lhs_var.scope == temp_var_scope.GLOBAL):
+                        and lhs_var.address_space == AddressSpace.LOCAL):
+                    var_kind = "__local"
+                elif (
+                        isinstance(lhs_var, TemporaryVariable)
+                        and lhs_var.address_space == AddressSpace.GLOBAL):
                     var_kind = "__global"
                 else:
                     raise LoopyError("unexpected kind of variable '%s' in "
