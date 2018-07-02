@@ -57,8 +57,6 @@ from pymbolic.mapper.constant_folder import \
 
 from pymbolic.parser import Parser as ParserBase
 
-from loopy.diagnostic import ExpressionToAffineConversionError
-
 import islpy as isl
 from islpy import dim_type
 
