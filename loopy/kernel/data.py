@@ -371,6 +371,17 @@ class ArrayArg(ArrayBase, KernelArgument):
         return ast_builder.get_array_arg_decl(self.name + name_suffix,
                 self.address_space, shape, dtype, is_written)
 
+    def __str__(self):
+        # dont mention the type name if shape is known
+        include_typename = self.shape in (None, auto)
+
+        scope_str = AddressSpace.stringify(self.address_space)
+
+        return (
+                self.stringify(include_typename=include_typename)
+                +
+                " aspace: %s" % scope_str)
+
 
 # Making this a function prevents incorrect use in isinstance.
 # Note: This is *not* deprecated, as it is super-common and

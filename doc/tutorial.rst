@@ -112,9 +112,9 @@ always see loopy's view of a kernel by printing it.
     KERNEL: loopy_kernel
     ---------------------------------------------------------------------------
     ARGUMENTS:
-    a: ArrayArg, type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1)
+    a: type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1) aspace: global
     n: ValueArg, type: <auto/runtime>
-    out: ArrayArg, type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1)
+    out: type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1) aspace: global
     ---------------------------------------------------------------------------
     DOMAINS:
     [n] -> { [i] : 0 <= i < n }
