@@ -271,28 +271,30 @@ class AddressSpace(object):
             raise ValueError("unexpected value of AddressSpace")
 
 
-class _deprecated_temp_var_scope_property(property):  # noqa
-    def __get__(self, cls, owner):
+class _deprecated_temp_var_scope_class_method(object):  # noqa
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, klass):
         warn("'temp_var_scope' is deprecated. Use 'AddressSpace'.",
                 DeprecationWarning, stacklevel=2)
-
-        return classmethod(self.fget).__get__(None, owner)()
+        return self.f()
 
 
 class temp_var_scope(object):  # noqa
     """Deprecated. Use :class:`AddressSpace` instead.
     """
 
-    @_deprecated_temp_var_scope_property
-    def PRIVATE(self):
+    @_deprecated_temp_var_scope_class_method
+    def PRIVATE():
         return AddressSpace.PRIVATE
 
-    @_deprecated_temp_var_scope_property
-    def LOCAL(self):
+    @_deprecated_temp_var_scope_class_method
+    def LOCAL():
         return AddressSpace.LOCAL
 
-    @_deprecated_temp_var_scope_property
-    def GLOBAL(self):
+    @_deprecated_temp_var_scope_class_method
+    def GLOBAL():
         return AddressSpace.GLOBAL
 
     @classmethod
@@ -375,12 +377,12 @@ class ArrayArg(ArrayBase, KernelArgument):
         # dont mention the type name if shape is known
         include_typename = self.shape in (None, auto)
 
-        scope_str = AddressSpace.stringify(self.address_space)
+        aspace_str = AddressSpace.stringify(self.address_space)
 
         return (
                 self.stringify(include_typename=include_typename)
                 +
-                " aspace: %s" % scope_str)
+                " aspace: %s" % aspace_str)
 
 
 # Making this a function prevents incorrect use in isinstance.

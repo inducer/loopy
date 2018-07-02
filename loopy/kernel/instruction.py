@@ -559,36 +559,38 @@ class MemoryOrdering:  # noqa
 
 # {{{ memory_ordering, MemoryOrdering compatibility
 
-class _deprecated_memory_ordering_property(property):  # noqa
-    def __get__(self, cls, owner):
+class _deprecated_memory_ordering_class_method(object):  # noqa
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, klass):
         warn("'memory_ordering' is deprecated. Use 'MemoryOrdering'.",
                 DeprecationWarning, stacklevel=2)
-
-        return classmethod(self.fget).__get__(None, owner)()
+        return self.f()
 
 
 class memory_ordering(object):  # noqa
     """Deprecated. Use :class:`MemoryOrdering` instead.
     """
 
-    @_deprecated_memory_ordering_property
-    def RELAXED(self):
+    @_deprecated_memory_ordering_class_method
+    def RELAXED():
         return MemoryOrdering.RELAXED
 
-    @_deprecated_memory_ordering_property
-    def ACQUIRE(self):
+    @_deprecated_memory_ordering_class_method
+    def ACQUIRE():
         return MemoryOrdering.ACQUIRE
 
-    @_deprecated_memory_ordering_property
-    def RELEASE(self):
+    @_deprecated_memory_ordering_class_method
+    def RELEASE():
         return MemoryOrdering.RELEASE
 
-    @_deprecated_memory_ordering_property
-    def ACQ_REL(self):
+    @_deprecated_memory_ordering_class_method
+    def ACQ_REL():
         return MemoryOrdering.ACQ_REL
 
-    @_deprecated_memory_ordering_property
-    def SEQ_CST(self):
+    @_deprecated_memory_ordering_class_method
+    def SEQ_CST():
         return MemoryOrdering.SEQ_CST
 
     @staticmethod
@@ -634,36 +636,38 @@ class MemoryScope:  # noqa
 
 # {{{ memory_scope, MemoryScope compatiability
 
-class _deprecated_memory_scope_property(property):  # noqa
-    def __get__(self, cls, owner):
+class _deprecated_memory_scope_class_method(object):  # noqa
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, klass):
         warn("'memory_scope' is deprecated. Use 'MemoryScope'.",
                 DeprecationWarning, stacklevel=2)
-
-        return classmethod(self.fget).__get__(None, owner)()
+        return self.f()
 
 
 class memory_scope(object):  # noqa
     """Deprecated. Use :class:`MemoryScope` instead.
     """
 
-    @_deprecated_memory_scope_property
-    def WORK_ITEM(self):
+    @_deprecated_memory_scope_class_method
+    def WORK_ITEM():
         return MemoryScope.PRIVATE
 
-    @_deprecated_memory_scope_property
-    def WORK_GROUP(self):
+    @_deprecated_memory_scope_class_method
+    def WORK_GROUP():
         return MemoryScope.WORK_GROUP
 
-    @_deprecated_memory_scope_property
-    def DEVICE(self):
+    @_deprecated_memory_scope_class_method
+    def DEVICE():
         return MemoryScope.DEVICE
 
-    @_deprecated_memory_scope_property
-    def ALL_SVM_DEVICES(self):
+    @_deprecated_memory_scope_class_method
+    def ALL_SVM_DEVICES():
         return MemoryScope.ALL_SVM_DEVICES
 
-    @_deprecated_memory_scope_property
-    def auto(self):
+    @_deprecated_memory_scope_class_method
+    def auto():
         return MemoryScope.auto
 
     @staticmethod

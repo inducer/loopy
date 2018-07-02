@@ -106,28 +106,30 @@ class KernelState:  # noqa
 
 # {{{ kernel_state, KernelState compataibility
 
-class _deperecated_kernel_state_property(property):  # noqa
-    def __get__(self, cls, owner):
+class _deperecated_kernel_state_class_method(object):  # noqa
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, klass):
         warn("'temp_var_scope' is deprecated. Use 'AddressSpace'.",
                 DeprecationWarning, stacklevel=2)
-
-        return classmethod(self.fget).__get__(None, owner)()
+        return self.f()
 
 
 class kernel_state(object):  # noqa
     """Deprecated. Use :class:`loopy.kernel.KernelState` instead.
     """
 
-    @_deperecated_kernel_state_property
-    def INITIAL(self):
+    @_deperecated_kernel_state_class_method
+    def INITIAL():
         return KernelState.INITITAL
 
-    @_deperecated_kernel_state_property
-    def PREPROCESSED(self):
+    @_deperecated_kernel_state_class_method
+    def PREPROCESSED():
         return KernelState.PREPROCESSED
 
-    @_deperecated_kernel_state_property
-    def SCHEDULED(self):
+    @_deperecated_kernel_state_class_method
+    def SCHEDULED():
         return KernelState.SCHEDULED
 
 # }}}
