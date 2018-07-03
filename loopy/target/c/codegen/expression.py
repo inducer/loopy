@@ -41,7 +41,7 @@ from pymbolic import var
 from loopy.expression import dtype_to_type_context
 from loopy.type_inference import TypeInferenceMapper
 
-from loopy.diagnostic import LoopyError, LoopyWarning
+from loopy.diagnostic import LoopyError
 from loopy.tools import is_integer
 from loopy.types import LoopyType
 
@@ -383,19 +383,18 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         "for constant '%s'" % expr)
 
     def map_call(self, expr, type_context):
-        from pymbolic.primitives import Variable, Subscript
-
-        identifier = expr.function
+        from pymbolic.primitives import Subscript
 
         # {{{ implement indexof, indexof_vec
 
-        if identifier.name in ["indexof", "indexof_vec"]:
+        identifier_name = self.kernel.scoped_functions[expr.function.name].name
+        if identifier_name in ["indexof", "indexof_vec"]:
             if len(expr.parameters) != 1:
-                raise LoopyError("%s takes exactly one argument" % identifier.name)
+                raise LoopyError("%s takes exactly one argument" % identifier_name)
             arg, = expr.parameters
             if not isinstance(arg, Subscript):
                 raise LoopyError(
-                        "argument to %s must be a subscript" % identifier.name)
+                        "argument to %s must be a subscript" % identifier_name)
 
             ary = self.find_array(arg)
 
@@ -407,11 +406,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
             from loopy.kernel.data import ImageArg
             if isinstance(ary, ImageArg):
-                raise LoopyError("%s does not support images" % identifier.name)
+                raise LoopyError("%s does not support images" % identifier_name)
 
-            if identifier.name == "indexof":
+            if identifier_name == "indexof":
                 return access_info.subscripts[0]
-            elif identifier.name == "indexof_vec":
+            elif identifier_name == "indexof_vec":
                 from loopy.kernel.array import VectorArrayDimTag
                 ivec = None
                 for iaxis, dim_tag in enumerate(ary.dim_tags):
@@ -430,56 +429,21 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         # }}}
 
-        if isinstance(identifier, Variable):
-            identifier = identifier.name
+        from loopy.kernel.function_interface import ManglerCallable
+        if isinstance(self.kernel.scoped_functions[expr.function.name],
+                ManglerCallable):
+            from loopy.codegen import SeenFunction
+            in_knl_callable = self.kernel.scoped_functions[expr.function.name]
+            mangle_result = in_knl_callable.mangle_result(self.kernel)
+            self.codegen_state.seen_functions.add(
+                    SeenFunction(identifier_name,
+                        mangle_result.target_name,
+                        mangle_result.arg_dtypes))
 
-        par_dtypes = tuple(self.infer_type(par) for par in expr.parameters)
-
-        processed_parameters = None
-
-        mangle_result = self.kernel.mangle_function(
-                identifier, par_dtypes,
-                ast_builder=self.codegen_state.ast_builder)
-
-        if mangle_result is None:
-            raise RuntimeError("function '%s' unknown--"
-                    "maybe you need to register a function mangler?"
-                    % identifier)
-
-        if len(mangle_result.result_dtypes) != 1:
-            raise LoopyError("functions with more or fewer than one return value "
-                    "may not be used in an expression")
-
-        if mangle_result.arg_dtypes is not None:
-            processed_parameters = tuple(
-                    self.rec(par,
-                        dtype_to_type_context(self.kernel.target, tgt_dtype),
-                        tgt_dtype)
-                    for par, par_dtype, tgt_dtype in zip(
-                        expr.parameters, par_dtypes, mangle_result.arg_dtypes))
-
-        else:
-            # /!\ FIXME For some functions (e.g. 'sin'), it makes sense to
-            # propagate the type context here. But for many others, it does
-            # not. Using the inferred type as a stopgap for now.
-            processed_parameters = tuple(
-                    self.rec(par,
-                        type_context=dtype_to_type_context(
-                            self.kernel.target, par_dtype))
-                    for par, par_dtype in zip(expr.parameters, par_dtypes))
-
-            from warnings import warn
-            warn("Calling function '%s' with unknown C signature--"
-                    "return CallMangleInfo.arg_dtypes"
-                    % identifier, LoopyWarning)
-
-        from loopy.codegen import SeenFunction
-        self.codegen_state.seen_functions.add(
-                SeenFunction(identifier,
-                    mangle_result.target_name,
-                    mangle_result.arg_dtypes or par_dtypes))
-
-        return var(mangle_result.target_name)(*processed_parameters)
+        return self.kernel.scoped_functions[expr.function.name].emit_call(
+                expression_to_code_mapper=self,
+                expression=expr,
+                target=self.kernel.target)
 
     # {{{ deal with complex-valued variables
 

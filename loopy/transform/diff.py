@@ -398,7 +398,14 @@ def diff_kernel(knl, diff_outputs, by, diff_iname_prefix="diff_i",
 
     # }}}
 
-    return diff_context.get_new_kernel(), result
+    # Differentiation lead to addition of new functions to the kernel.
+    # For example differentiating `sin(x)` -> `cos(x)`. Hence we would need to
+    # scope `cos(x)`.
+    from loopy.kernel.creation import scope_functions
+    differentiated_scoped_kernel = scope_functions(
+            diff_context.get_new_kernel())
+
+    return differentiated_scoped_kernel, result
 
 # }}}
 

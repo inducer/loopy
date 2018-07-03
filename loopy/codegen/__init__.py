@@ -32,6 +32,16 @@ from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 
+from cgen import Collection
+from loopy.symbolic import CombineMapper
+
+from loopy.kernel.instruction import (
+        Assignment, NoOpInstruction, BarrierInstruction, CallInstruction,
+        CInstruction, _DataObliviousInstruction, MultiAssignmentBase)
+
+from functools import reduce
+
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -362,6 +372,32 @@ code_gen_cache = WriteOncePersistentDict(
          key_builder=LoopyKeyBuilder())
 
 
+class InKernelCallablesCollector(CombineMapper):
+    """
+    Returns an instance of :class:`frozenset` containing instances of
+    :class:`loopy.kernel.function_interface.InKernelCallable` in the
+    :attr:``kernel`.
+    """
+    def __init__(self, kernel):
+        self.kernel = kernel
+
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, frozenset())
+
+    def map_scoped_function(self, expr):
+        return frozenset([self.kernel.scoped_functions[
+            expr.name]])
+
+    def map_constant(self, expr):
+        return frozenset()
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
+    map_tagged_variable = map_constant
+    map_type_cast = map_constant
+
+
 class PreambleInfo(ImmutableRecord):
     """
     .. attribute:: kernel
@@ -505,6 +541,24 @@ def generate_code_v2(kernel):
             + kernel.target.get_device_ast_builder().preamble_generators())
     for prea_gen in preamble_generators:
         preambles.extend(prea_gen(preamble_info))
+
+    # {{{ collect preambles from all the in kernel callables.
+
+    in_knl_callable_collector = InKernelCallablesCollector(kernel)
+
+    for insn in kernel.instructions:
+        if isinstance(insn, MultiAssignmentBase):
+            for in_knl_callable in in_knl_callable_collector(insn.expression):
+                preambles.extend(in_knl_callable.generate_preambles(kernel.target))
+
+        elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
+            pass
+        else:
+            raise NotImplementedError(
+                    "Unknown instruction type '%s'"
+                    % type(insn).__name__)
+
+    # }}}
 
     codegen_result = codegen_result.copy(device_preambles=preambles)
 

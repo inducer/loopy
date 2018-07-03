@@ -82,47 +82,35 @@ class ExpressionToPythonMapper(StringifyMapper):
                 expr, enclosing_prec)
 
     def map_call(self, expr, enclosing_prec):
-        from pymbolic.primitives import Variable
         from pymbolic.mapper.stringifier import PREC_NONE
 
-        identifier = expr.function
+        identifier_name = self.kernel.scoped_functions[expr.function.name].name
 
-        if identifier.name in ["indexof", "indexof_vec"]:
+        if identifier_name in ["indexof", "indexof_vec"]:
             raise LoopyError(
                     "indexof, indexof_vec not yet supported in Python")
 
-        if isinstance(identifier, Variable):
-            identifier = identifier.name
-
-        par_dtypes = tuple(self.type_inf_mapper(par) for par in expr.parameters)
+        from loopy.kernel.function_interface import ManglerCallable
+        in_knl_callable = self.kernel.scoped_functions[expr.function.name]
+        if isinstance(in_knl_callable, ManglerCallable):
+            from loopy.codegen import SeenFunction
+            mangle_result = in_knl_callable.mangle_result(self.kernel)
+            self.codegen_state.seen_functions.add(
+                    SeenFunction(identifier_name,
+                        mangle_result.target_name,
+                        mangle_result.arg_dtypes))
 
         str_parameters = None
+        number_of_assignees = len([key for key in
+            in_knl_callable.arg_id_to_dtype.keys() if key < 0])
 
-        mangle_result = self.kernel.mangle_function(
-                identifier, par_dtypes,
-                ast_builder=self.codegen_state.ast_builder)
-
-        if mangle_result is None:
-            raise RuntimeError("function '%s' unknown--"
-                    "maybe you need to register a function mangler?"
-                    % identifier)
-
-        if len(mangle_result.result_dtypes) != 1:
+        if number_of_assignees != 1:
             raise LoopyError("functions with more or fewer than one return value "
                     "may not be used in an expression")
 
-        str_parameters = [
-                self.rec(par, PREC_NONE)
-                for par, par_dtype, tgt_dtype in zip(
-                    expr.parameters, par_dtypes, mangle_result.arg_dtypes)]
+        str_parameters = [self.rec(par, PREC_NONE) for par in expr.parameters]
 
-        from loopy.codegen import SeenFunction
-        self.codegen_state.seen_functions.add(
-                SeenFunction(identifier,
-                    mangle_result.target_name,
-                    mangle_result.arg_dtypes or par_dtypes))
-
-        return "%s(%s)" % (mangle_result.target_name, ", ".join(str_parameters))
+        return "%s(%s)" % (in_knl_callable.name_in_target, ", ".join(str_parameters))
 
     def map_group_hw_index(self, expr, enclosing_prec):
         raise LoopyError("plain Python does not have group hw axes")
@@ -189,11 +177,11 @@ class PythonASTBuilderBase(ASTBuilderBase):
 
     # {{{ code generation guts
 
-    def function_manglers(self):
+    def function_scopers(self):
+        from loopy.target.c import scope_c_math_functions
         return (
-                super(PythonASTBuilderBase, self).function_manglers() + [
-                    _numpy_single_arg_function_mangler,
-                    ])
+                super(PythonASTBuilderBase, self).function_scopers() +
+                [scope_c_math_functions])
 
     def preamble_generators(self):
         return (

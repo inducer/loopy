@@ -51,6 +51,8 @@ from loopy.kernel.data import (
         TemporaryVariable,
         SubstitutionRule,
         CallMangleInfo)
+from loopy.kernel.function_interface import (
+        ScalarCallable)
 
 from loopy.kernel import LoopKernel, KernelState, kernel_state
 from loopy.kernel.tools import (
@@ -119,6 +121,8 @@ from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.add_barrier import add_barrier
+from loopy.transform.callable import register_function_lookup
+
 # }}}
 
 from loopy.type_inference import infer_unknown_types
@@ -167,6 +171,8 @@ __all__ = [
         "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
         "CallInstruction", "CInstruction", "NoOpInstruction",
         "BarrierInstruction",
+
+        "ScalarCallable",
 
         "KernelArgument",
         "ValueArg", "ArrayArg", "GlobalArg", "ConstantArg", "ImageArg",
@@ -229,6 +235,8 @@ __all__ = [
         "save_and_reload_temporaries",
 
         "add_barrier",
+
+        "register_function_lookup",
 
         # }}}
 

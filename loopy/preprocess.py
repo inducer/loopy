@@ -27,6 +27,7 @@ import six
 from loopy.diagnostic import (
         LoopyError, WriteRaceConditionWarning, warn_with_kernel,
         LoopyAdvisory)
+from functools import reduce
 
 import islpy as isl
 
@@ -37,6 +38,10 @@ from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment, filter_iname_tags_by_type
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
+from loopy.symbolic import CombineMapper
+
+from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
+        CallInstruction,  _DataObliviousInstruction)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -2108,6 +2113,350 @@ def check_atomic_loads(kernel):
 # }}}
 
 
+# {{{ arg_descr_inference
+
+class ArgDescrInferenceMapper(CombineMapper):
+    """
+    Returns a set of instances of :class:`tuple` (expr,
+    in_kernel_callable). The mapped `in_kernel_callable` of the
+    :class:`InKernelCallable` are descriptor specialized for the given
+    arguments.
+    """
+
+    def __init__(self, kernel):
+        self.kernel = kernel
+
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, frozenset())
+
+    # FIXME logic duplication between map_call and map_call_with_kwargs
+    def map_call(self, expr, **kwargs):
+        from loopy.kernel.function_interface import ValueArgDescriptor
+        from loopy.symbolic import SubArrayRef, ScopedFunction
+
+        # ignoring if the call is not to a ScopedFunction
+        if not isinstance(expr.function, ScopedFunction):
+            return self.combine((self.rec(child) for child in expr.parameters))
+
+        # descriptors for the args
+        arg_id_to_descr = dict((i, par.get_array_arg_descriptor(self.kernel))
+                if isinstance(par, SubArrayRef) else (i, ValueArgDescriptor())
+                for i, par in enumerate(expr.parameters))
+
+        assignee_id_to_descr = {}
+
+        # assignee descriptor
+        if 'assignees' in kwargs:
+            # If supplied with assignees then this is a CallInstruction
+            assignees = kwargs['assignees']
+            assert isinstance(assignees, tuple)
+            for i, par in enumerate(assignees):
+                if isinstance(par, SubArrayRef):
+                    assignee_id_to_descr[-i-1] = (
+                            par.get_array_arg_descriptor(self.kernel))
+                else:
+                    assignee_id_to_descr[-i-1] = ValueArgDescriptor()
+
+        # gathering all the descriptors
+        # TODO: I dont like in place updates. Change this to somthing else.
+        # Perhaps make a function?
+        combined_arg_id_to_descr = arg_id_to_descr.copy()
+        combined_arg_id_to_descr.update(assignee_id_to_descr)
+
+        # specializing the function according to the parameter description
+        new_scoped_function = (
+                self.kernel.scoped_functions[expr.function.name].with_descrs(
+                    combined_arg_id_to_descr))
+
+        # collecting the descriptors for args, kwargs, assignees
+        return (frozenset(((expr, new_scoped_function), )) |
+                self.combine((self.rec(child) for child in expr.parameters)))
+
+    def map_call_with_kwargs(self, expr, **kwargs):
+        from loopy.kernel.function_interface import ValueArgDescriptor
+        from loopy.symbolic import SubArrayRef
+
+        # descriptors for the args and kwargs:
+        arg_id_to_descr = dict((i, par.get_array_arg_descriptor(self.kernel))
+                if isinstance(par, SubArrayRef) else ValueArgDescriptor()
+                for i, par in tuple(enumerate(expr.parameters)) +
+                tuple(expr.kw_parameters.items()))
+
+        assignee_id_to_descr = {}
+
+        if 'assignees' in kwargs:
+            # If supplied with assignees then this is a CallInstruction
+            assignees = kwargs['assignees']
+            assert isinstance(assignees, tuple)
+            for i, par in enumerate(assignees):
+                if isinstance(par, SubArrayRef):
+                    assignee_id_to_descr[-i-1] = (
+                            par.get_array_arg_descriptor(self.kernel))
+                else:
+                    assignee_id_to_descr[-i-1] = ValueArgDescriptor()
+
+        # gathering all the descriptors
+        # TODO: I dont like in place updates. Change this to somthing else.
+        # Perhaps make a function?
+        combined_arg_id_to_descr = arg_id_to_descr.copy()
+        combined_arg_id_to_descr.update(assignee_id_to_descr)
+
+        # specializing the function according to the parameter description
+        new_scoped_function = (
+                self.kernel.scoped_functions[expr.function.name].with_descrs(
+                    combined_arg_id_to_descr))
+
+        # collecting the descriptors for args, kwargs, assignees
+        return (
+                frozenset(((expr, new_scoped_function), )) |
+                self.combine((self.rec(child) for child in expr.parameters)))
+
+    def map_constant(self, expr, **kwargs):
+        return frozenset()
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
+    map_tagged_variable = map_constant
+    map_type_cast = map_constant
+
+
+def infer_arg_descr(kernel):
+    """
+    Returns a copy of *kernel* with the argument shapes and strides matching for
+    scoped functions in the *kernel*. Refer
+    :meth:`loopy.kernel.function_interface.InKernelCallable.with_descrs`.
+    """
+
+    arg_description_modifier = ArgDescrInferenceMapper(kernel)
+    pymbolic_calls_to_functions = set()
+
+    for insn in kernel.instructions:
+
+        if isinstance(insn, CallInstruction):
+            # In call instructions the assignees play an important in
+            # determining the arg_id_to_dtype
+            pymbolic_calls_to_functions.update(
+                    arg_description_modifier(insn.expression,
+                        assignees=insn.assignees))
+        elif isinstance(insn, MultiAssignmentBase):
+            pymbolic_calls_to_functions.update(arg_description_modifier(
+                insn.expression))
+        elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
+            pass
+        else:
+            raise NotImplementedError("arg_descr_inference for %s instruction" %
+                    type(insn))
+
+    # making it the set of tuples a dict
+    pymbolic_calls_to_functions = dict(pymbolic_calls_to_functions)
+
+    # Now do the similar treatment as done for type inference.
+    from loopy.kernel.function_interface import (
+            register_pymbolic_calls_to_knl_callables)
+
+    return register_pymbolic_calls_to_knl_callables(kernel,
+            pymbolic_calls_to_functions)
+
+# }}}
+
+
+# {{{
+
+class HWAxesInferenceMapper(CombineMapper):
+    """
+    Returns a set of instances of :class:`tuple` (expr,
+    in_kernel_callable). The mapped `in_kernel_callable` of the
+    :class:`InKernelCallable` are specialized for the the grid sizes of
+    :attr:`kernel`.
+    """
+
+    def __init__(self, kernel):
+        self.kernel = kernel
+        self.local_size, self.global_size = kernel.get_grid_size_upper_bounds()
+
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, frozenset())
+
+    def map_call(self, expr, **kwargs):
+        # ignoring if the call is not to a ScopedFunction
+        from loopy.symbolic import ScopedFunction
+        if not isinstance(expr.function, ScopedFunction):
+            return self.combine((self.rec(child) for child in expr.parameters))
+
+        new_scoped_function = (
+                self.kernel.scoped_functions[expr.function.name].with_hw_axes_sizes(
+                    self.local_size, self.global_size))
+
+        return (frozenset(((expr, new_scoped_function), )) |
+                self.combine((self.rec(child) for child in expr.parameters)))
+
+    def map_call_with_kwargs(self, expr, **kwargs):
+        from loopy.symbolic import ScopedFunction
+        # ignoring if the call is not to a ScopedFunction
+        if not isinstance(expr.function, ScopedFunction):
+            return self.combine((self.rec(child) for child in expr.parameters))
+
+        new_scoped_function = (
+                self.kernel.scoped_functions[expr.function.name].with_hw_axes_sizes(
+                    self.local_size, self.global_size))
+
+        return (frozenset(((expr, new_scoped_function), )) |
+                self.combine((self.rec(child) for child in
+                    expr.parameters+tuple(expr.kw_parameters.values()))))
+
+    def map_constant(self, expr, **kwargs):
+        return frozenset()
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
+    map_tagged_variable = map_constant
+    map_type_cast = map_constant
+
+
+def infer_hw_axes_sizes(kernel):
+    """
+    Returns a copy of *kernel* with the hardware axes matching for
+    scoped functions in the *kernel*. Refer
+    :meth:`loopy.kernel.function_interface.InKernelCallable.with_hw_axes_sizes`.
+    """
+    hw_axes_modifier = HWAxesInferenceMapper(kernel)
+    pymbolic_calls_to_functions = set()
+
+    for insn in kernel.instructions:
+        if isinstance(insn, MultiAssignmentBase):
+            pymbolic_calls_to_functions.update(hw_axes_modifier(
+                insn.expression))
+        elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
+            pass
+        else:
+            raise NotImplementedError("unknown type of instruction %s." %
+                    type(insn))
+
+    # making it the set of tuples a dict
+    pymbolic_calls_to_functions = dict(pymbolic_calls_to_functions)
+
+    # Now do the similar treatment as done for type inference.
+    from loopy.kernel.function_interface import (
+            register_pymbolic_calls_to_knl_callables)
+
+    return register_pymbolic_calls_to_knl_callables(kernel,
+            pymbolic_calls_to_functions)
+
+# }}}
+
+
+# {{{ catching functions that are not ready for codegen
+
+class FunctionsNotReadyForCodegenCollector(CombineMapper):
+    """
+    Returns all instances of function calls in an expression which are
+    not ready for code generation.
+    """
+    def __init__(self, kernel):
+        self.kernel = kernel
+
+    def combine(self, values):
+        return all(values)
+
+    # FIXME logic duplication between map_call and map_call_with_kwargs
+    def map_call(self, expr, *args, **kwargs):
+        from loopy.library.reduction import ArgExtOp, SegmentedOp
+        from pymbolic.primitives import Variable
+        from loopy.symbolic import ScopedFunction
+
+        if isinstance(expr.function, (ArgExtOp, SegmentedOp)):
+            return self.combine(
+                    tuple(
+                        self.rec(child, *args, **kwargs) for child in
+                        expr.parameters))
+        elif isinstance(expr.function, Variable):
+            # UnScopedFunction obtained and hence clearly not ready for
+            # codegen.
+            return False
+
+        elif isinstance(expr.function, ScopedFunction):
+            is_ready_for_codegen = self.kernel.scoped_functions[
+                    expr.function.name].is_ready_for_codegen()
+            return self.combine(
+                    (is_ready_for_codegen,) +
+                    tuple(
+                        self.rec(child, *args, **kwargs)
+                        for child in expr.parameters))
+        else:
+            raise LoopyError("Unexpected function type %s obtained in %s"
+                    % (type(expr.function), expr))
+
+    def map_call_with_kwargs(self, expr, *args, **kwargs):
+        is_ready_for_codegen = self.kernel.scoped_functions[
+                expr.function.name].is_ready_for_codegen()
+        return self.combine(
+                (is_ready_for_codegen,)
+                + tuple(
+                    self.rec(child, *args, **kwargs)
+                    for child in expr.parameters)
+                + tuple(
+                    self.rec(child, *args, **kwargs)
+                    for child in expr.kw_parameters.values())
+                )
+
+    def map_constant(self, expr):
+        return True
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
+    map_tagged_variable = map_constant
+    map_type_cast = map_constant
+
+
+def make_functions_ready_for_codegen(kernel):
+    """
+    Specializes the functions in the kernel that are missed during type
+    inference.
+
+    .. code:: python
+
+        knl = lp.make_kernel(
+            "{[i]: 0<=i<16}",
+            "a[i] = sin(b[i])",
+            [lp.ArrayArg('a', dtype=np.float64),
+            lp.ArrayArg('b', dtype=np.float64)])
+
+    In the above case, none of the instructions undergo type-specialization, as
+    all the arguments' types have been realized. But, this would be a problem
+    during the code generation phase as ``sin`` did not undergo type
+    specialization, and hence must be fixed through this function.
+    """
+    from loopy.type_inference import TypeInferenceMapper
+    from loopy.symbolic import SubstitutionRuleExpander
+    from loopy.kernel.function_interface import (
+            register_pymbolic_calls_to_knl_callables)
+
+    unready_functions_collector = FunctionsNotReadyForCodegenCollector(kernel)
+    subst_expander = SubstitutionRuleExpander(kernel.substitutions)
+    type_inf_mapper = TypeInferenceMapper(kernel)
+
+    for insn in kernel.instructions:
+        if isinstance(insn, MultiAssignmentBase):
+            expr = subst_expander(insn.expression)
+            if not unready_functions_collector(expr):
+                # Infer the type of the functions that are not type specialized.
+                type_inf_mapper(expr, return_tuple=isinstance(insn,
+                    CallInstruction), return_dtype_set=True)
+
+        elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
+            pass
+
+        else:
+            NotImplementedError("Unknown Instruction")
+
+    return register_pymbolic_calls_to_knl_callables(kernel,
+            type_inf_mapper.specialized_functions)
+
+# }}}
+
+
 preprocess_cache = WriteOncePersistentDict(
         "loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
@@ -2187,6 +2536,16 @@ def preprocess_kernel(kernel, device=None):
     kernel = realize_ilp(kernel)
 
     kernel = find_temporary_address_space(kernel)
+
+    # inferring the shape and dim_tags of the arguments involved in a function
+    # call.
+    kernel = infer_arg_descr(kernel)
+
+    # type specialize functions that were missed during the type inference.
+    kernel = make_functions_ready_for_codegen(kernel)
+
+    # tuning the functions in the kernel to align with the grid sizes.
+    kernel = infer_hw_axes_sizes(kernel)
 
     # boostability should be removed in 2017.x.
     kernel = find_idempotence(kernel)

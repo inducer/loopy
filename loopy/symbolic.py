@@ -56,6 +56,7 @@ from pymbolic.mapper.constant_folder import \
         ConstantFoldingMapper as ConstantFoldingMapperBase
 
 from pymbolic.parser import Parser as ParserBase
+from loopy.diagnostic import LoopyError
 
 from loopy.diagnostic import ExpressionToAffineConversionError
 
@@ -106,7 +107,10 @@ class IdentityMapperMixin(object):
         return expr
 
     def map_type_annotation(self, expr, *args):
-        return type(expr)(expr.type, self.rec(expr.child))
+        return type(expr)(expr.type, self.rec(expr.child, *args))
+
+    def map_scoped_function(self, expr, *args):
+        return ScopedFunction(self.rec(expr.function, *args))
 
     map_type_cast = map_type_annotation
 
@@ -165,9 +169,16 @@ class WalkMapper(WalkMapperBase):
 
     map_rule_argument = map_group_hw_index
 
+    def map_scoped_function(self, expr, *args):
+        if not self.visit(expr):
+            return
+
+        self.rec(expr.function, *args)
+
 
 class CallbackMapper(CallbackMapperBase, IdentityMapper):
     map_reduction = CallbackMapperBase.map_constant
+    map_scoped_function = CallbackMapperBase.map_constant
 
 
 class CombineMapper(CombineMapperBase):
@@ -232,13 +243,16 @@ class StringifyMapper(StringifyMapperBase):
         from pymbolic.mapper.stringifier import PREC_NONE
         return "cast(%s, %s)" % (repr(expr.type), self.rec(expr.child, PREC_NONE))
 
+    def map_scoped_function(self, expr, prec):
+        return "ScopedFunction('%s')" % expr.name
+
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
     def map_reduction(self, expr, other, unis):
         if not isinstance(other, type(expr)):
             return self.treat_mismatch(expr, other, unis)
         if (expr.inames != other.inames
-                or type(expr.operation) != type(other.operation)  # noqa
+                or type(expr.function) != type(other.function)  # noqa
                 ):
             return []
 
@@ -274,6 +288,13 @@ class DependencyMapper(DependencyMapperBase):
         return self.combine(
                 self.rec(child, *args) for child in expr.parameters)
 
+    def map_call_with_kwargs(self, expr, *args):
+        # Loopy does not have first-class functions. Do not descend
+        # into 'function' attribute of Call.
+        return self.combine(
+                self.rec(child, *args) for child in expr.parameters+tuple(
+                    expr.kw_parameters.values()))
+
     def map_reduction(self, expr):
         deps = self.rec(expr.expr)
         return deps - set(p.Variable(iname) for iname in expr.inames)
@@ -288,6 +309,9 @@ class DependencyMapper(DependencyMapperBase):
 
     def map_type_cast(self, expr):
         return self.rec(expr.child)
+
+    def map_scoped_function(self, expr):
+        return self.rec(expr.function)
 
 
 class SubstitutionRuleExpander(IdentityMapper):
@@ -638,6 +662,51 @@ class RuleArgument(p.Expression):
 
     mapper_method = intern("map_rule_argument")
 
+
+class ScopedFunction(p.Expression):
+    """
+    A function invocation whose definition is known in a :mod:`loopy` kernel.
+    Each instance of :class:`loopy.symbolic.ScopedFunction` in an expression
+    points to an instance of
+    :class:`loopy.kernel.function_interface.InKernelCallable` through the
+    mapping :attr:`loopy.kernel.LoopKernel.scoped_functions`. Refer
+    :ref:`ref_scoped_function` for a slightly detailed explanation on scoped
+    functions.
+
+    .. attribute:: function
+
+        An instance of :class:`pymbolic.primitives.Variable`,
+        :class:`loopy.library.reduction.ArgExtOp` or
+        :class:`loopy.library.reduction.SegmentedOp`.
+    """
+    init_arg_names = ("function", )
+
+    def __init__(self, function):
+        if isinstance(function, str):
+            function = p.Variable(function)
+        from loopy.library.reduction import ArgExtOp, SegmentedOp
+        assert isinstance(function, (p.Variable, ArgExtOp, SegmentedOp))
+        self.function = function
+
+    @property
+    def name(self):
+        from loopy.library.reduction import ArgExtOp, SegmentedOp
+        if isinstance(self.function, p.Variable):
+            return self.function.name
+        elif isinstance(self.function, (ArgExtOp, SegmentedOp)):
+            return self.function
+        else:
+            raise LoopyError("Unexpected function type %s in ScopedFunction." %
+                    type(self.function))
+
+    def __getinitargs__(self):
+        return (self.function, )
+
+    def stringifier(self):
+        return StringifyMapper
+
+    mapper_method = intern("map_scoped_function")
+
 # }}}
 
 
@@ -650,9 +719,12 @@ def get_dependencies(expr):
 # {{{ rule-aware mappers
 
 def parse_tagged_name(expr):
+    from loopy.library.reduction import ArgExtOp, SegmentedOp
     if isinstance(expr, TaggedVariable):
         return expr.name, expr.tag
-    elif isinstance(expr, p.Variable):
+    elif isinstance(expr, ScopedFunction):
+        return parse_tagged_name(expr.function)
+    elif isinstance(expr, (p.Variable, ArgExtOp, SegmentedOp)):
         return expr.name, None
     else:
         raise RuntimeError("subst rule name not understood: %s" % expr)
@@ -1099,6 +1171,14 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
             else:
                 return IdentityMapper.map_call(self, expr)
+
+    def map_call_with_kwargs(self, expr):
+        for par in expr.kw_parameters.values():
+            if not isinstance(par, SubArrayRef):
+                raise LoopyError("Keyword Arguments is only supported for"
+                        " array arguments--use positional order to specify"
+                        " the order of the arguments in the call.")
+        return IdentityMapper.map_call_with_kwargs(self, expr)
 
 
 # {{{ customization to pymbolic parser

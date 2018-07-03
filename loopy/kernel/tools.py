@@ -1877,7 +1877,15 @@ def infer_arg_is_output_only(kernel):
                 else:
                     new_args.append(arg.copy(is_output_only=False))
         elif isinstance(arg, ConstantArg):
+<<<<<<< HEAD
+            if arg.is_output_only:
+                raise LoopyError("Constant Argument %s cannot have "
+                        "is_output_only True" % arg.name)
+            else:
+                new_args.append(arg.copy(is_output_only=False))
+=======
             new_args.append(arg)
+>>>>>>> master
         else:
             raise NotImplementedError("Unkonwn argument type %s." % type(arg))
 

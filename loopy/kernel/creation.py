@@ -24,16 +24,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 import numpy as np
 
 from pymbolic.mapper import CSECachingMapperMixin
+from pymbolic.primitives import Slice, Variable, Subscript
 from loopy.tools import intern_frozenset_of_ids
-from loopy.symbolic import IdentityMapper, WalkMapper
+from loopy.symbolic import (
+        IdentityMapper, WalkMapper, SubArrayRef,
+        RuleAwareIdentityMapper)
 from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
-        SubstitutionRule)
+        SubstitutionRule, AddressSpace)
+from loopy.kernel.instruction import (CInstruction, _DataObliviousInstruction,
+        CallInstruction)
 from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
 from islpy import dim_type
@@ -1139,7 +1143,7 @@ class ArgumentGuesser:
     def make_new_arg(self, arg_name):
         arg_name = arg_name.strip()
 
-        from loopy.kernel.data import ValueArg, ArrayArg, AddressSpace
+        from loopy.kernel.data import ValueArg, ArrayArg
         import loopy as lp
 
         if arg_name in self.all_params:
@@ -1835,6 +1839,148 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
 # }}}
 
 
+# {{{ scope functions
+
+class FunctionScoper(RuleAwareIdentityMapper):
+    """
+    Mapper to convert the  ``function`` attribute of a
+    :class:`pymbolic.primitives.Call` known in the kernel as instances of
+    :class:`loopy.symbolic.ScopedFunction`. A function is known in the
+    *kernel*, :func:`loopy.kernel.LoopKernel.find_scoped_function_identifier`
+    returns an instance of
+    :class:`loopy.kernel.function_interface.InKernelCallable`.
+
+    **Example:** If given an expression of the form ``sin(x) + unknown_function(y) +
+    log(z)``, then the mapper would return ``ScopedFunction('sin')(x) +
+    unknown_function(y) + ScopedFunction('log')(z)``.
+
+    :arg rule_mapping_context: An instance of
+        :class:`loopy.symbolic.RuleMappingContext`.
+    :arg function_ids: A container with instances of :class:`str` indicating
+        the function identifiers to look for while scoping functions.
+    """
+    def __init__(self, rule_mapping_context, kernel):
+        super(FunctionScoper, self).__init__(rule_mapping_context)
+        self.kernel = kernel
+        self.scoped_functions = {}
+
+    def map_call(self, expr, expn_state):
+        from loopy.symbolic import ScopedFunction
+        if not isinstance(expr.function, ScopedFunction):
+
+            # search the kernel for the function
+            in_knl_callable = self.kernel.find_scoped_function_identifier(
+                    expr.function.name)
+            if in_knl_callable:
+                # associate the newly created ScopedFunction with the
+                # resolved in-kernel callable
+                self.scoped_functions[expr.function.name] = in_knl_callable
+
+                return type(expr)(
+                        ScopedFunction(expr.function.name),
+                        tuple(self.rec(child, expn_state)
+                            for child in expr.parameters))
+
+        # this is an unknown function as of yet, do not modify it
+        return super(FunctionScoper, self).map_call(expr, expn_state)
+
+    def map_call_with_kwargs(self, expr, expn_state):
+        # FIXME duplicated logic with map_call
+
+        from loopy.symbolic import ScopedFunction
+        if not isinstance(expr.function, ScopedFunction):
+
+            # search the kernel for the function.
+            in_knl_callable = self.kernel.find_scoped_function_identifier(
+                    expr.function.name)
+
+            if in_knl_callable:
+                # associate the newly created ScopedFunction with the
+                # resolved in-kernel callable
+                self.scoped_functions[expr.function.name] = in_knl_callable
+                return type(expr)(
+                        ScopedFunction(expr.function.name),
+                        tuple(self.rec(child, expn_state)
+                            for child in expr.parameters),
+                        dict(
+                            (key, self.rec(val, expn_state))
+                            for key, val in six.iteritems(expr.kw_parameters))
+                            )
+
+        # this is an unknown function as of yet, do not modify it
+        return super(FunctionScoper, self).map_call_with_kwargs(expr,
+                expn_state)
+
+    def map_reduction(self, expr, expn_state):
+        from loopy.library.reduction import (MaxReductionOperation,
+                MinReductionOperation, ArgMinReductionOperation,
+                ArgMaxReductionOperation, _SegmentedScalarReductionOperation,
+                SegmentedOp)
+        from loopy.library.reduction import ArgExtOp
+
+        # note down the extra functions arising due to certain reductions
+
+        # FIXME Discuss this. It cannot stay the way it is, because non-built-in
+        # reductions cannot add themselves to this list. We may need to change
+        # the reduction interface. Why don't reductions generate scoped functions
+        # in the first place?
+        if isinstance(expr.operation, MaxReductionOperation):
+            self.scoped_functions["max"] = (
+                    self.kernel.find_scoped_function_identifier("max"))
+        elif isinstance(expr.operation, MinReductionOperation):
+            self.scoped_functions["min"] = (
+                    self.kernel.find_scoped_function_identifier("min"))
+        elif isinstance(expr.operation, ArgMaxReductionOperation):
+            self.scoped_functions["max"] = (
+                    self.kernel.find_scoped_function_identifier("max"))
+            self.scoped_functions["make_tuple"] = (
+                    self.kernel.find_scoped_function_identifier("make_tuple"))
+            self.scoped_functions[ArgExtOp(expr.operation)] = (
+                    self.kernel.find_scoped_function_identifier(expr.operation))
+        elif isinstance(expr.operation, ArgMinReductionOperation):
+            self.scoped_functions["min"] = (
+                    self.kernel.find_scoped_function_identifier("min"))
+            self.scoped_functions["make_tuple"] = (
+                    self.kernel.find_scoped_function_identifier("make_tuple"))
+            self.scoped_functions[ArgExtOp(expr.operation)] = (
+                    self.kernel.find_scoped_function_identifier(expr.operation))
+        elif isinstance(expr.operation, _SegmentedScalarReductionOperation):
+            self.scoped_functions["make_tuple"] = (
+                    self.kernel.find_scoped_function_identifier("make_tuple"))
+            self.scoped_functions[SegmentedOp(expr.operation)] = (
+                    self.kernel.find_scoped_function_identifier(expr.operation))
+
+        return super(FunctionScoper, self).map_reduction(expr, expn_state)
+
+
+def scope_functions(kernel):
+    """
+    Returns a kernel with the pymbolic nodes involving known functions realized
+    as instances of :class:`loopy.symbolic.ScopedFunction`, along with the
+    resolved functions being added to the ``scoped_functions`` dictionary of
+    the kernel.
+    """
+
+    from loopy.symbolic import SubstitutionRuleMappingContext
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
+
+    function_scoper = FunctionScoper(rule_mapping_context, kernel)
+
+    # scoping fucntions and collecting the scoped functions
+    kernel_with_scoped_functions = rule_mapping_context.finish_kernel(
+            function_scoper.map_kernel(kernel))
+
+    # updating the functions collected during the scoped functions
+    updated_scoped_functions = kernel.scoped_functions.copy()
+    updated_scoped_functions.update(function_scoper.scoped_functions)
+
+    return kernel_with_scoped_functions.copy(
+            scoped_functions=updated_scoped_functions)
+
+# }}}
+
+
 # {{{ kernel creation top-level
 
 def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
@@ -2173,6 +2319,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_for_multiple_writes_to_loop_bounds(knl)
     check_for_duplicate_names(knl)
     check_written_variable_names(knl)
+
+    knl = scope_functions(knl)
 
     from loopy.preprocess import prepare_for_caching
     knl = prepare_for_caching(knl)
