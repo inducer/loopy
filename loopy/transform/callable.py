@@ -22,21 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
-
-import islpy as isl
-from pymbolic.primitives import CallWithKwargs
-
-from loopy.kernel import LoopKernel
-from loopy.kernel.function_interface import CallableKernel
-from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
-from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
-        CInstruction, _DataObliviousInstruction)
-from loopy.symbolic import IdentityMapper, SubstitutionMapper, CombineMapper
-from loopy.isl_helpers import simplify_via_aff
-from loopy.kernel.function_interface import (get_kw_pos_association,
-        register_pymbolic_calls_to_knl_callables)
 
 
 __doc__ = """
