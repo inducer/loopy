@@ -2133,15 +2133,14 @@ class ArgDescrInferenceMapper(CombineMapper):
     # FIXME logic duplication between map_call and map_call_with_kwargs
     def map_call(self, expr, **kwargs):
         from loopy.kernel.function_interface import ValueArgDescriptor
-        from loopy.symbolic import SubArrayRef, ScopedFunction
+        from loopy.symbolic import ScopedFunction
 
         # ignoring if the call is not to a ScopedFunction
         if not isinstance(expr.function, ScopedFunction):
             return self.combine((self.rec(child) for child in expr.parameters))
 
         # descriptors for the args
-        arg_id_to_descr = dict((i, par.get_array_arg_descriptor(self.kernel))
-                if isinstance(par, SubArrayRef) else (i, ValueArgDescriptor())
+        arg_id_to_descr = dict((i, ValueArgDescriptor())
                 for i, par in enumerate(expr.parameters))
 
         assignee_id_to_descr = {}
@@ -2152,11 +2151,7 @@ class ArgDescrInferenceMapper(CombineMapper):
             assignees = kwargs['assignees']
             assert isinstance(assignees, tuple)
             for i, par in enumerate(assignees):
-                if isinstance(par, SubArrayRef):
-                    assignee_id_to_descr[-i-1] = (
-                            par.get_array_arg_descriptor(self.kernel))
-                else:
-                    assignee_id_to_descr[-i-1] = ValueArgDescriptor()
+                assignee_id_to_descr[-i-1] = ValueArgDescriptor()
 
         # gathering all the descriptors
         # TODO: I dont like in place updates. Change this to somthing else.
@@ -2175,11 +2170,9 @@ class ArgDescrInferenceMapper(CombineMapper):
 
     def map_call_with_kwargs(self, expr, **kwargs):
         from loopy.kernel.function_interface import ValueArgDescriptor
-        from loopy.symbolic import SubArrayRef
 
         # descriptors for the args and kwargs:
-        arg_id_to_descr = dict((i, par.get_array_arg_descriptor(self.kernel))
-                if isinstance(par, SubArrayRef) else ValueArgDescriptor()
+        arg_id_to_descr = dict((i, ValueArgDescriptor())
                 for i, par in tuple(enumerate(expr.parameters)) +
                 tuple(expr.kw_parameters.items()))
 
@@ -2190,11 +2183,7 @@ class ArgDescrInferenceMapper(CombineMapper):
             assignees = kwargs['assignees']
             assert isinstance(assignees, tuple)
             for i, par in enumerate(assignees):
-                if isinstance(par, SubArrayRef):
-                    assignee_id_to_descr[-i-1] = (
-                            par.get_array_arg_descriptor(self.kernel))
-                else:
-                    assignee_id_to_descr[-i-1] = ValueArgDescriptor()
+                assignee_id_to_descr[-i-1] = ValueArgDescriptor()
 
         # gathering all the descriptors
         # TODO: I dont like in place updates. Change this to somthing else.
