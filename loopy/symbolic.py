@@ -1172,14 +1172,6 @@ class FunctionToPrimitiveMapper(IdentityMapper):
             else:
                 return IdentityMapper.map_call(self, expr)
 
-    def map_call_with_kwargs(self, expr):
-        for par in expr.kw_parameters.values():
-            if not isinstance(par, SubArrayRef):
-                raise LoopyError("Keyword Arguments is only supported for"
-                        " array arguments--use positional order to specify"
-                        " the order of the arguments in the call.")
-        return IdentityMapper.map_call_with_kwargs(self, expr)
-
 
 # {{{ customization to pymbolic parser
 

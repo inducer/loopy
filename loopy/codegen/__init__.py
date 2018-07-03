@@ -32,12 +32,10 @@ from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 
-from cgen import Collection
-from loopy.symbolic import CombineMapper
+from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
+        _DataObliviousInstruction)
 
-from loopy.kernel.instruction import (
-        Assignment, NoOpInstruction, BarrierInstruction, CallInstruction,
-        CInstruction, _DataObliviousInstruction, MultiAssignmentBase)
+from loopy.symbolic import CombineMapper
 
 from functools import reduce
 

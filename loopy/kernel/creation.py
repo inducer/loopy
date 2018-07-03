@@ -27,17 +27,13 @@ THE SOFTWARE.
 import numpy as np
 
 from pymbolic.mapper import CSECachingMapperMixin
-from pymbolic.primitives import Slice, Variable, Subscript
 from loopy.tools import intern_frozenset_of_ids
-from loopy.symbolic import (
-        IdentityMapper, WalkMapper, SubArrayRef,
+from loopy.symbolic import (IdentityMapper, WalkMapper,
         RuleAwareIdentityMapper)
 from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
         SubstitutionRule, AddressSpace)
-from loopy.kernel.instruction import (CInstruction, _DataObliviousInstruction,
-        CallInstruction)
 from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
 from islpy import dim_type
