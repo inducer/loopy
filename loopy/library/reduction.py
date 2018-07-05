@@ -203,6 +203,7 @@ class MinReductionOperation(ScalarReductionOperation):
         return {
                 "min": kernel.find_scoped_function_identifier("min")}
 
+
 # {{{ base class for symbolic reduction ops
 
 class ReductionOpFunction(FunctionIdentifier):
