@@ -1894,44 +1894,8 @@ class FunctionScoper(RuleAwareIdentityMapper):
                 expn_state)
 
     def map_reduction(self, expr, expn_state):
-        from loopy.library.reduction import (MaxReductionOperation,
-                MinReductionOperation, ArgMinReductionOperation,
-                ArgMaxReductionOperation, _SegmentedScalarReductionOperation,
-                SegmentedOp)
-        from loopy.library.reduction import ArgExtOp
-
-        # note down the extra functions arising due to certain reductions
-
-        # FIXME Discuss this. It cannot stay the way it is, because non-built-in
-        # reductions cannot add themselves to this list. We may need to change
-        # the reduction interface. Why don't reductions generate scoped functions
-        # in the first place?
-        if isinstance(expr.operation, MaxReductionOperation):
-            self.scoped_functions["max"] = (
-                    self.kernel.find_scoped_function_identifier("max"))
-        elif isinstance(expr.operation, MinReductionOperation):
-            self.scoped_functions["min"] = (
-                    self.kernel.find_scoped_function_identifier("min"))
-        elif isinstance(expr.operation, ArgMaxReductionOperation):
-            self.scoped_functions["max"] = (
-                    self.kernel.find_scoped_function_identifier("max"))
-            self.scoped_functions["make_tuple"] = (
-                    self.kernel.find_scoped_function_identifier("make_tuple"))
-            self.scoped_functions[ArgExtOp(expr.operation)] = (
-                    self.kernel.find_scoped_function_identifier(expr.operation))
-        elif isinstance(expr.operation, ArgMinReductionOperation):
-            self.scoped_functions["min"] = (
-                    self.kernel.find_scoped_function_identifier("min"))
-            self.scoped_functions["make_tuple"] = (
-                    self.kernel.find_scoped_function_identifier("make_tuple"))
-            self.scoped_functions[ArgExtOp(expr.operation)] = (
-                    self.kernel.find_scoped_function_identifier(expr.operation))
-        elif isinstance(expr.operation, _SegmentedScalarReductionOperation):
-            self.scoped_functions["make_tuple"] = (
-                    self.kernel.find_scoped_function_identifier("make_tuple"))
-            self.scoped_functions[SegmentedOp(expr.operation)] = (
-                    self.kernel.find_scoped_function_identifier(expr.operation))
-
+        self.scoped_functions.update(
+                expr.operation.get_scalar_callables(self.kernel))
         return super(FunctionScoper, self).map_reduction(expr, expn_state)
 
 
