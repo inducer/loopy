@@ -607,33 +607,19 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
             return self.map_substitution(name, tag, expr.parameters, expn_state)
 
     def map_call_with_kwargs(self, expr, expn_state):
-        name, tag = parse_tagged_name(expr.function)
 
-        if name not in self.rule_mapping_context.old_subst_rules:
-            expanded_expr = self.subst_expander(expr)
-            if expr in self.expr_to_new_names:
-                return type(expr)(
-                    ScopedFunction(self.expr_to_new_names[expr]),
-                    tuple(self.rec(child, expn_state)
-                        for child in expr.parameters),
-                    dict(
-                        (key, self.rec(val, expn_state))
-                        for key, val in six.iteritems(expr.kw_parameters))
-                        )
-            elif expanded_expr in self.expr_to_new_names:
-                return type(expr)(
-                    ScopedFunction(self.expr_to_new_names[expanded_expr]),
-                    tuple(self.rec(child, expn_state)
-                        for child in expr.parameters),
-                    dict(
-                        (key, self.rec(val, expn_state))
-                        for key, val in six.iteritems(expr.kw_parameters))
-                        )
-            else:
-                return super(ScopedFunctionNameChanger, self).map_call_with_kwargs(
-                        expr, expn_state)
+        if expr in self.expr_to_new_names:
+            return type(expr)(
+                ScopedFunction(self.expr_to_new_names[expr]),
+                tuple(self.rec(child, expn_state)
+                    for child in expr.parameters),
+                dict(
+                    (key, self.rec(val, expn_state))
+                    for key, val in six.iteritems(expr.kw_parameters))
+                    )
         else:
-            return self.map_substitution(name, tag, expr.parameters, expn_state)
+            return super(ScopedFunctionNameChanger, self).map_call_with_kwargs(
+                    expr, expn_state)
 
 
 def register_pymbolic_calls_to_knl_callables(kernel,
@@ -664,9 +650,9 @@ def register_pymbolic_calls_to_knl_callables(kernel,
     pymbolic_calls_to_new_names = {}
 
     for pymbolic_call, in_knl_callable in pymbolic_exprs_to_knl_callables.items():
-        # checking if such a in-kernel callable already exists.
+        # check if such a in-kernel callable already exists.
         if in_knl_callable not in scoped_functions_to_names:
-            # No matching in_knl_callable found => make a new one with a new
+            # No matching in_knl_callable found, implies make a new one with a new
             # name.
             if isinstance(pymbolic_call.function, Variable):
                 pymbolic_call_function = pymbolic_call.function

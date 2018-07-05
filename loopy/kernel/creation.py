@@ -1862,14 +1862,21 @@ class FunctionScoper(RuleAwareIdentityMapper):
 
     def map_call(self, expr, expn_state):
         from pymbolic.primitives import Call, CallWithKwargs
-        new_call_with_kwargs = self.rec(CallWithKwargs(
-            function=expr.function, parameters=expr.parameters,
-            kw_parameters={}), expn_state)
-        return Call(new_call_with_kwargs.function,
-                new_call_with_kwargs.parameters)
+        from loopy.symbolic import parse_tagged_name
+
+        name, tag = parse_tagged_name(expr.function)
+        if name not in self.rule_mapping_context.old_subst_rules:
+            new_call_with_kwargs = self.rec(CallWithKwargs(
+                function=expr.function, parameters=expr.parameters,
+                kw_parameters={}), expn_state)
+            return Call(new_call_with_kwargs.function,
+                    new_call_with_kwargs.parameters)
+        else:
+            return self.map_substitution(name, tag, expr.parameters, expn_state)
 
     def map_call_with_kwargs(self, expr, expn_state):
         from loopy.symbolic import ScopedFunction
+
         if not isinstance(expr.function, ScopedFunction):
 
             # search the kernel for the function.
