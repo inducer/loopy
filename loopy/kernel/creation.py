@@ -1861,28 +1861,14 @@ class FunctionScoper(RuleAwareIdentityMapper):
         self.scoped_functions = {}
 
     def map_call(self, expr, expn_state):
-        from loopy.symbolic import ScopedFunction
-        if not isinstance(expr.function, ScopedFunction):
-
-            # search the kernel for the function
-            in_knl_callable = self.kernel.find_scoped_function_identifier(
-                    expr.function.name)
-            if in_knl_callable:
-                # associate the newly created ScopedFunction with the
-                # resolved in-kernel callable
-                self.scoped_functions[expr.function.name] = in_knl_callable
-
-                return type(expr)(
-                        ScopedFunction(expr.function.name),
-                        tuple(self.rec(child, expn_state)
-                            for child in expr.parameters))
-
-        # this is an unknown function as of yet, do not modify it
-        return super(FunctionScoper, self).map_call(expr, expn_state)
+        from pymbolic.primitives import Call, CallWithKwargs
+        new_call_with_kwargs = self.rec(CallWithKwargs(
+            function=expr.function, parameters=expr.parameters,
+            kw_parameters={}), expn_state)
+        return Call(new_call_with_kwargs.function,
+                new_call_with_kwargs.parameters)
 
     def map_call_with_kwargs(self, expr, expn_state):
-        # FIXME duplicated logic with map_call
-
         from loopy.symbolic import ScopedFunction
         if not isinstance(expr.function, ScopedFunction):
 

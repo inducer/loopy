@@ -2130,51 +2130,20 @@ class ArgDescrInferenceMapper(CombineMapper):
         import operator
         return reduce(operator.or_, values, frozenset())
 
-    # FIXME logic duplication between map_call and map_call_with_kwargs
     def map_call(self, expr, **kwargs):
+        from pymbolic.primitives import Call, CallWithKwargs
         from loopy.kernel.function_interface import ValueArgDescriptor
-        from loopy.symbolic import ScopedFunction
 
-        # ignoring if the call is not to a ScopedFunction
-        if not isinstance(expr.function, ScopedFunction):
-            return self.combine((self.rec(child) for child in expr.parameters))
-
-        # descriptors for the args
-        arg_id_to_descr = dict((i, ValueArgDescriptor())
-                for i, par in enumerate(expr.parameters))
-
-        assignee_id_to_descr = {}
-
-        # assignee descriptor
-        if 'assignees' in kwargs:
-            # If supplied with assignees then this is a CallInstruction
-            assignees = kwargs['assignees']
-            assert isinstance(assignees, tuple)
-            for i, par in enumerate(assignees):
-                assignee_id_to_descr[-i-1] = ValueArgDescriptor()
-
-        # gathering all the descriptors
-        # TODO: I dont like in place updates. Change this to somthing else.
-        # Perhaps make a function?
-        combined_arg_id_to_descr = arg_id_to_descr.copy()
-        combined_arg_id_to_descr.update(assignee_id_to_descr)
-
-        # specializing the function according to the parameter description
-        new_scoped_function = (
-                self.kernel.scoped_functions[expr.function.name].with_descrs(
-                    combined_arg_id_to_descr))
-
-        # collecting the descriptors for args, kwargs, assignees
-        return (frozenset(((expr, new_scoped_function), )) |
-                self.combine((self.rec(child) for child in expr.parameters)))
-
-    def map_call_with_kwargs(self, expr, **kwargs):
-        from loopy.kernel.function_interface import ValueArgDescriptor
+        if isinstance(expr, Call):
+            kw_parameters = {}
+        else:
+            assert isinstance(expr, CallWithKwargs)
+            kw_parameters = expr.kw_parameters
 
         # descriptors for the args and kwargs:
         arg_id_to_descr = dict((i, ValueArgDescriptor())
                 for i, par in tuple(enumerate(expr.parameters)) +
-                tuple(expr.kw_parameters.items()))
+                tuple(kw_parameters.items()))
 
         assignee_id_to_descr = {}
 
@@ -2186,8 +2155,6 @@ class ArgDescrInferenceMapper(CombineMapper):
                 assignee_id_to_descr[-i-1] = ValueArgDescriptor()
 
         # gathering all the descriptors
-        # TODO: I dont like in place updates. Change this to somthing else.
-        # Perhaps make a function?
         combined_arg_id_to_descr = arg_id_to_descr.copy()
         combined_arg_id_to_descr.update(assignee_id_to_descr)
 
@@ -2199,7 +2166,10 @@ class ArgDescrInferenceMapper(CombineMapper):
         # collecting the descriptors for args, kwargs, assignees
         return (
                 frozenset(((expr, new_scoped_function), )) |
-                self.combine((self.rec(child) for child in expr.parameters)))
+                self.combine((self.rec(child) for child in
+                    expr.parameters+tuple(kw_parameters))))
+
+    map_call_with_kwargs = map_call
 
     def map_constant(self, expr, **kwargs):
         return frozenset()
@@ -2269,23 +2239,18 @@ class HWAxesInferenceMapper(CombineMapper):
         return reduce(operator.or_, values, frozenset())
 
     def map_call(self, expr, **kwargs):
-        # ignoring if the call is not to a ScopedFunction
-        from loopy.symbolic import ScopedFunction
-        if not isinstance(expr.function, ScopedFunction):
-            return self.combine((self.rec(child) for child in expr.parameters))
+        from pymbolic.primitives import CallWithKwargs, Call
+        if isinstance(expr, Call):
+            kw_parameters = {}
+        else:
+            assert isinstance(expr, CallWithKwargs)
+            kw_parameters = expr.kw_parameters
 
-        new_scoped_function = (
-                self.kernel.scoped_functions[expr.function.name].with_hw_axes_sizes(
-                    self.local_size, self.global_size))
-
-        return (frozenset(((expr, new_scoped_function), )) |
-                self.combine((self.rec(child) for child in expr.parameters)))
-
-    def map_call_with_kwargs(self, expr, **kwargs):
         from loopy.symbolic import ScopedFunction
         # ignoring if the call is not to a ScopedFunction
         if not isinstance(expr.function, ScopedFunction):
-            return self.combine((self.rec(child) for child in expr.parameters))
+            return self.combine((self.rec(child) for child in
+                expr.parameters+tuple(kw_parameters.values())))
 
         new_scoped_function = (
                 self.kernel.scoped_functions[expr.function.name].with_hw_axes_sizes(
@@ -2293,7 +2258,9 @@ class HWAxesInferenceMapper(CombineMapper):
 
         return (frozenset(((expr, new_scoped_function), )) |
                 self.combine((self.rec(child) for child in
-                    expr.parameters+tuple(expr.kw_parameters.values()))))
+                    expr.parameters+tuple(kw_parameters.values()))))
+
+    map_call_with_kwargs = map_call
 
     def map_constant(self, expr, **kwargs):
         return frozenset()
@@ -2349,35 +2316,13 @@ class FunctionsNotReadyForCodegenCollector(CombineMapper):
     def combine(self, values):
         return all(values)
 
-    # FIXME logic duplication between map_call and map_call_with_kwargs
     def map_call(self, expr, *args, **kwargs):
-        from loopy.library.reduction import ArgExtOp, SegmentedOp
-        from pymbolic.primitives import Variable
-        from loopy.symbolic import ScopedFunction
-
-        if isinstance(expr.function, (ArgExtOp, SegmentedOp)):
-            return self.combine(
-                    tuple(
-                        self.rec(child, *args, **kwargs) for child in
-                        expr.parameters))
-        elif isinstance(expr.function, Variable):
-            # UnScopedFunction obtained and hence clearly not ready for
-            # codegen.
-            return False
-
-        elif isinstance(expr.function, ScopedFunction):
-            is_ready_for_codegen = self.kernel.scoped_functions[
-                    expr.function.name].is_ready_for_codegen()
-            return self.combine(
-                    (is_ready_for_codegen,) +
-                    tuple(
-                        self.rec(child, *args, **kwargs)
-                        for child in expr.parameters))
+        from pymbolic.primitives import CallWithKwargs, Call
+        if isinstance(expr, Call):
+            kw_parameters = {}
         else:
-            raise LoopyError("Unexpected function type %s obtained in %s"
-                    % (type(expr.function), expr))
-
-    def map_call_with_kwargs(self, expr, *args, **kwargs):
+            assert isinstance(expr, CallWithKwargs)
+            kw_parameters = expr.kw_parameters
         is_ready_for_codegen = self.kernel.scoped_functions[
                 expr.function.name].is_ready_for_codegen()
         return self.combine(
@@ -2387,8 +2332,10 @@ class FunctionsNotReadyForCodegenCollector(CombineMapper):
                     for child in expr.parameters)
                 + tuple(
                     self.rec(child, *args, **kwargs)
-                    for child in expr.kw_parameters.values())
+                    for child in kw_parameters.values())
                 )
+
+    map_call_with_kwargs = map_call
 
     def map_constant(self, expr):
         return True

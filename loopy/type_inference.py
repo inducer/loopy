@@ -265,12 +265,13 @@ class TypeInferenceMapper(CombineMapper):
         return self.rec(expr.aggregate)
 
     def map_call(self, expr, return_tuple=False):
-        from pymbolic.primitives import Variable, CallWithKwargs
+        from pymbolic.primitives import Variable, CallWithKwargs, Call
         from loopy.symbolic import ScopedFunction
 
         if isinstance(expr, CallWithKwargs):
             kw_parameters = expr.kw_parameters
         else:
+            assert isinstance(expr, Call)
             kw_parameters = {}
 
         identifier = expr.function
