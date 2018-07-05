@@ -2133,6 +2133,11 @@ class ArgDescrInferenceMapper(CombineMapper):
     def map_call(self, expr, **kwargs):
         from pymbolic.primitives import Call, CallWithKwargs
         from loopy.kernel.function_interface import ValueArgDescriptor
+        from loopy.symbolic import ScopedFunction
+
+        # ignore if the call is not to a ScopedFunction
+        if not isinstance(expr.function, ScopedFunction):
+            return self.combine((self.rec(child) for child in expr.parameters))
 
         if isinstance(expr, Call):
             kw_parameters = {}
@@ -2318,22 +2323,38 @@ class FunctionsNotReadyForCodegenCollector(CombineMapper):
 
     def map_call(self, expr, *args, **kwargs):
         from pymbolic.primitives import CallWithKwargs, Call
+        from loopy.library.reduction import ArgExtOp, SegmentedOp
+        from pymbolic.primitives import Variable
+        from loopy.symbolic import ScopedFunction
+
         if isinstance(expr, Call):
             kw_parameters = {}
         else:
             assert isinstance(expr, CallWithKwargs)
             kw_parameters = expr.kw_parameters
-        is_ready_for_codegen = self.kernel.scoped_functions[
-                expr.function.name].is_ready_for_codegen()
-        return self.combine(
-                (is_ready_for_codegen,)
-                + tuple(
-                    self.rec(child, *args, **kwargs)
-                    for child in expr.parameters)
-                + tuple(
-                    self.rec(child, *args, **kwargs)
-                    for child in kw_parameters.values())
-                )
+
+        if isinstance(expr.function, (ArgExtOp, SegmentedOp)):
+            return self.combine(
+                    tuple(
+                        self.rec(child, *args, **kwargs) for child in
+                        expr.parameters + tuple(kw_parameters)))
+        elif isinstance(expr.function, Variable):
+            # UnScopedFunction obtained and hence clearly not ready for
+            # codegen.
+            return False
+
+        elif isinstance(expr.function, ScopedFunction):
+            is_ready_for_codegen = self.kernel.scoped_functions[
+                    expr.function.name].is_ready_for_codegen()
+            return self.combine(
+                    (is_ready_for_codegen,) +
+                    tuple(
+                        self.rec(child, *args, **kwargs)
+                        for child in
+                        expr.parameters+tuple(kw_parameters.values())))
+        else:
+            raise LoopyError("Unexpected function type %s obtained in %s"
+                    % (type(expr.function), expr))
 
     map_call_with_kwargs = map_call
 
