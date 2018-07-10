@@ -199,6 +199,9 @@ class OpaqueType(LoopyType):
     def involves_complex(self):
         return False
 
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, self.name)
+
 # }}}
 
 
