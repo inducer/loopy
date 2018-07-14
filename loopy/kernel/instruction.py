@@ -554,9 +554,6 @@ class MemoryOrdering:  # noqa
     ACQ_REL = 3
     SEQ_CST = 4
 
-    # FIXME Introduce compat/deprecation goop for now-upper-case enum
-    # constants
-
     @staticmethod
     def to_string(v):
         for i in dir(MemoryOrdering):
@@ -569,8 +566,49 @@ class MemoryOrdering:  # noqa
         raise ValueError("Unknown value of MemoryOrdering")
 
 
-# FIXME Introduce noisy deprecation goop
-memory_ordering = MemoryOrdering
+# {{{ memory_ordering, MemoryOrdering compatibility
+
+class _deprecated_memory_ordering_class_method(object):  # noqa
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, klass):
+        warn("'memory_ordering' is deprecated. Use 'MemoryOrdering'.",
+                DeprecationWarning, stacklevel=2)
+        return self.f()
+
+
+class memory_ordering(object):  # noqa
+    """Deprecated. Use :class:`MemoryOrdering` instead.
+    """
+
+    @_deprecated_memory_ordering_class_method
+    def RELAXED():
+        return MemoryOrdering.RELAXED
+
+    @_deprecated_memory_ordering_class_method
+    def ACQUIRE():
+        return MemoryOrdering.ACQUIRE
+
+    @_deprecated_memory_ordering_class_method
+    def RELEASE():
+        return MemoryOrdering.RELEASE
+
+    @_deprecated_memory_ordering_class_method
+    def ACQ_REL():
+        return MemoryOrdering.ACQ_REL
+
+    @_deprecated_memory_ordering_class_method
+    def SEQ_CST():
+        return MemoryOrdering.SEQ_CST
+
+    @staticmethod
+    def to_string(v):
+        warn("'memory_ordering' is deprecated. Use 'MemoryOrdering'.",
+                DeprecationWarning, stacklevel=2)
+        return MemoryOrdering.to_string(v)
+
+# }}}
 
 
 class MemoryScope:  # noqa
@@ -591,9 +629,6 @@ class MemoryScope:  # noqa
     DEVICE = 2
     ALL_SVM_DEVICES = 2
 
-    # FIXME Introduce compat/deprecation goop for now-upper-case enum
-    # constants
-
     auto = -1
 
     @staticmethod
@@ -608,8 +643,49 @@ class MemoryScope:  # noqa
         raise ValueError("Unknown value of MemoryScope")
 
 
-# FIXME Introduce noisy deprecation goop
-memory_scope = MemoryScope
+# {{{ memory_scope, MemoryScope compatiability
+
+class _deprecated_memory_scope_class_method(object):  # noqa
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, klass):
+        warn("'memory_scope' is deprecated. Use 'MemoryScope'.",
+                DeprecationWarning, stacklevel=2)
+        return self.f()
+
+
+class memory_scope(object):  # noqa
+    """Deprecated. Use :class:`MemoryScope` instead.
+    """
+
+    @_deprecated_memory_scope_class_method
+    def WORK_ITEM():
+        return MemoryScope.PRIVATE
+
+    @_deprecated_memory_scope_class_method
+    def WORK_GROUP():
+        return MemoryScope.WORK_GROUP
+
+    @_deprecated_memory_scope_class_method
+    def DEVICE():
+        return MemoryScope.DEVICE
+
+    @_deprecated_memory_scope_class_method
+    def ALL_SVM_DEVICES():
+        return MemoryScope.ALL_SVM_DEVICES
+
+    @_deprecated_memory_scope_class_method
+    def auto():
+        return MemoryScope.auto
+
+    @staticmethod
+    def to_string(v):
+        warn("'memory_scope' is deprecated. Use 'MemoryScope'.",
+                DeprecationWarning, stacklevel=2)
+        return MemoryScope.to_string(v)
+
+# }}}
 
 
 class VarAtomicity(object):

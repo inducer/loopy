@@ -1867,29 +1867,22 @@ class FunctionScoper(RuleAwareIdentityMapper):
         self.scoped_functions = {}
 
     def map_call(self, expr, expn_state):
-        from loopy.symbolic import ScopedFunction
-        if not isinstance(expr.function, ScopedFunction):
+        from pymbolic.primitives import Call, CallWithKwargs
+        from loopy.symbolic import parse_tagged_name
 
-            # search the kernel for the function
-            in_knl_callable = self.kernel.find_scoped_function_identifier(
-                    expr.function.name)
-            if in_knl_callable:
-                # associate the newly created ScopedFunction with the
-                # resolved in-kernel callable
-                self.scoped_functions[expr.function.name] = in_knl_callable
-
-                return type(expr)(
-                        ScopedFunction(expr.function.name),
-                        tuple(self.rec(child, expn_state)
-                            for child in expr.parameters))
-
-        # this is an unknown function as of yet, do not modify it
-        return super(FunctionScoper, self).map_call(expr, expn_state)
+        name, tag = parse_tagged_name(expr.function)
+        if name not in self.rule_mapping_context.old_subst_rules:
+            new_call_with_kwargs = self.rec(CallWithKwargs(
+                function=expr.function, parameters=expr.parameters,
+                kw_parameters={}), expn_state)
+            return Call(new_call_with_kwargs.function,
+                    new_call_with_kwargs.parameters)
+        else:
+            return self.map_substitution(name, tag, expr.parameters, expn_state)
 
     def map_call_with_kwargs(self, expr, expn_state):
-        # FIXME duplicated logic with map_call
-
         from loopy.symbolic import ScopedFunction
+
         if not isinstance(expr.function, ScopedFunction):
 
             # search the kernel for the function.
@@ -1914,44 +1907,8 @@ class FunctionScoper(RuleAwareIdentityMapper):
                 expn_state)
 
     def map_reduction(self, expr, expn_state):
-        from loopy.library.reduction import (MaxReductionOperation,
-                MinReductionOperation, ArgMinReductionOperation,
-                ArgMaxReductionOperation, _SegmentedScalarReductionOperation,
-                SegmentedOp)
-        from loopy.library.reduction import ArgExtOp
-
-        # note down the extra functions arising due to certain reductions
-
-        # FIXME Discuss this. It cannot stay the way it is, because non-built-in
-        # reductions cannot add themselves to this list. We may need to change
-        # the reduction interface. Why don't reductions generate scoped functions
-        # in the first place?
-        if isinstance(expr.operation, MaxReductionOperation):
-            self.scoped_functions["max"] = (
-                    self.kernel.find_scoped_function_identifier("max"))
-        elif isinstance(expr.operation, MinReductionOperation):
-            self.scoped_functions["min"] = (
-                    self.kernel.find_scoped_function_identifier("min"))
-        elif isinstance(expr.operation, ArgMaxReductionOperation):
-            self.scoped_functions["max"] = (
-                    self.kernel.find_scoped_function_identifier("max"))
-            self.scoped_functions["make_tuple"] = (
-                    self.kernel.find_scoped_function_identifier("make_tuple"))
-            self.scoped_functions[ArgExtOp(expr.operation)] = (
-                    self.kernel.find_scoped_function_identifier(expr.operation))
-        elif isinstance(expr.operation, ArgMinReductionOperation):
-            self.scoped_functions["min"] = (
-                    self.kernel.find_scoped_function_identifier("min"))
-            self.scoped_functions["make_tuple"] = (
-                    self.kernel.find_scoped_function_identifier("make_tuple"))
-            self.scoped_functions[ArgExtOp(expr.operation)] = (
-                    self.kernel.find_scoped_function_identifier(expr.operation))
-        elif isinstance(expr.operation, _SegmentedScalarReductionOperation):
-            self.scoped_functions["make_tuple"] = (
-                    self.kernel.find_scoped_function_identifier("make_tuple"))
-            self.scoped_functions[SegmentedOp(expr.operation)] = (
-                    self.kernel.find_scoped_function_identifier(expr.operation))
-
+        self.scoped_functions.update(
+                expr.operation.get_scalar_callables(self.kernel))
         return super(FunctionScoper, self).map_reduction(expr, expn_state)
 
 
@@ -2493,6 +2450,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     knl = prepare_for_caching(knl)
 
     creation_plog.done()
+
+    from loopy.kernel.tools import infer_arg_is_output_only
+    knl = infer_arg_is_output_only(knl)
 
     return knl
 

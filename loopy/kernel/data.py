@@ -271,28 +271,30 @@ class AddressSpace(object):
             raise ValueError("unexpected value of AddressSpace")
 
 
-class _deprecated_temp_var_scope_property(property):  # noqa
-    def __get__(self, cls, owner):
+class _deprecated_temp_var_scope_class_method(object):  # noqa
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, klass):
         warn("'temp_var_scope' is deprecated. Use 'AddressSpace'.",
                 DeprecationWarning, stacklevel=2)
-
-        return classmethod(self.fget).__get__(None, owner)()
+        return self.f()
 
 
 class temp_var_scope(object):  # noqa
     """Deprecated. Use :class:`AddressSpace` instead.
     """
 
-    @_deprecated_temp_var_scope_property
-    def PRIVATE(self):
+    @_deprecated_temp_var_scope_class_method
+    def PRIVATE():
         return AddressSpace.PRIVATE
 
-    @_deprecated_temp_var_scope_property
-    def LOCAL(self):
+    @_deprecated_temp_var_scope_class_method
+    def LOCAL():
         return AddressSpace.LOCAL
 
-    @_deprecated_temp_var_scope_property
-    def GLOBAL(self):
+    @_deprecated_temp_var_scope_class_method
+    def GLOBAL():
         return AddressSpace.GLOBAL
 
     @classmethod
@@ -361,7 +363,7 @@ class ArrayArg(ArrayBase, KernelArgument):
     def __init__(self, *args, **kwargs):
         if "address_space" not in kwargs:
             raise TypeError("'address_space' must be specified")
-        kwargs["is_output_only"] = kwargs.pop("is_output_only", None)
+        kwargs["is_output_only"] = kwargs.pop("is_output_only", False)
 
         super(ArrayArg, self).__init__(*args, **kwargs)
 
@@ -371,6 +373,17 @@ class ArrayArg(ArrayBase, KernelArgument):
     def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
         return ast_builder.get_array_arg_decl(self.name + name_suffix,
                 self.address_space, shape, dtype, is_written)
+
+    def __str__(self):
+        # dont mention the type name if shape is known
+        include_typename = self.shape in (None, auto)
+
+        aspace_str = AddressSpace.stringify(self.address_space)
+
+        return (
+                self.stringify(include_typename=include_typename)
+                +
+                " aspace: %s" % aspace_str)
 
 
 # Making this a function prevents incorrect use in isinstance.
@@ -411,7 +424,7 @@ class ImageArg(ArrayBase, KernelArgument):
 
 class ValueArg(KernelArgument):
     def __init__(self, name, dtype=None, approximately=1000, target=None,
-            is_output_only=None):
+            is_output_only=False):
 
         KernelArgument.__init__(self, name=name,
                 dtype=dtype,

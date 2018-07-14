@@ -78,15 +78,14 @@ class UnscopedCallCollector(CombineMapper):
         return reduce(operator.or_, values, frozenset())
 
     def map_call(self, expr):
-        from loopy.library.reduction import ArgExtOp
-        if not isinstance(expr.function, (ScopedFunction, ArgExtOp)):
-            return (frozenset([expr.function.name]) |
-                    self.combine((self.rec(child) for child in expr.parameters)))
-        else:
-            return self.combine((self.rec(child) for child in expr.parameters))
+        from pymbolic.primitives import CallWithKwargs
+        return self.rec(CallWithKwargs(
+            function=expr.function, parameters=expr.parameters,
+            kw_parameters={}))
 
     def map_call_with_kwargs(self, expr):
-        if not isinstance(expr.function, ScopedFunction):
+        from loopy.library.reduction import ArgExtOp
+        if not isinstance(expr.function, (ScopedFunction, ArgExtOp)):
             return (frozenset([expr.function.name]) |
                     self.combine((self.rec(child) for child in expr.parameters
                         + tuple(expr.kw_parameters.values()))))

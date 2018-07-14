@@ -1,11 +1,37 @@
 Calling Loopy Kernels and External Functions
 ============================================
 
-``ScopedFunctions`` are pymbolic nodes within expressions in a
-``Loo.py`` kernel, whose name has been resolved by the kernel.
+Goals of a function interface
+-----------------------------
+
+- Must be able to have complete information of the function just through the
+  epxression node.
+- Must adhere to :mod:`loopy` semantics of immutability.
+- Must have a class instance linked with the expression node which would record
+  the properties of the function.
+- Must indicate in the expression if the function is known to the kernel. (This
+  is intended to be done by making the function expression node an instance of
+  ``ScopedFunction`` as soon as the function definition is resolved by the
+  kernel)
+- Function overloading is not encouraged in :mod:`loopy` as it gives rise to
+  contention while debugging with the help of the kernel intermediate
+  representation and hence if the expression nodes point to different function
+  instances they must differ in their representation. For example: ``float
+  sin(float )`` and ``double sin(double )`` should diverge by having different
+  identifiers as soon as data type of the argument is inferred.
+- Must have an interface to register external functions.
+
+
+Scoped Function and resolving
+-----------------------------
+
+``ScopedFunctions`` are pymbolic nodes within expressions in a ``Loo.py``
+kernel, whose name has been resolved by the kernel. The process of matching a
+function idenitifier with the function definition is called "resolving".
 
 A pymbolic ``Call`` node can be converted to a ``ScopedFunction`` if it
-is resolved by one of the ``function_scoper`` in a :attr:`LoopKernel.scoped_functions`
+is "resolved" by one of the ``function_scoper`` in a
+:attr:`LoopKernel.scoped_functions`
 
 -  Functions already registered by the target. Some examples include --
    ``sin()``, ``cos()``, ``exp()``, ``max()`` (for C-Targets.)

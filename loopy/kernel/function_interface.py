@@ -37,6 +37,8 @@ from loopy.symbolic import parse_tagged_name
 from loopy.symbolic import (ScopedFunction, SubstitutionRuleMappingContext,
         RuleAwareIdentityMapper, SubstitutionRuleExpander)
 
+from pymbolic.primitives import Call
+
 
 # {{{ argument descriptors
 
@@ -300,7 +302,7 @@ class InKernelCallable(ImmutableRecord):
         is an instance of :class:`bool` to indicate if the assignee is returned
         by value of C-type targets.
 
-        :Example: If ``assignee_is_returned=True``, then ``a, b = f(c, d)`` is
+        *Example:* If ``assignee_is_returned=True``, then ``a, b = f(c, d)`` is
             interpreted in the target as ``a = f(c, d, &b)``. If
             ``assignee_is_returned=False``, then ``a, b = f(c, d)`` is interpreted
             in the target as the statement ``f(c, d, &a, &b)``.
@@ -396,7 +398,7 @@ class ScalarCallable(InKernelCallable):
         The first assignee is returned, but the rest of them are appended to
         the parameters and passed by reference.
 
-        :Example: ``c, d = f(a, b)`` is returned as ``c = f(a, b, &d)``
+        *Example:* ``c, d = f(a, b)`` is returned as ``c = f(a, b, &d)``
 
         :arg insn: An instance of :class:`loopy.kernel.instructions.CallInstruction`.
         :arg target: An instance of :class:`loopy.target.TargetBase`.
@@ -404,13 +406,6 @@ class ScalarCallable(InKernelCallable):
             responsible for code mapping from :mod:`loopy` syntax to the
             **target syntax**.
         """
-
-        # FIXME: needs to get information about whether the callable has should
-        # do pass by reference by all values or should return one value for
-        # pass by value return.
-
-        # For example: The code generation of `sincos` would be different for
-        # C-Target and OpenCL-target.
 
         # Currently this is formulated such that the first argument is returned
         # and rest all are passed by reference as arguments to the function.
@@ -753,14 +748,12 @@ class ManglerCallable(ScalarCallable):
 
 # {{{ new pymbolic calls to scoped functions
 
-# FIXME Are these identifiers guaranteed to be available? Is there a var name
-# generator somewhere ensuring that that's the case?
 def next_indexed_variable(function):
     """
     Returns an instance of :class:`str` with the next indexed-name in the
     sequence for the name of *function*.
 
-    **Example:** ``Variable('sin_0')`` will return ``'sin_1'``.
+    *Example:* ``Variable('sin_0')`` will return ``'sin_1'``.
 
     :arg function: Either an instance of :class:`pymbolic.primitives.Variable`
         or :class:`loopy.reduction.ArgExtOp` or
@@ -816,50 +809,52 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
             return self.map_substitution(name, tag, expr.parameters, expn_state)
 
     def map_call_with_kwargs(self, expr, expn_state):
-        name, tag = parse_tagged_name(expr.function)
 
-        if name not in self.rule_mapping_context.old_subst_rules:
-            expanded_expr = self.subst_expander(expr)
-            if expr in self.expr_to_new_names:
-                return type(expr)(
-                    ScopedFunction(self.expr_to_new_names[expr]),
-                    tuple(self.rec(child, expn_state)
-                        for child in expr.parameters),
-                    dict(
-                        (key, self.rec(val, expn_state))
-                        for key, val in six.iteritems(expr.kw_parameters))
-                        )
-            elif expanded_expr in self.expr_to_new_names:
-                return type(expr)(
-                    ScopedFunction(self.expr_to_new_names[expanded_expr]),
-                    tuple(self.rec(child, expn_state)
-                        for child in expr.parameters),
-                    dict(
-                        (key, self.rec(val, expn_state))
-                        for key, val in six.iteritems(expr.kw_parameters))
-                        )
-            else:
-                return super(ScopedFunctionNameChanger, self).map_call_with_kwargs(
-                        expr, expn_state)
+        if expr in self.expr_to_new_names:
+            return type(expr)(
+                ScopedFunction(self.expr_to_new_names[expr]),
+                tuple(self.rec(child, expn_state)
+                    for child in expr.parameters),
+                dict(
+                    (key, self.rec(val, expn_state))
+                    for key, val in six.iteritems(expr.kw_parameters))
+                    )
         else:
-            return self.map_substitution(name, tag, expr.parameters, expn_state)
+            return super(ScopedFunctionNameChanger, self).map_call_with_kwargs(
+                    expr, expn_state)
 
 
 def register_pymbolic_calls_to_knl_callables(kernel,
-        pymbolic_exprs_to_knl_callables):
+        pymbolic_calls_to_knl_callables):
     # FIXME This could use an example. I have no idea what this does.
     # Surely I can't associate arbitrary pymbolic expresions (3+a?)
     # with callables?
     """
     Returns a copy of :arg:`kernel` which includes an association with the given
-    pymbolic expressions to  the instances of :class:`InKernelCallable` for the
-    mapping given by :arg:`pymbolic_exprs_to_knl_calllables`.
+    pymbolic calls to  the instances of :class:`InKernelCallable` for the
+    mapping given by :arg:`pymbolic_calls_to_knl_calllables`.
 
     :arg kernel: An instance of :class:`loopy.kernel.LoopKernel`.
 
-    :arg pymbolic_exprs_to_knl_callables: A mapping from :mod:`pymbolic` expressions
+    :arg pymbolic_calls_to_knl_callables: A mapping from :mod:`pymbolic` expressions
         to the instances of
         :class:`loopy.kernel.function_interface.InKernelCallable`.
+
+    *Example:* Conisder the expression of an instruction in the kernel as
+        ``Call(ScopedFunction('sin_0'), Variable('x'))``, with the
+        ``scoped_functions`` of the *kernel* being ``{'sin_0':
+        ScalarCallable(name='sin')}`` and the argument
+        ``pymbolic_calls_to_callables = {Call(ScopedFunction('sin_0'),
+        Variable('x')): ScalarCallable(name='sin', arg_id_to_dtype={0: float64,
+        -1: np.float64})}``. After applying the transformation the expression
+        would rename its function name and hence would become
+        ``Call(ScopedFunction('sin_1'), Variable('x'))`` and the transformed
+        kernel would have ``scoped_functions={'sin_0':
+        ScalarCallable(name='sin'), 'sin_1': Variable('x')):
+        ScalarCallable(name='sin', arg_id_to_dtype={0: np.float64, -1:
+        np.float64})}``. Hence, the expression would rename the function
+        pymbolic node and the scoped functions dictionary would register the
+        new callable corresponding to the new pymbolic node.
     """
 
     scoped_names_to_functions = kernel.scoped_functions.copy()
@@ -872,10 +867,11 @@ def register_pymbolic_calls_to_knl_callables(kernel,
     # corresponding pymbolic call
     pymbolic_calls_to_new_names = {}
 
-    for pymbolic_call, in_knl_callable in pymbolic_exprs_to_knl_callables.items():
-        # checking if such a in-kernel callable already exists.
+    for pymbolic_call, in_knl_callable in pymbolic_calls_to_knl_callables.items():
+        # check if such a in-kernel callable already exists.
+        assert isinstance(pymbolic_call, Call)
         if in_knl_callable not in scoped_functions_to_names:
-            # No matching in_knl_callable found => make a new one with a new
+            # No matching in_knl_callable found, implies make a new one with a new
             # name.
             if isinstance(pymbolic_call.function, Variable):
                 pymbolic_call_function = pymbolic_call.function

@@ -41,6 +41,7 @@ from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.tools import natsorted
 from loopy.diagnostic import StaticValueFindingError
 from loopy.kernel.data import filter_iname_tags_by_type
+from warnings import warn
 
 
 # {{{ unique var names
@@ -99,9 +100,35 @@ class KernelState:  # noqa
     PREPROCESSED = 1
     SCHEDULED = 2
 
+# {{{ kernel_state, KernelState compataibility
 
-# FIXME Introduce noisy deprecation goop
-kernel_state = KernelState
+class _deperecated_kernel_state_class_method(object):  # noqa
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, klass):
+        warn("'temp_var_scope' is deprecated. Use 'AddressSpace'.",
+                DeprecationWarning, stacklevel=2)
+        return self.f()
+
+
+class kernel_state(object):  # noqa
+    """Deprecated. Use :class:`loopy.kernel.KernelState` instead.
+    """
+
+    @_deperecated_kernel_state_class_method
+    def INITIAL():
+        return KernelState.INITITAL
+
+    @_deperecated_kernel_state_class_method
+    def PREPROCESSED():
+        return KernelState.PREPROCESSED
+
+    @_deperecated_kernel_state_class_method
+    def SCHEDULED():
+        return KernelState.SCHEDULED
+
+# }}}
 
 
 class LoopKernel(ImmutableRecordWithoutPickling):

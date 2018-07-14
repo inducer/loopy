@@ -83,6 +83,9 @@ class ReductionOperation(object):
         raise LoopyError("unable to parse reduction type: '%s'"
                 % op_type)
 
+    def get_scalar_callables(self, kernel):
+        return {}
+
 
 class ScalarReductionOperation(ReductionOperation):
     def __init__(self, forced_result_type=None):
@@ -184,6 +187,10 @@ class MaxReductionOperation(ScalarReductionOperation):
     def __call__(self, dtype, operand1, operand2):
         return ScopedFunction("max")(operand1, operand2)
 
+    def get_scalar_callables(self, kernel):
+        return {
+                "max": kernel.find_scoped_function_identifier("max")}
+
 
 class MinReductionOperation(ScalarReductionOperation):
     def neutral_element(self, dtype):
@@ -191,6 +198,10 @@ class MinReductionOperation(ScalarReductionOperation):
 
     def __call__(self, dtype, operand1, operand2):
         return ScopedFunction("min")(operand1, operand2)
+
+    def get_scalar_callables(self, kernel):
+        return {
+                "min": kernel.find_scoped_function_identifier("min")}
 
 
 # {{{ base class for symbolic reduction ops
@@ -258,6 +269,11 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
     def __call__(self, dtypes, operand1, operand2):
         return ScopedFunction(SegmentedOp(self))(*(operand1 + operand2))
 
+    def get_scalar_callables(self, kernel):
+        return {
+                "make_tuple": kernel.find_scoped_function_identifier("make_tuple"),
+                SegmentedOp(self): kernel.find_scoped_function_identifier(self)}
+
 
 class SegmentedSumReductionOperation(_SegmentedScalarReductionOperation):
     base_reduction_class = SumReductionOperation
@@ -310,6 +326,12 @@ class _ArgExtremumReductionOperation(ReductionOperation):
 
     def __call__(self, dtypes, operand1, operand2):
         return ScopedFunction(ArgExtOp(self))(*(operand1 + operand2))
+
+    def get_scalar_callables(self, kernel):
+        return {
+                self.which: kernel.find_scoped_function_identifier(self.which),
+                "make_tuple": kernel.find_scoped_function_identifier("make_tuple"),
+                ArgExtOp(self): kernel.find_scoped_function_identifier(self)}
 
 
 class ArgMaxReductionOperation(_ArgExtremumReductionOperation):
