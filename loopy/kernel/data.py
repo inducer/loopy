@@ -182,6 +182,11 @@ class LoopedIlpTag(IlpBaseTag):
     def __str__(self):
         return "ilp.seq"
 
+
+class CVectorizeTag(IlpBaseTag):
+    def __str__(self):
+        return "c_vec"
+
 # }}}
 
 
@@ -227,6 +232,8 @@ def parse_tag(tag):
         return UnrolledIlpTag()
     elif tag == "ilp.seq":
         return LoopedIlpTag()
+    elif tag == "c_vec":
+        return CVectorizeTag()
     elif tag.startswith("g."):
         return GroupIndexTag(int(tag[2:]))
     elif tag.startswith("l."):

@@ -307,6 +307,9 @@ class CTarget(TargetBase):
     def get_kernel_executor(self, knl, *args, **kwargs):
         raise NotImplementedError()
 
+    def vector_dtype(self, base, count):
+        return NumpyType((base, count), target=self)
+
     # }}}
 
 
@@ -1002,6 +1005,53 @@ def generate_header(kernel, codegen_result=None):
         fde(dev_prg.ast)
 
     return fde.decls
+
+# }}}
+
+
+# {{{ c target with vector extension
+
+class DTypeRegistryWrapperVec(DTypeRegistryWrapper):
+    def __init__(self, wrapped_registry):
+        super(DTypeRegistryWrapperVec, self).__init__(wrapped_registry)
+
+
+    def dtype_to_ctype(self, dtype):
+        if dtype.dtype.shape:
+            shape, = dtype.dtype.shape
+            base = super(DTypeRegistryWrapperVec, self).dtype_to_ctype(NumpyType(dtype.dtype.base))
+            return base + str(shape)
+        return super(DTypeRegistryWrapperVec, self).dtype_to_ctype(dtype)
+
+
+class CVecASTBuilder(CASTBuilder):
+
+    def get_expression_to_c_expression_mapper(self, codegen_state):
+        from loopy.target.c.codegen.expression import ExpressionToCVecExpressionMapper
+        return ExpressionToCVecExpressionMapper(codegen_state)
+
+    def get_c_expression_to_code_mapper(self):
+        from loopy.target.c.codegen.expression import CVecExpressionToCodeMapper
+        return CVecExpressionToCodeMapper()
+
+class CVecTarget(CTarget):
+    """Foo
+    """
+
+    def __init__(self):
+        super(CVecTarget, self).__init__()
+
+    @memoize_method
+    def get_dtype_registry(self):
+        from loopy.target.c.compyte.dtypes import (
+                DTypeRegistry, fill_registry_with_c_types)
+        result = DTypeRegistry()
+        fill_registry_with_c_types(result, respect_windows=False,
+                include_bool=True)
+        return DTypeRegistryWrapperVec(result)
+
+    def get_device_ast_builder(self):
+        return CVecASTBuilder(self)
 
 # }}}
 
