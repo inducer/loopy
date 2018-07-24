@@ -1970,6 +1970,162 @@ def realize_ilp(kernel):
 # }}}
 
 
+# {{{ realize C vector extension
+
+def realize_c_vec(kernel):
+
+    from loopy.kernel.data import CVectorizeTag, ArrayArg
+    from loopy.kernel.array import CVectorArrayDimTag
+    from loopy.kernel.tools import DomainChanger
+    from loopy.isl_helpers import duplicate_axes
+    from loopy.transform.iname import tag_inames
+    from loopy import Assignment
+    from loopy.symbolic import IdentityMapper, SubstitutionMapper
+    from pymbolic.mapper.substitutor import make_subst_func
+    from pymbolic.primitives import Variable
+
+    # any variable exists in expression?
+    class AnyVariableFinder(IdentityMapper):
+
+        def __init__(self):
+            self.result = False
+
+        def map_variable(self, expr, *args, **kwargs):
+            self.result = True
+            return super(IdentityMapper, self).map_variable(expr, args, kwargs)
+
+
+    class VariableFinder(IdentityMapper):
+
+        def __init__(self, find_names, regex=False):
+            self.regex = regex
+            if regex:
+                import re
+                self.find_names = [re.compile(name) for name in find_names]
+            else:
+                self.find_names = find_names
+            self.result = False
+
+        def map_variable(self, expr, *args, **kwargs):
+            if self.regex:
+                for regex in self.find_names:
+                    if regex.match(expr.name):
+                        self.result = True
+                        break
+            elif expr.name in self.find_names:
+                self.result = True
+            return super(VariableFinder, self).map_variable(expr, args, kwargs)
+
+
+    class SubscriptFinder(IdentityMapper):
+
+        def __init__(self, find_aggregate_name, find_index_names):
+            self.find_aggregate_aname = find_aggregate_name
+            self.find_index_names = find_index_names
+            self.result = False
+
+        def map_subscript(self, expr, *args, **kwargs):
+            if expr.aggregate.name == self.find_aggregate_aname:
+                vf = VariableFinder(self.find_index_names)
+                vf(expr.index)
+                if vf.result:
+                    self.result = True
+            return super(SubscriptFinder, self).map_subscript(expr, args, kwargs)
+
+
+    cvec_inames = []
+    new_cvec_inames = []
+    simd_inames = []
+    for i in sorted(kernel.all_inames()):
+        if kernel.iname_tags_of_type(i, CVectorizeTag):
+            cvec_inames.append(i)
+            j = i + "_p"  # FIXME
+            k = i + "_simd"
+            new_cvec_inames.append(j)
+            simd_inames.append(k)
+            domch = DomainChanger(kernel, frozenset([i]))
+            kernel = kernel.copy(domains=domch.get_domains_with(duplicate_axes(domch.domain, [i], [j])))
+
+            domch = DomainChanger(kernel, frozenset([i]))
+            kernel = kernel.copy(domains=domch.get_domains_with(duplicate_axes(domch.domain, [i], [k])))
+
+            kernel = tag_inames(kernel, [(i, "ilp.seq")], retag=True)  # change c_vc to ilp.seq
+            kernel = tag_inames(kernel, [(j, "c_vec")])
+            kernel = tag_inames(kernel, [(k, "omp_simd")])
+
+    if not cvec_inames:
+        return kernel
+
+    iname_map = dict(zip(cvec_inames, new_cvec_inames))
+    subst_mapper = SubstitutionMapper(
+        make_subst_func(dict((Variable(o), Variable(n)) for (o, n) in zip(cvec_inames, new_cvec_inames))))
+
+    iname_map_simd = dict(zip(cvec_inames, simd_inames))
+    subst_mapper_simd = SubstitutionMapper(
+        make_subst_func(dict((Variable(o), Variable(n)) for (o, n) in zip(cvec_inames, simd_inames))))
+
+
+    func_names = set(["abs_*"])
+    function_finder = VariableFinder(func_names, regex=True)
+
+    new_insts = []
+    for inst in kernel.instructions:
+        if isinstance(inst, Assignment) and (inst.within_inames & set(cvec_inames)):
+            can_vectorize = True
+            should_simd = False
+
+            # constant rhs cannot be vectorized (GCC doesn't like it)
+            avf = AnyVariableFinder()
+            avf(inst.expression)
+            if not avf.result:
+                can_vectorize = False
+
+            # built-in functions cannot be vectorized (in general)
+            if can_vectorize:
+                function_finder.result = False
+                function_finder(inst.expression)
+                if function_finder.result:
+                    can_vectorize = False
+                    should_simd = True
+
+            if can_vectorize:
+                # non privitized array indexed with c_vec iname cannot be vectorized
+                for name in inst.dependency_names():
+                    if name in kernel.temporary_variables:
+                        ary = kernel.temporary_variables[name]
+                    elif name in kernel.arg_dict:
+                        ary = kernel.arg_dict[name]
+                        if not isinstance(ary, ArrayArg):
+                            continue
+                    else:
+                        continue
+
+                    if not isinstance(ary.dim_tags[-1], CVectorArrayDimTag):
+                        sf = SubscriptFinder(ary.name, set(cvec_inames))
+                        sf(inst.assignee)
+                        sf(inst.expression)
+                        if sf.result:
+                            can_vectorize = False
+                            break
+
+            if can_vectorize:
+                lhs = subst_mapper(inst.assignee)
+                rhs = subst_mapper(inst.expression)
+                within_inames = frozenset(iname_map[i] if i in iname_map else i for i in inst.within_inames)
+                inst = inst.copy(assignee=lhs, expression=rhs, within_inames=within_inames)
+            elif should_simd:
+                lhs = subst_mapper_simd(inst.assignee)
+                rhs = subst_mapper_simd(inst.expression)
+                within_inames = frozenset(iname_map_simd[i] if i in iname_map_simd else i for i in inst.within_inames)
+                inst = inst.copy(assignee=lhs, expression=rhs, within_inames=within_inames)
+
+        new_insts.append(inst)
+    kernel = kernel.copy(instructions=new_insts)
+    return kernel
+
+# }}}
+
+
 # {{{ find idempotence ("boostability") of instructions
 
 def find_idempotence(kernel):
@@ -2540,6 +2696,7 @@ def preprocess_kernel(kernel, device=None):
 
     kernel = realize_ilp(kernel)
 
+    kernel = realize_c_vec(kernel)
     kernel = find_temporary_scope(kernel)
 
     # inferring the shape and dim_tags of the arguments involved in a function
