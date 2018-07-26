@@ -2347,8 +2347,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     from loopy.kernel.tools import infer_arg_is_output_only
     knl = infer_arg_is_output_only(knl)
 
-    from loopy.preprocess import prepare_for_caching
-    knl = prepare_for_caching(knl)
+    from loopy.preprocess import prepare_single_kernel_for_caching
+    knl = prepare_single_kernel_for_caching(knl)
 
     creation_plog.done()
 

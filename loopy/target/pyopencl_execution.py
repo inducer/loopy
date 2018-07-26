@@ -252,7 +252,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
     .. automethod:: __call__
     """
 
-    def __init__(self, context, kernel):
+    def __init__(self, context, program):
         """
         :arg context: a :class:`pyopencl.Context`
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
@@ -261,13 +261,13 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
             specific arguments.
         """
 
-        super(PyOpenCLKernelExecutor, self).__init__(kernel)
+        super(PyOpenCLKernelExecutor, self).__init__(program)
 
         self.context = context
 
         from loopy.target.pyopencl import PyOpenCLTarget
-        if isinstance(kernel.target, PyOpenCLTarget):
-            self.kernel = kernel.copy(target=PyOpenCLTarget(context.devices[0]))
+        if isinstance(program.target, PyOpenCLTarget):
+            self.kernel = program.copy(target=PyOpenCLTarget(context.devices[0]))
 
     def get_invoker_uncached(self, kernel, codegen_result):
         generator = PyOpenCLExecutionWrapperGenerator()

@@ -410,7 +410,7 @@ class PreambleInfo(ImmutableRecord):
 
 # {{{ main code generation entrypoint
 
-def generate_code_v2(kernel):
+def generate_code_for_a_single_kernel(kernel, is_root_kernel=True):
     """
     :returns: a :class:`CodeGenerationResult`
     """
@@ -617,6 +617,10 @@ def generate_code_v2(kernel):
         code_gen_cache.store_if_not_present(input_kernel, codegen_result)
 
     return codegen_result
+
+
+def generate_code_v2(program):
+    pass
 
 
 def generate_code(kernel, device=None):

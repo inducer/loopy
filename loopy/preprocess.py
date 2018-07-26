@@ -42,6 +42,7 @@ from loopy.symbolic import CombineMapper
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 import logging
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 # {{{ prepare for caching
 
-def prepare_for_caching(kernel):
+def prepare_single_kernel_for_caching(kernel):
     import loopy as lp
     new_args = []
 
@@ -75,6 +76,21 @@ def prepare_for_caching(kernel):
             temporary_variables=new_temporary_variables)
 
     return kernel
+
+
+def prepare_for_caching(program):
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = prepare_single_kernel_for_caching(
+                    in_knl_callable.subkernel)
+            new_resolved_functions[func_id] = (
+                    in_knl_callable.copy(subkernel=new_subkernel))
+        elif isinstance(in_knl_callable, ScalarCallable):
+            new_resolved_functions[func_id] = in_knl_callable
+        else:
+            raise NotImplementedError("Unknown InKernelCallable %s." %
+                    type(in_knl_callable).__name__)
 
 # }}}
 

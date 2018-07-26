@@ -1394,39 +1394,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     # }}}
 
-    # {{{ implementation arguments
-
-    @property
-    @memoize_method
-    def impl_arg_to_arg(self):
-        from loopy.kernel.array import ArrayBase
-
-        result = {}
-
-        for arg in self.args:
-            if not isinstance(arg, ArrayBase):
-                result[arg.name] = arg
-                continue
-
-            if arg.shape is None or arg.dim_tags is None:
-                result[arg.name] = arg
-                continue
-
-            subscripts_and_names = arg.subscripts_and_names()
-            if subscripts_and_names is None:
-                result[arg.name] = arg
-                continue
-
-            for index, sub_arg_name in subscripts_and_names:
-                result[sub_arg_name] = arg
-
-        return result
-
-    # }}}
-
     # {{{ direct execution
 
     def __call__(self, *args, **kwargs):
+        # FIXME: scream and then convert to a program
+        1/0
         key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
         try:
             kex = self._kernel_executor_cache[key]

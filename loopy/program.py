@@ -25,7 +25,7 @@ THE SOFTWARE.
 import six
 import re
 
-from pytools import ImmutableRecord
+from pytools import ImmutableRecord, memoize_method
 from pymbolic.primitives import Variable
 
 from loopy.symbolic import RuleAwareIdentityMapper
@@ -205,6 +205,73 @@ class Program(ImmutableRecord):
                 target=target,
                 function_resolvers=function_resolvers)
 
+        self._program_executor_cache = {}
+
+    @property
+    def name(self):
+        #FIXME: discuss with @inducer if we use "name" instead of
+        # "root_kernel_name"
+        return self.root_kernel_name
+
+    @property
+    def root_kernel(self):
+        return self.program_callables_info[self.root_kernel_name].subkernel
+
+    def with_root_kernel(self, root_kernel):
+        new_in_knl_callable = self.program_callables_info[
+                self.root_kernel_name].copy(subkernel=root_kernel)
+        new_resolved_functions = (
+                self.program_callables_info.resolved_functions.copy())
+        new_resolved_functions[self.root_kernel_name] = new_in_knl_callable
+
+        return self.copy(
+                program_callables_info=self.program_callables_info.copy(
+                    resolved_functions=new_resolved_functions))
+
+    @property
+    def args(self):
+        return self.root_kernel.args[:]
+
+    # {{{ implementation arguments
+
+    @property
+    @memoize_method
+    def impl_arg_to_arg(self):
+        from loopy.kernel.array import ArrayBase
+
+        result = {}
+
+        for arg in self.args:
+            if not isinstance(arg, ArrayBase):
+                result[arg.name] = arg
+                continue
+
+            if arg.shape is None or arg.dim_tags is None:
+                result[arg.name] = arg
+                continue
+
+            subscripts_and_names = arg.subscripts_and_names()
+            if subscripts_and_names is None:
+                result[arg.name] = arg
+                continue
+
+            for index, sub_arg_name in subscripts_and_names:
+                result[sub_arg_name] = arg
+
+        return result
+
+    # }}}
+
+    def __call__(self, *args, **kwargs):
+        key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
+        try:
+            pex = self._program_executor_cache[key]
+        except KeyError:
+            pex = self.target.get_kernel_executor(self, *args, **kwargs)
+            self._program_executor_cache[key] = pex
+
+        return pex(*args, **kwargs)
+
     def __str__(self):
         # FIXME: make this better
         print(self.program_callables_info.num_times_callables_called)
@@ -249,6 +316,8 @@ def next_indexed_function_identifier(function):
     return "{alpha}_{num}".format(alpha=match.group('alpha'),
             num=int(match.group('num'))+1)
 
+
+# {{{ program callables info
 
 class ProgramCallablesInfo(ImmutableRecord):
     def __init__(self, resolved_functions, num_times_callables_called=None,
@@ -418,6 +487,8 @@ class ProgramCallablesInfo(ImmutableRecord):
 
     def items(self):
         return self.resolved_functions.items()
+
+# }}}
 
 
 def make_program_from_kernel(kernel):
