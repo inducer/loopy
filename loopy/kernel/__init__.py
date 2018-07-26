@@ -182,11 +182,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     .. attribute:: function_manglers
     .. attribute:: symbol_manglers
 
-    .. attribute:: function_scopers
-
-        A list of functions of signature ``(target, name)`` returning a
-        :class:`loopy.kernel.function_interface.InKernelCallable` or *None*.
-
     .. attribute:: substitutions
 
         a mapping from substitution names to
@@ -245,8 +240,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             iname_to_tags=None,
             substitutions=None,
             function_manglers=None,
-            function_scopers=None,
-            scoped_functions={},
             symbol_manglers=[],
 
             iname_slab_increments=None,
@@ -259,7 +252,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             options=None,
 
             state=KernelState.INITIAL,
-            is_called_from_host=True,
             target=None,
 
             overridden_get_grid_sizes_for_insn_ids=None,
@@ -350,14 +342,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
 
-        if function_scopers is None:
-            # populate the function scopers from the target and the loopy
-            # specific callable scopers
-
-            from loopy.library.function import loopy_specific_callable_scopers
-            function_scopers = [loopy_specific_callable_scopers] + (
-                    target.get_device_ast_builder().function_scopers())
-
         ImmutableRecordWithoutPickling.__init__(self,
                 domains=domains,
                 instructions=instructions,
@@ -377,13 +361,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 cache_manager=cache_manager,
                 applied_iname_rewrites=applied_iname_rewrites,
                 function_manglers=function_manglers,
-                function_scopers=function_scopers,
-                scoped_functions=scoped_functions,
                 symbol_manglers=symbol_manglers,
                 index_dtype=index_dtype,
                 options=options,
                 state=state,
-                is_called_from_host=is_called_from_host,
                 target=target,
                 overridden_get_grid_sizes_for_insn_ids=(
                     overridden_get_grid_sizes_for_insn_ids),
@@ -433,20 +414,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 else:
                     raise ValueError("unexpected size of tuple returned by '%s'"
                             % mangler.__name__)
-
-        return None
-
-    def find_scoped_function_identifier(self, identifier):
-        """
-        Returns an instance of
-        :class:`loopy.kernel.function_interface.InKernelCallable` if the
-        :arg:`identifier` is known to any kernel function scoper, otherwise returns
-        *None*.
-        """
-        for scoper in self.function_scopers:
-            in_knl_callable = scoper(self.target, identifier)
-            if in_knl_callable:
-                return in_knl_callable
 
         return None
 
@@ -1568,9 +1535,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
             "preamble_generators",
             "function_manglers",
-            "function_scopers",
             "symbol_manglers",
-            "scoped_functions",
             )
 
     def update_persistent_hash(self, key_hash, key_builder):

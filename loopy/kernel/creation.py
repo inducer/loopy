@@ -30,8 +30,7 @@ from pymbolic.mapper import CSECachingMapperMixin
 from pymbolic.primitives import Slice, Variable, Subscript
 from loopy.tools import intern_frozenset_of_ids
 from loopy.symbolic import (
-        IdentityMapper, WalkMapper, SubArrayRef,
-        RuleAwareIdentityMapper)
+        IdentityMapper, WalkMapper, SubArrayRef)
 from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
@@ -1841,105 +1840,6 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
 # }}}
 
 
-# {{{ scope functions
-
-class FunctionScoper(RuleAwareIdentityMapper):
-    """
-    Mapper to convert the  ``function`` attribute of a
-    :class:`pymbolic.primitives.Call` known in the kernel as instances of
-    :class:`loopy.symbolic.ResolvedFunction`. A function is known in the
-    *kernel*, :func:`loopy.kernel.LoopKernel.find_scoped_function_identifier`
-    returns an instance of
-    :class:`loopy.kernel.function_interface.InKernelCallable`.
-
-    **Example:** If given an expression of the form ``sin(x) + unknown_function(y) +
-    log(z)``, then the mapper would return ``ResolvedFunction('sin')(x) +
-    unknown_function(y) + ResolvedFunction('log')(z)``.
-
-    :arg rule_mapping_context: An instance of
-        :class:`loopy.symbolic.RuleMappingContext`.
-    :arg function_ids: A container with instances of :class:`str` indicating
-        the function identifiers to look for while scoping functions.
-    """
-    def __init__(self, rule_mapping_context, kernel):
-        super(FunctionScoper, self).__init__(rule_mapping_context)
-        self.kernel = kernel
-        self.scoped_functions = {}
-
-    def map_call(self, expr, expn_state):
-        from pymbolic.primitives import Call, CallWithKwargs
-        from loopy.symbolic import parse_tagged_name
-
-        name, tag = parse_tagged_name(expr.function)
-        if name not in self.rule_mapping_context.old_subst_rules:
-            new_call_with_kwargs = self.rec(CallWithKwargs(
-                function=expr.function, parameters=expr.parameters,
-                kw_parameters={}), expn_state)
-            return Call(new_call_with_kwargs.function,
-                    new_call_with_kwargs.parameters)
-        else:
-            return self.map_substitution(name, tag, expr.parameters, expn_state)
-
-    def map_call_with_kwargs(self, expr, expn_state):
-        from loopy.symbolic import ResolvedFunction
-
-        if not isinstance(expr.function, ResolvedFunction):
-
-            # search the kernel for the function.
-            in_knl_callable = self.kernel.find_scoped_function_identifier(
-                    expr.function.name)
-
-            if in_knl_callable:
-                # associate the newly created ResolvedFunction with the
-                # resolved in-kernel callable
-                self.scoped_functions[expr.function.name] = in_knl_callable
-                return type(expr)(
-                        ResolvedFunction(expr.function.name),
-                        tuple(self.rec(child, expn_state)
-                            for child in expr.parameters),
-                        dict(
-                            (key, self.rec(val, expn_state))
-                            for key, val in six.iteritems(expr.kw_parameters))
-                            )
-
-        # this is an unknown function as of yet, do not modify it
-        return super(FunctionScoper, self).map_call_with_kwargs(expr,
-                expn_state)
-
-    def map_reduction(self, expr, expn_state):
-        self.scoped_functions.update(
-                expr.operation.get_scalar_callables(self.kernel))
-        return super(FunctionScoper, self).map_reduction(expr, expn_state)
-
-
-def scope_functions(kernel):
-    """
-    Returns a kernel with the pymbolic nodes involving known functions realized
-    as instances of :class:`loopy.symbolic.ResolvedFunction`, along with the
-    resolved functions being added to the ``scoped_functions`` dictionary of
-    the kernel.
-    """
-
-    from loopy.symbolic import SubstitutionRuleMappingContext
-    rule_mapping_context = SubstitutionRuleMappingContext(
-            kernel.substitutions, kernel.get_var_name_generator())
-
-    function_scoper = FunctionScoper(rule_mapping_context, kernel)
-
-    # scoping fucntions and collecting the scoped functions
-    kernel_with_scoped_functions = rule_mapping_context.finish_kernel(
-            function_scoper.map_kernel(kernel))
-
-    # updating the functions collected during the scoped functions
-    updated_scoped_functions = kernel.scoped_functions.copy()
-    updated_scoped_functions.update(function_scoper.scoped_functions)
-
-    return kernel_with_scoped_functions.copy(
-            scoped_functions=updated_scoped_functions)
-
-# }}}
-
-
 # {{{ slice to sub array ref
 
 def get_slice_params(slice, dimension_length):
@@ -2444,15 +2344,13 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_for_duplicate_names(knl)
     check_written_variable_names(knl)
 
-    knl = scope_functions(knl)
+    from loopy.kernel.tools import infer_arg_is_output_only
+    knl = infer_arg_is_output_only(knl)
 
     from loopy.preprocess import prepare_for_caching
     knl = prepare_for_caching(knl)
 
     creation_plog.done()
-
-    from loopy.kernel.tools import infer_arg_is_output_only
-    knl = infer_arg_is_output_only(knl)
 
     return knl
 

@@ -95,15 +95,18 @@ class FunctionResolver(RuleAwareIdentityMapper):
         if not isinstance(expr.function, ResolvedFunction):
 
             # search the kernel for the function.
-            in_knl_callable = self.find_scoped_function_identifier(
+            in_knl_callable = self.find_resolved_function_from_identifier(
                     expr.function.name)
 
             if in_knl_callable:
                 # associate the newly created ResolvedFunction with the
                 # resolved in-kernel callable
-                self.scoped_functions[expr.function.name] = in_knl_callable
+
+                self.program_callables_info, new_func_id = (
+                        self.program_callables_info.with_callable(expr.function,
+                            in_knl_callable, True))
                 return type(expr)(
-                        ResolvedFunction(expr.function.name),
+                        ResolvedFunction(new_func_id),
                         tuple(self.rec(child, expn_state)
                             for child in expr.parameters),
                         dict(
@@ -121,26 +124,29 @@ class FunctionResolver(RuleAwareIdentityMapper):
         return super(FunctionResolver, self).map_reduction(expr, expn_state)
 
 
-def resolve_callables(name, resolved_functions, function_resolvers):
+def resolve_callables(name, program_callables_info, function_resolvers):
 
-    kernel = resolved_functions[name].subkernel
+    kernel = program_callables_info[name].subkernel
 
     from loopy.symbolic import SubstitutionRuleMappingContext
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
 
-    function_scoper = FunctionResolver(rule_mapping_context, kernel)
+    function_resolver = FunctionResolver(rule_mapping_context, kernel,
+            program_callables_info, function_resolvers)
 
     # scoping fucntions and collecting the scoped functions
-    kernel_with_scoped_functions = rule_mapping_context.finish_kernel(
-            function_scoper.map_kernel(kernel))
+    kernel_with_functions_resolved = rule_mapping_context.finish_kernel(
+            function_resolver.map_kernel(kernel))
+    program_callables_info = function_resolver.program_callables_info
 
-    # updating the functions collected during the scoped functions
-    updated_scoped_functions = kernel.scoped_functions.copy()
-    updated_scoped_functions.update(function_scoper.scoped_functions)
+    new_in_knl_callable = program_callables_info[name].copy(
+            subkernel=kernel_with_functions_resolved)
+    program_callables_info, _ = program_callables_info.with_callable(
+            Variable(name), new_in_knl_callable)
 
-    return kernel_with_scoped_functions.copy(
-            scoped_functions=updated_scoped_functions)
+    return program_callables_info
+
 
 # {{{ program definition
 
@@ -151,7 +157,8 @@ class Program(ImmutableRecord):
             target=None,
             function_resolvers=None):
 
-        # fixme: check if all sanity checks have been covered?
+        # FIXME: check if all sanity checks have been covered?
+        # FIXME: The comments over here may need some attention.
         assert root_kernel_name in program_callables_info
 
         if target is None:
@@ -161,7 +168,9 @@ class Program(ImmutableRecord):
             # populate the function scopers from the target and the loopy
             # specific callable scopers
 
-            assert len(program_callables_info.resolved_functons) == 1
+            # at this point only the root kernel can be present in the
+            # callables.
+            assert len(program_callables_info.resolved_functions) == 1
 
             from loopy.library.function import loopy_specific_callable_scopers
             function_resolvers = [loopy_specific_callable_scopers] + (
@@ -175,9 +184,9 @@ class Program(ImmutableRecord):
             for name, in_knl_callable in program_callables_info.items():
                 if isinstance(in_knl_callable, CallableKernel):
                     # resolve the callables in the subkernel
-                    resolved_functions = resolve_callables(name,
-                            program_callables_info, function_resolvers)
-
+                    program_callables_info = (
+                            resolve_callables(name, program_callables_info,
+                                function_resolvers))
                 elif isinstance(in_knl_callable, ScalarCallable):
                     pass
                 else:
@@ -186,13 +195,25 @@ class Program(ImmutableRecord):
 
             program_callables_info, renames_needed = (
                     program_callables_info.with_exit_edit_mode())
+
+            # at this point no renames must be needed
             assert not renames_needed
 
         super(Program, self).__init__(
                 root_kernel_name=root_kernel_name,
-                resolved_functions=resolved_functions,
+                program_callables_info=program_callables_info,
                 target=target,
                 function_resolvers=function_resolvers)
+
+    def __str__(self):
+        # FIXME: make this better
+        print(self.program_callables_info.num_times_callables_called)
+        return (
+                (self.program_callables_info[
+                    self.root_kernel_name].subkernel).__str__() +
+                '\nResolved Functions: ' +
+                (self.program_callables_info.resolved_functions.keys()).__str__() +
+                '\n' + 75*'-' + '\n')
 
 # }}}
 
@@ -245,7 +266,7 @@ class ProgramCallablesInfo(ImmutableRecord):
         super(ProgramCallablesInfo, self).__init__(
                 resolved_functions=resolved_functions,
                 num_times_callables_called=num_times_callables_called,
-                history_of_callables_callable_names=history_of_callable_names,
+                history_of_callable_names=history_of_callable_names,
                 old_resolved_functions=old_resolved_functions,
                 is_being_edited=is_being_edited,
                 num_times_hit_during_editing=num_times_hit_during_editing,
@@ -254,17 +275,25 @@ class ProgramCallablesInfo(ImmutableRecord):
     def with_edit_callables_mode(self):
         return self.copy(is_being_edited=True,
                 old_resolved_functions=self.resolved_functions.copy(),
-                num_times_hit_during_editring=dict((func_id, 0) for func_id in
+                num_times_hit_during_editing=dict((func_id, 0) for func_id in
                     self.resolved_functions))
 
-    def with_callable(self, function, in_kernel_callable):
+    def with_callable(self, function, in_kernel_callable,
+            resolved_for_the_first_time=False):
         """
         :arg function: An instance of :class:`pymbolic.primitives.Variable` or
             :class:`loopy.library.reduction.ReductionOpFunction`.
 
         :arg in_kernel_callables: An instance of
             :class:`loopy.InKernelCallable`.
+
+        .. note::
+
+            Assumes that each callable is touched atmost once, the internal
+            working of this function fails if that is violated and raises a
+            *RuntimeError*.
         """
+        # FIXME: add a note about using enter and exit
         assert self.is_being_edited
 
         from loopy.library.reduction import ArgExtOp, SegmentedOp
@@ -277,59 +306,83 @@ class ProgramCallablesInfo(ImmutableRecord):
 
         renames_needed_after_editing = self.renames_needed_after_editing.copy()
         num_times_hit_during_editing = self.num_times_hit_during_editing.copy()
-        num_times_callable_being_called = self.num_times_being_called.copy()
-        num_times_hit_during_editing[function.name] += 1
+        num_times_callables_called = (
+                self.num_times_callables_called.copy())
+
+        if function.name in self.old_resolved_functions:
+            num_times_hit_during_editing[function.name] += 1
 
         if in_kernel_callable in self.resolved_functions.values():
-            for func_id, in_knl_callable in self.scoped_functions.items():
+            for func_id, in_knl_callable in self.resolved_functions.items():
                 if in_knl_callable == in_kernel_callable:
-                    num_times_callable_being_called[func_id] += 1
-                    num_times_callable_being_called[function] -= 1
-                    if num_times_callable_being_called[function] == 0:
-                        renames_needed_after_editing[func_id] = function
+                    num_times_callables_called[func_id] += 1
+                    if not resolved_for_the_first_time:
+                        num_times_callables_called[function.name] -= 1
+                        if num_times_callables_called[function.name] == 0:
+                            renames_needed_after_editing[func_id] = function.name
 
-                    return self, func_id
+                    return (
+                            self.copy(
+                                num_times_hit_during_editing=(
+                                    num_times_hit_during_editing),
+                                num_times_callables_called=(
+                                    num_times_callables_called),
+                                renames_needed_after_editing=(
+                                    renames_needed_after_editing)),
+                            func_id)
         else:
 
             # {{{ ingoring this for now
 
             if False and isinstance(function, (ArgExtOp, SegmentedOp)):
-                # ignoring this casse for now
+                # FIXME: ignoring this casse for now
                 # FIXME: If a kernel has two flavors of ArgExtOp then they are
                 # overwritten and hence not supported.(for now).
-                updated_scoped_functions = self.scoped_functions.copy()
-                updated_scoped_functions[function] = in_kernel_callable
+                updated_resolved_functions = self.scoped_functions.copy()
+                updated_resolved_functions[function] = in_kernel_callable
 
-                return self.copy(updated_scoped_functions), function.copy()
+                return self.copy(updated_resolved_functions), function.copy()
             # }}}
 
-            #fixme: deal with the history over here.
+            # FIXME: deal with the history over here.
+            # FIXME: once the code logic is running beautify this part.
+            # many "ifs" can be avoided
             unique_function_identifier = function.name
-            if self.num_times[function.name] > 1:
-                while unique_function_identifier in self.scoped_functions:
-                    unique_function_identifier = (
-                            next_indexed_function_identifier(
-                                unique_function_identifier))
+            if function.name in self.old_resolved_functions:
+                if self.num_times_callables_called[function.name] > 1:
+                    while unique_function_identifier in self.scoped_functions:
+                        unique_function_identifier = (
+                                next_indexed_function_identifier(
+                                    unique_function_identifier))
 
-            num_times_callable_being_called[function] -= 1
-            num_times_callable_being_called[unique_function_identifier] = 1
+                if not resolved_for_the_first_time:
+                    num_times_callables_called[function.name] -= 1
+                num_times_callables_called[unique_function_identifier] = 1
+            else:
+                num_times_callables_called[unique_function_identifier] = 1
 
-            updated_scoped_functions = self.scoped_functions.copy()
-            updated_scoped_functions[unique_function_identifier] = in_kernel_callable
+            updated_resolved_functions = self.resolved_functions.copy()
+            updated_resolved_functions[unique_function_identifier] = (
+                    in_kernel_callable)
 
-            return (self.copy(scoped_functions=updated_scoped_functions),
+            return (
+                    self.copy(
+                        resolved_functions=updated_resolved_functions,
+                        num_times_callables_called=num_times_callables_called,
+                        num_times_hit_during_editing=num_times_hit_during_editing,
+                        renames_needed_after_editing=renames_needed_after_editing),
                     Variable(unique_function_identifier))
 
     def with_exit_edit_mode(self):
         assert self.is_being_edited
 
-        num_times_callable_being_called = self.num_times_callable_being_called.copy()
+        num_times_callables_called = self.num_times_callables_called.copy()
 
         for func_id in self.old_resolved_functions:
 
             if self.num_times_hit_during_editing[func_id] > 0 and (
                     self.num_times_hit_during_editing[func_id] <
-                    num_times_callable_being_called[func_id]):
+                    num_times_callables_called[func_id]):
                 unique_function_identifier = func_id
 
                 while unique_function_identifier in self.scoped_functions:
@@ -337,28 +390,28 @@ class ProgramCallablesInfo(ImmutableRecord):
                             next_indexed_function_identifier(
                                 unique_function_identifier))
 
-                (num_times_callable_being_called[func_id],
-                    num_times_callable_being_called[unique_function_identifier]) = (
+                (num_times_callables_called[func_id],
+                    num_times_callables_called[unique_function_identifier]) = (
                             self.num_times_hit_while_editing[func_id],
-                            num_times_callable_being_called[func_id] -
+                            num_times_callables_called[func_id] -
                             self.num_times_being_hit_while_editing[func_id])
 
-            if self.num_times_hit_during_edition[func_id] > 0 and (
+            if self.num_times_hit_during_editing[func_id] > 0 and (
                     self.num_times_hit_during_editing[func_id] >
-                    num_times_callable_being_called[func_id]):
+                    num_times_callables_called[func_id]):
                 raise RuntimeError("Should not traverse more number of times than "
                         "it is called.")
 
         return (
                 self.copy(
-                    is_begin_edited=False,
-                    num_times_callable_being_called=num_times_callable_being_called,
+                    is_being_edited=False,
+                    num_times_callables_called=num_times_callables_called,
                     num_times_hit_during_editing={},
-                    renames_needed_while_editing={}),
-                self.renames_needed_while_editing)
+                    renames_needed_after_editing={}),
+                self.renames_needed_after_editing)
 
     def __getitem__(self, item):
-        return self.reoslved_functions[item]
+        return self.resolved_functions[item]
 
     def __contains__(self, item):
         return item in self.resolved_functions
