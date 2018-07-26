@@ -112,8 +112,8 @@ class IdentityMapperMixin(object):
         return SubArrayRef(self.rec(expr.swept_inames, *args),
                 self.rec(expr.subscript, *args))
 
-    def map_scoped_function(self, expr, *args):
-        return ScopedFunction(self.rec(expr.function, *args))
+    def map_resolved_function(self, expr, *args):
+        return ResolvedFunction(self.rec(expr.function, *args))
 
     map_type_cast = map_type_annotation
 
@@ -179,7 +179,7 @@ class WalkMapper(WalkMapperBase):
         self.rec(expr.swept_inames, *args)
         self.rec(expr.subscript, *args)
 
-    def map_scoped_function(self, expr, *args):
+    def map_resolved_function(self, expr, *args):
         if not self.visit(expr):
             return
 
@@ -188,7 +188,7 @@ class WalkMapper(WalkMapperBase):
 
 class CallbackMapper(CallbackMapperBase, IdentityMapper):
     map_reduction = CallbackMapperBase.map_constant
-    map_scoped_function = CallbackMapperBase.map_constant
+    map_resolved_function = CallbackMapperBase.map_constant
 
 
 class CombineMapper(CombineMapperBase):
@@ -256,8 +256,8 @@ class StringifyMapper(StringifyMapperBase):
         from pymbolic.mapper.stringifier import PREC_NONE
         return "cast(%s, %s)" % (repr(expr.type), self.rec(expr.child, PREC_NONE))
 
-    def map_scoped_function(self, expr, prec):
-        return "ScopedFunction('%s')" % expr.name
+    def map_resolved_function(self, expr, prec):
+        return "ResolvedFunction('%s')" % expr.name
 
     def map_sub_array_ref(self, expr, prec):
         return "SubArrayRef({inames}, ({subscr}))".format(
@@ -332,7 +332,7 @@ class DependencyMapper(DependencyMapperBase):
     def map_type_cast(self, expr):
         return self.rec(expr.child)
 
-    def map_scoped_function(self, expr):
+    def map_resolved_function(self, expr):
         return self.rec(expr.function)
 
 
@@ -684,10 +684,10 @@ class RuleArgument(p.Expression):
     mapper_method = intern("map_rule_argument")
 
 
-class ScopedFunction(p.Expression):
+class ResolvedFunction(p.Expression):
     """
     A function invocation whose definition is known in a :mod:`loopy` kernel.
-    Each instance of :class:`loopy.symbolic.ScopedFunction` in an expression
+    Each instance of :class:`loopy.symbolic.ResolvedFunction` in an expression
     points to an instance of
     :class:`loopy.kernel.function_interface.InKernelCallable` through the
     mapping :attr:`loopy.kernel.LoopKernel.scoped_functions`. Refer
@@ -717,7 +717,7 @@ class ScopedFunction(p.Expression):
         elif isinstance(self.function, (ArgExtOp, SegmentedOp)):
             return self.function
         else:
-            raise LoopyError("Unexpected function type %s in ScopedFunction." %
+            raise LoopyError("Unexpected function type %s in ResolvedFunction." %
                     type(self.function))
 
     def __getinitargs__(self):
@@ -726,7 +726,7 @@ class ScopedFunction(p.Expression):
     def stringifier(self):
         return StringifyMapper
 
-    mapper_method = intern("map_scoped_function")
+    mapper_method = intern("map_resolved_function")
 
 
 class EvaluatorWithDeficientContext(PartialEvaluationMapper):
@@ -898,7 +898,7 @@ def parse_tagged_name(expr):
     from loopy.library.reduction import ArgExtOp, SegmentedOp
     if isinstance(expr, TaggedVariable):
         return expr.name, expr.tag
-    elif isinstance(expr, ScopedFunction):
+    elif isinstance(expr, ResolvedFunction):
         return parse_tagged_name(expr.function)
     elif isinstance(expr, (p.Variable, ArgExtOp, SegmentedOp)):
         return expr.name, None

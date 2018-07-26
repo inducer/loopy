@@ -385,7 +385,7 @@ class InKernelCallablesCollector(CombineMapper):
         import operator
         return reduce(operator.or_, values, frozenset())
 
-    def map_scoped_function(self, expr):
+    def map_resolved_function(self, expr):
         return frozenset([self.kernel.scoped_functions[
             expr.name]])
 

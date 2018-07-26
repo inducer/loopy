@@ -266,7 +266,7 @@ class TypeInferenceMapper(CombineMapper):
 
     def map_call(self, expr, return_tuple=False):
         from pymbolic.primitives import Variable, CallWithKwargs, Call
-        from loopy.symbolic import ScopedFunction
+        from loopy.symbolic import ResolvedFunction
 
         if isinstance(expr, CallWithKwargs):
             kw_parameters = expr.kw_parameters
@@ -275,7 +275,7 @@ class TypeInferenceMapper(CombineMapper):
             kw_parameters = {}
 
         identifier = expr.function
-        if isinstance(identifier, (Variable, ScopedFunction)):
+        if isinstance(identifier, (Variable, ResolvedFunction)):
             identifier = identifier.name
 
         def none_if_empty(d):
@@ -289,7 +289,7 @@ class TypeInferenceMapper(CombineMapper):
                 tuple(enumerate(expr.parameters)) + tuple(kw_parameters.items()))
 
         # specializing the known function wrt type
-        if isinstance(expr.function, ScopedFunction):
+        if isinstance(expr.function, ResolvedFunction):
             in_knl_callable = self.scoped_functions[expr.function.name]
 
             # {{{ checking that there is no overwriting of types of in_knl_callable

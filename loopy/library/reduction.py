@@ -24,7 +24,7 @@ THE SOFTWARE.
 
 
 from pymbolic import var
-from loopy.symbolic import ScopedFunction
+from loopy.symbolic import ResolvedFunction
 from loopy.kernel.function_interface import ScalarCallable
 import numpy as np
 
@@ -185,7 +185,7 @@ class MaxReductionOperation(ScalarReductionOperation):
         return get_ge_neutral(dtype)
 
     def __call__(self, dtype, operand1, operand2):
-        return ScopedFunction("max")(operand1, operand2)
+        return ResolvedFunction("max")(operand1, operand2)
 
     def get_scalar_callables(self, kernel):
         return {
@@ -197,7 +197,7 @@ class MinReductionOperation(ScalarReductionOperation):
         return get_le_neutral(dtype)
 
     def __call__(self, dtype, operand1, operand2):
-        return ScopedFunction("min")(operand1, operand2)
+        return ResolvedFunction("min")(operand1, operand2)
 
     def get_scalar_callables(self, kernel):
         return {
@@ -250,7 +250,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
 
     def neutral_element(self, scalar_dtype, segment_flag_dtype):
         scalar_neutral_element = self.inner_reduction.neutral_element(scalar_dtype)
-        return ScopedFunction("make_tuple")(scalar_neutral_element,
+        return ResolvedFunction("make_tuple")(scalar_neutral_element,
                 segment_flag_dtype.numpy_dtype.type(0))
 
     def result_dtypes(self, kernel, scalar_dtype, segment_flag_dtype):
@@ -267,7 +267,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         return type(self) == type(other)
 
     def __call__(self, dtypes, operand1, operand2):
-        return ScopedFunction(SegmentedOp(self))(*(operand1 + operand2))
+        return ResolvedFunction(SegmentedOp(self))(*(operand1 + operand2))
 
     def get_scalar_callables(self, kernel):
         return {
@@ -308,7 +308,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         scalar_neutral_func = (
                 get_ge_neutral if self.neutral_sign < 0 else get_le_neutral)
         scalar_neutral_element = scalar_neutral_func(scalar_dtype)
-        return ScopedFunction("make_tuple")(scalar_neutral_element,
+        return ResolvedFunction("make_tuple")(scalar_neutral_element,
                 index_dtype.numpy_dtype.type(-1))
 
     def __str__(self):
@@ -325,7 +325,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         return 2
 
     def __call__(self, dtypes, operand1, operand2):
-        return ScopedFunction(ArgExtOp(self))(*(operand1 + operand2))
+        return ResolvedFunction(ArgExtOp(self))(*(operand1 + operand2))
 
     def get_scalar_callables(self, kernel):
         return {

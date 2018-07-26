@@ -2136,10 +2136,10 @@ class ArgDescrInferenceMapper(CombineMapper):
     def map_call(self, expr, **kwargs):
         from pymbolic.primitives import Call, CallWithKwargs
         from loopy.kernel.function_interface import ValueArgDescriptor
-        from loopy.symbolic import ScopedFunction, SubArrayRef
+        from loopy.symbolic import ResolvedFunction, SubArrayRef
 
-        # ignore if the call is not to a ScopedFunction
-        if not isinstance(expr.function, ScopedFunction):
+        # ignore if the call is not to a ResolvedFunction
+        if not isinstance(expr.function, ResolvedFunction):
             return self.combine((self.rec(child) for child in expr.parameters))
 
         if isinstance(expr, Call):
@@ -2258,9 +2258,9 @@ class HWAxesInferenceMapper(CombineMapper):
             assert isinstance(expr, CallWithKwargs)
             kw_parameters = expr.kw_parameters
 
-        from loopy.symbolic import ScopedFunction
-        # ignoring if the call is not to a ScopedFunction
-        if not isinstance(expr.function, ScopedFunction):
+        from loopy.symbolic import ResolvedFunction
+        # ignoring if the call is not to a ResolvedFunction
+        if not isinstance(expr.function, ResolvedFunction):
             return self.combine((self.rec(child) for child in
                 expr.parameters+tuple(kw_parameters.values())))
 
@@ -2332,7 +2332,7 @@ class FunctionsNotReadyForCodegenCollector(CombineMapper):
         from pymbolic.primitives import CallWithKwargs, Call
         from loopy.library.reduction import ArgExtOp, SegmentedOp
         from pymbolic.primitives import Variable
-        from loopy.symbolic import ScopedFunction
+        from loopy.symbolic import ResolvedFunction
 
         if isinstance(expr, Call):
             kw_parameters = {}
@@ -2347,11 +2347,11 @@ class FunctionsNotReadyForCodegenCollector(CombineMapper):
                         expr.parameters + tuple(kw_parameters)))
 
         elif isinstance(expr.function, Variable):
-            # UnScopedFunction obtained and hence clearly not ready for
+            # UnResolvedFunction obtained and hence clearly not ready for
             # codegen.
             return False
 
-        elif isinstance(expr.function, ScopedFunction):
+        elif isinstance(expr.function, ResolvedFunction):
             is_ready_for_codegen = self.kernel.scoped_functions[
                     expr.function.name].is_ready_for_codegen()
             return self.combine(

@@ -1847,14 +1847,14 @@ class FunctionScoper(RuleAwareIdentityMapper):
     """
     Mapper to convert the  ``function`` attribute of a
     :class:`pymbolic.primitives.Call` known in the kernel as instances of
-    :class:`loopy.symbolic.ScopedFunction`. A function is known in the
+    :class:`loopy.symbolic.ResolvedFunction`. A function is known in the
     *kernel*, :func:`loopy.kernel.LoopKernel.find_scoped_function_identifier`
     returns an instance of
     :class:`loopy.kernel.function_interface.InKernelCallable`.
 
     **Example:** If given an expression of the form ``sin(x) + unknown_function(y) +
-    log(z)``, then the mapper would return ``ScopedFunction('sin')(x) +
-    unknown_function(y) + ScopedFunction('log')(z)``.
+    log(z)``, then the mapper would return ``ResolvedFunction('sin')(x) +
+    unknown_function(y) + ResolvedFunction('log')(z)``.
 
     :arg rule_mapping_context: An instance of
         :class:`loopy.symbolic.RuleMappingContext`.
@@ -1881,20 +1881,20 @@ class FunctionScoper(RuleAwareIdentityMapper):
             return self.map_substitution(name, tag, expr.parameters, expn_state)
 
     def map_call_with_kwargs(self, expr, expn_state):
-        from loopy.symbolic import ScopedFunction
+        from loopy.symbolic import ResolvedFunction
 
-        if not isinstance(expr.function, ScopedFunction):
+        if not isinstance(expr.function, ResolvedFunction):
 
             # search the kernel for the function.
             in_knl_callable = self.kernel.find_scoped_function_identifier(
                     expr.function.name)
 
             if in_knl_callable:
-                # associate the newly created ScopedFunction with the
+                # associate the newly created ResolvedFunction with the
                 # resolved in-kernel callable
                 self.scoped_functions[expr.function.name] = in_knl_callable
                 return type(expr)(
-                        ScopedFunction(expr.function.name),
+                        ResolvedFunction(expr.function.name),
                         tuple(self.rec(child, expn_state)
                             for child in expr.parameters),
                         dict(
@@ -1915,7 +1915,7 @@ class FunctionScoper(RuleAwareIdentityMapper):
 def scope_functions(kernel):
     """
     Returns a kernel with the pymbolic nodes involving known functions realized
-    as instances of :class:`loopy.symbolic.ScopedFunction`, along with the
+    as instances of :class:`loopy.symbolic.ResolvedFunction`, along with the
     resolved functions being added to the ``scoped_functions`` dictionary of
     the kernel.
     """

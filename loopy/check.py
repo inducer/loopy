@@ -27,7 +27,7 @@ from six.moves import range
 
 from islpy import dim_type
 import islpy as isl
-from loopy.symbolic import WalkMapper, CombineMapper, ScopedFunction
+from loopy.symbolic import WalkMapper, CombineMapper, ResolvedFunction
 from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_kernel
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
@@ -85,7 +85,7 @@ class UnscopedCallCollector(CombineMapper):
 
     def map_call_with_kwargs(self, expr):
         from loopy.library.reduction import ArgExtOp
-        if not isinstance(expr.function, (ScopedFunction, ArgExtOp)):
+        if not isinstance(expr.function, (ResolvedFunction, ArgExtOp)):
             return (frozenset([expr.function.name]) |
                     self.combine((self.rec(child) for child in expr.parameters
                         + tuple(expr.kw_parameters.values()))))
@@ -105,7 +105,7 @@ class UnscopedCallCollector(CombineMapper):
 def check_functions_are_scoped(kernel):
     """ Checks if all the calls in the instruction expression have been scoped,
     otherwise indicates to what all calls we await signature. Refer
-    :class:`loopy.symbolic.ScopedFunction` for a detailed explanation of a
+    :class:`loopy.symbolic.ResolvedFunction` for a detailed explanation of a
     scoped function.
     """
 

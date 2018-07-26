@@ -34,7 +34,7 @@ from loopy.diagnostic import LoopyError
 from pymbolic.primitives import Variable
 from loopy.symbolic import parse_tagged_name
 
-from loopy.symbolic import (ScopedFunction, SubstitutionRuleMappingContext,
+from loopy.symbolic import (ResolvedFunction, SubstitutionRuleMappingContext,
         RuleAwareIdentityMapper, SubstitutionRuleExpander)
 
 from pymbolic.primitives import Call
@@ -776,14 +776,14 @@ def next_indexed_variable(function):
             num=int(match.group('num'))+1)
 
 
-class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
+class ResolvedFunctionNameChanger(RuleAwareIdentityMapper):
     """
     Changes the names of scoped functions in calls of expressions according to
     the mapping ``expr_to_new_names``
     """
 
     def __init__(self, rule_mapping_context, expr_to_new_names, subst_expander):
-        super(ScopedFunctionNameChanger, self).__init__(rule_mapping_context)
+        super(ResolvedFunctionNameChanger, self).__init__(rule_mapping_context)
         self.expr_to_new_names = expr_to_new_names
         self.subst_expander = subst_expander
 
@@ -794,16 +794,16 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
             expanded_expr = self.subst_expander(expr)
             if expr in self.expr_to_new_names:
                 return type(expr)(
-                        ScopedFunction(self.expr_to_new_names[expr]),
+                        ResolvedFunction(self.expr_to_new_names[expr]),
                         tuple(self.rec(child, expn_state)
                             for child in expr.parameters))
             elif expanded_expr in self.expr_to_new_names:
                 return type(expr)(
-                        ScopedFunction(self.expr_to_new_names[expanded_expr]),
+                        ResolvedFunction(self.expr_to_new_names[expanded_expr]),
                         tuple(self.rec(child, expn_state)
                             for child in expr.parameters))
             else:
-                return super(ScopedFunctionNameChanger, self).map_call(
+                return super(ResolvedFunctionNameChanger, self).map_call(
                         expr, expn_state)
         else:
             return self.map_substitution(name, tag, expr.parameters, expn_state)
@@ -812,7 +812,7 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
 
         if expr in self.expr_to_new_names:
             return type(expr)(
-                ScopedFunction(self.expr_to_new_names[expr]),
+                ResolvedFunction(self.expr_to_new_names[expr]),
                 tuple(self.rec(child, expn_state)
                     for child in expr.parameters),
                 dict(
@@ -820,7 +820,7 @@ class ScopedFunctionNameChanger(RuleAwareIdentityMapper):
                     for key, val in six.iteritems(expr.kw_parameters))
                     )
         else:
-            return super(ScopedFunctionNameChanger, self).map_call_with_kwargs(
+            return super(ResolvedFunctionNameChanger, self).map_call_with_kwargs(
                     expr, expn_state)
 
 
@@ -841,14 +841,14 @@ def register_pymbolic_calls_to_knl_callables(kernel,
         :class:`loopy.kernel.function_interface.InKernelCallable`.
 
     *Example:* Conisder the expression of an instruction in the kernel as
-        ``Call(ScopedFunction('sin_0'), Variable('x'))``, with the
+        ``Call(ResolvedFunction('sin_0'), Variable('x'))``, with the
         ``scoped_functions`` of the *kernel* being ``{'sin_0':
         ScalarCallable(name='sin')}`` and the argument
-        ``pymbolic_calls_to_callables = {Call(ScopedFunction('sin_0'),
+        ``pymbolic_calls_to_callables = {Call(ResolvedFunction('sin_0'),
         Variable('x')): ScalarCallable(name='sin', arg_id_to_dtype={0: float64,
         -1: np.float64})}``. After applying the transformation the expression
         would rename its function name and hence would become
-        ``Call(ScopedFunction('sin_1'), Variable('x'))`` and the transformed
+        ``Call(ResolvedFunction('sin_1'), Variable('x'))`` and the transformed
         kernel would have ``scoped_functions={'sin_0':
         ScalarCallable(name='sin'), 'sin_1': Variable('x')):
         ScalarCallable(name='sin', arg_id_to_dtype={0: np.float64, -1:
@@ -875,7 +875,7 @@ def register_pymbolic_calls_to_knl_callables(kernel,
             # name.
             if isinstance(pymbolic_call.function, Variable):
                 pymbolic_call_function = pymbolic_call.function
-            elif isinstance(pymbolic_call.function, ScopedFunction):
+            elif isinstance(pymbolic_call.function, ResolvedFunction):
                 pymbolic_call_function = pymbolic_call.function.function
             else:
                 raise NotImplementedError("Unknown type %s for pymbolic call "
@@ -905,7 +905,7 @@ def register_pymbolic_calls_to_knl_callables(kernel,
     rule_mapping_context = SubstitutionRuleMappingContext(
                 kernel.substitutions, kernel.get_var_name_generator())
     subst_expander = SubstitutionRuleExpander(kernel.substitutions)
-    scope_changer = ScopedFunctionNameChanger(rule_mapping_context,
+    scope_changer = ResolvedFunctionNameChanger(rule_mapping_context,
             pymbolic_calls_to_new_names, subst_expander)
     scoped_kernel = scope_changer.map_kernel(kernel)
 

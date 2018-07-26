@@ -11,7 +11,7 @@ Goals of a function interface
   the properties of the function.
 - Must indicate in the expression if the function is known to the kernel. (This
   is intended to be done by making the function expression node an instance of
-  ``ScopedFunction`` as soon as the function definition is resolved by the
+  ``ResolvedFunction`` as soon as the function definition is resolved by the
   kernel)
 - Function overloading is not encouraged in :mod:`loopy` as it gives rise to
   contention while debugging with the help of the kernel intermediate
@@ -25,11 +25,11 @@ Goals of a function interface
 Scoped Function and resolving
 -----------------------------
 
-``ScopedFunctions`` are pymbolic nodes within expressions in a ``Loo.py``
+``ResolvedFunctions`` are pymbolic nodes within expressions in a ``Loo.py``
 kernel, whose name has been resolved by the kernel. The process of matching a
 function idenitifier with the function definition is called "resolving".
 
-A pymbolic ``Call`` node can be converted to a ``ScopedFunction`` if it
+A pymbolic ``Call`` node can be converted to a ``ResolvedFunction`` if it
 is "resolved" by one of the ``function_scoper`` in a
 :attr:`LoopKernel.scoped_functions`
 
@@ -63,7 +63,7 @@ would get converted to:
 
 ::
 
-    ScopedFunction(Variable('sin'))(a[i]) + unknown_func(b[i]) +
+    ResolvedFunction(Variable('sin'))(a[i]) + unknown_func(b[i]) +
     callable_knl_func(c[i])*mangler_call(d[i])
 
 This would also make an entry in the kernel's ``scoped_functions``
@@ -84,8 +84,8 @@ the expression gets converted to:
 
 ::
 
-    ScopedFunction(Variable('sin'))(a[i]) + unknown_func(b[i]) +
-    ScopedFunction('callable_knl_func')(c[i])*mangler_call(d[i])
+    ResolvedFunction(Variable('sin'))(a[i]) + unknown_func(b[i]) +
+    ResolvedFunction('callable_knl_func')(c[i])*mangler_call(d[i])
 
 This also makes an entry in the ``scoped_functions`` dictionary as --
 
@@ -104,10 +104,10 @@ only if all the parameters of the function match viz. name, argument
 arity and argument types. Hence, the ``scoped_functions`` dictionary
 would remain unchanged.
 
-``ScopedFunctions`` and specializations
+``ResolvedFunctions`` and specializations
 ---------------------------------------
 
-Consider the same ``ScopedFunction('sin')`` as above. This function
+Consider the same ``ResolvedFunction('sin')`` as above. This function
 although scoped does not the know the types i.e. it does yet know that
 for a ``C-Target``, whether it should emit ``sin`` or ``sinf`` or
 ``sinl``. Hence, right now the function can be called as a
@@ -125,7 +125,7 @@ callables are resolved.
    ``CallableKernel`` as this information would be helpful to to
    generate the function signature and make changes to the data access
    pattern of the variables in the callee kernel.
--  Whenever a ``ScopedFunction`` goes through a specialization, this is
+-  Whenever a ``ResolvedFunction`` goes through a specialization, this is
    indicated by changing the name in the ``pymbolic`` node.
 
 If during type inference, it is inferred that the type of ``a[i]`` is
@@ -133,7 +133,7 @@ If during type inference, it is inferred that the type of ``a[i]`` is
 
 ::
 
-    ScopedFunction('sin_0')(a[i]) + ...
+    ResolvedFunction('sin_0')(a[i]) + ...
 
 This name change is done so that it indicates that the node points to a
 different ``ScalarCallable`` in the dictionary. And hence a new entry is
@@ -172,9 +172,9 @@ developments of the ``sin`` pymbolic call expression node.
 
 ::
 
-    sin -> (Kernel creation) -> ScopedFunction(Variable('sin')) ->
-    (Type Inference) -> ScopedFunction(Variable('sin_0')) ->
-    (Descriptor Inference) -> ScopedFunction(Variable('sin_1'))
+    sin -> (Kernel creation) -> ResolvedFunction(Variable('sin')) ->
+    (Type Inference) -> ResolvedFunction(Variable('sin_0')) ->
+    (Descriptor Inference) -> ResolvedFunction(Variable('sin_1'))
 
 Changes on the target side to accommodate the new function interface
 --------------------------------------------------------------------
