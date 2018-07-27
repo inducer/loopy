@@ -201,7 +201,7 @@ class InKernelCallable(ImmutableRecord):
     def __getinitargs__(self):
         return (self.arg_id_to_dtype, self.arg_id_to_descr)
 
-    def with_types(self, arg_id_to_dtype, kernel):
+    def with_types(self, arg_id_to_dtype, caller_kernel, program_callables_info):
         """
         :arg arg_id_to_type: a mapping from argument identifiers
             (integers for positional arguments, names for keyword
@@ -218,10 +218,12 @@ class InKernelCallable(ImmutableRecord):
             Any argument information exists both by its positional and
             its keyword identifier.
         """
+        # FIXME: In all these with_** functions add that also passes a
+        # program_callables_info
 
         raise NotImplementedError()
 
-    def with_descrs(self, arg_id_to_descr):
+    def with_descrs(self, arg_id_to_descr, program_callables_info):
         """
         :arg arg_id_to_descr: a mapping from argument identifiers
             (integers for positional arguments, names for keyword
@@ -348,7 +350,7 @@ class ScalarCallable(InKernelCallable):
         return (self.arg_id_to_dtype, self.arg_id_to_descr,
                 self.name_in_target)
 
-    def with_types(self, arg_id_to_dtype, kernel):
+    def with_types(self, arg_id_to_dtype, caller_kernel, program_callables_info):
         raise LoopyError("No type inference information present for "
                 "the function %s." % (self.name))
 
@@ -511,8 +513,8 @@ class CallableKernel(InKernelCallable):
     def name(self):
         return self.subkernel.name
 
-    def with_types(self, arg_id_to_dtype, kernel):
-
+    def with_types(self, arg_id_to_dtype, caller_kernel,
+            program_callables_info):
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
         new_args = []
@@ -528,26 +530,30 @@ class CallableKernel(InKernelCallable):
             else:
                 new_args.append(arg)
 
-        from loopy.type_inference import infer_unknown_types
+        from loopy.type_inference import (
+                infer_unknown_types_for_a_single_kernel)
         pre_specialized_subkernel = self.subkernel.copy(
                 args=new_args)
 
         # infer the types of the written variables based on the knowledge
         # of the types of the arguments supplied
-        specialized_kernel = infer_unknown_types(pre_specialized_subkernel,
-                expect_completion=True)
+        specialized_kernel, program_callables_info = (
+                infer_unknown_types_for_a_single_kernel(
+                    pre_specialized_subkernel,
+                    program_callables_info,
+                    expect_completion=True))
 
         new_arg_id_to_dtype = {}
         for arg in specialized_kernel.args:
             # associate the updated_arg_id_to_dtype with keyword as well as
-            # positional id
+            # positional id.
             new_arg_id_to_dtype[arg.name] = arg.dtype
             new_arg_id_to_dtype[kw_to_pos[arg.name]] = arg.dtype
 
         # Return the kernel call with specialized subkernel and the corresponding
         # new arg_id_to_dtype
         return self.copy(subkernel=specialized_kernel,
-                arg_id_to_dtype=new_arg_id_to_dtype)
+                arg_id_to_dtype=new_arg_id_to_dtype), program_callables_info
 
     def with_descrs(self, arg_id_to_descr):
 
