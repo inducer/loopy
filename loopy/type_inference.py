@@ -336,7 +336,6 @@ class TypeInferenceMapper(CombineMapper):
                     self.program_callables_info.with_callable(
                         expr.function.function,
                         in_knl_callable))
-            print(self.program_callables_info['sin'])
 
             if isinstance(expr, Call):
                 self.old_calls_to_new_calls[expr] = new_function_id
@@ -831,14 +830,14 @@ def infer_unknown_types(program, expect_completion=False):
     type_inferred_knl_callable = type_uninferred_knl_callable.copy(
             subkernel=root_kernel)
 
-    program_callables_info.with_callable(program.root_kernel_name,
-            type_inferred_knl_callable)
+    program_callables_info, _ = (
+            program_callables_info.with_callable(
+                program.root_kernel_name,
+                type_inferred_knl_callable))
 
-    program_callables_info, renames_needed = (
+    program_callables_info = (
             program_callables_info.with_exit_edit_callables_mode())
-
-    return program.with_renamed_callables(
-            program_callables_info, renames_needed)
+    return program.copy(program_callables_info=program_callables_info)
 
 # }}}
 
