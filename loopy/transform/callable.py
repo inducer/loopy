@@ -36,7 +36,7 @@ from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
 from loopy.symbolic import IdentityMapper, SubstitutionMapper, CombineMapper
 from loopy.isl_helpers import simplify_via_aff
 from loopy.kernel.function_interface import (get_kw_pos_association,
-        register_pymbolic_calls_to_knl_callables)
+        change_names_of_pymbolic_calls)
 
 
 __doc__ = """
@@ -453,9 +453,7 @@ def _inline_call_instruction(kernel, callee_knl, instruction):
             raise NotImplementedError("Unknown type of instruction %s." % type(
                 insn))
 
-    from loopy.kernel.function_interface import (
-            register_pymbolic_calls_to_knl_callables)
-    kernel = register_pymbolic_calls_to_knl_callables(kernel,
+    kernel = change_names_of_pymbolic_calls(kernel,
             callee_scoped_calls_dict)
 
     # }}}
@@ -622,7 +620,7 @@ def _match_caller_callee_argument_dimension(caller_knl, callee_function_name):
         raise LoopyError("No CallableKernel with the name %s found in %s." % (
             callee_function_name, caller_knl.name))
 
-    return register_pymbolic_calls_to_knl_callables(caller_knl,
+    return change_names_of_pymbolic_calls(caller_knl,
             pymbolic_calls_to_new_callables)
 
 # }}}

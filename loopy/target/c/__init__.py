@@ -362,7 +362,7 @@ class CMathCallable(ScalarCallable):
     C-Target.
     """
 
-    def with_types(self, arg_id_to_dtype, kernel):
+    def with_types(self, arg_id_to_dtype, caller_kernel, program_callables_info):
         name = self.name
 
         if name in ["abs", "min", "max"]:
@@ -379,7 +379,9 @@ class CMathCallable(ScalarCallable):
             if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
                 # the types provided aren't mature enough to specialize the
                 # callable
-                return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+                return (
+                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        program_callables_info)
 
             dtype = arg_id_to_dtype[0]
             dtype = dtype.numpy_dtype
@@ -391,7 +393,7 @@ class CMathCallable(ScalarCallable):
                 raise LoopyTypeError("%s does not support type %s" % (name, dtype))
 
             from loopy.target.opencl import OpenCLTarget
-            if not isinstance(kernel.target, OpenCLTarget):
+            if not isinstance(caller_kernel.target, OpenCLTarget):
                 # for CUDA, C Targets the name must be modified
                 if dtype == np.float64:
                     pass  # fabs
@@ -403,8 +405,11 @@ class CMathCallable(ScalarCallable):
                     raise LoopyTypeError("%s does not support type %s" % (name,
                         dtype))
 
-            return self.copy(name_in_target=name,
-                    arg_id_to_dtype={0: NumpyType(dtype), -1: NumpyType(dtype)})
+            return (
+                    self.copy(name_in_target=name,
+                        arg_id_to_dtype={0: NumpyType(dtype), -1:
+                            NumpyType(dtype)}),
+                        program_callables_info)
 
         # binary functions
         if name in ["fmax", "fmin"]:
@@ -417,7 +422,9 @@ class CMathCallable(ScalarCallable):
                     arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
                 # the types provided aren't mature enough to specialize the
                 # callable
-                return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+                return (
+                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        program_callables_info)
 
             dtype = np.find_common_type(
                 [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
@@ -428,7 +435,7 @@ class CMathCallable(ScalarCallable):
 
             elif dtype.kind == "f":
                 from loopy.target.opencl import OpenCLTarget
-                if not isinstance(kernel.target, OpenCLTarget):
+                if not isinstance(caller_kernel.target, OpenCLTarget):
                     if dtype == np.float64:
                         pass  # fmin
                     elif dtype == np.float32:
@@ -439,10 +446,14 @@ class CMathCallable(ScalarCallable):
                         raise LoopyTypeError("%s does not support type %s"
                                              % (name, dtype))
             dtype = NumpyType(dtype)
-            return self.copy(name_in_target=name,
-                    arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype})
+            return (
+                    self.copy(name_in_target=name,
+                        arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
+                    program_callables_info)
 
-        return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+        return (
+                self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                program_callables_info)
 
 
 def scope_c_math_functions(target, identifier):

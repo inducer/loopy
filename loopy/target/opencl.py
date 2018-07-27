@@ -172,7 +172,7 @@ class OpenCLCallable(ScalarCallable):
     :class:`loopy.target.c.CMathCallable`.
     """
 
-    def with_types(self, arg_id_to_dtype, kernel):
+    def with_types(self, arg_id_to_dtype, caller_kernel, program_callables_info):
         name = self.name
 
         if name in ["max", "min"]:
@@ -180,7 +180,9 @@ class OpenCLCallable(ScalarCallable):
                 if not -1 <= id <= 1:
                     raise LoopyError("%s can take only 2 arguments." % name)
             if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype:
-                return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+                return (
+                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        program_callables_info)
 
             dtype = np.find_common_type(
                     [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
@@ -190,8 +192,10 @@ class OpenCLCallable(ScalarCallable):
                 if dtype.kind == 'f':
                     name = 'f'+name
                 dtype = NumpyType(dtype)
-                return self.copy(name_in_target=name,
-                        arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype})
+                return (
+                        self.copy(name_in_target=name,
+                            arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
+                        program_callables_info)
             else:
                 # Unsupported type.
                 raise LoopyError("%s function not supported for the types %s" %
@@ -206,12 +210,16 @@ class OpenCLCallable(ScalarCallable):
                     arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
                 # the types provided aren't mature enough to specialize the
                 # callable
-                return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+                return (
+                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        program_callables_info)
 
             dtype = arg_id_to_dtype[0]
             scalar_dtype, offset, field_name = dtype.numpy_dtype.fields["s0"]
-            return self.copy(name_in_target=name, arg_id_to_dtype={-1:
-                NumpyType(scalar_dtype), 0: dtype, 1: dtype})
+            return (
+                    self.copy(name_in_target=name, arg_id_to_dtype={-1:
+                        NumpyType(scalar_dtype), 0: dtype, 1: dtype}),
+                    program_callables_info)
 
         if name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
             num_args = _CL_SIMPLE_MULTI_ARG_FUNCTIONS[name]
@@ -224,7 +232,9 @@ class OpenCLCallable(ScalarCallable):
                 if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
                     # the types provided aren't mature enough to specialize the
                     # callable
-                    return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+                    return (
+                            self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                            program_callables_info)
 
             dtype = np.find_common_type(
                     [], [dtype.numpy_dtype for id, dtype in
@@ -237,8 +247,10 @@ class OpenCLCallable(ScalarCallable):
             updated_arg_id_to_dtype = dict((id, NumpyType(dtype)) for id in range(-1,
                 num_args))
 
-            return self.copy(name_in_target=name,
-                    arg_id_to_dtype=updated_arg_id_to_dtype)
+            return (
+                    self.copy(name_in_target=name,
+                        arg_id_to_dtype=updated_arg_id_to_dtype),
+                    program_callables_info)
 
         if name in VECTOR_LITERAL_FUNCS:
             base_tp_name, dtype, count = VECTOR_LITERAL_FUNCS[name]
@@ -252,19 +264,25 @@ class OpenCLCallable(ScalarCallable):
                 if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
                     # the types provided aren't mature enough to specialize the
                     # callable
-                    return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+                    return (
+                            self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                            program_callables_info)
 
             updated_arg_id_to_dtype = dict((id, NumpyType(dtype)) for id in
                     range(count))
             updated_arg_id_to_dtype[-1] = OpenCLTarget().vector_dtype(
                         NumpyType(dtype), count)
 
-            return self.copy(name_in_target="(%s%d) " % (base_tp_name, count),
-                    arg_id_to_dtype=updated_arg_id_to_dtype)
+            return (
+                    self.copy(name_in_target="(%s%d) " % (base_tp_name, count),
+                        arg_id_to_dtype=updated_arg_id_to_dtype),
+                    program_callables_info)
 
         # does not satisfy any of the conditions needed for specialization.
         # hence just returning a copy of the callable.
-        return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+        return (
+                self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                program_callables_info)
 
 
 def scope_opencl_functions(target, identifier):

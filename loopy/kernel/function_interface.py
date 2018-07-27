@@ -31,13 +31,10 @@ from six.moves import zip
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 
-from pymbolic.primitives import Variable
 from loopy.symbolic import parse_tagged_name
 
 from loopy.symbolic import (ResolvedFunction, SubstitutionRuleMappingContext,
         RuleAwareIdentityMapper, SubstitutionRuleExpander)
-
-from pymbolic.primitives import Call
 
 
 # {{{ argument descriptors
@@ -782,15 +779,16 @@ def next_indexed_variable(function):
             num=int(match.group('num'))+1)
 
 
-class ResolvedFunctionNameChanger(RuleAwareIdentityMapper):
+class FunctionNameChanger(RuleAwareIdentityMapper):
     """
     Changes the names of scoped functions in calls of expressions according to
-    the mapping ``expr_to_new_names``
+    the mapping ``calls_to_new_functions``
     """
 
-    def __init__(self, rule_mapping_context, expr_to_new_names, subst_expander):
-        super(ResolvedFunctionNameChanger, self).__init__(rule_mapping_context)
-        self.expr_to_new_names = expr_to_new_names
+    def __init__(self, rule_mapping_context, calls_to_new_names,
+            subst_expander):
+        super(FunctionNameChanger, self).__init__(rule_mapping_context)
+        self.calls_to_new_names = calls_to_new_names
         self.subst_expander = subst_expander
 
     def map_call(self, expr, expn_state):
@@ -798,27 +796,29 @@ class ResolvedFunctionNameChanger(RuleAwareIdentityMapper):
 
         if name not in self.rule_mapping_context.old_subst_rules:
             expanded_expr = self.subst_expander(expr)
-            if expr in self.expr_to_new_names:
+            if expr in self.calls_to_new_names:
                 return type(expr)(
-                        ResolvedFunction(self.expr_to_new_names[expr]),
+                        ResolvedFunction(self.calls_to_new_names[expr]),
                         tuple(self.rec(child, expn_state)
                             for child in expr.parameters))
-            elif expanded_expr in self.expr_to_new_names:
+            elif expanded_expr in self.calls_to_new_names:
+                # FIXME: this is horribly wrong logic.
+                # investigate how to make edits to a substitution rule
                 return type(expr)(
-                        ResolvedFunction(self.expr_to_new_names[expanded_expr]),
+                        ResolvedFunction(self.calls_to_new_names[expanded_expr]),
                         tuple(self.rec(child, expn_state)
-                            for child in expr.parameters))
+                            for child in expanded_expr.parameters))
             else:
-                return super(ResolvedFunctionNameChanger, self).map_call(
+                return super(FunctionNameChanger, self).map_call(
                         expr, expn_state)
         else:
             return self.map_substitution(name, tag, expr.parameters, expn_state)
 
     def map_call_with_kwargs(self, expr, expn_state):
 
-        if expr in self.expr_to_new_names:
+        if expr in self.calls_to_new_names:
             return type(expr)(
-                ResolvedFunction(self.expr_to_new_names[expr]),
+                ResolvedFunction(self.calls_to_new_names[expr]),
                 tuple(self.rec(child, expn_state)
                     for child in expr.parameters),
                 dict(
@@ -826,96 +826,19 @@ class ResolvedFunctionNameChanger(RuleAwareIdentityMapper):
                     for key, val in six.iteritems(expr.kw_parameters))
                     )
         else:
-            return super(ResolvedFunctionNameChanger, self).map_call_with_kwargs(
+            return super(FunctionNameChanger, self).map_call_with_kwargs(
                     expr, expn_state)
 
 
-def register_pymbolic_calls_to_knl_callables(kernel,
-        pymbolic_calls_to_knl_callables):
-    # FIXME This could use an example. I have no idea what this does.
-    # Surely I can't associate arbitrary pymbolic expresions (3+a?)
-    # with callables?
-    """
-    Returns a copy of :arg:`kernel` which includes an association with the given
-    pymbolic calls to  the instances of :class:`InKernelCallable` for the
-    mapping given by :arg:`pymbolic_calls_to_knl_calllables`.
-
-    :arg kernel: An instance of :class:`loopy.kernel.LoopKernel`.
-
-    :arg pymbolic_calls_to_knl_callables: A mapping from :mod:`pymbolic` expressions
-        to the instances of
-        :class:`loopy.kernel.function_interface.InKernelCallable`.
-
-    *Example:* Conisder the expression of an instruction in the kernel as
-        ``Call(ResolvedFunction('sin_0'), Variable('x'))``, with the
-        ``scoped_functions`` of the *kernel* being ``{'sin_0':
-        ScalarCallable(name='sin')}`` and the argument
-        ``pymbolic_calls_to_callables = {Call(ResolvedFunction('sin_0'),
-        Variable('x')): ScalarCallable(name='sin', arg_id_to_dtype={0: float64,
-        -1: np.float64})}``. After applying the transformation the expression
-        would rename its function name and hence would become
-        ``Call(ResolvedFunction('sin_1'), Variable('x'))`` and the transformed
-        kernel would have ``scoped_functions={'sin_0':
-        ScalarCallable(name='sin'), 'sin_1': Variable('x')):
-        ScalarCallable(name='sin', arg_id_to_dtype={0: np.float64, -1:
-        np.float64})}``. Hence, the expression would rename the function
-        pymbolic node and the scoped functions dictionary would register the
-        new callable corresponding to the new pymbolic node.
-    """
-
-    scoped_names_to_functions = kernel.scoped_functions.copy()
-
-    # A dict containing the new scoped functions to the names which have been
-    # assigned to them
-    scoped_functions_to_names = {}
-
-    # A dict containing the new name that need to be assigned to the
-    # corresponding pymbolic call
-    pymbolic_calls_to_new_names = {}
-
-    for pymbolic_call, in_knl_callable in pymbolic_calls_to_knl_callables.items():
-        # check if such a in-kernel callable already exists.
-        assert isinstance(pymbolic_call, Call)
-        if in_knl_callable not in scoped_functions_to_names:
-            # No matching in_knl_callable found, implies make a new one with a new
-            # name.
-            if isinstance(pymbolic_call.function, Variable):
-                pymbolic_call_function = pymbolic_call.function
-            elif isinstance(pymbolic_call.function, ResolvedFunction):
-                pymbolic_call_function = pymbolic_call.function.function
-            else:
-                raise NotImplementedError("Unknown type %s for pymbolic call "
-                        "function" % type(pymbolic_call).__name__)
-
-            unique_var = next_indexed_variable(pymbolic_call_function)
-            from loopy.library.reduction import ArgExtOp, SegmentedOp
-            while unique_var in scoped_names_to_functions and not isinstance(
-                    unique_var, (ArgExtOp, SegmentedOp)):
-                # keep on finding new names till one a unique one is found.
-                unique_var = next_indexed_variable(Variable(unique_var))
-
-            # book-keeping of the functions and names mappings for later use
-            if isinstance(in_knl_callable, CallableKernel):
-                # for array calls the name in the target is the name of the
-                # scoped funciton
-                in_knl_callable = in_knl_callable.copy(
-                        name_in_target=unique_var)
-            scoped_names_to_functions[unique_var] = in_knl_callable
-            scoped_functions_to_names[in_knl_callable] = unique_var
-
-        pymbolic_calls_to_new_names[pymbolic_call] = (
-                scoped_functions_to_names[in_knl_callable])
-
-    # Use the data populated in pymbolic_calls_to_new_names to change the
-    # names of the scoped functions of all the calls in the kernel.
+def change_names_of_pymbolic_calls(kernel, pymbolic_calls_to_new_names):
     rule_mapping_context = SubstitutionRuleMappingContext(
-                kernel.substitutions, kernel.get_var_name_generator())
+                    kernel.substitutions, kernel.get_var_name_generator())
     subst_expander = SubstitutionRuleExpander(kernel.substitutions)
-    scope_changer = ResolvedFunctionNameChanger(rule_mapping_context,
+    name_changer = FunctionNameChanger(rule_mapping_context,
             pymbolic_calls_to_new_names, subst_expander)
-    scoped_kernel = scope_changer.map_kernel(kernel)
 
-    return scoped_kernel.copy(scoped_functions=scoped_names_to_functions)
+    return rule_mapping_context.finish_kernel(
+            name_changer.map_kernel(kernel))
 
 # }}}
 

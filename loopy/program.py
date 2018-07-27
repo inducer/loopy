@@ -194,7 +194,7 @@ class Program(ImmutableRecord):
                             type(in_knl_callable).__name__)
 
             program_callables_info, renames_needed = (
-                    program_callables_info.with_exit_edit_mode())
+                    program_callables_info.with_exit_edit_callables_mode())
 
             # at this point no renames must be needed
             assert not renames_needed
@@ -369,6 +369,9 @@ class ProgramCallablesInfo(ImmutableRecord):
 
         # {{{ sanity checks
 
+        if isinstance(function, str):
+            function = Variable(function)
+
         assert isinstance(function, (Variable, ArgExtOp, SegmentedOp))
 
         # }}}
@@ -442,7 +445,7 @@ class ProgramCallablesInfo(ImmutableRecord):
                         renames_needed_after_editing=renames_needed_after_editing),
                     Variable(unique_function_identifier))
 
-    def with_exit_edit_mode(self):
+    def with_exit_edit_callables_mode(self):
         assert self.is_being_edited
 
         num_times_callables_called = self.num_times_callables_called.copy()

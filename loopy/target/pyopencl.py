@@ -206,7 +206,7 @@ class PyOpenCLCallable(ScalarCallable):
     Records information about the callables which are not covered by
     :class:`loopy.target.opencl.OpenCLCallable`
     """
-    def with_types(self, arg_id_to_dtype, kernel):
+    def with_types(self, arg_id_to_dtype, caller_kernel, program_callables_info):
 
         name = self.name
 
@@ -218,7 +218,9 @@ class PyOpenCLCallable(ScalarCallable):
         if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
             # the types provided aren't mature enough to specialize the
             # callable
-            return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+            return (
+                    self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                    program_callables_info)
 
         dtype = arg_id_to_dtype[0]
 
@@ -248,8 +250,10 @@ class PyOpenCLCallable(ScalarCallable):
                 else:
                     raise LoopyTypeError("unexpected complex type '%s'" % dtype)
 
-                return self.copy(name_in_target="%s_%s" % (tpname, name),
-                        arg_id_to_dtype={0: dtype, -1: dtype})
+                return (
+                        self.copy(name_in_target="%s_%s" % (tpname, name),
+                            arg_id_to_dtype={0: dtype, -1: dtype}),
+                        program_callables_info)
             else:
                 # function calls for floating parameters.
                 numpy_dtype = dtype.numpy_dtype
@@ -257,10 +261,14 @@ class PyOpenCLCallable(ScalarCallable):
                     dtype = dtype.copy(numpy_dtype=np.float32)
                 if name == 'abs':
                     name = 'fabs'
-                return self.copy(name_in_target=name,
-                    arg_id_to_dtype={0: dtype, -1: dtype})
+                return (
+                        self.copy(name_in_target=name,
+                            arg_id_to_dtype={0: dtype, -1: dtype}),
+                        program_callables_info)
 
-        return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+        return (
+                self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                program_callables_info)
 
 
 def pyopencl_function_scoper(target, identifier):

@@ -291,7 +291,7 @@ class TypeInferenceMapper(CombineMapper):
 
         # specializing the known function wrt type
         if isinstance(expr.function, ResolvedFunction):
-            in_knl_callable = self.scoped_functions[expr.function.name]
+            in_knl_callable = self.program_callables_info[expr.function.name]
 
             # {{{ checking that there is no overwriting of types of in_knl_callable
 
@@ -334,20 +334,15 @@ class TypeInferenceMapper(CombineMapper):
             # later use
             self.program_callables_info, new_function_id = (
                     self.program_callables_info.with_callable(
-                        expr.function,
-                        in_knl_callable.with_target(self.kernel.target)))
+                        expr.function.function,
+                        in_knl_callable))
+            print(self.program_callables_info['sin'])
 
             if isinstance(expr, Call):
-                self.old_calls_to_new_calls = Call(
-                        ResolvedFunction(new_function_id),
-                        expr.parameters)
+                self.old_calls_to_new_calls[expr] = new_function_id
             else:
                 assert isinstance(expr, CallWithKwargs)
-                self.old_calls_to_new_calls = CallWithKwargs(
-                        ResolvedFunction(new_function_id),
-                        expr.parameters, kw_parameters)
-
-            self.old_calls_to_new_calls = Call
+                self.old_calls_to_new_calls[expr] = new_function_id
 
             new_arg_id_to_dtype = in_knl_callable.arg_id_to_dtype
 
@@ -407,14 +402,10 @@ class TypeInferenceMapper(CombineMapper):
                             expr.function, in_knl_callable))
 
                 if isinstance(expr, Call):
-                    self.old_calls_to_new_calls = Call(
-                            ResolvedFunction(new_function_id),
-                            expr.parameters)
+                    self.old_calls_to_new_calls[expr] = new_function_id
                 else:
                     assert isinstance(expr, CallWithKwargs)
-                    self.old_calls_to_new_calls = CallWithKwargs(
-                            ResolvedFunction(new_function_id),
-                            expr.parameters, kw_parameters)
+                    self.old_calls_to_new_calls = new_function_id
 
             # Returning the type.
             if return_tuple:
@@ -608,7 +599,8 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
     result = type_inf_mapper.combine(dtype_sets)
 
     return (result, type_inf_mapper.symbols_with_unknown_types,
-            type_inf_mapper.old_calls_to_new_calls)
+            type_inf_mapper.old_calls_to_new_calls,
+            type_inf_mapper.program_callables_info)
 
 # }}}
 
@@ -733,7 +725,8 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
 
             debug("inferring type for %s %s", type(item).__name__, item.name)
 
-            result, symbols_with_unavailable_types, new_old_calls_to_new_calls = (
+            (result, symbols_with_unavailable_types,
+                    new_old_calls_to_new_calls, program_callables_info) = (
                     _infer_var_type(
                             kernel, item.name, type_inf_mapper, subst_expander))
 
@@ -807,28 +800,29 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
 
     # this has to be subsitutition
     from loopy.kernel.function_interface import (
-            register_pymbolic_calls_to_knl_callables)
-    type_specialized_kernel = register_pymbolic_calls_to_knl_callables(
-            pre_type_specialized_knl, specialized_functions)
+            change_names_of_pymbolic_calls)
+    type_specialized_kernel = change_names_of_pymbolic_calls(
+            pre_type_specialized_knl, old_calls_to_new_calls)
     if expect_completion:
         # if completion is expected, then it is important that all the
         # callables are scoped.
         from loopy.check import check_functions_are_scoped
         check_functions_are_scoped(type_specialized_kernel)
 
-    return program_callables_info, type_specialized_kernel
+    return type_specialized_kernel, program_callables_info
 
 
 def infer_unknown_types(program, expect_completion=False):
     """Infer types on temporaries and arguments."""
 
-    program_callables_info = program.progra_callables_info
+    program_callables_info = program.program_callables_info
 
     type_uninferred_knl_callable = (
             program_callables_info[program.root_kernel_name])
     type_uninferred_root_kernel = type_uninferred_knl_callable.subkernel
 
-    program_callables_info = program.program_calllables_info.with_edit_mode()
+    program_callables_info = (
+            program.program_callables_info.with_edit_callables_mode())
     root_kernel, program_callables_info = (
             infer_unknown_types_for_a_single_kernel(
                 type_uninferred_root_kernel,
@@ -841,7 +835,7 @@ def infer_unknown_types(program, expect_completion=False):
             type_inferred_knl_callable)
 
     program_callables_info, renames_needed = (
-            program_callables_info.with_exit_mode())
+            program_callables_info.with_exit_edit_callables_mode())
 
     return program.with_renamed_callables(
             program_callables_info, renames_needed)
