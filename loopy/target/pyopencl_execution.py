@@ -274,16 +274,16 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
         return generator(kernel, codegen_result)
 
     @memoize_method
-    def kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
-        kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype_set)
+    def program_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
+        program = self.get_typed_and_scheduled_program(arg_to_dtype_set)
 
         from loopy.codegen import generate_code_v2
         from loopy.target.execution import get_highlighted_code
-        codegen_result = generate_code_v2(kernel)
+        codegen_result = generate_code_v2(program)
 
         dev_code = codegen_result.device_code()
 
-        if self.kernel.options.write_cl:
+        if self.program.options.write_cl:
             output = dev_code
             if self.kernel.options.highlight_cl:
                 output = get_highlighted_code(output)
@@ -302,17 +302,17 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         cl_program = (
                 cl.Program(self.context, dev_code)
-                .build(options=kernel.options.cl_build_options))
+                .build(options=program.options.cl_build_options))
 
         cl_kernels = _Kernels()
         for dp in codegen_result.device_programs:
             setattr(cl_kernels, dp.name, getattr(cl_program, dp.name))
 
         return _KernelInfo(
-                kernel=kernel,
+                program=program,
                 cl_kernels=cl_kernels,
                 implemented_data_info=codegen_result.implemented_data_info,
-                invoker=self.get_invoker(kernel, codegen_result))
+                invoker=self.get_invoker(program, codegen_result))
 
     def __call__(self, queue, **kwargs):
         """
@@ -347,10 +347,10 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         kwargs = self.packing_controller.unpack(kwargs)
 
-        kernel_info = self.kernel_info(self.arg_to_dtype_set(kwargs))
+        program_info = self.program_info(self.arg_to_dtype_set(kwargs))
 
-        return kernel_info.invoker(
-                kernel_info.cl_kernels, queue, allocator, wait_for,
+        return program_info.invoker(
+                program_info.cl_kernels, queue, allocator, wait_for,
                 out_host, **kwargs)
 
 # }}}

@@ -37,8 +37,8 @@ from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment, filter_iname_tags_by_type
 # for the benefit of loopy.statistics, for now
-from loopy.type_inference import infer_unknown_types
-from loopy.symbolic import CombineMapper
+from loopy.type_inference import infer_unknown_types_for_a_single_kernel
+from loopy.symbolic import CombineMapper, RuleAwareIdentityMapper
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
@@ -2134,7 +2134,7 @@ def check_atomic_loads(kernel):
 
 # {{{ arg_descr_inference
 
-class ArgDescrInferenceMapper(CombineMapper):
+class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
     """
     Returns a set of instances of :class:`tuple` (expr,
     in_kernel_callable). The mapped `in_kernel_callable` of the
@@ -2142,21 +2142,21 @@ class ArgDescrInferenceMapper(CombineMapper):
     arguments.
     """
 
-    def __init__(self, kernel):
-        self.kernel = kernel
+    def __init__(self, rule_mapping_context, caller_kernel,
+            program_callables_info):
+        super(ArgDescrInferenceMapper, self).__init__(
+                rule_mapping_context)
+        self.caller_kernel = caller_kernel
+        self.program_callables_info = program_callables_info
 
-    def combine(self, values):
-        import operator
-        return reduce(operator.or_, values, frozenset())
-
-    def map_call(self, expr, **kwargs):
+    def map_call(self, expr, expn_state, **kwargs):
         from pymbolic.primitives import Call, CallWithKwargs
         from loopy.kernel.function_interface import ValueArgDescriptor
         from loopy.symbolic import ResolvedFunction, SubArrayRef
 
-        # ignore if the call is not to a ResolvedFunction
         if not isinstance(expr.function, ResolvedFunction):
-            return self.combine((self.rec(child) for child in expr.parameters))
+            # ignore if the call is not to a ResolvedFunction
+            return super(ArgDescrInferenceMapper, self).rec(expr)
 
         if isinstance(expr, Call):
             kw_parameters = {}
@@ -2178,7 +2178,7 @@ class ArgDescrInferenceMapper(CombineMapper):
             for i, par in enumerate(assignees):
                 if isinstance(par, SubArrayRef):
                     assignee_id_to_descr[-i-1] = (
-                            par.get_array_arg_descriptor(self.kernel))
+                            par.get_array_arg_descriptor(self.caller_kernel))
                 else:
                     assignee_id_to_descr[-i-1] = ValueArgDescriptor()
 
@@ -2187,63 +2187,74 @@ class ArgDescrInferenceMapper(CombineMapper):
         combined_arg_id_to_descr.update(assignee_id_to_descr)
 
         # specializing the function according to the parameter description
-        new_scoped_function = (
-                self.kernel.scoped_functions[expr.function.name].with_descrs(
+        new_in_knl_callable = (
+                self.program_callables_info[expr.function.name].with_descrs(
                     combined_arg_id_to_descr))
+        self.program_callables_info, new_func_id = (
+                self.program_callables_info.with_callable(
+                    expr.function.function,
+                    new_in_knl_callable))
 
-        # collecting the descriptors for args, kwargs, assignees
-        return (
-                frozenset(((expr, new_scoped_function), )) |
-                self.combine((self.rec(child) for child in
-                    expr.parameters+tuple(kw_parameters))))
+        if isinstance(expr, Call):
+            return Call(
+                    ResolvedFunction(new_func_id),
+                    tuple(self.rec(child, expn_state)
+                    for child in expr.parameters))
+        else:
+            assert isinstance(expr, CallWithKwargs)
+            return CallWithKwargs(
+                    ResolvedFunction(new_func_id),
+                    tuple(self.rec(child, expn_state)
+                        for child in expr.parameters),
+                    dict(
+                        (key, self.rec(val, expn_state))
+                        for key, val in six.iteritems(expr.kw_parameters))
+                    )
 
     map_call_with_kwargs = map_call
 
-    def map_constant(self, expr, **kwargs):
-        return frozenset()
+    def map_kernel(self, kernel):
 
-    map_variable = map_constant
-    map_function_symbol = map_constant
-    map_tagged_variable = map_constant
-    map_type_cast = map_constant
+        new_insns = []
+
+        for insn in kernel.instructions:
+            if isinstance(insn, CallInstruction):
+                # In call instructions the assignees play an important in
+                # determining the arg_id_to_dtype
+                new_insns.append(insn.with_transformed_expressions(
+                        self, kernel, insn))
+            elif isinstance(insn, MultiAssignmentBase):
+                new_insns.append(insn.with_transformed_expressions(
+                    self, kernel, insn))
+            elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
+                new_insns.append(insn)
+            else:
+                raise NotImplementedError("arg_descr_inference for %s instruction" %
+                        type(insn))
+
+        return kernel.copy(instructions=new_insns)
 
 
-def infer_arg_descr(kernel):
+def infer_arg_descr(kernel, program_callables_info):
     """
     Returns a copy of *kernel* with the argument shapes and strides matching for
     scoped functions in the *kernel*. Refer
     :meth:`loopy.kernel.function_interface.InKernelCallable.with_descrs`.
     """
+    # FIXME: update this docs, once the design is finalized
 
-    arg_description_modifier = ArgDescrInferenceMapper(kernel)
-    pymbolic_calls_to_functions = set()
+    from loopy.symbolic import SubstitutionRuleMappingContext
 
-    for insn in kernel.instructions:
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
 
-        if isinstance(insn, CallInstruction):
-            # In call instructions the assignees play an important in
-            # determining the arg_id_to_dtype
-            pymbolic_calls_to_functions.update(
-                    arg_description_modifier(insn.expression,
-                        assignees=insn.assignees))
-        elif isinstance(insn, MultiAssignmentBase):
-            pymbolic_calls_to_functions.update(arg_description_modifier(
-                insn.expression))
-        elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
-            pass
-        else:
-            raise NotImplementedError("arg_descr_inference for %s instruction" %
-                    type(insn))
+    arg_descr_inf_mapper = ArgDescrInferenceMapper(rule_mapping_context,
+            kernel, program_callables_info)
 
-    # making it the set of tuples a dict
-    pymbolic_calls_to_functions = dict(pymbolic_calls_to_functions)
+    descr_inferred_kernel = rule_mapping_context.finish_kernel(
+            arg_descr_inf_mapper.map_kernel(kernel))
 
-    # Now do the similar treatment as done for type inference.
-    from loopy.kernel.function_interface import (
-            register_pymbolic_calls_to_knl_callables)
-
-    return register_pymbolic_calls_to_knl_callables(kernel,
-            pymbolic_calls_to_functions)
+    return descr_inferred_kernel, arg_descr_inf_mapper.program_callables_info
 
 # }}}
 
@@ -2443,12 +2454,35 @@ preprocess_cache = WriteOncePersistentDict(
         key_builder=LoopyKeyBuilder())
 
 
-def preprocess_kernel(kernel, device=None):
+def preprocess_program(program, device=None):
+
     if device is not None:
         from warnings import warn
         warn("passing 'device' to preprocess_kernel() is deprecated",
                 DeprecationWarning, stacklevel=2)
 
+    root_kernel_callable = program.program_callables_info[program.name]
+    program_callables_info = (
+            program.program_callables_info.with_edit_callables_mode())
+    root_kernel, program_callables_info = preprocess_kernel(
+            program.root_kernel, program_callables_info, device)
+    processed_root_knl_callable = root_kernel_callable.copy(subkernel=root_kernel)
+    program_callables_info, _ = (
+            program_callables_info.with_callable(
+                program.root_kernel_name,
+                processed_root_knl_callable))
+    program_callables_info = (
+            program_callables_info.with_exit_edit_callables_mode())
+
+    # FIXME: some version of the below funtion run should occur
+    # FIXME:type specialize functions that were missed during the type inference.
+    # program_callables_info = make_callables_ready_for_codegen(
+    #         program_callables_info)
+
+    return program.copy(program_callables_info=program_callables_info)
+
+
+def preprocess_kernel(kernel, program_callables_info, device=None):
     from loopy.kernel import KernelState
     if kernel.state >= KernelState.PREPROCESSED:
         return kernel
@@ -2491,7 +2525,8 @@ def preprocess_kernel(kernel, device=None):
     # Type inference and reduction iname uniqueness don't handle substitutions.
     # Get them out of the way.
 
-    kernel = infer_unknown_types(kernel, expect_completion=False)
+    kernel, program_callables_info = infer_unknown_types_for_a_single_kernel(
+            kernel, program_callables_info, expect_completion=False)
 
     check_for_writes_to_predicates(kernel)
     check_reduction_iname_uniqueness(kernel)
@@ -2519,13 +2554,7 @@ def preprocess_kernel(kernel, device=None):
 
     # inferring the shape and dim_tags of the arguments involved in a function
     # call.
-    kernel = infer_arg_descr(kernel)
-
-    # type specialize functions that were missed during the type inference.
-    kernel = make_functions_ready_for_codegen(kernel)
-
-    # tuning the functions in the kernel to align with the grid sizes.
-    kernel = infer_hw_axes_sizes(kernel)
+    kernel, program_callables_info = infer_arg_descr(kernel, program_callables_info)
 
     # boostability should be removed in 2017.x.
     kernel = find_idempotence(kernel)
@@ -2552,13 +2581,13 @@ def preprocess_kernel(kernel, device=None):
     if CACHING_ENABLED:
         input_kernel = prepare_for_caching(input_kernel)
 
-    kernel = prepare_for_caching(kernel)
+    kernel = prepare_single_kernel_for_caching(kernel)
 
     # }}}
 
     if CACHING_ENABLED:
         preprocess_cache.store_if_not_present(input_kernel, kernel)
 
-    return kernel
+    return kernel, program_callables_info
 
 # vim: foldmethod=marker

@@ -729,16 +729,16 @@ class KernelExecutorBase(object):
                 arg.dtype is None
                 for arg in program.args)
 
-    def get_typed_and_scheduled_kernel_uncached(self, arg_to_dtype_set):
+    def get_typed_and_scheduled_program_uncached(self, arg_to_dtype_set):
         from loopy.kernel.tools import add_dtypes
 
-        kernel = self.kernel
+        program = self.program
 
         if arg_to_dtype_set:
             var_to_dtype = {}
             for var, dtype in arg_to_dtype_set:
                 try:
-                    dest_name = kernel.impl_arg_to_arg[var].name
+                    dest_name = program.impl_arg_to_arg[var].name
                 except KeyError:
                     dest_name = var
 
@@ -749,21 +749,22 @@ class KernelExecutorBase(object):
                             "no known variable/argument with that name"
                             % var)
 
-            kernel = add_dtypes(kernel, var_to_dtype)
+            program = add_dtypes(program, var_to_dtype)
 
             from loopy.type_inference import infer_unknown_types
-            kernel = infer_unknown_types(kernel, expect_completion=True)
+            program = infer_unknown_types(program, expect_completion=True)
 
-        if kernel.schedule is None:
-            from loopy.preprocess import preprocess_kernel
-            kernel = preprocess_kernel(kernel)
+        if program.root_kernel.schedule is None:
+            from loopy.preprocess import preprocess_program
+            program = preprocess_program(program)
 
             from loopy.schedule import get_one_scheduled_kernel
-            kernel = get_one_scheduled_kernel(kernel)
+            program = program.with_root_kernel(
+                    get_one_scheduled_kernel(program.root_kernel))
 
-        return kernel
+        return program
 
-    def get_typed_and_scheduled_kernel(self, arg_to_dtype_set):
+    def get_typed_and_scheduled_program(self, arg_to_dtype_set):
         from loopy import CACHING_ENABLED
 
         from loopy.preprocess import prepare_for_caching
@@ -778,9 +779,9 @@ class KernelExecutorBase(object):
             except KeyError:
                 pass
 
-        logger.debug("%s: typed-and-scheduled cache miss" % self.kernel.name)
+        logger.debug("%s: typed-and-scheduled cache miss" % self.program.name)
 
-        kernel = self.get_typed_and_scheduled_kernel_uncached(arg_to_dtype_set)
+        kernel = self.get_typed_and_scheduled_program_uncached(arg_to_dtype_set)
 
         if CACHING_ENABLED:
             typed_and_scheduled_cache.store_if_not_present(cache_key, kernel)
@@ -791,7 +792,7 @@ class KernelExecutorBase(object):
         if not self.has_runtime_typed_args:
             return None
 
-        impl_arg_to_arg = self.kernel.impl_arg_to_arg
+        impl_arg_to_arg = self.program.impl_arg_to_arg
         arg_to_dtype = {}
         for arg_name, val in six.iteritems(kwargs):
             arg = impl_arg_to_arg.get(arg_name, None)

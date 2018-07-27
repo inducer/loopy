@@ -220,7 +220,7 @@ class InKernelCallable(ImmutableRecord):
 
         raise NotImplementedError()
 
-    def with_descrs(self, arg_id_to_descr, program_callables_info):
+    def with_descrs(self, arg_id_to_descr):
         """
         :arg arg_id_to_descr: a mapping from argument identifiers
             (integers for positional arguments, names for keyword
