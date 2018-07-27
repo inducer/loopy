@@ -713,21 +713,21 @@ class KernelExecutorBase(object):
     .. automethod:: __call__
     """
 
-    def __init__(self, kernel):
+    def __init__(self, program):
         """
         :arg kernel: a loopy.LoopKernel
         """
 
-        self.kernel = kernel
+        self.program = program
 
-        self.packing_controller = SeparateArrayPackingController(kernel)
+        self.packing_controller = SeparateArrayPackingController(program)
 
-        self.output_names = tuple(arg.name for arg in self.kernel.args
+        self.output_names = tuple(arg.name for arg in self.program.args
                 if arg.is_output_only)
 
         self.has_runtime_typed_args = any(
                 arg.dtype is None
-                for arg in kernel.args)
+                for arg in program.args)
 
     def get_typed_and_scheduled_kernel_uncached(self, arg_to_dtype_set):
         from loopy.kernel.tools import add_dtypes
@@ -769,8 +769,8 @@ class KernelExecutorBase(object):
         from loopy.preprocess import prepare_for_caching
         # prepare_for_caching() gets run by preprocess, but the kernel at this
         # stage is not guaranteed to be preprocessed.
-        cacheable_kernel = prepare_for_caching(self.kernel)
-        cache_key = (type(self).__name__, cacheable_kernel, arg_to_dtype_set)
+        cacheable_program = prepare_for_caching(self.program)
+        cache_key = (type(self).__name__, cacheable_program, arg_to_dtype_set)
 
         if CACHING_ENABLED:
             try:

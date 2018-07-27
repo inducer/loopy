@@ -267,7 +267,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         from loopy.target.pyopencl import PyOpenCLTarget
         if isinstance(program.target, PyOpenCLTarget):
-            self.kernel = program.copy(target=PyOpenCLTarget(context.devices[0]))
+            self.program = program.copy(target=PyOpenCLTarget(context.devices[0]))
 
     def get_invoker_uncached(self, kernel, codegen_result):
         generator = PyOpenCLExecutionWrapperGenerator()

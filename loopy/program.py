@@ -25,7 +25,7 @@ THE SOFTWARE.
 import six
 import re
 
-from pytools import ImmutableRecord, memoize_method
+from pytools import ImmutableRecord
 from pymbolic.primitives import Variable
 
 from loopy.symbolic import RuleAwareIdentityMapper, ResolvedFunction
@@ -228,36 +228,6 @@ class Program(ImmutableRecord):
     @property
     def args(self):
         return self.root_kernel.args[:]
-
-    # {{{ implementation arguments
-
-    @property
-    @memoize_method
-    def impl_arg_to_arg(self):
-        from loopy.kernel.array import ArrayBase
-
-        result = {}
-
-        for arg in self.args:
-            if not isinstance(arg, ArrayBase):
-                result[arg.name] = arg
-                continue
-
-            if arg.shape is None or arg.dim_tags is None:
-                result[arg.name] = arg
-                continue
-
-            subscripts_and_names = arg.subscripts_and_names()
-            if subscripts_and_names is None:
-                result[arg.name] = arg
-                continue
-
-            for index, sub_arg_name in subscripts_and_names:
-                result[sub_arg_name] = arg
-
-        return result
-
-    # }}}
 
     def __call__(self, *args, **kwargs):
         key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
