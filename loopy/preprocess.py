@@ -2261,53 +2261,78 @@ def infer_arg_descr(kernel, program_callables_info):
 
 # {{{
 
-class HWAxesInferenceMapper(CombineMapper):
+class HWAxesInferenceMapper(RuleAwareIdentityMapper):
     """
     Returns a set of instances of :class:`tuple` (expr,
     in_kernel_callable). The mapped `in_kernel_callable` of the
     :class:`InKernelCallable` are specialized for the the grid sizes of
     :attr:`kernel`.
     """
+    # FIXME: docs after the design is final.
 
-    def __init__(self, kernel):
-        self.kernel = kernel
-        self.local_size, self.global_size = kernel.get_grid_size_upper_bounds()
+    def __init__(self, rule_mapping_context, caller_kernel,
+            program_callables_info):
+        super(ArgDescrInferenceMapper, self).__init__(
+                rule_mapping_context)
+        self.caller_kernel = caller_kernel
+        self.program_callables_info = program_callables_info
+        self.local_size, self.global_size = (
+                caller_kernel.get_grid_size_upper_bounds())
 
-    def combine(self, values):
-        import operator
-        return reduce(operator.or_, values, frozenset())
-
-    def map_call(self, expr, **kwargs):
+    def map_call(self, expr, expn_state):
         from pymbolic.primitives import CallWithKwargs, Call
+        from loopy.symbolic import ResolvedFunction
+
+        if not isinstance(expr.function, ResolvedFunction):
+            # ignore if the call is not to a ResolvedFunction
+            return super(ArgDescrInferenceMapper, self).rec(expr)
+
+        new_in_knl_callable = (
+                self.program_callables_info[expr.function.name].with_hw_axes_sizes(
+                    self.local_size, self.global_size))
+        self.program_callables_info, new_func_id = (
+                self.program_callables_info.with_callable(
+                    expr.function.function,
+                    new_in_knl_callable))
+
         if isinstance(expr, Call):
-            kw_parameters = {}
+            return Call(
+                    ResolvedFunction(new_func_id),
+                    tuple(self.rec(child, expn_state)
+                    for child in expr.parameters))
         else:
             assert isinstance(expr, CallWithKwargs)
-            kw_parameters = expr.kw_parameters
-
-        from loopy.symbolic import ResolvedFunction
-        # ignoring if the call is not to a ResolvedFunction
-        if not isinstance(expr.function, ResolvedFunction):
-            return self.combine((self.rec(child) for child in
-                expr.parameters+tuple(kw_parameters.values())))
-
-        new_scoped_function = (
-                self.kernel.scoped_functions[expr.function.name].with_hw_axes_sizes(
-                    self.local_size, self.global_size))
-
-        return (frozenset(((expr, new_scoped_function), )) |
-                self.combine((self.rec(child) for child in
-                    expr.parameters+tuple(kw_parameters.values()))))
+            return CallWithKwargs(
+                    ResolvedFunction(new_func_id),
+                    tuple(self.rec(child, expn_state)
+                        for child in expr.parameters),
+                    dict(
+                        (key, self.rec(val, expn_state))
+                        for key, val in six.iteritems(expr.kw_parameters))
+                    )
 
     map_call_with_kwargs = map_call
 
-    def map_constant(self, expr, **kwargs):
-        return frozenset()
+    def map_kernel(self, kernel):
 
-    map_variable = map_constant
-    map_function_symbol = map_constant
-    map_tagged_variable = map_constant
-    map_type_cast = map_constant
+        new_insns = []
+
+        for insn in kernel.instructions:
+            if isinstance(insn, CallInstruction):
+                # In call instructions the assignees play an important in
+                # determining the arg_id_to_dtype
+                new_insns.append(insn.with_transformed_expressions(
+                        self, kernel, insn))
+            elif isinstance(insn, MultiAssignmentBase):
+                new_insns.append(insn.with_transformed_expressions(
+                    self, kernel, insn))
+            elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
+                new_insns.append(insn)
+            else:
+                raise NotImplementedError("arg_descr_inference for %s instruction" %
+                        type(insn))
+
+        return kernel.copy(instructions=new_insns)
 
 
 def infer_hw_axes_sizes(kernel):
@@ -2474,12 +2499,25 @@ def preprocess_program(program, device=None):
     program_callables_info = (
             program_callables_info.with_exit_edit_callables_mode())
 
-    # FIXME: some version of the below funtion run should occur
-    # FIXME:type specialize functions that were missed during the type inference.
-    # program_callables_info = make_callables_ready_for_codegen(
-    #         program_callables_info)
+    semi_preprocessed_program = (
+            program.copy(program_callables_info=program_callables_info))
 
-    return program.copy(program_callables_info=program_callables_info)
+    # FIXME: need to make function ready for codegen here
+
+    # overriding the hw axes sizes of all the callable kernel.
+    local_size, global_size = semi_preprocessed_program.get_grid_size_upper_bounds()
+
+    resolved_function_with_hw_axes_sizes_set = {}
+
+    for func_id, in_knl_callable in semi_preprocessed_program.program_callables_info:
+        resolved_function_with_hw_axes_sizes_set[func_id] = (
+                in_knl_callable.with_hw_axes_sizes(local_size, global_size))
+
+    new_program_callables_info = (
+            semi_preprocessed_program.program_callables_info.copy(
+                resolved_functions=resolved_function_with_hw_axes_sizes_set))
+
+    return program.copy(program_callables_info=new_program_callables_info)
 
 
 def preprocess_kernel(kernel, program_callables_info, device=None):
