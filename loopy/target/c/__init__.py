@@ -409,7 +409,7 @@ class CMathCallable(ScalarCallable):
                     self.copy(name_in_target=name,
                         arg_id_to_dtype={0: NumpyType(dtype), -1:
                             NumpyType(dtype)}),
-                        program_callables_info)
+                    program_callables_info)
 
         # binary functions
         if name in ["fmax", "fmin"]:
