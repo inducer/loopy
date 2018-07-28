@@ -341,11 +341,12 @@ class ResolvedFunctionRenamer(RuleAwareIdentityMapper):
                 rule_mapping_context)
         self.renaming_dict = renaming_dict
 
-    def map_resolved_functions(self, expr, expn_state):
+    def map_resolved_function(self, expr, expn_state):
         if expr.name in self.renaming_dict:
             return ResolvedFunction(self.renaming_dict[expr.name])
         else:
-            return super(ResolvedFunctionRenamer, self).rec(expr, expn_state)
+            return super(ResolvedFunctionRenamer, self).map_resolved_function(
+                    expr, expn_state)
 
 
 def rename_resolved_functions_in_a_single_kernel(kernel,
