@@ -1860,7 +1860,7 @@ def find_aliasing_equivalence_classes(kernel):
 
 # {{{ callee kernel tools
 
-def get_callee_kernels(kernel, insn_ids=None):
+def get_direct_callee_kernels(kernel, program_callables_info, insn_ids=None,):
     """
     Returns an instance of :class:`frozenset` of all the callee kernels
     called in instructions in the *kernel* whose IDs are given in *insn_ids*.
@@ -1870,6 +1870,7 @@ def get_callee_kernels(kernel, insn_ids=None):
 
     If *insn_ids* is *None* returns all the callee kernels called by *kernel*.
     """
+    #FIXME: explain what "direct" means
 
     if insn_ids is None:
         insn_ids = frozenset(insn.id for insn in kernel.instructions)
@@ -1886,7 +1887,7 @@ def get_callee_kernels(kernel, insn_ids=None):
                 MultiAssignmentBase, CInstruction, _DataObliviousInstruction)
         if isinstance(insn, CallInstruction):
             if insn.expression.function.name in kernel.scoped_functions:
-                in_knl_callable = kernel.scoped_functions[
+                in_knl_callable = program_callables_info[
                         insn.expression.function.name]
                 if isinstance(in_knl_callable, CallableKernel):
                     return in_knl_callable.subkernel

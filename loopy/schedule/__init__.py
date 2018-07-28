@@ -1832,7 +1832,7 @@ class MinRecursionLimitForScheduling(MinRecursionLimit):
 
 # {{{ main scheduling entrypoint
 
-def generate_loop_schedules(kernel, debug_args={}):
+def generate_loop_schedules(kernel, program_callables_info, debug_args={}):
     """
     .. warning::
 
@@ -1845,11 +1845,12 @@ def generate_loop_schedules(kernel, debug_args={}):
     """
 
     with MinRecursionLimitForScheduling(kernel):
-        for sched in generate_loop_schedules_inner(kernel, debug_args=debug_args):
+        for sched in generate_loop_schedules_inner(kernel,
+                program_callables_info, debug_args=debug_args):
             yield sched
 
 
-def generate_loop_schedules_inner(kernel, debug_args={}):
+def generate_loop_schedules_inner(kernel, program_callables_info, debug_args={}):
     from loopy.kernel import KernelState
     if kernel.state not in (KernelState.PREPROCESSED, KernelState.SCHEDULED):
         raise LoopyError("cannot schedule a kernel that has not been "
@@ -1969,7 +1970,8 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             gen_sched = convert_barrier_instructions_to_barriers(
                     kernel, gen_sched)
 
-            gsize, lsize = kernel.get_grid_size_upper_bounds()
+            gsize, lsize = (
+                    kernel.get_grid_size_upper_bounds(program_callables_info))
 
             if (gsize or lsize):
                 if not kernel.options.disable_global_barriers:
@@ -2026,7 +2028,7 @@ schedule_cache = WriteOncePersistentDict(
         key_builder=LoopyKeyBuilder())
 
 
-def _get_one_scheduled_kernel_inner(kernel):
+def _get_one_scheduled_kernel_inner(kernel, program_callables_info):
     # This helper function exists to ensure that the generator chain is fully
     # out of scope after the function returns. This allows it to be
     # garbage-collected in the exit handler of the
@@ -2036,10 +2038,10 @@ def _get_one_scheduled_kernel_inner(kernel):
     #
     # See https://gitlab.tiker.net/inducer/sumpy/issues/31 for context.
 
-    return next(iter(generate_loop_schedules(kernel)))
+    return next(iter(generate_loop_schedules(kernel, program_callables_info)))
 
 
-def get_one_scheduled_kernel(kernel):
+def get_one_scheduled_kernel(kernel, program_callables_info):
     from loopy import CACHING_ENABLED
 
     sched_cache_key = kernel
@@ -2057,7 +2059,8 @@ def get_one_scheduled_kernel(kernel):
     if not from_cache:
         with ProcessLogger(logger, "%s: schedule" % kernel.name):
             with MinRecursionLimitForScheduling(kernel):
-                result = _get_one_scheduled_kernel_inner(kernel)
+                result = _get_one_scheduled_kernel_inner(kernel,
+                        program_callables_info)
 
     if CACHING_ENABLED and not from_cache:
         schedule_cache.store_if_not_present(sched_cache_key, result)

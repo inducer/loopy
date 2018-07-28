@@ -115,7 +115,8 @@ def generate_code_for_sched_index(codegen_state, sched_index):
                 new_codegen_state, sched_index)
 
         glob_grid, loc_grid = kernel.get_grid_sizes_for_insn_ids_as_exprs(
-                get_insn_ids_for_block_at(kernel.schedule, sched_index))
+                get_insn_ids_for_block_at(kernel.schedule, sched_index),
+                codegen_state.program_callables_info)
 
         return merge_codegen_results(codegen_state, [
             codegen_result,

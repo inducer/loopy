@@ -749,7 +749,8 @@ def pre_schedule_checks(kernel):
 
 # {{{ check for unused hw axes
 
-def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
+def _check_for_unused_hw_axes_in_kernel_chunk(kernel, program_callables_info,
+        sched_index=None):
     from loopy.schedule import (CallKernel, RunInstruction,
             Barrier, EnterLoop, LeaveLoop, ReturnFromKernel,
             get_insn_ids_for_block_at, gather_schedule_block)
@@ -764,7 +765,8 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
         assert isinstance(kernel.schedule[sched_index], CallKernel)
         _, past_end_i = gather_schedule_block(kernel.schedule, sched_index)
         group_size, local_size = kernel.get_grid_sizes_for_insn_ids_as_exprs(
-                get_insn_ids_for_block_at(kernel.schedule, sched_index))
+                get_insn_ids_for_block_at(kernel.schedule, sched_index),
+                program_callables_info)
 
         group_axes = set(ax for ax, length in enumerate(group_size))
         local_axes = set(ax for ax, length in enumerate(local_size))
@@ -781,7 +783,8 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
     while i < loop_end_i:
         sched_item = kernel.schedule[i]
         if isinstance(sched_item, CallKernel):
-            i = _check_for_unused_hw_axes_in_kernel_chunk(kernel, i)
+            i = _check_for_unused_hw_axes_in_kernel_chunk(kernel,
+                    program_callables_info, i)
 
         elif isinstance(sched_item, RunInstruction):
             insn = kernel.id_to_insn[sched_item.insn_id]
@@ -832,9 +835,10 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
     return past_end_i
 
 
-def check_for_unused_hw_axes_in_insns(kernel):
+def check_for_unused_hw_axes_in_insns(kernel, program_callables_info):
     if kernel.schedule:
-        _check_for_unused_hw_axes_in_kernel_chunk(kernel)
+        _check_for_unused_hw_axes_in_kernel_chunk(kernel,
+                program_callables_info)
 
 # }}}
 
@@ -988,11 +992,11 @@ def check_that_shapes_and_strides_are_arguments(kernel):
 # }}}
 
 
-def pre_codegen_checks(kernel):
+def pre_codegen_checks(kernel, program_callables_info):
     try:
         logger.debug("pre-codegen check %s: start" % kernel.name)
 
-        check_for_unused_hw_axes_in_insns(kernel)
+        check_for_unused_hw_axes_in_insns(kernel, program_callables_info)
         check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
         check_that_temporaries_are_defined_in_subkernels_where_used(kernel)
         check_that_all_insns_are_scheduled(kernel)

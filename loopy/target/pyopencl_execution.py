@@ -151,9 +151,9 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # {{{ generate invocation
 
-    def generate_invocation(self, gen, kernel_name, args,
-            kernel, implemented_data_info):
-        if kernel.options.cl_exec_manage_array_events:
+    def generate_invocation(self, gen, program_name, args,
+            program, implemented_data_info):
+        if program.root_kernel.options.cl_exec_manage_array_events:
             gen("""
                 if wait_for is None:
                     wait_for = []
@@ -169,20 +169,21 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
             gen("")
 
-        gen("_lpy_evt = {kernel_name}({args})"
+        gen("_lpy_evt = {program_name}({args})"
         .format(
-            kernel_name=kernel_name,
+            program_name=program_name,
             args=", ".join(
                 ["_lpy_cl_kernels", "queue"]
                 + args
                 + ["wait_for=wait_for"])))
 
-        if kernel.options.cl_exec_manage_array_events:
+        if program.root_kernel.options.cl_exec_manage_array_events:
             gen("")
             from loopy.kernel.data import ArrayArg
             for arg in implemented_data_info:
                 if (issubclass(arg.arg_class, ArrayArg)
-                        and arg.base_name in kernel.get_written_variables()):
+                        and arg.base_name in (
+                            program.root_kernel.get_written_variables())):
                     gen("{arg_name}.add_event(_lpy_evt)".format(arg_name=arg.name))
 
     # }}}
@@ -190,7 +191,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
     # {{{
 
     def generate_output_handler(
-            self, gen, options, kernel, implemented_data_info):
+            self, gen, options, program, implemented_data_info):
 
         from loopy.kernel.data import KernelArgument
 
@@ -207,7 +208,8 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                     if not issubclass(arg.arg_class, KernelArgument):
                         continue
 
-                    is_written = arg.base_name in kernel.get_written_variables()
+                    is_written = arg.base_name in (
+                            program.root_kernel.get_written_variables())
                     if is_written:
                         gen("%s = %s.get(queue=queue)" % (arg.name, arg.name))
 
@@ -218,12 +220,12 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                     % ", ".join("\"%s\": %s" % (arg.name, arg.name)
                         for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
-                        if arg.base_name in kernel.get_written_variables()))
+                        if arg.base_name in program.get_written_variables()))
         else:
             out_args = [arg
                     for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
-                    if arg.base_name in kernel.get_written_variables()]
+                    if arg.base_name in program.root_kernel.get_written_variables()]
             if out_args:
                 gen("return _lpy_evt, (%s,)"
                         % ", ".join(arg.name for arg in out_args))
@@ -283,18 +285,18 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         dev_code = codegen_result.device_code()
 
-        if self.program.options.write_cl:
+        if self.program.root_kernel.options.write_cl:
             output = dev_code
-            if self.kernel.options.highlight_cl:
+            if self.program.root_kernel.options.highlight_cl:
                 output = get_highlighted_code(output)
 
-            if self.kernel.options.write_cl is True:
+            if self.program.root_kernel.options.write_cl is True:
                 print(output)
             else:
-                with open(self.kernel.options.write_cl, "w") as outf:
+                with open(self.program.root_kernel.options.write_cl, "w") as outf:
                     outf.write(output)
 
-        if self.kernel.options.edit_cl:
+        if self.program.root_kernel.options.edit_cl:
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.cl")
 
@@ -302,7 +304,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         cl_program = (
                 cl.Program(self.context, dev_code)
-                .build(options=program.options.cl_build_options))
+                .build(options=program.root_kernel.options.cl_build_options))
 
         cl_kernels = _Kernels()
         for dp in codegen_result.device_programs:

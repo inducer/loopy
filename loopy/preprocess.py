@@ -27,8 +27,6 @@ import six
 from loopy.diagnostic import (
         LoopyError, WriteRaceConditionWarning, warn_with_kernel,
         LoopyAdvisory)
-from functools import reduce
-
 import islpy as isl
 
 from pytools.persistent_dict import WriteOncePersistentDict
@@ -2259,114 +2257,6 @@ def infer_arg_descr(kernel, program_callables_info):
 # }}}
 
 
-# {{{
-
-class HWAxesInferenceMapper(RuleAwareIdentityMapper):
-    """
-    Returns a set of instances of :class:`tuple` (expr,
-    in_kernel_callable). The mapped `in_kernel_callable` of the
-    :class:`InKernelCallable` are specialized for the the grid sizes of
-    :attr:`kernel`.
-    """
-    # FIXME: docs after the design is final.
-
-    def __init__(self, rule_mapping_context, caller_kernel,
-            program_callables_info):
-        super(ArgDescrInferenceMapper, self).__init__(
-                rule_mapping_context)
-        self.caller_kernel = caller_kernel
-        self.program_callables_info = program_callables_info
-        self.local_size, self.global_size = (
-                caller_kernel.get_grid_size_upper_bounds())
-
-    def map_call(self, expr, expn_state):
-        from pymbolic.primitives import CallWithKwargs, Call
-        from loopy.symbolic import ResolvedFunction
-
-        if not isinstance(expr.function, ResolvedFunction):
-            # ignore if the call is not to a ResolvedFunction
-            return super(ArgDescrInferenceMapper, self).rec(expr)
-
-        new_in_knl_callable = (
-                self.program_callables_info[expr.function.name].with_hw_axes_sizes(
-                    self.local_size, self.global_size))
-        self.program_callables_info, new_func_id = (
-                self.program_callables_info.with_callable(
-                    expr.function.function,
-                    new_in_knl_callable))
-
-        if isinstance(expr, Call):
-            return Call(
-                    ResolvedFunction(new_func_id),
-                    tuple(self.rec(child, expn_state)
-                    for child in expr.parameters))
-        else:
-            assert isinstance(expr, CallWithKwargs)
-            return CallWithKwargs(
-                    ResolvedFunction(new_func_id),
-                    tuple(self.rec(child, expn_state)
-                        for child in expr.parameters),
-                    dict(
-                        (key, self.rec(val, expn_state))
-                        for key, val in six.iteritems(expr.kw_parameters))
-                    )
-
-    map_call_with_kwargs = map_call
-
-    def map_kernel(self, kernel):
-
-        new_insns = []
-
-        for insn in kernel.instructions:
-            if isinstance(insn, CallInstruction):
-                # In call instructions the assignees play an important in
-                # determining the arg_id_to_dtype
-                new_insns.append(insn.with_transformed_expressions(
-                        self, kernel, insn))
-            elif isinstance(insn, MultiAssignmentBase):
-                new_insns.append(insn.with_transformed_expressions(
-                    self, kernel, insn))
-            elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
-                new_insns.append(insn)
-            else:
-                raise NotImplementedError("arg_descr_inference for %s instruction" %
-                        type(insn))
-
-        return kernel.copy(instructions=new_insns)
-
-
-def infer_hw_axes_sizes(kernel):
-    """
-    Returns a copy of *kernel* with the hardware axes matching for
-    scoped functions in the *kernel*. Refer
-    :meth:`loopy.kernel.function_interface.InKernelCallable.with_hw_axes_sizes`.
-    """
-    hw_axes_modifier = HWAxesInferenceMapper(kernel)
-    pymbolic_calls_to_functions = set()
-
-    for insn in kernel.instructions:
-        if isinstance(insn, MultiAssignmentBase):
-            pymbolic_calls_to_functions.update(hw_axes_modifier(
-                insn.expression))
-        elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
-            pass
-        else:
-            raise NotImplementedError("unknown type of instruction %s." %
-                    type(insn))
-
-    # making it the set of tuples a dict
-    pymbolic_calls_to_functions = dict(pymbolic_calls_to_functions)
-
-    # Now do the similar treatment as done for type inference.
-    from loopy.kernel.function_interface import (
-            register_pymbolic_calls_to_knl_callables)
-
-    return register_pymbolic_calls_to_knl_callables(kernel,
-            pymbolic_calls_to_functions)
-
-# }}}
-
-
 # {{{ catching functions that are not ready for codegen
 
 class FunctionsNotReadyForCodegenCollector(CombineMapper):
@@ -2505,11 +2395,13 @@ def preprocess_program(program, device=None):
     # FIXME: need to make function ready for codegen here
 
     # overriding the hw axes sizes of all the callable kernel.
+    # FIXME: maybe need to wrap this within a function?
     local_size, global_size = semi_preprocessed_program.get_grid_size_upper_bounds()
 
     resolved_function_with_hw_axes_sizes_set = {}
 
-    for func_id, in_knl_callable in semi_preprocessed_program.program_callables_info:
+    for func_id, in_knl_callable in (
+            semi_preprocessed_program.program_callables_info.items()):
         resolved_function_with_hw_axes_sizes_set[func_id] = (
                 in_knl_callable.with_hw_axes_sizes(local_size, global_size))
 

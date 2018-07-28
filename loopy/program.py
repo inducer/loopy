@@ -31,6 +31,7 @@ from pymbolic.primitives import Variable
 from loopy.symbolic import RuleAwareIdentityMapper, ResolvedFunction
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
+from loopy.diagnostic import LoopyError
 
 
 class FunctionResolver(RuleAwareIdentityMapper):
@@ -203,6 +204,26 @@ class Program(ImmutableRecord):
                 function_resolvers=function_resolvers)
 
         self._program_executor_cache = {}
+
+    def get_grid_size_upper_bounds(self, ignore_auto=False):
+        """Return a tuple (global_size, local_size) containing a grid that
+        could accommodate execution of *all* instructions in the kernel.
+
+        *global_size* and *local_size* are :class:`islpy.PwAff` objects.
+        """
+        return self.root_kernel.get_grid_size_upper_bounds(
+                self.program_callables_info,
+                ignore_auto=ignore_auto)
+
+    def get_grid_size_upper_bounds_as_exprs(self, ignore_auto=False):
+        """Return a tuple (global_size, local_size) containing a grid that
+        could accommodate execution of *all* instructions in the kernel.
+
+        *global_size* and *local_size* are :mod:`pymbolic` expressions
+        """
+        return self.root_kernel.get_grid_size_upper_bounds_as_exprs(
+                self.program_callables_info,
+                ignore_auto=ignore_auto)
 
     @property
     def name(self):
@@ -381,11 +402,15 @@ class ProgramCallablesInfo(ImmutableRecord):
         .. note::
 
             Assumes that each callable is touched atmost once, the internal
-            working of this function fails if that is violated and raises a
-            *RuntimeError*.
+            working of this function fails if that is violated.
         """
         # FIXME: add a note about using enter and exit
-        assert self.is_being_edited
+        if not self.is_being_edited:
+            if function.name in self.resolved_functions and (
+                    self.resolved_functions[function.name] == in_kernel_callable):
+                return self, function
+            else:
+                raise LoopyError("Use 'enter_edit_callables_mode' first.")
 
         from loopy.library.reduction import ArgExtOp, SegmentedOp
 
@@ -499,6 +524,10 @@ class ProgramCallablesInfo(ImmutableRecord):
 
     def items(self):
         return self.resolved_functions.items()
+
+    def values(self):
+        return self.resolved_functions.values()
+
 
 # }}}
 

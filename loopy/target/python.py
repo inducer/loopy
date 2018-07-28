@@ -44,7 +44,8 @@ class ExpressionToPythonMapper(StringifyMapper):
         self.codegen_state = codegen_state
 
         if type_inf_mapper is None:
-            type_inf_mapper = TypeInferenceMapper(self.kernel)
+            type_inf_mapper = TypeInferenceMapper(self.kernel,
+                    self.codegen_state.program_callables_info)
         self.type_inf_mapper = type_inf_mapper
 
     def handle_unsupported_expression(self, victim, enclosing_prec):
