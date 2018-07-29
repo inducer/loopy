@@ -53,6 +53,8 @@ from loopy.kernel.data import (
         CallMangleInfo)
 from loopy.kernel.function_interface import (
         ScalarCallable)
+from loopy.program import (
+        Program, make_program_from_kernel)
 
 from loopy.kernel import LoopKernel, KernelState, kernel_state
 from loopy.kernel.tools import (
@@ -175,6 +177,8 @@ __all__ = [
         "BarrierInstruction",
 
         "ScalarCallable",
+
+        "Program", "make_program_from_kernel",
 
         "KernelArgument",
         "ValueArg", "ArrayArg", "GlobalArg", "ConstantArg", "ImageArg",

@@ -143,7 +143,7 @@ class GridOverrideForCalleeKernel(ImmutableRecord):
         self.local_size = local_size
         self.global_size = global_size
 
-    def __call__(self, insn_ids, ignore_auto=True):
+    def __call__(self, insn_ids, program_callables_info, ignore_auto=True):
         return self.local_size, self.global_size
 
 # }}}
