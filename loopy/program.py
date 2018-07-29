@@ -119,8 +119,11 @@ class FunctionResolver(RuleAwareIdentityMapper):
                 expn_state)
 
     def map_reduction(self, expr, expn_state):
-        self.scoped_functions.update(
-                expr.operation.get_scalar_callables(self.kernel))
+        for func_id, in_knl_callable in (
+                expr.operation.get_scalar_callables(self.kernel)).items():
+            self.program_callables_info, _ = (
+                    self.program_callables_info.with_callable(func_id,
+                        in_knl_callable))
         return super(FunctionResolver, self).map_reduction(expr, expn_state)
 
 

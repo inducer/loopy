@@ -2352,7 +2352,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     creation_plog.done()
 
-    return knl
+    from loopy.program import make_program_from_kernel
+    # FIXME: warn to not use this?
+    return make_program_from_kernel(knl)
 
 # }}}
 

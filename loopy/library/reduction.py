@@ -189,7 +189,7 @@ class MaxReductionOperation(ScalarReductionOperation):
 
     def get_scalar_callables(self, kernel):
         return {
-                "max": kernel.find_scoped_function_identifier("max")}
+                var("max"): kernel.find_scoped_function_identifier("max")}
 
 
 class MinReductionOperation(ScalarReductionOperation):
@@ -201,7 +201,7 @@ class MinReductionOperation(ScalarReductionOperation):
 
     def get_scalar_callables(self, kernel):
         return {
-                "min": kernel.find_scoped_function_identifier("min")}
+                var("min"): kernel.find_scoped_function_identifier("min")}
 
 
 # {{{ base class for symbolic reduction ops
