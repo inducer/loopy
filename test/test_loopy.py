@@ -143,10 +143,7 @@ def test_type_inference_with_type_dependencies():
             <>d = b + 2 + 1j
             """,
             "...")
-
-    prog = lp.make_program_from_kernel(knl)
-    prog = lp.infer_unknown_types(prog)
-    knl = prog.root_kernel
+    knl = lp.infer_unknown_types(knl)
 
     from loopy.types import to_loopy_type
     assert knl.temporary_variables["a"].dtype == to_loopy_type(np.int32)

@@ -813,6 +813,13 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
 
 def infer_unknown_types(program, expect_completion=False):
     """Infer types on temporaries and arguments."""
+    from loopy.kernel import LoopKernel
+    input_was_kernel = False
+    if isinstance(program, LoopKernel):
+        # FIXME: warning
+        input_was_kernel = True
+        from loopy.program import make_program_from_kernel
+        program = make_program_from_kernel(program)
 
     program_callables_info = program.program_callables_info
 
@@ -837,7 +844,11 @@ def infer_unknown_types(program, expect_completion=False):
 
     program_callables_info = (
             program_callables_info.with_exit_edit_callables_mode())
-    return program.copy(program_callables_info=program_callables_info)
+    if input_was_kernel:
+        return (program.copy(
+            program_callables_info=program_callables_info)).root_kernel
+    else:
+        return program.copy(program_callables_info=program_callables_info)
 
 # }}}
 
