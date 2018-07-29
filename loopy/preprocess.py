@@ -2369,50 +2369,7 @@ preprocess_cache = WriteOncePersistentDict(
         key_builder=LoopyKeyBuilder())
 
 
-def preprocess_program(program, device=None):
-
-    if device is not None:
-        from warnings import warn
-        warn("passing 'device' to preprocess_kernel() is deprecated",
-                DeprecationWarning, stacklevel=2)
-
-    root_kernel_callable = program.program_callables_info[program.name]
-    program_callables_info = (
-            program.program_callables_info.with_edit_callables_mode())
-    root_kernel, program_callables_info = preprocess_kernel(
-            program.root_kernel, program_callables_info, device)
-    processed_root_knl_callable = root_kernel_callable.copy(subkernel=root_kernel)
-    program_callables_info, _ = (
-            program_callables_info.with_callable(
-                program.root_kernel_name,
-                processed_root_knl_callable))
-    program_callables_info = (
-            program_callables_info.with_exit_edit_callables_mode())
-
-    semi_preprocessed_program = (
-            program.copy(program_callables_info=program_callables_info))
-
-    # FIXME: need to make function ready for codegen here
-
-    # overriding the hw axes sizes of all the callable kernel.
-    # FIXME: maybe need to wrap this within a function?
-    local_size, global_size = semi_preprocessed_program.get_grid_size_upper_bounds()
-
-    resolved_function_with_hw_axes_sizes_set = {}
-
-    for func_id, in_knl_callable in (
-            semi_preprocessed_program.program_callables_info.items()):
-        resolved_function_with_hw_axes_sizes_set[func_id] = (
-                in_knl_callable.with_hw_axes_sizes(local_size, global_size))
-
-    new_program_callables_info = (
-            semi_preprocessed_program.program_callables_info.copy(
-                resolved_functions=resolved_function_with_hw_axes_sizes_set))
-
-    return program.copy(program_callables_info=new_program_callables_info)
-
-
-def preprocess_kernel(kernel, program_callables_info, device=None):
+def preprocess_single_kernel(kernel, program_callables_info, device=None):
     from loopy.kernel import KernelState
     if kernel.state >= KernelState.PREPROCESSED:
         return kernel
@@ -2519,5 +2476,57 @@ def preprocess_kernel(kernel, program_callables_info, device=None):
         preprocess_cache.store_if_not_present(input_kernel, kernel)
 
     return kernel, program_callables_info
+
+
+def preprocess_kernel(kernel, device=None):
+    # FIXME: better error message
+    from loopy.program import Program
+    if not isinstance(kernel, Program):
+        raise LoopyError("Not supported")
+    return preprocess_program(kernel, device)
+
+
+def preprocess_program(program, device=None):
+
+    if device is not None:
+        from warnings import warn
+        warn("passing 'device' to preprocess_kernel() is deprecated",
+                DeprecationWarning, stacklevel=2)
+
+    root_kernel_callable = program.program_callables_info[program.name]
+    program_callables_info = (
+            program.program_callables_info.with_edit_callables_mode())
+    root_kernel, program_callables_info = preprocess_single_kernel(
+            program.root_kernel, program_callables_info, device)
+    processed_root_knl_callable = root_kernel_callable.copy(subkernel=root_kernel)
+    program_callables_info, _ = (
+            program_callables_info.with_callable(
+                program.root_kernel_name,
+                processed_root_knl_callable))
+    program_callables_info = (
+            program_callables_info.with_exit_edit_callables_mode())
+
+    semi_preprocessed_program = (
+            program.copy(program_callables_info=program_callables_info))
+
+    # FIXME: need to make function ready for codegen here
+
+    # overriding the hw axes sizes of all the callable kernel.
+    # FIXME: maybe need to wrap this within a function?
+    local_size, global_size = semi_preprocessed_program.get_grid_size_upper_bounds()
+
+    resolved_function_with_hw_axes_sizes_set = {}
+
+    for func_id, in_knl_callable in (
+            semi_preprocessed_program.program_callables_info.items()):
+        resolved_function_with_hw_axes_sizes_set[func_id] = (
+                in_knl_callable.with_hw_axes_sizes(local_size, global_size))
+
+    new_program_callables_info = (
+            semi_preprocessed_program.program_callables_info.copy(
+                resolved_functions=resolved_function_with_hw_axes_sizes_set))
+
+    return program.copy(program_callables_info=new_program_callables_info)
+
 
 # vim: foldmethod=marker
