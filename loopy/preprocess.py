@@ -2518,8 +2518,12 @@ def preprocess_program(program, device=None):
 
     for func_id, in_knl_callable in (
             semi_preprocessed_program.program_callables_info.items()):
-        resolved_function_with_hw_axes_sizes_set[func_id] = (
-                in_knl_callable.with_hw_axes_sizes(local_size, global_size))
+        if func_id == semi_preprocessed_program.name:
+            resolved_function_with_hw_axes_sizes_set[func_id] = (
+                    in_knl_callable)
+        else:
+            resolved_function_with_hw_axes_sizes_set[func_id] = (
+                    in_knl_callable.with_hw_axes_sizes(local_size, global_size))
 
     new_program_callables_info = (
             semi_preprocessed_program.program_callables_info.copy(
