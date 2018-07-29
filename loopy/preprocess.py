@@ -2479,11 +2479,10 @@ def preprocess_single_kernel(kernel, program_callables_info, device=None):
 
 
 def preprocess_kernel(kernel, device=None):
-    # FIXME: better error message
-    from loopy.program import Program
-    if not isinstance(kernel, Program):
-        raise LoopyError("Not supported")
-    return preprocess_program(kernel, device)
+    # FIXME: error message?
+    from loopy.program import make_program_from_kernel
+    program = make_program_from_kernel(kernel)
+    return preprocess_program(program, device)
 
 
 def preprocess_program(program, device=None):
