@@ -1407,15 +1407,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     def __call__(self, *args, **kwargs):
         # FIXME: scream and then convert to a program
-        1/0
-        key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
-        try:
-            kex = self._kernel_executor_cache[key]
-        except KeyError:
-            kex = self.target.get_kernel_executor(self, *args, **kwargs)
-            self._kernel_executor_cache[key] = kex
-
-        return kex(*args, **kwargs)
+        from loopy.program import make_program_from_kernel
+        program = make_program_from_kernel(self)
+        return program(*args, **kwargs)
 
     # }}}
 

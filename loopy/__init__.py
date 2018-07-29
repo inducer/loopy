@@ -306,15 +306,13 @@ __all__ = [
 
 # {{{ set_options
 
-def set_options(program, *args, **kwargs):
+def set_options_for_single_kernel(kernel, *args, **kwargs):
     """Return a new kernel with the options given as keyword arguments, or from
     a string representation passed in as the first (and only) positional
     argument.
 
     See also :class:`Options`.
     """
-    kernel = program.root_kernel
-
     if args and kwargs:
         raise TypeError("cannot pass both positional and keyword arguments")
 
@@ -338,8 +336,15 @@ def set_options(program, *args, **kwargs):
         from loopy.options import make_options
         new_opt.update(make_options(arg))
 
+    return kernel.copy(options=new_opt)
+
+
+def set_options(program, *args, **kwargs):
+    if isinstance(program, LoopKernel):
+        return set_options_for_single_kernel(program, *args, **kwargs)
+    kernel = program.root_kernel
     return program.with_root_kernel(
-            kernel.copy(options=new_opt))
+            set_options_for_single_kernel(kernel, *args, **kwargs))
 
 # }}}
 
