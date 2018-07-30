@@ -2508,10 +2508,8 @@ def preprocess_program(program, device=None):
     semi_preprocessed_program = (
             program.copy(program_callables_info=program_callables_info))
 
-    # FIXME: need to make function ready for codegen here
+    # FIXME: think of wrapping this in a function?
 
-    # overriding the hw axes sizes of all the callable kernel.
-    # FIXME: maybe need to wrap this within a function?
     local_size, global_size = semi_preprocessed_program.get_grid_size_upper_bounds()
 
     resolved_function_with_hw_axes_sizes_set = {}

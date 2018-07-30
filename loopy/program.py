@@ -414,6 +414,8 @@ class ProgramCallablesInfo(ImmutableRecord):
                     self.resolved_functions[function.name] == in_kernel_callable):
                 return self, function
             else:
+                print('Old: ', self.resolved_functions[function.name])
+                print('New: ', in_kernel_callable)
                 raise LoopyError("Use 'enter_edit_callables_mode' first.")
 
         from loopy.library.reduction import ArgExtOp, SegmentedOp

@@ -233,9 +233,11 @@ class PyOpenCLCallable(ScalarCallable):
                 else:
                     raise LoopyTypeError("unexpected complex type '%s'" % dtype)
 
-                return self.copy(name_in_target="%s_%s" % (tpname, name),
-                        arg_id_to_dtype={0: dtype, -1: NumpyType(
-                                np.dtype(dtype.numpy_dtype.type(0).real))})
+                return (
+                        self.copy(name_in_target="%s_%s" % (tpname, name),
+                            arg_id_to_dtype={0: dtype, -1: NumpyType(
+                                np.dtype(dtype.numpy_dtype.type(0).real))}),
+                        program_callables_info)
 
         if name in ["sqrt", "exp", "log",
                 "sin", "cos", "tan",

@@ -34,6 +34,7 @@ from loopy.diagnostic import (
         LoopyError,
         TypeInferenceFailure, DependencyTypeInferenceFailure)
 
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -266,6 +267,7 @@ class TypeInferenceMapper(CombineMapper):
         return self.rec(expr.aggregate)
 
     def map_call(self, expr, return_tuple=False):
+
         from pymbolic.primitives import Variable, CallWithKwargs, Call
         from loopy.symbolic import ResolvedFunction
 
@@ -788,6 +790,25 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
 
     # }}}
 
+    if expect_completion:
+        # FIXME: copy the explanation from make_function_ready_for_codegen
+        # here.
+        for insn in kernel.instructions:
+            if isinstance(insn, lp.MultiAssignmentBase):
+                # just a dummy run over the expression, to pass over all the
+                # functions
+                type_inf_mapper(insn.expression, return_tuple=isinstance(insn,
+                    lp.CallInstruction), return_dtype_set=True)
+            elif isinstance(insn, (lp._DatObliviousInstruction,
+                    lp.CInstruction)):
+                pass
+            else:
+                raise NotImplementedError("Unknown instructions type %s." % (
+                    type(insn).__name__))
+
+        program_callables_info = type_inf_mapper.program_callables_info
+        old_calls_to_new_calls.update(type_inf_mapper.old_calls_to_new_calls)
+
     end_time = time.time()
     logger.debug("type inference took {dur:.2f} seconds".format(
             dur=end_time - start_time))
@@ -802,11 +823,14 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
             change_names_of_pymbolic_calls)
     type_specialized_kernel = change_names_of_pymbolic_calls(
             pre_type_specialized_knl, old_calls_to_new_calls)
-    if expect_completion:
-        # if completion is expected, then it is important that all the
-        # callables are scoped.
-        from loopy.check import check_functions_are_scoped
-        check_functions_are_scoped(type_specialized_kernel)
+
+    # this code is dead, move it up after mangler callables are made
+    # illegal.
+    # if expect_completion:
+    #    # if completion is expected, then it is important that all the
+    #    # callables are scoped.
+    #    from loopy.check import check_functions_are_scoped
+    #    check_functions_are_scoped(type_specialized_kernel)
 
     return type_specialized_kernel, program_callables_info
 
@@ -816,7 +840,7 @@ def infer_unknown_types(program, expect_completion=False):
     from loopy.kernel import LoopKernel
     input_was_kernel = False
     if isinstance(program, LoopKernel):
-        # FIXME: warning
+        # FIXME: deprecate warning needed here
         input_was_kernel = True
         from loopy.program import make_program_from_kernel
         program = make_program_from_kernel(program)
@@ -844,6 +868,9 @@ def infer_unknown_types(program, expect_completion=False):
 
     program_callables_info = (
             program_callables_info.with_exit_edit_callables_mode())
+
+    # FIXME: maybe put all of this in a function?
+    # need to infer functions that were left out during inference
     if input_was_kernel:
         return (program.copy(
             program_callables_info=program_callables_info)).root_kernel
