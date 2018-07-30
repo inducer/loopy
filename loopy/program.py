@@ -228,12 +228,6 @@ class Program(ImmutableRecord):
                 self.program_callables_info,
                 ignore_auto=ignore_auto)
 
-    @property
-    def name(self):
-        #FIXME: discuss with @inducer if we use "name" instead of
-        # "root_kernel_name"
-        return self.root_kernel_name
-
     # {{{ implementation arguments
 
     @property
@@ -267,6 +261,16 @@ class Program(ImmutableRecord):
     @property
     def root_kernel(self):
         return self.program_callables_info[self.root_kernel_name].subkernel
+
+    @property
+    def name(self):
+        #FIXME: discuss with @inducer if we use "name" instead of
+        # "root_kernel_name"
+        return self.root_kernel_name
+
+    @property
+    def arg_dict(self):
+        return self.root_kernel.arg_dict
 
     def with_root_kernel(self, root_kernel):
         new_in_knl_callable = self.program_callables_info[

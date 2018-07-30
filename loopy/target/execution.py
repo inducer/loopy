@@ -143,7 +143,7 @@ class ExecutionWrapperGeneratorBase(object):
     # {{{ integer arg finding from shapes
 
     def generate_integer_arg_finding_from_shapes(
-            self, gen, kernel, implemented_data_info):
+            self, gen, program, implemented_data_info):
         # a mapping from integer argument names to a list of tuples
         # (arg_name, expression), where expression is a
         # unary function of kernel.arg_dict[arg_name]
@@ -168,7 +168,8 @@ class ExecutionWrapperGeneratorBase(object):
                     if len(deps) == 1:
                         integer_arg_var, = deps
 
-                        if kernel.arg_dict[integer_arg_var.name].dtype.is_integral():
+                        if program.arg_dict[
+                                integer_arg_var.name].dtype.is_integral():
                             from pymbolic.algorithm import solve_affine_equations_for
                             try:
                                 # friggin' overkill :)

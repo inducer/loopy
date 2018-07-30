@@ -130,7 +130,8 @@ from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
 # }}}
 
 from loopy.type_inference import infer_unknown_types
-from loopy.preprocess import preprocess_kernel, realize_reduction
+from loopy.preprocess import (preprocess_kernel, realize_reduction,
+        preprocess_program)
 from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
 from loopy.statistics import (ToCountMap, CountGranularity, stringify_stats_mapping,
         Op, MemAccess, get_op_poly, get_op_map, get_lmem_access_poly,
@@ -262,7 +263,7 @@ __all__ = [
 
         "infer_unknown_types",
 
-        "preprocess_kernel", "realize_reduction",
+        "preprocess_kernel", "realize_reduction", "preprocess_program",
         "generate_loop_schedules", "get_one_scheduled_kernel",
         "GeneratedProgram", "CodeGenerationResult",
         "PreambleInfo",

@@ -35,7 +35,7 @@ from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment, filter_iname_tags_by_type
 # for the benefit of loopy.statistics, for now
-from loopy.type_inference import infer_unknown_types_for_a_single_kernel
+from loopy.type_inference import infer_unknown_types
 from loopy.symbolic import CombineMapper, RuleAwareIdentityMapper
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
@@ -2412,9 +2412,6 @@ def preprocess_single_kernel(kernel, program_callables_info, device=None):
     # Type inference and reduction iname uniqueness don't handle substitutions.
     # Get them out of the way.
 
-    kernel, program_callables_info = infer_unknown_types_for_a_single_kernel(
-            kernel, program_callables_info, expect_completion=False)
-
     check_for_writes_to_predicates(kernel)
     check_reduction_iname_uniqueness(kernel)
 
@@ -2491,6 +2488,8 @@ def preprocess_program(program, device=None):
         from warnings import warn
         warn("passing 'device' to preprocess_kernel() is deprecated",
                 DeprecationWarning, stacklevel=2)
+
+    program = infer_unknown_types(program, expect_completion=False)
 
     root_kernel_callable = program.program_callables_info[program.name]
     program_callables_info = (

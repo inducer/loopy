@@ -418,7 +418,7 @@ def generate_code_for_a_single_kernel(kernel, program_callables_info):
     from loopy.kernel import KernelState
     if kernel.schedule is None:
         from loopy.schedule import get_one_scheduled_kernel
-        kernel = get_one_scheduled_kernel(kernel)
+        kernel = get_one_scheduled_kernel(kernel, program_callables_info)
 
     if kernel.state != KernelState.SCHEDULED:
         raise LoopyError("cannot generate code for a kernel that has not been "

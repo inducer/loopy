@@ -838,10 +838,8 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
 def infer_unknown_types(program, expect_completion=False):
     """Infer types on temporaries and arguments."""
     from loopy.kernel import LoopKernel
-    input_was_kernel = False
     if isinstance(program, LoopKernel):
         # FIXME: deprecate warning needed here
-        input_was_kernel = True
         from loopy.program import make_program_from_kernel
         program = make_program_from_kernel(program)
 
@@ -871,11 +869,7 @@ def infer_unknown_types(program, expect_completion=False):
 
     # FIXME: maybe put all of this in a function?
     # need to infer functions that were left out during inference
-    if input_was_kernel:
-        return (program.copy(
-            program_callables_info=program_callables_info)).root_kernel
-    else:
-        return program.copy(program_callables_info=program_callables_info)
+    return program.copy(program_callables_info=program_callables_info)
 
 # }}}
 
