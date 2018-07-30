@@ -375,9 +375,8 @@ def test_bare_data_dependency(ctx_factory):
                 lp.ValueArg("n", np.int32),
                 ])
 
-    cknl = lp.CompiledKernel(ctx, knl)
     n = 20000
-    evt, (a,) = cknl(queue, n=n, out_host=True)
+    evt, (a,) = knl(queue, n=n, out_host=True)
 
     assert a.shape == (n,)
     assert (a == 1).all()

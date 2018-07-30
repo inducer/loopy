@@ -551,7 +551,8 @@ class TypeInferenceMapper(CombineMapper):
 
 def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
     if var_name in kernel.all_params():
-        return [kernel.index_dtype], [], {}
+        return [kernel.index_dtype], [], {}, (
+                type_inf_mapper.program_callables_info)
 
     from functools import partial
     debug = partial(_debug, kernel)
