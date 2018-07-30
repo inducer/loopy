@@ -212,8 +212,6 @@ def test_owed_barriers(ctx_factory):
 
 
 def test_wg_too_small(ctx_factory):
-    ctx = ctx_factory()
-
     knl = lp.make_kernel(
             "{[i]: 0<=i<100}",
             [
@@ -224,15 +222,13 @@ def test_wg_too_small(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-
     import pytest
     with pytest.raises(RuntimeError):
-        lp.generate_code_v2(knl)
+        prog = lp.make_program_from_kernel(knl)
+        lp.generate_code_v2(prog)
 
 
 def test_multi_cse(ctx_factory):
-    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             "{[i]: 0<=i<100}",
@@ -245,12 +241,7 @@ def test_multi_cse(ctx_factory):
     knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
     knl = lp.add_prefetch(knl, "a", [])
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    kernel_gen = lp.generate_loop_schedules(knl)
-
-    for gen_knl in kernel_gen:
-        compiled = lp.CompiledKernel(ctx, gen_knl)
-        print(compiled.get_code())
+    lp.generate_code_v2(knl)
 
 
 # {{{ code generator fuzzing
@@ -344,8 +335,7 @@ def test_fuzz_code_generator(ctx_factory):
                     lp.ValueArg(name, get_dtype(val))
                     for name, val in six.iteritems(var_values)
                     ])
-        ck = lp.CompiledKernel(ctx, knl)
-        evt, (lp_value,) = ck(queue, out_host=True, **var_values)
+        evt, (lp_value,) = knl(queue, out_host=True, **var_values)
         err = abs(true_value-lp_value)/abs(true_value)
         if abs(err) > 1e-10:
             print(80*"-")
@@ -353,7 +343,8 @@ def test_fuzz_code_generator(ctx_factory):
             print("true=%r" % true_value)
             print("loopy=%r" % lp_value)
             print(80*"-")
-            print(ck.get_code())
+            print(lp.generate_code_v2(lp.make_program_from_kernel(
+                knl).device_code()))
             print(80*"-")
             print(var_values)
             print(80*"-")
