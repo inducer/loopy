@@ -442,9 +442,10 @@ def test_ilp_write_race_avoidance_private(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(j="ilp"))
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    for k in lp.generate_loop_schedules(knl):
-        assert k.temporary_variables["a"].shape == (16,)
+    prog = lp.make_program_from_kernel(knl)
+
+    prog = lp.preprocess_program(prog, ctx.devices[0])
+    assert prog.root_kernel.temporary_variables['a'].shape == (16,)
 
 # }}}
 
