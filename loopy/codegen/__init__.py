@@ -556,6 +556,11 @@ def generate_code_for_a_single_kernel(kernel, program_callables_info):
 
 
 def generate_code_v2(program):
+    from loopy.kernel import LoopKernel
+    from loopy.program import make_program_from_kernel
+
+    if isinstance(program, LoopKernel):
+        program = make_program_from_kernel(program)
 
     from loopy.kernel import KernelState
     if program.root_kernel.state == KernelState.INITIAL:

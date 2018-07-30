@@ -142,7 +142,9 @@ def test_type_inference_with_type_dependencies():
             <>d = b + 2 + 1j
             """,
             "...")
-    knl = lp.infer_unknown_types(knl)
+    prog = lp.make_program_from_kernel(knl)
+    prog = lp.infer_unknown_types(prog)
+    knl = prog.root_kernel
 
     from loopy.types import to_loopy_type
     assert knl.temporary_variables["a"].dtype == to_loopy_type(np.int32)
@@ -175,7 +177,6 @@ def test_sized_and_complex_literals(ctx_factory):
 
 
 def test_simple_side_effect(ctx_factory):
-    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<100}",
@@ -185,13 +186,8 @@ def test_simple_side_effect(ctx_factory):
             [lp.GlobalArg("a", np.float32, shape=(100,))]
             )
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    kernel_gen = lp.generate_loop_schedules(knl)
-
-    for gen_knl in kernel_gen:
-        print(gen_knl)
-        compiled = lp.CompiledKernel(ctx, gen_knl)
-        print(compiled.get_code())
+    prog = lp.make_program_from_kernel(knl)
+    print(lp.generate_code_v2(prog))
 
 
 def test_owed_barriers(ctx_factory):
@@ -224,8 +220,7 @@ def test_wg_too_small(ctx_factory):
 
     import pytest
     with pytest.raises(RuntimeError):
-        prog = lp.make_program_from_kernel(knl)
-        lp.generate_code_v2(prog)
+        lp.generate_code_v2(knl)
 
 
 def test_multi_cse(ctx_factory):
@@ -386,7 +381,6 @@ def test_bare_data_dependency(ctx_factory):
 
 @pytest.mark.skipif("sys.version_info < (2,6)")
 def test_ilp_write_race_detection_global(ctx_factory):
-    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             "[n] -> {[i,j]: 0<=i,j<n }",
@@ -401,13 +395,11 @@ def test_ilp_write_race_detection_global(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(j="ilp"))
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-
     with lp.CacheMode(False):
         from loopy.diagnostic import WriteRaceConditionWarning
         from warnings import catch_warnings
         with catch_warnings(record=True) as warn_list:
-            list(lp.generate_loop_schedules(knl))
+            lp.generate_code_v2(knl)
 
             assert any(isinstance(w.message, WriteRaceConditionWarning)
                     for w in warn_list)
@@ -452,7 +444,6 @@ def test_ilp_write_race_avoidance_private(ctx_factory):
 
 def test_write_parameter(ctx_factory):
     dtype = np.float32
-    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
@@ -470,13 +461,12 @@ def test_write_parameter(ctx_factory):
 
     import pytest
     with pytest.raises(RuntimeError):
-        lp.CompiledKernel(ctx, knl).get_code()
+        lp.generate_code_v2(knl)
 
 
 # {{{ arg guessing
 
 def test_arg_shape_guessing(ctx_factory):
-    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
@@ -494,12 +484,10 @@ def test_arg_shape_guessing(ctx_factory):
             assumptions="n>=1")
 
     print(knl)
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
+    print(lp.generate_code_2(knl))
 
 
 def test_arg_guessing(ctx_factory):
-    ctx = ctx_factory()
-
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
             """
@@ -510,7 +498,7 @@ def test_arg_guessing(ctx_factory):
             assumptions="n>=1")
 
     print(knl)
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
+    print(lp.generate_code_v2(knl))
 
 
 def test_arg_guessing_with_reduction(ctx_factory):
