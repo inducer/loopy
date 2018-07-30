@@ -484,7 +484,7 @@ def test_arg_shape_guessing(ctx_factory):
             assumptions="n>=1")
 
     print(knl)
-    print(lp.generate_code_2(knl))
+    print(lp.generate_code_v2(knl))
 
 
 def test_arg_guessing(ctx_factory):
@@ -503,7 +503,6 @@ def test_arg_guessing(ctx_factory):
 
 def test_arg_guessing_with_reduction(ctx_factory):
     #logging.basicConfig(level=logging.DEBUG)
-    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
@@ -516,7 +515,7 @@ def test_arg_guessing_with_reduction(ctx_factory):
             assumptions="n>=1")
 
     print(knl)
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
+    print(lp.generate_code_v2(knl).device_code())
 
 
 def test_unknown_arg_shape(ctx_factory):
