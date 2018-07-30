@@ -1000,7 +1000,7 @@ def pre_codegen_checks(kernel, program_callables_info):
         check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
         check_that_temporaries_are_defined_in_subkernels_where_used(kernel)
         check_that_all_insns_are_scheduled(kernel)
-        kernel.target.pre_codegen_check(kernel)
+        kernel.target.pre_codegen_check(kernel, program_callables_info)
         check_that_shapes_and_strides_are_arguments(kernel)
 
         logger.debug("pre-codegen check %s: done" % kernel.name)

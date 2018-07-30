@@ -134,7 +134,7 @@ def adjust_local_temp_var_storage(kernel, device):
 
 # {{{ check sizes against device properties
 
-def check_sizes(kernel, device):
+def check_sizes(kernel, program_callables_info, device):
     import loopy as lp
 
     from loopy.diagnostic import LoopyAdvisory, LoopyError
@@ -151,7 +151,8 @@ def check_sizes(kernel, device):
         if isinstance(arg, lp.ValueArg) and arg.approximately is not None:
             parameters[arg.name] = arg.approximately
 
-    glens, llens = kernel.get_grid_size_upper_bounds_as_exprs()
+    glens, llens = (
+            kernel.get_grid_size_upper_bounds_as_exprs(program_callables_info))
 
     if (max(len(glens), len(llens))
             > device.max_work_item_dimensions):
@@ -396,8 +397,8 @@ class PyOpenCLTarget(OpenCLTarget):
             kernel = adjust_local_temp_var_storage(kernel, self.device)
         return kernel
 
-    def pre_codegen_check(self, kernel):
-        check_sizes(kernel, self.device)
+    def pre_codegen_check(self, kernel, program_callables_info):
+        check_sizes(kernel, program_callables_info, self.device)
 
     def get_host_ast_builder(self):
         return PyOpenCLPythonASTBuilder(self)
