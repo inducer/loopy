@@ -33,6 +33,7 @@ from loopy.types import NumpyType
 from loopy.diagnostic import (
         LoopyError,
         TypeInferenceFailure, DependencyTypeInferenceFailure)
+from loopy.kernel.instruction import _DataObliviousInstruction
 
 
 import logging
@@ -799,7 +800,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
                 # functions
                 type_inf_mapper(insn.expression, return_tuple=isinstance(insn,
                     lp.CallInstruction), return_dtype_set=True)
-            elif isinstance(insn, (lp._DatObliviousInstruction,
+            elif isinstance(insn, (_DataObliviousInstruction,
                     lp.CInstruction)):
                 pass
             else:
