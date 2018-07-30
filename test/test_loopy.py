@@ -208,11 +208,7 @@ def test_owed_barriers(ctx_factory):
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
     knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    kernel_gen = lp.generate_loop_schedules(knl)
-
-    for gen_knl in kernel_gen:
-        compiled = lp.CompiledKernel(ctx, gen_knl)
-        print(compiled.get_code())
+    print(lp.generate_code_v2(knl).device_code())
 
 
 def test_wg_too_small(ctx_factory):
