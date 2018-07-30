@@ -125,9 +125,8 @@ def test_type_inference_no_artificial_doubles(ctx_factory):
             assumptions="n>=1")
 
     knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    for k in lp.generate_loop_schedules(knl):
-        code = lp.generate_code(k)
-        assert "double" not in code
+    code = lp.generate_code(knl)
+    assert "double" not in code
 
 
 def test_type_inference_with_type_dependencies():
