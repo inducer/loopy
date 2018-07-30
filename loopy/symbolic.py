@@ -108,12 +108,12 @@ class IdentityMapperMixin(object):
     def map_type_annotation(self, expr, *args):
         return type(expr)(expr.type, self.rec(expr.child, *args))
 
-    def map_sub_array_ref(self, expr, *args):
-        return SubArrayRef(self.rec(expr.swept_inames, *args),
-                self.rec(expr.subscript, *args))
+    def map_sub_array_ref(self, expr, *args, **kwargs):
+        return SubArrayRef(self.rec(expr.swept_inames, *args, **kwargs),
+                self.rec(expr.subscript, *args, **kwargs))
 
-    def map_resolved_function(self, expr, *args):
-        return ResolvedFunction(self.rec(expr.function, *args))
+    def map_resolved_function(self, expr, *args, **kwargs):
+        return ResolvedFunction(self.rec(expr.function, *args, **kwargs))
 
     map_type_cast = map_type_annotation
 
