@@ -225,12 +225,10 @@ def test_wg_too_small(ctx_factory):
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
     knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    kernel_gen = lp.generate_loop_schedules(knl)
 
     import pytest
-    for gen_knl in kernel_gen:
-        with pytest.raises(RuntimeError):
-            lp.CompiledKernel(ctx, gen_knl).get_code()
+    with pytest.raises(RuntimeError):
+        lp.generate_code_v2(knl)
 
 
 def test_multi_cse(ctx_factory):
