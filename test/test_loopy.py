@@ -581,8 +581,6 @@ def test_offsets_and_slicing(ctx_factory):
 
     knl = lp.tag_data_axes(knl, "a,b", "stride:auto,stride:1")
 
-    cknl = lp.CompiledKernel(ctx, knl)
-
     a_full = cl.clrandom.rand(queue, (n, n), np.float64)
     a_full_h = a_full.get()
     b_full = cl.clrandom.rand(queue, (n, n), np.float64)
@@ -596,8 +594,7 @@ def test_offsets_and_slicing(ctx_factory):
 
     b_full_h[b_sub] = 2*a_full_h[a_sub]
 
-    print(cknl.get_highlighted_code({"a": a.dtype}))
-    cknl(queue, a=a, b=b)
+    evt, (out, ) = knl(queue, a=a, b=b)
 
     import numpy.linalg as la
     assert la.norm(b_full.get() - b_full_h) < 1e-13
