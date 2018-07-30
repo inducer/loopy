@@ -879,8 +879,8 @@ def infer_unknown_types(program, expect_completion=False):
 # {{{ reduction expression helper
 
 def infer_arg_and_reduction_dtypes_for_reduction_expression(
-        kernel, expr, unknown_types_ok):
-    type_inf_mapper = TypeInferenceMapper(kernel)
+        kernel, expr, program_callables_info, unknown_types_ok):
+    type_inf_mapper = TypeInferenceMapper(kernel, program_callables_info)
     import loopy as lp
 
     if expr.is_tuple_typed:
@@ -911,7 +911,8 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
             if dt is not lp.auto else dt
             for dt in reduction_dtypes)
 
-    return tuple(arg_dtypes), reduction_dtypes
+    return tuple(arg_dtypes), reduction_dtypes, (
+            type_inf_mapper.program_callables_info)
 
 # }}}
 
