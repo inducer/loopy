@@ -601,8 +601,6 @@ def test_offsets_and_slicing(ctx_factory):
 
 
 def test_vector_ilp_with_prefetch(ctx_factory):
-    ctx = ctx_factory()
-
     knl = lp.make_kernel(
             "{ [i]: 0<=i<n }",
             "out[i] = 2*a[i]",
@@ -613,16 +611,15 @@ def test_vector_ilp_with_prefetch(ctx_factory):
                 "..."
                 ])
 
-    knl = lp.split_iname(knl, "i", 128, inner_tag="l.0")
-    knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
-    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"],
+    prog = lp.make_program_from_kernel(knl)
+
+    prog = lp.split_iname(prog, "i", 128, inner_tag="l.0")
+    prog = lp.split_iname(prog, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
+    prog = lp.add_prefetch(prog, "a", ["i_inner", "i_outer_inner"],
             default_tag="l.auto")
 
-    cknl = lp.CompiledKernel(ctx, knl)
-    cknl.kernel_info()
-
     import re
-    code = cknl.get_code()
+    code = lp.generate_code_v2(prog).device_code()
     assert len(list(re.finditer("barrier", code))) == 1
 
 

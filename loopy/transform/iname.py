@@ -34,6 +34,10 @@ from loopy.symbolic import (
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
 
+from loopy.program import Program
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -306,7 +310,7 @@ def _split_iname_backend(kernel, split_iname,
 
 # {{{ split iname
 
-def split_iname(kernel, split_iname, inner_length,
+def split_iname_for_single_kernel(kernel, split_iname, inner_length,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
         slabs=(0, 0), do_tagged_check=True,
@@ -331,6 +335,8 @@ def split_iname(kernel, split_iname, inner_length,
     :arg within: a stack match as understood by
         :func:`loopy.match.parse_stack_match`.
     """
+    assert isinstance(kernel, LoopKernel)
+
     def make_new_loop_index(inner, outer):
         return inner + outer*inner_length
 
@@ -341,6 +347,30 @@ def split_iname(kernel, split_iname, inner_length,
             outer_tag=outer_tag, inner_tag=inner_tag,
             slabs=slabs, do_tagged_check=do_tagged_check,
             within=within)
+
+
+def split_iname(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = split_iname_for_single_kernel(
+                in_knl_callable.subkernel, *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 

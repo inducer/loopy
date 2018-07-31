@@ -258,9 +258,9 @@ class _not_provided(object):  # noqa: N801
     pass
 
 
-def precompute(kernel, subst_use, sweep_inames=[], within=None,
-        storage_axes=None, temporary_name=None, precompute_inames=None,
-        precompute_outer_inames=None,
+def precompute(kernel, program_callables_info, subst_use, sweep_inames=[],
+        within=None, storage_axes=None, temporary_name=None,
+        precompute_inames=None, precompute_outer_inames=None,
         storage_axis_to_tag={},
 
         # "None" is a valid value here, distinct from the default.
@@ -1044,7 +1044,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     if filter_iname_tags_by_type(new_iname_to_tag.values(), AutoFitLocalIndexTag):
         from loopy.kernel.tools import assign_automatic_axes
-        kernel = assign_automatic_axes(kernel)
+        kernel = assign_automatic_axes(kernel, program_callables_info)
 
     return kernel
 

@@ -753,7 +753,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 # }}}
 
 
-def assign_automatic_axes(kernel, axis=0, local_size=None):
+def assign_automatic_axes(kernel, program_callables_info, axis=0, local_size=None):
     logger.debug("%s: assign automatic axes" % kernel.name)
     # TODO: do the tag removal rigorously, might be easier after switching
     # to set() from tuple()
@@ -767,7 +767,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 
     if local_size is None:
         _, local_size = kernel.get_grid_size_upper_bounds_as_exprs(
-                ignore_auto=True)
+                program_callables_info, ignore_auto=True)
 
     # {{{ axis assignment helper function
 
@@ -834,17 +834,19 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         else:
             new_tag = LocalIndexTag(axis)
             if desired_length > local_size[axis]:
-                from loopy import split_iname, untag_inames
+                from loopy import untag_inames
+                from loopy.transform.iname import split_iname_for_single_kernel
 
                 # Don't be tempted to switch the outer tag to unroll--this may
                 # generate tons of code on some examples.
 
                 return assign_automatic_axes(
-                        split_iname(
+                        split_iname_for_single_kernel(
                             untag_inames(kernel, iname, AutoLocalIndexTagBase),
                             iname, inner_length=local_size[axis],
                             outer_tag=None, inner_tag=new_tag,
                             do_tagged_check=False),
+                        program_callables_info=program_callables_info,
                         axis=recursion_axis, local_size=local_size)
 
         if not kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase):
@@ -934,7 +936,8 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
     if axis >= len(local_size):
         return kernel
     else:
-        return assign_automatic_axes(kernel, axis=axis+1,
+        return assign_automatic_axes(kernel,
+                program_callables_info=program_callables_info, axis=axis+1,
                 local_size=local_size)
 
 # }}}

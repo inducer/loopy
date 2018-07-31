@@ -30,6 +30,9 @@ from islpy import dim_type
 from loopy.kernel.data import ImageArg
 
 from pytools import MovedFunctionDeprecationWrapper
+from loopy.program import Program
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 
 # {{{ convenience: add_prefetch
@@ -140,7 +143,8 @@ class _not_provided:  # noqa: N801
     pass
 
 
-def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
+def add_prefetch_for_single_kernel(kernel, program_callables_info, var_name,
+        sweep_inames=[], dim_arg_names=None,
 
         # "None" is a valid value here, distinct from the default.
         default_tag=_not_provided,
@@ -239,6 +243,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
     This function internally uses :func:`extract_subst` and :func:`precompute`.
     """
+    assert isinstance(kernel, LoopKernel)
 
     # {{{ fish indexing out of var_name and into footprint_subscripts
 
@@ -329,8 +334,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     # warning message.
 
     from loopy.transform.precompute import precompute
-    new_kernel = precompute(kernel, subst_use, sweep_inames,
-            precompute_inames=dim_arg_names,
+    new_kernel = precompute(kernel, program_callables_info, subst_use,
+            sweep_inames, precompute_inames=dim_arg_names,
             default_tag=default_tag, dtype=arg.dtype,
             fetch_bounding_box=fetch_bounding_box,
             temporary_name=temporary_name,
@@ -362,6 +367,31 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         return expand_subst(new_kernel, "... > id:"+rule_name)
     else:
         return new_kernel
+
+
+def add_prefetch(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = add_prefetch_for_single_kernel(
+                    in_knl_callable.subkernel, program.program_callables_info,
+                    *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 
