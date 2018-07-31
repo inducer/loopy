@@ -36,6 +36,7 @@ from islpy import dim_type
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from pytools import memoize_on_first_arg
 from loopy.tools import natsorted
+from loopy.program import Program
 
 import logging
 logger = logging.getLogger(__name__)
@@ -113,7 +114,8 @@ def get_arguments_with_incomplete_dtype(knl):
             if arg.dtype is None]
 
 
-def add_and_infer_dtypes(knl, dtype_dict, expect_completion=False):
+def add_and_infer_dtypes(prog, dtype_dict, expect_completion=False):
+    assert isinstance(prog, Program)
     processed_dtype_dict = {}
 
     for k, v in six.iteritems(dtype_dict):
@@ -122,10 +124,10 @@ def add_and_infer_dtypes(knl, dtype_dict, expect_completion=False):
             if subkey:
                 processed_dtype_dict[subkey] = v
 
-    knl = add_dtypes(knl, processed_dtype_dict)
+    prog = add_dtypes(prog, processed_dtype_dict)
 
     from loopy.type_inference import infer_unknown_types
-    return infer_unknown_types(knl, expect_completion=expect_completion)
+    return infer_unknown_types(prog, expect_completion=expect_completion)
 
 
 def _add_and_infer_dtypes_overdetermined(knl, dtype_dict):

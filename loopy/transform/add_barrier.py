@@ -26,6 +26,9 @@ THE SOFTWARE.
 from loopy.kernel.instruction import BarrierInstruction
 from loopy.match import parse_match
 from loopy.transform.instruction import add_dependency
+from loopy.program import Program
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -36,8 +39,9 @@ __doc__ = """
 
 # {{{ add_barrier
 
-def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
-                tags=None, synchronization_kind="global", mem_kind=None):
+def add_barrier_for_single_kernel(knl, insn_before="", insn_after="",
+        id_based_on=None, tags=None, synchronization_kind="global",
+        mem_kind=None):
     """Takes in a kernel that needs to be added a barrier and returns a kernel
     which has a barrier inserted into it. It takes input of 2 instructions and
     then adds a barrier in between those 2 instructions. The expressions can
@@ -54,6 +58,8 @@ def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
     :arg kind: Type of memory to be synchronied. May be "global" or "local". Ignored
     for "global" bariers.  If not supplied, defaults to :arg:`synchronization_kind`
     """
+
+    assert isinstance(knl, LoopKernel)
 
     if mem_kind is None:
         mem_kind = synchronization_kind
@@ -81,6 +87,30 @@ def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
                              depends_on="id:"+id)
 
     return new_knl
+
+
+def add_barrier(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = add_barrier_for_single_kernel(
+                    in_knl_callable.subkernel, *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 

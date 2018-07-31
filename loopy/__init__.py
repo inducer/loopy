@@ -33,9 +33,6 @@ from loopy.diagnostic import LoopyError, LoopyWarning
 
 # {{{ imported user interface
 
-from loopy.library.function import (
-        default_function_mangler, single_arg_function_mangler)
-
 from loopy.kernel.instruction import (
         MemoryOrdering, memory_ordering,
         MemoryScope, memory_scope,
@@ -187,8 +184,6 @@ __all__ = [
         "TemporaryVariable",
         "SubstitutionRule",
         "CallMangleInfo",
-
-        "default_function_mangler", "single_arg_function_mangler",
 
         "make_kernel", "UniqueName",
 

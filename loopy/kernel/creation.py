@@ -2318,8 +2318,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     # NOTE: add_inferred_inames will be phased out and throws warnings if it
     # does something.
     knl = add_inferred_inames(knl)
-    from loopy.transform.parameter import fix_parameters
-    knl = fix_parameters(knl, **fixed_parameters)
+    from loopy.transform.parameter import fix_parameters_for_single_kernel
+    knl = fix_parameters_for_single_kernel(knl, **fixed_parameters)
     # -------------------------------------------------------------------------
     # Ordering dependency:
     # -------------------------------------------------------------------------

@@ -97,7 +97,7 @@ def set_loop_priority(kernel, loop_priority):
     return kernel.copy(loop_priority=frozenset([loop_priority]))
 
 
-def prioritize_loops(kernel, loop_priority):
+def prioritize_loops_for_single_kernel(kernel, loop_priority):
     """Indicates the textual order in which loops should be entered in the
     kernel code. Note that this priority has an advisory role only. If the
     kernel logically requires a different nesting, priority is ignored.
@@ -111,12 +111,38 @@ def prioritize_loops(kernel, loop_priority):
     :arg: an iterable of inames, or, for brevity, a comma-separated string of
         inames
     """
+
+    assert isinstance(kernel, LoopKernel)
     if isinstance(loop_priority, str):
         loop_priority = tuple(s.strip()
                               for s in loop_priority.split(",") if s.strip())
     loop_priority = tuple(loop_priority)
 
     return kernel.copy(loop_priority=kernel.loop_priority.union([loop_priority]))
+
+
+def prioritize_loops(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = prioritize_loops_for_single_kernel(
+                    in_knl_callable.subkernel, *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 
@@ -787,8 +813,7 @@ def tag_inames(program, *args, **kwargs):
     for func_id, in_knl_callable in program.program_callables_info.items():
         if isinstance(in_knl_callable, CallableKernel):
             new_subkernel = tag_inames_for_single_kernel(
-                    in_knl_callable.subkernel, program.program_callables_info,
-                    *args, **kwargs)
+                    in_knl_callable.subkernel, *args, **kwargs)
             in_knl_callable = in_knl_callable.copy(
                     subkernel=new_subkernel)
 

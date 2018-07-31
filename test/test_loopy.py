@@ -71,10 +71,11 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
                 'cnst', shape=('n'), initializer=cnst,
                 scope=lp.AddressSpace.GLOBAL,
                 read_only=True), '...'])
-    knl = lp.fix_parameters(knl, n=16)
-    knl = lp.add_barrier(knl, "id:first", "id:second")
 
     prog = lp.make_program_from_kernel(knl)
+
+    prog = lp.fix_parameters(prog, n=16)
+    prog = lp.add_barrier(prog, "id:first", "id:second")
 
     prog = lp.split_iname(prog, "i", 2, outer_tag="g.0", inner_tag="l.0")
     prog = lp.split_iname(prog, "ii", 2, outer_tag="g.0", inner_tag="l.0")
@@ -200,13 +201,15 @@ def test_owed_barriers(ctx_factory):
             [
                 "<float32> z[i] = a[i]"
                 ],
-            [lp.GlobalArg("a", np.float32, shape=(100,))]
+            [lp.GlobalArg("a", np.float32, shape=(100,))],
+            target=lp.PyOpenCLTarget(ctx.devices[0])
             )
 
-    knl = lp.tag_inames(knl, dict(i="l.0"))
+    prog = lp.make_program_from_kernel(knl)
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    print(lp.generate_code_v2(knl).device_code())
+    prog = lp.tag_inames(prog, dict(i="l.0"))
+
+    print(lp.generate_code_v2(prog).device_code())
 
 
 def test_wg_too_small(ctx_factory):
@@ -218,11 +221,13 @@ def test_wg_too_small(ctx_factory):
             [lp.GlobalArg("a", np.float32, shape=(100,))],
             local_sizes={0: 16})
 
-    knl = lp.tag_inames(knl, dict(i="l.0"))
+    prog = lp.make_program_from_kernel(knl)
+
+    prog = lp.tag_inames(prog, dict(i="l.0"))
 
     import pytest
     with pytest.raises(RuntimeError):
-        lp.generate_code_v2(knl)
+        lp.generate_code_v2(prog)
 
 
 def test_multi_cse(ctx_factory):
@@ -397,13 +402,15 @@ def test_ilp_write_race_detection_global(ctx_factory):
                 ],
             assumptions="n>=1")
 
-    knl = lp.tag_inames(knl, dict(j="ilp"))
+    prog = lp.make_program_from_kernel(knl)
+
+    prog = lp.tag_inames(prog, dict(j="ilp"))
 
     with lp.CacheMode(False):
         from loopy.diagnostic import WriteRaceConditionWarning
         from warnings import catch_warnings
         with catch_warnings(record=True) as warn_list:
-            lp.generate_code_v2(knl)
+            lp.generate_code_v2(prog)
 
             assert any(isinstance(w.message, WriteRaceConditionWarning)
                     for w in warn_list)
@@ -417,10 +424,11 @@ def test_ilp_write_race_avoidance_local(ctx_factory):
             [
                 "<> a[i] = 5+i+j",
                 ],
+
             [])
 
-    knl = lp.tag_inames(knl, dict(i="l.0", j="ilp"))
     prog = lp.make_program_from_kernel(knl)
+    prog = lp.tag_inames(prog, dict(i="l.0", j="ilp"))
 
     prog = lp.preprocess_program(prog, ctx.devices[0])
     assert prog.root_kernel.temporary_variables['a'].shape == (16, 17)
@@ -436,9 +444,8 @@ def test_ilp_write_race_avoidance_private(ctx_factory):
                 ],
             [])
 
-    knl = lp.tag_inames(knl, dict(j="ilp"))
-
     prog = lp.make_program_from_kernel(knl)
+    prog = lp.tag_inames(prog, dict(j="ilp"))
 
     prog = lp.preprocess_program(prog, ctx.devices[0])
     assert prog.root_kernel.temporary_variables['a'].shape == (16,)
@@ -563,10 +570,11 @@ def test_nonlinear_index(ctx_factory):
                 lp.GlobalArg("a", shape="n"),
                 lp.ValueArg("n"),
                 ],
-            assumptions="n>=1")
+            assumptions="n>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     print(knl)
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
+    print(lp.generate_code_v2(knl).device_code())
 
 
 def test_offsets_and_slicing(ctx_factory):
@@ -644,12 +652,14 @@ def test_c_instruction(ctx_factory):
                 lp.TemporaryVariable("x", np.float32),
                 "...",
                 ],
-            assumptions="n>=1")
+            assumptions="n>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
+    prog = lp.make_program_from_kernel(knl)
 
-    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+    prog = lp.split_iname(prog, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
-    print(knl)
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
+    print(prog)
+    print(lp.generate_code_v2(prog))
 
 
 def test_dependent_domain_insn_iname_finding(ctx_factory):
@@ -670,19 +680,21 @@ def test_dependent_domain_insn_iname_finding(ctx_factory):
                     None, shape=None),
                 lp.GlobalArg("strengths",
                     None, shape="nsources"),
-                "..."])
+                "..."],
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
-    print(knl)
     assert "isrc_box" in knl.insn_inames("set_strength")
-
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code(
-            dict(
+    prog = lp.make_program_from_kernel(knl)
+    prog = lp.add_dtypes(prog, dict(
                 source_boxes=np.int32,
                 box_source_starts=np.int32,
                 box_source_counts_nonchild=np.int32,
                 strengths=np.float64,
                 nsources=np.int32,
-                )))
+                ))
+
+    print(prog)
+    print(lp.generate_code_v2(prog).device_code())
 
 
 def test_inames_deps_from_write_subscript(ctx_factory):
@@ -713,14 +725,15 @@ def test_modulo_indexing(ctx_factory):
             [
                 lp.GlobalArg("a", None, shape="n"),
                 "..."
-                ]
+                ], target=lp.PyOpenCLTarget(ctx.devices[0])
             )
 
-    print(knl)
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code(
-            dict(
+    prog = lp.make_program_from_kernel(knl)
+    print(prog)
+    prog = lp.add_dtypes(prog, dict(
                 a=np.float32,
-                )))
+                ))
+    print(lp.generate_code_v2(prog).device_code())
 
 
 @pytest.mark.parametrize("vec_len", [2, 3, 4, 8, 16])
@@ -735,17 +748,18 @@ def test_vector_types(ctx_factory, vec_len):
                 lp.GlobalArg("out", np.float32, shape=lp.auto),
                 "..."
                 ])
+    prog = lp.make_program_from_kernel(knl)
 
-    knl = lp.fix_parameters(knl, vec_len=vec_len)
+    prog = lp.fix_parameters(prog, vec_len=vec_len)
 
-    ref_knl = knl
+    ref_prog = prog
 
-    knl = lp.tag_data_axes(knl, "out", "c,vec")
-    knl = lp.tag_inames(knl, dict(j="unr"))
+    prog = lp.tag_array_axes(prog, "out", "c,vec")
+    prog = lp.tag_inames(prog, dict(j="unr"))
 
-    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+    prog = lp.split_iname(prog, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
-    lp.auto_test_vs_ref(ref_knl, ctx, knl,
+    lp.auto_test_vs_ref(ref_prog, ctx, prog,
             parameters=dict(
                 n=20000
                 ))
@@ -798,10 +812,11 @@ def test_ilp_loop_bound(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.prioritize_loops(knl, "j,i,k")
-    knl = lp.split_iname(knl,  "k", 4, inner_tag="ilp")
+    prog = lp.make_program_from_kernel(knl)
+    prog = lp.prioritize_loops(prog, "j,i,k")
+    prog = lp.split_iname(prog,  "k", 4, inner_tag="ilp")
 
-    lp.auto_test_vs_ref(ref_knl, ctx, knl,
+    lp.auto_test_vs_ref(ref_knl, ctx, prog,
             parameters=dict(
                 n=200
                 ))
@@ -829,13 +844,15 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
         "a[i] = 2*a[i]",
         assumptions="n>=1")
 
-    ref_knl = knl
+    prog = lp.make_program_from_kernel(knl)
+
+    ref_prog = prog
 
     for outer_tag in ["for", "g.0"]:
-        knl = ref_knl
-        knl = lp.split_iname(knl, "i", 4, slabs=(0, 1), inner_tag="unr",
+        prog = ref_prog
+        prog = lp.split_iname(prog, "i", 4, slabs=(0, 1), inner_tag="unr",
                 outer_tag=outer_tag)
-        knl = lp.prioritize_loops(knl, "i_outer")
+        prog = lp.prioritize_loops(prog, "i_outer")
 
         a = cl.array.empty(queue, 20, np.float32)
         a.fill(17)
@@ -844,10 +861,10 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
 
         knl = lp.set_options(knl, write_cl=True)
         print("TEST-----------------------------------------")
-        knl(queue, a=a_knl)
+        prog(queue, a=a_knl)
         print("REF-----------------------------------------")
-        ref_knl(queue, a=a_ref)
-        print("DONE-----------------------------------------")
+        ref_prog(queue, a=a_ref)
+        print("DONE---------------------------l--------------")
 
         print("REF", a_ref)
         print("KNL", a_knl)
@@ -867,12 +884,11 @@ def test_multiple_writes_to_local_temporary():
         <> temp[i, 0] = 17
         temp[i, 1] = 15
         """)
-    knl = lp.tag_inames(knl, dict(i="l.0"))
 
-    knl = lp.preprocess_kernel(knl)
-    for k in lp.generate_loop_schedules(knl):
-        code, _ = lp.generate_code(k)
-        print(code)
+    prog = lp.make_program_from_kernel(knl)
+    prog = lp.tag_inames(prog, dict(i="l.0"))
+
+    print(lp.generate_code_v2(prog).device_code())
 
 
 def test_make_copy_kernel(ctx_factory):
@@ -907,19 +923,23 @@ def test_auto_test_can_detect_problems(ctx_factory):
         a[i,j] = 25
         """)
 
+    ref_prog = lp.make_program_from_kernel(ref_knl)
+
     knl = lp.make_kernel(
         "{[i]: 0<=i<n}",
         """
         a[i,i] = 25
         """)
 
-    ref_knl = lp.add_and_infer_dtypes(ref_knl, dict(a=np.float32))
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
+    prog = lp.make_program_from_kernel(knl)
+
+    ref_prog = lp.add_and_infer_dtypes(ref_prog, dict(a=np.float32))
+    prog = lp.add_and_infer_dtypes(prog, dict(a=np.float32))
 
     from loopy.diagnostic import AutomaticTestFailure
     with pytest.raises(AutomaticTestFailure):
         lp.auto_test_vs_ref(
-                ref_knl, ctx, knl,
+                ref_prog, ctx, prog,
                 parameters=dict(n=123))
 
 
@@ -1029,11 +1049,12 @@ def test_atomic(ctx_factory, dtype):
                 "..."
                 ],
             assumptions="n>0")
+    prog = lp.make_program_from_kernel(knl)
 
-    ref_knl = knl
-    knl = lp.split_iname(knl, "i", 512)
-    knl = lp.split_iname(knl, "i_inner", 128, outer_tag="unr", inner_tag="g.0")
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=10000))
+    ref_prog = prog
+    prog = lp.split_iname(prog, "i", 512)
+    prog = lp.split_iname(prog, "i_inner", 128, outer_tag="unr", inner_tag="g.0")
+    lp.auto_test_vs_ref(ref_prog, ctx, prog, parameters=dict(n=10000))
 
 
 @pytest.mark.parametrize("dtype", [np.int32, np.int64, np.float32, np.float64])

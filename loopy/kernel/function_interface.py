@@ -36,6 +36,8 @@ from loopy.symbolic import parse_tagged_name
 from loopy.symbolic import (ResolvedFunction, SubstitutionRuleMappingContext,
         RuleAwareIdentityMapper, SubstitutionRuleExpander)
 
+from loopy.kernel import LoopKernel
+
 
 # {{{ argument descriptors
 
@@ -492,6 +494,7 @@ class CallableKernel(InKernelCallable):
 
     def __init__(self, subkernel, arg_id_to_dtype=None,
             arg_id_to_descr=None, name_in_target=None):
+        assert isinstance(subkernel, LoopKernel)
 
         super(CallableKernel, self).__init__(
                 arg_id_to_dtype=arg_id_to_dtype,

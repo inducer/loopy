@@ -29,7 +29,9 @@ from warnings import warn
 import numpy as np
 
 import loopy as lp
+
 from loopy.diagnostic import LoopyError, AutomaticTestFailure
+from loopy.kernel import LoopKernel
 
 
 AUTO_TEST_SKIP_RUN = False
@@ -387,8 +389,15 @@ def auto_test_vs_ref(
         test_knl = ref_knl
         do_check = False
 
-    ref_prog = lp.make_program_from_kernel(ref_knl)
-    test_prog = lp.make_program_from_kernel(test_knl)
+    if isinstance(ref_knl, LoopKernel):
+        ref_prog = lp.make_program_from_kernel(ref_knl)
+    else:
+        ref_prog = ref_knl
+
+    if isinstance(test_knl, LoopKernel):
+        test_prog = lp.make_program_from_kernel(test_knl)
+    else:
+        test_prog = test_knl
 
     if len(ref_prog.args) != len(test_prog.args):
         raise LoopyError("ref_prog and test_prog do not have the same number "

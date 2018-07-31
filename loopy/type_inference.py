@@ -35,6 +35,7 @@ from loopy.diagnostic import (
         TypeInferenceFailure, DependencyTypeInferenceFailure)
 from loopy.kernel.instruction import _DataObliviousInstruction
 
+from loopy.program import ProgramCallablesInfo
 
 import logging
 logger = logging.getLogger(__name__)
@@ -71,6 +72,7 @@ class TypeInferenceMapper(CombineMapper):
             instances
         """
         self.kernel = kernel
+        assert isinstance(program_callables_info, ProgramCallablesInfo)
         if new_assignments is None:
             new_assignments = {}
         self.new_assignments = new_assignments
@@ -116,7 +118,7 @@ class TypeInferenceMapper(CombineMapper):
     def with_assignments(self, names_to_vars):
         new_ass = self.new_assignments.copy()
         new_ass.update(names_to_vars)
-        return type(self)(self.kernel, new_ass)
+        return type(self)(self.kernel, self.program_callables_info, new_ass)
 
     @staticmethod
     def combine(dtype_sets):
