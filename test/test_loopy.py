@@ -74,9 +74,11 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
     knl = lp.fix_parameters(knl, n=16)
     knl = lp.add_barrier(knl, "id:first", "id:second")
 
-    knl = lp.split_iname(knl, "i", 2, outer_tag="g.0", inner_tag="l.0")
-    knl = lp.split_iname(knl, "ii", 2, outer_tag="g.0", inner_tag="l.0")
-    evt, (out,) = knl(queue, a=a)
+    prog = lp.make_program_from_kernel(knl)
+
+    prog = lp.split_iname(prog, "i", 2, outer_tag="g.0", inner_tag="l.0")
+    prog = lp.split_iname(prog, "ii", 2, outer_tag="g.0", inner_tag="l.0")
+    evt, (out,) = prog(queue, a=a)
     assert np.linalg.norm(out-((2*(a+cnst)+cnst))) <= 1e-15
 
 
@@ -233,10 +235,12 @@ def test_multi_cse(ctx_factory):
             [lp.GlobalArg("a", np.float32, shape=(100,))],
             local_sizes={0: 16})
 
-    knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
-    knl = lp.add_prefetch(knl, "a", [])
+    prog = lp.make_program_from_kernel(knl)
 
-    lp.generate_code_v2(knl)
+    prog = lp.split_iname(prog, "i", 16, inner_tag="l.0")
+    prog = lp.add_prefetch(prog, "a", [])
+
+    lp.generate_code_v2(prog)
 
 
 # {{{ code generator fuzzing

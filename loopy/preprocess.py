@@ -1952,7 +1952,8 @@ def realize_reduction(kernel, program_callables_info, insn_id_filter=None,
 
     kernel = lp.replace_instruction_ids(kernel, insn_id_replacements)
 
-    kernel = lp.tag_inames(kernel, new_iname_tags)
+    from loopy.transform.iname import tag_inames_for_single_kernel
+    kernel = tag_inames_for_single_kernel(kernel, new_iname_tags)
 
     # TODO: remove unused inames...
 

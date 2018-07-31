@@ -303,7 +303,8 @@ def _split_iname_backend(kernel, split_iname,
         kernel = tag_inames(kernel,
                 {outer_iname: existing_tag, inner_iname: existing_tag})
 
-    return tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
+    return tag_inames_for_single_kernel(kernel, {outer_iname: outer_tag,
+        inner_iname: inner_tag})
 
 # }}}
 
@@ -655,7 +656,8 @@ def untag_inames(kernel, iname_to_untag, tag_type):
 
 # {{{ tag inames
 
-def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
+def tag_inames_for_single_kernel(kernel, iname_to_tag, force=False,
+        ignore_nonexistent=False):
     """Tag an iname
 
     :arg iname_to_tag: a list of tuples ``(iname, new_tag)``. *new_tag* is given
@@ -776,6 +778,31 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
         knl_iname_to_tags[iname] = old_tags | frozenset([new_tag])
 
     return kernel.copy(iname_to_tags=knl_iname_to_tags)
+
+
+def tag_inames(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = tag_inames_for_single_kernel(
+                    in_knl_callable.subkernel, program.program_callables_info,
+                    *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 
