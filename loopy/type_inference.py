@@ -599,7 +599,9 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         dtype_sets.append(result)
 
     if not dtype_sets:
-        return None, type_inf_mapper.symbols_with_unknown_types, None
+        return (
+                None, type_inf_mapper.symbols_with_unknown_types, None,
+                type_inf_mapper.program_callables_info)
 
     result = type_inf_mapper.combine(dtype_sets)
 

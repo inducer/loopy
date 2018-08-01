@@ -25,14 +25,34 @@ THE SOFTWARE.
 import six  # noqa
 
 from loopy.diagnostic import LoopyError
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import (ScalarCallable, CallableKernel)
+from loopy.program import Program
 
 
 # {{{ find_instructions
 
-def find_instructions(kernel, insn_match):
+def find_instructions_in_single_kernel(kernel, insn_match):
+    assert isinstance(kernel, LoopKernel)
     from loopy.match import parse_match
     match = parse_match(insn_match)
     return [insn for insn in kernel.instructions if match(kernel, insn)]
+
+
+def find_instructions(program, insn_match):
+    assert isinstance(program, Program)
+    insns = []
+    for in_knl_callable in program.program_callables_info.values():
+        if isinstance(in_knl_callable, CallableKernel):
+            insns += (find_instructions_in_single_kernel(
+                in_knl_callable.subkernel, insn_match))
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown callable type %s." % (
+                type(in_knl_callable)))
+
+    return insns
 
 # }}}
 

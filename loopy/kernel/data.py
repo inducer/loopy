@@ -403,6 +403,9 @@ class ConstantArg(ArrayBase, KernelArgument):
     min_target_axes = 0
     max_target_axes = 1
 
+    # Constant Arg cannot be an output
+    is_output_only = False
+
     def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
         return ast_builder.get_constant_arg_decl(self.name + name_suffix, shape,
                 dtype, is_written)

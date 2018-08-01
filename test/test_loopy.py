@@ -1795,7 +1795,7 @@ def test_regression_persistent_hash():
 def test_sequential_dependencies(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i]: 0<=i<n}",
             """
             for i
@@ -1807,9 +1807,9 @@ def test_sequential_dependencies(ctx_factory):
             end
             """, seq_dependencies=True)
 
-    print(knl.stringify(with_dependencies=True))
+    print(prog.root_kernel.stringify(with_dependencies=True))
 
-    lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(n=5))
+    lp.auto_test_vs_ref(prog, ctx, prog, parameters=dict(n=5))
 
 
 def test_nop(ctx_factory):
@@ -1864,8 +1864,12 @@ def test_global_barrier(ctx_factory):
     print(knl)
 
     knl = lp.preprocess_kernel(knl)
-    assert knl.temporary_variables["z"].address_space == lp.AddressSpace.GLOBAL
-    assert knl.temporary_variables["v"].address_space == lp.AddressSpace.GLOBAL
+    assert (
+            knl.root_kernel.temporary_variables["z"].address_space ==
+            lp.AddressSpace.GLOBAL)
+    assert (
+            knl.root_kernel.temporary_variables["v"].address_space ==
+            lp.AddressSpace.GLOBAL)
 
     print(knl)
 
@@ -1888,11 +1892,12 @@ def test_missing_global_barrier():
 
     knl = lp.set_temporary_scope(knl, "z", "global")
     knl = lp.split_iname(knl, "i", 256, outer_tag="g.0")
+    knl = lp.add_dtypes(knl, {'z': np.float32, 'v': np.float32})
     knl = lp.preprocess_kernel(knl)
 
     from loopy.diagnostic import MissingBarrierError
     with pytest.raises(MissingBarrierError):
-        lp.get_one_scheduled_kernel(knl)
+        lp.generate_code_v2(knl)
 
 
 def test_index_cse(ctx_factory):
@@ -2007,7 +2012,7 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
 
 
 def test_const_temp_with_initializer_not_saved():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
         "{[i]: 0<=i<10}",
         """
         ... gbarrier
@@ -2023,12 +2028,11 @@ def test_const_temp_with_initializer_not_saved():
             ],
         seq_dependencies=True)
 
-    knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
-    knl = lp.save_and_reload_temporaries(knl)
+    prog = lp.preprocess_kernel(prog)
+    prog = lp.save_and_reload_temporaries(prog)
 
     # This ensures no save slot was added.
-    assert len(knl.temporary_variables) == 1
+    assert len(prog.root_kernel.temporary_variables) == 1
 
 
 def test_header_extract():
@@ -2213,20 +2217,24 @@ def test_tight_loop_bounds_codegen():
 
 
 def test_unscheduled_insn_detection():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
         "{ [i]: 0 <= i < 10 }",
         """
         out[i] = i {id=insn1}
         """,
         "...")
 
-    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
-    insn1, = lp.find_instructions(knl, "id:insn1")
-    knl.instructions.append(insn1.copy(id="insn2"))
+    prog = lp.preprocess_kernel(prog)
+    knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.program_callables_info)
+    prog = prog.with_root_kernel(knl)
+    insn1, = lp.find_instructions(prog, "id:insn1")
+    insns = prog.root_kernel.instructions[:]
+    insns.append(insn1.copy(id="insn2"))
+    prog = prog.with_root_kernel(prog.root_kernel.copy(instructions=insns))
 
     from loopy.diagnostic import UnscheduledInstructionError
     with pytest.raises(UnscheduledInstructionError):
-        lp.generate_code(knl)
+        lp.generate_code(prog)
 
 
 def test_integer_reduction(ctx_factory):

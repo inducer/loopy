@@ -80,8 +80,10 @@ def prepare_for_caching(program):
     new_resolved_functions = {}
     for func_id, in_knl_callable in program.program_callables_info.items():
         if isinstance(in_knl_callable, CallableKernel):
+            # FIXME: this is an easy fix. remove the target attribute from
+            # kernel
             new_subkernel = prepare_single_kernel_for_caching(
-                    in_knl_callable.subkernel)
+                    in_knl_callable.subkernel.copy(target=program.target))
             new_resolved_functions[func_id] = (
                     in_knl_callable.copy(subkernel=new_subkernel))
         elif isinstance(in_knl_callable, ScalarCallable):
