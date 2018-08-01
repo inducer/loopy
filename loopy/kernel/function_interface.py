@@ -264,7 +264,7 @@ class InKernelCallable(ImmutableRecord):
                 return None
 
         new_arg_id_to_dtype = None
-        if self.arg_id_to_dtype:
+        if self.arg_id_to_dtype is not None:
             new_arg_id_to_dtype = dict((id, with_target_if_not_None(dtype)) for id,
                     dtype in self.arg_id_to_dtype.items())
 
@@ -410,7 +410,6 @@ class ScalarCallable(InKernelCallable):
 
         # Currently this is formulated such that the first argument is returned
         # and rest all are passed by reference as arguments to the function.
-
         assert self.is_ready_for_codegen()
 
         from loopy.kernel.instruction import CallInstruction
@@ -709,7 +708,7 @@ class ManglerCallable(ScalarCallable):
         return (self.name, self.function_mangler, self.arg_id_to_dtype,
                 self.arg_id_to_descr, self.name_in_target)
 
-    def with_types(self, arg_id_to_dtype, kernel):
+    def with_types(self, arg_id_to_dtype, kernel, program_callables_info):
         if self.arg_id_to_dtype is not None:
             # specializing an already specialized function.
             for arg_id, dtype in arg_id_to_dtype.items():
@@ -730,8 +729,10 @@ class ManglerCallable(ScalarCallable):
             new_arg_id_to_dtype = dict(enumerate(mangle_result.arg_dtypes))
             new_arg_id_to_dtype.update(dict((-i-1, dtype) for i, dtype in
                 enumerate(mangle_result.result_dtypes)))
-            return self.copy(name_in_target=mangle_result.target_name,
-                    arg_id_to_dtype=new_arg_id_to_dtype)
+            return (
+                    self.copy(name_in_target=mangle_result.target_name,
+                        arg_id_to_dtype=new_arg_id_to_dtype),
+                    program_callables_info)
         else:
             # The function mangler does not agree with the arg id to dtypes
             # provided. Indicating that is illegal.

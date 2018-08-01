@@ -210,7 +210,7 @@ def check_multiple_tags_allowed(kernel):
                                  "tags: {1}".format(iname, tags))
 
 
-def check_for_double_use_of_hw_axes(kernel):
+def check_for_double_use_of_hw_axes(kernel, program_callables_info):
     from loopy.kernel.data import UniqueTag
     from loopy.kernel.instruction import CallInstruction
     from loopy.kernel.function_interface import CallableKernel
@@ -228,7 +228,7 @@ def check_for_double_use_of_hw_axes(kernel):
 
         # check usage of iname tags in the callee kernel
         if isinstance(insn, CallInstruction):
-            in_knl_callable = kernel.scoped_functions[
+            in_knl_callable = program_callables_info[
                     insn.expression.function.name]
             if isinstance(in_knl_callable, CallableKernel):
                 # check for collision in iname_tag keys in the instruction
@@ -715,13 +715,13 @@ def check_variable_access_ordered(kernel):
 # }}}
 
 
-def pre_schedule_checks(kernel):
+def pre_schedule_checks(kernel, program_callables_info):
     try:
         logger.debug("%s: pre-schedule check: start" % kernel.name)
 
         check_for_duplicate_insn_ids(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
-        check_for_double_use_of_hw_axes(kernel)
+        check_for_double_use_of_hw_axes(kernel, program_callables_info)
         check_insn_attributes(kernel)
         check_loop_priority_inames_known(kernel)
         check_multiple_tags_allowed(kernel)

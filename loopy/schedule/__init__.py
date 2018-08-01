@@ -1857,7 +1857,7 @@ def generate_loop_schedules_inner(kernel, program_callables_info, debug_args={})
                 "preprocessed")
 
     from loopy.check import pre_schedule_checks
-    pre_schedule_checks(kernel)
+    pre_schedule_checks(kernel, program_callables_info)
 
     schedule_count = 0
 

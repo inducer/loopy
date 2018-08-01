@@ -2160,7 +2160,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
 
         if not isinstance(expr.function, ResolvedFunction):
             # ignore if the call is not to a ResolvedFunction
-            return super(ArgDescrInferenceMapper, self).rec(expr)
+            return super(ArgDescrInferenceMapper, self).map_call(expr, expn_state)
 
         if isinstance(expr, Call):
             kw_parameters = {}

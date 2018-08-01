@@ -1891,7 +1891,7 @@ def get_direct_callee_kernels(kernel, program_callables_info, insn_ids=None,):
         from loopy.kernel.instruction import (CallInstruction,
                 MultiAssignmentBase, CInstruction, _DataObliviousInstruction)
         if isinstance(insn, CallInstruction):
-            if insn.expression.function.name in kernel.scoped_functions:
+            if insn.expression.function.name in program_callables_info:
                 in_knl_callable = program_callables_info[
                         insn.expression.function.name]
                 if isinstance(in_knl_callable, CallableKernel):
