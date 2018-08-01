@@ -186,8 +186,8 @@ def find_all_insn_inames(kernel):
     all_read_deps = {}
     all_write_deps = {}
 
-    from loopy.transform.subst import expand_subst
-    kernel = expand_subst(kernel)
+    from loopy.transform.subst import expand_subst_for_single_kernel
+    kernel = expand_subst_for_single_kernel(kernel)
 
     for insn in kernel.instructions:
         all_read_deps[insn.id] = read_deps = insn.read_dependency_names()
@@ -870,7 +870,7 @@ def assign_automatic_axes(kernel, program_callables_info, axis=0, local_size=Non
             del new_iname_to_tags[iname]
 
         return assign_automatic_axes(kernel.copy(iname_to_tags=new_iname_to_tags),
-                axis=recursion_axis, local_size=local_size)
+                program_callables_info, axis=recursion_axis, local_size=local_size)
 
     # }}}
 

@@ -1775,8 +1775,8 @@ def add_inferred_inames(knl):
 def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
     logger.debug("%s: default deps" % kernel.name)
 
-    from loopy.transform.subst import expand_subst
-    expanded_kernel = expand_subst(kernel)
+    from loopy.transform.subst import expand_subst_for_single_kernel
+    expanded_kernel = expand_subst_for_single_kernel(kernel)
 
     writer_map = kernel.writer_map()
 
@@ -2352,7 +2352,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     creation_plog.done()
 
-    return knl
+    from loopy.program import make_program_from_kernel
+    return make_program_from_kernel(knl)
 
 # }}}
 

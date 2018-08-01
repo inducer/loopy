@@ -61,12 +61,12 @@ class SeparateArrayPackingController(object):
     It also repacks outgoing arrays of this type back into an object array.
     """
 
-    def __init__(self, kernel):
+    def __init__(self, program):
         # map from arg name
         self.packing_info = {}
 
         from loopy.kernel.array import ArrayBase
-        for arg in kernel.args:
+        for arg in program.args:
             if not isinstance(arg, ArrayBase):
                 continue
 
@@ -82,7 +82,8 @@ class SeparateArrayPackingController(object):
                     name=arg.name,
                     sep_shape=arg.sep_shape(),
                     subscripts_and_names=subscripts_and_names,
-                    is_written=arg.name in kernel.get_written_variables())
+                    is_written=arg.name in
+                    program.root_kernel.get_written_variables())
 
     def unpack(self, kernel_kwargs):
         if not self.packing_info:

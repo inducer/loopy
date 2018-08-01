@@ -886,7 +886,8 @@ class _InameDuplicator(RuleAwareIdentityMapper):
         return insn.copy(within_inames=new_fid)
 
 
-def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
+def duplicate_inames_for_single_kernel(knl, inames, within, new_inames=None,
+        suffix=None,
         tags={}):
     """
     :arg within: a stack match as understood by
@@ -965,11 +966,35 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
     for old_iname, new_iname in zip(inames, new_inames):
         new_tag = tags.get(old_iname)
         if new_tag is not None:
-            knl = tag_inames(knl, {new_iname: new_tag})
+            knl = tag_inames_for_single_kernel(knl, {new_iname: new_tag})
 
     # }}}
 
     return knl
+
+
+def duplicate_inames(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = duplicate_inames_for_single_kernel(
+                    in_knl_callable.subkernel, *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 

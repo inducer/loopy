@@ -33,6 +33,9 @@ from pymbolic.mapper.substitutor import make_subst_func
 from pytools import ImmutableRecord
 from pymbolic import var
 
+from loopy.program import Program
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 import logging
 logger = logging.getLogger(__name__)
@@ -468,7 +471,8 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 
 # {{{ expand_subst
 
-def expand_subst(kernel, within=None):
+def expand_subst_for_single_kernel(kernel, within=None):
+    assert isinstance(kernel, LoopKernel)
     if not kernel.substitutions:
         return kernel
 
@@ -484,6 +488,30 @@ def expand_subst(kernel, within=None):
             parse_stack_match(within))
 
     return rule_mapping_context.finish_kernel(submap.map_kernel(kernel))
+
+
+def expand_subst(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = expand_subst_for_single_kernel(
+                    in_knl_callable.subkernel, *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 

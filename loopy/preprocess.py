@@ -2322,8 +2322,8 @@ def preprocess_single_kernel(kernel, program_callables_info, device=None):
 
     # }}}
 
-    from loopy.transform.subst import expand_subst
-    kernel = expand_subst(kernel)
+    from loopy.transform.subst import expand_subst_for_single_kernel
+    kernel = expand_subst_for_single_kernel(kernel)
 
     # Ordering restriction:
     # Type inference and reduction iname uniqueness don't handle substitutions.

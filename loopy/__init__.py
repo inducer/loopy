@@ -30,7 +30,6 @@ from loopy.symbolic import (
         TaggedVariable, Reduction, LinearSubscript, TypeCast)
 from loopy.diagnostic import LoopyError, LoopyWarning
 
-
 # {{{ imported user interface
 
 from loopy.kernel.instruction import (
@@ -49,7 +48,7 @@ from loopy.kernel.data import (
         SubstitutionRule,
         CallMangleInfo)
 from loopy.kernel.function_interface import (
-        ScalarCallable)
+        CallableKernel, ScalarCallable)
 from loopy.program import (
         Program, make_program_from_kernel)
 
@@ -313,6 +312,8 @@ def set_options_for_single_kernel(kernel, *args, **kwargs):
 
     See also :class:`Options`.
     """
+    assert isinstance(kernel, LoopKernel)
+
     if args and kwargs:
         raise TypeError("cannot pass both positional and keyword arguments")
 
@@ -340,11 +341,27 @@ def set_options_for_single_kernel(kernel, *args, **kwargs):
 
 
 def set_options(program, *args, **kwargs):
-    if isinstance(program, LoopKernel):
-        return set_options_for_single_kernel(program, *args, **kwargs)
-    kernel = program.root_kernel
-    return program.with_root_kernel(
-            set_options_for_single_kernel(kernel, *args, **kwargs))
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = set_options_for_single_kernel(
+                    in_knl_callable.subkernel, *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 
@@ -457,7 +474,7 @@ class CacheMode(object):
 # {{{ make copy kernel
 
 def make_copy_kernel(new_dim_tags, old_dim_tags=None):
-    """Returns a :class:`LoopKernel` that changes the data layout
+    """Returns a :class:`loopy.Program` that changes the data layout
     of a variable (called "input") to the new layout specified by
     *new_dim_tags* from the one specified by *old_dim_tags*.
     *old_dim_tags* defaults to an all-C layout of the same rank

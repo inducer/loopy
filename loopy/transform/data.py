@@ -549,7 +549,7 @@ def remove_unused_arguments(knl):
 
 # {{{ alias_temporaries
 
-def alias_temporaries(knl, names, base_name_prefix=None,
+def alias_temporaries_for_single_kernel(knl, names, base_name_prefix=None,
         synchronize_for_exclusive_use=True):
     """Sets all temporaries given by *names* to be backed by a single piece of
     storage.
@@ -627,6 +627,30 @@ def alias_temporaries(knl, names, base_name_prefix=None,
     return knl.copy(
             instructions=new_insns,
             temporary_variables=new_temporary_variables)
+
+
+def alias_temporaries(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = alias_temporaries_for_single_kernel(
+                    in_knl_callable.subkernel, *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 
@@ -711,7 +735,7 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 
 # {{{ set temporary scope
 
-def set_temporary_scope(kernel, temp_var_names, scope):
+def set_temporary_scope_for_single_kernel(kernel, temp_var_names, scope):
     """
     :arg temp_var_names: a container with membership checking,
         or a comma-separated string of variables for which the
@@ -746,6 +770,30 @@ def set_temporary_scope(kernel, temp_var_names, scope):
         new_temp_vars[tv_name] = tv.copy(scope=scope)
 
     return kernel.copy(temporary_variables=new_temp_vars)
+
+
+def set_temporary_scope(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = set_temporary_scope_for_single_kernel(
+                    in_knl_callable.subkernel, *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 

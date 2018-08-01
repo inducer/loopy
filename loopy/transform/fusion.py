@@ -31,6 +31,8 @@ from islpy import dim_type
 from loopy.diagnostic import LoopyError
 from pymbolic import var
 
+from loopy.kernel import LoopKernel
+
 
 def _apply_renames_in_exprs(kernel, var_renames):
     from loopy.symbolic import (
@@ -331,6 +333,8 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
 
         *data_flow* was added in version 2016.2
     """
+
+    assert all(isinstance(knl, LoopKernel) for knl in kernels)
     kernels = list(kernels)
 
     if data_flow is None:
@@ -410,5 +414,9 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
     # }}}
 
     return result
+
+
+def fuse_programs(programs, suffixes=None, data_flow=None):
+    1/0
 
 # vim: foldmethod=marker
