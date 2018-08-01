@@ -928,7 +928,8 @@ class LocalMemAccessCounter(MemAccessCounter):
                     sub_map[MemAccess(
                                 mtype='local',
                                 dtype=dtype,
-                                count_granularity=CountGranularity.WORKITEM)
+                                #count_granularity=CountGranularity.WORKITEM)
+                                count_granularity=CountGranularity.SUBGROUP)
                             ] = 1
                     return sub_map
 
@@ -948,7 +949,8 @@ class LocalMemAccessCounter(MemAccessCounter):
                         lid_strides=dict(sorted(six.iteritems(lid_strides))),
                         gid_strides=dict(sorted(six.iteritems(gid_strides))),
                         variable=name,
-                        count_granularity=CountGranularity.WORKITEM)] = 1
+                        #count_granularity=CountGranularity.WORKITEM)] = 1
+                        count_granularity=CountGranularity.SUBGROUP)] = 1
 
         return sub_map
 
