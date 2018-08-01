@@ -715,7 +715,8 @@ class ExpressionOpCounter(CounterBase):
         return ToCountMap(
                     {Op(dtype=self.type_inf(expr),
                         name='func:'+str(expr.function),
-                        count_granularity=CountGranularity.WORKITEM): 1}
+                        #count_granularity=CountGranularity.WORKITEM): 1}
+                        count_granularity=CountGranularity.SUBGROUP): 1}
                     ) + self.rec(expr.parameters)
 
     def map_subscript(self, expr):
@@ -726,7 +727,8 @@ class ExpressionOpCounter(CounterBase):
         return ToCountMap(
                     {Op(dtype=self.type_inf(expr),
                         name='add',
-                        count_granularity=CountGranularity.WORKITEM):
+                        #count_granularity=CountGranularity.WORKITEM):
+                        count_granularity=CountGranularity.SUBGROUP):
                      len(expr.children)-1}
                     ) + sum(self.rec(child) for child in expr.children)
 
@@ -735,18 +737,21 @@ class ExpressionOpCounter(CounterBase):
         assert expr.children
         return sum(ToCountMap({Op(dtype=self.type_inf(expr),
                                   name='mul',
-                                  count_granularity=CountGranularity.WORKITEM): 1})
+                                  #count_granularity=CountGranularity.WORKITEM): 1})
+                                  count_granularity=CountGranularity.SUBGROUP): 1})
                    + self.rec(child)
                    for child in expr.children
                    if not is_zero(child + 1)) + \
                    ToCountMap({Op(dtype=self.type_inf(expr),
                                   name='mul',
-                                  count_granularity=CountGranularity.WORKITEM): -1})
+                                  #count_granularity=CountGranularity.WORKITEM): -1})
+                                  count_granularity=CountGranularity.SUBGROUP): -1})
 
     def map_quotient(self, expr, *args):
         return ToCountMap({Op(dtype=self.type_inf(expr),
                               name='div',
-                              count_granularity=CountGranularity.WORKITEM): 1}) \
+                              #count_granularity=CountGranularity.WORKITEM): 1}) \
+                              count_granularity=CountGranularity.SUBGROUP): 1}) \
                                 + self.rec(expr.numerator) \
                                 + self.rec(expr.denominator)
 
@@ -756,14 +761,16 @@ class ExpressionOpCounter(CounterBase):
     def map_power(self, expr):
         return ToCountMap({Op(dtype=self.type_inf(expr),
                               name='pow',
-                              count_granularity=CountGranularity.WORKITEM): 1}) \
+                              #count_granularity=CountGranularity.WORKITEM): 1}) \
+                              count_granularity=CountGranularity.SUBGROUP): 1}) \
                                 + self.rec(expr.base) \
                                 + self.rec(expr.exponent)
 
     def map_left_shift(self, expr):
         return ToCountMap({Op(dtype=self.type_inf(expr),
                               name='shift',
-                              count_granularity=CountGranularity.WORKITEM): 1}) \
+                              #count_granularity=CountGranularity.WORKITEM): 1}) \
+                              count_granularity=CountGranularity.SUBGROUP): 1}) \
                                 + self.rec(expr.shiftee) \
                                 + self.rec(expr.shift)
 
@@ -772,13 +779,15 @@ class ExpressionOpCounter(CounterBase):
     def map_bitwise_not(self, expr):
         return ToCountMap({Op(dtype=self.type_inf(expr),
                               name='bw',
-                              count_granularity=CountGranularity.WORKITEM): 1}) \
+                              #count_granularity=CountGranularity.WORKITEM): 1}) \
+                              count_granularity=CountGranularity.SUBGROUP): 1}) \
                                 + self.rec(expr.child)
 
     def map_bitwise_or(self, expr):
         return ToCountMap({Op(dtype=self.type_inf(expr),
                               name='bw',
-                              count_granularity=CountGranularity.WORKITEM):
+                              #count_granularity=CountGranularity.WORKITEM):
+                              count_granularity=CountGranularity.SUBGROUP):
                            len(expr.children)-1}) \
                                 + sum(self.rec(child) for child in expr.children)
 
@@ -802,7 +811,8 @@ class ExpressionOpCounter(CounterBase):
     def map_min(self, expr):
         return ToCountMap({Op(dtype=self.type_inf(expr),
                               name='maxmin',
-                              count_granularity=CountGranularity.WORKITEM):
+                              #count_granularity=CountGranularity.WORKITEM):
+                              count_granularity=CountGranularity.SUBGROUP):
                            len(expr.children)-1}) \
                + sum(self.rec(child) for child in expr.children)
 
@@ -1329,14 +1339,109 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
+    if not isinstance(subgroup_size, int):
+        # try to find subgroup_size
+        subgroup_size_guess = _find_subgroup_size_for_knl(knl)
+
+        if subgroup_size is None:
+            if subgroup_size_guess is None:
+                # 'guess' was not passed and either no target device found
+                # or get_simd_group_size returned None
+                raise ValueError("No sub-group size passed, no target device found. "
+                                 "Either (1) pass integer value for subgroup_size, "
+                                 "(2) ensure that kernel.target is PyOpenClTarget "
+                                 "and kernel.target.device is set, or (3) pass "
+                                 "subgroup_size='guess' and hope for the best.")
+            else:
+                subgroup_size = subgroup_size_guess
+
+        elif subgroup_size == 'guess':
+            if subgroup_size_guess is None:
+                # unable to get subgroup_size from device, so guess
+                subgroup_size = 32
+                warn_with_kernel(knl, "get_op_map_guessing_subgroup_size",
+                                 "get_op_map: 'guess' sub-group size "
+                                 "passed, no target device found, wildly guessing "
+                                 "that sub-group size is %d." % (subgroup_size))
+            else:
+                subgroup_size = subgroup_size_guess
+        else:
+            raise ValueError("Invalid value for subgroup_size: %s. subgroup_size "
+                             "must be integer, 'guess', or, if you're feeling "
+                             "lucky, None." % (subgroup_size))
+
+    # ------------------------------
+    #class CacheHolder(object):
+    #    pass
+
+    #cache_holder = CacheHolder()
+    #from pytools import memoize_in
+
+    #@memoize_in(cache_holder, "insn_count")
+    def get_insn_count(knl, insn, count_granularity=CountGranularity.WORKITEM):
+
+        if count_granularity is None:
+            warn_with_kernel(knl, "get_insn_count_assumes_granularity",
+                             "get_insn_count: No count granularity passed for "
+                             "Op, assuming %s granularity."
+                             % (CountGranularity.WORKITEM))
+            count_granularity == CountGranularity.WORKITEM
+
+        if count_granularity == CountGranularity.WORKITEM:
+            return count_insn_runs(
+                knl, insn, count_redundant_work=count_redundant_work,
+                disregard_local_axes=False)
+
+        ct_disregard_local = count_insn_runs(
+                knl, insn, disregard_local_axes=True,
+                count_redundant_work=count_redundant_work)
+
+        if count_granularity == CountGranularity.WORKGROUP:
+            return ct_disregard_local
+        elif count_granularity == CountGranularity.SUBGROUP:
+            # get the group size
+            from loopy.symbolic import aff_to_expr
+            _, local_size = knl.get_grid_size_upper_bounds()
+            workgroup_size = 1
+            if local_size:
+                for size in local_size:
+                    s = aff_to_expr(size)
+                    if not isinstance(s, int):
+                        raise LoopyError("Cannot count insn with %s granularity, "
+                                         "work-group size is not integer: %s"
+                                         % (CountGranularity.SUBGROUP, local_size))
+                    workgroup_size *= s
+
+            warn_with_kernel(knl, "insn_count_subgroups_upper_bound",
+                    "get_insn_count: when counting instruction %s with "
+                    "count_granularity=%s, using upper bound for work-group size "
+                    "(%d work-items) to compute sub-groups per work-group. When "
+                    "multiple device programs present, actual sub-group count may be"
+                    "lower." % (insn, CountGranularity.SUBGROUP, workgroup_size))
+
+            from pytools import div_ceil
+            return ct_disregard_local*div_ceil(workgroup_size, subgroup_size)
+        else:
+            # this should not happen since this is enforced in Op
+            raise ValueError("get_insn_count: count_granularity '%s' is"
+                    "not allowed. count_granularity options: %s"
+                    % (count_granularity, CountGranularity.ALL+[None]))
+    # ------------------------------
+
     op_map = ToCountMap()
     op_counter = ExpressionOpCounter(knl)
     for insn in knl.instructions:
         if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
             ops = op_counter(insn.assignee) + op_counter(insn.expression)
-            op_map = op_map + ops*count_insn_runs(
-                    knl, insn,
-                    count_redundant_work=count_redundant_work)
+            #op_map = op_map + ops*count_insn_runs(
+            #        knl, insn,
+            #        count_redundant_work=count_redundant_work)
+            for key, val in six.iteritems(ops):
+                op_map = (
+                        op_map
+                        + ToCountMap({key: val})
+                        * get_insn_count(knl, insn, key.count_granularity))
+
         elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
             pass
         else:
