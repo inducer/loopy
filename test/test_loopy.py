@@ -433,7 +433,7 @@ def test_ilp_write_race_avoidance_local(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(i="l.0", j="ilp"))
 
-    knl = lp.preprocess_program(knl, ctx.devices[0])
+    knl = lp.preprocess_kernel(knl, ctx.devices[0])
     assert knl.root_kernel.temporary_variables["a"].shape == (16, 17)
 
 
@@ -450,7 +450,7 @@ def test_ilp_write_race_avoidance_private(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(j="ilp"))
 
-    knl = lp.preprocess_program(knl)
+    knl = lp.preprocess_kernel(knl)
     assert knl.root_kernel.temporary_variables["a"].shape == (16,)
 
 # }}}
@@ -1151,7 +1151,7 @@ def test_within_inames_and_reduction():
             target=lp.CTarget(),
             )
 
-    prog = lp.preprocess_program(prog)
+    prog = lp.preprocess_kernel(prog)
 
     assert 'i' not in prog.root_kernel.insn_inames("insn_0_j_update")
     print(prog.root_kernel.stringify(with_dependencies=True))
@@ -1736,6 +1736,8 @@ def test_call_with_options():
 
 
 def test_unschedulable_kernel_detection():
+    # FIXME: does not work
+    # Reason for multiple calllable kernels, not sure how this will go.
     knl = lp.make_kernel(["{[i,j]:0<=i,j<n}"],
                          """
                          mat1[i,j] = mat1[i,j] + 1 {inames=i:j, id=i1}
@@ -1767,12 +1769,12 @@ def test_unschedulable_kernel_detection():
 
 def test_regression_no_ret_call_removal(ctx_factory):
     # https://github.com/inducer/loopy/issues/32
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i] : 0<=i<n}",
             "f(sum(i, x[i]))")
-    knl = lp.add_and_infer_dtypes(knl, {"x": np.float32})
-    knl = lp.preprocess_kernel(knl)
-    assert len(knl.instructions) == 3
+    prog = lp.add_and_infer_dtypes(prog, {"x": np.float32})
+    prog = lp.preprocess_kernel(prog)
+    assert len(prog.root_kernel.instructions) == 3
 
 
 def test_regression_persistent_hash():
@@ -1785,7 +1787,8 @@ def test_regression_persistent_hash():
             "cse_exprvar = d[0]*d[0]")
     from loopy.tools import LoopyKeyBuilder
     lkb = LoopyKeyBuilder()
-    assert lkb(knl1.instructions[0]) != lkb(knl2.instructions[0])
+    assert (lkb(knl1.root_kernel.instructions[0]) !=
+            lkb(knl2.root_kernel.instructions[0]))
     assert lkb(knl1) != lkb(knl2)
 
 

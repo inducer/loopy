@@ -2391,10 +2391,7 @@ def preprocess_single_kernel(kernel, program_callables_info, device=None):
 
 def preprocess_kernel(kernel, device=None):
     # FIXME: error message?
-    # FIXME: do we assume that we should give out a program or a kernel
-    from loopy.program import make_program_from_kernel
-    program = make_program_from_kernel(kernel)
-    return preprocess_program(program, device)
+    return preprocess_program(kernel, device)
 
 
 def preprocess_program(program, device=None):

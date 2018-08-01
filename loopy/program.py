@@ -34,6 +34,8 @@ from loopy.kernel.function_interface import (
 from loopy.diagnostic import LoopyError
 from pymbolic import var
 
+from loopy.kernel import LoopKernel
+
 
 class FunctionResolver(RuleAwareIdentityMapper):
     """
@@ -156,7 +158,7 @@ def resolve_callables(name, program_callables_info, function_resolvers):
 
 class Program(ImmutableRecord):
     def __init__(self,
-            root_kernel_name,
+            name,
             program_callables_info,
             target=None,
             function_resolvers=None):
@@ -164,10 +166,10 @@ class Program(ImmutableRecord):
 
         # FIXME: check if all sanity checks have been covered?
         # FIXME: The comments over here may need some attention.
-        assert root_kernel_name in program_callables_info
+        assert name in program_callables_info
 
         if target is None:
-            target = program_callables_info[root_kernel_name].subkernel.target
+            target = program_callables_info[name].subkernel.target
 
         if function_resolvers is None:
             # populate the function scopers from the target and the loopy
@@ -202,12 +204,19 @@ class Program(ImmutableRecord):
                     program_callables_info.with_exit_edit_callables_mode())
 
         super(Program, self).__init__(
-                root_kernel_name=root_kernel_name,
+                name=name,
                 program_callables_info=program_callables_info,
                 target=target,
                 function_resolvers=function_resolvers)
 
         self._program_executor_cache = {}
+
+    hash_fields = (
+            "name",
+            "program_callables_info",
+            "target",)
+
+    update_persistent_hash = LoopKernel.update_persistent_hash
 
     def get_grid_size_upper_bounds(self, ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
@@ -261,13 +270,7 @@ class Program(ImmutableRecord):
 
     @property
     def root_kernel(self):
-        return self.program_callables_info[self.root_kernel_name].subkernel
-
-    @property
-    def name(self):
-        #FIXME: discuss with @inducer if we use "name" instead of
-        # "root_kernel_name"
-        return self.root_kernel_name
+        return self.program_callables_info[self.name].subkernel
 
     @property
     def arg_dict(self):
@@ -275,10 +278,10 @@ class Program(ImmutableRecord):
 
     def with_root_kernel(self, root_kernel):
         new_in_knl_callable = self.program_callables_info[
-                self.root_kernel_name].copy(subkernel=root_kernel)
+                self.name].copy(subkernel=root_kernel)
         new_resolved_functions = (
                 self.program_callables_info.resolved_functions.copy())
-        new_resolved_functions[self.root_kernel_name] = new_in_knl_callable
+        new_resolved_functions[self.name] = new_in_knl_callable
 
         return self.copy(
                 program_callables_info=self.program_callables_info.copy(
@@ -303,7 +306,7 @@ class Program(ImmutableRecord):
         print(self.program_callables_info.num_times_callables_called)
         return (
                 (self.program_callables_info[
-                    self.root_kernel_name].subkernel).__str__() +
+                    self.name].subkernel).__str__() +
                 '\nResolved Functions: ' +
                 (self.program_callables_info.resolved_functions.keys()).__str__() +
                 '\n' + 75*'-' + '\n')
@@ -392,6 +395,16 @@ class ProgramCallablesInfo(ImmutableRecord):
                 is_being_edited=is_being_edited,
                 num_times_hit_during_editing=num_times_hit_during_editing,
                 renames_needed_after_editing=renames_needed_after_editing)
+
+    hash_fields = (
+            "resolved_functions",
+            "num_times_callables_called",
+            "is_being_edited",
+            "num_times_hit_during_editing",
+            "old_resolved_functions",
+            "renames_needed_after_editing",)
+
+    update_persistent_hash = LoopKernel.update_persistent_hash
 
     def with_edit_callables_mode(self):
         return self.copy(is_being_edited=True,
@@ -618,7 +631,7 @@ def make_program_from_kernel(kernel):
     program_callables_info = ProgramCallablesInfo(resolved_functions)
 
     program = Program(
-            root_kernel_name=kernel.name,
+            name=kernel.name,
             program_callables_info=program_callables_info)
 
     return program

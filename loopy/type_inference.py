@@ -850,7 +850,7 @@ def infer_unknown_types(program, expect_completion=False):
     program_callables_info = program.program_callables_info
 
     type_uninferred_knl_callable = (
-            program_callables_info[program.root_kernel_name])
+            program_callables_info[program.name])
     type_uninferred_root_kernel = type_uninferred_knl_callable.subkernel
 
     program_callables_info = (
@@ -865,7 +865,7 @@ def infer_unknown_types(program, expect_completion=False):
 
     program_callables_info, _ = (
             program_callables_info.with_callable(
-                program.root_kernel_name,
+                program.name,
                 type_inferred_knl_callable))
 
     program_callables_info = (

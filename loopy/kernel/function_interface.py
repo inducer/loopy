@@ -200,6 +200,8 @@ class InKernelCallable(ImmutableRecord):
     def __getinitargs__(self):
         return (self.arg_id_to_dtype, self.arg_id_to_descr)
 
+    update_persistent_hash = LoopKernel.update_persistent_hash
+
     def with_types(self, arg_id_to_dtype, caller_kernel, program_callables_info):
         """
         :arg arg_id_to_type: a mapping from argument identifiers
@@ -334,6 +336,7 @@ class ScalarCallable(InKernelCallable):
     fields = set(["name", "arg_id_to_dtype", "arg_id_to_descr", "name_in_target"])
     init_arg_names = ("name", "arg_id_to_dtype", "arg_id_to_descr",
             "name_in_target")
+    hash_fields = fields
 
     def __init__(self, name, arg_id_to_dtype=None,
             arg_id_to_descr=None, name_in_target=None):
@@ -490,6 +493,7 @@ class CallableKernel(InKernelCallable):
         "name_in_target"])
     init_arg_names = ("subkernel", "arg_id_to_dtype", "arg_id_to_descr",
             "name_in_target")
+    hash_fields = fields
 
     def __init__(self, subkernel, arg_id_to_dtype=None,
             arg_id_to_descr=None, name_in_target=None):
@@ -692,6 +696,8 @@ class ManglerCallable(ScalarCallable):
         "name_in_target"])
     init_arg_names = ("name", "function_mangler", "arg_id_to_dtype",
             "arg_id_to_descr", "name_in_target")
+    hash_fields = set(["name", "arg_id_to_dtype", "arg_id_to_descr",
+        "name_in_target"])
 
     def __init__(self, name, function_mangler, arg_id_to_dtype=None,
             arg_id_to_descr=None, name_in_target=None):
