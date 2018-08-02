@@ -122,11 +122,13 @@ class FunctionResolver(RuleAwareIdentityMapper):
                 expn_state)
 
     def map_reduction(self, expr, expn_state):
-        for func_id, in_knl_callable in (
-                expr.operation.get_scalar_callables(self.kernel)).items():
+        for func_id in (
+                expr.operation.get_scalar_callables()):
+            in_knl_callable = self.find_resolved_function_from_identifier(func_id)
+            assert in_knl_callable is not None
             self.program_callables_info, _ = (
                     self.program_callables_info.with_callable(func_id,
-                        in_knl_callable))
+                        in_knl_callable, True))
         return super(FunctionResolver, self).map_reduction(expr, expn_state)
 
 
@@ -452,9 +454,14 @@ class ProgramCallablesInfo(ImmutableRecord):
         num_times_callables_called = self.num_times_callables_called.copy()
 
         if not resolved_for_the_first_time:
-            num_times_hit_during_editing[function.name] += 1
+            if isinstance(function, (ArgExtOp, SegmentedOp)):
+                num_times_hit_during_editing[function] += 1
+            else:
+                num_times_hit_during_editing[function.name] += 1
 
         if in_kernel_callable in self.resolved_functions.values():
+            # the callable already exists, implies return the function
+            # identifier corresposing to that callable.
             for func_id, in_knl_callable in self.resolved_functions.items():
                 if in_knl_callable == in_kernel_callable:
                     num_times_callables_called[func_id] += 1
@@ -473,22 +480,40 @@ class ProgramCallablesInfo(ImmutableRecord):
                                     renames_needed_after_editing)),
                             func_id)
         else:
+            if isinstance(function, (ArgExtOp, SegmentedOp)):
+                unique_function_identifier = function.copy()
+                if not resolved_for_the_first_time:
+                    num_times_callables_called[function] -= 1
 
-            # FIXME: maybe deal with the history over here?
-            # FIXME: once the code logic is running beautify this part.
-            # many "ifs" can be avoided
-            unique_function_identifier = function.name
-            if (resolved_for_the_first_time or
-                    self.num_times_callables_called[function.name] > 1):
-                while unique_function_identifier in self.resolved_functions:
-                    unique_function_identifier = (
-                            next_indexed_function_identifier(
-                                unique_function_identifier))
+                num_times_callables_called[unique_function_identifier] = 1
 
-            if not resolved_for_the_first_time:
-                num_times_callables_called[function.name] -= 1
+                updated_resolved_functions = self.resolved_functions.copy()
+                updated_resolved_functions[unique_function_identifier] = (
+                        in_kernel_callable)
 
-            num_times_callables_called[unique_function_identifier] = 1
+                return (
+                        self.copy(
+                            resolved_functions=updated_resolved_functions,
+                            num_times_callables_called=num_times_callables_called,
+                            num_times_hit_during_editing=num_times_hit_during_editing,
+                            renames_needed_after_editing=renames_needed_after_editing),
+                        unique_function_identifier)
+            else:
+                # FIXME: maybe deal with the history over here?
+                # FIXME: once the code logic is running beautify this part.
+                # many "ifs" can be avoided
+                unique_function_identifier = function.name
+                if (resolved_for_the_first_time or
+                        self.num_times_callables_called[function.name] > 1):
+                    while unique_function_identifier in self.resolved_functions:
+                        unique_function_identifier = (
+                                next_indexed_function_identifier(
+                                    unique_function_identifier))
+
+                if not resolved_for_the_first_time:
+                    num_times_callables_called[function.name] -= 1
+
+                num_times_callables_called[unique_function_identifier] = 1
 
             updated_resolved_functions = self.resolved_functions.copy()
             updated_resolved_functions[unique_function_identifier] = (

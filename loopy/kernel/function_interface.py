@@ -623,8 +623,6 @@ class CallableKernel(InKernelCallable):
         # FIXME TODO: This is not correct, as the code code preamble generated
         # during the code generationg of the child kernel, does not guarantee
         # that this thing would be updated.
-        for preamble in self.subkernel.preambles:
-            yield preamble
 
         return
 

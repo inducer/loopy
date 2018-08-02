@@ -83,8 +83,8 @@ class ReductionOperation(object):
         raise LoopyError("unable to parse reduction type: '%s'"
                 % op_type)
 
-    def get_scalar_callables(self, kernel):
-        return {}
+    def get_scalar_callables(self):
+        return frozenset()
 
 
 class ScalarReductionOperation(ReductionOperation):
@@ -187,9 +187,8 @@ class MaxReductionOperation(ScalarReductionOperation):
     def __call__(self, dtype, operand1, operand2):
         return ResolvedFunction("max")(operand1, operand2)
 
-    def get_scalar_callables(self, kernel):
-        return {
-                var("max"): kernel.find_scoped_function_identifier("max")}
+    def get_scalar_callables(self):
+        return frozenset(["max"])
 
 
 class MinReductionOperation(ScalarReductionOperation):
@@ -199,10 +198,8 @@ class MinReductionOperation(ScalarReductionOperation):
     def __call__(self, dtype, operand1, operand2):
         return ResolvedFunction("min")(operand1, operand2)
 
-    def get_scalar_callables(self, kernel):
-        return {
-                var("min"): kernel.find_scoped_function_identifier("min")}
-
+    def get_scalar_callables(self):
+        return frozenset(["min"])
 
 # {{{ base class for symbolic reduction ops
 
@@ -269,10 +266,8 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
     def __call__(self, dtypes, operand1, operand2):
         return ResolvedFunction(SegmentedOp(self))(*(operand1 + operand2))
 
-    def get_scalar_callables(self, kernel):
-        return {
-                "make_tuple": kernel.find_scoped_function_identifier("make_tuple"),
-                SegmentedOp(self): kernel.find_scoped_function_identifier(self)}
+    def get_scalar_callables(self):
+        return frozenset(["make_tuple", SegmentedOp(self)])
 
 
 class SegmentedSumReductionOperation(_SegmentedScalarReductionOperation):
@@ -327,11 +322,8 @@ class _ArgExtremumReductionOperation(ReductionOperation):
     def __call__(self, dtypes, operand1, operand2):
         return ResolvedFunction(ArgExtOp(self))(*(operand1 + operand2))
 
-    def get_scalar_callables(self, kernel):
-        return {
-                self.which: kernel.find_scoped_function_identifier(self.which),
-                "make_tuple": kernel.find_scoped_function_identifier("make_tuple"),
-                ArgExtOp(self): kernel.find_scoped_function_identifier(self)}
+    def get_scalar_callables(self):
+        return frozenset([self.which, "make_tuple", ArgExtOp(self)])
 
 
 class ArgMaxReductionOperation(_ArgExtremumReductionOperation):
@@ -404,12 +396,13 @@ class ReductionCallable(ScalarCallable):
     def with_types(self, arg_id_to_dtype, kernel, program_callables_info):
         scalar_dtype = arg_id_to_dtype[0]
         index_dtype = arg_id_to_dtype[1]
-        result_dtypes = self.name.result_dtypes(kernel, scalar_dtype,
+        result_dtypes = self.name.reduction_op.result_dtypes(kernel, scalar_dtype,
                 index_dtype)
         new_arg_id_to_dtype = arg_id_to_dtype.copy()
         new_arg_id_to_dtype[-1] = result_dtypes[0]
         new_arg_id_to_dtype[-2] = result_dtypes[1]
-        name_in_target = self.name.prefix(scalar_dtype, index_dtype) + "_op"
+        name_in_target = self.name.reduction_op.prefix(scalar_dtype,
+                index_dtype) + "_op"
 
         return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
                 name_in_target=name_in_target), program_callables_info
@@ -477,8 +470,7 @@ class ReductionCallable(ScalarCallable):
 
 
 def reduction_scoper(target, identifier):
-    if isinstance(identifier, (_ArgExtremumReductionOperation,
-            _SegmentedScalarReductionOperation)):
+    if isinstance(identifier, (ArgExtOp, SegmentedOp)):
         return ReductionCallable(name=identifier)
 
     return None

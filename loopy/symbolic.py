@@ -113,7 +113,7 @@ class IdentityMapperMixin(object):
                 self.rec(expr.subscript, *args, **kwargs))
 
     def map_resolved_function(self, expr, *args, **kwargs):
-        return ResolvedFunction(self.rec(expr.function, *args, **kwargs))
+        return ResolvedFunction(expr.function)
 
     map_type_cast = map_type_annotation
 
