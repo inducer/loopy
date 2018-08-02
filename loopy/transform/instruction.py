@@ -286,13 +286,15 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
         sources = frozenset([source])
     else:
         sources = frozenset(
-                source.id for source in find_instructions(kernel, source))
+                source.id for source in find_instructions_in_single_kernel(
+                    kernel, source))
 
     if isinstance(sink, str) and sink in kernel.id_to_insn:
         sinks = frozenset([sink])
     else:
         sinks = frozenset(
-                sink.id for sink in find_instructions(kernel, sink))
+                sink.id for sink in find_instructions_in_single_kernel(
+                    kernel, sink))
 
     if not sources and not empty_ok:
         raise LoopyError("No match found for source specification '%s'." % source)

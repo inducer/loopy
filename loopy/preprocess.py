@@ -40,15 +40,15 @@ from loopy.symbolic import RuleAwareIdentityMapper
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
-
+from loopy.program import iterate_over_kernels_if_given_program
 import logging
 logger = logging.getLogger(__name__)
 
 
 # {{{ prepare for caching
 
-def prepare_single_kernel_for_caching(kernel):
+@iterate_over_kernels_if_given_program
+def prepare_for_caching(kernel):
     import loopy as lp
     new_args = []
 
@@ -74,23 +74,6 @@ def prepare_single_kernel_for_caching(kernel):
             temporary_variables=new_temporary_variables)
 
     return kernel
-
-
-def prepare_for_caching(program):
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            # FIXME: this is an easy fix. remove the target attribute from
-            # kernel
-            new_subkernel = prepare_single_kernel_for_caching(
-                    in_knl_callable.subkernel.copy(target=program.target))
-            new_resolved_functions[func_id] = (
-                    in_knl_callable.copy(subkernel=new_subkernel))
-        elif isinstance(in_knl_callable, ScalarCallable):
-            new_resolved_functions[func_id] = in_knl_callable
-        else:
-            raise NotImplementedError("Unknown InKernelCallable %s." %
-                    type(in_knl_callable).__name__)
 
 # }}}
 
@@ -1954,8 +1937,8 @@ def realize_reduction(kernel, program_callables_info, insn_id_filter=None,
 
     kernel = lp.replace_instruction_ids(kernel, insn_id_replacements)
 
-    from loopy.transform.iname import tag_inames_for_single_kernel
-    kernel = tag_inames_for_single_kernel(kernel, new_iname_tags)
+    from loopy.transform.iname import tag_inames
+    kernel = tag_inames(kernel, new_iname_tags)
 
     # TODO: remove unused inames...
 
@@ -2324,8 +2307,8 @@ def preprocess_single_kernel(kernel, program_callables_info, device=None):
 
     # }}}
 
-    from loopy.transform.subst import expand_subst_for_single_kernel
-    kernel = expand_subst_for_single_kernel(kernel)
+    from loopy.transform.subst import expand_subst
+    kernel = expand_subst(kernel)
 
     # Ordering restriction:
     # Type inference and reduction iname uniqueness don't handle substitutions.
@@ -2381,7 +2364,7 @@ def preprocess_single_kernel(kernel, program_callables_info, device=None):
     if CACHING_ENABLED:
         input_kernel = prepare_for_caching(input_kernel)
 
-    kernel = prepare_single_kernel_for_caching(kernel)
+    kernel = prepare_for_caching(kernel)
 
     # }}}
 

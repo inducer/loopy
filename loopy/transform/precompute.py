@@ -1040,8 +1040,8 @@ def precompute_for_single_kernel(kernel, program_callables_info, subst_use,
 
     # }}}
 
-    from loopy.transform.iname import tag_inames_for_single_kernel
-    kernel = tag_inames_for_single_kernel(kernel, new_iname_to_tag)
+    from loopy.transform.iname import tag_inames
+    kernel = tag_inames(kernel, new_iname_to_tag)
 
     from loopy.kernel.data import AutoFitLocalIndexTag, filter_iname_tags_by_type
 

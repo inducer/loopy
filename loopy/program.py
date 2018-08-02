@@ -27,6 +27,7 @@ import re
 
 from pytools import ImmutableRecord, memoize_method
 from pymbolic.primitives import Variable
+from functools import wraps
 
 from loopy.symbolic import RuleAwareIdentityMapper, ResolvedFunction
 from loopy.kernel.function_interface import (
@@ -495,8 +496,10 @@ class ProgramCallablesInfo(ImmutableRecord):
                         self.copy(
                             resolved_functions=updated_resolved_functions,
                             num_times_callables_called=num_times_callables_called,
-                            num_times_hit_during_editing=num_times_hit_during_editing,
-                            renames_needed_after_editing=renames_needed_after_editing),
+                            num_times_hit_during_editing=(
+                                num_times_hit_during_editing),
+                            renames_needed_after_editing=(
+                                renames_needed_after_editing)),
                         unique_function_identifier)
             else:
                 # FIXME: maybe deal with the history over here?
@@ -660,6 +663,37 @@ def make_program_from_kernel(kernel):
             program_callables_info=program_callables_info)
 
     return program
+
+
+def iterate_over_kernels_if_given_program(transform_for_single_kernel):
+    def _collective_transform(program_or_kernel, *args, **kwargs):
+        if isinstance(program_or_kernel, Program):
+            program = program_or_kernel
+            new_resolved_functions = {}
+            for func_id, in_knl_callable in program.program_callables_info.items():
+                if isinstance(in_knl_callable, CallableKernel):
+                    new_subkernel = transform_for_single_kernel(
+                            in_knl_callable.subkernel, *args, **kwargs)
+                    in_knl_callable = in_knl_callable.copy(
+                            subkernel=new_subkernel)
+
+                elif isinstance(in_knl_callable, ScalarCallable):
+                    pass
+                else:
+                    raise NotImplementedError("Unknown type of callable %s." % (
+                        type(in_knl_callable).__name__))
+
+                new_resolved_functions[func_id] = in_knl_callable
+
+            new_program_callables_info = program.program_callables_info.copy(
+                    resolved_functions=new_resolved_functions)
+            return program.copy(program_callables_info=new_program_callables_info)
+        else:
+            assert isinstance(program_or_kernel, LoopKernel)
+            kernel = program_or_kernel
+            return transform_for_single_kernel(kernel)
+
+    return wraps(transform_for_single_kernel)(_collective_transform)
 
 
 # {{{ ingoring this for now

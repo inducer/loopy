@@ -29,6 +29,7 @@ from six.moves import range, zip
 from loopy.symbolic import (
         TaggedVariable, Reduction, LinearSubscript, TypeCast)
 from loopy.diagnostic import LoopyError, LoopyWarning
+from loopy.program import iterate_over_kernels_if_given_program
 
 # {{{ imported user interface
 
@@ -173,7 +174,7 @@ __all__ = [
         "CallInstruction", "CInstruction", "NoOpInstruction",
         "BarrierInstruction",
 
-        "ScalarCallable",
+        "ScalarCallable", "CallableKernel",
 
         "Program", "make_program_from_kernel",
 
@@ -305,7 +306,8 @@ __all__ = [
 
 # {{{ set_options
 
-def set_options_for_single_kernel(kernel, *args, **kwargs):
+@iterate_over_kernels_if_given_program
+def set_options(kernel, *args, **kwargs):
     """Return a new kernel with the options given as keyword arguments, or from
     a string representation passed in as the first (and only) positional
     argument.
@@ -339,36 +341,13 @@ def set_options_for_single_kernel(kernel, *args, **kwargs):
 
     return kernel.copy(options=new_opt)
 
-
-def set_options(program, *args, **kwargs):
-    assert isinstance(program, Program)
-
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = set_options_for_single_kernel(
-                    in_knl_callable.subkernel, *args, **kwargs)
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=new_subkernel)
-
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of callable %s." % (
-                type(in_knl_callable).__name__))
-
-        new_resolved_functions[func_id] = in_knl_callable
-
-    new_program_callables_info = program.program_callables_info.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(program_callables_info=new_program_callables_info)
-
 # }}}
 
 
 # {{{ library registration
 
-def register_preamble_generators_for_single_kernel(kernel, preamble_generators):
+@iterate_over_kernels_if_given_program
+def register_preamble_generators(kernel, preamble_generators):
     """
     :arg manglers: list of functions of signature ``(preamble_info)``
         generating tuples ``(sortable_str_identifier, code)``,
@@ -392,30 +371,7 @@ def register_preamble_generators_for_single_kernel(kernel, preamble_generators):
     return kernel.copy(preamble_generators=new_pgens)
 
 
-def register_preamble_generators(program, *args, **kwargs):
-    assert isinstance(program, Program)
-
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = register_preamble_generators_for_single_kernel(
-                    in_knl_callable.subkernel, *args, **kwargs)
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=new_subkernel)
-
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of callable %s." % (
-                type(in_knl_callable).__name__))
-
-        new_resolved_functions[func_id] = in_knl_callable
-
-    new_program_callables_info = program.program_callables_info.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(program_callables_info=new_program_callables_info)
-
-
+@iterate_over_kernels_if_given_program
 def register_symbol_manglers(kernel, manglers):
     from loopy.tools import unpickles_equally
 
@@ -433,7 +389,8 @@ def register_symbol_manglers(kernel, manglers):
     return kernel.copy(symbol_manglers=new_manglers)
 
 
-def register_function_manglers_for_single_kernel(kernel, manglers):
+@iterate_over_kernels_if_given_program
+def register_function_manglers(kernel, manglers):
     """
     :arg manglers: list of functions of signature ``(kernel, name, arg_dtypes)``
         returning a :class:`loopy.CallMangleInfo`.
@@ -453,30 +410,6 @@ def register_function_manglers_for_single_kernel(kernel, manglers):
             new_manglers.insert(0, m)
 
     return kernel.copy(function_manglers=new_manglers)
-
-
-def register_function_manglers(program, *args, **kwargs):
-    assert isinstance(program, Program)
-
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = register_function_manglers_for_single_kernel(
-                    in_knl_callable.subkernel, *args, **kwargs)
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=new_subkernel)
-
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of callable %s." % (
-                type(in_knl_callable).__name__))
-
-        new_resolved_functions[func_id] = in_knl_callable
-
-    new_program_callables_info = program.program_callables_info.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 

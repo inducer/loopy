@@ -186,8 +186,8 @@ def find_all_insn_inames(kernel):
     all_read_deps = {}
     all_write_deps = {}
 
-    from loopy.transform.subst import expand_subst_for_single_kernel
-    kernel = expand_subst_for_single_kernel(kernel)
+    from loopy.transform.subst import expand_subst
+    kernel = expand_subst(kernel)
 
     for insn in kernel.instructions:
         all_read_deps[insn.id] = read_deps = insn.read_dependency_names()
@@ -837,13 +837,13 @@ def assign_automatic_axes(kernel, program_callables_info, axis=0, local_size=Non
             new_tag = LocalIndexTag(axis)
             if desired_length > local_size[axis]:
                 from loopy import untag_inames
-                from loopy.transform.iname import split_iname_for_single_kernel
+                from loopy.transform.iname import split_iname
 
                 # Don't be tempted to switch the outer tag to unroll--this may
                 # generate tons of code on some examples.
 
                 return assign_automatic_axes(
-                        split_iname_for_single_kernel(
+                        split_iname(
                             untag_inames(kernel, iname, AutoLocalIndexTagBase),
                             iname, inner_length=local_size[axis],
                             outer_tag=None, inner_tag=new_tag,

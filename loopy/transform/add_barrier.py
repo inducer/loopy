@@ -26,9 +26,8 @@ THE SOFTWARE.
 from loopy.kernel.instruction import BarrierInstruction
 from loopy.match import parse_match
 from loopy.transform.instruction import add_dependency
-from loopy.program import Program
+from loopy.program import iterate_over_kernels_if_given_program
 from loopy.kernel import LoopKernel
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -39,7 +38,8 @@ __doc__ = """
 
 # {{{ add_barrier
 
-def add_barrier_for_single_kernel(knl, insn_before="", insn_after="",
+@iterate_over_kernels_if_given_program
+def add_barrier(knl, insn_before="", insn_after="",
         id_based_on=None, tags=None, synchronization_kind="global",
         mem_kind=None):
     """Takes in a kernel that needs to be added a barrier and returns a kernel
@@ -87,30 +87,6 @@ def add_barrier_for_single_kernel(knl, insn_before="", insn_after="",
                              depends_on="id:"+id)
 
     return new_knl
-
-
-def add_barrier(program, *args, **kwargs):
-    assert isinstance(program, Program)
-
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = add_barrier_for_single_kernel(
-                    in_knl_callable.subkernel, *args, **kwargs)
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=new_subkernel)
-
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of callable %s." % (
-                type(in_knl_callable).__name__))
-
-        new_resolved_functions[func_id] = in_knl_callable
-
-    new_program_callables_info = program.program_callables_info.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 

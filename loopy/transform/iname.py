@@ -34,9 +34,8 @@ from loopy.symbolic import (
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
 
-from loopy.program import Program
+from loopy.program import iterate_over_kernels_if_given_program
 from loopy.kernel import LoopKernel
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 
 __doc__ = """
@@ -97,7 +96,8 @@ def set_loop_priority(kernel, loop_priority):
     return kernel.copy(loop_priority=frozenset([loop_priority]))
 
 
-def prioritize_loops_for_single_kernel(kernel, loop_priority):
+@iterate_over_kernels_if_given_program
+def prioritize_loops(kernel, loop_priority):
     """Indicates the textual order in which loops should be entered in the
     kernel code. Note that this priority has an advisory role only. If the
     kernel logically requires a different nesting, priority is ignored.
@@ -119,30 +119,6 @@ def prioritize_loops_for_single_kernel(kernel, loop_priority):
     loop_priority = tuple(loop_priority)
 
     return kernel.copy(loop_priority=kernel.loop_priority.union([loop_priority]))
-
-
-def prioritize_loops(program, *args, **kwargs):
-    assert isinstance(program, Program)
-
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = prioritize_loops_for_single_kernel(
-                    in_knl_callable.subkernel, *args, **kwargs)
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=new_subkernel)
-
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of callable %s." % (
-                type(in_knl_callable).__name__))
-
-        new_resolved_functions[func_id] = in_knl_callable
-
-    new_program_callables_info = program.program_callables_info.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 
@@ -329,7 +305,7 @@ def _split_iname_backend(kernel, split_iname,
         kernel = tag_inames(kernel,
                 {outer_iname: existing_tag, inner_iname: existing_tag})
 
-    return tag_inames_for_single_kernel(kernel, {outer_iname: outer_tag,
+    return tag_inames(kernel, {outer_iname: outer_tag,
         inner_iname: inner_tag})
 
 # }}}
@@ -337,7 +313,8 @@ def _split_iname_backend(kernel, split_iname,
 
 # {{{ split iname
 
-def split_iname_for_single_kernel(kernel, split_iname, inner_length,
+@iterate_over_kernels_if_given_program
+def split_iname(kernel, split_iname, inner_length,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
         slabs=(0, 0), do_tagged_check=True,
@@ -375,36 +352,13 @@ def split_iname_for_single_kernel(kernel, split_iname, inner_length,
             slabs=slabs, do_tagged_check=do_tagged_check,
             within=within)
 
-
-def split_iname(program, *args, **kwargs):
-    assert isinstance(program, Program)
-
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = split_iname_for_single_kernel(
-                in_knl_callable.subkernel, *args, **kwargs)
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=new_subkernel)
-
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of callable %s." % (
-                type(in_knl_callable).__name__))
-
-        new_resolved_functions[func_id] = in_knl_callable
-
-    new_program_callables_info = program.program_callables_info.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(program_callables_info=new_program_callables_info)
-
 # }}}
 
 
 # {{{ chunk iname
 
-def chunk_iname_for_single_kernel(kernel, split_iname, num_chunks,
+@iterate_over_kernels_if_given_program
+def chunk_iname(kernel, split_iname, num_chunks,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
         slabs=(0, 0), do_tagged_check=True,
@@ -493,30 +447,6 @@ def chunk_iname_for_single_kernel(kernel, split_iname, num_chunks,
             outer_tag=outer_tag, inner_tag=inner_tag,
             slabs=slabs, do_tagged_check=do_tagged_check,
             within=within)
-
-
-def chunk_iname(program, *args, **kwargs):
-    assert isinstance(program, Program)
-
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = chunk_iname_for_single_kernel(
-                    in_knl_callable.subkernel, *args, **kwargs)
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=new_subkernel)
-
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of callable %s." % (
-                type(in_knl_callable).__name__))
-
-        new_resolved_functions[func_id] = in_knl_callable
-
-    new_program_callables_info = program.program_callables_info.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 
@@ -706,7 +636,8 @@ def untag_inames(kernel, iname_to_untag, tag_type):
 
 # {{{ tag inames
 
-def tag_inames_for_single_kernel(kernel, iname_to_tag, force=False,
+@iterate_over_kernels_if_given_program
+def tag_inames(kernel, iname_to_tag, force=False,
         ignore_nonexistent=False):
     """Tag an iname
 
@@ -829,30 +760,6 @@ def tag_inames_for_single_kernel(kernel, iname_to_tag, force=False,
 
     return kernel.copy(iname_to_tags=knl_iname_to_tags)
 
-
-def tag_inames(program, *args, **kwargs):
-    assert isinstance(program, Program)
-
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = tag_inames_for_single_kernel(
-                    in_knl_callable.subkernel, *args, **kwargs)
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=new_subkernel)
-
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of callable %s." % (
-                type(in_knl_callable).__name__))
-
-        new_resolved_functions[func_id] = in_knl_callable
-
-    new_program_callables_info = program.program_callables_info.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(program_callables_info=new_program_callables_info)
-
 # }}}
 
 
@@ -910,7 +817,8 @@ class _InameDuplicator(RuleAwareIdentityMapper):
         return insn.copy(within_inames=new_fid)
 
 
-def duplicate_inames_for_single_kernel(knl, inames, within, new_inames=None,
+@iterate_over_kernels_if_given_program
+def duplicate_inames(knl, inames, within, new_inames=None,
         suffix=None,
         tags={}):
     """
@@ -990,35 +898,11 @@ def duplicate_inames_for_single_kernel(knl, inames, within, new_inames=None,
     for old_iname, new_iname in zip(inames, new_inames):
         new_tag = tags.get(old_iname)
         if new_tag is not None:
-            knl = tag_inames_for_single_kernel(knl, {new_iname: new_tag})
+            knl = tag_inames(knl, {new_iname: new_tag})
 
     # }}}
 
     return knl
-
-
-def duplicate_inames(program, *args, **kwargs):
-    assert isinstance(program, Program)
-
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = duplicate_inames_for_single_kernel(
-                    in_knl_callable.subkernel, *args, **kwargs)
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=new_subkernel)
-
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of callable %s." % (
-                type(in_knl_callable).__name__))
-
-        new_resolved_functions[func_id] = in_knl_callable
-
-    new_program_callables_info = program.program_callables_info.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 

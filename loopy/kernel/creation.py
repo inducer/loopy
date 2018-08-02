@@ -1775,8 +1775,8 @@ def add_inferred_inames(knl):
 def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
     logger.debug("%s: default deps" % kernel.name)
 
-    from loopy.transform.subst import expand_subst_for_single_kernel
-    expanded_kernel = expand_subst_for_single_kernel(kernel)
+    from loopy.transform.subst import expand_subst
+    expanded_kernel = expand_subst(kernel)
 
     writer_map = kernel.writer_map()
 
@@ -2318,8 +2318,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     # NOTE: add_inferred_inames will be phased out and throws warnings if it
     # does something.
     knl = add_inferred_inames(knl)
-    from loopy.transform.parameter import fix_parameters_for_single_kernel
-    knl = fix_parameters_for_single_kernel(knl, **fixed_parameters)
+    from loopy.transform.parameter import fix_parameters
+    knl = fix_parameters(knl, **fixed_parameters)
     # -------------------------------------------------------------------------
     # Ordering dependency:
     # -------------------------------------------------------------------------
@@ -2347,8 +2347,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     from loopy.kernel.tools import infer_arg_is_output_only
     knl = infer_arg_is_output_only(knl)
 
-    from loopy.preprocess import prepare_single_kernel_for_caching
-    knl = prepare_single_kernel_for_caching(knl)
+    from loopy.preprocess import prepare_for_caching
+    knl = prepare_for_caching(knl)
 
     creation_plog.done()
 

@@ -28,9 +28,8 @@ THE SOFTWARE.
 from pytools import MovedFunctionDeprecationWrapper
 from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 
-from loopy.program import Program
+from loopy.program import iterate_over_kernels_if_given_program
 from loopy.kernel import LoopKernel
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 
 class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
@@ -48,7 +47,8 @@ class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
 
 # {{{ split_array_dim (deprecated since June 2016)
 
-def split_array_dim_for_single_kernel(kernel, arrays_and_axes, count,
+@iterate_over_kernels_if_given_program
+def split_array_dim(kernel, arrays_and_axes, count,
         auto_split_inames=True,
         split_kwargs=None):
     """
@@ -242,41 +242,16 @@ def split_array_dim_for_single_kernel(kernel, arrays_and_axes, count,
     kernel = rule_mapping_context.finish_kernel(aash.map_kernel(kernel))
 
     if auto_split_inames:
-        from loopy.transform.iname import split_iname_for_single_kernel
+        from loopy.transform.iname import split_iname
         for iname, (outer_iname, inner_iname) in six.iteritems(split_vars):
-            kernel = split_iname_for_single_kernel(kernel, iname, count,
+            kernel = split_iname(kernel, iname, count,
                     outer_iname=outer_iname, inner_iname=inner_iname,
                     **split_kwargs)
 
     return kernel
 
 
-split_arg_axis = (MovedFunctionDeprecationWrapper(
-    split_array_dim_for_single_kernel))
-
-
-def split_array_dim(program, *args, **kwargs):
-    assert isinstance(program, Program)
-
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = split_array_dim_for_single_kernel(
-                    in_knl_callable.subkernel, *args, **kwargs)
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=new_subkernel)
-
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of callable %s." % (
-                type(in_knl_callable).__name__))
-
-        new_resolved_functions[func_id] = in_knl_callable
-
-    new_program_callables_info = program.program_callables_info.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(program_callables_info=new_program_callables_info)
+split_arg_axis = (MovedFunctionDeprecationWrapper(split_array_dim))
 
 # }}}
 
@@ -400,7 +375,8 @@ def _split_array_axis_inner(kernel, array_name, axis_nr, count, order="C"):
     return kernel
 
 
-def split_array_axis_for_single_kernel(kernel, array_names, axis_nr, count,
+@iterate_over_kernels_if_given_program
+def split_array_axis(kernel, array_names, axis_nr, count,
         order="C"):
     """
     :arg array: a list of names of temporary variables or arguments. May
@@ -427,30 +403,6 @@ def split_array_axis_for_single_kernel(kernel, array_names, axis_nr, count,
         kernel = _split_array_axis_inner(kernel, array_name, axis_nr, count, order)
 
     return kernel
-
-
-def split_array_axis(program, *args, **kwargs):
-    assert isinstance(program, Program)
-
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = split_array_axis_for_single_kernel(
-                    in_knl_callable.subkernel, *args, **kwargs)
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=new_subkernel)
-
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of callable %s." % (
-                type(in_knl_callable).__name__))
-
-        new_resolved_functions[func_id] = in_knl_callable
-
-    new_program_callables_info = program.program_callables_info.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 
