@@ -736,6 +736,7 @@ def set_temporary_scope(kernel, temp_var_names, scope):
 
 # {{{ reduction_arg_to_subst_rule
 
+@iterate_over_kernels_if_given_program
 def reduction_arg_to_subst_rule(knl, inames, insn_match=None, subst_rule_name=None):
     if isinstance(inames, str):
         inames = [s.strip() for s in inames.split(",")]

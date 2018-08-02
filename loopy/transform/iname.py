@@ -1294,6 +1294,7 @@ def _split_reduction(kernel, inames, direction, within=None):
             rsplit.map_kernel(kernel))
 
 
+@iterate_over_kernels_if_given_program
 def split_reduction_inward(kernel, inames, within=None):
     """Takes a reduction of the form::
 
@@ -1313,6 +1314,7 @@ def split_reduction_inward(kernel, inames, within=None):
     return _split_reduction(kernel, inames, "in", within)
 
 
+@iterate_over_kernels_if_given_program
 def split_reduction_outward(kernel, inames, within=None):
     """Takes a reduction of the form::
 
@@ -1668,6 +1670,7 @@ class _ReductionInameUniquifier(RuleAwareIdentityMapper):
                     expr, expn_state)
 
 
+@iterate_over_kernels_if_given_program
 def make_reduction_inames_unique(kernel, inames=None, within=None):
     """
     :arg inames: if not *None*, only apply to these inames

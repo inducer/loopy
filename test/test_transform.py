@@ -322,12 +322,12 @@ def test_tag_data_axes(ctx_factory):
     ref_knl = knl
 
     with pytest.raises(lp.LoopyError):
-        lp.tag_data_axes(knl, "out", "N1,N0,N5")
+        lp.tag_array_axes(knl, "out", "N1,N0,N5")
 
     with pytest.raises(lp.LoopyError):
-        lp.tag_data_axes(knl, "out", "N1,N0,c")
+        lp.tag_array_axes(knl, "out", "N1,N0,c")
 
-    knl = lp.tag_data_axes(knl, "out", "N1,N0,N2")
+    knl = lp.tag_array_axes(knl, "out", "N1,N0,N2")
     knl = lp.tag_inames(knl, dict(j="g.0", i="g.1"))
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl,

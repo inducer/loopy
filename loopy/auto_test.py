@@ -31,7 +31,6 @@ import numpy as np
 import loopy as lp
 
 from loopy.diagnostic import LoopyError, AutomaticTestFailure
-from loopy.kernel import LoopKernel
 
 
 AUTO_TEST_SKIP_RUN = False
@@ -368,7 +367,7 @@ def _enumerate_cl_devices_for_ref_test(blacklist_ref_vendors):
 # {{{ main automatic testing entrypoint
 
 def auto_test_vs_ref(
-        ref_knl, ctx, test_knl=None, op_count=[], op_label=[], parameters={},
+        ref_prog, ctx, test_prog=None, op_count=[], op_label=[], parameters={},
         print_ref_code=False, print_code=True, warmup_rounds=2,
         dump_binary=False,
         fills_entire_output=None, do_check=True, check_result=None,
@@ -385,19 +384,12 @@ def auto_test_vs_ref(
 
     import pyopencl as cl
 
-    if test_knl is None:
-        test_knl = ref_knl
+    if test_prog is None:
+        test_prog = ref_prog
         do_check = False
 
-    if isinstance(ref_knl, LoopKernel):
-        ref_prog = lp.make_program_from_kernel(ref_knl)
-    else:
-        ref_prog = ref_knl
-
-    if isinstance(test_knl, LoopKernel):
-        test_prog = lp.make_program_from_kernel(test_knl)
-    else:
-        test_prog = test_knl
+    ref_prog = lp.preprocess_kernel(ref_prog)
+    test_prog = lp.preprocess_kernel(test_prog)
 
     if len(ref_prog.args) != len(test_prog.args):
         raise LoopyError("ref_prog and test_prog do not have the same number "

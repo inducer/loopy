@@ -175,7 +175,7 @@ class Random123Callable(ScalarCallable):
                 arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
             # the types provided aren't mature enough to specialize the
             # callable
-            return (self.copy(arg_id_to_dtype=arg_id_to_dtype),
+            return (self.copy(),
                     program_callables_info)
 
         name = self.name

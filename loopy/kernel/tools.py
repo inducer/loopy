@@ -797,6 +797,7 @@ def assign_automatic_axes(kernel, program_callables_info, axis=0, local_size=Non
 
             return assign_automatic_axes(
                     kernel.copy(iname_to_tags=new_iname_to_tags),
+                    program_callables_info,
                     axis=recursion_axis)
 
         if axis is None:

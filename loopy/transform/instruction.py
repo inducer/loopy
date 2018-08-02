@@ -95,6 +95,7 @@ def set_instruction_priority(kernel, insn_match, priority):
 
 # {{{ add_dependency
 
+@iterate_over_kernels_if_given_program
 def add_dependency(kernel, insn_match, depends_on):
     """Add the instruction dependency *dependency* to the instructions matched
     by *insn_match*.
