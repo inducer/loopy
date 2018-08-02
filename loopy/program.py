@@ -460,6 +460,27 @@ class ProgramCallablesInfo(ImmutableRecord):
             else:
                 num_times_hit_during_editing[function.name] += 1
 
+        if isinstance(function, (ArgExtOp, SegmentedOp)):
+            unique_function_identifier = function.copy()
+            if not resolved_for_the_first_time:
+                num_times_callables_called[function] -= 1
+
+            num_times_callables_called[unique_function_identifier] = 1
+
+            updated_resolved_functions = self.resolved_functions.copy()
+            updated_resolved_functions[unique_function_identifier] = (
+                    in_kernel_callable)
+
+            return (
+                    self.copy(
+                        resolved_functions=updated_resolved_functions,
+                        num_times_callables_called=num_times_callables_called,
+                        num_times_hit_during_editing=(
+                            num_times_hit_during_editing),
+                        renames_needed_after_editing=(
+                            renames_needed_after_editing)),
+                    unique_function_identifier)
+
         if in_kernel_callable in self.resolved_functions.values():
             # the callable already exists, implies return the function
             # identifier corresposing to that callable.
@@ -481,54 +502,33 @@ class ProgramCallablesInfo(ImmutableRecord):
                                     renames_needed_after_editing)),
                             func_id)
         else:
-            if isinstance(function, (ArgExtOp, SegmentedOp)):
-                unique_function_identifier = function.copy()
-                if not resolved_for_the_first_time:
-                    num_times_callables_called[function] -= 1
+            # FIXME: maybe deal with the history over here?
+            # FIXME: once the code logic is running beautify this part.
+            # many "ifs" can be avoided
+            unique_function_identifier = function.name
+            if (resolved_for_the_first_time or
+                    self.num_times_callables_called[function.name] > 1):
+                while unique_function_identifier in self.resolved_functions:
+                    unique_function_identifier = (
+                            next_indexed_function_identifier(
+                                unique_function_identifier))
 
-                num_times_callables_called[unique_function_identifier] = 1
+            if not resolved_for_the_first_time:
+                num_times_callables_called[function.name] -= 1
 
-                updated_resolved_functions = self.resolved_functions.copy()
-                updated_resolved_functions[unique_function_identifier] = (
-                        in_kernel_callable)
+            num_times_callables_called[unique_function_identifier] = 1
 
-                return (
-                        self.copy(
-                            resolved_functions=updated_resolved_functions,
-                            num_times_callables_called=num_times_callables_called,
-                            num_times_hit_during_editing=(
-                                num_times_hit_during_editing),
-                            renames_needed_after_editing=(
-                                renames_needed_after_editing)),
-                        unique_function_identifier)
-            else:
-                # FIXME: maybe deal with the history over here?
-                # FIXME: once the code logic is running beautify this part.
-                # many "ifs" can be avoided
-                unique_function_identifier = function.name
-                if (resolved_for_the_first_time or
-                        self.num_times_callables_called[function.name] > 1):
-                    while unique_function_identifier in self.resolved_functions:
-                        unique_function_identifier = (
-                                next_indexed_function_identifier(
-                                    unique_function_identifier))
+        updated_resolved_functions = self.resolved_functions.copy()
+        updated_resolved_functions[unique_function_identifier] = (
+                in_kernel_callable)
 
-                if not resolved_for_the_first_time:
-                    num_times_callables_called[function.name] -= 1
-
-                num_times_callables_called[unique_function_identifier] = 1
-
-            updated_resolved_functions = self.resolved_functions.copy()
-            updated_resolved_functions[unique_function_identifier] = (
-                    in_kernel_callable)
-
-            return (
-                    self.copy(
-                        resolved_functions=updated_resolved_functions,
-                        num_times_callables_called=num_times_callables_called,
-                        num_times_hit_during_editing=num_times_hit_during_editing,
-                        renames_needed_after_editing=renames_needed_after_editing),
-                    Variable(unique_function_identifier))
+        return (
+                self.copy(
+                    resolved_functions=updated_resolved_functions,
+                    num_times_callables_called=num_times_callables_called,
+                    num_times_hit_during_editing=num_times_hit_during_editing,
+                    renames_needed_after_editing=renames_needed_after_editing),
+                Variable(unique_function_identifier))
 
     def with_exit_edit_callables_mode(self):
         assert self.is_being_edited
