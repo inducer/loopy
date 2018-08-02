@@ -2498,7 +2498,7 @@ def test_multi_argument_reduction_parsing():
 
 
 def test_global_barrier_order_finding():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i,itrip]: 0<=i<n and 0<=itrip<ntrips}",
             """
             for i
@@ -2515,7 +2515,8 @@ def test_global_barrier_order_finding():
             end
             """)
 
-    assert lp.get_global_barrier_order(knl) == ("top", "yoink", "postloop")
+    assert (lp.get_global_barrier_order(prog.root_kernel) == ("top", "yoink",
+        "postloop"))
 
     for insn, barrier in (
             ("nop", None),
@@ -2525,12 +2526,12 @@ def test_global_barrier_order_finding():
             ("yoink", "top"),
             ("postloop", "yoink"),
             ("zzzv", "postloop")):
-        assert lp.find_most_recent_global_barrier(knl, insn) == barrier
+        assert lp.find_most_recent_global_barrier(prog.root_kernel, insn) == barrier
 
 
 def test_global_barrier_error_if_unordered():
     # FIXME: Should be illegal to declare this
-    knl = lp.make_kernel("{[i]: 0 <= i < 10}",
+    prog = lp.make_kernel("{[i]: 0 <= i < 10}",
             """
             ... gbarrier
             ... gbarrier
@@ -2538,7 +2539,7 @@ def test_global_barrier_error_if_unordered():
 
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
-        lp.get_global_barrier_order(knl)
+        lp.get_global_barrier_order(prog.root_kernel)
 
 
 def test_struct_assignment(ctx_factory):
@@ -2600,14 +2601,14 @@ def test_inames_conditional_generation(ctx_factory):
 
 
 def test_kernel_var_name_generator():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i]: 0 <= i <= 10}",
             """
             <>a = 0
             <>b_s0 = 0
             """)
 
-    vng = knl.get_var_name_generator()
+    vng = prog.root_kernel.get_var_name_generator()
 
     assert vng("a_s0") != "a_s0"
     assert vng("b") != "b"
@@ -2649,7 +2650,7 @@ def test_execution_backend_can_cache_dtypes(ctx_factory):
 
 
 def test_wildcard_dep_matching():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i]: 0 <= i < 10}",
             """
             <>a = 0 {id=insn1}
@@ -2662,11 +2663,15 @@ def test_wildcard_dep_matching():
 
     all_insns = set("insn%d" % i for i in range(1, 6))
 
-    assert knl.id_to_insn["insn1"].depends_on == set()
-    assert knl.id_to_insn["insn2"].depends_on == all_insns - set(["insn2"])
-    assert knl.id_to_insn["insn3"].depends_on == all_insns - set(["insn3"])
-    assert knl.id_to_insn["insn4"].depends_on == set(["insn1", "insn2"])
-    assert knl.id_to_insn["insn5"].depends_on == all_insns - set(["insn1", "insn5"])
+    assert prog.root_kernel.id_to_insn["insn1"].depends_on == set()
+    assert (prog.root_kernel.id_to_insn["insn2"].depends_on == all_insns -
+            set(["insn2"]))
+    assert (prog.root_kernel.id_to_insn["insn3"].depends_on == all_insns -
+            set(["insn3"]))
+    assert (prog.root_kernel.id_to_insn["insn4"].depends_on == set(["insn1",
+        "insn2"]))
+    assert (prog.root_kernel.id_to_insn["insn5"].depends_on == all_insns -
+            set(["insn1", "insn5"]))
 
 
 def test_preamble_with_separate_temporaries(ctx_factory):

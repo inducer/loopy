@@ -111,8 +111,10 @@ class TypeInferenceMapper(CombineMapper):
     # /!\ Introduce caches with care--numpy.float32(x) and numpy.float64(x)
     # are Python-equal (for many common constants such as integers).
 
-    def copy(self):
-        return type(self)(self.kernel, self.program_callables_info,
+    def copy(self, program_callables_info=None):
+        if program_callables_info is None:
+            program_callables_info = self.program_callables_info
+        return type(self)(self.kernel, program_callables_info,
                 self.new_assignments)
 
     def with_assignments(self, names_to_vars):
@@ -552,6 +554,7 @@ class TypeInferenceMapper(CombineMapper):
 # {{{ infer single variable
 
 def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
+
     if var_name in kernel.all_params():
         return [kernel.index_dtype], [], {}, (
                 type_inf_mapper.program_callables_info)
@@ -736,6 +739,8 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
                     new_old_calls_to_new_calls, program_callables_info) = (
                     _infer_var_type(
                             kernel, item.name, type_inf_mapper, subst_expander))
+            type_inf_mapper = type_inf_mapper.copy(
+                    program_callables_info=program_callables_info)
 
             failed = not result
             if not failed:

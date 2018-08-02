@@ -439,7 +439,9 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         if isinstance(self.codegen_state.program_callables_info[expr.function.name],
                 ManglerCallable):
             from loopy.codegen import SeenFunction
-            in_knl_callable = self.kernel.scoped_functions[expr.function.name]
+            in_knl_callable = (
+                    self.codegen_state.program_callables_info[
+                        expr.function.name])
             mangle_result = in_knl_callable.mangle_result(self.kernel)
             self.codegen_state.seen_functions.add(
                     SeenFunction(identifier_name,
