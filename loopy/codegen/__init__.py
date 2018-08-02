@@ -36,6 +36,9 @@ from loopy.symbolic import CombineMapper
 
 from functools import reduce
 
+from loopy.kernel.function_interface import CallableKernel
+from cgen import Collection
+
 
 import logging
 logger = logging.getLogger(__name__)
@@ -567,23 +570,42 @@ def generate_code_v2(program):
         from loopy.preprocess import preprocess_program
         program = preprocess_program(program)
 
-    # collect preambles
-    for callable_knl in program.program_callables_info.values():
-        pass
-
-    # collect func decls
-    for callable_knl in program.program_callables_info.values():
-        pass
-
-    # collect func defs
-    for callable_knl in program.program_callables_info.values():
-        pass
-
     from loopy.type_inference import infer_unknown_types
     program = infer_unknown_types(program, expect_completion=True)
 
-    return generate_code_for_a_single_kernel(program.root_kernel,
-            program.program_callables_info)
+    codegen_results = {}
+
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            codegen_results[func_id] = (
+                    generate_code_for_a_single_kernel(in_knl_callable.subkernel,
+                        program.program_callables_info))
+
+    device_preambles = set()
+    for cgr in codegen_results.values():
+        device_preambles.update(cgr.device_preambles)
+
+    for in_knl_callable in program.program_callables_info.values():
+        for preamble in in_knl_callable.generate_preambles(program.target):
+            device_preambles.update([preamble])
+
+    collective_device_program = codegen_results[program.name].device_programs[0]
+    for func_id, callee_cgr in codegen_results.items():
+        if func_id != program.name:
+            assert len(callee_cgr.device_programs) == 1
+            callee_prog_ast = callee_cgr.device_programs[0].ast
+            collective_device_program = collective_device_program.copy(
+                    ast=Collection([callee_prog_ast, collective_device_program.ast]))
+
+            device_preambles.update([('98_%s' % func_id,
+                str(callee_prog_ast.fdecl)), ])
+
+    collective_device_programs = [collective_device_program] + (
+            codegen_results[program.name].device_programs[1:])
+
+    return codegen_results[program.name].copy(
+            device_programs=collective_device_programs,
+            device_preambles=device_preambles)
 
 
 def generate_code(kernel, device=None):

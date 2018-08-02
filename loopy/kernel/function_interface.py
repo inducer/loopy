@@ -625,6 +625,7 @@ class CallableKernel(InKernelCallable):
         # that this thing would be updated.
 
         return
+        yield
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
 

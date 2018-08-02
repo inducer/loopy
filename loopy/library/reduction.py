@@ -201,6 +201,7 @@ class MinReductionOperation(ScalarReductionOperation):
     def get_scalar_callables(self):
         return frozenset(["min"])
 
+
 # {{{ base class for symbolic reduction ops
 
 class ReductionOpFunction(FunctionIdentifier):
@@ -414,8 +415,8 @@ class ReductionCallable(ScalarCallable):
         return self.copy(arg_id_to_descr=arg_id_to_descr)
 
     def generate_preambles(self, target):
-        if isinstance(self.name, _ArgExtremumReductionOperation):
-            op = self.name
+        if isinstance(self.name, ArgExtOp):
+            op = self.name.reduction_op
             scalar_dtype = self.arg_id_to_dtype[-1]
             index_dtype = self.arg_id_to_dtype[-2]
 
@@ -444,8 +445,8 @@ class ReductionCallable(ScalarCallable):
                     index_t=target.dtype_to_typename(index_dtype),
                     comp=op.update_comparison,
                     ))
-        elif isinstance(self.name, _SegmentedScalarReductionOperation):
-            op = self.name
+        elif isinstance(self.name, SegmentedOp):
+            op = self.name.reduction_op
             scalar_dtype = self.arg_id_to_dtype[-1]
             segment_flag_dtype = self.arg_id_to_dtype[-2]
             prefix = op.prefix(scalar_dtype, segment_flag_dtype)

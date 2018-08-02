@@ -356,6 +356,7 @@ def opencl_preamble_generator(preamble_info):
 
     from loopy.tools import remove_common_indentation
     kernel = preamble_info.kernel
+
     yield ("00_declare_gid_lid",
             remove_common_indentation("""
                 #define lid(N) ((%(idx_ctype)s) get_local_id(N))
