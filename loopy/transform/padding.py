@@ -28,6 +28,10 @@ THE SOFTWARE.
 from pytools import MovedFunctionDeprecationWrapper
 from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 
+from loopy.program import Program
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+
 
 class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, arg_names, handler):
@@ -370,7 +374,8 @@ def _split_array_axis_inner(kernel, array_name, axis_nr, count, order="C"):
     return kernel
 
 
-def split_array_axis(kernel, array_names, axis_nr, count, order="C"):
+def split_array_axis_for_single_kernel(kernel, array_names, axis_nr, count,
+        order="C"):
     """
     :arg array: a list of names of temporary variables or arguments. May
         also be a comma-separated string of these.
@@ -387,6 +392,7 @@ def split_array_axis(kernel, array_names, axis_nr, count, order="C"):
         There was a more complicated, dumber function called :func:`split_array_dim`
         that had the role of this function in versions prior to 2016.2.
     """
+    assert isinstance(kernel, LoopKernel)
 
     if isinstance(array_names, str):
         array_names = [i.strip() for i in array_names.split(",") if i.strip()]
@@ -395,6 +401,30 @@ def split_array_axis(kernel, array_names, axis_nr, count, order="C"):
         kernel = _split_array_axis_inner(kernel, array_name, axis_nr, count, order)
 
     return kernel
+
+
+def split_array_axis(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = split_array_axis_for_single_kernel(
+                    in_knl_callable.subkernel, *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 

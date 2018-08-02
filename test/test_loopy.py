@@ -2765,7 +2765,7 @@ def test_relaxed_stride_checks(ctx_factory):
 
 
 def test_add_prefetch_works_in_lhs_index():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{ [n,k,l,k1,l1,k2,l2]: "
             "start<=n<end and 0<=k,k1,k2<3 and 0<=l,l1,l2<2 }",
             """
@@ -2781,10 +2781,10 @@ def test_add_prefetch_works_in_lhs_index():
                 "..."
             ])
 
-    knl = lp.add_prefetch(knl, "a1_map", "k", default_tag="l.auto")
+    prog = lp.add_prefetch(prog, "a1_map", "k", default_tag="l.auto")
 
     from loopy.symbolic import get_dependencies
-    for insn in knl.instructions:
+    for insn in prog.root_kernel.instructions:
         assert "a1_map" not in get_dependencies(insn.assignees)
 
 
@@ -2796,11 +2796,9 @@ def test_check_for_variable_access_ordering():
             a[i+1] = 13
             """)
 
-    knl = lp.preprocess_kernel(knl)
-
     from loopy.diagnostic import VariableAccessNotOrdered
     with pytest.raises(VariableAccessNotOrdered):
-        lp.get_one_scheduled_kernel(knl)
+        lp.generate_code_v2(knl)
 
 
 def test_check_for_variable_access_ordering_with_aliasing():
@@ -2815,11 +2813,9 @@ def test_check_for_variable_access_ordering_with_aliasing():
                 lp.TemporaryVariable("b", shape="n+1", base_storage="tmp"),
                 ])
 
-    knl = lp.preprocess_kernel(knl)
-
     from loopy.diagnostic import VariableAccessNotOrdered
     with pytest.raises(VariableAccessNotOrdered):
-        lp.get_one_scheduled_kernel(knl)
+        lp.generate_code_v2(knl)
 
 
 @pytest.mark.parametrize(("second_index", "expect_barrier"),
@@ -2828,7 +2824,7 @@ def test_check_for_variable_access_ordering_with_aliasing():
             ("2*i+1", False),
             ])
 def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i]: 0<=i<128}",
             """
             a[2*i] = 12  {id=first}
@@ -2839,10 +2835,11 @@ def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
                     scope=lp.AddressSpace.LOCAL),
                 ])
 
-    knl = lp.tag_inames(knl, "i:l.0")
+    prog = lp.tag_inames(prog, "i:l.0")
+    prog = lp.preprocess_kernel(prog)
 
-    knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(prog.root_kernel,
+            prog.program_callables_info)
 
     assert barrier_between(knl, "first", "second") == expect_barrier
 
@@ -2893,7 +2890,7 @@ def test_dep_cycle_printing_and_error():
 
     from loopy.diagnostic import DependencyCycleFound
     with pytest.raises(DependencyCycleFound):
-        print(lp.generate_code(knl)[0])
+        print(lp.generate_code(knl).device_code())
 
 
 if __name__ == "__main__":
