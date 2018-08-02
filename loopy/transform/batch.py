@@ -29,6 +29,10 @@ from loopy.symbolic import (RuleAwareIdentityMapper, SubstitutionRuleMappingCont
 from loopy.kernel.data import ValueArg, ArrayArg
 import islpy as isl
 
+from loopy.program import Program
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+
+
 __doc__ = """
 .. currentmodule:: loopy
 
@@ -102,8 +106,8 @@ def _add_unique_dim_name(name, dim_names):
     return (ng(name),) + tuple(dim_names)
 
 
-def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
-        sequential=False):
+def to_batched_for_single_kernel(knl, nbatches, batch_varying_args,
+        batch_iname_prefix="ibatch", sequential=False):
     """Takes in a kernel that carries out an operation and returns a kernel
     that carries out a batch of these operations.
     .. note::
@@ -194,6 +198,31 @@ def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
                 for insn in kernel.instructions])
 
     return kernel
+
+
+def to_batched(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = to_batched_for_single_kernel(
+                    in_knl_callable.subkernel, *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
+
 
 # }}}
 

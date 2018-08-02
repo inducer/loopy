@@ -38,6 +38,9 @@ from pymbolic import var
 from loopy.transform.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
         AccessDescriptor)
 
+from loopy.program import Program
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+
 
 class RuleAccessDescriptor(AccessDescriptor):
     __slots__ = ["args", "expansion_stack"]
@@ -258,8 +261,8 @@ class _not_provided(object):  # noqa: N801
     pass
 
 
-def precompute(kernel, program_callables_info, subst_use, sweep_inames=[],
-        within=None, storage_axes=None, temporary_name=None,
+def precompute_for_single_kernel(kernel, program_callables_info, subst_use,
+        sweep_inames=[], within=None, storage_axes=None, temporary_name=None,
         precompute_inames=None, precompute_outer_inames=None,
         storage_axis_to_tag={},
 
@@ -1047,5 +1050,30 @@ def precompute(kernel, program_callables_info, subst_use, sweep_inames=[],
         kernel = assign_automatic_axes(kernel, program_callables_info)
 
     return kernel
+
+
+def precompute(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = precompute_for_single_kernel(
+                    in_knl_callable.subkernel, program.program_callables_info,
+                    *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # vim: foldmethod=marker

@@ -112,7 +112,8 @@ def add_dependency(kernel, insn_match, depends_on):
         added_deps = frozenset([depends_on])
     else:
         added_deps = frozenset(
-                dep.id for dep in find_instructions(kernel, depends_on))
+                dep.id for dep in find_instructions_in_single_kernel(kernel,
+                    depends_on))
 
     if not added_deps:
         raise LoopyError("no instructions found matching '%s' "

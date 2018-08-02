@@ -127,7 +127,7 @@ def test_to_batched(ctx_factory):
 def test_to_batched_temp(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
          ''' { [i,j]: 0<=i,j<n } ''',
          ''' cnst = 2.0
          out[i] = sum(j, cnst*a[i,j]*x[j])''',
@@ -136,28 +136,28 @@ def test_to_batched_temp(ctx_factory):
              dtype=np.float32,
              shape=(),
              scope=lp.temp_var_scope.PRIVATE), '...'])
-    knl = lp.add_and_infer_dtypes(knl, dict(out=np.float32,
+    prog = lp.add_and_infer_dtypes(prog, dict(out=np.float32,
                                             x=np.float32,
                                             a=np.float32))
-    ref_knl = lp.make_kernel(
+    ref_prog = lp.make_kernel(
          ''' { [i,j]: 0<=i,j<n } ''',
          '''out[i] = sum(j, 2.0*a[i,j]*x[j])''')
-    ref_knl = lp.add_and_infer_dtypes(ref_knl, dict(out=np.float32,
+    ref_prog = lp.add_and_infer_dtypes(ref_prog, dict(out=np.float32,
                                                     x=np.float32,
                                                     a=np.float32))
 
-    bknl = lp.to_batched(knl, "nbatches", "out,x")
-    bref_knl = lp.to_batched(ref_knl, "nbatches", "out,x")
+    bprog = lp.to_batched(prog, "nbatches", "out,x")
+    bref_prog = lp.to_batched(ref_prog, "nbatches", "out,x")
 
     # checking that cnst is not being bathced
-    assert bknl.temporary_variables['cnst'].shape == ()
+    assert bprog.root_kernel.temporary_variables['cnst'].shape == ()
 
     a = np.random.randn(5, 5)
     x = np.random.randn(7, 5)
 
     # Checking that the program compiles and the logic is correct
     lp.auto_test_vs_ref(
-            bref_knl, ctx, bknl,
+            bref_prog, ctx, bprog,
             parameters=dict(a=a, x=x, n=5, nbatches=7))
 
 
@@ -255,18 +255,17 @@ def test_vectorize(ctx_factory):
         a[i] = temp
         """)
     knl = lp.add_and_infer_dtypes(knl, dict(b=np.float32))
-    knl = lp.set_array_dim_names(knl, "a,b", "i")
+    knl = lp.set_array_axis_names(knl, "a,b", "i")
     knl = lp.split_array_dim(knl, [("a", 0), ("b", 0)], 4,
             split_kwargs=dict(slabs=(0, 1)))
 
-    knl = lp.tag_data_axes(knl, "a,b", "c,vec")
+    knl = lp.tag_array_axes(knl, "a,b", "c,vec")
     ref_knl = knl
     ref_knl = lp.tag_inames(ref_knl, {"i_inner": "unr"})
 
     knl = lp.tag_inames(knl, {"i_inner": "vec"})
 
     knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
     code, inf = lp.generate_code(knl)
 
     lp.auto_test_vs_ref(
@@ -275,19 +274,19 @@ def test_vectorize(ctx_factory):
 
 
 def test_extract_subst(ctx_factory):
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i]: 0<=i<n}",
             """
                 a[i] = 23*b[i]**2 + 25*b[i]**2
                 """)
 
-    knl = lp.extract_subst(knl, "bsquare", "alpha*b[i]**2", "alpha")
+    prog = lp.extract_subst(prog, "bsquare", "alpha*b[i]**2", "alpha")
 
-    print(knl)
+    print(prog)
 
     from loopy.symbolic import parse
 
-    insn, = knl.instructions
+    insn, = prog.root_kernel.instructions
     assert insn.expression == parse("bsquare(23) + bsquare(25)")
 
 

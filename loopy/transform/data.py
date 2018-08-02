@@ -477,7 +477,7 @@ def tag_array_axes(program, *args, **kwargs):
 
 # {{{ set_array_axis_names
 
-def set_array_axis_names(kernel, ary_names, dim_names):
+def set_array_axis_names_for_single_kernel(kernel, ary_names, dim_names):
     """
     .. versionchanged:: 2016.2
 
@@ -501,7 +501,32 @@ def set_array_axis_names(kernel, ary_names, dim_names):
     return kernel
 
 
-set_array_dim_names = MovedFunctionDeprecationWrapper(set_array_axis_names)
+set_array_dim_names = (MovedFunctionDeprecationWrapper(
+    set_array_axis_names_for_single_kernel))
+
+
+def set_array_axis_names(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = set_array_axis_names_for_single_kernel(
+                    in_knl_callable.subkernel, *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 
@@ -690,7 +715,7 @@ def set_argument_order(kernel, arg_names):
 
 # {{{ rename argument
 
-def rename_argument(kernel, old_name, new_name, existing_ok=False):
+def rename_argument_in_single_kernel(kernel, old_name, new_name, existing_ok=False):
     """
     .. versionadded:: 2016.2
     """
@@ -729,6 +754,30 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
         new_args.append(arg)
 
     return kernel.copy(args=new_args)
+
+
+def rename_argument(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = rename_argument_in_single_kernel(
+                    in_knl_callable.subkernel, *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 

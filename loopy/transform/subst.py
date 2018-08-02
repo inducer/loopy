@@ -31,6 +31,7 @@ from loopy.diagnostic import LoopyError
 from pymbolic.mapper.substitutor import make_subst_func
 
 from pytools import ImmutableRecord
+from functools import wraps
 from pymbolic import var
 
 from loopy.program import Program
@@ -47,6 +48,34 @@ class ExprDescriptor(ImmutableRecord):
 
 # {{{ extract_subst
 
+def iterate_over_kernel_if_given_program(transform_for_single_kernel):
+    def _collective_transform(program, *args, **kwargs):
+        assert isinstance(program, Program)
+
+        new_resolved_functions = {}
+        for func_id, in_knl_callable in program.program_callables_info.items():
+            if isinstance(in_knl_callable, CallableKernel):
+                new_subkernel = transform_for_single_kernel(
+                        in_knl_callable.subkernel, *args, **kwargs)
+                in_knl_callable = in_knl_callable.copy(
+                        subkernel=new_subkernel)
+
+            elif isinstance(in_knl_callable, ScalarCallable):
+                pass
+            else:
+                raise NotImplementedError("Unknown type of callable %s." % (
+                    type(in_knl_callable).__name__))
+
+            new_resolved_functions[func_id] = in_knl_callable
+
+        new_program_callables_info = program.program_callables_info.copy(
+                resolved_functions=new_resolved_functions)
+        return program.copy(program_callables_info=new_program_callables_info)
+
+    return wraps(transform_for_single_kernel)(_collective_transform)
+
+
+@iterate_over_kernel_if_given_program
 def extract_subst(kernel, subst_name, template, parameters=()):
     """
     :arg subst_name: The name of the substitution rule to be created.
@@ -200,6 +229,7 @@ def extract_subst(kernel, subst_name, template, parameters=()):
     return kernel.copy(
             instructions=new_insns,
             substitutions=new_substs)
+
 
 # }}}
 

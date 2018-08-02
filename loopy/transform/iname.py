@@ -404,7 +404,7 @@ def split_iname(program, *args, **kwargs):
 
 # {{{ chunk iname
 
-def chunk_iname(kernel, split_iname, num_chunks,
+def chunk_iname_for_single_kernel(kernel, split_iname, num_chunks,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
         slabs=(0, 0), do_tagged_check=True,
@@ -493,6 +493,30 @@ def chunk_iname(kernel, split_iname, num_chunks,
             outer_tag=outer_tag, inner_tag=inner_tag,
             slabs=slabs, do_tagged_check=do_tagged_check,
             within=within)
+
+
+def chunk_iname(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = chunk_iname_for_single_kernel(
+                    in_knl_callable.subkernel, *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 

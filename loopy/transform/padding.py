@@ -48,7 +48,8 @@ class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
 
 # {{{ split_array_dim (deprecated since June 2016)
 
-def split_array_dim(kernel, arrays_and_axes, count, auto_split_inames=True,
+def split_array_dim_for_single_kernel(kernel, arrays_and_axes, count,
+        auto_split_inames=True,
         split_kwargs=None):
     """
     :arg arrays_and_axes: a list of tuples *(array, axis_nr)* indicating
@@ -241,16 +242,41 @@ def split_array_dim(kernel, arrays_and_axes, count, auto_split_inames=True,
     kernel = rule_mapping_context.finish_kernel(aash.map_kernel(kernel))
 
     if auto_split_inames:
-        from loopy import split_iname
+        from loopy.transform.iname import split_iname_for_single_kernel
         for iname, (outer_iname, inner_iname) in six.iteritems(split_vars):
-            kernel = split_iname(kernel, iname, count,
+            kernel = split_iname_for_single_kernel(kernel, iname, count,
                     outer_iname=outer_iname, inner_iname=inner_iname,
                     **split_kwargs)
 
     return kernel
 
 
-split_arg_axis = MovedFunctionDeprecationWrapper(split_array_dim)
+split_arg_axis = (MovedFunctionDeprecationWrapper(
+    split_array_dim_for_single_kernel))
+
+
+def split_array_dim(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = split_array_dim_for_single_kernel(
+                    in_knl_callable.subkernel, *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 
