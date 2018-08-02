@@ -40,7 +40,8 @@ from loopy.symbolic import RuleAwareIdentityMapper
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
-from loopy.program import iterate_over_kernels_if_given_program
+from loopy.program import Program, iterate_over_kernels_if_given_program
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 import logging
 logger = logging.getLogger(__name__)
 
@@ -892,9 +893,9 @@ def _insert_subdomain_into_domain_tree(kernel, domains, subdomain):
 # }}}
 
 
-def realize_reduction(kernel, program_callables_info, insn_id_filter=None,
-        unknown_types_ok=True, automagic_scans_ok=False, force_scan=False,
-        force_outer_iname_for_scan=None):
+def realize_reduction_for_single_kernel(kernel, program_callables_info,
+        insn_id_filter=None, unknown_types_ok=True, automagic_scans_ok=False,
+        force_scan=False, force_outer_iname_for_scan=None):
     """Rewrites reductions into their imperative form. With *insn_id_filter*
     specified, operate only on the instruction with an instruction id matching
     *insn_id_filter*.
@@ -1372,7 +1373,7 @@ def realize_reduction(kernel, program_callables_info, insn_id_filter=None,
 
     # {{{ sequential scan
 
-    def map_scan_seq(expr, rec, nresults, arg_dtypes,
+    def map_scan_seq(expr, rec, program_callables_info, nresults, arg_dtypes,
             reduction_dtypes, sweep_iname, scan_iname, sweep_min_value,
             scan_min_value, stride):
         outer_insn_inames = temp_kernel.insn_inames(insn)
@@ -1787,15 +1788,17 @@ def realize_reduction(kernel, program_callables_info, insn_id_filter=None,
                             for tag in temp_kernel.iname_tags(sweep_iname))))
                 elif parallel:
                     return map_scan_local(
-                            expr, rec, nresults, arg_dtypes, reduction_dtypes,
+                            expr, rec, program_callables_info, nresults,
+                            arg_dtypes, reduction_dtypes,
                             sweep_iname, scan_param.scan_iname,
                             scan_param.sweep_lower_bound,
                             scan_param.scan_lower_bound,
                             scan_param.stride)
                 elif sequential:
                     return map_scan_seq(
-                            expr, rec, nresults, arg_dtypes, reduction_dtypes,
-                            sweep_iname, scan_param.scan_iname,
+                            expr, rec, program_callables_info, nresults,
+                            arg_dtypes, reduction_dtypes, sweep_iname,
+                            scan_param.scan_iname,
                             scan_param.sweep_lower_bound,
                             scan_param.scan_lower_bound,
                             scan_param.stride)
@@ -1947,6 +1950,31 @@ def realize_reduction(kernel, program_callables_info, insn_id_filter=None,
                 kernel))
 
     return kernel
+
+
+def realize_reduction(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = realize_reduction_for_single_kernel(
+                    in_knl_callable.subkernel, program.program_callables_info,
+                    *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 
@@ -2328,8 +2356,8 @@ def preprocess_single_kernel(kernel, program_callables_info, device=None):
     # - realize_reduction must happen after default dependencies are added
     #   because it manipulates the depends_on field, which could prevent
     #   defaults from being applied.
-    kernel = realize_reduction(kernel, program_callables_info,
-            unknown_types_ok=False)
+    kernel = realize_reduction_for_single_kernel(kernel,
+            program_callables_info, unknown_types_ok=False)
 
     # Ordering restriction:
     # add_axes_to_temporaries_for_ilp because reduction accumulators
