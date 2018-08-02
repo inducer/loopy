@@ -357,33 +357,34 @@ def test_affine_map_inames():
 def test_precompute_confusing_subst_arguments(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
         "{[i,j]: 0<=i<n and 0<=j<5}",
         """
         D(i):=a[i+1]-a[i]
         b[i,j] = D(j)
         """)
 
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
+    prog = lp.add_and_infer_dtypes(prog, dict(a=np.float32))
 
-    ref_knl = knl
+    ref_prog = prog
 
-    knl = lp.tag_inames(knl, dict(j="g.1"))
-    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+    prog = lp.tag_inames(prog, dict(j="g.1"))
+    prog = lp.split_iname(prog, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
     from loopy.symbolic import get_dependencies
-    assert "i_inner" not in get_dependencies(knl.substitutions["D"].expression)
-    knl = lp.precompute(knl, "D")
+    assert "i_inner" not in get_dependencies(
+            prog.root_kernel.substitutions["D"].expression)
+    prog = lp.precompute(prog, "D")
 
     lp.auto_test_vs_ref(
-            ref_knl, ctx, knl,
+            ref_prog, ctx, prog,
             parameters=dict(n=12345))
 
 
 def test_precompute_nested_subst(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
         "{[i,j]: 0<=i<n and 0<=j<5}",
         """
         E:=a[i]
@@ -391,29 +392,31 @@ def test_precompute_nested_subst(ctx_factory):
         b[i] = D
         """)
 
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
+    prog = lp.add_and_infer_dtypes(prog, dict(a=np.float32))
 
-    ref_knl = knl
+    ref_prog = prog
 
-    knl = lp.tag_inames(knl, dict(j="g.1"))
-    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+    prog = lp.tag_inames(prog, dict(j="g.1"))
+    prog = lp.split_iname(prog, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
     from loopy.symbolic import get_dependencies
-    assert "i_inner" not in get_dependencies(knl.substitutions["D"].expression)
-    knl = lp.precompute(knl, "D", "i_inner", default_tag="l.auto")
+    assert "i_inner" not in get_dependencies(
+            prog.root_kernel.substitutions["D"].expression)
+    prog = lp.precompute(prog, "D", "i_inner", default_tag="l.auto")
 
     # There's only one surviving 'E' rule.
     assert len([
         rule_name
-        for rule_name in knl.substitutions
+        for rule_name in prog.root_kernel.substitutions
         if rule_name.startswith("E")]) == 1
 
     # That rule should use the newly created prefetch inames,
     # not the prior 'i_inner'
-    assert "i_inner" not in get_dependencies(knl.substitutions["E"].expression)
+    assert "i_inner" not in get_dependencies(
+            prog.root_kernel.substitutions["E"].expression)
 
     lp.auto_test_vs_ref(
-            ref_knl, ctx, knl,
+            ref_prog, ctx, prog,
             parameters=dict(n=12345))
 
 
@@ -479,7 +482,7 @@ def test_precompute_with_preexisting_inames_fail():
 
 
 def test_add_nosync():
-    orig_knl = lp.make_kernel("{[i]: 0<=i<10}",
+    orig_prog = lp.make_kernel("{[i]: 0<=i<10}",
         """
         <>tmp[i] = 10 {id=insn1}
         <>tmp2[i] = 10 {id=insn2}
@@ -491,28 +494,34 @@ def test_add_nosync():
         tmp5[i] = 1 {id=insn6,conflicts=g1}
         """)
 
-    orig_knl = lp.set_temporary_scope(orig_knl, "tmp3", "local")
-    orig_knl = lp.set_temporary_scope(orig_knl, "tmp5", "local")
+    orig_prog = lp.set_temporary_scope(orig_prog, "tmp3", "local")
+    orig_prog = lp.set_temporary_scope(orig_prog, "tmp5", "local")
 
     # No dependency present - don't add nosync
-    knl = lp.add_nosync(orig_knl, "any", "writes:tmp", "writes:tmp2",
+    prog = lp.add_nosync(orig_prog, "any", "writes:tmp", "writes:tmp2",
             empty_ok=True)
-    assert frozenset() == knl.id_to_insn["insn2"].no_sync_with
+    assert frozenset() == (
+            prog.root_kernel.id_to_insn["insn2"].no_sync_with)
 
     # Dependency present
-    knl = lp.add_nosync(orig_knl, "local", "writes:tmp3", "reads:tmp3")
-    assert frozenset() == knl.id_to_insn["insn3"].no_sync_with
-    assert frozenset([("insn3", "local")]) == knl.id_to_insn["insn4"].no_sync_with
+    prog = lp.add_nosync(orig_prog, "local", "writes:tmp3", "reads:tmp3")
+    assert frozenset() == (
+            prog.root_kernel.id_to_insn["insn3"].no_sync_with)
+    assert frozenset([("insn3", "local")]) == (
+            prog.root_kernel.id_to_insn["insn4"].no_sync_with)
 
     # Bidirectional
-    knl = lp.add_nosync(
-            orig_knl, "local", "writes:tmp3", "reads:tmp3", bidirectional=True)
-    assert frozenset([("insn4", "local")]) == knl.id_to_insn["insn3"].no_sync_with
-    assert frozenset([("insn3", "local")]) == knl.id_to_insn["insn4"].no_sync_with
+    prog = lp.add_nosync(
+            orig_prog, "local", "writes:tmp3", "reads:tmp3", bidirectional=True)
+    assert frozenset([("insn4", "local")]) == (
+            prog.root_kernel.id_to_insn["insn3"].no_sync_with)
+    assert frozenset([("insn3", "local")]) == (
+            prog.root_kernel.id_to_insn["insn4"].no_sync_with)
 
     # Groups
-    knl = lp.add_nosync(orig_knl, "local", "insn5", "insn6")
-    assert frozenset([("insn5", "local")]) == knl.id_to_insn["insn6"].no_sync_with
+    prog = lp.add_nosync(orig_prog, "local", "insn5", "insn6")
+    assert frozenset([("insn5", "local")]) == (
+            prog.root_kernel.id_to_insn["insn6"].no_sync_with)
 
 
 def test_uniquify_instruction_ids():
@@ -521,12 +530,14 @@ def test_uniquify_instruction_ids():
     i3 = lp.Assignment("b", 1, id=lp.UniqueName("b"))
     i4 = lp.Assignment("b", 1, id=lp.UniqueName("b"))
 
-    knl = lp.make_kernel("{[i]: i = 1}", []).copy(instructions=[i1, i2, i3, i4])
+    prog = lp.make_kernel("{[i]: i = 1}", [])
+    new_root_kernel = prog.root_kernel.copy(instructions=[i1, i2, i3, i4])
+    prog = prog.with_root_kernel(new_root_kernel)
 
     from loopy.transform.instruction import uniquify_instruction_ids
-    knl = uniquify_instruction_ids(knl)
+    prog = uniquify_instruction_ids(prog)
 
-    insn_ids = set(insn.id for insn in knl.instructions)
+    insn_ids = set(insn.id for insn in prog.root_kernel.instructions)
 
     assert len(insn_ids) == 4
     assert all(isinstance(id, str) for id in insn_ids)

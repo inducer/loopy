@@ -333,9 +333,9 @@ def add_prefetch_for_single_kernel(kernel, program_callables_info, var_name,
     # precompute module, but precompute acutally uses that to adjust its
     # warning message.
 
-    from loopy.transform.precompute import precompute
-    new_kernel = precompute(kernel, program_callables_info, subst_use,
-            sweep_inames, precompute_inames=dim_arg_names,
+    from loopy.transform.precompute import precompute_for_single_kernel
+    new_kernel = precompute_for_single_kernel(kernel, program_callables_info,
+            subst_use, sweep_inames, precompute_inames=dim_arg_names,
             default_tag=default_tag, dtype=arg.dtype,
             fetch_bounding_box=fetch_bounding_box,
             temporary_name=temporary_name,
@@ -612,11 +612,14 @@ def alias_temporaries(knl, names, base_name_prefix=None,
 
 # {{{ set argument order
 
+@iterate_over_kernels_if_given_program
 def set_argument_order(kernel, arg_names):
     """
     :arg arg_names: A list (or comma-separated string) or argument
         names. All arguments must be in this list.
     """
+    #FIXME: @inducer -- shoulld this only affect the root kernel, or should it
+    # take a within?
 
     if isinstance(arg_names, str):
         arg_names = arg_names.split(",")

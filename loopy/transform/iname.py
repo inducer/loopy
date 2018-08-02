@@ -492,6 +492,7 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
             return super(_InameJoiner, self).map_reduction(expr, expn_state)
 
 
+@iterate_over_kernels_if_given_program
 def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
     """
     :arg inames: fastest varying last
@@ -1335,6 +1336,7 @@ def split_reduction_outward(kernel, inames, within=None):
 
 # {{{ affine map inames
 
+@iterate_over_kernels_if_given_program
 def affine_map_inames(kernel, old_inames, new_inames, equations):
     """Return a new *kernel* where the affine transform
     specified by *equations* has been applied to the inames.

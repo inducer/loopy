@@ -27,7 +27,7 @@ import six  # noqa
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import (ScalarCallable, CallableKernel)
-from loopy.program import Program
+from loopy.program import Program, iterate_over_kernels_if_given_program
 
 
 # {{{ find_instructions
@@ -249,6 +249,7 @@ def tag_instructions(kernel, new_tag, within=None):
 
 # {{{ add nosync
 
+@iterate_over_kernels_if_given_program
 def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
         empty_ok=False):
     """Add a *no_sync_with* directive between *source* and *sink*.
@@ -281,6 +282,7 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
         This used to silently pass. This behavior can be restored using
         *empty_ok*.
     """
+    assert isinstance(kernel, LoopKernel)
 
     if isinstance(source, str) and source in kernel.id_to_insn:
         sources = frozenset([source])
@@ -347,6 +349,7 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
 
 # {{{ uniquify_instruction_ids
 
+@iterate_over_kernels_if_given_program
 def uniquify_instruction_ids(kernel):
     """Converts any ids that are :class:`loopy.UniqueName` or *None* into unique
     strings.

@@ -651,8 +651,8 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
 
     unexpanded_kernel = kernel
     if kernel.substitutions:
-        from loopy.transform.subst import expand_subst_for_single_kernel
-        kernel = expand_subst_for_single_kernel(kernel)
+        from loopy.transform.subst import expand_subst
+        kernel = expand_subst(kernel)
 
     new_temp_vars = kernel.temporary_variables.copy()
     new_arg_dict = kernel.arg_dict.copy()
