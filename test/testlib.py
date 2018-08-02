@@ -9,8 +9,9 @@ class GridOverride(object):
         self.clean = clean
         self.vecsize = vecsize
 
-    def __call__(self, insn_ids, ignore_auto=True):
-        gsize, _ = self.clean.get_grid_sizes_for_insn_ids(insn_ids, ignore_auto)
+    def __call__(self, insn_ids, program_callables_info, ignore_auto=True):
+        gsize, _ = self.clean.get_grid_sizes_for_insn_ids(insn_ids,
+                program_callables_info, ignore_auto)
         return gsize, (self.vecsize,)
 
 # }}}

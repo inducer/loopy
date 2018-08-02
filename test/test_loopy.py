@@ -2277,6 +2277,7 @@ def test_integer_reduction(ctx_factory):
             knl = lp.make_kernel('{[k]: 0<=k<n}',
                                 kstr,
                                 [var_lp, '...'])
+            knl = lp.set_options(knl, "write_cl")
 
             knl = lp.fix_parameters(knl, n=200)
 
@@ -2376,7 +2377,7 @@ def barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
 
 
 def test_barrier_insertion_near_top_of_loop():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
         "{[i,j]: 0 <= i,j < 10 }",
         """
         for i
@@ -2390,10 +2391,11 @@ def test_barrier_insertion_near_top_of_loop():
         """,
         seq_dependencies=True)
 
-    knl = lp.tag_inames(knl, dict(i="l.0"))
-    knl = lp.set_temporary_scope(knl, "a", "local")
-    knl = lp.set_temporary_scope(knl, "b", "local")
-    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+    prog = lp.tag_inames(prog, dict(i="l.0"))
+    prog = lp.set_temporary_scope(prog, "a", "local")
+    prog = lp.set_temporary_scope(prog, "b", "local")
+    prog = lp.preprocess_kernel(prog)
+    knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.program_callables_info)
 
     print(knl)
 
@@ -2403,7 +2405,7 @@ def test_barrier_insertion_near_top_of_loop():
 
 
 def test_barrier_insertion_near_bottom_of_loop():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
         ["{[i]: 0 <= i < 10 }",
          "[jmax] -> {[j]: 0 <= j < jmax}"],
         """
@@ -2417,10 +2419,11 @@ def test_barrier_insertion_near_bottom_of_loop():
         end
         """,
         seq_dependencies=True)
-    knl = lp.tag_inames(knl, dict(i="l.0"))
-    knl = lp.set_temporary_scope(knl, "a", "local")
-    knl = lp.set_temporary_scope(knl, "b", "local")
-    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+    prog = lp.tag_inames(prog, dict(i="l.0"))
+    prog = lp.set_temporary_scope(prog, "a", "local")
+    prog = lp.set_temporary_scope(prog, "b", "local")
+    prog = lp.preprocess_kernel(prog)
+    knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.program_callables_info)
 
     print(knl)
 
@@ -2430,7 +2433,7 @@ def test_barrier_insertion_near_bottom_of_loop():
 
 def test_barrier_in_overridden_get_grid_size_expanded_kernel():
     # make simple barrier'd kernel
-    knl = lp.make_kernel('{[i]: 0 <= i < 10}',
+    prog = lp.make_kernel('{[i]: 0 <= i < 10}',
                    """
               for i
                     a[i] = i {id=a}
@@ -2445,15 +2448,17 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
 
     # split into kernel w/ vesize larger than iname domain
     vecsize = 16
-    knl = lp.split_iname(knl, 'i', vecsize, inner_tag='l.0')
+    prog = lp.split_iname(prog, 'i', vecsize, inner_tag='l.0')
 
     from testlib import GridOverride
 
     # artifically expand via overridden_get_grid_sizes_for_insn_ids
+    knl = prog.root_kernel
     knl = knl.copy(overridden_get_grid_sizes_for_insn_ids=GridOverride(
         knl.copy(), vecsize))
+    prog = prog.with_root_kernel(knl)
     # make sure we can generate the code
-    lp.generate_code_v2(knl)
+    lp.generate_code_v2(prog)
 
 
 def test_multi_argument_reduction_type_inference():
@@ -2462,7 +2467,7 @@ def test_multi_argument_reduction_type_inference():
     from loopy.types import to_loopy_type
     op = SegmentedSumReductionOperation()
 
-    knl = lp.make_kernel("{[i,j]: 0<=i<10 and 0<=j<i}", "")
+    prog = lp.make_kernel("{[i,j]: 0<=i<10 and 0<=j<i}", "")
 
     int32 = to_loopy_type(np.int32)
 
@@ -2476,7 +2481,8 @@ def test_multi_argument_reduction_type_inference():
                 allow_simultaneous=True),
             allow_simultaneous=True)
 
-    t_inf_mapper = TypeInferenceMapper(knl)
+    t_inf_mapper = TypeInferenceMapper(prog.root_kernel,
+            prog.program_callables_info)
 
     assert (
             t_inf_mapper(expr, return_tuple=True, return_dtype_set=True)

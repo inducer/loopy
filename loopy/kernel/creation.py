@@ -1678,7 +1678,7 @@ def _is_wildcard(s):
 
 
 def _resolve_dependencies(what, knl, insn, deps):
-    from loopy import find_instructions
+    from loopy.transform.instruction import find_instructions_in_single_kernel
     from loopy.match import MatchExpressionBase
 
     new_deps = []
@@ -1687,7 +1687,7 @@ def _resolve_dependencies(what, knl, insn, deps):
         found_any = False
 
         if isinstance(dep, MatchExpressionBase):
-            for new_dep in find_instructions(knl, dep):
+            for new_dep in find_instructions_in_single_kernel(knl, dep):
                 if new_dep.id != insn.id:
                     new_deps.append(new_dep.id)
                     found_any = True
