@@ -691,7 +691,7 @@ def iterate_over_kernels_if_given_program(transform_for_single_kernel):
         else:
             assert isinstance(program_or_kernel, LoopKernel)
             kernel = program_or_kernel
-            return transform_for_single_kernel(kernel)
+            return transform_for_single_kernel(kernel, *args, **kwargs)
 
     return wraps(transform_for_single_kernel)(_collective_transform)
 
