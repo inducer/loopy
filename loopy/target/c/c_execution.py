@@ -443,7 +443,7 @@ class CKernelExecutor(KernelExecutorBase):
 
         kwargs = self.packing_controller.unpack(kwargs)
 
-        kernel_info = self.kernel_info(self.arg_to_dtype_set(kwargs))
+        program_info_info = self.program_info_info(self.arg_to_dtype_set(kwargs))
 
-        return kernel_info.invoker(
-                kernel_info.c_kernels, *args, **kwargs)
+        return program_info_info.invoker(
+                program_info_info.c_program_infos, *args, **kwargs)
