@@ -121,7 +121,7 @@ from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.add_barrier import add_barrier
 from loopy.transform.callable import (register_callable_kernel,
-        register_function_lookup, inline_callable_kernel)
+        register_function_id_to_in_knl_callable_mapper, inline_callable_kernel)
 from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
 
 # }}}
@@ -238,7 +238,8 @@ __all__ = [
 
         "add_barrier",
 
-        "register_callable_kernel", "register_function_lookup",
+        "register_callable_kernel",
+        "register_function_id_to_in_knl_callable_mapper",
         "inline_callable_kernel",
 
         "pack_and_unpack_args_for_call",

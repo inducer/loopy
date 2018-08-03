@@ -47,14 +47,14 @@ def test_register_function_lookup(ctx_factory):
     ctx = cl.create_some_context()
     queue = cl.CommandQueue(ctx)
 
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i]: 0<=i<10}",
             """
             y[i] = log2(x[i])
             """)
-    knl = lp.register_function_lookup(knl, register_log2_lookup)
+    prog = lp.register_function_lookup(prog, register_log2_lookup)
 
-    evt, (out, ) = knl(queue, x=x)
+    evt, (out, ) = prog(queue, x=x)
 
     assert np.linalg.norm(np.log2(x)-out)/np.linalg.norm(np.log2(x)) < 1e-15
 

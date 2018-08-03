@@ -42,6 +42,9 @@ from loopy.kernel import LoopKernel
 # {{{ argument descriptors
 
 class ValueArgDescriptor(ImmutableRecord):
+    hash_fields = ()
+
+    update_persistent_hash = LoopKernel.update_persistent_hash
     pass
 
 

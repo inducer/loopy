@@ -37,7 +37,7 @@ from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 
 
-class FunctionResolver(RuleAwareIdentityMapper):
+class ResolvedFunctionMarker(RuleAwareIdentityMapper):
     """
     Mapper to convert the  ``function`` attribute of a
     :class:`pymbolic.primitives.Call` known in the kernel as instances of
@@ -56,14 +56,15 @@ class FunctionResolver(RuleAwareIdentityMapper):
         the function identifiers to look for while scoping functions.
     """
     def __init__(self, rule_mapping_context, kernel, program_callables_info,
-            function_resolvers):
-        super(FunctionResolver, self).__init__(rule_mapping_context)
+            function_id_to_in_knl_callable_mappers):
+        super(ResolvedFunctionMarker, self).__init__(rule_mapping_context)
         self.kernel = kernel
         self.program_callables_info = program_callables_info
         # FIXME: function_resolvesrs looks like a very bad name change it
-        self.function_resolvers = function_resolvers
+        self.function_id_to_in_knl_callable_mappers = (
+                function_id_to_in_knl_callable_mappers)
 
-    def find_resolved_function_from_identifier(self, identifier):
+    def find_in_knl_callable_from_identifier(self, identifier):
         """
         Returns an instance of
         :class:`loopy.kernel.function_interface.InKernelCallable` if the
@@ -71,9 +72,11 @@ class FunctionResolver(RuleAwareIdentityMapper):
         *None*.
         """
         # FIXME change docs
-        for scoper in self.function_resolvers:
+        for func_id_to_in_knl_callable_mapper in (
+                self.function_id_to_in_knl_callable_mappers):
             # fixme: do we really need to given target for the function
-            in_knl_callable = scoper(self.kernel.target, identifier)
+            in_knl_callable = func_id_to_in_knl_callable_mapper(
+                    self.kernel.target, identifier)
             if in_knl_callable is not None:
                 return in_knl_callable
 
@@ -98,7 +101,7 @@ class FunctionResolver(RuleAwareIdentityMapper):
         if not isinstance(expr.function, ResolvedFunction):
 
             # search the kernel for the function.
-            in_knl_callable = self.find_resolved_function_from_identifier(
+            in_knl_callable = self.find_in_knl_callable_from_identifier(
                     expr.function.name)
 
             if in_knl_callable:
@@ -118,7 +121,7 @@ class FunctionResolver(RuleAwareIdentityMapper):
                             )
 
         # this is an unknown function as of yet, do not modify it
-        return super(FunctionResolver, self).map_call_with_kwargs(expr,
+        return super(ResolvedFunctionMarker, self).map_call_with_kwargs(expr,
                 expn_state)
 
     def map_reduction(self, expr, expn_state):
@@ -129,29 +132,32 @@ class FunctionResolver(RuleAwareIdentityMapper):
             self.program_callables_info, _ = (
                     self.program_callables_info.with_callable(func_id,
                         in_knl_callable, True))
-        return super(FunctionResolver, self).map_reduction(expr, expn_state)
+        return super(ResolvedFunctionMarker, self).map_reduction(expr, expn_state)
 
 
-def resolve_callables(name, program_callables_info, function_resolvers):
-
-    kernel = program_callables_info[name].subkernel
+def initialize_program_callables_info_from_kernel(
+        kernel, func_id_to_kernel_callable_mappers):
+    program_callables_info = ProgramCallablesInfo({})
+    program_callables_info = program_callables_info.with_edit_callables_mode()
 
     from loopy.symbolic import SubstitutionRuleMappingContext
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
 
-    function_resolver = FunctionResolver(rule_mapping_context, kernel,
-            program_callables_info, function_resolvers)
+    resolved_function_marker = ResolvedFunctionMarker(
+            rule_mapping_context, kernel, program_callables_info,
+            func_id_to_kernel_callable_mappers)
 
     # scoping fucntions and collecting the scoped functions
     kernel_with_functions_resolved = rule_mapping_context.finish_kernel(
-            function_resolver.map_kernel(kernel))
-    program_callables_info = function_resolver.program_callables_info
+            resolved_function_marker.map_kernel(kernel))
+    program_callables_info = resolved_function_marker.program_callables_info
 
-    new_in_knl_callable = program_callables_info[name].copy(
-            subkernel=kernel_with_functions_resolved)
+    callable_kernel = CallableKernel(kernel_with_functions_resolved)
     program_callables_info, _ = program_callables_info.with_callable(
-            Variable(name), new_in_knl_callable)
+            Variable(kernel.name), callable_kernel, True)
+    program_callables_info = (
+            program_callables_info.with_exit_edit_callables_mode())
 
     return program_callables_info
 
@@ -162,54 +168,20 @@ class Program(ImmutableRecord):
     def __init__(self,
             name,
             program_callables_info,
-            target=None,
-            function_resolvers=None):
+            target,
+            func_id_to_in_knl_callable_mappers):
         assert isinstance(program_callables_info, ProgramCallablesInfo)
 
         # FIXME: check if all sanity checks have been covered?
         # FIXME: The comments over here may need some attention.
         assert name in program_callables_info
 
-        if target is None:
-            target = program_callables_info[name].subkernel.target
-
-        if function_resolvers is None:
-            # populate the function scopers from the target and the loopy
-            # specific callable scopers
-
-            # at this point only the root kernel can be present in the
-            # callables.
-            assert len(program_callables_info.resolved_functions) == 1
-
-            from loopy.library.function import loopy_specific_callable_scopers
-            function_resolvers = [loopy_specific_callable_scopers] + (
-                    target.get_device_ast_builder().function_scopers())
-
-            # new function resolvers have arrived, implies we need to resolve
-            # the callables identified by this set of resolvers
-            program_callables_info = (
-                    program_callables_info.with_edit_callables_mode())
-
-            for name, in_knl_callable in program_callables_info.items():
-                if isinstance(in_knl_callable, CallableKernel):
-                    # resolve the callables in the subkernel
-                    program_callables_info = (
-                            resolve_callables(name, program_callables_info,
-                                function_resolvers))
-                elif isinstance(in_knl_callable, ScalarCallable):
-                    pass
-                else:
-                    raise NotImplementedError("Unknown callable %s." %
-                            type(in_knl_callable).__name__)
-
-            program_callables_info = (
-                    program_callables_info.with_exit_edit_callables_mode())
-
         super(Program, self).__init__(
                 name=name,
                 program_callables_info=program_callables_info,
                 target=target,
-                function_resolvers=function_resolvers)
+                func_id_to_in_knl_callable_mappers=(
+                    func_id_to_in_knl_callable_mappers))
 
         self._program_executor_cache = {}
 
@@ -583,14 +555,25 @@ class ProgramCallablesInfo(ImmutableRecord):
 # }}}
 
 
+def default_func_id_to_kernel_callable_mappers(target):
+
+    from loopy.library.function import loopy_specific_callable_scopers
+    return (
+            [loopy_specific_callable_scopers] + (
+                target.get_device_ast_builder().function_scopers()))
+
+
 def make_program_from_kernel(kernel):
-    callable_knl = CallableKernel(subkernel=kernel)
-    resolved_functions = {kernel.name: callable_knl}
-    program_callables_info = ProgramCallablesInfo(resolved_functions)
+
+    program_callables_info = initialize_program_callables_info_from_kernel(kernel,
+            default_func_id_to_kernel_callable_mappers(kernel.target))
 
     program = Program(
             name=kernel.name,
-            program_callables_info=program_callables_info)
+            program_callables_info=program_callables_info,
+            func_id_to_in_knl_callable_mappers=(
+                default_func_id_to_kernel_callable_mappers(kernel.target)),
+            target=kernel.target)
 
     return program
 

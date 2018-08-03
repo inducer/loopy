@@ -42,7 +42,7 @@ from loopy.kernel.function_interface import (get_kw_pos_association,
 __doc__ = """
 .. currentmodule:: loopy
 
-.. autofunction:: register_function_lookup
+.. autofunction:: register_function_resolver
 
 .. autofunction:: register_callable_kernel
 """
@@ -50,29 +50,84 @@ __doc__ = """
 
 # {{{ register function lookup
 
-def register_function_lookup(kernel, function_lookup):
+def resolved_callables_from_function_lookup(program,
+        func_id_to_kernel_callable_mapper):
+    from loopy.program import ResolvedFunctionMarker
+    program_callables_info = program.program_callables_info
+    program_callables_info = program_callables_info.with_edit_callables_mode()
+
+    callable_knls = dict(
+            (func_id, in_knl_callable) for func_id, in_knl_callable in
+            program_callables_info.items() if isinstance(in_knl_callable,
+                CallableKernel))
+    edited_callable_knls = {}
+
+    for func_id, in_knl_callable in callable_knls.items():
+        kernel = in_knl_callable.subkernel
+
+        from loopy.symbolic import SubstitutionRuleMappingContext
+        rule_mapping_context = SubstitutionRuleMappingContext(
+                kernel.substitutions, kernel.get_var_name_generator())
+
+        resolved_function_marker = ResolvedFunctionMarker(
+                rule_mapping_context, kernel, program_callables_info,
+                [func_id_to_kernel_callable_mapper])
+
+        # scoping fucntions and collecting the scoped functions
+        new_subkernel = rule_mapping_context.finish_kernel(
+                resolved_function_marker.map_kernel(kernel))
+        program_callables_info = resolved_function_marker.program_callables_info
+
+        edited_callable_knls[func_id] = in_knl_callable.copy(
+                subkernel=new_subkernel)
+
+    program_callables_info = (
+            program_callables_info.with_exit_edit_callables_mode())
+
+    new_resolved_functions = {}
+
+    for func_id, in_knl_callable in program_callables_info.items():
+        if func_id in edited_callable_knls:
+            new_resolved_functions[func_id] = edited_callable_knls[func_id]
+        else:
+            new_resolved_functions[func_id] = in_knl_callable
+
+    program_callables_info = program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+
+    return program.copy(program_callables_info=program_callables_info)
+
+
+def register_function_id_to_in_knl_callable_mapper(program,
+        func_id_to_in_knl_callable_mapper):
     """
     Returns a copy of *kernel* with the *function_lookup* registered.
 
-    :arg function_lookup: A function of signature ``(target, identifier)``
-        returning a :class:`loopy.kernel.function_interface.InKernelCallable`.
+    :arg func_id_to_in_knl_callable_mapper: A function of signature ``(target,
+        identifier)`` returning a
+        :class:`loopy.kernel.function_interface.InKernelCallable` or *None* if
+        the *function_identifier* is not known.
     """
 
     # adding the function lookup to the set of function lookers in the kernel.
-    if function_lookup not in kernel.function_scopers:
+    if func_id_to_in_knl_callable_mapper not in (
+            program.func_id_to_in_knl_callable_mappers):
         from loopy.tools import unpickles_equally
-        if not unpickles_equally(function_lookup):
+        if not unpickles_equally(func_id_to_in_knl_callable_mapper):
             raise LoopyError("function '%s' does not "
                     "compare equally after being upickled "
                     "and would disrupt loopy's caches"
-                    % function_lookup)
-        new_function_scopers = kernel.function_scopers + [function_lookup]
-    registered_kernel = kernel.copy(function_scopers=new_function_scopers)
-    from loopy.kernel.creation import scope_functions
+                    % func_id_to_in_knl_callable_mapper)
+        new_func_id_mappers = program.func_id_to_in_knl_callable_mappers + (
+                [func_id_to_in_knl_callable_mapper])
 
-    # returning the scoped_version of the kernel, as new functions maybe
-    # resolved.
-    return scope_functions(registered_kernel)
+    program = resolved_callables_from_function_lookup(program,
+            func_id_to_in_knl_callable_mapper)
+
+    new_program = program.copy(
+            func_id_to_in_knl_callable_mappers=new_func_id_mappers)
+
+    return new_program
 
 # }}}
 
@@ -152,7 +207,8 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel):
     from loopy import set_options
     callee_kernel = set_options(callee_kernel, "disable_global_barriers")
 
-    return register_function_lookup(caller_kernel,
+    return register_function_id_to_in_knl_callable_mapper(
+            caller_kernel,
             _RegisterCalleeKernel(function_name, callable_kernel))
 
 # }}}
