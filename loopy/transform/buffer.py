@@ -245,7 +245,7 @@ def buffer_array_for_single_kernel(kernel, program_callables_info, var_name,
 
     from loopy.preprocess import prepare_for_caching
     key_kernel = prepare_for_caching(kernel)
-    cache_key = (key_kernel, program_callables_info, var_name,
+    cache_key = (key_kernel, var_name,
             tuple(buffer_inames),
             PymbolicExpressionHashWrapper(init_expression),
             PymbolicExpressionHashWrapper(store_expression), within,

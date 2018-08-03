@@ -1088,6 +1088,7 @@ def has_schedulable_iname_nesting(knl):
 
 # {{{ rename_inames
 
+@iterate_over_kernels_if_given_program
 def rename_iname(knl, old_iname, new_iname, existing_ok=False, within=None):
     """
     :arg within: a stack match as understood by

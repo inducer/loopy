@@ -35,6 +35,7 @@ from pymbolic import var
 
 from loopy.program import iterate_over_kernels_if_given_program
 from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 import logging
 logger = logging.getLogger(__name__)
@@ -508,8 +509,17 @@ def find_rules_matching(knl, pattern):
     return [r for r in knl.substitutions if pattern.match(r)]
 
 
-def find_one_rule_matching(knl, pattern):
-    rules = find_rules_matching(knl, pattern)
+def find_one_rule_matching(program, pattern):
+    rules = []
+    for in_knl_callable in program.program_callables_info.values():
+        if isinstance(in_knl_callable, CallableKernel):
+            knl = in_knl_callable.subkernel
+            rules.extend(find_rules_matching(knl, pattern))
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown callable types %s." % (
+                type(in_knl_callable).__name__))
 
     if len(rules) > 1:
         raise ValueError("more than one substitution rule matched '%s'"

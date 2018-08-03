@@ -410,7 +410,7 @@ def test_fuse_kernels(ctx_factory):
     knl = lp.fuse_kernels((xderiv, yderiv), data_flow=[("result", 0, 1)])
     knl = lp.prioritize_loops(knl, "e,i,j,k")
 
-    assert len(knl.temporary_variables) == 2
+    assert len(knl.root_kernel.temporary_variables) == 2
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(xyderiv, ctx, knl, parameters=dict(nelements=20, ndofs=4))
