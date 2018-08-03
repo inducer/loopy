@@ -373,7 +373,7 @@ class CKernelExecutor(KernelExecutorBase):
     .. automethod:: __call__
     """
 
-    def __init__(self, kernel, compiler=None):
+    def __init__(self, program, compiler=None):
         """
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
             (a warning will be issued if more than one is returned). If the
@@ -382,7 +382,7 @@ class CKernelExecutor(KernelExecutorBase):
         """
 
         self.compiler = compiler if compiler else CCompiler()
-        super(CKernelExecutor, self).__init__(kernel)
+        super(CKernelExecutor, self).__init__(program)
 
     def get_invoker_uncached(self, kernel, codegen_result):
         generator = CExecutionWrapperGenerator()
@@ -399,18 +399,18 @@ class CKernelExecutor(KernelExecutorBase):
         host_code = codegen_result.host_code()
         all_code = '\n'.join([dev_code, '', host_code])
 
-        if self.kernel.options.write_cl:
+        if self.program.root_kernel.options.write_cl:
             output = all_code
-            if self.kernel.options.highlight_cl:
+            if self.program.root_kernel.options.highlight_cl:
                 output = get_highlighted_code(code=output)
 
-            if self.kernel.options.write_cl is True:
+            if self.program.root_kernel.options.write_cl is True:
                 print(output)
             else:
-                with open(self.kernel.options.write_cl, "w") as outf:
+                with open(self.program.root_kernel.options.write_cl, "w") as outf:
                     outf.write(output)
 
-        if self.kernel.options.edit_cl:
+        if self.program.root_kernel.options.edit_cl:
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.c")
             # update code from editor
@@ -419,7 +419,7 @@ class CKernelExecutor(KernelExecutorBase):
         c_kernels = []
         for dp in codegen_result.device_programs:
             c_kernels.append(CompiledCKernel(dp,
-                codegen_result.implemented_data_info, all_code, self.kernel.target,
+                codegen_result.implemented_data_info, all_code, self.program.target,
                 self.compiler))
 
         return _KernelInfo(
