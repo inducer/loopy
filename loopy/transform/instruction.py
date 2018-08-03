@@ -231,6 +231,7 @@ def replace_instruction_ids(kernel, replacements):
 
 # {{{ tag_instructions
 
+@iterate_over_kernels_if_given_program
 def tag_instructions(kernel, new_tag, within=None):
     from loopy.match import parse_match
     within = parse_match(within)

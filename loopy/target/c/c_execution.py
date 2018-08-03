@@ -389,11 +389,11 @@ class CKernelExecutor(KernelExecutorBase):
         return generator(kernel, codegen_result)
 
     @memoize_method
-    def kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
-        kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype_set)
+    def program_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
+        program = self.get_typed_and_scheduled_program(arg_to_dtype_set)
 
         from loopy.codegen import generate_code_v2
-        codegen_result = generate_code_v2(kernel)
+        codegen_result = generate_code_v2(program)
 
         dev_code = codegen_result.device_code()
         host_code = codegen_result.host_code()
@@ -423,10 +423,10 @@ class CKernelExecutor(KernelExecutorBase):
                 self.compiler))
 
         return _KernelInfo(
-                kernel=kernel,
+                program=program,
                 c_kernels=c_kernels,
                 implemented_data_info=codegen_result.implemented_data_info,
-                invoker=self.get_invoker(kernel, codegen_result))
+                invoker=self.get_invoker(program, codegen_result))
 
     # }}}
 
