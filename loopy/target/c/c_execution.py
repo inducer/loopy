@@ -157,7 +157,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
     # {{{
 
     def generate_output_handler(
-            self, gen, options, kernel, implemented_data_info):
+            self, gen, options, program, implemented_data_info):
 
         from loopy.kernel.data import KernelArgument
 
@@ -166,12 +166,12 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                     % ", ".join("\"%s\": %s" % (arg.name, arg.name)
                         for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
-                        if arg.base_name in kernel.get_written_variables()))
+                        if arg.is_output_only))
         else:
             out_args = [arg
                     for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
-                    if arg.base_name in kernel.get_written_variables()]
+                    if arg.is_output_only]
             if out_args:
                 gen("return None, (%s,)"
                         % ", ".join(arg.name for arg in out_args))
