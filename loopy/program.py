@@ -33,7 +33,6 @@ from loopy.symbolic import RuleAwareIdentityMapper, ResolvedFunction
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
 from loopy.diagnostic import LoopyError
-from pymbolic import var
 
 from loopy.kernel import LoopKernel
 
@@ -567,75 +566,6 @@ class ProgramCallablesInfo(ImmutableRecord):
                 num_times_callables_called=num_times_callables_called,
                 num_times_hit_during_editing={},
                 renames_needed_after_editing={})
-
-    def merge_program(self, program2):
-        # FIXME: this is not correct and should not be touched till then.
-        1/0
-        # rename the callables in program2 to see no clash between the 2.
-        renames_needed_in_program2 = {}
-
-        for old_func_id in program2.program_callables_info:
-            if old_func_id == program2.name:
-                # dont rename the root kernel
-                renames_needed_in_program2[old_func_id] = (
-                        old_func_id)
-                continue
-            unique_function_identifier = old_func_id
-            while unique_function_identifier in self.resolved_functions or (
-                    unique_function_identifier in
-                    renames_needed_in_program2.values()):
-                unique_function_identifier = (
-                        next_indexed_function_identifier(
-                            unique_function_identifier))
-            renames_needed_in_program2[old_func_id] = (
-                    unique_function_identifier)
-
-        # rename ALL the callables in program2
-        new_prog2_resolved_functions = {}
-        new_prog2_num_times_callables_called = {}
-
-        for func_id, in_knl_callable in program2.program_callables_info.items():
-            if isinstance(in_knl_callable, CallableKernel):
-                old_subkernel = in_knl_callable.subkernel
-                new_subkernel = rename_resolved_functions_in_a_single_kernel(
-                        old_subkernel, renames_needed_in_program2)
-                in_knl_callable = (
-                        in_knl_callable.copy(subkernel=new_subkernel))
-            elif isinstance(in_knl_callable, ScalarCallable):
-                pass
-            else:
-                raise NotImplementedError("Unknown callable type %s." %
-                        type(in_knl_callable).__name__)
-
-            new_func_id = renames_needed_in_program2[func_id]
-            new_prog2_resolved_functions[new_func_id] = (
-                    in_knl_callable)
-            new_prog2_num_times_callables_called[new_func_id] = (
-                    program2.program_callables_info.num_times_callables_called[
-                        func_id])
-
-        new_prog1_callables_info = self.with_edit_callables_mode()
-        # TODO: there maybe a case of trouble when merging the kernel being
-        # called from *self*, that's improbable, but can be fixed with a
-        # condition.
-        for old_func_id, in_knl_callable_in_prog2 in (
-                new_prog2_resolved_functions.items()):
-            for i in range(
-                    new_prog2_num_times_callables_called[old_func_id]):
-                new_prog1_callables_info, new_func_id = (
-                        new_prog1_callables_info.with_callable(
-                            var(old_func_id), in_knl_callable_in_prog2))
-
-        # FIXME: perform all the edits on
-        merged_prog_callables_info = (
-                new_prog1_callables_info.with_exit_edit_callables_mode())
-        new_merged_resolved_functions = (
-                merged_prog_callables_info.resolved_functions.copy())
-        new_subkernel = new_merged_resolved_functions.pop(
-                program2.name).subkernel
-        new_merged_prog_callables_info = merged_prog_callables_info.copy(
-                resolved_functions=new_merged_resolved_functions)
-        return new_merged_prog_callables_info, new_subkernel
 
     def __getitem__(self, item):
         return self.resolved_functions[item]
