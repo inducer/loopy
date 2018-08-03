@@ -33,6 +33,7 @@ from loopy.kernel import LoopKernel
 
 # {{{ fold constants
 
+@iterate_over_kernels_if_given_program
 def fold_constants(kernel):
     from loopy.symbolic import ConstantFoldingMapper
     cfm = ConstantFoldingMapper()

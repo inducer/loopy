@@ -33,6 +33,9 @@ from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder, PymbolicExpressionHashWrapper
 from loopy.version import DATA_MODEL_VERSION
 from loopy.diagnostic import LoopyError
+from loopy.program import Program
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import ScalarCallable, CallableKernel
 
 from pymbolic import var
 
@@ -130,10 +133,10 @@ buffer_array_cache = WriteOncePersistentDict(
 
 
 # Adding an argument? also add something to the cache_key below.
-def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
-        store_expression=None, within=None, default_tag="l.auto",
-        temporary_scope=None, temporary_is_local=None,
-        fetch_bounding_box=False):
+def buffer_array_for_single_kernel(kernel, program_callables_info, var_name,
+        buffer_inames, init_expression=None, store_expression=None,
+        within=None, default_tag="l.auto", temporary_scope=None,
+        temporary_is_local=None, fetch_bounding_box=False):
     """Replace accesses to *var_name* with ones to a temporary, which is
     created and acts as a buffer. To perform this transformation, the access
     footprint to *var_name* is determined and a temporary of a suitable
@@ -168,6 +171,8 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         rectangular (and hence convex) superset of the footprint to be
         fetched.
     """
+
+    assert isinstance(kernel, LoopKernel)
 
     # {{{ unify temporary_scope / temporary_is_local
 
@@ -240,7 +245,8 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
 
     from loopy.preprocess import prepare_for_caching
     key_kernel = prepare_for_caching(kernel)
-    cache_key = (key_kernel, var_name, tuple(buffer_inames),
+    cache_key = (key_kernel, program_callables_info, var_name,
+            tuple(buffer_inames),
             PymbolicExpressionHashWrapper(init_expression),
             PymbolicExpressionHashWrapper(store_expression), within,
             default_tag, temporary_scope, fetch_bounding_box)
@@ -528,7 +534,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     kernel = tag_inames(kernel, new_iname_to_tag)
 
     from loopy.kernel.tools import assign_automatic_axes
-    kernel = assign_automatic_axes(kernel)
+    kernel = assign_automatic_axes(kernel, program_callables_info)
 
     if CACHING_ENABLED:
         from loopy.preprocess import prepare_for_caching
@@ -536,5 +542,30 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
                 cache_key, prepare_for_caching(kernel))
 
     return kernel
+
+
+def buffer_array(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = buffer_array_for_single_kernel(
+                    in_knl_callable.subkernel, program.program_callables_info,
+                    *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # vim: foldmethod=marker

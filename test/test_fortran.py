@@ -71,7 +71,7 @@ def test_fill(ctx_factory):
     knl, = lp.parse_transformed_fortran(fortran_src,
             pre_transform_code="split_amount = 128")
 
-    assert "i_inner" in knl.all_inames()
+    assert "i_inner" in knl.root_kernel.all_inames()
 
     ctx = ctx_factory()
 
@@ -295,7 +295,7 @@ def test_matmul(ctx_factory, buffer_inames):
 
     knl, = lp.parse_fortran(fortran_src)
 
-    assert len(knl.domains) == 1
+    assert len(knl.root_kernel.domains) == 1
 
     ref_knl = knl
 

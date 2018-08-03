@@ -43,6 +43,7 @@ __doc__ = """
 
 # {{{ assume
 
+@iterate_over_kernels_if_given_program
 def assume(kernel, assumptions):
     """Include an assumption about :ref:`domain-parameters` in the kernel, e.g.
     `n mod 4 = 0`.

@@ -289,6 +289,7 @@ class AssignmentToSubstChanger(RuleAwareIdentityMapper):
             return var(subst_name)(*index)
 
 
+@iterate_over_kernels_if_given_program
 def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         force_retain_argument=False):
     """Extract an assignment (to a temporary variable or an argument)
