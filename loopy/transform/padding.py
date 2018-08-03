@@ -447,6 +447,7 @@ def find_padding_multiple(kernel, variable, axis, align_bytes, allowed_waste=0.1
 
 # {{{ add_padding
 
+@iterate_over_kernels_if_given_program
 def add_padding(kernel, variable, axis, align_bytes):
     arg_to_idx = dict((arg.name, i) for i, arg in enumerate(kernel.args))
     arg_idx = arg_to_idx[variable]

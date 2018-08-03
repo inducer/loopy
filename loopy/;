@@ -36,8 +36,6 @@ from loopy.diagnostic import (
 from loopy.kernel.instruction import _DataObliviousInstruction
 
 from loopy.program import ProgramCallablesInfo
-from loopy.symbolic import SubArrayRef
-from pymbolic.primitives import Variable, Subscript
 
 import logging
 logger = logging.getLogger(__name__)
@@ -805,56 +803,14 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
 
     # FIXME: copy the explanation from make_function_ready_for_codegen
     # here.
-
-    # {{{ check if insn missed during type inference
-
-    def _instruction_missed_during_inference(insn):
-        for assignee in insn.assignees:
-            if isinstance(assignee, Variable):
-                if assignee.name in kernel.arg_dict:
-                    if kernel.arg_dict[assignee.name].dtype is None:
-                        return False
-                else:
-                    assert assignee.name in kernel.temporary_variables
-                    if kernel.temporary_variables[assignee.name].dtype is None:
-                        return False
-
-            elif isinstance(assignee, Subscript):
-                if assignee.aggregate.name in kernel.arg_dict:
-                    if kernel.arg_dict[assignee.aggregate.name].dtype is None:
-                        return False
-                else:
-                    assert assignee.aggregate.name in kernel.temporary_variables
-                    if kernel.temporary_variables[
-                            assignee.aggregate.name].dtype is None:
-                        return False
-
-            else:
-                assert isinstance(assignee, SubArrayRef)
-                if assignee.subscript.aggregate.name in kernel.arg_dict:
-                    if kernel.arg_dict[
-                            assignee.subscript.aggregate.name].dtype is None:
-                        return False
-                else:
-                    assert assignee.subscript.aggregate.name in (
-                            kernel.temporary_variables)
-                    if kernel.temporary_variables[
-                            assignee.subscript.aggregate.name] is None:
-                        return False
-
-        return True
-
-    # }}}
-
     for insn in kernel.instructions:
         if isinstance(insn, lp.MultiAssignmentBase):
             # just a dummy run over the expression, to pass over all the
             # functions
             # FIXME: need a check over here which checks the instruction for
             # unseen cases
-            if _instruction_missed_during_inference(insn):
-                type_inf_mapper(insn.expression, return_tuple=isinstance(insn,
-                    lp.CallInstruction), return_dtype_set=True)
+            type_inf_mapper(insn.expression, return_tuple=isinstance(insn,
+                lp.CallInstruction), return_dtype_set=True)
         elif isinstance(insn, (_DataObliviousInstruction,
                 lp.CInstruction)):
             pass
@@ -879,10 +835,9 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
             change_names_of_pymbolic_calls)
     type_specialized_kernel = change_names_of_pymbolic_calls(
             pre_type_specialized_knl, old_calls_to_new_calls)
-
+    
     # the check is unnecessary as we would first get TypeInfereceFailure before
-    # encountering this. Move this at the start once ManglerCallable is
-    # deprecated.
+    # encountering this. Move this at the start once ManglerCallable is 
     if expect_completion:
         # if completion is expected, then it is important that all the
         # callables are scoped.

@@ -61,8 +61,10 @@ __doc__ = """
 
 
 # FIXME: this is broken for the callable kernel design.
-# the information of variable being referenced by different names must be taken
-# into consideration.
+# Qns:
+# - The variable name, what if multiple kernels use the same name?
+# - We should also add the cumulative effect on the arguments of callee kernels
+# into the caller kernel.
 
 # {{{ GuardedPwQPolynomial
 

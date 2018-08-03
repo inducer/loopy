@@ -2418,9 +2418,32 @@ def preprocess_program(program, device=None):
 
     # {{{ preprocess the root kernel
 
-    root_kernel = preprocess_single_kernel(
-            program.root_kernel, program.program_callables_info, device)
-    program = program.with_root_kernel(root_kernel)
+    # Callable editing restrictions:
+    #
+    # - cannot edit program_callables_info in :meth:`preprocess_single_kernel`
+    #   as we are iterating over it.
+    #
+    # Refer: https://docs.python.org/3/library/stdtypes.html#dictionary-view-objects
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = preprocess_single_kernel(
+                    in_knl_callable.subkernel, program.program_callables_info,
+                    device)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    program = program.copy(program_callables_info=new_program_callables_info)
 
     # }}}
 
