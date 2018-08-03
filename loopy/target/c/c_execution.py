@@ -166,12 +166,13 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                     % ", ".join("\"%s\": %s" % (arg.name, arg.name)
                         for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
-                        if arg.is_output_only))
+                        if arg.base_name in
+                        program.root_kernel.get_written_variables()))
         else:
             out_args = [arg
                     for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
-                    if arg.is_output_only]
+                    if arg.base_name in program.root_kernel.get_written_variables()]
             if out_args:
                 gen("return None, (%s,)"
                         % ", ".join(arg.name for arg in out_args))

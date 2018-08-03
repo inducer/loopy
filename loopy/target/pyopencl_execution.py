@@ -220,7 +220,8 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                     % ", ".join("\"%s\": %s" % (arg.name, arg.name)
                         for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
-                        if arg.base_name in program.get_written_variables()))
+                        if arg.base_name in
+                        program.root_kernel.get_written_variables()))
         else:
             out_args = [arg
                     for arg in implemented_data_info
