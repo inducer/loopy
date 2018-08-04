@@ -2182,7 +2182,8 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
             kw_parameters = expr.kw_parameters
 
         # descriptors for the args and kwargs:
-        arg_id_to_descr = dict((i, ValueArgDescriptor())
+        arg_id_to_descr = dict((i, par.get_array_arg_descriptor(self.caller_kernel))
+                if isinstance(par, SubArrayRef) else ValueArgDescriptor()
                 for i, par in tuple(enumerate(expr.parameters)) +
                 tuple(kw_parameters.items()))
 
@@ -2225,7 +2226,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
                         for child in expr.parameters),
                     dict(
                         (key, self.rec(val, expn_state))
-                        for key, val in six.iteritems(expr.kw_parameters))
+                        for key, val in six.iteritems(kw_parameters))
                     )
 
     map_call_with_kwargs = map_call
@@ -2237,9 +2238,12 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         for insn in kernel.instructions:
             if isinstance(insn, CallInstruction):
                 # In call instructions the assignees play an important in
-                # determining the arg_id_to_dtype
                 new_insns.append(insn.with_transformed_expressions(
-                        self, kernel, insn))
+                    self, kernel, insn, assignees=insn.assignees))
+                # determining the arg_id_to_dtype
+                # new_expr = self.map_call(insn.expression, kernel, insn,
+                #         assignees=insn.assignees)
+                # new_insns.append(insn.copy(expression=new_expr))
             elif isinstance(insn, MultiAssignmentBase):
                 new_insns.append(insn.with_transformed_expressions(
                     self, kernel, insn))
@@ -2252,7 +2256,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         return kernel.copy(instructions=new_insns)
 
 
-def infer_arg_descr_from_root_kernel(kernel, program_callables_info):
+def traverse_to_infer_arg_descr(kernel, program_callables_info):
     """
     Returns a copy of *kernel* with the argument shapes and strides matching for
     scoped functions in the *kernel*. Refer
@@ -2280,7 +2284,7 @@ def infer_arg_descr(program):
             program.program_callables_info.with_edit_callables_mode())
     root_kernel = program.root_kernel
 
-    new_root_kernel, program_callables_info = infer_arg_descr_from_root_kernel(
+    new_root_kernel, program_callables_info = traverse_to_infer_arg_descr(
             root_kernel, program_callables_info)
     new_root_kernel_callable = root_kernel_callable.copy(
             subkernel=new_root_kernel)

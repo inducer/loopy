@@ -69,22 +69,23 @@ import numpy as np
 # {{{ mappers with support for loopy-specific primitives
 
 class IdentityMapperMixin(object):
-    def map_literal(self, expr, *args):
+    def map_literal(self, expr, *args, **kwargs):
         return expr
 
-    def map_array_literal(self, expr, *args):
-        return type(expr)(tuple(self.rec(ch, *args) for ch in expr.children))
+    def map_array_literal(self, expr, *args, **kwargs):
+        return type(expr)(tuple(self.rec(ch, *args, **kwargs) for ch in
+            expr.children))
 
-    def map_group_hw_index(self, expr, *args):
+    def map_group_hw_index(self, expr, *args, **kwargs):
         return expr
 
-    def map_local_hw_index(self, expr, *args):
+    def map_local_hw_index(self, expr, *args, **kwargs):
         return expr
 
-    def map_loopy_function_identifier(self, expr, *args):
+    def map_loopy_function_identifier(self, expr, *args, **kwargs):
         return expr
 
-    def map_reduction(self, expr, *args):
+    def map_reduction(self, expr, *args, **kwargs):
         mapped_inames = [self.rec(p.Variable(iname), *args) for iname in expr.inames]
 
         new_inames = []
@@ -98,15 +99,15 @@ class IdentityMapperMixin(object):
 
         return Reduction(
                 expr.operation, tuple(new_inames),
-                self.rec(expr.expr, *args),
+                self.rec(expr.expr, *args, **kwargs),
                 allow_simultaneous=expr.allow_simultaneous)
 
-    def map_tagged_variable(self, expr, *args):
+    def map_tagged_variable(self, expr, *args, **kwargs):
         # leaf, doesn't change
         return expr
 
-    def map_type_annotation(self, expr, *args):
-        return type(expr)(expr.type, self.rec(expr.child, *args))
+    def map_type_annotation(self, expr, *args, **kwargs):
+        return type(expr)(expr.type, self.rec(expr.child, *args, **kwargs))
 
     def map_sub_array_ref(self, expr, *args, **kwargs):
         return SubArrayRef(self.rec(expr.swept_inames, *args, **kwargs),
@@ -1098,12 +1099,14 @@ class RuleAwareIdentityMapper(IdentityMapper):
     def __init__(self, rule_mapping_context):
         self.rule_mapping_context = rule_mapping_context
 
-    def map_variable(self, expr, expn_state):
+    def map_variable(self, expr, expn_state, *args, **kwargs):
         name, tag = parse_tagged_name(expr)
         if name not in self.rule_mapping_context.old_subst_rules:
-            return IdentityMapper.map_variable(self, expr, expn_state)
+            return IdentityMapper.map_variable(self, expr, expn_state, *args,
+                    **kwargs)
         else:
-            return self.map_substitution(name, tag, (), expn_state)
+            return self.map_substitution(name, tag, (), expn_state, *args,
+                    **kwargs)
 
     def map_call(self, expr, expn_state):
         if not isinstance(expr.function, p.Variable):
@@ -1158,7 +1161,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
         else:
             return sym
 
-    def __call__(self, expr, kernel, insn):
+    def __call__(self, expr, kernel, insn, *args, **kwargs):
         from loopy.kernel.data import InstructionBase
         assert insn is None or isinstance(insn, InstructionBase)
 
@@ -1167,7 +1170,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
                     kernel=kernel,
                     instruction=insn,
                     stack=(),
-                    arg_context={}))
+                    arg_context={}), *args, **kwargs)
 
     def map_instruction(self, kernel, insn):
         return insn

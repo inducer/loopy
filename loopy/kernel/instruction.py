@@ -951,12 +951,12 @@ class Assignment(MultiAssignmentBase):
     def assignee_subscript_deps(self):
         return (_get_assignee_subscript_deps(self.assignee),)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, *args, **kwargs):
         return self.copy(
-                assignee=f(self.assignee, *args),
-                expression=f(self.expression, *args),
+                assignee=f(self.assignee, *args, **kwargs),
+                expression=f(self.expression, *args, **kwargs),
                 predicates=frozenset(
-                    f(pred, *args) for pred in self.predicates))
+                    f(pred, *args, **kwargs) for pred in self.predicates))
 
     # }}}
 
@@ -1105,12 +1105,12 @@ class CallInstruction(MultiAssignmentBase):
                 _get_assignee_subscript_deps(a)
                 for a in self.assignees)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, *args, **kwargs):
         return self.copy(
-                assignees=f(self.assignees, *args),
-                expression=f(self.expression, *args),
+                assignees=f(self.assignees, *args, **kwargs),
+                expression=f(self.expression, *args, **kwargs),
                 predicates=frozenset(
-                    f(pred, *args) for pred in self.predicates))
+                    f(pred, *args, **kwargs) for pred in self.predicates))
 
     # }}}
 
