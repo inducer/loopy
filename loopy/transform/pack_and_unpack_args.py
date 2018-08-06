@@ -24,6 +24,9 @@ THE SOFTWARE.
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import CallInstruction
+from loopy.program import Program
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.symbolic import SubArrayRef
 
 __doc__ = """
@@ -33,7 +36,8 @@ __doc__ = """
 """
 
 
-def pack_and_unpack_args_for_call(kernel, call_name, args_to_pack=None,
+def pack_and_unpack_args_for_call_for_single_kernel(kernel,
+        program_callables_info, call_name, args_to_pack=None,
         args_to_unpack=None):
     """
     Returns a a copy of *kernel* with instructions appended to copy the
@@ -50,6 +54,7 @@ def pack_and_unpack_args_for_call(kernel, call_name, args_to_pack=None,
         which must be unpacked. If set *None*, it is interpreted that
         all the array arguments should be unpacked.
     """
+    assert isinstance(kernel, LoopKernel)
     new_domains = []
     new_tmps = kernel.temporary_variables.copy()
     old_insn_to_new_insns = {}
@@ -58,10 +63,10 @@ def pack_and_unpack_args_for_call(kernel, call_name, args_to_pack=None,
         if not isinstance(insn, CallInstruction):
             # pack and unpack call only be done for CallInstructions.
             continue
-        if insn.expression.function.name not in kernel.scoped_functions:
+        if insn.expression.function.name not in program_callables_info:
             continue
 
-        in_knl_callable = kernel.scoped_functions[
+        in_knl_callable = program_callables_info[
                 insn.expression.function.name]
 
         if in_knl_callable.name != call_name:
@@ -313,5 +318,30 @@ def pack_and_unpack_args_for_call(kernel, call_name, args_to_pack=None,
         )
 
     return kernel
+
+
+def pack_and_unpack_args_for_call(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = pack_and_unpack_args_for_call_for_single_kernel(
+                    in_knl_callable.subkernel, program.program_callables_info,
+                    *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # vim: foldmethod=marker

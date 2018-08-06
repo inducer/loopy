@@ -28,7 +28,6 @@ import islpy as isl
 from pymbolic.primitives import CallWithKwargs
 
 from loopy.kernel import LoopKernel
-from loopy.kernel.function_interface import CallableKernel
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
@@ -36,13 +35,13 @@ from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
 from loopy.symbolic import IdentityMapper, SubstitutionMapper, CombineMapper
 from loopy.isl_helpers import simplify_via_aff
 from loopy.kernel.function_interface import (get_kw_pos_association,
-        change_names_of_pymbolic_calls)
+        change_names_of_pymbolic_calls, CallableKernel, ScalarCallable)
 from loopy.program import Program, ResolvedFunctionMarker
 
 __doc__ = """
 .. currentmodule:: loopy
 
-.. autofunction:: register_function_resolver
+.. autofunction:: register_function_id_to_in_knl_callable_mapper
 
 .. autofunction:: register_callable_kernel
 """
@@ -170,31 +169,38 @@ def register_callable_kernel(program, callee_kernel):
         arg.is_output_only])
     expected_num_parameters = len(callee_kernel.args) - expected_num_assignees
     for in_knl_callable in program.program_callables_info.values():
-        caller_kernel = in_knl_callable.subkernel
-        for insn in caller_kernel.instructions:
-            if isinstance(insn, CallInstruction) and (
-                    insn.expression.function.name == callee_kernel.name):
-                if isinstance(insn.expression, CallWithKwargs):
-                    kw_parameters = insn.expression.kw_parameters
-                else:
-                    kw_parameters = {}
-                if len(insn.assignees) != expected_num_assignees:
-                    raise LoopyError("The number of arguments with 'out' direction "
-                            "in callee kernel %s and the number of assignees in "
-                            "instruction %s do not match." % (
-                                callee_kernel.name, insn.id))
-                if len(insn.expression.parameters+tuple(
-                        kw_parameters.values())) != expected_num_parameters:
-                    raise LoopyError("The number of expected arguments "
-                            "for the callee kernel %s and the number of parameters "
-                            "in instruction %s do not match." % (
-                                callee_kernel.name, insn.id))
+        if isinstance(in_knl_callable, CallableKernel):
+            caller_kernel = in_knl_callable.subkernel
+            for insn in caller_kernel.instructions:
+                if isinstance(insn, CallInstruction) and (
+                        insn.expression.function.name == callee_kernel.name):
+                    if isinstance(insn.expression, CallWithKwargs):
+                        kw_parameters = insn.expression.kw_parameters
+                    else:
+                        kw_parameters = {}
+                    if len(insn.assignees) != expected_num_assignees:
+                        raise LoopyError("The number of arguments with 'out' "
+                                "direction " "in callee kernel %s and the number "
+                                "of assignees in " "instruction %s do not "
+                                "match." % (
+                                    callee_kernel.name, insn.id))
+                    if len(insn.expression.parameters+tuple(
+                            kw_parameters.values())) != expected_num_parameters:
+                        raise LoopyError("The number of expected arguments "
+                                "for the callee kernel %s and the number of "
+                                "parameters in instruction %s do not match."
+                                % (callee_kernel.name, insn.id))
 
-            elif isinstance(insn, (MultiAssignmentBase, CInstruction,
-                    _DataObliviousInstruction)):
-                pass
-            else:
-                raise NotImplementedError("unknown instruction %s" % type(insn))
+                elif isinstance(insn, (MultiAssignmentBase, CInstruction,
+                        _DataObliviousInstruction)):
+                    pass
+                else:
+                    raise NotImplementedError("unknown instruction %s" % type(insn))
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown callable type %s." %
+                    type(in_knl_callable).__name__)
 
     # }}}
 
@@ -537,12 +543,11 @@ def _inline_single_callable_kernel(caller_kernel, function_name,
                 history_of_identifier = program_callables_info.history[
                         insn.expression.function.name]
 
-                from loopy.kernel.function_interface import CallableKernel
                 if function_name in history_of_identifier:
                     in_knl_callable = program_callables_info[
                             insn.expression.function.name]
                     assert isinstance(in_knl_callable, CallableKernel)
-                    new_caller_kernel = _inline_call_instruction(
+                    caller_kernel = _inline_call_instruction(
                             caller_kernel, in_knl_callable.subkernel, insn)
                     program_callables_info = (
                             program_callables_info.with_deleted_callable(
@@ -557,7 +562,7 @@ def _inline_single_callable_kernel(caller_kernel, function_name,
                     "Unknown instruction type %s"
                     % type(insn).__name__)
 
-    return new_caller_kernel, program_callables_info
+    return caller_kernel, program_callables_info
 
 
 # FIXME This should take a 'within' parameter to be able to only inline
@@ -581,7 +586,7 @@ def inline_callable_kernel(program, function_name):
             caller_kernel, program_callables_info = (
                     _inline_single_callable_kernel(caller_kernel,
                         function_name,
-                        program.program_callables_info))
+                        program_callables_info))
             edited_callable_kernels[func_id] = in_knl_callable.copy(
                     subkernel=caller_kernel)
 
@@ -642,7 +647,8 @@ class DimChanger(IdentityMapper):
         return expr.aggregate.index(tuple(new_indices))
 
 
-def _match_caller_callee_argument_dimension(caller_knl, callee_function_name):
+def _match_caller_callee_argument_dimension_for_single_kernel(
+        caller_knl, callee_function_name):
     """
     Returns a copy of *caller_knl* with the instance of
     :class:`loopy.kernel.function_interface.CallableKernel` addressed by
@@ -721,6 +727,32 @@ def _match_caller_callee_argument_dimension(caller_knl, callee_function_name):
 
     return change_names_of_pymbolic_calls(caller_knl,
             pymbolic_calls_to_new_callables)
+
+
+def _match_caller_callee_argument_dimension_(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = (
+                    _match_caller_callee_argument_dimension_for_single_kernel(
+                        in_knl_callable.subkernel, program.program_callables_info,
+                        *args, **kwargs))
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 

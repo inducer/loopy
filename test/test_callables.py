@@ -52,7 +52,8 @@ def test_register_function_lookup(ctx_factory):
             """
             y[i] = log2(x[i])
             """)
-    prog = lp.register_function_lookup(prog, register_log2_lookup)
+    prog = lp.register_function_id_to_in_knl_callable_mapper(prog,
+            register_log2_lookup)
 
     evt, (out, ) = prog(queue, x=x)
 
@@ -68,17 +69,17 @@ def test_register_knl(ctx_factory, inline):
     x = np.random.rand(n, n, n, n, n)
     y = np.random.rand(n, n, n, n, n)
 
-    grandchild_knl = lp.make_kernel(
+    grandchild_knl = lp.make_kernel_function(
             "{[i, j]:0<= i, j< 16}",
             """
             c[i, j] = 2*a[i, j] + 3*b[i, j]
-            """)
+            """, name='linear_combo1')
 
-    child_knl = lp.make_kernel(
+    child_knl = lp.make_kernel_function(
             "{[i, j]:0<=i, j < 16}",
             """
             [i, j]: g[i, j] = linear_combo1([i, j]: e[i, j], [i, j]: f[i, j])
-            """)
+            """, name='linear_combo2')
 
     parent_knl = lp.make_kernel(
             "{[i, j, k, l, m]: 0<=i, j, k, l, m<16}",
@@ -97,10 +98,10 @@ def test_register_knl(ctx_factory, inline):
                     shape=(16, 16, 16, 16, 16)), '...'],
             )
 
-    child_knl = lp.register_callable_kernel(
-            child_knl, 'linear_combo1', grandchild_knl)
     knl = lp.register_callable_kernel(
-            parent_knl, 'linear_combo2', child_knl)
+            parent_knl, child_knl)
+    knl = lp.register_callable_kernel(
+            knl, grandchild_knl)
     if inline:
         knl = lp.inline_callable_kernel(knl, 'linear_combo2')
         knl = lp.inline_callable_kernel(knl, 'linear_combo1')
@@ -120,11 +121,11 @@ def test_slices_with_negative_step(ctx_factory, inline):
     x = np.random.rand(n, n, n, n, n)
     y = np.random.rand(n, n, n, n, n)
 
-    child_knl = lp.make_kernel(
+    child_knl = lp.make_kernel_function(
             "{[i, j]:0<=i, j < 16}",
             """
             g[i, j] = 2*e[i, j] + 3*f[i, j]
-            """)
+            """, name="linear_combo")
 
     parent_knl = lp.make_kernel(
             "{[i, k, m]: 0<=i, k, m<16}",
@@ -148,7 +149,7 @@ def test_slices_with_negative_step(ctx_factory, inline):
             )
 
     knl = lp.register_callable_kernel(
-            parent_knl, 'linear_combo', child_knl)
+            parent_knl, child_knl)
     if inline:
         knl = lp.inline_callable_kernel(knl, 'linear_combo')
 
@@ -169,7 +170,7 @@ def test_register_knl_with_call_with_kwargs(ctx_factory, inline):
     b_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float32)
     c_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
 
-    callee_knl = lp.make_kernel(
+    callee_knl = lp.make_kernel_function(
             "{[i, j]:0<=i, j < %d}" % n,
             """
             h[i, j] = 2 * e[i, j] + 3*f[i, j] + 4*g[i, j]
@@ -177,11 +178,8 @@ def test_register_knl_with_call_with_kwargs(ctx_factory, inline):
             p[i, j] = 7 * e[i, j] + 4*f1[i, j] + 2*g[i, j]
             """,
             [
-                lp.GlobalArg('f'),
-                lp.GlobalArg('e'),
-                lp.GlobalArg('h'),
-                lp.GlobalArg('g'),
-                '...'])
+                lp.GlobalArg('f, e, h, g'), '...'],
+            name='linear_combo')
 
     caller_knl = lp.make_kernel(
             "{[i, j, k, l, m]: 0<=i, j, k, l, m<%d}" % n,
@@ -194,7 +192,7 @@ def test_register_knl_with_call_with_kwargs(ctx_factory, inline):
             """)
 
     knl = lp.register_callable_kernel(
-            caller_knl, 'linear_combo', callee_knl)
+            caller_knl, callee_knl)
     if inline:
         knl = lp.inline_callable_kernel(knl, 'linear_combo')
 
@@ -223,11 +221,11 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
     x_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
     y_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
 
-    callee_knl = lp.make_kernel(
+    callee_knl = lp.make_kernel_function(
             "{[i, j]:0<=i, j < 16}",
             """
             g[i, j] = 2*e[i, j] + 3*f[i, j]
-            """)
+            """, name='linear_combo')
 
     callee_knl = lp.split_iname(callee_knl, "i", 4, inner_tag="l.0", outer_tag="g.0")
 
@@ -241,7 +239,7 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
     caller_knl = lp.split_iname(caller_knl, "i", 4, inner_tag="l.1", outer_tag="g.1")
 
     knl = lp.register_callable_kernel(
-            caller_knl, 'linear_combo', callee_knl)
+            caller_knl, callee_knl)
 
     if inline:
         knl = lp.inline_callable_kernel(knl, 'linear_combo')
@@ -264,23 +262,23 @@ def test_shape_translation_through_sub_array_ref(ctx_factory, inline):
     x2 = cl.clrandom.rand(queue, (6, ), dtype=np.float64)
     x3 = cl.clrandom.rand(queue, (6, 6), dtype=np.float64)
 
-    callee1 = lp.make_kernel(
+    callee1 = lp.make_kernel_function(
             "{[i]: 0<=i<6}",
             """
             a[i] = 2*abs(b[i])
-            """)
+            """, name="callee_fn1")
 
-    callee2 = lp.make_kernel(
+    callee2 = lp.make_kernel_function(
             "{[i, j]: 0<=i<3 and 0 <= j < 2}",
             """
             a[i, j] = 3*b[i, j]
-            """)
+            """, name="callee_fn2")
 
-    callee3 = lp.make_kernel(
+    callee3 = lp.make_kernel_function(
             "{[i]: 0<=i<6}",
             """
             a[i] = 5*b[i]
-            """)
+            """, name="callee_fn3")
 
     knl = lp.make_kernel(
             "{[i, j, k, l]:  0<= i < 6 and 0 <= j < 3 and 0 <= k < 2 and 0<=l<6}",
@@ -290,9 +288,9 @@ def test_shape_translation_through_sub_array_ref(ctx_factory, inline):
             [l]: y3[l, l] = callee_fn3([l]: x3[l, l])
             """)
 
-    knl = lp.register_callable_kernel(knl, 'callee_fn1', callee1)
-    knl = lp.register_callable_kernel(knl, 'callee_fn2', callee2)
-    knl = lp.register_callable_kernel(knl, 'callee_fn3', callee3)
+    knl = lp.register_callable_kernel(knl, callee1)
+    knl = lp.register_callable_kernel(knl, callee2)
+    knl = lp.register_callable_kernel(knl, callee3)
 
     if inline:
         knl = lp.inline_callable_kernel(knl, 'callee_fn1')
@@ -321,7 +319,7 @@ def test_multi_arg_array_call(ctx_factory):
     i = p.Variable("i")
     index = p.Variable("index")
     a_i = p.Subscript(p.Variable("a"), p.Variable("i"))
-    argmin_kernel = lp.make_kernel(
+    argmin_kernel = lp.make_kernel_function(
             "{[i]: 0 <= i < n}",
             [
                 lp.Assignment(id="init2", assignee=index,
@@ -333,7 +331,8 @@ def test_multi_arg_array_call(ctx_factory):
                     depends_on="update"),
                 lp.Assignment(id="update", assignee=acc_i,
                     expression=p.Variable("min")(acc_i, a_i),
-                    depends_on="init1,init2")])
+                    depends_on="init1,init2")],
+            name="custom_argmin")
 
     argmin_kernel = lp.fix_parameters(argmin_kernel, n=n)
 
@@ -346,7 +345,7 @@ def test_multi_arg_array_call(ctx_factory):
     knl = lp.fix_parameters(knl, n=n)
     knl = lp.set_options(knl, return_dict=True)
 
-    knl = lp.register_callable_kernel(knl, "custom_argmin", argmin_kernel)
+    knl = lp.register_callable_kernel(knl, argmin_kernel)
     b = np.random.randn(n)
     evt, out_dict = knl(queue, b=b)
     tol = 1e-15
@@ -363,17 +362,17 @@ def test_packing_unpacking(ctx_factory, inline):
     x1 = cl.clrandom.rand(queue, (3, 2), dtype=np.float64)
     x2 = cl.clrandom.rand(queue, (6, ), dtype=np.float64)
 
-    callee1 = lp.make_kernel(
+    callee1 = lp.make_kernel_function(
             "{[i]: 0<=i<6}",
             """
             a[i] = 2*b[i]
-            """)
+            """, name="callee_fn1")
 
-    callee2 = lp.make_kernel(
+    callee2 = lp.make_kernel_function(
             "{[i, j]: 0<=i<2 and 0 <= j < 3}",
             """
             a[i, j] = 3*b[i, j]
-            """)
+            """, name="callee_fn2")
 
     knl = lp.make_kernel(
             "{[i, j, k]:  0<= i < 3 and 0 <= j < 2 and 0 <= k < 6}",
@@ -382,8 +381,8 @@ def test_packing_unpacking(ctx_factory, inline):
             [k]: y2[k] = callee_fn2([k]: x2[k])
             """)
 
-    knl = lp.register_callable_kernel(knl, 'callee_fn1', callee1)
-    knl = lp.register_callable_kernel(knl, 'callee_fn2', callee2)
+    knl = lp.register_callable_kernel(knl, callee1)
+    knl = lp.register_callable_kernel(knl, callee2)
 
     knl = lp.pack_and_unpack_args_for_call(knl, 'callee_fn1')
     knl = lp.pack_and_unpack_args_for_call(knl, 'callee_fn2')
