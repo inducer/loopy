@@ -238,8 +238,7 @@ def test_global_parallel_reduction(ctx_factory, size):
     prog = lp.precompute(prog, "red_i_outer_arg", "i_outer",
             temporary_scope=lp.temp_var_scope.GLOBAL,
             default_tag="l.auto")
-    knl = lp.realize_reduction(prog.root_kernel, prog.program_callables_info)
-    prog = prog.with_root_kernel(knl)
+    prog = lp.realize_reduction(prog)
     prog = lp.add_dependency(
             prog, "writes:acc_i_outer",
             "id:red_i_outer_arg_barrier")
