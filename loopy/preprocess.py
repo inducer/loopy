@@ -2181,9 +2181,9 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
             assert isinstance(expr, CallWithKwargs)
             kw_parameters = expr.kw_parameters
 
-        # descriptors for the args and kwargs:
+        # descriptors for the args and kwargs of the Call
         arg_id_to_descr = dict((i, par.get_array_arg_descriptor(self.caller_kernel))
-                if isinstance(par, SubArrayRef) else ValueArgDescriptor()
+                if isinstance(par, SubArrayRef) else (i, ValueArgDescriptor())
                 for i, par in tuple(enumerate(expr.parameters)) +
                 tuple(kw_parameters.items()))
 
@@ -2205,9 +2205,10 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         combined_arg_id_to_descr.update(assignee_id_to_descr)
 
         # specializing the function according to the parameter description
-        new_in_knl_callable = (
-                self.program_callables_info[expr.function.name].with_descrs(
-                    combined_arg_id_to_descr))
+        in_knl_callable = self.program_callables_info[expr.function.name]
+        new_in_knl_callable, self.program_callables_info = (
+                in_knl_callable.with_descrs(
+                    combined_arg_id_to_descr, self.program_callables_info))
         self.program_callables_info, new_func_id = (
                 self.program_callables_info.with_callable(
                     expr.function.function,
@@ -2238,12 +2239,9 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         for insn in kernel.instructions:
             if isinstance(insn, CallInstruction):
                 # In call instructions the assignees play an important in
+                # determining the arg_id_to_descr
                 new_insns.append(insn.with_transformed_expressions(
                     self, kernel, insn, assignees=insn.assignees))
-                # determining the arg_id_to_dtype
-                # new_expr = self.map_call(insn.expression, kernel, insn,
-                #         assignees=insn.assignees)
-                # new_insns.append(insn.copy(expression=new_expr))
             elif isinstance(insn, MultiAssignmentBase):
                 new_insns.append(insn.with_transformed_expressions(
                     self, kernel, insn))

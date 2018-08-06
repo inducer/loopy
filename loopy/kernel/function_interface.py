@@ -227,7 +227,7 @@ class InKernelCallable(ImmutableRecord):
 
         raise NotImplementedError()
 
-    def with_descrs(self, arg_id_to_descr):
+    def with_descrs(self, arg_id_to_descr, program_callables_info):
         """
         :arg arg_id_to_descr: a mapping from argument identifiers
             (integers for positional arguments, names for keyword
@@ -359,10 +359,12 @@ class ScalarCallable(InKernelCallable):
         raise LoopyError("No type inference information present for "
                 "the function %s." % (self.name))
 
-    def with_descrs(self, arg_id_to_descr):
+    def with_descrs(self, arg_id_to_descr, program_callables_info):
 
         arg_id_to_descr[-1] = ValueArgDescriptor()
-        return self.copy(arg_id_to_descr=arg_id_to_descr)
+        return (
+                self.copy(arg_id_to_descr=arg_id_to_descr),
+                program_callables_info)
 
     def with_hw_axes_sizes(self, global_size, local_size):
         return self.copy()
@@ -492,28 +494,25 @@ class CallableKernel(InKernelCallable):
     sizes for the :attr:`subkernel` of the callable.
     """
 
-    fields = set(["subkernel", "arg_id_to_dtype", "arg_id_to_descr",
-        "name_in_target"])
-    init_arg_names = ("subkernel", "arg_id_to_dtype", "arg_id_to_descr",
-            "name_in_target")
+    fields = set(["subkernel", "arg_id_to_dtype", "arg_id_to_descr"])
+    init_arg_names = ("subkernel", "arg_id_to_dtype", "arg_id_to_descr")
     hash_fields = fields
 
     def __init__(self, subkernel, arg_id_to_dtype=None,
-            arg_id_to_descr=None, name_in_target=None):
+            arg_id_to_descr=None):
         assert isinstance(subkernel, LoopKernel)
 
         super(CallableKernel, self).__init__(
                 arg_id_to_dtype=arg_id_to_dtype,
                 arg_id_to_descr=arg_id_to_descr)
 
-        self.name_in_target = name_in_target
         self.subkernel = subkernel.copy(
                 args=[arg.copy(dtype=arg.dtype.with_target(subkernel.target))
                     if arg.dtype is not None else arg for arg in subkernel.args])
 
     def __getinitargs__(self):
         return (self.subkernel, self.arg_id_to_dtype,
-                self.arg_id_to_descr, self.name_in_target)
+                self.arg_id_to_descr)
 
     @property
     def name(self):
@@ -561,7 +560,7 @@ class CallableKernel(InKernelCallable):
         return self.copy(subkernel=specialized_kernel,
                 arg_id_to_dtype=new_arg_id_to_dtype), program_callables_info
 
-    def with_descrs(self, arg_id_to_descr):
+    def with_descrs(self, arg_id_to_descr, program_callables_info):
 
         # tune the subkernel so that we have the matching shapes and
         # dim_tags
@@ -589,9 +588,16 @@ class CallableKernel(InKernelCallable):
                         "ArrayArgDescriptor or ValueArgDescriptor -- got %s." %
                         type(descr))
         descriptor_specialized_knl = self.subkernel.copy(args=new_args)
+        from loopy.preprocess import traverse_to_infer_arg_descr
+        descriptor_specialized_knl, program_callables_info = (
+                traverse_to_infer_arg_descr(descriptor_specialized_knl,
+                    program_callables_info))
 
-        return self.copy(subkernel=descriptor_specialized_knl,
-                arg_id_to_descr=arg_id_to_descr)
+        return (
+                self.copy(
+                    subkernel=descriptor_specialized_knl,
+                    arg_id_to_descr=arg_id_to_descr),
+                program_callables_info)
 
     def with_packing_for_args(self):
         from loopy.kernel.data import AddressSpace
@@ -617,15 +623,12 @@ class CallableKernel(InKernelCallable):
 
     def is_ready_for_codegen(self):
         return (self.arg_id_to_dtype is not None and
-                self.arg_id_to_descr is not None and
-                self.name_in_target is not None)
+                self.arg_id_to_descr is not None)
 
     def generate_preambles(self, target):
         """ Yields the *target* specific preambles.
         """
-        # FIXME TODO: This is not correct, as the code code preamble generated
-        # during the code generationg of the child kernel, does not guarantee
-        # that this thing would be updated.
+        # FIXME Check that this is correct.
 
         return
         yield
@@ -678,7 +681,7 @@ class CallableKernel(InKernelCallable):
                 for par, par_dtype in zip(
                     parameters, par_dtypes)]
 
-        return var(self.name_in_target)(*c_parameters), False
+        return var(self.subkernel.name)(*c_parameters), False
 
 # }}}
 

@@ -37,7 +37,7 @@ from loopy.symbolic import IdentityMapper, SubstitutionMapper, CombineMapper
 from loopy.isl_helpers import simplify_via_aff
 from loopy.kernel.function_interface import (get_kw_pos_association,
         change_names_of_pymbolic_calls)
-
+from loopy.program import Program, ResolvedFunctionMarker
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -52,7 +52,6 @@ __doc__ = """
 
 def resolved_callables_from_function_lookup(program,
         func_id_to_kernel_callable_mapper):
-    from loopy.program import ResolvedFunctionMarker
     program_callables_info = program.program_callables_info
     program_callables_info = program_callables_info.with_edit_callables_mode()
 
@@ -140,19 +139,18 @@ class _RegisterCalleeKernel(ImmutableRecord):
     :func:`loopy.transform.register_callable_kernel` picklable. As python
     cannot pickle lexical closures.
     """
-    fields = set(['function_name', 'callable_kernel'])
+    fields = set(['callable_kernel'])
 
-    def __init__(self, function_name, callable_kernel):
-        self.function_name = function_name
+    def __init__(self, callable_kernel):
         self.callable_kernel = callable_kernel
 
     def __call__(self, target, identifier):
-        if identifier == self.function_name:
+        if identifier == self.callable_kernel.subkernel.name:
             return self.callable_kernel
         return None
 
 
-def register_callable_kernel(caller_kernel, function_name, callee_kernel):
+def register_callable_kernel(program, callee_kernel):
     """Returns a copy of *caller_kernel*, which would resolve *function_name* in an
     expression as a call to *callee_kernel*.
 
@@ -163,53 +161,76 @@ def register_callable_kernel(caller_kernel, function_name, callee_kernel):
 
     # {{{ sanity checks
 
-    assert isinstance(caller_kernel, LoopKernel)
+    assert isinstance(program, Program)
     assert isinstance(callee_kernel, LoopKernel)
-    assert isinstance(function_name, str)
 
     # check to make sure that the variables with 'out' direction is equal to
     # the number of assigness in the callee kernel intructions.
-    from loopy.kernel.tools import infer_arg_is_output_only
-    callee_kernel = infer_arg_is_output_only(callee_kernel)
     expected_num_assignees = len([arg for arg in callee_kernel.args if
         arg.is_output_only])
     expected_num_parameters = len(callee_kernel.args) - expected_num_assignees
-    for insn in caller_kernel.instructions:
-        if isinstance(insn, CallInstruction) and (
-                insn.expression.function.name == 'function_name'):
-            if insn.assignees != expected_num_assignees:
-                raise LoopyError("The number of arguments with 'out' direction "
-                        "in callee kernel %s and the number of assignees in "
-                        "instruction %s do not match." % (
-                            callee_kernel.name, insn.id))
-            if insn.expression.prameters != expected_num_parameters:
-                raise LoopyError("The number of expected arguments "
-                        "for the callee kernel %s and the number of parameters in "
-                        "instruction %s do not match." % (
-                            callee_kernel.name, insn.id))
+    for in_knl_callable in program.program_callables_info.values():
+        caller_kernel = in_knl_callable.subkernel
+        for insn in caller_kernel.instructions:
+            if isinstance(insn, CallInstruction) and (
+                    insn.expression.function.name == callee_kernel.name):
+                if len(insn.assignees) != expected_num_assignees:
+                    raise LoopyError("The number of arguments with 'out' direction "
+                            "in callee kernel %s and the number of assignees in "
+                            "instruction %s do not match." % (
+                                callee_kernel.name, insn.id))
+                if len(insn.expression.parameters) != expected_num_parameters:
+                    raise LoopyError("The number of expected arguments "
+                            "for the callee kernel %s and the number of parameters "
+                            "in instruction %s do not match." % (
+                                callee_kernel.name, insn.id))
 
-        elif isinstance(insn, (MultiAssignmentBase, CInstruction,
-                _DataObliviousInstruction)):
-            pass
-        else:
-            raise NotImplementedError("unknown instruction %s" % type(insn))
+            elif isinstance(insn, (MultiAssignmentBase, CInstruction,
+                    _DataObliviousInstruction)):
+                pass
+            else:
+                raise NotImplementedError("unknown instruction %s" % type(insn))
 
     # }}}
+
+    # take the function resolvers from the Program and resolve the functions in
+    # the callee kernel
+    program_callables_info = (
+            program.program_callables_info.with_edit_callables_mode())
+
+    from loopy.symbolic import SubstitutionRuleMappingContext
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            callee_kernel.substitutions,
+            callee_kernel.get_var_name_generator())
+
+    resolved_function_marker = ResolvedFunctionMarker(
+            rule_mapping_context, callee_kernel, program_callables_info,
+            program.func_id_to_in_knl_callable_mappers)
+
+    callee_kernel = rule_mapping_context.finish_kernel(
+            resolved_function_marker.map_kernel(callee_kernel))
+    program_callables_info = resolved_function_marker.program_callables_info
+
+    program_callables_info = (
+            program_callables_info.with_exit_edit_callables_mode())
+    program = program.copy(program_callables_info=program_callables_info)
 
     # making the target of the child kernel to be same as the target of parent
     # kernel.
     callable_kernel = CallableKernel(subkernel=callee_kernel.copy(
-                        target=caller_kernel.target,
-                        name=function_name,
+                        target=program.target,
                         is_called_from_host=False))
 
     # FIXME disabling global barriers for callee kernel (for now)
     from loopy import set_options
     callee_kernel = set_options(callee_kernel, "disable_global_barriers")
 
+    # FIXME: the number of callables is wrong. This is horrible please
+    # compensate.
+
     return register_function_id_to_in_knl_callable_mapper(
-            caller_kernel,
-            _RegisterCalleeKernel(function_name, callable_kernel))
+            program,
+            _RegisterCalleeKernel(callable_kernel))
 
 # }}}
 

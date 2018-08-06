@@ -363,7 +363,7 @@ class ArrayArg(ArrayBase, KernelArgument):
     def __init__(self, *args, **kwargs):
         if "address_space" not in kwargs:
             raise TypeError("'address_space' must be specified")
-        kwargs["is_output_only"] = kwargs.pop("is_output_only", False)
+        kwargs["is_output_only"] = kwargs.pop("is_output_only", None)
 
         super(ArrayArg, self).__init__(*args, **kwargs)
 

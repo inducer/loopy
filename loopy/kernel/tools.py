@@ -1926,6 +1926,7 @@ def infer_arg_is_output_only(kernel):
     """
     from loopy.kernel.data import ArrayArg, ValueArg, ConstantArg, ImageArg
     new_args = []
+
     for arg in kernel.args:
         if isinstance(arg, (ArrayArg, ImageArg, ValueArg)):
             if arg.is_output_only is not None:
