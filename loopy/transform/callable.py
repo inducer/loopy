@@ -570,11 +570,12 @@ def inline_callable_kernel(program, function_name):
     from loopy.preprocess import infer_arg_descr
     program = infer_arg_descr(program)
     program_callables_info = program.program_callables_info
+    old_program_callables_info = program_callables_info.copy()
 
     edited_callable_kernels = {}
 
-    for func_id, in_knl_callable in program.program_callables_info.items():
-        if function_name not in program_callables_info.history[func_id] and (
+    for func_id, in_knl_callable in old_program_callables_info.items():
+        if function_name not in old_program_callables_info.history[func_id] and (
                 isinstance(in_knl_callable, CallableKernel)):
             caller_kernel = in_knl_callable.subkernel
             caller_kernel, program_callables_info = (
@@ -593,6 +594,8 @@ def inline_callable_kernel(program, function_name):
 
     program_callables_info = program_callables_info.copy(
             resolved_functions=new_resolved_functions)
+
+    return program.copy(program_callables_info=program_callables_info)
 
 # }}}
 

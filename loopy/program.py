@@ -563,7 +563,7 @@ class ProgramCallablesInfo(ImmutableRecord):
 
         num_times_callables_called[func_id] -= instances
 
-        if num_times_callables_called == 0:
+        if num_times_callables_called[func_id] == 0:
             num_times_callables_called.pop(func_id)
             history.pop(func_id)
             resolved_functions.pop(func_id)
