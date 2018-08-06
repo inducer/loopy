@@ -524,7 +524,7 @@ def auto_test_vs_ref(
 
     if not quiet:
         print(75*"-")
-        print("Kernel #%d:" % i)
+        print("Kernel:")
         print(75*"-")
         if print_code:
             print(get_highlighted_code(

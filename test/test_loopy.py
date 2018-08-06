@@ -391,8 +391,6 @@ def test_bare_data_dependency(ctx_factory):
 
 # {{{ test race detection
 
-# FIXME: not intended just for local testing purposes. ~KK
-@pytest.mark.skip
 def test_ilp_write_race_detection_global(ctx_factory):
     ctx = ctx_factory()
 
@@ -1530,9 +1528,6 @@ def test_save_ambiguous_storage_requirements():
     knl = lp.tag_inames(knl, dict(i="g.0", j="l.0"))
     knl = lp.duplicate_inames(knl, "j", within="writes:out", tags={"j": "l.0"})
     knl = lp.set_temporary_scope(knl, "a", "local")
-
-    knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
 
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
