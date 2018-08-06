@@ -1906,8 +1906,8 @@ def get_direct_callee_kernels(kernel, program_callables_info, insn_ids=None,):
 
         return None
 
-    return frozenset([_get_callee_kernel_if_insn_has_callable_kernel(id)
-            for id in insn_ids]) - frozenset([None])
+    return frozenset([_get_callee_kernel_if_insn_has_callable_kernel(insn_id)
+            for insn_id in insn_ids]) - frozenset([None])
 
 # }}}
 

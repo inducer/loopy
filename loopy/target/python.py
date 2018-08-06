@@ -85,14 +85,16 @@ class ExpressionToPythonMapper(StringifyMapper):
     def map_call(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_NONE
 
-        identifier_name = self.kernel.scoped_functions[expr.function.name].name
+        identifier_name = self.codegen_state.program_callables_info[
+                expr.function.name].name
 
         if identifier_name in ["indexof", "indexof_vec"]:
             raise LoopyError(
                     "indexof, indexof_vec not yet supported in Python")
 
         from loopy.kernel.function_interface import ManglerCallable
-        in_knl_callable = self.kernel.scoped_functions[expr.function.name]
+        in_knl_callable = self.codegen_state.program_callables_info[
+                expr.function.name]
         if isinstance(in_knl_callable, ManglerCallable):
             from loopy.codegen import SeenFunction
             mangle_result = in_knl_callable.mangle_result(self.kernel)
