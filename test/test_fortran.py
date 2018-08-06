@@ -472,7 +472,7 @@ def test_precompute_some_exist(ctx_factory):
 
     knl, = lp.parse_fortran(fortran_src)
 
-    assert len(knl.domains) == 1
+    assert len(knl.root_kernel.domains) == 1
 
     knl = lp.split_iname(knl, "i", 8,
             outer_tag="g.0", inner_tag="l.1")
