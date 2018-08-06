@@ -174,12 +174,17 @@ def register_callable_kernel(program, callee_kernel):
         for insn in caller_kernel.instructions:
             if isinstance(insn, CallInstruction) and (
                     insn.expression.function.name == callee_kernel.name):
+                if isinstance(insn.expression, CallWithKwargs):
+                    kw_parameters = insn.expression.kw_parameters
+                else:
+                    kw_parameters = {}
                 if len(insn.assignees) != expected_num_assignees:
                     raise LoopyError("The number of arguments with 'out' direction "
                             "in callee kernel %s and the number of assignees in "
                             "instruction %s do not match." % (
                                 callee_kernel.name, insn.id))
-                if len(insn.expression.parameters) != expected_num_parameters:
+                if len(insn.expression.parameters+tuple(
+                        kw_parameters.values())) != expected_num_parameters:
                     raise LoopyError("The number of expected arguments "
                             "for the callee kernel %s and the number of parameters "
                             "in instruction %s do not match." % (
