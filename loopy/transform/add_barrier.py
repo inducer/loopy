@@ -82,7 +82,7 @@ def add_barrier(knl, insn_before="", insn_after="",
                                         mem_kind=mem_kind)
 
     new_knl = knl.copy(instructions=knl.instructions + [barrier_to_add])
-    new_knl = add_dependency(kernel=new_knl,
+    new_knl = add_dependency(new_knl,
                              insn_match=insn_after,
                              depends_on="id:"+id)
 
