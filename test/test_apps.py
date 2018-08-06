@@ -216,7 +216,8 @@ def test_rob_stroud_bernstein(ctx_factory):
                 lp.GlobalArg("coeffs", None, shape=None),
                 "..."
                 ],
-            assumptions="deg>=0 and nels>=1"
+            assumptions="deg>=0 and nels>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0])
             )
 
     knl = lp.fix_parameters(knl, nqp1d=7, deg=4)
@@ -224,13 +225,12 @@ def test_rob_stroud_bernstein(ctx_factory):
     knl = lp.split_iname(knl, "el_outer", 2, outer_tag="g.0", inner_tag="ilp",
             slabs=(0, 1))
     knl = lp.tag_inames(knl, dict(i2="l.1", alpha1="unr", alpha2="unr"))
-
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code(
-            dict(
+    knl = lp.add_dtypes(knl, dict(
                 qpts=np.float32,
                 coeffs=np.float32,
                 tmp=np.float32,
-                )))
+                ))
+    print(lp.generate_code_v2(knl))
 
 
 def test_rob_stroud_bernstein_full(ctx_factory):
@@ -296,7 +296,8 @@ def test_rob_stroud_bernstein_full(ctx_factory):
             lp.GlobalArg("coeffs", None, shape=None),
             "..."
             ],
-        assumptions="deg>=0 and nels>=1"
+        assumptions="deg>=0 and nels>=1",
+        target=lp.PyOpenCLTarget(ctx.devices[0])
         )
 
     knl = lp.fix_parameters(knl, nqp1d=7, deg=4)
@@ -310,14 +311,14 @@ def test_rob_stroud_bernstein_full(ctx_factory):
     from pickle import dumps, loads
     knl = loads(dumps(knl))
 
-    knl = lp.CompiledKernel(ctx, knl).get_highlighted_code(
+    knl = lp.add_dtypes(knl,
             dict(
                 qpts=np.float32,
                 tmp=np.float32,
                 coeffs=np.float32,
                 result=np.float32,
                 ))
-    print(knl)
+    print(lp.generate_code_v2(knl))
 
 
 def test_stencil(ctx_factory):
@@ -660,7 +661,7 @@ def test_domain_tree_nesting():
         lp.GlobalArg('B', shape=(100, 31), dtype=np.float64),
         lp.GlobalArg('out', shape=(100, 12), dtype=np.float64)])
 
-    parents_per_domain = knl.parents_per_domain()
+    parents_per_domain = knl.root_kernel.parents_per_domain()
 
     def depth(i):
         if parents_per_domain[i] is None:
