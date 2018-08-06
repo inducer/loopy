@@ -2286,7 +2286,7 @@ def infer_arg_descr(program):
             root_kernel, program_callables_info)
     new_root_kernel_callable = root_kernel_callable.copy(
             subkernel=new_root_kernel)
-    program_callables_info.with_callable(program.name,
+    program_callables_info, _ = program_callables_info.with_callable(program.name,
             new_root_kernel_callable)
 
     program_callables_info = program_callables_info.with_exit_edit_callables_mode()
