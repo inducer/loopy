@@ -32,7 +32,7 @@ from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
         CInstruction, _DataObliviousInstruction)
-from loopy.symbolic import IdentityMapper, SubstitutionMapper, CombineMapper
+from loopy.symbolic import IdentityMapper, SubstitutionMapper
 from loopy.isl_helpers import simplify_via_aff
 from loopy.kernel.function_interface import (get_kw_pos_association,
         change_names_of_pymbolic_calls, CallableKernel, ScalarCallable)
@@ -242,59 +242,6 @@ def register_callable_kernel(program, callee_kernel):
     return register_function_id_to_in_knl_callable_mapper(
             program,
             _RegisterCalleeKernel(callable_kernel))
-
-# }}}
-
-
-# {{{ callee scoped calls collector (to support inlining)
-
-class CalleeScopedCallsCollector(CombineMapper):
-    """
-    Collects the scoped functions which are a part of the callee kernel and
-    must be transferred to the caller kernel before inlining.
-
-    :returns:
-        An :class:`frozenset` of function names that are not scoped in
-        the caller kernel.
-
-    .. note::
-        :class:`loopy.library.reduction.ArgExtOp` are ignored, as they are
-        never scoped in the pipeline.
-    """
-
-    def __init__(self, callee_scoped_functions):
-        self.callee_scoped_functions = callee_scoped_functions
-
-    def combine(self, values):
-        import operator
-        from functools import reduce
-        return reduce(operator.or_, values, frozenset())
-
-    def map_call(self, expr):
-        if expr.function.name in self.callee_scoped_functions:
-            return (frozenset([(expr,
-                self.callee_scoped_functions[expr.function.name])]) |
-                    self.combine((self.rec(child) for child in expr.parameters)))
-        else:
-            return self.combine((self.rec(child) for child in expr.parameters))
-
-    def map_call_with_kwargs(self, expr):
-        if expr.function.name in self.callee_scoped_functions:
-            return (frozenset([(expr,
-                self.callee_scoped_functions[expr.function.name])]) |
-                    self.combine((self.rec(child) for child in expr.parameters
-                        + tuple(expr.kw_parameters.values()))))
-        else:
-            return self.combine((self.rec(child) for child in
-                expr.parameters+tuple(expr.kw_parameters.values())))
-
-    def map_constant(self, expr):
-        return frozenset()
-
-    map_variable = map_constant
-    map_function_symbol = map_constant
-    map_tagged_variable = map_constant
-    map_type_cast = map_constant
 
 # }}}
 
@@ -648,7 +595,7 @@ class DimChanger(IdentityMapper):
 
 
 def _match_caller_callee_argument_dimension_for_single_kernel(
-        caller_knl, callee_function_name):
+        caller_knl, program_callables_info, callee_function_name):
     """
     Returns a copy of *caller_knl* with the instance of
     :class:`loopy.kernel.function_interface.CallableKernel` addressed by
@@ -659,12 +606,12 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
     for insn in caller_knl.instructions:
         if not isinstance(insn, CallInstruction) or (
                 insn.expression.function.name not in
-                caller_knl.scoped_functions):
+                program_callables_info):
             # Call to a callable kernel can only occur through a
             # CallInstruction.
             continue
 
-        in_knl_callable = caller_knl.scoped_functions[
+        in_knl_callable = program_callables_info[
                 insn.expression.function.name]
 
         if in_knl_callable.subkernel.name != callee_function_name:

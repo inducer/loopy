@@ -127,7 +127,7 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
     def map_reduction(self, expr, expn_state):
         for func_id in (
                 expr.operation.get_scalar_callables()):
-            in_knl_callable = self.find_resolved_function_from_identifier(func_id)
+            in_knl_callable = self.find_in_knl_callable_from_identifier(func_id)
             assert in_knl_callable is not None
             self.program_callables_info, _ = (
                     self.program_callables_info.with_callable(func_id,
