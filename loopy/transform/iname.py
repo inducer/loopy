@@ -1718,6 +1718,7 @@ def make_reduction_inames_unique(kernel, inames=None, within=None):
 
 # {{{ add_inames_to_insn
 
+@iterate_over_kernels_if_given_program
 def add_inames_to_insn(knl, inames, insn_match):
     """
     :arg inames: a frozenset of inames that will be added to the

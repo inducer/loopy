@@ -78,6 +78,7 @@ def map_instructions(kernel, insn_match, f):
 
 # {{{ set_instruction_priority
 
+@iterate_over_kernels_if_given_program
 def set_instruction_priority(kernel, insn_match, priority):
     """Set the priority of instructions matching *insn_match* to *priority*.
 
