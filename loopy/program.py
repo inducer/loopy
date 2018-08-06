@@ -358,7 +358,7 @@ class ProgramCallablesInfo(ImmutableRecord):
             num_times_callables_called = dict((func_id, 1) for func_id in
                     resolved_functions)
         if history is None:
-            history = dict((func_id, [func_id]) for func_id in
+            history = dict((func_id, set([func_id])) for func_id in
                     resolved_functions)
 
         super(ProgramCallablesInfo, self).__init__(
@@ -465,8 +465,7 @@ class ProgramCallablesInfo(ImmutableRecord):
                         if num_times_callables_called[function.name] == 0:
                             renames_needed_after_editing[func_id] = function.name
 
-                    if func_id not in history[function.name]:
-                        history[function.name].append(func_id)
+                        history[func_id] = history[func_id] | set([function.name])
                     return (
                             self.copy(
                                 history=history,
@@ -499,10 +498,11 @@ class ProgramCallablesInfo(ImmutableRecord):
                 in_kernel_callable)
 
         if not resolved_for_the_first_time:
-            if unique_function_identifier not in history[function.name]:
-                history[function.name].append(func_id)
+            history[unique_function_identifier] = (
+                    history[function.name] | set([unique_function_identifier]))
         else:
-            history[unique_function_identifier] = [unique_function_identifier]
+            history[unique_function_identifier] = set(
+                    [unique_function_identifier])
 
         return (
                 self.copy(
