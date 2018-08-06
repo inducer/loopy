@@ -1132,7 +1132,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         """
 
         if self.overridden_get_grid_sizes_for_insn_ids:
-            print(self.overridden_get_grid_sizes_for_insn_ids)
             return self.overridden_get_grid_sizes_for_insn_ids(
                     insn_ids,
                     program_callables_info=program_callables_info,
