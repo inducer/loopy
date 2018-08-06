@@ -350,22 +350,21 @@ def rename_resolved_functions_in_a_single_kernel(kernel,
 
 class ProgramCallablesInfo(ImmutableRecord):
     def __init__(self, resolved_functions, num_times_callables_called=None,
-            history_of_callable_names=None, is_being_edited=False,
-            old_resolved_functions={}, num_times_hit_during_editing={},
+            history=None, is_being_edited=False,
+            num_times_hit_during_editing={},
             renames_needed_after_editing={}):
 
         if num_times_callables_called is None:
             num_times_callables_called = dict((func_id, 1) for func_id in
                     resolved_functions)
-        if history_of_callable_names is None:
-            history_of_callable_names = dict((func_id, [func_id]) for func_id in
+        if history is None:
+            history = dict((func_id, [func_id]) for func_id in
                     resolved_functions)
 
         super(ProgramCallablesInfo, self).__init__(
                 resolved_functions=resolved_functions,
                 num_times_callables_called=num_times_callables_called,
-                history_of_callable_names=history_of_callable_names,
-                old_resolved_functions=old_resolved_functions,
+                history=history,
                 is_being_edited=is_being_edited,
                 num_times_hit_during_editing=num_times_hit_during_editing,
                 renames_needed_after_editing=renames_needed_after_editing)
@@ -375,14 +374,13 @@ class ProgramCallablesInfo(ImmutableRecord):
             "num_times_callables_called",
             "is_being_edited",
             "num_times_hit_during_editing",
-            "old_resolved_functions",
-            "renames_needed_after_editing",)
+            "renames_needed_after_editing",
+            "history")
 
     update_persistent_hash = LoopKernel.update_persistent_hash
 
     def with_edit_callables_mode(self):
         return self.copy(is_being_edited=True,
-                old_resolved_functions=self.resolved_functions.copy(),
                 num_times_hit_during_editing=dict((func_id, 0) for func_id in
                     self.resolved_functions))
 
@@ -400,7 +398,10 @@ class ProgramCallablesInfo(ImmutableRecord):
             Assumes that each callable is touched atmost once, the internal
             working of this function fails if that is violated.
         """
-        # FIXME: add a note about using enter and exit
+        # FIXME: add a note about using enter and exit. ~KK
+        # FIXME: think about a better idea of "with_added_callable" this would
+        # be more convenient for developer-faced usage. ~KK
+
         if not self.is_being_edited:
             if function.name in self.resolved_functions and (
                     self.resolved_functions[function.name] == in_kernel_callable):
@@ -424,6 +425,7 @@ class ProgramCallablesInfo(ImmutableRecord):
         renames_needed_after_editing = self.renames_needed_after_editing.copy()
         num_times_hit_during_editing = self.num_times_hit_during_editing.copy()
         num_times_callables_called = self.num_times_callables_called.copy()
+        history = self.history.copy()
 
         if not resolved_for_the_first_time:
             if isinstance(function, (ArgExtOp, SegmentedOp)):
@@ -463,8 +465,11 @@ class ProgramCallablesInfo(ImmutableRecord):
                         if num_times_callables_called[function.name] == 0:
                             renames_needed_after_editing[func_id] = function.name
 
+                    if func_id not in history[function.name]:
+                        history[function.name].append(func_id)
                     return (
                             self.copy(
+                                history=history,
                                 num_times_hit_during_editing=(
                                     num_times_hit_during_editing),
                                 num_times_callables_called=(
@@ -493,8 +498,15 @@ class ProgramCallablesInfo(ImmutableRecord):
         updated_resolved_functions[unique_function_identifier] = (
                 in_kernel_callable)
 
+        if not resolved_for_the_first_time:
+            if unique_function_identifier not in history[function.name]:
+                history[function.name].append(func_id)
+        else:
+            history[unique_function_identifier] = [unique_function_identifier]
+
         return (
                 self.copy(
+                    history=history,
                     resolved_functions=updated_resolved_functions,
                     num_times_callables_called=num_times_callables_called,
                     num_times_hit_during_editing=num_times_hit_during_editing,
@@ -506,6 +518,7 @@ class ProgramCallablesInfo(ImmutableRecord):
 
         num_times_callables_called = {}
         resolved_functions = {}
+        history = self.history.copy()
 
         for func_id, in_knl_callable in self.resolved_functions.items():
             if isinstance(in_knl_callable, CallableKernel):
@@ -521,6 +534,8 @@ class ProgramCallablesInfo(ImmutableRecord):
                         type(in_knl_callable).__name__)
 
             if func_id in self.renames_needed_after_editing:
+                history.pop(func_id)
+
                 new_func_id = self.renames_needed_after_editing[func_id]
                 resolved_functions[new_func_id] = (
                         in_knl_callable)
@@ -538,6 +553,25 @@ class ProgramCallablesInfo(ImmutableRecord):
                 num_times_callables_called=num_times_callables_called,
                 num_times_hit_during_editing={},
                 renames_needed_after_editing={})
+
+    def with_deleted_callable(self, func_id, instances=1):
+        num_times_callables_called = self.num_times_callables_called.copy()
+        history = self.history.copy()
+        resolved_functions = self.resolved_functions.copy()
+
+        assert instances <= num_times_callables_called[func_id]
+
+        num_times_callables_called[func_id] -= instances
+
+        if num_times_callables_called == 0:
+            num_times_callables_called.pop(func_id)
+            history.pop(func_id)
+            resolved_functions.pop(func_id)
+
+        return self.copy(
+                resolved_functions=resolved_functions,
+                num_times_callables_called=num_times_callables_called,
+                history=history)
 
     def __getitem__(self, item):
         return self.resolved_functions[item]

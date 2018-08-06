@@ -360,7 +360,7 @@ class KernelInliner(SubstitutionMapper):
 
 # {{{ inlining of a single call instruction
 
-def _inline_call_instruction(kernel, callee_knl, instruction):
+def _inline_call_instruction(caller_kernel, callee_knl, instruction):
     """
     Returns a copy of *kernel* with the *instruction* in the *kernel*
     replaced by inlining :attr:`subkernel` within it.
@@ -369,8 +369,8 @@ def _inline_call_instruction(kernel, callee_knl, instruction):
 
     # {{{ duplicate and rename inames
 
-    vng = kernel.get_var_name_generator()
-    ing = kernel.get_instruction_id_generator()
+    vng = caller_kernel.get_var_name_generator()
+    ing = caller_kernel.get_instruction_id_generator()
     dim_type = isl.dim_type.set
 
     iname_map = {}
@@ -378,7 +378,7 @@ def _inline_call_instruction(kernel, callee_knl, instruction):
         iname_map[iname] = vng(callee_label+iname)
 
     new_domains = []
-    new_iname_to_tags = kernel.iname_to_tags.copy()
+    new_iname_to_tags = caller_kernel.iname_to_tags.copy()
 
     # transferring iname tags info from the callee to the caller kernel
     for domain in callee_knl.domains:
@@ -393,7 +393,7 @@ def _inline_call_instruction(kernel, callee_knl, instruction):
                 dim_type, i, iname_map[iname])
         new_domains.append(new_domain)
 
-    kernel = kernel.copy(domains=kernel.domains + new_domains,
+    kernel = caller_kernel.copy(domains=caller_kernel.domains + new_domains,
             iname_to_tags=new_iname_to_tags)
 
     # }}}
@@ -519,27 +519,6 @@ def _inline_call_instruction(kernel, callee_knl, instruction):
 
     # }}}
 
-    # {{{ transferring the scoped functions from callee to caller
-
-    callee_scoped_calls_collector = CalleeScopedCallsCollector(
-            callee_knl.scoped_functions)
-    callee_scoped_calls_dict = {}
-
-    for insn in kernel.instructions:
-        if isinstance(insn, MultiAssignmentBase):
-            callee_scoped_calls_dict.update(dict(callee_scoped_calls_collector(
-                insn.expression)))
-        elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of instruction %s." % type(
-                insn))
-
-    kernel = change_names_of_pymbolic_calls(kernel,
-            callee_scoped_calls_dict)
-
-    # }}}
-
     return kernel
 
 # }}}
@@ -547,29 +526,29 @@ def _inline_call_instruction(kernel, callee_knl, instruction):
 
 # {{{ inline callable kernel
 
-# FIXME This should take a 'within' parameter to be able to only inline
-# *some* calls to a kernel, but not others.
-def inline_callable_kernel(kernel, function_name):
-    """
-    Returns a copy of *kernel* with the callable kernel addressed by
-    (scoped) name *function_name* inlined.
-    """
-    from loopy.preprocess import infer_arg_descr
-    kernel = infer_arg_descr(kernel)
-
-    old_insns = kernel.instructions
+def _inline_single_callable_kernel(caller_kernel, function_name,
+        program_callables_info):
+    old_insns = caller_kernel.instructions
     for insn in old_insns:
         if isinstance(insn, CallInstruction):
             # FIXME This seems to use identifiers across namespaces. Why not
-            # check whether the function is a scoped function first?
-            if insn.expression.function.name in kernel.scoped_functions:
-                in_knl_callable = kernel.scoped_functions[
+            # check whether the function is a scoped function first? ~AK
+            if insn.expression.function.name in program_callables_info:
+                history_of_identifier = program_callables_info.history[
                         insn.expression.function.name]
+
                 from loopy.kernel.function_interface import CallableKernel
-                if isinstance(in_knl_callable, CallableKernel) and (
-                        in_knl_callable.subkernel.name == function_name):
-                    kernel = _inline_call_instruction(
-                            kernel, in_knl_callable.subkernel, insn)
+                if function_name in history_of_identifier:
+                    in_knl_callable = program_callables_info[
+                            insn.expression.function.name]
+                    assert isinstance(in_knl_callable, CallableKernel)
+                    new_caller_kernel = _inline_call_instruction(
+                            caller_kernel, in_knl_callable.subkernel, insn)
+                    program_callables_info = (
+                            program_callables_info.with_deleted_callable(
+                                insn.expression.function.name,
+                                program_callables_info.num_times_callables_called[
+                                    caller_kernel.name]))
         elif isinstance(insn, (MultiAssignmentBase, CInstruction,
                 _DataObliviousInstruction)):
             pass
@@ -578,7 +557,42 @@ def inline_callable_kernel(kernel, function_name):
                     "Unknown instruction type %s"
                     % type(insn).__name__)
 
-    return kernel
+    return new_caller_kernel, program_callables_info
+
+
+# FIXME This should take a 'within' parameter to be able to only inline
+# *some* calls to a kernel, but not others.
+def inline_callable_kernel(program, function_name):
+    """
+    Returns a copy of *kernel* with the callable kernel addressed by
+    (scoped) name *function_name* inlined.
+    """
+    from loopy.preprocess import infer_arg_descr
+    program = infer_arg_descr(program)
+    program_callables_info = program.program_callables_info
+
+    edited_callable_kernels = {}
+
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if function_name not in program_callables_info.history[func_id] and (
+                isinstance(in_knl_callable, CallableKernel)):
+            caller_kernel = in_knl_callable.subkernel
+            caller_kernel, program_callables_info = (
+                    _inline_single_callable_kernel(caller_kernel,
+                        function_name,
+                        program.program_callables_info))
+            edited_callable_kernels[func_id] = in_knl_callable.copy(
+                    subkernel=caller_kernel)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program_callables_info.items():
+        if func_id in edited_callable_kernels:
+            new_resolved_functions[func_id] = edited_callable_kernels[func_id]
+        else:
+            new_resolved_functions[func_id] = in_knl_callable
+
+    program_callables_info = program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
 
 # }}}
 
