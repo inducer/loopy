@@ -200,9 +200,9 @@ def test_assignment_to_subst_indices(ctx_factory):
 
     ref_knl = knl
 
-    assert "a" in knl.temporary_variables
+    assert "a" in knl.root_kernel.temporary_variables
     knl = lp.assignment_to_subst(knl, "a")
-    assert "a" not in knl.temporary_variables
+    assert "a" not in knl.root_kernel.temporary_variables
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
