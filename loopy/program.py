@@ -349,6 +349,9 @@ def rename_resolved_functions_in_a_single_kernel(kernel,
 # {{{ program callables info
 
 class ProgramCallablesInfo(ImmutableRecord):
+    # FIXME: dont evalutate num_times_called, rahter compute it from the
+    # resolved_functions
+    # FIXME: make the edit callables thing a ContextManager.
     def __init__(self, resolved_functions, num_times_callables_called=None,
             history=None, is_being_edited=False,
             num_times_hit_during_editing={},
