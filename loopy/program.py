@@ -206,11 +206,11 @@ class Program(ImmutableRecord):
                 else:
                     new_resolved_functions[func_id] = in_knl_callable
 
-                program_callables_info = new_self.program_callables_info.copy(
-                        resolved_functions=new_resolved_functions)
+            program_callables_info = new_self.program_callables_info.copy(
+                    resolved_functions=new_resolved_functions)
 
-                return new_self.copy(
-                        program_callables_info=program_callables_info)
+            return super(Program, new_self).copy(
+                    program_callables_info=program_callables_info)
         else:
             return super(Program, self).copy(**kwargs)
 
