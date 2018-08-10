@@ -1108,6 +1108,16 @@ def add_assumptions_guard(kernel, pwqpolynomial):
 
 
 def count(kernel, set, space=None):
+    from loopy.program import Program
+    if isinstance(kernel, Program):
+        if len([in_knl_callable for in_knl_callable in
+            kernel.program_callables_info.values() if isinstance(in_knl_callable,
+                CallableKernel)]) != 1:
+            raise NotImplementedError("Currently only supported for program with "
+                "only one CallableKernel.")
+
+        kernel = kernel.root_kernel
+
     try:
         if space is not None:
             set = set.align_params(space)
@@ -1862,6 +1872,13 @@ def gather_access_footprints_for_single_kernel(kernel, ignore_uncountable=False)
 
 
 def gather_access_footprints(program, ignore_uncountable=False):
+    # FIMXE: works only for one callable kernel till now.
+    if len([in_knl_callable for in_knl_callable in
+        program.program_callables_info.values() if isinstance(in_knl_callable,
+            CallableKernel)]) != 1:
+        raise NotImplementedError("Currently only supported for program with "
+            "only one CallableKernel.")
+
     from loopy.preprocess import preprocess_program, infer_unknown_types
 
     program = infer_unknown_types(program, expect_completion=True)
