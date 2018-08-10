@@ -1080,8 +1080,9 @@ def get_iname_duplication_options_for_single_kernel(knl, use_boostable_into=Fals
 def get_iname_duplication_options(program, use_boostable_into=False):
     for in_knl_callable in program.program_callables_info.values():
         if isinstance(in_knl_callable, CallableKernel):
-            yield from get_iname_duplication_options_for_single_kernel(
-                    in_knl_callable.subkernel, use_boostable_into)
+            for option in get_iname_duplication_options_for_single_kernel(
+                    in_knl_callable.subkernel, use_boostable_into):
+                yield option
         elif isinstance(in_knl_callable, ScalarCallable):
             pass
         else:
