@@ -486,11 +486,12 @@ def check_write_destinations(kernel):
 # {{{ check_has_schedulable_iname_nesting
 
 def check_has_schedulable_iname_nesting(kernel):
-    from loopy.transform.iname import (has_schedulable_iname_nesting,
-                                       get_iname_duplication_options)
-    if not has_schedulable_iname_nesting(kernel):
+    from loopy.transform.iname import (
+            has_schedulable_iname_nesting_for_single_kernel,
+            get_iname_duplication_options_for_single_kernel)
+    if not has_schedulable_iname_nesting_for_single_kernel(kernel):
         import itertools as it
-        opt = get_iname_duplication_options(kernel)
+        opt = get_iname_duplication_options_for_single_kernel(kernel)
         opt_str = "\n".join("* Duplicate %s within instructions %s" % (i, w)
                             for i, w in it.islice(opt, 3))
         raise LoopyError("Kernel does not have a schedulable iname nesting. "

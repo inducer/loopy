@@ -36,6 +36,7 @@ from loopy.diagnostic import LoopyError
 
 from loopy.program import iterate_over_kernels_if_given_program
 from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 
 __doc__ = """
@@ -982,7 +983,7 @@ def _get_iname_duplication_options(insn_iname_sets, old_common_inames=frozenset(
     # If partitioning was empty, we have recursed successfully and yield nothing
 
 
-def get_iname_duplication_options(knl, use_boostable_into=False):
+def get_iname_duplication_options_for_single_kernel(knl, use_boostable_into=False):
     """List options for duplication of inames, if necessary for schedulability
 
     :returns: a generator listing all options to duplicate inames, if duplication
@@ -1048,7 +1049,7 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
         # If we find a duplication option and to not use boostable_into
         # information, we restart this generator with use_boostable_into=True
         if not use_boostable_into and not knl.options.ignore_boostable_into:
-            for option in get_iname_duplication_options(knl, True):
+            for option in get_iname_duplication_options_for_single_kernel(knl, True):
                 yield option
 
             # Emit a warning that we needed boostable_into
@@ -1076,12 +1077,34 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
             yield iname, within
 
 
-def has_schedulable_iname_nesting(knl):
+def get_iname_duplication_options(program, use_boostable_into=False):
+    for in_knl_callable in program.program_callables_info.values():
+        if isinstance(in_knl_callable, CallableKernel):
+            yield from get_iname_duplication_options_for_single_kernel(
+                    in_knl_callable.subkernel, use_boostable_into)
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of in kernel callable %s."
+                    % (type(in_knl_callable)))
+
+    return
+
+
+def has_schedulable_iname_nesting_for_single_kernel(knl):
     """
     :returns: a :class:`bool` indicating whether this kernel needs
         an iname duplication in order to be schedulable.
     """
-    return not bool(next(get_iname_duplication_options(knl), False))
+    return not bool(next(get_iname_duplication_options_for_single_kernel(knl),
+        False))
+
+
+def has_schedulable_iname_nesting(program):
+    return all(has_schedulable_iname_nesting_for_single_kernel(
+        in_knl_callable.subkernel) for in_knl_callable in
+        program.program_callables_info.values() if isinstance(in_knl_callable,
+            CallableKernel))
 
 # }}}
 

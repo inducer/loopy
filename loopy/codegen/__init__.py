@@ -154,6 +154,7 @@ class SeenFunction(ImmutableRecord):
 class CodeGenerationState(object):
     """
     .. attribute:: kernel
+    .. attribute:: target
     .. attribute:: implemented_data_info
 
         a list of :class:`ImplementedDataInfo` objects.
@@ -199,7 +200,7 @@ class CodeGenerationState(object):
     .. attribute:: program_callables_info
     """
 
-    def __init__(self, kernel,
+    def __init__(self, kernel, target,
             implemented_data_info, implemented_domain, implemented_predicates,
             seen_dtypes, seen_functions, seen_atomic_dtypes, var_subst_map,
             allow_complex,
@@ -209,6 +210,7 @@ class CodeGenerationState(object):
             gen_program_name=None,
             schedule_index_end=None):
         self.kernel = kernel
+        self.target = target
         self.implemented_data_info = implemented_data_info
         self.implemented_domain = implemented_domain
         self.implemented_predicates = implemented_predicates
@@ -226,7 +228,7 @@ class CodeGenerationState(object):
 
     # {{{ copy helpers
 
-    def copy(self, kernel=None, implemented_data_info=None,
+    def copy(self, kernel=None, target=None, implemented_data_info=None,
             implemented_domain=None, implemented_predicates=frozenset(),
             var_subst_map=None, vectorization_info=None,
             is_generating_device_code=None,
@@ -235,6 +237,9 @@ class CodeGenerationState(object):
 
         if kernel is None:
             kernel = self.kernel
+
+        if target is None:
+            target = self.target
 
         if implemented_data_info is None:
             implemented_data_info = self.implemented_data_info
@@ -256,6 +261,7 @@ class CodeGenerationState(object):
 
         return CodeGenerationState(
                 kernel=kernel,
+                target=target,
                 implemented_data_info=implemented_data_info,
                 implemented_domain=implemented_domain or self.implemented_domain,
                 implemented_predicates=(
@@ -413,7 +419,7 @@ class PreambleInfo(ImmutableRecord):
 
 # {{{ main code generation entrypoint
 
-def generate_code_for_a_single_kernel(kernel, program_callables_info):
+def generate_code_for_a_single_kernel(kernel, program_callables_info, target):
     """
     :returns: a :class:`CodeGenerationResult`
     """
@@ -459,13 +465,13 @@ def generate_code_for_a_single_kernel(kernel, program_callables_info):
         if isinstance(arg, ArrayBase):
             implemented_data_info.extend(
                     arg.decl_info(
-                        kernel.target,
+                        target,
                         is_written=is_written,
                         index_dtype=kernel.index_dtype))
 
         elif isinstance(arg, ValueArg):
             implemented_data_info.append(ImplementedDataInfo(
-                target=kernel.target,
+                target=target,
                 name=arg.name,
                 dtype=arg.dtype,
                 arg_class=ValueArg,
@@ -488,6 +494,7 @@ def generate_code_for_a_single_kernel(kernel, program_callables_info):
     initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
     codegen_state = CodeGenerationState(
             kernel=kernel,
+            target=target,
             implemented_data_info=implemented_data_info,
             implemented_domain=initial_implemented_domain,
             implemented_predicates=frozenset(),
@@ -499,9 +506,9 @@ def generate_code_for_a_single_kernel(kernel, program_callables_info):
             var_name_generator=kernel.get_var_name_generator(),
             is_generating_device_code=False,
             gen_program_name=(
-                kernel.target.host_program_name_prefix
+                target.host_program_name_prefix
                 + kernel.name
-                + kernel.target.host_program_name_suffix),
+                + target.host_program_name_suffix),
             schedule_index_end=len(kernel.schedule),
             program_callables_info=program_callables_info)
 
@@ -536,7 +543,7 @@ def generate_code_for_a_single_kernel(kernel, program_callables_info):
             )
 
     preamble_generators = (kernel.preamble_generators
-            + kernel.target.get_device_ast_builder().preamble_generators())
+            + target.get_device_ast_builder().preamble_generators())
     for prea_gen in preamble_generators:
         preambles.extend(prea_gen(preamble_info))
 
@@ -579,7 +586,7 @@ def generate_code_v2(program):
         if isinstance(in_knl_callable, CallableKernel):
             codegen_results[func_id] = (
                     generate_code_for_a_single_kernel(in_knl_callable.subkernel,
-                        program.program_callables_info))
+                        program.program_callables_info, program.target))
 
     device_preambles = set()
     for cgr in codegen_results.values():

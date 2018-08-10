@@ -36,7 +36,7 @@ from loopy.diagnostic import (
 from loopy.kernel.instruction import _DataObliviousInstruction
 
 from loopy.program import ProgramCallablesInfo
-from loopy.symbolic import SubArrayRef
+from loopy.symbolic import SubArrayRef, LinearSubscript
 from pymbolic.primitives import Variable, Subscript
 
 import logging
@@ -819,7 +819,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
                     if kernel.temporary_variables[assignee.name].dtype is None:
                         return False
 
-            elif isinstance(assignee, Subscript):
+            elif isinstance(assignee, (Subscript, LinearSubscript)):
                 if assignee.aggregate.name in kernel.arg_dict:
                     if kernel.arg_dict[assignee.aggregate.name].dtype is None:
                         return False
@@ -828,7 +828,6 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
                     if kernel.temporary_variables[
                             assignee.aggregate.name].dtype is None:
                         return False
-
             else:
                 assert isinstance(assignee, SubArrayRef)
                 if assignee.subscript.aggregate.name in kernel.arg_dict:

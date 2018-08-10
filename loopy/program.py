@@ -192,6 +192,28 @@ class Program(ImmutableRecord):
 
     update_persistent_hash = LoopKernel.update_persistent_hash
 
+    def copy(self, **kwargs):
+        if 'target' in kwargs:
+            target = kwargs['target']
+            new_self = super(Program, self).copy(**kwargs)
+            new_resolved_functions = {}
+            for func_id, in_knl_callable in (
+                    new_self.program_callables_info.items()):
+                if isinstance(in_knl_callable, CallableKernel):
+                    subkernel = in_knl_callable.subkernel
+                    new_resolved_functions[func_id] = in_knl_callable.copy(
+                            subkernel=subkernel.copy(target=target))
+                else:
+                    new_resolved_functions[func_id] = in_knl_callable
+
+                program_callables_info = new_self.program_callables_info.copy(
+                        resolved_functions=new_resolved_functions)
+
+                return new_self.copy(
+                        program_callables_info=program_callables_info)
+        else:
+            return super(Program, self).copy(**kwargs)
+
     def get_grid_size_upper_bounds(self, ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of *all* instructions in the kernel.
