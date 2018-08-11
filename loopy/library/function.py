@@ -47,7 +47,8 @@ class MakeTupleCallable(ScalarCallable):
 
 class IndexOfCallable(ScalarCallable):
     def with_types(self, arg_id_to_dtype, kernel, program_callables_info):
-        new_arg_id_to_dtype = arg_id_to_dtype.copy()
+        new_arg_id_to_dtype = dict((i, dtype) for i, dtype in
+                arg_id_to_dtype.items() if dtype is not None)
         new_arg_id_to_dtype[-1] = kernel.index_dtype
 
         return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype),

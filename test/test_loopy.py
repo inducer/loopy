@@ -2626,7 +2626,7 @@ def test_fixed_parameters(ctx_factory):
 
 def test_parameter_inference():
     knl = lp.make_kernel("{[i]: 0 <= i < n and i mod 2 = 0}", "")
-    assert knl.all_params() == set(["n"])
+    assert knl.root_kernel.all_params() == set(["n"])
 
 
 def test_execution_backend_can_cache_dtypes(ctx_factory):

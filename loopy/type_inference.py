@@ -37,7 +37,7 @@ from loopy.kernel.instruction import _DataObliviousInstruction
 
 from loopy.program import ProgramCallablesInfo
 from loopy.symbolic import SubArrayRef, LinearSubscript
-from pymbolic.primitives import Variable, Subscript
+from pymbolic.primitives import Variable, Subscript, Lookup
 
 import logging
 logger = logging.getLogger(__name__)
@@ -308,7 +308,9 @@ class TypeInferenceMapper(CombineMapper):
 
                 # specializing an already specialized function.
                 for id, dtype in arg_id_to_dtype.items():
-                    if in_knl_callable.arg_id_to_dtype[id] != arg_id_to_dtype[id]:
+                    if id in in_knl_callable.arg_id_to_dtype and (
+                            in_knl_callable.arg_id_to_dtype[id] !=
+                            arg_id_to_dtype[id]):
 
                         # {{{ ignoring the the cases when there is a discrepancy
                         # between np.uint and np.int
@@ -810,6 +812,9 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
 
     def _instruction_missed_during_inference(insn):
         for assignee in insn.assignees:
+            if isinstance(assignee, Lookup):
+                assignee = assignee.aggregate
+
             if isinstance(assignee, Variable):
                 if assignee.name in kernel.arg_dict:
                     if kernel.arg_dict[assignee.name].dtype is None:
