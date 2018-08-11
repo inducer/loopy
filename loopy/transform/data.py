@@ -486,6 +486,7 @@ set_array_dim_names = (MovedFunctionDeprecationWrapper(
 
 # {{{ remove_unused_arguments
 
+@iterate_over_kernels_if_given_program
 def remove_unused_arguments(knl):
     new_args = []
 

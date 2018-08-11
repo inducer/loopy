@@ -33,6 +33,7 @@ import loopy as lp
 from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 from loopy.isl_helpers import make_slab
 from loopy.diagnostic import LoopyError
+from loopy.kernel import LoopKernel
 
 
 # {{{ diff mapper
@@ -370,6 +371,8 @@ def diff_kernel(knl, diff_outputs, by, diff_iname_prefix="diff_i",
         *diff_context.by_name*, or *None* if no dependency exists.
     """
 
+    assert isinstance(knl, LoopKernel)
+
     from loopy.kernel.creation import apply_single_writer_depencency_heuristic
     knl = apply_single_writer_depencency_heuristic(knl, warn_if_used=True)
 
@@ -398,14 +401,7 @@ def diff_kernel(knl, diff_outputs, by, diff_iname_prefix="diff_i",
 
     # }}}
 
-    # Differentiation lead to addition of new functions to the kernel.
-    # For example differentiating `sin(x)` -> `cos(x)`. Hence we would need to
-    # scope `cos(x)`.
-    from loopy.kernel.creation import scope_functions
-    differentiated_scoped_kernel = scope_functions(
-            diff_context.get_new_kernel())
-
-    return differentiated_scoped_kernel, result
+    return diff_context.get_new_kernel(), result
 
 # }}}
 
