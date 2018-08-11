@@ -29,8 +29,6 @@ def transform(knl, vars, stream_dtype):
 
 
 def gen_code(knl):
-    knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
     codegen_result = lp.generate_code_v2(knl)
 
     return codegen_result.device_code() + "\n" + codegen_result.host_code()
