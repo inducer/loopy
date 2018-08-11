@@ -45,7 +45,6 @@ class ValueArgDescriptor(ImmutableRecord):
     hash_fields = ()
 
     update_persistent_hash = LoopKernel.update_persistent_hash
-    pass
 
 
 class ArrayArgDescriptor(ImmutableRecord):
@@ -89,6 +88,13 @@ class ArrayArgDescriptor(ImmutableRecord):
                 shape=shape,
                 address_space=address_space,
                 dim_tags=dim_tags)
+
+    hash_fields = (
+            "shape",
+            "address_space",
+            "dim_tags")
+
+    update_persistent_hash = LoopKernel.update_persistent_hash
 
 # }}}
 
