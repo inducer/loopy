@@ -571,13 +571,9 @@ class CallableKernel(InKernelCallable):
         # no type casting in array calls
         from loopy.expression import dtype_to_type_context
         from pymbolic.mapper.stringifier import PREC_NONE
-        from loopy.symbolic import SubArrayRef
         from pymbolic import var
 
         c_parameters = [
-                expression_to_code_mapper(par, PREC_NONE,
-                    dtype_to_type_context(target, par_dtype),
-                    par_dtype).expr if isinstance(par, SubArrayRef) else
                 expression_to_code_mapper(par, PREC_NONE,
                     dtype_to_type_context(target, par_dtype),
                     par_dtype).expr

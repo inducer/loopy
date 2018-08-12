@@ -1036,25 +1036,19 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 self.get_iname_bounds(iname, constants_only=True).size,
                 constants_only=True)))
 
-    def get_grid_sizes_for_insn_ids_as_dicts(self, insn_ids,
-            program_callables_info, ignore_auto=False):
+    def get_grid_sizes_for_insn_ids(self, insn_ids, program_callables_info,
+            ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of all instructions whose IDs are given
         in *insn_ids*.
-
         :arg insn_ids: a :class:`frozenset` of instruction IDs
-
-        *global_size* and *local_size* are instances of :class:`dict` with
-        mapping of the form from ``axis`` to :class:`islpy.PwAff` objects.
+        *global_size* and *local_size* are :class:`islpy.PwAff` objects.
         """
 
-        # {{{ collecting the callee kernels in insn_ids
-
-        from loopy.kernel.tools import get_direct_callee_kernels
-        callee_kernels = get_direct_callee_kernels(self,
-                program_callables_info, insn_ids)
-
-        # }}}
+        if self.overridden_get_grid_sizes_for_insn_ids:
+            return self.overridden_get_grid_sizes_for_insn_ids(
+                    insn_ids,
+                    ignore_auto=ignore_auto)
 
         all_inames_by_insns = set()
         for insn_id in insn_ids:
@@ -1068,15 +1062,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         global_sizes = {}
         local_sizes = {}
-
-        # updating the grid sizes from the callee_kernels.
-        for callee_kernel in callee_kernels:
-            gsize, lsize = callee_kernel.get_grid_sizes_for_insn_ids_as_dicts(
-                    frozenset(insn.id for insn in callee_kernel.instructions),
-                    program_callables_info, ignore_auto)
-
-            global_sizes.update(gsize)
-            local_sizes.update(lsize)
 
         from loopy.kernel.data import (
                 GroupIndexTag, LocalIndexTag,
@@ -1118,31 +1103,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
             tgt_dict[tag.axis] = size
 
-        return global_sizes, local_sizes
-
-    def get_grid_sizes_for_insn_ids(self, insn_ids, program_callables_info,
-            ignore_auto=False):
-        """Return a tuple (global_size, local_size) containing a grid that
-        could accommodate execution of all instructions whose IDs are given
-        in *insn_ids*.
-
-        :arg insn_ids: a :class:`frozenset` of instruction IDs
-
-        *global_size* and *local_size* are :class:`islpy.PwAff` objects.
-        """
-
-        if self.overridden_get_grid_sizes_for_insn_ids:
-            return self.overridden_get_grid_sizes_for_insn_ids(
-                    insn_ids,
-                    program_callables_info=program_callables_info,
-                    ignore_auto=ignore_auto)
-
-        assert self.is_called_from_host, ("Callee kernels do not have sufficient "
-                "information to compute grid sizes.")
-
-        global_sizes, local_sizes = self.get_grid_sizes_for_insn_ids_as_dicts(
-                insn_ids, program_callables_info, ignore_auto=ignore_auto)
-
         def to_dim_tuple(size_dict, which, forced_sizes={}):
             forced_sizes = forced_sizes.copy()
 
@@ -1171,6 +1131,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return (to_dim_tuple(global_sizes, "global"),
                 to_dim_tuple(local_sizes, "local", forced_sizes=self.local_sizes))
+
+
 
     def get_grid_sizes_for_insn_ids_as_exprs(self, insn_ids,
             program_callables_info, ignore_auto=False):

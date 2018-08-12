@@ -487,7 +487,7 @@ class InstructionBase(ImmutableRecord):
 
 def _get_assignee_var_name(expr):
     from pymbolic.primitives import Variable, Subscript, Lookup
-    from loopy.symbolic import LinearSubscript, SubArrayRef
+    from loopy.symbolic import LinearSubscript
 
     if isinstance(expr, Lookup):
         expr = expr.aggregate
@@ -507,19 +507,13 @@ def _get_assignee_var_name(expr):
 
         return agg.name
 
-    elif isinstance(expr, SubArrayRef):
-        agg = expr.subscript.aggregate
-        assert isinstance(agg, Variable)
-
-        return agg.name
-
     else:
         raise RuntimeError("invalid lvalue '%s'" % expr)
 
 
 def _get_assignee_subscript_deps(expr):
     from pymbolic.primitives import Variable, Subscript, Lookup
-    from loopy.symbolic import LinearSubscript, get_dependencies, SubArrayRef
+    from loopy.symbolic import LinearSubscript, get_dependencies
 
     if isinstance(expr, Lookup):
         expr = expr.aggregate
@@ -530,8 +524,6 @@ def _get_assignee_subscript_deps(expr):
         return get_dependencies(expr.index)
     elif isinstance(expr, LinearSubscript):
         return get_dependencies(expr.index)
-    elif isinstance(expr, SubArrayRef):
-        return get_dependencies(expr.get_begin_subscript().index)
     else:
         raise RuntimeError("invalid lvalue '%s'" % expr)
 

@@ -36,7 +36,7 @@ from loopy.diagnostic import (
 from loopy.kernel.instruction import _DataObliviousInstruction
 
 from loopy.program import ProgramCallablesInfo
-from loopy.symbolic import SubArrayRef, LinearSubscript
+from loopy.symbolic import LinearSubscript
 from pymbolic.primitives import Variable, Subscript, Lookup
 
 import logging
@@ -548,10 +548,6 @@ class TypeInferenceMapper(CombineMapper):
             return [expr.operation.result_dtypes(self.kernel, rec_result)[0]
                     for rec_result in rec_results]
 
-    def map_sub_array_ref(self, expr):
-        return self.rec(expr.get_begin_subscript())
-
-
 # }}}
 
 
@@ -831,17 +827,8 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
                             assignee.aggregate.name].dtype is None:
                         return False
             else:
-                assert isinstance(assignee, SubArrayRef)
-                if assignee.subscript.aggregate.name in kernel.arg_dict:
-                    if kernel.arg_dict[
-                            assignee.subscript.aggregate.name].dtype is None:
-                        return False
-                else:
-                    assert assignee.subscript.aggregate.name in (
-                            kernel.temporary_variables)
-                    if kernel.temporary_variables[
-                            assignee.subscript.aggregate.name] is None:
-                        return False
+                raise NotImplementedError("Unknown assignee type %s" %
+                        type(assignee))
 
         return True
 

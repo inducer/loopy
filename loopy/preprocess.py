@@ -2165,7 +2165,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
     def map_call(self, expr, expn_state, **kwargs):
         from pymbolic.primitives import Call, CallWithKwargs
         from loopy.kernel.function_interface import ValueArgDescriptor
-        from loopy.symbolic import ResolvedFunction, SubArrayRef
+        from loopy.symbolic import ResolvedFunction
 
         if not isinstance(expr.function, ResolvedFunction):
             # ignore if the call is not to a ResolvedFunction
@@ -2178,8 +2178,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
             kw_parameters = expr.kw_parameters
 
         # descriptors for the args and kwargs of the Call
-        arg_id_to_descr = dict((i, par.get_array_arg_descriptor(self.caller_kernel))
-                if isinstance(par, SubArrayRef) else (i, ValueArgDescriptor())
+        arg_id_to_descr = dict((i, ValueArgDescriptor())
                 for i, par in tuple(enumerate(expr.parameters)) +
                 tuple(kw_parameters.items()))
 
@@ -2190,11 +2189,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
             assignees = kwargs['assignees']
             assert isinstance(assignees, tuple)
             for i, par in enumerate(assignees):
-                if isinstance(par, SubArrayRef):
-                    assignee_id_to_descr[-i-1] = (
-                            par.get_array_arg_descriptor(self.caller_kernel))
-                else:
-                    assignee_id_to_descr[-i-1] = ValueArgDescriptor()
+                assignee_id_to_descr[-i-1] = ValueArgDescriptor()
 
         # gathering all the descriptors
         combined_arg_id_to_descr = arg_id_to_descr.copy()

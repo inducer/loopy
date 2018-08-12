@@ -27,16 +27,13 @@ THE SOFTWARE.
 import numpy as np
 
 from pymbolic.mapper import CSECachingMapperMixin
-from pymbolic.primitives import Slice, Variable, Subscript
 from loopy.tools import intern_frozenset_of_ids
 from loopy.symbolic import (
-        IdentityMapper, WalkMapper, SubArrayRef)
+        IdentityMapper, WalkMapper)
 from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
         SubstitutionRule, AddressSpace)
-from loopy.kernel.instruction import (CInstruction, _DataObliviousInstruction,
-        CallInstruction)
 from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
 from islpy import dim_type
@@ -507,11 +504,9 @@ def parse_insn(groups, insn_options):
             assignee_names.append(inner_lhs_i.name)
         elif isinstance(inner_lhs_i, (Subscript, LinearSubscript)):
             assignee_names.append(inner_lhs_i.aggregate.name)
-        elif isinstance(inner_lhs_i, SubArrayRef):
-            assignee_names.append(inner_lhs_i.subscript.aggregate.name)
         else:
             raise LoopyError("left hand side of assignment '%s' must "
-                    "be variable, subscript or a SubArrayRef" % (lhs_i,))
+                    "be variable or subscript" % (lhs_i,))
 
         new_lhs.append(lhs_i)
 
