@@ -55,7 +55,7 @@ def test_diff(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    knl = lp.make_kernel(
+    knl = lp.make_kernel_function(
          """{ [i,j]: 0<=i,j<n }""",
          """
          <> a = 1/(1+sinh(x[i] + y[j])**2)
@@ -66,6 +66,7 @@ def test_diff(ctx_factory):
 
     from loopy.transform.diff import diff_kernel
     dknl, diff_map = diff_kernel(knl, "z", "x")
+    dknl = lp.make_program_from_kernel(dknl)
     dknl = lp.remove_unused_arguments(dknl)
 
     dknl = lp.add_inames_to_insn(dknl, "diff_i0", "writes:a_dx or writes:a")

@@ -73,7 +73,8 @@ class LoopyKeyBuilder(KeyBuilderBase):
 
     def update_for_dict(self, key_hash, key):
         # Order matters for the hash--insert in sorted order.
-        for dict_key in sorted(six.iterkeys(key)):
+        for dict_key in sorted(six.iterkeys(key), key=lambda obj:
+                type(obj).__name__ + str(obj)):
             self.rec(key_hash, (dict_key, key[dict_key]))
 
     update_for_defaultdict = update_for_dict

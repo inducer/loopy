@@ -26,6 +26,8 @@ THE SOFTWARE.
 from loopy.kernel.instruction import BarrierInstruction
 from loopy.match import parse_match
 from loopy.transform.instruction import add_dependency
+from loopy.program import iterate_over_kernels_if_given_program
+from loopy.kernel import LoopKernel
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -36,8 +38,10 @@ __doc__ = """
 
 # {{{ add_barrier
 
-def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
-                tags=None, synchronization_kind="global", mem_kind=None):
+@iterate_over_kernels_if_given_program
+def add_barrier(knl, insn_before="", insn_after="",
+        id_based_on=None, tags=None, synchronization_kind="global",
+        mem_kind=None):
     """Takes in a kernel that needs to be added a barrier and returns a kernel
     which has a barrier inserted into it. It takes input of 2 instructions and
     then adds a barrier in between those 2 instructions. The expressions can
@@ -54,6 +58,8 @@ def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
     :arg kind: Type of memory to be synchronied. May be "global" or "local". Ignored
     for "global" bariers.  If not supplied, defaults to :arg:`synchronization_kind`
     """
+
+    assert isinstance(knl, LoopKernel)
 
     if mem_kind is None:
         mem_kind = synchronization_kind
@@ -76,7 +82,7 @@ def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
                                         mem_kind=mem_kind)
 
     new_knl = knl.copy(instructions=knl.instructions + [barrier_to_add])
-    new_knl = add_dependency(kernel=new_knl,
+    new_knl = add_dependency(new_knl,
                              insn_match=insn_after,
                              depends_on="id:"+id)
 

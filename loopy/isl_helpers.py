@@ -27,7 +27,7 @@ THE SOFTWARE.
 
 from six.moves import range, zip
 
-from loopy.diagnostic import StaticValueFindingError
+from loopy.diagnostic import StaticValueFindingError, LoopyError
 
 import islpy as isl
 from islpy import dim_type

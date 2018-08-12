@@ -27,6 +27,7 @@ THE SOFTWARE.
 
 from pytools import ImmutableRecord
 from mako.template import Template
+from loopy.kernel.function_interface import ScalarCallable
 import numpy as np
 
 
@@ -163,60 +164,77 @@ double${ width } ${ name }_f64(
 # }}}
 
 
-def random123_preamble_generator(preamble_info):
-    for f in preamble_info.seen_functions:
-        try:
-            rng_variant = FUNC_NAMES_TO_RNG[f.name]
-        except KeyError:
-            continue
+class Random123Callable(ScalarCallable):
+    """
+    Records information about for the random123 functions.
+    """
+
+    def with_types(self, arg_id_to_dtype, kernel, program_callables_info):
+
+        if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
+                arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
+            # the types provided aren't mature enough to specialize the
+            # callable
+            return (self.copy(),
+                    program_callables_info)
+
+        name = self.name
+        target = kernel.target
+
+        rng_variant = FUNC_NAMES_TO_RNG[name]
+
+        from loopy.types import NumpyType
+        base_dtype = {32: np.uint32, 64: np.uint64}[rng_variant.bits]
+        ctr_dtype = target.vector_dtype(NumpyType(base_dtype), rng_variant.width)
+        key_dtype = target.vector_dtype(NumpyType(base_dtype), rng_variant.key_width)
+
+        fn = rng_variant.full_name
+        if name == fn:
+            new_arg_id_to_dtype = {-1: ctr_dtype, -2: ctr_dtype, 0: ctr_dtype, 1:
+                    key_dtype}
+            return (
+                    self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
+                        name_in_target=fn+"_gen"),
+                    program_callables_info)
+
+        elif name == fn + "_f32":
+            new_arg_id_to_dtype = {-1: target.vector_dtype(NumpyType(np.float32),
+                rng_variant.width),
+                    -2: ctr_dtype, 0: ctr_dtype, 1:
+                    key_dtype}
+            return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
+                    name_in_target=name), program_callables_info
+
+        elif name == fn + "_f64":
+            new_arg_id_to_dtype = {-1: target.vector_dtype(NumpyType(np.float64),
+                rng_variant.width),
+                    -2: ctr_dtype, 0: ctr_dtype, 1:
+                    key_dtype}
+            return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
+                    name_in_target=name), program_callables_info
+
+        return (self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                program_callables_info)
+
+    def generate_preambles(self, target):
+        rng_variant = FUNC_NAMES_TO_RNG[self.name]
 
         from loopy.target.pyopencl import PyOpenCLTarget
         yield ("90-random123-"+rng_variant.full_name,
                 PREAMBLE_TEMPLATE.render(
                     is_pyopencl_target=isinstance(
-                        preamble_info.kernel.target,
+                        target,
                         PyOpenCLTarget),
                     rng_variant=rng_variant,
                     ))
 
+        return
 
-def random123_function_mangler(kernel, name, arg_dtypes):
-    try:
-        rng_variant = FUNC_NAMES_TO_RNG[name]
-    except KeyError:
-        return None
 
-    from loopy.types import NumpyType
-    target = kernel.target
-    base_dtype = {32: np.uint32, 64: np.uint64}[rng_variant.bits]
-    ctr_dtype = target.vector_dtype(NumpyType(base_dtype), rng_variant.width)
-    key_dtype = target.vector_dtype(NumpyType(base_dtype), rng_variant.key_width)
+def random123_function_scoper(target, identifier):
+    if identifier in FUNC_NAMES_TO_RNG:
+        return Random123Callable(name=identifier)
 
-    from loopy.kernel.data import CallMangleInfo
-    fn = rng_variant.full_name
-    if name == fn:
-        return CallMangleInfo(
-                target_name=fn+"_gen",
-                result_dtypes=(ctr_dtype, ctr_dtype),
-                arg_dtypes=(ctr_dtype, key_dtype))
-
-    elif name == fn + "_f32":
-        return CallMangleInfo(
-                target_name=name,
-                result_dtypes=(
-                    target.vector_dtype(NumpyType(np.float32), rng_variant.width),
-                    ctr_dtype),
-                arg_dtypes=(ctr_dtype, key_dtype))
-
-    elif name == fn + "_f64":
-        return CallMangleInfo(
-                target_name=name,
-                result_dtypes=(
-                    target.vector_dtype(NumpyType(np.float64), rng_variant.width),
-                    ctr_dtype),
-                arg_dtypes=(ctr_dtype, key_dtype))
-
-    else:
-        return None
+    return None
 
 # vim: foldmethod=marker

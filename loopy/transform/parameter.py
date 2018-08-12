@@ -28,6 +28,9 @@ from loopy.symbolic import (RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
 import islpy as isl
 
+from loopy.program import iterate_over_kernels_if_given_program
+from loopy.kernel import LoopKernel
+
 __doc__ = """
 
 .. currentmodule:: loopy
@@ -40,6 +43,7 @@ __doc__ = """
 
 # {{{ assume
 
+@iterate_over_kernels_if_given_program
 def assume(kernel, assumptions):
     """Include an assumption about :ref:`domain-parameters` in the kernel, e.g.
     `n mod 4 = 0`.
@@ -134,6 +138,7 @@ def _fix_parameter(kernel, name, value):
                 ))
 
 
+@iterate_over_kernels_if_given_program
 def fix_parameters(kernel, **value_dict):
     """Fix the values of the arguments to specific constants.
 
@@ -141,6 +146,7 @@ def fix_parameters(kernel, **value_dict):
     to be *value*. *name* may refer to :ref:`domain-parameters` or
     :ref:`arguments`.
     """
+    assert isinstance(kernel, LoopKernel)
 
     for name, value in six.iteritems(value_dict):
         kernel = _fix_parameter(kernel, name, value)

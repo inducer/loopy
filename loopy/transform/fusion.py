@@ -31,6 +31,10 @@ from islpy import dim_type
 from loopy.diagnostic import LoopyError
 from pymbolic import var
 
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel
+from loopy.program import rename_resolved_functions_in_a_single_kernel
+
 
 def _apply_renames_in_exprs(kernel, var_renames):
     from loopy.symbolic import (
@@ -287,7 +291,7 @@ def _fuse_two_kernels(knla, knlb):
 # }}}
 
 
-def fuse_kernels(kernels, suffixes=None, data_flow=None):
+def fuse_loop_kernels(kernels, suffixes=None, data_flow=None):
     """Return a kernel that performs all the operations in all entries
     of *kernels*.
 
@@ -331,6 +335,8 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
 
         *data_flow* was added in version 2016.2
     """
+
+    assert all(isinstance(knl, LoopKernel) for knl in kernels)
     kernels = list(kernels)
 
     if data_flow is None:
@@ -410,5 +416,53 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
     # }}}
 
     return result
+
+
+def fuse_kernels(programs, suffixes=None, data_flow=None):
+    main_prog_callables_info = (
+            programs[0].program_callables_info.with_edit_callables_mode())
+    old_root_kernel_callable = (
+            programs[0].program_callables_info[programs[0].name])
+    kernels = [programs[0].root_kernel]
+
+    # removing the callable collisions that maybe present
+    for prog in programs[1:]:
+        root_kernel = prog.root_kernel
+        renames_needed = {}
+        for old_func_id, in_knl_callable in prog.program_callables_info.items():
+            if isinstance(in_knl_callable, CallableKernel):
+                if in_knl_callable.name != prog.name:
+                    raise LoopyError("fuse_kernels cannot fuse programs with "
+                            "multiple callable kernels.")
+                continue
+            num_times_called = (
+                    prog.program_callables_info.num_times_callables_called[
+                        old_func_id])
+            for i in range(num_times_called):
+                main_prog_callables_info, new_func_id = (
+                        main_prog_callables_info.with_callables(var(old_func_id),
+                            in_knl_callable, True))
+
+            if old_func_id != new_func_id:
+                renames_needed[old_func_id] = new_func_id
+
+        if renames_needed:
+            root_kernel = rename_resolved_functions_in_a_single_kernel(
+                    root_kernel, renames_needed)
+
+        kernels.append(root_kernel)
+
+    new_root_kernel = fuse_loop_kernels(kernels, suffixes, data_flow)
+    new_root_kernel_callable = old_root_kernel_callable.copy(
+            subkernel=new_root_kernel.copy(name=programs[0].name))
+
+    main_prog_callables_info, _ = main_prog_callables_info.with_callable(
+            var(programs[0].name), new_root_kernel_callable)
+
+    main_prog_callables_info = (
+            main_prog_callables_info.with_exit_edit_callables_mode())
+
+    return programs[0].copy(
+            program_callables_info=main_prog_callables_info)
 
 # vim: foldmethod=marker

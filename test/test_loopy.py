@@ -97,7 +97,7 @@ def test_complicated_subst(ctx_factory):
 
     print(knl)
 
-    sr_keys = list(knl.substitutions.keys())
+    sr_keys = list(knl.root_kernel.substitutions.keys())
     for letter, how_many in [
             ("f", 1),
             ("g", 1),
@@ -110,7 +110,7 @@ def test_complicated_subst(ctx_factory):
 def test_type_inference_no_artificial_doubles(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i]: 0<=i<n}",
             """
                 <> bb = a[i] - b[i]
@@ -122,16 +122,15 @@ def test_type_inference_no_artificial_doubles(ctx_factory):
                 lp.GlobalArg("c", np.float32, shape=("n",)),
                 lp.ValueArg("n", np.int32),
                 ],
-            assumptions="n>=1")
+            assumptions="n>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    for k in lp.generate_loop_schedules(knl):
-        code = lp.generate_code(k)
-        assert "double" not in code
+    code = lp.generate_code_v2(prog).device_code()
+    assert "double" not in code
 
 
 def test_type_inference_with_type_dependencies():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i]: i=0}",
             """
             <>a = 99
@@ -143,13 +142,17 @@ def test_type_inference_with_type_dependencies():
             <>d = b + 2 + 1j
             """,
             "...")
-    knl = lp.infer_unknown_types(knl)
+    prog = lp.infer_unknown_types(prog)
 
     from loopy.types import to_loopy_type
-    assert knl.temporary_variables["a"].dtype == to_loopy_type(np.int32)
-    assert knl.temporary_variables["b"].dtype == to_loopy_type(np.float32)
-    assert knl.temporary_variables["c"].dtype == to_loopy_type(np.float32)
-    assert knl.temporary_variables["d"].dtype == to_loopy_type(np.complex128)
+    assert prog.root_kernel.temporary_variables["a"].dtype == to_loopy_type(
+            np.int32)
+    assert prog.root_kernel.temporary_variables["b"].dtype == to_loopy_type(
+            np.float32)
+    assert prog.root_kernel.temporary_variables["c"].dtype == to_loopy_type(
+            np.float32)
+    assert prog.root_kernel.temporary_variables["d"].dtype == to_loopy_type(
+            np.complex128)
 
 
 def test_sized_and_complex_literals(ctx_factory):
@@ -183,16 +186,12 @@ def test_simple_side_effect(ctx_factory):
             """
                 a[i] = a[i] + 1
                 """,
-            [lp.GlobalArg("a", np.float32, shape=(100,))]
+            [lp.GlobalArg("a", np.float32, shape=(100,))],
+            target=lp.PyOpenCLTarget(ctx.devices[0])
             )
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    kernel_gen = lp.generate_loop_schedules(knl)
-
-    for gen_knl in kernel_gen:
-        print(gen_knl)
-        compiled = lp.CompiledKernel(ctx, gen_knl)
-        print(compiled.get_code())
+    print(knl)
+    print(lp.generate_code_v2(knl))
 
 
 def test_owed_barriers(ctx_factory):
@@ -203,17 +202,14 @@ def test_owed_barriers(ctx_factory):
             [
                 "<float32> z[i] = a[i]"
                 ],
-            [lp.GlobalArg("a", np.float32, shape=(100,))]
+            [lp.GlobalArg("a", np.float32, shape=(100,))],
+            target=lp.PyOpenCLTarget(ctx.devices[0])
             )
 
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    kernel_gen = lp.generate_loop_schedules(knl)
-
-    for gen_knl in kernel_gen:
-        compiled = lp.CompiledKernel(ctx, gen_knl)
-        print(compiled.get_code())
+    print(knl)
+    print(lp.generate_code_v2(knl))
 
 
 def test_wg_too_small(ctx_factory):
@@ -225,17 +221,14 @@ def test_wg_too_small(ctx_factory):
                 "<float32> z[i] = a[i] {id=copy}"
                 ],
             [lp.GlobalArg("a", np.float32, shape=(100,))],
+            target=lp.PyOpenCLTarget(ctx.devices[0]),
             local_sizes={0: 16})
 
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    kernel_gen = lp.generate_loop_schedules(knl)
-
-    import pytest
-    for gen_knl in kernel_gen:
-        with pytest.raises(RuntimeError):
-            lp.CompiledKernel(ctx, gen_knl).get_code()
+    print(knl)
+    with pytest.raises(RuntimeError):
+        print(lp.generate_code_v2(knl))
 
 
 def test_multi_cse(ctx_factory):
@@ -247,17 +240,14 @@ def test_multi_cse(ctx_factory):
                 "<float32> z[i] = a[i] + a[i]**2"
                 ],
             [lp.GlobalArg("a", np.float32, shape=(100,))],
+            target=lp.PyOpenCLTarget(ctx.devices[0]),
             local_sizes={0: 16})
 
     knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
     knl = lp.add_prefetch(knl, "a", [])
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    kernel_gen = lp.generate_loop_schedules(knl)
-
-    for gen_knl in kernel_gen:
-        compiled = lp.CompiledKernel(ctx, gen_knl)
-        print(compiled.get_code())
+    print(knl)
+    print(lp.generate_code_v2(knl))
 
 
 # {{{ code generator fuzzing
@@ -414,17 +404,16 @@ def test_ilp_write_race_detection_global(ctx_factory):
                 lp.GlobalArg("a", np.float32),
                 lp.ValueArg("n", np.int32, approximately=1000),
                 ],
-            assumptions="n>=1")
+            assumptions="n>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     knl = lp.tag_inames(knl, dict(j="ilp"))
-
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
 
     with lp.CacheMode(False):
         from loopy.diagnostic import WriteRaceConditionWarning
         from warnings import catch_warnings
         with catch_warnings(record=True) as warn_list:
-            list(lp.generate_loop_schedules(knl))
+            lp.generate_code_v2(knl)
 
             assert any(isinstance(w.message, WriteRaceConditionWarning)
                     for w in warn_list)
@@ -438,13 +427,13 @@ def test_ilp_write_race_avoidance_local(ctx_factory):
             [
                 "<> a[i] = 5+i+j",
                 ],
-            [])
+            [],
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     knl = lp.tag_inames(knl, dict(i="l.0", j="ilp"))
 
     knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    for k in lp.generate_loop_schedules(knl):
-        assert k.temporary_variables["a"].shape == (16, 17)
+    assert knl.root_kernel.temporary_variables["a"].shape == (16, 17)
 
 
 def test_ilp_write_race_avoidance_private(ctx_factory):
@@ -455,13 +444,13 @@ def test_ilp_write_race_avoidance_private(ctx_factory):
             [
                 "<> a = 5+j",
                 ],
-            [])
+            [],
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     knl = lp.tag_inames(knl, dict(j="ilp"))
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    for k in lp.generate_loop_schedules(knl):
-        assert k.temporary_variables["a"].shape == (16,)
+    knl = lp.preprocess_kernel(knl)
+    assert knl.root_kernel.temporary_variables["a"].shape == (16,)
 
 # }}}
 
@@ -482,11 +471,12 @@ def test_write_parameter(ctx_factory):
                 lp.GlobalArg("b", dtype, shape=()),
                 lp.ValueArg("n", np.int32, approximately=1000),
                 ],
-            assumptions="n>=1")
+            assumptions="n>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     import pytest
     with pytest.raises(RuntimeError):
-        lp.CompiledKernel(ctx, knl).get_code()
+        lp.generate_code_v2(knl).device_code()
 
 
 # {{{ arg guessing
@@ -507,10 +497,11 @@ def test_arg_shape_guessing(ctx_factory):
                 lp.GlobalArg("c", shape=lp.auto),
                 lp.ValueArg("n"),
                 ],
-            assumptions="n>=1")
+            assumptions="n>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     print(knl)
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
+    print(lp.generate_code_v2(knl).device_code())
 
 
 def test_arg_guessing(ctx_factory):
@@ -523,10 +514,11 @@ def test_arg_guessing(ctx_factory):
                 b[i, j] = i*j
                 c[i+j, j] = b[j,i]
                 """,
-            assumptions="n>=1")
+            assumptions="n>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     print(knl)
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
+    print(lp.generate_code_v2(knl).device_code())
 
 
 def test_arg_guessing_with_reduction(ctx_factory):
@@ -541,16 +533,16 @@ def test_arg_guessing_with_reduction(ctx_factory):
                 b[i, j] = i*j
                 c[i+j, j] = b[j,i]
                 """,
-            assumptions="n>=1")
+            assumptions="n>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     print(knl)
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
+    print(lp.generate_code_v2(knl).device_code())
 
 
 def test_unknown_arg_shape(ctx_factory):
     ctx = ctx_factory()
     from loopy.target.pyopencl import PyOpenCLTarget
-    from loopy.compiled import CompiledKernel
     bsize = [256, 0]
 
     knl = lp.make_kernel(
@@ -566,11 +558,11 @@ def test_unknown_arg_shape(ctx_factory):
         """,
         seq_dependencies=True,
         name="uniform_l",
-        target=PyOpenCLTarget(),
+        target=PyOpenCLTarget(ctx.devices[0]),
         assumptions="m<=%d and m>=1 and n mod %d = 0" % (bsize[0], bsize[0]))
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
-    kernel_info = CompiledKernel(ctx, knl).kernel_info(frozenset())  # noqa
+    print(lp.generate_code_v2(knl).device_code())
 
 # }}}
 
@@ -587,10 +579,11 @@ def test_nonlinear_index(ctx_factory):
                 lp.GlobalArg("a", shape="n"),
                 lp.ValueArg("n"),
                 ],
-            assumptions="n>=1")
+            assumptions="n>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     print(knl)
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
+    print(lp.generate_code_v2(knl).device_code())
 
 
 def test_offsets_and_slicing(ctx_factory):
@@ -607,9 +600,7 @@ def test_offsets_and_slicing(ctx_factory):
             assumptions="n>=1 and m>=1",
             default_offset=lp.auto)
 
-    knl = lp.tag_data_axes(knl, "a,b", "stride:auto,stride:1")
-
-    cknl = lp.CompiledKernel(ctx, knl)
+    knl = lp.tag_array_axes(knl, "a,b", "stride:auto,stride:1")
 
     a_full = cl.clrandom.rand(queue, (n, n), np.float64)
     a_full_h = a_full.get()
@@ -624,8 +615,10 @@ def test_offsets_and_slicing(ctx_factory):
 
     b_full_h[b_sub] = 2*a_full_h[a_sub]
 
-    print(cknl.get_highlighted_code({"a": a.dtype}))
-    cknl(queue, a=a, b=b)
+    knl = lp.add_dtypes(knl, {"a": a.dtype})
+
+    print(lp.generate_code_v2(knl))
+    knl(queue, a=a, b=b)
 
     import numpy.linalg as la
     assert la.norm(b_full.get() - b_full_h) < 1e-13
@@ -642,18 +635,16 @@ def test_vector_ilp_with_prefetch(ctx_factory):
                 # argument guessing.
                 lp.GlobalArg("out,a", np.float32, shape=lp.auto),
                 "..."
-                ])
+                ],
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     knl = lp.split_iname(knl, "i", 128, inner_tag="l.0")
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
     knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"],
             default_tag="l.auto")
 
-    cknl = lp.CompiledKernel(ctx, knl)
-    cknl.kernel_info()
-
     import re
-    code = cknl.get_code()
+    code = lp.generate_code_v2(knl).device_code()
     assert len(list(re.finditer("barrier", code))) == 1
 
 
@@ -674,18 +665,18 @@ def test_c_instruction(ctx_factory):
                 lp.TemporaryVariable("x", np.float32),
                 "...",
                 ],
-            assumptions="n>=1")
+            assumptions="n>=1", target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
     print(knl)
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
+    print(lp.generate_code_v2(knl).device_code())
 
 
 def test_dependent_domain_insn_iname_finding(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel([
+    prog = lp.make_kernel([
             "{[isrc_box]: 0<=isrc_box<nsrc_boxes}",
             "{[isrc,idim]: isrc_start<=isrc<isrc_end and 0<=idim<dim}",
             ],
@@ -700,23 +691,24 @@ def test_dependent_domain_insn_iname_finding(ctx_factory):
                     None, shape=None),
                 lp.GlobalArg("strengths",
                     None, shape="nsources"),
-                "..."])
+                "..."],
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
-    print(knl)
-    assert "isrc_box" in knl.insn_inames("set_strength")
+    print(prog)
+    assert "isrc_box" in prog.root_kernel.insn_inames("set_strength")
 
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code(
-            dict(
-                source_boxes=np.int32,
-                box_source_starts=np.int32,
-                box_source_counts_nonchild=np.int32,
-                strengths=np.float64,
-                nsources=np.int32,
-                )))
+    prog = lp.add_dtypes(prog,
+        dict(
+            source_boxes=np.int32,
+            box_source_starts=np.int32,
+            box_source_counts_nonchild=np.int32,
+            strengths=np.float64,
+            nsources=np.int32))
+    print(lp.generate_code_v2(prog).device_code())
 
 
 def test_inames_deps_from_write_subscript(ctx_factory):
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i,j]: 0<=i,j<n}",
             """
                 <> src_ibox = source_boxes[i]
@@ -728,8 +720,8 @@ def test_inames_deps_from_write_subscript(ctx_factory):
                     None, shape=None),
                 "..."])
 
-    print(knl)
-    assert "i" in knl.insn_inames("myred")
+    print(prog)
+    assert "i" in prog.root_kernel.insn_inames("myred")
 
 
 def test_modulo_indexing(ctx_factory):
@@ -743,14 +735,12 @@ def test_modulo_indexing(ctx_factory):
             [
                 lp.GlobalArg("a", None, shape="n"),
                 "..."
-                ]
+                ], target=lp.PyOpenCLTarget(ctx.devices[0])
             )
 
     print(knl)
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code(
-            dict(
-                a=np.float32,
-                )))
+    knl = lp.add_dtypes(knl, {"a": np.float32})
+    print(lp.generate_code_v2(knl).device_code())
 
 
 @pytest.mark.parametrize("vec_len", [2, 3, 4, 8, 16])
@@ -770,7 +760,7 @@ def test_vector_types(ctx_factory, vec_len):
 
     ref_knl = knl
 
-    knl = lp.tag_data_axes(knl, "out", "c,vec")
+    knl = lp.tag_array_axes(knl, "out", "c,vec")
     knl = lp.tag_inames(knl, dict(j="unr"))
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
@@ -898,11 +888,7 @@ def test_multiple_writes_to_local_temporary():
         temp[i, 1] = 15
         """)
     knl = lp.tag_inames(knl, dict(i="l.0"))
-
-    knl = lp.preprocess_kernel(knl)
-    for k in lp.generate_loop_schedules(knl):
-        code, _ = lp.generate_code(k)
-        print(code)
+    print(lp.generate_code_v2(knl).device_code())
 
 
 def test_make_copy_kernel(ctx_factory):
@@ -980,9 +966,7 @@ def test_variable_size_temporary():
 
     # Make sure that code generation succeeds even if
     # there are variable-length arrays.
-    knl = lp.preprocess_kernel(knl)
-    for k in lp.generate_loop_schedules(knl):
-        lp.generate_code(k)
+    lp.generate_code_v2(knl).device_code()
 
 
 def test_indexof(ctx_factory):
@@ -1014,7 +998,7 @@ def test_indexof_vec(ctx_factory):
          ''' out[i,j,k] = indexof_vec(out[i,j,k])''')
 
     knl = lp.tag_inames(knl, {"i": "vec"})
-    knl = lp.tag_data_axes(knl, "out", "vec,c,c")
+    knl = lp.tag_array_axes(knl, "out", "vec,c,c")
     knl = lp.set_options(knl, write_cl=True)
 
     (evt, (out,)) = knl(queue)
@@ -1156,7 +1140,7 @@ def test_within_inames_and_reduction():
             within_inames=frozenset(),
             within_inames_is_final=True)
 
-    k = lp.make_kernel("{[i,j] : 0<=i,j<n}",
+    prog = lp.make_kernel("{[i,j] : 0<=i,j<n}",
             [i1, i2],
             [
                 lp.GlobalArg("a", dtype=np.float32, shape=()),
@@ -1166,10 +1150,10 @@ def test_within_inames_and_reduction():
             target=lp.CTarget(),
             )
 
-    k = lp.preprocess_kernel(k)
+    prog = lp.preprocess_kernel(prog)
 
-    assert 'i' not in k.insn_inames("insn_0_j_update")
-    print(k.stringify(with_dependencies=True))
+    assert 'i' not in prog.root_kernel.insn_inames("insn_0_j_update")
+    print(prog.root_kernel.stringify(with_dependencies=True))
 
 
 def test_literal_local_barrier(ctx_factory):
@@ -1232,13 +1216,6 @@ def test_kernel_splitting(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
-    # schedule
-    from loopy.preprocess import preprocess_kernel
-    knl = preprocess_kernel(knl)
-
-    from loopy.schedule import get_one_scheduled_kernel
-    knl = get_one_scheduled_kernel(knl)
-
     # map schedule onto host or device
     print(knl)
 
@@ -1273,13 +1250,6 @@ def test_kernel_splitting_with_loop(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
-    # schedule
-    from loopy.preprocess import preprocess_kernel
-    knl = preprocess_kernel(knl)
-
-    from loopy.schedule import get_one_scheduled_kernel
-    knl = get_one_scheduled_kernel(knl)
-
     # map schedule onto host or device
     print(knl)
 
@@ -1293,25 +1263,20 @@ def test_kernel_splitting_with_loop(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
-def save_and_reload_temporaries_test(queue, knl, out_expect, debug=False):
-    from loopy.preprocess import preprocess_kernel
-    from loopy.schedule import get_one_scheduled_kernel
-
-    knl = preprocess_kernel(knl)
-    knl = get_one_scheduled_kernel(knl)
+def save_and_reload_temporaries_test(queue, prog, out_expect, debug=False):
 
     from loopy.transform.save import save_and_reload_temporaries
-    knl = save_and_reload_temporaries(knl)
-    knl = get_one_scheduled_kernel(knl)
+    prog = save_and_reload_temporaries(prog)
+    prog = prog.with_root_kernel(lp.get_one_scheduled_kernel(prog.root_kernel,
+        prog.program_callables_info))
 
     if debug:
-        print(knl)
-        cgr = lp.generate_code_v2(knl)
+        print(prog)
+        cgr = lp.generate_code_v2(prog)
         print(cgr.device_code())
         print(cgr.host_code())
-        1/0
 
-    _, (out,) = knl(queue, out_host=True)
+    _, (out,) = prog(queue, out_host=True)
     assert (out == out_expect).all(), (out, out_expect)
 
 
@@ -1320,7 +1285,7 @@ def test_save_of_private_scalar(ctx_factory, hw_loop, debug=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
         "{ [i]: 0<=i<8 }",
         """
         for i
@@ -1331,9 +1296,9 @@ def test_save_of_private_scalar(ctx_factory, hw_loop, debug=False):
         """, seq_dependencies=True)
 
     if hw_loop:
-        knl = lp.tag_inames(knl, dict(i="g.0"))
+        prog = lp.tag_inames(prog, dict(i="g.0"))
 
-    save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
+    save_and_reload_temporaries_test(queue, prog, np.arange(8), debug)
 
 
 def test_save_of_private_array(ctx_factory, debug=False):
@@ -1564,9 +1529,6 @@ def test_save_ambiguous_storage_requirements():
     knl = lp.tag_inames(knl, dict(i="g.0", j="l.0"))
     knl = lp.duplicate_inames(knl, "j", within="writes:out", tags={"j": "l.0"})
     knl = lp.set_temporary_scope(knl, "a", "local")
-
-    knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
 
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
@@ -1801,12 +1763,12 @@ def test_unschedulable_kernel_detection():
 
 def test_regression_no_ret_call_removal(ctx_factory):
     # https://github.com/inducer/loopy/issues/32
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i] : 0<=i<n}",
             "f(sum(i, x[i]))")
-    knl = lp.add_and_infer_dtypes(knl, {"x": np.float32})
-    knl = lp.preprocess_kernel(knl)
-    assert len(knl.instructions) == 3
+    prog = lp.add_and_infer_dtypes(prog, {"x": np.float32})
+    prog = lp.preprocess_kernel(prog)
+    assert len(prog.root_kernel.instructions) == 3
 
 
 def test_regression_persistent_hash():
@@ -1819,14 +1781,15 @@ def test_regression_persistent_hash():
             "cse_exprvar = d[0]*d[0]")
     from loopy.tools import LoopyKeyBuilder
     lkb = LoopyKeyBuilder()
-    assert lkb(knl1.instructions[0]) != lkb(knl2.instructions[0])
+    assert (lkb(knl1.root_kernel.instructions[0]) !=
+            lkb(knl2.root_kernel.instructions[0]))
     assert lkb(knl1) != lkb(knl2)
 
 
 def test_sequential_dependencies(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i]: 0<=i<n}",
             """
             for i
@@ -1838,9 +1801,9 @@ def test_sequential_dependencies(ctx_factory):
             end
             """, seq_dependencies=True)
 
-    print(knl.stringify(with_dependencies=True))
+    print(prog.root_kernel.stringify(with_dependencies=True))
 
-    lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(n=5))
+    lp.auto_test_vs_ref(prog, ctx, prog, parameters=dict(n=5))
 
 
 def test_nop(ctx_factory):
@@ -1895,8 +1858,12 @@ def test_global_barrier(ctx_factory):
     print(knl)
 
     knl = lp.preprocess_kernel(knl)
-    assert knl.temporary_variables["z"].address_space == lp.AddressSpace.GLOBAL
-    assert knl.temporary_variables["v"].address_space == lp.AddressSpace.GLOBAL
+    assert (
+            knl.root_kernel.temporary_variables["z"].address_space ==
+            lp.AddressSpace.GLOBAL)
+    assert (
+            knl.root_kernel.temporary_variables["v"].address_space ==
+            lp.AddressSpace.GLOBAL)
 
     print(knl)
 
@@ -1919,11 +1886,12 @@ def test_missing_global_barrier():
 
     knl = lp.set_temporary_scope(knl, "z", "global")
     knl = lp.split_iname(knl, "i", 256, outer_tag="g.0")
+    knl = lp.add_dtypes(knl, {'z': np.float32, 'v': np.float32})
     knl = lp.preprocess_kernel(knl)
 
     from loopy.diagnostic import MissingBarrierError
     with pytest.raises(MissingBarrierError):
-        lp.get_one_scheduled_kernel(knl)
+        lp.generate_code_v2(knl)
 
 
 def test_index_cse(ctx_factory):
@@ -2038,7 +2006,7 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
 
 
 def test_const_temp_with_initializer_not_saved():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
         "{[i]: 0<=i<10}",
         """
         ... gbarrier
@@ -2054,12 +2022,11 @@ def test_const_temp_with_initializer_not_saved():
             ],
         seq_dependencies=True)
 
-    knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
-    knl = lp.save_and_reload_temporaries(knl)
+    prog = lp.preprocess_kernel(prog)
+    prog = lp.save_and_reload_temporaries(prog)
 
     # This ensures no save slot was added.
-    assert len(knl.temporary_variables) == 1
+    assert len(prog.root_kernel.temporary_variables) == 1
 
 
 def test_header_extract():
@@ -2244,20 +2211,24 @@ def test_tight_loop_bounds_codegen():
 
 
 def test_unscheduled_insn_detection():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
         "{ [i]: 0 <= i < 10 }",
         """
         out[i] = i {id=insn1}
         """,
         "...")
 
-    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
-    insn1, = lp.find_instructions(knl, "id:insn1")
-    knl.instructions.append(insn1.copy(id="insn2"))
+    prog = lp.preprocess_kernel(prog)
+    knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.program_callables_info)
+    prog = prog.with_root_kernel(knl)
+    insn1, = lp.find_instructions(prog, "id:insn1")
+    insns = prog.root_kernel.instructions[:]
+    insns.append(insn1.copy(id="insn2"))
+    prog = prog.with_root_kernel(prog.root_kernel.copy(instructions=insns))
 
     from loopy.diagnostic import UnscheduledInstructionError
     with pytest.raises(UnscheduledInstructionError):
-        lp.generate_code(knl)
+        lp.generate_code(prog)
 
 
 def test_integer_reduction(ctx_factory):
@@ -2300,6 +2271,7 @@ def test_integer_reduction(ctx_factory):
             knl = lp.make_kernel('{[k]: 0<=k<n}',
                                 kstr,
                                 [var_lp, '...'])
+            knl = lp.set_options(knl, "write_cl")
 
             knl = lp.fix_parameters(knl, n=200)
 
@@ -2399,7 +2371,7 @@ def barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
 
 
 def test_barrier_insertion_near_top_of_loop():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
         "{[i,j]: 0 <= i,j < 10 }",
         """
         for i
@@ -2413,10 +2385,11 @@ def test_barrier_insertion_near_top_of_loop():
         """,
         seq_dependencies=True)
 
-    knl = lp.tag_inames(knl, dict(i="l.0"))
-    knl = lp.set_temporary_scope(knl, "a", "local")
-    knl = lp.set_temporary_scope(knl, "b", "local")
-    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+    prog = lp.tag_inames(prog, dict(i="l.0"))
+    prog = lp.set_temporary_scope(prog, "a", "local")
+    prog = lp.set_temporary_scope(prog, "b", "local")
+    prog = lp.preprocess_kernel(prog)
+    knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.program_callables_info)
 
     print(knl)
 
@@ -2426,7 +2399,7 @@ def test_barrier_insertion_near_top_of_loop():
 
 
 def test_barrier_insertion_near_bottom_of_loop():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
         ["{[i]: 0 <= i < 10 }",
          "[jmax] -> {[j]: 0 <= j < jmax}"],
         """
@@ -2440,10 +2413,11 @@ def test_barrier_insertion_near_bottom_of_loop():
         end
         """,
         seq_dependencies=True)
-    knl = lp.tag_inames(knl, dict(i="l.0"))
-    knl = lp.set_temporary_scope(knl, "a", "local")
-    knl = lp.set_temporary_scope(knl, "b", "local")
-    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+    prog = lp.tag_inames(prog, dict(i="l.0"))
+    prog = lp.set_temporary_scope(prog, "a", "local")
+    prog = lp.set_temporary_scope(prog, "b", "local")
+    prog = lp.preprocess_kernel(prog)
+    knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.program_callables_info)
 
     print(knl)
 
@@ -2453,7 +2427,7 @@ def test_barrier_insertion_near_bottom_of_loop():
 
 def test_barrier_in_overridden_get_grid_size_expanded_kernel():
     # make simple barrier'd kernel
-    knl = lp.make_kernel('{[i]: 0 <= i < 10}',
+    prog = lp.make_kernel('{[i]: 0 <= i < 10}',
                    """
               for i
                     a[i] = i {id=a}
@@ -2468,15 +2442,17 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
 
     # split into kernel w/ vesize larger than iname domain
     vecsize = 16
-    knl = lp.split_iname(knl, 'i', vecsize, inner_tag='l.0')
+    prog = lp.split_iname(prog, 'i', vecsize, inner_tag='l.0')
 
     from testlib import GridOverride
 
     # artifically expand via overridden_get_grid_sizes_for_insn_ids
+    knl = prog.root_kernel
     knl = knl.copy(overridden_get_grid_sizes_for_insn_ids=GridOverride(
         knl.copy(), vecsize))
+    prog = prog.with_root_kernel(knl)
     # make sure we can generate the code
-    lp.generate_code_v2(knl)
+    lp.generate_code_v2(prog)
 
 
 def test_multi_argument_reduction_type_inference():
@@ -2485,7 +2461,7 @@ def test_multi_argument_reduction_type_inference():
     from loopy.types import to_loopy_type
     op = SegmentedSumReductionOperation()
 
-    knl = lp.make_kernel("{[i,j]: 0<=i<10 and 0<=j<i}", "")
+    prog = lp.make_kernel("{[i,j]: 0<=i<10 and 0<=j<i}", "")
 
     int32 = to_loopy_type(np.int32)
 
@@ -2499,7 +2475,8 @@ def test_multi_argument_reduction_type_inference():
                 allow_simultaneous=True),
             allow_simultaneous=True)
 
-    t_inf_mapper = TypeInferenceMapper(knl)
+    t_inf_mapper = TypeInferenceMapper(prog.root_kernel,
+            prog.program_callables_info)
 
     assert (
             t_inf_mapper(expr, return_tuple=True, return_dtype_set=True)
@@ -2515,7 +2492,7 @@ def test_multi_argument_reduction_parsing():
 
 
 def test_global_barrier_order_finding():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i,itrip]: 0<=i<n and 0<=itrip<ntrips}",
             """
             for i
@@ -2532,7 +2509,8 @@ def test_global_barrier_order_finding():
             end
             """)
 
-    assert lp.get_global_barrier_order(knl) == ("top", "yoink", "postloop")
+    assert (lp.get_global_barrier_order(prog.root_kernel) == ("top", "yoink",
+        "postloop"))
 
     for insn, barrier in (
             ("nop", None),
@@ -2542,12 +2520,12 @@ def test_global_barrier_order_finding():
             ("yoink", "top"),
             ("postloop", "yoink"),
             ("zzzv", "postloop")):
-        assert lp.find_most_recent_global_barrier(knl, insn) == barrier
+        assert lp.find_most_recent_global_barrier(prog.root_kernel, insn) == barrier
 
 
 def test_global_barrier_error_if_unordered():
     # FIXME: Should be illegal to declare this
-    knl = lp.make_kernel("{[i]: 0 <= i < 10}",
+    prog = lp.make_kernel("{[i]: 0 <= i < 10}",
             """
             ... gbarrier
             ... gbarrier
@@ -2555,7 +2533,7 @@ def test_global_barrier_error_if_unordered():
 
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
-        lp.get_global_barrier_order(knl)
+        lp.get_global_barrier_order(prog.root_kernel)
 
 
 def test_struct_assignment(ctx_factory):
@@ -2617,14 +2595,14 @@ def test_inames_conditional_generation(ctx_factory):
 
 
 def test_kernel_var_name_generator():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i]: 0 <= i <= 10}",
             """
             <>a = 0
             <>b_s0 = 0
             """)
 
-    vng = knl.get_var_name_generator()
+    vng = prog.root_kernel.get_var_name_generator()
 
     assert vng("a_s0") != "a_s0"
     assert vng("b") != "b"
@@ -2647,7 +2625,7 @@ def test_fixed_parameters(ctx_factory):
 
 def test_parameter_inference():
     knl = lp.make_kernel("{[i]: 0 <= i < n and i mod 2 = 0}", "")
-    assert knl.all_params() == set(["n"])
+    assert knl.root_kernel.all_params() == set(["n"])
 
 
 def test_execution_backend_can_cache_dtypes(ctx_factory):
@@ -2666,7 +2644,7 @@ def test_execution_backend_can_cache_dtypes(ctx_factory):
 
 
 def test_wildcard_dep_matching():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i]: 0 <= i < 10}",
             """
             <>a = 0 {id=insn1}
@@ -2679,11 +2657,15 @@ def test_wildcard_dep_matching():
 
     all_insns = set("insn%d" % i for i in range(1, 6))
 
-    assert knl.id_to_insn["insn1"].depends_on == set()
-    assert knl.id_to_insn["insn2"].depends_on == all_insns - set(["insn2"])
-    assert knl.id_to_insn["insn3"].depends_on == all_insns - set(["insn3"])
-    assert knl.id_to_insn["insn4"].depends_on == set(["insn1", "insn2"])
-    assert knl.id_to_insn["insn5"].depends_on == all_insns - set(["insn1", "insn5"])
+    assert prog.root_kernel.id_to_insn["insn1"].depends_on == set()
+    assert (prog.root_kernel.id_to_insn["insn2"].depends_on == all_insns -
+            set(["insn2"]))
+    assert (prog.root_kernel.id_to_insn["insn3"].depends_on == all_insns -
+            set(["insn3"]))
+    assert (prog.root_kernel.id_to_insn["insn4"].depends_on == set(["insn1",
+        "insn2"]))
+    assert (prog.root_kernel.id_to_insn["insn5"].depends_on == all_insns -
+            set(["insn1", "insn5"]))
 
 
 def test_preamble_with_separate_temporaries(ctx_factory):
@@ -2777,7 +2759,7 @@ def test_relaxed_stride_checks(ctx_factory):
 
 
 def test_add_prefetch_works_in_lhs_index():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{ [n,k,l,k1,l1,k2,l2]: "
             "start<=n<end and 0<=k,k1,k2<3 and 0<=l,l1,l2<2 }",
             """
@@ -2793,10 +2775,10 @@ def test_add_prefetch_works_in_lhs_index():
                 "..."
             ])
 
-    knl = lp.add_prefetch(knl, "a1_map", "k", default_tag="l.auto")
+    prog = lp.add_prefetch(prog, "a1_map", "k", default_tag="l.auto")
 
     from loopy.symbolic import get_dependencies
-    for insn in knl.instructions:
+    for insn in prog.root_kernel.instructions:
         assert "a1_map" not in get_dependencies(insn.assignees)
 
 
@@ -2808,11 +2790,9 @@ def test_check_for_variable_access_ordering():
             a[i+1] = 13
             """)
 
-    knl = lp.preprocess_kernel(knl)
-
     from loopy.diagnostic import VariableAccessNotOrdered
     with pytest.raises(VariableAccessNotOrdered):
-        lp.get_one_scheduled_kernel(knl)
+        lp.generate_code_v2(knl)
 
 
 def test_check_for_variable_access_ordering_with_aliasing():
@@ -2827,11 +2807,9 @@ def test_check_for_variable_access_ordering_with_aliasing():
                 lp.TemporaryVariable("b", shape="n+1", base_storage="tmp"),
                 ])
 
-    knl = lp.preprocess_kernel(knl)
-
     from loopy.diagnostic import VariableAccessNotOrdered
     with pytest.raises(VariableAccessNotOrdered):
-        lp.get_one_scheduled_kernel(knl)
+        lp.generate_code_v2(knl)
 
 
 @pytest.mark.parametrize(("second_index", "expect_barrier"),
@@ -2840,7 +2818,7 @@ def test_check_for_variable_access_ordering_with_aliasing():
             ("2*i+1", False),
             ])
 def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i]: 0<=i<128}",
             """
             a[2*i] = 12  {id=first}
@@ -2851,10 +2829,11 @@ def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
                     scope=lp.AddressSpace.LOCAL),
                 ])
 
-    knl = lp.tag_inames(knl, "i:l.0")
+    prog = lp.tag_inames(prog, "i:l.0")
+    prog = lp.preprocess_kernel(prog)
 
-    knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(prog.root_kernel,
+            prog.program_callables_info)
 
     assert barrier_between(knl, "first", "second") == expect_barrier
 
@@ -2905,7 +2884,7 @@ def test_dep_cycle_printing_and_error():
 
     from loopy.diagnostic import DependencyCycleFound
     with pytest.raises(DependencyCycleFound):
-        print(lp.generate_code(knl)[0])
+        print(lp.generate_code(knl).device_code())
 
 
 if __name__ == "__main__":

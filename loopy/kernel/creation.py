@@ -24,16 +24,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 import numpy as np
 
 from pymbolic.mapper import CSECachingMapperMixin
+from pymbolic.primitives import Slice, Variable, Subscript
 from loopy.tools import intern_frozenset_of_ids
-from loopy.symbolic import IdentityMapper, WalkMapper
+from loopy.symbolic import (
+        IdentityMapper, WalkMapper, SubArrayRef)
 from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
-        SubstitutionRule)
+        SubstitutionRule, AddressSpace)
+from loopy.kernel.instruction import (CInstruction, _DataObliviousInstruction,
+        CallInstruction)
 from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
 from islpy import dim_type
@@ -504,9 +507,11 @@ def parse_insn(groups, insn_options):
             assignee_names.append(inner_lhs_i.name)
         elif isinstance(inner_lhs_i, (Subscript, LinearSubscript)):
             assignee_names.append(inner_lhs_i.aggregate.name)
+        elif isinstance(inner_lhs_i, SubArrayRef):
+            assignee_names.append(inner_lhs_i.subscript.aggregate.name)
         else:
             raise LoopyError("left hand side of assignment '%s' must "
-                    "be variable or subscript" % (lhs_i,))
+                    "be variable, subscript or a SubArrayRef" % (lhs_i,))
 
         new_lhs.append(lhs_i)
 
@@ -1139,7 +1144,7 @@ class ArgumentGuesser:
     def make_new_arg(self, arg_name):
         arg_name = arg_name.strip()
 
-        from loopy.kernel.data import ValueArg, ArrayArg, AddressSpace
+        from loopy.kernel.data import ValueArg, ArrayArg
         import loopy as lp
 
         if arg_name in self.all_params:
@@ -1664,7 +1669,7 @@ def _is_wildcard(s):
 
 
 def _resolve_dependencies(what, knl, insn, deps):
-    from loopy import find_instructions
+    from loopy.transform.instruction import find_instructions_in_single_kernel
     from loopy.match import MatchExpressionBase
 
     new_deps = []
@@ -1673,7 +1678,7 @@ def _resolve_dependencies(what, knl, insn, deps):
         found_any = False
 
         if isinstance(dep, MatchExpressionBase):
-            for new_dep in find_instructions(knl, dep):
+            for new_dep in find_instructions_in_single_kernel(knl, dep):
                 if new_dep.id != insn.id:
                     new_deps.append(new_dep.id)
                     found_any = True
@@ -1954,6 +1959,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     target = kwargs.pop("target", None)
     seq_dependencies = kwargs.pop("seq_dependencies", False)
     fixed_parameters = kwargs.pop("fixed_parameters", {})
+    make_program = kwargs.pop("make_program", True)
 
     if defines:
         from warnings import warn
@@ -2165,15 +2171,24 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_for_duplicate_names(knl)
     check_written_variable_names(knl)
 
+    from loopy.kernel.tools import infer_arg_is_output_only
+    knl = infer_arg_is_output_only(knl)
+
     from loopy.preprocess import prepare_for_caching
     knl = prepare_for_caching(knl)
 
     creation_plog.done()
 
-    from loopy.kernel.tools import infer_arg_is_output_only
-    knl = infer_arg_is_output_only(knl)
+    if make_program:
+        from loopy.program import make_program_from_kernel
+        return make_program_from_kernel(knl)
+    else:
+        return knl
 
-    return knl
+
+def make_kernel_function(*args, **kwargs):
+    kwargs['make_program'] = False
+    return make_kernel(*args, **kwargs)
 
 # }}}
 

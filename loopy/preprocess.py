@@ -27,7 +27,6 @@ import six
 from loopy.diagnostic import (
         LoopyError, WriteRaceConditionWarning, warn_with_kernel,
         LoopyAdvisory)
-
 import islpy as isl
 
 from pytools.persistent_dict import WriteOncePersistentDict
@@ -37,13 +36,19 @@ from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment, filter_iname_tags_by_type
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
+from loopy.symbolic import RuleAwareIdentityMapper
 
+from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
+        CallInstruction,  _DataObliviousInstruction)
+from loopy.program import Program, iterate_over_kernels_if_given_program
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 import logging
 logger = logging.getLogger(__name__)
 
 
 # {{{ prepare for caching
 
+@iterate_over_kernels_if_given_program
 def prepare_for_caching(kernel):
     import loopy as lp
     new_args = []
@@ -885,9 +890,9 @@ def _insert_subdomain_into_domain_tree(kernel, domains, subdomain):
 # }}}
 
 
-def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
-                      automagic_scans_ok=False, force_scan=False,
-                      force_outer_iname_for_scan=None):
+def realize_reduction_for_single_kernel(kernel, program_callables_info,
+        insn_id_filter=None, unknown_types_ok=True, automagic_scans_ok=False,
+        force_scan=False, force_outer_iname_for_scan=None):
     """Rewrites reductions into their imperative form. With *insn_id_filter*
     specified, operate only on the instruction with an instruction id matching
     *insn_id_filter*.
@@ -1007,7 +1012,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
     # {{{ sequential
 
-    def map_reduction_seq(expr, rec, nresults, arg_dtypes,
+    def map_reduction_seq(expr, rec, program_callables_info, nresults, arg_dtypes,
             reduction_dtypes):
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
@@ -1125,7 +1130,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 v[iname].lt_set(v[0] + ubound)).get_basic_sets()
         return bs
 
-    def map_reduction_local(expr, rec, nresults, arg_dtypes,
+    def map_reduction_local(expr, rec, program_callables_info, nresults, arg_dtypes,
             reduction_dtypes):
         red_iname, = expr.inames
 
@@ -1365,7 +1370,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
     # {{{ sequential scan
 
-    def map_scan_seq(expr, rec, nresults, arg_dtypes,
+    def map_scan_seq(expr, rec, program_callables_info, nresults, arg_dtypes,
             reduction_dtypes, sweep_iname, scan_iname, sweep_min_value,
             scan_min_value, stride):
         outer_insn_inames = temp_kernel.insn_inames(insn)
@@ -1454,17 +1459,17 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
     # {{{ local-parallel scan
 
-    def map_scan_local(expr, rec, nresults, arg_dtypes,
-            reduction_dtypes, sweep_iname, scan_iname,
-            sweep_min_value, scan_min_value, stride):
+    def map_scan_local(expr, rec, program_callables_info, nresults, arg_dtypes,
+            reduction_dtypes, sweep_iname, scan_iname, sweep_min_value,
+            scan_min_value, stride):
 
         scan_size = _get_int_iname_size(sweep_iname)
 
         assert scan_size > 0
 
         if scan_size == 1:
-            return map_reduction_seq(
-                    expr, rec, nresults, arg_dtypes, reduction_dtypes)
+            return map_reduction_seq(expr, rec, program_callables_info,
+                    nresults, arg_dtypes, reduction_dtypes)
 
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
@@ -1663,15 +1668,15 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
     # {{{ seq/par dispatch
 
-    def map_reduction(expr, rec, nresults=1):
+    def map_reduction(expr, rec, program_callables_info, nresults=1):
         # Only expand one level of reduction at a time, going from outermost to
         # innermost. Otherwise we get the (iname + insn) dependencies wrong.
 
         from loopy.type_inference import (
                 infer_arg_and_reduction_dtypes_for_reduction_expression)
-        arg_dtypes, reduction_dtypes = (
+        arg_dtypes, reduction_dtypes, program_callables_info = (
                 infer_arg_and_reduction_dtypes_for_reduction_expression(
-                        temp_kernel, expr, unknown_types_ok))
+                    temp_kernel, expr, program_callables_info, unknown_types_ok))
 
         outer_insn_inames = temp_kernel.insn_inames(insn)
         bad_inames = frozenset(expr.inames) & outer_insn_inames
@@ -1780,15 +1785,17 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                             for tag in temp_kernel.iname_tags(sweep_iname))))
                 elif parallel:
                     return map_scan_local(
-                            expr, rec, nresults, arg_dtypes, reduction_dtypes,
+                            expr, rec, program_callables_info, nresults,
+                            arg_dtypes, reduction_dtypes,
                             sweep_iname, scan_param.scan_iname,
                             scan_param.sweep_lower_bound,
                             scan_param.scan_lower_bound,
                             scan_param.stride)
                 elif sequential:
                     return map_scan_seq(
-                            expr, rec, nresults, arg_dtypes, reduction_dtypes,
-                            sweep_iname, scan_param.scan_iname,
+                            expr, rec, program_callables_info, nresults,
+                            arg_dtypes, reduction_dtypes, sweep_iname,
+                            scan_param.scan_iname,
                             scan_param.sweep_lower_bound,
                             scan_param.scan_lower_bound,
                             scan_param.stride)
@@ -1807,12 +1814,13 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         if n_sequential:
             assert n_local_par == 0
-            return map_reduction_seq(
-                    expr, rec, nresults, arg_dtypes, reduction_dtypes)
+            return map_reduction_seq(expr, rec, program_callables_info,
+                    nresults, arg_dtypes, reduction_dtypes)
         else:
             assert n_local_par > 0
             return map_reduction_local(
-                    expr, rec, nresults, arg_dtypes, reduction_dtypes)
+                    expr, rec, program_callables_info, nresults, arg_dtypes,
+                    reduction_dtypes)
 
     # }}}
 
@@ -1845,9 +1853,13 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         # Run reduction expansion.
         from loopy.symbolic import Reduction
         if isinstance(insn.expression, Reduction) and nresults > 1:
-            new_expressions = cb_mapper(insn.expression, nresults=nresults)
+            new_expressions = cb_mapper(insn.expression,
+                    program_callables_info=program_callables_info,
+                    nresults=nresults)
         else:
-            new_expressions = (cb_mapper(insn.expression),)
+            new_expressions = (
+                    cb_mapper(insn.expression,
+                        program_callables_info=program_callables_info),)
 
         if generated_insns:
             # An expansion happened, so insert the generated stuff plus
@@ -1934,6 +1946,31 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 kernel))
 
     return kernel
+
+
+def realize_reduction(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = realize_reduction_for_single_kernel(
+                    in_knl_callable.subkernel, program.program_callables_info,
+                    *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 
@@ -2108,17 +2145,159 @@ def check_atomic_loads(kernel):
 # }}}
 
 
+# {{{ arg_descr_inference
+
+class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
+    """
+    Returns a set of instances of :class:`tuple` (expr,
+    in_kernel_callable). The mapped `in_kernel_callable` of the
+    :class:`InKernelCallable` are descriptor specialized for the given
+    arguments.
+    """
+
+    def __init__(self, rule_mapping_context, caller_kernel,
+            program_callables_info):
+        super(ArgDescrInferenceMapper, self).__init__(
+                rule_mapping_context)
+        self.caller_kernel = caller_kernel
+        self.program_callables_info = program_callables_info
+
+    def map_call(self, expr, expn_state, **kwargs):
+        from pymbolic.primitives import Call, CallWithKwargs
+        from loopy.kernel.function_interface import ValueArgDescriptor
+        from loopy.symbolic import ResolvedFunction, SubArrayRef
+
+        if not isinstance(expr.function, ResolvedFunction):
+            # ignore if the call is not to a ResolvedFunction
+            return super(ArgDescrInferenceMapper, self).map_call(expr, expn_state)
+
+        if isinstance(expr, Call):
+            kw_parameters = {}
+        else:
+            assert isinstance(expr, CallWithKwargs)
+            kw_parameters = expr.kw_parameters
+
+        # descriptors for the args and kwargs of the Call
+        arg_id_to_descr = dict((i, par.get_array_arg_descriptor(self.caller_kernel))
+                if isinstance(par, SubArrayRef) else (i, ValueArgDescriptor())
+                for i, par in tuple(enumerate(expr.parameters)) +
+                tuple(kw_parameters.items()))
+
+        assignee_id_to_descr = {}
+
+        if 'assignees' in kwargs:
+            # If supplied with assignees then this is a CallInstruction
+            assignees = kwargs['assignees']
+            assert isinstance(assignees, tuple)
+            for i, par in enumerate(assignees):
+                if isinstance(par, SubArrayRef):
+                    assignee_id_to_descr[-i-1] = (
+                            par.get_array_arg_descriptor(self.caller_kernel))
+                else:
+                    assignee_id_to_descr[-i-1] = ValueArgDescriptor()
+
+        # gathering all the descriptors
+        combined_arg_id_to_descr = arg_id_to_descr.copy()
+        combined_arg_id_to_descr.update(assignee_id_to_descr)
+
+        # specializing the function according to the parameter description
+        in_knl_callable = self.program_callables_info[expr.function.name]
+        new_in_knl_callable, self.program_callables_info = (
+                in_knl_callable.with_descrs(
+                    combined_arg_id_to_descr, self.program_callables_info))
+        self.program_callables_info, new_func_id = (
+                self.program_callables_info.with_callable(
+                    expr.function.function,
+                    new_in_knl_callable))
+
+        if isinstance(expr, Call):
+            return Call(
+                    ResolvedFunction(new_func_id),
+                    tuple(self.rec(child, expn_state)
+                    for child in expr.parameters))
+        else:
+            assert isinstance(expr, CallWithKwargs)
+            return CallWithKwargs(
+                    ResolvedFunction(new_func_id),
+                    tuple(self.rec(child, expn_state)
+                        for child in expr.parameters),
+                    dict(
+                        (key, self.rec(val, expn_state))
+                        for key, val in six.iteritems(kw_parameters))
+                    )
+
+    map_call_with_kwargs = map_call
+
+    def map_kernel(self, kernel):
+
+        new_insns = []
+
+        for insn in kernel.instructions:
+            if isinstance(insn, CallInstruction):
+                # In call instructions the assignees play an important in
+                # determining the arg_id_to_descr
+                new_insns.append(insn.with_transformed_expressions(
+                    self, kernel, insn, assignees=insn.assignees))
+            elif isinstance(insn, MultiAssignmentBase):
+                new_insns.append(insn.with_transformed_expressions(
+                    self, kernel, insn))
+            elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
+                new_insns.append(insn)
+            else:
+                raise NotImplementedError("arg_descr_inference for %s instruction" %
+                        type(insn))
+
+        return kernel.copy(instructions=new_insns)
+
+
+def traverse_to_infer_arg_descr(kernel, program_callables_info):
+    """
+    Returns a copy of *kernel* with the argument shapes and strides matching for
+    scoped functions in the *kernel*. Refer
+    :meth:`loopy.kernel.function_interface.InKernelCallable.with_descrs`.
+    """
+    # FIXME: update this docs, once the design is finalized
+
+    from loopy.symbolic import SubstitutionRuleMappingContext
+
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
+
+    arg_descr_inf_mapper = ArgDescrInferenceMapper(rule_mapping_context,
+            kernel, program_callables_info)
+
+    descr_inferred_kernel = rule_mapping_context.finish_kernel(
+            arg_descr_inf_mapper.map_kernel(kernel))
+
+    return descr_inferred_kernel, arg_descr_inf_mapper.program_callables_info
+
+
+def infer_arg_descr(program):
+    root_kernel_callable = program.program_callables_info[program.name]
+    program_callables_info = (
+            program.program_callables_info.with_edit_callables_mode())
+    root_kernel = program.root_kernel
+
+    new_root_kernel, program_callables_info = traverse_to_infer_arg_descr(
+            root_kernel, program_callables_info)
+    new_root_kernel_callable = root_kernel_callable.copy(
+            subkernel=new_root_kernel)
+    program_callables_info, _ = program_callables_info.with_callable(program.name,
+            new_root_kernel_callable)
+
+    program_callables_info = program_callables_info.with_exit_edit_callables_mode()
+
+    return program.copy(program_callables_info=program_callables_info)
+
+# }}}
+
+
 preprocess_cache = WriteOncePersistentDict(
         "loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
 
-def preprocess_kernel(kernel, device=None):
-    if device is not None:
-        from warnings import warn
-        warn("passing 'device' to preprocess_kernel() is deprecated",
-                DeprecationWarning, stacklevel=2)
-
+def preprocess_single_kernel(kernel, program_callables_info, device=None):
     from loopy.kernel import KernelState
     if kernel.state >= KernelState.PREPROCESSED:
         return kernel
@@ -2161,8 +2340,6 @@ def preprocess_kernel(kernel, device=None):
     # Type inference and reduction iname uniqueness don't handle substitutions.
     # Get them out of the way.
 
-    kernel = infer_unknown_types(kernel, expect_completion=False)
-
     check_for_writes_to_predicates(kernel)
     check_reduction_iname_uniqueness(kernel)
 
@@ -2177,8 +2354,8 @@ def preprocess_kernel(kernel, device=None):
     # - realize_reduction must happen after default dependencies are added
     #   because it manipulates the depends_on field, which could prevent
     #   defaults from being applied.
-
-    kernel = realize_reduction(kernel, unknown_types_ok=False)
+    kernel = realize_reduction_for_single_kernel(kernel,
+            program_callables_info, unknown_types_ok=False)
 
     # Ordering restriction:
     # add_axes_to_temporaries_for_ilp because reduction accumulators
@@ -2221,5 +2398,82 @@ def preprocess_kernel(kernel, device=None):
         preprocess_cache.store_if_not_present(input_kernel, kernel)
 
     return kernel
+
+
+def preprocess_kernel(kernel, device=None):
+    # FIXME: error message?
+    return preprocess_program(kernel, device)
+
+
+def preprocess_program(program, device=None):
+
+    if device is not None:
+        from warnings import warn
+        warn("passing 'device' to preprocess_kernel() is deprecated",
+                DeprecationWarning, stacklevel=2)
+
+    program = infer_unknown_types(program, expect_completion=False)
+
+    # {{{ preprocess the root kernel
+
+    # Callable editing restrictions:
+    #
+    # - cannot edit program_callables_info in :meth:`preprocess_single_kernel`
+    #   as we are iterating over it.
+    #
+    # Refer: https://docs.python.org/3/library/stdtypes.html#dictionary-view-objects
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = preprocess_single_kernel(
+                    in_knl_callable.subkernel, program.program_callables_info,
+                    device)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    program = program.copy(program_callables_info=new_program_callables_info)
+
+    # }}}
+
+    # infer arg descrs of the callables
+    program = infer_arg_descr(program)
+
+    # {{{ hw axes inference
+
+    # FIXME: think of wrapping this in a function?
+
+    local_size, global_size = program.get_grid_size_upper_bounds()
+
+    resolved_function_with_hw_axes_sizes_set = {}
+
+    for func_id, in_knl_callable in (
+            program.program_callables_info.items()):
+        if func_id == program.name:
+            resolved_function_with_hw_axes_sizes_set[func_id] = (
+                    in_knl_callable)
+        else:
+            resolved_function_with_hw_axes_sizes_set[func_id] = (
+                    in_knl_callable.with_hw_axes_sizes(local_size, global_size))
+
+    new_program_callables_info = (
+            program.program_callables_info.copy(
+                resolved_functions=resolved_function_with_hw_axes_sizes_set))
+
+    program = program.copy(program_callables_info=new_program_callables_info)
+
+    # }}}
+
+    return program
+
 
 # vim: foldmethod=marker

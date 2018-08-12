@@ -76,6 +76,7 @@ def test_c_target_strides():
 
     # test with C-order
     knl = __get_kernel('C')
+    lp.generate_code_v2(knl)
     a_np = np.reshape(np.arange(16 * 16, dtype=np.float32), (16, -1),
                       order='C')
 

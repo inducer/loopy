@@ -36,6 +36,7 @@ from islpy import dim_type
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from pytools import memoize_on_first_arg
 from loopy.tools import natsorted
+from loopy.program import Program
 
 import logging
 logger = logging.getLogger(__name__)
@@ -43,19 +44,25 @@ logger = logging.getLogger(__name__)
 
 # {{{ add and infer argument dtypes
 
-def add_dtypes(knl, dtype_dict):
+def add_dtypes(program, dtype_dict):
     """Specify remaining unspecified argument/temporary variable types.
 
     :arg dtype_dict: a mapping from variable names to :class:`numpy.dtype`
         instances
     """
-    dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(knl, dtype_dict)
+    root_kernel = program.root_kernel
+    dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(
+            root_kernel, dtype_dict)
 
     if dtype_dict_remainder:
         raise RuntimeError("unused argument dtypes: %s"
                 % ", ".join(dtype_dict_remainder))
+    root_kernel
 
-    return knl.copy(args=new_args, temporary_variables=new_temp_vars)
+    root_kernel_with_added_dtypes = (
+            root_kernel.copy(args=new_args, temporary_variables=new_temp_vars))
+
+    return program.with_root_kernel(root_kernel_with_added_dtypes)
 
 
 def _add_dtypes_overdetermined(knl, dtype_dict):
@@ -107,7 +114,8 @@ def get_arguments_with_incomplete_dtype(knl):
             if arg.dtype is None]
 
 
-def add_and_infer_dtypes(knl, dtype_dict, expect_completion=False):
+def add_and_infer_dtypes(prog, dtype_dict, expect_completion=False):
+    assert isinstance(prog, Program)
     processed_dtype_dict = {}
 
     for k, v in six.iteritems(dtype_dict):
@@ -116,10 +124,10 @@ def add_and_infer_dtypes(knl, dtype_dict, expect_completion=False):
             if subkey:
                 processed_dtype_dict[subkey] = v
 
-    knl = add_dtypes(knl, processed_dtype_dict)
+    prog = add_dtypes(prog, processed_dtype_dict)
 
     from loopy.type_inference import infer_unknown_types
-    return infer_unknown_types(knl, expect_completion=expect_completion)
+    return infer_unknown_types(prog, expect_completion=expect_completion)
 
 
 def _add_and_infer_dtypes_overdetermined(knl, dtype_dict):
@@ -747,7 +755,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 # }}}
 
 
-def assign_automatic_axes(kernel, axis=0, local_size=None):
+def assign_automatic_axes(kernel, program_callables_info, axis=0, local_size=None):
     logger.debug("%s: assign automatic axes" % kernel.name)
     # TODO: do the tag removal rigorously, might be easier after switching
     # to set() from tuple()
@@ -761,7 +769,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 
     if local_size is None:
         _, local_size = kernel.get_grid_size_upper_bounds_as_exprs(
-                ignore_auto=True)
+                program_callables_info, ignore_auto=True)
 
     # {{{ axis assignment helper function
 
@@ -789,6 +797,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 
             return assign_automatic_axes(
                     kernel.copy(iname_to_tags=new_iname_to_tags),
+                    program_callables_info,
                     axis=recursion_axis)
 
         if axis is None:
@@ -828,7 +837,8 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         else:
             new_tag = LocalIndexTag(axis)
             if desired_length > local_size[axis]:
-                from loopy import split_iname, untag_inames
+                from loopy import untag_inames
+                from loopy.transform.iname import split_iname
 
                 # Don't be tempted to switch the outer tag to unroll--this may
                 # generate tons of code on some examples.
@@ -839,6 +849,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
                             iname, inner_length=local_size[axis],
                             outer_tag=None, inner_tag=new_tag,
                             do_tagged_check=False),
+                        program_callables_info=program_callables_info,
                         axis=recursion_axis, local_size=local_size)
 
         if not kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase):
@@ -860,7 +871,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             del new_iname_to_tags[iname]
 
         return assign_automatic_axes(kernel.copy(iname_to_tags=new_iname_to_tags),
-                axis=recursion_axis, local_size=local_size)
+                program_callables_info, axis=recursion_axis, local_size=local_size)
 
     # }}}
 
@@ -928,7 +939,8 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
     if axis >= len(local_size):
         return kernel
     else:
-        return assign_automatic_axes(kernel, axis=axis+1,
+        return assign_automatic_axes(kernel,
+                program_callables_info=program_callables_info, axis=axis+1,
                 local_size=local_size)
 
 # }}}
@@ -1866,6 +1878,7 @@ def infer_arg_is_output_only(kernel):
     """
     from loopy.kernel.data import ArrayArg, ValueArg, ConstantArg, ImageArg
     new_args = []
+
     for arg in kernel.args:
         if isinstance(arg, (ArrayArg, ImageArg, ValueArg)):
             if arg.is_output_only is not None:

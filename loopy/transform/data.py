@@ -30,6 +30,9 @@ from islpy import dim_type
 from loopy.kernel.data import ImageArg
 
 from pytools import MovedFunctionDeprecationWrapper
+from loopy.program import Program, iterate_over_kernels_if_given_program
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 
 # {{{ convenience: add_prefetch
@@ -140,7 +143,8 @@ class _not_provided:  # noqa: N801
     pass
 
 
-def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
+def add_prefetch_for_single_kernel(kernel, program_callables_info, var_name,
+        sweep_inames=[], dim_arg_names=None,
 
         # "None" is a valid value here, distinct from the default.
         default_tag=_not_provided,
@@ -239,6 +243,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
     This function internally uses :func:`extract_subst` and :func:`precompute`.
     """
+    assert isinstance(kernel, LoopKernel)
 
     # {{{ fish indexing out of var_name and into footprint_subscripts
 
@@ -328,9 +333,9 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     # precompute module, but precompute acutally uses that to adjust its
     # warning message.
 
-    from loopy.transform.precompute import precompute
-    new_kernel = precompute(kernel, subst_use, sweep_inames,
-            precompute_inames=dim_arg_names,
+    from loopy.transform.precompute import precompute_for_single_kernel
+    new_kernel = precompute_for_single_kernel(kernel, program_callables_info,
+            subst_use, sweep_inames, precompute_inames=dim_arg_names,
             default_tag=default_tag, dtype=arg.dtype,
             fetch_bounding_box=fetch_bounding_box,
             temporary_name=temporary_name,
@@ -363,6 +368,31 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     else:
         return new_kernel
 
+
+def add_prefetch(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = add_prefetch_for_single_kernel(
+                    in_knl_callable.subkernel, program.program_callables_info,
+                    *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
+
 # }}}
 
 
@@ -385,6 +415,7 @@ def change_arg_to_image(knl, name):
 
 # {{{ tag array axes
 
+@iterate_over_kernels_if_given_program
 def tag_array_axes(knl, ary_names, dim_tags):
     """
     .. versionchanged:: 2016.2
@@ -414,13 +445,15 @@ def tag_array_axes(knl, ary_names, dim_tags):
     return knl
 
 
-tag_data_axes = MovedFunctionDeprecationWrapper(tag_array_axes)
+tag_data_axes = (
+        MovedFunctionDeprecationWrapper(tag_array_axes))
 
 # }}}
 
 
 # {{{ set_array_axis_names
 
+@iterate_over_kernels_if_given_program
 def set_array_axis_names(kernel, ary_names, dim_names):
     """
     .. versionchanged:: 2016.2
@@ -445,13 +478,15 @@ def set_array_axis_names(kernel, ary_names, dim_names):
     return kernel
 
 
-set_array_dim_names = MovedFunctionDeprecationWrapper(set_array_axis_names)
+set_array_dim_names = (MovedFunctionDeprecationWrapper(
+    set_array_axis_names))
 
 # }}}
 
 
 # {{{ remove_unused_arguments
 
+@iterate_over_kernels_if_given_program
 def remove_unused_arguments(knl):
     new_args = []
 
@@ -493,6 +528,7 @@ def remove_unused_arguments(knl):
 
 # {{{ alias_temporaries
 
+@iterate_over_kernels_if_given_program
 def alias_temporaries(knl, names, base_name_prefix=None,
         synchronize_for_exclusive_use=True):
     """Sets all temporaries given by *names* to be backed by a single piece of
@@ -577,11 +613,14 @@ def alias_temporaries(knl, names, base_name_prefix=None,
 
 # {{{ set argument order
 
+@iterate_over_kernels_if_given_program
 def set_argument_order(kernel, arg_names):
     """
     :arg arg_names: A list (or comma-separated string) or argument
         names. All arguments must be in this list.
     """
+    #FIXME: @inducer -- shoulld this only affect the root kernel, or should it
+    # take a within?
 
     if isinstance(arg_names, str):
         arg_names = arg_names.split(",")
@@ -610,6 +649,7 @@ def set_argument_order(kernel, arg_names):
 
 # {{{ rename argument
 
+@iterate_over_kernels_if_given_program
 def rename_argument(kernel, old_name, new_name, existing_ok=False):
     """
     .. versionadded:: 2016.2
@@ -655,6 +695,7 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 
 # {{{ set temporary scope
 
+@iterate_over_kernels_if_given_program
 def set_temporary_scope(kernel, temp_var_names, scope):
     """
     :arg temp_var_names: a container with membership checking,
@@ -696,6 +737,7 @@ def set_temporary_scope(kernel, temp_var_names, scope):
 
 # {{{ reduction_arg_to_subst_rule
 
+@iterate_over_kernels_if_given_program
 def reduction_arg_to_subst_rule(knl, inames, insn_match=None, subst_rule_name=None):
     if isinstance(inames, str):
         inames = [s.strip() for s in inames.split(",")]

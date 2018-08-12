@@ -33,6 +33,7 @@ from loopy.kernel.data import (
         MultiAssignmentBase, TemporaryVariable, AddressSpace)
 from loopy.diagnostic import warn_with_kernel, LoopyError
 from pytools import Record
+from loopy.kernel.function_interface import ScalarCallable, CallableKernel
 
 
 __doc__ = """
@@ -58,6 +59,14 @@ __doc__ = """
 .. currentmodule:: loopy
 """
 
+
+# FIXME: this is broken for the callable kernel design.
+# Qns:
+# - The variable name, what if multiple kernels use the same name?
+# - We should also add the cumulative effect on the arguments of callee kernels
+# into the caller kernel.
+# FIXME: add an error that there is only one callable kernel. disable for
+# multiple callable kernels.
 
 # {{{ GuardedPwQPolynomial
 
@@ -639,10 +648,11 @@ class MemAccess(Record):
 # {{{ counter base
 
 class CounterBase(CombineMapper):
-    def __init__(self, knl):
+    def __init__(self, knl, program_callables_info):
         self.knl = knl
+        self.program_callables_info = program_callables_info
         from loopy.type_inference import TypeInferenceMapper
-        self.type_inf = TypeInferenceMapper(knl)
+        self.type_inf = TypeInferenceMapper(knl, program_callables_info)
 
     def combine(self, values):
         return sum(values)
@@ -697,10 +707,11 @@ class CounterBase(CombineMapper):
 # {{{ ExpressionOpCounter
 
 class ExpressionOpCounter(CounterBase):
-    def __init__(self, knl):
+    def __init__(self, knl, program_callables_info):
         self.knl = knl
+        self.program_callables_info = program_callables_info
         from loopy.type_inference import TypeInferenceMapper
-        self.type_inf = TypeInferenceMapper(knl)
+        self.type_inf = TypeInferenceMapper(knl, program_callables_info)
 
     def combine(self, values):
         return sum(values)
@@ -712,9 +723,16 @@ class ExpressionOpCounter(CounterBase):
     map_variable = map_constant
 
     def map_call(self, expr):
+        from loopy.symbolic import ResolvedFunction
+        if isinstance(expr.function, ResolvedFunction):
+            function_identifier = self.program_callables_info[
+                    expr.function.name].name
+        else:
+            function_identifier = expr.function.name
+
         return ToCountMap(
                     {Op(dtype=self.type_inf(expr),
-                        name='func:'+str(expr.function),
+                        name='func:'+function_identifier,
                         count_granularity=CountGranularity.WORKITEM): 1}
                     ) + self.rec(expr.parameters)
 
@@ -1090,6 +1108,16 @@ def add_assumptions_guard(kernel, pwqpolynomial):
 
 
 def count(kernel, set, space=None):
+    from loopy.program import Program
+    if isinstance(kernel, Program):
+        if len([in_knl_callable for in_knl_callable in
+            kernel.program_callables_info.values() if isinstance(in_knl_callable,
+                CallableKernel)]) != 1:
+            raise NotImplementedError("Currently only supported for program with "
+                "only one CallableKernel.")
+
+        kernel = kernel.root_kernel
+
     try:
         if space is not None:
             set = set.align_params(space)
@@ -1188,9 +1216,10 @@ def count(kernel, set, space=None):
     return add_assumptions_guard(kernel, count)
 
 
-def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
+def get_unused_hw_axes_factor(knl, program_callables_info, insn,
+        disregard_local_axes, space=None):
     # FIXME: Multi-kernel support
-    gsize, lsize = knl.get_grid_size_upper_bounds()
+    gsize, lsize = knl.get_grid_size_upper_bounds(program_callables_info)
 
     g_used = set()
     l_used = set()
@@ -1228,7 +1257,8 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
     return add_assumptions_guard(knl, result)
 
 
-def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False):
+def count_insn_runs(knl, program_callables_info, insn, count_redundant_work,
+        disregard_local_axes=False):
 
     insn_inames = knl.insn_inames(insn)
 
@@ -1248,9 +1278,8 @@ def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False)
     c = count(knl, domain, space=space)
 
     if count_redundant_work:
-        unused_fac = get_unused_hw_axes_factor(knl, insn,
-                        disregard_local_axes=disregard_local_axes,
-                        space=space)
+        unused_fac = get_unused_hw_axes_factor(knl, program_callables_info,
+                insn, disregard_local_axes=disregard_local_axes, space=space)
         return c * unused_fac
     else:
         return c
@@ -1260,7 +1289,50 @@ def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False)
 
 # {{{ get_op_map
 
-def get_op_map(knl, numpy_types=True, count_redundant_work=False,
+
+def get_op_map_for_single_kernel(knl, program_callables_info,
+        numpy_types=True, count_redundant_work=False,
+               subgroup_size=None):
+
+    if not knl.options.ignore_boostable_into:
+        raise LoopyError("Kernel '%s': Using operation counting requires the option "
+                "ignore_boostable_into to be set." % knl.name)
+
+    from loopy.kernel.instruction import (
+            CallInstruction, CInstruction, Assignment,
+            NoOpInstruction, BarrierInstruction)
+
+    op_map = ToCountMap()
+    op_counter = ExpressionOpCounter(knl,
+            program_callables_info=program_callables_info)
+    for insn in knl.instructions:
+        if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
+            ops = op_counter(insn.assignee) + op_counter(insn.expression)
+            op_map = op_map + ops*count_insn_runs(
+                    knl, program_callables_info, insn,
+                    count_redundant_work=count_redundant_work)
+        elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
+            pass
+        else:
+            raise NotImplementedError("unexpected instruction item type: '%s'"
+                    % type(insn).__name__)
+
+    if numpy_types:
+        return ToCountMap(
+                    init_dict=dict(
+                        (Op(
+                            dtype=op.dtype.numpy_dtype,
+                            name=op.name,
+                            count_granularity=op.count_granularity),
+                        ct)
+                        for op, ct in six.iteritems(op_map.count_map)),
+                    val_type=op_map.val_type
+                    )
+    else:
+        return op_map
+
+
+def get_op_map(program, numpy_types=True, count_redundant_work=False,
                subgroup_size=None):
 
     """Count the number of operations in a loopy kernel.
@@ -1318,44 +1390,31 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
 
     """
 
-    if not knl.options.ignore_boostable_into:
-        raise LoopyError("Kernel '%s': Using operation counting requires the option "
-                "ignore_boostable_into to be set." % knl.name)
-
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    from loopy.kernel.instruction import (
-            CallInstruction, CInstruction, Assignment,
-            NoOpInstruction, BarrierInstruction)
-    knl = infer_unknown_types(knl, expect_completion=True)
-    knl = preprocess_kernel(knl)
+    from loopy.preprocess import preprocess_program, infer_unknown_types
+    program = infer_unknown_types(program, expect_completion=True)
+    program = preprocess_program(program)
 
     op_map = ToCountMap()
-    op_counter = ExpressionOpCounter(knl)
-    for insn in knl.instructions:
-        if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
-            ops = op_counter(insn.assignee) + op_counter(insn.expression)
-            op_map = op_map + ops*count_insn_runs(
-                    knl, insn,
-                    count_redundant_work=count_redundant_work)
-        elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
+
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            num_times_called = (
+                    program.program_callables_info.num_times_callables_called[
+                        func_id])
+            knl = in_knl_callable.subkernel
+            knl_op_map = get_op_map_for_single_kernel(knl,
+                        program.program_callables_info, numpy_types,
+                        count_redundant_work, subgroup_size)
+
+            for i in range(num_times_called):
+                op_map += knl_op_map
+        elif isinstance(in_knl_callable, ScalarCallable):
             pass
         else:
-            raise NotImplementedError("unexpected instruction item type: '%s'"
-                    % type(insn).__name__)
+            raise NotImplementedError("Unknown callabke types %s." % (
+                type(in_knl_callable).__name__))
 
-    if numpy_types:
-        return ToCountMap(
-                    init_dict=dict(
-                        (Op(
-                            dtype=op.dtype.numpy_dtype,
-                            name=op.name,
-                            count_granularity=op.count_granularity),
-                        ct)
-                        for op, ct in six.iteritems(op_map.count_map)),
-                    val_type=op_map.val_type
-                    )
-    else:
-        return op_map
+    return op_map
 
 # }}}
 
@@ -1376,7 +1435,163 @@ def _find_subgroup_size_for_knl(knl):
 
 # {{{ get_mem_access_map
 
-def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
+
+def get_access_map_for_single_kernel(knl, program_callables_info,
+        numpy_types=True, count_redundant_work=False, subgroup_size=None):
+
+    if not knl.options.ignore_boostable_into:
+        raise LoopyError("Kernel '%s': Using operation counting requires the option "
+                "ignore_boostable_into to be set." % knl.name)
+
+    if not isinstance(subgroup_size, int):
+        # try to find subgroup_size
+        subgroup_size_guess = _find_subgroup_size_for_knl(knl)
+
+        if subgroup_size is None:
+            if subgroup_size_guess is None:
+                # 'guess' was not passed and either no target device found
+                # or get_simd_group_size returned None
+                raise ValueError("No sub-group size passed, no target device found. "
+                                 "Either (1) pass integer value for subgroup_size, "
+                                 "(2) ensure that kernel.target is PyOpenClTarget "
+                                 "and kernel.target.device is set, or (3) pass "
+                                 "subgroup_size='guess' and hope for the best.")
+            else:
+                subgroup_size = subgroup_size_guess
+
+        elif subgroup_size == 'guess':
+            if subgroup_size_guess is None:
+                # unable to get subgroup_size from device, so guess
+                subgroup_size = 32
+                warn_with_kernel(knl, "get_mem_access_map_guessing_subgroup_size",
+                                 "get_mem_access_map: 'guess' sub-group size "
+                                 "passed, no target device found, wildly guessing "
+                                 "that sub-group size is %d." % (subgroup_size))
+            else:
+                subgroup_size = subgroup_size_guess
+        else:
+            raise ValueError("Invalid value for subgroup_size: %s. subgroup_size "
+                             "must be integer, 'guess', or, if you're feeling "
+                             "lucky, None." % (subgroup_size))
+
+    class CacheHolder(object):
+        pass
+
+    cache_holder = CacheHolder()
+    from pytools import memoize_in
+
+    @memoize_in(cache_holder, "insn_count")
+    def get_insn_count(knl, insn_id, count_granularity=CountGranularity.WORKITEM):
+        insn = knl.id_to_insn[insn_id]
+
+        if count_granularity is None:
+            warn_with_kernel(knl, "get_insn_count_assumes_granularity",
+                             "get_insn_count: No count granularity passed for "
+                             "MemAccess, assuming %s granularity."
+                             % (CountGranularity.WORKITEM))
+            count_granularity == CountGranularity.WORKITEM
+
+        if count_granularity == CountGranularity.WORKITEM:
+            return count_insn_runs(
+                knl, program_callables_info, insn,
+                count_redundant_work=count_redundant_work,
+                disregard_local_axes=False)
+
+        ct_disregard_local = count_insn_runs(
+                knl, program_callables_info, insn, disregard_local_axes=True,
+                count_redundant_work=count_redundant_work)
+
+        if count_granularity == CountGranularity.WORKGROUP:
+            return ct_disregard_local
+        elif count_granularity == CountGranularity.SUBGROUP:
+            # get the group size
+            from loopy.symbolic import aff_to_expr
+            _, local_size = knl.get_grid_size_upper_bounds(program_callables_info)
+            workgroup_size = 1
+            if local_size:
+                for size in local_size:
+                    s = aff_to_expr(size)
+                    if not isinstance(s, int):
+                        raise LoopyError("Cannot count insn with %s granularity, "
+                                         "work-group size is not integer: %s"
+                                         % (CountGranularity.SUBGROUP, local_size))
+                    workgroup_size *= s
+
+            warn_with_kernel(knl, "insn_count_subgroups_upper_bound",
+                    "get_insn_count: when counting instruction %s with "
+                    "count_granularity=%s, using upper bound for work-group size "
+                    "(%d work-items) to compute sub-groups per work-group. When "
+                    "multiple device programs present, actual sub-group count may be"
+                    "lower." % (insn_id, CountGranularity.SUBGROUP, workgroup_size))
+
+            from pytools import div_ceil
+            return ct_disregard_local*div_ceil(workgroup_size, subgroup_size)
+        else:
+            # this should not happen since this is enforced in MemAccess
+            raise ValueError("get_insn_count: count_granularity '%s' is"
+                    "not allowed. count_granularity options: %s"
+                    % (count_granularity, CountGranularity.ALL+[None]))
+
+    access_map = ToCountMap()
+    access_counter_g = GlobalMemAccessCounter(knl, program_callables_info)
+    access_counter_l = LocalMemAccessCounter(knl, program_callables_info)
+
+    from loopy.kernel.instruction import (
+            CallInstruction, CInstruction, Assignment,
+            NoOpInstruction, BarrierInstruction)
+
+    for insn in knl.instructions:
+        if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
+            access_expr = (
+                    access_counter_g(insn.expression)
+                    + access_counter_l(insn.expression)
+                    ).with_set_attributes(direction="load")
+
+            access_assignee = (
+                    access_counter_g(insn.assignee)
+                    + access_counter_l(insn.assignee)
+                    ).with_set_attributes(direction="store")
+
+            for key, val in six.iteritems(access_expr.count_map):
+
+                access_map = (
+                        access_map
+                        + ToCountMap({key: val})
+                        * get_insn_count(knl, insn.id, key.count_granularity))
+
+            for key, val in six.iteritems(access_assignee.count_map):
+
+                access_map = (
+                        access_map
+                        + ToCountMap({key: val})
+                        * get_insn_count(knl, insn.id, key.count_granularity))
+
+        elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
+            pass
+        else:
+            raise NotImplementedError("unexpected instruction item type: '%s'"
+                    % type(insn).__name__)
+
+    if numpy_types:
+        return ToCountMap(
+                    init_dict=dict(
+                        (MemAccess(
+                            mtype=mem_access.mtype,
+                            dtype=mem_access.dtype.numpy_dtype,
+                            lid_strides=mem_access.lid_strides,
+                            gid_strides=mem_access.gid_strides,
+                            direction=mem_access.direction,
+                            variable=mem_access.variable,
+                            count_granularity=mem_access.count_granularity),
+                        ct)
+                        for mem_access, ct in six.iteritems(access_map.count_map)),
+                    val_type=access_map.val_type
+                    )
+    else:
+        return access_map
+
+
+def get_mem_access_map(program, numpy_types=True, count_redundant_work=False,
                        subgroup_size=None):
     """Count the number of memory accesses in a loopy kernel.
 
@@ -1462,167 +1677,42 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         # (now use these counts to, e.g., predict performance)
 
     """
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
+    from loopy.preprocess import preprocess_program, infer_unknown_types
 
-    if not knl.options.ignore_boostable_into:
-        raise LoopyError("Kernel '%s': Using operation counting requires the option "
-                "ignore_boostable_into to be set." % knl.name)
-
-    if not isinstance(subgroup_size, int):
-        # try to find subgroup_size
-        subgroup_size_guess = _find_subgroup_size_for_knl(knl)
-
-        if subgroup_size is None:
-            if subgroup_size_guess is None:
-                # 'guess' was not passed and either no target device found
-                # or get_simd_group_size returned None
-                raise ValueError("No sub-group size passed, no target device found. "
-                                 "Either (1) pass integer value for subgroup_size, "
-                                 "(2) ensure that kernel.target is PyOpenClTarget "
-                                 "and kernel.target.device is set, or (3) pass "
-                                 "subgroup_size='guess' and hope for the best.")
-            else:
-                subgroup_size = subgroup_size_guess
-
-        elif subgroup_size == 'guess':
-            if subgroup_size_guess is None:
-                # unable to get subgroup_size from device, so guess
-                subgroup_size = 32
-                warn_with_kernel(knl, "get_mem_access_map_guessing_subgroup_size",
-                                 "get_mem_access_map: 'guess' sub-group size "
-                                 "passed, no target device found, wildly guessing "
-                                 "that sub-group size is %d." % (subgroup_size))
-            else:
-                subgroup_size = subgroup_size_guess
-        else:
-            raise ValueError("Invalid value for subgroup_size: %s. subgroup_size "
-                             "must be integer, 'guess', or, if you're feeling "
-                             "lucky, None." % (subgroup_size))
-
-    class CacheHolder(object):
-        pass
-
-    cache_holder = CacheHolder()
-    from pytools import memoize_in
-
-    @memoize_in(cache_holder, "insn_count")
-    def get_insn_count(knl, insn_id, count_granularity=CountGranularity.WORKITEM):
-        insn = knl.id_to_insn[insn_id]
-
-        if count_granularity is None:
-            warn_with_kernel(knl, "get_insn_count_assumes_granularity",
-                             "get_insn_count: No count granularity passed for "
-                             "MemAccess, assuming %s granularity."
-                             % (CountGranularity.WORKITEM))
-            count_granularity == CountGranularity.WORKITEM
-
-        if count_granularity == CountGranularity.WORKITEM:
-            return count_insn_runs(
-                knl, insn, count_redundant_work=count_redundant_work,
-                disregard_local_axes=False)
-
-        ct_disregard_local = count_insn_runs(
-                knl, insn, disregard_local_axes=True,
-                count_redundant_work=count_redundant_work)
-
-        if count_granularity == CountGranularity.WORKGROUP:
-            return ct_disregard_local
-        elif count_granularity == CountGranularity.SUBGROUP:
-            # get the group size
-            from loopy.symbolic import aff_to_expr
-            _, local_size = knl.get_grid_size_upper_bounds()
-            workgroup_size = 1
-            if local_size:
-                for size in local_size:
-                    s = aff_to_expr(size)
-                    if not isinstance(s, int):
-                        raise LoopyError("Cannot count insn with %s granularity, "
-                                         "work-group size is not integer: %s"
-                                         % (CountGranularity.SUBGROUP, local_size))
-                    workgroup_size *= s
-
-            warn_with_kernel(knl, "insn_count_subgroups_upper_bound",
-                    "get_insn_count: when counting instruction %s with "
-                    "count_granularity=%s, using upper bound for work-group size "
-                    "(%d work-items) to compute sub-groups per work-group. When "
-                    "multiple device programs present, actual sub-group count may be"
-                    "lower." % (insn_id, CountGranularity.SUBGROUP, workgroup_size))
-
-            from pytools import div_ceil
-            return ct_disregard_local*div_ceil(workgroup_size, subgroup_size)
-        else:
-            # this should not happen since this is enforced in MemAccess
-            raise ValueError("get_insn_count: count_granularity '%s' is"
-                    "not allowed. count_granularity options: %s"
-                    % (count_granularity, CountGranularity.ALL+[None]))
-
-    knl = infer_unknown_types(knl, expect_completion=True)
-    knl = preprocess_kernel(knl)
+    program = infer_unknown_types(program, expect_completion=True)
+    program = preprocess_program(program)
 
     access_map = ToCountMap()
-    access_counter_g = GlobalMemAccessCounter(knl)
-    access_counter_l = LocalMemAccessCounter(knl)
 
-    from loopy.kernel.instruction import (
-            CallInstruction, CInstruction, Assignment,
-            NoOpInstruction, BarrierInstruction)
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            num_times_called = (
+                    program.program_callables_info.num_times_callables_called[
+                        func_id])
+            knl = in_knl_callable.subkernel
+            knl_access_map = get_access_map_for_single_kernel(knl,
+                        program.program_callables_info, numpy_types,
+                        count_redundant_work, subgroup_size)
 
-    for insn in knl.instructions:
-        if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
-            access_expr = (
-                    access_counter_g(insn.expression)
-                    + access_counter_l(insn.expression)
-                    ).with_set_attributes(direction="load")
-
-            access_assignee = (
-                    access_counter_g(insn.assignee)
-                    + access_counter_l(insn.assignee)
-                    ).with_set_attributes(direction="store")
-
-            for key, val in six.iteritems(access_expr.count_map):
-
-                access_map = (
-                        access_map
-                        + ToCountMap({key: val})
-                        * get_insn_count(knl, insn.id, key.count_granularity))
-
-            for key, val in six.iteritems(access_assignee.count_map):
-
-                access_map = (
-                        access_map
-                        + ToCountMap({key: val})
-                        * get_insn_count(knl, insn.id, key.count_granularity))
-
-        elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
+            # FIXME: didn't see any easy way to multiply
+            for i in range(num_times_called):
+                access_map += knl_access_map
+        elif isinstance(in_knl_callable, ScalarCallable):
             pass
         else:
-            raise NotImplementedError("unexpected instruction item type: '%s'"
-                    % type(insn).__name__)
+            raise NotImplementedError("Unknown callabke types %s." % (
+                type(in_knl_callable).__name__))
 
-    if numpy_types:
-        return ToCountMap(
-                    init_dict=dict(
-                        (MemAccess(
-                            mtype=mem_access.mtype,
-                            dtype=mem_access.dtype.numpy_dtype,
-                            lid_strides=mem_access.lid_strides,
-                            gid_strides=mem_access.gid_strides,
-                            direction=mem_access.direction,
-                            variable=mem_access.variable,
-                            count_granularity=mem_access.count_granularity),
-                        ct)
-                        for mem_access, ct in six.iteritems(access_map.count_map)),
-                    val_type=access_map.val_type
-                    )
-    else:
-        return access_map
+    return access_map
+
 
 # }}}
 
 
 # {{{ get_synchronization_map
 
-def get_synchronization_map(knl, subgroup_size=None):
+def get_synchronization_map_for_single_kernel(knl, program_callables_info,
+        subgroup_size=None):
 
     """Count the number of synchronization events each work-item encounters in
     a loopy kernel.
@@ -1664,13 +1754,10 @@ def get_synchronization_map(knl, subgroup_size=None):
         raise LoopyError("Kernel '%s': Using operation counting requires the option "
                 "ignore_boostable_into to be set." % knl.name)
 
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier,
             CallKernel, ReturnFromKernel, RunInstruction)
     from operator import mul
-    knl = infer_unknown_types(knl, expect_completion=True)
-    knl = preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl, program_callables_info)
     iname_list = []
 
     result = ToCountMap()
@@ -1713,12 +1800,42 @@ def get_synchronization_map(knl, subgroup_size=None):
 
     return result
 
+
+def get_synchronization_map(program, subgroup_size=None):
+
+    from loopy.preprocess import preprocess_program, infer_unknown_types
+
+    program = infer_unknown_types(program, expect_completion=True)
+    program = preprocess_program(program)
+
+    sync_map = ToCountMap()
+
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            num_times_called = (
+                    program.program_callables_info.num_times_callables_called[
+                        func_id])
+            knl = in_knl_callable.subkernel
+            knl_sync_map = get_synchronization_map_for_single_kernel(knl,
+                    program.program_callables_info, subgroup_size)
+
+            # FIXME: didn't see any easy way to multiply
+            for i in range(num_times_called):
+                sync_map += knl_sync_map
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown callabke types %s." % (
+                type(in_knl_callable).__name__))
+
+    return sync_map
+
 # }}}
 
 
 # {{{ gather_access_footprints
 
-def gather_access_footprints(kernel, ignore_uncountable=False):
+def gather_access_footprints_for_single_kernel(kernel, ignore_uncountable=False):
     """Return a dictionary mapping ``(var_name, direction)`` to
     :class:`islpy.Set` instances capturing which indices of each the array
     *var_name* are read/written (where *direction* is either ``read`` or
@@ -1728,13 +1845,6 @@ def gather_access_footprints(kernel, ignore_uncountable=False):
         on which the footprint cannot be determined (e.g. data-dependent or
         nonlinear indices)
     """
-
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    kernel = infer_unknown_types(kernel, expect_completion=True)
-
-    from loopy.kernel import KernelState
-    if kernel.state < KernelState.PREPROCESSED:
-        kernel = preprocess_kernel(kernel)
 
     write_footprints = []
     read_footprints = []
@@ -1758,6 +1868,46 @@ def gather_access_footprints(kernel, ignore_uncountable=False):
             write_footprints.append(afg(insn.assignees))
         read_footprints.append(afg(insn.expression))
 
+    return write_footprints, read_footprints
+
+
+def gather_access_footprints(program, ignore_uncountable=False):
+    # FIMXE: works only for one callable kernel till now.
+    if len([in_knl_callable for in_knl_callable in
+        program.program_callables_info.values() if isinstance(in_knl_callable,
+            CallableKernel)]) != 1:
+        raise NotImplementedError("Currently only supported for program with "
+            "only one CallableKernel.")
+
+    from loopy.preprocess import preprocess_program, infer_unknown_types
+
+    program = infer_unknown_types(program, expect_completion=True)
+    program = preprocess_program(program)
+
+    write_footprints = []
+    read_footprints = []
+
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            num_times_called = (
+                    program.program_callables_info.num_times_callables_called[
+                        func_id])
+            knl = in_knl_callable.subkernel
+            knl_write_footprints, knl_read_footprints = (
+                    gather_access_footprints_for_single_kernel(knl,
+                        ignore_uncountable))
+
+            # FIXME: didn't see any easy way to multiply
+            for i in range(num_times_called):
+                write_footprints.extend(knl_write_footprints)
+                read_footprints.extend(knl_read_footprints)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown callabke types %s." % (
+                type(in_knl_callable).__name__))
+
     write_footprints = AccessFootprintGatherer.combine(write_footprints)
     read_footprints = AccessFootprintGatherer.combine(read_footprints)
 
@@ -1772,7 +1922,7 @@ def gather_access_footprints(kernel, ignore_uncountable=False):
     return result
 
 
-def gather_access_footprint_bytes(kernel, ignore_uncountable=False):
+def gather_access_footprint_bytes(program, ignore_uncountable=False):
     """Return a dictionary mapping ``(var_name, direction)`` to
     :class:`islpy.PwQPolynomial` instances capturing the number of bytes  are
     read/written (where *direction* is either ``read`` or ``write`` on array
@@ -1783,12 +1933,12 @@ def gather_access_footprint_bytes(kernel, ignore_uncountable=False):
         nonlinear indices)
     """
 
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    kernel = infer_unknown_types(kernel, expect_completion=True)
+    from loopy.preprocess import preprocess_program, infer_unknown_types
+    kernel = infer_unknown_types(program, expect_completion=True)
 
     from loopy.kernel import KernelState
     if kernel.state < KernelState.PREPROCESSED:
-        kernel = preprocess_kernel(kernel)
+        kernel = preprocess_program(program)
 
     result = {}
     fp = gather_access_footprints(kernel,

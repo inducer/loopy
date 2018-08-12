@@ -28,6 +28,9 @@ THE SOFTWARE.
 from pytools import MovedFunctionDeprecationWrapper
 from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 
+from loopy.program import iterate_over_kernels_if_given_program
+from loopy.kernel import LoopKernel
+
 
 class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, arg_names, handler):
@@ -44,7 +47,9 @@ class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
 
 # {{{ split_array_dim (deprecated since June 2016)
 
-def split_array_dim(kernel, arrays_and_axes, count, auto_split_inames=True,
+@iterate_over_kernels_if_given_program
+def split_array_dim(kernel, arrays_and_axes, count,
+        auto_split_inames=True,
         split_kwargs=None):
     """
     :arg arrays_and_axes: a list of tuples *(array, axis_nr)* indicating
@@ -237,7 +242,7 @@ def split_array_dim(kernel, arrays_and_axes, count, auto_split_inames=True,
     kernel = rule_mapping_context.finish_kernel(aash.map_kernel(kernel))
 
     if auto_split_inames:
-        from loopy import split_iname
+        from loopy.transform.iname import split_iname
         for iname, (outer_iname, inner_iname) in six.iteritems(split_vars):
             kernel = split_iname(kernel, iname, count,
                     outer_iname=outer_iname, inner_iname=inner_iname,
@@ -370,7 +375,9 @@ def _split_array_axis_inner(kernel, array_name, axis_nr, count, order="C"):
     return kernel
 
 
-def split_array_axis(kernel, array_names, axis_nr, count, order="C"):
+@iterate_over_kernels_if_given_program
+def split_array_axis(kernel, array_names, axis_nr, count,
+        order="C"):
     """
     :arg array: a list of names of temporary variables or arguments. May
         also be a comma-separated string of these.
@@ -387,6 +394,7 @@ def split_array_axis(kernel, array_names, axis_nr, count, order="C"):
         There was a more complicated, dumber function called :func:`split_array_dim`
         that had the role of this function in versions prior to 2016.2.
     """
+    assert isinstance(kernel, LoopKernel)
 
     if isinstance(array_names, str):
         array_names = [i.strip() for i in array_names.split(",") if i.strip()]
@@ -439,6 +447,7 @@ def find_padding_multiple(kernel, variable, axis, align_bytes, allowed_waste=0.1
 
 # {{{ add_padding
 
+@iterate_over_kernels_if_given_program
 def add_padding(kernel, variable, axis, align_bytes):
     arg_to_idx = dict((arg.name, i) for i, arg in enumerate(kernel.args))
     arg_idx = arg_to_idx[variable]

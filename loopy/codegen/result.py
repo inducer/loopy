@@ -133,7 +133,7 @@ class CodeGenerationResult(ImmutableRecord):
         preamble_codes = process_preambles(
                 getattr(self, "host_preambles", [])
                 +
-                getattr(self, "device_preambles", [])
+                list(getattr(self, "device_preambles", []))
                 )
 
         return (

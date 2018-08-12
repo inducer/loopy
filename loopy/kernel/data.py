@@ -337,6 +337,7 @@ class KernelArgument(ImmutableRecord):
             dtype = None
 
         kwargs["dtype"] = dtype
+        kwargs["is_output_only"] = kwargs.pop("is_output_only", None)
 
         ImmutableRecord.__init__(self, **kwargs)
 
@@ -362,7 +363,7 @@ class ArrayArg(ArrayBase, KernelArgument):
     def __init__(self, *args, **kwargs):
         if "address_space" not in kwargs:
             raise TypeError("'address_space' must be specified")
-        kwargs["is_output_only"] = kwargs.pop("is_output_only", False)
+        kwargs["is_output_only"] = kwargs.pop("is_output_only", None)
 
         super(ArrayArg, self).__init__(*args, **kwargs)
 
@@ -401,6 +402,9 @@ class ConstantArg(ArrayBase, KernelArgument):
     __doc__ = ArrayBase.__doc__
     min_target_axes = 0
     max_target_axes = 1
+
+    # Constant Arg cannot be an output
+    is_output_only = False
 
     def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
         return ast_builder.get_constant_arg_decl(self.name + name_suffix, shape,

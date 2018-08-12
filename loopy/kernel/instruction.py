@@ -487,7 +487,7 @@ class InstructionBase(ImmutableRecord):
 
 def _get_assignee_var_name(expr):
     from pymbolic.primitives import Variable, Subscript, Lookup
-    from loopy.symbolic import LinearSubscript
+    from loopy.symbolic import LinearSubscript, SubArrayRef
 
     if isinstance(expr, Lookup):
         expr = expr.aggregate
@@ -506,13 +506,20 @@ def _get_assignee_var_name(expr):
         assert isinstance(agg, Variable)
 
         return agg.name
+
+    elif isinstance(expr, SubArrayRef):
+        agg = expr.subscript.aggregate
+        assert isinstance(agg, Variable)
+
+        return agg.name
+
     else:
         raise RuntimeError("invalid lvalue '%s'" % expr)
 
 
 def _get_assignee_subscript_deps(expr):
     from pymbolic.primitives import Variable, Subscript, Lookup
-    from loopy.symbolic import LinearSubscript, get_dependencies
+    from loopy.symbolic import LinearSubscript, get_dependencies, SubArrayRef
 
     if isinstance(expr, Lookup):
         expr = expr.aggregate
@@ -523,6 +530,8 @@ def _get_assignee_subscript_deps(expr):
         return get_dependencies(expr.index)
     elif isinstance(expr, LinearSubscript):
         return get_dependencies(expr.index)
+    elif isinstance(expr, SubArrayRef):
+        return get_dependencies(expr.get_begin_subscript().index)
     else:
         raise RuntimeError("invalid lvalue '%s'" % expr)
 
@@ -942,12 +951,12 @@ class Assignment(MultiAssignmentBase):
     def assignee_subscript_deps(self):
         return (_get_assignee_subscript_deps(self.assignee),)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, *args, **kwargs):
         return self.copy(
-                assignee=f(self.assignee, *args),
-                expression=f(self.expression, *args),
+                assignee=f(self.assignee, *args, **kwargs),
+                expression=f(self.expression, *args, **kwargs),
                 predicates=frozenset(
-                    f(pred, *args) for pred in self.predicates))
+                    f(pred, *args, **kwargs) for pred in self.predicates))
 
     # }}}
 
@@ -1052,9 +1061,10 @@ class CallInstruction(MultiAssignmentBase):
                 forced_iname_deps=forced_iname_deps,
                 forced_iname_deps_is_final=forced_iname_deps_is_final)
 
-        from pymbolic.primitives import Call
+        from pymbolic.primitives import Call, CallWithKwargs
         from loopy.symbolic import Reduction
-        if not isinstance(expression, (Call, Reduction)) and expression is not None:
+        if not isinstance(expression, (Call, CallWithKwargs, Reduction)) and (
+                expression is not None):
             raise LoopyError("'expression' argument to CallInstruction "
                     "must be a function call")
 
@@ -1094,12 +1104,12 @@ class CallInstruction(MultiAssignmentBase):
                 _get_assignee_subscript_deps(a)
                 for a in self.assignees)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, *args, **kwargs):
         return self.copy(
-                assignees=f(self.assignees, *args),
-                expression=f(self.expression, *args),
+                assignees=f(self.assignees, *args, **kwargs),
+                expression=f(self.expression, *args, **kwargs),
                 predicates=frozenset(
-                    f(pred, *args) for pred in self.predicates))
+                    f(pred, *args, **kwargs) for pred in self.predicates))
 
     # }}}
 

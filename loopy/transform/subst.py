@@ -33,6 +33,9 @@ from pymbolic.mapper.substitutor import make_subst_func
 from pytools import ImmutableRecord
 from pymbolic import var
 
+from loopy.program import iterate_over_kernels_if_given_program
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 import logging
 logger = logging.getLogger(__name__)
@@ -44,6 +47,7 @@ class ExprDescriptor(ImmutableRecord):
 
 # {{{ extract_subst
 
+@iterate_over_kernels_if_given_program
 def extract_subst(kernel, subst_name, template, parameters=()):
     """
     :arg subst_name: The name of the substitution rule to be created.
@@ -285,6 +289,7 @@ class AssignmentToSubstChanger(RuleAwareIdentityMapper):
             return var(subst_name)(*index)
 
 
+@iterate_over_kernels_if_given_program
 def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         force_retain_argument=False):
     """Extract an assignment (to a temporary variable or an argument)
@@ -468,7 +473,9 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 
 # {{{ expand_subst
 
+@iterate_over_kernels_if_given_program
 def expand_subst(kernel, within=None):
+    assert isinstance(kernel, LoopKernel)
     if not kernel.substitutions:
         return kernel
 
@@ -501,8 +508,17 @@ def find_rules_matching(knl, pattern):
     return [r for r in knl.substitutions if pattern.match(r)]
 
 
-def find_one_rule_matching(knl, pattern):
-    rules = find_rules_matching(knl, pattern)
+def find_one_rule_matching(program, pattern):
+    rules = []
+    for in_knl_callable in program.program_callables_info.values():
+        if isinstance(in_knl_callable, CallableKernel):
+            knl = in_knl_callable.subkernel
+            rules.extend(find_rules_matching(knl, pattern))
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown callable types %s." % (
+                type(in_knl_callable).__name__))
 
     if len(rules) > 1:
         raise ValueError("more than one substitution rule matched '%s'"

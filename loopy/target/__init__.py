@@ -80,7 +80,7 @@ class TargetBase(object):
     def preprocess(self, kernel):
         return kernel
 
-    def pre_codegen_check(self, kernel):
+    def pre_codegen_check(self, kernel, program_callables_info):
         pass
 
     # }}}
@@ -150,7 +150,12 @@ class ASTBuilderBase(object):
 
     # {{{ library
 
-    def function_manglers(self):
+    def function_scopers(self):
+        """
+        Returns an instance of list of the functions of signature
+        ``(target, identifiers)`` returning either an instance of
+        :class:`InKernelCallable` if a match is found or *None*.
+        """
         return []
 
     def symbol_manglers(self):

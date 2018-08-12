@@ -246,7 +246,9 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
          "-cl-no-signed-zeros",
          ])
 
-    hsv = hsv.copy(name="horizontalStrongVolumeKernel")
+    # FIXME: renaming's a bit tricky in this program model.
+    # add a simple transformation for it
+    # hsv = hsv.copy(name="horizontalStrongVolumeKernel")
 
     results = lp.auto_test_vs_ref(ref_hsv, ctx, hsv, parameters=dict(elements=300),
             quiet=True)

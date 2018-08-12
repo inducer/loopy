@@ -22,38 +22,48 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-def default_function_mangler(kernel, name, arg_dtypes):
-    from loopy.library.reduction import reduction_function_mangler
-
-    manglers = [reduction_function_mangler, tuple_function_mangler]
-    for mangler in manglers:
-        result = mangler(kernel, name, arg_dtypes)
-        if result is not None:
-            return result
-
-    return None
+from loopy.kernel.function_interface import ScalarCallable
 
 
-def single_arg_function_mangler(kernel, name, arg_dtypes):
-    if len(arg_dtypes) == 1:
-        dtype, = arg_dtypes
+class MakeTupleCallable(ScalarCallable):
+    def with_types(self, arg_id_to_dtype, kernel, program_callables_info):
+        new_arg_id_to_dtype = arg_id_to_dtype.copy()
+        for i in range(len(arg_id_to_dtype)):
+            if i in arg_id_to_dtype and arg_id_to_dtype[i] is not None:
+                new_arg_id_to_dtype[-i-1] = new_arg_id_to_dtype[i]
 
-        from loopy.kernel.data import CallMangleInfo
-        return CallMangleInfo(name, (dtype,), (dtype,))
+        return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
+            name_in_target="loopy_make_tuple"), program_callables_info)
 
-    return None
+    def with_descrs(self, arg_id_to_descr, program_callables_info):
+        from loopy.kernel.function_interface import ValueArgDescriptor
+        new_arg_id_to_descr = dict(((id, ValueArgDescriptor()),
+            (-id-1, ValueArgDescriptor())) for id in arg_id_to_descr.keys())
+
+        return (
+                self.copy(arg_id_to_descr=new_arg_id_to_descr),
+                program_callables_info)
 
 
-def tuple_function_mangler(kernel, name, arg_dtypes):
-    if name == "make_tuple":
-        from loopy.kernel.data import CallMangleInfo
-        return CallMangleInfo(
-                target_name="loopy_make_tuple",
-                result_dtypes=arg_dtypes,
-                arg_dtypes=arg_dtypes)
+class IndexOfCallable(ScalarCallable):
+    def with_types(self, arg_id_to_dtype, kernel, program_callables_info):
+        new_arg_id_to_dtype = dict((i, dtype) for i, dtype in
+                arg_id_to_dtype.items() if dtype is not None)
+        new_arg_id_to_dtype[-1] = kernel.index_dtype
 
-    return None
+        return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype),
+                program_callables_info)
+
+
+def loopy_specific_callable_scopers(target, identifier):
+    if identifier == "make_tuple":
+        return MakeTupleCallable(name="make_tuple")
+
+    if identifier in ["indexof", "indexof_vec"]:
+        return IndexOfCallable(name=identifier)
+
+    from loopy.library.reduction import reduction_scoper
+    return reduction_scoper(target, identifier)
 
 
 # vim: foldmethod=marker

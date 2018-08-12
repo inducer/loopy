@@ -56,7 +56,7 @@ from pymbolic.mapper.constant_folder import \
         ConstantFoldingMapper as ConstantFoldingMapperBase
 
 from pymbolic.parser import Parser as ParserBase
-
+from loopy.diagnostic import LoopyError
 from loopy.diagnostic import ExpressionToAffineConversionError
 
 import islpy as isl
@@ -69,22 +69,23 @@ import numpy as np
 # {{{ mappers with support for loopy-specific primitives
 
 class IdentityMapperMixin(object):
-    def map_literal(self, expr, *args):
+    def map_literal(self, expr, *args, **kwargs):
         return expr
 
-    def map_array_literal(self, expr, *args):
-        return type(expr)(tuple(self.rec(ch, *args) for ch in expr.children))
+    def map_array_literal(self, expr, *args, **kwargs):
+        return type(expr)(tuple(self.rec(ch, *args, **kwargs) for ch in
+            expr.children))
 
-    def map_group_hw_index(self, expr, *args):
+    def map_group_hw_index(self, expr, *args, **kwargs):
         return expr
 
-    def map_local_hw_index(self, expr, *args):
+    def map_local_hw_index(self, expr, *args, **kwargs):
         return expr
 
-    def map_loopy_function_identifier(self, expr, *args):
+    def map_loopy_function_identifier(self, expr, *args, **kwargs):
         return expr
 
-    def map_reduction(self, expr, *args):
+    def map_reduction(self, expr, *args, **kwargs):
         mapped_inames = [self.rec(p.Variable(iname), *args) for iname in expr.inames]
 
         new_inames = []
@@ -98,15 +99,18 @@ class IdentityMapperMixin(object):
 
         return Reduction(
                 expr.operation, tuple(new_inames),
-                self.rec(expr.expr, *args),
+                self.rec(expr.expr, *args, **kwargs),
                 allow_simultaneous=expr.allow_simultaneous)
 
-    def map_tagged_variable(self, expr, *args):
+    def map_tagged_variable(self, expr, *args, **kwargs):
         # leaf, doesn't change
         return expr
 
-    def map_type_annotation(self, expr, *args):
-        return type(expr)(expr.type, self.rec(expr.child))
+    def map_type_annotation(self, expr, *args, **kwargs):
+        return type(expr)(expr.type, self.rec(expr.child, *args, **kwargs))
+
+    def map_resolved_function(self, expr, *args, **kwargs):
+        return ResolvedFunction(expr.function)
 
     map_type_cast = map_type_annotation
 
@@ -165,9 +169,16 @@ class WalkMapper(WalkMapperBase):
 
     map_rule_argument = map_group_hw_index
 
+    def map_resolved_function(self, expr, *args):
+        if not self.visit(expr):
+            return
+
+        self.rec(expr.function, *args)
+
 
 class CallbackMapper(CallbackMapperBase, IdentityMapper):
     map_reduction = CallbackMapperBase.map_constant
+    map_resolved_function = CallbackMapperBase.map_constant
 
 
 class CombineMapper(CombineMapperBase):
@@ -232,13 +243,16 @@ class StringifyMapper(StringifyMapperBase):
         from pymbolic.mapper.stringifier import PREC_NONE
         return "cast(%s, %s)" % (repr(expr.type), self.rec(expr.child, PREC_NONE))
 
+    def map_resolved_function(self, expr, prec):
+        return "ResolvedFunction('%s')" % expr.name
+
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
     def map_reduction(self, expr, other, unis):
         if not isinstance(other, type(expr)):
             return self.treat_mismatch(expr, other, unis)
         if (expr.inames != other.inames
-                or type(expr.operation) != type(other.operation)  # noqa
+                or type(expr.function) != type(other.function)  # noqa
                 ):
             return []
 
@@ -288,6 +302,9 @@ class DependencyMapper(DependencyMapperBase):
 
     def map_type_cast(self, expr):
         return self.rec(expr.child)
+
+    def map_resolved_function(self, expr):
+        return self.rec(expr.function)
 
 
 class SubstitutionRuleExpander(IdentityMapper):
@@ -638,6 +655,51 @@ class RuleArgument(p.Expression):
 
     mapper_method = intern("map_rule_argument")
 
+
+class ResolvedFunction(p.Expression):
+    """
+    A function invocation whose definition is known in a :mod:`loopy` kernel.
+    Each instance of :class:`loopy.symbolic.ResolvedFunction` in an expression
+    points to an instance of
+    :class:`loopy.kernel.function_interface.InKernelCallable` through the
+    mapping :attr:`loopy.kernel.LoopKernel.scoped_functions`. Refer
+    :ref:`ref_scoped_function` for a slightly detailed explanation on scoped
+    functions.
+
+    .. attribute:: function
+
+        An instance of :class:`pymbolic.primitives.Variable`,
+        :class:`loopy.library.reduction.ArgExtOp` or
+        :class:`loopy.library.reduction.SegmentedOp`.
+    """
+    init_arg_names = ("function", )
+
+    def __init__(self, function):
+        if isinstance(function, str):
+            function = p.Variable(function)
+        from loopy.library.reduction import ArgExtOp, SegmentedOp
+        assert isinstance(function, (p.Variable, ArgExtOp, SegmentedOp))
+        self.function = function
+
+    @property
+    def name(self):
+        from loopy.library.reduction import ArgExtOp, SegmentedOp
+        if isinstance(self.function, p.Variable):
+            return self.function.name
+        elif isinstance(self.function, (ArgExtOp, SegmentedOp)):
+            return self.function
+        else:
+            raise LoopyError("Unexpected function type %s in ResolvedFunction." %
+                    type(self.function))
+
+    def __getinitargs__(self):
+        return (self.function, )
+
+    def stringifier(self):
+        return StringifyMapper
+
+    mapper_method = intern("map_resolved_function")
+
 # }}}
 
 
@@ -650,9 +712,12 @@ def get_dependencies(expr):
 # {{{ rule-aware mappers
 
 def parse_tagged_name(expr):
+    from loopy.library.reduction import ArgExtOp, SegmentedOp
     if isinstance(expr, TaggedVariable):
         return expr.name, expr.tag
-    elif isinstance(expr, p.Variable):
+    elif isinstance(expr, ResolvedFunction):
+        return parse_tagged_name(expr.function)
+    elif isinstance(expr, (p.Variable, ArgExtOp, SegmentedOp)):
         return expr.name, None
     else:
         raise RuntimeError("subst rule name not understood: %s" % expr)
@@ -850,12 +915,14 @@ class RuleAwareIdentityMapper(IdentityMapper):
     def __init__(self, rule_mapping_context):
         self.rule_mapping_context = rule_mapping_context
 
-    def map_variable(self, expr, expn_state):
+    def map_variable(self, expr, expn_state, *args, **kwargs):
         name, tag = parse_tagged_name(expr)
         if name not in self.rule_mapping_context.old_subst_rules:
-            return IdentityMapper.map_variable(self, expr, expn_state)
+            return IdentityMapper.map_variable(self, expr, expn_state, *args,
+                    **kwargs)
         else:
-            return self.map_substitution(name, tag, (), expn_state)
+            return self.map_substitution(name, tag, (), expn_state, *args,
+                    **kwargs)
 
     def map_call(self, expr, expn_state):
         if not isinstance(expr.function, p.Variable):
@@ -910,7 +977,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
         else:
             return sym
 
-    def __call__(self, expr, kernel, insn):
+    def __call__(self, expr, kernel, insn, *args, **kwargs):
         from loopy.kernel.data import InstructionBase
         assert insn is None or isinstance(insn, InstructionBase)
 
@@ -919,7 +986,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
                     kernel=kernel,
                     instruction=insn,
                     stack=(),
-                    arg_context={}))
+                    arg_context={}), *args, **kwargs)
 
     def map_instruction(self, kernel, insn):
         return insn
