@@ -409,11 +409,14 @@ def test_ilp_write_race_detection_global(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(j="ilp"))
 
+    knl = lp.preprocess_kernel(knl)
+
     with lp.CacheMode(False):
         from loopy.diagnostic import WriteRaceConditionWarning
         from warnings import catch_warnings
         with catch_warnings(record=True) as warn_list:
-            lp.generate_code_v2(knl)
+            list(lp.generate_loop_schedules(knl.root_kernel,
+                    knl.program_callables_info))
 
             assert any(isinstance(w.message, WriteRaceConditionWarning)
                     for w in warn_list)
