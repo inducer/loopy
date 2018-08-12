@@ -1040,6 +1040,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if self.overridden_get_grid_sizes_for_insn_ids:
             return self.overridden_get_grid_sizes_for_insn_ids(
                     insn_ids,
+                    program_callables_info,
                     ignore_auto=ignore_auto)
 
         all_inames_by_insns = set()
