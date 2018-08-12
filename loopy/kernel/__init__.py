@@ -221,11 +221,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         A subclass of :class:`loopy.TargetBase`.
 
-    .. attribute:: is_called_from_host
-
-        An instance of :class:`bool`. Will be set *False* for the kernel which
-        would be called from another top level kernels. Default value is
-        *True*.
     """
 
     # {{{ constructor
@@ -253,8 +248,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
             state=KernelState.INITIAL,
             target=None,
-
-            is_called_from_host=True,
 
             overridden_get_grid_sizes_for_insn_ids=None,
             _cached_written_variables=None):
@@ -368,7 +361,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 options=options,
                 state=state,
                 target=target,
-                is_called_from_host=is_called_from_host,
                 overridden_get_grid_sizes_for_insn_ids=(
                     overridden_get_grid_sizes_for_insn_ids),
                 _cached_written_variables=_cached_written_variables)
@@ -1132,8 +1124,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return (to_dim_tuple(global_sizes, "global"),
                 to_dim_tuple(local_sizes, "local", forced_sizes=self.local_sizes))
 
-
-
     def get_grid_sizes_for_insn_ids_as_exprs(self, insn_ids,
             program_callables_info, ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
@@ -1456,7 +1446,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             "silenced_warnings",
             "options",
             "state",
-            "is_called_from_host",
             "target",
             )
 
