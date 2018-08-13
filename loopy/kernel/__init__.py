@@ -221,6 +221,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         A subclass of :class:`loopy.TargetBase`.
 
+    .. attribute:: is_called_from_host
+        An instance of :class:`bool`. Will be set *False* for the kernel which
+        would be called from another top level kernels. Default value is
+        *True*.
+
     """
 
     # {{{ constructor
@@ -248,6 +253,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
             state=KernelState.INITIAL,
             target=None,
+            is_called_from_host=True,
 
             overridden_get_grid_sizes_for_insn_ids=None,
             _cached_written_variables=None):
@@ -361,6 +367,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 options=options,
                 state=state,
                 target=target,
+                is_called_from_host=is_called_from_host,
                 overridden_get_grid_sizes_for_insn_ids=(
                     overridden_get_grid_sizes_for_insn_ids),
                 _cached_written_variables=_cached_written_variables)

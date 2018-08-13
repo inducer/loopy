@@ -460,9 +460,9 @@ class ProgramCallablesInfo(ImmutableRecord):
         :meth:`with_enter_edit_callables_mode`, :meth:`with_callable` and
         :meth:`with_exit_edit_callables_mode`.
     """
-    def __init__(self, resolved_functions, num_times_callables_called=None,
-            history=None, is_being_edited=False,
-            renames_needed_after_editing={}):
+    def __init__(self, resolved_functions,
+            num_times_callables_called=None, history=None,
+            is_being_edited=False, renames_needed_after_editing={}):
 
         if num_times_callables_called is None:
             num_times_callables_called = dict((func_id, 1) for func_id in
@@ -487,11 +487,22 @@ class ProgramCallablesInfo(ImmutableRecord):
 
     update_persistent_hash = LoopKernel.update_persistent_hash
 
+    def add_callable(self, function, in_kernel_callable):
+
+        history[unique_function_identifier] = set(
+                [unique_function_identifier])
+        pass
+
+    def with_updated_num_times_being_called(self):
+        root_kernel_name, = [in_knl_callable.subkernel.name for in_knl_callable
+                in self.resolved_functions.values() if
+                isinstance(in_knl_callable, CallableKernel) and
+                in_knl_callable.is_called_from_host]
+
     def with_edit_callables_mode(self):
         return self.copy(is_being_edited=True)
 
-    def with_callable(self, function, in_kernel_callable,
-            resolved_for_the_first_time=False):
+    def with_callable(self, function, in_kernel_callable):
         """
         :arg function: An instance of :class:`pymbolic.primitives.Variable` or
             :class:`loopy.library.reduction.ReductionOpFunction`.
@@ -538,8 +549,7 @@ class ProgramCallablesInfo(ImmutableRecord):
 
         if isinstance(function, ReductionOpFunction):
             unique_function_identifier = function.copy()
-            if not resolved_for_the_first_time:
-                num_times_callables_called[function] -= 1
+            num_times_callables_called[function] -= 1
 
             num_times_callables_called[unique_function_identifier] = 1
 
@@ -561,12 +571,11 @@ class ProgramCallablesInfo(ImmutableRecord):
             for func_id, in_knl_callable in self.resolved_functions.items():
                 if in_knl_callable == in_kernel_callable:
                     num_times_callables_called[func_id] += 1
-                    if not resolved_for_the_first_time:
-                        num_times_callables_called[function.name] -= 1
-                        if num_times_callables_called[function.name] == 0:
-                            renames_needed_after_editing[func_id] = function.name
+                    num_times_callables_called[function.name] -= 1
+                    if num_times_callables_called[function.name] == 0:
+                        renames_needed_after_editing[func_id] = function.name
 
-                        history[func_id] = history[func_id] | set([function.name])
+                    history[func_id] = history[func_id] | set([function.name])
                     return (
                             self.copy(
                                 history=history,
@@ -577,16 +586,13 @@ class ProgramCallablesInfo(ImmutableRecord):
                             func_id)
         else:
             unique_function_identifier = function.name
-            if (resolved_for_the_first_time or
-                    self.num_times_callables_called[function.name] > 1):
+            if self.num_times_callables_called[function.name] > 1:
                 while unique_function_identifier in self.resolved_functions:
                     unique_function_identifier = (
                             next_indexed_function_identifier(
                                 unique_function_identifier))
 
-            if not resolved_for_the_first_time:
-                num_times_callables_called[function.name] -= 1
-
+            num_times_callables_called[function.name] -= 1
             num_times_callables_called[unique_function_identifier] = 1
 
         updated_resolved_functions = self.resolved_functions.copy()
@@ -597,8 +603,6 @@ class ProgramCallablesInfo(ImmutableRecord):
             history[unique_function_identifier] = (
                     history[function.name] | set([unique_function_identifier]))
         else:
-            history[unique_function_identifier] = set(
-                    [unique_function_identifier])
 
         return (
                 self.copy(
