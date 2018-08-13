@@ -298,14 +298,7 @@ class Program(ImmutableRecord):
         return pex(*args, **kwargs)
 
     def __str__(self):
-        # FIXME: make this better
-        print(self.program_callables_info.num_times_callables_called)
-        return (
-                (self.program_callables_info[
-                    self.name].subkernel).__str__() +
-                '\nResolved Functions: ' +
-                (self.program_callables_info.resolved_functions.keys()).__str__() +
-                '\n' + 75*'-' + '\n')
+        return self.root_kernel.__str__()
 
 # }}}
 
@@ -315,14 +308,14 @@ def next_indexed_function_identifier(function):
     Returns an instance of :class:`str` with the next indexed-name in the
     sequence for the name of *function*.
 
-    *Example:* ``Variable('sin_0')`` will return ``'sin_1'``.
+    *Example:* ``'sin_0'`` will return ``'sin_1'``.
 
-    :arg function: Either an instance of :class:`pymbolic.primitives.Variable`
-        or :class:`loopy.reduction.ArgExtOp` or
-        :class:`loopy.reduction.SegmentedOp`.
+    :arg function: Either an instance of :class:`str`,
+        :class:`pymbolic.primitives.Variable` ,
+        :class:`loopy.reduction.ReductionOpFunction`.
     """
-    from loopy.library.reduction import ArgExtOp, SegmentedOp
-    if isinstance(function, (ArgExtOp, SegmentedOp)):
+    from loopy.library.reduction import ReductionOpFunction
+    if isinstance(function, ReductionOpFunction):
         return function.copy()
     elif isinstance(function, str):
         function = Variable(function)
@@ -371,12 +364,8 @@ def rename_resolved_functions_in_a_single_kernel(kernel,
 # {{{ program callables info
 
 class ProgramCallablesInfo(ImmutableRecord):
-    # FIXME: dont evalutate num_times_called, rahter compute it from the
-    # resolved_functions
-    # FIXME: make the edit callables thing a ContextManager.
     def __init__(self, resolved_functions, num_times_callables_called=None,
             history=None, is_being_edited=False,
-            num_times_hit_during_editing={},
             renames_needed_after_editing={}):
 
         if num_times_callables_called is None:
@@ -391,23 +380,19 @@ class ProgramCallablesInfo(ImmutableRecord):
                 num_times_callables_called=num_times_callables_called,
                 history=history,
                 is_being_edited=is_being_edited,
-                num_times_hit_during_editing=num_times_hit_during_editing,
                 renames_needed_after_editing=renames_needed_after_editing)
 
     hash_fields = (
             "resolved_functions",
             "num_times_callables_called",
             "is_being_edited",
-            "num_times_hit_during_editing",
             "renames_needed_after_editing",
             "history")
 
     update_persistent_hash = LoopKernel.update_persistent_hash
 
     def with_edit_callables_mode(self):
-        return self.copy(is_being_edited=True,
-                num_times_hit_during_editing=dict((func_id, 0) for func_id in
-                    self.resolved_functions))
+        return self.copy(is_being_edited=True)
 
     def with_callable(self, function, in_kernel_callable,
             resolved_for_the_first_time=False):
@@ -426,6 +411,10 @@ class ProgramCallablesInfo(ImmutableRecord):
         # FIXME: add a note about using enter and exit. ~KK
         # FIXME: think about a better idea of "with_added_callable" this would
         # be more convenient for developer-faced usage. ~KK
+        # FIXME: Is this is a bad code? Yes.
+        # Is there a better alternative to it. Definitely maybe.
+        # But I don't want to spend the next 182 years of my life optimizing
+        # some scheme, without even implmenting it to some problem!
 
         if not self.is_being_edited:
             if function.name in self.resolved_functions and (
@@ -436,29 +425,22 @@ class ProgramCallablesInfo(ImmutableRecord):
                 print('New: ', in_kernel_callable)
                 raise LoopyError("Use 'enter_edit_callables_mode' first.")
 
-        from loopy.library.reduction import ArgExtOp, SegmentedOp
+        from loopy.library.reduction import ReductionOpFunction
 
         # {{{ sanity checks
 
         if isinstance(function, str):
             function = Variable(function)
 
-        assert isinstance(function, (Variable, ArgExtOp, SegmentedOp))
+        assert isinstance(function, (Variable, ReductionOpFunction))
 
         # }}}
 
         renames_needed_after_editing = self.renames_needed_after_editing.copy()
-        num_times_hit_during_editing = self.num_times_hit_during_editing.copy()
         num_times_callables_called = self.num_times_callables_called.copy()
         history = self.history.copy()
 
-        if not resolved_for_the_first_time:
-            if isinstance(function, (ArgExtOp, SegmentedOp)):
-                num_times_hit_during_editing[function] += 1
-            else:
-                num_times_hit_during_editing[function.name] += 1
-
-        if isinstance(function, (ArgExtOp, SegmentedOp)):
+        if isinstance(function, ReductionOpFunction):
             unique_function_identifier = function.copy()
             if not resolved_for_the_first_time:
                 num_times_callables_called[function] -= 1
@@ -473,8 +455,6 @@ class ProgramCallablesInfo(ImmutableRecord):
                     self.copy(
                         resolved_functions=updated_resolved_functions,
                         num_times_callables_called=num_times_callables_called,
-                        num_times_hit_during_editing=(
-                            num_times_hit_during_editing),
                         renames_needed_after_editing=(
                             renames_needed_after_editing)),
                     unique_function_identifier)
@@ -494,17 +474,12 @@ class ProgramCallablesInfo(ImmutableRecord):
                     return (
                             self.copy(
                                 history=history,
-                                num_times_hit_during_editing=(
-                                    num_times_hit_during_editing),
                                 num_times_callables_called=(
                                     num_times_callables_called),
                                 renames_needed_after_editing=(
                                     renames_needed_after_editing)),
                             func_id)
         else:
-            # FIXME: maybe deal with the history over here?
-            # FIXME: once the code logic is running beautify this part.
-            # many "ifs" can be avoided
             unique_function_identifier = function.name
             if (resolved_for_the_first_time or
                     self.num_times_callables_called[function.name] > 1):
@@ -534,7 +509,6 @@ class ProgramCallablesInfo(ImmutableRecord):
                     history=history,
                     resolved_functions=updated_resolved_functions,
                     num_times_callables_called=num_times_callables_called,
-                    num_times_hit_during_editing=num_times_hit_during_editing,
                     renames_needed_after_editing=renames_needed_after_editing),
                 Variable(unique_function_identifier))
 
@@ -576,7 +550,6 @@ class ProgramCallablesInfo(ImmutableRecord):
                 is_being_edited=False,
                 resolved_functions=resolved_functions,
                 num_times_callables_called=num_times_callables_called,
-                num_times_hit_during_editing={},
                 renames_needed_after_editing={})
 
     def with_deleted_callable(self, func_id, instances=1):
@@ -666,19 +639,6 @@ def iterate_over_kernels_if_given_program(transform_for_single_kernel):
             return transform_for_single_kernel(kernel, *args, **kwargs)
 
     return wraps(transform_for_single_kernel)(_collective_transform)
-
-
-# {{{ ingoring this for now
-
-# if False and isinstance(function, (ArgExtOp, SegmentedOp)):
-# FIXME: ignoring this casse for now
-# FIXME: If a kernel has two flavors of ArgExtOp then they are
-# overwritten and hence not supported.(for now).
-# updated_resolved_functions = self.scoped_functions.copy()
-# updated_resolved_functions[function] = in_kernel_callable
-# return self.copy(updated_resolved_functions), function.copy()
-
-# }}}
 
 
 # vim: foldmethod=marker

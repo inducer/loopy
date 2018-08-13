@@ -677,16 +677,16 @@ class ResolvedFunction(p.Expression):
     def __init__(self, function):
         if isinstance(function, str):
             function = p.Variable(function)
-        from loopy.library.reduction import ArgExtOp, SegmentedOp
-        assert isinstance(function, (p.Variable, ArgExtOp, SegmentedOp))
+        from loopy.library.reduction import ReductionOpFunction
+        assert isinstance(function, (p.Variable, ReductionOpFunction))
         self.function = function
 
     @property
     def name(self):
-        from loopy.library.reduction import ArgExtOp, SegmentedOp
+        from loopy.library.reduction import ReductionOpFunction
         if isinstance(self.function, p.Variable):
             return self.function.name
-        elif isinstance(self.function, (ArgExtOp, SegmentedOp)):
+        elif isinstance(self.function, ReductionOpFunction):
             return self.function
         else:
             raise LoopyError("Unexpected function type %s in ResolvedFunction." %

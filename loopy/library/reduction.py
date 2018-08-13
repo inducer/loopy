@@ -504,7 +504,7 @@ class ReductionCallable(ScalarCallable):
 
 
 def reduction_scoper(target, identifier):
-    if isinstance(identifier, (ArgExtOp, SegmentedOp)):
+    if isinstance(identifier, ReductionOpFunction):
         return ReductionCallable(name=identifier)
 
     return None

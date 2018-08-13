@@ -64,9 +64,9 @@ __doc__ = """
 # Qns:
 # - The variable name, what if multiple kernels use the same name?
 # - We should also add the cumulative effect on the arguments of callee kernels
-# into the caller kernel.
-# FIXME: add an error that there is only one callable kernel. disable for
-# multiple callable kernels.
+# into the caller kernel
+# - Make changes to MemAccessInfo to include the effect of several kernels.
+# - Renovate `count`.
 
 # {{{ GuardedPwQPolynomial
 

@@ -676,8 +676,8 @@ def next_indexed_variable(function):
         or :class:`loopy.reduction.ArgExtOp` or
         :class:`loopy.reduction.SegmentedOp`.
     """
-    from loopy.library.reduction import ArgExtOp, SegmentedOp
-    if isinstance(function, (ArgExtOp, SegmentedOp)):
+    from loopy.library.reduction import ReductionOpFunction
+    if isinstance(function, ReductionOpFunction):
         return function.copy()
     func_name = re.compile(r"^(?P<alpha>\S+?)_(?P<num>\d+?)$")
 
