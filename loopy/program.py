@@ -165,6 +165,35 @@ def initialize_program_callables_info_from_kernel(
 # {{{ program definition
 
 class Program(ImmutableRecord):
+    """
+    Records the information about all the callables in a :mod:`loopy` program.
+
+    .. attribute:: name
+
+        An instance of :class:`str`, also the name of the top-most level
+        :class:`loopy.LoopKernel`.
+
+    .. attribute:: program_callables_info
+
+        An instance of :class:`loopy.program.ProgramCallablesInfo`.
+
+    .. attribute:: target
+
+        An instance of :class:`loopy.target.TargetBase`.
+
+    .. attribute:: func_id_to_in_knl_callables_mappers
+
+        A list of functions of the signature ``(target: TargetBase,
+        function_indentifier: str)`` that would return an instance of
+        :class:`loopy.kernel.function_interface.InKernelCallable` or *None*.
+
+    .. note::
+
+        - To create an instance of :class:`loopy.Program`, it is recommeneded to
+            go through :method:`loopy.make_kernel`.
+        - This data structure and its attributes should be considered
+          immutable, any modifications should be done through :method:`copy`.
+    """
     def __init__(self,
             name,
             program_callables_info,
@@ -172,8 +201,6 @@ class Program(ImmutableRecord):
             func_id_to_in_knl_callable_mappers):
         assert isinstance(program_callables_info, ProgramCallablesInfo)
 
-        # FIXME: check if all sanity checks have been covered?
-        # FIXME: The comments over here may need some attention.
         assert name in program_callables_info
 
         super(Program, self).__init__(
@@ -194,6 +221,7 @@ class Program(ImmutableRecord):
 
     def copy(self, **kwargs):
         if 'target' in kwargs:
+            # target attribute of all the callable kernels should be updated.
             target = kwargs['target']
             new_self = super(Program, self).copy(**kwargs)
             new_resolved_functions = {}
@@ -266,13 +294,43 @@ class Program(ImmutableRecord):
 
     @property
     def root_kernel(self):
+        """
+        Returns an instance of :class:`loopy.LoopKernel` denoting the topmost
+        level kernel in codegeneration.
+
+        .. note::
+
+            Syntactic sugar.
+        """
         return self.program_callables_info[self.name].subkernel
 
     @property
     def arg_dict(self):
+        """
+        Returns ``arg_dict`` of the ``root_kernel``.
+
+        .. note::
+
+            Syntactic sugar.
+        """
         return self.root_kernel.arg_dict
 
+    @property
+    def args(self):
+        """
+        Returns ``args`` of the ``root_kernel``.
+
+        .. note::
+
+            Syntactic sugar.
+        """
+        return self.root_kernel.args[:]
+
     def with_root_kernel(self, root_kernel):
+        """
+        Returns a copy of *self* with the topmost level kernel as
+        *root_kernel*.
+        """
         new_in_knl_callable = self.program_callables_info[
                 self.name].copy(subkernel=root_kernel)
         new_resolved_functions = (
@@ -282,10 +340,6 @@ class Program(ImmutableRecord):
         return self.copy(
                 program_callables_info=self.program_callables_info.copy(
                     resolved_functions=new_resolved_functions))
-
-    @property
-    def args(self):
-        return self.root_kernel.args[:]
 
     def __call__(self, *args, **kwargs):
         key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
@@ -336,6 +390,10 @@ def next_indexed_function_identifier(function):
 
 
 class ResolvedFunctionRenamer(RuleAwareIdentityMapper):
+    """
+    Mapper to rename the resolved functions in an expression according to
+    *renaming_dict*.
+    """
     def __init__(self, rule_mapping_context, renaming_dict):
         super(ResolvedFunctionRenamer, self).__init__(
                 rule_mapping_context)
@@ -351,6 +409,10 @@ class ResolvedFunctionRenamer(RuleAwareIdentityMapper):
 
 def rename_resolved_functions_in_a_single_kernel(kernel,
         renaming_dict):
+    """
+    Returns a copy of *kernel* with the instances of :class:`ResolvedFunction`
+    renames according to *renaming_dict*.
+    """
     from loopy.symbolic import SubstitutionRuleMappingContext
     rule_mapping_context = SubstitutionRuleMappingContext(
                 kernel.substitutions, kernel.get_var_name_generator())
@@ -364,6 +426,40 @@ def rename_resolved_functions_in_a_single_kernel(kernel,
 # {{{ program callables info
 
 class ProgramCallablesInfo(ImmutableRecord):
+    """
+    Records the information of all the callables called in a :class:`loopy.Program`.
+
+    .. attribute:: resolved_functions
+
+        An instance of :class:`dict` that contains a mapping from function
+        identifier to instances of
+        :class:`loopy.kernel.function_interface.InKernelCallable`
+
+    .. attribute:: num_times_callables_called
+
+        An instace of :class:`dict` that contains a mapping from function
+        identifier to :class:`int`, that denotes the number of times the
+        callable is being called in the entire :class:`loopy.Program`.
+
+    .. attribute:: history
+
+        An instance of :class:`dict` that contains a mapping from function
+        identifier to and instance of :class:`list`that would contain all the
+        names taken by a function before the current name.(For example: one
+        possibility could be ``{'sin_1': ['sin', 'sin_0', 'sin_1']}``)
+
+    .. attribute:: is_being_edited
+
+        An instance of :class:`bool` which is intended to aid the working of
+        :meth:`with_enter_edit_callables_mode`, :meth:`with_callable` and
+        :meth:`with_exit_edit_callables_mode`.
+
+    .. attribute:: renames_needed_after_editing
+
+        An instance of :class:`dict` which is intended to aid the working of
+        :meth:`with_enter_edit_callables_mode`, :meth:`with_callable` and
+        :meth:`with_exit_edit_callables_mode`.
+    """
     def __init__(self, resolved_functions, num_times_callables_called=None,
             history=None, is_being_edited=False,
             renames_needed_after_editing={}):
