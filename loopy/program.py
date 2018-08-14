@@ -135,8 +135,9 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
             in_knl_callable = self.find_in_knl_callable_from_identifier(func_id)
             assert in_knl_callable is not None
             self.program_callables_info, _ = (
-                    self.program_callables_info.with_callable(func_id,
-                        in_knl_callable, True))
+                    self.program_callables_info.with_add_callable(func_id,
+                        in_knl_callable))
+            # FIXME: where do you deal with the parameters? ~KK
         return super(ResolvedFunctionMarker, self).map_reduction(expr, expn_state)
 
 
@@ -486,6 +487,10 @@ class CallablesCountingMapper(CombineMapper):
 
     map_call_with_kwargs = map_call
 
+    def map_reduction(self, expr):
+        return Counter(expr.operation.get_scalar_callables()) + (
+                super(CallablesCountingMapper, self).map_reduction(expr))
+
     def map_constant(self, expr):
         return Counter()
 
@@ -592,10 +597,21 @@ class ProgramCallablesInfo(ImmutableRecord):
         Returns a copy of *self* with the *function* associated with the
         *in_kernel_callable*.
         """
+        # FIXME: pleasse better docs.. ~KK
         # note: this does not require the edit mode to be true.
         # the reason for the edit mode is that we need to take care of the
         # renaming that might be needed to be done
         # PS: delete this note?
+
+        # {{{ sanity checks
+
+        if isinstance(function, str):
+            function = Variable(function)
+
+        assert isinstance(function, (Variable, ReductionOpFunction))
+
+        # }}}
+
         history = self.history.copy()
 
         if in_kernel_callable in self.resolved_functions.values():
@@ -617,9 +633,12 @@ class ProgramCallablesInfo(ImmutableRecord):
                 updated_resolved_functions = self.resolved_functions.copy()
                 updated_resolved_functions[unique_function_identifier] = (
                         in_kernel_callable)
+                history[unique_function_identifier] = set(
+                        [unique_function_identifier])
 
                 return (
                         self.copy(
+                            history=history,
                             resolved_functions=updated_resolved_functions),
                         unique_function_identifier)
 
@@ -637,9 +656,6 @@ class ProgramCallablesInfo(ImmutableRecord):
 
         history[unique_function_identifier] = set(
                 [unique_function_identifier])
-
-        if unique_function_identifier == 'loopy_kernel_0':
-            1/0
 
         return (
                 self.copy(
@@ -779,7 +795,8 @@ class ProgramCallablesInfo(ImmutableRecord):
 
         resolved_functions = {}
 
-        for func_id, in_knl_callable in self.resolved_functions.items():
+        for func_id in new_callables_count:
+            in_knl_callable = self.resolved_functions[func_id]
             if isinstance(in_knl_callable, CallableKernel):
                 # If callable kernel, perform renames.
                 old_subkernel = in_knl_callable.subkernel
