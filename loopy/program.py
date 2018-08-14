@@ -809,6 +809,7 @@ class ProgramCallablesInfo(ImmutableRecord):
                     new_callables_count.keys()-renames_needed.keys()):
                 if old_func_id in history[new_func_id]:
                     renames_needed[new_func_id] = old_func_id
+                    break
 
         resolved_functions = {}
 

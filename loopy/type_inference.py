@@ -882,11 +882,6 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
 
 def infer_unknown_types(program, expect_completion=False):
     """Infer types on temporaries and arguments."""
-    from loopy.kernel import LoopKernel
-    if isinstance(program, LoopKernel):
-        # FIXME: deprecate warning needed here
-        from loopy.program import make_program_from_kernel
-        program = make_program_from_kernel(program)
 
     program_callables_info = program.program_callables_info
 
