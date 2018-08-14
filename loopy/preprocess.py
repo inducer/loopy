@@ -2269,9 +2269,7 @@ def traverse_to_infer_arg_descr(kernel, program_callables_info):
 
 def infer_arg_descr(program):
     root_kernel_callable = program.program_callables_info[program.name]
-    from loopy.program import count_callables_in_program_callables_info
-    old_callables_count = count_callables_in_program_callables_info(
-            program.program_callables_info)
+    old_callables_count = program.program_callables_info.callables_count()
     program_callables_info = (
             program.program_callables_info.with_edit_callables_mode())
     root_kernel = program.root_kernel

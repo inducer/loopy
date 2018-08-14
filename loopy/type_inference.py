@@ -894,9 +894,7 @@ def infer_unknown_types(program, expect_completion=False):
             program_callables_info[program.name])
     type_uninferred_root_kernel = type_uninferred_knl_callable.subkernel
 
-    from loopy.program import count_callables_in_program_callables_info
-    old_callables_count = count_callables_in_program_callables_info(
-            program_callables_info)
+    old_callables_count = program_callables_info.callables_count()
     program_callables_info = (
             program.program_callables_info.with_edit_callables_mode())
     root_kernel, program_callables_info = (

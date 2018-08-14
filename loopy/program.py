@@ -526,27 +526,6 @@ def count_callables_in_kernel(kernel, program_callables_info):
 
     return callables_count
 
-
-# FIXME: @memoize_method
-def count_callables_in_program_callables_info(program_callables_info):
-    """
-    Returns an instance of :class:`collection.Counter` representing the number
-    of times the callables is called in program_callables_info.
-    """
-    # should raise an error if there are more than  one root kernels(which is
-    # illegal)
-    root_kernel_name, = [in_knl_callable.subkernel.name for in_knl_callable
-            in program_callables_info.values() if
-            isinstance(in_knl_callable, CallableKernel) and
-            in_knl_callable.subkernel.is_called_from_host]
-
-    from collections import Counter
-    callables_count = Counter([root_kernel_name])
-    callables_count += (
-            count_callables_in_kernel(program_callables_info[
-                root_kernel_name].subkernel, program_callables_info))
-    return callables_count
-
 # }}}
 
 
@@ -593,6 +572,29 @@ class ProgramCallablesInfo(ImmutableRecord):
             "history")
 
     update_persistent_hash = LoopKernel.update_persistent_hash
+
+    # FIXME: @memoize_method
+    def callables_count(self):
+        """
+        Returns an instance of :class:`collection.Counter` representing the number
+        of times the callables is called in program_callables_info.
+        """
+        # should raise an error if there are more than  one root kernels(which is
+        # illegal)
+        root_kernel_name, = [in_knl_callable.subkernel.name for in_knl_callable
+                in self.values() if
+                isinstance(in_knl_callable, CallableKernel) and
+                in_knl_callable.subkernel.is_called_from_host]
+
+        from collections import Counter
+        callables_count = Counter([root_kernel_name])
+        callables_count += (
+                count_callables_in_kernel(self[
+                    root_kernel_name].subkernel, self))
+
+        return callables_count
+
+    # {{{ interface to perfrom edits on callables
 
     def with_add_callable(self, function, in_kernel_callable):
         """
@@ -776,8 +778,7 @@ class ProgramCallablesInfo(ImmutableRecord):
         is renamed back to ``sin``.
         """
 
-        new_callables_count = count_callables_in_program_callables_info(
-                self)
+        new_callables_count = self.callables_count()
         history = self.history.copy()
         renames_needed = {}
 
@@ -826,6 +827,8 @@ class ProgramCallablesInfo(ImmutableRecord):
         return self.copy(
                 is_being_edited=False,
                 resolved_functions=resolved_functions)
+
+    # }}}
 
     # {{{ behave like a dict(syntactic sugar)
 

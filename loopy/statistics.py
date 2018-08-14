@@ -1396,17 +1396,17 @@ def get_op_map(program, numpy_types=True, count_redundant_work=False,
 
     op_map = ToCountMap()
 
+    callables_count = (
+                program.program_callables_info.callables_count())
+
     for func_id, in_knl_callable in program.program_callables_info.items():
         if isinstance(in_knl_callable, CallableKernel):
-            num_times_called = (
-                    program.program_callables_info.num_times_callables_called[
-                        func_id])
             knl = in_knl_callable.subkernel
             knl_op_map = get_op_map_for_single_kernel(knl,
                         program.program_callables_info, numpy_types,
                         count_redundant_work, subgroup_size)
 
-            for i in range(num_times_called):
+            for i in range(callables_count[func_id]):
                 op_map += knl_op_map
         elif isinstance(in_knl_callable, ScalarCallable):
             pass
@@ -1684,18 +1684,17 @@ def get_mem_access_map(program, numpy_types=True, count_redundant_work=False,
 
     access_map = ToCountMap()
 
+    callables_count = program.program_callables_info.callables_count()
+
     for func_id, in_knl_callable in program.program_callables_info.items():
         if isinstance(in_knl_callable, CallableKernel):
-            num_times_called = (
-                    program.program_callables_info.num_times_callables_called[
-                        func_id])
             knl = in_knl_callable.subkernel
             knl_access_map = get_access_map_for_single_kernel(knl,
                         program.program_callables_info, numpy_types,
                         count_redundant_work, subgroup_size)
 
             # FIXME: didn't see any easy way to multiply
-            for i in range(num_times_called):
+            for i in range(callables_count[func_id]):
                 access_map += knl_access_map
         elif isinstance(in_knl_callable, ScalarCallable):
             pass
@@ -1809,18 +1808,16 @@ def get_synchronization_map(program, subgroup_size=None):
     program = preprocess_program(program)
 
     sync_map = ToCountMap()
+    callables_count = program.program_callables_info.callables_count()
 
     for func_id, in_knl_callable in program.program_callables_info.items():
         if isinstance(in_knl_callable, CallableKernel):
-            num_times_called = (
-                    program.program_callables_info.num_times_callables_called[
-                        func_id])
             knl = in_knl_callable.subkernel
             knl_sync_map = get_synchronization_map_for_single_kernel(knl,
                     program.program_callables_info, subgroup_size)
 
             # FIXME: didn't see any easy way to multiply
-            for i in range(num_times_called):
+            for i in range(callables_count[func_id]):
                 sync_map += knl_sync_map
         elif isinstance(in_knl_callable, ScalarCallable):
             pass
@@ -1887,18 +1884,17 @@ def gather_access_footprints(program, ignore_uncountable=False):
     write_footprints = []
     read_footprints = []
 
+    callables_count = program.program_callables_info.callables_count()
+
     for func_id, in_knl_callable in program.program_callables_info.items():
         if isinstance(in_knl_callable, CallableKernel):
-            num_times_called = (
-                    program.program_callables_info.num_times_callables_called[
-                        func_id])
             knl = in_knl_callable.subkernel
             knl_write_footprints, knl_read_footprints = (
                     gather_access_footprints_for_single_kernel(knl,
                         ignore_uncountable))
 
             # FIXME: didn't see any easy way to multiply
-            for i in range(num_times_called):
+            for i in range(callables_count[func_id]):
                 write_footprints.extend(knl_write_footprints)
                 read_footprints.extend(knl_read_footprints)
 
