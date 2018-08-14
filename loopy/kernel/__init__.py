@@ -1367,8 +1367,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     # {{{ direct execution
 
     def __call__(self, *args, **kwargs):
-        raise LoopyError("Calling a LoopKernel is deprecated, call a Program "
-                "instead.")
+        warn("Calling a LoopKernel is deprecated, call a Program "
+                "instead.", DeprecationWarning, stacklevel=2)
         from loopy.program import make_program_from_kernel
         program = make_program_from_kernel(self)
         return program(*args, **kwargs)

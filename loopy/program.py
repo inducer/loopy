@@ -29,8 +29,8 @@ from pytools import ImmutableRecord, memoize_method
 from pymbolic.primitives import Variable
 from functools import wraps
 
-from loopy.symbolic import (
-        RuleAwareIdentityMapper, ResolvedFunction, CombineMapper)
+from loopy.symbolic import (RuleAwareIdentityMapper, ResolvedFunction,
+        CombineMapper, SubstitutionRuleExpander)
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
 from loopy.kernel.instruction import (
@@ -511,11 +511,13 @@ def count_callables_in_kernel(kernel, program_callables_info):
     callables_count = Counter()
     callables_counting_mapper = CallablesCountingMapper(
             program_callables_info)
+    subst_expander = SubstitutionRuleExpander(kernel.substitutions)
 
     for insn in kernel.instructions:
         if isinstance(insn, MultiAssignmentBase):
             callables_count += (
-                    callables_counting_mapper(insn.expression))
+                    callables_counting_mapper(subst_expander(
+                        insn.expression)))
         elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
             pass
         else:
