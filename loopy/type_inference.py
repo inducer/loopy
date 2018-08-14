@@ -52,7 +52,7 @@ def _debug(kernel, s, *args):
 def get_return_types_as_tuple(arg_id_to_dtype):
     """Returns the types of arguments in  a tuple format.
 
-    :param arg_id_to_dtype: An instance of :class:`dict` which denotes a
+    :arg arg_id_to_dtype: An instance of :class:`dict` which denotes a
                             mapping from the arguments to their inferred types.
     """
     return_arg_id_to_dtype = dict((id, dtype) for id, dtype in
@@ -894,6 +894,9 @@ def infer_unknown_types(program, expect_completion=False):
             program_callables_info[program.name])
     type_uninferred_root_kernel = type_uninferred_knl_callable.subkernel
 
+    from loopy.program import count_callables_in_program_callables_info
+    old_callables_count = count_callables_in_program_callables_info(
+            program_callables_info)
     program_callables_info = (
             program.program_callables_info.with_edit_callables_mode())
     root_kernel, program_callables_info = (
@@ -910,10 +913,9 @@ def infer_unknown_types(program, expect_completion=False):
                 type_inferred_knl_callable))
 
     program_callables_info = (
-            program_callables_info.with_exit_edit_callables_mode())
+            program_callables_info.with_exit_edit_callables_mode(
+                old_callables_count))
 
-    # FIXME: maybe put all of this in a function?
-    # need to infer functions that were left out during inference
     return program.copy(program_callables_info=program_callables_info)
 
 # }}}

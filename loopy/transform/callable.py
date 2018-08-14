@@ -35,10 +35,18 @@ __doc__ = """
 
 # {{{ register function lookup
 
-def resolved_callables_from_function_lookup(program,
-        func_id_to_kernel_callable_mapper):
+def _resolved_callables_from_function_lookup(program,
+        func_id_to_in_kernel_callable_mapper):
+    """
+    Returns a copy of *program* with the expression nodes marked "Resolved"
+    if any match is found through the given
+    *func_id_to_in_kernel_callable_mapper*.
+
+    :arg func_id_to_in_kernel_callable_mapper: A function with signature
+        ``(target, identifier)`` that returns either an instance of
+        :class:`loopy.InKernelCallable` or *None*.
+    """
     program_callables_info = program.program_callables_info
-    program_callables_info = program_callables_info.with_edit_callables_mode()
 
     callable_knls = dict(
             (func_id, in_knl_callable) for func_id, in_knl_callable in
@@ -55,18 +63,14 @@ def resolved_callables_from_function_lookup(program,
 
         resolved_function_marker = ResolvedFunctionMarker(
                 rule_mapping_context, kernel, program_callables_info,
-                [func_id_to_kernel_callable_mapper])
+                [func_id_to_in_kernel_callable_mapper])
 
-        # scoping fucntions and collecting the scoped functions
         new_subkernel = rule_mapping_context.finish_kernel(
                 resolved_function_marker.map_kernel(kernel))
         program_callables_info = resolved_function_marker.program_callables_info
 
         edited_callable_knls[func_id] = in_knl_callable.copy(
                 subkernel=new_subkernel)
-
-    program_callables_info = (
-            program_callables_info.with_exit_edit_callables_mode())
 
     new_resolved_functions = {}
 
@@ -85,7 +89,7 @@ def resolved_callables_from_function_lookup(program,
 def register_function_id_to_in_knl_callable_mapper(program,
         func_id_to_in_knl_callable_mapper):
     """
-    Returns a copy of *kernel* with the *function_lookup* registered.
+    Returns a copy of *program* with the *function_lookup* registered.
 
     :arg func_id_to_in_knl_callable_mapper: A function of signature ``(target,
         identifier)`` returning a
@@ -105,7 +109,7 @@ def register_function_id_to_in_knl_callable_mapper(program,
         new_func_id_mappers = program.func_id_to_in_knl_callable_mappers + (
                 [func_id_to_in_knl_callable_mapper])
 
-    program = resolved_callables_from_function_lookup(program,
+    program = _resolved_callables_from_function_lookup(program,
             func_id_to_in_knl_callable_mapper)
 
     new_program = program.copy(

@@ -29,12 +29,20 @@ from pytools import ImmutableRecord, memoize_method
 from pymbolic.primitives import Variable
 from functools import wraps
 
-from loopy.symbolic import RuleAwareIdentityMapper, ResolvedFunction
+from loopy.symbolic import (
+        RuleAwareIdentityMapper, ResolvedFunction, CombineMapper)
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
+from loopy.kernel.instruction import (
+        MultiAssignmentBase, CInstruction, _DataObliviousInstruction)
 from loopy.diagnostic import LoopyError
+from loopy.library.reduction import ReductionOpFunction
 
 from loopy.kernel import LoopKernel
+from collections import Counter
+from pymbolic.primitives import Call, CallWithKwargs
+
+# FIXME: autofunction/autoclass?? ~KK
 
 
 class ResolvedFunctionMarker(RuleAwareIdentityMapper):
@@ -60,7 +68,6 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
         super(ResolvedFunctionMarker, self).__init__(rule_mapping_context)
         self.kernel = kernel
         self.program_callables_info = program_callables_info
-        # FIXME: function_resolvesrs looks like a very bad name change it
         self.function_id_to_in_knl_callable_mappers = (
                 function_id_to_in_knl_callable_mappers)
 
@@ -71,7 +78,6 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
         :arg:`identifier` is known to any kernel function scoper, otherwise returns
         *None*.
         """
-        # FIXME change docs
         for func_id_to_in_knl_callable_mapper in (
                 self.function_id_to_in_knl_callable_mappers):
             # fixme: do we really need to given target for the function
@@ -83,7 +89,6 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
         return None
 
     def map_call(self, expr, expn_state):
-        from pymbolic.primitives import Call, CallWithKwargs
         from loopy.symbolic import parse_tagged_name
 
         name, tag = parse_tagged_name(expr.function)
@@ -109,8 +114,8 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
                 # resolved in-kernel callable
 
                 self.program_callables_info, new_func_id = (
-                        self.program_callables_info.with_callable(expr.function,
-                            in_knl_callable, True))
+                        self.program_callables_info.with_add_callable(expr.function,
+                            in_knl_callable))
                 return type(expr)(
                         ResolvedFunction(new_func_id),
                         tuple(self.rec(child, expn_state)
@@ -135,10 +140,15 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
         return super(ResolvedFunctionMarker, self).map_reduction(expr, expn_state)
 
 
-def initialize_program_callables_info_from_kernel(
-        kernel, func_id_to_kernel_callable_mappers):
+def initialize_program_callables_info_from_kernel(kernel):
+    """
+    Returns an instance of :class:`loopy.ProgramCallablesInfo`, by resolving
+    the functions based on :mod:`loopy`'s default function resolvers.
+    """
+    # collect the default function resolvers
+    func_id_to_kernel_callable_mappers = (
+            default_func_id_to_kernel_callable_mappers(kernel.target))
     program_callables_info = ProgramCallablesInfo({})
-    program_callables_info = program_callables_info.with_edit_callables_mode()
 
     from loopy.symbolic import SubstitutionRuleMappingContext
     rule_mapping_context = SubstitutionRuleMappingContext(
@@ -148,16 +158,17 @@ def initialize_program_callables_info_from_kernel(
             rule_mapping_context, kernel, program_callables_info,
             func_id_to_kernel_callable_mappers)
 
-    # scoping fucntions and collecting the scoped functions
+    # mark the functions as "Resolved" in the expression nodes.
     kernel_with_functions_resolved = rule_mapping_context.finish_kernel(
             resolved_function_marker.map_kernel(kernel))
+    # collect the update program_callables_info
     program_callables_info = resolved_function_marker.program_callables_info
 
     callable_kernel = CallableKernel(kernel_with_functions_resolved)
-    program_callables_info, _ = program_callables_info.with_callable(
-            Variable(kernel.name), callable_kernel, True)
-    program_callables_info = (
-            program_callables_info.with_exit_edit_callables_mode())
+
+    # add the callable kernel to the program_callables_info
+    program_callables_info, _ = program_callables_info.with_add_callable(
+            Variable(kernel.name), callable_kernel)
 
     return program_callables_info
 
@@ -357,33 +368,31 @@ class Program(ImmutableRecord):
 # }}}
 
 
-def next_indexed_function_identifier(function):
+def next_indexed_function_identifier(function_id):
     """
     Returns an instance of :class:`str` with the next indexed-name in the
     sequence for the name of *function*.
 
     *Example:* ``'sin_0'`` will return ``'sin_1'``.
 
-    :arg function: Either an instance of :class:`str`,
-        :class:`pymbolic.primitives.Variable` ,
-        :class:`loopy.reduction.ReductionOpFunction`.
+    :arg function_id: Either an instance of :class:`str`.
     """
-    from loopy.library.reduction import ReductionOpFunction
-    if isinstance(function, ReductionOpFunction):
-        return function.copy()
-    elif isinstance(function, str):
-        function = Variable(function)
 
-    assert isinstance(function, Variable)
+    # {{{ sanity checks
+
+    assert isinstance(function_id, str)
+
+    # }}}
+
     func_name = re.compile(r"^(?P<alpha>\S+?)_(?P<num>\d+?)$")
 
-    match = func_name.match(function.name)
+    match = func_name.match(function_id)
 
     if match is None:
-        if function.name[-1] == '_':
-            return "{old_name}0".format(old_name=function.name)
+        if function_id[-1] == '_':
+            return "{old_name}0".format(old_name=function_id)
         else:
-            return "{old_name}_0".format(old_name=function.name)
+            return "{old_name}_0".format(old_name=function_id)
 
     return "{alpha}_{num}".format(alpha=match.group('alpha'),
             num=int(match.group('num'))+1)
@@ -423,6 +432,115 @@ def rename_resolved_functions_in_a_single_kernel(kernel,
                 resolved_function_renamer.map_kernel(kernel)))
 
 
+# {{{ counting helpers
+
+class CallablesCountingMapper(CombineMapper):
+    """
+    Returns an instance of :class:`collections.Counter` with the count of
+    callables registered in *program_callables_info*.
+
+    .. attribute:: program_callables_info
+
+        An instance of :class:`loopy.program.ProgramCallablesInfo`.
+    """
+    def __init__(self, program_callables_info):
+        self.program_callables_info = program_callables_info
+
+    def combine(self, values):
+        return sum(values, Counter())
+
+    def map_call(self, expr):
+
+        if isinstance(expr, CallWithKwargs):
+            kw_parameters = expr.kw_parameters
+        else:
+            assert isinstance(expr, Call)
+            kw_parameters = {}
+
+        if isinstance(expr.function, (ResolvedFunction)):
+            in_knl_callable = self.program_callables_info[expr.function.name]
+            if isinstance(in_knl_callable, ScalarCallable):
+                return (Counter([expr.function.name]) +
+                        self.combine((self.rec(child) for child in expr.parameters
+                            + tuple(kw_parameters.values()))))
+
+            elif isinstance(in_knl_callable, CallableKernel):
+
+                # callable kernels have more callables in them.
+                callables_count_in_subkernel = (
+                        count_callables_in_kernel(
+                            in_knl_callable.subkernel,
+                            self.program_callables_info))
+
+                return (Counter([expr.function.name]) +
+                        self.combine((self.rec(child) for child in expr.parameters
+                            + tuple(kw_parameters.values())))) + (
+                                    callables_count_in_subkernel)
+            else:
+                raise NotImplementedError("Unknown callable type %s." % (
+                    type))
+        else:
+            return (
+                    self.combine((self.rec(child) for child in expr.parameters
+                        + tuple(kw_parameters.values()))))
+
+    map_call_with_kwargs = map_call
+
+    def map_constant(self, expr):
+        return Counter()
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
+    map_tagged_variable = map_constant
+    map_type_cast = map_constant
+
+
+# FIXME: @memoize_method
+def count_callables_in_kernel(kernel, program_callables_info):
+    """
+    Returns an instance of :class:`collections.Counter` representing the number
+    of callables in the *kernel* that are registered in
+    *program_callables_info*.
+    """
+    assert isinstance(kernel, LoopKernel)
+    callables_count = Counter()
+    callables_counting_mapper = CallablesCountingMapper(
+            program_callables_info)
+
+    for insn in kernel.instructions:
+        if isinstance(insn, MultiAssignmentBase):
+            callables_count += (
+                    callables_counting_mapper(insn.expression))
+        elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
+            pass
+        else:
+            raise NotImplementedError("Unknown instruction type %s." % (
+                type(insn)))
+
+    return callables_count
+
+
+# FIXME: @memoize_method
+def count_callables_in_program_callables_info(program_callables_info):
+    """
+    Returns an instance of :class:`collection.Counter` representing the number
+    of times the callables is called in program_callables_info.
+    """
+    root_kernel_name, = [in_knl_callable.subkernel.name for in_knl_callable
+            in program_callables_info.values() if
+            isinstance(in_knl_callable, CallableKernel) and
+            in_knl_callable.subkernel.is_called_from_host]
+
+    from collections import Counter
+    callables_count = Counter([root_kernel_name])
+    callables_count += (
+            count_callables_in_kernel(program_callables_info[
+                root_kernel_name].subkernel, program_callables_info))
+    return callables_count
+
+# }}}
+
+
 # {{{ program callables info
 
 class ProgramCallablesInfo(ImmutableRecord):
@@ -434,12 +552,6 @@ class ProgramCallablesInfo(ImmutableRecord):
         An instance of :class:`dict` that contains a mapping from function
         identifier to instances of
         :class:`loopy.kernel.function_interface.InKernelCallable`
-
-    .. attribute:: num_times_callables_called
-
-        An instace of :class:`dict` that contains a mapping from function
-        identifier to :class:`int`, that denotes the number of times the
-        callable is being called in the entire :class:`loopy.Program`.
 
     .. attribute:: history
 
@@ -453,54 +565,92 @@ class ProgramCallablesInfo(ImmutableRecord):
         An instance of :class:`bool` which is intended to aid the working of
         :meth:`with_enter_edit_callables_mode`, :meth:`with_callable` and
         :meth:`with_exit_edit_callables_mode`.
-
-    .. attribute:: renames_needed_after_editing
-
-        An instance of :class:`dict` which is intended to aid the working of
-        :meth:`with_enter_edit_callables_mode`, :meth:`with_callable` and
-        :meth:`with_exit_edit_callables_mode`.
     """
     def __init__(self, resolved_functions,
-            num_times_callables_called=None, history=None,
-            is_being_edited=False, renames_needed_after_editing={}):
+            history=None, is_being_edited=False):
 
-        if num_times_callables_called is None:
-            num_times_callables_called = dict((func_id, 1) for func_id in
-                    resolved_functions)
         if history is None:
             history = dict((func_id, set([func_id])) for func_id in
                     resolved_functions)
 
         super(ProgramCallablesInfo, self).__init__(
                 resolved_functions=resolved_functions,
-                num_times_callables_called=num_times_callables_called,
                 history=history,
-                is_being_edited=is_being_edited,
-                renames_needed_after_editing=renames_needed_after_editing)
+                is_being_edited=is_being_edited)
 
     hash_fields = (
             "resolved_functions",
-            "num_times_callables_called",
             "is_being_edited",
-            "renames_needed_after_editing",
             "history")
 
     update_persistent_hash = LoopKernel.update_persistent_hash
 
-    def add_callable(self, function, in_kernel_callable):
+    def with_add_callable(self, function, in_kernel_callable):
+        """
+        Returns a copy of *self* with the *function* associated with the
+        *in_kernel_callable*.
+        """
+        # note: this does not require the edit mode to be true.
+        # the reason for the edit mode is that we need to take care of the
+        # renaming that might be needed to be done
+        # PS: delete this note?
+        history = self.history.copy()
+
+        if in_kernel_callable in self.resolved_functions.values():
+            # the callable already exists, implies return the function
+            # identifier corresposing to that callable.
+            for func_id, in_knl_callable in self.resolved_functions.items():
+                if in_knl_callable == in_kernel_callable:
+                    history[func_id] = history[func_id] | set([function.name])
+                    return (
+                            self.copy(
+                                history=history),
+                            func_id)
+        else:
+
+            # {{{ handle ReductionOpFunction
+
+            if isinstance(function, ReductionOpFunction):
+                unique_function_identifier = function.copy()
+                updated_resolved_functions = self.resolved_functions.copy()
+                updated_resolved_functions[unique_function_identifier] = (
+                        in_kernel_callable)
+
+                return (
+                        self.copy(
+                            resolved_functions=updated_resolved_functions),
+                        unique_function_identifier)
+
+            # }}}
+
+            unique_function_identifier = function.name
+            while unique_function_identifier in self.resolved_functions:
+                unique_function_identifier = (
+                        next_indexed_function_identifier(
+                            unique_function_identifier))
+
+        updated_resolved_functions = self.resolved_functions.copy()
+        updated_resolved_functions[unique_function_identifier] = (
+                in_kernel_callable)
 
         history[unique_function_identifier] = set(
                 [unique_function_identifier])
-        pass
 
-    def with_updated_num_times_being_called(self):
-        root_kernel_name, = [in_knl_callable.subkernel.name for in_knl_callable
-                in self.resolved_functions.values() if
-                isinstance(in_knl_callable, CallableKernel) and
-                in_knl_callable.is_called_from_host]
+        return (
+                self.copy(
+                    history=history,
+                    resolved_functions=updated_resolved_functions),
+                Variable(unique_function_identifier))
 
     def with_edit_callables_mode(self):
-        return self.copy(is_being_edited=True)
+        """
+        Initiates *self* for a walk traversal through all the callables.
+        """
+        # PS: I don't see a need for this method right now.
+        # This is just for validation purposes, maybe needs to disapper if you
+        # find a better solution?
+        return self.copy(
+                is_being_edited=True)
 
     def with_callable(self, function, in_kernel_callable):
         """
@@ -512,27 +662,24 @@ class ProgramCallablesInfo(ImmutableRecord):
 
         .. note::
 
-            Assumes that each callable is touched atmost once, the internal
-            working of this function fails if that is violated.
+            - Use :meth:`with_add_callable` if a callable is being resolved for the
+                first time.
         """
-        # FIXME: add a note about using enter and exit. ~KK
-        # FIXME: think about a better idea of "with_added_callable" this would
-        # be more convenient for developer-faced usage. ~KK
-        # FIXME: Is this is a bad code? Yes.
-        # Is there a better alternative to it. Definitely maybe.
-        # But I don't want to spend the next 182 years of my life optimizing
-        # some scheme, without even implmenting it to some problem!
+
+        # {{{ non-edit mode
 
         if not self.is_being_edited:
             if function.name in self.resolved_functions and (
                     self.resolved_functions[function.name] == in_kernel_callable):
+                # if not being edited, check that the given function is
+                # equal to the the old version of the callable.
                 return self, function
             else:
                 print('Old: ', self.resolved_functions[function.name])
                 print('New: ', in_kernel_callable)
-                raise LoopyError("Use 'enter_edit_callables_mode' first.")
+                raise LoopyError("Use 'with_enter_edit_callables_mode' first.")
 
-        from loopy.library.reduction import ReductionOpFunction
+        # }}}
 
         # {{{ sanity checks
 
@@ -543,87 +690,90 @@ class ProgramCallablesInfo(ImmutableRecord):
 
         # }}}
 
-        renames_needed_after_editing = self.renames_needed_after_editing.copy()
-        num_times_callables_called = self.num_times_callables_called.copy()
         history = self.history.copy()
 
-        if isinstance(function, ReductionOpFunction):
-            unique_function_identifier = function.copy()
-            num_times_callables_called[function] -= 1
-
-            num_times_callables_called[unique_function_identifier] = 1
-
-            updated_resolved_functions = self.resolved_functions.copy()
-            updated_resolved_functions[unique_function_identifier] = (
-                    in_kernel_callable)
-
-            return (
-                    self.copy(
-                        resolved_functions=updated_resolved_functions,
-                        num_times_callables_called=num_times_callables_called,
-                        renames_needed_after_editing=(
-                            renames_needed_after_editing)),
-                    unique_function_identifier)
-
         if in_kernel_callable in self.resolved_functions.values():
-            # the callable already exists, implies return the function
-            # identifier corresposing to that callable.
+
+            # the callable already exists, hence return the function
+            # identifier corresponding to that callable.
             for func_id, in_knl_callable in self.resolved_functions.items():
                 if in_knl_callable == in_kernel_callable:
-                    num_times_callables_called[func_id] += 1
-                    num_times_callables_called[function.name] -= 1
-                    if num_times_callables_called[function.name] == 0:
-                        renames_needed_after_editing[func_id] = function.name
-
                     history[func_id] = history[func_id] | set([function.name])
                     return (
                             self.copy(
-                                history=history,
-                                num_times_callables_called=(
-                                    num_times_callables_called),
-                                renames_needed_after_editing=(
-                                    renames_needed_after_editing)),
+                                history=history),
                             func_id)
         else:
-            unique_function_identifier = function.name
-            if self.num_times_callables_called[function.name] > 1:
-                while unique_function_identifier in self.resolved_functions:
-                    unique_function_identifier = (
-                            next_indexed_function_identifier(
-                                unique_function_identifier))
+            # {{{ handle ReductionOpFunction
 
-            num_times_callables_called[function.name] -= 1
-            num_times_callables_called[unique_function_identifier] = 1
+            if isinstance(function, ReductionOpFunction):
+                unique_function_identifier = function.copy()
+                updated_resolved_functions = self.resolved_functions.copy()
+                updated_resolved_functions[unique_function_identifier] = (
+                        in_kernel_callable)
+
+                return (
+                        self.copy(
+                            resolved_functions=updated_resolved_functions),
+                        unique_function_identifier)
+
+            # }}}
+            unique_function_identifier = function.name
+            while unique_function_identifier in self.resolved_functions:
+                unique_function_identifier = (
+                        next_indexed_function_identifier(
+                            unique_function_identifier))
 
         updated_resolved_functions = self.resolved_functions.copy()
         updated_resolved_functions[unique_function_identifier] = (
                 in_kernel_callable)
 
-        if not resolved_for_the_first_time:
-            history[unique_function_identifier] = (
-                    history[function.name] | set([unique_function_identifier]))
-        else:
+        history[unique_function_identifier] = (
+                history[function.name] | set([unique_function_identifier]))
 
         return (
                 self.copy(
                     history=history,
-                    resolved_functions=updated_resolved_functions,
-                    num_times_callables_called=num_times_callables_called,
-                    renames_needed_after_editing=renames_needed_after_editing),
+                    resolved_functions=updated_resolved_functions),
                 Variable(unique_function_identifier))
 
-    def with_exit_edit_callables_mode(self):
+    def with_exit_edit_callables_mode(self, old_callables_count):
+        """
+        Returns a copy of *self* with renaming of the callables done whenver
+        possible.
+
+        *For example: * If all the ``sin`` got diverged as ``sin_0, sin_1``,
+        then all the renaming is done such that one of flavors of the function
+        is renamed back to ``sin``.
+        """
+
+        new_callables_count = count_callables_in_program_callables_info(
+                self)
+        history = self.history.copy()
+        renames_needed = {}
+
         assert self.is_being_edited
 
-        num_times_callables_called = {}
+        # NOTE:(to self by KK)
+        # all we need to do is change the name of the variables that were seen
+        # in old_callables_count but are no longer available.
+        # Using these 2 figure out the renames needed.
+        for old_func_id in old_callables_count-new_callables_count:
+            # this implies that all the function instances having the name
+            # "func_id" have been renamed to something else.
+            for new_func_id in (
+                    new_callables_count.keys()-renames_needed.keys()):
+                if old_func_id in history[new_func_id]:
+                    renames_needed[new_func_id] = old_func_id
+
         resolved_functions = {}
-        history = self.history.copy()
 
         for func_id, in_knl_callable in self.resolved_functions.items():
             if isinstance(in_knl_callable, CallableKernel):
+                # If callable kernel, perform renames.
                 old_subkernel = in_knl_callable.subkernel
                 new_subkernel = rename_resolved_functions_in_a_single_kernel(
-                        old_subkernel, self.renames_needed_after_editing)
+                        old_subkernel, renames_needed)
                 in_knl_callable = (
                         in_knl_callable.copy(subkernel=new_subkernel))
             elif isinstance(in_knl_callable, ScalarCallable):
@@ -632,44 +782,22 @@ class ProgramCallablesInfo(ImmutableRecord):
                 raise NotImplementedError("Unknown callable type %s." %
                         type(in_knl_callable).__name__)
 
-            if func_id in self.renames_needed_after_editing:
+            if func_id in renames_needed:
+                # If function name itself in renames change the key of the
+                # dict.
                 history.pop(func_id)
 
-                new_func_id = self.renames_needed_after_editing[func_id]
+                new_func_id = renames_needed[func_id]
                 resolved_functions[new_func_id] = (
                         in_knl_callable)
-                num_times_callables_called[new_func_id] = (
-                        self.num_times_callables_called[func_id])
-
             else:
                 resolved_functions[func_id] = in_knl_callable
-                num_times_callables_called[func_id] = (
-                        self.num_times_callables_called[func_id])
 
         return self.copy(
                 is_being_edited=False,
-                resolved_functions=resolved_functions,
-                num_times_callables_called=num_times_callables_called,
-                renames_needed_after_editing={})
+                resolved_functions=resolved_functions)
 
-    def with_deleted_callable(self, func_id, instances=1):
-        num_times_callables_called = self.num_times_callables_called.copy()
-        history = self.history.copy()
-        resolved_functions = self.resolved_functions.copy()
-
-        assert instances <= num_times_callables_called[func_id]
-
-        num_times_callables_called[func_id] -= instances
-
-        if num_times_callables_called[func_id] == 0:
-            num_times_callables_called.pop(func_id)
-            history.pop(func_id)
-            resolved_functions.pop(func_id)
-
-        return self.copy(
-                resolved_functions=resolved_functions,
-                num_times_callables_called=num_times_callables_called,
-                history=history)
+    # {{{ behave like a dict(syntactic sugar)
 
     def __getitem__(self, item):
         return self.resolved_functions[item]
@@ -683,11 +811,16 @@ class ProgramCallablesInfo(ImmutableRecord):
     def values(self):
         return self.resolved_functions.values()
 
+    # }}}
 
 # }}}
 
 
 def default_func_id_to_kernel_callable_mappers(target):
+    """
+    Returns a list of functions that are provided through *target* by deafault.
+    """
+    # FIXME: name scopers is confusing!(change it to something else.)
 
     from loopy.library.function import loopy_specific_callable_scopers
     return (
@@ -695,11 +828,18 @@ def default_func_id_to_kernel_callable_mappers(target):
                 target.get_device_ast_builder().function_scopers()))
 
 
+# {{{ helper functions
+
 def make_program_from_kernel(kernel):
+    """
+    Returns an instance of :class:`loopy.Program` with the *kernel* as the root
+    kernel.
+    """
 
-    program_callables_info = initialize_program_callables_info_from_kernel(kernel,
-            default_func_id_to_kernel_callable_mappers(kernel.target))
+    # get the program callables info
+    program_callables_info = initialize_program_callables_info_from_kernel(kernel)
 
+    # get the program from program callables info
     program = Program(
             name=kernel.name,
             program_callables_info=program_callables_info,
@@ -711,6 +851,12 @@ def make_program_from_kernel(kernel):
 
 
 def iterate_over_kernels_if_given_program(transform_for_single_kernel):
+    """
+    Function wrapper for transformations of the type ``transform(kernel:
+    LoopKernel, *args, **kwargs): LoopKernel``. Returns a function with the
+    ``transform`` being implemented on all of the callable kernels in a
+    :class:`loopy.Program`.
+    """
     def _collective_transform(program_or_kernel, *args, **kwargs):
         if isinstance(program_or_kernel, Program):
             program = program_or_kernel
@@ -739,6 +885,8 @@ def iterate_over_kernels_if_given_program(transform_for_single_kernel):
             return transform_for_single_kernel(kernel, *args, **kwargs)
 
     return wraps(transform_for_single_kernel)(_collective_transform)
+
+# }}}
 
 
 # vim: foldmethod=marker
