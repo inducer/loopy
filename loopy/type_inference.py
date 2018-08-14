@@ -408,8 +408,8 @@ class TypeInferenceMapper(CombineMapper):
                         identifier, function_mangler, arg_id_to_dtype,
                         arg_id_to_descr, mangle_result.target_name)
                 self.program_callables_info, new_function_id = (
-                        self.program_callables_info.with_callable(
-                            expr.function, in_knl_callable, True))
+                        self.program_callables_info.with_add_callable(
+                            expr.function, in_knl_callable))
 
                 if isinstance(expr, Call):
                     self.old_calls_to_new_calls[expr] = new_function_id
