@@ -526,6 +526,8 @@ def count_callables_in_program_callables_info(program_callables_info):
     Returns an instance of :class:`collection.Counter` representing the number
     of times the callables is called in program_callables_info.
     """
+    # should raise an error if there are more than  one root kernels(which is
+    # illegal)
     root_kernel_name, = [in_knl_callable.subkernel.name for in_knl_callable
             in program_callables_info.values() if
             isinstance(in_knl_callable, CallableKernel) and
@@ -636,6 +638,9 @@ class ProgramCallablesInfo(ImmutableRecord):
         history[unique_function_identifier] = set(
                 [unique_function_identifier])
 
+        if unique_function_identifier == 'loopy_kernel_0':
+            1/0
+
         return (
                 self.copy(
                     history=history,
@@ -719,10 +724,16 @@ class ProgramCallablesInfo(ImmutableRecord):
 
             # }}}
             unique_function_identifier = function.name
-            while unique_function_identifier in self.resolved_functions:
-                unique_function_identifier = (
-                        next_indexed_function_identifier(
-                            unique_function_identifier))
+
+            if isinstance(in_kernel_callable, CallableKernel) and (
+                    in_kernel_callable.subkernel.is_called_from_host):
+                # special treatment if the callable is the root kernel
+                pass
+            else:
+                while unique_function_identifier in self.resolved_functions:
+                    unique_function_identifier = (
+                            next_indexed_function_identifier(
+                                unique_function_identifier))
 
         updated_resolved_functions = self.resolved_functions.copy()
         updated_resolved_functions[unique_function_identifier] = (
