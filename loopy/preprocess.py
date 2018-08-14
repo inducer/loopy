@@ -1980,9 +1980,11 @@ def realize_c_vec(kernel):
     from loopy.isl_helpers import duplicate_axes
     from loopy.transform.iname import tag_inames
     from loopy import Assignment
-    from loopy.symbolic import IdentityMapper, SubstitutionMapper
+    from loopy.symbolic import IdentityMapper, SubstitutionMapper, ScopedFunction, TypeCast
     from pymbolic.mapper.substitutor import make_subst_func
-    from pymbolic.primitives import Variable
+    from pymbolic.primitives import Variable, BitwiseAnd
+    from numpy import dtype, float64, uint64
+    from loopy.types import to_loopy_type
 
     # any variable exists in expression?
     class AnyVariableFinder(IdentityMapper):
@@ -2016,7 +2018,6 @@ def realize_c_vec(kernel):
                 self.result = True
             return super(VariableFinder, self).map_variable(expr, args, kwargs)
 
-
     class SubscriptFinder(IdentityMapper):
 
         def __init__(self, find_aggregate_name, find_index_names):
@@ -2032,10 +2033,27 @@ def realize_c_vec(kernel):
                     self.result = True
             return super(SubscriptFinder, self).map_subscript(expr, args, kwargs)
 
+    class FunctionRewriter(IdentityMapper):
+        def map_call(self, expr, *args, **kwargs):
+            if expr.function.function.name[:3] == "abs":
+                double4 = to_loopy_type(dtype((float64, 4)), target=kernel.target)
+                uint4 = to_loopy_type(dtype((uint64, 4)), target=kernel.target)
+                param, = expr.parameters
+                param = TypeCast(uint4, param)
+                param = BitwiseAnd((param, 0x7fffffffffffffff))
+                param = TypeCast(double4, param)
+                return param
+            return super(FunctionRewriter, self).map_call(expr, args, kwargs)
+
+        # def map_scoped_function(self, expr, *args):
+        #     if expr.function.name[:3] == "abs":
+        #
+        #     return ScopedFunction(self.rec(expr.function, *args))
 
     cvec_inames = []
     new_cvec_inames = []
     simd_inames = []
+
     for i in sorted(kernel.all_inames()):
         if kernel.iname_tags_of_type(i, CVectorizeTag):
             cvec_inames.append(i)
@@ -2064,9 +2082,11 @@ def realize_c_vec(kernel):
     subst_mapper_simd = SubstitutionMapper(
         make_subst_func(dict((Variable(o), Variable(n)) for (o, n) in zip(cvec_inames, simd_inames))))
 
-
     func_names = set(["abs_*"])
+    # func_names = set(["xxxxxx"])
     function_finder = VariableFinder(func_names, regex=True)
+
+    function_rewriter = FunctionRewriter()
 
     new_insts = []
     for inst in kernel.instructions:
@@ -2080,7 +2100,7 @@ def realize_c_vec(kernel):
             if not avf.result:
                 can_vectorize = False
 
-            # built-in functions cannot be vectorized (in general)
+            # some built-in functions cannot be vectorized (in general)
             if can_vectorize:
                 function_finder.result = False
                 function_finder(inst.expression)
@@ -2100,6 +2120,9 @@ def realize_c_vec(kernel):
                     else:
                         continue
 
+                    if len(ary.dim_tags) < 1:
+                        continue
+
                     if not isinstance(ary.dim_tags[-1], CVectorArrayDimTag):
                         sf = SubscriptFinder(ary.name, set(cvec_inames))
                         sf(inst.assignee)
@@ -2108,11 +2131,18 @@ def realize_c_vec(kernel):
                             can_vectorize = False
                             break
 
+            can_vectorize = False
+            should_simd = True
+            if inst.assignee.aggregate.name[:3] == "dat":
+                should_simd = False
+
             if can_vectorize:
                 lhs = subst_mapper(inst.assignee)
                 rhs = subst_mapper(inst.expression)
+                # rhs = function_rewriter(rhs)
                 within_inames = frozenset(iname_map[i] if i in iname_map else i for i in inst.within_inames)
                 inst = inst.copy(assignee=lhs, expression=rhs, within_inames=within_inames)
+
             elif should_simd:
                 lhs = subst_mapper_simd(inst.assignee)
                 rhs = subst_mapper_simd(inst.expression)

@@ -643,7 +643,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             inames = frozenset(inames)
 
             from warnings import warn
-            warn("get_inames_domain did not get a frozenset", stacklevel=2)
+            # warn("get_inames_domain did not get a frozenset", stacklevel=2)
 
         return self._get_inames_domain_backend(inames)
 
