@@ -649,14 +649,24 @@ class ProgramCallablesInfo(ImmutableRecord):
             # }}}
 
             unique_function_identifier = function.name
-            while unique_function_identifier in self.resolved_functions:
-                unique_function_identifier = (
-                        next_indexed_function_identifier(
-                            unique_function_identifier))
+
+            if isinstance(in_kernel_callable, CallableKernel) and (
+                    in_kernel_callable.subkernel.is_called_from_host):
+                # special treatment if the callable is the root kernel
+                pass
+            else:
+                while unique_function_identifier in self.resolved_functions:
+                    unique_function_identifier = (
+                            next_indexed_function_identifier(
+                                unique_function_identifier))
 
         updated_resolved_functions = self.resolved_functions.copy()
         updated_resolved_functions[unique_function_identifier] = (
                 in_kernel_callable)
+
+        if 'strongVolumeKernelR_0' in updated_resolved_functions:
+            import pudb
+            pudb.set_trace()
 
         history[unique_function_identifier] = set(
                 [unique_function_identifier])
@@ -758,6 +768,10 @@ class ProgramCallablesInfo(ImmutableRecord):
         updated_resolved_functions = self.resolved_functions.copy()
         updated_resolved_functions[unique_function_identifier] = (
                 in_kernel_callable)
+
+        if 'strongVolumeKernelR_0' in updated_resolved_functions:
+            import pudb
+            pudb.set_trace()
 
         history[unique_function_identifier] = (
                 history[function.name] | set([unique_function_identifier]))
