@@ -1035,6 +1035,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 self.get_iname_bounds(iname, constants_only=True).size,
                 constants_only=True)))
 
+    @memoize_method
     def get_grid_sizes_for_insn_ids(self, insn_ids, program_callables_info,
             ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
@@ -1132,6 +1133,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return (to_dim_tuple(global_sizes, "global"),
                 to_dim_tuple(local_sizes, "local", forced_sizes=self.local_sizes))
 
+    @memoize_method
     def get_grid_sizes_for_insn_ids_as_exprs(self, insn_ids,
             program_callables_info, ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that

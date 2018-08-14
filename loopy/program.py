@@ -500,7 +500,7 @@ class CallablesCountingMapper(CombineMapper):
     map_type_cast = map_constant
 
 
-# FIXME: @memoize_method
+@memoize_method
 def count_callables_in_kernel(kernel, program_callables_info):
     """
     Returns an instance of :class:`collections.Counter` representing the number
@@ -558,7 +558,7 @@ class ProgramCallablesInfo(ImmutableRecord):
             history=None, is_being_edited=False):
 
         if history is None:
-            history = dict((func_id, set([func_id])) for func_id in
+            history = dict((func_id, frozenset([func_id])) for func_id in
                     resolved_functions)
 
         super(ProgramCallablesInfo, self).__init__(
@@ -571,9 +571,16 @@ class ProgramCallablesInfo(ImmutableRecord):
             "is_being_edited",
             "history")
 
+    def __hash__(self):
+        return hash((
+            frozenset(six.iteritems(self.resolved_functions)),
+            frozenset(six.iteritems(self.history)),
+            self.is_being_edited
+            ))
+
     update_persistent_hash = LoopKernel.update_persistent_hash
 
-    # FIXME: @memoize_method
+    @memoize_method
     def callables_count(self):
         """
         Returns an instance of :class:`collection.Counter` representing the number
@@ -623,7 +630,7 @@ class ProgramCallablesInfo(ImmutableRecord):
             # identifier corresposing to that callable.
             for func_id, in_knl_callable in self.resolved_functions.items():
                 if in_knl_callable == in_kernel_callable:
-                    history[func_id] = history[func_id] | set([function.name])
+                    history[func_id] = history[func_id] | frozenset([function.name])
                     return (
                             self.copy(
                                 history=history),
@@ -637,7 +644,7 @@ class ProgramCallablesInfo(ImmutableRecord):
                 updated_resolved_functions = self.resolved_functions.copy()
                 updated_resolved_functions[unique_function_identifier] = (
                         in_kernel_callable)
-                history[unique_function_identifier] = set(
+                history[unique_function_identifier] = frozenset(
                         [unique_function_identifier])
 
                 return (
@@ -668,7 +675,7 @@ class ProgramCallablesInfo(ImmutableRecord):
             import pudb
             pudb.set_trace()
 
-        history[unique_function_identifier] = set(
+        history[unique_function_identifier] = frozenset(
                 [unique_function_identifier])
 
         return (
@@ -733,7 +740,7 @@ class ProgramCallablesInfo(ImmutableRecord):
             # identifier corresponding to that callable.
             for func_id, in_knl_callable in self.resolved_functions.items():
                 if in_knl_callable == in_kernel_callable:
-                    history[func_id] = history[func_id] | set([function.name])
+                    history[func_id] = history[func_id] | frozenset([function.name])
                     return (
                             self.copy(
                                 history=history),
@@ -774,7 +781,7 @@ class ProgramCallablesInfo(ImmutableRecord):
             pudb.set_trace()
 
         history[unique_function_identifier] = (
-                history[function.name] | set([unique_function_identifier]))
+                history[function.name] | frozenset([unique_function_identifier]))
 
         return (
                 self.copy(
