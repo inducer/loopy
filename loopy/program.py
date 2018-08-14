@@ -806,7 +806,7 @@ class ProgramCallablesInfo(ImmutableRecord):
             # this implies that all the function instances having the name
             # "func_id" have been renamed to something else.
             for new_func_id in (
-                    new_callables_count.keys()-renames_needed.keys()):
+                    six.viewkeys(new_callables_count)-six.viewkeys(renames_needed)):
                 if old_func_id in history[new_func_id]:
                     renames_needed[new_func_id] = old_func_id
                     break
