@@ -229,7 +229,6 @@ class ReductionOpFunction(FunctionIdentifier):
 
     update_persistent_hash = LoopKernel.update_persistent_hash
 
-
 # }}}
 
 
