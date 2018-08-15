@@ -447,7 +447,7 @@ def fuse_kernels(programs, suffixes=None, data_flow=None):
                 # renaming.
                 continue
             main_prog_callables_info, new_func_id = (
-                    main_prog_callables_info.with_add_callable(var(old_func_id),
+                    main_prog_callables_info.with_added_callable(var(old_func_id),
                         in_knl_callable))
 
             if old_func_id != new_func_id:
@@ -464,7 +464,7 @@ def fuse_kernels(programs, suffixes=None, data_flow=None):
             subkernel=new_root_kernel.copy(name=programs[0].name))
 
     # TODO: change the name of the final root kernel.
-    main_prog_callables_info, _ = main_prog_callables_info.with_add_callable(
+    main_prog_callables_info, _ = main_prog_callables_info.with_added_callable(
             var(programs[0].name), new_root_kernel_callable)
 
     return programs[0].copy(

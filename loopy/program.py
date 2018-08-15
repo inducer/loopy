@@ -114,7 +114,7 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
                 # resolved in-kernel callable
 
                 self.program_callables_info, new_func_id = (
-                        self.program_callables_info.with_add_callable(expr.function,
+                        self.program_callables_info.with_added_callable(expr.function,
                             in_knl_callable))
                 return type(expr)(
                         ResolvedFunction(new_func_id),
@@ -135,7 +135,7 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
             in_knl_callable = self.find_in_knl_callable_from_identifier(func_id)
             assert in_knl_callable is not None
             self.program_callables_info, _ = (
-                    self.program_callables_info.with_add_callable(func_id,
+                    self.program_callables_info.with_added_callable(func_id,
                         in_knl_callable))
             # FIXME: where do you deal with the parameters? ~KK
         return super(ResolvedFunctionMarker, self).map_reduction(expr, expn_state)
@@ -168,7 +168,7 @@ def initialize_program_callables_info_from_kernel(kernel):
     callable_kernel = CallableKernel(kernel_with_functions_resolved)
 
     # add the callable kernel to the program_callables_info
-    program_callables_info, _ = program_callables_info.with_add_callable(
+    program_callables_info, _ = program_callables_info.with_added_callable(
             Variable(kernel.name), callable_kernel)
 
     return program_callables_info
@@ -603,7 +603,7 @@ class ProgramCallablesInfo(ImmutableRecord):
 
     # {{{ interface to perfrom edits on callables
 
-    def with_add_callable(self, function, in_kernel_callable):
+    def with_added_callable(self, function, in_kernel_callable):
         """
         Returns a copy of *self* with the *function* associated with the
         *in_kernel_callable*.
@@ -704,7 +704,7 @@ class ProgramCallablesInfo(ImmutableRecord):
 
         .. note::
 
-            - Use :meth:`with_add_callable` if a callable is being resolved for the
+            - Use :meth:`with_added_callable` if a callable is being resolved for the
                 first time.
         """
 
