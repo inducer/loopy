@@ -439,7 +439,7 @@ def fuse_kernels(programs, suffixes=None, data_flow=None):
                 # main_program_callables_info, because of renaming is
                 # needed to be done in the callable kernels before registering.
                 # Hence disabling it until required.
-                if in_knl_callable.name != prog.name:
+                if in_knl_callable.subkernel.name != prog.name:
                     raise LoopyError("fuse_kernels cannot fuse programs with "
                             "multiple callable kernels.")
 
