@@ -1179,7 +1179,7 @@ Let us start with an example. Consider the kernel from above with a
 
 .. doctest::
 
-   >>> knl = lp.make_kernel(
+   >>> prog = lp.make_kernel(
    ...     "[n] -> {[i] : 0<=i<n}",
    ...     """
    ...     for i
@@ -1194,11 +1194,11 @@ Let us start with an example. Consider the kernel from above with a
    ...      ],
    ...     name="rotate_v2",
    ...     assumptions="n mod 16 = 0")
-   >>> knl = lp.split_iname(knl, "i", 16, inner_tag="l.0", outer_tag="g.0")
+   >>> prog = lp.split_iname(prog, "i", 16, inner_tag="l.0", outer_tag="g.0")
 
 Here is what happens when we try to generate code for the kernel:
 
-   >>> cgr = lp.generate_code_v2(knl)
+   >>> cgr = lp.generate_code_v2(prog)
    Traceback (most recent call last):
    ...
    loopy.diagnostic.MissingDefinitionError: temporary variable 'tmp' gets used in subkernel 'rotate_v2_0' without a definition (maybe you forgot to call loopy.save_and_reload_temporaries?)
@@ -1207,9 +1207,10 @@ This happens due to the kernel splitting done by :mod:`loopy`. The splitting
 happens when the instruction schedule is generated. To see the schedule, we
 should call :func:`loopy.get_one_scheduled_kernel`:
 
-   >>> knl = lp.preprocess_kernel(knl)
-   >>> knl = lp.get_one_scheduled_kernel(knl.root_kernel, knl.program_callables_info)
-   >>> print(knl)
+   >>> prog = lp.preprocess_kernel(prog)
+   >>> knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.program_callables_info)
+   >>> prog = prog.with_root_kernel(knl)
+   >>> print(prog)
    ---------------------------------------------------------------------------
    KERNEL: rotate_v2
    ---------------------------------------------------------------------------
@@ -1238,9 +1239,10 @@ function adds instructions to the kernel without scheduling them. That means
 that :func:`loopy.get_one_scheduled_kernel` needs to be called one more time to
 put those instructions into the schedule.
 
-   >>> knl = lp.save_and_reload_temporaries(knl)
-   >>> knl = lp.get_one_scheduled_kernel(knl.root_kernel, knl.program_callables_info)  # Schedule added instructions
-   >>> print(knl)
+   >>> prog = lp.save_and_reload_temporaries(prog)
+   >>> knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.program_callables_info)  # Schedule added instructions
+   >>> prog = prog.with_root_kernel(knl)
+   >>> print(prog)
    ---------------------------------------------------------------------------
    KERNEL: rotate_v2
    ---------------------------------------------------------------------------
@@ -1279,7 +1281,7 @@ does in more detail:
 
 The kernel translates into two OpenCL kernels.
 
-   >>> cgr = lp.generate_code_v2(knl)
+   >>> cgr = lp.generate_code_v2(prog)
    >>> print(cgr.device_code())
    #define lid(N) ((int) get_local_id(N))
    #define gid(N) ((int) get_group_id(N))
