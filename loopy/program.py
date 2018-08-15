@@ -1,6 +1,6 @@
 from __future__ import division, absolute_import
 
-__copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
+__copyright__ = "Copyright (C) 2018 Kaushik Kulkarni"
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
