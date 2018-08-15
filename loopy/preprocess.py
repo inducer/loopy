@@ -2273,7 +2273,7 @@ def infer_arg_descr(program):
     callables.
     """
     root_kernel_callable = program.program_callables_info[program.name]
-    old_callables_count = program.program_callables_info.callables_count()
+    old_callables_count = program.program_callables_info.callables_count
     program_callables_info = (
             program.program_callables_info.with_edit_callables_mode())
     root_kernel = program.root_kernel

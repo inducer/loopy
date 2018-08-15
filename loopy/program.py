@@ -838,7 +838,7 @@ class ProgramCallablesInfo(ImmutableRecord):
 
         assert self.is_being_edited
 
-        new_callables_count = self.callables_count()
+        new_callables_count = self.callables_count
 
         # {{{ calculate the renames needed
 

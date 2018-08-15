@@ -1397,7 +1397,7 @@ def get_op_map(program, numpy_types=True, count_redundant_work=False,
     op_map = ToCountMap()
 
     callables_count = (
-                program.program_callables_info.callables_count())
+                program.program_callables_info.callables_count)
 
     for func_id, in_knl_callable in program.program_callables_info.items():
         if isinstance(in_knl_callable, CallableKernel):
@@ -1684,7 +1684,7 @@ def get_mem_access_map(program, numpy_types=True, count_redundant_work=False,
 
     access_map = ToCountMap()
 
-    callables_count = program.program_callables_info.callables_count()
+    callables_count = program.program_callables_info.callables_count
 
     for func_id, in_knl_callable in program.program_callables_info.items():
         if isinstance(in_knl_callable, CallableKernel):
@@ -1808,7 +1808,7 @@ def get_synchronization_map(program, subgroup_size=None):
     program = preprocess_program(program)
 
     sync_map = ToCountMap()
-    callables_count = program.program_callables_info.callables_count()
+    callables_count = program.program_callables_info.callables_count
 
     for func_id, in_knl_callable in program.program_callables_info.items():
         if isinstance(in_knl_callable, CallableKernel):
@@ -1884,7 +1884,7 @@ def gather_access_footprints(program, ignore_uncountable=False):
     write_footprints = []
     read_footprints = []
 
-    callables_count = program.program_callables_info.callables_count()
+    callables_count = program.program_callables_info.callables_count
 
     for func_id, in_knl_callable in program.program_callables_info.items():
         if isinstance(in_knl_callable, CallableKernel):
