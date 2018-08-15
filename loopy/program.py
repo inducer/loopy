@@ -861,10 +861,13 @@ class ProgramCallablesInfo(ImmutableRecord):
         return item in self.resolved_functions
 
     def items(self):
-        return self.resolved_functions.items()
+        return six.iteritems(self.resolved_functions)
 
     def values(self):
-        return self.resolved_functions.values()
+        return six.itervalues(self.resolved_functions)
+
+    def keys(self):
+        return six.iterkeys(self.resolved_functions)
 
     # }}}
 

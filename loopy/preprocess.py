@@ -2149,10 +2149,7 @@ def check_atomic_loads(kernel):
 
 class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
     """
-    Returns a set of instances of :class:`tuple` (expr,
-    in_kernel_callable). The mapped `in_kernel_callable` of the
-    :class:`InKernelCallable` are descriptor specialized for the given
-    arguments.
+    Infers the :attr:`loopy`
     """
 
     def __init__(self, rule_mapping_context, caller_kernel,
@@ -2250,9 +2247,11 @@ def traverse_to_infer_arg_descr(kernel, program_callables_info):
     Returns a copy of *kernel* with the argument shapes and strides matching for
     scoped functions in the *kernel*. Refer
     :meth:`loopy.kernel.function_interface.InKernelCallable.with_descrs`.
-    """
-    # FIXME: update this docs, once the design is finalized
 
+    .. note::
+
+        Initiates a walk starting from *kernel* to all its callee kernels.
+    """
     from loopy.symbolic import SubstitutionRuleMappingContext
 
     rule_mapping_context = SubstitutionRuleMappingContext(
@@ -2268,6 +2267,11 @@ def traverse_to_infer_arg_descr(kernel, program_callables_info):
 
 
 def infer_arg_descr(program):
+    """
+    Returns a copy of *program* with the
+    :attr:`loopy.InKernelCallable.arg_id_to_descr` inferred for all the
+    callables.
+    """
     root_kernel_callable = program.program_callables_info[program.name]
     old_callables_count = program.program_callables_info.callables_count()
     program_callables_info = (
@@ -2397,28 +2401,60 @@ def preprocess_single_kernel(kernel, program_callables_info, device=None):
     return kernel
 
 
-def preprocess_kernel(kernel, device=None):
-    # FIXME: error message?
-    return preprocess_program(kernel, device)
+# {{{ hw axes inference
+
+def infer_hw_axes_sizes(program):
+    """
+    Returns copy of *program* with the hardware axes sizes inferred.
+
+    .. note::
+
+        - Firstly, computes the collective hardware axes sizes from all the
+          callable kernels.
+        - Then, overrides the grid sizes of all the callable kernels to the
+          collective value.
+    """
+
+    local_size, global_size = program.get_grid_size_upper_bounds()
+
+    resolved_function_with_hw_axes_sizes_inferred = {}
+
+    for func_id, in_knl_callable in (
+            program.program_callables_info.items()):
+        if func_id == program.name:
+            resolved_function_with_hw_axes_sizes_inferred[func_id] = (
+                    in_knl_callable)
+        else:
+            resolved_function_with_hw_axes_sizes_inferred[func_id] = (
+                    in_knl_callable.with_hw_axes_sizes(local_size, global_size))
+
+    new_program_callables_info = (
+            program.program_callables_info.copy(
+                resolved_functions=resolved_function_with_hw_axes_sizes_inferred))
+
+    program = program.copy(program_callables_info=new_program_callables_info)
+
+# }}}
 
 
 def preprocess_program(program, device=None):
 
     if device is not None:
+        # FIXME: Time to remove this? (Git blame shows 5 years ago)
         from warnings import warn
         warn("passing 'device' to preprocess_kernel() is deprecated",
                 DeprecationWarning, stacklevel=2)
 
     program = infer_unknown_types(program, expect_completion=False)
 
-    # {{{ preprocess the root kernel
+    # {{{ preprocess callable kernels
 
     # Callable editing restrictions:
     #
-    # - cannot edit program_callables_info in :meth:`preprocess_single_kernel`
-    #   as we are iterating over it.
+    # - should not edit program_callables_info in :meth:`preprocess_single_kernel`
+    #   as we are iterating over it.[1]
     #
-    # Refer: https://docs.python.org/3/library/stdtypes.html#dictionary-view-objects
+    # [1] https://docs.python.org/3/library/stdtypes.html#dictionary-view-objects
 
     new_resolved_functions = {}
     for func_id, in_knl_callable in program.program_callables_info.items():
@@ -2431,7 +2467,7 @@ def preprocess_program(program, device=None):
         elif isinstance(in_knl_callable, ScalarCallable):
             pass
         else:
-            raise NotImplementedError("Unknown type of callable %s." % (
+            raise NotImplementedError("Unknown callable type %s." % (
                 type(in_knl_callable).__name__))
 
         new_resolved_functions[func_id] = in_knl_callable
@@ -2445,32 +2481,13 @@ def preprocess_program(program, device=None):
     # infer arg descrs of the callables
     program = infer_arg_descr(program)
 
-    # {{{ hw axes inference
-
-    # FIXME: think of wrapping this in a function?
-
-    local_size, global_size = program.get_grid_size_upper_bounds()
-
-    resolved_function_with_hw_axes_sizes_set = {}
-
-    for func_id, in_knl_callable in (
-            program.program_callables_info.items()):
-        if func_id == program.name:
-            resolved_function_with_hw_axes_sizes_set[func_id] = (
-                    in_knl_callable)
-        else:
-            resolved_function_with_hw_axes_sizes_set[func_id] = (
-                    in_knl_callable.with_hw_axes_sizes(local_size, global_size))
-
-    new_program_callables_info = (
-            program.program_callables_info.copy(
-                resolved_functions=resolved_function_with_hw_axes_sizes_set))
-
-    program = program.copy(program_callables_info=new_program_callables_info)
-
-    # }}}
+    program = infer_hw_axes_sizes(program)
 
     return program
+
+
+# FIXME: Do we add a deprecation warning?
+preprocess_kernel = preprocess_program
 
 
 # vim: foldmethod=marker
