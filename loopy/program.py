@@ -222,10 +222,13 @@ class Program(ImmutableRecord):
 
     .. note::
 
-        - To create an instance of :class:`loopy.Program`, it is recommeneded to
+        - To create an instance of :class:`loopy.Program`, it is recommended to
             go through :method:`loopy.make_kernel`.
         - This data structure and its attributes should be considered
           immutable, any modifications should be done through :method:`copy`.
+
+    .. automethod:: __init__
+    .. automethod:: with_root_kernel
     """
     def __init__(self,
             name,
@@ -329,7 +332,7 @@ class Program(ImmutableRecord):
     def root_kernel(self):
         """
         Returns an instance of :class:`loopy.LoopKernel` denoting the topmost
-        level kernel in codegeneration.
+        level kernel.
 
         .. note::
 
@@ -577,6 +580,10 @@ class ProgramCallablesInfo(ImmutableRecord):
 
     .. automethod:: __init__
     .. automethod:: callables_count
+    .. automethod:: with_added_callable
+    .. automethod:: with_edit_callables_mode
+    .. automethod:: with_callable
+    .. automethod:: with_exit_edit_callables_mode
     """
     def __init__(self, resolved_functions,
             history=None, is_being_edited=False):
