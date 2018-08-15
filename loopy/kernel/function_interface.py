@@ -30,6 +30,19 @@ from loopy.diagnostic import LoopyError
 
 from loopy.kernel import LoopKernel
 
+__doc__ = """
+
+.. currentmodule:: loopy
+
+.. autoclass:: ValueArgDescriptor
+.. autoclass:: ArrayArgDescriptor
+.. autoclass:: InKernelCallable
+.. autoclass:: CallableKernel
+.. autoclass:: ScalarCallable
+.. autoclass:: ManglerCallable
+
+"""
+
 
 # {{{ argument descriptors
 
