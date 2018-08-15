@@ -23,18 +23,10 @@ THE SOFTWARE.
 """
 
 
-import re
-import six
-
 from six.moves import zip
 
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
-
-from loopy.symbolic import parse_tagged_name
-
-from loopy.symbolic import (ResolvedFunction, SubstitutionRuleMappingContext,
-        RuleAwareIdentityMapper, SubstitutionRuleExpander)
 
 from loopy.kernel import LoopKernel
 
@@ -145,7 +137,7 @@ class GridOverrideForCalleeKernel(ImmutableRecord):
 
     .. note::
 
-        This class acts as a pseduo-callable and its significance lies in
+        This class acts as a pseudo-callable and its significance lies in
         solving picklability issues.
     """
     fields = set(["local_size", "global_size"])
@@ -228,8 +220,6 @@ class InKernelCallable(ImmutableRecord):
             Any argument information exists both by its positional and
             its keyword identifier.
         """
-        # FIXME: In all these with_** functions add that also passes a
-        # program_callables_info
 
         raise NotImplementedError()
 
@@ -333,12 +323,12 @@ class InKernelCallable(ImmutableRecord):
 
 class ScalarCallable(InKernelCallable):
     """
-    An abstranct interface the to a scalar callable encountered in a kernel.
+    An abstract interface the to a scalar callable encountered in a kernel.
 
     .. note::
 
         The :meth:`ScalarCallable.with_types` is intended to assist with type
-        specialization of the funciton and is expected to be supplemented in the
+        specialization of the function and is expected to be supplemented in the
         derived subclasses.
     """
 
@@ -520,67 +510,11 @@ class CallableKernel(InKernelCallable):
         return (self.subkernel, self.arg_id_to_dtype,
                 self.arg_id_to_descr)
 
-    @property
-    def name(self):
-        return self.subkernel.name
-
-    def is_ready_for_codegen(self):
-        return (self.arg_id_to_dtype is not None and
-                self.arg_id_to_descr is not None)
-
     def generate_preambles(self, target):
         """ Yields the *target* specific preambles.
         """
-        # FIXME Check that this is correct.
-
         return
         yield
-
-    def emit_call_insn(self, insn, target, expression_to_code_mapper):
-
-        assert self.is_ready_for_codegen()
-
-        from loopy.kernel.instruction import CallInstruction
-        from pymbolic.primitives import CallWithKwargs
-
-        assert isinstance(insn, CallInstruction)
-
-        parameters = insn.expression.parameters
-        kw_parameters = {}
-        if isinstance(insn.expression, CallWithKwargs):
-            kw_parameters = insn.expression.kw_parameters
-
-        assignees = insn.assignees
-
-        parameters = list(parameters)
-        par_dtypes = [self.arg_id_to_dtype[i] for i, _ in enumerate(parameters)]
-        kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
-        for i in range(len(parameters), len(parameters)+len(kw_parameters)):
-            parameters.append(kw_parameters[pos_to_kw[i]])
-            par_dtypes.append(self.arg_id_to_dtype[pos_to_kw[i]])
-
-        # insert the assigness at the required positions
-        assignee_write_count = -1
-        for i, arg in enumerate(self.subkernel.args):
-            if arg.is_output_only:
-                assignee = assignees[-assignee_write_count-1]
-                parameters.insert(i, assignee)
-                par_dtypes.insert(i, self.arg_id_to_dtype[assignee_write_count])
-                assignee_write_count -= 1
-
-        # no type casting in array calls
-        from loopy.expression import dtype_to_type_context
-        from pymbolic.mapper.stringifier import PREC_NONE
-        from pymbolic import var
-
-        c_parameters = [
-                expression_to_code_mapper(par, PREC_NONE,
-                    dtype_to_type_context(target, par_dtype),
-                    par_dtype).expr
-                for par, par_dtype in zip(
-                    parameters, par_dtypes)]
-
-        return var(self.subkernel.name)(*c_parameters), False
 
 # }}}
 
@@ -589,7 +523,7 @@ class CallableKernel(InKernelCallable):
 
 class ManglerCallable(ScalarCallable):
     """
-    A callable whose characateristic is defined by a function mangler.
+    A callable whose characteristic is defined by a function mangler.
 
     .. attribute:: function_mangler
 
@@ -661,100 +595,5 @@ class ManglerCallable(ScalarCallable):
         return self.function_mangler(kernel, self.name, arg_dtypes)
 
 # }}}
-
-
-# {{{ new pymbolic calls to scoped functions
-
-def next_indexed_variable(function):
-    """
-    Returns an instance of :class:`str` with the next indexed-name in the
-    sequence for the name of *function*.
-
-    *Example:* ``Variable('sin_0')`` will return ``'sin_1'``.
-
-    :arg function: Either an instance of :class:`pymbolic.primitives.Variable`
-        or :class:`loopy.reduction.ArgExtOp` or
-        :class:`loopy.reduction.SegmentedOp`.
-    """
-    from loopy.library.reduction import ReductionOpFunction
-    if isinstance(function, ReductionOpFunction):
-        return function.copy()
-    func_name = re.compile(r"^(?P<alpha>\S+?)_(?P<num>\d+?)$")
-
-    match = func_name.match(function.name)
-
-    if match is None:
-        if function.name[-1] == '_':
-            return "{old_name}0".format(old_name=function.name)
-        else:
-            return "{old_name}_0".format(old_name=function.name)
-
-    return "{alpha}_{num}".format(alpha=match.group('alpha'),
-            num=int(match.group('num'))+1)
-
-
-class FunctionNameChanger(RuleAwareIdentityMapper):
-    """
-    Changes the names of scoped functions in calls of expressions according to
-    the mapping ``calls_to_new_functions``
-    """
-
-    def __init__(self, rule_mapping_context, calls_to_new_names,
-            subst_expander):
-        super(FunctionNameChanger, self).__init__(rule_mapping_context)
-        self.calls_to_new_names = calls_to_new_names
-        self.subst_expander = subst_expander
-
-    def map_call(self, expr, expn_state):
-        name, tag = parse_tagged_name(expr.function)
-
-        if name not in self.rule_mapping_context.old_subst_rules:
-            expanded_expr = self.subst_expander(expr)
-            if expr in self.calls_to_new_names:
-                return type(expr)(
-                        ResolvedFunction(self.calls_to_new_names[expr]),
-                        tuple(self.rec(child, expn_state)
-                            for child in expr.parameters))
-            elif expanded_expr in self.calls_to_new_names:
-                # FIXME: this is horribly wrong logic.
-                # investigate how to make edits to a substitution rule
-                return type(expr)(
-                        ResolvedFunction(self.calls_to_new_names[expanded_expr]),
-                        tuple(self.rec(child, expn_state)
-                            for child in expanded_expr.parameters))
-            else:
-                return super(FunctionNameChanger, self).map_call(
-                        expr, expn_state)
-        else:
-            return self.map_substitution(name, tag, expr.parameters, expn_state)
-
-    def map_call_with_kwargs(self, expr, expn_state):
-
-        if expr in self.calls_to_new_names:
-            return type(expr)(
-                ResolvedFunction(self.calls_to_new_names[expr]),
-                tuple(self.rec(child, expn_state)
-                    for child in expr.parameters),
-                dict(
-                    (key, self.rec(val, expn_state))
-                    for key, val in six.iteritems(expr.kw_parameters))
-                    )
-        else:
-            return super(FunctionNameChanger, self).map_call_with_kwargs(
-                    expr, expn_state)
-
-
-def change_names_of_pymbolic_calls(kernel, pymbolic_calls_to_new_names):
-    rule_mapping_context = SubstitutionRuleMappingContext(
-                    kernel.substitutions, kernel.get_var_name_generator())
-    subst_expander = SubstitutionRuleExpander(kernel.substitutions)
-    name_changer = FunctionNameChanger(rule_mapping_context,
-            pymbolic_calls_to_new_names, subst_expander)
-
-    return rule_mapping_context.finish_kernel(
-            name_changer.map_kernel(kernel))
-
-# }}}
-
 
 # vim: foldmethod=marker

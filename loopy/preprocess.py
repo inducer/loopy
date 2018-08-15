@@ -2432,7 +2432,7 @@ def infer_hw_axes_sizes(program):
             program.program_callables_info.copy(
                 resolved_functions=resolved_function_with_hw_axes_sizes_inferred))
 
-    program = program.copy(program_callables_info=new_program_callables_info)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
 

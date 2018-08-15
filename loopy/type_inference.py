@@ -36,7 +36,10 @@ from loopy.diagnostic import (
 from loopy.kernel.instruction import _DataObliviousInstruction
 
 from loopy.program import ProgramCallablesInfo
-from loopy.symbolic import LinearSubscript
+from loopy.symbolic import (
+        LinearSubscript, parse_tagged_name, RuleAwareIdentityMapper,
+        SubstitutionRuleExpander, ResolvedFunction,
+        SubstitutionRuleMappingContext)
 from pymbolic.primitives import Variable, Subscript, Lookup
 
 import logging
@@ -60,6 +63,135 @@ def get_return_types_as_tuple(arg_id_to_dtype):
     return_arg_pos = sorted(return_arg_id_to_dtype.keys(), reverse=True)
 
     return tuple(return_arg_id_to_dtype[id] for id in return_arg_pos)
+
+
+# {{{ renaming helpers
+
+class FunctionNameChanger(RuleAwareIdentityMapper):
+    """
+    Changes the names of scoped functions in calls of expressions according to
+    the mapping ``calls_to_new_functions``
+    """
+
+    def __init__(self, rule_mapping_context, calls_to_new_names,
+            subst_expander):
+        super(FunctionNameChanger, self).__init__(rule_mapping_context)
+        self.calls_to_new_names = calls_to_new_names
+        self.subst_expander = subst_expander
+
+    def map_call(self, expr, expn_state):
+        name, tag = parse_tagged_name(expr.function)
+
+        if name not in self.rule_mapping_context.old_subst_rules:
+            expanded_expr = self.subst_expander(expr)
+            if expr in self.calls_to_new_names:
+                return type(expr)(
+                        ResolvedFunction(self.calls_to_new_names[expr]),
+                        tuple(self.rec(child, expn_state)
+                            for child in expr.parameters))
+            elif expanded_expr in self.calls_to_new_names:
+                # FIXME: This is killing the substitution.
+                # Maybe using a RuleAwareIdentityMapper for TypeInferenceMapper
+                # would help.
+                return type(expr)(
+                        ResolvedFunction(self.calls_to_new_names[expanded_expr]),
+                        tuple(self.rec(child, expn_state)
+                            for child in expanded_expr.parameters))
+            else:
+                return super(FunctionNameChanger, self).map_call(
+                        expr, expn_state)
+        else:
+            return self.map_substitution(name, tag, expr.parameters, expn_state)
+
+    def map_call_with_kwargs(self, expr, expn_state):
+
+        if expr in self.calls_to_new_names:
+            return type(expr)(
+                ResolvedFunction(self.calls_to_new_names[expr]),
+                tuple(self.rec(child, expn_state)
+                    for child in expr.parameters),
+                dict(
+                    (key, self.rec(val, expn_state))
+                    for key, val in six.iteritems(expr.kw_parameters))
+                    )
+        else:
+            return super(FunctionNameChanger, self).map_call_with_kwargs(
+                    expr, expn_state)
+
+
+def change_names_of_pymbolic_calls(kernel, pymbolic_calls_to_new_names):
+    """
+    Returns a copy of *kernel* with the names of pymbolic calls changed
+    according to the mapping given by *pymbolic_calls_new_names*.
+
+    :arg pymbolic_calls_to_new_names: A mapping from instances of
+        :class:`pymbolic.primitives.Call` to :class:`str`.
+
+    **Example: **
+
+        - Given a *kernel* --
+
+        .. code::
+
+            -------------------------------------------------------------
+            KERNEL: loopy_kernel
+            -------------------------------------------------------------
+            ARGUMENTS:
+            x: type: <auto/runtime>, shape: (10), dim_tags: (N0:stride:1)
+            y: type: <auto/runtime>, shape: (10), dim_tags: (N0:stride:1)
+            -------------------------------------------------------------
+            DOMAINS:
+            { [i] : 0 <= i <= 9 }
+            -------------------------------------------------------------
+            INAME IMPLEMENTATION TAGS:
+            i: None
+            -------------------------------------------------------------
+            INSTRUCTIONS:
+            for i
+                y[i] = ResolvedFunction('sin')(x[i])
+            end i
+            -------------------------------------------------------------
+
+        - And given a *pymbolic_calls_to_new_names* --
+
+        .. code::
+
+            {Call(ResolvedFunction(Variable('sin')), (Subscript(Variable('x'),
+            Variable('i')),))": 'sin_1'}
+
+        - The following *kernel* is returned --
+
+        .. code::
+
+            -------------------------------------------------------------
+            KERNEL: loopy_kernel
+            -------------------------------------------------------------
+            ARGUMENTS:
+            x: type: <auto/runtime>, shape: (10), dim_tags: (N0:stride:1)
+            y: type: <auto/runtime>, shape: (10), dim_tags: (N0:stride:1)
+            -------------------------------------------------------------
+            DOMAINS:
+            { [i] : 0 <= i <= 9 }
+            -------------------------------------------------------------
+            INAME IMPLEMENTATION TAGS:
+            i: None
+            -------------------------------------------------------------
+            INSTRUCTIONS:
+            for i
+                y[i] = ResolvedFunction('sin_1')(x[i])
+            end i
+            -------------------------------------------------------------
+    """
+    rule_mapping_context = SubstitutionRuleMappingContext(
+                    kernel.substitutions, kernel.get_var_name_generator())
+    subst_expander = SubstitutionRuleExpander(kernel.substitutions)
+    name_changer = FunctionNameChanger(rule_mapping_context,
+            pymbolic_calls_to_new_names, subst_expander)
+
+    return rule_mapping_context.finish_kernel(
+            name_changer.map_kernel(kernel))
+
+# }}}
 
 
 # {{{ type inference mapper
@@ -276,7 +408,6 @@ class TypeInferenceMapper(CombineMapper):
     def map_call(self, expr, return_tuple=False):
 
         from pymbolic.primitives import Variable, CallWithKwargs, Call
-        from loopy.symbolic import ResolvedFunction
 
         if isinstance(expr, CallWithKwargs):
             kw_parameters = expr.kw_parameters
@@ -862,9 +993,6 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
             args=[new_arg_dict[arg.name] for arg in kernel.args],
             )
 
-    # this has to be subsitutition
-    from loopy.kernel.function_interface import (
-            change_names_of_pymbolic_calls)
     type_specialized_kernel = change_names_of_pymbolic_calls(
             pre_type_specialized_knl, old_calls_to_new_calls)
 
