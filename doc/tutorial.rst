@@ -1207,7 +1207,8 @@ This happens due to the kernel splitting done by :mod:`loopy`. The splitting
 happens when the instruction schedule is generated. To see the schedule, we
 should call :func:`loopy.get_one_scheduled_kernel`:
 
-   >>> knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+   >>> knl = lp.preprocess_kernel(knl)
+   >>> knl = lp.get_one_scheduled_kernel(knl.root_kernel, knl.program_callables_info)
    >>> print(knl)
    ---------------------------------------------------------------------------
    KERNEL: rotate_v2
@@ -1237,9 +1238,8 @@ function adds instructions to the kernel without scheduling them. That means
 that :func:`loopy.get_one_scheduled_kernel` needs to be called one more time to
 put those instructions into the schedule.
 
-   >>> knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
    >>> knl = lp.save_and_reload_temporaries(knl)
-   >>> knl = lp.get_one_scheduled_kernel(knl)  # Schedule added instructions
+   >>> knl = lp.get_one_scheduled_kernel(knl.root_kernel, knl.program_callables_info)  # Schedule added instructions
    >>> print(knl)
    ---------------------------------------------------------------------------
    KERNEL: rotate_v2
