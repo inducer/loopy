@@ -202,6 +202,17 @@ class OpaqueType(LoopyType):
     def update_persistent_hash(self, key_hash, key_builder):
         key_builder.rec(key_hash, self.name)
 
+    def __hash__(self):
+        return hash(self.name)
+
+    def __eq__(self, other):
+        return (
+                type(self) == type(other)
+                and self.name == other.name)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 # }}}
 
 
