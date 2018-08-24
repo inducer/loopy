@@ -1972,9 +1972,9 @@ def realize_ilp(kernel):
 
 # {{{ realize C vector extension
 
-def realize_c_vec(kernel):
+def add_omp_simd(kernel):
 
-    from loopy.kernel.data import CVectorizeTag, ArrayArg
+    from loopy.kernel.data import OpenMPSIMDTag, ArrayArg
     from loopy.kernel.array import CVectorArrayDimTag
     from loopy.kernel.tools import DomainChanger
     from loopy.isl_helpers import duplicate_axes
@@ -1995,6 +1995,113 @@ def realize_c_vec(kernel):
         def map_variable(self, expr, *args, **kwargs):
             self.result = True
             return super(IdentityMapper, self).map_variable(expr, args, kwargs)
+
+
+    class VariableFinder(IdentityMapper):
+
+        def __init__(self, find_names, regex=False):
+            self.regex = regex
+            if regex:
+                import re
+                self.find_names = [re.compile(name) for name in find_names]
+            else:
+                self.find_names = find_names
+            self.result = False
+
+        def map_variable(self, expr, *args, **kwargs):
+            if self.regex:
+                for regex in self.find_names:
+                    if regex.match(expr.name):
+                        self.result = True
+                        break
+            elif expr.name in self.find_names:
+                self.result = True
+            return super(VariableFinder, self).map_variable(expr, args, kwargs)
+
+    class SubscriptFinder(IdentityMapper):
+
+        def __init__(self, find_aggregate_name, find_index_names):
+            self.find_aggregate_aname = find_aggregate_name
+            self.find_index_names = find_index_names
+            self.result = False
+
+        def map_subscript(self, expr, *args, **kwargs):
+            if expr.aggregate.name == self.find_aggregate_aname:
+                vf = VariableFinder(self.find_index_names)
+                vf(expr.index)
+                if vf.result:
+                    self.result = True
+            return super(SubscriptFinder, self).map_subscript(expr, args, kwargs)
+
+
+    simd_inames = []
+    new_simd_inames = []
+
+    for i in sorted(kernel.all_inames()):
+        if kernel.iname_tags_of_type(i, OpenMPSIMDTag):
+            k = i + "_simd"
+            simd_inames.append(i)
+            new_simd_inames.append(k)
+            domch = DomainChanger(kernel, frozenset([i]))
+            kernel = kernel.copy(domains=domch.get_domains_with(duplicate_axes(domch.domain, [i], [k])))
+
+            kernel = tag_inames(kernel, [(i, "ilp.seq")], retag=True)  # change omp simd to ilp.seq
+            kernel = tag_inames(kernel, [(k, "omp_simd")])
+
+    if not simd_inames:
+        return kernel
+
+    iname_map_simd = dict(zip(simd_inames, new_simd_inames))
+    subst_mapper_simd = SubstitutionMapper(
+        make_subst_func(dict((Variable(o), Variable(n)) for (o, n) in zip(simd_inames, new_simd_inames))))
+
+    new_insts = []
+    for inst in kernel.instructions:
+        if isinstance(inst, Assignment) and (inst.within_inames & set(simd_inames)):
+            should_simd = True
+
+            if inst.assignee.aggregate.name[:3] == "dat":
+                should_simd = False
+
+            if should_simd:
+                lhs = subst_mapper_simd(inst.assignee)
+                rhs = subst_mapper_simd(inst.expression)
+                within_inames = frozenset(iname_map_simd[i] if i in iname_map_simd else i for i in inst.within_inames)
+                inst = inst.copy(assignee=lhs, expression=rhs, within_inames=within_inames)
+
+        new_insts.append(inst)
+    kernel = kernel.copy(instructions=new_insts)
+    return kernel
+
+
+def realize_c_vec(kernel):
+
+    from loopy.kernel.data import CVectorizeTag, ArrayArg
+    from loopy.kernel.array import CVectorArrayDimTag
+    from loopy.kernel.tools import DomainChanger
+    from loopy.isl_helpers import duplicate_axes
+    from loopy.transform.iname import tag_inames
+    from loopy import Assignment
+    from loopy.symbolic import IdentityMapper, SubstitutionMapper, ScopedFunction, TypeCast
+    from pymbolic.mapper.substitutor import make_subst_func
+    from pymbolic.primitives import Variable, BitwiseAnd
+    from numpy import dtype, float64, uint64
+    from loopy.types import to_loopy_type
+
+    # any variable not in subscript?
+    class OutsideVariableFinder(IdentityMapper):
+
+        def __init__(self, find_names):
+            self.result = False
+            self.find_names = find_names
+
+        def map_variable(self, expr, *args, **kwargs):
+            if expr.name in self.find_names:
+                self.result = True
+            return super(OutsideVariableFinder, self).map_variable(expr, args, kwargs)
+
+        def map_subscript(self, expr, *args, **kwargs):
+            return expr
 
 
     class VariableFinder(IdentityMapper):
@@ -2095,7 +2202,7 @@ def realize_c_vec(kernel):
             should_simd = False
 
             # constant rhs cannot be vectorized (GCC doesn't like it)
-            avf = AnyVariableFinder()
+            avf = VariableFinder(list(inst.within_inames & set(cvec_inames)))
             avf(inst.expression)
             if not avf.result:
                 can_vectorize = False
@@ -2131,8 +2238,15 @@ def realize_c_vec(kernel):
                             can_vectorize = False
                             break
 
-            can_vectorize = False
+            if can_vectorize:
+                # cannot have inames outside of subscirpt
+                ovf = OutsideVariableFinder(list(inst.within_inames & set(cvec_inames)))
+                ovf(inst.expression)
+                if ovf.result:
+                    can_vectorize = False
+
             should_simd = True
+
             if inst.assignee.aggregate.name[:3] == "dat":
                 should_simd = False
 
@@ -2726,7 +2840,10 @@ def preprocess_kernel(kernel, device=None):
 
     kernel = realize_ilp(kernel)
 
+    # kernel = add_omp_simd(kernel)
     kernel = realize_c_vec(kernel)
+
+
     kernel = find_temporary_scope(kernel)
 
     # inferring the shape and dim_tags of the arguments involved in a function
