@@ -553,6 +553,8 @@ def test_remove_work(ctx_factory):
                 ],
             assumptions="n>=1")
 
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
+
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
     knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
     knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
@@ -562,7 +564,8 @@ def test_remove_work(ctx_factory):
     from loopy.transform.instruction import remove_work
     knl = remove_work(knl)
 
-    lp.auto_test_vs_ref(None, ctx, knl, print_ref_code=False)
+    lp.auto_test_vs_ref(knl, ctx, None, print_ref_code=False,
+            parameters=dict(n=512))
 
 
 if __name__ == "__main__":
