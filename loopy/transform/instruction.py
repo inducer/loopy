@@ -25,6 +25,7 @@ THE SOFTWARE.
 import six  # noqa
 
 from loopy.diagnostic import LoopyError
+from loopy.symbolic import CombineMapper
 
 
 # {{{ find_instructions
@@ -356,5 +357,133 @@ def uniquify_instruction_ids(kernel):
 
 # }}}
 
+
+# {{{ remove_work
+
+class _MemAccessGatherer(CombineMapper):
+    def __init__(self, kernel, address_space):
+        self.kernel = kernel
+        self.address_space = address_space
+
+    def combine(self, values):
+        from pytools import flatten
+        return set(flatten(values))
+
+    def map_constant(self, expr):
+        return set()
+
+    def map_algebraic_leaf(self, expr):
+        return set()
+
+    def _map_access(self, expr, name, index):
+        if name in self.kernel.all_inames():
+            return set()
+
+        descr = self.kernel.get_var_descriptor(name)
+        if descr.address_space == self.address_space:
+            result = set([expr])
+        else:
+            result = set()
+
+        return result | self.rec(index)
+
+    def map_variable(self, expr):
+        return self._map_access(expr, expr.name, ())
+
+    def map_subscript(self, expr):
+        import pymbolic.primitives as p
+        assert isinstance(expr.aggregate, p.Variable)
+        return self._map_access(expr, expr.aggregate.name, expr.index)
+
+
+def remove_work(kernel):
+    """This transform removes operations in a kernel, leaving only
+    accesses to global memory.
+
+    .. note::
+
+        This routine will currently not work correctly in the presence of
+        data-dependent flow control or memory access.
+    """
+    import loopy as lp
+    import pymbolic.primitives as p
+
+    kernel = lp.preprocess_kernel(kernel)
+
+    gatherer = _MemAccessGatherer(kernel, lp.AddressSpace.GLOBAL)
+
+    from loopy.kernel.instruction import MultiAssignmentBase, make_assignment
+
+    # maps each old ID to a frozenset of new IDs
+    old_to_new_ids = {}
+    new_instructions = []
+    insn_id_gen = kernel.get_instruction_id_generator()
+
+    var_name_gen = kernel.get_var_name_generator()
+    private_var_name = var_name_gen()
+    new_temporary_variables = kernel.temporary_variables.copy()
+    new_temporary_variables[private_var_name] = lp.TemporaryVariable(
+            private_var_name, address_space=lp.AddressSpace.PRIVATE)
+
+    # {{{ rewrite instructions
+
+    for insn in kernel.instructions:
+        if not isinstance(insn, MultiAssignmentBase):
+            new_instructions.append(insn)
+            old_to_new_ids[insn.id] = frozenset([insn.id])
+            continue
+
+        writer_accesses = set.union(*[
+            gatherer(lhs) for lhs in insn.assignees])
+
+        reader_accesses = gatherer(insn.expression)
+
+        new_insn_ids = set()
+        for read_expr in reader_accesses:
+            new_id = insn_id_gen(insn.id)
+            new_instructions.append(
+                    make_assignment(
+                        (p.Variable(private_var_name),),
+                        p.Variable(private_var_name) + read_expr,
+                        id=new_id,
+                        within_inames=insn.within_inames,
+                        depends_on=insn.depends_on))
+            new_insn_ids.add(new_id)
+
+        for write_expr in writer_accesses:
+            new_id = insn_id_gen(insn.id)
+            new_instructions.append(
+                    make_assignment(
+                        (write_expr,),
+                        17,
+                        id=new_id,
+                        within_inames=insn.within_inames,
+                        depends_on=insn.depends_on))
+            new_insn_ids.add(new_id)
+
+        old_to_new_ids[insn.id] = frozenset(new_insn_ids)
+
+    # }}}
+
+    # {{{ rewrite dependencies for new IDs
+
+    new_instructions_2 = []
+
+    for insn in new_instructions:
+        new_instructions_2.append(
+                insn.copy(
+                    depends_on=frozenset(
+                        subdep
+                        for dep in insn.depends_on
+                        for subdep in old_to_new_ids[dep])))
+
+    # }}}
+
+    return kernel.copy(
+            state=lp.KernelState.INITIAL,
+            instructions=new_instructions_2,
+            temporary_variables=new_temporary_variables)
+
+# }}}
 
 # vim: foldmethod=marker

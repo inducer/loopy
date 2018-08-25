@@ -533,6 +533,38 @@ def test_uniquify_instruction_ids():
     assert all(isinstance(id, str) for id in insn_ids)
 
 
+def test_remove_work(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{[i,j]: 0<= i,j < n}",
+            [
+                "a_offset(ii, jj) := a[ii+2, jj+2]",
+                "z[i,j] = -2*a_offset(i,j)"
+                " + a_offset(i,j-1)"
+                " + a_offset(i,j+1)"
+                " + a_offset(i-1,j)"
+                " + a_offset(i+1,j)"
+
+                " + a_offset(i,j-2)"
+                " + a_offset(i,j+2)"
+                " + a_offset(i-2,j)"
+                " + a_offset(i+2,j)"
+                ],
+            assumptions="n>=1")
+
+    knl = lp.split_iname(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
+    knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
+            fetch_bounding_box=True, default_tag="l.auto")
+    knl = lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
+
+    from loopy.transform.instruction import remove_work
+    knl = remove_work(knl)
+
+    lp.auto_test_vs_ref(None, ctx, knl, print_ref_code=False)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
