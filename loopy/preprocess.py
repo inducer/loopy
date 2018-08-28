@@ -2103,7 +2103,6 @@ def realize_c_vec(kernel):
         def map_subscript(self, expr, *args, **kwargs):
             return expr
 
-
     class VariableFinder(IdentityMapper):
 
         def __init__(self, find_names, regex=False):
@@ -2140,23 +2139,6 @@ def realize_c_vec(kernel):
                     self.result = True
             return super(SubscriptFinder, self).map_subscript(expr, args, kwargs)
 
-    class FunctionRewriter(IdentityMapper):
-        def map_call(self, expr, *args, **kwargs):
-            if expr.function.function.name[:3] == "abs":
-                double4 = to_loopy_type(dtype((float64, 4)), target=kernel.target)
-                uint4 = to_loopy_type(dtype((uint64, 4)), target=kernel.target)
-                param, = expr.parameters
-                param = TypeCast(uint4, param)
-                param = BitwiseAnd((param, 0x7fffffffffffffff))
-                param = TypeCast(double4, param)
-                return param
-            return super(FunctionRewriter, self).map_call(expr, args, kwargs)
-
-        # def map_scoped_function(self, expr, *args):
-        #     if expr.function.name[:3] == "abs":
-        #
-        #     return ScopedFunction(self.rec(expr.function, *args))
-
     cvec_inames = []
     new_cvec_inames = []
     simd_inames = []
@@ -2190,22 +2172,12 @@ def realize_c_vec(kernel):
         make_subst_func(dict((Variable(o), Variable(n)) for (o, n) in zip(cvec_inames, simd_inames))))
 
     func_names = set(["abs_*"])
-    # func_names = set(["xxxxxx"])
     function_finder = VariableFinder(func_names, regex=True)
-
-    function_rewriter = FunctionRewriter()
 
     new_insts = []
     for inst in kernel.instructions:
         if isinstance(inst, Assignment) and (inst.within_inames & set(cvec_inames)):
             can_vectorize = True
-            should_simd = False
-
-            # constant rhs cannot be vectorized (GCC doesn't like it)
-            avf = VariableFinder(list(inst.within_inames & set(cvec_inames)))
-            avf(inst.expression)
-            if not avf.result:
-                can_vectorize = False
 
             # some built-in functions cannot be vectorized (in general)
             if can_vectorize:
@@ -2213,10 +2185,9 @@ def realize_c_vec(kernel):
                 function_finder(inst.expression)
                 if function_finder.result:
                     can_vectorize = False
-                    should_simd = True
 
+            # non privitized array indexed with c_vec iname cannot be vectorized
             if can_vectorize:
-                # non privitized array indexed with c_vec iname cannot be vectorized
                 for name in inst.dependency_names():
                     if name in kernel.temporary_variables:
                         ary = kernel.temporary_variables[name]
@@ -2238,25 +2209,32 @@ def realize_c_vec(kernel):
                             can_vectorize = False
                             break
 
+            # cannot have inames outside of subscirpt
             if can_vectorize:
-                # cannot have inames outside of subscirpt
                 ovf = OutsideVariableFinder(list(inst.within_inames & set(cvec_inames)))
                 ovf(inst.expression)
                 if ovf.result:
                     can_vectorize = False
 
-            should_simd = True
+            # constant rhs cannot be vectorized (GCC doesn't like it)
+            if can_vectorize:
+                avf = VariableFinder(list(inst.within_inames & set(cvec_inames)))
+                avf(inst.expression)
+                if not avf.result:
+                    import pymbolic.primitives as p
+                    rhs = inst.expression + p.Variable("_zeros")
+                    inst = inst.copy(expression=rhs)
 
+            should_simd = True
+            # FIXME: gathering is not SIMD
             if inst.assignee.aggregate.name[:3] == "dat":
                 should_simd = False
 
             if can_vectorize:
                 lhs = subst_mapper(inst.assignee)
                 rhs = subst_mapper(inst.expression)
-                # rhs = function_rewriter(rhs)
                 within_inames = frozenset(iname_map[i] if i in iname_map else i for i in inst.within_inames)
                 inst = inst.copy(assignee=lhs, expression=rhs, within_inames=within_inames)
-
             elif should_simd:
                 lhs = subst_mapper_simd(inst.assignee)
                 rhs = subst_mapper_simd(inst.expression)
@@ -2840,8 +2818,8 @@ def preprocess_kernel(kernel, device=None):
 
     kernel = realize_ilp(kernel)
 
-    # kernel = add_omp_simd(kernel)
-    kernel = realize_c_vec(kernel)
+    kernel = add_omp_simd(kernel)
+    # kernel = realize_c_vec(kernel)
 
 
     kernel = find_temporary_scope(kernel)

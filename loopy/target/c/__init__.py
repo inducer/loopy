@@ -120,6 +120,8 @@ class POD(Declarator):
         self.name = name
 
     def get_decl_pair(self):
+        if self.name == "_zeros":
+            return ["double4"], self.name
         return [self.ctype], self.name
 
     def struct_maker_code(self, name):
