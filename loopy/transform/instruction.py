@@ -23,6 +23,7 @@ THE SOFTWARE.
 """
 
 import six  # noqa
+import islpy as isl
 
 from loopy.diagnostic import LoopyError
 from loopy.symbolic import CombineMapper
@@ -396,6 +397,29 @@ class _MemAccessGatherer(CombineMapper):
         return self._map_access(expr, expr.aggregate.name, expr.index)
 
 
+def _make_grid_size_domain(kernel, var_name_gen=None):
+    if var_name_gen is None:
+        var_name_gen = kernel.get_var_name_generator()
+
+    ggrid, lgrid = kernel.get_grid_size_upper_bounds()
+    ggrid_var_names = [var_name_gen("gid%d" % axis) for axis in range(len(ggrid))]
+    lgrid_var_names = [var_name_gen("lid%d" % axis) for axis in range(len(lgrid))]
+    grid_var_pwaffs = isl.make_zero_and_vars(
+            ggrid_var_names + lgrid_var_names, kernel.all_params())
+
+    grid_range_dom = grid_var_pwaffs[0].le_set(grid_var_pwaffs[0])
+    for var, ubound in zip(ggrid_var_names + lgrid_var_names, ggrid + lgrid):
+        ubound = isl.align_spaces(ubound, grid_var_pwaffs[0])
+        grid_range_dom = grid_range_dom & (
+                grid_var_pwaffs[0].le_set(grid_var_pwaffs[var])
+                &
+                grid_var_pwaffs[var].lt_set(ubound))
+
+    grid_range_dom, = grid_range_dom.get_basic_sets()
+
+    return ggrid_var_names, lgrid_var_names, grid_range_dom
+
+
 def remove_work(kernel):
     """This transform removes operations in a kernel, leaving only
     accesses to global memory.
@@ -416,16 +440,35 @@ def remove_work(kernel):
 
     # maps each old ID to a frozenset of new IDs
     old_to_new_ids = {}
-    new_instructions = []
     insn_id_gen = kernel.get_instruction_id_generator()
 
     var_name_gen = kernel.get_var_name_generator()
-    private_var_name = var_name_gen()
+    read_tgt_var_name = var_name_gen("read_tgt")
     new_temporary_variables = kernel.temporary_variables.copy()
-    new_temporary_variables[private_var_name] = lp.TemporaryVariable(
-            private_var_name, address_space=lp.AddressSpace.PRIVATE)
+    new_temporary_variables[read_tgt_var_name] = lp.TemporaryVariable(
+            read_tgt_var_name, address_space=lp.AddressSpace.PRIVATE)
+
+    new_instructions = []
+
+    # {{{ create init insn for read target
+
+    ggrid_var_names, lgrid_var_names, grid_range_dom = _make_grid_size_domain(kernel)
+    grid_inames = frozenset(ggrid_var_names + lgrid_var_names)
+
+    read_tgt_init_id = insn_id_gen("init_read_tgt")
+    old_to_new_ids[read_tgt_init_id] = [read_tgt_init_id]
+    new_instructions.append(
+            make_assignment(
+                (p.Variable(read_tgt_var_name),),
+                0,
+                id=read_tgt_init_id,
+                within_inames=grid_inames))
+
+    # }}}
 
     # {{{ rewrite instructions
+
+    read_insn_ids = []
 
     for insn in kernel.instructions:
         if not isinstance(insn, MultiAssignmentBase):
@@ -441,13 +484,14 @@ def remove_work(kernel):
         new_insn_ids = set()
         for read_expr in reader_accesses:
             new_id = insn_id_gen(insn.id)
+            read_insn_ids.append(insn.id)
             new_instructions.append(
                     make_assignment(
-                        (p.Variable(private_var_name),),
-                        p.Variable(private_var_name) + read_expr,
+                        (p.Variable(read_tgt_var_name),),
+                        p.Variable(read_tgt_var_name) + read_expr,
                         id=new_id,
                         within_inames=insn.within_inames,
-                        depends_on=insn.depends_on))
+                        depends_on=insn.depends_on | frozenset([read_tgt_init_id])))
             new_insn_ids.add(new_id)
 
         for write_expr in writer_accesses:
@@ -465,6 +509,28 @@ def remove_work(kernel):
 
     # }}}
 
+    # {{{ create write-out insn for read target
+
+    _, lgrid = kernel.get_grid_size_upper_bounds_as_exprs()
+    read_tgt_local_dest_name = var_name_gen("read_tgt_dest")
+    new_temporary_variables[read_tgt_local_dest_name] = lp.TemporaryVariable(
+            name=read_tgt_local_dest_name,
+            address_space=lp.AddressSpace.LOCAL,
+            shape=lgrid)
+
+    write_read_tgt_id = insn_id_gen("write_read_tgt")
+    old_to_new_ids[write_read_tgt_id] = [write_read_tgt_id]
+    new_instructions.append(
+        make_assignment(
+            (p.Variable(read_tgt_local_dest_name)[
+                tuple(p.Variable(lgn) for lgn in lgrid_var_names)],),
+            p.Variable(read_tgt_var_name),
+            id=write_read_tgt_id,
+            depends_on=frozenset(read_insn_ids),
+            within_inames=grid_inames))
+
+    # }}}
+
     # {{{ rewrite dependencies for new IDs
 
     new_instructions_2 = []
@@ -479,10 +545,21 @@ def remove_work(kernel):
 
     # }}}
 
-    return kernel.copy(
+    kernel = kernel.copy(
+            domains=kernel.domains + [grid_range_dom],
             state=lp.KernelState.INITIAL,
             instructions=new_instructions_2,
             temporary_variables=new_temporary_variables)
+
+    from loopy.kernel.data import GroupIndexTag, LocalIndexTag
+    kernel = lp.tag_inames(kernel, dict(
+        (ggrid_var_names[i], GroupIndexTag(i))
+        for i in range(len(ggrid_var_names))))
+    kernel = lp.tag_inames(kernel, dict(
+        (lgrid_var_names[i], LocalIndexTag(i))
+        for i in range(len(lgrid_var_names))))
+
+    return kernel
 
 # }}}
 
