@@ -4,6 +4,8 @@ Calling Loopy Kernels and External Functions
 Goals of a function interface
 -----------------------------
 
+- *FIXME: * Needs to change after the new design of program.
+
 - Must be able to have complete information of the function just through the
   epxression node.
 - Must adhere to :mod:`loopy` semantics of immutability.

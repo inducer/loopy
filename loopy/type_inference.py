@@ -969,8 +969,6 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
         if isinstance(insn, lp.MultiAssignmentBase):
             # just a dummy run over the expression, to pass over all the
             # functions
-            # FIXME: need a check over here which checks the instruction for
-            # unseen cases
             if _instruction_missed_during_inference(insn):
                 type_inf_mapper(insn.expression, return_tuple=isinstance(insn,
                     lp.CallInstruction), return_dtype_set=True)

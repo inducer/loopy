@@ -556,6 +556,8 @@ def count_callables_in_kernel(kernel, program_callables_info):
 # {{{ program callables info
 
 class ProgramCallablesInfo(ImmutableRecord):
+    # FIXME: is CallablesTable a better name?(similar to symbol table in
+    # compilers.)
     """
     Records the information of all the callables called in a :class:`loopy.Program`.
 
@@ -637,8 +639,11 @@ class ProgramCallablesInfo(ImmutableRecord):
 
     def with_added_callable(self, function, in_kernel_callable):
         """
-        Returns a copy of *self* with the *function* associated with the
-        *in_kernel_callable*.
+        Returns an instance of :class:`tuple` of ``(new_self, new_function)``.
+        ``new_self`` is a copy of *self* with the *function* associated with the
+        *in_kernel_callable*. ``new_function`` is the function identifier that
+        should be noted in the expression node so that it could be associated
+        with an instance of :class:`InKernelCallable`.
 
         .. note::
 
@@ -739,9 +744,8 @@ class ProgramCallablesInfo(ImmutableRecord):
 
     def with_callable(self, function, in_kernel_callable):
         """
-        Returns a copy of *self* with the *function* associated with the
-        *in_kernel_callable*. Also refer --
-        :meth:`loopy.ProgramCallablesInfo.with_added_callable`
+        Returns an instance of :class:`tuple` ``(new_self, new_function)``.
+        Also refer -- :meth:`loopy.ProgramCallablesInfo.with_added_callable`
 
 
         :arg function: An instance of :class:`pymbolic.primitives.Variable` or

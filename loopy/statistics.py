@@ -61,8 +61,8 @@ __doc__ = """
 
 
 # FIXME: this is broken for the callable kernel design.
-# Qns:
-# - The variable name, what if multiple kernels use the same name?
+# - The variable name, what if multiple kernels use the same name?(needs a
+# different MemAccessInfo)
 # - We should also add the cumulative effect on the arguments of callee kernels
 # into the caller kernel
 # - Make changes to MemAccessInfo to include the effect of several kernels.
