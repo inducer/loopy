@@ -792,11 +792,11 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
     # {{{ library
 
-    def function_scopers(self):
+    def function_id_in_knl_callable_mapper(self):
         from loopy.library.random123 import random123_function_scoper
         return (
                 [pyopencl_function_scoper, random123_function_scoper] + super(
-                    PyOpenCLCASTBuilder, self).function_scopers())
+                    PyOpenCLCASTBuilder, self).function_id_in_knl_callable_mapper())
 
     def preamble_generators(self):
         return ([

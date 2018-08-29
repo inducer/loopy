@@ -274,9 +274,9 @@ class CUDACASTBuilder(CASTBuilder):
 
     # {{{ library
 
-    def function_scopers(self):
+    def function_id_in_knl_callable_mapper(self):
         return [scope_cuda_functions] + (
-                super(CUDACASTBuilder, self).function_scopers())
+                super(CUDACASTBuilder, self).function_id_in_knl_callable_mapper())
 
     # }}}
 

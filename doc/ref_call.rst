@@ -180,7 +180,7 @@ Changes on the target side to accommodate the new function interface
 --------------------------------------------------------------------
 
 The earlier "function\_mangler" as a member method of the class
-``lp.ASTBuilderBase`` will be replaced by ``function_scopers``. The
+``lp.ASTBuilderBase`` will be replaced by ``function_id_in_knl_callable_mapper``. The
 function scopers would return a list of functions with the signature
 ``(target, identifier)->lp.InKernelCallable``.
 

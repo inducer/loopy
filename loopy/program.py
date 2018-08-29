@@ -156,10 +156,10 @@ def _default_func_id_to_kernel_callable_mappers(target):
     """
     # FIXME: the name -- scopers is no longer used!(change it) ~KK
 
-    from loopy.library.function import loopy_specific_callable_scopers
+    from loopy.library.function import loopy_specific_callable_func_id_to_knl_callable_mappers
     return (
-            [loopy_specific_callable_scopers] + (
-                target.get_device_ast_builder().function_scopers()))
+            [loopy_specific_callable_func_id_to_knl_callable_mappers] + (
+                target.get_device_ast_builder().function_id_in_knl_callable_mapper()))
 
 
 def initialize_program_callables_info_from_kernel(kernel):

@@ -150,7 +150,7 @@ class ASTBuilderBase(object):
 
     # {{{ library
 
-    def function_scopers(self):
+    def function_id_in_knl_callable_mapper(self):
         """
         Returns an instance of list of the functions of signature
         ``(target, identifiers)`` returning either an instance of

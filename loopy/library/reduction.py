@@ -502,7 +502,7 @@ class ReductionCallable(ScalarCallable):
         return
 
 
-def reduction_scoper(target, identifier):
+def reduction_func_id_to_in_knl_callable_mapper(target, identifier):
     if isinstance(identifier, ReductionOpFunction):
         return ReductionCallable(name=identifier)
 

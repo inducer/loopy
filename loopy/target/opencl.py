@@ -442,10 +442,10 @@ class OpenCLTarget(CTarget):
 class OpenCLCASTBuilder(CASTBuilder):
     # {{{ library
 
-    def function_scopers(self):
+    def function_id_in_knl_callable_mapper(self):
         return (
                 [scope_opencl_functions] + super(
-                    OpenCLCASTBuilder, self).function_scopers())
+                    OpenCLCASTBuilder, self).function_id_in_knl_callable_mapper())
 
     def symbol_manglers(self):
         return (

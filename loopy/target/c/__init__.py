@@ -484,9 +484,9 @@ class CASTBuilder(ASTBuilderBase):
                     _preamble_generator,
                     ])
 
-    def function_scopers(self):
+    def function_id_in_knl_callable_mapper(self):
         return (
-                super(CASTBuilder, self).function_scopers() + [
+                super(CASTBuilder, self).function_id_in_knl_callable_mapper() + [
                     scope_c_math_functions])
 
     # }}}
