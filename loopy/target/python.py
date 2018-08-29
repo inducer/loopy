@@ -183,7 +183,8 @@ class PythonASTBuilderBase(ASTBuilderBase):
     def function_id_in_knl_callable_mapper(self):
         from loopy.target.c import scope_c_math_functions
         return (
-                super(PythonASTBuilderBase, self).function_id_in_knl_callable_mapper() +
+                super(PythonASTBuilderBase,
+                    self).function_id_in_knl_callable_mapper() +
                 [scope_c_math_functions])
 
     def preamble_generators(self):
