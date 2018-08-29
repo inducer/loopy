@@ -287,7 +287,7 @@ class InKernelCallable(ImmutableRecord):
     def with_hw_axes_sizes(self, local_size, global_size):
         """
         Returns a copy of *self* with modifications to comply with the grid
-        sizes ``(local_size, global_size)`` of the kernel in which it is
+        sizes ``(local_size, global_size)`` of the program in which it is
         supposed to be called.
 
         :arg local_size: An instance of :class:`islpy.PwAff`.

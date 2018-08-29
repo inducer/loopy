@@ -223,7 +223,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     .. attribute:: is_called_from_host
         An instance of :class:`bool`. Will be set *False* for the kernel which
-        would be called from another top level kernels. Default value is
+        would be called from other top level kernels. Default value is
         *True*.
 
     """

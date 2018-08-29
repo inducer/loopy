@@ -181,8 +181,8 @@ def check_loop_priority_inames_known(kernel):
 
 
 def _get_all_unique_iname_tags(kernel):
-    """Returns a set of all the iname tags used in *kernel* that
-    inherit from :class:`loopy.kernel.data.UniqueTag`.
+    """Returns an instance of :class:`set` of all the iname tags used in
+    *kernel* that inherit from :class:`loopy.kernel.data.UniqueTag`.
     """
     from loopy.kernel.data import UniqueTag
     iname_tags = [kernel.iname_to_tag.get(iname) for iname in

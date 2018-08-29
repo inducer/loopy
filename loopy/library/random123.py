@@ -231,7 +231,7 @@ class Random123Callable(ScalarCallable):
         return
 
 
-def random123_function_scoper(target, identifier):
+def random123_function_id_to_in_knl_callable_mapper(target, identifier):
     if identifier in FUNC_NAMES_TO_RNG:
         return Random123Callable(name=identifier)
 

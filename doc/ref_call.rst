@@ -30,7 +30,7 @@ kernel, whose name has been resolved by the kernel. The process of matching a
 function idenitifier with the function definition is called "resolving".
 
 A pymbolic ``Call`` node can be converted to a ``ResolvedFunction`` if it
-is "resolved" by one of the ``function_scoper`` in a
+is "resolved" by one of the ``function_id_to_in_knl_callable_mapper`` in a
 :attr:`LoopKernel.scoped_functions`
 
 -  Functions already registered by the target. Some examples include --
@@ -41,11 +41,11 @@ is "resolved" by one of the ``function_scoper`` in a
 -  Functions registered as ``CallableKernels`` using
    ``lp.register_callable_kernel(...)``.
 -  Functions that have been provided through
-   ``lp.register_function_scoper(...)``
+   ``lp.register_function_id_to_in_knl_callable_mapper(...)``
 -  Functions that can be made known from the user through
    ``lp.register_function_mangler``. This is planned to be deprecated,
    as its functionality is superseded by
-   ``lp.register_function_scoper(...)``.
+   ``lp.register_function_id_to_in_knl_callable_mapper(...)``.
 
 Expressions after a function is scoped
 --------------------------------------
