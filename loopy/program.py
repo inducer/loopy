@@ -154,8 +154,6 @@ def _default_func_id_to_kernel_callable_mappers(target):
     """
     Returns a list of functions that are provided through *target* by deafault.
     """
-    # FIXME: the name -- scopers is no longer used!(change it) ~KK
-
     from loopy.library.function import (
             loopy_specific_callable_func_id_to_knl_callable_mappers)
     return (
