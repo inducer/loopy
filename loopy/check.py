@@ -68,10 +68,6 @@ class UnscopedCallCollector(CombineMapper):
     :returns:
         An :class:`frozenset` of function names that are not scoped in
         the kernel.
-
-    .. note::
-        :class:`loopy.library.reduction.ArgExtOp` are ignored, as they are
-        never scoped in the pipeline.
     """
 
     def combine(self, values):
@@ -85,8 +81,7 @@ class UnscopedCallCollector(CombineMapper):
             kw_parameters={}))
 
     def map_call_with_kwargs(self, expr):
-        from loopy.library.reduction import ArgExtOp
-        if not isinstance(expr.function, (ResolvedFunction, ArgExtOp)):
+        if not isinstance(expr.function, ResolvedFunction):
             return (frozenset([expr.function.name]) |
                     self.combine((self.rec(child) for child in expr.parameters
                         + tuple(expr.kw_parameters.values()))))
