@@ -249,9 +249,11 @@ def check_for_inactive_iname_access(kernel):
         if not expression_inames <= kernel.insn_inames(insn):
             raise LoopyError(
                     "instruction '%s' references "
-                    "inames '%s' that the instruction does not depend on"
+                    "inames '%s' that the instruction does not depend on in "
+                    "the kernel '%s'"
                     % (insn.id,
-                        ", ".join(expression_inames - kernel.insn_inames(insn))))
+                        ", ".join(expression_inames -
+                            kernel.insn_inames(insn)), kernel.name))
 
 
 def _is_racing_iname_tag(tv, tag):
