@@ -833,6 +833,7 @@ class ArrayBase(ImmutableRecord):
                 dim_names=dim_names,
                 order=order,
                 alignment=alignment,
+                for_atomic=for_atomic,
                 **kwargs)
 
     def __eq__(self, other):
