@@ -455,7 +455,8 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
             within_inames=within_inames,
             # TODO: probaby need to keep priority in callee kernel
             priority=instruction.priority,
-            depends_on=depends_on
+            depends_on=depends_on,
+            tags=insn.tags | instruction.tags
         )
         inner_insns.append(insn)
 
