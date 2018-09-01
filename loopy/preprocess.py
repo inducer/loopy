@@ -53,7 +53,7 @@ def prepare_for_caching(kernel):
     for arg in kernel.args:
         dtype = arg.dtype
         if dtype is not None and dtype is not lp.auto and dtype.target is not tgt:
-            arg = arg.copy(dtype=dtype.with_target(kernel.target))
+            arg = arg.copy(dtype=dtype.with_target(tgt), target=tgt)
 
         new_args.append(arg)
 
@@ -61,7 +61,7 @@ def prepare_for_caching(kernel):
     for name, temp in six.iteritems(kernel.temporary_variables):
         dtype = temp.dtype
         if dtype is not None and dtype is not lp.auto and dtype.target is not tgt:
-            temp = temp.copy(dtype=dtype.with_target(tgt))
+            temp = temp.copy(dtype=dtype.with_target(tgt), target=tgt)
 
         new_temporary_variables[name] = temp
 
