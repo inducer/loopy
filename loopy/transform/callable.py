@@ -450,13 +450,19 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
                 instruction.depends_on)
         if insn.id in heads:
             depends_on = depends_on | set([noop_start.id])
+
+        new_atomicity = tuple(
+                type(atomicity)(var_map[p.Variable(atomicity.var_name)].name)
+                for atomicity in insn.atomicity)
+
         insn = insn.copy(
             id=insn_id[insn.id],
             within_inames=within_inames,
             # TODO: probaby need to keep priority in callee kernel
             priority=instruction.priority,
             depends_on=depends_on,
-            tags=insn.tags | instruction.tags
+            tags=insn.tags | instruction.tags,
+            atomicity=new_atomicity
         )
         inner_insns.append(insn)
 
