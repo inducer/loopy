@@ -715,7 +715,6 @@ class ExpressionOpCounter(CounterBase):
         return ToCountMap(
                     {Op(dtype=self.type_inf(expr),
                         name='func:'+str(expr.function),
-                        #count_granularity=CountGranularity.WORKITEM): 1}
                         count_granularity=CountGranularity.SUBGROUP): 1}
                     ) + self.rec(expr.parameters)
 
@@ -727,7 +726,6 @@ class ExpressionOpCounter(CounterBase):
         return ToCountMap(
                     {Op(dtype=self.type_inf(expr),
                         name='add',
-                        #count_granularity=CountGranularity.WORKITEM):
                         count_granularity=CountGranularity.SUBGROUP):
                      len(expr.children)-1}
                     ) + sum(self.rec(child) for child in expr.children)
@@ -737,20 +735,17 @@ class ExpressionOpCounter(CounterBase):
         assert expr.children
         return sum(ToCountMap({Op(dtype=self.type_inf(expr),
                                   name='mul',
-                                  #count_granularity=CountGranularity.WORKITEM): 1})
                                   count_granularity=CountGranularity.SUBGROUP): 1})
                    + self.rec(child)
                    for child in expr.children
                    if not is_zero(child + 1)) + \
                    ToCountMap({Op(dtype=self.type_inf(expr),
                                   name='mul',
-                                  #count_granularity=CountGranularity.WORKITEM): -1})
                                   count_granularity=CountGranularity.SUBGROUP): -1})
 
     def map_quotient(self, expr, *args):
         return ToCountMap({Op(dtype=self.type_inf(expr),
                               name='div',
-                              #count_granularity=CountGranularity.WORKITEM): 1}) \
                               count_granularity=CountGranularity.SUBGROUP): 1}) \
                                 + self.rec(expr.numerator) \
                                 + self.rec(expr.denominator)
@@ -761,7 +756,6 @@ class ExpressionOpCounter(CounterBase):
     def map_power(self, expr):
         return ToCountMap({Op(dtype=self.type_inf(expr),
                               name='pow',
-                              #count_granularity=CountGranularity.WORKITEM): 1}) \
                               count_granularity=CountGranularity.SUBGROUP): 1}) \
                                 + self.rec(expr.base) \
                                 + self.rec(expr.exponent)
@@ -769,7 +763,6 @@ class ExpressionOpCounter(CounterBase):
     def map_left_shift(self, expr):
         return ToCountMap({Op(dtype=self.type_inf(expr),
                               name='shift',
-                              #count_granularity=CountGranularity.WORKITEM): 1}) \
                               count_granularity=CountGranularity.SUBGROUP): 1}) \
                                 + self.rec(expr.shiftee) \
                                 + self.rec(expr.shift)
@@ -779,14 +772,12 @@ class ExpressionOpCounter(CounterBase):
     def map_bitwise_not(self, expr):
         return ToCountMap({Op(dtype=self.type_inf(expr),
                               name='bw',
-                              #count_granularity=CountGranularity.WORKITEM): 1}) \
                               count_granularity=CountGranularity.SUBGROUP): 1}) \
                                 + self.rec(expr.child)
 
     def map_bitwise_or(self, expr):
         return ToCountMap({Op(dtype=self.type_inf(expr),
                               name='bw',
-                              #count_granularity=CountGranularity.WORKITEM):
                               count_granularity=CountGranularity.SUBGROUP):
                            len(expr.children)-1}) \
                                 + sum(self.rec(child) for child in expr.children)
@@ -811,7 +802,6 @@ class ExpressionOpCounter(CounterBase):
     def map_min(self, expr):
         return ToCountMap({Op(dtype=self.type_inf(expr),
                               name='maxmin',
-                              #count_granularity=CountGranularity.WORKITEM):
                               count_granularity=CountGranularity.SUBGROUP):
                            len(expr.children)-1}) \
                + sum(self.rec(child) for child in expr.children)
@@ -928,7 +918,6 @@ class LocalMemAccessCounter(MemAccessCounter):
                     sub_map[MemAccess(
                                 mtype='local',
                                 dtype=dtype,
-                                #count_granularity=CountGranularity.WORKITEM)
                                 count_granularity=CountGranularity.SUBGROUP)
                             ] = 1
                     return sub_map
@@ -949,7 +938,6 @@ class LocalMemAccessCounter(MemAccessCounter):
                         lid_strides=dict(sorted(six.iteritems(lid_strides))),
                         gid_strides=dict(sorted(six.iteritems(gid_strides))),
                         variable=name,
-                        #count_granularity=CountGranularity.WORKITEM)] = 1
                         count_granularity=CountGranularity.SUBGROUP)] = 1
 
         return sub_map
