@@ -1551,7 +1551,7 @@ information provided. Now we will count the operations:
 
 .. doctest::
 
-    >>> op_map = lp.get_op_map(knl)
+    >>> op_map = lp.get_op_map(knl, subgroup_size=32)
     >>> print(lp.stringify_stats_mapping(op_map))
     Op(np:dtype('float32'), add, workitem) : ...
 
