@@ -1375,36 +1375,7 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
         raise LoopyError("Kernel '%s': Using operation counting requires the option "
                 "ignore_boostable_into to be set." % knl.name)
 
-    if not isinstance(subgroup_size, int):
-        # try to find subgroup_size
-        subgroup_size_guess = _find_subgroup_size_for_knl(knl)
-
-        if subgroup_size is None:
-            if subgroup_size_guess is None:
-                # 'guess' was not passed and either no target device found
-                # or get_simd_group_size returned None
-                raise ValueError("No sub-group size passed, no target device found. "
-                                 "Either (1) pass integer value for subgroup_size, "
-                                 "(2) ensure that kernel.target is PyOpenClTarget "
-                                 "and kernel.target.device is set, or (3) pass "
-                                 "subgroup_size='guess' and hope for the best.")
-            else:
-                subgroup_size = subgroup_size_guess
-
-        elif subgroup_size == 'guess':
-            if subgroup_size_guess is None:
-                # unable to get subgroup_size from device, so guess
-                subgroup_size = 32
-                warn_with_kernel(knl, "get_op_map_guessing_subgroup_size",
-                                 "get_op_map: 'guess' sub-group size "
-                                 "passed, no target device found, wildly guessing "
-                                 "that sub-group size is %d." % (subgroup_size))
-            else:
-                subgroup_size = subgroup_size_guess
-        else:
-            raise ValueError("Invalid value for subgroup_size: %s. subgroup_size "
-                             "must be integer, 'guess', or, if you're feeling "
-                             "lucky, None." % (subgroup_size))
+    subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     knl = infer_unknown_types(knl, expect_completion=True)
@@ -1463,6 +1434,44 @@ def _find_subgroup_size_for_knl(knl):
         return subgroup_size_guess
     else:
         return None
+
+
+@memoize_method
+def _process_subgroup_size(knl, subgroup_size_requested):
+
+    if isinstance(subgroup_size_requested, int):
+        return subgroup_size_requested
+    else:
+        # try to find subgroup_size
+        subgroup_size_guess = _find_subgroup_size_for_knl(knl)
+
+        if subgroup_size_requested is None:
+            if subgroup_size_guess is None:
+                # 'guess' was not passed and either no target device found
+                # or get_simd_group_size returned None
+                raise ValueError("No sub-group size passed, no target device found. "
+                                 "Either (1) pass integer value for subgroup_size, "
+                                 "(2) ensure that kernel.target is PyOpenClTarget "
+                                 "and kernel.target.device is set, or (3) pass "
+                                 "subgroup_size='guess' and hope for the best.")
+            else:
+                return subgroup_size_guess
+
+        elif subgroup_size_requested == 'guess':
+            if subgroup_size_guess is None:
+                # unable to get subgroup_size from device, so guess
+                subgroup_size_guess = 32
+                warn_with_kernel(knl, "get_x_map_guessing_subgroup_size",
+                                 "'guess' sub-group size passed, no target device "
+                                 "found, wildly guessing that sub-group size is %d."
+                                 % (subgroup_size_guess))
+                return subgroup_size_guess
+            else:
+                return subgroup_size_guess
+        else:
+            raise ValueError("Invalid value for subgroup_size: %s. subgroup_size "
+                             "must be integer, 'guess', or, if you're feeling "
+                             "lucky, None." % (subgroup_size_requested))
 
 
 # {{{ get_mem_access_map
@@ -1558,36 +1567,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         raise LoopyError("Kernel '%s': Using operation counting requires the option "
                 "ignore_boostable_into to be set." % knl.name)
 
-    if not isinstance(subgroup_size, int):
-        # try to find subgroup_size
-        subgroup_size_guess = _find_subgroup_size_for_knl(knl)
-
-        if subgroup_size is None:
-            if subgroup_size_guess is None:
-                # 'guess' was not passed and either no target device found
-                # or get_simd_group_size returned None
-                raise ValueError("No sub-group size passed, no target device found. "
-                                 "Either (1) pass integer value for subgroup_size, "
-                                 "(2) ensure that kernel.target is PyOpenClTarget "
-                                 "and kernel.target.device is set, or (3) pass "
-                                 "subgroup_size='guess' and hope for the best.")
-            else:
-                subgroup_size = subgroup_size_guess
-
-        elif subgroup_size == 'guess':
-            if subgroup_size_guess is None:
-                # unable to get subgroup_size from device, so guess
-                subgroup_size = 32
-                warn_with_kernel(knl, "get_mem_access_map_guessing_subgroup_size",
-                                 "get_mem_access_map: 'guess' sub-group size "
-                                 "passed, no target device found, wildly guessing "
-                                 "that sub-group size is %d." % (subgroup_size))
-            else:
-                subgroup_size = subgroup_size_guess
-        else:
-            raise ValueError("Invalid value for subgroup_size: %s. subgroup_size "
-                             "must be integer, 'guess', or, if you're feeling "
-                             "lucky, None." % (subgroup_size))
+    subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     knl = infer_unknown_types(knl, expect_completion=True)
