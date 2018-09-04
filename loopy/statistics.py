@@ -1375,13 +1375,6 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
         raise LoopyError("Kernel '%s': Using operation counting requires the option "
                 "ignore_boostable_into to be set." % knl.name)
 
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    from loopy.kernel.instruction import (
-            CallInstruction, CInstruction, Assignment,
-            NoOpInstruction, BarrierInstruction)
-    knl = infer_unknown_types(knl, expect_completion=True)
-    knl = preprocess_kernel(knl)
-
     if not isinstance(subgroup_size, int):
         # try to find subgroup_size
         subgroup_size_guess = _find_subgroup_size_for_knl(knl)
@@ -1413,8 +1406,17 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
                              "must be integer, 'guess', or, if you're feeling "
                              "lucky, None." % (subgroup_size))
 
+    from loopy.preprocess import preprocess_kernel, infer_unknown_types
+    knl = infer_unknown_types(knl, expect_completion=True)
+    knl = preprocess_kernel(knl)
+
     op_map = ToCountMap()
     op_counter = ExpressionOpCounter(knl)
+
+    from loopy.kernel.instruction import (
+            CallInstruction, CInstruction, Assignment,
+            NoOpInstruction, BarrierInstruction)
+
     for insn in knl.instructions:
         if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
             ops = op_counter(insn.assignee) + op_counter(insn.expression)
@@ -1551,7 +1553,6 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         # (now use these counts to, e.g., predict performance)
 
     """
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
 
     if not knl.options.ignore_boostable_into:
         raise LoopyError("Kernel '%s': Using operation counting requires the option "
@@ -1588,6 +1589,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                              "must be integer, 'guess', or, if you're feeling "
                              "lucky, None." % (subgroup_size))
 
+    from loopy.preprocess import preprocess_kernel, infer_unknown_types
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
