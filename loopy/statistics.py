@@ -1391,7 +1391,7 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
     for insn in knl.instructions:
         if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
             ops = op_counter(insn.assignee) + op_counter(insn.expression)
-            for key, val in six.iteritems(ops):
+            for key, val in six.iteritems(ops.count_map):
                 op_map = (
                         op_map
                         + ToCountMap({key: val})
