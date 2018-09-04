@@ -231,7 +231,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
 
     if 1:
         print("OPS")
-        op_map = lp.get_op_map(hsv)
+        op_map = lp.get_op_map(hsv, subgroup_size=32)
         print(lp.stringify_stats_mapping(op_map))
 
         print("MEM")

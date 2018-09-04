@@ -1551,13 +1551,13 @@ information provided. Now we will count the operations:
 
 .. doctest::
 
-    >>> op_map = lp.get_op_map(knl)
+    >>> op_map = lp.get_op_map(knl, subgroup_size=32)
     >>> print(lp.stringify_stats_mapping(op_map))
-    Op(np:dtype('float32'), add, workitem) : ...
+    Op(np:dtype('float32'), add, subgroup) : ...
 
 Each line of output will look roughly like::
 
-    Op(np:dtype('float32'), add, workitem) : [l, m, n] -> { l * m * n : l > 0 and m > 0 and n > 0 }
+    Op(np:dtype('float32'), add, subgroup) : [l, m, n] -> { l * m * n : l > 0 and m > 0 and n > 0 }
 
 :func:`loopy.get_op_map` returns a :class:`loopy.ToCountMap` of **{**
 :class:`loopy.Op` **:** :class:`islpy.PwQPolynomial` **}**. A
@@ -1579,12 +1579,12 @@ One way to evaluate these polynomials is with :func:`islpy.eval_with_dict`:
 
     >>> param_dict = {'n': 256, 'm': 256, 'l': 8}
     >>> from loopy.statistics import CountGranularity as CG
-    >>> f32add = op_map[lp.Op(np.float32, 'add', CG.WORKITEM)].eval_with_dict(param_dict)
-    >>> f32div = op_map[lp.Op(np.float32, 'div', CG.WORKITEM)].eval_with_dict(param_dict)
-    >>> f32mul = op_map[lp.Op(np.float32, 'mul', CG.WORKITEM)].eval_with_dict(param_dict)
-    >>> f64add = op_map[lp.Op(np.float64, 'add', CG.WORKITEM)].eval_with_dict(param_dict)
-    >>> f64mul = op_map[lp.Op(np.float64, 'mul', CG.WORKITEM)].eval_with_dict(param_dict)
-    >>> i32add = op_map[lp.Op(np.int32, 'add', CG.WORKITEM)].eval_with_dict(param_dict)
+    >>> f32add = op_map[lp.Op(np.float32, 'add', CG.SUBGROUP)].eval_with_dict(param_dict)
+    >>> f32div = op_map[lp.Op(np.float32, 'div', CG.SUBGROUP)].eval_with_dict(param_dict)
+    >>> f32mul = op_map[lp.Op(np.float32, 'mul', CG.SUBGROUP)].eval_with_dict(param_dict)
+    >>> f64add = op_map[lp.Op(np.float64, 'add', CG.SUBGROUP)].eval_with_dict(param_dict)
+    >>> f64mul = op_map[lp.Op(np.float64, 'mul', CG.SUBGROUP)].eval_with_dict(param_dict)
+    >>> i32add = op_map[lp.Op(np.int32, 'add', CG.SUBGROUP)].eval_with_dict(param_dict)
     >>> print("%i\n%i\n%i\n%i\n%i\n%i" %
     ...     (f32add, f32div, f32mul, f64add, f64mul, i32add))
     524288
