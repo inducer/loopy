@@ -329,6 +329,35 @@ def test_target_invalid_type_cast():
         lp.TypeCast(dtype, 1)
 
 
+def test_ispc_streaming_stores():
+    stream_dtype = np.float32
+    index_dtype = np.int32
+
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            "a[i] = b[i] + scalar * c[i]",
+            target=lp.ISPCTarget(), index_dtype=index_dtype,
+            name="stream_triad")
+
+    vars = ["a", "b", "c", "scalar"]
+    knl = lp.assume(knl, "n>0")
+    knl = lp.split_iname(
+        knl, "i", 2**18, outer_tag="g.0", slabs=(0, 1))
+    knl = lp.split_iname(knl, "i_inner", 8, inner_tag="l.0")
+    knl = lp.tag_instructions(knl, "!streaming_store")
+
+    knl = lp.add_and_infer_dtypes(knl, {
+        var: stream_dtype
+        for var in vars
+        })
+
+    knl = lp.set_argument_order(knl, vars + ["n"])
+
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    lp.generate_code_v2(knl).all_code()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
