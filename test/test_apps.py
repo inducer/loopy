@@ -43,6 +43,8 @@ else:
 from pyopencl.tools import pytest_generate_tests_for_pyopencl \
         as pytest_generate_tests
 
+from loopy.diagnostic import LoopyError
+
 __all__ = [
         "pytest_generate_tests",
         "cl"  # 'cl.create_some_context'
@@ -99,8 +101,9 @@ def test_convolution(ctx_factory):
         knl = lp.split_iname(knl, "im_x", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.split_iname(knl, "im_y", 16, outer_tag="g.1", inner_tag="l.1")
         knl = lp.tag_inames(knl, dict(ifeat="g.2"))
-        knl = lp.add_prefetch(knl, "f[ifeat,:,:,:]")
-        knl = lp.add_prefetch(knl, "img", "im_x_inner, im_y_inner, f_x, f_y")
+        knl = lp.add_prefetch(knl, "f[ifeat,:,:,:]", default_tag="l.auto")
+        knl = lp.add_prefetch(knl, "img", "im_x_inner, im_y_inner, f_x, f_y",
+                default_tag="l.auto")
         return knl
 
     for variant in [
@@ -344,7 +347,7 @@ def test_stencil(ctx_factory):
     def variant_1(knl):
         knl = lp.split_iname(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
         knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
-        knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"])
+        knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"], default_tag="l.auto")
         knl = lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
         return knl
 
@@ -352,7 +355,7 @@ def test_stencil(ctx_factory):
         knl = lp.split_iname(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
         knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
-                fetch_bounding_box=True)
+                fetch_bounding_box=True, default_tag="l.auto")
         knl = lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
         return knl
 
@@ -399,7 +402,7 @@ def test_stencil_with_overfetch(ctx_factory):
         knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0",
                slabs=(1, 1))
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
-                fetch_bounding_box=True)
+                fetch_bounding_box=True, default_tag="l.auto")
         knl = lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
         return knl
 
@@ -501,7 +504,8 @@ def test_lbm(ctx_factory):
     knl = lp.split_iname(knl, "ii", 16, outer_tag="g.1", inner_tag="l.1")
     knl = lp.split_iname(knl, "jj", 16, outer_tag="g.0", inner_tag="l.0")
     knl = lp.expand_subst(knl)
-    knl = lp.add_prefetch(knl, "f", "ii_inner,jj_inner", fetch_bounding_box=True)
+    knl = lp.add_prefetch(knl, "f", "ii_inner,jj_inner", fetch_bounding_box=True,
+            default_tag="l.auto")
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"nx": 20, "ny": 20})
 
@@ -519,7 +523,8 @@ def test_fd_demo():
             "j", 16, outer_tag="g.0", inner_tag="l.0")
     knl = lp.add_prefetch(knl, "u",
             ["i_inner", "j_inner"],
-            fetch_bounding_box=True)
+            fetch_bounding_box=True,
+            default_tag="l.auto")
 
     #n = 1000
     #u = cl.clrandom.rand(queue, (n+2, n+2), dtype=np.float32)
@@ -665,6 +670,26 @@ def test_domain_tree_nesting():
 
     for i in range(len(parents_per_domain)):
         assert depth(i) < 2
+
+
+def test_prefetch_through_indirect_access():
+    knl = lp.make_kernel("{[i, j, k]: 0 <= i,k < 10 and 0<=j<2}",
+        """
+        for i, j, k
+            a[map1[indirect[i], j], k] = 2
+        end
+        """,
+        [
+            lp.GlobalArg("a", strides=(2, 1), dtype=int),
+            lp.GlobalArg("map1", shape=(10, 10), dtype=int),
+            "..."
+            ],
+        target=lp.CTarget())
+
+    knl = lp.prioritize_loops(knl, "i,j,k")
+
+    with pytest.raises(LoopyError):
+        knl = lp.add_prefetch(knl, "map1[:, j]")
 
 
 if __name__ == "__main__":

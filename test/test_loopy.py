@@ -69,7 +69,7 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
             """,
             [lp.TemporaryVariable(
                 'cnst', shape=('n'), initializer=cnst,
-                scope=lp.temp_var_scope.GLOBAL,
+                scope=lp.AddressSpace.GLOBAL,
                 read_only=True), '...'])
     knl = lp.fix_parameters(knl, n=16)
     knl = lp.add_barrier(knl, "id:first", "id:second")
@@ -646,7 +646,8 @@ def test_vector_ilp_with_prefetch(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 128, inner_tag="l.0")
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
-    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"])
+    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"],
+            default_tag="l.auto")
 
     cknl = lp.CompiledKernel(ctx, knl)
     cknl.kernel_info()
@@ -1069,7 +1070,7 @@ def test_atomic(ctx_factory, dtype):
 def test_atomic_load(ctx_factory, dtype):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
-    from loopy.kernel.data import temp_var_scope as scopes
+    from loopy.kernel.data import AddressSpace
     n = 10
     vec_width = 4
 
@@ -1107,7 +1108,7 @@ def test_atomic_load(ctx_factory, dtype):
                 lp.GlobalArg("a", dtype, shape=lp.auto),
                 lp.GlobalArg("b", dtype, shape=lp.auto),
                 lp.TemporaryVariable('temp', dtype, for_atomic=True,
-                                     scope=scopes.LOCAL),
+                                     scope=AddressSpace.LOCAL),
                 "..."
                 ],
             silenced_warnings=["write_race(init)", "write_race(temp_sum)"])
@@ -1722,7 +1723,8 @@ def test_finite_difference_expr_subst(ctx_factory):
             fused0_knl, "inew", 128, outer_tag="g.0", inner_tag="l.0")
 
     precomp_knl = lp.precompute(
-            gpu_knl, "f_subst", "inew_inner", fetch_bounding_box=True)
+            gpu_knl, "f_subst", "inew_inner", fetch_bounding_box=True,
+            default_tag="l.auto")
 
     precomp_knl = lp.tag_inames(precomp_knl, {"j_0_outer": "unr"})
     precomp_knl = lp.set_options(precomp_knl, return_dict=True)
@@ -1893,8 +1895,8 @@ def test_global_barrier(ctx_factory):
     print(knl)
 
     knl = lp.preprocess_kernel(knl)
-    assert knl.temporary_variables["z"].scope == lp.temp_var_scope.GLOBAL
-    assert knl.temporary_variables["v"].scope == lp.temp_var_scope.GLOBAL
+    assert knl.temporary_variables["z"].address_space == lp.AddressSpace.GLOBAL
+    assert knl.temporary_variables["v"].address_space == lp.AddressSpace.GLOBAL
 
     print(knl)
 
@@ -2021,7 +2023,7 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
                 lp.TemporaryVariable("tmp",
                     initializer=a,
                     shape=lp.auto,
-                    scope=lp.temp_var_scope.PRIVATE,
+                    scope=lp.AddressSpace.PRIVATE,
                     read_only=True,
                     order=tmp_order),
                 "..."
@@ -2046,7 +2048,7 @@ def test_const_temp_with_initializer_not_saved():
             lp.TemporaryVariable("tmp",
                 initializer=np.arange(10),
                 shape=lp.auto,
-                scope=lp.temp_var_scope.PRIVATE,
+                scope=lp.AddressSpace.PRIVATE,
                 read_only=True),
             "..."
             ],
@@ -2262,7 +2264,6 @@ def test_integer_reduction(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    from loopy.kernel.data import temp_var_scope as scopes
     from loopy.types import to_loopy_type
 
     n = 200
@@ -2270,7 +2271,7 @@ def test_integer_reduction(ctx_factory):
         var_int = np.random.randint(1000, size=n).astype(vtype)
         var_lp = lp.TemporaryVariable('var', initializer=var_int,
                                    read_only=True,
-                                   scope=scopes.PRIVATE,
+                                   scope=lp.AddressSpace.PRIVATE,
                                    dtype=to_loopy_type(vtype),
                                    shape=lp.auto)
 
@@ -2451,8 +2452,6 @@ def test_barrier_insertion_near_bottom_of_loop():
 
 
 def test_barrier_in_overridden_get_grid_size_expanded_kernel():
-    from loopy.kernel.data import temp_var_scope as scopes
-
     # make simple barrier'd kernel
     knl = lp.make_kernel('{[i]: 0 <= i < 10}',
                    """
@@ -2463,7 +2462,7 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
               end
                    """,
                    [lp.TemporaryVariable("a", np.float32, shape=(10,), order='C',
-                                         scope=scopes.LOCAL),
+                                         scope=lp.AddressSpace.LOCAL),
                     lp.GlobalArg("b", np.float32, shape=(11,), order='C')],
                seq_dependencies=True)
 
@@ -2688,7 +2687,6 @@ def test_wildcard_dep_matching():
 
 
 def test_preamble_with_separate_temporaries(ctx_factory):
-    from loopy.kernel.data import temp_var_scope as scopes
     # create a function mangler
 
     # and finally create a test
@@ -2715,13 +2713,18 @@ def test_preamble_with_separate_temporaries(ctx_factory):
     """,
     [lp.GlobalArg('out', shape=('n',)),
      lp.TemporaryVariable(
-        'offsets', shape=(offsets.size,), initializer=offsets, scope=scopes.GLOBAL,
+        'offsets', shape=(offsets.size,), initializer=offsets,
+        scope=lp.AddressSpace.GLOBAL,
         read_only=True),
      lp.GlobalArg('data', shape=(data.size,), dtype=np.float64)],
     )
+
     # fixt params, and add manglers / preamble
-    from testlib import SeparateTemporariesPreambleTestHelper
-    preamble_with_sep_helper = SeparateTemporariesPreambleTestHelper(
+    from testlib import (
+            SeparateTemporariesPreambleTestMangler,
+            SeparateTemporariesPreambleTestPreambleGenerator,
+            )
+    func_info = dict(
             func_name='indirect',
             func_arg_dtypes=(np.int32, np.int32, np.int32),
             func_result_dtypes=(np.int32,),
@@ -2730,9 +2733,9 @@ def test_preamble_with_separate_temporaries(ctx_factory):
 
     kernel = lp.fix_parameters(kernel, **{'n': n})
     kernel = lp.register_preamble_generators(
-            kernel, [preamble_with_sep_helper.preamble_gen])
+            kernel, [SeparateTemporariesPreambleTestPreambleGenerator(**func_info)])
     kernel = lp.register_function_manglers(
-            kernel, [preamble_with_sep_helper.mangler])
+            kernel, [SeparateTemporariesPreambleTestMangler(**func_info)])
 
     print(lp.generate_code(kernel)[0])
     # and call (functionality unimportant, more that it compiles)
@@ -2790,7 +2793,7 @@ def test_add_prefetch_works_in_lhs_index():
                 "..."
             ])
 
-    knl = lp.add_prefetch(knl, "a1_map", "k")
+    knl = lp.add_prefetch(knl, "a1_map", "k", default_tag="l.auto")
 
     from loopy.symbolic import get_dependencies
     for insn in knl.instructions:
@@ -2845,7 +2848,7 @@ def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
             """ % second_index,
             [
                 lp.TemporaryVariable("a", lp.auto, shape=(256,),
-                    scope=lp.temp_var_scope.LOCAL),
+                    scope=lp.AddressSpace.LOCAL),
                 ])
 
     knl = lp.tag_inames(knl, "i:l.0")

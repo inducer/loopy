@@ -206,6 +206,13 @@ class ReductionOpFunction(FunctionIdentifier):
     def name(self):
         return self.__class__.__name__
 
+    def copy(self, reduction_op=None):
+        if reduction_op is None:
+            reduction_op = self.reduction_op
+
+        return type(self)(reduction_op)
+
+
 # }}}
 
 

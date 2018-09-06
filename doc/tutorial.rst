@@ -112,9 +112,9 @@ always see loopy's view of a kernel by printing it.
     KERNEL: loopy_kernel
     ---------------------------------------------------------------------------
     ARGUMENTS:
-    a: GlobalArg, type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1)
+    a: type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1) aspace: global
     n: ValueArg, type: <auto/runtime>
-    out: GlobalArg, type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1)
+    out: type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1) aspace: global
     ---------------------------------------------------------------------------
     DOMAINS:
     [n] -> { [i] : 0 <= i < n }
@@ -650,9 +650,9 @@ loop's tag to ``"unr"``:
       for (int i_outer = 0; i_outer <= int_floor_div_pos_b(-4 + n, 4); ++i_outer)
       {
         a[4 * i_outer] = 0.0f;
-        a[4 * i_outer + 1] = 0.0f;
-        a[4 * i_outer + 2] = 0.0f;
-        a[4 * i_outer + 3] = 0.0f;
+        a[1 + 4 * i_outer] = 0.0f;
+        a[2 + 4 * i_outer] = 0.0f;
+        a[3 + 4 * i_outer] = 0.0f;
       }
     ...
 
@@ -771,11 +771,11 @@ assumption:
       {
         a[4 * i_outer] = 0.0f;
         if (-2 + -4 * i_outer + n >= 0)
-          a[4 * i_outer + 1] = 0.0f;
+          a[1 + 4 * i_outer] = 0.0f;
         if (-3 + -4 * i_outer + n >= 0)
-          a[4 * i_outer + 2] = 0.0f;
+          a[2 + 4 * i_outer] = 0.0f;
         if (-4 + -4 * i_outer + n >= 0)
-          a[4 * i_outer + 3] = 0.0f;
+          a[3 + 4 * i_outer] = 0.0f;
       }
     ...
 
@@ -800,9 +800,9 @@ enabling some cost savings:
       for (int i_outer = 0; i_outer <= -2 + ((3 + n) / 4); ++i_outer)
       {
         a[4 * i_outer] = 0.0f;
-        a[4 * i_outer + 1] = 0.0f;
-        a[4 * i_outer + 2] = 0.0f;
-        a[4 * i_outer + 3] = 0.0f;
+        a[1 + 4 * i_outer] = 0.0f;
+        a[2 + 4 * i_outer] = 0.0f;
+        a[3 + 4 * i_outer] = 0.0f;
       }
       /* final slab for 'i_outer' */
       {
@@ -812,11 +812,11 @@ enabling some cost savings:
         {
           a[4 * i_outer] = 0.0f;
           if (-2 + -4 * i_outer + n >= 0)
-            a[4 * i_outer + 1] = 0.0f;
+            a[1 + 4 * i_outer] = 0.0f;
           if (-3 + -4 * i_outer + n >= 0)
-            a[4 * i_outer + 2] = 0.0f;
+            a[2 + 4 * i_outer] = 0.0f;
           if (4 + 4 * i_outer + -1 * n == 0)
-            a[4 * i_outer + 3] = 0.0f;
+            a[3 + 4 * i_outer] = 0.0f;
         }
       }
     ...
@@ -1038,7 +1038,7 @@ earlier:
 
 .. doctest::
 
-    >>> knl_pf = lp.add_prefetch(knl, "a", ["i_inner"])
+    >>> knl_pf = lp.add_prefetch(knl, "a", ["i_inner"], default_tag="l.0")
     >>> evt, (out,) = knl_pf(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -1551,13 +1551,13 @@ information provided. Now we will count the operations:
 
 .. doctest::
 
-    >>> op_map = lp.get_op_map(knl)
+    >>> op_map = lp.get_op_map(knl, subgroup_size=32)
     >>> print(lp.stringify_stats_mapping(op_map))
-    Op(np:dtype('float32'), add, workitem) : ...
+    Op(np:dtype('float32'), add, subgroup) : ...
 
 Each line of output will look roughly like::
 
-    Op(np:dtype('float32'), add, workitem) : [l, m, n] -> { l * m * n : l > 0 and m > 0 and n > 0 }
+    Op(np:dtype('float32'), add, subgroup) : [l, m, n] -> { l * m * n : l > 0 and m > 0 and n > 0 }
 
 :func:`loopy.get_op_map` returns a :class:`loopy.ToCountMap` of **{**
 :class:`loopy.Op` **:** :class:`islpy.PwQPolynomial` **}**. A
@@ -1579,12 +1579,12 @@ One way to evaluate these polynomials is with :func:`islpy.eval_with_dict`:
 
     >>> param_dict = {'n': 256, 'm': 256, 'l': 8}
     >>> from loopy.statistics import CountGranularity as CG
-    >>> f32add = op_map[lp.Op(np.float32, 'add', CG.WORKITEM)].eval_with_dict(param_dict)
-    >>> f32div = op_map[lp.Op(np.float32, 'div', CG.WORKITEM)].eval_with_dict(param_dict)
-    >>> f32mul = op_map[lp.Op(np.float32, 'mul', CG.WORKITEM)].eval_with_dict(param_dict)
-    >>> f64add = op_map[lp.Op(np.float64, 'add', CG.WORKITEM)].eval_with_dict(param_dict)
-    >>> f64mul = op_map[lp.Op(np.float64, 'mul', CG.WORKITEM)].eval_with_dict(param_dict)
-    >>> i32add = op_map[lp.Op(np.int32, 'add', CG.WORKITEM)].eval_with_dict(param_dict)
+    >>> f32add = op_map[lp.Op(np.float32, 'add', CG.SUBGROUP)].eval_with_dict(param_dict)
+    >>> f32div = op_map[lp.Op(np.float32, 'div', CG.SUBGROUP)].eval_with_dict(param_dict)
+    >>> f32mul = op_map[lp.Op(np.float32, 'mul', CG.SUBGROUP)].eval_with_dict(param_dict)
+    >>> f64add = op_map[lp.Op(np.float64, 'add', CG.SUBGROUP)].eval_with_dict(param_dict)
+    >>> f64mul = op_map[lp.Op(np.float64, 'mul', CG.SUBGROUP)].eval_with_dict(param_dict)
+    >>> i32add = op_map[lp.Op(np.int32, 'add', CG.SUBGROUP)].eval_with_dict(param_dict)
     >>> print("%i\n%i\n%i\n%i\n%i\n%i" %
     ...     (f32add, f32div, f32mul, f64add, f64mul, i32add))
     524288

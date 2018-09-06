@@ -15,11 +15,12 @@ def product(iterable):
 
 
 class ArrayAccessPatternContext:
-    def __init__(self, gsize, lsize, subgroup_size=32):
+    def __init__(self, gsize, lsize, subgroup_size=32, decay_constant=0.75):
         self.lsize = lsize
         self.gsize = gsize
         self.subgroup_size = subgroup_size
         self.timestamp = 0
+        self.decay_constant = decay_constant
 
         self.ind_length = len(gsize) + len(lsize)
 
@@ -40,7 +41,7 @@ class ArrayAccessPatternContext:
     def nsubgroups(self):
         return div_ceil(product(self.lsize), self.subgroup_size)
 
-    def animate(self, f):
+    def animate(self, f, interval=200):
         import matplotlib.pyplot as plt
         import matplotlib.animation as animation
 
@@ -64,7 +65,8 @@ class ArrayAccessPatternContext:
 
         # must be kept alive until after plt.show()
         return animation.FuncAnimation(
-                fig, lambda x: x, data_gen, blit=False, interval=200, repeat=True)
+                fig, lambda x: x, data_gen,
+                blit=False, interval=interval, repeat=True)
 
     def tick(self):
         self.timestamp += 1
@@ -118,6 +120,10 @@ class Array:
                 ind_i * stride_i
                 for ind_i, stride_i in zip(index, self.strides))
 
+        if not isinstance(lin_index, np.ndarray):
+            subscript = [np.newaxis] * self.ctx.ind_length
+            lin_index = np.array(lin_index)[subscript]
+
         self.array[lin_index, 0] = self.ctx.timestamp
         for i, glength in enumerate(self.ctx.gsize):
             if lin_index.shape[i] > 1:
@@ -144,16 +150,21 @@ class Array:
                 dtype=np.float32)
         shaped_array.reshape(-1, self.nattributes)[:nelements] = self.array
 
-        modulation = np.exp(-0.75*(self.ctx.timestamp-shaped_array[:, :, 0]))
+        modulation = np.exp(
+                -self.ctx.decay_constant*(self.ctx.timestamp-shaped_array[:, :, 0]))
 
-        subgroup = shaped_array[:, :, 1]/(self.ctx.nsubgroups()-1)
+        subgroup = shaped_array[:, :, 1]
+        if self.ctx.nsubgroups() > 1:
+            subgroup = subgroup/(self.ctx.nsubgroups()-1)
+        else:
+            subgroup.fill(1)
 
         rgb_array = np.zeros(base_shape + (3,))
         if 1:
-            if len(self.ctx.gsize) >= 1:
+            if len(self.ctx.gsize) > 1:
                 # g.0 -> red
                 rgb_array[:, :, 0] = shaped_array[:, :, 2]/(self.ctx.gsize[0]-1)
-            if len(self.ctx.gsize) >= 2:
+            if len(self.ctx.gsize) > 1:
                 # g.1 -> blue
                 rgb_array[:, :, 2] = shaped_array[:, :, 3]/(self.ctx.gsize[1]-1)
         if 1:
@@ -183,7 +194,7 @@ def show_example():
             for k_outer in range(n16):
                 in0[i_inner + i_outer*16, k_inner + k_outer*16]
                 yield
-    else:
+    elif 0:
         # knl b
         j_inner = ctx.l(0)
         j_outer = ctx.g(0)
@@ -202,5 +213,29 @@ def show_example():
         ani.save("access.mp4")
 
 
+def show_example_2():
+    bsize = 8
+    blocks = 3
+
+    ctx = ArrayAccessPatternContext(gsize=(1,), lsize=(1,),
+            decay_constant=0.005)
+    in0 = Array(ctx, "in0", (blocks*bsize, blocks*bsize), (blocks*bsize, 1))
+
+    def f():
+        for i_outer in range(blocks):
+            for j_outer in range(blocks):
+                for i_inner in range(bsize):
+                    for j_inner in range(bsize):
+                        in0[i_inner + i_outer*bsize, j_inner + j_outer*bsize]
+                        yield
+
+    ani = ctx.animate(f, interval=10)
+    import matplotlib.pyplot as plt
+    if 1:
+        plt.show()
+    else:
+        ani.save("access.mp4")
+
+
 if __name__ == "__main__":
-    show_example()
+    show_example_2()

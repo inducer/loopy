@@ -338,7 +338,7 @@ class _ConstRestrictPointer(Pointer):
 
 
 class _ConstPointer(Pointer):
-    def get_decl_pait(self):
+    def get_decl_pair(self):
         sub_tp, sub_decl = self.subdecl.get_decl_pair()
         return sub_tp, ("*const %s" % sub_decl)
 
@@ -464,7 +464,7 @@ class CASTBuilder(ASTBuilderBase):
 
         result = []
 
-        from loopy.kernel.data import temp_var_scope
+        from loopy.kernel.data import AddressSpace
         from loopy.schedule import CallKernel
         # We only need to write declarations for global variables with
         # the first device program. `is_first_dev_prog` determines
@@ -479,7 +479,8 @@ class CASTBuilder(ASTBuilderBase):
                     six.itervalues(kernel.temporary_variables),
                     key=lambda tv: tv.name):
 
-                if tv.scope == temp_var_scope.GLOBAL and tv.initializer is not None:
+                if tv.address_space == AddressSpace.GLOBAL and (
+                        tv.initializer is not None):
                     assert tv.read_only
 
                     decl_info, = tv.decl_info(self.target,
@@ -540,7 +541,7 @@ class CASTBuilder(ASTBuilderBase):
         return None
 
     def get_temporary_decls(self, codegen_state, schedule_index):
-        from loopy.kernel.data import temp_var_scope
+        from loopy.kernel.data import AddressSpace
 
         kernel = codegen_state.kernel
 
@@ -572,12 +573,12 @@ class CASTBuilder(ASTBuilderBase):
             if not tv.base_storage:
                 for idi in decl_info:
                     # global temp vars are mapped to arguments or global declarations
-                    if tv.scope != temp_var_scope.GLOBAL and (
+                    if tv.address_space != AddressSpace.GLOBAL and (
                             tv.name in sub_knl_temps):
                         decl = self.wrap_temporary_decl(
                                 self.get_temporary_decl(
                                     codegen_state, schedule_index, tv, idi),
-                                tv.scope)
+                                tv.address_space)
 
                         if tv.initializer is not None:
                             assert tv.read_only
@@ -593,7 +594,7 @@ class CASTBuilder(ASTBuilderBase):
                 base_storage_sizes.setdefault(tv.base_storage, []).append(
                         tv.nbytes)
                 base_storage_to_scope.setdefault(tv.base_storage, []).append(
-                        tv.scope)
+                        tv.address_space)
 
                 align_size = tv.dtype.itemsize
 
@@ -609,9 +610,9 @@ class CASTBuilder(ASTBuilderBase):
                     cast_decl = POD(self, idi.dtype, "")
                     temp_var_decl = POD(self, idi.dtype, idi.name)
 
-                    cast_decl = self.wrap_temporary_decl(cast_decl, tv.scope)
+                    cast_decl = self.wrap_temporary_decl(cast_decl, tv.address_space)
                     temp_var_decl = self.wrap_temporary_decl(
-                            temp_var_decl, tv.scope)
+                            temp_var_decl, tv.address_space)
 
                     if tv._base_storage_access_may_be_aliasing:
                         ptrtype = _ConstPointer
@@ -726,6 +727,7 @@ class CASTBuilder(ASTBuilderBase):
         assert shape == ()
 
         result = POD(self, dtype, name)
+
         if not is_written:
             from cgen import Const
             result = Const(result)
@@ -736,7 +738,7 @@ class CASTBuilder(ASTBuilderBase):
 
         return result
 
-    def get_global_arg_decl(self, name, shape, dtype, is_written):
+    def get_array_arg_decl(self, name, mem_address_space, shape, dtype, is_written):
         from cgen import RestrictPointer, Const
 
         arg_decl = RestrictPointer(POD(self, dtype, name))
@@ -745,6 +747,14 @@ class CASTBuilder(ASTBuilderBase):
             arg_decl = Const(arg_decl)
 
         return arg_decl
+
+    def get_global_arg_decl(self, name, shape, dtype, is_written):
+        from warnings import warn
+        warn("get_global_arg_decl is deprecated use get_array_arg_decl "
+                "instead.", DeprecationWarning, stacklevel=2)
+        from loopy.kernel.data import AddressSpace
+        return self.get_array_arg_decl(name, AddressSpace.GLOBAL, shape,
+                dtype, is_written)
 
     def get_constant_arg_decl(self, name, shape, dtype, is_written):
         from loopy.target.c import POD  # uses the correct complex type

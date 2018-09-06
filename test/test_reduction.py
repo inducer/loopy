@@ -238,7 +238,8 @@ def test_global_parallel_reduction(ctx_factory, size):
     from loopy.transform.data import reduction_arg_to_subst_rule
     knl = reduction_arg_to_subst_rule(knl, "i_outer")
     knl = lp.precompute(knl, "red_i_outer_arg", "i_outer",
-            temporary_scope=lp.temp_var_scope.GLOBAL)
+            temporary_scope=lp.temp_var_scope.GLOBAL,
+            default_tag="l.auto")
     knl = lp.realize_reduction(knl)
     knl = lp.add_dependency(
             knl, "writes:acc_i_outer",
@@ -278,7 +279,8 @@ def test_global_mc_parallel_reduction(ctx_factory, size):
     from loopy.transform.data import reduction_arg_to_subst_rule
     knl = reduction_arg_to_subst_rule(knl, "i_outer")
     knl = lp.precompute(knl, "red_i_outer_arg", "i_outer",
-            temporary_scope=lp.temp_var_scope.GLOBAL)
+            temporary_scope=lp.temp_var_scope.GLOBAL,
+            default_tag="l.auto")
     knl = lp.realize_reduction(knl)
     knl = lp.add_dependency(
             knl, "writes:acc_i_outer",
@@ -300,7 +302,7 @@ def test_argmax(ctx_factory):
     knl = lp.make_kernel(
             "{[i]: 0<=i<%d}" % n,
             """
-            max_val, max_idx = argmax(i, fabs(a[i]), i)
+            max_val, max_idx = argmax(i, abs(a[i]), i)
             """)
 
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
@@ -400,7 +402,7 @@ def test_parallel_multi_output_reduction(ctx_factory):
     knl = lp.make_kernel(
                 "{[i]: 0<=i<128}",
                 """
-                max_val, max_indices = argmax(i, fabs(a[i]), i)
+                max_val, max_indices = argmax(i, abs(a[i]), i)
                 """)
     knl = lp.tag_inames(knl, dict(i="l.0"))
     knl = lp.add_dtypes(knl, dict(a=np.float64))

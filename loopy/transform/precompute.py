@@ -254,13 +254,23 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 # }}}
 
 
+class _not_provided(object):  # noqa: N801
+    pass
+
+
 def precompute(kernel, subst_use, sweep_inames=[], within=None,
         storage_axes=None, temporary_name=None, precompute_inames=None,
         precompute_outer_inames=None,
-        storage_axis_to_tag={}, default_tag="l.auto", dtype=None,
+        storage_axis_to_tag={},
+
+        # "None" is a valid value here, distinct from the default.
+        default_tag=_not_provided,
+
+        dtype=None,
         fetch_bounding_box=False,
-        temporary_scope=None, temporary_is_local=None,
-        compute_insn_id=None):
+        temporary_address_space=None,
+        compute_insn_id=None,
+        **kwargs):
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
     things to operate, a list of *sweep_inames* (order irrelevant) and an
@@ -305,11 +315,11 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     :arg sweep_inames: A :class:`list` of inames to be swept.
         May also equivalently be a comma-separated string.
+    :arg within: a stack match as understood by
+        :func:`loopy.match.parse_stack_match`.
     :arg storage_axes: A :class:`list` of inames and/or rule argument
         names/indices to be used as storage axes.
         May also equivalently be a comma-separated string.
-    :arg within: a stack match as understood by
-        :func:`loopy.match.parse_stack_match`.
     :arg temporary_name:
         The temporary variable name to use for storing the precomputed data.
         If it does not exist, it will be created. If it does exist, its properties
@@ -328,6 +338,13 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         the compute instruction is nested. If *None*, make an educated guess.
         May also be specified as a comma-separated string.
 
+    :arg default_tag: The :ref:`iname tag <iname-tags>` to be applied to the
+        inames created to perform the precomputation. The current default will
+        make them local axes and automatically split them to fit the work
+        group size, but this default will disappear in favor of simply leaving them
+        untagged in 2019. For 2018, a warning will be issued if no *default_tag* is
+        specified.
+
     :arg compute_insn_id: The ID of the instruction generated to perform the
         precomputation.
 
@@ -339,26 +356,29 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     eliminated.
     """
 
-    # {{{ unify temporary_scope / temporary_is_local
+    # {{{ unify temporary_address_space / temporary_scope
 
-    from loopy.kernel.data import temp_var_scope
-    if temporary_is_local is not None:
+    temporary_scope = kwargs.pop("temporary_scope", None)
+
+    from loopy.kernel.data import AddressSpace
+    if temporary_scope is not None:
         from warnings import warn
-        warn("temporary_is_local is deprecated. Use temporary_scope instead",
+        warn("temporary_scope is deprecated. Use temporary_address_space instead",
                 DeprecationWarning, stacklevel=2)
 
-        if temporary_scope is not None:
-            raise LoopyError("may not specify both temporary_is_local and "
+        if temporary_address_space is not None:
+            raise LoopyError("may not specify both temporary_address_space and "
                     "temporary_scope")
 
-        if temporary_is_local:
-            temporary_scope = temp_var_scope.LOCAL
-        else:
-            temporary_scope = temp_var_scope.PRIVATE
+        temporary_address_space = temporary_scope
 
-    del temporary_is_local
+    del temporary_scope
 
     # }}}
+
+    if kwargs:
+        raise TypeError("unrecognized keyword arguments: %s"
+                % ", ".join(kwargs.keys()))
 
     # {{{ check, standardize arguments
 
@@ -426,9 +446,6 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     from loopy.match import parse_stack_match
     within = parse_stack_match(within)
 
-    from loopy.kernel.data import parse_tag
-    default_tag = parse_tag(default_tag)
-
     try:
         subst = kernel.substitutions[subst_name]
     except KeyError:
@@ -436,6 +453,36 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 % subst_name)
 
     c_subst_name = subst_name.replace(".", "_")
+
+    # {{{ handle default_tag
+
+    from loopy.transform.data import _not_provided \
+            as transform_data_not_provided
+
+    if default_tag is _not_provided or default_tag is transform_data_not_provided:
+        # no need to warn for scalar precomputes
+        if sweep_inames:
+            from warnings import warn
+            warn(
+                    "Not specifying default_tag is deprecated, and default_tag "
+                    "will become mandatory in 2019.x. "
+                    "Pass 'default_tag=\"l.auto\" to match the current default, "
+                    "or Pass 'default_tag=None to leave the loops untagged, which "
+                    "is the recommended behavior.",
+                    DeprecationWarning, stacklevel=(
+
+                        # In this case, we came here through add_prefetch. Increase
+                        # the stacklevel.
+                        3 if default_tag is transform_data_not_provided
+
+                        else 2))
+
+        default_tag = "l.auto"
+
+    from loopy.kernel.data import parse_tag
+    default_tag = parse_tag(default_tag)
+
+    # }}}
 
     # }}}
 
@@ -804,7 +851,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     compute_dep_id = compute_insn_id
     added_compute_insns = [compute_insn]
 
-    if temporary_scope == temp_var_scope.GLOBAL:
+    if temporary_address_space == AddressSpace.GLOBAL:
         barrier_insn_id = kernel.make_unique_instruction_id(
                 based_on=c_subst_name+"_barrier")
         from loopy.kernel.instruction import BarrierInstruction
@@ -916,8 +963,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     import loopy as lp
 
-    if temporary_scope is None:
-        temporary_scope = lp.auto
+    if temporary_address_space is None:
+        temporary_address_space = lp.auto
 
     new_temp_shape = tuple(abm.non1_storage_shape)
 
@@ -928,7 +975,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 dtype=dtype,
                 base_indices=(0,)*len(new_temp_shape),
                 shape=tuple(abm.non1_storage_shape),
-                scope=temporary_scope,
+                address_space=temporary_address_space,
                 dim_names=tuple(non1_storage_axis_names))
 
     else:
@@ -966,20 +1013,20 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
         temp_var = temp_var.copy(shape=new_temp_shape)
 
-        if temporary_scope == temp_var.scope:
+        if temporary_address_space == temp_var.address_space:
             pass
-        elif temporary_scope is lp.auto:
-            temporary_scope = temp_var.scope
-        elif temp_var.scope is lp.auto:
+        elif temporary_address_space is lp.auto:
+            temporary_address_space = temp_var.address_space
+        elif temp_var.address_space is lp.auto:
             pass
         else:
             raise LoopyError("Existing and new temporary '%s' do not "
                     "have matching scopes (existing: %s, new: %s)"
                     % (temporary_name,
-                        temp_var_scope.stringify(temp_var.scope),
-                        temp_var_scope.stringify(temporary_scope)))
+                        AddressSpace.stringify(temp_var.address_space),
+                        AddressSpace.stringify(temporary_address_space)))
 
-        temp_var = temp_var.copy(scope=temporary_scope)
+        temp_var = temp_var.copy(address_space=temporary_address_space)
 
         # }}}
 

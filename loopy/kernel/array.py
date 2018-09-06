@@ -833,6 +833,7 @@ class ArrayBase(ImmutableRecord):
                 dim_names=dim_names,
                 order=order,
                 alignment=alignment,
+                for_atomic=for_atomic,
                 **kwargs)
 
     def __eq__(self, other):
@@ -922,11 +923,6 @@ class ArrayBase(ImmutableRecord):
         key_builder.rec(key_hash, self.dim_tags)
         key_builder.rec(key_hash, self.offset)
         key_builder.rec(key_hash, self.dim_names)
-
-    @property
-    @memoize_method
-    def numpy_strides(self):
-        return tuple(self.dtype.itemsize*s for s in self.strides)
 
     def num_target_axes(self):
         target_axes = set()

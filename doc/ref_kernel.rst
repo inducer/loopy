@@ -363,9 +363,9 @@ C Block Instructions
 Atomic Operations
 ^^^^^^^^^^^^^^^^^
 
-.. autoclass:: memory_ordering
+.. autoclass:: MemoryOrdering
 
-.. autoclass:: memory_scope
+.. autoclass:: MemoryScope
 
 .. autoclass:: VarAtomicity
 
@@ -586,7 +586,7 @@ Do not create :class:`LoopKernel` objects directly. Instead, refer to
 
 .. autoclass:: LoopKernel
 
-.. autoclass:: kernel_state
+.. autoclass:: KernelState
     :members:
     :undoc-members:
 
