@@ -177,6 +177,22 @@ def _split_iname_backend(kernel, split_iname,
         for syntax.
     """
 
+    from loopy.match import parse_stack_match
+    within = parse_stack_match(within)
+
+    # {{{ return the same kernel if no kernel matches
+
+    def _do_not_transform_if_no_within_matches():
+        for insn in kernel.instructions:
+            if within(kernel, insn, ()):
+                return
+
+        return kernel
+
+    _do_not_transform_if_no_within_matches()
+
+    # }}}
+
     existing_tags = kernel.iname_tags(split_iname)
     from loopy.kernel.data import ForceSequentialTag, filter_iname_tags_by_type
     if (do_tagged_check and existing_tags
@@ -249,7 +265,8 @@ def _split_iname_backend(kernel, split_iname,
 
     new_insns = []
     for insn in kernel.instructions:
-        if split_iname in insn.within_inames:
+        if split_iname in insn.within_inames and (
+                within(kernel, insn, ())):
             new_within_inames = (
                     (insn.within_inames.copy()
                     - frozenset([split_iname]))
@@ -283,9 +300,6 @@ def _split_iname_backend(kernel, split_iname,
             instructions=new_insns,
             applied_iname_rewrites=applied_iname_rewrites,
             loop_priority=frozenset(new_priorities))
-
-    from loopy.match import parse_stack_match
-    within = parse_stack_match(within)
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
