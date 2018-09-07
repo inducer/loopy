@@ -177,14 +177,15 @@ def _split_iname_backend(kernel, split_iname,
         for syntax.
     """
 
-    from loopy.match import parse_stack_match
-    within = parse_stack_match(within)
+    from loopy.match import parse_stack_match, parse_match
+    stacked_within = parse_stack_match(within)
+    within = parse_match(within)
 
     # {{{ return the same kernel if no kernel matches
 
     def _do_not_transform_if_no_within_matches():
         for insn in kernel.instructions:
-            if within(kernel, insn, ()):
+            if within(kernel, insn):
                 return
 
         return kernel
@@ -246,10 +247,15 @@ def _split_iname_backend(kernel, split_iname,
         name_dim_type, name_idx = space.get_var_dict()[split_iname]
         s = s.intersect(fixed_constraint_set)
 
-        if within is None:
-            s = s.project_out(name_dim_type, name_idx, 1)
+        def _project_out_only_if_all_instructions_in_within():
+            for insn in kernel.instructions:
+                if split_iname in insn.within_inames and (
+                        not within(kernel, insn)):
+                    return s
 
-        return s
+            return s.project_out(name_dim_type, name_idx, 1)
+
+        return _project_out_only_if_all_instructions_in_within()
 
     new_domains = [process_set(dom) for dom in kernel.domains]
 
@@ -266,7 +272,7 @@ def _split_iname_backend(kernel, split_iname,
     new_insns = []
     for insn in kernel.instructions:
         if split_iname in insn.within_inames and (
-                within(kernel, insn, ())):
+                within(kernel, insn)):
             new_within_inames = (
                     (insn.within_inames.copy()
                     - frozenset([split_iname]))
@@ -303,7 +309,7 @@ def _split_iname_backend(kernel, split_iname,
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
-    ins = _InameSplitter(rule_mapping_context, within,
+    ins = _InameSplitter(rule_mapping_context, stacked_within,
             split_iname, outer_iname, inner_iname, new_loop_index)
 
     kernel = ins.map_kernel(kernel)
