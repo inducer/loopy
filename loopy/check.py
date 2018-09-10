@@ -57,7 +57,8 @@ def check_identifiers_in_subst_rules(knl):
             raise LoopyError("kernel '%s': substitution rule '%s' refers to "
                     "identifier(s) '%s' which are neither rule arguments nor "
                     "kernel-global identifiers"
-                    % (knl.name, ", ".join(deps-rule_allowed_identifiers)))
+                    % (knl.name, rule.name,
+                       ", ".join(deps-rule_allowed_identifiers)))
 
 
 class UnscopedCallCollector(CombineMapper):
