@@ -139,8 +139,7 @@ class _InameSplitter(RuleAwareIdentityMapper):
                 and self.split_iname not in expn_state.arg_context
                 and self.within(
                     expn_state.kernel,
-                    expn_state.instruction,
-                    expn_state.stack)):
+                    expn_state.instruction)):
             new_inames = list(expr.inames)
             new_inames.remove(self.split_iname)
             new_inames.extend([self.outer_iname, self.inner_iname])
@@ -157,8 +156,7 @@ class _InameSplitter(RuleAwareIdentityMapper):
                 and self.split_iname not in expn_state.arg_context
                 and self.within(
                     expn_state.kernel,
-                    expn_state.instruction,
-                    expn_state.stack)):
+                    expn_state.instruction)):
             return self.replacement_index
         else:
             return super(_InameSplitter, self).map_variable(expr, expn_state)
@@ -177,8 +175,7 @@ def _split_iname_backend(kernel, split_iname,
         for syntax.
     """
 
-    from loopy.match import parse_stack_match, parse_match
-    stacked_within = parse_stack_match(within)
+    from loopy.match import parse_match
     within = parse_match(within)
 
     # {{{ return the same kernel if no kernel matches
@@ -309,7 +306,7 @@ def _split_iname_backend(kernel, split_iname,
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
-    ins = _InameSplitter(rule_mapping_context, stacked_within,
+    ins = _InameSplitter(rule_mapping_context, within,
             split_iname, outer_iname, inner_iname, new_loop_index)
 
     kernel = ins.map_kernel(kernel)
@@ -349,7 +346,7 @@ def split_iname(kernel, split_iname, inner_length,
     :arg inner_tag: The iname tag (see :ref:`iname-tags`) to apply to
         *inner_iname*.
     :arg within: a stack match as understood by
-        :func:`loopy.match.parse_stack_match`.
+        :func:`loopy.match.parse_match`.
     """
     def make_new_loop_index(inner, outer):
         return inner + outer*inner_length
