@@ -139,8 +139,7 @@ class _InameSplitter(RuleAwareIdentityMapper):
                 and self.split_iname not in expn_state.arg_context
                 and self.within(
                     expn_state.kernel,
-                    expn_state.instruction,
-                    expn_state.stack)):
+                    expn_state.instruction)):
             new_inames = list(expr.inames)
             new_inames.remove(self.split_iname)
             new_inames.extend([self.outer_iname, self.inner_iname])
@@ -157,8 +156,7 @@ class _InameSplitter(RuleAwareIdentityMapper):
                 and self.split_iname not in expn_state.arg_context
                 and self.within(
                     expn_state.kernel,
-                    expn_state.instruction,
-                    expn_state.stack)):
+                    expn_state.instruction)):
             return self.replacement_index
         else:
             return super(_InameSplitter, self).map_variable(expr, expn_state)
@@ -176,6 +174,22 @@ def _split_iname_backend(kernel, split_iname,
         matching contexts.  See :func:`loopy.match.parse_stack_match`
         for syntax.
     """
+
+    from loopy.match import parse_match
+    within = parse_match(within)
+
+    # {{{ return the same kernel if no kernel matches
+
+    def _do_not_transform_if_no_within_matches():
+        for insn in kernel.instructions:
+            if within(kernel, insn):
+                return
+
+        return kernel
+
+    _do_not_transform_if_no_within_matches()
+
+    # }}}
 
     existing_tags = kernel.iname_tags(split_iname)
     from loopy.kernel.data import ForceSequentialTag, filter_iname_tags_by_type
@@ -230,10 +244,15 @@ def _split_iname_backend(kernel, split_iname,
         name_dim_type, name_idx = space.get_var_dict()[split_iname]
         s = s.intersect(fixed_constraint_set)
 
-        if within is None:
-            s = s.project_out(name_dim_type, name_idx, 1)
+        def _project_out_only_if_all_instructions_in_within():
+            for insn in kernel.instructions:
+                if split_iname in insn.within_inames and (
+                        not within(kernel, insn)):
+                    return s
 
-        return s
+            return s.project_out(name_dim_type, name_idx, 1)
+
+        return _project_out_only_if_all_instructions_in_within()
 
     new_domains = [process_set(dom) for dom in kernel.domains]
 
@@ -249,7 +268,8 @@ def _split_iname_backend(kernel, split_iname,
 
     new_insns = []
     for insn in kernel.instructions:
-        if split_iname in insn.within_inames:
+        if split_iname in insn.within_inames and (
+                within(kernel, insn)):
             new_within_inames = (
                     (insn.within_inames.copy()
                     - frozenset([split_iname]))
@@ -283,9 +303,6 @@ def _split_iname_backend(kernel, split_iname,
             instructions=new_insns,
             applied_iname_rewrites=applied_iname_rewrites,
             loop_priority=frozenset(new_priorities))
-
-    from loopy.match import parse_stack_match
-    within = parse_stack_match(within)
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
@@ -329,7 +346,7 @@ def split_iname(kernel, split_iname, inner_length,
     :arg inner_tag: The iname tag (see :ref:`iname-tags`) to apply to
         *inner_iname*.
     :arg within: a stack match as understood by
-        :func:`loopy.match.parse_stack_match`.
+        :func:`loopy.match.parse_match`.
     """
     def make_new_loop_index(inner, outer):
         return inner + outer*inner_length
