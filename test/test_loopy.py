@@ -2908,6 +2908,51 @@ def test_dep_cycle_printing_and_error():
         print(lp.generate_code(knl)[0])
 
 
+@pytest.mark.parametrize("op", ['>', '>=', '<', '<=', '==', '!='])
+def test_conditonal_access_range(ctx_factory, op):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    def get_condition():
+        if op == '>':
+            return 'not (i > 7)'
+        elif op == '>=':
+            return 'not (i >= 8)'
+        elif op == '<':
+            return 'i < 8'
+        elif op == '<=':
+            return 'i <=7'
+        elif op == '==':
+            return ' or '.join(['i == {}'.format(i) for i in range(8)])
+        elif op == '!=':
+            return ' and '.join(['i != {}'.format(i) for i in range(8, 10)])
+
+    condition = get_condition()
+    knl = lp.make_kernel(
+            "{[i]: 0 <= i < 10}",
+            """
+            if {condition}
+                tmp[i] = tmp[i] + 1
+            end
+           """.format(condition=condition),
+            [lp.GlobalArg('tmp', shape=(8,), dtype=np.int64)])
+
+    assert np.array_equal(knl(queue, tmp=np.arange(8))[1][0], np.arange(1, 9))
+
+    # and failure
+    knl = lp.make_kernel(
+            "{[i,j]: 0 <= i,j < 10}",
+            """
+            if j < 8
+                tmp[i] = tmp[i]
+            end
+           """, [lp.GlobalArg('tmp', shape=(8,), dtype=np.int32)])
+
+    from loopy.diagnostic import LoopyError
+    with pytest.raises(LoopyError):
+        knl(queue)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
