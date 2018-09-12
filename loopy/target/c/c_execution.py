@@ -403,7 +403,7 @@ class CKernelExecutor(KernelExecutorBase):
         if self.program.root_kernel.options.write_cl:
             output = all_code
             if self.program.root_kernel.options.highlight_cl:
-                output = get_highlighted_code(code=output)
+                output = get_highlighted_code(output)
 
             if self.program.root_kernel.options.write_cl is True:
                 print(output)
