@@ -331,6 +331,16 @@ class _AccessCheckMapper(WalkMapper):
 
                     shape_domain = shape_domain.intersect(slab)
 
+            insn = self.kernel.id_to_insn[self.insn_id]
+            if insn.predicates:
+                from loopy.symbolic import constraints_from_expr
+                for pred in insn.predicates:
+                    if get_dependencies(pred) == get_dependencies(subscript):
+                        constraints = constraints_from_expr(
+                            self.domain.get_space(), pred)
+                        for constraint in constraints:
+                            access_range = access_range.add_constraint(constraint)
+
             if not access_range.is_subset(shape_domain):
                 raise LoopyError("'%s' in instruction '%s' "
                         "accesses out-of-bounds array element"

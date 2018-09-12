@@ -1339,6 +1339,53 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
         return num.mod_val(denom)
 
 
+class ConditionalMapper(PwAffEvaluationMapper):
+    def map_logical_not(self, expr):
+        constraints = self.rec(expr.child)
+        out = []
+        for constraint in constraints:
+            negated = constraint.get_aff().neg()
+            if constraint.is_equality():
+                out.append(isl.Constraint.equality_from_aff(negated))
+            else:
+                # since we're flipping a >= need to account for the ='s
+                val = int(str(constraint.get_constant_val()))
+                if val > 0:
+                    val = 1
+                elif val < 0:
+                    val = -1
+                out.append(isl.Constraint.inequality_from_aff(negated + val))
+        return out
+
+    def map_logical_and(self, expr):
+        constraints = [y for ch in expr.children for y in self.rec(ch)]
+        return constraints
+
+    map_logical_or = map_logical_and
+
+    def map_comparison(self, expr):
+        left = self.rec(expr.left)
+        right = self.rec(expr.right)
+        _, aff = (left - right).get_pieces()[-1]
+        if expr.operator == "==":
+            return [isl.Constraint.equality_from_aff(aff)]
+        elif expr.operator == "!=":
+            # piecewise
+            return [isl.Constraint.inequality_from_aff(aff + 1),
+                    isl.Constraint.inequality_from_aff(aff - 1)]
+        elif expr.operator == "<":
+            return [isl.Constraint.inequality_from_aff((aff + 1).neg())]
+        elif expr.operator == "<=":
+            return [isl.Constraint.inequality_from_aff((aff).neg())]
+        elif expr.operator == ">":
+            return [isl.Constraint.inequality_from_aff((aff - 1))]
+        elif expr.operator == ">=":
+            return [isl.Constraint.inequality_from_aff((aff))]
+        else:
+            raise ValueError("invalid comparison operator")
+        return left - right
+
+
 def aff_from_expr(space, expr, vars_to_zero=None):
     if vars_to_zero is None:
         vars_to_zero = frozenset()
@@ -1416,14 +1463,10 @@ def simplify_using_aff(kernel, expr):
 # }}}
 
 
-# {{{ expression/set <-> constraint conversion
+# {{{ expression/set <-> constraints conversion
 
-def eq_constraint_from_expr(space, expr):
-    return isl.Constraint.equality_from_aff(aff_from_expr(space, expr))
-
-
-def ineq_constraint_from_expr(space, expr):
-    return isl.Constraint.inequality_from_aff(aff_from_expr(space, expr))
+def constraints_from_expr(space, expr):
+    return ConditionalMapper(space, vars_to_zero=[None])(expr)
 
 
 def constraint_to_cond_expr(cns):
