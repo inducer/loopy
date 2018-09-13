@@ -312,8 +312,28 @@ class _AccessCheckMapper(WalkMapper):
                             expr.aggregate.name, expr,
                             len(subscript), len(shape)))
 
+            # apply predicates
+            access_range = self.domain
+            insn = self.kernel.id_to_insn[self.insn_id]
+            possible_warns = []
+            if insn.predicates:
+                from loopy.symbolic import constraints_from_expr
+                for pred in insn.predicates:
+                    if insn.within_inames <= get_dependencies(pred):
+                        try:
+                            constraints = constraints_from_expr(
+                                self.domain.space, pred)
+                            for constraint in constraints:
+                                access_range = access_range.add_constraint(
+                                    constraint)
+
+                        except isl.Error:
+                            # non-affine predicate - store for warning if we fail
+                            # this check
+                            possible_warns += [pred]
+
             try:
-                access_range = get_access_range(self.domain, subscript,
+                access_range = get_access_range(access_range, subscript,
                         self.kernel.assumptions)
             except UnableToDetermineAccessRange:
                 # Likely: index was non-affine, nothing we can do.
@@ -330,29 +350,6 @@ class _AccessCheckMapper(WalkMapper):
                             0, shape_axis)
 
                     shape_domain = shape_domain.intersect(slab)
-
-            insn = self.kernel.id_to_insn[self.insn_id]
-            possible_warns = []
-            if insn.predicates:
-                from loopy.symbolic import constraints_from_expr
-                for pred in insn.predicates:
-                    if get_dependencies(pred) == insn.within_inames:
-                        try:
-                            constraints = constraints_from_expr(
-                                self.domain.get_space(), pred)
-
-                            for constraint in constraints:
-                                try:
-                                    access_range = access_range.add_constraint(
-                                        constraint)
-                                except isl.Error:
-                                    # space doesn't match -- not sure what to do
-                                    pass
-
-                        except isl.Error:
-                            # non-affine predicate - store for warning if we fail
-                            # this check
-                            possible_warns += [pred]
 
             if not access_range.is_subset(shape_domain):
                 if possible_warns:
