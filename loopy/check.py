@@ -340,18 +340,19 @@ class _AccessCheckMapper(WalkMapper):
                         try:
                             constraints = constraints_from_expr(
                                 self.domain.get_space(), pred)
+
+                            for constraint in constraints:
+                                try:
+                                    access_range = access_range.add_constraint(
+                                        constraint)
+                                except isl.Error:
+                                    # space doesn't match -- not sure what to do
+                                    pass
+
                         except isl.Error:
                             # non-affine predicate - store for warning if we fail
                             # this check
                             possible_warns += [pred]
-
-                        for constraint in constraints:
-                            try:
-                                access_range = access_range.add_constraint(
-                                    constraint)
-                            except isl.Error:
-                                # space doesn't match -- not sure what to do
-                                pass
 
             if not access_range.is_subset(shape_domain):
                 if possible_warns:
