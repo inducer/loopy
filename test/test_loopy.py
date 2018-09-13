@@ -2940,6 +2940,26 @@ def test_conditional_access_range(ctx_factory, op):
     assert np.array_equal(knl(queue, tmp=np.arange(8))[1][0], np.arange(1, 9))
 
 
+def test_conditional_access_range_with_parameters(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            ["{[i]: 0 <= i < 10}",
+             "{[j]: 0 <= j < problem_size}"],
+            """
+            if i < 8 and j < problem_size
+                tmp[j, i] = tmp[j, i] + 1
+            end
+           """,
+            [lp.GlobalArg('tmp', shape=('problem_size', 8,), dtype=np.int64),
+             lp.ValueArg('problem_size', dtype=np.int64)])
+
+    assert np.array_equal(knl(queue, tmp=np.arange(80).reshape((10, 8)),
+                              problem_size=10)[1][0], np.arange(1, 81).reshape(
+                                (10, 8)))
+
+
 def test_conditional_access_range_failure(ctx_factory):
     # predicate doesn't actually limit access_range
     knl = lp.make_kernel(
