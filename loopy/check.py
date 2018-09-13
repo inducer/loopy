@@ -332,16 +332,32 @@ class _AccessCheckMapper(WalkMapper):
                     shape_domain = shape_domain.intersect(slab)
 
             insn = self.kernel.id_to_insn[self.insn_id]
+            possible_warns = []
             if insn.predicates:
                 from loopy.symbolic import constraints_from_expr
                 for pred in insn.predicates:
-                    if get_dependencies(pred) == get_dependencies(subscript):
-                        constraints = constraints_from_expr(
-                            self.domain.get_space(), pred)
-                        for constraint in constraints:
-                            access_range = access_range.add_constraint(constraint)
+                    if get_dependencies(pred) == insn.within_inames:
+                        try:
+                            constraints = constraints_from_expr(
+                                self.domain.get_space(), pred)
+                            for constraint in constraints:
+                                access_range = access_range.add_constraint(
+                                    constraint)
+                        except isl.Error:
+                            # non-affine predicate - store for warning if we fail
+                            # this check
+                            possible_warns += [pred]
+                            pass
 
             if not access_range.is_subset(shape_domain):
+                if possible_warns:
+                    from loopy.diagnostic import warn_with_kernel
+                    warn_with_kernel(
+                        self.kernel, "non_affine_predicates",
+                        "Predicates: ({}) are are expressed in a "
+                        "non-affine manner, and were not considered "
+                        "for out-of-bounds array checking.".format(
+                            ', '.join(str(x) for x in possible_warns)))
                 raise LoopyError("'%s' in instruction '%s' "
                         "accesses out-of-bounds array element"
                         % (expr, self.insn_id))

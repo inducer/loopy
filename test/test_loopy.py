@@ -2939,7 +2939,9 @@ def test_conditonal_access_range(ctx_factory, op):
 
     assert np.array_equal(knl(queue, tmp=np.arange(8))[1][0], np.arange(1, 9))
 
-    # and failure
+
+def test_conditonal_access_range_failure(ctx_factory):
+    # predicate doesn't actually limit access_range
     knl = lp.make_kernel(
             "{[i,j]: 0 <= i,j < 10}",
             """
@@ -2950,7 +2952,20 @@ def test_conditonal_access_range(ctx_factory, op):
 
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
-        knl(queue)
+        lp.generate_code_v2(knl).device_code()
+
+    # predicate non affine
+    knl = lp.make_kernel(
+            "{[i,j]: 0 <= i,j < 10}",
+            """
+            if (i+3)*i < 15
+                tmp[i] = tmp[i]
+            end
+           """, [lp.GlobalArg('tmp', shape=(2,), dtype=np.int32)])
+
+    from loopy.diagnostic import LoopyError
+    with pytest.raises(LoopyError):
+        lp.generate_code_v2(knl).device_code()
 
 
 if __name__ == "__main__":
