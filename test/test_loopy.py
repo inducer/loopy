@@ -2909,7 +2909,7 @@ def test_dep_cycle_printing_and_error():
 
 
 @pytest.mark.parametrize("op", ['>', '>=', '<', '<=', '==', '!='])
-def test_conditonal_access_range(ctx_factory, op):
+def test_conditional_access_range(ctx_factory, op):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -2940,7 +2940,7 @@ def test_conditonal_access_range(ctx_factory, op):
     assert np.array_equal(knl(queue, tmp=np.arange(8))[1][0], np.arange(1, 9))
 
 
-def test_conditonal_access_range_failure(ctx_factory):
+def test_conditional_access_range_failure(ctx_factory):
     # predicate doesn't actually limit access_range
     knl = lp.make_kernel(
             "{[i,j]: 0 <= i,j < 10}",
