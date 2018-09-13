@@ -319,7 +319,7 @@ class _AccessCheckMapper(WalkMapper):
             if insn.predicates:
                 from loopy.symbolic import constraints_from_expr
                 for pred in insn.predicates:
-                    if insn.within_inames <= get_dependencies(pred):
+                    if insn.within_inames & get_dependencies(pred):
                         try:
                             constraints = constraints_from_expr(
                                 self.domain.space, pred)
