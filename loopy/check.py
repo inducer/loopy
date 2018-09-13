@@ -276,6 +276,7 @@ class _AccessCheckMapper(WalkMapper):
         WalkMapper.map_subscript(self, expr)
 
         from pymbolic.primitives import Variable
+        from pymbolic.mapper.evaluator import UnknownVariableError
         assert isinstance(expr.aggregate, Variable)
 
         shape = None
@@ -331,6 +332,9 @@ class _AccessCheckMapper(WalkMapper):
                             # non-affine predicate - store for warning if we fail
                             # this check
                             possible_warns += [pred]
+                        except UnknownVariableError:
+                            # data dependent bounds
+                            pass
 
             try:
                 access_range = get_access_range(access_range, subscript,
