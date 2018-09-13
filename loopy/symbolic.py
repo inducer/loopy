@@ -1358,7 +1358,14 @@ class ConditionalMapper(PwAffEvaluationMapper):
         return out
 
     def map_logical_and(self, expr):
-        constraints = [y for ch in expr.children for y in self.rec(ch)]
+        from pymbolic.mapper.evaluator import UnknownVariableError
+        constraints = []
+        for child in expr.children:
+            try:
+                constraints += [c for c in self.rec(child)]
+            except UnknownVariableError:
+                # the child contained data-dependent conditionals -> can't apply
+                pass
         return constraints
 
     map_logical_or = map_logical_and
@@ -1383,7 +1390,6 @@ class ConditionalMapper(PwAffEvaluationMapper):
             return [isl.Constraint.inequality_from_aff((aff))]
         else:
             raise ValueError("invalid comparison operator")
-        return left - right
 
 
 def aff_from_expr(space, expr, vars_to_zero=None):
