@@ -2932,6 +2932,26 @@ def test_access_check_with_insn_predicates():
     print(lp.generate_code_v2(knl).device_code())
 
 
+def test_conditional_access_range_with_parameters(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            ["{[i]: 0 <= i < 10}",
+             "{[j]: 0 <= j < problem_size}"],
+            """
+            if i < 8 and j < problem_size
+                tmp[j, i] = tmp[j, i] + 1
+            end
+           """,
+            [lp.GlobalArg("tmp", shape=("problem_size", 8,), dtype=np.int64),
+             lp.ValueArg("problem_size", dtype=np.int64)])
+
+    assert np.array_equal(knl(queue, tmp=np.arange(80).reshape((10, 8)),
+                              problem_size=10)[1][0], np.arange(1, 81).reshape(
+                                (10, 8)))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
