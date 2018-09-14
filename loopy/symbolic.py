@@ -1183,6 +1183,12 @@ class CoefficientCollector(CoefficientCollectorBase):
         raise ExpressionNotAffineError("cannot gather coefficients--"
                 "indirect addressing in use")
 
+    def map_floor_div(self, expr):
+        from warnings import warn
+        warn("CoefficientCollector encountered FloorDiv, ignoring denominator in "
+             "expression %s" % (expr))
+        return self.rec(expr.numerator)
+
 # }}}
 
 
