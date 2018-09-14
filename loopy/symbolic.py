@@ -1472,7 +1472,7 @@ def simplify_using_aff(kernel, expr):
 # {{{ expression/set <-> constraints conversion
 
 def constraints_from_expr(space, expr):
-    with isl.SuppressedWarnings(space.get_ctx):
+    with isl.SuppressedWarnings(space.get_ctx()):
         return ConditionalMapper(space, vars_to_zero=[None])(expr)
 
 
