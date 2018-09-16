@@ -1057,6 +1057,50 @@ def test_all_counters_parallel_matmul():
     assert local_mem_s == m*2/bsize*n_subgroups
 
 
+def test_floor_div_coefficient_collector():
+    bsize = 16
+
+    # kernel that shuffles local mem
+    knl = lp.make_kernel(
+        "{[i_outer,j_outer,i_inner,j_inner,r]: "
+        "0<=i_outer<n/%d and 0<=j_outer<n/%d and "
+        "0<=i_inner<%d and 0<=j_inner<%d and "
+        "0<=r<rept}"
+        % (bsize, bsize, bsize, bsize),
+        [
+            "for i_outer",
+            "for j_outer",
+            "<> loc[i_inner,j_inner] = 3.14  {id=loc_init}",
+            "loc[i_inner,(j_inner+r+4) %% %d] = loc[i_inner,(j_inner+r) %% %d]"
+            "  {id=add,dep=loc_init}" % (bsize, bsize),
+            "out0[i_outer*16+i_inner,j_outer*16+j_inner] = loc[i_inner,j_inner]"
+            "  {id=store,dep=add}",
+            "end",
+            "end",
+        ],
+        name="local",
+        lang_version=(2018, 2))
+
+    knl = lp.add_and_infer_dtypes(knl, dict(out0=np.float32))
+    knl = lp.tag_inames(knl, "i_outer:g.1,i_inner:l.1,j_outer:g.0,j_inner:l.0")
+
+    n = 512
+    rept = 64
+    params = {"n": n, "rept": rept}
+    group_size = bsize*bsize
+    n_workgroups = div_ceil(n, bsize)*div_ceil(n, bsize)
+    subgroups_per_group = div_ceil(group_size, SGS)
+    n_subgroups = n_workgroups*subgroups_per_group
+
+    # count local f32 accesses
+    f32_local = lp.get_mem_access_map(
+        knl, count_redundant_work=True, subgroup_size=SGS
+        ).filter_by(dtype=[np.float32], mtype=["local"]).eval_and_sum(params)
+
+    # (count-per-sub-group)*n_subgroups
+    assert f32_local == 2*(rept+1)*n_subgroups
+
+
 def test_gather_access_footprint():
     knl = lp.make_kernel(
             "{[i,k,j]: 0<=i,j,k<n}",

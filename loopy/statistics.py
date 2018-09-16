@@ -32,6 +32,7 @@ from functools import reduce
 from loopy.kernel.data import (
         MultiAssignmentBase, TemporaryVariable, AddressSpace)
 from loopy.diagnostic import warn_with_kernel, LoopyError
+from loopy.symbolic import CoefficientCollector
 from pytools import Record, memoize_method
 
 
@@ -830,6 +831,19 @@ class ExpressionOpCounter(CounterBase):
 # }}}
 
 
+# {{{ modified coefficient collector that ignores denominator of floor div
+
+class IndexStrideCoefficientCollector(CoefficientCollector):
+
+    def map_floor_div(self, expr):
+        from warnings import warn
+        warn("IndexStrideCoefficientCollector encountered FloorDiv, ignoring "
+             "denominator in expression %s" % (expr))
+        return self.rec(expr.numerator)
+
+# }}}
+
+
 def _get_lid_and_gid_strides(knl, array, index):
     # find all local and global index tags and corresponding inames
     from loopy.symbolic import get_dependencies
@@ -857,7 +871,6 @@ def _get_lid_and_gid_strides(knl, array, index):
     # where l0, l1, l2, g0, g1, and g2 come from flattened index
     # [... + g2*gid2 + g1*gid1 + g0*gid0 + ... + l2*lid2 + l1*lid1 + l0*lid0]
 
-    from loopy.symbolic import CoefficientCollector
     from loopy.kernel.array import FixedStrideArrayDimTag
     from pymbolic.primitives import Variable
     from loopy.symbolic import simplify_using_aff
@@ -871,7 +884,7 @@ def _get_lid_and_gid_strides(knl, array, index):
             for idx, axis_tag in zip(index, array.dim_tags):
                 # collect index coefficients
                 try:
-                    coeffs = CoefficientCollector()(
+                    coeffs = IndexStrideCoefficientCollector()(
                               simplify_using_aff(knl, idx))
                 except ExpressionNotAffineError:
                     total_iname_stride = None
