@@ -1286,8 +1286,8 @@ def count_insn_runs(knl, program_callables_info, insn, count_redundant_work,
 
 
 @memoize_method
-def _get_insn_count(knl, insn_id, subgroup_size, count_redundant_work,
-                    count_granularity=CountGranularity.WORKITEM):
+def _get_insn_count(knl, program_callables_info, insn_id, subgroup_size,
+        count_redundant_work, count_granularity=CountGranularity.WORKITEM):
     insn = knl.id_to_insn[insn_id]
 
     if count_granularity is None:
@@ -1299,11 +1299,12 @@ def _get_insn_count(knl, insn_id, subgroup_size, count_redundant_work,
 
     if count_granularity == CountGranularity.WORKITEM:
         return count_insn_runs(
-            knl, insn, count_redundant_work=count_redundant_work,
+            knl, program_callables_info, insn,
+            count_redundant_work=count_redundant_work,
             disregard_local_axes=False)
 
     ct_disregard_local = count_insn_runs(
-            knl, insn, disregard_local_axes=True,
+            knl, program_callables_info, insn, disregard_local_axes=True,
             count_redundant_work=count_redundant_work)
 
     if count_granularity == CountGranularity.WORKGROUP:
@@ -1311,7 +1312,7 @@ def _get_insn_count(knl, insn_id, subgroup_size, count_redundant_work,
     elif count_granularity == CountGranularity.SUBGROUP:
         # get the group size
         from loopy.symbolic import aff_to_expr
-        _, local_size = knl.get_grid_size_upper_bounds()
+        _, local_size = knl.get_grid_size_upper_bounds(program_callables_info)
         workgroup_size = 1
         if local_size:
             for size in local_size:
@@ -1353,12 +1354,8 @@ def get_op_map_for_single_kernel(knl, program_callables_info,
 
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    knl = infer_unknown_types(knl, expect_completion=True)
-    knl = preprocess_kernel(knl)
-
     op_map = ToCountMap()
-    op_counter = ExpressionOpCounter(knl)
+    op_counter = ExpressionOpCounter(knl, program_callables_info)
 
     from loopy.kernel.instruction import (
             CallInstruction, CInstruction, Assignment,
@@ -1371,9 +1368,9 @@ def get_op_map_for_single_kernel(knl, program_callables_info,
                 op_map = (
                         op_map
                         + ToCountMap({key: val})
-                        * _get_insn_count(knl, insn.id, subgroup_size,
-                                         count_redundant_work,
-                                         key.count_granularity))
+                        * _get_insn_count(knl, program_callables_info, insn.id,
+                            subgroup_size, count_redundant_work,
+                            key.count_granularity))
 
         elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
             pass
@@ -1547,10 +1544,6 @@ def get_mem_access_map_for_single_kernel(knl, program_callables_info,
 
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    knl = infer_unknown_types(knl, expect_completion=True)
-    knl = preprocess_kernel(knl)
-
     access_map = ToCountMap()
     access_counter_g = GlobalMemAccessCounter(knl, program_callables_info)
     access_counter_l = LocalMemAccessCounter(knl, program_callables_info)
@@ -1576,18 +1569,18 @@ def get_mem_access_map_for_single_kernel(knl, program_callables_info,
                 access_map = (
                         access_map
                         + ToCountMap({key: val})
-                        * _get_insn_count(knl, insn.id, subgroup_size,
-                                          count_redundant_work,
-                                          key.count_granularity))
+                        * _get_insn_count(knl, program_callables_info, insn.id,
+                            subgroup_size, count_redundant_work,
+                            key.count_granularity))
 
             for key, val in six.iteritems(access_assignee.count_map):
 
                 access_map = (
                         access_map
                         + ToCountMap({key: val})
-                        * _get_insn_count(knl, insn.id, subgroup_size,
-                                          count_redundant_work,
-                                          key.count_granularity))
+                        * _get_insn_count(knl, program_callables_info, insn.id,
+                            subgroup_size, count_redundant_work,
+                            key.count_granularity))
 
         elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
             pass
