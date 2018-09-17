@@ -347,8 +347,6 @@ def test_ispc_streaming_stores():
 
     knl = lp.set_argument_order(knl, vars + ["n"])
 
-    knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
     lp.generate_code_v2(knl).all_code()
 
 

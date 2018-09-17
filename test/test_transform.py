@@ -544,16 +544,16 @@ def test_uniquify_instruction_ids():
 
 
 def test_split_iname_only_if_in_within():
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i]: 0<=i<10}",
             """
             c[i] = 3*d[i] {id=to_split}
             a[i] = 2*b[i] {id=not_to_split}
             """)
 
-    knl = lp.split_iname(knl, "i", 4, within='id:to_split')
+    prog = lp.split_iname(prog, "i", 4, within='id:to_split')
 
-    for insn in knl.instructions:
+    for insn in prog.root_kernel.instructions:
         if insn.id == 'to_split':
             assert insn.within_inames == frozenset({'i_outer', 'i_inner'})
         if insn.id == 'not_to_split':
