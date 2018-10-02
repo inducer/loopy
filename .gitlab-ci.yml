@@ -93,7 +93,7 @@ Python 3.6 POCL Examples:
   script:
   - export PY_EXE=python3.6
   - export PYOPENCL_TEST=portable
-  - export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipython jupyter_client nbconvert"
+  - export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipykernel nbconvert"
   - ". ./build-py-project-and-run-examples.sh"
   tags:
   - python3.6
