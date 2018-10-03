@@ -2818,9 +2818,16 @@ def preprocess_kernel(kernel, device=None):
 
     kernel = realize_ilp(kernel)
 
-    kernel = add_omp_simd(kernel)
-    # kernel = realize_c_vec(kernel)
-
+    import os
+    try:
+        vect_strategy = os.environ["PYOP2_VECT_STRATEGY"]
+        if vect_strategy == "omp":
+            kernel = add_omp_simd(kernel)
+        else:
+            assert vect_strategy == "ve"
+            kernel = realize_c_vec(kernel)
+    except:
+        pass
 
     kernel = find_temporary_scope(kernel)
 
