@@ -416,7 +416,7 @@ def test_ilp_write_race_detection_global(ctx_factory):
         from warnings import catch_warnings
         with catch_warnings(record=True) as warn_list:
             list(lp.generate_loop_schedules(knl.root_kernel,
-                    knl.program_callables_info))
+                    knl.callables_table))
 
             assert any(isinstance(w.message, WriteRaceConditionWarning)
                     for w in warn_list)
@@ -1271,7 +1271,7 @@ def save_and_reload_temporaries_test(queue, prog, out_expect, debug=False):
     from loopy.transform.save import save_and_reload_temporaries
     prog = save_and_reload_temporaries(prog)
     prog = prog.with_root_kernel(lp.get_one_scheduled_kernel(prog.root_kernel,
-        prog.program_callables_info))
+        prog.callables_table))
 
     if debug:
         print(prog)
@@ -2222,7 +2222,7 @@ def test_unscheduled_insn_detection():
         "...")
 
     prog = lp.preprocess_kernel(prog)
-    knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.program_callables_info)
+    knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.callables_table)
     prog = prog.with_root_kernel(knl)
     insn1, = lp.find_instructions(prog, "id:insn1")
     insns = prog.root_kernel.instructions[:]
@@ -2392,7 +2392,7 @@ def test_barrier_insertion_near_top_of_loop():
     prog = lp.set_temporary_scope(prog, "a", "local")
     prog = lp.set_temporary_scope(prog, "b", "local")
     prog = lp.preprocess_kernel(prog)
-    knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.program_callables_info)
+    knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.callables_table)
 
     print(knl)
 
@@ -2420,7 +2420,7 @@ def test_barrier_insertion_near_bottom_of_loop():
     prog = lp.set_temporary_scope(prog, "a", "local")
     prog = lp.set_temporary_scope(prog, "b", "local")
     prog = lp.preprocess_kernel(prog)
-    knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.program_callables_info)
+    knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.callables_table)
 
     print(knl)
 
@@ -2479,7 +2479,7 @@ def test_multi_argument_reduction_type_inference():
             allow_simultaneous=True)
 
     t_inf_mapper = TypeInferenceMapper(prog.root_kernel,
-            prog.program_callables_info)
+            prog.callables_table)
 
     assert (
             t_inf_mapper(expr, return_tuple=True, return_dtype_set=True)
@@ -2836,7 +2836,7 @@ def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
     prog = lp.preprocess_kernel(prog)
 
     knl = lp.get_one_scheduled_kernel(prog.root_kernel,
-            prog.program_callables_info)
+            prog.callables_table)
 
     assert barrier_between(knl, "first", "second") == expect_barrier
 

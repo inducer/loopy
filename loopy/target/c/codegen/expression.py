@@ -55,7 +55,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         if type_inf_mapper is None:
             type_inf_mapper = TypeInferenceMapper(self.kernel,
-                    self.codegen_state.program_callables_info)
+                    self.codegen_state.callables_table)
         self.type_inf_mapper = type_inf_mapper
 
         self.allow_complex = codegen_state.allow_complex
@@ -389,7 +389,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         # {{{ implement indexof, indexof_vec
 
         identifier_name = (
-                self.codegen_state.program_callables_info[expr.function.name].name)
+                self.codegen_state.callables_table[expr.function.name].name)
         if identifier_name in ["indexof", "indexof_vec"]:
             if len(expr.parameters) != 1:
                 raise LoopyError("%s takes exactly one argument" % identifier_name)
@@ -432,11 +432,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         # }}}
 
         from loopy.kernel.function_interface import ManglerCallable
-        if isinstance(self.codegen_state.program_callables_info[expr.function.name],
+        if isinstance(self.codegen_state.callables_table[expr.function.name],
                 ManglerCallable):
             from loopy.codegen import SeenFunction
             in_knl_callable = (
-                    self.codegen_state.program_callables_info[
+                    self.codegen_state.callables_table[
                         expr.function.name])
             mangle_result = in_knl_callable.mangle_result(self.kernel)
             self.codegen_state.seen_functions.add(
@@ -445,7 +445,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         mangle_result.arg_dtypes))
 
         return (
-                self.codegen_state.program_callables_info[
+                self.codegen_state.callables_table[
                     expr.function.name].emit_call(
                         expression_to_code_mapper=self,
                     expression=expr,

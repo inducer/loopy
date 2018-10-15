@@ -1208,7 +1208,7 @@ happens when the instruction schedule is generated. To see the schedule, we
 should call :func:`loopy.get_one_scheduled_kernel`:
 
    >>> prog = lp.preprocess_kernel(prog)
-   >>> knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.program_callables_info)
+   >>> knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.callables_table)
    >>> prog = prog.with_root_kernel(knl)
    >>> print(prog)
    ---------------------------------------------------------------------------
@@ -1240,7 +1240,7 @@ that :func:`loopy.get_one_scheduled_kernel` needs to be called one more time to
 put those instructions into the schedule.
 
    >>> prog = lp.save_and_reload_temporaries(prog)
-   >>> knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.program_callables_info)  # Schedule added instructions
+   >>> knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.callables_table)  # Schedule added instructions
    >>> prog = prog.with_root_kernel(knl)
    >>> print(prog)
    ---------------------------------------------------------------------------

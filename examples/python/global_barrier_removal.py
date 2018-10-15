@@ -24,7 +24,7 @@ from loopy.preprocess import preprocess_kernel
 knl = preprocess_kernel(knl)
 
 from loopy.schedule import get_one_scheduled_kernel
-knl = get_one_scheduled_kernel(knl.root_kernel, knl.program_callables_info)
+knl = get_one_scheduled_kernel(knl.root_kernel, knl.callables_table)
 
 # map schedule onto host or device
 print(knl)

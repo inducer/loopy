@@ -143,7 +143,7 @@ class _not_provided:  # noqa: N801
     pass
 
 
-def add_prefetch_for_single_kernel(kernel, program_callables_info, var_name,
+def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
         sweep_inames=[], dim_arg_names=None,
 
         # "None" is a valid value here, distinct from the default.
@@ -334,7 +334,7 @@ def add_prefetch_for_single_kernel(kernel, program_callables_info, var_name,
     # warning message.
 
     from loopy.transform.precompute import precompute_for_single_kernel
-    new_kernel = precompute_for_single_kernel(kernel, program_callables_info,
+    new_kernel = precompute_for_single_kernel(kernel, callables_table,
             subst_use, sweep_inames, precompute_inames=dim_arg_names,
             default_tag=default_tag, dtype=arg.dtype,
             fetch_bounding_box=fetch_bounding_box,
@@ -373,10 +373,10 @@ def add_prefetch(program, *args, **kwargs):
     assert isinstance(program, Program)
 
     new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
+    for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             new_subkernel = add_prefetch_for_single_kernel(
-                    in_knl_callable.subkernel, program.program_callables_info,
+                    in_knl_callable.subkernel, program.callables_table,
                     *args, **kwargs)
             in_knl_callable = in_knl_callable.copy(
                     subkernel=new_subkernel)
@@ -389,9 +389,9 @@ def add_prefetch(program, *args, **kwargs):
 
         new_resolved_functions[func_id] = in_knl_callable
 
-    new_program_callables_info = program.program_callables_info.copy(
+    new_callables_table = program.callables_table.copy(
             resolved_functions=new_resolved_functions)
-    return program.copy(program_callables_info=new_program_callables_info)
+    return program.copy(callables_table=new_callables_table)
 
 # }}}
 

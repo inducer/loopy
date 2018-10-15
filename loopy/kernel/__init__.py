@@ -1036,7 +1036,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 constants_only=True)))
 
     @memoize_method
-    def get_grid_sizes_for_insn_ids(self, insn_ids, program_callables_info,
+    def get_grid_sizes_for_insn_ids(self, insn_ids, callables_table,
             ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of all instructions whose IDs are given
@@ -1048,7 +1048,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if self.overridden_get_grid_sizes_for_insn_ids:
             return self.overridden_get_grid_sizes_for_insn_ids(
                     insn_ids,
-                    program_callables_info,
+                    callables_table,
                     ignore_auto=ignore_auto)
 
         all_inames_by_insns = set()
@@ -1135,7 +1135,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     @memoize_method
     def get_grid_sizes_for_insn_ids_as_exprs(self, insn_ids,
-            program_callables_info, ignore_auto=False):
+            callables_table, ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of all instructions whose IDs are given
         in *insn_ids*.
@@ -1146,7 +1146,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         """
 
         grid_size, group_size = self.get_grid_sizes_for_insn_ids(
-                insn_ids, program_callables_info, ignore_auto)
+                insn_ids, callables_table, ignore_auto)
 
         def tup_to_exprs(tup):
             from loopy.symbolic import pw_aff_to_expr
@@ -1154,7 +1154,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return tup_to_exprs(grid_size), tup_to_exprs(group_size)
 
-    def get_grid_size_upper_bounds(self, program_callables_info, ignore_auto=False):
+    def get_grid_size_upper_bounds(self, callables_table, ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of *all* instructions in the kernel.
 
@@ -1162,10 +1162,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         """
         return self.get_grid_sizes_for_insn_ids(
                 frozenset(insn.id for insn in self.instructions),
-                program_callables_info,
+                callables_table,
                 ignore_auto=ignore_auto)
 
-    def get_grid_size_upper_bounds_as_exprs(self, program_callables_info,
+    def get_grid_size_upper_bounds_as_exprs(self, callables_table,
             ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of *all* instructions in the kernel.
@@ -1175,7 +1175,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return self.get_grid_sizes_for_insn_ids_as_exprs(
                 frozenset(insn.id for insn in self.instructions),
-                program_callables_info,
+                callables_table,
                 ignore_auto=ignore_auto)
 
     # }}}

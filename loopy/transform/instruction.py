@@ -42,7 +42,7 @@ def find_instructions_in_single_kernel(kernel, insn_match):
 def find_instructions(program, insn_match):
     assert isinstance(program, Program)
     insns = []
-    for in_knl_callable in program.program_callables_info.values():
+    for in_knl_callable in program.callables_table.values():
         if isinstance(in_knl_callable, CallableKernel):
             insns += (find_instructions_in_single_kernel(
                 in_knl_callable.subkernel, insn_match))

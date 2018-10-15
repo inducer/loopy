@@ -47,7 +47,7 @@ __doc__ = """
 .. currentmodule:: loopy
 
 .. autoclass:: Program
-.. autoclass:: ProgramCallablesInfo
+.. autoclass:: CallablesTable
 
 .. autofunction:: make_program_from_kernel
 .. autofunction:: iterate_over_kernels_if_given_program
@@ -73,11 +73,11 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
     :arg function_ids: A container with instances of :class:`str` indicating
         the function identifiers to look for while scoping functions.
     """
-    def __init__(self, rule_mapping_context, kernel, program_callables_info,
+    def __init__(self, rule_mapping_context, kernel, callables_table,
             function_id_to_in_knl_callable_mappers):
         super(ResolvedFunctionMarker, self).__init__(rule_mapping_context)
         self.kernel = kernel
-        self.program_callables_info = program_callables_info
+        self.callables_table = callables_table
         self.function_id_to_in_knl_callable_mappers = (
                 function_id_to_in_knl_callable_mappers)
 
@@ -123,8 +123,8 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
                 # associate the newly created ResolvedFunction with the
                 # resolved in-kernel callable
 
-                self.program_callables_info, new_func_id = (
-                        self.program_callables_info.with_added_callable(
+                self.callables_table, new_func_id = (
+                        self.callables_table.with_added_callable(
                             expr.function, in_knl_callable))
                 return type(expr)(
                         ResolvedFunction(new_func_id),
@@ -144,8 +144,8 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
                 expr.operation.get_scalar_callables()):
             in_knl_callable = self.find_in_knl_callable_from_identifier(func_id)
             assert in_knl_callable is not None
-            self.program_callables_info, _ = (
-                    self.program_callables_info.with_added_callable(func_id,
+            self.callables_table, _ = (
+                    self.callables_table.with_added_callable(func_id,
                         in_knl_callable))
         return super(ResolvedFunctionMarker, self).map_reduction(expr, expn_state)
 
@@ -162,37 +162,37 @@ def _default_func_id_to_kernel_callable_mappers(target):
                     )))
 
 
-def initialize_program_callables_info_from_kernel(kernel):
+def initialize_callables_table_from_kernel(kernel):
     """
-    Returns an instance of :class:`loopy.ProgramCallablesInfo`, by resolving
+    Returns an instance of :class:`loopy.CallablesTable`, by resolving
     the functions based on :mod:`loopy`'s default function resolvers.
     """
     # collect the default function resolvers
     func_id_to_kernel_callable_mappers = (
             _default_func_id_to_kernel_callable_mappers(kernel.target))
-    program_callables_info = ProgramCallablesInfo({})
+    callables_table = CallablesTable({})
 
     from loopy.symbolic import SubstitutionRuleMappingContext
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
 
     resolved_function_marker = ResolvedFunctionMarker(
-            rule_mapping_context, kernel, program_callables_info,
+            rule_mapping_context, kernel, callables_table,
             func_id_to_kernel_callable_mappers)
 
     # mark the functions as "Resolved" in the expression nodes.
     kernel_with_functions_resolved = rule_mapping_context.finish_kernel(
             resolved_function_marker.map_kernel(kernel))
-    # collect the update program_callables_info
-    program_callables_info = resolved_function_marker.program_callables_info
+    # collect the update callables_table
+    callables_table = resolved_function_marker.callables_table
 
     callable_kernel = CallableKernel(kernel_with_functions_resolved)
 
-    # add the callable kernel to the program_callables_info
-    program_callables_info, _ = program_callables_info.with_added_callable(
+    # add the callable kernel to the callables_table
+    callables_table, _ = callables_table.with_added_callable(
             Variable(kernel.name), callable_kernel)
 
-    return program_callables_info
+    return callables_table
 
 
 # {{{ program definition
@@ -206,9 +206,9 @@ class Program(ImmutableRecord):
         An instance of :class:`str`, also the name of the top-most level
         :class:`loopy.LoopKernel`.
 
-    .. attribute:: program_callables_info
+    .. attribute:: callables_table
 
-        An instance of :class:`loopy.program.ProgramCallablesInfo`.
+        An instance of :class:`loopy.program.CallablesTable`.
 
     .. attribute:: target
 
@@ -232,16 +232,16 @@ class Program(ImmutableRecord):
     """
     def __init__(self,
             name,
-            program_callables_info,
+            callables_table,
             target,
             func_id_to_in_knl_callable_mappers):
-        assert isinstance(program_callables_info, ProgramCallablesInfo)
+        assert isinstance(callables_table, CallablesTable)
 
-        assert name in program_callables_info
+        assert name in callables_table
 
         super(Program, self).__init__(
                 name=name,
-                program_callables_info=program_callables_info,
+                callables_table=callables_table,
                 target=target,
                 func_id_to_in_knl_callable_mappers=(
                     func_id_to_in_knl_callable_mappers))
@@ -250,7 +250,7 @@ class Program(ImmutableRecord):
 
     hash_fields = (
             "name",
-            "program_callables_info",
+            "callables_table",
             "target",)
 
     update_persistent_hash = LoopKernel.update_persistent_hash
@@ -262,7 +262,7 @@ class Program(ImmutableRecord):
             new_self = super(Program, self).copy(**kwargs)
             new_resolved_functions = {}
             for func_id, in_knl_callable in (
-                    new_self.program_callables_info.items()):
+                    new_self.callables_table.items()):
                 if isinstance(in_knl_callable, CallableKernel):
                     subkernel = in_knl_callable.subkernel
                     new_resolved_functions[func_id] = in_knl_callable.copy(
@@ -270,11 +270,11 @@ class Program(ImmutableRecord):
                 else:
                     new_resolved_functions[func_id] = in_knl_callable
 
-            program_callables_info = new_self.program_callables_info.copy(
+            callables_table = new_self.callables_table.copy(
                     resolved_functions=new_resolved_functions)
 
             return super(Program, new_self).copy(
-                    program_callables_info=program_callables_info)
+                    callables_table=callables_table)
         else:
             return super(Program, self).copy(**kwargs)
 
@@ -285,7 +285,7 @@ class Program(ImmutableRecord):
         *global_size* and *local_size* are :class:`islpy.PwAff` objects.
         """
         return self.root_kernel.get_grid_size_upper_bounds(
-                self.program_callables_info,
+                self.callables_table,
                 ignore_auto=ignore_auto)
 
     def get_grid_size_upper_bounds_as_exprs(self, ignore_auto=False):
@@ -295,7 +295,7 @@ class Program(ImmutableRecord):
         *global_size* and *local_size* are :mod:`pymbolic` expressions
         """
         return self.root_kernel.get_grid_size_upper_bounds_as_exprs(
-                self.program_callables_info,
+                self.callables_table,
                 ignore_auto=ignore_auto)
 
     # {{{ implementation arguments
@@ -338,7 +338,7 @@ class Program(ImmutableRecord):
 
             Syntactic sugar.
         """
-        return self.program_callables_info[self.name].subkernel
+        return self.callables_table[self.name].subkernel
 
     @property
     def arg_dict(self):
@@ -367,14 +367,14 @@ class Program(ImmutableRecord):
         Returns a copy of *self* with the topmost level kernel as
         *root_kernel*.
         """
-        new_in_knl_callable = self.program_callables_info[
+        new_in_knl_callable = self.callables_table[
                 self.name].copy(subkernel=root_kernel)
         new_resolved_functions = (
-                self.program_callables_info.resolved_functions.copy())
+                self.callables_table.resolved_functions.copy())
         new_resolved_functions[self.name] = new_in_knl_callable
 
         return self.copy(
-                program_callables_info=self.program_callables_info.copy(
+                callables_table=self.callables_table.copy(
                     resolved_functions=new_resolved_functions))
 
     def __call__(self, *args, **kwargs):
@@ -462,14 +462,14 @@ def rename_resolved_functions_in_a_single_kernel(kernel,
 class CallablesCountingMapper(CombineMapper):
     """
     Returns an instance of :class:`collections.Counter` with the count of
-    callables registered in *program_callables_info*.
+    callables registered in *callables_table*.
 
-    .. attribute:: program_callables_info
+    .. attribute:: callables_table
 
-        An instance of :class:`loopy.program.ProgramCallablesInfo`.
+        An instance of :class:`loopy.program.CallablesTable`.
     """
-    def __init__(self, program_callables_info):
-        self.program_callables_info = program_callables_info
+    def __init__(self, callables_table):
+        self.callables_table = callables_table
 
     def combine(self, values):
         return sum(values, Counter())
@@ -483,7 +483,7 @@ class CallablesCountingMapper(CombineMapper):
             kw_parameters = {}
 
         if isinstance(expr.function, (ResolvedFunction)):
-            in_knl_callable = self.program_callables_info[expr.function.name]
+            in_knl_callable = self.callables_table[expr.function.name]
             if isinstance(in_knl_callable, ScalarCallable):
                 return (Counter([expr.function.name]) +
                         self.combine((self.rec(child) for child in expr.parameters
@@ -495,7 +495,7 @@ class CallablesCountingMapper(CombineMapper):
                 callables_count_in_subkernel = (
                         count_callables_in_kernel(
                             in_knl_callable.subkernel,
-                            self.program_callables_info))
+                            self.callables_table))
 
                 return (Counter([expr.function.name]) +
                         self.combine((self.rec(child) for child in expr.parameters
@@ -525,16 +525,16 @@ class CallablesCountingMapper(CombineMapper):
 
 
 @memoize_method
-def count_callables_in_kernel(kernel, program_callables_info):
+def count_callables_in_kernel(kernel, callables_table):
     """
     Returns an instance of :class:`collections.Counter` representing the number
     of callables in the *kernel* that are registered in
-    *program_callables_info*.
+    *callables_table*.
     """
     assert isinstance(kernel, LoopKernel)
     callables_count = Counter()
     callables_counting_mapper = CallablesCountingMapper(
-            program_callables_info)
+            callables_table)
     subst_expander = SubstitutionRuleExpander(kernel.substitutions)
 
     for insn in kernel.instructions:
@@ -555,7 +555,7 @@ def count_callables_in_kernel(kernel, program_callables_info):
 
 # {{{ program callables info
 
-class ProgramCallablesInfo(ImmutableRecord):
+class CallablesTable(ImmutableRecord):
     # FIXME: is CallablesTable a better name?(similar to symbol table in
     # compilers.)
     """
@@ -594,7 +594,7 @@ class ProgramCallablesInfo(ImmutableRecord):
             history = dict((func_id, frozenset([func_id])) for func_id in
                     resolved_functions)
 
-        super(ProgramCallablesInfo, self).__init__(
+        super(CallablesTable, self).__init__(
                 resolved_functions=resolved_functions,
                 history=history,
                 is_being_edited=is_being_edited)
@@ -618,7 +618,7 @@ class ProgramCallablesInfo(ImmutableRecord):
     def callables_count(self):
         """
         Returns an instance of :class:`collection.Counter` representing the number
-        of times the callables is called in program_callables_info.
+        of times the callables is called in callables_table.
         """
         # should raise an error if there are more than  one root kernels(which is
         # illegal)
@@ -648,24 +648,24 @@ class ProgramCallablesInfo(ImmutableRecord):
         .. note::
 
             - Always checks whether the
-              :attr:``loopy.ProgramCallablesInfo.resolved_functions` has
+              :attr:``loopy.CallablesTable.resolved_functions` has
               *in_kernel_callable*, does not introduce copies.
 
             - The difference between
-              :meth:`loopy.ProgramCallablesInfo.with_added_callable`
-              and :meth:`ProgramCallablesInfo.with_callable` being that
+              :meth:`loopy.CallablesTable.with_added_callable`
+              and :meth:`CallablesTable.with_callable` being that
               the former has no support for renaming the callable back i.e.
               ``with_callable`` supports renaming from ``sin_0`` to ``sin``,
               if possible, through the member method
-              ``loopy.ProgramCallablesInfo.with_exit_edit_callables_mode``
+              ``loopy.CallablesTable.with_exit_edit_callables_mode``
 
               This subtle difference makes --
 
-              - :meth:`loopy.ProgramCallablesInfo.with_added_callable` suitable
+              - :meth:`loopy.CallablesTable.with_added_callable` suitable
                 for usage while resolving the functions first time, where no
                 renaming is needed.
 
-              - :meth:`loopy.ProgramCallablesInfo.with_callable` suitable for
+              - :meth:`loopy.CallablesTable.with_callable` suitable for
                 implementing edits in callables during inference-walks.
         """
 
@@ -745,7 +745,7 @@ class ProgramCallablesInfo(ImmutableRecord):
     def with_callable(self, function, in_kernel_callable):
         """
         Returns an instance of :class:`tuple` ``(new_self, new_function)``.
-        Also refer -- :meth:`loopy.ProgramCallablesInfo.with_added_callable`
+        Also refer -- :meth:`loopy.CallablesTable.with_added_callable`
 
 
         :arg function: An instance of :class:`pymbolic.primitives.Variable` or
@@ -929,12 +929,12 @@ def make_program_from_kernel(kernel):
     """
 
     # get the program callables info
-    program_callables_info = initialize_program_callables_info_from_kernel(kernel)
+    callables_table = initialize_callables_table_from_kernel(kernel)
 
     # get the program from program callables info
     program = Program(
             name=kernel.name,
-            program_callables_info=program_callables_info,
+            callables_table=callables_table,
             func_id_to_in_knl_callable_mappers=(
                 _default_func_id_to_kernel_callable_mappers(kernel.target)),
             target=kernel.target)
@@ -953,7 +953,7 @@ def iterate_over_kernels_if_given_program(transform_for_single_kernel):
         if isinstance(program_or_kernel, Program):
             program = program_or_kernel
             new_resolved_functions = {}
-            for func_id, in_knl_callable in program.program_callables_info.items():
+            for func_id, in_knl_callable in program.callables_table.items():
                 if isinstance(in_knl_callable, CallableKernel):
                     new_subkernel = transform_for_single_kernel(
                             in_knl_callable.subkernel, *args, **kwargs)
@@ -968,9 +968,9 @@ def iterate_over_kernels_if_given_program(transform_for_single_kernel):
 
                 new_resolved_functions[func_id] = in_knl_callable
 
-            new_program_callables_info = program.program_callables_info.copy(
+            new_callables_table = program.callables_table.copy(
                     resolved_functions=new_resolved_functions)
-            return program.copy(program_callables_info=new_program_callables_info)
+            return program.copy(callables_table=new_callables_table)
         else:
             assert isinstance(program_or_kernel, LoopKernel)
             kernel = program_or_kernel

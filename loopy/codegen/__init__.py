@@ -192,16 +192,16 @@ class CodeGenerationState(object):
 
     .. attribute:: schedule_index_end
 
-    .. attribute:: program_callables_info
+    .. attribute:: callables_table
 
-        An instance of :class:`loopy.ProgramCallablesInfo`.
+        An instance of :class:`loopy.CallablesTable`.
     """
 
     def __init__(self, kernel,
             implemented_data_info, implemented_domain, implemented_predicates,
             seen_dtypes, seen_functions, seen_atomic_dtypes, var_subst_map,
             allow_complex,
-            program_callables_info,
+            callables_table,
             vectorization_info=None, var_name_generator=None,
             is_generating_device_code=None,
             gen_program_name=None,
@@ -215,7 +215,7 @@ class CodeGenerationState(object):
         self.seen_atomic_dtypes = seen_atomic_dtypes
         self.var_subst_map = var_subst_map.copy()
         self.allow_complex = allow_complex
-        self.program_callables_info = program_callables_info
+        self.callables_table = callables_table
         self.vectorization_info = vectorization_info
         self.var_name_generator = var_name_generator
         self.is_generating_device_code = is_generating_device_code
@@ -263,7 +263,7 @@ class CodeGenerationState(object):
                 seen_atomic_dtypes=self.seen_atomic_dtypes,
                 var_subst_map=var_subst_map or self.var_subst_map,
                 allow_complex=self.allow_complex,
-                program_callables_info=self.program_callables_info,
+                callables_table=self.callables_table,
                 vectorization_info=vectorization_info,
                 var_name_generator=self.var_name_generator,
                 is_generating_device_code=is_generating_device_code,
@@ -385,19 +385,19 @@ class PreambleInfo(ImmutableRecord):
 
 # {{{ main code generation entrypoint
 
-def generate_code_for_a_single_kernel(kernel, program_callables_info):
+def generate_code_for_a_single_kernel(kernel, callables_table):
     """
     :returns: a :class:`CodeGenerationResult`
 
     :param kernel: An instance of :class:`loopy.LoopKernel`.
-    :param program_callables_info: An instance of
-        :class:`loopy.ProgramCallablesInfo`.
+    :param callables_table: An instance of
+        :class:`loopy.CallablesTable`.
     """
 
     from loopy.kernel import KernelState
     if kernel.schedule is None:
         from loopy.schedule import get_one_scheduled_kernel
-        kernel = get_one_scheduled_kernel(kernel, program_callables_info)
+        kernel = get_one_scheduled_kernel(kernel, callables_table)
 
     if kernel.state != KernelState.SCHEDULED:
         raise LoopyError("cannot generate code for a kernel that has not been "
@@ -419,7 +419,7 @@ def generate_code_for_a_single_kernel(kernel, program_callables_info):
     # }}}
 
     from loopy.check import pre_codegen_checks
-    pre_codegen_checks(kernel, program_callables_info)
+    pre_codegen_checks(kernel, callables_table)
 
     logger.info("%s: generate code: start" % kernel.name)
 
@@ -479,7 +479,7 @@ def generate_code_for_a_single_kernel(kernel, program_callables_info):
                 + kernel.name
                 + kernel.target.host_program_name_suffix),
             schedule_index_end=len(kernel.schedule),
-            program_callables_info=program_callables_info)
+            callables_table=callables_table)
 
     from loopy.codegen.result import generate_host_or_device_program
 
@@ -556,17 +556,17 @@ def generate_code_v2(program):
 
     codegen_results = {}
 
-    for func_id, in_knl_callable in program.program_callables_info.items():
+    for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             codegen_results[func_id] = (
                     generate_code_for_a_single_kernel(in_knl_callable.subkernel,
-                        program.program_callables_info))
+                        program.callables_table))
 
     device_preambles = set()
     for cgr in codegen_results.values():
         device_preambles.update(cgr.device_preambles)
 
-    for in_knl_callable in program.program_callables_info.values():
+    for in_knl_callable in program.callables_table.values():
         for preamble in in_knl_callable.generate_preambles(program.target):
             device_preambles.update([preamble])
 

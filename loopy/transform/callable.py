@@ -46,11 +46,11 @@ def _resolved_callables_from_function_lookup(program,
         ``(target, identifier)`` that returns either an instance of
         :class:`loopy.InKernelCallable` or *None*.
     """
-    program_callables_info = program.program_callables_info
+    callables_table = program.callables_table
 
     callable_knls = dict(
             (func_id, in_knl_callable) for func_id, in_knl_callable in
-            program_callables_info.items() if isinstance(in_knl_callable,
+            callables_table.items() if isinstance(in_knl_callable,
                 CallableKernel))
     edited_callable_knls = {}
 
@@ -62,28 +62,28 @@ def _resolved_callables_from_function_lookup(program,
                 kernel.substitutions, kernel.get_var_name_generator())
 
         resolved_function_marker = ResolvedFunctionMarker(
-                rule_mapping_context, kernel, program_callables_info,
+                rule_mapping_context, kernel, callables_table,
                 [func_id_to_in_kernel_callable_mapper])
 
         new_subkernel = rule_mapping_context.finish_kernel(
                 resolved_function_marker.map_kernel(kernel))
-        program_callables_info = resolved_function_marker.program_callables_info
+        callables_table = resolved_function_marker.callables_table
 
         edited_callable_knls[func_id] = in_knl_callable.copy(
                 subkernel=new_subkernel)
 
     new_resolved_functions = {}
 
-    for func_id, in_knl_callable in program_callables_info.items():
+    for func_id, in_knl_callable in callables_table.items():
         if func_id in edited_callable_knls:
             new_resolved_functions[func_id] = edited_callable_knls[func_id]
         else:
             new_resolved_functions[func_id] = in_knl_callable
 
-    program_callables_info = program_callables_info.copy(
+    callables_table = callables_table.copy(
             resolved_functions=new_resolved_functions)
 
-    return program.copy(program_callables_info=program_callables_info)
+    return program.copy(callables_table=callables_table)
 
 
 def register_function_id_to_in_knl_callable_mapper(program,

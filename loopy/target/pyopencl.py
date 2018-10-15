@@ -134,7 +134,7 @@ def adjust_local_temp_var_storage(kernel, device):
 
 # {{{ check sizes against device properties
 
-def check_sizes(kernel, program_callables_info, device):
+def check_sizes(kernel, callables_table, device):
     import loopy as lp
 
     from loopy.diagnostic import LoopyAdvisory, LoopyError
@@ -152,7 +152,7 @@ def check_sizes(kernel, program_callables_info, device):
             parameters[arg.name] = arg.approximately
 
     glens, llens = (
-            kernel.get_grid_size_upper_bounds_as_exprs(program_callables_info))
+            kernel.get_grid_size_upper_bounds_as_exprs(callables_table))
 
     if (max(len(glens), len(llens))
             > device.max_work_item_dimensions):
@@ -207,7 +207,7 @@ class PyOpenCLCallable(ScalarCallable):
     Records information about the callables which are not covered by
     :class:`loopy.target.opencl.OpenCLCallable`
     """
-    def with_types(self, arg_id_to_dtype, caller_kernel, program_callables_info):
+    def with_types(self, arg_id_to_dtype, caller_kernel, callables_table):
 
         name = self.name
 
@@ -221,7 +221,7 @@ class PyOpenCLCallable(ScalarCallable):
             # callable
             return (
                     self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                    program_callables_info)
+                    callables_table)
 
         dtype = arg_id_to_dtype[0]
 
@@ -238,7 +238,7 @@ class PyOpenCLCallable(ScalarCallable):
                         self.copy(name_in_target="%s_%s" % (tpname, name),
                             arg_id_to_dtype={0: dtype, -1: NumpyType(
                                 np.dtype(dtype.numpy_dtype.type(0).real))}),
-                        program_callables_info)
+                        callables_table)
 
         if name in ["sqrt", "exp", "log",
                 "sin", "cos", "tan",
@@ -256,7 +256,7 @@ class PyOpenCLCallable(ScalarCallable):
                 return (
                         self.copy(name_in_target="%s_%s" % (tpname, name),
                             arg_id_to_dtype={0: dtype, -1: dtype}),
-                        program_callables_info)
+                        callables_table)
             else:
                 # function calls for floating parameters.
                 numpy_dtype = dtype.numpy_dtype
@@ -267,11 +267,11 @@ class PyOpenCLCallable(ScalarCallable):
                 return (
                         self.copy(name_in_target=name,
                             arg_id_to_dtype={0: dtype, -1: dtype}),
-                        program_callables_info)
+                        callables_table)
 
         return (
                 self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                program_callables_info)
+                callables_table)
 
 
 def pyopencl_function_id_to_in_knl_callable_mapper(target, identifier):
@@ -397,8 +397,8 @@ class PyOpenCLTarget(OpenCLTarget):
             kernel = adjust_local_temp_var_storage(kernel, self.device)
         return kernel
 
-    def pre_codegen_check(self, kernel, program_callables_info):
-        check_sizes(kernel, program_callables_info, self.device)
+    def pre_codegen_check(self, kernel, callables_table):
+        check_sizes(kernel, callables_table, self.device)
 
     def get_host_ast_builder(self):
         return PyOpenCLPythonASTBuilder(self)

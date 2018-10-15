@@ -420,23 +420,23 @@ def fuse_kernels(programs, suffixes=None, data_flow=None):
     """
 
     # all the resolved functions in programs must be registered in
-    # main_program_callables_info
+    # main_callables_table
     main_prog_callables_info = (
-            programs[0].program_callables_info)
+            programs[0].callables_table)
     old_root_kernel_callable = (
-            programs[0].program_callables_info[programs[0].name])
+            programs[0].callables_table[programs[0].name])
     kernels = [programs[0].root_kernel]
 
     # removing the callable collisions that maybe present
     for prog in programs[1:]:
         root_kernel = prog.root_kernel
         renames_needed = {}
-        for old_func_id, in_knl_callable in prog.program_callables_info.items():
+        for old_func_id, in_knl_callable in prog.callables_table.items():
             if isinstance(in_knl_callable, CallableKernel):
                 # Fusing programs with multiple callable kernels is tough.
                 # Reason: Need to first figure out the order in which the
                 # callable kernels must be resolved into
-                # main_program_callables_info, because of renaming is
+                # main_callables_table, because of renaming is
                 # needed to be done in the callable kernels before registering.
                 # Hence disabling it until required.
                 if in_knl_callable.subkernel.name != prog.name:
@@ -468,6 +468,6 @@ def fuse_kernels(programs, suffixes=None, data_flow=None):
             var(programs[0].name), new_root_kernel_callable)
 
     return programs[0].copy(
-            program_callables_info=main_prog_callables_info)
+            callables_table=main_prog_callables_info)
 
 # vim: foldmethod=marker

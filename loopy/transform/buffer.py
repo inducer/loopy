@@ -133,7 +133,7 @@ buffer_array_cache = WriteOncePersistentDict(
 
 
 # Adding an argument? also add something to the cache_key below.
-def buffer_array_for_single_kernel(kernel, program_callables_info, var_name,
+def buffer_array_for_single_kernel(kernel, callables_table, var_name,
         buffer_inames, init_expression=None, store_expression=None,
         within=None, default_tag="l.auto", temporary_scope=None,
         temporary_is_local=None, fetch_bounding_box=False):
@@ -534,7 +534,7 @@ def buffer_array_for_single_kernel(kernel, program_callables_info, var_name,
     kernel = tag_inames(kernel, new_iname_to_tag)
 
     from loopy.kernel.tools import assign_automatic_axes
-    kernel = assign_automatic_axes(kernel, program_callables_info)
+    kernel = assign_automatic_axes(kernel, callables_table)
 
     if CACHING_ENABLED:
         from loopy.preprocess import prepare_for_caching
@@ -548,10 +548,10 @@ def buffer_array(program, *args, **kwargs):
     assert isinstance(program, Program)
 
     new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
+    for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             new_subkernel = buffer_array_for_single_kernel(
-                    in_knl_callable.subkernel, program.program_callables_info,
+                    in_knl_callable.subkernel, program.callables_table,
                     *args, **kwargs)
             in_knl_callable = in_knl_callable.copy(
                     subkernel=new_subkernel)
@@ -564,8 +564,8 @@ def buffer_array(program, *args, **kwargs):
 
         new_resolved_functions[func_id] = in_knl_callable
 
-    new_program_callables_info = program.program_callables_info.copy(
+    new_callables_table = program.callables_table.copy(
             resolved_functions=new_resolved_functions)
-    return program.copy(program_callables_info=new_program_callables_info)
+    return program.copy(callables_table=new_callables_table)
 
 # vim: foldmethod=marker

@@ -648,11 +648,11 @@ class MemAccess(Record):
 # {{{ counter base
 
 class CounterBase(CombineMapper):
-    def __init__(self, knl, program_callables_info):
+    def __init__(self, knl, callables_table):
         self.knl = knl
-        self.program_callables_info = program_callables_info
+        self.callables_table = callables_table
         from loopy.type_inference import TypeInferenceMapper
-        self.type_inf = TypeInferenceMapper(knl, program_callables_info)
+        self.type_inf = TypeInferenceMapper(knl, callables_table)
 
     def combine(self, values):
         return sum(values)
@@ -707,11 +707,11 @@ class CounterBase(CombineMapper):
 # {{{ ExpressionOpCounter
 
 class ExpressionOpCounter(CounterBase):
-    def __init__(self, knl, program_callables_info):
+    def __init__(self, knl, callables_table):
         self.knl = knl
-        self.program_callables_info = program_callables_info
+        self.callables_table = callables_table
         from loopy.type_inference import TypeInferenceMapper
-        self.type_inf = TypeInferenceMapper(knl, program_callables_info)
+        self.type_inf = TypeInferenceMapper(knl, callables_table)
 
     def combine(self, values):
         return sum(values)
@@ -725,7 +725,7 @@ class ExpressionOpCounter(CounterBase):
     def map_call(self, expr):
         from loopy.symbolic import ResolvedFunction
         if isinstance(expr.function, ResolvedFunction):
-            function_identifier = self.program_callables_info[
+            function_identifier = self.callables_table[
                     expr.function.name].name
         else:
             function_identifier = expr.function.name
@@ -1111,7 +1111,7 @@ def count(kernel, set, space=None):
     from loopy.program import Program
     if isinstance(kernel, Program):
         if len([in_knl_callable for in_knl_callable in
-            kernel.program_callables_info.values() if isinstance(in_knl_callable,
+            kernel.callables_table.values() if isinstance(in_knl_callable,
                 CallableKernel)]) != 1:
             raise NotImplementedError("Currently only supported for program with "
                 "only one CallableKernel.")
@@ -1216,10 +1216,10 @@ def count(kernel, set, space=None):
     return add_assumptions_guard(kernel, count)
 
 
-def get_unused_hw_axes_factor(knl, program_callables_info, insn,
+def get_unused_hw_axes_factor(knl, callables_table, insn,
         disregard_local_axes, space=None):
     # FIXME: Multi-kernel support
-    gsize, lsize = knl.get_grid_size_upper_bounds(program_callables_info)
+    gsize, lsize = knl.get_grid_size_upper_bounds(callables_table)
 
     g_used = set()
     l_used = set()
@@ -1257,7 +1257,7 @@ def get_unused_hw_axes_factor(knl, program_callables_info, insn,
     return add_assumptions_guard(knl, result)
 
 
-def count_insn_runs(knl, program_callables_info, insn, count_redundant_work,
+def count_insn_runs(knl, callables_table, insn, count_redundant_work,
         disregard_local_axes=False):
 
     insn_inames = knl.insn_inames(insn)
@@ -1278,7 +1278,7 @@ def count_insn_runs(knl, program_callables_info, insn, count_redundant_work,
     c = count(knl, domain, space=space)
 
     if count_redundant_work:
-        unused_fac = get_unused_hw_axes_factor(knl, program_callables_info,
+        unused_fac = get_unused_hw_axes_factor(knl, callables_table,
                 insn, disregard_local_axes=disregard_local_axes, space=space)
         return c * unused_fac
     else:
@@ -1286,7 +1286,7 @@ def count_insn_runs(knl, program_callables_info, insn, count_redundant_work,
 
 
 @memoize_method
-def _get_insn_count(knl, program_callables_info, insn_id, subgroup_size,
+def _get_insn_count(knl, callables_table, insn_id, subgroup_size,
         count_redundant_work, count_granularity=CountGranularity.WORKITEM):
     insn = knl.id_to_insn[insn_id]
 
@@ -1299,12 +1299,12 @@ def _get_insn_count(knl, program_callables_info, insn_id, subgroup_size,
 
     if count_granularity == CountGranularity.WORKITEM:
         return count_insn_runs(
-            knl, program_callables_info, insn,
+            knl, callables_table, insn,
             count_redundant_work=count_redundant_work,
             disregard_local_axes=False)
 
     ct_disregard_local = count_insn_runs(
-            knl, program_callables_info, insn, disregard_local_axes=True,
+            knl, callables_table, insn, disregard_local_axes=True,
             count_redundant_work=count_redundant_work)
 
     if count_granularity == CountGranularity.WORKGROUP:
@@ -1312,7 +1312,7 @@ def _get_insn_count(knl, program_callables_info, insn_id, subgroup_size,
     elif count_granularity == CountGranularity.SUBGROUP:
         # get the group size
         from loopy.symbolic import aff_to_expr
-        _, local_size = knl.get_grid_size_upper_bounds(program_callables_info)
+        _, local_size = knl.get_grid_size_upper_bounds(callables_table)
         workgroup_size = 1
         if local_size:
             for size in local_size:
@@ -1344,7 +1344,7 @@ def _get_insn_count(knl, program_callables_info, insn_id, subgroup_size,
 # {{{ get_op_map
 
 
-def get_op_map_for_single_kernel(knl, program_callables_info,
+def get_op_map_for_single_kernel(knl, callables_table,
         numpy_types=True, count_redundant_work=False,
                subgroup_size=None):
 
@@ -1355,7 +1355,7 @@ def get_op_map_for_single_kernel(knl, program_callables_info,
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
     op_map = ToCountMap()
-    op_counter = ExpressionOpCounter(knl, program_callables_info)
+    op_counter = ExpressionOpCounter(knl, callables_table)
 
     from loopy.kernel.instruction import (
             CallInstruction, CInstruction, Assignment,
@@ -1368,7 +1368,7 @@ def get_op_map_for_single_kernel(knl, program_callables_info,
                 op_map = (
                         op_map
                         + ToCountMap({key: val})
-                        * _get_insn_count(knl, program_callables_info, insn.id,
+                        * _get_insn_count(knl, callables_table, insn.id,
                             subgroup_size, count_redundant_work,
                             key.count_granularity))
 
@@ -1458,13 +1458,13 @@ def get_op_map(program, numpy_types=True, count_redundant_work=False,
     op_map = ToCountMap()
 
     callables_count = (
-                program.program_callables_info.callables_count)
+                program.callables_table.callables_count)
 
-    for func_id, in_knl_callable in program.program_callables_info.items():
+    for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             knl = in_knl_callable.subkernel
             knl_op_map = get_op_map_for_single_kernel(knl,
-                        program.program_callables_info, numpy_types,
+                        program.callables_table, numpy_types,
                         count_redundant_work, subgroup_size)
 
             for i in range(callables_count[func_id]):
@@ -1535,7 +1535,7 @@ def _process_subgroup_size(knl, subgroup_size_requested):
 # {{{ get_mem_access_map
 
 
-def get_mem_access_map_for_single_kernel(knl, program_callables_info,
+def get_mem_access_map_for_single_kernel(knl, callables_table,
         numpy_types=True, count_redundant_work=False, subgroup_size=None):
 
     if not knl.options.ignore_boostable_into:
@@ -1545,8 +1545,8 @@ def get_mem_access_map_for_single_kernel(knl, program_callables_info,
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
     access_map = ToCountMap()
-    access_counter_g = GlobalMemAccessCounter(knl, program_callables_info)
-    access_counter_l = LocalMemAccessCounter(knl, program_callables_info)
+    access_counter_g = GlobalMemAccessCounter(knl, callables_table)
+    access_counter_l = LocalMemAccessCounter(knl, callables_table)
 
     from loopy.kernel.instruction import (
             CallInstruction, CInstruction, Assignment,
@@ -1569,7 +1569,7 @@ def get_mem_access_map_for_single_kernel(knl, program_callables_info,
                 access_map = (
                         access_map
                         + ToCountMap({key: val})
-                        * _get_insn_count(knl, program_callables_info, insn.id,
+                        * _get_insn_count(knl, callables_table, insn.id,
                             subgroup_size, count_redundant_work,
                             key.count_granularity))
 
@@ -1578,7 +1578,7 @@ def get_mem_access_map_for_single_kernel(knl, program_callables_info,
                 access_map = (
                         access_map
                         + ToCountMap({key: val})
-                        * _get_insn_count(knl, program_callables_info, insn.id,
+                        * _get_insn_count(knl, callables_table, insn.id,
                             subgroup_size, count_redundant_work,
                             key.count_granularity))
 
@@ -1700,13 +1700,13 @@ def get_mem_access_map(program, numpy_types=True, count_redundant_work=False,
 
     access_map = ToCountMap()
 
-    callables_count = program.program_callables_info.callables_count
+    callables_count = program.callables_table.callables_count
 
-    for func_id, in_knl_callable in program.program_callables_info.items():
+    for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             knl = in_knl_callable.subkernel
             knl_access_map = get_mem_access_map_for_single_kernel(knl,
-                        program.program_callables_info, numpy_types,
+                        program.callables_table, numpy_types,
                         count_redundant_work, subgroup_size)
 
             # FIXME: didn't see any easy way to multiply
@@ -1726,7 +1726,7 @@ def get_mem_access_map(program, numpy_types=True, count_redundant_work=False,
 
 # {{{ get_synchronization_map
 
-def get_synchronization_map_for_single_kernel(knl, program_callables_info,
+def get_synchronization_map_for_single_kernel(knl, callables_table,
         subgroup_size=None):
 
     """Count the number of synchronization events each work-item encounters in
@@ -1772,7 +1772,7 @@ def get_synchronization_map_for_single_kernel(knl, program_callables_info,
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier,
             CallKernel, ReturnFromKernel, RunInstruction)
     from operator import mul
-    knl = lp.get_one_scheduled_kernel(knl, program_callables_info)
+    knl = lp.get_one_scheduled_kernel(knl, callables_table)
     iname_list = []
 
     result = ToCountMap()
@@ -1824,13 +1824,13 @@ def get_synchronization_map(program, subgroup_size=None):
     program = preprocess_program(program)
 
     sync_map = ToCountMap()
-    callables_count = program.program_callables_info.callables_count
+    callables_count = program.callables_table.callables_count
 
-    for func_id, in_knl_callable in program.program_callables_info.items():
+    for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             knl = in_knl_callable.subkernel
             knl_sync_map = get_synchronization_map_for_single_kernel(knl,
-                    program.program_callables_info, subgroup_size)
+                    program.callables_table, subgroup_size)
 
             # FIXME: didn't see any easy way to multiply
             for i in range(callables_count[func_id]):
@@ -1887,7 +1887,7 @@ def gather_access_footprints_for_single_kernel(kernel, ignore_uncountable=False)
 def gather_access_footprints(program, ignore_uncountable=False):
     # FIMXE: works only for one callable kernel till now.
     if len([in_knl_callable for in_knl_callable in
-        program.program_callables_info.values() if isinstance(in_knl_callable,
+        program.callables_table.values() if isinstance(in_knl_callable,
             CallableKernel)]) != 1:
         raise NotImplementedError("Currently only supported for program with "
             "only one CallableKernel.")
@@ -1900,9 +1900,9 @@ def gather_access_footprints(program, ignore_uncountable=False):
     write_footprints = []
     read_footprints = []
 
-    callables_count = program.program_callables_info.callables_count
+    callables_count = program.callables_table.callables_count
 
-    for func_id, in_knl_callable in program.program_callables_info.items():
+    for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             knl = in_knl_callable.subkernel
             knl_write_footprints, knl_read_footprints = (

@@ -35,7 +35,7 @@ from loopy.diagnostic import (
         TypeInferenceFailure, DependencyTypeInferenceFailure)
 from loopy.kernel.instruction import _DataObliviousInstruction
 
-from loopy.program import ProgramCallablesInfo
+from loopy.program import CallablesTable
 from loopy.symbolic import (
         LinearSubscript, parse_tagged_name, RuleAwareIdentityMapper,
         SubstitutionRuleExpander, ResolvedFunction,
@@ -197,7 +197,7 @@ def change_names_of_pymbolic_calls(kernel, pymbolic_calls_to_new_names):
 # {{{ type inference mapper
 
 class TypeInferenceMapper(CombineMapper):
-    def __init__(self, kernel, program_callables_info, new_assignments=None):
+    def __init__(self, kernel, callables_table, new_assignments=None):
         """
         :arg new_assignments: mapping from names to either
             :class:`loopy.kernel.data.TemporaryVariable`
@@ -206,12 +206,12 @@ class TypeInferenceMapper(CombineMapper):
             instances
         """
         self.kernel = kernel
-        assert isinstance(program_callables_info, ProgramCallablesInfo)
+        assert isinstance(callables_table, CallablesTable)
         if new_assignments is None:
             new_assignments = {}
         self.new_assignments = new_assignments
         self.symbols_with_unknown_types = set()
-        self.program_callables_info = program_callables_info
+        self.callables_table = callables_table
         self.old_calls_to_new_calls = {}
 
     def __call__(self, expr, return_tuple=False, return_dtype_set=False):
@@ -245,16 +245,16 @@ class TypeInferenceMapper(CombineMapper):
     # /!\ Introduce caches with care--numpy.float32(x) and numpy.float64(x)
     # are Python-equal (for many common constants such as integers).
 
-    def copy(self, program_callables_info=None):
-        if program_callables_info is None:
-            program_callables_info = self.program_callables_info
-        return type(self)(self.kernel, program_callables_info,
+    def copy(self, callables_table=None):
+        if callables_table is None:
+            callables_table = self.callables_table
+        return type(self)(self.kernel, callables_table,
                 self.new_assignments)
 
     def with_assignments(self, names_to_vars):
         new_ass = self.new_assignments.copy()
         new_ass.update(names_to_vars)
-        return type(self)(self.kernel, self.program_callables_info, new_ass)
+        return type(self)(self.kernel, self.callables_table, new_ass)
 
     @staticmethod
     def combine(dtype_sets):
@@ -431,7 +431,7 @@ class TypeInferenceMapper(CombineMapper):
 
         # specializing the known function wrt type
         if isinstance(expr.function, ResolvedFunction):
-            in_knl_callable = self.program_callables_info[expr.function.name]
+            in_knl_callable = self.callables_table[expr.function.name]
 
             # {{{ checking that there is no overwriting of types of in_knl_callable
 
@@ -465,17 +465,17 @@ class TypeInferenceMapper(CombineMapper):
 
             # }}}
 
-            in_knl_callable, self.program_callables_info = (
+            in_knl_callable, self.callables_table = (
                     in_knl_callable.with_types(
                         arg_id_to_dtype, self.kernel,
-                        self.program_callables_info))
+                        self.callables_table))
 
             in_knl_callable = in_knl_callable.with_target(self.kernel.target)
 
             # storing the type specialized function so that it can be used for
             # later use
-            self.program_callables_info, new_function_id = (
-                    self.program_callables_info.with_callable(
+            self.callables_table, new_function_id = (
+                    self.callables_table.with_callable(
                         expr.function.function,
                         in_knl_callable))
 
@@ -538,8 +538,8 @@ class TypeInferenceMapper(CombineMapper):
                 in_knl_callable = ManglerCallable(
                         identifier, function_mangler, arg_id_to_dtype,
                         arg_id_to_descr, mangle_result.target_name)
-                self.program_callables_info, new_function_id = (
-                        self.program_callables_info.with_added_callable(
+                self.callables_table, new_function_id = (
+                        self.callables_table.with_added_callable(
                             expr.function, in_knl_callable))
 
                 if isinstance(expr, Call):
@@ -688,7 +688,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
 
     if var_name in kernel.all_params():
         return [kernel.index_dtype], [], {}, (
-                type_inf_mapper.program_callables_info)
+                type_inf_mapper.callables_table)
 
     from functools import partial
     debug = partial(_debug, kernel)
@@ -735,13 +735,13 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
     if not dtype_sets:
         return (
                 None, type_inf_mapper.symbols_with_unknown_types, None,
-                type_inf_mapper.program_callables_info)
+                type_inf_mapper.callables_table)
 
     result = type_inf_mapper.combine(dtype_sets)
 
     return (result, type_inf_mapper.symbols_with_unknown_types,
             type_inf_mapper.old_calls_to_new_calls,
-            type_inf_mapper.program_callables_info)
+            type_inf_mapper.callables_table)
 
 # }}}
 
@@ -768,7 +768,7 @@ class _DictUnionView:
 
 # {{{ infer_unknown_types
 
-def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
+def infer_unknown_types_for_a_single_kernel(kernel, callables_table,
         expect_completion=False):
     """Infer types on temporaries and arguments."""
 
@@ -831,7 +831,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
             new_temp_vars,
             new_arg_dict
             ])
-    type_inf_mapper = TypeInferenceMapper(kernel, program_callables_info,
+    type_inf_mapper = TypeInferenceMapper(kernel, callables_table,
             item_lookup)
 
     from loopy.symbolic import SubstitutionRuleExpander
@@ -867,11 +867,11 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
             debug("inferring type for %s %s", type(item).__name__, item.name)
 
             (result, symbols_with_unavailable_types,
-                    new_old_calls_to_new_calls, program_callables_info) = (
+                    new_old_calls_to_new_calls, callables_table) = (
                     _infer_var_type(
                             kernel, item.name, type_inf_mapper, subst_expander))
             type_inf_mapper = type_inf_mapper.copy(
-                    program_callables_info=program_callables_info)
+                    callables_table=callables_table)
 
             failed = not result
             if not failed:
@@ -979,7 +979,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
             raise NotImplementedError("Unknown instructions type %s." % (
                 type(insn).__name__))
 
-    program_callables_info = type_inf_mapper.program_callables_info
+    callables_table = type_inf_mapper.callables_table
     old_calls_to_new_calls.update(type_inf_mapper.old_calls_to_new_calls)
 
     end_time = time.time()
@@ -1003,39 +1003,39 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
         from loopy.check import check_functions_are_resolved
         check_functions_are_resolved(type_specialized_kernel)
 
-    return type_specialized_kernel, program_callables_info
+    return type_specialized_kernel, callables_table
 
 
 def infer_unknown_types(program, expect_completion=False):
     """Infer types on temporaries and arguments."""
 
-    program_callables_info = program.program_callables_info
+    callables_table = program.callables_table
 
     type_uninferred_knl_callable = (
-            program_callables_info[program.name])
+            callables_table[program.name])
     type_uninferred_root_kernel = type_uninferred_knl_callable.subkernel
 
-    old_callables_count = program_callables_info.callables_count
-    program_callables_info = (
-            program.program_callables_info.with_edit_callables_mode())
-    root_kernel, program_callables_info = (
+    old_callables_count = callables_table.callables_count
+    callables_table = (
+            program.callables_table.with_edit_callables_mode())
+    root_kernel, callables_table = (
             infer_unknown_types_for_a_single_kernel(
                 type_uninferred_root_kernel,
-                program_callables_info, expect_completion))
+                callables_table, expect_completion))
 
     type_inferred_knl_callable = type_uninferred_knl_callable.copy(
             subkernel=root_kernel)
 
-    program_callables_info, _ = (
-            program_callables_info.with_callable(
+    callables_table, _ = (
+            callables_table.with_callable(
                 program.name,
                 type_inferred_knl_callable))
 
-    program_callables_info = (
-            program_callables_info.with_exit_edit_callables_mode(
+    callables_table = (
+            callables_table.with_exit_edit_callables_mode(
                 old_callables_count))
 
-    return program.copy(program_callables_info=program_callables_info)
+    return program.copy(callables_table=callables_table)
 
 # }}}
 
@@ -1043,8 +1043,8 @@ def infer_unknown_types(program, expect_completion=False):
 # {{{ reduction expression helper
 
 def infer_arg_and_reduction_dtypes_for_reduction_expression(
-        kernel, expr, program_callables_info, unknown_types_ok):
-    type_inf_mapper = TypeInferenceMapper(kernel, program_callables_info)
+        kernel, expr, callables_table, unknown_types_ok):
+    type_inf_mapper = TypeInferenceMapper(kernel, callables_table)
     import loopy as lp
 
     if expr.is_tuple_typed:
@@ -1076,7 +1076,7 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
             for dt in reduction_dtypes)
 
     return tuple(arg_dtypes), reduction_dtypes, (
-            type_inf_mapper.program_callables_info)
+            type_inf_mapper.callables_table)
 
 # }}}
 

@@ -424,7 +424,7 @@ def parse_reduction_op(name):
 # {{{ reduction specific callables
 
 class ReductionCallable(ScalarCallable):
-    def with_types(self, arg_id_to_dtype, kernel, program_callables_info):
+    def with_types(self, arg_id_to_dtype, kernel, callables_table):
         scalar_dtype = arg_id_to_dtype[0]
         index_dtype = arg_id_to_dtype[1]
         result_dtypes = self.name.reduction_op.result_dtypes(kernel, scalar_dtype,
@@ -436,15 +436,15 @@ class ReductionCallable(ScalarCallable):
                 index_dtype) + "_op"
 
         return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-                name_in_target=name_in_target), program_callables_info
+                name_in_target=name_in_target), callables_table
 
-    def with_descr(self, arg_id_to_descr, program_callables_info):
+    def with_descr(self, arg_id_to_descr, callables_table):
         from loopy.library.kernel.function_interface import ValueArgDescriptor
         new_arg_id_to_descr = arg_id_to_descr.copy()
         new_arg_id_to_descr[-1] = ValueArgDescriptor()
         return (
                 self.copy(arg_id_to_descr=arg_id_to_descr),
-                program_callables_info)
+                callables_table)
 
     def generate_preambles(self, target):
         if isinstance(self.name, ArgExtOp):

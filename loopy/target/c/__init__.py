@@ -362,7 +362,7 @@ class CMathCallable(ScalarCallable):
     C-Target.
     """
 
-    def with_types(self, arg_id_to_dtype, caller_kernel, program_callables_info):
+    def with_types(self, arg_id_to_dtype, caller_kernel, callables_table):
         name = self.name
 
         if name in ["abs", "min", "max"]:
@@ -381,7 +381,7 @@ class CMathCallable(ScalarCallable):
                 # callable
                 return (
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                        program_callables_info)
+                        callables_table)
 
             dtype = arg_id_to_dtype[0]
             dtype = dtype.numpy_dtype
@@ -409,7 +409,7 @@ class CMathCallable(ScalarCallable):
                     self.copy(name_in_target=name,
                         arg_id_to_dtype={0: NumpyType(dtype), -1:
                             NumpyType(dtype)}),
-                    program_callables_info)
+                    callables_table)
 
         # binary functions
         if name in ["fmax", "fmin"]:
@@ -424,7 +424,7 @@ class CMathCallable(ScalarCallable):
                 # callable
                 return (
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                        program_callables_info)
+                        callables_table)
 
             dtype = np.find_common_type(
                 [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
@@ -449,11 +449,11 @@ class CMathCallable(ScalarCallable):
             return (
                     self.copy(name_in_target=name,
                         arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
-                    program_callables_info)
+                    callables_table)
 
         return (
                 self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                program_callables_info)
+                callables_table)
 
 
 def scope_c_math_functions(target, identifier):
@@ -893,7 +893,7 @@ class CASTBuilder(ASTBuilderBase):
 
         ecm = codegen_state.expression_to_code_mapper
         func_id = insn.expression.function.name
-        in_knl_callable = codegen_state.program_callables_info[func_id]
+        in_knl_callable = codegen_state.callables_table[func_id]
 
         if isinstance(in_knl_callable, ScalarCallable) and (
                 in_knl_callable.name_in_target == 'loopy_make_tuple'):

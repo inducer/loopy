@@ -169,14 +169,14 @@ class Random123Callable(ScalarCallable):
     Records information about for the random123 functions.
     """
 
-    def with_types(self, arg_id_to_dtype, kernel, program_callables_info):
+    def with_types(self, arg_id_to_dtype, kernel, callables_table):
 
         if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
                 arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
             # the types provided aren't mature enough to specialize the
             # callable
             return (self.copy(),
-                    program_callables_info)
+                    callables_table)
 
         name = self.name
         target = kernel.target
@@ -195,7 +195,7 @@ class Random123Callable(ScalarCallable):
             return (
                     self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
                         name_in_target=fn+"_gen"),
-                    program_callables_info)
+                    callables_table)
 
         elif name == fn + "_f32":
             new_arg_id_to_dtype = {-1: target.vector_dtype(NumpyType(np.float32),
@@ -203,7 +203,7 @@ class Random123Callable(ScalarCallable):
                     -2: ctr_dtype, 0: ctr_dtype, 1:
                     key_dtype}
             return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-                    name_in_target=name), program_callables_info
+                    name_in_target=name), callables_table
 
         elif name == fn + "_f64":
             new_arg_id_to_dtype = {-1: target.vector_dtype(NumpyType(np.float64),
@@ -211,10 +211,10 @@ class Random123Callable(ScalarCallable):
                     -2: ctr_dtype, 0: ctr_dtype, 1:
                     key_dtype}
             return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-                    name_in_target=name), program_callables_info
+                    name_in_target=name), callables_table
 
         return (self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                program_callables_info)
+                callables_table)
 
     def generate_preambles(self, target):
         rng_variant = FUNC_NAMES_TO_RNG[self.name]

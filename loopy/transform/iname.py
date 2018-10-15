@@ -1095,7 +1095,7 @@ def get_iname_duplication_options_for_single_kernel(knl, use_boostable_into=Fals
 
 
 def get_iname_duplication_options(program, use_boostable_into=False):
-    for in_knl_callable in program.program_callables_info.values():
+    for in_knl_callable in program.callables_table.values():
         if isinstance(in_knl_callable, CallableKernel):
             for option in get_iname_duplication_options_for_single_kernel(
                     in_knl_callable.subkernel, use_boostable_into):
@@ -1121,7 +1121,7 @@ def has_schedulable_iname_nesting_for_single_kernel(knl):
 def has_schedulable_iname_nesting(program):
     return all(has_schedulable_iname_nesting_for_single_kernel(
         in_knl_callable.subkernel) for in_knl_callable in
-        program.program_callables_info.values() if isinstance(in_knl_callable,
+        program.callables_table.values() if isinstance(in_knl_callable,
             CallableKernel))
 
 # }}}

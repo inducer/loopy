@@ -80,7 +80,7 @@ class TargetBase(object):
     def preprocess(self, kernel):
         return kernel
 
-    def pre_codegen_check(self, kernel, program_callables_info):
+    def pre_codegen_check(self, kernel, callables_table):
         pass
 
     # }}}

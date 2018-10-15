@@ -123,7 +123,7 @@ _CUDA_SPECIFIC_FUNCTIONS = {
 class CudaCallable(ScalarCallable):
 
     def cuda_with_types(self, arg_id_to_dtype, caller_kernel,
-            program_callables_info):
+            callables_table):
 
         name = self.name
 
@@ -138,7 +138,7 @@ class CudaCallable(ScalarCallable):
                 # callable
                 return (
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                        program_callables_info)
+                        callables_table)
 
             dtype = arg_id_to_dtype[0]
             scalar_dtype, offset, field_name = dtype.numpy_dtype.fields["x"]
@@ -146,7 +146,7 @@ class CudaCallable(ScalarCallable):
                     self.copy(name_in_target=name, arg_id_to_dtype={-1:
                         NumpyType(scalar_dtype),
                         0: dtype, 1: dtype}),
-                    program_callables_info)
+                    callables_table)
 
         if name in _CUDA_SPECIFIC_FUNCTIONS:
             num_args = _CUDA_SPECIFIC_FUNCTIONS[name]
@@ -161,7 +161,7 @@ class CudaCallable(ScalarCallable):
                     # callable
                     return (
                             self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                            program_callables_info)
+                            callables_table)
 
             dtype = np.find_common_type(
                     [], [dtype.numpy_dtype for id, dtype in
@@ -177,11 +177,11 @@ class CudaCallable(ScalarCallable):
             return (
                     self.copy(name_in_target=name,
                         arg_id_to_dtype=updated_arg_id_to_dtype),
-                    program_callables_info)
+                    callables_table)
 
         return (
                 self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                program_callables_info)
+                callables_table)
 
 
 def scope_cuda_functions(target, identifier):
@@ -303,7 +303,7 @@ class CUDACASTBuilder(CASTBuilder):
                 codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
                         get_insn_ids_for_block_at(
                             codegen_state.kernel.schedule, schedule_index),
-                        codegen_state.program_callables_info)
+                        codegen_state.callables_table)
 
         from loopy.symbolic import get_dependencies
         if not get_dependencies(local_grid_size):

@@ -235,9 +235,9 @@ class TemporarySaver(object):
         def new_shape(self):
             return self.hw_dims + self.non_hw_dims
 
-    def __init__(self, kernel, program_callables_info):
+    def __init__(self, kernel, callables_table):
         self.kernel = kernel
-        self.program_callables_info = program_callables_info
+        self.callables_table = callables_table
         self.var_name_gen = kernel.get_var_name_generator()
         self.insn_name_gen = kernel.get_instruction_id_generator()
 
@@ -441,7 +441,7 @@ class TemporarySaver(object):
 
         group_sizes, local_sizes = (
             self.kernel.get_grid_sizes_for_insn_ids_as_exprs(accessor_insn_ids,
-                self.program_callables_info))
+                self.callables_table))
 
         if temporary.address_space == lp.AddressSpace.LOCAL:
             # Elide local axes in the save slot for local temporaries.
@@ -630,7 +630,7 @@ class TemporarySaver(object):
                     kernel = lp.add_nosync(kernel, "global", source, sink)
 
         from loopy.kernel.tools import assign_automatic_axes
-        return assign_automatic_axes(kernel, self.program_callables_info)
+        return assign_automatic_axes(kernel, self.callables_table)
 
     def save(self, temporary, subkernel):
         self.save_or_reload_impl(temporary, subkernel, "save")
@@ -754,12 +754,12 @@ def save_and_reload_temporaries(program):
         program = lp.preprocess_program(program)
         from loopy.schedule import get_one_scheduled_kernel
         knl = get_one_scheduled_kernel(program.root_kernel,
-                program.program_callables_info)
+                program.callables_table)
 
     assert knl.schedule is not None
 
     liveness = LivenessAnalysis(knl)
-    saver = TemporarySaver(knl, program.program_callables_info)
+    saver = TemporarySaver(knl, program.callables_table)
 
     from loopy.schedule.tools import (
         temporaries_read_in_subkernel, temporaries_written_in_subkernel)

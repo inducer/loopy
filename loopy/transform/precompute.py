@@ -261,7 +261,7 @@ class _not_provided(object):  # noqa: N801
     pass
 
 
-def precompute_for_single_kernel(kernel, program_callables_info, subst_use,
+def precompute_for_single_kernel(kernel, callables_table, subst_use,
         sweep_inames=[], within=None, storage_axes=None, temporary_name=None,
         precompute_inames=None, precompute_outer_inames=None,
         storage_axis_to_tag={},
@@ -1047,7 +1047,7 @@ def precompute_for_single_kernel(kernel, program_callables_info, subst_use,
 
     if filter_iname_tags_by_type(new_iname_to_tag.values(), AutoFitLocalIndexTag):
         from loopy.kernel.tools import assign_automatic_axes
-        kernel = assign_automatic_axes(kernel, program_callables_info)
+        kernel = assign_automatic_axes(kernel, callables_table)
 
     return kernel
 
@@ -1056,10 +1056,10 @@ def precompute(program, *args, **kwargs):
     assert isinstance(program, Program)
 
     new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
+    for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             new_subkernel = precompute_for_single_kernel(
-                    in_knl_callable.subkernel, program.program_callables_info,
+                    in_knl_callable.subkernel, program.callables_table,
                     *args, **kwargs)
             in_knl_callable = in_knl_callable.copy(
                     subkernel=new_subkernel)
@@ -1072,8 +1072,8 @@ def precompute(program, *args, **kwargs):
 
         new_resolved_functions[func_id] = in_knl_callable
 
-    new_program_callables_info = program.program_callables_info.copy(
+    new_callables_table = program.callables_table.copy(
             resolved_functions=new_resolved_functions)
-    return program.copy(program_callables_info=new_program_callables_info)
+    return program.copy(callables_table=new_callables_table)
 
 # vim: foldmethod=marker

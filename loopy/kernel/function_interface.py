@@ -157,7 +157,7 @@ class GridOverrideForCalleeKernel(ImmutableRecord):
         self.local_size = local_size
         self.global_size = global_size
 
-    def __call__(self, insn_ids, program_callables_info, ignore_auto=True):
+    def __call__(self, insn_ids, callables_table, ignore_auto=True):
         return self.local_size, self.global_size
 
 # }}}
@@ -214,7 +214,7 @@ class InKernelCallable(ImmutableRecord):
 
     update_persistent_hash = LoopKernel.update_persistent_hash
 
-    def with_types(self, arg_id_to_dtype, caller_kernel, program_callables_info):
+    def with_types(self, arg_id_to_dtype, caller_kernel, callables_table):
         """
         :arg arg_id_to_type: a mapping from argument identifiers
             (integers for positional arguments, names for keyword
@@ -234,7 +234,7 @@ class InKernelCallable(ImmutableRecord):
 
         raise NotImplementedError()
 
-    def with_descrs(self, arg_id_to_descr, program_callables_info):
+    def with_descrs(self, arg_id_to_descr, callables_table):
         """
         :arg arg_id_to_descr: a mapping from argument identifiers
             (integers for positional arguments, names for keyword
@@ -363,16 +363,16 @@ class ScalarCallable(InKernelCallable):
         return (self.arg_id_to_dtype, self.arg_id_to_descr,
                 self.name_in_target)
 
-    def with_types(self, arg_id_to_dtype, caller_kernel, program_callables_info):
+    def with_types(self, arg_id_to_dtype, caller_kernel, callables_table):
         raise LoopyError("No type inference information present for "
                 "the function %s." % (self.name))
 
-    def with_descrs(self, arg_id_to_descr, program_callables_info):
+    def with_descrs(self, arg_id_to_descr, callables_table):
 
         arg_id_to_descr[-1] = ValueArgDescriptor()
         return (
                 self.copy(arg_id_to_descr=arg_id_to_descr),
-                program_callables_info)
+                callables_table)
 
     def with_hw_axes_sizes(self, global_size, local_size):
         return self.copy()
@@ -564,7 +564,7 @@ class ManglerCallable(ScalarCallable):
         return (self.name, self.function_mangler, self.arg_id_to_dtype,
                 self.arg_id_to_descr, self.name_in_target)
 
-    def with_types(self, arg_id_to_dtype, kernel, program_callables_info):
+    def with_types(self, arg_id_to_dtype, kernel, callables_table):
         if self.arg_id_to_dtype is not None:
             # specializing an already specialized function.
             for arg_id, dtype in arg_id_to_dtype.items():
@@ -588,7 +588,7 @@ class ManglerCallable(ScalarCallable):
             return (
                     self.copy(name_in_target=mangle_result.target_name,
                         arg_id_to_dtype=new_arg_id_to_dtype),
-                    program_callables_info)
+                    callables_table)
         else:
             # The function mangler does not agree with the arg id to dtypes
             # provided. Indicating that is illegal.

@@ -9,9 +9,9 @@ class GridOverride(object):
         self.clean = clean
         self.vecsize = vecsize
 
-    def __call__(self, insn_ids, program_callables_info, ignore_auto=True):
+    def __call__(self, insn_ids, callables_table, ignore_auto=True):
         gsize, _ = self.clean.get_grid_sizes_for_insn_ids(insn_ids,
-                program_callables_info, ignore_auto)
+                callables_table, ignore_auto)
         return gsize, (self.vecsize,)
 
 # }}}
@@ -139,14 +139,14 @@ class SeparateTemporariesPreambleTestPreambleGenerator(
 
 class Log2Callable(lp.ScalarCallable):
 
-    def with_types(self, arg_id_to_dtype, kernel, program_callables_info):
+    def with_types(self, arg_id_to_dtype, kernel, callables_table):
 
         if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
             # the types provided aren't mature enough to specialize the
             # callable
             return (
                     self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                    program_callables_info)
+                    callables_table)
 
         dtype = arg_id_to_dtype[0].numpy_dtype
 
@@ -168,7 +168,7 @@ class Log2Callable(lp.ScalarCallable):
                 self.copy(name_in_target=name_in_target,
                     arg_id_to_dtype={0: NumpyType(dtype), -1:
                         NumpyType(dtype)}),
-                program_callables_info)
+                callables_table)
 
 
 def register_log2_lookup(target, identifier):

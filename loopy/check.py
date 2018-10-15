@@ -206,7 +206,7 @@ def check_multiple_tags_allowed(kernel):
                                  "tags: {1}".format(iname, tags))
 
 
-def check_for_double_use_of_hw_axes(kernel, program_callables_info):
+def check_for_double_use_of_hw_axes(kernel, callables_table):
     from loopy.kernel.data import UniqueTag
     from loopy.kernel.instruction import CallInstruction
     from loopy.kernel.function_interface import CallableKernel
@@ -224,7 +224,7 @@ def check_for_double_use_of_hw_axes(kernel, program_callables_info):
 
         # check usage of iname tags in the callee kernel
         if isinstance(insn, CallInstruction):
-            in_knl_callable = program_callables_info[
+            in_knl_callable = callables_table[
                     insn.expression.function.name]
             if isinstance(in_knl_callable, CallableKernel):
                 # check for collision in iname_tag keys in the instruction
@@ -712,13 +712,13 @@ def check_variable_access_ordered(kernel):
 # }}}
 
 
-def pre_schedule_checks(kernel, program_callables_info):
+def pre_schedule_checks(kernel, callables_table):
     try:
         logger.debug("%s: pre-schedule check: start" % kernel.name)
 
         check_for_duplicate_insn_ids(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
-        check_for_double_use_of_hw_axes(kernel, program_callables_info)
+        check_for_double_use_of_hw_axes(kernel, callables_table)
         check_insn_attributes(kernel)
         check_loop_priority_inames_known(kernel)
         check_multiple_tags_allowed(kernel)
@@ -746,7 +746,7 @@ def pre_schedule_checks(kernel, program_callables_info):
 
 # {{{ check for unused hw axes
 
-def _check_for_unused_hw_axes_in_kernel_chunk(kernel, program_callables_info,
+def _check_for_unused_hw_axes_in_kernel_chunk(kernel, callables_table,
         sched_index=None):
     from loopy.schedule import (CallKernel, RunInstruction,
             Barrier, EnterLoop, LeaveLoop, ReturnFromKernel,
@@ -763,7 +763,7 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, program_callables_info,
         _, past_end_i = gather_schedule_block(kernel.schedule, sched_index)
         group_size, local_size = kernel.get_grid_sizes_for_insn_ids_as_exprs(
                 get_insn_ids_for_block_at(kernel.schedule, sched_index),
-                program_callables_info)
+                callables_table)
 
         group_axes = set(ax for ax, length in enumerate(group_size))
         local_axes = set(ax for ax, length in enumerate(local_size))
@@ -781,7 +781,7 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, program_callables_info,
         sched_item = kernel.schedule[i]
         if isinstance(sched_item, CallKernel):
             i = _check_for_unused_hw_axes_in_kernel_chunk(kernel,
-                    program_callables_info, i)
+                    callables_table, i)
 
         elif isinstance(sched_item, RunInstruction):
             insn = kernel.id_to_insn[sched_item.insn_id]
@@ -832,10 +832,10 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, program_callables_info,
     return past_end_i
 
 
-def check_for_unused_hw_axes_in_insns(kernel, program_callables_info):
+def check_for_unused_hw_axes_in_insns(kernel, callables_table):
     if kernel.schedule:
         _check_for_unused_hw_axes_in_kernel_chunk(kernel,
-                program_callables_info)
+                callables_table)
 
 # }}}
 
@@ -989,15 +989,15 @@ def check_that_shapes_and_strides_are_arguments(kernel):
 # }}}
 
 
-def pre_codegen_checks(kernel, program_callables_info):
+def pre_codegen_checks(kernel, callables_table):
     try:
         logger.debug("pre-codegen check %s: start" % kernel.name)
 
-        check_for_unused_hw_axes_in_insns(kernel, program_callables_info)
+        check_for_unused_hw_axes_in_insns(kernel, callables_table)
         check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
         check_that_temporaries_are_defined_in_subkernels_where_used(kernel)
         check_that_all_insns_are_scheduled(kernel)
-        kernel.target.pre_codegen_check(kernel, program_callables_info)
+        kernel.target.pre_codegen_check(kernel, callables_table)
         check_that_shapes_and_strides_are_arguments(kernel)
 
         logger.debug("pre-codegen check %s: done" % kernel.name)

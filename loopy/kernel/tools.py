@@ -755,7 +755,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 # }}}
 
 
-def assign_automatic_axes(kernel, program_callables_info, axis=0, local_size=None):
+def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
     logger.debug("%s: assign automatic axes" % kernel.name)
     # TODO: do the tag removal rigorously, might be easier after switching
     # to set() from tuple()
@@ -769,7 +769,7 @@ def assign_automatic_axes(kernel, program_callables_info, axis=0, local_size=Non
 
     if local_size is None:
         _, local_size = kernel.get_grid_size_upper_bounds_as_exprs(
-                program_callables_info, ignore_auto=True)
+                callables_table, ignore_auto=True)
 
     # {{{ axis assignment helper function
 
@@ -797,7 +797,7 @@ def assign_automatic_axes(kernel, program_callables_info, axis=0, local_size=Non
 
             return assign_automatic_axes(
                     kernel.copy(iname_to_tags=new_iname_to_tags),
-                    program_callables_info,
+                    callables_table,
                     axis=recursion_axis)
 
         if axis is None:
@@ -849,7 +849,7 @@ def assign_automatic_axes(kernel, program_callables_info, axis=0, local_size=Non
                             iname, inner_length=local_size[axis],
                             outer_tag=None, inner_tag=new_tag,
                             do_tagged_check=False),
-                        program_callables_info=program_callables_info,
+                        callables_table=callables_table,
                         axis=recursion_axis, local_size=local_size)
 
         if not kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase):
@@ -871,7 +871,7 @@ def assign_automatic_axes(kernel, program_callables_info, axis=0, local_size=Non
             del new_iname_to_tags[iname]
 
         return assign_automatic_axes(kernel.copy(iname_to_tags=new_iname_to_tags),
-                program_callables_info, axis=recursion_axis, local_size=local_size)
+                callables_table, axis=recursion_axis, local_size=local_size)
 
     # }}}
 
@@ -940,7 +940,7 @@ def assign_automatic_axes(kernel, program_callables_info, axis=0, local_size=Non
         return kernel
     else:
         return assign_automatic_axes(kernel,
-                program_callables_info=program_callables_info, axis=axis+1,
+                callables_table=callables_table, axis=axis+1,
                 local_size=local_size)
 
 # }}}

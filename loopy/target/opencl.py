@@ -172,7 +172,7 @@ class OpenCLCallable(ScalarCallable):
     :class:`loopy.target.c.CMathCallable`.
     """
 
-    def with_types(self, arg_id_to_dtype, caller_kernel, program_callables_info):
+    def with_types(self, arg_id_to_dtype, caller_kernel, callables_table):
         name = self.name
 
         if name in ["max", "min"]:
@@ -182,7 +182,7 @@ class OpenCLCallable(ScalarCallable):
             if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype:
                 return (
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                        program_callables_info)
+                        callables_table)
 
             dtype = np.find_common_type(
                     [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
@@ -195,7 +195,7 @@ class OpenCLCallable(ScalarCallable):
                 return (
                         self.copy(name_in_target=name,
                             arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
-                        program_callables_info)
+                        callables_table)
             else:
                 # Unsupported type.
                 raise LoopyError("%s function not supported for the types %s" %
@@ -212,14 +212,14 @@ class OpenCLCallable(ScalarCallable):
                 # callable
                 return (
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                        program_callables_info)
+                        callables_table)
 
             dtype = arg_id_to_dtype[0]
             scalar_dtype, offset, field_name = dtype.numpy_dtype.fields["s0"]
             return (
                     self.copy(name_in_target=name, arg_id_to_dtype={-1:
                         NumpyType(scalar_dtype), 0: dtype, 1: dtype}),
-                    program_callables_info)
+                    callables_table)
 
         if name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
             num_args = _CL_SIMPLE_MULTI_ARG_FUNCTIONS[name]
@@ -234,7 +234,7 @@ class OpenCLCallable(ScalarCallable):
                     # callable
                     return (
                             self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                            program_callables_info)
+                            callables_table)
 
             dtype = np.find_common_type(
                     [], [dtype.numpy_dtype for id, dtype in
@@ -250,7 +250,7 @@ class OpenCLCallable(ScalarCallable):
             return (
                     self.copy(name_in_target=name,
                         arg_id_to_dtype=updated_arg_id_to_dtype),
-                    program_callables_info)
+                    callables_table)
 
         if name in VECTOR_LITERAL_FUNCS:
             base_tp_name, dtype, count = VECTOR_LITERAL_FUNCS[name]
@@ -266,7 +266,7 @@ class OpenCLCallable(ScalarCallable):
                     # callable
                     return (
                             self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                            program_callables_info)
+                            callables_table)
 
             updated_arg_id_to_dtype = dict((id, NumpyType(dtype)) for id in
                     range(count))
@@ -276,13 +276,13 @@ class OpenCLCallable(ScalarCallable):
             return (
                     self.copy(name_in_target="(%s%d) " % (base_tp_name, count),
                         arg_id_to_dtype=updated_arg_id_to_dtype),
-                    program_callables_info)
+                    callables_table)
 
         # does not satisfy any of the conditions needed for specialization.
         # hence just returning a copy of the callable.
         return (
                 self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                program_callables_info)
+                callables_table)
 
 
 def scope_opencl_functions(target, identifier):
@@ -479,7 +479,7 @@ class OpenCLCASTBuilder(CASTBuilder):
         _, local_sizes = codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
                 get_insn_ids_for_block_at(
                     codegen_state.kernel.schedule, schedule_index),
-                codegen_state.program_callables_info)
+                codegen_state.callables_table)
 
         from loopy.symbolic import get_dependencies
         if not get_dependencies(local_sizes):

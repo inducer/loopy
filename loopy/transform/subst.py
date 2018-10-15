@@ -510,7 +510,7 @@ def find_rules_matching(knl, pattern):
 
 def find_one_rule_matching(program, pattern):
     rules = []
-    for in_knl_callable in program.program_callables_info.values():
+    for in_knl_callable in program.callables_table.values():
         if isinstance(in_knl_callable, CallableKernel):
             knl = in_knl_callable.subkernel
             rules.extend(find_rules_matching(knl, pattern))
