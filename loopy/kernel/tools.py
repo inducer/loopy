@@ -1866,7 +1866,7 @@ def find_aliasing_equivalence_classes(kernel):
 
 # {{{ direction helper tools
 
-def infer_arg_is_output_only(kernel):
+def infer_args_are_output_only(kernel):
     """
     Returns a copy of *kernel* with the attribute ``is_output_only`` set.
 

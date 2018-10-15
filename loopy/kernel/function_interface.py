@@ -111,8 +111,8 @@ def get_kw_pos_association(kernel):
     Returns a tuple of ``(kw_to_pos, pos_to_kw)`` for the arguments in
     *kernel*.
     """
-    from loopy.kernel.tools import infer_arg_is_output_only
-    kernel = infer_arg_is_output_only(kernel)
+    from loopy.kernel.tools import infer_args_are_output_only
+    kernel = infer_args_are_output_only(kernel)
     kw_to_pos = {}
     pos_to_kw = {}
 
