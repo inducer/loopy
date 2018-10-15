@@ -28,7 +28,7 @@ from six.moves import zip
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 
-from loopy.kernel import LoopKernel
+from loopy.tools import update_persistent_hash
 
 __doc__ = """
 
@@ -49,7 +49,7 @@ __doc__ = """
 class ValueArgDescriptor(ImmutableRecord):
     hash_fields = ()
 
-    update_persistent_hash = LoopKernel.update_persistent_hash
+    update_persistent_hash = update_persistent_hash
 
 
 class ArrayArgDescriptor(ImmutableRecord):
@@ -99,7 +99,7 @@ class ArrayArgDescriptor(ImmutableRecord):
             "address_space",
             "dim_tags")
 
-    update_persistent_hash = LoopKernel.update_persistent_hash
+    update_persistent_hash =update_persistent_hash
 
 # }}}
 
@@ -171,7 +171,8 @@ class InKernelCallable(ImmutableRecord):
 
     .. attribute:: name
 
-        The name of the callable which can be encountered within a kernel.
+        The name of the callable which can be encountered within expressions in
+        a kernel.
 
     .. attribute:: arg_id_to_dtype
 
@@ -212,7 +213,7 @@ class InKernelCallable(ImmutableRecord):
     def __getinitargs__(self):
         return (self.arg_id_to_dtype, self.arg_id_to_descr)
 
-    update_persistent_hash = LoopKernel.update_persistent_hash
+    update_persistent_hash = update_persistent_hash
 
     def with_types(self, arg_id_to_dtype, caller_kernel, callables_table):
         """

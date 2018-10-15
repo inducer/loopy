@@ -43,6 +43,17 @@ else:
         return isinstance(obj, (int, np.integer))
 
 
+def update_persistent_hash(obj, key_hash, key_builder):
+    """
+    Custom hash computation function for use with
+    :class:`pytools.persistent_dict.PersistentDict`.
+
+    Only works in conjunction with :class:`loopy.tools.KeyBuilder`.
+    """
+    for field_name in obj.hash_fields:
+        key_builder.rec(key_hash, getattr(obj, field_name))
+
+
 # {{{ custom KeyBuilder subclass
 
 class PersistentHashWalkMapper(LoopyWalkMapper, PersistentHashWalkMapperBase):

@@ -38,7 +38,7 @@ import re
 from pytools import UniqueNameGenerator, generate_unique_names
 
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
-from loopy.tools import natsorted
+from loopy.tools import natsorted, update_persistent_hash
 from loopy.diagnostic import StaticValueFindingError
 from loopy.kernel.data import filter_iname_tags_by_type
 from warnings import warn
@@ -1476,14 +1476,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             "symbol_manglers",
             )
 
-    def update_persistent_hash(self, key_hash, key_builder):
-        """Custom hash computation function for use with
-        :class:`pytools.persistent_dict.PersistentDict`.
-
-        Only works in conjunction with :class:`loopy.tools.KeyBuilder`.
-        """
-        for field_name in self.hash_fields:
-            key_builder.rec(key_hash, getattr(self, field_name))
+    update_persistent_hash = update_persistent_hash
 
     def __hash__(self):
         from loopy.tools import LoopyKeyBuilder

@@ -31,7 +31,7 @@ import numpy as np
 from loopy.symbolic import FunctionIdentifier
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
-from loopy.kernel import LoopKernel
+from loopy.tools import update_persistent_hash
 
 
 class ReductionOperation(object):
@@ -227,7 +227,7 @@ class ReductionOpFunction(FunctionIdentifier):
     hash_fields = (
             "reduction_op",)
 
-    update_persistent_hash = LoopKernel.update_persistent_hash
+    update_persistent_hash = update_persistent_hash
 
 # }}}
 
@@ -285,7 +285,7 @@ class SegmentedSumReductionOperation(_SegmentedScalarReductionOperation):
             "which",
             "op",)
 
-    update_persistent_hash = LoopKernel.update_persistent_hash
+    update_persistent_hash = update_persistent_hash
 
 
 class SegmentedProductReductionOperation(_SegmentedScalarReductionOperation):
@@ -298,7 +298,7 @@ class SegmentedProductReductionOperation(_SegmentedScalarReductionOperation):
             "op",
             "base_reduction_class",)
 
-    update_persistent_hash = LoopKernel.update_persistent_hash
+    update_persistent_hash = update_persistent_hash
 
 # }}}
 
@@ -354,7 +354,7 @@ class ArgMaxReductionOperation(_ArgExtremumReductionOperation):
             "update_comparison",
             "neutral_sign",)
 
-    update_persistent_hash = LoopKernel.update_persistent_hash
+    update_persistent_hash = update_persistent_hash
 
 
 class ArgMinReductionOperation(_ArgExtremumReductionOperation):
@@ -366,7 +366,7 @@ class ArgMinReductionOperation(_ArgExtremumReductionOperation):
             "update_comparison",
             "neutral_sign",)
 
-    update_persistent_hash = LoopKernel.update_persistent_hash
+    update_persistent_hash = update_persistent_hash
 
 # }}}
 

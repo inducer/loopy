@@ -39,6 +39,7 @@ from loopy.diagnostic import LoopyError
 from loopy.library.reduction import ReductionOpFunction
 
 from loopy.kernel import LoopKernel
+from loopy.tools import update_persistent_hash
 from collections import Counter
 from pymbolic.primitives import Call, CallWithKwargs
 
@@ -253,7 +254,7 @@ class Program(ImmutableRecord):
             "callables_table",
             "target",)
 
-    update_persistent_hash = LoopKernel.update_persistent_hash
+    update_persistent_hash = update_persistent_hash
 
     def copy(self, **kwargs):
         if 'target' in kwargs:
@@ -611,7 +612,7 @@ class CallablesTable(ImmutableRecord):
             self.is_being_edited
             ))
 
-    update_persistent_hash = LoopKernel.update_persistent_hash
+    update_persistent_hash = update_persistent_hash
 
     @property
     @memoize_method
@@ -620,8 +621,6 @@ class CallablesTable(ImmutableRecord):
         Returns an instance of :class:`collection.Counter` representing the number
         of times the callables is called in callables_table.
         """
-        # should raise an error if there are more than  one root kernels(which is
-        # illegal)
         root_kernel_name, = [in_knl_callable.subkernel.name for in_knl_callable
                 in self.values() if
                 isinstance(in_knl_callable, CallableKernel) and
@@ -737,7 +736,7 @@ class CallablesTable(ImmutableRecord):
 
     def with_edit_callables_mode(self):
         """
-        Initiates *self* for a walk traversal through all the callables.
+        Returns a copy of *self* for a walk traversal through all the callables.
         """
         return self.copy(
                 is_being_edited=True)
