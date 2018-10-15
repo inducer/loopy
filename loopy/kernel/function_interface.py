@@ -111,8 +111,6 @@ def get_kw_pos_association(kernel):
     Returns a tuple of ``(kw_to_pos, pos_to_kw)`` for the arguments in
     *kernel*.
     """
-    from loopy.kernel.tools import infer_args_are_output_only
-    kernel = infer_args_are_output_only(kernel)
     kw_to_pos = {}
     pos_to_kw = {}
 
@@ -136,7 +134,7 @@ class GridOverrideForCalleeKernel(ImmutableRecord):
     """
     Helper class to set the
     :attr:`loopy.kernel.LoopKernel.override_get_grid_size_for_insn_ids` of the
-    callee kernels. Refer
+    callee kernels. Refer to
     :func:`loopy.kernel.function_interface.GridOverrideForCalleeKernel.__call__`,
     :func:`loopy.kernel.function_interface.CallbleKernel.with_hw_axes_sizes`.
 
@@ -301,7 +299,8 @@ class InKernelCallable(ImmutableRecord):
                 self.arg_id_to_descr is not None)
 
     def generate_preambles(self, target):
-        """ Yields the target specific preamble.
+        """
+        Yields the target specific preamble.
         """
         raise NotImplementedError()
 
