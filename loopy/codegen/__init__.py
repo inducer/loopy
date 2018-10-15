@@ -193,6 +193,8 @@ class CodeGenerationState(object):
     .. attribute:: schedule_index_end
 
     .. attribute:: program_callables_info
+
+        An instance of :class:`loopy.ProgramCallablesInfo`.
     """
 
     def __init__(self, kernel,
@@ -386,6 +388,10 @@ class PreambleInfo(ImmutableRecord):
 def generate_code_for_a_single_kernel(kernel, program_callables_info):
     """
     :returns: a :class:`CodeGenerationResult`
+
+    :param kernel: An instance of :class:`loopy.LoopKernel`.
+    :param program_callables_info: An instance of
+        :class:`loopy.ProgramCallablesInfo`.
     """
 
     from loopy.kernel import KernelState
@@ -529,6 +535,11 @@ def generate_code_for_a_single_kernel(kernel, program_callables_info):
 
 
 def generate_code_v2(program):
+    """
+    Returns an instance of :class:`CodeGenerationResult`.
+
+    :param program: An instance of :class:`loopy.Program`.
+    """
     from loopy.kernel import LoopKernel
     from loopy.program import make_program_from_kernel
 

@@ -1000,8 +1000,8 @@ def infer_unknown_types_for_a_single_kernel(kernel, program_callables_info,
     if expect_completion:
         # if completion is expected, then it is important that all the
         # callables are scoped.
-        from loopy.check import check_functions_are_scoped
-        check_functions_are_scoped(type_specialized_kernel)
+        from loopy.check import check_functions_are_resolved
+        check_functions_are_resolved(type_specialized_kernel)
 
     return type_specialized_kernel, program_callables_info
 

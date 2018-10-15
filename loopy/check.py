@@ -98,7 +98,7 @@ class UnscopedCallCollector(CombineMapper):
     map_type_cast = map_constant
 
 
-def check_functions_are_scoped(kernel):
+def check_functions_are_resolved(kernel):
     """ Checks if all the calls in the instruction expression have been scoped,
     otherwise indicates to what all calls we await signature. Refer
     :class:`loopy.symbolic.ResolvedFunction` for a detailed explanation of a
@@ -120,7 +120,7 @@ def check_functions_are_scoped(kernel):
             pass
         else:
             raise NotImplementedError(
-                    "Unknown type of instruction %s" % type(insn).__name__)
+                    "Unsupported instruction type %s." % type(insn).__name__)
 
 # }}}
 
