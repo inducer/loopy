@@ -2918,8 +2918,10 @@ def test_backwards_dep_printing_and_error():
             b[i] = b[i] + c[i]                                 {id=insn4, dep=insn3}
             d[i] = 7*a[i ]                                     {id=insn5, dep=insn4}
             a[i] = a[i] + d[i]                                 {id=insn6, dep=insn5}
-            """, [lp.GlobalArg('a, b', dtype=np.float64),
-                ...], lang_version=(2018, 2))
+            """, [
+                lp.GlobalArg('a, b', dtype=np.float64),
+                "..."
+            ])
 
     # Used to crash with KeyError
     print(knl)
