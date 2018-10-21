@@ -1241,7 +1241,7 @@ def draw_dependencies_as_unicode_arrows(
         for dep in insn.depends_on:
             reverse_deps.setdefault(dep, set()).add(insn.id)
 
-    # mapping of (from_id, to_id) tuples to column_index
+    # mapping of to_id tuples to column_index
     dep_to_column = {}
 
     # {{{ find column assignments
@@ -1318,7 +1318,7 @@ def draw_dependencies_as_unicode_arrows(
 
             elif insn.id in starts:
                 starts.remove(insn.id)
-                if starts:
+                if starts or pointed_at_insn_id not in processed_ids:
                     # will continue downward
                     row[col] = do_flag_downward(u"├", pointed_at_insn_id)
 
