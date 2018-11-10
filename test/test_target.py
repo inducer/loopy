@@ -358,6 +358,23 @@ def test_ispc_streaming_stores():
     lp.generate_code_v2(knl).all_code()
 
 
+def test_cuda_short_vector():
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<n }",
+        "out[i] = 2*a[i]",
+        target=lp.CudaTarget())
+
+    knl = lp.set_options(knl, write_code=True)
+    knl = lp.split_iname(knl, "i", 4, slabs=(0, 1), inner_tag="vec")
+    knl = lp.split_array_axis(knl, "a,out", axis_nr=0, count=4)
+    knl = lp.tag_array_axes(knl, "a,out", "C,vec")
+
+    knl = lp.set_options(knl, write_wrapper=True)
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+
+    print(lp.generate_code_v2(knl).device_code())
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
