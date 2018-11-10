@@ -225,22 +225,28 @@ def test_global_parallel_reduction(ctx_factory, size):
             "{[i]: 0 <= i < n }",
             """
             # Using z[0] instead of z works around a bug in ancient PyOpenCL.
-            z[0] = sum(i, i/13)
+            z[0] = sum(i, a[i])
             """)
 
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
     ref_knl = knl
 
     gsize = 128
     knl = lp.split_iname(knl, "i", gsize * 20)
-    knl = lp.split_iname(knl, "i_inner", gsize, outer_tag="l.0")
-    knl = lp.split_reduction_inward(knl, "i_inner_inner")
+    knl = lp.split_iname(knl, "i_inner", gsize, inner_tag="l.0")
+    knl = lp.split_reduction_outward(knl, "i_outer")
     knl = lp.split_reduction_inward(knl, "i_inner_outer")
     from loopy.transform.data import reduction_arg_to_subst_rule
     knl = reduction_arg_to_subst_rule(knl, "i_outer")
+
     knl = lp.precompute(knl, "red_i_outer_arg", "i_outer",
             temporary_scope=lp.temp_var_scope.GLOBAL,
             default_tag="l.auto")
     knl = lp.realize_reduction(knl)
+    knl = lp.tag_inames(knl, "i_outer_0:g.0")
+
+    # Keep the i_outer accumulator on the  correct (lower) side of the barrier,
+    # otherwise there will be useless save/reload code generated.
     knl = lp.add_dependency(
             knl, "writes:acc_i_outer",
             "id:red_i_outer_arg_barrier")
