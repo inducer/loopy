@@ -125,7 +125,7 @@ def adjust_local_temp_var_storage(kernel, device):
 
             new_storage_shape = storage_shape
 
-        new_temp_vars[temp_var.name] = temp_var.copy(storage_shape=new_storage_shape)
+        new_temp_vars[temp_var.name] = temp_var.copy(storage_shape=tuple(new_storage_shape))
 
     return kernel.copy(temporary_variables=new_temp_vars)
 
