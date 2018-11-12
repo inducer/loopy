@@ -290,7 +290,7 @@ class CUDACASTBuilder(CASTBuilder):
     _VEC_AXES = "xyzw"
 
     def add_vector_access(self, access_expr, index):
-        return access_expr.a(self._VEC_AXES[index])
+        return access_expr.attr(self._VEC_AXES[index])
 
     def emit_barrier(self, synchronization_kind, mem_kind, comment):
         """

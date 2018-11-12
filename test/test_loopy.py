@@ -3009,6 +3009,25 @@ def test_conditional_access_range_failure(ctx_factory):
         lp.generate_code_v2(knl).device_code()
 
 
+def test_backwards_dep_printing_and_error():
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            """
+            c[i] = a[i] + b[i]                       {id=insn1}
+            c[i] = 2*c[i]                            {id=insn2, dep=insn1}
+            c[i] = 7*c[i] + a[i]*a[i] + b[i]*b[i]    {id=insn3, dep=insn2}
+            b[i] = b[i] + c[i]                                 {id=insn4, dep=insn3}
+            d[i] = 7*a[i ]                                     {id=insn5, dep=insn4}
+            a[i] = a[i] + d[i]                                 {id=insn6, dep=insn5}
+            """, [
+                lp.GlobalArg('a, b', dtype=np.float64),
+                "..."
+            ])
+
+    # Used to crash with KeyError
+    print(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
