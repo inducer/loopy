@@ -697,8 +697,9 @@ class CounterBase(CombineMapper):
 # {{{ ExpressionOpCounter
 
 class ExpressionOpCounter(CounterBase):
-    def __init__(self, knl):
+    def __init__(self, knl, count_within_subscripts=True):
         self.knl = knl
+        self.count_within_subscripts = count_within_subscripts
         from loopy.type_inference import TypeInferenceMapper
         self.type_inf = TypeInferenceMapper(knl)
 
@@ -719,7 +720,10 @@ class ExpressionOpCounter(CounterBase):
                     ) + self.rec(expr.parameters)
 
     def map_subscript(self, expr):
-        return self.rec(expr.index)
+        if self.count_within_subscripts:
+            return self.rec(expr.index)
+        else:
+            return ToCountMap()
 
     def map_sum(self, expr):
         assert expr.children
@@ -1314,7 +1318,7 @@ def _get_insn_count(knl, insn_id, subgroup_size, count_redundant_work,
 # {{{ get_op_map
 
 def get_op_map(knl, numpy_types=True, count_redundant_work=False,
-               subgroup_size=None):
+               count_within_subscripts=True, subgroup_size=None):
 
     """Count the number of operations in a loopy kernel.
 
@@ -1329,6 +1333,9 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
         flag indicates whether this work should be included in the count.
         (Likely desirable for performance modeling, but undesirable for code
         optimization.)
+
+    :arg count_within_subscripts: A :class:`bool` specifying whether to
+        count operations inside array indices.
 
     :arg subgroup_size: (currently unused) An :class:`int`, :class:`str`
         ``'guess'``, or *None* that specifies the sub-group size. An OpenCL
@@ -1382,7 +1389,7 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
     knl = preprocess_kernel(knl)
 
     op_map = ToCountMap()
-    op_counter = ExpressionOpCounter(knl)
+    op_counter = ExpressionOpCounter(knl, count_within_subscripts)
 
     from loopy.kernel.instruction import (
             CallInstruction, CInstruction, Assignment,
