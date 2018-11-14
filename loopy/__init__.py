@@ -51,7 +51,7 @@ from loopy.kernel.data import (
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
 from loopy.program import (
-        Program, make_program_from_kernel)
+        Program, make_program)
 
 from loopy.kernel import LoopKernel, KernelState, kernel_state
 from loopy.kernel.tools import (
@@ -175,7 +175,7 @@ __all__ = [
 
         "ScalarCallable", "CallableKernel",
 
-        "Program", "make_program_from_kernel",
+        "Program", "make_program",
 
         "KernelArgument",
         "ValueArg", "ArrayArg", "GlobalArg", "ConstantArg", "ImageArg",

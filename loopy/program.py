@@ -50,7 +50,7 @@ __doc__ = """
 .. autoclass:: Program
 .. autoclass:: CallablesTable
 
-.. autofunction:: make_program_from_kernel
+.. autofunction:: make_program
 .. autofunction:: iterate_over_kernels_if_given_program
 
 """
@@ -921,7 +921,7 @@ class CallablesTable(ImmutableRecord):
 
 # {{{ helper functions
 
-def make_program_from_kernel(kernel):
+def make_program(kernel):
     """
     Returns an instance of :class:`loopy.Program` with the *kernel* as the root
     kernel.

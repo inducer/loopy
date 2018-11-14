@@ -541,10 +541,10 @@ def generate_code_v2(program):
     :param program: An instance of :class:`loopy.Program`.
     """
     from loopy.kernel import LoopKernel
-    from loopy.program import make_program_from_kernel
+    from loopy.program import make_program
 
     if isinstance(program, LoopKernel):
-        program = make_program_from_kernel(program)
+        program = make_program(program)
 
     from loopy.kernel import KernelState
     if program.root_kernel.state == KernelState.INITIAL:

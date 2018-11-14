@@ -66,7 +66,7 @@ def test_diff(ctx_factory):
 
     from loopy.transform.diff import diff_kernel
     dknl, diff_map = diff_kernel(knl, "z", "x")
-    dknl = lp.make_program_from_kernel(dknl)
+    dknl = lp.make_program(dknl)
     dknl = lp.remove_unused_arguments(dknl)
 
     dknl = lp.add_inames_to_insn(dknl, "diff_i0", "writes:a_dx or writes:a")

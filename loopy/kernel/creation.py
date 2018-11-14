@@ -1954,7 +1954,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     target = kwargs.pop("target", None)
     seq_dependencies = kwargs.pop("seq_dependencies", False)
     fixed_parameters = kwargs.pop("fixed_parameters", {})
-    make_program = kwargs.pop("make_program", True)
+    is_callee_kernel = kwargs.pop("is_callee_kernel", False)
 
     if defines:
         from warnings import warn
@@ -2174,15 +2174,15 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     creation_plog.done()
 
-    if make_program:
-        from loopy.program import make_program_from_kernel
-        return make_program_from_kernel(knl)
-    else:
+    if is_callee_kernel:
         return knl
+    else:
+        from loopy.program import make_program
+        return make_program(knl)
 
 
 def make_kernel_function(*args, **kwargs):
-    kwargs['make_program'] = False
+    kwargs['is_callee_kernel'] = False
     return make_kernel(*args, **kwargs)
 
 # }}}
