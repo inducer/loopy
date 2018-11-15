@@ -587,6 +587,8 @@ def generate_code_v2(program):
             codegen_results[func_id] = (
                     generate_code_for_a_single_kernel(in_knl_callable.subkernel,
                         program.program_callables_info, program.target))
+            if not in_knl_callable.subkernel.is_called_from_host:
+                assert codegen_results[func_id].host_program is None
 
     device_preambles = set()
     for cgr in codegen_results.values():
