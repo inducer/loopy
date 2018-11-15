@@ -599,15 +599,19 @@ def generate_code_v2(program):
             device_preambles.update([preamble])
 
     collective_device_program = codegen_results[program.name].device_programs[0]
+    callee_fdecls = []
     for func_id, callee_cgr in codegen_results.items():
         if func_id != program.name:
             assert len(callee_cgr.device_programs) == 1
             callee_prog_ast = callee_cgr.device_programs[0].ast
             collective_device_program = collective_device_program.copy(
                     ast=Collection([callee_prog_ast, collective_device_program.ast]))
+            callee_fdecls.append(callee_prog_ast.fdecl)
 
-            device_preambles.update([('98_%s' % func_id,
-                str(callee_prog_ast.fdecl)), ])
+    # collecting the function declarations of callee kernels
+    for callee_fdecl in callee_fdecls:
+        collective_device_program = collective_device_program.copy(
+                ast=Collection([callee_fdecl, collective_device_program.ast]))
 
     collective_device_programs = [collective_device_program] + (
             codegen_results[program.name].device_programs[1:])
