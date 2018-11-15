@@ -29,6 +29,7 @@ from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 
 from loopy.tools import update_persistent_hash
+from loopy.kernel import LoopKernel
 
 __doc__ = """
 
@@ -99,7 +100,7 @@ class ArrayArgDescriptor(ImmutableRecord):
             "address_space",
             "dim_tags")
 
-    update_persistent_hash =update_persistent_hash
+    update_persistent_hash = update_persistent_hash
 
 # }}}
 
@@ -176,18 +177,21 @@ class InKernelCallable(ImmutableRecord):
 
     .. attribute:: arg_id_to_dtype
 
-        A mapping which indicates the arguments types and result types it would
-        be handling. This would be set once the callable is type specialized.
+        A mapping which indicates the arguments types and result types of the
+        callable.
 
     .. attribute:: arg_id_to_descr
 
         A mapping which gives indicates the argument shape and ``dim_tags`` it
-        would be responsible for generating code. These parameters would be set,
-        once it is shape and stride(``dim_tags``) specialized.
+        would be responsible for generating code.
 
     .. note::
+        - "``arg_id`` can either be an instance of :class:`int` integer
+          corresponding to the position of the argument or an instance of
+          :class:`str` corresponding to the name of keyword argument accepted
+          by the function.
 
-        Negative "id" values ``-i`` in the mapping attributes indicate
+        - Negative "arg_id" values ``-i`` in the mapping attributes indicate
         return value with (0-based) index *i*.
 
     .. automethod:: __init__

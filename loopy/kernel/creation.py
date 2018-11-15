@@ -2181,7 +2181,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         return make_program(knl)
 
 
-def make_kernel_function(*args, **kwargs):
+def make_function(*args, **kwargs):
     kwargs['is_callee_kernel'] = False
     return make_kernel(*args, **kwargs)
 

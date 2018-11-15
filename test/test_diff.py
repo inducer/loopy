@@ -55,7 +55,7 @@ def test_diff(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    knl = lp.make_kernel_function(
+    knl = lp.make_function(
          """{ [i,j]: 0<=i,j<n }""",
          """
          <> a = 1/(1+sinh(x[i] + y[j])**2)
