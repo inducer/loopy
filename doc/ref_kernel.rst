@@ -407,8 +407,6 @@ Arguments
     :undoc-members:
 
 .. autofunction:: GlobalArg
-    :members:
-    :undoc-members:
 
 .. autoclass:: ConstantArg
     :members:
