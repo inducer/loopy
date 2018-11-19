@@ -301,6 +301,11 @@ def test_Optional():  # noqa
     assert opt.has_value
     assert 1 == opt.value
 
+    assert Optional(1) == Optional(1)
+    assert Optional(1) != Optional(2)
+    assert Optional() == Optional()
+    assert Optional() != Optional(1)
+
     # }}}
 
     # {{{ test pickling
