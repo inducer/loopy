@@ -25,14 +25,34 @@ THE SOFTWARE.
 import six  # noqa
 
 from loopy.diagnostic import LoopyError
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import (ScalarCallable, CallableKernel)
+from loopy.program import Program, iterate_over_kernels_if_given_program
 
 
 # {{{ find_instructions
 
-def find_instructions(kernel, insn_match):
+def find_instructions_in_single_kernel(kernel, insn_match):
+    assert isinstance(kernel, LoopKernel)
     from loopy.match import parse_match
     match = parse_match(insn_match)
     return [insn for insn in kernel.instructions if match(kernel, insn)]
+
+
+def find_instructions(program, insn_match):
+    assert isinstance(program, Program)
+    insns = []
+    for in_knl_callable in program.program_callables_info.values():
+        if isinstance(in_knl_callable, CallableKernel):
+            insns += (find_instructions_in_single_kernel(
+                in_knl_callable.subkernel, insn_match))
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown callable type %s." % (
+                type(in_knl_callable)))
+
+    return insns
 
 # }}}
 
@@ -58,6 +78,7 @@ def map_instructions(kernel, insn_match, f):
 
 # {{{ set_instruction_priority
 
+@iterate_over_kernels_if_given_program
 def set_instruction_priority(kernel, insn_match, priority):
     """Set the priority of instructions matching *insn_match* to *priority*.
 
@@ -75,6 +96,7 @@ def set_instruction_priority(kernel, insn_match, priority):
 
 # {{{ add_dependency
 
+@iterate_over_kernels_if_given_program
 def add_dependency(kernel, insn_match, depends_on):
     """Add the instruction dependency *dependency* to the instructions matched
     by *insn_match*.
@@ -92,7 +114,8 @@ def add_dependency(kernel, insn_match, depends_on):
         added_deps = frozenset([depends_on])
     else:
         added_deps = frozenset(
-                dep.id for dep in find_instructions(kernel, depends_on))
+                dep.id for dep in find_instructions_in_single_kernel(kernel,
+                    depends_on))
 
     if not added_deps:
         raise LoopyError("no instructions found matching '%s' "
@@ -209,6 +232,7 @@ def replace_instruction_ids(kernel, replacements):
 
 # {{{ tag_instructions
 
+@iterate_over_kernels_if_given_program
 def tag_instructions(kernel, new_tag, within=None):
     from loopy.match import parse_match
     within = parse_match(within)
@@ -228,6 +252,7 @@ def tag_instructions(kernel, new_tag, within=None):
 
 # {{{ add nosync
 
+@iterate_over_kernels_if_given_program
 def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
         empty_ok=False):
     """Add a *no_sync_with* directive between *source* and *sink*.
@@ -260,18 +285,21 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
         This used to silently pass. This behavior can be restored using
         *empty_ok*.
     """
+    assert isinstance(kernel, LoopKernel)
 
     if isinstance(source, str) and source in kernel.id_to_insn:
         sources = frozenset([source])
     else:
         sources = frozenset(
-                source.id for source in find_instructions(kernel, source))
+                source.id for source in find_instructions_in_single_kernel(
+                    kernel, source))
 
     if isinstance(sink, str) and sink in kernel.id_to_insn:
         sinks = frozenset([sink])
     else:
         sinks = frozenset(
-                sink.id for sink in find_instructions(kernel, sink))
+                sink.id for sink in find_instructions_in_single_kernel(
+                    kernel, sink))
 
     if not sources and not empty_ok:
         raise LoopyError("No match found for source specification '%s'." % source)
@@ -324,6 +352,7 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
 
 # {{{ uniquify_instruction_ids
 
+@iterate_over_kernels_if_given_program
 def uniquify_instruction_ids(kernel):
     """Converts any ids that are :class:`loopy.UniqueName` or *None* into unique
     strings.

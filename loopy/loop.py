@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 import islpy as isl
 import six
+from loopy.program import iterate_over_kernels_if_given_program
 
 
 def potential_loop_nest_map(kernel):
@@ -55,6 +56,7 @@ def potential_loop_nest_map(kernel):
     return result
 
 
+@iterate_over_kernels_if_given_program
 def fuse_loop_domains(kernel):
     from loopy.kernel.tools import is_domain_dependent_on_inames
 

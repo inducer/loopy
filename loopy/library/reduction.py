@@ -24,13 +24,14 @@ THE SOFTWARE.
 
 
 from pymbolic import var
-from loopy.symbolic import ScopedFunction
+from loopy.symbolic import ResolvedFunction
 from loopy.kernel.function_interface import ScalarCallable
 import numpy as np
 
 from loopy.symbolic import FunctionIdentifier
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
+from loopy.kernel import LoopKernel
 
 
 class ReductionOperation(object):
@@ -82,6 +83,9 @@ class ReductionOperation(object):
 
         raise LoopyError("unable to parse reduction type: '%s'"
                 % op_type)
+
+    def get_scalar_callables(self):
+        return frozenset()
 
 
 class ScalarReductionOperation(ReductionOperation):
@@ -182,7 +186,10 @@ class MaxReductionOperation(ScalarReductionOperation):
         return get_ge_neutral(dtype)
 
     def __call__(self, dtype, operand1, operand2):
-        return ScopedFunction("max")(operand1, operand2)
+        return ResolvedFunction("max")(operand1, operand2)
+
+    def get_scalar_callables(self):
+        return frozenset(["max"])
 
 
 class MinReductionOperation(ScalarReductionOperation):
@@ -190,7 +197,10 @@ class MinReductionOperation(ScalarReductionOperation):
         return get_le_neutral(dtype)
 
     def __call__(self, dtype, operand1, operand2):
-        return ScopedFunction("min")(operand1, operand2)
+        return ResolvedFunction("min")(operand1, operand2)
+
+    def get_scalar_callables(self):
+        return frozenset(["min"])
 
 
 # {{{ base class for symbolic reduction ops
@@ -213,6 +223,11 @@ class ReductionOpFunction(FunctionIdentifier):
             reduction_op = self.reduction_op
 
         return type(self)(reduction_op)
+
+    hash_fields = (
+            "reduction_op",)
+
+    update_persistent_hash = LoopKernel.update_persistent_hash
 
 
 # }}}
@@ -239,7 +254,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
 
     def neutral_element(self, scalar_dtype, segment_flag_dtype):
         scalar_neutral_element = self.inner_reduction.neutral_element(scalar_dtype)
-        return ScopedFunction("make_tuple")(scalar_neutral_element,
+        return ResolvedFunction("make_tuple")(scalar_neutral_element,
                 segment_flag_dtype.numpy_dtype.type(0))
 
     def result_dtypes(self, kernel, scalar_dtype, segment_flag_dtype):
@@ -256,7 +271,10 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         return type(self) == type(other)
 
     def __call__(self, dtypes, operand1, operand2):
-        return ScopedFunction(SegmentedOp(self))(*(operand1 + operand2))
+        return ResolvedFunction(SegmentedOp(self))(*(operand1 + operand2))
+
+    def get_scalar_callables(self):
+        return frozenset(["make_tuple", SegmentedOp(self)])
 
 
 class SegmentedSumReductionOperation(_SegmentedScalarReductionOperation):
@@ -264,11 +282,24 @@ class SegmentedSumReductionOperation(_SegmentedScalarReductionOperation):
     which = "sum"
     op = "((%s) + (%s))"
 
+    hash_fields = (
+            "which",
+            "op",)
+
+    update_persistent_hash = LoopKernel.update_persistent_hash
+
 
 class SegmentedProductReductionOperation(_SegmentedScalarReductionOperation):
     base_reduction_class = ProductReductionOperation
     op = "((%s) * (%s))"
     which = "product"
+
+    hash_fields = (
+            "which",
+            "op",
+            "base_reduction_class",)
+
+    update_persistent_hash = LoopKernel.update_persistent_hash
 
 # }}}
 
@@ -292,7 +323,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         scalar_neutral_func = (
                 get_ge_neutral if self.neutral_sign < 0 else get_le_neutral)
         scalar_neutral_element = scalar_neutral_func(scalar_dtype)
-        return ScopedFunction("make_tuple")(scalar_neutral_element,
+        return ResolvedFunction("make_tuple")(scalar_neutral_element,
                 index_dtype.numpy_dtype.type(-1))
 
     def __str__(self):
@@ -309,7 +340,10 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         return 2
 
     def __call__(self, dtypes, operand1, operand2):
-        return ScopedFunction(ArgExtOp(self))(*(operand1 + operand2))
+        return ResolvedFunction(ArgExtOp(self))(*(operand1 + operand2))
+
+    def get_scalar_callables(self):
+        return frozenset([self.which, "make_tuple", ArgExtOp(self)])
 
 
 class ArgMaxReductionOperation(_ArgExtremumReductionOperation):
@@ -317,11 +351,23 @@ class ArgMaxReductionOperation(_ArgExtremumReductionOperation):
     update_comparison = ">="
     neutral_sign = -1
 
+    hash_fields = ("which",
+            "update_comparison",
+            "neutral_sign",)
+
+    update_persistent_hash = LoopKernel.update_persistent_hash
+
 
 class ArgMinReductionOperation(_ArgExtremumReductionOperation):
     which = "min"
     update_comparison = "<="
     neutral_sign = +1
+
+    hash_fields = ("which",
+            "update_comparison",
+            "neutral_sign",)
+
+    update_persistent_hash = LoopKernel.update_persistent_hash
 
 # }}}
 
@@ -379,28 +425,31 @@ def parse_reduction_op(name):
 # {{{ reduction specific callables
 
 class ReductionCallable(ScalarCallable):
-    def with_types(self, arg_id_to_dtype, kernel):
+    def with_types(self, arg_id_to_dtype, kernel, program_callables_info):
         scalar_dtype = arg_id_to_dtype[0]
         index_dtype = arg_id_to_dtype[1]
-        result_dtypes = self.name.result_dtypes(kernel, scalar_dtype,
+        result_dtypes = self.name.reduction_op.result_dtypes(kernel, scalar_dtype,
                 index_dtype)
         new_arg_id_to_dtype = arg_id_to_dtype.copy()
         new_arg_id_to_dtype[-1] = result_dtypes[0]
         new_arg_id_to_dtype[-2] = result_dtypes[1]
-        name_in_target = self.name.prefix(scalar_dtype, index_dtype) + "_op"
+        name_in_target = self.name.reduction_op.prefix(scalar_dtype,
+                index_dtype) + "_op"
 
         return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-                name_in_target=name_in_target)
+                name_in_target=name_in_target), program_callables_info
 
-    def with_descr(self, arg_id_to_descr):
+    def with_descr(self, arg_id_to_descr, program_callables_info):
         from loopy.library.kernel.function_interface import ValueArgDescriptor
         new_arg_id_to_descr = arg_id_to_descr.copy()
         new_arg_id_to_descr[-1] = ValueArgDescriptor()
-        return self.copy(arg_id_to_descr=arg_id_to_descr)
+        return (
+                self.copy(arg_id_to_descr=arg_id_to_descr),
+                program_callables_info)
 
     def generate_preambles(self, target):
-        if isinstance(self.name, _ArgExtremumReductionOperation):
-            op = self.name
+        if isinstance(self.name, ArgExtOp):
+            op = self.name.reduction_op
             scalar_dtype = self.arg_id_to_dtype[-1]
             index_dtype = self.arg_id_to_dtype[-2]
 
@@ -429,8 +478,8 @@ class ReductionCallable(ScalarCallable):
                     index_t=target.dtype_to_typename(index_dtype),
                     comp=op.update_comparison,
                     ))
-        elif isinstance(self.name, _SegmentedScalarReductionOperation):
-            op = self.name
+        elif isinstance(self.name, SegmentedOp):
+            op = self.name.reduction_op
             scalar_dtype = self.arg_id_to_dtype[-1]
             segment_flag_dtype = self.arg_id_to_dtype[-2]
             prefix = op.prefix(scalar_dtype, segment_flag_dtype)
@@ -455,8 +504,7 @@ class ReductionCallable(ScalarCallable):
 
 
 def reduction_scoper(target, identifier):
-    if isinstance(identifier, (_ArgExtremumReductionOperation,
-            _SegmentedScalarReductionOperation)):
+    if isinstance(identifier, (ArgExtOp, SegmentedOp)):
         return ReductionCallable(name=identifier)
 
     return None

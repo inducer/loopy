@@ -91,7 +91,8 @@ def add_extra_args_to_schedule(kernel):
             more_args = set(tv
                     for tv in used_temporaries
                     if
-                    kernel.temporary_variables[tv].scope == AddressSpace.GLOBAL
+                    kernel.temporary_variables[tv].address_space
+                    == AddressSpace.GLOBAL
                     and
                     kernel.temporary_variables[tv].initializer is None
                     and

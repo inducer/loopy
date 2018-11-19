@@ -127,7 +127,7 @@ def test_to_batched(ctx_factory):
 def test_to_batched_temp(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
          ''' { [i,j]: 0<=i,j<n } ''',
          ''' cnst = 2.0
          out[i] = sum(j, cnst*a[i,j]*x[j])''',
@@ -136,28 +136,28 @@ def test_to_batched_temp(ctx_factory):
              dtype=np.float32,
              shape=(),
              scope=lp.temp_var_scope.PRIVATE), '...'])
-    knl = lp.add_and_infer_dtypes(knl, dict(out=np.float32,
+    prog = lp.add_and_infer_dtypes(prog, dict(out=np.float32,
                                             x=np.float32,
                                             a=np.float32))
-    ref_knl = lp.make_kernel(
+    ref_prog = lp.make_kernel(
          ''' { [i,j]: 0<=i,j<n } ''',
          '''out[i] = sum(j, 2.0*a[i,j]*x[j])''')
-    ref_knl = lp.add_and_infer_dtypes(ref_knl, dict(out=np.float32,
+    ref_prog = lp.add_and_infer_dtypes(ref_prog, dict(out=np.float32,
                                                     x=np.float32,
                                                     a=np.float32))
 
-    bknl = lp.to_batched(knl, "nbatches", "out,x")
-    bref_knl = lp.to_batched(ref_knl, "nbatches", "out,x")
+    bprog = lp.to_batched(prog, "nbatches", "out,x")
+    bref_prog = lp.to_batched(ref_prog, "nbatches", "out,x")
 
     # checking that cnst is not being bathced
-    assert bknl.temporary_variables['cnst'].shape == ()
+    assert bprog.root_kernel.temporary_variables['cnst'].shape == ()
 
     a = np.random.randn(5, 5)
     x = np.random.randn(7, 5)
 
     # Checking that the program compiles and the logic is correct
     lp.auto_test_vs_ref(
-            bref_knl, ctx, bknl,
+            bref_prog, ctx, bprog,
             parameters=dict(a=a, x=x, n=5, nbatches=7))
 
 
@@ -180,370 +180,6 @@ def test_add_barrier(ctx_factory):
 
     evt, (out,) = knl(queue, a=a)
     assert (np.linalg.norm(out-2*a.T) < 1e-16)
-
-
-def test_register_function_lookup(ctx_factory):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-
-    from testlib import register_log2_lookup
-
-    x = np.random.rand(10)
-    ctx = cl.create_some_context()
-    queue = cl.CommandQueue(ctx)
-
-    knl = lp.make_kernel(
-            "{[i]: 0<=i<10}",
-            """
-            y[i] = log2(x[i])
-            """)
-    knl = lp.register_function_lookup(knl, register_log2_lookup)
-
-    evt, (out, ) = knl(queue, x=x)
-
-    assert np.linalg.norm(np.log2(x)-out)/np.linalg.norm(np.log2(x)) < 1e-15
-
-
-@pytest.mark.parametrize("inline", [False, True])
-def test_register_knl(ctx_factory, inline):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    n = 2 ** 4
-
-    x = np.random.rand(n, n, n, n, n)
-    y = np.random.rand(n, n, n, n, n)
-
-    grandchild_knl = lp.make_kernel(
-            "{[i, j]:0<= i, j< 16}",
-            """
-            c[i, j] = 2*a[i, j] + 3*b[i, j]
-            """)
-
-    child_knl = lp.make_kernel(
-            "{[i, j]:0<=i, j < 16}",
-            """
-            [i, j]: g[i, j] = linear_combo1([i, j]: e[i, j], [i, j]: f[i, j])
-            """)
-
-    parent_knl = lp.make_kernel(
-            "{[i, j, k, l, m]: 0<=i, j, k, l, m<16}",
-            """
-            [j, l]: z[i, j, k, l, m] = linear_combo2([j, l]: x[i, j, k, l, m],
-                                                     [j, l]: y[i, j, k, l, m])
-            """,
-            kernel_data=[
-                lp.GlobalArg(
-                    name='x',
-                    dtype=np.float64,
-                    shape=(16, 16, 16, 16, 16)),
-                lp.GlobalArg(
-                    name='y',
-                    dtype=np.float64,
-                    shape=(16, 16, 16, 16, 16)), '...'],
-            )
-
-    child_knl = lp.register_callable_kernel(
-            child_knl, 'linear_combo1', grandchild_knl)
-    knl = lp.register_callable_kernel(
-            parent_knl, 'linear_combo2', child_knl)
-    if inline:
-        knl = lp.inline_callable_kernel(knl, 'linear_combo2')
-        knl = lp.inline_callable_kernel(knl, 'linear_combo1')
-
-    evt, (out, ) = knl(queue, x=x, y=y)
-
-    assert (np.linalg.norm(2*x+3*y-out)/(
-        np.linalg.norm(2*x+3*y))) < 1e-15
-
-
-@pytest.mark.parametrize("inline", [False, True])
-def test_slices_with_negative_step(ctx_factory, inline):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    n = 2 ** 4
-
-    x = np.random.rand(n, n, n, n, n)
-    y = np.random.rand(n, n, n, n, n)
-
-    child_knl = lp.make_kernel(
-            "{[i, j]:0<=i, j < 16}",
-            """
-            g[i, j] = 2*e[i, j] + 3*f[i, j]
-            """)
-
-    parent_knl = lp.make_kernel(
-            "{[i, k, m]: 0<=i, k, m<16}",
-            """
-            z[i, 15:-1:-1, k, :, m] = linear_combo(x[i, :, k, :, m],
-                                                   y[i, :, k, :, m])
-            """,
-            kernel_data=[
-                lp.GlobalArg(
-                    name='x',
-                    dtype=np.float64,
-                    shape=(16, 16, 16, 16, 16)),
-                lp.GlobalArg(
-                    name='y',
-                    dtype=np.float64,
-                    shape=(16, 16, 16, 16, 16)),
-                lp.GlobalArg(
-                    name='z',
-                    dtype=np.float64,
-                    shape=(16, 16, 16, 16, 16)), '...'],
-            )
-
-    knl = lp.register_callable_kernel(
-            parent_knl, 'linear_combo', child_knl)
-    if inline:
-        knl = lp.inline_callable_kernel(knl, 'linear_combo')
-
-    evt, (out, ) = knl(queue, x=x, y=y)
-
-    assert (np.linalg.norm(2*x+3*y-out[:, ::-1, :, :, :])/(
-        np.linalg.norm(2*x+3*y))) < 1e-15
-
-
-@pytest.mark.parametrize("inline", [False, True])
-def test_register_knl_with_call_with_kwargs(ctx_factory, inline):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-
-    n = 2 ** 2
-
-    a_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float32)
-    b_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float32)
-    c_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
-
-    callee_knl = lp.make_kernel(
-            "{[i, j]:0<=i, j < %d}" % n,
-            """
-            h[i, j] = 2 * e[i, j] + 3*f[i, j] + 4*g[i, j]
-            <>f1[i, j] = 2*f[i, j]
-            p[i, j] = 7 * e[i, j] + 4*f1[i, j] + 2*g[i, j]
-            """,
-            [lp.ArrayArg('f'), lp.ArrayArg('e'), lp.ArrayArg('h'),
-                lp.ArrayArg('g'), '...'])
-
-    caller_knl = lp.make_kernel(
-            "{[i, j, k, l, m]: 0<=i, j, k, l, m<%d}" % n,
-            """
-            <> d[i, j, k, l, m] = 2*b[i, j, k, l, m]
-            [j, l]: x[i, j, k, l, m], [j, l]: y[i, j, k, l, m]  = linear_combo(
-                                                     f=[j, l]: a[i, j, k, l, m],
-                                                     g=[j, l]: d[i, j, k, l, m],
-                                                     e=[j, l]: c[i, j, k, l, m])
-            """)
-
-    knl = lp.register_callable_kernel(
-            caller_knl, 'linear_combo', callee_knl)
-    if inline:
-        knl = lp.inline_callable_kernel(knl, 'linear_combo')
-
-    evt, (out1, out2, ) = knl(queue, a=a_dev, b=b_dev, c=c_dev)
-
-    a = a_dev.get()
-    b = b_dev.get()
-    c = c_dev.get()
-
-    h = out1.get()  # h = 2c + 3a +  8b
-    p = out2.get()  # p = 7c + 8a + 4b
-    h_exact = 3*a + 8*b + 2*c
-    p_exact = 8*a + 4*b + 7*c
-
-    assert np.linalg.norm(h-h_exact)/np.linalg.norm(h_exact) < 1e-7
-    assert np.linalg.norm(p-p_exact)/np.linalg.norm(p_exact) < 1e-7
-
-
-@pytest.mark.parametrize("inline", [False, True])
-def test_register_knl_with_hw_axes(ctx_factory, inline):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-
-    n = 2 ** 4
-
-    x_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
-    y_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
-
-    callee_knl = lp.make_kernel(
-            "{[i, j]:0<=i, j < 16}",
-            """
-            g[i, j] = 2*e[i, j] + 3*f[i, j]
-            """)
-
-    callee_knl = lp.split_iname(callee_knl, "i", 4, inner_tag="l.0", outer_tag="g.0")
-
-    caller_knl = lp.make_kernel(
-            "{[i, j, k, l, m]: 0<=i, j, k, l, m<16}",
-            """
-            [j, l]: z[i, j, k, l, m] = linear_combo([j, l]: x[i, j, k, l, m],
-                                                     [j, l]: y[i, j, k, l, m])
-            """
-            )
-    caller_knl = lp.split_iname(caller_knl, "i", 4, inner_tag="l.1", outer_tag="g.1")
-
-    knl = lp.register_callable_kernel(
-            caller_knl, 'linear_combo', callee_knl)
-
-    if inline:
-        knl = lp.inline_callable_kernel(knl, 'linear_combo')
-
-    evt, (out, ) = knl(queue, x=x_dev, y=y_dev)
-
-    x_host = x_dev.get()
-    y_host = y_dev.get()
-
-    assert np.linalg.norm(2*x_host+3*y_host-out.get())/np.linalg.norm(
-            2*x_host+3*y_host) < 1e-15
-
-
-@pytest.mark.parametrize("inline", [False, True])
-def test_shape_translation_through_sub_array_ref(ctx_factory, inline):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-
-    x1 = cl.clrandom.rand(queue, (3, 2), dtype=np.float64)
-    x2 = cl.clrandom.rand(queue, (6, ), dtype=np.float64)
-    x3 = cl.clrandom.rand(queue, (6, 6), dtype=np.float64)
-
-    callee1 = lp.make_kernel(
-            "{[i]: 0<=i<6}",
-            """
-            a[i] = 2*abs(b[i])
-            """)
-
-    callee2 = lp.make_kernel(
-            "{[i, j]: 0<=i<3 and 0 <= j < 2}",
-            """
-            a[i, j] = 3*b[i, j]
-            """)
-
-    callee3 = lp.make_kernel(
-            "{[i]: 0<=i<6}",
-            """
-            a[i] = 5*b[i]
-            """)
-
-    knl = lp.make_kernel(
-            "{[i, j, k, l]:  0<= i < 6 and 0 <= j < 3 and 0 <= k < 2 and 0<=l<6}",
-            """
-            [i]: y1[i//2, i%2] = callee_fn1([i]: x1[i//2, i%2])
-            [j, k]: y2[2*j+k] = callee_fn2([j, k]: x2[2*j+k])
-            [l]: y3[l, l] = callee_fn3([l]: x3[l, l])
-            """)
-
-    knl = lp.register_callable_kernel(knl, 'callee_fn1', callee1)
-    knl = lp.register_callable_kernel(knl, 'callee_fn2', callee2)
-    knl = lp.register_callable_kernel(knl, 'callee_fn3', callee3)
-
-    if inline:
-        knl = lp.inline_callable_kernel(knl, 'callee_fn1')
-        knl = lp.inline_callable_kernel(knl, 'callee_fn2')
-        knl = lp.inline_callable_kernel(knl, 'callee_fn3')
-
-    knl = lp.set_options(knl, "write_cl")
-    knl = lp.set_options(knl, "return_dict")
-    evt, out_dict = knl(queue, x1=x1, x2=x2, x3=x3)
-
-    y1 = out_dict['y1'].get()
-    y2 = out_dict['y2'].get()
-    y3 = out_dict['y3'].get()
-
-    assert (np.linalg.norm(y1-2*x1.get())) < 1e-15
-    assert (np.linalg.norm(y2-3*x2.get())) < 1e-15
-    assert (np.linalg.norm(np.diag(y3-5*x3.get()))) < 1e-15
-
-
-def test_multi_arg_array_call(ctx_factory):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-    import pymbolic.primitives as p
-    n = 10
-    acc_i = p.Variable("acc_i")
-    i = p.Variable("i")
-    index = p.Variable("index")
-    a_i = p.Subscript(p.Variable("a"), p.Variable("i"))
-    argmin_kernel = lp.make_kernel(
-            "{[i]: 0 <= i < n}",
-            [
-                lp.Assignment(id="init2", assignee=index,
-                    expression=0),
-                lp.Assignment(id="init1", assignee=acc_i,
-                    expression="214748367"),
-                lp.Assignment(id="insn", assignee=index,
-                    expression=p.If(p.Expression.eq(acc_i, a_i), i, index),
-                    depends_on="update"),
-                lp.Assignment(id="update", assignee=acc_i,
-                    expression=p.Variable("min")(acc_i, a_i),
-                    depends_on="init1,init2")])
-
-    argmin_kernel = lp.fix_parameters(argmin_kernel, n=n)
-
-    knl = lp.make_kernel(
-            "{[i]:0<=i<n}",
-            """
-            min_val, min_index = custom_argmin([i]:b[i])
-            """)
-
-    knl = lp.fix_parameters(knl, n=n)
-    knl = lp.set_options(knl, return_dict=True)
-
-    knl = lp.register_callable_kernel(knl, "custom_argmin", argmin_kernel)
-    b = np.random.randn(n)
-    evt, out_dict = knl(queue, b=b)
-    tol = 1e-15
-    from numpy.linalg import norm
-    assert(norm(out_dict['min_val'][0] - np.min(b)) < tol)
-    assert(norm(out_dict['min_index'][0] - np.argmin(b)) < tol)
-
-
-@pytest.mark.parametrize("inline", [False, True])
-def test_packing_unpacking(ctx_factory, inline):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-
-    x1 = cl.clrandom.rand(queue, (3, 2), dtype=np.float64)
-    x2 = cl.clrandom.rand(queue, (6, ), dtype=np.float64)
-
-    callee1 = lp.make_kernel(
-            "{[i]: 0<=i<6}",
-            """
-            a[i] = 2*b[i]
-            """)
-
-    callee2 = lp.make_kernel(
-            "{[i, j]: 0<=i<2 and 0 <= j < 3}",
-            """
-            a[i, j] = 3*b[i, j]
-            """)
-
-    knl = lp.make_kernel(
-            "{[i, j, k]:  0<= i < 3 and 0 <= j < 2 and 0 <= k < 6}",
-            """
-            [i, j]: y1[i, j] = callee_fn1([i, j]: x1[i, j])
-            [k]: y2[k] = callee_fn2([k]: x2[k])
-            """)
-
-    knl = lp.register_callable_kernel(knl, 'callee_fn1', callee1)
-    knl = lp.register_callable_kernel(knl, 'callee_fn2', callee2)
-
-    knl = lp.pack_and_unpack_args_for_call(knl, 'callee_fn1')
-    knl = lp.pack_and_unpack_args_for_call(knl, 'callee_fn2')
-
-    if inline:
-        knl = lp.inline_callable_kernel(knl, 'callee_fn1')
-        knl = lp.inline_callable_kernel(knl, 'callee_fn2')
-
-    knl = lp.set_options(knl, "write_cl")
-    knl = lp.set_options(knl, "return_dict")
-    evt, out_dict = knl(queue, x1=x1, x2=x2)
-
-    y1 = out_dict['y1'].get()
-    y2 = out_dict['y2'].get()
-
-    assert np.linalg.norm(2*x1.get()-y1)/np.linalg.norm(
-            2*x1.get()) < 1e-15
-    assert np.linalg.norm(3*x2.get()-y2)/np.linalg.norm(
-            3*x2.get()) < 1e-15
 
 
 def test_rename_argument(ctx_factory):
@@ -619,18 +255,17 @@ def test_vectorize(ctx_factory):
         a[i] = temp
         """)
     knl = lp.add_and_infer_dtypes(knl, dict(b=np.float32))
-    knl = lp.set_array_dim_names(knl, "a,b", "i")
+    knl = lp.set_array_axis_names(knl, "a,b", "i")
     knl = lp.split_array_dim(knl, [("a", 0), ("b", 0)], 4,
             split_kwargs=dict(slabs=(0, 1)))
 
-    knl = lp.tag_data_axes(knl, "a,b", "c,vec")
+    knl = lp.tag_array_axes(knl, "a,b", "c,vec")
     ref_knl = knl
     ref_knl = lp.tag_inames(ref_knl, {"i_inner": "unr"})
 
     knl = lp.tag_inames(knl, {"i_inner": "vec"})
 
     knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
     code, inf = lp.generate_code(knl)
 
     lp.auto_test_vs_ref(
@@ -639,19 +274,19 @@ def test_vectorize(ctx_factory):
 
 
 def test_extract_subst(ctx_factory):
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
             "{[i]: 0<=i<n}",
             """
                 a[i] = 23*b[i]**2 + 25*b[i]**2
                 """)
 
-    knl = lp.extract_subst(knl, "bsquare", "alpha*b[i]**2", "alpha")
+    prog = lp.extract_subst(prog, "bsquare", "alpha*b[i]**2", "alpha")
 
-    print(knl)
+    print(prog)
 
     from loopy.symbolic import parse
 
-    insn, = knl.instructions
+    insn, = prog.root_kernel.instructions
     assert insn.expression == parse("bsquare(23) + bsquare(25)")
 
 
@@ -687,12 +322,12 @@ def test_tag_data_axes(ctx_factory):
     ref_knl = knl
 
     with pytest.raises(lp.LoopyError):
-        lp.tag_data_axes(knl, "out", "N1,N0,N5")
+        lp.tag_array_axes(knl, "out", "N1,N0,N5")
 
     with pytest.raises(lp.LoopyError):
-        lp.tag_data_axes(knl, "out", "N1,N0,c")
+        lp.tag_array_axes(knl, "out", "N1,N0,c")
 
-    knl = lp.tag_data_axes(knl, "out", "N1,N0,N2")
+    knl = lp.tag_array_axes(knl, "out", "N1,N0,N2")
     knl = lp.tag_inames(knl, dict(j="g.0", i="g.1"))
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
@@ -722,33 +357,34 @@ def test_affine_map_inames():
 def test_precompute_confusing_subst_arguments(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
         "{[i,j]: 0<=i<n and 0<=j<5}",
         """
         D(i):=a[i+1]-a[i]
         b[i,j] = D(j)
         """)
 
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
+    prog = lp.add_and_infer_dtypes(prog, dict(a=np.float32))
 
-    ref_knl = knl
+    ref_prog = prog
 
-    knl = lp.tag_inames(knl, dict(j="g.1"))
-    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+    prog = lp.tag_inames(prog, dict(j="g.1"))
+    prog = lp.split_iname(prog, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
     from loopy.symbolic import get_dependencies
-    assert "i_inner" not in get_dependencies(knl.substitutions["D"].expression)
-    knl = lp.precompute(knl, "D")
+    assert "i_inner" not in get_dependencies(
+            prog.root_kernel.substitutions["D"].expression)
+    prog = lp.precompute(prog, "D")
 
     lp.auto_test_vs_ref(
-            ref_knl, ctx, knl,
+            ref_prog, ctx, prog,
             parameters=dict(n=12345))
 
 
 def test_precompute_nested_subst(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(
+    prog = lp.make_kernel(
         "{[i,j]: 0<=i<n and 0<=j<5}",
         """
         E:=a[i]
@@ -756,29 +392,31 @@ def test_precompute_nested_subst(ctx_factory):
         b[i] = D
         """)
 
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
+    prog = lp.add_and_infer_dtypes(prog, dict(a=np.float32))
 
-    ref_knl = knl
+    ref_prog = prog
 
-    knl = lp.tag_inames(knl, dict(j="g.1"))
-    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+    prog = lp.tag_inames(prog, dict(j="g.1"))
+    prog = lp.split_iname(prog, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
     from loopy.symbolic import get_dependencies
-    assert "i_inner" not in get_dependencies(knl.substitutions["D"].expression)
-    knl = lp.precompute(knl, "D", "i_inner", default_tag="l.auto")
+    assert "i_inner" not in get_dependencies(
+            prog.root_kernel.substitutions["D"].expression)
+    prog = lp.precompute(prog, "D", "i_inner", default_tag="l.auto")
 
     # There's only one surviving 'E' rule.
     assert len([
         rule_name
-        for rule_name in knl.substitutions
+        for rule_name in prog.root_kernel.substitutions
         if rule_name.startswith("E")]) == 1
 
     # That rule should use the newly created prefetch inames,
     # not the prior 'i_inner'
-    assert "i_inner" not in get_dependencies(knl.substitutions["E"].expression)
+    assert "i_inner" not in get_dependencies(
+            prog.root_kernel.substitutions["E"].expression)
 
     lp.auto_test_vs_ref(
-            ref_knl, ctx, knl,
+            ref_prog, ctx, prog,
             parameters=dict(n=12345))
 
 
@@ -844,7 +482,7 @@ def test_precompute_with_preexisting_inames_fail():
 
 
 def test_add_nosync():
-    orig_knl = lp.make_kernel("{[i]: 0<=i<10}",
+    orig_prog = lp.make_kernel("{[i]: 0<=i<10}",
         """
         <>tmp[i] = 10 {id=insn1}
         <>tmp2[i] = 10 {id=insn2}
@@ -856,28 +494,34 @@ def test_add_nosync():
         tmp5[i] = 1 {id=insn6,conflicts=g1}
         """)
 
-    orig_knl = lp.set_temporary_scope(orig_knl, "tmp3", "local")
-    orig_knl = lp.set_temporary_scope(orig_knl, "tmp5", "local")
+    orig_prog = lp.set_temporary_scope(orig_prog, "tmp3", "local")
+    orig_prog = lp.set_temporary_scope(orig_prog, "tmp5", "local")
 
     # No dependency present - don't add nosync
-    knl = lp.add_nosync(orig_knl, "any", "writes:tmp", "writes:tmp2",
+    prog = lp.add_nosync(orig_prog, "any", "writes:tmp", "writes:tmp2",
             empty_ok=True)
-    assert frozenset() == knl.id_to_insn["insn2"].no_sync_with
+    assert frozenset() == (
+            prog.root_kernel.id_to_insn["insn2"].no_sync_with)
 
     # Dependency present
-    knl = lp.add_nosync(orig_knl, "local", "writes:tmp3", "reads:tmp3")
-    assert frozenset() == knl.id_to_insn["insn3"].no_sync_with
-    assert frozenset([("insn3", "local")]) == knl.id_to_insn["insn4"].no_sync_with
+    prog = lp.add_nosync(orig_prog, "local", "writes:tmp3", "reads:tmp3")
+    assert frozenset() == (
+            prog.root_kernel.id_to_insn["insn3"].no_sync_with)
+    assert frozenset([("insn3", "local")]) == (
+            prog.root_kernel.id_to_insn["insn4"].no_sync_with)
 
     # Bidirectional
-    knl = lp.add_nosync(
-            orig_knl, "local", "writes:tmp3", "reads:tmp3", bidirectional=True)
-    assert frozenset([("insn4", "local")]) == knl.id_to_insn["insn3"].no_sync_with
-    assert frozenset([("insn3", "local")]) == knl.id_to_insn["insn4"].no_sync_with
+    prog = lp.add_nosync(
+            orig_prog, "local", "writes:tmp3", "reads:tmp3", bidirectional=True)
+    assert frozenset([("insn4", "local")]) == (
+            prog.root_kernel.id_to_insn["insn3"].no_sync_with)
+    assert frozenset([("insn3", "local")]) == (
+            prog.root_kernel.id_to_insn["insn4"].no_sync_with)
 
     # Groups
-    knl = lp.add_nosync(orig_knl, "local", "insn5", "insn6")
-    assert frozenset([("insn5", "local")]) == knl.id_to_insn["insn6"].no_sync_with
+    prog = lp.add_nosync(orig_prog, "local", "insn5", "insn6")
+    assert frozenset([("insn5", "local")]) == (
+            prog.root_kernel.id_to_insn["insn6"].no_sync_with)
 
 
 def test_uniquify_instruction_ids():
@@ -886,12 +530,14 @@ def test_uniquify_instruction_ids():
     i3 = lp.Assignment("b", 1, id=lp.UniqueName("b"))
     i4 = lp.Assignment("b", 1, id=lp.UniqueName("b"))
 
-    knl = lp.make_kernel("{[i]: i = 1}", []).copy(instructions=[i1, i2, i3, i4])
+    prog = lp.make_kernel("{[i]: i = 1}", [])
+    new_root_kernel = prog.root_kernel.copy(instructions=[i1, i2, i3, i4])
+    prog = prog.with_root_kernel(new_root_kernel)
 
     from loopy.transform.instruction import uniquify_instruction_ids
-    knl = uniquify_instruction_ids(knl)
+    prog = uniquify_instruction_ids(prog)
 
-    insn_ids = set(insn.id for insn in knl.instructions)
+    insn_ids = set(insn.id for insn in prog.root_kernel.instructions)
 
     assert len(insn_ids) == 4
     assert all(isinstance(id, str) for id in insn_ids)

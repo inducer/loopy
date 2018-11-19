@@ -57,6 +57,7 @@ from pymbolic.mapper.constant_folder import \
 
 from pymbolic.parser import Parser as ParserBase
 from loopy.diagnostic import LoopyError
+from loopy.diagnostic import ExpressionToAffineConversionError
 
 import islpy as isl
 from islpy import dim_type
@@ -68,22 +69,23 @@ import numpy as np
 # {{{ mappers with support for loopy-specific primitives
 
 class IdentityMapperMixin(object):
-    def map_literal(self, expr, *args):
+    def map_literal(self, expr, *args, **kwargs):
         return expr
 
-    def map_array_literal(self, expr, *args):
-        return type(expr)(tuple(self.rec(ch, *args) for ch in expr.children))
+    def map_array_literal(self, expr, *args, **kwargs):
+        return type(expr)(tuple(self.rec(ch, *args, **kwargs) for ch in
+            expr.children))
 
-    def map_group_hw_index(self, expr, *args):
+    def map_group_hw_index(self, expr, *args, **kwargs):
         return expr
 
-    def map_local_hw_index(self, expr, *args):
+    def map_local_hw_index(self, expr, *args, **kwargs):
         return expr
 
-    def map_loopy_function_identifier(self, expr, *args):
+    def map_loopy_function_identifier(self, expr, *args, **kwargs):
         return expr
 
-    def map_reduction(self, expr, *args):
+    def map_reduction(self, expr, *args, **kwargs):
         mapped_inames = [self.rec(p.Variable(iname), *args) for iname in expr.inames]
 
         new_inames = []
@@ -97,22 +99,22 @@ class IdentityMapperMixin(object):
 
         return Reduction(
                 expr.operation, tuple(new_inames),
-                self.rec(expr.expr, *args),
+                self.rec(expr.expr, *args, **kwargs),
                 allow_simultaneous=expr.allow_simultaneous)
 
-    def map_tagged_variable(self, expr, *args):
+    def map_tagged_variable(self, expr, *args, **kwargs):
         # leaf, doesn't change
         return expr
 
-    def map_type_annotation(self, expr, *args):
-        return type(expr)(expr.type, self.rec(expr.child, *args))
+    def map_type_annotation(self, expr, *args, **kwargs):
+        return type(expr)(expr.type, self.rec(expr.child, *args, **kwargs))
 
-    def map_sub_array_ref(self, expr, *args):
-        return SubArrayRef(self.rec(expr.swept_inames, *args),
-                self.rec(expr.subscript, *args))
+    def map_sub_array_ref(self, expr, *args, **kwargs):
+        return SubArrayRef(self.rec(expr.swept_inames, *args, **kwargs),
+                self.rec(expr.subscript, *args, **kwargs))
 
-    def map_scoped_function(self, expr, *args):
-        return ScopedFunction(self.rec(expr.function, *args))
+    def map_resolved_function(self, expr, *args, **kwargs):
+        return ResolvedFunction(expr.function)
 
     map_type_cast = map_type_annotation
 
@@ -178,7 +180,7 @@ class WalkMapper(WalkMapperBase):
         self.rec(expr.swept_inames, *args)
         self.rec(expr.subscript, *args)
 
-    def map_scoped_function(self, expr, *args):
+    def map_resolved_function(self, expr, *args):
         if not self.visit(expr):
             return
 
@@ -187,7 +189,7 @@ class WalkMapper(WalkMapperBase):
 
 class CallbackMapper(CallbackMapperBase, IdentityMapper):
     map_reduction = CallbackMapperBase.map_constant
-    map_scoped_function = CallbackMapperBase.map_constant
+    map_resolved_function = CallbackMapperBase.map_constant
 
 
 class CombineMapper(CombineMapperBase):
@@ -255,8 +257,8 @@ class StringifyMapper(StringifyMapperBase):
         from pymbolic.mapper.stringifier import PREC_NONE
         return "cast(%s, %s)" % (repr(expr.type), self.rec(expr.child, PREC_NONE))
 
-    def map_scoped_function(self, expr, prec):
-        return "ScopedFunction('%s')" % expr.name
+    def map_resolved_function(self, expr, prec):
+        return "ResolvedFunction('%s')" % expr.name
 
     def map_sub_array_ref(self, expr, prec):
         return "SubArrayRef({inames}, ({subscr}))".format(
@@ -331,7 +333,7 @@ class DependencyMapper(DependencyMapperBase):
     def map_type_cast(self, expr):
         return self.rec(expr.child)
 
-    def map_scoped_function(self, expr):
+    def map_resolved_function(self, expr):
         return self.rec(expr.function)
 
 
@@ -683,10 +685,10 @@ class RuleArgument(p.Expression):
     mapper_method = intern("map_rule_argument")
 
 
-class ScopedFunction(p.Expression):
+class ResolvedFunction(p.Expression):
     """
     A function invocation whose definition is known in a :mod:`loopy` kernel.
-    Each instance of :class:`loopy.symbolic.ScopedFunction` in an expression
+    Each instance of :class:`loopy.symbolic.ResolvedFunction` in an expression
     points to an instance of
     :class:`loopy.kernel.function_interface.InKernelCallable` through the
     mapping :attr:`loopy.kernel.LoopKernel.scoped_functions`. Refer
@@ -716,7 +718,7 @@ class ScopedFunction(p.Expression):
         elif isinstance(self.function, (ArgExtOp, SegmentedOp)):
             return self.function
         else:
-            raise LoopyError("Unexpected function type %s in ScopedFunction." %
+            raise LoopyError("Unexpected function type %s in ResolvedFunction." %
                     type(self.function))
 
     def __getinitargs__(self):
@@ -725,7 +727,7 @@ class ScopedFunction(p.Expression):
     def stringifier(self):
         return StringifyMapper
 
-    mapper_method = intern("map_scoped_function")
+    mapper_method = intern("map_resolved_function")
 
 
 class EvaluatorWithDeficientContext(PartialEvaluationMapper):
@@ -836,13 +838,13 @@ class SubArrayRef(p.Expression):
         name = self.subscript.aggregate.name
 
         if name in kernel.temporary_variables:
-            arg = kernel.temporary_variables[name]
-            mem_scope = arg.scope
             assert name not in kernel.arg_dict
+            arg = kernel.temporary_variables[name]
         else:
             assert name in kernel.arg_dict
             arg = kernel.arg_dict[name]
-            mem_scope = arg.memory_address_space
+
+        aspace = arg.address_space
 
         from loopy.kernel.array import FixedStrideArrayDimTag as DimTag
         from loopy.isl_helpers import simplify_via_aff
@@ -851,10 +853,9 @@ class SubArrayRef(p.Expression):
         linearized_index = sum(dim_tag.stride*iname
                                for dim_tag, iname
                                in zip(arg.dim_tags, self.subscript.index_tuple))
-        try:
-            linearized_index = simplify_via_aff(linearized_index)
-        except:
-            pass
+        # look which error we are getting and guard it
+
+        linearized_index = simplify_via_aff(linearized_index)
 
         strides_as_dict = SweptInameStrideCollector(tuple(iname.name for iname in
             self.swept_inames))(linearized_index)
@@ -865,7 +866,8 @@ class SubArrayRef(p.Expression):
                     kernel.get_iname_bounds(iname.name).upper_bound_pw_aff)+1
                 for iname in self.swept_inames)
 
-        return ArrayArgDescriptor(mem_scope=mem_scope,
+        return ArrayArgDescriptor(
+                address_space=aspace,
                 dim_tags=sub_dim_tags,
                 shape=sub_shape)
 
@@ -900,7 +902,7 @@ def parse_tagged_name(expr):
     from loopy.library.reduction import ArgExtOp, SegmentedOp
     if isinstance(expr, TaggedVariable):
         return expr.name, expr.tag
-    elif isinstance(expr, ScopedFunction):
+    elif isinstance(expr, ResolvedFunction):
         return parse_tagged_name(expr.function)
     elif isinstance(expr, (p.Variable, ArgExtOp, SegmentedOp)):
         return expr.name, None
@@ -1100,12 +1102,14 @@ class RuleAwareIdentityMapper(IdentityMapper):
     def __init__(self, rule_mapping_context):
         self.rule_mapping_context = rule_mapping_context
 
-    def map_variable(self, expr, expn_state):
+    def map_variable(self, expr, expn_state, *args, **kwargs):
         name, tag = parse_tagged_name(expr)
         if name not in self.rule_mapping_context.old_subst_rules:
-            return IdentityMapper.map_variable(self, expr, expn_state)
+            return IdentityMapper.map_variable(self, expr, expn_state, *args,
+                    **kwargs)
         else:
-            return self.map_substitution(name, tag, (), expn_state)
+            return self.map_substitution(name, tag, (), expn_state, *args,
+                    **kwargs)
 
     def map_call(self, expr, expn_state):
         if not isinstance(expr.function, p.Variable):
@@ -1160,7 +1164,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
         else:
             return sym
 
-    def __call__(self, expr, kernel, insn):
+    def __call__(self, expr, kernel, insn, *args, **kwargs):
         from loopy.kernel.data import InstructionBase
         assert insn is None or isinstance(insn, InstructionBase)
 
@@ -1169,7 +1173,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
                     kernel=kernel,
                     instruction=insn,
                     stack=(),
-                    arg_context={}))
+                    arg_context={}), *args, **kwargs)
 
     def map_instruction(self, kernel, insn):
         return insn
@@ -1643,7 +1647,19 @@ def with_aff_conversion_guard(f, space, expr, *args):
         except isl.Error as e:
             err = e
         except UnknownVariableError as e:
-            err = e
+            integer_vars = deps & set(t for t, v in
+                    kernel.temporary_variables.items() if
+                    np.issubdtype(v.dtype, np.integer))
+
+            # need to sort for deterministic code generation
+            names = sorted(list(integer_vars))
+            nd = domain.dim(isl.dim_type.set)
+            domain = domain.add_dims(isl.dim_type.set, len(names))
+            for i, name in enumerate(names):
+                domain = domain.set_dim_name(isl.dim_type.set, nd + i, name)
+            # TODO: Understand what errors can we land in here and then guard
+            # them.
+            return aff_from_expr(domain.space, expr)
 
         assert err is not None
         from loopy.diagnostic import ExpressionToAffineConversionError
@@ -1676,26 +1692,10 @@ def simplify_using_aff(kernel, expr):
 
     domain = kernel.get_inames_domain(inames)
 
-    from pymbolic.mapper.evaluator import UnknownVariableError
-
     try:
-        with isl.SuppressedWarnings(kernel.isl_context):
-            aff = aff_from_expr(domain.space, expr)
-    except isl.Error:
+        aff = guarded_aff_from_expr(domain.space, expr)
+    except ExpressionToAffineConversionError:
         return expr
-    except TypeError:
-        return expr
-    except UnknownVariableError:
-        integer_vars = deps & set(t for t, v in kernel.temporary_variables.items() if np.issubdtype(v.dtype, np.integer))
-        names = sorted(list(integer_vars))  # need to sort for deterministic code generation
-        nd = domain.dim(isl.dim_type.set)
-        domain = domain.add_dims(isl.dim_type.set, len(names))
-        for i, name in enumerate(names):
-            domain = domain.set_dim_name(isl.dim_type.set, nd + i, name)
-        try:
-            aff = aff_from_expr(domain.space, expr)
-        except:
-            return expr
 
     # FIXME: Deal with assumptions, too.
     aff = aff.gist(domain)

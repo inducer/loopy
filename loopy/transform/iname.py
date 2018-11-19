@@ -34,6 +34,10 @@ from loopy.symbolic import (
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
 
+from loopy.program import iterate_over_kernels_if_given_program
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -93,6 +97,7 @@ def set_loop_priority(kernel, loop_priority):
     return kernel.copy(loop_priority=frozenset([loop_priority]))
 
 
+@iterate_over_kernels_if_given_program
 def prioritize_loops(kernel, loop_priority):
     """Indicates the textual order in which loops should be entered in the
     kernel code. Note that this priority has an advisory role only. If the
@@ -107,6 +112,8 @@ def prioritize_loops(kernel, loop_priority):
     :arg: an iterable of inames, or, for brevity, a comma-separated string of
         inames
     """
+
+    assert isinstance(kernel, LoopKernel)
     if isinstance(loop_priority, str):
         loop_priority = tuple(s.strip()
                               for s in loop_priority.split(",") if s.strip())
@@ -299,13 +306,15 @@ def _split_iname_backend(kernel, split_iname,
         kernel = tag_inames(kernel,
                 {outer_iname: existing_tag, inner_iname: existing_tag})
 
-    return tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
+    return tag_inames(kernel, {outer_iname: outer_tag,
+        inner_iname: inner_tag})
 
 # }}}
 
 
 # {{{ split iname
 
+@iterate_over_kernels_if_given_program
 def split_iname(kernel, split_iname, inner_length,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
@@ -331,6 +340,8 @@ def split_iname(kernel, split_iname, inner_length,
     :arg within: a stack match as understood by
         :func:`loopy.match.parse_stack_match`.
     """
+    assert isinstance(kernel, LoopKernel)
+
     def make_new_loop_index(inner, outer):
         return inner + outer*inner_length
 
@@ -347,6 +358,7 @@ def split_iname(kernel, split_iname, inner_length,
 
 # {{{ chunk iname
 
+@iterate_over_kernels_if_given_program
 def chunk_iname(kernel, split_iname, num_chunks,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
@@ -481,6 +493,7 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
             return super(_InameJoiner, self).map_reduction(expr, expn_state)
 
 
+@iterate_over_kernels_if_given_program
 def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
     """
     :arg inames: fastest varying last
@@ -625,7 +638,9 @@ def untag_inames(kernel, iname_to_untag, tag_type):
 
 # {{{ tag inames
 
-def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
+@iterate_over_kernels_if_given_program
+def tag_inames(kernel, iname_to_tag, force=False,
+        ignore_nonexistent=False):
     """Tag an iname
 
     :arg iname_to_tag: a list of tuples ``(iname, new_tag)``. *new_tag* is given
@@ -804,7 +819,9 @@ class _InameDuplicator(RuleAwareIdentityMapper):
         return insn.copy(within_inames=new_fid)
 
 
-def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
+@iterate_over_kernels_if_given_program
+def duplicate_inames(knl, inames, within, new_inames=None,
+        suffix=None,
         tags={}):
     """
     :arg within: a stack match as understood by
@@ -966,7 +983,7 @@ def _get_iname_duplication_options(insn_iname_sets, old_common_inames=frozenset(
     # If partitioning was empty, we have recursed successfully and yield nothing
 
 
-def get_iname_duplication_options(knl, use_boostable_into=False):
+def get_iname_duplication_options_for_single_kernel(knl, use_boostable_into=False):
     """List options for duplication of inames, if necessary for schedulability
 
     :returns: a generator listing all options to duplicate inames, if duplication
@@ -1032,7 +1049,7 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
         # If we find a duplication option and to not use boostable_into
         # information, we restart this generator with use_boostable_into=True
         if not use_boostable_into and not knl.options.ignore_boostable_into:
-            for option in get_iname_duplication_options(knl, True):
+            for option in get_iname_duplication_options_for_single_kernel(knl, True):
                 yield option
 
             # Emit a warning that we needed boostable_into
@@ -1060,18 +1077,42 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
             yield iname, within
 
 
-def has_schedulable_iname_nesting(knl):
+def get_iname_duplication_options(program, use_boostable_into=False):
+    for in_knl_callable in program.program_callables_info.values():
+        if isinstance(in_knl_callable, CallableKernel):
+            for option in get_iname_duplication_options_for_single_kernel(
+                    in_knl_callable.subkernel, use_boostable_into):
+                yield option
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of in kernel callable %s."
+                    % (type(in_knl_callable)))
+
+    return
+
+
+def has_schedulable_iname_nesting_for_single_kernel(knl):
     """
     :returns: a :class:`bool` indicating whether this kernel needs
         an iname duplication in order to be schedulable.
     """
-    return not bool(next(get_iname_duplication_options(knl), False))
+    return not bool(next(get_iname_duplication_options_for_single_kernel(knl),
+        False))
+
+
+def has_schedulable_iname_nesting(program):
+    return all(has_schedulable_iname_nesting_for_single_kernel(
+        in_knl_callable.subkernel) for in_knl_callable in
+        program.program_callables_info.values() if isinstance(in_knl_callable,
+            CallableKernel))
 
 # }}}
 
 
 # {{{ rename_inames
 
+@iterate_over_kernels_if_given_program
 def rename_iname(knl, old_iname, new_iname, existing_ok=False, within=None):
     """
     :arg within: a stack match as understood by
@@ -1278,6 +1319,7 @@ def _split_reduction(kernel, inames, direction, within=None):
             rsplit.map_kernel(kernel))
 
 
+@iterate_over_kernels_if_given_program
 def split_reduction_inward(kernel, inames, within=None):
     """Takes a reduction of the form::
 
@@ -1297,6 +1339,7 @@ def split_reduction_inward(kernel, inames, within=None):
     return _split_reduction(kernel, inames, "in", within)
 
 
+@iterate_over_kernels_if_given_program
 def split_reduction_outward(kernel, inames, within=None):
     """Takes a reduction of the form::
 
@@ -1320,6 +1363,7 @@ def split_reduction_outward(kernel, inames, within=None):
 
 # {{{ affine map inames
 
+@iterate_over_kernels_if_given_program
 def affine_map_inames(kernel, old_inames, new_inames, equations):
     """Return a new *kernel* where the affine transform
     specified by *equations* has been applied to the inames.
@@ -1651,6 +1695,7 @@ class _ReductionInameUniquifier(RuleAwareIdentityMapper):
                     expr, expn_state)
 
 
+@iterate_over_kernels_if_given_program
 def make_reduction_inames_unique(kernel, inames=None, within=None):
     """
     :arg inames: if not *None*, only apply to these inames
@@ -1697,6 +1742,7 @@ def make_reduction_inames_unique(kernel, inames=None, within=None):
 
 # {{{ add_inames_to_insn
 
+@iterate_over_kernels_if_given_program
 def add_inames_to_insn(knl, inames, insn_match):
     """
     :arg inames: a frozenset of inames that will be added to the

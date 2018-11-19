@@ -72,7 +72,7 @@ def synthesize_idis_for_extra_args(kernel, schedule_index):
 
     for arg in sched_item.extra_args:
         temporary = kernel.temporary_variables[arg]
-        assert temporary.scope == AddressSpace.GLOBAL
+        assert temporary.address_space == AddressSpace.GLOBAL
         idis.extend(
             temporary.decl_info(
                 kernel.target,
@@ -115,17 +115,21 @@ def generate_code_for_sched_index(codegen_state, sched_index):
                 new_codegen_state, sched_index)
 
         glob_grid, loc_grid = kernel.get_grid_sizes_for_insn_ids_as_exprs(
-                get_insn_ids_for_block_at(kernel.schedule, sched_index))
+                get_insn_ids_for_block_at(kernel.schedule, sched_index),
+                codegen_state.program_callables_info)
+        if kernel.is_called_from_host:
+            return merge_codegen_results(codegen_state, [
+                codegen_result,
 
-        return merge_codegen_results(codegen_state, [
-            codegen_result,
-
-            codegen_state.ast_builder.get_kernel_call(
-                codegen_state,
-                sched_item.kernel_name,
-                glob_grid, loc_grid,
-                extra_args),
-            ])
+                codegen_state.ast_builder.get_kernel_call(
+                    codegen_state,
+                    sched_item.kernel_name,
+                    glob_grid, loc_grid,
+                    extra_args),
+                ])
+        else:
+            # do not generate host code for callee kernels
+            return codegen_result
 
     elif isinstance(sched_item, EnterLoop):
         tags = kernel.iname_tags(sched_item.iname)

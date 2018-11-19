@@ -364,7 +364,7 @@ class CMathCallable(ScalarCallable):
     C-Target.
     """
 
-    def with_types(self, arg_id_to_dtype, kernel):
+    def with_types(self, arg_id_to_dtype, caller_kernel, program_callables_info):
         name = self.name
 
         if name in ["abs", "min", "max"]:
@@ -381,7 +381,9 @@ class CMathCallable(ScalarCallable):
             if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
                 # the types provided aren't mature enough to specialize the
                 # callable
-                return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+                return (
+                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        program_callables_info)
 
             dtype = arg_id_to_dtype[0]
             dtype = dtype.numpy_dtype
@@ -393,7 +395,7 @@ class CMathCallable(ScalarCallable):
                 raise LoopyTypeError("%s does not support type %s" % (name, dtype))
 
             from loopy.target.opencl import OpenCLTarget
-            if not isinstance(kernel.target, OpenCLTarget):
+            if not isinstance(caller_kernel.target, OpenCLTarget):
                 # for CUDA, C Targets the name must be modified
                 if dtype == np.float64:
                     pass  # fabs
@@ -405,8 +407,11 @@ class CMathCallable(ScalarCallable):
                     raise LoopyTypeError("%s does not support type %s" % (name,
                         dtype))
 
-            return self.copy(name_in_target=name,
-                    arg_id_to_dtype={0: NumpyType(dtype), -1: NumpyType(dtype)})
+            return (
+                    self.copy(name_in_target=name,
+                        arg_id_to_dtype={0: NumpyType(dtype), -1:
+                            NumpyType(dtype)}),
+                    program_callables_info)
 
         # binary functions
         if name in ["fmax", "fmin", "pow", "atan2"]:
@@ -419,7 +424,9 @@ class CMathCallable(ScalarCallable):
                     arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
                 # the types provided aren't mature enough to specialize the
                 # callable
-                return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+                return (
+                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        program_callables_info)
 
             dtype = np.find_common_type(
                 [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
@@ -430,7 +437,7 @@ class CMathCallable(ScalarCallable):
 
             elif dtype.kind == "f" and name in ["fmax", "fmin"]:
                 from loopy.target.opencl import OpenCLTarget
-                if not isinstance(kernel.target, OpenCLTarget):
+                if not isinstance(caller_kernel.target, OpenCLTarget):
                     if dtype == np.float64:
                         pass  # fmin
                     elif dtype == np.float32:
@@ -441,10 +448,14 @@ class CMathCallable(ScalarCallable):
                         raise LoopyTypeError("%s does not support type %s"
                                              % (name, dtype))
             dtype = NumpyType(dtype)
-            return self.copy(name_in_target=name,
-                    arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype})
+            return (
+                    self.copy(name_in_target=name,
+                        arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
+                    program_callables_info)
 
-        return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+        return (
+                self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                program_callables_info)
 
 
 def scope_c_math_functions(target, identifier):
@@ -516,7 +527,7 @@ class CASTBuilder(ASTBuilderBase):
                     six.itervalues(kernel.temporary_variables),
                     key=lambda tv: tv.name):
 
-                if tv.scope == AddressSpace.GLOBAL and (
+                if tv.address_space == AddressSpace.GLOBAL and (
                         tv.initializer is not None):
                     assert tv.read_only
 
@@ -610,12 +621,12 @@ class CASTBuilder(ASTBuilderBase):
             if not tv.base_storage:
                 for idi in decl_info:
                     # global temp vars are mapped to arguments or global declarations
-                    if tv.scope != AddressSpace.GLOBAL and (
+                    if tv.address_space != AddressSpace.GLOBAL and (
                             tv.name in sub_knl_temps):
                         decl = self.wrap_temporary_decl(
                                 self.get_temporary_decl(
                                     codegen_state, schedule_index, tv, idi),
-                                tv.scope)
+                                tv.address_space)
 
                         if tv.initializer is not None:
                             assert tv.read_only
@@ -631,7 +642,7 @@ class CASTBuilder(ASTBuilderBase):
                 base_storage_sizes.setdefault(tv.base_storage, []).append(
                         tv.nbytes)
                 base_storage_to_scope.setdefault(tv.base_storage, []).append(
-                        tv.scope)
+                        tv.address_space)
 
                 align_size = tv.dtype.itemsize
 
@@ -647,9 +658,9 @@ class CASTBuilder(ASTBuilderBase):
                     cast_decl = POD(self, idi.dtype, "")
                     temp_var_decl = POD(self, idi.dtype, idi.name)
 
-                    cast_decl = self.wrap_temporary_decl(cast_decl, tv.scope)
+                    cast_decl = self.wrap_temporary_decl(cast_decl, tv.address_space)
                     temp_var_decl = self.wrap_temporary_decl(
-                            temp_var_decl, tv.scope)
+                            temp_var_decl, tv.address_space)
 
                     if tv._base_storage_access_may_be_aliasing:
                         ptrtype = _ConstPointer
@@ -886,9 +897,10 @@ class CASTBuilder(ASTBuilderBase):
 
         ecm = codegen_state.expression_to_code_mapper
         func_id = insn.expression.function.name
-        in_knl_callable = codegen_state.kernel.scoped_functions[func_id]
+        in_knl_callable = codegen_state.program_callables_info[func_id]
 
-        if in_knl_callable.name_in_target == 'loopy_make_tuple':
+        if isinstance(in_knl_callable, ScalarCallable) and (
+                in_knl_callable.name_in_target == 'loopy_make_tuple'):
             return self.emit_tuple_assignment(codegen_state, insn)
 
         in_knl_callable_as_call, is_returned = in_knl_callable.emit_call_insn(

@@ -27,9 +27,13 @@ import six
 
 from loopy.diagnostic import LoopyError
 
+from loopy.program import iterate_over_kernels_if_given_program
+from loopy.kernel import LoopKernel
+
 
 # {{{ fold constants
 
+@iterate_over_kernels_if_given_program
 def fold_constants(kernel):
     from loopy.symbolic import ConstantFoldingMapper
     cfm = ConstantFoldingMapper()
@@ -53,7 +57,9 @@ def fold_constants(kernel):
 # {{{ collect_common_factors_on_increment
 
 # thus far undocumented
+@iterate_over_kernels_if_given_program
 def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
+    assert isinstance(kernel, LoopKernel)
     # FIXME: Does not understand subst rules for now
     if kernel.substitutions:
         from loopy.transform.subst import expand_subst

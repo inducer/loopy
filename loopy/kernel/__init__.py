@@ -41,6 +41,7 @@ from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.tools import natsorted
 from loopy.diagnostic import StaticValueFindingError
 from loopy.kernel.data import filter_iname_tags_by_type
+from warnings import warn
 
 
 # {{{ unique var names
@@ -94,10 +95,40 @@ class _UniqueVarNameGenerator(UniqueNameGenerator):
 
 # {{{ loop kernel object
 
-class kernel_state:  # noqa
+class KernelState:  # noqa
     INITIAL = 0
     PREPROCESSED = 1
     SCHEDULED = 2
+
+# {{{ kernel_state, KernelState compataibility
+
+class _deperecated_kernel_state_class_method(object):  # noqa
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, klass):
+        warn("'temp_var_scope' is deprecated. Use 'AddressSpace'.",
+                DeprecationWarning, stacklevel=2)
+        return self.f()
+
+
+class kernel_state(object):  # noqa
+    """Deprecated. Use :class:`loopy.kernel.KernelState` instead.
+    """
+
+    @_deperecated_kernel_state_class_method
+    def INITIAL():
+        return KernelState.INITITAL
+
+    @_deperecated_kernel_state_class_method
+    def PREPROCESSED():
+        return KernelState.PREPROCESSED
+
+    @_deperecated_kernel_state_class_method
+    def SCHEDULED():
+        return KernelState.SCHEDULED
+
+# }}}
 
 
 class LoopKernel(ImmutableRecordWithoutPickling):
@@ -151,11 +182,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     .. attribute:: function_manglers
     .. attribute:: symbol_manglers
 
-    .. attribute:: function_scopers
-
-        A list of functions of signature ``(target, name)`` returning a
-        :class:`loopy.kernel.function_interface.InKernelCallable` or *None*.
-
     .. attribute:: substitutions
 
         a mapping from substitution names to
@@ -189,7 +215,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     .. attribute:: state
 
-        A value from :class:`kernel_state`.
+        A value from :class:`KernelState`.
 
     .. attribute:: target
 
@@ -214,8 +240,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             iname_to_tags=None,
             substitutions=None,
             function_manglers=None,
-            function_scopers=None,
-            scoped_functions={},
             symbol_manglers=[],
 
             iname_slab_increments=None,
@@ -227,9 +251,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             index_dtype=np.int32,
             options=None,
 
-            state=kernel_state.INITIAL,
-            is_called_from_host=True,
+            state=KernelState.INITIAL,
             target=None,
+
+            is_called_from_host=True,
 
             overridden_get_grid_sizes_for_insn_ids=None,
             _cached_written_variables=None):
@@ -302,9 +327,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             raise TypeError("index_dtype must be signed")
 
         if state not in [
-                kernel_state.INITIAL,
-                kernel_state.PREPROCESSED,
-                kernel_state.SCHEDULED,
+                KernelState.INITIAL,
+                KernelState.PREPROCESSED,
+                KernelState.SCHEDULED,
                 ]:
             raise ValueError("invalid value for 'state'")
 
@@ -318,13 +343,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
-
-        if function_scopers is None:
-            from loopy.library.function import loopy_specific_callable_scopers
-            # populating the function scopers from the target and the loopy
-            # specific callable scopers
-            function_scopers = [loopy_specific_callable_scopers] + (
-                    target.get_device_ast_builder().function_scopers())
 
         ImmutableRecordWithoutPickling.__init__(self,
                 domains=domains,
@@ -345,14 +363,12 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 cache_manager=cache_manager,
                 applied_iname_rewrites=applied_iname_rewrites,
                 function_manglers=function_manglers,
-                function_scopers=function_scopers,
-                scoped_functions=scoped_functions,
                 symbol_manglers=symbol_manglers,
                 index_dtype=index_dtype,
                 options=options,
                 state=state,
-                is_called_from_host=is_called_from_host,
                 target=target,
+                is_called_from_host=is_called_from_host,
                 overridden_get_grid_sizes_for_insn_ids=(
                     overridden_get_grid_sizes_for_insn_ids),
                 _cached_written_variables=_cached_written_variables)
@@ -401,20 +417,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 else:
                     raise ValueError("unexpected size of tuple returned by '%s'"
                             % mangler.__name__)
-
-        return None
-
-    def find_scoped_function_identifier(self, identifier):
-        """
-        Returns an instance of
-        :class:`loopy.kernel.function_interface.InKernelCallable` if the
-        :arg:`identifier` is known to any kernel function scoper, otherwise returns
-        *None*.
-        """
-        for scoper in self.function_scopers:
-            in_knl_callable = scoper(self.target, identifier)
-            if in_knl_callable:
-                return in_knl_callable
 
         return None
 
@@ -982,7 +984,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 | set(
                     tv.name
                     for tv in six.itervalues(self.temporary_variables)
-                    if tv.scope == AddressSpace.GLOBAL))
+                    if tv.address_space == AddressSpace.GLOBAL))
 
     # }}}
 
@@ -1034,8 +1036,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 self.get_iname_bounds(iname, constants_only=True).size,
                 constants_only=True)))
 
-    @memoize_method
-    def get_grid_sizes_for_insn_ids_as_dicts(self, insn_ids, ignore_auto=False):
+    def get_grid_sizes_for_insn_ids_as_dicts(self, insn_ids,
+            program_callables_info, ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of all instructions whose IDs are given
         in *insn_ids*.
@@ -1048,8 +1050,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         # {{{ collecting the callee kernels in insn_ids
 
-        from loopy.kernel.tools import get_callee_kernels
-        callee_kernels = get_callee_kernels(self, insn_ids)
+        from loopy.kernel.tools import get_direct_callee_kernels
+        callee_kernels = get_direct_callee_kernels(self,
+                program_callables_info, insn_ids)
 
         # }}}
 
@@ -1069,7 +1072,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         # updating the grid sizes from the callee_kernels.
         for callee_kernel in callee_kernels:
             gsize, lsize = callee_kernel.get_grid_sizes_for_insn_ids_as_dicts(
-                    frozenset(insn.id for insn in callee_kernel.instructions))
+                    frozenset(insn.id for insn in callee_kernel.instructions),
+                    program_callables_info, ignore_auto)
 
             global_sizes.update(gsize)
             local_sizes.update(lsize)
@@ -1116,8 +1120,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return global_sizes, local_sizes
 
-    @memoize_method
-    def get_grid_sizes_for_insn_ids(self, insn_ids, ignore_auto=False):
+    def get_grid_sizes_for_insn_ids(self, insn_ids, program_callables_info,
+            ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of all instructions whose IDs are given
         in *insn_ids*.
@@ -1130,13 +1134,14 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if self.overridden_get_grid_sizes_for_insn_ids:
             return self.overridden_get_grid_sizes_for_insn_ids(
                     insn_ids,
+                    program_callables_info=program_callables_info,
                     ignore_auto=ignore_auto)
 
         assert self.is_called_from_host, ("Callee kernels do not have sufficient "
                 "information to compute grid sizes.")
 
         global_sizes, local_sizes = self.get_grid_sizes_for_insn_ids_as_dicts(
-                insn_ids, ignore_auto=ignore_auto)
+                insn_ids, program_callables_info, ignore_auto=ignore_auto)
 
         def to_dim_tuple(size_dict, which, forced_sizes={}):
             forced_sizes = forced_sizes.copy()
@@ -1167,7 +1172,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return (to_dim_tuple(global_sizes, "global"),
                 to_dim_tuple(local_sizes, "local", forced_sizes=self.local_sizes))
 
-    def get_grid_sizes_for_insn_ids_as_exprs(self, insn_ids, ignore_auto=False):
+    def get_grid_sizes_for_insn_ids_as_exprs(self, insn_ids,
+            program_callables_info, ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of all instructions whose IDs are given
         in *insn_ids*.
@@ -1178,7 +1184,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         """
 
         grid_size, group_size = self.get_grid_sizes_for_insn_ids(
-                insn_ids, ignore_auto)
+                insn_ids, program_callables_info, ignore_auto)
 
         def tup_to_exprs(tup):
             from loopy.symbolic import pw_aff_to_expr
@@ -1186,7 +1192,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return tup_to_exprs(grid_size), tup_to_exprs(group_size)
 
-    def get_grid_size_upper_bounds(self, ignore_auto=False):
+    def get_grid_size_upper_bounds(self, program_callables_info, ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of *all* instructions in the kernel.
 
@@ -1194,9 +1200,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         """
         return self.get_grid_sizes_for_insn_ids(
                 frozenset(insn.id for insn in self.instructions),
+                program_callables_info,
                 ignore_auto=ignore_auto)
 
-    def get_grid_size_upper_bounds_as_exprs(self, ignore_auto=False):
+    def get_grid_size_upper_bounds_as_exprs(self, program_callables_info,
+            ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of *all* instructions in the kernel.
 
@@ -1205,6 +1213,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return self.get_grid_sizes_for_insn_ids_as_exprs(
                 frozenset(insn.id for insn in self.instructions),
+                program_callables_info,
                 ignore_auto=ignore_auto)
 
     # }}}
@@ -1217,13 +1226,13 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return set(
             tv.name
             for tv in six.itervalues(self.temporary_variables)
-            if tv.scope == AddressSpace.LOCAL)
+            if tv.address_space == AddressSpace.LOCAL)
 
     def local_mem_use(self):
         from loopy.kernel.data import AddressSpace
         return sum(
                 tv.nbytes for tv in six.itervalues(self.temporary_variables)
-                if tv.scope == AddressSpace.LOCAL)
+                if tv.address_space == AddressSpace.LOCAL)
 
     # }}}
 
@@ -1395,47 +1404,13 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     # }}}
 
-    # {{{ implementation arguments
-
-    @property
-    @memoize_method
-    def impl_arg_to_arg(self):
-        from loopy.kernel.array import ArrayBase
-
-        result = {}
-
-        for arg in self.args:
-            if not isinstance(arg, ArrayBase):
-                result[arg.name] = arg
-                continue
-
-            if arg.shape is None or arg.dim_tags is None:
-                result[arg.name] = arg
-                continue
-
-            subscripts_and_names = arg.subscripts_and_names()
-            if subscripts_and_names is None:
-                result[arg.name] = arg
-                continue
-
-            for index, sub_arg_name in subscripts_and_names:
-                result[sub_arg_name] = arg
-
-        return result
-
-    # }}}
-
     # {{{ direct execution
 
     def __call__(self, *args, **kwargs):
-        key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
-        try:
-            kex = self._kernel_executor_cache[key]
-        except KeyError:
-            kex = self.target.get_kernel_executor(self, *args, **kwargs)
-            self._kernel_executor_cache[key] = kex
-
-        return kex(*args, **kwargs)
+        # FIXME: scream and then convert to a program
+        from loopy.program import make_program_from_kernel
+        program = make_program_from_kernel(self)
+        return program(*args, **kwargs)
 
     # }}}
 
@@ -1536,9 +1511,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
             "preamble_generators",
             "function_manglers",
-            "function_scopers",
             "symbol_manglers",
-            "scoped_functions",
             )
 
     def update_persistent_hash(self, key_hash, key_builder):

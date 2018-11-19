@@ -27,7 +27,7 @@ from six.moves import range
 
 from islpy import dim_type
 import islpy as isl
-from loopy.symbolic import WalkMapper, CombineMapper, ScopedFunction
+from loopy.symbolic import WalkMapper, CombineMapper, ResolvedFunction
 from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_kernel
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
@@ -57,7 +57,8 @@ def check_identifiers_in_subst_rules(knl):
             raise LoopyError("kernel '%s': substitution rule '%s' refers to "
                     "identifier(s) '%s' which are neither rule arguments nor "
                     "kernel-global identifiers"
-                    % (knl.name, ", ".join(deps-rule_allowed_identifiers)))
+                    % (knl.name, rule.name,
+                       ", ".join(deps-rule_allowed_identifiers)))
 
 
 class UnscopedCallCollector(CombineMapper):
@@ -78,15 +79,14 @@ class UnscopedCallCollector(CombineMapper):
         return reduce(operator.or_, values, frozenset())
 
     def map_call(self, expr):
-        from loopy.library.reduction import ArgExtOp
-        if not isinstance(expr.function, (ScopedFunction, ArgExtOp)):
-            return (frozenset([expr.function.name]) |
-                    self.combine((self.rec(child) for child in expr.parameters)))
-        else:
-            return self.combine((self.rec(child) for child in expr.parameters))
+        from pymbolic.primitives import CallWithKwargs
+        return self.rec(CallWithKwargs(
+            function=expr.function, parameters=expr.parameters,
+            kw_parameters={}))
 
     def map_call_with_kwargs(self, expr):
-        if not isinstance(expr.function, ScopedFunction):
+        from loopy.library.reduction import ArgExtOp
+        if not isinstance(expr.function, (ResolvedFunction, ArgExtOp)):
             return (frozenset([expr.function.name]) |
                     self.combine((self.rec(child) for child in expr.parameters
                         + tuple(expr.kw_parameters.values()))))
@@ -106,7 +106,7 @@ class UnscopedCallCollector(CombineMapper):
 def check_functions_are_scoped(kernel):
     """ Checks if all the calls in the instruction expression have been scoped,
     otherwise indicates to what all calls we await signature. Refer
-    :class:`loopy.symbolic.ScopedFunction` for a detailed explanation of a
+    :class:`loopy.symbolic.ResolvedFunction` for a detailed explanation of a
     scoped function.
     """
 
@@ -124,7 +124,8 @@ def check_functions_are_scoped(kernel):
         elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
             pass
         else:
-            raise NotImplementedError("Unknown type of instruction %s." % type(insn))
+            raise NotImplementedError(
+                    "Unknown type of instruction %s" % type(insn).__name__)
 
 # }}}
 
@@ -185,14 +186,15 @@ def check_loop_priority_inames_known(kernel):
 
 
 def _get_all_unique_iname_tags(kernel):
-    """ Returns a list of all the unique iname tags in the *kernel*.
+    """Returns a set of all the iname tags used in *kernel* that
+    inherit from :class:`loopy.kernel.data.UniqueTag`.
     """
     from loopy.kernel.data import UniqueTag
     iname_tags = [kernel.iname_to_tag.get(iname) for iname in
         kernel.all_inames()]
-    unique_iname_tags = [tag for tag in iname_tags if
-        isinstance(tag, UniqueTag)]
-    return unique_iname_tags
+    return set(
+            tag for tag in iname_tags if
+            isinstance(tag, UniqueTag))
 
 
 def check_multiple_tags_allowed(kernel):
@@ -209,7 +211,7 @@ def check_multiple_tags_allowed(kernel):
                                  "tags: {1}".format(iname, tags))
 
 
-def check_for_double_use_of_hw_axes(kernel):
+def check_for_double_use_of_hw_axes(kernel, program_callables_info):
     from loopy.kernel.data import UniqueTag
     from loopy.kernel.instruction import CallInstruction
     from loopy.kernel.function_interface import CallableKernel
@@ -225,13 +227,13 @@ def check_for_double_use_of_hw_axes(kernel):
 
                 insn_tag_keys.add(key)
 
-        # checking usage of iname tags in the callee kernel.
+        # check usage of iname tags in the callee kernel
         if isinstance(insn, CallInstruction):
-            in_knl_callable = kernel.scoped_functions[
+            in_knl_callable = program_callables_info[
                     insn.expression.function.name]
             if isinstance(in_knl_callable, CallableKernel):
-                # checking for collision in iname_tag keys in the instruction
-                # due to the callee kernel.
+                # check for collision in iname_tag keys in the instruction
+                # due to the callee kernel
                 common_iname_tags = [tag for tag in
                         _get_all_unique_iname_tags(in_knl_callable.subkernel)
                         if tag.key in insn_tag_keys]
@@ -248,34 +250,36 @@ def check_for_inactive_iname_access(kernel):
         if not expression_inames <= kernel.insn_inames(insn):
             raise LoopyError(
                     "instruction '%s' references "
-                    "inames '%s' that the instruction does not depend on"
+                    "inames '%s' that the instruction does not depend on in "
+                    "the kernel '%s'"
                     % (insn.id,
-                        ", ".join(expression_inames - kernel.insn_inames(insn))))
+                        ", ".join(expression_inames -
+                            kernel.insn_inames(insn)), kernel.name))
 
 
 def _is_racing_iname_tag(tv, tag):
     from loopy.kernel.data import (AddressSpace,
             LocalIndexTagBase, GroupIndexTag, ConcurrentTag, auto)
 
-    if tv.scope == AddressSpace.PRIVATE:
+    if tv.address_space == AddressSpace.PRIVATE:
         return (
                 isinstance(tag, ConcurrentTag)
                 and not isinstance(tag, (LocalIndexTagBase, GroupIndexTag)))
 
-    elif tv.scope == AddressSpace.LOCAL:
+    elif tv.address_space == AddressSpace.LOCAL:
         return (
                 isinstance(tag, ConcurrentTag)
                 and not isinstance(tag, GroupIndexTag))
 
-    elif tv.scope == AddressSpace.GLOBAL:
+    elif tv.address_space == AddressSpace.GLOBAL:
         return isinstance(tag, ConcurrentTag)
 
-    elif tv.scope == auto:
+    elif tv.address_space == auto:
         raise LoopyError("scope of temp var '%s' has not yet been"
                 "determined" % tv.name)
 
     else:
-        raise ValueError("unexpected value of temp_var.scope for "
+        raise ValueError("unexpected value of temp_var.address_space for "
                 "temporary variable '%s'" % tv.name)
 
 
@@ -485,11 +489,12 @@ def check_write_destinations(kernel):
 # {{{ check_has_schedulable_iname_nesting
 
 def check_has_schedulable_iname_nesting(kernel):
-    from loopy.transform.iname import (has_schedulable_iname_nesting,
-                                       get_iname_duplication_options)
-    if not has_schedulable_iname_nesting(kernel):
+    from loopy.transform.iname import (
+            has_schedulable_iname_nesting_for_single_kernel,
+            get_iname_duplication_options_for_single_kernel)
+    if not has_schedulable_iname_nesting_for_single_kernel(kernel):
         import itertools as it
-        opt = get_iname_duplication_options(kernel)
+        opt = get_iname_duplication_options_for_single_kernel(kernel)
         opt_str = "\n".join("* Duplicate %s within instructions %s" % (i, w)
                             for i, w in it.islice(opt, 3))
         raise LoopyError("Kernel does not have a schedulable iname nesting. "
@@ -542,13 +547,13 @@ class IndirectDependencyEdgeFinder(object):
         return False
 
 
-def declares_nosync_with(kernel, var_scope, dep_a, dep_b):
+def declares_nosync_with(kernel, var_address_space, dep_a, dep_b):
     from loopy.kernel.data import AddressSpace
-    if var_scope == AddressSpace.GLOBAL:
+    if var_address_space == AddressSpace.GLOBAL:
         search_scopes = ["global", "any"]
-    elif var_scope == AddressSpace.LOCAL:
+    elif var_address_space == AddressSpace.LOCAL:
         search_scopes = ["local", "any"]
-    elif var_scope == AddressSpace.PRIVATE:
+    elif var_address_space == AddressSpace.PRIVATE:
         search_scopes = ["any"]
     else:
         raise ValueError("unexpected value of 'AddressSpace'")
@@ -597,19 +602,19 @@ def _check_variable_access_ordered_inner(kernel):
             continue
 
         if name in kernel.temporary_variables:
-            scope = kernel.temporary_variables[name].scope
+            address_space = kernel.temporary_variables[name].address_space
         else:
             arg = kernel.arg_dict[name]
             if isinstance(arg, ArrayArg):
-                scope = arg.memory_address_space
+                address_space = arg.address_space
             elif isinstance(arg, ValueArg):
-                scope = AddressSpace.PRIVATE
+                address_space = AddressSpace.PRIVATE
             else:
                 # No need to consider ConstantArg and ImageArg (for now)
                 # because those won't be written.
-                raise ValueError("could not determine scope of '%s'" % name)
+                raise ValueError("could not determine address_space of '%s'" % name)
 
-        # Check even for PRIVATE scope, to ensure intentional program order.
+        # Check even for PRIVATE address space, to ensure intentional program order.
 
         from loopy.symbolic import AccessRangeOverlapChecker
         overlap_checker = AccessRangeOverlapChecker(kernel)
@@ -623,7 +628,7 @@ def _check_variable_access_ordered_inner(kernel):
                 other = kernel.id_to_insn[other_id]
 
                 has_dependency_relationship = (
-                        declares_nosync_with(kernel, scope, other, writer)
+                        declares_nosync_with(kernel, address_space, other, writer)
                         or
                         depfind(writer_id, other_id)
                         or
@@ -714,13 +719,13 @@ def check_variable_access_ordered(kernel):
 # }}}
 
 
-def pre_schedule_checks(kernel):
+def pre_schedule_checks(kernel, program_callables_info):
     try:
         logger.debug("%s: pre-schedule check: start" % kernel.name)
 
         check_for_duplicate_insn_ids(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
-        check_for_double_use_of_hw_axes(kernel)
+        check_for_double_use_of_hw_axes(kernel, program_callables_info)
         check_insn_attributes(kernel)
         check_loop_priority_inames_known(kernel)
         check_multiple_tags_allowed(kernel)
@@ -748,7 +753,8 @@ def pre_schedule_checks(kernel):
 
 # {{{ check for unused hw axes
 
-def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
+def _check_for_unused_hw_axes_in_kernel_chunk(kernel, program_callables_info,
+        sched_index=None):
     from loopy.schedule import (CallKernel, RunInstruction,
             Barrier, EnterLoop, LeaveLoop, ReturnFromKernel,
             get_insn_ids_for_block_at, gather_schedule_block)
@@ -763,7 +769,8 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
         assert isinstance(kernel.schedule[sched_index], CallKernel)
         _, past_end_i = gather_schedule_block(kernel.schedule, sched_index)
         group_size, local_size = kernel.get_grid_sizes_for_insn_ids_as_exprs(
-                get_insn_ids_for_block_at(kernel.schedule, sched_index))
+                get_insn_ids_for_block_at(kernel.schedule, sched_index),
+                program_callables_info)
 
         group_axes = set(ax for ax, length in enumerate(group_size))
         local_axes = set(ax for ax, length in enumerate(local_size))
@@ -780,7 +787,8 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
     while i < loop_end_i:
         sched_item = kernel.schedule[i]
         if isinstance(sched_item, CallKernel):
-            i = _check_for_unused_hw_axes_in_kernel_chunk(kernel, i)
+            i = _check_for_unused_hw_axes_in_kernel_chunk(kernel,
+                    program_callables_info, i)
 
         elif isinstance(sched_item, RunInstruction):
             insn = kernel.id_to_insn[sched_item.insn_id]
@@ -831,9 +839,10 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
     return past_end_i
 
 
-def check_for_unused_hw_axes_in_insns(kernel):
+def check_for_unused_hw_axes_in_insns(kernel, program_callables_info):
     if kernel.schedule:
-        _check_for_unused_hw_axes_in_kernel_chunk(kernel)
+        _check_for_unused_hw_axes_in_kernel_chunk(kernel,
+                program_callables_info)
 
 # }}}
 
@@ -907,7 +916,7 @@ def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
                             "aliases have a definition" % (temporary, subkernel))
                 continue
 
-            if tval.scope in (AddressSpace.PRIVATE, AddressSpace.LOCAL):
+            if tval.address_space in (AddressSpace.PRIVATE, AddressSpace.LOCAL):
                 from loopy.diagnostic import MissingDefinitionError
                 raise MissingDefinitionError("temporary variable '%s' gets used "
                         "in subkernel '%s' without a definition (maybe you forgot "
@@ -987,15 +996,15 @@ def check_that_shapes_and_strides_are_arguments(kernel):
 # }}}
 
 
-def pre_codegen_checks(kernel):
+def pre_codegen_checks(kernel, program_callables_info):
     try:
         logger.debug("pre-codegen check %s: start" % kernel.name)
 
-        check_for_unused_hw_axes_in_insns(kernel)
+        check_for_unused_hw_axes_in_insns(kernel, program_callables_info)
         check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
         check_that_temporaries_are_defined_in_subkernels_where_used(kernel)
         check_that_all_insns_are_scheduled(kernel)
-        kernel.target.pre_codegen_check(kernel)
+        kernel.target.pre_codegen_check(kernel, program_callables_info)
         check_that_shapes_and_strides_are_arguments(kernel)
 
         logger.debug("pre-codegen check %s: done" % kernel.name)

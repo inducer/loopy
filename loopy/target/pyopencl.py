@@ -56,7 +56,7 @@ def adjust_local_temp_var_storage(kernel, device):
 
     lmem_size = cl_char.usable_local_mem_size(device)
     for temp_var in six.itervalues(kernel.temporary_variables):
-        if temp_var.scope != AddressSpace.LOCAL:
+        if temp_var.address_space != AddressSpace.LOCAL:
             new_temp_vars[temp_var.name] = \
                     temp_var.copy(storage_shape=temp_var.shape)
             continue
@@ -69,7 +69,7 @@ def adjust_local_temp_var_storage(kernel, device):
         other_loctemp_nbytes = [
                 tv.nbytes
                 for tv in six.itervalues(kernel.temporary_variables)
-                if tv.scope == AddressSpace.LOCAL
+                if tv.address_space == AddressSpace.LOCAL
                 and tv.name != temp_var.name]
 
         storage_shape = temp_var.storage_shape
@@ -134,7 +134,7 @@ def adjust_local_temp_var_storage(kernel, device):
 
 # {{{ check sizes against device properties
 
-def check_sizes(kernel, device):
+def check_sizes(kernel, program_callables_info, device):
     import loopy as lp
 
     from loopy.diagnostic import LoopyAdvisory, LoopyError
@@ -151,7 +151,8 @@ def check_sizes(kernel, device):
         if isinstance(arg, lp.ValueArg) and arg.approximately is not None:
             parameters[arg.name] = arg.approximately
 
-    glens, llens = kernel.get_grid_size_upper_bounds_as_exprs()
+    glens, llens = (
+            kernel.get_grid_size_upper_bounds_as_exprs(program_callables_info))
 
     if (max(len(glens), len(llens))
             > device.max_work_item_dimensions):
@@ -206,7 +207,7 @@ class PyOpenCLCallable(ScalarCallable):
     Records information about the callables which are not covered by
     :class:`loopy.target.opencl.OpenCLCallable`
     """
-    def with_types(self, arg_id_to_dtype, kernel):
+    def with_types(self, arg_id_to_dtype, caller_kernel, program_callables_info):
 
         name = self.name
 
@@ -218,7 +219,9 @@ class PyOpenCLCallable(ScalarCallable):
         if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
             # the types provided aren't mature enough to specialize the
             # callable
-            return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+            return (
+                    self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                    program_callables_info)
 
         dtype = arg_id_to_dtype[0]
 
@@ -231,9 +234,11 @@ class PyOpenCLCallable(ScalarCallable):
                 else:
                     raise LoopyTypeError("unexpected complex type '%s'" % dtype)
 
-                return self.copy(name_in_target="%s_%s" % (tpname, name),
-                        arg_id_to_dtype={0: dtype, -1: NumpyType(
-                                np.dtype(dtype.numpy_dtype.type(0).real))})
+                return (
+                        self.copy(name_in_target="%s_%s" % (tpname, name),
+                            arg_id_to_dtype={0: dtype, -1: NumpyType(
+                                np.dtype(dtype.numpy_dtype.type(0).real))}),
+                        program_callables_info)
 
         if name in ["sqrt", "exp", "log",
                 "sin", "cos", "tan",
@@ -248,8 +253,10 @@ class PyOpenCLCallable(ScalarCallable):
                 else:
                     raise LoopyTypeError("unexpected complex type '%s'" % dtype)
 
-                return self.copy(name_in_target="%s_%s" % (tpname, name),
-                        arg_id_to_dtype={0: dtype, -1: dtype})
+                return (
+                        self.copy(name_in_target="%s_%s" % (tpname, name),
+                            arg_id_to_dtype={0: dtype, -1: dtype}),
+                        program_callables_info)
             else:
                 # function calls for floating parameters.
                 numpy_dtype = dtype.numpy_dtype
@@ -257,10 +264,14 @@ class PyOpenCLCallable(ScalarCallable):
                     dtype = dtype.copy(numpy_dtype=np.float32)
                 if name == 'abs':
                     name = 'fabs'
-                return self.copy(name_in_target=name,
-                    arg_id_to_dtype={0: dtype, -1: dtype})
+                return (
+                        self.copy(name_in_target=name,
+                            arg_id_to_dtype={0: dtype, -1: dtype}),
+                        program_callables_info)
 
-        return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+        return (
+                self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                program_callables_info)
 
 
 def pyopencl_function_scoper(target, identifier):
@@ -386,8 +397,8 @@ class PyOpenCLTarget(OpenCLTarget):
             kernel = adjust_local_temp_var_storage(kernel, self.device)
         return kernel
 
-    def pre_codegen_check(self, kernel):
-        check_sizes(kernel, self.device)
+    def pre_codegen_check(self, kernel, program_callables_info):
+        check_sizes(kernel, program_callables_info, self.device)
 
     def get_host_ast_builder(self):
         return PyOpenCLPythonASTBuilder(self)
@@ -702,7 +713,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
         global_temporaries = sorted(
             (tv for tv in six.itervalues(codegen_state.kernel.temporary_variables)
-            if tv.scope == AddressSpace.GLOBAL),
+            if tv.address_space == AddressSpace.GLOBAL),
             key=lambda tv: tv.name)
 
         from pymbolic.mapper.stringifier import PREC_NONE

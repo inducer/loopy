@@ -122,7 +122,8 @@ _CUDA_SPECIFIC_FUNCTIONS = {
 
 class CudaCallable(ScalarCallable):
 
-    def cuda_with_types(self, arg_id_to_dtype, kernel):
+    def cuda_with_types(self, arg_id_to_dtype, caller_kernel,
+            program_callables_info):
 
         name = self.name
 
@@ -135,13 +136,17 @@ class CudaCallable(ScalarCallable):
                     arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
                 # the types provided aren't mature enough to specialize the
                 # callable
-                return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+                return (
+                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        program_callables_info)
 
             dtype = arg_id_to_dtype[0]
             scalar_dtype, offset, field_name = dtype.numpy_dtype.fields["x"]
-            return self.copy(name_in_target=name,
-                    arg_id_to_dtype={-1: NumpyType(scalar_dtype),
-                        0: dtype, 1: dtype})
+            return (
+                    self.copy(name_in_target=name, arg_id_to_dtype={-1:
+                        NumpyType(scalar_dtype),
+                        0: dtype, 1: dtype}),
+                    program_callables_info)
 
         if name in _CUDA_SPECIFIC_FUNCTIONS:
             num_args = _CUDA_SPECIFIC_FUNCTIONS[name]
@@ -154,7 +159,9 @@ class CudaCallable(ScalarCallable):
                 if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
                     # the types provided aren't mature enough to specialize the
                     # callable
-                    return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+                    return (
+                            self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                            program_callables_info)
 
             dtype = np.find_common_type(
                     [], [dtype.numpy_dtype for id, dtype in
@@ -167,10 +174,14 @@ class CudaCallable(ScalarCallable):
             updated_arg_id_to_dtype = dict((id, NumpyType(dtype)) for id in range(-1,
                 num_args))
 
-            return self.copy(name_in_target=name,
-                    arg_id_to_dtype=updated_arg_id_to_dtype)
+            return (
+                    self.copy(name_in_target=name,
+                        arg_id_to_dtype=updated_arg_id_to_dtype),
+                    program_callables_info)
 
-        return self.copy(arg_id_to_dtype=arg_id_to_dtype)
+        return (
+                self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                program_callables_info)
 
 
 def scope_cuda_functions(target, identifier):
@@ -291,7 +302,8 @@ class CUDACASTBuilder(CASTBuilder):
         _, local_grid_size = \
                 codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
                         get_insn_ids_for_block_at(
-                            codegen_state.kernel.schedule, schedule_index))
+                            codegen_state.kernel.schedule, schedule_index),
+                        codegen_state.program_callables_info)
 
         from loopy.symbolic import get_dependencies
         if not get_dependencies(local_grid_size):

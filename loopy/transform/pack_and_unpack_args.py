@@ -24,6 +24,9 @@ THE SOFTWARE.
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import CallInstruction
+from loopy.program import Program
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.symbolic import SubArrayRef
 
 __doc__ = """
@@ -33,9 +36,8 @@ __doc__ = """
 """
 
 
-# {{{ main entrypoint
-
-def pack_and_unpack_args_for_call(kernel, call_name, args_to_pack=None,
+def pack_and_unpack_args_for_call_for_single_kernel(kernel,
+        program_callables_info, call_name, args_to_pack=None,
         args_to_unpack=None):
     """
     Returns a a copy of *kernel* with instructions appended to copy the
@@ -52,6 +54,7 @@ def pack_and_unpack_args_for_call(kernel, call_name, args_to_pack=None,
         which must be unpacked. If set *None*, it is interpreted that
         all the array arguments should be unpacked.
     """
+    assert isinstance(kernel, LoopKernel)
     new_domains = []
     new_tmps = kernel.temporary_variables.copy()
     old_insn_to_new_insns = {}
@@ -60,10 +63,10 @@ def pack_and_unpack_args_for_call(kernel, call_name, args_to_pack=None,
         if not isinstance(insn, CallInstruction):
             # pack and unpack call only be done for CallInstructions.
             continue
-        if insn.expression.function.name not in kernel.scoped_functions:
+        if insn.expression.function.name not in program_callables_info:
             continue
 
-        in_knl_callable = kernel.scoped_functions[
+        in_knl_callable = program_callables_info[
                 insn.expression.function.name]
 
         if in_knl_callable.name != call_name:
@@ -141,12 +144,12 @@ def pack_and_unpack_args_for_call(kernel, call_name, args_to_pack=None,
         from loopy.symbolic import SubstitutionMapper
 
         # dict to store the new assignees and parameters, the mapping pattern
-        # from id to parameters is identical to InKernelCallable.arg_id_to_dtype
+        # from arg_id to parameters is identical to InKernelCallable.arg_id_to_dtype
         id_to_parameters = tuple(enumerate(parameters)) + tuple(
                 (-i-1, assignee) for i, assignee in enumerate(insn.assignees))
         new_id_to_parameters = {}
 
-        for id, p in id_to_parameters:
+        for arg_id, p in id_to_parameters:
             if isinstance(p, SubArrayRef) and (p.subscript.aggregate.name in
                     args_to_pack):
                 new_pack_inames = ilp_inames_map.copy()  # packing-specific inames
@@ -185,8 +188,8 @@ def pack_and_unpack_args_for_call(kernel, call_name, args_to_pack=None,
                 pack_tmp = TemporaryVariable(
                     name=pack_name,
                     dtype=arg_in_caller.dtype,
-                    dim_tags=in_knl_callable.arg_id_to_descr[id].dim_tags,
-                    shape=in_knl_callable.arg_id_to_descr[id].shape,
+                    dim_tags=in_knl_callable.arg_id_to_descr[arg_id].dim_tags,
+                    shape=in_knl_callable.arg_id_to_descr[arg_id].shape,
                     scope=temp_var_scope.PRIVATE,
                 )
 
@@ -207,7 +210,7 @@ def pack_and_unpack_args_for_call(kernel, call_name, args_to_pack=None,
                         zip(arg_in_caller.dim_tags, p.subscript.index_tuple)))
 
                 new_indices = []
-                for dim_tag in in_knl_callable.arg_id_to_descr[id].dim_tags:
+                for dim_tag in in_knl_callable.arg_id_to_descr[arg_id].dim_tags:
                     ind = flatten_index // dim_tag.stride
                     flatten_index -= (dim_tag.stride * ind)
                     new_indices.append(ind)
@@ -249,7 +252,7 @@ def pack_and_unpack_args_for_call(kernel, call_name, args_to_pack=None,
                 updated_swept_inames = []
 
                 for i, _ in enumerate(
-                        in_knl_callable.arg_id_to_descr[id].shape):
+                        in_knl_callable.arg_id_to_descr[arg_id].shape):
                     updated_swept_inames.append(var(vng("i_packsweep_"+arg)))
 
                 ctx = kernel.isl_context
@@ -257,17 +260,18 @@ def pack_and_unpack_args_for_call(kernel, call_name, args_to_pack=None,
                         set=[iname.name for iname in updated_swept_inames])
                 iname_set = isl.BasicSet.universe(space)
                 for iname, axis_length in zip(updated_swept_inames,
-                        in_knl_callable.arg_id_to_descr[id].shape):
+                        in_knl_callable.arg_id_to_descr[arg_id].shape):
                     iname_set = iname_set & make_slab(space, iname.name, 0,
                             axis_length)
                 new_domains = new_domains + [iname_set]
 
                 # }}}
 
-                new_id_to_parameters[id] = SubArrayRef(tuple(updated_swept_inames),
-                    (var(pack_name).index(tuple(updated_swept_inames))))
+                new_id_to_parameters[arg_id] = SubArrayRef(
+                        tuple(updated_swept_inames),
+                        (var(pack_name).index(tuple(updated_swept_inames))))
             else:
-                new_id_to_parameters[id] = p
+                new_id_to_parameters[arg_id] = p
 
         if packing_insns:
             subst_mapper = SubstitutionMapper(make_subst_func(ilp_inames_map))
@@ -315,7 +319,29 @@ def pack_and_unpack_args_for_call(kernel, call_name, args_to_pack=None,
 
     return kernel
 
-# }}}
 
+def pack_and_unpack_args_for_call(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = pack_and_unpack_args_for_call_for_single_kernel(
+                    in_knl_callable.subkernel, program.program_callables_info,
+                    *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # vim: foldmethod=marker

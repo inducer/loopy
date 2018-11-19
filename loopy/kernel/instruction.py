@@ -538,64 +538,154 @@ def _get_assignee_subscript_deps(expr):
 
 # {{{ atomic ops
 
-class memory_ordering:  # noqa
+class MemoryOrdering:  # noqa
     """Ordering of atomic operations, defined as in C11 and OpenCL.
 
-    .. attribute:: relaxed
-    .. attribute:: acquire
-    .. attribute:: release
-    .. attribute:: acq_rel
-    .. attribute:: seq_cst
+    .. attribute:: RELAXED
+    .. attribute:: ACQUIRE
+    .. attribute:: RELEASE
+    .. attribute:: ACQ_REL
+    .. attribute:: SEQ_CST
     """
 
-    relaxed = 0
-    acquire = 1
-    release = 2
-    acq_rel = 3
-    seq_cst = 4
+    RELAXED = 0
+    ACQUIRE = 1
+    RELEASE = 2
+    ACQ_REL = 3
+    SEQ_CST = 4
 
     @staticmethod
     def to_string(v):
-        for i in dir(memory_ordering):
+        for i in dir(MemoryOrdering):
             if i.startswith("_"):
                 continue
 
-            if getattr(memory_ordering, i) == v:
+            if getattr(MemoryOrdering, i) == v:
                 return i
 
-        raise ValueError("Unknown value of memory_ordering")
+        raise ValueError("Unknown value of MemoryOrdering")
 
 
-class memory_scope:  # noqa
+# {{{ memory_ordering, MemoryOrdering compatibility
+
+class _deprecated_memory_ordering_class_method(object):  # noqa
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, klass):
+        warn("'memory_ordering' is deprecated. Use 'MemoryOrdering'.",
+                DeprecationWarning, stacklevel=2)
+        return self.f()
+
+
+class memory_ordering(object):  # noqa
+    """Deprecated. Use :class:`MemoryOrdering` instead.
+    """
+
+    @_deprecated_memory_ordering_class_method
+    def RELAXED():
+        return MemoryOrdering.RELAXED
+
+    @_deprecated_memory_ordering_class_method
+    def ACQUIRE():
+        return MemoryOrdering.ACQUIRE
+
+    @_deprecated_memory_ordering_class_method
+    def RELEASE():
+        return MemoryOrdering.RELEASE
+
+    @_deprecated_memory_ordering_class_method
+    def ACQ_REL():
+        return MemoryOrdering.ACQ_REL
+
+    @_deprecated_memory_ordering_class_method
+    def SEQ_CST():
+        return MemoryOrdering.SEQ_CST
+
+    @staticmethod
+    def to_string(v):
+        warn("'memory_ordering' is deprecated. Use 'MemoryOrdering'.",
+                DeprecationWarning, stacklevel=2)
+        return MemoryOrdering.to_string(v)
+
+# }}}
+
+
+class MemoryScope:  # noqa
     """Scope of atomicity, defined as in OpenCL.
 
     .. attribute:: auto
 
         Scope matches the accessibility of the variable.
 
-    .. attribute:: work_item
-    .. attribute:: work_group
-    .. attribute:: work_device
-    .. attribute:: all_svm_devices
+    .. attribute:: WORK_ITEM
+    .. attribute:: WORK_GROUP
+    .. attribute:: WORK_DEVICE
+    .. attribute:: ALL_SVM_DEVICES
     """
 
-    work_item = 0
-    work_group = 1
-    device = 2
-    all_svm_devices = 2
+    WORK_ITEM = 0
+    WORK_GROUP = 1
+    DEVICE = 2
+    ALL_SVM_DEVICES = 2
 
     auto = -1
 
     @staticmethod
     def to_string(v):
-        for i in dir(memory_scope):
+        for i in dir(MemoryScope):
             if i.startswith("_"):
                 continue
 
-            if getattr(memory_scope, i) == v:
+            if getattr(MemoryScope, i) == v:
                 return i
 
-        raise ValueError("Unknown value of memory_scope")
+        raise ValueError("Unknown value of MemoryScope")
+
+
+# {{{ memory_scope, MemoryScope compatiability
+
+class _deprecated_memory_scope_class_method(object):  # noqa
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, klass):
+        warn("'memory_scope' is deprecated. Use 'MemoryScope'.",
+                DeprecationWarning, stacklevel=2)
+        return self.f()
+
+
+class memory_scope(object):  # noqa
+    """Deprecated. Use :class:`MemoryScope` instead.
+    """
+
+    @_deprecated_memory_scope_class_method
+    def WORK_ITEM():
+        return MemoryScope.PRIVATE
+
+    @_deprecated_memory_scope_class_method
+    def WORK_GROUP():
+        return MemoryScope.WORK_GROUP
+
+    @_deprecated_memory_scope_class_method
+    def DEVICE():
+        return MemoryScope.DEVICE
+
+    @_deprecated_memory_scope_class_method
+    def ALL_SVM_DEVICES():
+        return MemoryScope.ALL_SVM_DEVICES
+
+    @_deprecated_memory_scope_class_method
+    def auto():
+        return MemoryScope.auto
+
+    @staticmethod
+    def to_string(v):
+        warn("'memory_scope' is deprecated. Use 'MemoryScope'.",
+                DeprecationWarning, stacklevel=2)
+        return MemoryScope.to_string(v)
+
+# }}}
 
 
 class VarAtomicity(object):
@@ -628,15 +718,15 @@ class OrderedAtomic(VarAtomicity):
 
     .. attribute:: ordering
 
-        One of the values from :class:`memory_ordering`
+        One of the values from :class:`MemoryOrdering`
 
     .. attribute:: scope
 
-        One of the values from :class:`memory_scope`
+        One of the values from :class:`MemoryScope`
     """
 
-    ordering = memory_ordering.seq_cst
-    scope = memory_scope.auto
+    ordering = MemoryOrdering.SEQ_CST
+    scope = MemoryScope.auto
 
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
@@ -657,8 +747,8 @@ class OrderedAtomic(VarAtomicity):
         return "%s[%s]%s/%s" % (
                 self.op_name,
                 self.var_name,
-                memory_ordering.to_string(self.ordering),
-                memory_scope.to_string(self.scope))
+                MemoryOrdering.to_string(self.ordering),
+                MemoryScope.to_string(self.scope))
 
 
 class AtomicInit(OrderedAtomic):
@@ -667,11 +757,11 @@ class AtomicInit(OrderedAtomic):
 
     .. attribute:: ordering
 
-        One of the values from :class:`memory_ordering`
+        One of the values from :class:`MemoryOrdering`
 
     .. attribute:: scope
 
-        One of the values from :class:`memory_scope`
+        One of the values from :class:`MemoryScope`
     """
     op_name = 'init'
 
@@ -681,11 +771,11 @@ class AtomicUpdate(OrderedAtomic):
 
     .. attribute:: ordering
 
-        One of the values from :class:`memory_ordering`
+        One of the values from :class:`MemoryOrdering`
 
     .. attribute:: scope
 
-        One of the values from :class:`memory_scope`
+        One of the values from :class:`MemoryScope`
     """
     op_name = 'update'
 
@@ -695,11 +785,11 @@ class AtomicLoad(OrderedAtomic):
 
     .. attribute:: ordering
 
-        One of the values from :class:`memory_ordering`
+        One of the values from :class:`MemoryOrdering`
 
     .. attribute:: scope
 
-        One of the values from :class:`memory_scope`
+        One of the values from :class:`MemoryScope`
     """
     op_name = 'load'
 
@@ -861,12 +951,12 @@ class Assignment(MultiAssignmentBase):
     def assignee_subscript_deps(self):
         return (_get_assignee_subscript_deps(self.assignee),)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, *args, **kwargs):
         return self.copy(
-                assignee=f(self.assignee, *args),
-                expression=f(self.expression, *args),
+                assignee=f(self.assignee, *args, **kwargs),
+                expression=f(self.expression, *args, **kwargs),
                 predicates=frozenset(
-                    f(pred, *args) for pred in self.predicates))
+                    f(pred, *args, **kwargs) for pred in self.predicates))
 
     # }}}
 
@@ -1015,12 +1105,12 @@ class CallInstruction(MultiAssignmentBase):
                 _get_assignee_subscript_deps(a)
                 for a in self.assignees)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, *args, **kwargs):
         return self.copy(
-                assignees=f(self.assignees, *args),
-                expression=f(self.expression, *args),
+                assignees=f(self.assignees, *args, **kwargs),
+                expression=f(self.expression, *args, **kwargs),
                 predicates=frozenset(
-                    f(pred, *args) for pred in self.predicates))
+                    f(pred, *args, **kwargs) for pred in self.predicates))
 
     # }}}
 

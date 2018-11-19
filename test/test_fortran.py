@@ -71,7 +71,7 @@ def test_fill(ctx_factory):
     knl, = lp.parse_transformed_fortran(fortran_src,
             pre_transform_code="split_amount = 128")
 
-    assert "i_inner" in knl.all_inames()
+    assert "i_inner" in knl.root_kernel.all_inames()
 
     ctx = ctx_factory()
 
@@ -200,9 +200,9 @@ def test_assignment_to_subst_indices(ctx_factory):
 
     ref_knl = knl
 
-    assert "a" in knl.temporary_variables
+    assert "a" in knl.root_kernel.temporary_variables
     knl = lp.assignment_to_subst(knl, "a")
-    assert "a" not in knl.temporary_variables
+    assert "a" not in knl.root_kernel.temporary_variables
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
@@ -295,7 +295,7 @@ def test_matmul(ctx_factory, buffer_inames):
 
     knl, = lp.parse_fortran(fortran_src)
 
-    assert len(knl.domains) == 1
+    assert len(knl.root_kernel.domains) == 1
 
     ref_knl = knl
 
@@ -410,7 +410,7 @@ def test_fuse_kernels(ctx_factory):
     knl = lp.fuse_kernels((xderiv, yderiv), data_flow=[("result", 0, 1)])
     knl = lp.prioritize_loops(knl, "e,i,j,k")
 
-    assert len(knl.temporary_variables) == 2
+    assert len(knl.root_kernel.temporary_variables) == 2
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(xyderiv, ctx, knl, parameters=dict(nelements=20, ndofs=4))
@@ -472,7 +472,7 @@ def test_precompute_some_exist(ctx_factory):
 
     knl, = lp.parse_fortran(fortran_src)
 
-    assert len(knl.domains) == 1
+    assert len(knl.root_kernel.domains) == 1
 
     knl = lp.split_iname(knl, "i", 8,
             outer_tag="g.0", inner_tag="l.1")

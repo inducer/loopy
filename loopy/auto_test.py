@@ -29,6 +29,7 @@ from warnings import warn
 import numpy as np
 
 import loopy as lp
+
 from loopy.diagnostic import LoopyError, AutomaticTestFailure
 
 
@@ -75,7 +76,7 @@ class TestArgInfo(Record):
 
 # {{{ "reference" arguments
 
-def make_ref_args(kernel, impl_arg_info, queue, parameters):
+def make_ref_args(program, impl_arg_info, queue, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
 
@@ -88,7 +89,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
     ref_arg_data = []
 
     for arg in impl_arg_info:
-        kernel_arg = kernel.impl_arg_to_arg.get(arg.name)
+        kernel_arg = program.impl_arg_to_arg.get(arg.name)
 
         if arg.arg_class is ValueArg:
             if arg.offset_for_name:
@@ -117,7 +118,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
             shape = evaluate_shape(arg.unvec_shape, parameters)
             dtype = kernel_arg.dtype
 
-            is_output = arg.base_name in kernel.get_written_variables()
+            is_output = arg.base_name in program.root_kernel.get_written_variables()
 
             if arg.arg_class is ImageArg:
                 storage_array = ary = cl_array.empty(
@@ -366,7 +367,7 @@ def _enumerate_cl_devices_for_ref_test(blacklist_ref_vendors):
 # {{{ main automatic testing entrypoint
 
 def auto_test_vs_ref(
-        ref_knl, ctx, test_knl=None, op_count=[], op_label=[], parameters={},
+        ref_prog, ctx, test_prog=None, op_count=[], op_label=[], parameters={},
         print_ref_code=False, print_code=True, warmup_rounds=2,
         dump_binary=False,
         fills_entire_output=None, do_check=True, check_result=None,
@@ -383,24 +384,26 @@ def auto_test_vs_ref(
 
     import pyopencl as cl
 
-    if test_knl is None:
-        test_knl = ref_knl
+    if test_prog is None:
+        test_prog = ref_prog
         do_check = False
 
-    if len(ref_knl.args) != len(test_knl.args):
-        raise LoopyError("ref_knl and test_knl do not have the same number "
+    ref_prog = lp.preprocess_kernel(ref_prog)
+    test_prog = lp.preprocess_kernel(test_prog)
+
+    if len(ref_prog.args) != len(test_prog.args):
+        raise LoopyError("ref_prog and test_prog do not have the same number "
                 "of arguments")
 
-    for i, (ref_arg, test_arg) in enumerate(zip(ref_knl.args, test_knl.args)):
+    for i, (ref_arg, test_arg) in enumerate(zip(ref_prog.args, test_prog.args)):
         if ref_arg.name != test_arg.name:
-            raise LoopyError("ref_knl and test_knl argument lists disagree at index "
-                    "%d (1-based)" % (i+1))
+            raise LoopyError("ref_prog and test_prog argument lists disagree at "
+                    "index %d (1-based)" % (i+1))
 
         if ref_arg.dtype != test_arg.dtype:
-            raise LoopyError("ref_knl and test_knl argument lists disagree at index "
-                    "%d (1-based)" % (i+1))
+            raise LoopyError("ref_prog and test_prog argument lists disagree at "
+                    "index %d (1-based)" % (i+1))
 
-    from loopy.compiled import CompiledKernel
     from loopy.target.execution import get_highlighted_code
 
     if isinstance(op_count, (int, float)):
@@ -421,7 +424,7 @@ def auto_test_vs_ref(
     # {{{ compile and run reference code
 
     from loopy.type_inference import infer_unknown_types
-    ref_knl = infer_unknown_types(ref_knl, expect_completion=True)
+    ref_prog = infer_unknown_types(ref_prog, expect_completion=True)
 
     found_ref_device = False
 
@@ -431,30 +434,25 @@ def auto_test_vs_ref(
         ref_ctx = cl.Context([dev])
         ref_queue = cl.CommandQueue(ref_ctx,
                 properties=cl.command_queue_properties.PROFILING_ENABLE)
+        ref_codegen_result = lp.generate_code_v2(ref_prog)
 
-        pp_ref_knl = lp.preprocess_kernel(ref_knl)
-
-        for knl in lp.generate_loop_schedules(pp_ref_knl):
-            ref_sched_kernel = knl
-            break
+        ref_implemented_data_info = ref_codegen_result.implemented_data_info
 
         logger.info("%s (ref): trying %s for the reference calculation" % (
-            ref_knl.name, dev))
+            ref_prog.name, dev))
 
-        ref_compiled = CompiledKernel(ref_ctx, ref_sched_kernel)
         if not quiet and print_ref_code:
             print(75*"-")
             print("Reference Code:")
             print(75*"-")
-            print(get_highlighted_code(ref_compiled.get_code()))
+            print(get_highlighted_code(
+                ref_codegen_result.device_code()))
             print(75*"-")
-
-        ref_kernel_info = ref_compiled.kernel_info(frozenset())
 
         try:
             ref_args, ref_arg_data = \
-                    make_ref_args(ref_sched_kernel,
-                            ref_kernel_info.implemented_data_info,
+                    make_ref_args(ref_prog,
+                            ref_implemented_data_info,
                             ref_queue, parameters)
             ref_args["out_host"] = False
         except cl.RuntimeError as e:
@@ -479,13 +477,13 @@ def auto_test_vs_ref(
         ref_queue.finish()
 
         logger.info("%s (ref): using %s for the reference calculation" % (
-            ref_knl.name, dev))
-        logger.info("%s (ref): run" % ref_knl.name)
+            ref_prog.name, dev))
+        logger.info("%s (ref): run" % ref_prog.name)
 
         ref_start = time()
 
         if not AUTO_TEST_SKIP_RUN:
-            ref_evt, _ = ref_compiled(ref_queue, **ref_args)
+            ref_evt, _ = ref_prog(ref_queue, **ref_args)
         else:
             ref_evt = cl.enqueue_marker(ref_queue)
 
@@ -493,7 +491,7 @@ def auto_test_vs_ref(
         ref_stop = time()
         ref_elapsed_wall = ref_stop-ref_start
 
-        logger.info("%s (ref): run done" % ref_knl.name)
+        logger.info("%s (ref): run done" % ref_prog.name)
 
         ref_evt.wait()
         ref_elapsed_event = 1e-9*(ref_evt.profile.END-ref_evt.profile.START)
@@ -514,161 +512,136 @@ def auto_test_vs_ref(
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    args = None
-    from loopy.kernel import kernel_state
-    from loopy.target.pyopencl import PyOpenCLTarget
-    if test_knl.state not in [
-            kernel_state.PREPROCESSED,
-            kernel_state.SCHEDULED]:
-        if isinstance(test_knl.target, PyOpenCLTarget):
-            test_knl = test_knl.copy(target=PyOpenCLTarget(ctx.devices[0]))
-
-        test_knl = lp.preprocess_kernel(test_knl)
-
-    if not test_knl.schedule:
-        test_kernels = lp.generate_loop_schedules(test_knl)
-    else:
-        test_kernels = [test_knl]
-
-    test_kernel_count = 0
-
     from loopy.type_inference import infer_unknown_types
-    for i, kernel in enumerate(test_kernels):
-        test_kernel_count += 1
-        if test_kernel_count > max_test_kernel_count:
+
+    test_prog = infer_unknown_types(test_prog, expect_completion=True)
+    test_prog_codegen_result = lp.generate_code_v2(test_prog)
+
+    args = make_args(test_prog,
+            test_prog_codegen_result.implemented_data_info,
+            queue, ref_arg_data, parameters)
+    args["out_host"] = False
+
+    if not quiet:
+        print(75*"-")
+        print("Kernel:")
+        print(75*"-")
+        if print_code:
+            print(get_highlighted_code(
+                test_prog_codegen_result.device_code()))
+            print(75*"-")
+        if dump_binary:
+            print(type(test_prog_codegen_result.cl_program))
+            print(test_prog_codegen_result.cl_program.binaries[0])
+            print(75*"-")
+
+    logger.info("%s: run warmup" % (test_prog.name))
+
+    for i in range(warmup_rounds):
+        if not AUTO_TEST_SKIP_RUN:
+            test_prog(queue, **args)
+
+        if need_check and not AUTO_TEST_SKIP_RUN:
+            for arg_desc in ref_arg_data:
+                if arg_desc is None:
+                    continue
+                if not arg_desc.needs_checking:
+                    continue
+
+                from pyopencl.compyte.array import as_strided
+                ref_ary = as_strided(
+                        arg_desc.ref_storage_array.get(),
+                        shape=arg_desc.ref_shape,
+                        strides=arg_desc.ref_numpy_strides).flatten()
+                test_ary = as_strided(
+                        arg_desc.test_storage_array.get(),
+                        shape=arg_desc.test_shape,
+                        strides=arg_desc.test_numpy_strides).flatten()
+                common_len = min(len(ref_ary), len(test_ary))
+                ref_ary = ref_ary[:common_len]
+                test_ary = test_ary[:common_len]
+
+                error_is_small, error = check_result(test_ary, ref_ary)
+                if not error_is_small:
+                    raise AutomaticTestFailure(error)
+
+                need_check = False
+
+    events = []
+    queue.finish()
+
+    logger.info("%s: warmup done" % (test_prog.name))
+
+    logger.info("%s: timing run" % (test_prog.name))
+
+    timing_rounds = warmup_rounds
+
+    while True:
+        from time import time
+        start_time = time()
+
+        evt_start = cl.enqueue_marker(queue)
+
+        for i in range(timing_rounds):
+            if not AUTO_TEST_SKIP_RUN:
+                evt, _ = test_prog(queue, **args)
+                events.append(evt)
+            else:
+                events.append(cl.enqueue_marker(queue))
+
+        evt_end = cl.enqueue_marker(queue)
+
+        queue.finish()
+        stop_time = time()
+
+        for evt in events:
+            evt.wait()
+        evt_start.wait()
+        evt_end.wait()
+
+        elapsed_event = (1e-9*events[-1].profile.END
+                - 1e-9*events[0].profile.START) \
+                / timing_rounds
+        try:
+            elapsed_event_marker = ((1e-9*evt_end.profile.START
+                        - 1e-9*evt_start.profile.START)
+                    / timing_rounds)
+        except cl.RuntimeError:
+            elapsed_event_marker = None
+
+        elapsed_wall = (stop_time-start_time)/timing_rounds
+
+        if elapsed_wall * timing_rounds < 0.3:
+            timing_rounds *= 4
+        else:
             break
 
-        kernel = infer_unknown_types(kernel, expect_completion=True)
+    logger.info("%s: timing run done" % (test_prog.name))
 
-        compiled = CompiledKernel(ctx, kernel)
+    rates = ""
+    for cnt, lbl in zip(op_count, op_label):
+        rates += " %g %s/s" % (cnt/elapsed_wall, lbl)
 
-        if args is None:
-            kernel_info = compiled.kernel_info(frozenset())
-
-            args = make_args(kernel,
-                    kernel_info.implemented_data_info,
-                    queue, ref_arg_data, parameters)
-        args["out_host"] = False
-
-        if not quiet:
-            print(75*"-")
-            print("Kernel #%d:" % i)
-            print(75*"-")
-            if print_code:
-                print(compiled.get_highlighted_code())
-                print(75*"-")
-            if dump_binary:
-                print(type(compiled.cl_program))
-                print(compiled.cl_program.binaries[0])
-                print(75*"-")
-
-        logger.info("%s: run warmup" % (knl.name))
-
-        for i in range(warmup_rounds):
-            if not AUTO_TEST_SKIP_RUN:
-                compiled(queue, **args)
-
-            if need_check and not AUTO_TEST_SKIP_RUN:
-                for arg_desc in ref_arg_data:
-                    if arg_desc is None:
-                        continue
-                    if not arg_desc.needs_checking:
-                        continue
-
-                    from pyopencl.compyte.array import as_strided
-                    ref_ary = as_strided(
-                            arg_desc.ref_storage_array.get(),
-                            shape=arg_desc.ref_shape,
-                            strides=arg_desc.ref_numpy_strides).flatten()
-                    test_ary = as_strided(
-                            arg_desc.test_storage_array.get(),
-                            shape=arg_desc.test_shape,
-                            strides=arg_desc.test_numpy_strides).flatten()
-                    common_len = min(len(ref_ary), len(test_ary))
-                    ref_ary = ref_ary[:common_len]
-                    test_ary = test_ary[:common_len]
-
-                    error_is_small, error = check_result(test_ary, ref_ary)
-                    if not error_is_small:
-                        raise AutomaticTestFailure(error)
-
-                    need_check = False
-
-        events = []
-        queue.finish()
-
-        logger.info("%s: warmup done" % (knl.name))
-
-        logger.info("%s: timing run" % (knl.name))
-
-        timing_rounds = warmup_rounds
-
-        while True:
-            from time import time
-            start_time = time()
-
-            evt_start = cl.enqueue_marker(queue)
-
-            for i in range(timing_rounds):
-                if not AUTO_TEST_SKIP_RUN:
-                    evt, _ = compiled(queue, **args)
-                    events.append(evt)
-                else:
-                    events.append(cl.enqueue_marker(queue))
-
-            evt_end = cl.enqueue_marker(queue)
-
-            queue.finish()
-            stop_time = time()
-
-            for evt in events:
-                evt.wait()
-            evt_start.wait()
-            evt_end.wait()
-
-            elapsed_event = (1e-9*events[-1].profile.END
-                    - 1e-9*events[0].profile.START) \
-                    / timing_rounds
-            try:
-                elapsed_event_marker = ((1e-9*evt_end.profile.START
-                            - 1e-9*evt_start.profile.START)
-                        / timing_rounds)
-            except cl.RuntimeError:
-                elapsed_event_marker = None
-
-            elapsed_wall = (stop_time-start_time)/timing_rounds
-
-            if elapsed_wall * timing_rounds < 0.3:
-                timing_rounds *= 4
+    if not quiet:
+        def format_float_or_none(v):
+            if v is None:
+                return "<unavailable>"
             else:
-                break
+                return "%g" % v
 
-        logger.info("%s: timing run done" % (knl.name))
+        print("elapsed: %s s event, %s s marker-event %s s wall "
+                "(%d rounds)%s" % (
+                    format_float_or_none(elapsed_event),
+                    format_float_or_none(elapsed_event_marker),
+                    format_float_or_none(elapsed_wall), timing_rounds, rates))
 
-        rates = ""
+    if do_check:
+        ref_rates = ""
         for cnt, lbl in zip(op_count, op_label):
-            rates += " %g %s/s" % (cnt/elapsed_wall, lbl)
-
+            ref_rates += " %g %s/s" % (cnt/ref_elapsed_event, lbl)
         if not quiet:
-            def format_float_or_none(v):
-                if v is None:
-                    return "<unavailable>"
-                else:
-                    return "%g" % v
-
-            print("elapsed: %s s event, %s s marker-event %s s wall "
-                    "(%d rounds)%s" % (
-                        format_float_or_none(elapsed_event),
-                        format_float_or_none(elapsed_event_marker),
-                        format_float_or_none(elapsed_wall), timing_rounds, rates))
-
-        if do_check:
-            ref_rates = ""
-            for cnt, lbl in zip(op_count, op_label):
-                ref_rates += " %g %s/s" % (cnt/ref_elapsed_event, lbl)
-            if not quiet:
-                print("ref: elapsed: %g s event, %g s wall%s" % (
-                        ref_elapsed_event, ref_elapsed_wall, ref_rates))
+            print("ref: elapsed: %g s event, %g s wall%s" % (
+                    ref_elapsed_event, ref_elapsed_wall, ref_rates))
 
     # }}}
 

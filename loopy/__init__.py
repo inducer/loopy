@@ -29,15 +29,14 @@ from six.moves import range, zip
 from loopy.symbolic import (
         TaggedVariable, Reduction, LinearSubscript, TypeCast)
 from loopy.diagnostic import LoopyError, LoopyWarning
-
+from loopy.program import iterate_over_kernels_if_given_program
 
 # {{{ imported user interface
 
-from loopy.library.function import (
-        default_function_mangler, single_arg_function_mangler)
-
 from loopy.kernel.instruction import (
-        memory_ordering, memory_scope, VarAtomicity, AtomicInit, AtomicUpdate,
+        MemoryOrdering, memory_ordering,
+        MemoryScope, memory_scope,
+        VarAtomicity, AtomicInit, AtomicUpdate,
         InstructionBase,
         MultiAssignmentBase, Assignment, ExpressionInstruction,
         CallInstruction, CInstruction, NoOpInstruction, BarrierInstruction)
@@ -45,13 +44,16 @@ from loopy.kernel.data import (
         auto,
         KernelArgument,
         ValueArg, ArrayArg, GlobalArg, ConstantArg, ImageArg,
-        temp_var_scope, TemporaryVariable, AddressSpace,
+        AddressSpace, temp_var_scope,
+        TemporaryVariable,
         SubstitutionRule,
         CallMangleInfo)
 from loopy.kernel.function_interface import (
-        ScalarCallable)
+        CallableKernel, ScalarCallable)
+from loopy.program import (
+        Program, make_program_from_kernel)
 
-from loopy.kernel import LoopKernel, kernel_state
+from loopy.kernel import LoopKernel, KernelState, kernel_state
 from loopy.kernel.tools import (
         get_dot_dependency_graph,
         show_dependency_graph,
@@ -62,7 +64,7 @@ from loopy.kernel.tools import (
         get_subkernels,
         get_subkernel_to_insn_id_map)
 from loopy.types import to_loopy_type
-from loopy.kernel.creation import make_kernel, UniqueName
+from loopy.kernel.creation import make_kernel, UniqueName, make_function
 from loopy.library.reduction import register_reduction_parser
 
 # {{{ import transforms
@@ -118,14 +120,15 @@ from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.add_barrier import add_barrier
-from loopy.transform.register_callable import (register_callable_kernel,
-        register_function_lookup, inline_callable_kernel)
+from loopy.transform.callable import (register_callable_kernel,
+        register_function_id_to_in_knl_callable_mapper, inline_callable_kernel)
 from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
 
 # }}}
 
 from loopy.type_inference import infer_unknown_types
-from loopy.preprocess import preprocess_kernel, realize_reduction
+from loopy.preprocess import (preprocess_kernel, realize_reduction,
+        preprocess_program)
 from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
 from loopy.statistics import (ToCountMap, CountGranularity, stringify_stats_mapping,
         Op, MemAccess, get_op_poly, get_op_map, get_lmem_access_poly,
@@ -158,26 +161,31 @@ __all__ = [
 
         "auto",
 
-        "LoopKernel", "kernel_state",
+        "LoopKernel",
+        "KernelState", "kernel_state",  # lower case is deprecated
 
-        "memory_ordering", "memory_scope", "VarAtomicity",
+        "MemoryOrdering", "memory_ordering",  # lower case is deprecated
+        "MemoryScope", "memory_scope",  # lower case is deprecated
+
+        "VarAtomicity",
         "AtomicInit", "AtomicUpdate",
         "InstructionBase",
         "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
         "CallInstruction", "CInstruction", "NoOpInstruction",
         "BarrierInstruction",
 
-        "ScalarCallable",
+        "ScalarCallable", "CallableKernel",
+
+        "Program", "make_program_from_kernel",
 
         "KernelArgument",
         "ValueArg", "ArrayArg", "GlobalArg", "ConstantArg", "ImageArg",
-        "AddressSpace", "temp_var_scope", "TemporaryVariable",
+        "AddressSpace", "temp_var_scope",   # temp_var_scope is deprecated
+        "TemporaryVariable",
         "SubstitutionRule",
         "CallMangleInfo",
 
-        "default_function_mangler", "single_arg_function_mangler",
-
-        "make_kernel", "UniqueName",
+        "make_kernel", "UniqueName", "make_function",
 
         "register_reduction_parser",
 
@@ -230,7 +238,8 @@ __all__ = [
 
         "add_barrier",
 
-        "register_callable_kernel", "register_function_lookup",
+        "register_callable_kernel",
+        "register_function_id_to_in_knl_callable_mapper",
         "inline_callable_kernel",
 
         "pack_and_unpack_args_for_call",
@@ -250,7 +259,7 @@ __all__ = [
 
         "infer_unknown_types",
 
-        "preprocess_kernel", "realize_reduction",
+        "preprocess_kernel", "realize_reduction", "preprocess_program",
         "generate_loop_schedules", "get_one_scheduled_kernel",
         "GeneratedProgram", "CodeGenerationResult",
         "PreambleInfo",
@@ -298,6 +307,7 @@ __all__ = [
 
 # {{{ set_options
 
+@iterate_over_kernels_if_given_program
 def set_options(kernel, *args, **kwargs):
     """Return a new kernel with the options given as keyword arguments, or from
     a string representation passed in as the first (and only) positional
@@ -305,6 +315,7 @@ def set_options(kernel, *args, **kwargs):
 
     See also :class:`Options`.
     """
+    assert isinstance(kernel, LoopKernel)
 
     if args and kwargs:
         raise TypeError("cannot pass both positional and keyword arguments")
@@ -336,6 +347,7 @@ def set_options(kernel, *args, **kwargs):
 
 # {{{ library registration
 
+@iterate_over_kernels_if_given_program
 def register_preamble_generators(kernel, preamble_generators):
     """
     :arg manglers: list of functions of signature ``(preamble_info)``
@@ -360,6 +372,7 @@ def register_preamble_generators(kernel, preamble_generators):
     return kernel.copy(preamble_generators=new_pgens)
 
 
+@iterate_over_kernels_if_given_program
 def register_symbol_manglers(kernel, manglers):
     from loopy.tools import unpickles_equally
 
@@ -377,6 +390,7 @@ def register_symbol_manglers(kernel, manglers):
     return kernel.copy(symbol_manglers=new_manglers)
 
 
+@iterate_over_kernels_if_given_program
 def register_function_manglers(kernel, manglers):
     """
     :arg manglers: list of functions of signature ``(kernel, name, arg_dtypes)``
@@ -442,7 +456,7 @@ class CacheMode(object):
 # {{{ make copy kernel
 
 def make_copy_kernel(new_dim_tags, old_dim_tags=None):
-    """Returns a :class:`LoopKernel` that changes the data layout
+    """Returns a :class:`loopy.Program` that changes the data layout
     of a variable (called "input") to the new layout specified by
     *new_dim_tags* from the one specified by *old_dim_tags*.
     *old_dim_tags* defaults to an all-C layout of the same rank

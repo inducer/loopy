@@ -43,6 +43,8 @@ else:
 from pyopencl.tools import pytest_generate_tests_for_pyopencl \
         as pytest_generate_tests
 
+from loopy.diagnostic import LoopyError
+
 __all__ = [
         "pytest_generate_tests",
         "cl"  # 'cl.create_some_context'
@@ -214,7 +216,8 @@ def test_rob_stroud_bernstein(ctx_factory):
                 lp.GlobalArg("coeffs", None, shape=None),
                 "..."
                 ],
-            assumptions="deg>=0 and nels>=1"
+            assumptions="deg>=0 and nels>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0])
             )
 
     knl = lp.fix_parameters(knl, nqp1d=7, deg=4)
@@ -222,13 +225,12 @@ def test_rob_stroud_bernstein(ctx_factory):
     knl = lp.split_iname(knl, "el_outer", 2, outer_tag="g.0", inner_tag="ilp",
             slabs=(0, 1))
     knl = lp.tag_inames(knl, dict(i2="l.1", alpha1="unr", alpha2="unr"))
-
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code(
-            dict(
+    knl = lp.add_dtypes(knl, dict(
                 qpts=np.float32,
                 coeffs=np.float32,
                 tmp=np.float32,
-                )))
+                ))
+    print(lp.generate_code_v2(knl))
 
 
 def test_rob_stroud_bernstein_full(ctx_factory):
@@ -294,7 +296,8 @@ def test_rob_stroud_bernstein_full(ctx_factory):
             lp.GlobalArg("coeffs", None, shape=None),
             "..."
             ],
-        assumptions="deg>=0 and nels>=1"
+        assumptions="deg>=0 and nels>=1",
+        target=lp.PyOpenCLTarget(ctx.devices[0])
         )
 
     knl = lp.fix_parameters(knl, nqp1d=7, deg=4)
@@ -308,14 +311,14 @@ def test_rob_stroud_bernstein_full(ctx_factory):
     from pickle import dumps, loads
     knl = loads(dumps(knl))
 
-    knl = lp.CompiledKernel(ctx, knl).get_highlighted_code(
+    knl = lp.add_dtypes(knl,
             dict(
                 qpts=np.float32,
                 tmp=np.float32,
                 coeffs=np.float32,
                 result=np.float32,
                 ))
-    print(knl)
+    print(lp.generate_code_v2(knl))
 
 
 def test_stencil(ctx_factory):
@@ -658,7 +661,7 @@ def test_domain_tree_nesting():
         lp.GlobalArg('B', shape=(100, 31), dtype=np.float64),
         lp.GlobalArg('out', shape=(100, 12), dtype=np.float64)])
 
-    parents_per_domain = knl.parents_per_domain()
+    parents_per_domain = knl.root_kernel.parents_per_domain()
 
     def depth(i):
         if parents_per_domain[i] is None:
@@ -668,6 +671,26 @@ def test_domain_tree_nesting():
 
     for i in range(len(parents_per_domain)):
         assert depth(i) < 2
+
+
+def test_prefetch_through_indirect_access():
+    knl = lp.make_kernel("{[i, j, k]: 0 <= i,k < 10 and 0<=j<2}",
+        """
+        for i, j, k
+            a[map1[indirect[i], j], k] = 2
+        end
+        """,
+        [
+            lp.GlobalArg("a", strides=(2, 1), dtype=int),
+            lp.GlobalArg("map1", shape=(10, 10), dtype=int),
+            "..."
+            ],
+        target=lp.CTarget())
+
+    knl = lp.prioritize_loops(knl, "i,j,k")
+
+    with pytest.raises(LoopyError):
+        knl = lp.add_prefetch(knl, "map1[:, j]")
 
 
 if __name__ == "__main__":

@@ -30,12 +30,11 @@ from pymbolic.mapper import CSECachingMapperMixin
 from pymbolic.primitives import Slice, Variable, Subscript
 from loopy.tools import intern_frozenset_of_ids
 from loopy.symbolic import (
-        IdentityMapper, WalkMapper, SubArrayRef,
-        RuleAwareIdentityMapper)
+        IdentityMapper, WalkMapper, SubArrayRef)
 from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
-        SubstitutionRule)
+        SubstitutionRule, AddressSpace)
 from loopy.kernel.instruction import (CInstruction, _DataObliviousInstruction,
         CallInstruction)
 from loopy.diagnostic import LoopyError, warn_with_kernel
@@ -1156,14 +1155,18 @@ class ArgumentGuesser:
             # other writable type of variable is an argument.
 
             return ArrayArg(arg_name,
-                    shape=lp.auto, offset=self.default_offset)
+                    shape=lp.auto,
+                    offset=self.default_offset,
+                    address_space=AddressSpace.GLOBAL)
 
         irank = self.find_index_rank(arg_name)
         if irank == 0:
             # read-only, no indices
             return ValueArg(arg_name)
         else:
-            return ArrayArg(arg_name, shape=lp.auto, offset=self.default_offset)
+            return ArrayArg(
+                    arg_name, shape=lp.auto, offset=self.default_offset,
+                    address_space=AddressSpace.GLOBAL)
 
     def convert_names_to_full_args(self, kernel_args):
         new_kernel_args = []
@@ -1449,7 +1452,7 @@ def create_temporaries(knl, default_order):
                 new_temp_vars[assignee_name] = lp.TemporaryVariable(
                         name=assignee_name,
                         dtype=temp_var_type,
-                        scope=lp.auto,
+                        address_space=lp.auto,
                         base_indices=lp.auto,
                         shape=lp.auto,
                         order=default_order,
@@ -1633,15 +1636,6 @@ def guess_arg_shape_if_requested(kernel, default_order):
             if arg.shape is lp.auto:
                 arg = arg.copy(shape=shape)
 
-            try:
-                arg.strides
-            except AttributeError:
-                pass
-            else:
-                if arg.strides is lp.auto:
-                    from loopy.kernel.data import make_strides
-                    arg = arg.copy(strides=make_strides(shape, default_order))
-
         new_args.append(arg)
 
     return kernel.copy(args=new_args)
@@ -1675,7 +1669,7 @@ def _is_wildcard(s):
 
 
 def _resolve_dependencies(what, knl, insn, deps):
-    from loopy import find_instructions
+    from loopy.transform.instruction import find_instructions_in_single_kernel
     from loopy.match import MatchExpressionBase
 
     new_deps = []
@@ -1684,7 +1678,7 @@ def _resolve_dependencies(what, knl, insn, deps):
         found_any = False
 
         if isinstance(dep, MatchExpressionBase):
-            for new_dep in find_instructions(knl, dep):
+            for new_dep in find_instructions_in_single_kernel(knl, dep):
                 if new_dep.id != insn.id:
                     new_deps.append(new_dep.id)
                     found_any = True
@@ -1837,141 +1831,6 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
 # }}}
 
 
-# {{{ scope functions
-
-class FunctionScoper(RuleAwareIdentityMapper):
-    """
-    Mapper to convert the  ``function`` attribute of a
-    :class:`pymbolic.primitives.Call` known in the kernel as instances of
-    :class:`loopy.symbolic.ScopedFunction`. A function is known in the
-    *kernel*, :func:`loopy.kernel.LoopKernel.find_scoped_function_identifier`
-    returns an instance of
-    :class:`loopy.kernel.function_interface.InKernelCallable`.
-
-    **Example**: If given an expression of the form ``sin(x) + unknown_function(y) +
-    log(z)``, then the mapper would return ``ScopedFunction('sin')(x) +
-    unknown_function(y) + ScopedFunction('log')(z)``.
-
-    :arg rule_mapping_context: An instance of
-        :class:`loopy.symbolic.RuleMappingContext`.
-    :arg function_ids: A container with instances of :class:`str` indicating
-        the function identifiers to look for while scoping functions.
-    """
-    def __init__(self, rule_mapping_context, kernel):
-        super(FunctionScoper, self).__init__(rule_mapping_context)
-        self.kernel = kernel
-        self.scoped_functions = {}
-
-    def map_call(self, expr, expn_state):
-        from loopy.symbolic import ScopedFunction
-        if not isinstance(expr.function, ScopedFunction):
-
-            # searching the kernel for the function.
-            in_knl_callable = self.kernel.find_scoped_function_identifier(
-                    expr.function.name)
-            if in_knl_callable:
-                # Associating the newly created ScopedFunction with the
-                # resolved in-kernel callable.
-                self.scoped_functions[expr.function.name] = in_knl_callable
-
-                return type(expr)(
-                        ScopedFunction(expr.function.name),
-                        tuple(self.rec(child, expn_state)
-                            for child in expr.parameters))
-
-        # This is an unknown function as of yet, hence not modifying it.
-        return super(FunctionScoper, self).map_call(expr, expn_state)
-
-    def map_call_with_kwargs(self, expr, expn_state):
-        from loopy.symbolic import ScopedFunction
-        if not isinstance(expr.function, ScopedFunction):
-
-            # searching the kernel for the function.
-            in_knl_callable = self.kernel.find_scoped_function_identifier(
-                    expr.function.name)
-
-            if in_knl_callable:
-                # Associating the newly created ScopedFunction with the
-                # resolved in-kernel callable.
-                self.scoped_functions[expr.function.name] = in_knl_callable
-                return type(expr)(
-                        ScopedFunction(expr.function.name),
-                        tuple(self.rec(child, expn_state)
-                            for child in expr.parameters),
-                        dict(
-                            (key, self.rec(val, expn_state))
-                            for key, val in six.iteritems(expr.kw_parameters))
-                            )
-
-        # This is an unknown function as of yet, hence not modifying it.
-        return super(FunctionScoper, self).map_call_with_kwargs(expr,
-                expn_state)
-
-    def map_reduction(self, expr, expn_state):
-        from loopy.library.reduction import (MaxReductionOperation,
-                MinReductionOperation, ArgMinReductionOperation,
-                ArgMaxReductionOperation, _SegmentedScalarReductionOperation,
-                SegmentedOp)
-        from loopy.library.reduction import ArgExtOp
-
-        # Noting down the extra functions arising due to certain reductions.
-        if isinstance(expr.operation, MaxReductionOperation):
-            self.scoped_functions["max"] = (
-                    self.kernel.find_scoped_function_identifier("max"))
-        elif isinstance(expr.operation, MinReductionOperation):
-            self.scoped_functions["min"] = (
-                    self.kernel.find_scoped_function_identifier("min"))
-        elif isinstance(expr.operation, ArgMaxReductionOperation):
-            self.scoped_functions["max"] = (
-                    self.kernel.find_scoped_function_identifier("max"))
-            self.scoped_functions["make_tuple"] = (
-                    self.kernel.find_scoped_function_identifier("make_tuple"))
-            self.scoped_functions[ArgExtOp(expr.operation)] = (
-                    self.kernel.find_scoped_function_identifier(expr.operation))
-        elif isinstance(expr.operation, ArgMinReductionOperation):
-            self.scoped_functions["min"] = (
-                    self.kernel.find_scoped_function_identifier("min"))
-            self.scoped_functions["make_tuple"] = (
-                    self.kernel.find_scoped_function_identifier("make_tuple"))
-            self.scoped_functions[ArgExtOp(expr.operation)] = (
-                    self.kernel.find_scoped_function_identifier(expr.operation))
-        elif isinstance(expr.operation, _SegmentedScalarReductionOperation):
-            self.scoped_functions["make_tuple"] = (
-                    self.kernel.find_scoped_function_identifier("make_tuple"))
-            self.scoped_functions[SegmentedOp(expr.operation)] = (
-                    self.kernel.find_scoped_function_identifier(expr.operation))
-
-        return super(FunctionScoper, self).map_reduction(expr, expn_state)
-
-
-def scope_functions(kernel):
-    """
-    Returns a kernel with the pymbolic nodes involving known functions realized
-    as instances of :class:`loopy.symbolic.ScopedFunction`, along with the
-    resolved functions being added to the ``scoped_functions`` dictionary of
-    the kernel.
-    """
-
-    from loopy.symbolic import SubstitutionRuleMappingContext
-    rule_mapping_context = SubstitutionRuleMappingContext(
-            kernel.substitutions, kernel.get_var_name_generator())
-
-    function_scoper = FunctionScoper(rule_mapping_context, kernel)
-
-    # scoping fucntions and collecting the scoped functions
-    kernel_with_scoped_functions = rule_mapping_context.finish_kernel(
-            function_scoper.map_kernel(kernel))
-
-    # updating the functions collected during the scoped functions
-    updated_scoped_functions = kernel.scoped_functions.copy()
-    updated_scoped_functions.update(function_scoper.scoped_functions)
-
-    return kernel_with_scoped_functions.copy(
-            scoped_functions=updated_scoped_functions)
-
-# }}}
-
-
 # {{{ slice to sub array ref
 
 def get_slice_params(slice, dimension_length):
@@ -2015,16 +1874,16 @@ class SliceToInameReplacer(IdentityMapper):
     """
     Converts slices to instances of :class:`loopy.symbolic.SubArrayRef`.
 
-    :attribute var_name_gen:
+    .. attribute:: var_name_gen
 
         Variable name generator, in order to generate unique inames within the
         kernel domain.
 
-    :attribute knl:
+    .. attribute:: knl
 
         An instance of :class:`loopy.LoopKernel`
 
-    :attribute iname_domains:
+    .. attribute:: iname_domains
 
         An instance of :class:`dict` to store the slices enountered in the
         expressions as a mapping from ``iname`` to a tuple of ``(start, stop,
@@ -2047,7 +1906,7 @@ class SliceToInameReplacer(IdentityMapper):
         swept_inames = []
         for i, index in enumerate(expr.index_tuple):
             if isinstance(index, Slice):
-                unique_var_name = self.var_name_gen(based_on="islice")
+                unique_var_name = self.var_name_gen(based_on="i")
                 if expr.aggregate.name in self.knl.arg_dict:
                     domain_length = self.knl.arg_dict[expr.aggregate.name].shape[i]
                 elif expr.aggregate.name in self.knl.temporary_variables:
@@ -2261,6 +2120,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     target = kwargs.pop("target", None)
     seq_dependencies = kwargs.pop("seq_dependencies", False)
     fixed_parameters = kwargs.pop("fixed_parameters", {})
+    make_program = kwargs.pop("make_program", True)
 
     if defines:
         from warnings import warn
@@ -2286,55 +2146,56 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     # {{{ handle kernel language version
 
-    from loopy.version import LANGUAGE_VERSION_SYMBOLS
+    if make_program:
+        from loopy.version import LANGUAGE_VERSION_SYMBOLS
 
-    version_to_symbol = dict(
-            (getattr(loopy.version, lvs), lvs)
-            for lvs in LANGUAGE_VERSION_SYMBOLS)
+        version_to_symbol = dict(
+                (getattr(loopy.version, lvs), lvs)
+                for lvs in LANGUAGE_VERSION_SYMBOLS)
 
-    lang_version = kwargs.pop("lang_version", None)
-    if lang_version is None:
-        # {{{ peek into caller's module to look for LOOPY_KERNEL_LANGUAGE_VERSION
-
-        # This *is* gross. But it seems like the right thing interface-wise.
-        import inspect
-        caller_globals = inspect.currentframe().f_back.f_globals
-
-        for ver_sym in LANGUAGE_VERSION_SYMBOLS:
-            try:
-                lang_version = caller_globals[ver_sym]
-                break
-            except KeyError:
-                pass
-
-        # }}}
-
+        lang_version = kwargs.pop("lang_version", None)
         if lang_version is None:
-            from warnings import warn
-            from loopy.diagnostic import LoopyWarning
-            from loopy.version import (
-                    MOST_RECENT_LANGUAGE_VERSION,
-                    FALLBACK_LANGUAGE_VERSION)
-            warn("'lang_version' was not passed to make_kernel(). "
-                    "To avoid this warning, pass "
-                    "lang_version={ver} in this invocation. "
-                    "(Or say 'from loopy.version import "
-                    "{sym_ver}' in "
-                    "the global scope of the calling frame.)"
-                    .format(
-                        ver=MOST_RECENT_LANGUAGE_VERSION,
-                        sym_ver=version_to_symbol[MOST_RECENT_LANGUAGE_VERSION]
-                        ),
-                    LoopyWarning, stacklevel=2)
+            # {{{ peek into caller's module to look for LOOPY_KERNEL_LANGUAGE_VERSION
 
-            lang_version = FALLBACK_LANGUAGE_VERSION
+            # This *is* gross. But it seems like the right thing interface-wise.
+            import inspect
+            caller_globals = inspect.currentframe().f_back.f_globals
 
-    if lang_version not in version_to_symbol:
-        raise LoopyError("Language version '%s' is not known." % (lang_version,))
-    if lang_version >= (2018, 1):
-        options = options.copy(enforce_variable_access_ordered=True)
-    if lang_version >= (2018, 2):
-        options = options.copy(ignore_boostable_into=True)
+            for ver_sym in LANGUAGE_VERSION_SYMBOLS:
+                try:
+                    lang_version = caller_globals[ver_sym]
+                    break
+                except KeyError:
+                    pass
+
+            # }}}
+
+            if lang_version is None:
+                from warnings import warn
+                from loopy.diagnostic import LoopyWarning
+                from loopy.version import (
+                        MOST_RECENT_LANGUAGE_VERSION,
+                        FALLBACK_LANGUAGE_VERSION)
+                warn("'lang_version' was not passed to make_kernel(). "
+                        "To avoid this warning, pass "
+                        "lang_version={ver} in this invocation. "
+                        "(Or say 'from loopy.version import "
+                        "{sym_ver}' in "
+                        "the global scope of the calling frame.)"
+                        .format(
+                            ver=MOST_RECENT_LANGUAGE_VERSION,
+                            sym_ver=version_to_symbol[MOST_RECENT_LANGUAGE_VERSION]
+                            ),
+                        LoopyWarning, stacklevel=2)
+
+                lang_version = FALLBACK_LANGUAGE_VERSION
+
+        if lang_version not in version_to_symbol:
+            raise LoopyError("Language version '%s' is not known." % (lang_version,))
+        if lang_version >= (2018, 1):
+            options = options.copy(enforce_variable_access_ordered=True)
+        if lang_version >= (2018, 2):
+            options = options.copy(ignore_boostable_into=True)
 
     # }}}
 
@@ -2436,7 +2297,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     knl = create_temporaries(knl, default_order)
 
-    # Convert slices to iname domains
+    # convert slices to iname domains
     knl = realize_slices_as_sub_array_refs(knl)
 
     # -------------------------------------------------------------------------
@@ -2476,15 +2337,29 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_for_duplicate_names(knl)
     check_written_variable_names(knl)
 
-    # Function Lookup
-    knl = scope_functions(knl)
+    from loopy.kernel.tools import infer_arg_is_output_only
+    knl = infer_arg_is_output_only(knl)
 
     from loopy.preprocess import prepare_for_caching
     knl = prepare_for_caching(knl)
 
     creation_plog.done()
 
-    return knl
+    if make_program:
+        from loopy.program import make_program_from_kernel
+        return make_program_from_kernel(knl)
+    else:
+        return knl
+
+
+def make_function(*args, **kwargs):
+    lang_version = kwargs.pop('lang_version', None)
+    if lang_version:
+        raise LoopyError("lang_version should be set for program, not "
+                "functions.")
+
+    kwargs['make_program'] = False
+    return make_kernel(*args, **kwargs)
 
 # }}}
 

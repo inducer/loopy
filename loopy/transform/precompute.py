@@ -38,6 +38,9 @@ from pymbolic import var
 from loopy.transform.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
         AccessDescriptor)
 
+from loopy.program import Program
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+
 
 class RuleAccessDescriptor(AccessDescriptor):
     __slots__ = ["args", "expansion_stack"]
@@ -258,9 +261,9 @@ class _not_provided(object):  # noqa: N801
     pass
 
 
-def precompute(kernel, subst_use, sweep_inames=[], within=None,
-        storage_axes=None, temporary_name=None, precompute_inames=None,
-        precompute_outer_inames=None,
+def precompute_for_single_kernel(kernel, program_callables_info, subst_use,
+        sweep_inames=[], within=None, storage_axes=None, temporary_name=None,
+        precompute_inames=None, precompute_outer_inames=None,
         storage_axis_to_tag={},
 
         # "None" is a valid value here, distinct from the default.
@@ -268,8 +271,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
         dtype=None,
         fetch_bounding_box=False,
-        temporary_scope=None, temporary_is_local=None,
-        compute_insn_id=None):
+        temporary_address_space=None,
+        compute_insn_id=None,
+        **kwargs):
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
     things to operate, a list of *sweep_inames* (order irrelevant) and an
@@ -355,26 +359,29 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     eliminated.
     """
 
-    # {{{ unify temporary_scope / temporary_is_local
+    # {{{ unify temporary_address_space / temporary_scope
+
+    temporary_scope = kwargs.pop("temporary_scope", None)
 
     from loopy.kernel.data import AddressSpace
-    if temporary_is_local is not None:
+    if temporary_scope is not None:
         from warnings import warn
-        warn("temporary_is_local is deprecated. Use temporary_scope instead",
+        warn("temporary_scope is deprecated. Use temporary_address_space instead",
                 DeprecationWarning, stacklevel=2)
 
-        if temporary_scope is not None:
-            raise LoopyError("may not specify both temporary_is_local and "
+        if temporary_address_space is not None:
+            raise LoopyError("may not specify both temporary_address_space and "
                     "temporary_scope")
 
-        if temporary_is_local:
-            temporary_scope = AddressSpace.LOCAL
-        else:
-            temporary_scope = AddressSpace.PRIVATE
+        temporary_address_space = temporary_scope
 
-    del temporary_is_local
+    del temporary_scope
 
     # }}}
+
+    if kwargs:
+        raise TypeError("unrecognized keyword arguments: %s"
+                % ", ".join(kwargs.keys()))
 
     # {{{ check, standardize arguments
 
@@ -847,7 +854,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     compute_dep_id = compute_insn_id
     added_compute_insns = [compute_insn]
 
-    if temporary_scope == AddressSpace.GLOBAL:
+    if temporary_address_space == AddressSpace.GLOBAL:
         barrier_insn_id = kernel.make_unique_instruction_id(
                 based_on=c_subst_name+"_barrier")
         from loopy.kernel.instruction import BarrierInstruction
@@ -959,8 +966,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     import loopy as lp
 
-    if temporary_scope is None:
-        temporary_scope = lp.auto
+    if temporary_address_space is None:
+        temporary_address_space = lp.auto
 
     new_temp_shape = tuple(abm.non1_storage_shape)
 
@@ -971,7 +978,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 dtype=dtype,
                 base_indices=(0,)*len(new_temp_shape),
                 shape=tuple(abm.non1_storage_shape),
-                scope=temporary_scope,
+                address_space=temporary_address_space,
                 dim_names=tuple(non1_storage_axis_names))
 
     else:
@@ -1009,20 +1016,20 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
         temp_var = temp_var.copy(shape=new_temp_shape)
 
-        if temporary_scope == temp_var.scope:
+        if temporary_address_space == temp_var.address_space:
             pass
-        elif temporary_scope is lp.auto:
-            temporary_scope = temp_var.scope
-        elif temp_var.scope is lp.auto:
+        elif temporary_address_space is lp.auto:
+            temporary_address_space = temp_var.address_space
+        elif temp_var.address_space is lp.auto:
             pass
         else:
             raise LoopyError("Existing and new temporary '%s' do not "
                     "have matching scopes (existing: %s, new: %s)"
                     % (temporary_name,
-                        AddressSpace.stringify(temp_var.scope),
-                        AddressSpace.stringify(temporary_scope)))
+                        AddressSpace.stringify(temp_var.address_space),
+                        AddressSpace.stringify(temporary_address_space)))
 
-        temp_var = temp_var.copy(scope=temporary_scope)
+        temp_var = temp_var.copy(address_space=temporary_address_space)
 
         # }}}
 
@@ -1033,15 +1040,40 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # }}}
 
-    from loopy import tag_inames
+    from loopy.transform.iname import tag_inames
     kernel = tag_inames(kernel, new_iname_to_tag)
 
     from loopy.kernel.data import AutoFitLocalIndexTag, filter_iname_tags_by_type
 
     if filter_iname_tags_by_type(new_iname_to_tag.values(), AutoFitLocalIndexTag):
         from loopy.kernel.tools import assign_automatic_axes
-        kernel = assign_automatic_axes(kernel)
+        kernel = assign_automatic_axes(kernel, program_callables_info)
 
     return kernel
+
+
+def precompute(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_resolved_functions = {}
+    for func_id, in_knl_callable in program.program_callables_info.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = precompute_for_single_kernel(
+                    in_knl_callable.subkernel, program.program_callables_info,
+                    *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_resolved_functions[func_id] = in_knl_callable
+
+    new_program_callables_info = program.program_callables_info.copy(
+            resolved_functions=new_resolved_functions)
+    return program.copy(program_callables_info=new_program_callables_info)
 
 # vim: foldmethod=marker
