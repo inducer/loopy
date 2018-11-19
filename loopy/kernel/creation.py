@@ -1134,6 +1134,7 @@ class ArgumentGuesser:
 
     def make_new_arg(self, arg_name):
         arg_name = arg_name.strip()
+        import loopy as lp
 
         from loopy.kernel.data import ValueArg, ArrayArg, AddressSpace
 
@@ -1144,7 +1145,6 @@ class ArgumentGuesser:
             # It's not a temp var, and thereby not a domain parameter--the only
             # other writable type of variable is an argument.
 
-            import loopy as lp
             return ArrayArg(arg_name,
                     shape=lp.auto,
                     offset=self.default_offset,
