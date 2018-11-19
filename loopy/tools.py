@@ -619,12 +619,12 @@ class Optional(object):
 
     def __getstate__(self):
         if not self.has_value:
-            return ()
+            return _no_value
 
         return (self._value,)
 
     def __setstate__(self, state):
-        if not state:
+        if state is _no_value:
             self.has_value = False
             return
 
