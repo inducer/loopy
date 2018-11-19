@@ -693,8 +693,9 @@ class ArrayBase(ImmutableRecord):
 
         if dtype is lp.auto:
             from warnings import warn
-            warn("Argument/temporary data type should be None if unspecified, "
-                    "not auto. This usage will be disallowed in 2018.",
+            warn("Argument/temporary data type for '%s' should be None if "
+                    "unspecified, not auto. This usage will be disallowed in 2018."
+                    % name,
                     DeprecationWarning, stacklevel=2)
 
             dtype = None

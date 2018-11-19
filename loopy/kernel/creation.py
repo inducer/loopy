@@ -454,7 +454,6 @@ def parse_insn(groups, insn_options):
         and *inames_to_dup* is None or a list of tuples `(old, new)`.
     """
 
-    import loopy as lp
     from loopy.symbolic import parse
 
     if "lhs" in groups:
@@ -1145,6 +1144,7 @@ class ArgumentGuesser:
             # It's not a temp var, and thereby not a domain parameter--the only
             # other writable type of variable is an argument.
 
+            import loopy as lp
             return ArrayArg(arg_name,
                     shape=lp.auto,
                     offset=self.default_offset,
