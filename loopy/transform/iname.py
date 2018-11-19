@@ -66,8 +66,6 @@ __doc__ = """
 
 .. autofunction:: affine_map_inames
 
-.. autofunction:: realize_ilp
-
 .. autofunction:: find_unused_axis_tag
 
 .. autofunction:: make_reduction_inames_unique

@@ -406,7 +406,7 @@ Arguments
     :members:
     :undoc-members:
 
-.. autoclass:: GlobalArg
+.. autofunction:: GlobalArg
     :members:
     :undoc-members:
 
