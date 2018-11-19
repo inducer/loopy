@@ -1636,15 +1636,6 @@ def guess_arg_shape_if_requested(kernel, default_order):
             if arg.shape is lp.auto:
                 arg = arg.copy(shape=shape)
 
-            try:
-                arg.strides
-            except AttributeError:
-                pass
-            else:
-                if arg.strides is lp.auto:
-                    from loopy.kernel.data import make_strides
-                    arg = arg.copy(strides=make_strides(shape, default_order))
-
         new_args.append(arg)
 
     return kernel.copy(args=new_args)
