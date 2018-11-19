@@ -32,10 +32,10 @@ from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
         CInstruction, _DataObliviousInstruction)
-from loopy.symbolic import IdentityMapper, SubstitutionMapper
+from loopy.symbolic import IdentityMapper, SubstitutionMapper, CombineMapper
 from loopy.isl_helpers import simplify_via_aff
 from loopy.kernel.function_interface import (get_kw_pos_association,
-        change_names_of_pymbolic_calls, CallableKernel, ScalarCallable)
+        CallableKernel, ScalarCallable)
 from loopy.program import Program, ResolvedFunctionMarker
 
 __doc__ = """
@@ -43,7 +43,7 @@ __doc__ = """
 
 .. autofunction:: register_function_id_to_in_knl_callable_mapper
 
-.. autofunction:: register_callable_kernel
+.. autofunction:: eegister_callable_kernel
 """
 
 
@@ -161,7 +161,8 @@ def register_callable_kernel(program, callee_kernel):
     # {{{ sanity checks
 
     assert isinstance(program, Program)
-    assert isinstance(callee_kernel, LoopKernel)
+    assert isinstance(callee_kernel, LoopKernel), ('{0} !='
+            '{1}'.format(type(callee_kernel), LoopKernel))
 
     # check to make sure that the variables with 'out' direction is equal to
     # the number of assigness in the callee kernel intructions.
@@ -602,29 +603,20 @@ class DimChanger(IdentityMapper):
 
 
 def _match_caller_callee_argument_dimension_for_single_kernel(
-        caller_knl, program_callables_info, callee_function_name):
+        caller_knl, callee_knl):
     """
     Returns a copy of *caller_knl* with the instance of
     :class:`loopy.kernel.function_interface.CallableKernel` addressed by
     *callee_function_name* in the *caller_knl* aligned with the argument
     dimesnsions required by *caller_knl*.
     """
-    pymbolic_calls_to_new_callables = {}
     for insn in caller_knl.instructions:
         if not isinstance(insn, CallInstruction) or (
-                insn.expression.function.name not in
-                program_callables_info):
+                insn.expression.function.name !=
+                callee_knl.name):
             # Call to a callable kernel can only occur through a
             # CallInstruction.
             continue
-
-        in_knl_callable = program_callables_info[
-                insn.expression.function.name]
-
-        if in_knl_callable.subkernel.name != callee_function_name:
-            # Not the callable we're looking for.
-            continue
-
         # getting the caller->callee arg association
 
         parameters = insn.expression.parameters[:]
@@ -636,14 +628,14 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
 
         parameter_shapes = [par.get_array_arg_descriptor(caller_knl).shape
                 for par in parameters]
-        kw_to_pos, pos_to_kw = get_kw_pos_association(in_knl_callable.subkernel)
+        kw_to_pos, pos_to_kw = get_kw_pos_association(callee_knl)
         for i in range(len(parameters), len(parameters)+len(kw_parameters)):
             parameter_shapes.append(kw_parameters[pos_to_kw[i]]
                     .get_array_arg_descriptor(caller_knl).shape)
 
-        # inserting the assigness at the required positions.
+        # inserting the assignees at the required positions.
         assignee_write_count = -1
-        for i, arg in enumerate(in_knl_callable.subkernel.args):
+        for i, arg in enumerate(callee_knl.args):
             if arg.is_output_only:
                 assignee = assignees[-assignee_write_count-1]
                 parameter_shapes.insert(i, assignee
@@ -651,11 +643,13 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
                 assignee_write_count -= 1
 
         callee_arg_to_desired_dim_tag = dict(zip([arg.name for arg in
-            in_knl_callable.subkernel.args], parameter_shapes))
-        dim_changer = DimChanger(in_knl_callable.subkernel.arg_dict,
+            callee_knl.args], parameter_shapes))
+        dim_changer = DimChanger(
+                dict(callee_knl.arg_dict, **(
+                    callee_knl.temporary_variables)),
                 callee_arg_to_desired_dim_tag)
         new_callee_insns = []
-        for callee_insn in in_knl_callable.subkernel.instructions:
+        for callee_insn in callee_knl.instructions:
             if isinstance(callee_insn, MultiAssignmentBase):
                 new_callee_insns.append(callee_insn.copy(expression=dim_changer(
                     callee_insn.expression),
@@ -664,48 +658,75 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
                     _DataObliviousInstruction)):
                 pass
             else:
-                raise NotImplementedError("Unknwon instruction %s." %
+                raise NotImplementedError("Unknown instruction %s." %
                         type(insn))
 
         # subkernel with instructions adjusted according to the new dimensions.
-        new_subkernel = in_knl_callable.subkernel.copy(instructions=new_callee_insns)
+        new_callee_knl = callee_knl.copy(instructions=new_callee_insns)
 
-        new_in_knl_callable = in_knl_callable.copy(subkernel=new_subkernel)
-
-        pymbolic_calls_to_new_callables[insn.expression] = new_in_knl_callable
-
-    if not pymbolic_calls_to_new_callables:
-        # complain if no matching function found.
-        raise LoopyError("No CallableKernel with the name %s found in %s." % (
-            callee_function_name, caller_knl.name))
-
-    return change_names_of_pymbolic_calls(caller_knl,
-            pymbolic_calls_to_new_callables)
+        return new_callee_knl
 
 
-def _match_caller_callee_argument_dimension_(program, *args, **kwargs):
+class _FunctionCalledChecker(CombineMapper):
+    def __init__(self, func_name):
+        self.func_name = func_name
+
+    def combine(self, values):
+        return any(values)
+
+    def map_call(self, expr):
+        if expr.function.name == self.func_name:
+            return True
+        return self.combine(
+                tuple(
+                    self.rec(child) for child in expr.parameters)
+                )
+
+    map_call_with_kwargs = map_call
+
+    def map_constant(self, expr):
+        return False
+
+    def map_algebraic_leaf(self, expr):
+        return False
+
+    def map_kernel(self, kernel):
+        return any(self.rec(insn.expression) for insn in kernel.instructions if
+                isinstance(insn, MultiAssignmentBase))
+
+
+def _match_caller_callee_argument_dimension_(program, callee_function_name):
+    """
+    Returns a copy of *program* with the instance of
+    :class:`loopy.kernel.function_interface.CallableKernel` addressed by
+    *callee_function_name* in the *program* aligned with the argument
+    dimensions required by *caller_knl*.
+
+    .. note::
+
+        The callee kernel addressed by *callee_funciton_name*, should be
+        called only once.
+    """
     assert isinstance(program, Program)
+    assert isinstance(callee_function_name, str)
 
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = (
-                    _match_caller_callee_argument_dimension_for_single_kernel(
-                        in_knl_callable.subkernel, program.program_callables_info,
-                        *args, **kwargs))
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=new_subkernel)
+    is_invoking_callee = _FunctionCalledChecker(
+            callee_function_name).map_kernel
 
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of callable %s." % (
-                type(in_knl_callable).__name__))
+    caller_knl,  = [in_knl_callable.subkernel for in_knl_callable in
+            program.program_callables_info.values() if isinstance(in_knl_callable,
+                CallableKernel) and
+            is_invoking_callee(in_knl_callable.subkernel)]
 
-        new_resolved_functions[func_id] = in_knl_callable
+    old_callee_knl = program.program_callables_info[
+            callee_function_name].subkernel
+    new_callee_kernel = _match_caller_callee_argument_dimension_for_single_kernel(
+            caller_knl, old_callee_knl)
 
-    new_program_callables_info = program.program_callables_info.copy(
-            resolved_functions=new_resolved_functions)
+    new_program_callables_info = program.program_callables_info.copy()
+    new_program_callables_info.resolved_functions[callee_function_name] = (
+            new_program_callables_info[callee_function_name].copy(
+                subkernel=new_callee_kernel))
     return program.copy(program_callables_info=new_program_callables_info)
 
 # }}}
