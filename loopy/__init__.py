@@ -64,7 +64,7 @@ from loopy.kernel.tools import (
         get_subkernels,
         get_subkernel_to_insn_id_map)
 from loopy.types import to_loopy_type
-from loopy.kernel.creation import make_kernel, UniqueName, make_kernel_function
+from loopy.kernel.creation import make_kernel, UniqueName, make_function
 from loopy.library.reduction import register_reduction_parser
 
 # {{{ import transforms
@@ -185,7 +185,7 @@ __all__ = [
         "SubstitutionRule",
         "CallMangleInfo",
 
-        "make_kernel", "UniqueName", "make_kernel_function",
+        "make_kernel", "UniqueName", "make_function",
 
         "register_reduction_parser",
 

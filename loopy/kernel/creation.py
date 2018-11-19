@@ -2352,7 +2352,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         return knl
 
 
-def make_kernel_function(*args, **kwargs):
+def make_function(*args, **kwargs):
     lang_version = kwargs.pop('lang_version', None)
     if lang_version:
         raise LoopyError("lang_version should be set for program, not "

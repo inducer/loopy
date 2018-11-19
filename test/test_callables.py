@@ -69,13 +69,13 @@ def test_register_knl(ctx_factory, inline):
     x = np.random.rand(n, n, n, n, n)
     y = np.random.rand(n, n, n, n, n)
 
-    grandchild_knl = lp.make_kernel_function(
+    grandchild_knl = lp.make_function(
             "{[i, j]:0<= i, j< 16}",
             """
             c[i, j] = 2*a[i, j] + 3*b[i, j]
             """, name='linear_combo1')
 
-    child_knl = lp.make_kernel_function(
+    child_knl = lp.make_function(
             "{[i, j]:0<=i, j < 16}",
             """
             [i, j]: g[i, j] = linear_combo1([i, j]: e[i, j], [i, j]: f[i, j])
@@ -121,7 +121,7 @@ def test_slices_with_negative_step(ctx_factory, inline):
     x = np.random.rand(n, n, n, n, n)
     y = np.random.rand(n, n, n, n, n)
 
-    child_knl = lp.make_kernel_function(
+    child_knl = lp.make_function(
             "{[i, j]:0<=i, j < 16}",
             """
             g[i, j] = 2*e[i, j] + 3*f[i, j]
@@ -170,7 +170,7 @@ def test_register_knl_with_call_with_kwargs(ctx_factory, inline):
     b_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float32)
     c_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
 
-    callee_knl = lp.make_kernel_function(
+    callee_knl = lp.make_function(
             "{[i, j]:0<=i, j < %d}" % n,
             """
             h[i, j] = 2 * e[i, j] + 3*f[i, j] + 4*g[i, j]
@@ -221,7 +221,7 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
     x_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
     y_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
 
-    callee_knl = lp.make_kernel_function(
+    callee_knl = lp.make_function(
             "{[i, j]:0<=i, j < 16}",
             """
             g[i, j] = 2*e[i, j] + 3*f[i, j]
@@ -262,19 +262,19 @@ def test_shape_translation_through_sub_array_ref(ctx_factory, inline):
     x2 = cl.clrandom.rand(queue, (6, ), dtype=np.float64)
     x3 = cl.clrandom.rand(queue, (6, 6), dtype=np.float64)
 
-    callee1 = lp.make_kernel_function(
+    callee1 = lp.make_function(
             "{[i]: 0<=i<6}",
             """
             a[i] = 2*abs(b[i])
             """, name="callee_fn1")
 
-    callee2 = lp.make_kernel_function(
+    callee2 = lp.make_function(
             "{[i, j]: 0<=i<3 and 0 <= j < 2}",
             """
             a[i, j] = 3*b[i, j]
             """, name="callee_fn2")
 
-    callee3 = lp.make_kernel_function(
+    callee3 = lp.make_function(
             "{[i]: 0<=i<6}",
             """
             a[i] = 5*b[i]
@@ -319,7 +319,7 @@ def test_multi_arg_array_call(ctx_factory):
     i = p.Variable("i")
     index = p.Variable("index")
     a_i = p.Subscript(p.Variable("a"), p.Variable("i"))
-    argmin_kernel = lp.make_kernel_function(
+    argmin_kernel = lp.make_function(
             "{[i]: 0 <= i < n}",
             [
                 lp.Assignment(id="init2", assignee=index,
@@ -362,13 +362,13 @@ def test_packing_unpacking(ctx_factory, inline):
     x1 = cl.clrandom.rand(queue, (3, 2), dtype=np.float64)
     x2 = cl.clrandom.rand(queue, (6, ), dtype=np.float64)
 
-    callee1 = lp.make_kernel_function(
+    callee1 = lp.make_function(
             "{[i]: 0<=i<6}",
             """
             a[i] = 2*b[i]
             """, name="callee_fn1")
 
-    callee2 = lp.make_kernel_function(
+    callee2 = lp.make_function(
             "{[i, j]: 0<=i<2 and 0 <= j < 3}",
             """
             a[i, j] = 3*b[i, j]
