@@ -582,6 +582,78 @@ class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList):
 # }}}
 
 
+# {{{ optional object
+
+class _no_value(object):  # noqa
+    pass
+
+
+class Optional(object):
+    """A wrapper for an optionally present object.
+
+    .. attribute:: has_value
+
+        *True* if and only if this object contains a value.
+
+    .. attribute:: value
+
+        The value, if present.
+    """
+
+    __slots__ = ("has_value", "_value")
+
+    def __init__(self, value=_no_value):
+        self.has_value = value is not _no_value
+        if self.has_value:
+            self._value = value
+
+    def __str__(self):
+        if not self.has_value:
+            return "Optional()"
+        return "Optional(%s)" % self._value
+
+    def __repr__(self):
+        if not self.has_value:
+            return "Optional()"
+        return "Optional(%r)" % self._value
+
+    def __getstate__(self):
+        if not self.has_value:
+            return ()
+
+        return (self._value,)
+
+    def __setstate__(self, state):
+        if not state:
+            self.has_value = False
+            return
+
+        self.has_value = True
+        self._value, = state
+
+    def __eq__(self, other):
+        if not self.has_value:
+            return not other.has_value
+
+        return self.value == other.value if other.has_value else False
+
+    def __neq__(self, other):
+        return not self.__eq__(other)
+
+    @property
+    def value(self):
+        if not self.has_value:
+            raise AttributeError("optional value not present")
+        return self._value
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(
+                key_hash,
+                (self._value,) if self.has_value else ())
+
+# }}}
+
+
 def unpickles_equally(obj):
     from six.moves.cPickle import loads, dumps
     return loads(dumps(obj)) == obj
