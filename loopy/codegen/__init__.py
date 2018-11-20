@@ -564,14 +564,14 @@ def generate_code_v2(program):
             if not in_knl_callable.subkernel.is_called_from_host:
                 assert codegen_results[func_id].host_program is None
 
-    device_preambles = set()
+    device_preambles = []
     for cgr in codegen_results.values():
-        device_preambles.update(cgr.device_preambles)
+        device_preambles.extend(cgr.device_preambles)
 
     # collecting the function declarations of callee kernels
     for in_knl_callable in program.callables_table.values():
         for preamble in in_knl_callable.generate_preambles(program.target):
-            device_preambles.update([preamble])
+            device_preambles.append(preamble)
 
     collective_device_program = codegen_results[program.name].device_programs[0]
     callee_fdecls = []
