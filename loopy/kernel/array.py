@@ -834,6 +834,7 @@ class ArrayBase(ImmutableRecord):
                 order=order,
                 alignment=alignment,
                 for_atomic=for_atomic,
+                target=target,
                 **kwargs)
 
     def __eq__(self, other):
