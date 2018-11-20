@@ -2182,7 +2182,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
 
 def make_function(*args, **kwargs):
-    kwargs['is_callee_kernel'] = False
+    kwargs['is_callee_kernel'] = True
     return make_kernel(*args, **kwargs)
 
 # }}}
