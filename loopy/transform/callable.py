@@ -584,6 +584,8 @@ class DimChanger(IdentityMapper):
         self.desired_shape = desired_shape
 
     def map_subscript(self, expr):
+        if expr.aggregate.name not in self.callee_arg_dict:
+            return super(DimChanger, self).map_subscript(expr)
         callee_arg_dim_tags = self.callee_arg_dict[expr.aggregate.name].dim_tags
         flattened_index = sum(dim_tag.stride*idx for dim_tag, idx in
                 zip(callee_arg_dim_tags, expr.index_tuple))
@@ -645,8 +647,7 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
         callee_arg_to_desired_dim_tag = dict(zip([arg.name for arg in
             callee_knl.args], parameter_shapes))
         dim_changer = DimChanger(
-                dict(callee_knl.arg_dict, **(
-                    callee_knl.temporary_variables)),
+                callee_knl.arg_dict,
                 callee_arg_to_desired_dim_tag)
         new_callee_insns = []
         for callee_insn in callee_knl.instructions:
