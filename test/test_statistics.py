@@ -57,7 +57,8 @@ def test_op_counter_basic():
     knl = lp.add_and_infer_dtypes(knl,
                                   dict(a=np.float32, b=np.float32,
                                        g=np.float64, h=np.float64))
-    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True)
+    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
+                           count_within_subscripts=True)
     n_workgroups = 1
     group_size = 1
     subgroups_per_group = div_ceil(group_size, SGS)
@@ -161,7 +162,8 @@ def test_op_counter_specialops():
     knl = lp.add_and_infer_dtypes(knl,
                                   dict(a=np.float32, b=np.float32,
                                        g=np.float64, h=np.float64))
-    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True)
+    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
+                           count_within_subscripts=True)
     n_workgroups = 1
     group_size = 1
     subgroups_per_group = div_ceil(group_size, SGS)
@@ -206,7 +208,8 @@ def test_op_counter_bitwise():
                 a=np.int32, b=np.int32,
                 g=np.int64, h=np.int64))
 
-    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True)
+    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
+                           count_within_subscripts=False)
     n_workgroups = 1
     group_size = 1
     subgroups_per_group = div_ceil(group_size, SGS)
@@ -226,7 +229,7 @@ def test_op_counter_bitwise():
     i64shift = op_map[lp.Op(np.dtype(np.int64), 'shift', CG.SUBGROUP)
                       ].eval_with_dict(params)
     # (count-per-sub-group)*n_subgroups
-    assert i32add == n*m+n*m*ell*n_subgroups
+    assert i32add == n*m*ell*n_subgroups
     assert i32bw == 2*n*m*ell*n_subgroups
     assert i64bw == 2*n*m*n_subgroups
     assert i64add == i64mul == n*m*n_subgroups
@@ -1153,7 +1156,8 @@ def test_summations_and_filters():
     assert f32lall == (3*n*m*ell)*n_subgroups
     assert f64lall == (2*n*m)*n_subgroups
 
-    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True)
+    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
+                           count_within_subscripts=True)
     #for k, v in op_map.items():
     #    print(type(k), "\n", k.name, k.dtype, type(k.dtype), " :\n", v)
 

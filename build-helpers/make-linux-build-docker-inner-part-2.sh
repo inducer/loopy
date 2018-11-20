@@ -23,6 +23,10 @@ git clone --recursive git://github.com/inducer/loopy
 cd loopy
 
 grep -v pyopencl requirements.txt > myreq.txt
+
+# needed for pyinstaller package to be usable
+echo packaging >> myreq.txt
+
 pip install -r myreq.txt
 python setup.py install
 

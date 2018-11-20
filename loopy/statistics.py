@@ -707,9 +707,10 @@ class CounterBase(CombineMapper):
 # {{{ ExpressionOpCounter
 
 class ExpressionOpCounter(CounterBase):
-    def __init__(self, knl, callables_table):
+    def __init__(self, knl, callables_table, count_within_subscripts=True):
         self.knl = knl
         self.callables_table = callables_table
+        self.count_within_subscripts = count_within_subscripts
         from loopy.type_inference import TypeInferenceMapper
         self.type_inf = TypeInferenceMapper(knl, callables_table)
 
@@ -737,7 +738,10 @@ class ExpressionOpCounter(CounterBase):
                     ) + self.rec(expr.parameters)
 
     def map_subscript(self, expr):
-        return self.rec(expr.index)
+        if self.count_within_subscripts:
+            return self.rec(expr.index)
+        else:
+            return ToCountMap()
 
     def map_sum(self, expr):
         assert expr.children
@@ -1343,10 +1347,9 @@ def _get_insn_count(knl, callables_table, insn_id, subgroup_size,
 
 # {{{ get_op_map
 
-
 def get_op_map_for_single_kernel(knl, callables_table,
         numpy_types=True, count_redundant_work=False,
-               subgroup_size=None):
+        count_within_subscripts=True, subgroup_size=None):
 
     if not knl.options.ignore_boostable_into:
         raise LoopyError("Kernel '%s': Using operation counting requires the option "
@@ -1394,7 +1397,7 @@ def get_op_map_for_single_kernel(knl, callables_table,
 
 
 def get_op_map(program, numpy_types=True, count_redundant_work=False,
-               subgroup_size=None):
+               count_within_subscripts=True, subgroup_size=None):
 
     """Count the number of operations in a loopy kernel.
 
@@ -1409,6 +1412,9 @@ def get_op_map(program, numpy_types=True, count_redundant_work=False,
         flag indicates whether this work should be included in the count.
         (Likely desirable for performance modeling, but undesirable for code
         optimization.)
+
+    :arg count_within_subscripts: A :class:`bool` specifying whether to
+        count operations inside array indices.
 
     :arg subgroup_size: (currently unused) An :class:`int`, :class:`str`
         ``'guess'``, or *None* that specifies the sub-group size. An OpenCL
@@ -1464,8 +1470,8 @@ def get_op_map(program, numpy_types=True, count_redundant_work=False,
         if isinstance(in_knl_callable, CallableKernel):
             knl = in_knl_callable.subkernel
             knl_op_map = get_op_map_for_single_kernel(knl,
-                        program.callables_table, numpy_types,
-                        count_redundant_work, subgroup_size)
+                    program.callables_table, numpy_types, count_redundant_work,
+                    count_within_subscripts, subgroup_size)
 
             for i in range(callables_count[func_id]):
                 op_map += knl_op_map

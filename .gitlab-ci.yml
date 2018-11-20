@@ -12,6 +12,10 @@ Python 2.7 POCL:
   - pocl
   except:
   - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
+
 
 Python 2.7 with legacy PyOpenCL:
   script:
@@ -29,6 +33,10 @@ Python 2.7 with legacy PyOpenCL:
   except:
   - tags
   retry: 2
+  artifacts:
+    reports:
+      junit: test/pytest.xml
+
 
 Python 3.6 POCL:
   script:
@@ -43,6 +51,10 @@ Python 3.6 POCL:
   - pocl
   except:
   - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
+
 
 Python 3.6 POCL Twice With Cache:
   script:
@@ -59,6 +71,10 @@ Python 3.6 POCL Twice With Cache:
   - pocl
   except:
   - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
+
 
 # PyPy POCL:
 #   script:
@@ -77,7 +93,7 @@ Python 3.6 POCL Examples:
   script:
   - export PY_EXE=python3.6
   - export PYOPENCL_TEST=portable
-  - export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib jupyter nbconvert"
+  - export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipykernel nbconvert"
   - ". ./build-py-project-and-run-examples.sh"
   tags:
   - python3.6
@@ -86,6 +102,7 @@ Python 3.6 POCL Examples:
   - ispc
   except:
   - tags
+
 
 CentOS binary:
   script:

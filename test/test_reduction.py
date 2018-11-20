@@ -219,32 +219,38 @@ def test_local_parallel_reduction(ctx_factory, size):
 def test_global_parallel_reduction(ctx_factory, size):
     ctx = ctx_factory()
 
-    prog = lp.make_kernel(
+    knl = lp.make_kernel(
             "{[i]: 0 <= i < n }",
             """
             # Using z[0] instead of z works around a bug in ancient PyOpenCL.
-            z[0] = sum(i, i/13)
+            z[0] = sum(i, a[i])
             """)
 
-    ref_prog = prog
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+    ref_knl = knl
 
     gsize = 128
-    prog = lp.split_iname(prog, "i", gsize * 20)
-    prog = lp.split_iname(prog, "i_inner", gsize, outer_tag="l.0")
-    prog = lp.split_reduction_inward(prog, "i_inner_inner")
-    prog = lp.split_reduction_inward(prog, "i_inner_outer")
+    knl = lp.split_iname(knl, "i", gsize * 20)
+    knl = lp.split_iname(knl, "i_inner", gsize, inner_tag="l.0")
+    knl = lp.split_reduction_outward(knl, "i_outer")
+    knl = lp.split_reduction_inward(knl, "i_inner_outer")
     from loopy.transform.data import reduction_arg_to_subst_rule
-    prog = reduction_arg_to_subst_rule(prog, "i_outer")
-    prog = lp.precompute(prog, "red_i_outer_arg", "i_outer",
+    knl = reduction_arg_to_subst_rule(knl, "i_outer")
+
+    knl = lp.precompute(knl, "red_i_outer_arg", "i_outer",
             temporary_scope=lp.temp_var_scope.GLOBAL,
             default_tag="l.auto")
-    prog = lp.realize_reduction(prog)
-    prog = lp.add_dependency(
-            prog, "writes:acc_i_outer",
+    knl = lp.realize_reduction(knl)
+    knl = lp.tag_inames(knl, "i_outer_0:g.0")
+
+    # Keep the i_outer accumulator on the  correct (lower) side of the barrier,
+    # otherwise there will be useless save/reload code generated.
+    knl = lp.add_dependency(
+            knl, "writes:acc_i_outer",
             "id:red_i_outer_arg_barrier")
 
     lp.auto_test_vs_ref(
-            ref_prog, ctx, prog, parameters={"n": size},
+            ref_knl, ctx, knl, parameters={"n": size},
             print_ref_code=True)
 
 
