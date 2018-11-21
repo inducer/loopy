@@ -142,7 +142,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     .. note::
 
         This data structure and its attributes should be considered immutable,
-        even if it contains mutable data types. See :method:`copy` for an easy
+        even if it contains mutable data types. See :meth:`copy` for an easy
         way of producing a modified copy.
 
     .. attribute:: domains

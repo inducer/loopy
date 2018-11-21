@@ -44,15 +44,15 @@ def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
     be any inputs that are understood by :func:`loopy.match.parse_match`.
 
     :arg insn_before: String expression that specifies the instruction(s)
-    before the barrier which is to be added
+        before the barrier which is to be added
     :arg insn_after: String expression that specifies the instruction(s) after
-    the barrier which is to be added
+        the barrier which is to be added
     :arg id: String on which the id of the barrier would be based on.
     :arg tags: The tag of the group to which the barrier must be added
     :arg synchronization_kind: Kind of barrier to be added. May be "global" or
-    "local"
+        "local"
     :arg kind: Type of memory to be synchronied. May be "global" or "local". Ignored
-    for "global" bariers.  If not supplied, defaults to :arg:`synchronization_kind`
+        for "global" bariers.  If not supplied, defaults to *synchronization_kind*
     """
 
     if mem_kind is None:
