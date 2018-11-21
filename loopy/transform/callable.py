@@ -31,7 +31,7 @@ from loopy.kernel import LoopKernel
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
-        CInstruction, _DataObliviousInstruction)
+        Assignment, CInstruction, _DataObliviousInstruction)
 from loopy.symbolic import IdentityMapper, SubstitutionMapper, CombineMapper
 from loopy.isl_helpers import simplify_via_aff
 from loopy.kernel.function_interface import (get_kw_pos_association,
@@ -211,26 +211,19 @@ def register_callable_kernel(program, callee_kernel):
 
     # take the function resolvers from the Program and resolve the functions in
     # the callee kernel
-    old_callables_count = program.callables_table.callables_count
-    callables_table = (
-            program.callables_table.with_edit_callables_mode())
-
     from loopy.symbolic import SubstitutionRuleMappingContext
     rule_mapping_context = SubstitutionRuleMappingContext(
             callee_kernel.substitutions,
             callee_kernel.get_var_name_generator())
 
     resolved_function_marker = ResolvedFunctionMarker(
-            rule_mapping_context, callee_kernel, callables_table,
+            rule_mapping_context, callee_kernel, program.callables_table,
             program.func_id_to_in_knl_callable_mappers)
 
     callee_kernel = rule_mapping_context.finish_kernel(
             resolved_function_marker.map_kernel(callee_kernel))
-    callables_table = resolved_function_marker.callables_table
+    callables_table = resolved_function_marker.callables_table.copy()
 
-    callables_table = (
-            callables_table.with_exit_edit_callables_mode(
-                old_callables_count))
     program = program.copy(callables_table=callables_table)
 
     # making the target of the child kernel to be same as the target of parent
@@ -462,15 +455,25 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
                 type(atomicity)(var_map[p.Variable(atomicity.var_name)].name)
                 for atomicity in insn.atomicity)
 
-        insn = insn.copy(
-            id=insn_id[insn.id],
-            within_inames=within_inames,
-            # TODO: probaby need to keep priority in callee kernel
-            priority=instruction.priority,
-            depends_on=depends_on,
-            tags=insn.tags | instruction.tags,
-            atomicity=new_atomicity
-        )
+        if isinstance(insn, Assignment):
+            insn = insn.copy(
+                id=insn_id[insn.id],
+                within_inames=within_inames,
+                # TODO: probaby need to keep priority in callee kernel
+                priority=instruction.priority,
+                depends_on=depends_on,
+                tags=insn.tags | instruction.tags,
+                atomicity=new_atomicity
+            )
+        else:
+            insn = insn.copy(
+                id=insn_id[insn.id],
+                within_inames=within_inames,
+                # TODO: probaby need to keep priority in callee kernel
+                priority=instruction.priority,
+                depends_on=depends_on,
+                tags=insn.tags | instruction.tags,
+            )
         inner_insns.append(insn)
 
     inner_insns.append(noop_end)
@@ -510,11 +513,6 @@ def _inline_single_callable_kernel(caller_kernel, function_name,
                     assert isinstance(in_knl_callable, CallableKernel)
                     caller_kernel = _inline_call_instruction(
                             caller_kernel, in_knl_callable.subkernel, insn)
-                    callables_table = (
-                            callables_table.with_deleted_callable(
-                                insn.expression.function.name,
-                                callables_table.num_times_callables_called[
-                                    caller_kernel.name]))
         elif isinstance(insn, (MultiAssignmentBase, CInstruction,
                 _DataObliviousInstruction)):
             pass

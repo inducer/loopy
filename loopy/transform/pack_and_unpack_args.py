@@ -37,7 +37,7 @@ __doc__ = """
 
 
 def pack_and_unpack_args_for_call_for_single_kernel(kernel,
-        program_callables_info, call_name, args_to_pack=None,
+        callables_table, call_name, args_to_pack=None,
         args_to_unpack=None):
     """
     Returns a a copy of *kernel* with instructions appended to copy the
@@ -63,10 +63,10 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
         if not isinstance(insn, CallInstruction):
             # pack and unpack call only be done for CallInstructions.
             continue
-        if insn.expression.function.name not in program_callables_info:
+        if insn.expression.function.name not in callables_table:
             continue
 
-        in_knl_callable = program_callables_info[
+        in_knl_callable = callables_table[
                 insn.expression.function.name]
 
         if in_knl_callable.name != call_name:
@@ -324,10 +324,10 @@ def pack_and_unpack_args_for_call(program, *args, **kwargs):
     assert isinstance(program, Program)
 
     new_resolved_functions = {}
-    for func_id, in_knl_callable in program.program_callables_info.items():
+    for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             new_subkernel = pack_and_unpack_args_for_call_for_single_kernel(
-                    in_knl_callable.subkernel, program.program_callables_info,
+                    in_knl_callable.subkernel, program.callables_table,
                     *args, **kwargs)
             in_knl_callable = in_knl_callable.copy(
                     subkernel=new_subkernel)
@@ -340,8 +340,8 @@ def pack_and_unpack_args_for_call(program, *args, **kwargs):
 
         new_resolved_functions[func_id] = in_knl_callable
 
-    new_program_callables_info = program.program_callables_info.copy(
+    new_callables_table = program.callables_table.copy(
             resolved_functions=new_resolved_functions)
-    return program.copy(program_callables_info=new_program_callables_info)
+    return program.copy(callables_table=new_callables_table)
 
 # vim: foldmethod=marker
