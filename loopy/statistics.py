@@ -1358,7 +1358,8 @@ def get_op_map_for_single_kernel(knl, callables_table,
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
     op_map = ToCountMap()
-    op_counter = ExpressionOpCounter(knl, callables_table)
+    op_counter = ExpressionOpCounter(knl, callables_table,
+            count_within_subscripts)
 
     from loopy.kernel.instruction import (
             CallInstruction, CInstruction, Assignment,
