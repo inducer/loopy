@@ -2146,7 +2146,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     # {{{ handle kernel language version
 
-    if is_callee_kernel:
+    if not is_callee_kernel:
         from loopy.version import LANGUAGE_VERSION_SYMBOLS
 
         version_to_symbol = dict(
@@ -2353,6 +2353,11 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
 
 def make_function(*args, **kwargs):
+    lang_version = kwargs.pop('lang_version', None)
+    if lang_version:
+        raise LoopyError("lang_version should be set for program, not "
+                "functions.")
+
     kwargs['is_callee_kernel'] = True
     return make_kernel(*args, **kwargs)
 

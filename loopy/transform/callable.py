@@ -173,7 +173,7 @@ def register_callable_kernel(program, callee_kernel):
     expected_num_assignees = len([arg for arg in callee_kernel.args if
         arg.is_output_only])
     expected_num_parameters = len(callee_kernel.args) - expected_num_assignees
-    for in_knl_callable in program.program_callables_info.values():
+    for in_knl_callable in program.callables_table.values():
         if isinstance(in_knl_callable, CallableKernel):
             caller_kernel = in_knl_callable.subkernel
             for insn in caller_kernel.instructions:
@@ -211,8 +211,9 @@ def register_callable_kernel(program, callee_kernel):
 
     # take the function resolvers from the Program and resolve the functions in
     # the callee kernel
-    program_callables_info = (
-            program.program_callables_info.with_edit_callables_mode())
+    old_callables_count = program.callables_table.callables_count
+    callables_table = (
+            program.callables_table.with_edit_callables_mode())
 
     from loopy.symbolic import SubstitutionRuleMappingContext
     rule_mapping_context = SubstitutionRuleMappingContext(
@@ -220,16 +221,17 @@ def register_callable_kernel(program, callee_kernel):
             callee_kernel.get_var_name_generator())
 
     resolved_function_marker = ResolvedFunctionMarker(
-            rule_mapping_context, callee_kernel, program_callables_info,
+            rule_mapping_context, callee_kernel, callables_table,
             program.func_id_to_in_knl_callable_mappers)
 
     callee_kernel = rule_mapping_context.finish_kernel(
             resolved_function_marker.map_kernel(callee_kernel))
-    program_callables_info = resolved_function_marker.program_callables_info
+    callables_table = resolved_function_marker.callables_table
 
-    program_callables_info = (
-            program_callables_info.with_exit_edit_callables_mode())
-    program = program.copy(program_callables_info=program_callables_info)
+    callables_table = (
+            callables_table.with_exit_edit_callables_mode(
+                old_callables_count))
+    program = program.copy(callables_table=callables_table)
 
     # making the target of the child kernel to be same as the target of parent
     # kernel.
@@ -492,26 +494,26 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
 # {{{ inline callable kernel
 
 def _inline_single_callable_kernel(caller_kernel, function_name,
-        program_callables_info):
+        callables_table):
     old_insns = caller_kernel.instructions
     for insn in old_insns:
         if isinstance(insn, CallInstruction):
             # FIXME This seems to use identifiers across namespaces. Why not
             # check whether the function is a scoped function first? ~AK
-            if insn.expression.function.name in program_callables_info:
-                history_of_identifier = program_callables_info.history[
+            if insn.expression.function.name in callables_table:
+                history_of_identifier = callables_table.history[
                         insn.expression.function.name]
 
                 if function_name in history_of_identifier:
-                    in_knl_callable = program_callables_info[
+                    in_knl_callable = callables_table[
                             insn.expression.function.name]
                     assert isinstance(in_knl_callable, CallableKernel)
                     caller_kernel = _inline_call_instruction(
                             caller_kernel, in_knl_callable.subkernel, insn)
-                    program_callables_info = (
-                            program_callables_info.with_deleted_callable(
+                    callables_table = (
+                            callables_table.with_deleted_callable(
                                 insn.expression.function.name,
-                                program_callables_info.num_times_callables_called[
+                                callables_table.num_times_callables_called[
                                     caller_kernel.name]))
         elif isinstance(insn, (MultiAssignmentBase, CInstruction,
                 _DataObliviousInstruction)):
@@ -521,7 +523,7 @@ def _inline_single_callable_kernel(caller_kernel, function_name,
                     "Unknown instruction type %s"
                     % type(insn).__name__)
 
-    return caller_kernel, program_callables_info
+    return caller_kernel, callables_table
 
 
 # FIXME This should take a 'within' parameter to be able to only inline
@@ -533,33 +535,33 @@ def inline_callable_kernel(program, function_name):
     """
     from loopy.preprocess import infer_arg_descr
     program = infer_arg_descr(program)
-    program_callables_info = program.program_callables_info
-    old_program_callables_info = program_callables_info.copy()
+    callables_table = program.callables_table
+    old_callables_table = callables_table.copy()
 
     edited_callable_kernels = {}
 
-    for func_id, in_knl_callable in old_program_callables_info.items():
-        if function_name not in old_program_callables_info.history[func_id] and (
+    for func_id, in_knl_callable in old_callables_table.items():
+        if function_name not in old_callables_table.history[func_id] and (
                 isinstance(in_knl_callable, CallableKernel)):
             caller_kernel = in_knl_callable.subkernel
-            caller_kernel, program_callables_info = (
+            caller_kernel, callables_table = (
                     _inline_single_callable_kernel(caller_kernel,
                         function_name,
-                        program_callables_info))
+                        callables_table))
             edited_callable_kernels[func_id] = in_knl_callable.copy(
                     subkernel=caller_kernel)
 
     new_resolved_functions = {}
-    for func_id, in_knl_callable in program_callables_info.items():
+    for func_id, in_knl_callable in callables_table.items():
         if func_id in edited_callable_kernels:
             new_resolved_functions[func_id] = edited_callable_kernels[func_id]
         else:
             new_resolved_functions[func_id] = in_knl_callable
 
-    program_callables_info = program_callables_info.copy(
+    callables_table = callables_table.copy(
             resolved_functions=new_resolved_functions)
 
-    return program.copy(program_callables_info=program_callables_info)
+    return program.copy(callables_table=callables_table)
 
 # }}}
 
@@ -719,20 +721,20 @@ def _match_caller_callee_argument_dimension_(program, callee_function_name):
             callee_function_name).map_kernel
 
     caller_knl,  = [in_knl_callable.subkernel for in_knl_callable in
-            program.program_callables_info.values() if isinstance(in_knl_callable,
+            program.callables_table.values() if isinstance(in_knl_callable,
                 CallableKernel) and
             is_invoking_callee(in_knl_callable.subkernel)]
 
-    old_callee_knl = program.program_callables_info[
+    old_callee_knl = program.callables_table[
             callee_function_name].subkernel
     new_callee_kernel = _match_caller_callee_argument_dimension_for_single_kernel(
             caller_knl, old_callee_knl)
 
-    new_program_callables_info = program.program_callables_info.copy()
-    new_program_callables_info.resolved_functions[callee_function_name] = (
-            new_program_callables_info[callee_function_name].copy(
+    new_callables_table = program.callables_table.copy()
+    new_callables_table.resolved_functions[callee_function_name] = (
+            new_callables_table[callee_function_name].copy(
                 subkernel=new_callee_kernel))
-    return program.copy(program_callables_info=new_program_callables_info)
+    return program.copy(callables_table=new_callables_table)
 
 # }}}
 
