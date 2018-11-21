@@ -62,11 +62,13 @@ class DTypeRegistryWrapper(object):
             return self.wrapped_registry.get_or_register_dtype(names, dtype)
 
     def dtype_to_ctype(self, dtype):
-        from loopy.types import LoopyType, NumpyType
+        from loopy.types import LoopyType, NumpyType, OpaqueType
         assert isinstance(dtype, LoopyType)
 
         if isinstance(dtype, NumpyType):
             return self.wrapped_registry.dtype_to_ctype(dtype)
+        elif isinstance(dtype, OpaqueType):
+            return dtype.name
         else:
             raise LoopyError(
                     "unable to convert type '%s' to C"
@@ -412,7 +414,7 @@ class CMathCallable(ScalarCallable):
                     callables_table)
 
         # binary functions
-        if name in ["fmax", "fmin"]:
+        if name in ["fmax", "fmin", "pow", "atan2"]:
 
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 1:
@@ -433,7 +435,7 @@ class CMathCallable(ScalarCallable):
             if dtype.kind == "c":
                 raise LoopyTypeError("%s does not support complex numbers")
 
-            elif dtype.kind == "f":
+            elif dtype.kind == "f" and name in ["fmax", "fmin"]:
                 from loopy.target.opencl import OpenCLTarget
                 if not isinstance(caller_kernel.target, OpenCLTarget):
                     if dtype == np.float64:
@@ -461,8 +463,10 @@ def scope_c_math_functions(target, identifier):
     Returns an instance of :class:`InKernelCallable` if the function
     represented by :arg:`identifier` is known in C, otherwise returns *None*.
     """
-    if identifier in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
-            "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor", "max", "min"]:
+    if identifier in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin",
+                      "sinh", "pow", "atan2", "tanh", "exp", "log", "log10",
+                      "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
+                      "fabs", "tan"]:
         return CMathCallable(name=identifier)
     return None
 

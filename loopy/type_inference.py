@@ -39,7 +39,7 @@ from loopy.program import CallablesTable
 from loopy.symbolic import (
         LinearSubscript, parse_tagged_name, RuleAwareIdentityMapper,
         SubstitutionRuleExpander, ResolvedFunction,
-        SubstitutionRuleMappingContext)
+        SubstitutionRuleMappingContext, SubArrayRef)
 from pymbolic.primitives import Variable, Subscript, Lookup
 
 import logging
@@ -632,11 +632,15 @@ class TypeInferenceMapper(CombineMapper):
     def map_comparison(self, expr):
         # "bool" is unusable because OpenCL's bool has indeterminate memory
         # format.
+        self(expr.left, return_tuple=False, return_dtype_set=False)
+        self(expr.right, return_tuple=False, return_dtype_set=False)
         return [NumpyType(np.dtype(np.int32))]
 
-    map_logical_not = map_comparison
-    map_logical_and = map_comparison
-    map_logical_or = map_comparison
+    def map_logical_not(self, expr):
+        return [NumpyType(np.dtype(np.int32))]
+
+    map_logical_and = map_logical_not
+    map_logical_or = map_logical_not
 
     def map_group_hw_index(self, expr, *args):
         return [self.kernel.index_dtype]
@@ -678,6 +682,10 @@ class TypeInferenceMapper(CombineMapper):
         else:
             return [expr.operation.result_dtypes(self.kernel, rec_result)[0]
                     for rec_result in rec_results]
+
+    def map_sub_array_ref(self, expr):
+        return self.rec(expr.get_begin_subscript())
+
 
 # }}}
 
@@ -958,8 +966,17 @@ def infer_unknown_types_for_a_single_kernel(kernel, callables_table,
                             assignee.aggregate.name].dtype is None:
                         return False
             else:
-                raise NotImplementedError("Unknown assignee type %s" %
-                        type(assignee))
+                assert isinstance(assignee, SubArrayRef)
+                if assignee.subscript.aggregate.name in kernel.arg_dict:
+                    if kernel.arg_dict[
+                            assignee.subscript.aggregate.name].dtype is None:
+                        return False
+                else:
+                    assert assignee.subscript.aggregate.name in (
+                            kernel.temporary_variables)
+                    if kernel.temporary_variables[
+                            assignee.subscript.aggregate.name] is None:
+                        return False
 
         return True
 

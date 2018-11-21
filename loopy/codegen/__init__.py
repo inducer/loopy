@@ -32,6 +32,10 @@ from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 
+
+from loopy.symbolic import CombineMapper
+from functools import reduce
+
 from loopy.kernel.function_interface import CallableKernel
 from cgen import Collection
 
@@ -150,6 +154,7 @@ class SeenFunction(ImmutableRecord):
 class CodeGenerationState(object):
     """
     .. attribute:: kernel
+    .. attribute:: target
     .. attribute:: implemented_data_info
 
         a list of :class:`ImplementedDataInfo` objects.
@@ -197,7 +202,7 @@ class CodeGenerationState(object):
         An instance of :class:`loopy.CallablesTable`.
     """
 
-    def __init__(self, kernel,
+    def __init__(self, kernel, target,
             implemented_data_info, implemented_domain, implemented_predicates,
             seen_dtypes, seen_functions, seen_atomic_dtypes, var_subst_map,
             allow_complex,
@@ -207,6 +212,7 @@ class CodeGenerationState(object):
             gen_program_name=None,
             schedule_index_end=None):
         self.kernel = kernel
+        self.target = target
         self.implemented_data_info = implemented_data_info
         self.implemented_domain = implemented_domain
         self.implemented_predicates = implemented_predicates
@@ -224,7 +230,7 @@ class CodeGenerationState(object):
 
     # {{{ copy helpers
 
-    def copy(self, kernel=None, implemented_data_info=None,
+    def copy(self, kernel=None, target=None, implemented_data_info=None,
             implemented_domain=None, implemented_predicates=frozenset(),
             var_subst_map=None, vectorization_info=None,
             is_generating_device_code=None,
@@ -233,6 +239,9 @@ class CodeGenerationState(object):
 
         if kernel is None:
             kernel = self.kernel
+
+        if target is None:
+            target = self.target
 
         if implemented_data_info is None:
             implemented_data_info = self.implemented_data_info
@@ -254,6 +263,7 @@ class CodeGenerationState(object):
 
         return CodeGenerationState(
                 kernel=kernel,
+                target=target,
                 implemented_data_info=implemented_data_info,
                 implemented_domain=implemented_domain or self.implemented_domain,
                 implemented_predicates=(
@@ -373,6 +383,32 @@ code_gen_cache = WriteOncePersistentDict(
          key_builder=LoopyKeyBuilder())
 
 
+class InKernelCallablesCollector(CombineMapper):
+    """
+    Returns an instance of :class:`frozenset` containing instances of
+    :class:`loopy.kernel.function_interface.InKernelCallable` in the
+    :attr:``kernel`.
+    """
+    def __init__(self, kernel):
+        self.kernel = kernel
+
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, frozenset())
+
+    def map_resolved_function(self, expr):
+        return frozenset([self.kernel.scoped_functions[
+            expr.name]])
+
+    def map_constant(self, expr):
+        return frozenset()
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
+    map_tagged_variable = map_constant
+    map_type_cast = map_constant
+
+
 class PreambleInfo(ImmutableRecord):
     """
     .. attribute:: kernel
@@ -385,7 +421,7 @@ class PreambleInfo(ImmutableRecord):
 
 # {{{ main code generation entrypoint
 
-def generate_code_for_a_single_kernel(kernel, callables_table):
+def generate_code_for_a_single_kernel(kernel, callables_table, target):
     """
     :returns: a :class:`CodeGenerationResult`
 
@@ -435,13 +471,13 @@ def generate_code_for_a_single_kernel(kernel, callables_table):
         if isinstance(arg, ArrayBase):
             implemented_data_info.extend(
                     arg.decl_info(
-                        kernel.target,
+                        target,
                         is_written=is_written,
                         index_dtype=kernel.index_dtype))
 
         elif isinstance(arg, ValueArg):
             implemented_data_info.append(ImplementedDataInfo(
-                target=kernel.target,
+                target=target,
                 name=arg.name,
                 dtype=arg.dtype,
                 arg_class=ValueArg,
@@ -452,7 +488,8 @@ def generate_code_for_a_single_kernel(kernel, callables_table):
 
     allow_complex = False
     for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):
-        if var.dtype.involves_complex():
+        dtype = var.dtype
+        if dtype.involves_complex():
             allow_complex = True
 
     # }}}
@@ -464,6 +501,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table):
     initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
     codegen_state = CodeGenerationState(
             kernel=kernel,
+            target=target,
             implemented_data_info=implemented_data_info,
             implemented_domain=initial_implemented_domain,
             implemented_predicates=frozenset(),
@@ -475,7 +513,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table):
             var_name_generator=kernel.get_var_name_generator(),
             is_generating_device_code=False,
             gen_program_name=(
-                kernel.target.host_program_name_prefix
+                target.host_program_name_prefix
                 + kernel.name
                 + kernel.target.host_program_name_suffix),
             schedule_index_end=len(kernel.schedule),
@@ -512,7 +550,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table):
             )
 
     preamble_generators = (kernel.preamble_generators
-            + kernel.target.get_device_ast_builder().preamble_generators())
+            + target.get_device_ast_builder().preamble_generators())
     for prea_gen in preamble_generators:
         preambles.extend(prea_gen(preamble_info))
 
@@ -560,7 +598,7 @@ def generate_code_v2(program):
         if isinstance(in_knl_callable, CallableKernel):
             codegen_results[func_id] = (
                     generate_code_for_a_single_kernel(in_knl_callable.subkernel,
-                        program.callables_table))
+                        program.callables_table, program.target))
             if not in_knl_callable.subkernel.is_called_from_host:
                 assert codegen_results[func_id].host_program is None
 
@@ -584,6 +622,7 @@ def generate_code_v2(program):
                     ast=Collection([callee_prog_ast, collective_device_program.ast]))
             callee_fdecls.append(callee_prog_ast.fdecl)
 
+    # collecting the function declarations of callee kernels
     for callee_fdecl in callee_fdecls:
         collective_device_program = collective_device_program.copy(
                 ast=Collection([callee_fdecl, collective_device_program.ast]))

@@ -1864,6 +1864,54 @@ def find_aliasing_equivalence_classes(kernel):
 # }}}
 
 
+# {{{ callee kernel tools
+
+def get_direct_callee_kernels(kernel, program_callables_info, insn_ids=None,):
+    """
+    Returns an instance of :class:`frozenset` of all the callee kernels
+    called in instructions in the *kernel* whose IDs are given in *insn_ids*.
+
+    :arg kernel: An instance of :class:`LoopKernel`.
+    :arg insn_ids: An instance of :class:`frozenset`.
+
+    If *insn_ids* is *None* returns all the callee kernels called by *kernel*.
+    """
+    #FIXME: explain what "direct" means
+
+    if insn_ids is None:
+        insn_ids = frozenset(insn.id for insn in kernel.instructions)
+
+    from loopy.kernel.function_interface import CallableKernel
+
+    def _get_callee_kernel_if_insn_has_callable_kernel(insn_id):
+        """Returns callee kernel if the instruction has a call to a
+        :class:`loopy.kernel.function_interface.CallableKernel`. Otherwise
+        returns *None*.
+        """
+        insn = kernel.id_to_insn[insn_id]
+        from loopy.kernel.instruction import (CallInstruction,
+                MultiAssignmentBase, CInstruction, _DataObliviousInstruction)
+        if isinstance(insn, CallInstruction):
+            if insn.expression.function.name in program_callables_info:
+                in_knl_callable = program_callables_info[
+                        insn.expression.function.name]
+                if isinstance(in_knl_callable, CallableKernel):
+                    return in_knl_callable.subkernel
+        elif isinstance(insn, (MultiAssignmentBase,
+                CInstruction, _DataObliviousInstruction)):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of instruction %s." %
+                    type(insn))
+
+        return None
+
+    return frozenset([_get_callee_kernel_if_insn_has_callable_kernel(insn_id)
+            for insn_id in insn_ids]) - frozenset([None])
+
+# }}}
+
+
 # {{{ direction helper tools
 
 def infer_args_are_output_only(kernel):

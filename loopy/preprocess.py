@@ -51,13 +51,17 @@ logger = logging.getLogger(__name__)
 @iterate_over_kernels_if_given_program
 def prepare_for_caching(kernel):
     import loopy as lp
+    from loopy.types import OpaqueType
     new_args = []
 
     tgt = kernel.target
 
     for arg in kernel.args:
         dtype = arg.dtype
-        if dtype is not None and dtype is not lp.auto and dtype.target is not tgt:
+        if (dtype is not None
+                and not isinstance(dtype, OpaqueType)
+                and dtype is not lp.auto
+                and dtype.target is not tgt):
             arg = arg.copy(dtype=dtype.with_target(tgt), target=tgt)
 
         new_args.append(arg)
@@ -752,12 +756,15 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
     # }}}
 
-    from loopy.kernel.instruction import CallInstruction
+    from loopy.kernel.instruction import CallInstruction, is_array_call
     for insn in kernel.instructions:
         if not isinstance(insn, CallInstruction):
             continue
 
         if len(insn.assignees) <= 1:
+            continue
+
+        if is_array_call(insn.assignees, insn.expression):
             continue
 
         assignees = insn.assignees
@@ -1937,7 +1944,8 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
     kernel = lp.replace_instruction_ids(kernel, insn_id_replacements)
 
-    kernel = lp.tag_inames(kernel, new_iname_tags)
+    from loopy.transform.iname import tag_inames
+    kernel = tag_inames(kernel, new_iname_tags)
 
     # TODO: remove unused inames...
 
@@ -2162,7 +2170,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
     def map_call(self, expr, expn_state, **kwargs):
         from pymbolic.primitives import Call, CallWithKwargs
         from loopy.kernel.function_interface import ValueArgDescriptor
-        from loopy.symbolic import ResolvedFunction
+        from loopy.symbolic import ResolvedFunction, SubArrayRef
 
         if not isinstance(expr.function, ResolvedFunction):
             # ignore if the call is not to a ResolvedFunction
@@ -2175,7 +2183,8 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
             kw_parameters = expr.kw_parameters
 
         # descriptors for the args and kwargs of the Call
-        arg_id_to_descr = dict((i, ValueArgDescriptor())
+        arg_id_to_descr = dict((i, par.get_array_arg_descriptor(self.caller_kernel))
+                if isinstance(par, SubArrayRef) else (i, ValueArgDescriptor())
                 for i, par in tuple(enumerate(expr.parameters)) +
                 tuple(kw_parameters.items()))
 
@@ -2186,7 +2195,11 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
             assignees = kwargs['assignees']
             assert isinstance(assignees, tuple)
             for i, par in enumerate(assignees):
-                assignee_id_to_descr[-i-1] = ValueArgDescriptor()
+                if isinstance(par, SubArrayRef):
+                    assignee_id_to_descr[-i-1] = (
+                            par.get_array_arg_descriptor(self.caller_kernel))
+                else:
+                    assignee_id_to_descr[-i-1] = ValueArgDescriptor()
 
         # gathering all the descriptors
         combined_arg_id_to_descr = arg_id_to_descr.copy()

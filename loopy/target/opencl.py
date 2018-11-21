@@ -183,7 +183,6 @@ class OpenCLCallable(ScalarCallable):
                 return (
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
-
             dtype = np.find_common_type(
                     [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
                         if (id >= 0 and dtype is not None)])
@@ -470,6 +469,11 @@ class OpenCLCASTBuilder(CASTBuilder):
 
         from loopy.target.c import FunctionDeclarationWrapper
         assert isinstance(fdecl, FunctionDeclarationWrapper)
+        if not codegen_state.kernel.is_called_from_host:
+            # auxiliary kernels need not mention opencl speicific qualifiers
+            # for a functions signature
+            return fdecl
+
         fdecl = fdecl.subdecl
 
         from cgen.opencl import CLKernel, CLRequiredWorkGroupSize

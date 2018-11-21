@@ -202,6 +202,7 @@ def extract_subst(kernel, subst_name, template, parameters=()):
             instructions=new_insns,
             substitutions=new_substs)
 
+
 # }}}
 
 

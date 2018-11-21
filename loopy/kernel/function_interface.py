@@ -527,11 +527,174 @@ class CallableKernel(InKernelCallable):
         return (self.subkernel, self.arg_id_to_dtype,
                 self.arg_id_to_descr)
 
+    @property
+    def name(self):
+        return self.subkernel.name
+
+    def with_types(self, arg_id_to_dtype, caller_kernel,
+            program_callables_info):
+        kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
+
+        new_args = []
+        for arg in self.subkernel.args:
+            kw = arg.name
+            if kw in arg_id_to_dtype:
+                # id exists as kw
+                new_args.append(arg.copy(dtype=arg_id_to_dtype[kw]))
+            elif kw_to_pos[kw] in arg_id_to_dtype:
+                # id exists as positional argument
+                new_args.append(arg.copy(
+                    dtype=arg_id_to_dtype[kw_to_pos[kw]]))
+            else:
+                new_args.append(arg)
+
+        from loopy.type_inference import (
+                infer_unknown_types_for_a_single_kernel)
+        pre_specialized_subkernel = self.subkernel.copy(
+                args=new_args)
+
+        # infer the types of the written variables based on the knowledge
+        # of the types of the arguments supplied
+        specialized_kernel, program_callables_info = (
+                infer_unknown_types_for_a_single_kernel(
+                    pre_specialized_subkernel,
+                    program_callables_info,
+                    expect_completion=True))
+
+        new_arg_id_to_dtype = {}
+        for arg in specialized_kernel.args:
+            # associate the updated_arg_id_to_dtype with keyword as well as
+            # positional id.
+            new_arg_id_to_dtype[arg.name] = arg.dtype
+            new_arg_id_to_dtype[kw_to_pos[arg.name]] = arg.dtype
+
+        # Return the kernel call with specialized subkernel and the corresponding
+        # new arg_id_to_dtype
+        return self.copy(subkernel=specialized_kernel,
+                arg_id_to_dtype=new_arg_id_to_dtype), program_callables_info
+
+    def with_descrs(self, arg_id_to_descr, program_callables_info):
+
+        # tune the subkernel so that we have the matching shapes and
+        # dim_tags
+
+        new_args = self.subkernel.args[:]
+        kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
+
+        for arg_id, descr in arg_id_to_descr.items():
+            if isinstance(arg_id, int):
+                arg_id = pos_to_kw[arg_id]
+            assert isinstance(arg_id, str)
+
+            if isinstance(descr, ArrayArgDescriptor):
+                new_arg = self.subkernel.arg_dict[arg_id].copy(
+                        shape=descr.shape,
+                        dim_tags=descr.dim_tags,
+                        address_space=descr.address_space)
+                # replacing the new arg with the arg of the same name
+                new_args = [new_arg if arg.name == arg_id else arg for arg in
+                        new_args]
+            elif isinstance(descr, ValueArgDescriptor):
+                pass
+            else:
+                raise LoopyError("Descriptor must be either an instance of "
+                        "ArrayArgDescriptor or ValueArgDescriptor -- got %s." %
+                        type(descr))
+        descriptor_specialized_knl = self.subkernel.copy(args=new_args)
+        from loopy.preprocess import traverse_to_infer_arg_descr
+        descriptor_specialized_knl, program_callables_info = (
+                traverse_to_infer_arg_descr(descriptor_specialized_knl,
+                    program_callables_info))
+
+        return (
+                self.copy(
+                    subkernel=descriptor_specialized_knl,
+                    arg_id_to_descr=arg_id_to_descr),
+                program_callables_info)
+
+    def with_packing_for_args(self):
+        from loopy.kernel.data import AddressSpace
+        kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
+
+        arg_id_to_descr = {}
+
+        for pos, kw in pos_to_kw.items():
+            arg = self.subkernel.arg_dict[kw]
+            arg_id_to_descr[pos] = ArrayArgDescriptor(
+                    shape=arg.shape,
+                    dim_tags=arg.dim_tags,
+                    address_space=AddressSpace.GLOBAL)
+
+        return self.copy(subkernel=self.subkernel,
+                arg_id_to_descr=arg_id_to_descr)
+
+    def with_hw_axes_sizes(self, gsize, lsize):
+        return self.copy(
+                subkernel=self.subkernel.copy(
+                    overridden_get_grid_sizes_for_insn_ids=(
+                        GridOverrideForCalleeKernel(lsize, gsize))))
+
+    def is_ready_for_codegen(self):
+        return (self.arg_id_to_dtype is not None and
+                self.arg_id_to_descr is not None)
+
     def generate_preambles(self, target):
         """ Yields the *target* specific preambles.
         """
+        # FIXME Check that this is correct.
+
         return
         yield
+
+    def emit_call_insn(self, insn, target, expression_to_code_mapper):
+
+        assert self.is_ready_for_codegen()
+
+        from loopy.kernel.instruction import CallInstruction
+        from pymbolic.primitives import CallWithKwargs
+
+        assert isinstance(insn, CallInstruction)
+
+        parameters = insn.expression.parameters
+        kw_parameters = {}
+        if isinstance(insn.expression, CallWithKwargs):
+            kw_parameters = insn.expression.kw_parameters
+
+        assignees = insn.assignees
+
+        parameters = list(parameters)
+        par_dtypes = [self.arg_id_to_dtype[i] for i, _ in enumerate(parameters)]
+        kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
+        for i in range(len(parameters), len(parameters)+len(kw_parameters)):
+            parameters.append(kw_parameters[pos_to_kw[i]])
+            par_dtypes.append(self.arg_id_to_dtype[pos_to_kw[i]])
+
+        # insert the assigness at the required positions
+        assignee_write_count = -1
+        for i, arg in enumerate(self.subkernel.args):
+            if arg.is_output_only:
+                assignee = assignees[-assignee_write_count-1]
+                parameters.insert(i, assignee)
+                par_dtypes.insert(i, self.arg_id_to_dtype[assignee_write_count])
+                assignee_write_count -= 1
+
+        # no type casting in array calls
+        from loopy.expression import dtype_to_type_context
+        from pymbolic.mapper.stringifier import PREC_NONE
+        from loopy.symbolic import SubArrayRef
+        from pymbolic import var
+
+        c_parameters = [
+                expression_to_code_mapper(par, PREC_NONE,
+                    dtype_to_type_context(target, par_dtype),
+                    par_dtype).expr if isinstance(par, SubArrayRef) else
+                expression_to_code_mapper(par, PREC_NONE,
+                    dtype_to_type_context(target, par_dtype),
+                    par_dtype).expr
+                for par, par_dtype in zip(
+                    parameters, par_dtypes)]
+
+        return var(self.subkernel.name)(*c_parameters), False
 
 # }}}
 

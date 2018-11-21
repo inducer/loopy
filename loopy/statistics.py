@@ -1541,7 +1541,6 @@ def _process_subgroup_size(knl, subgroup_size_requested):
 
 # {{{ get_mem_access_map
 
-
 def get_mem_access_map_for_single_kernel(knl, callables_table,
         numpy_types=True, count_redundant_work=False, subgroup_size=None):
 
@@ -1726,7 +1725,6 @@ def get_mem_access_map(program, numpy_types=True, count_redundant_work=False,
                 type(in_knl_callable).__name__))
 
     return access_map
-
 
 # }}}
 

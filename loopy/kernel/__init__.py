@@ -1051,6 +1051,14 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                     callables_table,
                     ignore_auto=ignore_auto)
 
+        # {{{ collecting the callee kernels in insn_ids
+
+        from loopy.kernel.tools import get_direct_callee_kernels
+        callee_kernels = get_direct_callee_kernels(self,
+                callables_table, insn_ids)
+
+        # }}}
+
         all_inames_by_insns = set()
         for insn_id in insn_ids:
             all_inames_by_insns |= self.insn_inames(insn_id)
@@ -1063,6 +1071,15 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         global_sizes = {}
         local_sizes = {}
+
+        # updating the grid sizes from the callee_kernels.
+        for callee_kernel in callee_kernels:
+            gsize, lsize = callee_kernel.get_grid_sizes_for_insn_ids_as_dicts(
+                    frozenset(insn.id for insn in callee_kernel.instructions),
+                    callables_table, ignore_auto)
+
+            global_sizes.update(gsize)
+            local_sizes.update(lsize)
 
         from loopy.kernel.data import (
                 GroupIndexTag, LocalIndexTag,
@@ -1104,34 +1121,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
             tgt_dict[tag.axis] = size
 
-        def to_dim_tuple(size_dict, which, forced_sizes={}):
-            forced_sizes = forced_sizes.copy()
-
-            size_list = []
-            sorted_axes = sorted(six.iterkeys(size_dict))
-
-            while sorted_axes or forced_sizes:
-                if sorted_axes:
-                    cur_axis = sorted_axes.pop(0)
-                else:
-                    cur_axis = None
-
-                if len(size_list) in forced_sizes:
-                    size_list.append(forced_sizes.pop(len(size_list)))
-                    continue
-
-                assert cur_axis is not None
-
-                if cur_axis > len(size_list):
-                    raise LoopyError("%s axis %d unused for %s" % (
-                        which, len(size_list), self.name))
-
-                size_list.append(size_dict[cur_axis])
-
-            return tuple(size_list)
-
-        return (to_dim_tuple(global_sizes, "global"),
-                to_dim_tuple(local_sizes, "local", forced_sizes=self.local_sizes))
+        return global_sizes, local_sizes
 
     @memoize_method
     def get_grid_sizes_for_insn_ids_as_exprs(self, insn_ids,
@@ -1457,6 +1447,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             "silenced_warnings",
             "options",
             "state",
+            "is_called_from_host",
             "target",
             )
 

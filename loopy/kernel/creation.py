@@ -27,13 +27,16 @@ THE SOFTWARE.
 import numpy as np
 
 from pymbolic.mapper import CSECachingMapperMixin
+from pymbolic.primitives import Slice, Variable, Subscript
 from loopy.tools import intern_frozenset_of_ids
 from loopy.symbolic import (
-        IdentityMapper, WalkMapper)
+        IdentityMapper, WalkMapper, SubArrayRef)
 from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
         SubstitutionRule, AddressSpace)
+from loopy.kernel.instruction import (CInstruction, _DataObliviousInstruction,
+        CallInstruction)
 from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
 from islpy import dim_type
@@ -504,9 +507,11 @@ def parse_insn(groups, insn_options):
             assignee_names.append(inner_lhs_i.name)
         elif isinstance(inner_lhs_i, (Subscript, LinearSubscript)):
             assignee_names.append(inner_lhs_i.aggregate.name)
+        elif isinstance(inner_lhs_i, SubArrayRef):
+            assignee_names.append(inner_lhs_i.subscript.aggregate.name)
         else:
             raise LoopyError("left hand side of assignment '%s' must "
-                    "be variable or subscript" % (lhs_i,))
+                    "be variable, subscript or a SubArrayRef" % (lhs_i,))
 
         new_lhs.append(lhs_i)
 
@@ -1826,6 +1831,167 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
 # }}}
 
 
+# {{{ slice to sub array ref
+
+def get_slice_params(slice, dimension_length):
+    """
+    Returns the slice parameters across an axes spanning *domain_length* as a
+    tuple of ``(start, stop, step)``.
+
+    :arg slice: An instance of :class:`pymbolic.primitives.Slice`.
+    :arg dimension_length: The axes length swept by *slice*.
+    """
+    from pymbolic.primitives import Slice
+    assert isinstance(slice, Slice)
+    start, stop, step = slice.start, slice.stop, slice.step
+
+    # {{{ defaulting parameters
+
+    if step is None:
+        step = 1
+
+    if step == 0:
+        raise LoopyError("Slice cannot have 0 step size.")
+
+    if start is None:
+        if step > 0:
+            start = 0
+        else:
+            start = dimension_length-1
+
+    if stop is None:
+        if step > 0:
+            stop = dimension_length
+        else:
+            stop = -1
+
+    # }}}
+
+    return start, stop, step
+
+
+class SliceToInameReplacer(IdentityMapper):
+    """
+    Converts slices to instances of :class:`loopy.symbolic.SubArrayRef`.
+
+    .. attribute:: var_name_gen
+
+        Variable name generator, in order to generate unique inames within the
+        kernel domain.
+
+    .. attribute:: knl
+
+        An instance of :class:`loopy.LoopKernel`
+
+    .. attribute:: iname_domains
+
+        An instance of :class:`dict` to store the slices enountered in the
+        expressions as a mapping from ``iname`` to a tuple of ``(start, stop,
+        step)``, which describes the affine constraint imposed on the ``iname``
+        by the corresponding slice notation its intended to replace.
+
+    :Example:
+
+        ``x[:, i, :, j]`` would be mapped to ``[islice_0, islice_1]:
+        x[islice_0, i, islice_1, j]``
+
+    """
+    def __init__(self, knl, var_name_gen):
+        self.var_name_gen = var_name_gen
+        self.knl = knl
+        self.iname_domains = {}
+
+    def map_subscript(self, expr):
+        updated_index = []
+        swept_inames = []
+        for i, index in enumerate(expr.index_tuple):
+            if isinstance(index, Slice):
+                unique_var_name = self.var_name_gen(based_on="i")
+                if expr.aggregate.name in self.knl.arg_dict:
+                    domain_length = self.knl.arg_dict[expr.aggregate.name].shape[i]
+                elif expr.aggregate.name in self.knl.temporary_variables:
+                    domain_length = self.knl.temporary_variables[
+                            expr.aggregate.name].shape[i]
+                else:
+                    raise LoopyError("Slice notation is only supported for "
+                            "variables whose shapes are known at creation time "
+                            "-- maybe add the shape for the sliced argument.")
+                start, stop, step = get_slice_params(
+                        index, domain_length)
+                self.iname_domains[unique_var_name] = (start, stop, step)
+
+                if step > 0:
+                    updated_index.append(step*Variable(unique_var_name))
+                else:
+                    updated_index.append(start+step*Variable(unique_var_name))
+
+                swept_inames.append(Variable(unique_var_name))
+            else:
+                updated_index.append(index)
+
+        if swept_inames:
+            return SubArrayRef(tuple(swept_inames), Subscript(
+                self.rec(expr.aggregate),
+                self.rec(tuple(updated_index))))
+        else:
+            return IdentityMapper.map_subscript(self, expr)
+
+    def get_iname_domain_as_isl_set(self):
+        """
+        Returns the extra domain constraints imposed by the slice inames,
+        recorded in :attr:`iname_domains`.
+        """
+        if not self.iname_domains:
+            return None
+
+        ctx = self.knl.isl_context
+        space = isl.Space.create_from_names(ctx,
+                set=list(self.iname_domains.keys()))
+        iname_set = isl.BasicSet.universe(space)
+
+        from loopy.isl_helpers import make_slab
+        for iname, (start, stop, step) in self.iname_domains.items():
+            iname_set = iname_set & make_slab(space, iname, start, stop, step)
+
+        return iname_set
+
+
+def realize_slices_as_sub_array_refs(kernel):
+    """
+    Returns a kernel with the instances of :class:`pymbolic.primitives.Slice`
+    encountered in expressions replaced as `loopy.symbolic.SubArrayRef`.
+    """
+    unique_var_name_generator = kernel.get_var_name_generator()
+    slice_replacer = SliceToInameReplacer(kernel, unique_var_name_generator)
+    new_insns = []
+
+    for insn in kernel.instructions:
+        if isinstance(insn, CallInstruction):
+            new_expr = slice_replacer(insn.expression)
+            new_assignees = tuple(slice_replacer(assignee) for assignee in
+                    insn.assignees)
+            new_insns.append(insn.copy(assignees=new_assignees,
+                expression=new_expr))
+        elif isinstance(insn, (CInstruction, MultiAssignmentBase,
+                _DataObliviousInstruction)):
+            new_insns.append(insn)
+        else:
+            raise NotImplementedError("Unknown type of instruction -- %s" %
+                    type(insn))
+
+    slice_iname_domains = slice_replacer.get_iname_domain_as_isl_set()
+
+    if slice_iname_domains:
+        from loopy.kernel.tools import DomainChanger
+        domch = DomainChanger(kernel.copy(instructions=new_insns), frozenset())
+        return kernel.copy(domains=domch.get_domains_with(slice_iname_domains),
+                instructions=new_insns)
+    else:
+        return kernel.copy(instructions=new_insns)
+
+# }}}
+
+
 # {{{ kernel creation top-level
 
 def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
@@ -1980,55 +2146,56 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     # {{{ handle kernel language version
 
-    from loopy.version import LANGUAGE_VERSION_SYMBOLS
+    if is_callee_kernel:
+        from loopy.version import LANGUAGE_VERSION_SYMBOLS
 
-    version_to_symbol = dict(
-            (getattr(loopy.version, lvs), lvs)
-            for lvs in LANGUAGE_VERSION_SYMBOLS)
+        version_to_symbol = dict(
+                (getattr(loopy.version, lvs), lvs)
+                for lvs in LANGUAGE_VERSION_SYMBOLS)
 
-    lang_version = kwargs.pop("lang_version", None)
-    if lang_version is None:
-        # {{{ peek into caller's module to look for LOOPY_KERNEL_LANGUAGE_VERSION
-
-        # This *is* gross. But it seems like the right thing interface-wise.
-        import inspect
-        caller_globals = inspect.currentframe().f_back.f_globals
-
-        for ver_sym in LANGUAGE_VERSION_SYMBOLS:
-            try:
-                lang_version = caller_globals[ver_sym]
-                break
-            except KeyError:
-                pass
-
-        # }}}
-
+        lang_version = kwargs.pop("lang_version", None)
         if lang_version is None:
-            from warnings import warn
-            from loopy.diagnostic import LoopyWarning
-            from loopy.version import (
-                    MOST_RECENT_LANGUAGE_VERSION,
-                    FALLBACK_LANGUAGE_VERSION)
-            warn("'lang_version' was not passed to make_kernel(). "
-                    "To avoid this warning, pass "
-                    "lang_version={ver} in this invocation. "
-                    "(Or say 'from loopy.version import "
-                    "{sym_ver}' in "
-                    "the global scope of the calling frame.)"
-                    .format(
-                        ver=MOST_RECENT_LANGUAGE_VERSION,
-                        sym_ver=version_to_symbol[MOST_RECENT_LANGUAGE_VERSION]
-                        ),
-                    LoopyWarning, stacklevel=2)
+            # {{{ peek into caller's module to look for LOOPY_KERNEL_LANGUAGE_VERSION
 
-            lang_version = FALLBACK_LANGUAGE_VERSION
+            # This *is* gross. But it seems like the right thing interface-wise.
+            import inspect
+            caller_globals = inspect.currentframe().f_back.f_globals
 
-    if lang_version not in version_to_symbol:
-        raise LoopyError("Language version '%s' is not known." % (lang_version,))
-    if lang_version >= (2018, 1):
-        options = options.copy(enforce_variable_access_ordered=True)
-    if lang_version >= (2018, 2):
-        options = options.copy(ignore_boostable_into=True)
+            for ver_sym in LANGUAGE_VERSION_SYMBOLS:
+                try:
+                    lang_version = caller_globals[ver_sym]
+                    break
+                except KeyError:
+                    pass
+
+            # }}}
+
+            if lang_version is None:
+                from warnings import warn
+                from loopy.diagnostic import LoopyWarning
+                from loopy.version import (
+                        MOST_RECENT_LANGUAGE_VERSION,
+                        FALLBACK_LANGUAGE_VERSION)
+                warn("'lang_version' was not passed to make_kernel(). "
+                        "To avoid this warning, pass "
+                        "lang_version={ver} in this invocation. "
+                        "(Or say 'from loopy.version import "
+                        "{sym_ver}' in "
+                        "the global scope of the calling frame.)"
+                        .format(
+                            ver=MOST_RECENT_LANGUAGE_VERSION,
+                            sym_ver=version_to_symbol[MOST_RECENT_LANGUAGE_VERSION]
+                            ),
+                        LoopyWarning, stacklevel=2)
+
+                lang_version = FALLBACK_LANGUAGE_VERSION
+
+        if lang_version not in version_to_symbol:
+            raise LoopyError("Language version '%s' is not known." % (lang_version,))
+        if lang_version >= (2018, 1):
+            options = options.copy(enforce_variable_access_ordered=True)
+        if lang_version >= (2018, 2):
+            options = options.copy(ignore_boostable_into=True)
 
     # }}}
 
@@ -2129,6 +2296,10 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_for_nonexistent_iname_deps(knl)
 
     knl = create_temporaries(knl, default_order)
+
+    # convert slices to iname domains
+    knl = realize_slices_as_sub_array_refs(knl)
+
     # -------------------------------------------------------------------------
     # Ordering dependency:
     # -------------------------------------------------------------------------

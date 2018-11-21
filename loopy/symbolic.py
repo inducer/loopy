@@ -109,6 +109,10 @@ class IdentityMapperMixin(object):
     def map_type_annotation(self, expr, *args, **kwargs):
         return type(expr)(expr.type, self.rec(expr.child, *args, **kwargs))
 
+    def map_sub_array_ref(self, expr, *args, **kwargs):
+        return SubArrayRef(self.rec(expr.swept_inames, *args, **kwargs),
+                self.rec(expr.subscript, *args, **kwargs))
+
     def map_resolved_function(self, expr, *args, **kwargs):
         return ResolvedFunction(expr.function)
 
@@ -169,6 +173,13 @@ class WalkMapper(WalkMapperBase):
 
     map_rule_argument = map_group_hw_index
 
+    def map_sub_array_ref(self, expr, *args):
+        if not self.visit(expr):
+            return
+
+        self.rec(expr.swept_inames, *args)
+        self.rec(expr.subscript, *args)
+
     def map_resolved_function(self, expr, *args):
         if not self.visit(expr):
             return
@@ -184,6 +195,9 @@ class CallbackMapper(CallbackMapperBase, IdentityMapper):
 class CombineMapper(CombineMapperBase):
     def map_reduction(self, expr):
         return self.rec(expr.expr)
+
+    def map_sub_array_ref(self, expr):
+        return self.rec(expr.get_begin_subscript())
 
     map_linear_subscript = CombineMapperBase.map_subscript
 
@@ -246,6 +260,11 @@ class StringifyMapper(StringifyMapperBase):
     def map_resolved_function(self, expr, prec):
         return "ResolvedFunction('%s')" % expr.name
 
+    def map_sub_array_ref(self, expr, prec):
+        return "SubArrayRef({inames}, ({subscr}))".format(
+                inames=self.rec(expr.swept_inames, prec),
+                subscr=self.rec(expr.subscript, prec))
+
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
     def map_reduction(self, expr, other, unis):
@@ -288,6 +307,13 @@ class DependencyMapper(DependencyMapperBase):
         return self.combine(
                 self.rec(child, *args) for child in expr.parameters)
 
+    def map_call_with_kwargs(self, expr, *args):
+        # Loopy does not have first-class functions. Do not descend
+        # into 'function' attribute of Call.
+        return self.combine(
+                self.rec(child, *args) for child in expr.parameters+tuple(
+                    expr.kw_parameters.values()))
+
     def map_reduction(self, expr):
         deps = self.rec(expr.expr)
         return deps - set(p.Variable(iname) for iname in expr.inames)
@@ -297,6 +323,10 @@ class DependencyMapper(DependencyMapperBase):
 
     def map_loopy_function_identifier(self, expr):
         return set()
+
+    def map_sub_array_ref(self, expr, *args):
+        deps = self.rec(expr.subscript, *args)
+        return deps - set(iname for iname in expr.swept_inames)
 
     map_linear_subscript = DependencyMapperBase.map_subscript
 
@@ -519,7 +549,6 @@ class Reduction(p.Expression):
     across :attr:`inames`.
 
     .. attribute:: operation
-
         an instance of :class:`loopy.library.reduction.ReductionOperation`
 
     .. attribute:: inames
@@ -699,6 +728,161 @@ class ResolvedFunction(p.Expression):
         return StringifyMapper
 
     mapper_method = intern("map_resolved_function")
+
+
+class EvaluatorWithDeficientContext(PartialEvaluationMapper):
+    """Evaluation Mapper that does not need values of all the variables
+    involved in the expression.
+
+    Returns the expression with the values mapped from :attr:`context`.
+    """
+    def map_variable(self, expr):
+        if expr.name in self.context:
+            return self.context[expr.name]
+        else:
+            return expr
+
+
+class VariableInAnExpression(CombineMapper):
+    def __init__(self, variables_to_search):
+        assert(all(isinstance(variable, p.Variable) for variable in
+            variables_to_search))
+        self.variables_to_search = variables_to_search
+
+    def combine(self, values):
+        return any(values)
+
+    def map_variable(self, expr):
+        return expr in self.variables_to_search
+
+    def map_constant(self, expr):
+        return False
+
+
+class SweptInameStrideCollector(CoefficientCollectorBase):
+    """
+    Mapper to compute the coefficient swept inames for :class:`SubArrayRef`.
+    """
+    def map_algebraic_leaf(self, expr):
+        # subscripts that are not involved in :attr:`target_names` are treated
+        # as constants.
+        if isinstance(expr, p.Subscript) and (self.target_names is None or
+                expr.aggregate.name not in self.target_names):
+            return {1: expr}
+
+        return super(SweptInameStrideCollector, self).map_algebraic_leaf(expr)
+
+
+class SubArrayRef(p.Expression):
+    """
+    An algebraic expression to map an affine memory layout pattern (known as
+    sub-arary) as consecutive elements of the sweeping axes which are defined
+    using :attr:`SubArrayRef.swept_inames`.
+
+    .. attribute:: swept_inames
+
+        An instance of :class:`tuple` denoting the axes to which the sub array
+        is supposed to be mapper to.
+
+    .. attribute:: subscript
+
+        An instance of :class:`pymbolic.primitives.Subscript` denoting the
+        array in the kernel.
+    """
+
+    init_arg_names = ("swept_inames", "subscript")
+
+    def __init__(self, swept_inames, subscript):
+
+        # {{{ sanity checks
+
+        if not isinstance(swept_inames, tuple):
+            assert isinstance(swept_inames, p.Variable)
+            swept_inames = (swept_inames,)
+
+        assert isinstance(swept_inames, tuple)
+
+        for iname in swept_inames:
+            assert isinstance(iname, p.Variable)
+        assert isinstance(subscript, p.Subscript)
+
+        # }}}
+
+        self.swept_inames = swept_inames
+        self.subscript = subscript
+
+    def get_begin_subscript(self):
+        """
+        Returns an instance of :class:`pymbolic.primitives.Subscript`, the
+        beginning subscript of the array swept by the *SubArrayRef*.
+
+        **Example:** Consider ``[i, k]: a[i, j, k, l]``. The beginning
+        subscript would be ``a[0, j, 0, l]``
+        """
+        # TODO: Set the zero to the minimum value of the iname.
+        swept_inames_to_zeros = dict(
+                (swept_iname.name, 0) for swept_iname in self.swept_inames)
+
+        return EvaluatorWithDeficientContext(swept_inames_to_zeros)(
+                self.subscript)
+
+    def get_array_arg_descriptor(self, kernel):
+        """
+        Returns the dim_tags, memory scope, shape informations of a
+        :class:`SubArrayRef` argument in the caller kernel packed into
+        :class:`ArrayArgDescriptor` for the instance of :class:`SubArrayRef` in
+        the given *kernel*.
+        """
+        from loopy.kernel.function_interface import ArrayArgDescriptor
+
+        name = self.subscript.aggregate.name
+
+        if name in kernel.temporary_variables:
+            assert name not in kernel.arg_dict
+            arg = kernel.temporary_variables[name]
+        else:
+            assert name in kernel.arg_dict
+            arg = kernel.arg_dict[name]
+
+        aspace = arg.address_space
+
+        from loopy.kernel.array import FixedStrideArrayDimTag as DimTag
+        from loopy.isl_helpers import simplify_via_aff
+        sub_dim_tags = []
+        sub_shape = []
+        linearized_index = simplify_via_aff(
+                sum(dim_tag.stride*iname for dim_tag, iname in
+                zip(arg.dim_tags, self.subscript.index_tuple)))
+
+        strides_as_dict = SweptInameStrideCollector(tuple(iname.name for iname in
+            self.swept_inames))(linearized_index)
+        sub_dim_tags = tuple(
+                DimTag(strides_as_dict[iname]) for iname in self.swept_inames)
+        sub_shape = tuple(
+                pw_aff_to_expr(
+                    kernel.get_iname_bounds(iname.name).upper_bound_pw_aff)+1
+                for iname in self.swept_inames)
+
+        return ArrayArgDescriptor(
+                address_space=aspace,
+                dim_tags=sub_dim_tags,
+                shape=sub_shape)
+
+    def __getinitargs__(self):
+        return (self.swept_inames, self.subscript)
+
+    def get_hash(self):
+        return hash((self.__class__, self.swept_inames, self.subscript))
+
+    def is_equal(self, other):
+        return (other.__class__ == self.__class__
+                and other.subscript == self.subscript
+                and other.swept_inames == self.swept_inames)
+
+    def stringifier(self):
+        return StringifyMapper
+
+    mapper_method = intern("map_sub_array_ref")
 
 # }}}
 
@@ -1167,6 +1351,14 @@ class FunctionToPrimitiveMapper(IdentityMapper):
             else:
                 return IdentityMapper.map_call(self, expr)
 
+    def map_call_with_kwargs(self, expr):
+        for par in expr.kw_parameters.values():
+            if not isinstance(par, SubArrayRef):
+                raise LoopyError("Keyword Arguments is only supported for"
+                        " array arguments--use positional order to specify"
+                        " the order of the arguments in the call.")
+        return IdentityMapper.map_call_with_kwargs(self, expr)
+
 
 # {{{ customization to pymbolic parser
 
@@ -1197,7 +1389,9 @@ class LoopyParser(ParserBase):
             return float(val)  # generic float
 
     def parse_prefix(self, pstate):
-        from pymbolic.parser import _PREC_UNARY, _less, _greater, _identifier
+        from pymbolic.parser import (_PREC_UNARY, _less, _greater, _identifier,
+        _openbracket, _closebracket, _colon)
+
         if pstate.is_next(_less):
             pstate.advance()
             if pstate.is_next(_greater):
@@ -1213,6 +1407,18 @@ class LoopyParser(ParserBase):
             return TypeAnnotation(
                     typename,
                     self.parse_expression(pstate, _PREC_UNARY))
+
+        elif pstate.is_next(_openbracket):
+            pstate.advance()
+            pstate.expect_not_end()
+            swept_inames = self.parse_expression(pstate)
+            pstate.expect(_closebracket)
+            pstate.advance()
+            pstate.expect(_colon)
+            pstate.advance()
+            subscript = self.parse_expression(pstate, _PREC_UNARY)
+            return SubArrayRef(swept_inames, subscript)
+
         else:
             return super(LoopyParser, self).parse_prefix(pstate)
 
@@ -1804,6 +2010,10 @@ class BatchedAccessRangeMapper(WalkMapper):
 
     def map_type_cast(self, expr, inames):
         return self.rec(expr.child, inames)
+
+    def map_sub_array_ref(self, expr, inames):
+        total_inames = inames | set([iname.name for iname in expr.swept_inames])
+        return self.rec(expr.subscript, total_inames)
 
 
 class AccessRangeMapper(object):

@@ -251,7 +251,7 @@ def split_array_dim(kernel, arrays_and_axes, count,
     return kernel
 
 
-split_arg_axis = MovedFunctionDeprecationWrapper(split_array_dim)
+split_arg_axis = (MovedFunctionDeprecationWrapper(split_array_dim))
 
 # }}}
 

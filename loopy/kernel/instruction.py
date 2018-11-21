@@ -487,7 +487,7 @@ class InstructionBase(ImmutableRecord):
 
 def _get_assignee_var_name(expr):
     from pymbolic.primitives import Variable, Subscript, Lookup
-    from loopy.symbolic import LinearSubscript
+    from loopy.symbolic import LinearSubscript, SubArrayRef
 
     if isinstance(expr, Lookup):
         expr = expr.aggregate
@@ -507,13 +507,19 @@ def _get_assignee_var_name(expr):
 
         return agg.name
 
+    elif isinstance(expr, SubArrayRef):
+        agg = expr.subscript.aggregate
+        assert isinstance(agg, Variable)
+
+        return agg.name
+
     else:
         raise RuntimeError("invalid lvalue '%s'" % expr)
 
 
 def _get_assignee_subscript_deps(expr):
     from pymbolic.primitives import Variable, Subscript, Lookup
-    from loopy.symbolic import LinearSubscript, get_dependencies
+    from loopy.symbolic import LinearSubscript, get_dependencies, SubArrayRef
 
     if isinstance(expr, Lookup):
         expr = expr.aggregate
@@ -524,6 +530,8 @@ def _get_assignee_subscript_deps(expr):
         return get_dependencies(expr.index)
     elif isinstance(expr, LinearSubscript):
         return get_dependencies(expr.index)
+    elif isinstance(expr, SubArrayRef):
+        return get_dependencies(expr.get_begin_subscript().index)
     else:
         raise RuntimeError("invalid lvalue '%s'" % expr)
 
@@ -1072,9 +1080,10 @@ class CallInstruction(MultiAssignmentBase):
             expression = parse(expression)
 
         from pymbolic.primitives import Variable, Subscript
-        from loopy.symbolic import LinearSubscript
+        from loopy.symbolic import LinearSubscript, SubArrayRef
         for assignee in assignees:
-            if not isinstance(assignee, (Variable, Subscript, LinearSubscript)):
+            if not isinstance(assignee, (Variable, Subscript, LinearSubscript,
+                    SubArrayRef)):
                 raise LoopyError("invalid lvalue '%s'" % assignee)
 
         self.assignees = assignees
@@ -1128,24 +1137,92 @@ class CallInstruction(MultiAssignmentBase):
 # }}}
 
 
+def subscript_contains_slice(subscript):
+    """Return *True* if the *subscript* contains an instance of
+    :class:`pymbolic.primitives.Slice` as of its indices.
+    """
+    from pymbolic.primitives import Subscript, Slice
+    assert isinstance(subscript, Subscript)
+    return any(isinstance(index, Slice) for index in subscript.index_tuple)
+
+
+def is_array_call(assignees, expression):
+    """
+    Returns *True* is the instruction is an array call.
+
+    An array call is a function call applied to array type objects. If any of
+    the arguemnts or assignees to the function is an array,
+    :meth:`is_array_call` will return *True*.
+    """
+    from pymbolic.primitives import Call, CallWithKwargs, Subscript
+    from loopy.symbolic import SubArrayRef
+
+    if not isinstance(expression, (Call, CallWithKwargs)):
+        return False
+
+    for par in expression.parameters+assignees:
+        if isinstance(par, SubArrayRef):
+            return True
+        elif isinstance(par, Subscript):
+            if subscript_contains_slice(par):
+                return True
+
+    # did not encounter SubArrayRef/Slice, hence must be a normal call
+    return False
+
+
+def modify_assignee_assignee_for_array_call(assignee):
+    """
+    Converts the assignee subscript or variable as a SubArrayRef.
+    """
+    from pymbolic.primitives import Subscript, Variable
+    from loopy.symbolic import SubArrayRef
+    if isinstance(assignee, SubArrayRef):
+        return assignee
+    elif isinstance(assignee, Subscript):
+        if subscript_contains_slice(assignee):
+            # Slice subscripted array are treated as SubArrayRef in the kernel
+            # Hence, making the behavior similar to that of `SubArrayref`
+            return assignee
+        else:
+            return SubArrayRef((), assignee)
+    elif isinstance(assignee, Variable):
+        return SubArrayRef((), Subscript(assignee, 0))
+    else:
+        raise LoopyError("ArrayCall only takes Variable, Subscript or "
+                "SubArrayRef as its inputs")
+
+
 def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
-    if len(assignees) > 1 or len(assignees) == 0:
+    if len(assignees) > 1 or len(assignees) == 0 or is_array_call(assignees,
+            expression):
         atomicity = kwargs.pop("atomicity", ())
         if atomicity:
             raise LoopyError("atomic operations with more than one "
                     "left-hand side not supported")
 
-        from pymbolic.primitives import Call
+        from pymbolic.primitives import Call, CallWithKwargs
         from loopy.symbolic import Reduction
-        if not isinstance(expression, (Call, Reduction)):
+        if not isinstance(expression, (Call, CallWithKwargs, Reduction)):
             raise LoopyError("right-hand side in multiple assignment must be "
                     "function call or reduction, got: '%s'" % expression)
 
-        return CallInstruction(
-                assignees=assignees,
-                expression=expression,
-                temp_var_types=temp_var_types,
-                **kwargs)
+        if not is_array_call(assignees, expression):
+            return CallInstruction(
+                    assignees=assignees,
+                    expression=expression,
+                    temp_var_types=temp_var_types,
+                    **kwargs)
+        else:
+            # In the case of an array call, it is important to have each
+            # assignee as an instance of SubArrayRef. If not given as a
+            # SubArrayRef
+            return CallInstruction(
+                    assignees=tuple(modify_assignee_assignee_for_array_call(
+                        assignee) for assignee in assignees),
+                    expression=expression,
+                    temp_var_types=temp_var_types,
+                    **kwargs)
 
     else:
         return Assignment(

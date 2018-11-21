@@ -391,7 +391,6 @@ def test_bare_data_dependency(ctx_factory):
 
 # {{{ test race detection
 
-@pytest.mark.skipif("sys.version_info < (2,6)")
 def test_ilp_write_race_detection_global(ctx_factory):
     ctx = ctx_factory()
 
@@ -1735,6 +1734,8 @@ def test_call_with_options():
 
 
 def test_unschedulable_kernel_detection():
+    # FIXME: does not work
+    # Reason for multiple calllable kernels, not sure how this will go.
     knl = lp.make_kernel(["{[i,j]:0<=i,j<n}"],
                          """
                          mat1[i,j] = mat1[i,j] + 1 {inames=i:j, id=i1}

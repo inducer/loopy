@@ -245,9 +245,11 @@ def check_for_inactive_iname_access(kernel):
         if not expression_inames <= kernel.insn_inames(insn):
             raise LoopyError(
                     "instruction '%s' references "
-                    "inames '%s' that the instruction does not depend on"
+                    "inames '%s' that the instruction does not depend on in "
+                    "the kernel '%s'"
                     % (insn.id,
-                        ", ".join(expression_inames - kernel.insn_inames(insn))))
+                        ", ".join(expression_inames -
+                            kernel.insn_inames(insn)), kernel.name))
 
 
 def _is_racing_iname_tag(tv, tag):
@@ -727,8 +729,8 @@ def pre_schedule_checks(kernel, callables_table):
         check_for_data_dependent_parallel_bounds(kernel)
         check_bounds(kernel)
         check_write_destinations(kernel)
-        check_has_schedulable_iname_nesting(kernel)
-        check_variable_access_ordered(kernel)
+        # check_has_schedulable_iname_nesting(kernel)
+        # check_variable_access_ordered(kernel)
 
         logger.debug("%s: pre-schedule check: done" % kernel.name)
     except KeyboardInterrupt:

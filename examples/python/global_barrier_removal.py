@@ -1,7 +1,5 @@
 import numpy as np
 import loopy as lp
-import pyopencl as cl
-import pyopencl.array
 
 knl = lp.make_kernel(
         "{ [i,k]: 0<=i<n and 0<=k<3 }",
