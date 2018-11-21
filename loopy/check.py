@@ -321,20 +321,21 @@ class _AccessCheckMapper(WalkMapper):
                 from loopy.symbolic import constraints_from_expr
                 for pred in insn.predicates:
                     if insn.within_inames & get_dependencies(pred):
-                        try:
-                            constraints = constraints_from_expr(
-                                self.domain.space, pred)
-                            for constraint in constraints:
-                                access_range = access_range.add_constraint(
-                                    constraint)
+                        with isl.SuppressedWarnings(self.domain.get_ctx()):
+                            try:
+                                constraints = constraints_from_expr(
+                                    self.domain.space, pred)
+                                for constraint in constraints:
+                                    access_range = access_range.add_constraint(
+                                        constraint)
 
-                        except isl.Error:
-                            # non-affine predicate - store for warning if we fail
-                            # this check
-                            possible_warns += [pred]
-                        except UnknownVariableError:
-                            # data dependent bounds
-                            pass
+                            except isl.Error:
+                                # non-affine predicate - store for warning if we fail
+                                # this check
+                                possible_warns += [pred]
+                            except UnknownVariableError:
+                                # data dependent bounds
+                                pass
 
             try:
                 access_range = get_access_range(access_range, subscript,
