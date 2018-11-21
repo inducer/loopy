@@ -358,10 +358,9 @@ class _AccessCheckMapper(WalkMapper):
 
             if not access_range.is_subset(shape_domain):
                 if possible_warns:
-                    from loopy.diagnostic import warn_with_kernel
-                    warn_with_kernel(
-                        self.kernel, "non_affine_predicates",
-                        "Predicates: ({}) are are expressed in a "
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info("Predicates: ({}) are are expressed in a "
                         "non-affine manner, and were not considered "
                         "for out-of-bounds array checking.".format(
                             ', '.join(str(x) for x in possible_warns)))
