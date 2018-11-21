@@ -1339,7 +1339,11 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
         return num.mod_val(denom)
 
 
-class ConditionalMapper(PwAffEvaluationMapper):
+class ConditionalMapper(EvaluationMapperBase, IdentityMapperMixin):
+    def __init__(self, space, vars_to_zero):
+        self.pw_map = PwAffEvaluationMapper(space, vars_to_zero)
+        super(ConditionalMapper, self).__init__(self.pw_map.context.copy())
+
     def map_logical_not(self, expr):
         constraints = self.rec(expr.child)
         out = []
