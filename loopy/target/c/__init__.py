@@ -435,7 +435,7 @@ class CMathCallable(ScalarCallable):
             if dtype.kind == "c":
                 raise LoopyTypeError("%s does not support complex numbers")
 
-            elif dtype.kind == "f" or name in ["fmax", "fmin"]:
+            elif dtype.kind == "f":
                 from loopy.target.opencl import OpenCLTarget
                 if not isinstance(caller_kernel.target, OpenCLTarget):
                     if dtype == np.float64:
