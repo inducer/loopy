@@ -34,6 +34,8 @@ from loopy.kernel.data import (
 from loopy.diagnostic import warn_with_kernel, LoopyError
 from pytools import Record, memoize_method
 from loopy.kernel.function_interface import ScalarCallable, CallableKernel
+from loopy.kernel import LoopKernel
+from loopy.program import make_program
 
 
 __doc__ = """
@@ -1457,6 +1459,9 @@ def get_op_map(program, numpy_types=True, count_redundant_work=False,
         # (now use these counts to, e.g., predict performance)
 
     """
+
+    if isinstance(program, LoopKernel):
+        program = make_program(program)
 
     from loopy.preprocess import preprocess_program, infer_unknown_types
     program = infer_unknown_types(program, expect_completion=True)

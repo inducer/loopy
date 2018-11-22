@@ -457,6 +457,10 @@ class TypeInferenceMapper(CombineMapper):
                                         np.int64):
                             continue
 
+                        if np.can_cast(arg_id_to_dtype[id].dtype.type,
+                                in_knl_callable.arg_id_to_dtype[id].dtype.type):
+                            continue
+
                         # }}}
 
                         raise LoopyError("Overwriting a specialized function "
