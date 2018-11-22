@@ -696,13 +696,6 @@ def check_variable_access_ordered(kernel):
                 "'enforce_variable_access_ordered': %s"
                 % kernel.options.enforce_variable_access_ordered)
 
-    import sys
-
-    if len(kernel.instructions) > 200:
-        pre_recursion_limit = sys.getrecursionlimit()
-        if pre_recursion_limit < 2000:
-            sys.setrecursionlimit(2000)
-
     if kernel.options.enforce_variable_access_ordered == "no_check":
         return
 
@@ -715,9 +708,9 @@ def check_variable_access_ordered(kernel):
         except VariableAccessNotOrdered as e:
             from loopy.diagnostic import warn_with_kernel
             warn_with_kernel(kernel, "variable_access_ordered", str(e))
-
-    if len(kernel.instructions) > 200:
-        sys.setrecursionlimit(pre_recursion_limit)
+        except RecursionError as e:
+            from loopy.diagnostic import warn_with_kernel
+            warn_with_kernel(kernel, "recursion_error_reached_in_check", str(e))
 
 # }}}
 
