@@ -632,11 +632,20 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
 
         assignees = insn.assignees
 
-        parameter_shapes = [par.get_array_arg_descriptor(caller_knl).shape
+        def _shape_1_if_empty(shape):
+            assert isinstance(shape, tuple)
+            if shape == ():
+                return (1, )
+            else:
+                return shape
+
+        parameter_shapes = [
+                _shape_1_if_empty(
+                    par.get_array_arg_descriptor(caller_knl).shape)
                 for par in parameters]
         kw_to_pos, pos_to_kw = get_kw_pos_association(callee_knl)
         for i in range(len(parameters), len(parameters)+len(kw_parameters)):
-            parameter_shapes.append(kw_parameters[pos_to_kw[i]]
+            parameter_shapes.append(_shape_1_if_empty(kw_parameters[pos_to_kw[i]])
                     .get_array_arg_descriptor(caller_knl).shape)
 
         # inserting the assignees at the required positions.
@@ -644,8 +653,8 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
         for i, arg in enumerate(callee_knl.args):
             if arg.is_output_only:
                 assignee = assignees[-assignee_write_count-1]
-                parameter_shapes.insert(i, assignee
-                        .get_array_arg_descriptor(caller_knl).shape)
+                parameter_shapes.insert(i, _shape_1_if_empty(assignee
+                        .get_array_arg_descriptor(caller_knl).shape))
                 assignee_write_count -= 1
 
         callee_arg_to_desired_dim_tag = dict(zip([arg.name for arg in
@@ -659,6 +668,7 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
                 new_callee_insns.append(callee_insn.copy(expression=dim_changer(
                     callee_insn.expression),
                     assignee=dim_changer(callee_insn.assignee)))
+
             elif isinstance(callee_insn, (CInstruction,
                     _DataObliviousInstruction)):
                 pass
