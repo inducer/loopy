@@ -700,7 +700,11 @@ def check_variable_access_ordered(kernel):
         return
 
     if kernel.options.enforce_variable_access_ordered:
-        _check_variable_access_ordered_inner(kernel)
+        try:
+            _check_variable_access_ordered_inner(kernel)
+        except RecursionError as e:
+            from loopy.diagnostic import warn_with_kernel
+            warn_with_kernel(kernel, "recursion_error_reached_in_check", str(e))
     else:
         from loopy.diagnostic import VariableAccessNotOrdered
         try:
