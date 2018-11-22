@@ -532,7 +532,7 @@ class CallableKernel(InKernelCallable):
         return self.subkernel.name
 
     def with_types(self, arg_id_to_dtype, caller_kernel,
-            program_callables_info):
+            callables_table):
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
         new_args = []
@@ -555,10 +555,10 @@ class CallableKernel(InKernelCallable):
 
         # infer the types of the written variables based on the knowledge
         # of the types of the arguments supplied
-        specialized_kernel, program_callables_info = (
+        specialized_kernel, callables_table = (
                 infer_unknown_types_for_a_single_kernel(
                     pre_specialized_subkernel,
-                    program_callables_info,
+                    callables_table,
                     expect_completion=True))
 
         new_arg_id_to_dtype = {}
@@ -571,9 +571,9 @@ class CallableKernel(InKernelCallable):
         # Return the kernel call with specialized subkernel and the corresponding
         # new arg_id_to_dtype
         return self.copy(subkernel=specialized_kernel,
-                arg_id_to_dtype=new_arg_id_to_dtype), program_callables_info
+                arg_id_to_dtype=new_arg_id_to_dtype), callables_table
 
-    def with_descrs(self, arg_id_to_descr, program_callables_info):
+    def with_descrs(self, arg_id_to_descr, callables_table):
 
         # tune the subkernel so that we have the matching shapes and
         # dim_tags
@@ -602,15 +602,15 @@ class CallableKernel(InKernelCallable):
                         type(descr))
         descriptor_specialized_knl = self.subkernel.copy(args=new_args)
         from loopy.preprocess import traverse_to_infer_arg_descr
-        descriptor_specialized_knl, program_callables_info = (
+        descriptor_specialized_knl, callables_table = (
                 traverse_to_infer_arg_descr(descriptor_specialized_knl,
-                    program_callables_info))
+                    callables_table))
 
         return (
                 self.copy(
                     subkernel=descriptor_specialized_knl,
                     arg_id_to_descr=arg_id_to_descr),
-                program_callables_info)
+                callables_table)
 
     def with_packing_for_args(self):
         from loopy.kernel.data import AddressSpace

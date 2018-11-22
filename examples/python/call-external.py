@@ -7,14 +7,14 @@ from loopy.target.c import CTarget
 # {{{ blas callable
 
 class BLASCallable(lp.ScalarCallable):
-    def with_types(self, arg_id_to_dtype, kernel, program_callables_info):
+    def with_types(self, arg_id_to_dtype, kernel, callables_table):
         for i in range(0, 2):
             if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
                 # the types provided aren't mature enough to specialize the
                 # callable
                 return (
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                        program_callables_info)
+                        callables_table)
 
         mat_dtype = arg_id_to_dtype[0].numpy_dtype
         vec_dtype = arg_id_to_dtype[1].numpy_dtype
@@ -34,7 +34,7 @@ class BLASCallable(lp.ScalarCallable):
         from loopy.types import NumpyType
         return self.copy(name_in_target=name_in_target,
                 arg_id_to_dtype={0: NumpyType(vec_dtype), 1: NumpyType(vec_dtype),
-                    -1: NumpyType(vec_dtype)}), program_callables_info
+                    -1: NumpyType(vec_dtype)}), callables_table
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
         assert self.is_ready_for_codegen()

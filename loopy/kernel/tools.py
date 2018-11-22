@@ -1866,7 +1866,7 @@ def find_aliasing_equivalence_classes(kernel):
 
 # {{{ callee kernel tools
 
-def get_direct_callee_kernels(kernel, program_callables_info, insn_ids=None,):
+def get_direct_callee_kernels(kernel, callables_table, insn_ids=None,):
     """
     Returns an instance of :class:`frozenset` of all the callee kernels
     called in instructions in the *kernel* whose IDs are given in *insn_ids*.
@@ -1892,8 +1892,8 @@ def get_direct_callee_kernels(kernel, program_callables_info, insn_ids=None,):
         from loopy.kernel.instruction import (CallInstruction,
                 MultiAssignmentBase, CInstruction, _DataObliviousInstruction)
         if isinstance(insn, CallInstruction):
-            if insn.expression.function.name in program_callables_info:
-                in_knl_callable = program_callables_info[
+            if insn.expression.function.name in callables_table:
+                in_knl_callable = callables_table[
                         insn.expression.function.name]
                 if isinstance(in_knl_callable, CallableKernel):
                     return in_knl_callable.subkernel
