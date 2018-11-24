@@ -106,6 +106,7 @@ def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
         sequential=False):
     """Takes in a kernel that carries out an operation and returns a kernel
     that carries out a batch of these operations.
+
     .. note::
        For temporaries in a kernel that are private or read only
        globals and if `sequential=True`, loopy does not does not batch these
