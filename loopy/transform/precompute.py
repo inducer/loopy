@@ -962,8 +962,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
         from pymbolic import parse
         fetch_var = parse(temporary_name)
-        stream_temp_expression = fetch_var[tuple([stream_subst_dict[Variable(var)]
-                                            for var in non1_pstorage_axis_names])]
+        stream_temp_expression = fetch_var[tuple([stream_subst_dict[Variable(psname)]
+                                            for psname in non1_pstorage_axis_names])]
 
         stream_fetch_expression = compute_expression
 
