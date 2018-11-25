@@ -367,7 +367,7 @@ def test_stencil(ctx_factory):
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
                 fetch_bounding_box=True, default_tag="l.auto",
                 stream_iname="i_outer")
-        knl = lp.tag_inames(knl, dict(a_dim_0="l.1", i_inner = "l.1"))
+        knl = lp.tag_inames(knl, dict(a_dim_0="l.1", i_inner="l.1"))
         return knl
 
     # streaming, block covers input footprint (i.e., includes halos)
@@ -378,7 +378,7 @@ def test_stencil(ctx_factory):
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
                 fetch_bounding_box=True, default_tag=None,
                 stream_iname="i_outer")
-        knl = lp.tag_inames(knl, dict(a_dim_0="l.1", i_inner = "l.1", a_dim_1="l.0"))
+        knl = lp.tag_inames(knl, dict(a_dim_0="l.1", i_inner="l.1", a_dim_1="l.0"))
         knl = lp.tag_inames(knl, dict(i_outer=None, j_outer="g.0"))
         return knl
 

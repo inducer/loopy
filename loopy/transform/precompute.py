@@ -949,7 +949,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                                 storage_axis_names+pstorage_axis_names,
                                 [isl.dim_type.out])
         from loopy.symbolic import aff_to_expr
-        cns_exprs = [aff_to_expr(cns.get_aff()) 
+        cns_exprs = [aff_to_expr(cns.get_aff())
                         for cns in stream_replace_rules.get_constraints()]
 
         # primed storage inames
@@ -1033,7 +1033,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     else:
         from loopy.kernel.data import Assignment
         if compute_insn_id is None:
-            compute_insn_id = kernel.make_unique_instruction_id(based_on=c_subst_name)
+            compute_insn_id = kernel.make_unique_instruction_id(
+                                        based_on=c_subst_name)
 
         compute_insn = Assignment(
                 id=compute_insn_id,
@@ -1058,7 +1059,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             added_compute_insns.append(barrier_insn)
 
     # }}}
-    
+
     # {{{ substitute rule into expressions in kernel (if within footprint)
 
     from loopy.symbolic import SubstitutionRuleExpander
@@ -1144,7 +1145,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 insn.copy(within_inames=precompute_outer_inames)
                 # ??? replaced the below - should work for normal precompute?
                 # if insn.id == compute_insn_id
-                if insn.id in [ a.id for a in added_compute_insns]
+                if insn.id in [a.id for a in added_compute_insns]
                 else insn
                 for insn in kernel.instructions])
 
