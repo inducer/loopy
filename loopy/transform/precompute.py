@@ -904,16 +904,17 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         def eq_constraint_from_expr(space, expr):
             return isl.Constraint.equality_from_aff(aff_from_expr(space, expr))
 
-
         def ineq_constraint_from_expr(space, expr):
             return isl.Constraint.inequality_from_aff(aff_from_expr(space, expr))
 
         constraints_0 \
-        = [eq_constraint_from_expr(domain.space, parse(global_storage_axis_dict[si]) \
-        - storage_axis_subst_dict_0[si]) for si in storage_axis_names]
-        constraints_1 = \
-        [eq_constraint_from_expr(domain.space, parse(global_storage_axis_dict[si]) \
-        - storage_axis_subst_dict_1[si]) for si in storage_axis_names]
+            = [eq_constraint_from_expr(domain.space,
+                parse(global_storage_axis_dict[si]) 
+                - storage_axis_subst_dict_0[si]) for si in storage_axis_names]
+        constraints_1 \
+            = [eq_constraint_from_expr(domain.space,
+                parse(global_storage_axis_dict[si]) 
+                - storage_axis_subst_dict_1[si]) for si in storage_axis_names]
 
         domain_0 = domain.add_constraints(constraints_0)
         domain_1 = domain.add_constraints(constraints_1)
@@ -941,8 +942,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
         fetch_var = var(temporary_name)
 
-        from pymbolic.primitives import If
-        stream_assignee = fetch_var[tuple(var(iname) for iname in non1_storage_axis_names)]
+        stream_assignee = fetch_var[tuple(var(iname) 
+                            for iname in non1_storage_axis_names)]
 
         # ??? better way to do all this?
         stream_replace_rules = overlap.project_out_except(
