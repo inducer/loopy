@@ -336,11 +336,10 @@ def test_stencil(ctx_factory):
                 " + a_offset(i,j+1)"
                 " + a_offset(i-1,j)"
                 " + a_offset(i+1,j)"
-                ],
-            [
-                lp.GlobalArg("a", np.float32, shape=(n+2, n+2,)),
-                lp.GlobalArg("z", np.float32, shape=(n+2, n+2,))
-                ])
+            ]
+    )
+
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
 
     ref_knl = knl
 
@@ -359,9 +358,35 @@ def test_stencil(ctx_factory):
         knl = lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
         return knl
 
+    # streaming, block covers output footprint
+    # default_tag="l.auto" gets ride of iname a_dim_1
+    def variant_3(knl):
+        knl.silenced_warnings = ['single_writer_after_creation']
+        knl = lp.split_iname(knl, "i", 4, outer_tag=None, inner_tag=None)
+        knl = lp.split_iname(knl, "j", 64, outer_tag="g.0", inner_tag="l.0")
+        knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
+                fetch_bounding_box=True, default_tag="l.auto",
+                stream_iname="i_outer")
+        knl = lp.tag_inames(knl, dict(a_dim_0="l.1", i_inner = "l.1"))
+        return knl
+
+    # streaming, block covers input footprint (i.e., includes halos)
+    def variant_4(knl):
+        knl.silenced_warnings = ['single_writer_after_creation']
+        knl = lp.split_iname(knl, "i", 4, inner_tag=None)
+        knl = lp.split_iname(knl, "j", 64, inner_tag="l.0")
+        knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
+                fetch_bounding_box=True, default_tag=None,
+                stream_iname="i_outer")
+        knl = lp.tag_inames(knl, dict(a_dim_0="l.1", i_inner = "l.1", a_dim_1="l.0"))
+        knl = lp.tag_inames(knl, dict(i_outer=None, j_outer="g.0"))
+        return knl
+
     for variant in [
             #variant_1,
             variant_2,
+            variant_3,
+            variant_4,
             ]:
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
                 print_ref_code=False,
