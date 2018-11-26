@@ -549,15 +549,15 @@ class ArrayBase(ImmutableRecord):
     .. attribute :: name
 
     .. attribute :: dtype
-        the :class:`loopy.loopytype` of the array.
-        if this is *none*, :mod:`loopy` will try to continue without
-        knowing the type of this array, where the idea is that precise
-        knowledge of the type will become available at invocation time.
-        :class:`loopy.compiledkernel` (and thereby
-        :meth:`loopy.loopkernel.__call__`) automatically add this type
-        information based on invocation arguments.
 
-        note that some transformations, such as :func:`loopy.add_padding`
+        The :class:`loopy.types.LoopyType` of the array. If this is *None*,
+        :mod:`loopy` will try to continue without knowing the type of this
+        array, where the idea is that precise knowledge of the type will become
+        available at invocation time.  Calling the kernel
+        (via :meth:`loopy.LoopKernel.__call__`)
+        automatically adds this type information based on invocation arguments.
+
+        Note that some transformations, such as :func:`loopy.add_padding`
         cannot be performed without knowledge of the exact *dtype*.
 
     .. attribute :: shape

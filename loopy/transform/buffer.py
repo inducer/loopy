@@ -160,7 +160,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         matching contexts.  See :func:`loopy.match.parse_stack_match`
         for syntax.
     :arg temporary_scope: If given, override the choice of
-    :class:`AddressSpace` for the created temporary.
+        :class:`AddressSpace` for the created temporary.
     :arg default_tag: The default :ref:`iname-tags` to be assigned to the
         inames used for fetching and storing
     :arg fetch_bounding_box: If the access footprint is non-convex
