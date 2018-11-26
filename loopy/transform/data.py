@@ -150,7 +150,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         temporary_address_space=None, temporary_scope=None,
         footprint_subscripts=None,
         fetch_bounding_box=False,
-        stream_iname=None, # if not None, use streaming prefetch in precompute
+        stream_iname=None,  # if not None, use streaming prefetch in precompute
         fetch_outer_inames=None):
     """Prefetch all accesses to the variable *var_name*, with all accesses
     being swept through *sweep_inames*.

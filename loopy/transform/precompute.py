@@ -270,7 +270,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         fetch_bounding_box=False,
         temporary_address_space=None,
         compute_insn_id=None,
-        stream_iname=None, # if not None, use streaming prefetch in precompute
+        stream_iname=None,  # if not None, use streaming prefetch in precompute
         **kwargs):
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
@@ -877,18 +877,20 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             elif isinstance(inames, str):
                 inames = [inames]
             for iname in inames:
-                set = set.add_dims(isl.dim_type.out, 1).set_dim_name(isl.dim_type.out, set.n_dim(), iname)
+                set = set.add_dims(isl.dim_type.out,
+                        1).set_dim_name(isl.dim_type.out, set.n_dim(), iname)
             return set
-        
-        pstorage_axis_names = [name+"'" for name in storage_axis_names]
+
+        # primed storage inames
+        non1_pstorage_axis_names = [name+"'" for name in non1_storage_axis_names]
 
         global_storage_axis_dict = {}
-        for iname in storage_axis_names:
+        for iname in non1_storage_axis_names:
             # this breaks for custom sweep inames?
             global_storage_axis_dict[iname] = iname.replace("dim", "gdim")
         global_storage_axis_names = list(global_storage_axis_dict.values())
 
-        domain = kernel.domains[0] # ??? what should I do about this indexing
+        domain = kernel.domains[0]  # ??? what should I do about this indexing
 
         storage_axis_subst_dict_1 = storage_axis_subst_dict
 
@@ -897,7 +899,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             storage_axis_subst_dict_0[iname] = \
                 decrement(storage_axis_subst_dict[iname], stream_var)
 
-        domain = add_iname(domain, list(global_storage_axis_dict.values()))
+        domain = add_iname(domain, global_storage_axis_names)
 
         from loopy.symbolic import aff_from_expr
 
@@ -909,17 +911,17 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
         constraints_0 \
             = [eq_constraint_from_expr(domain.space,
-                parse(global_storage_axis_dict[si]) 
-                - storage_axis_subst_dict_0[si]) for si in storage_axis_names]
+                parse(global_storage_axis_dict[si])
+                - storage_axis_subst_dict_0[si]) for si in non1_storage_axis_names]
         constraints_1 \
             = [eq_constraint_from_expr(domain.space,
-                parse(global_storage_axis_dict[si]) 
-                - storage_axis_subst_dict_1[si]) for si in storage_axis_names]
+                parse(global_storage_axis_dict[si])
+                - storage_axis_subst_dict_1[si]) for si in non1_storage_axis_names]
 
         domain_0 = domain.add_constraints(constraints_0)
         domain_1 = domain.add_constraints(constraints_1)
 
-        for si, psi in zip(storage_axis_names, pstorage_axis_names):
+        for si, psi in zip(non1_storage_axis_names, non1_pstorage_axis_names):
             domain_1 = add_iname(domain_1, psi)
             domain_0 = rename(domain_0, si, psi)
             domain_0 = add_iname(domain_0, si)
@@ -938,23 +940,20 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         from loopy.symbolic import basic_set_to_cond_expr
         in_overlap = basic_set_to_cond_expr(
             overlap.project_out_except(
-                storage_axis_names+[stream_iname], [isl.dim_type.out]))
+                non1_storage_axis_names+[stream_iname], [isl.dim_type.out]))
 
         fetch_var = var(temporary_name)
 
-        stream_assignee = fetch_var[tuple(var(iname) 
+        stream_assignee = fetch_var[tuple(var(iname)
                             for iname in non1_storage_axis_names)]
 
         # ??? better way to do all this?
         stream_replace_rules = overlap.project_out_except(
-                                storage_axis_names+pstorage_axis_names,
+                                non1_storage_axis_names+non1_pstorage_axis_names,
                                 [isl.dim_type.out])
         from loopy.symbolic import aff_to_expr
         cns_exprs = [aff_to_expr(cns.get_aff())
                         for cns in stream_replace_rules.get_constraints()]
-
-        # primed storage inames
-        non1_pstorage_axis_names = [name+"'" for name in non1_storage_axis_names]
 
         stream_subst_dict = {}
         from pymbolic.algorithm import solve_affine_equations_for
