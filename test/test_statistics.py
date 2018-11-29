@@ -1060,6 +1060,65 @@ def test_all_counters_parallel_matmul():
     assert local_mem_s == m*2/bsize*n_subgroups
 
 
+def test_mem_access_tagged_variables():
+    bsize = 16
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<ell}",
+            [
+                "c$mmresult[i, j] = sum(k, a$mmaload[i, k]*b$mmbload[k, j])"
+            ],
+            name="matmul", assumptions="n,m,ell >= 1")
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
+    knl = lp.split_iname(knl, "i", bsize, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_iname(knl, "j", bsize, outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_iname(knl, "k", bsize)
+    # knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"], default_tag="l.auto")
+    # knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"], default_tag="l.auto")
+
+    n = 512
+    m = 256
+    ell = 128
+    params = {'n': n, 'm': m, 'ell': ell}
+    group_size = bsize*bsize
+    n_workgroups = div_ceil(n, bsize)*div_ceil(ell, bsize)
+    subgroups_per_group = div_ceil(group_size, SGS)
+    n_subgroups = n_workgroups*subgroups_per_group
+
+    mem_access_map = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                           subgroup_size=SGS)
+
+    f32s1lb = mem_access_map[lp.MemAccess('global', np.float32,
+                             lid_strides={0: 1},
+                             gid_strides={1: bsize},
+                             direction='load', variable='b',
+                             variable_tag='mmbload',
+                             count_granularity=CG.WORKITEM)
+                             ].eval_with_dict(params)
+    f32s1la = mem_access_map[lp.MemAccess('global', np.float32,
+                             lid_strides={1: Variable('m')},
+                             gid_strides={0: Variable('m')*bsize},
+                             direction='load',
+                             variable='a',
+                             variable_tag='mmaload',
+                             count_granularity=CG.SUBGROUP)
+                             ].eval_with_dict(params)
+
+    assert f32s1lb == n*m*ell
+
+    # uniform: (count-per-sub-group)*n_subgroups
+    assert f32s1la == m*n_subgroups
+
+    f32coal = mem_access_map[lp.MemAccess('global', np.float32,
+                             lid_strides={0: 1, 1: Variable('ell')},
+                             gid_strides={0: Variable('ell')*bsize, 1: bsize},
+                             direction='store', variable='c',
+                             variable_tag='mmresult',
+                             count_granularity=CG.WORKITEM)
+                             ].eval_with_dict(params)
+
+    assert f32coal == n*ell
+
+
 def test_gather_access_footprint():
     knl = lp.make_kernel(
             "{[i,k,j]: 0<=i,j,k<n}",
