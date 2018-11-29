@@ -106,10 +106,24 @@ def test_convolution(ctx_factory):
                 default_tag="l.auto")
         return knl
 
+    def variant_3(knl):
+        knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
+        knl = lp.split_iname(knl, "im_y", 16, inner_tag="l.1")
+        knl = lp.tag_inames(knl, dict(iimg="g.0"))
+        knl = lp.add_prefetch(knl, "f[ifeat,:,:,:]", default_tag="l.auto")
+        knl = lp.add_prefetch(knl, "img", "im_x_inner, im_y_inner, f_x, f_y, icolor",
+                            stream_iname="im_x_outer",
+                            default_tag=None,
+                            fetch_outer_inames="im_x_outer,im_y_outer,iimg,ifeat")
+        knl = lp.tag_inames(knl, dict(img_dim_1="l.0", img_dim_2="l.1"))
+        knl.silenced_warnings = ['single_writer_after_creation']
+        return knl
+
     for variant in [
             #variant_0,
             #variant_1,
-            variant_2
+            variant_2,
+            variant_3
             ]:
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
                 parameters=dict(
