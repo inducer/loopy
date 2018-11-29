@@ -843,6 +843,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         from pymbolic import parse
         stream_var = parse(stream_iname)
 
+        # {{{ some utility functions
+
         def increment(expr, iname):
             from pymbolic import parse, substitute
             if isinstance(iname, str):
@@ -854,16 +856,6 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             if isinstance(iname, str):
                 iname = parse(iname)
             return substitute(expr, {iname: iname - 1})
-
-        def project(set, iname):
-            var_dict = set.get_var_dict()
-            dt, dim_idx = var_dict[iname]
-            return set.project_out(dt, dim_idx, 1)
-
-        def to_param(set, iname):
-            var_dict = set.get_var_dict()
-            dt, dim_idx = var_dict[iname]
-            return set.move_dims(isl.dim_type.param, dim_idx, dt, dim_idx, 1)
 
         def rename(set, old, new):
             var_dict = set.get_var_dict()
@@ -881,13 +873,15 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                         1).set_dim_name(isl.dim_type.out, set.n_dim(), iname)
             return set
 
+        # }}}
+
         # primed storage inames
         non1_pstorage_axis_names = [name+"'" for name in non1_storage_axis_names]
 
+        # append "_g" to storage inames for corresponding global iname
         global_storage_axis_dict = {}
         for iname in non1_storage_axis_names:
-            # this breaks for custom sweep inames?
-            global_storage_axis_dict[iname] = iname.replace("dim", "gdim")
+            global_storage_axis_dict[iname] = iname+"_g"
         global_storage_axis_names = list(global_storage_axis_dict.values())
 
         domain = kernel.domains[0]  # ??? what should I do about this indexing
@@ -903,12 +897,14 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
         from loopy.symbolic import aff_from_expr
 
+        # these were removed from loopy.symbolic
         def eq_constraint_from_expr(space, expr):
             return isl.Constraint.equality_from_aff(aff_from_expr(space, expr))
 
         def ineq_constraint_from_expr(space, expr):
             return isl.Constraint.inequality_from_aff(aff_from_expr(space, expr))
 
+        # constraints on relationship between storage, etc. inames and global inames
         constraints_0 \
             = [eq_constraint_from_expr(domain.space,
                 parse(global_storage_axis_dict[si])
@@ -947,7 +943,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         stream_assignee = fetch_var[tuple(var(iname)
                             for iname in non1_storage_axis_names)]
 
-        # ??? better way to do all this?
+        # {{{ obtain global indexing from constraints
+
+        # ??? better way?
         stream_replace_rules = overlap.project_out_except(
                                 non1_storage_axis_names+non1_pstorage_axis_names,
                                 [isl.dim_type.out])
@@ -960,6 +958,10 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         stream_subst_dict = solve_affine_equations_for(non1_pstorage_axis_names,
                                                 [(0, cns) for cns in cns_exprs])
 
+        # }}}
+
+        # {{{ create instructions
+
         from pymbolic import parse
         fetch_var = parse(temporary_name)
         stream_temp_expression = fetch_var[tuple([stream_subst_dict[Variable(psname)]
@@ -968,7 +970,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         stream_fetch_expression = compute_expression
 
         var_name_gen = kernel.get_var_name_generator()
-        # ??? probably want to do this with var_name_gen?
+        # ??? probably want to generate temporary name with var_name_gen?
         stream_temp_assignee = temporary_name+"_temp"
 
         copy_temp_insn_id = temporary_name+"_copy_temp_rule"
@@ -1026,7 +1028,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         added_compute_insns = [fetch_temp_insn, stream_temp_insn,
             stream_barrier_insn, copy_temp_insn, copy_barrier_insn]
 
-        # ??? this is for compatibility with old precompute code
+        # }}}
+
+        # ??? this is for compatibility with old (shared) precompute code
         compute_insn_id = copy_barrier_insn_id
         compute_dep_id = copy_barrier_insn_id
         compute_insn = copy_barrier_insn
@@ -1075,14 +1079,14 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     kernel = invr.map_kernel(kernel)
     kernel = kernel.copy(
-            instructions=added_compute_insns + kernel.instructions)
+                instructions=added_compute_insns + kernel.instructions)
     kernel = rule_mapping_context.finish_kernel(kernel)
 
     # }}}
 
     # {{{ add dependencies to compute insn
 
-    # ??? removed this from streaming case for now - it adds a stupid barrier
+    # ??? removed this from streaming case for now - it adds a redundant barrier
     if stream_iname is None:
         kernel = kernel.copy(
                 instructions=[
