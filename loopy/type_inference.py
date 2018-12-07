@@ -468,7 +468,6 @@ class TypeInferenceMapper(CombineMapper):
                                 "InKernelCallable?")
 
             # }}}
-
             in_knl_callable, self.callables_table = (
                     in_knl_callable.with_types(
                         arg_id_to_dtype, self.kernel,
@@ -877,11 +876,13 @@ def infer_unknown_types_for_a_single_kernel(kernel, callables_table,
             item = item_lookup[name]
 
             debug("inferring type for %s %s", type(item).__name__, item.name)
-
-            (result, symbols_with_unavailable_types,
-                    new_old_calls_to_new_calls, callables_table) = (
-                    _infer_var_type(
-                            kernel, item.name, type_inf_mapper, subst_expander))
+            try:
+                (result, symbols_with_unavailable_types,
+                        new_old_calls_to_new_calls, callables_table) = (
+                        _infer_var_type(
+                                kernel, item.name, type_inf_mapper, subst_expander))
+            except DependencyTypeInferenceFailure:
+                result = tuple()
             type_inf_mapper = type_inf_mapper.copy(
                     callables_table=callables_table)
 
