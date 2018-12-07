@@ -703,7 +703,8 @@ def check_variable_access_ordered(kernel):
         try:
             _check_variable_access_ordered_inner(kernel)
         except RuntimeError as e:
-            if isinstance(e.args[0], str) and e.args[0].startswith('maximum recursion depth exceeded'):
+            if isinstance(e.args[0], str) and (
+                    e.args[0].startswith('maximum recursion depth exceeded')):
                 from loopy.diagnostic import warn_with_kernel
                 warn_with_kernel(kernel, "recursion_error_reached_in_check", str(e))
             else:
@@ -716,7 +717,8 @@ def check_variable_access_ordered(kernel):
             from loopy.diagnostic import warn_with_kernel
             warn_with_kernel(kernel, "variable_access_ordered", str(e))
         except RuntimeError as e:
-            if isinstance(e.args[0], str) and e.args[0].startswith('maximum recursion depth exceeded'):
+            if isinstance(e.args[0], str) and (
+                    e.args[0].startswith('maximum recursion depth exceeded')):
                 from loopy.diagnostic import warn_with_kernel
                 warn_with_kernel(kernel, "recursion_error_reached_in_check", str(e))
             else:
