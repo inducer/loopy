@@ -7,7 +7,7 @@ k = lp.make_kernel([
     """
     for i
         <> rowstart = rowstarts[i]
-        <> rowend = rowstarts[i]
+        <> rowend = rowstarts[i+1]
         <> length = rowend - rowstart
         y[i] = sum(j, values[rowstart+j] * x[colindices[rowstart + j]])
     end
