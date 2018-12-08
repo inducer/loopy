@@ -406,7 +406,7 @@ Arguments
     :members:
     :undoc-members:
 
-.. autoclass:: GlobalArg
+.. autoclass:: ArrayArg
     :members:
     :undoc-members:
 
@@ -593,7 +593,7 @@ Do not create :class:`LoopKernel` objects directly. Instead, refer to
 Implementation Detail: The Base Array
 -------------------------------------
 
-All array-like data in :mod:`loopy` (such as :class:`GlobalArg` and
+All array-like data in :mod:`loopy` (such as :class:`ArrayArg` and
 :class:`TemporaryVariable`) derive from single, shared base array type,
 described next.
 

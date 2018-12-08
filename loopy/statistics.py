@@ -581,6 +581,11 @@ class MemAccess(Record):
        A :class:`str` that specifies the variable name of the data
        accessed.
 
+    .. attribute:: variable_tag
+
+       A :class:`str` that specifies the variable tag of a
+       :class:`pymbolic.primitives.TaggedVariable`.
+
     .. attribute:: count_granularity
 
        A :class:`str` that specifies whether this operation should be counted
@@ -597,7 +602,8 @@ class MemAccess(Record):
     """
 
     def __init__(self, mtype=None, dtype=None, lid_strides=None, gid_strides=None,
-                 direction=None, variable=None, count_granularity=None):
+                 direction=None, variable=None, variable_tag=None,
+                 count_granularity=None):
 
         if count_granularity not in CountGranularity.ALL+[None]:
             raise ValueError("Op.__init__: count_granularity '%s' is "
@@ -607,12 +613,14 @@ class MemAccess(Record):
         if dtype is None:
             Record.__init__(self, mtype=mtype, dtype=dtype, lid_strides=lid_strides,
                             gid_strides=gid_strides, direction=direction,
-                            variable=variable, count_granularity=count_granularity)
+                            variable=variable, variable_tag=variable_tag,
+                            count_granularity=count_granularity)
         else:
             from loopy.types import to_loopy_type
             Record.__init__(self, mtype=mtype, dtype=to_loopy_type(dtype),
                             lid_strides=lid_strides, gid_strides=gid_strides,
                             direction=direction, variable=variable,
+                            variable_tag=variable_tag,
                             count_granularity=count_granularity)
 
     def __hash__(self):
@@ -622,7 +630,7 @@ class MemAccess(Record):
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
-        return "MemAccess(%s, %s, %s, %s, %s, %s, %s)" % (
+        return "MemAccess(%s, %s, %s, %s, %s, %s, %s, %s)" % (
             self.mtype,
             self.dtype,
             None if self.lid_strides is None else dict(
@@ -631,6 +639,7 @@ class MemAccess(Record):
                 sorted(six.iteritems(self.gid_strides))),
             self.direction,
             self.variable,
+            self.variable_tag,
             self.count_granularity)
 
 # }}}
@@ -697,8 +706,9 @@ class CounterBase(CombineMapper):
 # {{{ ExpressionOpCounter
 
 class ExpressionOpCounter(CounterBase):
-    def __init__(self, knl):
+    def __init__(self, knl, count_within_subscripts=True):
         self.knl = knl
+        self.count_within_subscripts = count_within_subscripts
         from loopy.type_inference import TypeInferenceMapper
         self.type_inf = TypeInferenceMapper(knl)
 
@@ -719,7 +729,10 @@ class ExpressionOpCounter(CounterBase):
                     ) + self.rec(expr.parameters)
 
     def map_subscript(self, expr):
-        return self.rec(expr.index)
+        if self.count_within_subscripts:
+            return self.rec(expr.index)
+        else:
+            return ToCountMap()
 
     def map_sum(self, expr):
         assert expr.children
@@ -981,6 +994,10 @@ class GlobalMemAccessCounter(MemAccessCounter):
 
     def map_subscript(self, expr):
         name = expr.aggregate.name
+        try:
+            var_tag = expr.aggregate.tag
+        except AttributeError:
+            var_tag = None
 
         if name in self.knl.arg_dict:
             array = self.knl.arg_dict[name]
@@ -1009,6 +1026,7 @@ class GlobalMemAccessCounter(MemAccessCounter):
                             lid_strides=dict(sorted(six.iteritems(lid_strides))),
                             gid_strides=dict(sorted(six.iteritems(gid_strides))),
                             variable=name,
+                            variable_tag=var_tag,
                             count_granularity=count_granularity
                             ): 1}
                           ) + self.rec(expr.index_tuple)
@@ -1314,7 +1332,7 @@ def _get_insn_count(knl, insn_id, subgroup_size, count_redundant_work,
 # {{{ get_op_map
 
 def get_op_map(knl, numpy_types=True, count_redundant_work=False,
-               subgroup_size=None):
+               count_within_subscripts=True, subgroup_size=None):
 
     """Count the number of operations in a loopy kernel.
 
@@ -1329,6 +1347,9 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
         flag indicates whether this work should be included in the count.
         (Likely desirable for performance modeling, but undesirable for code
         optimization.)
+
+    :arg count_within_subscripts: A :class:`bool` specifying whether to
+        count operations inside array indices.
 
     :arg subgroup_size: (currently unused) An :class:`int`, :class:`str`
         ``'guess'``, or *None* that specifies the sub-group size. An OpenCL
@@ -1382,7 +1403,7 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
     knl = preprocess_kernel(knl)
 
     op_map = ToCountMap()
-    op_counter = ExpressionOpCounter(knl)
+    op_counter = ExpressionOpCounter(knl, count_within_subscripts)
 
     from loopy.kernel.instruction import (
             CallInstruction, CInstruction, Assignment,
@@ -1627,6 +1648,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                             gid_strides=mem_access.gid_strides,
                             direction=mem_access.direction,
                             variable=mem_access.variable,
+                            variable_tag=mem_access.variable_tag,
                             count_granularity=mem_access.count_granularity),
                         ct)
                         for mem_access, ct in six.iteritems(access_map.count_map)),

@@ -49,7 +49,7 @@ from warnings import warn
 class auto(object):  # noqa
     """A generic placeholder object for something that should be automatically
     determined.  See, for example, the *shape* or *strides* argument of
-    :class:`GlobalArg`.
+    :class:`ArrayArg`.
     """
 
 

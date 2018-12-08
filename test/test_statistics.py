@@ -57,7 +57,8 @@ def test_op_counter_basic():
     knl = lp.add_and_infer_dtypes(knl,
                                   dict(a=np.float32, b=np.float32,
                                        g=np.float64, h=np.float64))
-    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True)
+    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
+                           count_within_subscripts=True)
     n_workgroups = 1
     group_size = 1
     subgroups_per_group = div_ceil(group_size, SGS)
@@ -161,7 +162,8 @@ def test_op_counter_specialops():
     knl = lp.add_and_infer_dtypes(knl,
                                   dict(a=np.float32, b=np.float32,
                                        g=np.float64, h=np.float64))
-    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True)
+    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
+                           count_within_subscripts=True)
     n_workgroups = 1
     group_size = 1
     subgroups_per_group = div_ceil(group_size, SGS)
@@ -206,7 +208,8 @@ def test_op_counter_bitwise():
                 a=np.int32, b=np.int32,
                 g=np.int64, h=np.int64))
 
-    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True)
+    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
+                           count_within_subscripts=False)
     n_workgroups = 1
     group_size = 1
     subgroups_per_group = div_ceil(group_size, SGS)
@@ -226,7 +229,7 @@ def test_op_counter_bitwise():
     i64shift = op_map[lp.Op(np.dtype(np.int64), 'shift', CG.SUBGROUP)
                       ].eval_with_dict(params)
     # (count-per-sub-group)*n_subgroups
-    assert i32add == n*m+n*m*ell*n_subgroups
+    assert i32add == n*m*ell*n_subgroups
     assert i32bw == 2*n*m*ell*n_subgroups
     assert i64bw == 2*n*m*n_subgroups
     assert i64add == i64mul == n*m*n_subgroups
@@ -1057,6 +1060,65 @@ def test_all_counters_parallel_matmul():
     assert local_mem_s == m*2/bsize*n_subgroups
 
 
+def test_mem_access_tagged_variables():
+    bsize = 16
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<ell}",
+            [
+                "c$mmresult[i, j] = sum(k, a$mmaload[i, k]*b$mmbload[k, j])"
+            ],
+            name="matmul", assumptions="n,m,ell >= 1")
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
+    knl = lp.split_iname(knl, "i", bsize, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_iname(knl, "j", bsize, outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_iname(knl, "k", bsize)
+    # knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"], default_tag="l.auto")
+    # knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"], default_tag="l.auto")
+
+    n = 512
+    m = 256
+    ell = 128
+    params = {'n': n, 'm': m, 'ell': ell}
+    group_size = bsize*bsize
+    n_workgroups = div_ceil(n, bsize)*div_ceil(ell, bsize)
+    subgroups_per_group = div_ceil(group_size, SGS)
+    n_subgroups = n_workgroups*subgroups_per_group
+
+    mem_access_map = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                           subgroup_size=SGS)
+
+    f32s1lb = mem_access_map[lp.MemAccess('global', np.float32,
+                             lid_strides={0: 1},
+                             gid_strides={1: bsize},
+                             direction='load', variable='b',
+                             variable_tag='mmbload',
+                             count_granularity=CG.WORKITEM)
+                             ].eval_with_dict(params)
+    f32s1la = mem_access_map[lp.MemAccess('global', np.float32,
+                             lid_strides={1: Variable('m')},
+                             gid_strides={0: Variable('m')*bsize},
+                             direction='load',
+                             variable='a',
+                             variable_tag='mmaload',
+                             count_granularity=CG.SUBGROUP)
+                             ].eval_with_dict(params)
+
+    assert f32s1lb == n*m*ell
+
+    # uniform: (count-per-sub-group)*n_subgroups
+    assert f32s1la == m*n_subgroups
+
+    f32coal = mem_access_map[lp.MemAccess('global', np.float32,
+                             lid_strides={0: 1, 1: Variable('ell')},
+                             gid_strides={0: Variable('ell')*bsize, 1: bsize},
+                             direction='store', variable='c',
+                             variable_tag='mmresult',
+                             count_granularity=CG.WORKITEM)
+                             ].eval_with_dict(params)
+
+    assert f32coal == n*ell
+
+
 def test_gather_access_footprint():
     knl = lp.make_kernel(
             "{[i,k,j]: 0<=i,j,k<n}",
@@ -1153,7 +1215,8 @@ def test_summations_and_filters():
     assert f32lall == (3*n*m*ell)*n_subgroups
     assert f64lall == (2*n*m)*n_subgroups
 
-    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True)
+    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
+                           count_within_subscripts=True)
     #for k, v in op_map.items():
     #    print(type(k), "\n", k.name, k.dtype, type(k.dtype), " :\n", v)
 
