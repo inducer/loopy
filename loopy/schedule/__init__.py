@@ -794,9 +794,13 @@ def generate_loop_schedules_internal(
 
         if not is_ready:
             if debug_mode:
-                print("instruction '%s' is missing insn depedencies '%s'" % (
-                        format_insn(kernel, insn.id), ",".join(
-                            insn.depends_on - sched_state.scheduled_insn_ids)))
+                # These are not that interesting when understanding scheduler
+                # failures.
+
+                # print("instruction '%s' is missing insn depedencies '%s'" % (
+                #         format_insn(kernel, insn.id), ",".join(
+                #             insn.depends_on - sched_state.scheduled_insn_ids)))
+                pass
             continue
 
         want = kernel.insn_inames(insn) - sched_state.parallel_inames
