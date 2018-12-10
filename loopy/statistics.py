@@ -846,11 +846,11 @@ class ExpressionOpCounter(CounterBase):
 
 # {{{ modified coefficient collector that ignores denominator of floor div
 
-class IndexStrideCoefficientCollector(CoefficientCollector):
+class _IndexStrideCoefficientCollector(CoefficientCollector):
 
     def map_floor_div(self, expr):
         from warnings import warn
-        warn("IndexStrideCoefficientCollector encountered FloorDiv, ignoring "
+        warn("_IndexStrideCoefficientCollector encountered FloorDiv, ignoring "
              "denominator in expression %s" % (expr))
         return self.rec(expr.numerator)
 
@@ -897,7 +897,7 @@ def _get_lid_and_gid_strides(knl, array, index):
             for idx, axis_tag in zip(index, array.dim_tags):
                 # collect index coefficients
                 try:
-                    coeffs = IndexStrideCoefficientCollector()(
+                    coeffs = _IndexStrideCoefficientCollector()(
                               simplify_using_aff(knl, idx))
                 except ExpressionNotAffineError:
                     total_iname_stride = None
