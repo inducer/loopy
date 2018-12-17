@@ -411,6 +411,9 @@ class PyOpenCLTarget(OpenCLTarget):
         from loopy.target.pyopencl_execution import PyOpenCLKernelExecutor
         return PyOpenCLKernelExecutor(queue.context, kernel)
 
+    def with_device(self, device):
+        return type(self)(device)
+
 # }}}
 
 
