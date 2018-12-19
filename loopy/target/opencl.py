@@ -658,7 +658,7 @@ class VolatileMemExpressionToOpenCLCExpressionMapper(
         from loopy.kernel.data import AddressSpace
         if array.address_space == AddressSpace.GLOBAL:
             aspace = "__global "
-        elif array.address_space == AddressSpace.GLOBAL:
+        elif array.address_space == AddressSpace.LOCAL:
             aspace = "__local "
         elif array.address_space == AddressSpace.PRIVATE:
             aspace = ""
