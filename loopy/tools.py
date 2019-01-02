@@ -24,7 +24,12 @@ THE SOFTWARE.
 
 import six
 
-import collections.abc as abc
+try:
+    import collections.abc as abc
+except ImportError:
+    # Python 2
+    import collections as abc
+
 import numpy as np
 from pytools import memoize_method
 from pytools.persistent_dict import KeyBuilder as KeyBuilderBase
