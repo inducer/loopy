@@ -24,7 +24,7 @@ THE SOFTWARE.
 
 import six
 
-import collections
+import collections.abc as abc
 import numpy as np
 from pytools import memoize_method
 from pytools.persistent_dict import KeyBuilder as KeyBuilderBase
@@ -456,7 +456,7 @@ class _PickledObjectWithEqAndPersistentHashKeys(_PickledObject):
 
 # {{{ lazily unpickling dictionary
 
-class LazilyUnpicklingDict(collections.MutableMapping):
+class LazilyUnpicklingDict(abc.MutableMapping):
     """A dictionary-like object which lazily unpickles its values.
     """
 
@@ -491,7 +491,7 @@ class LazilyUnpicklingDict(collections.MutableMapping):
 
 # {{{ lazily unpickling list
 
-class LazilyUnpicklingList(collections.MutableSequence):
+class LazilyUnpicklingList(abc.MutableSequence):
     """A list which lazily unpickles its values."""
 
     def __init__(self, *args, **kwargs):
