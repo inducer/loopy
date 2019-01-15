@@ -323,14 +323,24 @@ def test_missing_compilers():
                                b=np.arange(10, dtype=np.int32))[1], np.arange(10))
     import os
     path_store = os.environ["PATH"]
+    ccomp = None
     try:
         # test with path wiped out such that we can't find gcc
         with pytest.raises(ExecError):
             os.environ["PATH"] = ''
-            __test(eval_tester, ExecutableCTarget)
+            ccomp = CCompiler()
+            __test(eval_tester, ExecutableCTarget, compiler=ccomp)
     finally:
-        # make sure we restore the path regardless for future testing
+        # make sure we restore the path
         os.environ["PATH"] = path_store
+        # and, with the path restored we should now be able to properly execute with
+        # the default (non-guessed) toolchain!
+        __test(eval_tester, ExecutableCTarget, compiler=ccomp)
+
+    # and test that we will fail if we remove a required attribute
+    del ccomp.toolchain.undefines
+    with pytest.raises(AttributeError):
+        __test(eval_tester, ExecutableCTarget, compiler=ccomp)
 
     # next test that some made up compiler can be specified
     ccomp = CCompiler(cc='foo')
