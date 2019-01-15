@@ -236,7 +236,11 @@ class CCompiler(object):
                     libraries=[],
                     library_dirs=[],
                     defines=[],
-                    source_suffix='c')
+                    undefines=[],
+                    source_suffix='c',
+                    so_ext='.so',
+                    o_ext='.o',
+                    include_dirs=[])
 
         if toolchain is None:
             # copy in all differing values
@@ -283,15 +287,16 @@ class CCompiler(object):
 class CPlusPlusCompiler(CCompiler):
     """Subclass of CCompiler to invoke a C++ compiler."""
 
-    def __init__(self, cc='g++', cflags='-std=c++98 -O3 -fPIC'.split(),
+    def __init__(self, toolchain=None,
+                 cc='g++', cflags='-std=c++98 -O3 -fPIC'.split(),
                  ldflags=[], libraries=[],
                  include_dirs=[], library_dirs=[], defines=[],
                  source_suffix='cpp'):
 
         super(CPlusPlusCompiler, self).__init__(
-            cc=cc, cflags=cflags, ldflags=ldflags, libraries=libraries,
-            include_dirs=include_dirs, library_dirs=library_dirs,
-            defines=defines, source_suffix=source_suffix)
+            toolchain=toolchain, cc=cc, cflags=cflags, ldflags=ldflags,
+            libraries=libraries, include_dirs=include_dirs,
+            library_dirs=library_dirs, defines=defines, source_suffix=source_suffix)
 
 
 class IDIToCDLL(object):
