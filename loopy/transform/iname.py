@@ -656,7 +656,7 @@ def untag_inames(kernel, iname_to_untag, tag_type):
 # {{{ tag inames
 
 @iterate_over_kernels_if_given_program
-def tag_inames(kernel, iname_to_tag, force=False,
+def tag_inames(kernel, iname_to_tag, retag=False,
         ignore_nonexistent=False):
     """Tag an iname
 
@@ -759,6 +759,10 @@ def tag_inames(kernel, iname_to_tag, force=False,
             continue
 
         old_tags = kernel.iname_tags(iname)
+        if retag:
+            old_tags = frozenset()
+        else:
+            old_tags = kernel.iname_tags(iname)
 
         if iname not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % iname)

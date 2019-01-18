@@ -2002,6 +2002,194 @@ def realize_ilp(kernel):
 # }}}
 
 
+# {{{ realize C vector extension
+
+def realize_c_vec(kernel):
+
+    from loopy.kernel.data import CVectorizeTag, ArrayArg
+    from loopy.kernel.array import CVectorArrayDimTag
+    from loopy.kernel.tools import DomainChanger
+    from loopy.isl_helpers import duplicate_axes
+    from loopy.transform.iname import tag_inames
+    from loopy import Assignment
+    from loopy.symbolic import IdentityMapper, SubstitutionMapper, TypeCast
+    from pymbolic.mapper.substitutor import make_subst_func
+    from pymbolic.primitives import Variable, BitwiseAnd
+    from numpy import dtype, float64, uint64
+    from loopy.types import to_loopy_type
+
+    # any variable not in subscript?
+    class OutsideVariableFinder(IdentityMapper):
+
+        def __init__(self, find_names):
+            self.result = False
+            self.find_names = find_names
+
+        def map_variable(self, expr, *args, **kwargs):
+            if expr.name in self.find_names:
+                self.result = True
+            return super(OutsideVariableFinder, self).map_variable(expr, args, kwargs)
+
+        def map_subscript(self, expr, *args, **kwargs):
+            return expr
+
+    class VariableFinder(IdentityMapper):
+
+        def __init__(self, find_names, regex=False):
+            self.regex = regex
+            if regex:
+                import re
+                self.find_names = [re.compile(name) for name in find_names]
+            else:
+                self.find_names = find_names
+            self.result = False
+
+        def map_variable(self, expr, *args, **kwargs):
+            if self.regex:
+                for regex in self.find_names:
+                    if regex.match(expr.name):
+                        self.result = True
+                        break
+            elif expr.name in self.find_names:
+                self.result = True
+            return super(VariableFinder, self).map_variable(expr, args, kwargs)
+
+        def map_call(self, expr, *args, **kwargs):
+            if self.regex:
+                for regex in self.find_names:
+                    if regex.match(expr.function.name):
+                        self.result = True
+                        break
+            elif expr.function.name in self.find_names:
+                self.result = True
+            return super(VariableFinder, self).map_call(expr, args, kwargs)
+
+    class SubscriptFinder(IdentityMapper):
+
+        def __init__(self, find_aggregate_name, find_index_names):
+            self.find_aggregate_aname = find_aggregate_name
+            self.find_index_names = find_index_names
+            self.result = False
+
+        def map_subscript(self, expr, *args, **kwargs):
+            if expr.aggregate.name == self.find_aggregate_aname:
+                vf = VariableFinder(self.find_index_names)
+                vf(expr.index)
+                if vf.result:
+                    self.result = True
+            return super(SubscriptFinder, self).map_subscript(expr, args, kwargs)
+
+    cvec_inames = []
+    new_cvec_inames = []
+    other_inames = []
+
+    for i in sorted(kernel.all_inames()):
+        if kernel.iname_tags_of_type(i, CVectorizeTag):
+            cvec_inames.append(i)
+            j = i + "_p"  # TODO: use proper name generator
+            k = i + "_"
+            new_cvec_inames.append(j)
+            other_inames.append(k)
+            # create domains for new inames
+            domch = DomainChanger(kernel, frozenset([i]))
+            kernel = kernel.copy(domains=domch.get_domains_with(duplicate_axes(domch.domain, [i], [j])))
+            domch = DomainChanger(kernel, frozenset([i]))
+            kernel = kernel.copy(domains=domch.get_domains_with(duplicate_axes(domch.domain, [i], [k])))
+
+            kernel = tag_inames(kernel, [(i, "ilp.seq")], retag=True)  # change c_vec to ilp.seq, just in case
+            kernel = tag_inames(kernel, [(j, "c_vec")])
+            kernel = tag_inames(kernel, [(k, "ilp.seq")])
+
+    if not cvec_inames:
+        return kernel
+
+    iname_map = dict(zip(cvec_inames, new_cvec_inames))
+    subst_mapper = SubstitutionMapper(
+        make_subst_func(dict((Variable(o), Variable(n)) for (o, n) in zip(cvec_inames, new_cvec_inames))))
+
+    iname_map_other = dict(zip(cvec_inames, other_inames))
+    subst_mapper_other = SubstitutionMapper(
+        make_subst_func(dict((Variable(o), Variable(n)) for (o, n) in zip(cvec_inames, other_inames))))
+
+    func_names = set(["abs_*", "cos_*", "sin_*"])  # expand this list with more functions
+
+    function_finder = VariableFinder(func_names, regex=True)
+
+    new_insts = []
+    for inst in kernel.instructions:
+        if isinstance(inst, Assignment) and (inst.within_inames & set(cvec_inames)):
+            can_vectorize = True
+
+            # some built-in functions cannot be vectorized (in general)
+            if can_vectorize:
+                function_finder.result = False
+                function_finder(inst.expression)
+                if function_finder.result:
+                    can_vectorize = False
+
+            # non privitized array indexed with c_vec iname cannot be vectorized
+            if can_vectorize:
+                for name in inst.dependency_names():
+                    if name in kernel.temporary_variables:
+                        ary = kernel.temporary_variables[name]
+                    elif name in kernel.arg_dict:
+                        ary = kernel.arg_dict[name]
+                        if not isinstance(ary, ArrayArg):
+                            continue
+                    else:
+                        continue
+
+                    if len(ary.dim_tags) < 1:
+                        continue
+
+                    if not isinstance(ary.dim_tags[-1], CVectorArrayDimTag):
+                        sf = SubscriptFinder(ary.name, set(cvec_inames))
+                        sf(inst.assignee)
+                        sf(inst.expression)
+                        if sf.result:
+                            can_vectorize = False
+                            break
+
+            # cannot have inames outside of subscirpt
+            if can_vectorize:
+                ovf = OutsideVariableFinder(list(inst.within_inames & set(cvec_inames)))
+                ovf(inst.expression)
+                if ovf.result:
+                    can_vectorize = False
+
+            # constant rhs cannot be vectorized (GCC doesn't like it)
+            if can_vectorize:
+                avf = VariableFinder(list(inst.within_inames & set(cvec_inames)))
+                avf(inst.expression)
+                if not avf.result:
+                    import pymbolic.primitives as p
+                    rhs = inst.expression + p.Variable("_zeros")
+                    inst = inst.copy(expression=rhs)
+
+            should_simd = True
+            # FIXME: gathering is not SIMD
+            if inst.assignee.aggregate.name[:3] == "dat":
+                should_simd = False
+
+            if can_vectorize:
+                lhs = subst_mapper(inst.assignee)
+                rhs = subst_mapper(inst.expression)
+                within_inames = frozenset(iname_map[i] if i in iname_map else i for i in inst.within_inames)
+                inst = inst.copy(assignee=lhs, expression=rhs, within_inames=within_inames)
+            else:
+                lhs = subst_mapper_other(inst.assignee)
+                rhs = subst_mapper_other(inst.expression)
+                within_inames = frozenset(iname_map_other[i] if i in iname_map_other else i for i in inst.within_inames)
+                inst = inst.copy(assignee=lhs, expression=rhs, within_inames=within_inames)
+
+        new_insts.append(inst)
+
+    kernel = kernel.copy(instructions=new_insts)
+    return kernel
+
+# }}}
+
+
 # {{{ find idempotence ("boostability") of instructions
 
 def find_idempotence(kernel):
@@ -2376,6 +2564,8 @@ def preprocess_single_kernel(kernel, callables_table, device=None):
     # need to be duplicated by this.
 
     kernel = realize_ilp(kernel)
+
+    kernel = realize_c_vec(kernel)
 
     kernel = find_temporary_address_space(kernel)
 

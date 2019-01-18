@@ -174,7 +174,7 @@ def privatize_temporaries_with_inames(
 
     # {{{ change temporary variables
 
-    from loopy.kernel.data import VectorizeTag
+    from loopy.kernel.data import VectorizeTag, CVectorizeTag
 
     new_temp_vars = kernel.temporary_variables.copy()
     for tv_name, inames in six.iteritems(var_to_new_priv_axis_iname):
@@ -189,6 +189,8 @@ def privatize_temporaries_with_inames(
         for i, iname in enumerate(inames):
             if kernel.iname_tags_of_type(iname, VectorizeTag):
                 dim_tags[len(shape) + i] = "vec"
+            elif kernel.iname_tags_of_type(iname, CVectorizeTag):
+                dim_tags[len(shape) + i] = "c_vec"
 
         new_temp_vars[tv.name] = tv.copy(shape=shape + extra_shape,
                 # Forget what you knew about data layout,
