@@ -191,8 +191,8 @@ class POD(Declarator):
         self.vec_size = vec_size
 
     def get_decl_pair(self):
-        if self.vec_size:
-            return ["{0}{1}".format(self.ctype, self.vec_size)], self.name
+        if self.name == "_zeros":
+            return ["double4"], self.name
         return [self.ctype], self.name
 
     def struct_maker_code(self, name):
@@ -380,6 +380,9 @@ class CFamilyTarget(TargetBase):
 
     def get_kernel_executor(self, knl, *args, **kwargs):
         raise NotImplementedError()
+
+    def vector_dtype(self, base, count):
+        return NumpyType((base, count), target=self)
 
     # }}}
 
@@ -1164,26 +1167,9 @@ class CVecASTBuilder(CASTBuilder):
         return super(CVecASTBuilder, self).emit_sequential_loop(
             codegen_state, iname, iname_dtype, lbound, ubound, inner)
 
-    def get_temporary_decl(self, codegen_state, schedule_index, temp_var, decl_info):
-        if temp_var.name == "_zeros":
-            temp_var_decl = POD(self, decl_info.dtype, decl_info.name,
-                                temp_var.zero_size)
-
-            from cgen import Const
-            temp_var_decl = Const(temp_var_decl)
-
-            if temp_var.alignment:
-                from cgen import AlignedAttribute
-                temp_var_decl = AlignedAttribute(temp_var.alignment, temp_var_decl)
-
-            return temp_var_decl
-
-        return super(CVecASTBuilder, self).get_temporary_decl(
-            codegen_state, schedule_index, temp_var, decl_info)
-
 
 class CVecTarget(CTarget):
-    """C Target with vector extensions, e.g. double4
+    """Foo
     """
 
     def __init__(self):

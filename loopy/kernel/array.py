@@ -182,6 +182,18 @@ class VectorArrayDimTag(ArrayDimImplementationTag):
         return self
 
 
+class CVectorArrayDimTag(ArrayDimImplementationTag):
+
+    def stringify(self, include_target_axis):
+        return "c_vec"
+
+    def __str__(self):
+        return self.stringify(True)
+
+    def map_expr(self, mapper):
+        return self
+
+
 NESTING_LEVEL_RE = re.compile(r"^N([-0-9]+)(?::(.*)|)$")
 PADDED_STRIDE_TAG_RE = re.compile(r"^([a-zA-Z]*)\(pad=(.*)\)$")
 TARGET_AXIS_RE = re.compile(r"->([0-9])$")
@@ -207,6 +219,8 @@ def _parse_array_dim_tag(tag, default_target_axis, nesting_levels):
         return False, is_optional, SeparateArrayArrayDimTag()
     elif tag == "vec":
         return False, is_optional, VectorArrayDimTag()
+    elif tag == "c_vec":
+        return False, is_optional, CVectorArrayDimTag()
 
     nesting_level_match = NESTING_LEVEL_RE.match(tag)
 
@@ -423,6 +437,9 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
                         "argument dimension" % name)
 
             vector_dim = i
+
+        elif isinstance(dim_tag, CVectorArrayDimTag):
+            pass
 
         elif isinstance(dim_tag, _StrideArrayDimTagBase):
             if dim_tag.layout_nesting_level is None:
@@ -928,7 +945,7 @@ class ArrayBase(ImmutableRecord):
     def num_target_axes(self):
         target_axes = set()
         for dim_tag in self.dim_tags:
-            if isinstance(dim_tag, _StrideArrayDimTagBase):
+            if isinstance(dim_tag, (_StrideArrayDimTagBase, VectorArrayDimTag)):
                 target_axes.add(dim_tag.target_axis)
 
         return len(target_axes)
@@ -1154,6 +1171,23 @@ class ArrayBase(ImmutableRecord):
                         user_index + (None,)):
                     yield res
 
+            elif isinstance(dim_tag, CVectorArrayDimTag):
+                shape_i = array_shape[user_axis]
+                if not is_integer(shape_i):
+                    raise LoopyError("shape of '%s' has non-constant "
+                                     "integer axis %d (0-based)" % (
+                                         self.name, user_axis))
+
+                for res in gen_decls(name_suffix,
+                        shape, strides,
+                        unvec_shape + (shape_i,),
+                        # vectors always have stride 1
+                        unvec_strides + (1,),
+                        stride_arg_axes,
+                        target.vector_dtype(dtype, shape_i),
+                        user_index + (None,)):
+                    yield res
+
             else:
                 raise LoopyError("unsupported array dim implementation tag '%s' "
                         "in array '%s'" % (dim_tag, self.name))
@@ -1312,6 +1346,9 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
                 stride = var(array_name + "_stride%d" % i)
 
             subscripts[dim_tag.target_axis] += (stride // vector_size)*idx
+
+        elif isinstance(dim_tag, CVectorArrayDimTag):
+            subscripts.append(idx)
 
         elif isinstance(dim_tag, SeparateArrayArrayDimTag):
             pass
