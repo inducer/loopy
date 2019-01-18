@@ -188,6 +188,8 @@ class POD(Declarator):
         self.name = name
 
     def get_decl_pair(self):
+        if self.name == "_zeros":
+            return ["double4"], self.name
         return [self.ctype], self.name
 
     def struct_maker_code(self, name):
@@ -375,6 +377,9 @@ class CFamilyTarget(TargetBase):
 
     def get_kernel_executor(self, knl, *args, **kwargs):
         raise NotImplementedError()
+
+    def vector_dtype(self, base, count):
+        return NumpyType((base, count), target=self)
 
     # }}}
 
@@ -1122,5 +1127,64 @@ class ExecutableCTarget(CTarget):
         return CFamilyASTBuilder(self)
 
 # }}}
+
+# {{{ c target with vector extension
+
+class DTypeRegistryWrapperVec(DTypeRegistryWrapper):
+    def __init__(self, wrapped_registry):
+        super(DTypeRegistryWrapperVec, self).__init__(wrapped_registry)
+
+    def dtype_to_ctype(self, dtype):
+        if dtype.dtype.shape:
+            shape, = dtype.dtype.shape
+            base = super(DTypeRegistryWrapperVec, self).dtype_to_ctype(
+                NumpyType(dtype.dtype.base))
+            return base + str(shape)
+        return super(DTypeRegistryWrapperVec, self).dtype_to_ctype(dtype)
+
+
+class CVecASTBuilder(CASTBuilder):
+
+    def get_expression_to_c_expression_mapper(self, codegen_state):
+        from loopy.target.c.codegen.expression import ExpressionToCVecExpressionMapper  # noqa
+        return ExpressionToCVecExpressionMapper(codegen_state)
+
+    def get_c_expression_to_code_mapper(self):
+        from loopy.target.c.codegen.expression import CVecExpressionToCodeMapper
+        return CVecExpressionToCodeMapper()
+
+    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
+            lbound, ubound, inner):
+
+        from loopy.kernel.data import CVectorizeTag
+
+        if codegen_state.kernel.iname_tags_of_type(iname, CVectorizeTag):
+            return inner
+
+        return super(CVecASTBuilder, self).emit_sequential_loop(
+            codegen_state, iname, iname_dtype, lbound, ubound, inner)
+
+
+class CVecTarget(CTarget):
+    """Foo
+    """
+
+    def __init__(self):
+        super(CVecTarget, self).__init__()
+
+    @memoize_method
+    def get_dtype_registry(self):
+        from loopy.target.c.compyte.dtypes import (
+                DTypeRegistry, fill_registry_with_c_types)
+        result = DTypeRegistry()
+        fill_registry_with_c_types(result, respect_windows=False,
+                include_bool=True)
+        return DTypeRegistryWrapperVec(result)
+
+    def get_device_ast_builder(self):
+        return CVecASTBuilder(self)
+
+# }}}
+
 
 # vim: foldmethod=marker

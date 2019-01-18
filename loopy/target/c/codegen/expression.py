@@ -956,4 +956,65 @@ class CExpressionToCodeMapper(RecursiveMapper):
 
 # }}}
 
+
+class ExpressionToCVecExpressionMapper(ExpressionToCExpressionMapper):
+
+    def map_subscript(self, expr, type_context):
+        ary = self.find_array(expr)
+        from loopy.kernel.array import CVectorArrayDimTag
+        from loopy.kernel.data import CVectorizeTag
+        from pymbolic.primitives import Variable
+
+        if isinstance(ary.dim_tags[-1], CVectorArrayDimTag):
+            # throw away c_vec index when appropriate
+
+            from loopy.kernel.array import get_access_info
+            from pymbolic import evaluate
+            from loopy.symbolic import simplify_using_aff
+            index_tuple = tuple(
+                    simplify_using_aff(self.kernel, idx) for idx in expr.index_tuple)
+
+            access_info = get_access_info(self.kernel.target, ary, index_tuple,
+                    lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
+                    self.codegen_state.vectorization_info)
+
+            result = var(access_info.array_name)
+            last_idx = access_info.subscripts[-1]
+            throw_away = False
+            if (isinstance(last_idx, Variable) and
+                    self.codegen_state.kernel.iname_tags_of_type(
+                        last_idx.name, CVectorizeTag)):
+                throw_away = True
+
+            if len(access_info.subscripts) == 1:
+                vec, = access_info.subscripts
+                if throw_away:
+                    return result
+                return result[vec]
+
+            subscript, vec = access_info.subscripts
+            if throw_away:
+                return result[simplify_using_aff(
+                    self.kernel, self.rec(subscript, 'i'))]
+            return result[simplify_using_aff(
+                self.kernel, self.rec(subscript, 'i')), vec]
+
+        else:
+            return super(ExpressionToCVecExpressionMapper,
+                         self).map_subscript(expr, type_context)
+
+
+class CVecExpressionToCodeMapper(CExpressionToCodeMapper):
+
+    def map_subscript(self, expr, enclosing_prec):
+        if len(expr.index_tuple) == 1:
+            return super(CVecExpressionToCodeMapper, self).map_subscript(
+                expr, enclosing_prec)
+        indices = ["[%s]" % self.rec(i, PREC_CALL) for i in expr.index]
+        return self.parenthesize_if_needed(
+                "%s%s" % (
+                    self.rec(expr.aggregate, PREC_CALL),
+                    "".join(indices)),
+                enclosing_prec, PREC_CALL)
+
 # vim: fdm=marker

@@ -112,12 +112,14 @@ def generate_code_for_sched_index(codegen_state, sched_index):
                 generate_sequential_loop_dim_code)
 
         from loopy.kernel.data import (UnrolledIlpTag, UnrollTag,
-                ForceSequentialTag, LoopedIlpTag, VectorizeTag,
+                ForceSequentialTag, LoopedIlpTag, VectorizeTag, CVectorizeTag,
                 InOrderSequentialSequentialTag, filter_iname_tags_by_type)
         if filter_iname_tags_by_type(tags, (UnrollTag, UnrolledIlpTag)):
             func = generate_unroll_loop
         elif filter_iname_tags_by_type(tags, VectorizeTag):
             func = generate_vectorize_loop
+        elif filter_iname_tags_by_type(tags, CVectorizeTag):
+            func = generate_sequential_loop_dim_code
         elif not tags or filter_iname_tags_by_type(tags, (LoopedIlpTag,
                     ForceSequentialTag, InOrderSequentialSequentialTag)):
             func = generate_sequential_loop_dim_code
