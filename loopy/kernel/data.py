@@ -530,6 +530,7 @@ class TemporaryVariable(ArrayBase):
             "initializer",
             "read_only",
             "_base_storage_access_may_be_aliasing",
+            "zero_size",
             ]
 
     def __init__(self, name, dtype=None, shape=auto, address_space=None,
