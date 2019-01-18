@@ -2081,24 +2081,19 @@ def realize_c_vec(kernel):
 
     cvec_inames = []
     new_cvec_inames = []
-    other_inames = []
 
     for i in sorted(kernel.all_inames()):
         if kernel.iname_tags_of_type(i, CVectorizeTag):
             cvec_inames.append(i)
             j = i + "_p"  # TODO: use proper name generator
-            k = i + "_"
             new_cvec_inames.append(j)
-            other_inames.append(k)
+
             # create domains for new inames
             domch = DomainChanger(kernel, frozenset([i]))
             kernel = kernel.copy(domains=domch.get_domains_with(duplicate_axes(domch.domain, [i], [j])))
-            domch = DomainChanger(kernel, frozenset([i]))
-            kernel = kernel.copy(domains=domch.get_domains_with(duplicate_axes(domch.domain, [i], [k])))
 
             kernel = tag_inames(kernel, [(i, "ilp.seq")], retag=True)  # change c_vec to ilp.seq, just in case
             kernel = tag_inames(kernel, [(j, "c_vec")])
-            kernel = tag_inames(kernel, [(k, "ilp.seq")])
 
     if not cvec_inames:
         return kernel
@@ -2106,10 +2101,6 @@ def realize_c_vec(kernel):
     iname_map = dict(zip(cvec_inames, new_cvec_inames))
     subst_mapper = SubstitutionMapper(
         make_subst_func(dict((Variable(o), Variable(n)) for (o, n) in zip(cvec_inames, new_cvec_inames))))
-
-    iname_map_other = dict(zip(cvec_inames, other_inames))
-    subst_mapper_other = SubstitutionMapper(
-        make_subst_func(dict((Variable(o), Variable(n)) for (o, n) in zip(cvec_inames, other_inames))))
 
     func_names = set(["abs_*", "cos_*", "sin_*"])  # expand this list with more functions
 
@@ -2175,11 +2166,6 @@ def realize_c_vec(kernel):
                 lhs = subst_mapper(inst.assignee)
                 rhs = subst_mapper(inst.expression)
                 within_inames = frozenset(iname_map[i] if i in iname_map else i for i in inst.within_inames)
-                inst = inst.copy(assignee=lhs, expression=rhs, within_inames=within_inames)
-            else:
-                lhs = subst_mapper_other(inst.assignee)
-                rhs = subst_mapper_other(inst.expression)
-                within_inames = frozenset(iname_map_other[i] if i in iname_map_other else i for i in inst.within_inames)
                 inst = inst.copy(assignee=lhs, expression=rhs, within_inames=within_inames)
 
         new_insts.append(inst)
