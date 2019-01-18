@@ -2012,11 +2012,9 @@ def realize_c_vec(kernel):
     from loopy.isl_helpers import duplicate_axes
     from loopy.transform.iname import tag_inames
     from loopy import Assignment
-    from loopy.symbolic import IdentityMapper, SubstitutionMapper, TypeCast
+    from loopy.symbolic import IdentityMapper, SubstitutionMapper
     from pymbolic.mapper.substitutor import make_subst_func
-    from pymbolic.primitives import Variable, BitwiseAnd
-    from numpy import dtype, float64, uint64
-    from loopy.types import to_loopy_type
+    from pymbolic.primitives import Variable
 
     # any variable not in subscript?
     class OutsideVariableFinder(IdentityMapper):
@@ -2028,7 +2026,8 @@ def realize_c_vec(kernel):
         def map_variable(self, expr, *args, **kwargs):
             if expr.name in self.find_names:
                 self.result = True
-            return super(OutsideVariableFinder, self).map_variable(expr, args, kwargs)
+            return super(OutsideVariableFinder, self).map_variable(
+                expr, args, kwargs)
 
         def map_subscript(self, expr, *args, **kwargs):
             return expr
@@ -2090,9 +2089,11 @@ def realize_c_vec(kernel):
 
             # create domains for new inames
             domch = DomainChanger(kernel, frozenset([i]))
-            kernel = kernel.copy(domains=domch.get_domains_with(duplicate_axes(domch.domain, [i], [j])))
+            kernel = kernel.copy(domains=domch.get_domains_with(
+                duplicate_axes(domch.domain, [i], [j])))
 
-            kernel = tag_inames(kernel, [(i, "ilp.seq")], retag=True)  # change c_vec to ilp.seq, just in case
+            # change c_vec to ilp.seq for non-vectorizable instructions
+            kernel = tag_inames(kernel, [(i, "ilp.seq")], retag=True)
             kernel = tag_inames(kernel, [(j, "c_vec")])
 
     if not cvec_inames:
@@ -2100,9 +2101,11 @@ def realize_c_vec(kernel):
 
     iname_map = dict(zip(cvec_inames, new_cvec_inames))
     subst_mapper = SubstitutionMapper(
-        make_subst_func(dict((Variable(o), Variable(n)) for (o, n) in zip(cvec_inames, new_cvec_inames))))
+        make_subst_func(dict((Variable(o), Variable(n))
+                             for (o, n) in zip(cvec_inames, new_cvec_inames))))
 
-    func_names = set(["abs_*", "cos_*", "sin_*"])  # expand this list with more functions
+    # TODO: expand this list with more functions
+    func_names = set(["abs_*", "cos_*", "sin_*"])
 
     function_finder = VariableFinder(func_names, regex=True)
 
@@ -2143,7 +2146,8 @@ def realize_c_vec(kernel):
 
             # cannot have inames outside of subscirpt
             if can_vectorize:
-                ovf = OutsideVariableFinder(list(inst.within_inames & set(cvec_inames)))
+                ovf = OutsideVariableFinder(
+                    list(inst.within_inames & set(cvec_inames)))
                 ovf(inst.expression)
                 if ovf.result:
                     can_vectorize = False
@@ -2157,16 +2161,13 @@ def realize_c_vec(kernel):
                     rhs = inst.expression + p.Variable("_zeros")
                     inst = inst.copy(expression=rhs)
 
-            should_simd = True
-            # FIXME: gathering is not SIMD
-            if inst.assignee.aggregate.name[:3] == "dat":
-                should_simd = False
-
             if can_vectorize:
                 lhs = subst_mapper(inst.assignee)
                 rhs = subst_mapper(inst.expression)
-                within_inames = frozenset(iname_map[i] if i in iname_map else i for i in inst.within_inames)
-                inst = inst.copy(assignee=lhs, expression=rhs, within_inames=within_inames)
+                within_inames = frozenset(iname_map[i] if i in iname_map else i
+                                          for i in inst.within_inames)
+                inst = inst.copy(assignee=lhs, expression=rhs,
+                                 within_inames=within_inames)
 
         new_insts.append(inst)
 

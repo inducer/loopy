@@ -1029,11 +1029,11 @@ class DTypeRegistryWrapperVec(DTypeRegistryWrapper):
     def __init__(self, wrapped_registry):
         super(DTypeRegistryWrapperVec, self).__init__(wrapped_registry)
 
-
     def dtype_to_ctype(self, dtype):
         if dtype.dtype.shape:
             shape, = dtype.dtype.shape
-            base = super(DTypeRegistryWrapperVec, self).dtype_to_ctype(NumpyType(dtype.dtype.base))
+            base = super(DTypeRegistryWrapperVec, self).dtype_to_ctype(
+                NumpyType(dtype.dtype.base))
             return base + str(shape)
         return super(DTypeRegistryWrapperVec, self).dtype_to_ctype(dtype)
 
@@ -1041,7 +1041,7 @@ class DTypeRegistryWrapperVec(DTypeRegistryWrapper):
 class CVecASTBuilder(CASTBuilder):
 
     def get_expression_to_c_expression_mapper(self, codegen_state):
-        from loopy.target.c.codegen.expression import ExpressionToCVecExpressionMapper
+        from loopy.target.c.codegen.expression import ExpressionToCVecExpressionMapper  # noqa
         return ExpressionToCVecExpressionMapper(codegen_state)
 
     def get_c_expression_to_code_mapper(self):
@@ -1056,7 +1056,8 @@ class CVecASTBuilder(CASTBuilder):
         if codegen_state.kernel.iname_tags_of_type(iname, CVectorizeTag):
             return inner
 
-        return super(CVecASTBuilder, self).emit_sequential_loop(codegen_state, iname, iname_dtype, lbound, ubound, inner)
+        return super(CVecASTBuilder, self).emit_sequential_loop(
+            codegen_state, iname, iname_dtype, lbound, ubound, inner)
 
 
 class CVecTarget(CTarget):

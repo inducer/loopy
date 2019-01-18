@@ -897,7 +897,9 @@ class ExpressionToCVecExpressionMapper(ExpressionToCExpressionMapper):
             result = var(access_info.array_name)
             last_idx = access_info.subscripts[-1]
             throw_away = False
-            if isinstance(last_idx, Variable) and self.codegen_state.kernel.iname_tags_of_type(last_idx.name, CVectorizeTag):
+            if (isinstance(last_idx, Variable) and
+                    self.codegen_state.kernel.iname_tags_of_type(
+                        last_idx.name, CVectorizeTag)):
                 throw_away = True
 
             if len(access_info.subscripts) == 1:
@@ -908,18 +910,22 @@ class ExpressionToCVecExpressionMapper(ExpressionToCExpressionMapper):
 
             subscript, vec = access_info.subscripts
             if throw_away:
-                return result[simplify_using_aff(self.kernel, self.rec(subscript, 'i'))]
-            return result[simplify_using_aff(self.kernel, self.rec(subscript, 'i')), vec]
+                return result[simplify_using_aff(
+                    self.kernel, self.rec(subscript, 'i'))]
+            return result[simplify_using_aff(
+                self.kernel, self.rec(subscript, 'i')), vec]
 
         else:
-            return super(ExpressionToCVecExpressionMapper, self).map_subscript(expr, type_context)
+            return super(ExpressionToCVecExpressionMapper,
+                         self).map_subscript(expr, type_context)
 
 
 class CVecExpressionToCodeMapper(CExpressionToCodeMapper):
 
     def map_subscript(self, expr, enclosing_prec):
         if len(expr.index_tuple) == 1:
-            return super(CVecExpressionToCodeMapper, self).map_subscript(expr, enclosing_prec)
+            return super(CVecExpressionToCodeMapper, self).map_subscript(
+                expr, enclosing_prec)
         indices = ["[%s]" % self.rec(i, PREC_CALL) for i in expr.index]
         return self.parenthesize_if_needed(
                 "%s%s" % (
