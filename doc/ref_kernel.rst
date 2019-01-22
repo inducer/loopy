@@ -553,8 +553,6 @@ Helper values
 
 .. autoclass:: UniqueName
 
-.. autoclass:: Optional
-
 .. }}}
 
 Libraries: Extending and Interfacing with External Functionality
