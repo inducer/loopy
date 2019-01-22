@@ -25,7 +25,8 @@ THE SOFTWARE.
 
 import six
 
-from loopy.symbolic import (RuleAwareIdentityMapper, SubstitutionRuleMappingContext)
+from loopy.symbolic import (RuleAwareIdentityMapper,
+        SubstitutionRuleMappingContext, pw_aff_to_expr)
 from loopy.kernel.data import ValueArg, ArrayArg
 import islpy as isl
 
@@ -57,13 +58,15 @@ def temp_needs_batching_if_not_sequential(tv, batch_varying_args):
 
 class _BatchVariableChanger(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, kernel, batch_varying_args,
-            batch_iname_expr, sequential):
+            batch_iname_expr, sequential, batch_varying_temps=None, within=None):
         super(_BatchVariableChanger, self).__init__(rule_mapping_context)
 
         self.kernel = kernel
         self.batch_varying_args = batch_varying_args
         self.batch_iname_expr = batch_iname_expr
         self.sequential = sequential
+        self.batch_varying_temps = batch_varying_temps
+        self.within = within
 
     def needs_batch_subscript(self, name):
         tv = self.kernel.temporary_variables.get(name)
@@ -73,14 +76,18 @@ class _BatchVariableChanger(RuleAwareIdentityMapper):
         if not self.sequential:
             if tv is None:
                 return False
-            if not temp_needs_batching_if_not_sequential(tv,
-                    self.batch_varying_args):
-                return False
+            if self.batch_varying_temps:
+                return tv.name in self.batch_varying_temps
+            else:
+                if not temp_needs_batching_if_not_sequential(tv,
+                        self.batch_varying_args):
+                    return False
 
         return True
 
     def map_subscript(self, expr, expn_state):
-        if not self.needs_batch_subscript(expr.aggregate.name):
+        if not self.needs_batch_subscript(expr.aggregate.name) or not (
+                self.within(expn_state.kernel, expn_state.instruction)):
             return super(_BatchVariableChanger, self).map_subscript(expr, expn_state)
 
         idx = self.rec(expr.index, expn_state)
@@ -90,7 +97,8 @@ class _BatchVariableChanger(RuleAwareIdentityMapper):
         return type(expr)(expr.aggregate, (self.batch_iname_expr,) + idx)
 
     def map_variable(self, expr, expn_state):
-        if not self.needs_batch_subscript(expr.name):
+        if not self.needs_batch_subscript(expr.name) or not (
+                self.within(expn_state.kernel, expn_state.instruction)):
             return super(_BatchVariableChanger, self).map_variable(expr, expn_state)
 
         return expr[self.batch_iname_expr]
@@ -107,7 +115,7 @@ def _add_unique_dim_name(name, dim_names):
 
 @iterate_over_kernels_if_given_program
 def to_batched(knl, nbatches, batch_varying_args,
-        batch_iname_prefix="ibatch", sequential=False):
+        batch_iname_prefix="ibatch", sequential=False, within=None):
     """Takes in a kernel that carries out an operation and returns a kernel
     that carries out a batch of these operations.
     .. note::
@@ -183,11 +191,13 @@ def to_batched(knl, nbatches, batch_varying_args,
         from loopy.kernel.data import ForceSequentialTag
         knl = lp.tag_inames(knl, [(batch_iname, ForceSequentialTag())])
 
+    from loopy.match import parse_stack_match
+
     rule_mapping_context = SubstitutionRuleMappingContext(
             knl.substitutions, vng)
     bvc = _BatchVariableChanger(rule_mapping_context,
             knl, batch_varying_args, batch_iname_expr,
-            sequential=sequential)
+            sequential=sequential, within=parse_stack_match(within))
     kernel = rule_mapping_context.finish_kernel(
             bvc.map_kernel(knl))
 
@@ -195,10 +205,79 @@ def to_batched(knl, nbatches, batch_varying_args,
     kernel = kernel.copy(
             instructions=[
                 insn.copy(within_inames=insn.within_inames | batch_iname_set)
-                for insn in kernel.instructions])
+                if within(kernel, insn) else insn for insn in kernel.instructions])
 
     return kernel
 
 # }}}
+
+
+def _merged_batch(knl, iname_to_merge, batch_varying_args, batch_varying_temps,
+        sequential=False, within=None):
+    """
+    TODO: Not entirely sure whether this has to exist i.e. can this be
+    expressed as some other transformation.
+    """
+    from loopy.match import parse_match
+    from pymbolic import var
+    from loopy.isl_helpers import static_max_of_pw_aff
+
+    within = parse_match(within)
+    batch_iname_expr = var(iname_to_merge)
+
+    new_args = []
+
+    bounds = knl.get_iname_bounds(iname_to_merge, constants_only=True)
+    nbatches_expr = pw_aff_to_expr(static_max_of_pw_aff(bounds.size,
+        constants_only=True))
+
+    for arg in knl.args:
+        if arg.name in batch_varying_args:
+            if isinstance(arg, ValueArg):
+                arg = ArrayArg(arg.name, arg.dtype, shape=None,
+                        dim_tags="c")
+            else:
+                arg = arg.copy(
+                        shape=None,
+                        dim_tags=None,
+                        dim_names=_add_unique_dim_name("ibatch", arg.dim_names))
+
+        new_args.append(arg)
+
+    knl = knl.copy(
+            args=new_args)
+
+    if not sequential:
+        new_temps = {}
+
+        for temp in six.itervalues(knl.temporary_variables):
+            if (batch_varying_temps and temp.name in batch_varying_temps) or (not
+                    batch_varying_temps and temp_needs_batching_if_not_sequential(
+                        temp, batch_varying_args)):
+                new_temps[temp.name] = temp.copy(
+                    shape=(nbatches_expr,) + temp.shape,
+                    dim_tags=("c",) * (len(temp.shape) + 1),
+                    dim_names=_add_unique_dim_name("ibatch", temp.dim_names))
+            else:
+                new_temps[temp.name] = temp
+
+        knl = knl.copy(temporary_variables=new_temps)
+
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            knl.substitutions, knl.get_var_name_generator)
+    bvc = _BatchVariableChanger(rule_mapping_context,
+            knl, batch_varying_args, batch_iname_expr,
+            sequential=sequential, batch_varying_temps=batch_varying_temps,
+            within=within)
+    kernel = rule_mapping_context.finish_kernel(
+            bvc.map_kernel(knl))
+
+    batch_iname_set = frozenset([iname_to_merge])
+    kernel = kernel.copy(
+            instructions=[
+                insn.copy(within_inames=insn.within_inames | batch_iname_set)
+                if within(kernel, insn) else insn for insn in kernel.instructions])
+
+    return kernel
 
 # vim: foldmethod=marker
