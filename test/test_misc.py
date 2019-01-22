@@ -287,46 +287,6 @@ def test_LazilyUnpicklingListWithEqAndPersistentHashing():
     # }}}
 
 
-def test_Optional():  # noqa
-    from loopy import Optional
-
-    # {{{ test API
-
-    opt = Optional()
-    assert not opt.has_value
-    with pytest.raises(AttributeError):
-        opt.value
-
-    opt = Optional(1)
-    assert opt.has_value
-    assert 1 == opt.value
-
-    assert Optional(1) == Optional(1)
-    assert Optional(1) != Optional(2)
-    assert Optional() == Optional()
-    assert Optional() != Optional(1)
-
-    # }}}
-
-    # {{{ test pickling
-
-    import pickle
-
-    assert not pickle.loads(pickle.dumps(Optional())).has_value
-    assert pickle.loads(pickle.dumps(Optional(1))).value == 1
-
-    # }}}
-
-    # {{{ test key builder
-
-    from loopy.tools import LoopyKeyBuilder
-    kb = LoopyKeyBuilder()
-    kb(Optional())
-    kb(Optional(None))
-
-    # }}}
-
-
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

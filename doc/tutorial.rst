@@ -1869,7 +1869,7 @@ Now to make things more interesting, we'll create a kernel with barriers:
     ...     e[i,j,k] = c[i,j,k+1]+c[i,j,k-1]
     ...     """
     ...     ], [
-    ...     lp.TemporaryVariable("c", dtype=None, shape=(50, 10, 99)),
+    ...     lp.TemporaryVariable("c", lp.auto, shape=(50, 10, 99)),
     ...     "..."
     ...     ])
     >>> knl = lp.add_and_infer_dtypes(knl, dict(a=np.int32))
