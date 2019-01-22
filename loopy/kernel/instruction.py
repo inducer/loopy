@@ -932,6 +932,14 @@ class Assignment(MultiAssignmentBase):
 
         self.assignee = assignee
         self.expression = expression
+
+        import loopy as lp
+        if temp_var_type is lp.auto:
+            warn("temp_var_type should be Optional(None) if "
+                 "unspecified, not auto. This usage will be disallowed soon.",
+                 DeprecationWarning, stacklevel=2)
+            temp_var_type = lp.Optional(None)
+
         self.temp_var_type = temp_var_type
         self.atomicity = atomicity
 
@@ -1084,7 +1092,17 @@ class CallInstruction(MultiAssignmentBase):
         if temp_var_types is None:
             self.temp_var_types = (Optional(),) * len(self.assignees)
         else:
-            self.temp_var_types = temp_var_types
+            import loopy as lp
+            processed_temp_var_types = []
+            for temp_var_type in temp_var_types:
+                if temp_var_type is lp.auto:
+                    warn("temp_var_type should be Optional(None) if "
+                         "unspecified, not auto. This usage will be disallowed soon.",
+                         DeprecationWarning, stacklevel=2)
+                    temp_var_type = lp.Optional(None)
+                processed_temp_var_types.append(temp_var_type)
+
+            self.temp_var_types = tuple(processed_temp_var_types)
 
     # {{{ implement InstructionBase interface
 
