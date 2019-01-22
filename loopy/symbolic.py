@@ -1131,14 +1131,15 @@ class LoopyParser(ParserBase):
 
     def parse_prefix(self, pstate):
         from pymbolic.parser import _PREC_UNARY, _less, _greater, _identifier
+        import loopy as lp
         if pstate.is_next(_less):
             pstate.advance()
             if pstate.is_next(_greater):
-                typename = None
+                typename = lp.Optional(None)
                 pstate.advance()
             else:
                 pstate.expect(_identifier)
-                typename = pstate.next_str()
+                typename = lp.Optional(pstate.next_str())
                 pstate.advance()
                 pstate.expect(_greater)
                 pstate.advance()

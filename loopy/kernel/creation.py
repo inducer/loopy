@@ -28,7 +28,7 @@ THE SOFTWARE.
 import numpy as np
 
 from pymbolic.mapper import CSECachingMapperMixin
-from loopy.tools import intern_frozenset_of_ids
+from loopy.tools import intern_frozenset_of_ids, Optional
 from loopy.symbolic import IdentityMapper, WalkMapper
 from loopy.kernel.data import (
         InstructionBase,
@@ -454,7 +454,6 @@ def parse_insn(groups, insn_options):
         and *inames_to_dup* is None or a list of tuples `(old, new)`.
     """
 
-    import loopy as lp
     from loopy.symbolic import parse
 
     if "lhs" in groups:
@@ -486,14 +485,11 @@ def parse_insn(groups, insn_options):
 
     for lhs_i in lhs:
         if isinstance(lhs_i, TypeAnnotation):
-            if lhs_i.type is None:
-                temp_var_types.append(lp.auto)
-            else:
-                temp_var_types.append(lhs_i.type)
-
+            assert isinstance(lhs_i.type, Optional)
+            temp_var_types.append(lhs_i.type)
             lhs_i = lhs_i.child
         else:
-            temp_var_types.append(None)
+            temp_var_types.append(Optional())
 
         inner_lhs_i = lhs_i
         if isinstance(inner_lhs_i, Lookup):
@@ -1138,9 +1134,9 @@ class ArgumentGuesser:
 
     def make_new_arg(self, arg_name):
         arg_name = arg_name.strip()
+        import loopy as lp
 
         from loopy.kernel.data import ValueArg, ArrayArg, AddressSpace
-        import loopy as lp
 
         if arg_name in self.all_params:
             return ValueArg(arg_name)
@@ -1191,7 +1187,7 @@ class ArgumentGuesser:
                 for assignee_var_name, temp_var_type in zip(
                         insn.assignee_var_names(),
                         insn.temp_var_types):
-                    if temp_var_type is not None:
+                    if temp_var_type.has_value:
                         temp_var_names.add(assignee_var_name)
 
         # }}}
@@ -1431,7 +1427,7 @@ def create_temporaries(knl, default_order):
                     insn.assignee_var_names(),
                     insn.temp_var_types):
 
-                if temp_var_type is None:
+                if not temp_var_type.has_value:
                     continue
 
                 if assignee_name in new_temp_vars:
@@ -1446,17 +1442,17 @@ def create_temporaries(knl, default_order):
 
                 new_temp_vars[assignee_name] = lp.TemporaryVariable(
                         name=assignee_name,
-                        dtype=temp_var_type,
+                        dtype=temp_var_type.value,
                         address_space=lp.auto,
                         base_indices=lp.auto,
                         shape=lp.auto,
                         order=default_order,
                         target=knl.target)
 
-                if isinstance(insn, Assignment):
-                    insn = insn.copy(temp_var_type=None)
-                else:
-                    insn = insn.copy(temp_var_types=None)
+            if isinstance(insn, Assignment):
+                insn = insn.copy(temp_var_type=Optional())
+            else:
+                insn = insn.copy(temp_var_types=(Optional(),) * len(insn.assignees))
 
         new_insns.append(insn)
 

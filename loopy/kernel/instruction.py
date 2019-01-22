@@ -25,6 +25,7 @@ THE SOFTWARE.
 from six.moves import intern
 from pytools import ImmutableRecord, memoize_method
 from loopy.diagnostic import LoopyError
+from loopy.tools import Optional
 from warnings import warn
 
 
@@ -838,8 +839,9 @@ class Assignment(MultiAssignmentBase):
 
     .. attribute:: temp_var_type
 
-        if not *None*, a type that will be assigned to the new temporary variable
-        created from the assignee
+        A :class:`loopy.Optional`. If not empty, contains the type that
+        will be assigned to the new temporary variable created from the
+        assignment.
 
     .. attribute:: atomicity
 
@@ -893,7 +895,7 @@ class Assignment(MultiAssignmentBase):
             within_inames_is_final=None,
             within_inames=None,
             boostable=None, boostable_into=None, tags=None,
-            temp_var_type=None, atomicity=(),
+            temp_var_type=Optional(), atomicity=(),
             priority=0, predicates=frozenset(),
             insn_deps=None, insn_deps_is_final=None,
             forced_iname_deps=None, forced_iname_deps_is_final=None):
@@ -1006,8 +1008,9 @@ class CallInstruction(MultiAssignmentBase):
 
     .. attribute:: temp_var_types
 
-        if not *None*, a type that will be assigned to the new temporary variable
-        created from the assignee
+        A tuple of `:class:loopy.Optional`. If an entry is not empty, it
+        contains the type that will be assigned to the new temporary variable
+        created from the assigment.
 
     .. automethod:: __init__
     """
@@ -1079,7 +1082,7 @@ class CallInstruction(MultiAssignmentBase):
         self.expression = expression
 
         if temp_var_types is None:
-            self.temp_var_types = (None,) * len(self.assignees)
+            self.temp_var_types = (Optional(),) * len(self.assignees)
         else:
             self.temp_var_types = temp_var_types
 
@@ -1127,33 +1130,32 @@ class CallInstruction(MultiAssignmentBase):
 
 
 def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
-    if len(assignees) > 1 or len(assignees) == 0:
-        atomicity = kwargs.pop("atomicity", ())
-        if atomicity:
-            raise LoopyError("atomic operations with more than one "
-                    "left-hand side not supported")
+    if temp_var_types is None:
+        temp_var_types = (Optional(),) * len(assignees)
 
-        from pymbolic.primitives import Call
-        from loopy.symbolic import Reduction
-        if not isinstance(expression, (Call, Reduction)):
-            raise LoopyError("right-hand side in multiple assignment must be "
-                    "function call or reduction, got: '%s'" % expression)
-
-        return CallInstruction(
-                assignees=assignees,
-                expression=expression,
-                temp_var_types=temp_var_types,
-                **kwargs)
-
-    else:
+    if len(assignees) == 1:
         return Assignment(
                 assignee=assignees[0],
                 expression=expression,
-                temp_var_type=(
-                    temp_var_types[0]
-                    if temp_var_types is not None
-                    else None),
+                temp_var_type=temp_var_types[0],
                 **kwargs)
+
+    atomicity = kwargs.pop("atomicity", ())
+    if atomicity:
+        raise LoopyError("atomic operations with more than one "
+                "left-hand side not supported")
+
+    from pymbolic.primitives import Call
+    from loopy.symbolic import Reduction
+    if not isinstance(expression, (Call, Reduction)):
+        raise LoopyError("right-hand side in multiple assignment must be "
+                "function call or reduction, got: '%s'" % expression)
+
+    return CallInstruction(
+            assignees=assignees,
+            expression=expression,
+            temp_var_types=temp_var_types,
+            **kwargs)
 
 
 # {{{ c instruction
