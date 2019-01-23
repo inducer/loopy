@@ -1097,7 +1097,8 @@ class CallInstruction(MultiAssignmentBase):
             for temp_var_type in temp_var_types:
                 if temp_var_type is lp.auto:
                     warn("temp_var_type should be Optional(None) if "
-                         "unspecified, not auto. This usage will be disallowed soon.",
+                         "unspecified, not auto. "
+                         "This usage will be disallowed soon.",
                          DeprecationWarning, stacklevel=2)
                     temp_var_type = lp.Optional(None)
                 processed_temp_var_types.append(temp_var_type)
