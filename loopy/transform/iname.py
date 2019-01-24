@@ -638,7 +638,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
     if tag is not None:
         kernel = tag_inames(kernel, {new_iname: tag})
 
-    return kernel
+    return remove_unused_inames(kernel, inames)
 
 # }}}
 
