@@ -2058,13 +2058,22 @@ def realize_c_vec(kernel):
 
     # TODO: expand this list with more functions
     func_names = set(["abs_*", "cos_*", "sin_*"])
-
     function_finder = VariableFinder(func_names, regex=True)
+    globals = [name for name, arg in kernel.arg_dict.items()
+               if isinstance(arg, ArrayArg) and arg.shape[0] is not None]
+    gbf = VariableFinder(globals)
 
     new_insts = []
     for inst in kernel.instructions:
         if isinstance(inst, Assignment) and (inst.within_inames & set(cvec_inames)):
             can_vectorize = True
+
+            # reduction over globals are sequentialized
+            if can_vectorize and globals:
+                gbf.result = False
+                gbf(inst.assignee)
+                if gbf.result:
+                    can_vectorize = False
 
             # some built-in functions cannot be vectorized (in general)
             if can_vectorize:
