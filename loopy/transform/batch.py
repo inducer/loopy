@@ -234,12 +234,12 @@ def _merged_batch(knl, iname_to_merge, batch_varying_args, batch_varying_temps,
     for arg in knl.args:
         if arg.name in batch_varying_args:
             if isinstance(arg, ValueArg):
-                arg = ArrayArg(arg.name, arg.dtype, shape=None,
+                arg = ArrayArg(arg.name, arg.dtype, shape=(nbatches_expr,),
                         dim_tags="c")
             else:
                 arg = arg.copy(
-                        shape=None,
-                        dim_tags=None,
+                        shape=(nbatches_expr,) + arg.shape,
+                        dim_tags=("c",) * (len(arg.shape) + 1),
                         dim_names=_add_unique_dim_name("ibatch", arg.dim_names))
 
         new_args.append(arg)
