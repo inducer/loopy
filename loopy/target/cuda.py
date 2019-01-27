@@ -411,6 +411,35 @@ class CUDACASTBuilder(CASTBuilder):
 
         return CudaConstant(arg_decl)
 
+    # {{{ code generation for atomic update
+
+    def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
+            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
+
+        from pymbolic.primitives import Sum, Subscript
+        from cgen import Statement
+
+        if isinstance(lhs_dtype, NumpyType) and lhs_dtype.numpy_dtype in [
+                np.int32, np.int64, np.float32, np.float64]:
+            # Special case for atomicAdd
+            # FIXME: add similar code for atomicSub etc
+            if (isinstance(rhs_expr, Sum) and isinstance(lhs_expr, Subscript)
+                    and lhs_expr in rhs_expr.children):
+
+                ecm = self.get_expression_to_code_mapper(codegen_state)
+
+                new_rhs_expr = Sum(tuple(c for c in rhs_expr.children
+                                         if c != lhs_expr))
+                lhs_expr_code = ecm(lhs_expr)
+                rhs_expr_code = ecm(new_rhs_expr)
+
+                return Statement("atomicAdd(&{0}, {1})".format(
+                    lhs_expr_code, rhs_expr_code))
+
+        raise NotImplementedError("atomic update for '%s'" % lhs_dtype)
+
+    # }}}
+
     # }}}
 
 # }}}
