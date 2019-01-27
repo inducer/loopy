@@ -2927,6 +2927,20 @@ def test_backwards_dep_printing_and_error():
     print(knl)
 
 
+def test_temp_var_type_deprecated_usage():
+    pytest.deprecated_call(lp.Assignment, "x", 1, temp_var_type=lp.auto)
+    pytest.deprecated_call(lp.Assignment, "x", 1, temp_var_type=None)
+    pytest.deprecated_call(lp.Assignment, "x", 1, temp_var_type=np.dtype(np.int32))
+
+    from loopy.symbolic import parse
+    pytest.deprecated_call(lp.CallInstruction,
+            "(x,)", parse("f(1)"), temp_var_types=(lp.auto,))
+    pytest.deprecated_call(lp.CallInstruction,
+            "(x,)", parse("f(1)"), temp_var_types=(None,))
+    pytest.deprecated_call(lp.CallInstruction,
+            "(x,)", parse("f(1)"), temp_var_types=(np.dtype(np.int32),))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

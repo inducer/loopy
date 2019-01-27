@@ -1501,18 +1501,25 @@ def _check_and_fix_temp_var_type(temp_var_type):
     """Check temp_var_type for deprecated usage, and convert to the right value.
     """
 
-    if temp_var_type is not None:
-        import loopy as lp
-        if temp_var_type is lp.auto:
-            warn("temp_var_type should be Optional(None) if "
-                 "unspecified, not auto. This usage will be disallowed soon.",
-                 DeprecationWarning, stacklevel=3)
-            temp_var_type = lp.Optional(None)
-        elif not isinstance(temp_var_type, lp.Optional):
-            warn("temp_var_type should be None or an instance of Optional. "
-                 "Other values for temp_var_type will be disallowed soon.",
-                 DeprecationWarning, stacklevel=3)
-            temp_var_type = lp.Optional(temp_var_type)
+    import loopy as lp
+
+    if temp_var_type is None:
+        warn("temp_var_type should be Optional() if no temporary, not None. "
+             "This usage will be disallowed soon.",
+             DeprecationWarning, stacklevel=3)
+        temp_var_type = lp.Optional()
+
+    elif temp_var_type is lp.auto:
+        warn("temp_var_type should be Optional(None) if "
+             "unspecified, not auto. This usage will be disallowed soon.",
+             DeprecationWarning, stacklevel=3)
+        temp_var_type = lp.Optional(None)
+
+    elif not isinstance(temp_var_type, lp.Optional):
+        warn("temp_var_type should be an instance of Optional. "
+             "Other values for temp_var_type will be disallowed soon.",
+             DeprecationWarning, stacklevel=3)
+        temp_var_type = lp.Optional(temp_var_type)
 
     return temp_var_type
 
