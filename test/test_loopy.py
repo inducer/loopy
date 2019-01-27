@@ -2929,7 +2929,7 @@ def test_backwards_dep_printing_and_error():
 
 def test_temp_var_type_deprecated_usage():
     import warnings
-    warnings.simplefilter("always", DeprecationWarning)
+    warnings.simplefilter("always")
 
     pytest.deprecated_call(lp.Assignment, "x", 1, temp_var_type=lp.auto)
     pytest.deprecated_call(lp.Assignment, "x", 1, temp_var_type=None)
