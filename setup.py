@@ -98,6 +98,7 @@ setup(name="loo.py",
           "codepy>=2017.1",
           "colorama",
           "Mako",
+          "pytest>=4",
           ],
 
       extras_require={
