@@ -1086,7 +1086,8 @@ class CallInstruction(MultiAssignmentBase):
             self.temp_var_types = (Optional(),) * len(self.assignees)
         else:
             self.temp_var_types = tuple(
-                    _check_and_fix_temp_var_type(tvt) for tvt in temp_var_types)
+                    _check_and_fix_temp_var_type(tvt, stacklevel=3)
+                    for tvt in temp_var_types)
 
     # {{{ implement InstructionBase interface
 
@@ -1497,22 +1498,29 @@ def _get_insn_hash_key(insn):
 
 # {{{ _check_and_fix_temp_var_type
 
-def _check_and_fix_temp_var_type(temp_var_type):
+def _check_and_fix_temp_var_type(temp_var_type, stacklevel=2):
     """Check temp_var_type for deprecated usage, and convert to the right value.
     """
 
-    if temp_var_type is not None:
-        import loopy as lp
-        if temp_var_type is lp.auto:
-            warn("temp_var_type should be Optional(None) if "
-                 "unspecified, not auto. This usage will be disallowed soon.",
-                 DeprecationWarning, stacklevel=3)
-            temp_var_type = lp.Optional(None)
-        elif not isinstance(temp_var_type, lp.Optional):
-            warn("temp_var_type should be None or an instance of Optional. "
-                 "Other values for temp_var_type will be disallowed soon.",
-                 DeprecationWarning, stacklevel=3)
-            temp_var_type = lp.Optional(temp_var_type)
+    import loopy as lp
+
+    if temp_var_type is None:
+        warn("temp_var_type should be Optional() if no temporary, not None. "
+             "This usage will be disallowed soon.",
+             DeprecationWarning, stacklevel=1 + stacklevel)
+        temp_var_type = lp.Optional()
+
+    elif temp_var_type is lp.auto:
+        warn("temp_var_type should be Optional(None) if "
+             "unspecified, not auto. This usage will be disallowed soon.",
+             DeprecationWarning, stacklevel=1 + stacklevel)
+        temp_var_type = lp.Optional(None)
+
+    elif not isinstance(temp_var_type, lp.Optional):
+        warn("temp_var_type should be an instance of Optional. "
+             "Other values for temp_var_type will be disallowed soon.",
+             DeprecationWarning, stacklevel=1 + stacklevel)
+        temp_var_type = lp.Optional(temp_var_type)
 
     return temp_var_type
 
