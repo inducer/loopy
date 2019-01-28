@@ -100,7 +100,8 @@ class _BatchVariableChanger(RuleAwareIdentityMapper):
 
     def map_variable(self, expr, expn_state):
         if not self.needs_batch_subscript(expr.name) or not (
-                self.within(expn_state.kernel, expn_state.instruction)):
+                self.within(expn_state.kernel, expn_state.instruction,
+                    expn_state.stack)):
             return super(_BatchVariableChanger, self).map_variable(expr, expn_state)
 
         return expr[self.batch_iname_expr]
