@@ -1899,7 +1899,7 @@ def get_access_range(domain, subscript, assumptions, shape=None,
         except ExpressionToAffineConversionError as err:
             shape_aff = None
 
-            if shape is not None:
+            if shape is not None and shape[idim] is not None:
                 try:
                     shape_aff = guarded_aff_from_expr(access_map.space, shape[idim])
                 except ExpressionToAffineConversionError:
