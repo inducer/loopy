@@ -258,7 +258,7 @@ class StringifyMapper(StringifyMapperBase):
         return "cast(%s, %s)" % (repr(expr.type), self.rec(expr.child, PREC_NONE))
 
     def map_resolved_function(self, expr, prec):
-        return "ResolvedFunction('%s')" % expr.name
+        return expr.name
 
     def map_sub_array_ref(self, expr, prec):
         return "SubArrayRef({inames}, ({subscr}))".format(
