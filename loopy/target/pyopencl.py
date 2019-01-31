@@ -818,15 +818,15 @@ class NvidiaPyOpenCLTarget(PyOpenCLTarget):
         assert isinstance(device, cl.Device)
         assert device.vendor == 'NVIDIA Corporation'
 
-        if not device.compute_capability_major_nv >= 6:
-            raise LoopyError("Nvidia o")
         super(NvidiaPyOpenCLTarget, self).__init__(device,
                 pyopencl_module_name, atomics_flavor)
 
     def preprocess(self, kernel):
         from loopy import set_options
-        build_options = ['-cl-nv-arch', 'sm_60'] + kernel.options.cl_build_options
-        kernel = set_options(kernel, cl_build_options=build_options)
+        if self.device.compute_capability_major_nv >= 6:
+            build_options = ['-cl-nv-arch', 'sm_60'] + (
+                    kernel.options.cl_build_options)
+            kernel = set_options(kernel, cl_build_options=build_options)
         return super(NvidiaPyOpenCLTarget, self).preprocess(kernel)
 
     def get_device_ast_builder(self):
