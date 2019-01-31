@@ -811,4 +811,68 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 # }}}
 
 
+class NvidiaPyOpenCLTarget(PyOpenCLTarget):
+    def __init__(self, device, pyopencl_module_name="_lpy_cl",
+            atomics_flavor=None):
+        import pyopencl as cl
+        assert isinstance(device, cl.Device)
+        assert device.vendor == 'NVIDIA Corporation'
+
+        if not device.compute_capability_major_nv >= 6:
+            raise LoopyError("Nvidia o")
+        super(NvidiaPyOpenCLTarget, self).__init__(device,
+                pyopencl_module_name, atomics_flavor)
+
+    def preprocess(self, kernel):
+        from loopy import set_options
+        build_options = ['-cl-nv-arch', 'sm_60'] + kernel.options.cl_build_options
+        kernel = set_options(kernel, cl_build_options=build_options)
+        return super(NvidiaPyOpenCLTarget, self).preprocess(kernel)
+
+    def get_device_ast_builder(self):
+        # here we should have an if else condition
+        if self.device.compute_capability_major_nv >= 6:
+            return NvidiaPyOpenCLCASTBuilder(self)
+        else:
+            return super(NvidiaPyOpenCLTarget, self).get_device_ast_builder()
+
+
+class NvidiaPyOpenCLCASTBuilder(PyOpenCLCASTBuilder):
+    def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
+            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
+
+        from pymbolic.primitives import Sum, Variable, Subscript
+        from cgen import Statement, Block, Assign
+        from loopy.target.c import POD
+
+        if isinstance(lhs_dtype, NumpyType) and lhs_dtype.numpy_dtype == np.float64:
+            # atomicAdd
+            if isinstance(rhs_expr, Sum):
+
+                old_val_var = codegen_state.var_name_generator("loopy_old_val")
+
+                from loopy.kernel.data import TemporaryVariable
+                ecm = codegen_state.expression_to_code_mapper.with_assignments(
+                        {
+                            old_val_var: TemporaryVariable(old_val_var, lhs_dtype),
+                            })
+
+                new_rhs_expr = Sum(tuple(c for c in rhs_expr.children
+                                         if c != lhs_expr))
+                lhs_expr_code = ecm(lhs_expr)
+                rhs_expr_code = ecm(new_rhs_expr)
+
+                return Block([
+                    POD(self, NumpyType(lhs_dtype.dtype, target=self.target),
+                        old_val_var),
+                    Assign(old_val_var, lhs_expr_code),
+                    Statement('asm volatile("atom.global.add.f64 %0, [%1], %2;" :'
+                        '"=d"({0}) : "l"(&{1}) , "d"({2}))'.format(
+                            old_val_var, lhs_expr_code, rhs_expr_code))])
+
+        return super(NvidiaPyOpenCLCASTBuilder,
+                self).emit_atomic_update(codegen_state, lhs_atomicity, lhs_var,
+                        lhs_expr, rhs_expr, lhs_dtype, rhs_type_context)
+
+
 # vim: foldmethod=marker
