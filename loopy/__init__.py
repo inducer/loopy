@@ -152,7 +152,7 @@ from loopy.target import TargetBase, ASTBuilderBase
 from loopy.target.c import CTarget, ExecutableCTarget, generate_header
 from loopy.target.cuda import CudaTarget
 from loopy.target.opencl import OpenCLTarget
-from loopy.target.pyopencl import PyOpenCLTarget
+from loopy.target.pyopencl import PyOpenCLTarget, NvidiaPyOpenCLTarget
 from loopy.target.ispc import ISPCTarget
 from loopy.target.numba import NumbaTarget, NumbaCudaTarget
 
@@ -288,7 +288,7 @@ __all__ = [
         "TargetBase",
         "CTarget", "ExecutableCTarget", "generate_header",
         "CudaTarget", "OpenCLTarget",
-        "PyOpenCLTarget", "ISPCTarget",
+        "PyOpenCLTarget", "NvidiaPyOpenCLTarget", "ISPCTarget",
         "NumbaTarget", "NumbaCudaTarget",
         "ASTBuilderBase",
 

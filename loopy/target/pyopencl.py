@@ -841,7 +841,7 @@ class NvidiaPyOpenCLCASTBuilder(PyOpenCLCASTBuilder):
     def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
 
-        from pymbolic.primitives import Sum, Variable, Subscript
+        from pymbolic.primitives import Sum
         from cgen import Statement, Block, Assign
         from loopy.target.c import POD
 
