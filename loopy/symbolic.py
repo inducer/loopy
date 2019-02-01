@@ -1431,9 +1431,9 @@ def constraint_to_cond_expr(cns):
     # Looks like this is ok after all--get_aff() performs some magic.
     # Not entirely sure though... FIXME
     #
-    #ls = cns.get_local_space()
-    #if ls.dim(dim_type.div):
-        #raise RuntimeError("constraint has an existentially quantified variable")
+    # ls = cns.get_local_space()
+    # if ls.dim(dim_type.div):
+    #     raise RuntimeError("constraint has an existentially quantified variable")
 
     expr = aff_to_expr(cns.get_aff())
 

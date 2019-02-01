@@ -38,16 +38,16 @@ Python 2.7 with legacy PyOpenCL:
       junit: test/pytest.xml
 
 
-Python 3.6 POCL:
+Python 3 POCL:
   script:
-  - export PY_EXE=python3.6
+  - export PY_EXE=python3
   - export PYOPENCL_TEST=portable
   - export EXTRA_INSTALL="pybind11 numpy mako"
   - export LOOPY_NO_CACHE=1
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
-  - python3.6
+  - python3
   - pocl
   except:
   - tags
@@ -56,9 +56,9 @@ Python 3.6 POCL:
       junit: test/pytest.xml
 
 
-Python 3.6 POCL Twice With Cache:
+Python 3 POCL Twice With Cache:
   script:
-  - export PY_EXE=python3.6
+  - export PY_EXE=python3
   - export PYOPENCL_TEST=portable
   - export EXTRA_INSTALL="pybind11 numpy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
@@ -67,7 +67,7 @@ Python 3.6 POCL Twice With Cache:
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
-  - python3.6
+  - python3
   - pocl
   except:
   - tags
@@ -89,14 +89,14 @@ Python 3.6 POCL Twice With Cache:
 #   except:
 #   - tags
 
-Python 3.6 POCL Examples:
+Python 3 POCL Examples:
   script:
-  - export PY_EXE=python3.6
+  - export PY_EXE=python3
   - export PYOPENCL_TEST=portable
   - export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipykernel nbconvert"
   - ". ./build-py-project-and-run-examples.sh"
   tags:
-  - python3.6
+  - python3
   - pocl
   - large-node
   - ispc
@@ -124,7 +124,7 @@ Documentation:
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-docs.sh
   - ". ./build-docs.sh"
   tags:
-  - python3.5
+  - python3
   only:
   - master
 
@@ -133,6 +133,6 @@ Flake8:
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
   - ". ./prepare-and-run-flake8.sh loopy test"
   tags:
-  - python3.5
+  - python3
   except:
   - tags
