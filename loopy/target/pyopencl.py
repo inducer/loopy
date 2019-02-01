@@ -411,6 +411,9 @@ class PyOpenCLTarget(OpenCLTarget):
         from loopy.target.pyopencl_execution import PyOpenCLKernelExecutor
         return PyOpenCLKernelExecutor(queue.context, kernel)
 
+    def with_device(self, device):
+        return type(self)(device)
+
 # }}}
 
 
@@ -759,5 +762,20 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
 # }}}
 
+
+# {{{ volatile mem acccess target
+
+class VolatileMemPyOpenCLCASTBuilder(PyOpenCLCASTBuilder):
+    def get_expression_to_c_expression_mapper(self, codegen_state):
+        from loopy.target.opencl import \
+                VolatileMemExpressionToOpenCLCExpressionMapper
+        return VolatileMemExpressionToOpenCLCExpressionMapper(codegen_state)
+
+
+class VolatileMemPyOpenCLTarget(PyOpenCLTarget):
+    def get_device_ast_builder(self):
+        return VolatileMemPyOpenCLCASTBuilder(self)
+
+# }}}
 
 # vim: foldmethod=marker

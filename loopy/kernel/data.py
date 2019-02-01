@@ -330,8 +330,9 @@ class KernelArgument(ImmutableRecord):
 
         import loopy as lp
         if dtype is lp.auto:
-            warn("Argument/temporary data type should be None if unspecified, "
-                    "not auto. This usage will be disallowed in 2018.",
+            warn("Argument/temporary data type for '%s' should be None if "
+                   "unspecified, not auto. This usage will be disallowed in 2018."
+                    % kwargs["name"],
                     DeprecationWarning, stacklevel=2)
 
             dtype = None
