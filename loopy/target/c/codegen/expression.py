@@ -263,8 +263,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     def map_linear_subscript(self, expr, type_context):
         from pymbolic.primitives import Variable
         if not isinstance(expr.aggregate, Variable):
-                raise RuntimeError("linear indexing on non-variable: %s"
-                        % expr)
+            raise RuntimeError("linear indexing on non-variable: %s"
+                    % expr)
 
         if expr.aggregate.name in self.kernel.arg_dict:
             arg = self.kernel.arg_dict[expr.aggregate.name]
