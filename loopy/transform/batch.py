@@ -238,9 +238,9 @@ def save_temporaries_in_loop(knl, iname, temps_to_save, within=None):
 
     batch_iname_expr = var(iname)
 
-    bounds = knl.get_iname_bounds(iname, constants_only=True)
+    bounds = knl.get_iname_bounds(iname, constants_only=False)
     nbatches_expr = pw_aff_to_expr(static_max_of_pw_aff(bounds.size,
-        constants_only=True))
+        constants_only=False))
 
     new_temps = {}
 
