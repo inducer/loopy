@@ -235,6 +235,9 @@ class CudaTarget(CTarget):
 
         super(CudaTarget, self).__init__()
 
+    def split_kernel_at_global_barriers(self):
+        return True
+
     def get_device_ast_builder(self):
         return CUDACASTBuilder(self)
 
