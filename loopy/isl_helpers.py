@@ -56,8 +56,9 @@ def pw_aff_to_aff(pw_aff):
 
 
 def dump_space(ls):
-    return " ".join("%s: %d" % (dt, ls.dim(getattr(dim_type, dt)))
-            for dt in dim_type.names)
+    return " ".join(
+            "%s: %d" % (dim_type.find_value(dt), ls.dim(dt))
+            for dt in range(1 + dim_type.all))
 
 
 # {{{ make_slab
@@ -451,7 +452,7 @@ def obj_involves_variable(obj, var_name):
             return True
 
     for idiv in obj.dim(dim_type.div):
-        if obj_involves_variable(obj.get_div(idiv)):
+        if obj_involves_variable(obj.get_div(idiv), var_name):
             return True
 
     return False
