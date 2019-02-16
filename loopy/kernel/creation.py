@@ -765,15 +765,14 @@ def parse_instructions(instructions, defines):
             local_w_inames = insn_options_stack[-1]["within_inames"]
 
             if insn.within_inames_is_final:
-                if not (
-                        local_w_inames <= insn.within_inames):
+                if not (local_w_inames <= insn.within_inames):
                     raise LoopyError("non-parsed instruction '%s' without "
                             "inames '%s' (but with final iname dependencies) "
                             "found inside 'for'/'with' block for inames "
-                            "'%s'"
-                            % (insn.id,
+                            "'%s'" % (
+                                insn.id,
                                 ", ".join(local_w_inames - insn.within_inames),
-                                insn_options_stack[-1].within_inames))
+                                local_w_inames))
 
             else:
                 # not final, add inames from current scope
