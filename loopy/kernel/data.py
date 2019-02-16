@@ -286,15 +286,15 @@ class temp_var_scope(object):  # noqa
     """
 
     @_deprecated_temp_var_scope_class_method
-    def PRIVATE():
+    def PRIVATE():  # pylint:disable=no-method-argument
         return AddressSpace.PRIVATE
 
     @_deprecated_temp_var_scope_class_method
-    def LOCAL():
+    def LOCAL():  # pylint:disable=no-method-argument
         return AddressSpace.LOCAL
 
     @_deprecated_temp_var_scope_class_method
-    def GLOBAL():
+    def GLOBAL():  # pylint:disable=no-method-argument
         return AddressSpace.GLOBAL
 
     @classmethod
