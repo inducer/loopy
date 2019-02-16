@@ -2043,14 +2043,14 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             kernel_args.append(dat)
             continue
 
-        if isinstance(dat, ArrayBase) and isinstance(dat.shape, tuple):
+        if isinstance(dat, ArrayBase) and isinstance(dat.shape, tuple):  # noqa pylint:disable=no-member
             new_shape = []
-            for shape_axis in dat.shape:
+            for shape_axis in dat.shape:  # pylint:disable=no-member
                 if shape_axis is not None:
                     new_shape.append(expand_defines_in_expr(shape_axis, defines))
                 else:
                     new_shape.append(shape_axis)
-            dat = dat.copy(shape=tuple(new_shape))
+            dat = dat.copy(shape=tuple(new_shape))  # pylint:disable=no-member
 
         for arg_name in dat.name.split(","):
             arg_name = arg_name.strip()
