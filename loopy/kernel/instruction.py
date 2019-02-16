@@ -474,7 +474,7 @@ class InstructionBase(ImmutableRecord):
 
         from loopy.tools import intern_frozenset_of_ids
 
-        if self.id is not None:
+        if self.id is not None:  # pylint:disable=access-member-before-definition
             self.id = intern(self.id)
         self.depends_on = intern_frozenset_of_ids(self.depends_on)
         self.groups = intern_frozenset_of_ids(self.groups)
@@ -575,23 +575,23 @@ class memory_ordering(object):  # noqa
     """
 
     @_deprecated_memory_ordering_class_method
-    def RELAXED():
+    def RELAXED():  # pylint:disable=no-method-argument
         return MemoryOrdering.RELAXED
 
     @_deprecated_memory_ordering_class_method
-    def ACQUIRE():
+    def ACQUIRE():  # pylint:disable=no-method-argument
         return MemoryOrdering.ACQUIRE
 
     @_deprecated_memory_ordering_class_method
-    def RELEASE():
+    def RELEASE():  # pylint:disable=no-method-argument
         return MemoryOrdering.RELEASE
 
     @_deprecated_memory_ordering_class_method
-    def ACQ_REL():
+    def ACQ_REL():  # pylint:disable=no-method-argument
         return MemoryOrdering.ACQ_REL
 
     @_deprecated_memory_ordering_class_method
-    def SEQ_CST():
+    def SEQ_CST():  # pylint:disable=no-method-argument
         return MemoryOrdering.SEQ_CST
 
     @staticmethod
@@ -652,23 +652,23 @@ class memory_scope(object):  # noqa
     """
 
     @_deprecated_memory_scope_class_method
-    def WORK_ITEM():
-        return MemoryScope.PRIVATE
+    def WORK_ITEM():  # pylint:disable=no-method-argument
+        return MemoryScope.WORK_ITEM
 
     @_deprecated_memory_scope_class_method
-    def WORK_GROUP():
+    def WORK_GROUP():  # pylint:disable=no-method-argument
         return MemoryScope.WORK_GROUP
 
     @_deprecated_memory_scope_class_method
-    def DEVICE():
+    def DEVICE():  # pylint:disable=no-method-argument
         return MemoryScope.DEVICE
 
     @_deprecated_memory_scope_class_method
-    def ALL_SVM_DEVICES():
+    def ALL_SVM_DEVICES():  # pylint:disable=no-method-argument
         return MemoryScope.ALL_SVM_DEVICES
 
     @_deprecated_memory_scope_class_method
-    def auto():
+    def auto():  # pylint:disable=no-method-argument
         return MemoryScope.auto
 
     @staticmethod
@@ -734,6 +734,10 @@ class OrderedAtomic(VarAtomicity):
         return (super(OrderedAtomic, self).__eq__(other)
                 and self.ordering == other.ordering
                 and self.scope == other.scope)
+
+    @property
+    def op_name(self):
+        raise NotImplementedError
 
     def __str__(self):
         return "%s[%s]%s/%s" % (
