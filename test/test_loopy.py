@@ -2927,6 +2927,23 @@ def test_backwards_dep_printing_and_error():
     print(knl)
 
 
+def test_dump_binary(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            """
+            out[i] = i
+            """)
+
+    knl = lp.fix_parameters(knl, n=128)
+    ref_knl = knl
+
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, knl, parameters=dict(n=5),
+            dump_binary=True)
+
+
 def test_temp_var_type_deprecated_usage():
     import warnings
     warnings.simplefilter("always")
