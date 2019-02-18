@@ -1,107 +1,107 @@
-# Python 2.7 POCL:
+Python 2.7 POCL:
+  script:
+  - export PY_EXE=python2.7
+  - export PYOPENCL_TEST=portable
+  - export EXTRA_INSTALL="pybind11 numpy mako"
+  - export LOOPY_NO_CACHE=1
+  - export NO_DOCTESTS=1
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  tags:
+  - python2.7
+  - pocl
+  except:
+  - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
+
+
+Python 2.7 with legacy PyOpenCL:
+  script:
+  - export PY_EXE=python2.7
+  - export PYOPENCL_TEST=portable
+  - export EXTRA_INSTALL="pybind11 numpy mako"
+  - export REQUIREMENTS_TXT="requirements-old-pyopencl.txt"
+  - export LOOPY_NO_CACHE=1
+  - export NO_DOCTESTS=1
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  tags:
+  - python2.7
+  - pocl
+  except:
+  - tags
+  retry: 2
+  artifacts:
+    reports:
+      junit: test/pytest.xml
+
+
+Python 3 POCL:
+  script:
+  - export PY_EXE=python3
+  - export PYOPENCL_TEST=portable
+  - export EXTRA_INSTALL="pybind11 numpy mako"
+  - export LOOPY_NO_CACHE=1
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  tags:
+  - python3
+  - pocl
+  except:
+  - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
+
+
+Python 3 POCL Twice With Cache:
+  script:
+  - export PY_EXE=python3
+  - export PYOPENCL_TEST=portable
+  - export EXTRA_INSTALL="pybind11 numpy mako"
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  - "cd .."
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  tags:
+  - python3
+  - pocl
+  except:
+  - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
+
+
+# PyPy POCL:
 #   script:
-#   - export PY_EXE=python2.7
+#   - export PY_EXE=pypy
 #   - export PYOPENCL_TEST=portable
 #   - export EXTRA_INSTALL="pybind11 numpy mako"
-#   - export LOOPY_NO_CACHE=1
-#   - export NO_DOCTESTS=1
 #   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
 #   - ". ./build-and-test-py-project.sh"
 #   tags:
-#   - python2.7
+#   - pypy
 #   - pocl
 #   except:
 #   - tags
-#   artifacts:
-#     reports:
-#       junit: test/pytest.xml
-# 
-# 
-# Python 2.7 with legacy PyOpenCL:
-#   script:
-#   - export PY_EXE=python2.7
-#   - export PYOPENCL_TEST=portable
-#   - export EXTRA_INSTALL="pybind11 numpy mako"
-#   - export REQUIREMENTS_TXT="requirements-old-pyopencl.txt"
-#   - export LOOPY_NO_CACHE=1
-#   - export NO_DOCTESTS=1
-#   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-#   - ". ./build-and-test-py-project.sh"
-#   tags:
-#   - python2.7
-#   - pocl
-#   except:
-#   - tags
-#   retry: 2
-#   artifacts:
-#     reports:
-#       junit: test/pytest.xml
-# 
-# 
-# Python 3 POCL:
-#   script:
-#   - export PY_EXE=python3
-#   - export PYOPENCL_TEST=portable
-#   - export EXTRA_INSTALL="pybind11 numpy mako"
-#   - export LOOPY_NO_CACHE=1
-#   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-#   - ". ./build-and-test-py-project.sh"
-#   tags:
-#   - python3
-#   - pocl
-#   except:
-#   - tags
-#   artifacts:
-#     reports:
-#       junit: test/pytest.xml
-# 
-# 
-# Python 3 POCL Twice With Cache:
-#   script:
-#   - export PY_EXE=python3
-#   - export PYOPENCL_TEST=portable
-#   - export EXTRA_INSTALL="pybind11 numpy mako"
-#   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-#   - ". ./build-and-test-py-project.sh"
-#   - "cd .."
-#   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-#   - ". ./build-and-test-py-project.sh"
-#   tags:
-#   - python3
-#   - pocl
-#   except:
-#   - tags
-#   artifacts:
-#     reports:
-#       junit: test/pytest.xml
-# 
-# 
-# # PyPy POCL:
-# #   script:
-# #   - export PY_EXE=pypy
-# #   - export PYOPENCL_TEST=portable
-# #   - export EXTRA_INSTALL="pybind11 numpy mako"
-# #   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-# #   - ". ./build-and-test-py-project.sh"
-# #   tags:
-# #   - pypy
-# #   - pocl
-# #   except:
-# #   - tags
-# 
-# Python 3 POCL Examples:
-#   script:
-#   - export PY_EXE=python3
-#   - export PYOPENCL_TEST=portable
-#   - export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipykernel nbconvert"
-#   - ". ./build-py-project-and-run-examples.sh"
-#   tags:
-#   - python3
-#   - pocl
-#   - large-node
-#   - ispc
-#   except:
-#   - tags
+
+Python 3 POCL Examples:
+  script:
+  - export PY_EXE=python3
+  - export PYOPENCL_TEST=portable
+  - export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipykernel nbconvert"
+  - ". ./build-py-project-and-run-examples.sh"
+  tags:
+  - python3
+  - pocl
+  - large-node
+  - ispc
+  except:
+  - tags
 
 Pylint:
   script:
@@ -116,30 +116,30 @@ Pylint:
   except:
   - tags
 
-# CentOS binary:
-#   script:
-#   - (cd build-helpers; ./make-linux-build-docker.sh --nodate)
-#   - (cd ./build-helpers; ./loopy-centos6 ../examples/fortran/sparse.floopy)
-#   artifacts:
-#     expire_in: 4 weeks
-#     paths:
-#     - build-helpers/loopy-centos6
-#   tags:
-#   - docker
-#   only:
-#   - master
-#   retry: 2
-# 
-# Documentation:
-#   script:
-#   - EXTRA_INSTALL="pybind11 numpy"
-#   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-docs.sh
-#   - ". ./build-docs.sh"
-#   tags:
-#   - python3
-#   only:
-#   - master
- 
+CentOS binary:
+  script:
+  - (cd build-helpers; ./make-linux-build-docker.sh --nodate)
+  - (cd ./build-helpers; ./loopy-centos6 ../examples/fortran/sparse.floopy)
+  artifacts:
+    expire_in: 4 weeks
+    paths:
+    - build-helpers/loopy-centos6
+  tags:
+  - docker
+  only:
+  - master
+  retry: 2
+
+Documentation:
+  script:
+  - EXTRA_INSTALL="pybind11 numpy"
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-docs.sh
+  - ". ./build-docs.sh"
+  tags:
+  - python3
+  only:
+  - master
+
 Flake8:
   script:
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
@@ -148,4 +148,3 @@ Flake8:
   - python3
   except:
   - tags
-
