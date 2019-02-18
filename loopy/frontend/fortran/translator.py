@@ -307,9 +307,9 @@ class F2LoopyTranslator(FTreeWalkerBase):
             ("integer", "8"): np.int64,
             }
     if hasattr(np, "float128"):
-        TYPE_MAP[("real", "16")] = np.float128
+        TYPE_MAP[("real", "16")] = np.float128  # pylint:disable=no-member
     if hasattr(np, "complex256"):
-        TYPE_MAP[("complex", "32")] = np.complex256
+        TYPE_MAP[("complex", "32")] = np.complex256  # pylint:disable=no-member
 
     def dtype_from_stmt(self, stmt):
         length, kind = stmt.selector

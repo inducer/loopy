@@ -32,6 +32,10 @@ class FTreeWalkerBase(object):
         from loopy.frontend.fortran.expression import FortranExpressionParser
         self.expr_parser = FortranExpressionParser(self)
 
+    @property
+    def filename(self):
+        raise NotImplementedError
+
     def rec(self, expr, *args, **kwargs):
         mro = list(type(expr).__mro__)
         dispatch_class = kwargs.pop("dispatch_class", type(self))
