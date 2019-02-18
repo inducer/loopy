@@ -199,7 +199,7 @@ class Scope(object):
 
 class F2LoopyTranslator(FTreeWalkerBase):
     def __init__(self, filename, target=None):
-        FTreeWalkerBase.__init__(self)
+        FTreeWalkerBase.__init__(self, filename)
 
         self.target = target
 
@@ -213,8 +213,6 @@ class F2LoopyTranslator(FTreeWalkerBase):
         self.instruction_tags = []
         self.conditions = []
         self.conditions_data = []
-
-        self.filename = filename
 
         self.index_dtype = None
 
