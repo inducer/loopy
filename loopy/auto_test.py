@@ -571,7 +571,9 @@ def auto_test_vs_ref(
                 # }}}
 
                 print(type(cl_program))
-                print(cl_program.binaries[0])
+                if hasattr(cl_program, "binaries"):
+                    print(cl_program.binaries[0])
+
                 print(75*"-")
 
         logger.info("%s: run warmup" % (knl.name))
