@@ -175,7 +175,7 @@ def generate_vectorize_loop(codegen_state, sched_index):
         warn(kernel, "vec_upper_not_const",
                 "upper bound for vectorized loop '%s' is not a constant, "
                 "cannot vectorize--unrolling instead")
-        return generate_unroll_loop(kernel, sched_index, codegen_state)
+        return generate_unroll_loop(codegen_state, sched_index)
 
     length = int(pw_aff_to_expr(length_aff))
 
@@ -190,7 +190,7 @@ def generate_vectorize_loop(codegen_state, sched_index):
         warn(kernel, "vec_lower_not_0",
                 "lower bound for vectorized loop '%s' is not zero, "
                 "cannot vectorize--unrolling instead")
-        return generate_unroll_loop(kernel, sched_index, codegen_state)
+        return generate_unroll_loop(codegen_state, sched_index)
 
     # {{{ 'implement' vectorization bounds
 

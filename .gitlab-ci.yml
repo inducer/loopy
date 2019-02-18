@@ -105,6 +105,8 @@
 
 Pylint:
   script:
+  # Needed to avoid name shadowing issues when running from source directory.
+  - PROJECT_INSTALL_FLAGS="--editable"
   - export PY_EXE=python3
   - EXTRA_INSTALL="pybind11 numpy mako matplotlib ipykernel ply fparser"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-pylint.sh
@@ -137,13 +139,13 @@ Pylint:
 #   - python3
 #   only:
 #   - master
-# 
-# Flake8:
-#   script:
-#   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
-#   - ". ./prepare-and-run-flake8.sh loopy test"
-#   tags:
-#   - python3
-#   except:
-#   - tags
-# 
+ 
+Flake8:
+  script:
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
+  - ". ./prepare-and-run-flake8.sh loopy test"
+  tags:
+  - python3
+  except:
+  - tags
+
