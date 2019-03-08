@@ -103,6 +103,18 @@ Python 3 POCL Examples:
   except:
   - tags
 
+Pylint:
+  script:
+  # Needed to avoid name shadowing issues when running from source directory.
+  - PROJECT_INSTALL_FLAGS="--editable"
+  - export PY_EXE=python3
+  - EXTRA_INSTALL="pybind11 numpy mako matplotlib ipykernel ply fparser"
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-pylint.sh
+  - ". ./prepare-and-run-pylint.sh loopy test/test_*.py"
+  tags:
+  - python3
+  except:
+  - tags
 
 CentOS binary:
   script:

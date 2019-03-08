@@ -42,7 +42,7 @@ from six.moves import intern
 
 if six.PY2:
     def is_integer(obj):
-        return isinstance(obj, (int, long, np.integer))  # noqa
+        return isinstance(obj, (int, long, np.integer))  # noqa pylint:disable=undefined-variable
 else:
     def is_integer(obj):
         return isinstance(obj, (int, np.integer))

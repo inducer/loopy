@@ -607,7 +607,7 @@ class OpenCLCASTBuilder(CASTBuilder):
                     var_kind = "__global"
                 else:
                     raise LoopyError("unexpected kind of variable '%s' in "
-                            "atomic operation: "
+                            "atomic operation: '%s'"
                             % (lhs_var.name, type(lhs_var).__name__))
 
                 old_val = "*(%s *) &" % ctype + old_val

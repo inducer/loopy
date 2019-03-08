@@ -404,7 +404,7 @@ class ISPCASTBuilder(CASTBuilder):
                     simplify_using_aff(kernel, idx) for idx in lhs.index_tuple)
 
             access_info = get_access_info(kernel.target, ary, index_tuple,
-                    lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
+                    lambda expr: evaluate(expr, codegen_state.var_subst_map),
                     codegen_state.vectorization_info)
 
             from loopy.kernel.data import ArrayArg, TemporaryVariable

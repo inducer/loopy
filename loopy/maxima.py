@@ -1,3 +1,4 @@
+# pylint: disable=all  # This code needs porting to modern loopy
 """Export to maxima."""
 
 from __future__ import division

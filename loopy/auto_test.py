@@ -514,7 +514,6 @@ def auto_test_vs_ref(
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    args = None
     from loopy.kernel import KernelState
     from loopy.target.pyopencl import PyOpenCLTarget
     if test_knl.state not in [
@@ -542,12 +541,12 @@ def auto_test_vs_ref(
 
         compiled = CompiledKernel(ctx, kernel)
 
-        if args is None:
-            kernel_info = compiled.kernel_info(frozenset())
+        kernel_info = compiled.kernel_info(frozenset())
 
-            args = make_args(kernel,
-                    kernel_info.implemented_data_info,
-                    queue, ref_arg_data, parameters)
+        args = make_args(kernel,
+                kernel_info.implemented_data_info,
+                queue, ref_arg_data, parameters)
+
         args["out_host"] = False
 
         if not quiet:
@@ -558,8 +557,23 @@ def auto_test_vs_ref(
                 print(compiled.get_highlighted_code())
                 print(75*"-")
             if dump_binary:
-                print(type(compiled.cl_program))
-                print(compiled.cl_program.binaries[0])
+                # {{{ find cl program
+
+                for name in dir(kernel_info.cl_kernels):
+                    if name.startswith("__"):
+                        continue
+                    cl_kernel = getattr(kernel_info.cl_kernels, name)
+                    cl_program = cl_kernel.get_info(cl.kernel_info.PROGRAM)
+                    break
+                else:
+                    assert False, "could not find cl_program"
+
+                # }}}
+
+                print(type(cl_program))
+                if hasattr(cl_program, "binaries"):
+                    print(cl_program.binaries[0])
+
                 print(75*"-")
 
         logger.info("%s: run warmup" % (knl.name))

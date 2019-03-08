@@ -28,9 +28,10 @@ from loopy.diagnostic import LoopyError
 
 
 class FTreeWalkerBase(object):
-    def __init__(self):
+    def __init__(self, filename):
         from loopy.frontend.fortran.expression import FortranExpressionParser
         self.expr_parser = FortranExpressionParser(self)
+        self.filename = filename
 
     def rec(self, expr, *args, **kwargs):
         mro = list(type(expr).__mro__)
