@@ -2014,7 +2014,7 @@ def realize_c_vec(kernel):
     from loopy import Assignment
     from loopy.symbolic import IdentityMapper, SubstitutionMapper
     from pymbolic.mapper.substitutor import make_subst_func
-    from pymbolic.primitives import Variable, If
+    from pymbolic.primitives import Variable
 
     # any variable not in subscript?
     class OutsideVariableFinder(IdentityMapper):
@@ -2116,8 +2116,9 @@ def realize_c_vec(kernel):
                              for (o, n) in zip(cvec_inames, new_cvec_inames))))
 
     # maybe should simply disable vectorization for all function calls
-    func_names = set(["abs_*", "fabs_*", "cos_*", "sin_*", "exp_*", "pow_*", "sqrt_*",
-                      "fmax_*", "fmin_*", "atan2_*", "log_*", "tanh_*"])
+    func_names = set(["abs_*", "fabs_*", "cos_*", "sin_*", "exp_*", "pow_*",
+                      "sqrt_*", "fmax_*", "fmin_*", "atan2_*", "log_*",
+                      "tanh_*"])
     function_finder = VariableFinder(func_names, regex=True)
     globals = [name for name, arg in kernel.arg_dict.items()
                if isinstance(arg, ArrayArg) and arg.shape[0] is not None]
