@@ -2115,7 +2115,9 @@ def realize_c_vec(kernel):
         make_subst_func(dict((Variable(o), Variable(n))
                              for (o, n) in zip(cvec_inames, new_cvec_inames))))
 
-    func_names = set(["abs_*", "cos_*", "sin_*", "exp_*", "pow_*", "sqrt_*"])
+    # maybe should simply disable vectorization for all function calls
+    func_names = set(["abs_*", "fabs_*", "cos_*", "sin_*", "exp_*", "pow_*", "sqrt_*",
+                      "fmax_*", "fmin_*", "atan2_*", "log_*", "tanh_*"])
     function_finder = VariableFinder(func_names, regex=True)
     globals = [name for name, arg in kernel.arg_dict.items()
                if isinstance(arg, ArrayArg) and arg.shape[0] is not None]
@@ -2134,7 +2136,8 @@ def realize_c_vec(kernel):
                 if gbf.result:
                     can_vectorize = False
 
-            # some built-in functions cannot be vectorized (in general)
+            # some built-in functions cannot be vectorized
+            # (in general, ICC can vectorize some of them)
             if can_vectorize:
                 function_finder.result = False
                 function_finder(inst.expression)
