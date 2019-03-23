@@ -1966,7 +1966,7 @@ def realize_c_vec(kernel):
     from loopy import Assignment
     from loopy.symbolic import IdentityMapper, SubstitutionMapper
     from pymbolic.mapper.substitutor import make_subst_func
-    from pymbolic.primitives import Variable
+    from pymbolic.primitives import Variable, If
 
     # any variable not in subscript?
     class OutsideVariableFinder(IdentityMapper):
@@ -2015,6 +2015,14 @@ def realize_c_vec(kernel):
                 self.result = True
             return super(VariableFinder, self).map_call(expr, args, kwargs)
 
+    class ConditionalFinder(IdentityMapper):
+
+        def __init__(self):
+            self.result = False
+
+        def map_if(self, expr, *args, **kwargs):
+            self.result = True
+
     class SubscriptFinder(IdentityMapper):
 
         def __init__(self, find_aggregate_name, find_index_names):
@@ -2056,12 +2064,12 @@ def realize_c_vec(kernel):
         make_subst_func(dict((Variable(o), Variable(n))
                              for (o, n) in zip(cvec_inames, new_cvec_inames))))
 
-    # TODO: expand this list with more functions
-    func_names = set(["abs_*", "cos_*", "sin_*"])
+    func_names = set(["abs_*", "cos_*", "sin_*", "exp_*", "pow_*", "sqrt_*"])
     function_finder = VariableFinder(func_names, regex=True)
     globals = [name for name, arg in kernel.arg_dict.items()
                if isinstance(arg, ArrayArg) and arg.shape[0] is not None]
     gbf = VariableFinder(globals)
+    cf = ConditionalFinder()
 
     new_insts = []
     for inst in kernel.instructions:
@@ -2111,6 +2119,13 @@ def realize_c_vec(kernel):
                     list(inst.within_inames & set(cvec_inames)))
                 ovf(inst.expression)
                 if ovf.result:
+                    can_vectorize = False
+
+            # conditionals cannot be vectorized
+            if can_vectorize:
+                cf.result = False
+                cf(inst.expression)
+                if cf.result:
                     can_vectorize = False
 
             # constant rhs cannot be vectorized (GCC doesn't like it)
