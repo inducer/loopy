@@ -2558,6 +2558,9 @@ def realize_c_vec(kernel):
         def map_if(self, expr, *args, **kwargs):
             self.result = True
 
+        def map_comparison(self, expr, *args, **kwargs):
+            self.result = True
+
     class SubscriptFinder(IdentityMapper):
 
         def __init__(self, find_aggregate_name, find_index_names):
