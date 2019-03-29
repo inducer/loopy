@@ -37,6 +37,8 @@ from loopy.isl_helpers import simplify_via_aff
 from loopy.kernel.function_interface import (get_kw_pos_association,
         CallableKernel, ScalarCallable)
 from loopy.program import Program, ResolvedFunctionMarker
+from loopy.symbolic import SubArrayRef
+from pymbolic.primitives import Subscript
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -403,8 +405,14 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
                    for k, v in six.iteritems(iname_map))
     var_map.update(dict((p.Variable(k), p.Variable(v))
                         for k, v in six.iteritems(temp_map)))
-    var_map.update(dict((p.Variable(k), p.Variable(v.subscript.aggregate.name))
-                        for k, v in six.iteritems(arg_map)))
+    for k, v in six.iteritems(arg_map):
+        if isinstance(v, SubArrayRef):
+            var_map[p.Variable(k)] = v.subscript.aggregate
+        elif isinstance(v, Subscript):
+            var_map[p.Variable(k)] = v.subscript.aggregate
+        else:
+            var_map[p.Variable(k)] = v
+
     subst_mapper = KernelInliner(
         make_subst_func(var_map), kernel, arg_map, callee_knl.arg_dict)
 
@@ -639,10 +647,13 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
             else:
                 return shape
 
-        parameter_shapes = [
-                _shape_1_if_empty(
-                    par.get_array_arg_descriptor(caller_knl).shape)
-                for par in parameters]
+        parameter_shapes = []
+        for par in parameters:
+            if isinstance(par, SubArrayRef):
+                parameter_shapes.append(_shape_1_if_empty(par.get_array_arg_descriptor(caller_knl).shape))
+            else:
+                parameter_shapes.append((1, ))
+
         kw_to_pos, pos_to_kw = get_kw_pos_association(callee_knl)
         for i in range(len(parameters), len(parameters)+len(kw_parameters)):
             parameter_shapes.append(_shape_1_if_empty(kw_parameters[pos_to_kw[i]])
