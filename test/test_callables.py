@@ -404,6 +404,47 @@ def test_packing_unpacking(ctx_factory, inline):
             3*x2.get()) < 1e-15
 
 
+def test_non_sub_array_refs_arguments(ctc_factory):
+    import loopy as lp
+    from loopy.transform.callable import _match_caller_callee_argument_dimension_
+
+    callee = lp.make_function("{[i] : 0 <= i < 6}", "a[i] = a[i] + j",
+            [lp.GlobalArg("a", dtype="double", shape=(6,), is_output_only=False),
+                lp.ValueArg("j", dtype="int")], name="callee")
+    caller1 = lp.make_kernel("{[j] : 0 <= j < 2}", "callee(a[:], b[0])",
+            [lp.GlobalArg("a", dtype="double", shape=(6, ), is_output_only=False),
+            lp.GlobalArg("b", dtype="double", shape=(1, ), is_output_only=False)],
+            name="caller", target=lp.CTarget())
+
+    caller2 = lp.make_kernel("{[j] : 0 <= j < 2}", "callee(a[:], 3.1415926)",
+            [lp.GlobalArg("a", dtype="double", shape=(6, ),
+                is_output_only=False)],
+            name="caller", target=lp.CTarget())
+
+    caller3 = lp.make_kernel("{[j] : 0 <= j < 2}", "callee(a[:], kappa)",
+            [lp.GlobalArg("a", dtype="double", shape=(6, ),
+                is_output_only=False)],
+            name="caller", target=lp.CTarget())
+
+    registered = lp.register_callable_kernel(caller1, callee)
+    inlined = _match_caller_callee_argument_dimension_(registered, callee.name)
+    inlined = lp.inline_callable_kernel(inlined, callee.name)
+
+    print(inlined)
+
+    registered = lp.register_callable_kernel(caller2, callee)
+    inlined = _match_caller_callee_argument_dimension_(registered, callee.name)
+    inlined = lp.inline_callable_kernel(inlined, callee.name)
+
+    print(inlined)
+
+    registered = lp.register_callable_kernel(caller3, callee)
+    inlined = _match_caller_callee_argument_dimension_(registered, callee.name)
+    inlined = lp.inline_callable_kernel(inlined, callee.name)
+
+    print(inlined)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

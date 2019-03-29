@@ -408,8 +408,6 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
     for k, v in six.iteritems(arg_map):
         if isinstance(v, SubArrayRef):
             var_map[p.Variable(k)] = v.subscript.aggregate
-        elif isinstance(v, Subscript):
-            var_map[p.Variable(k)] = v.aggregate
         else:
             var_map[p.Variable(k)] = v
 
