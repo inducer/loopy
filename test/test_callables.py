@@ -404,7 +404,7 @@ def test_packing_unpacking(ctx_factory, inline):
             3*x2.get()) < 1e-15
 
 
-def test_non_sub_array_refs_arguments(ctc_factory):
+def test_non_sub_array_refs_arguments(ctx_factory):
     import loopy as lp
     from loopy.transform.callable import _match_caller_callee_argument_dimension_
 
