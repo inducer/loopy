@@ -238,7 +238,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         (isinstance(ary, (ConstantArg, ArrayArg)) or
                          (isinstance(ary, TemporaryVariable) and ary.base_storage))):
                     # unsubscripted global args are pointers
-                    result = make_var(access_info.array_name)[0]
+                    result = self.make_subscript(
+                            ary,
+                            make_var(access_info.array_name),
+                            (0,))
 
                 else:
                     # unsubscripted temp vars are scalars
@@ -247,8 +250,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
             else:
                 subscript, = access_info.subscripts
-                result = make_var(access_info.array_name)[simplify_using_aff(
-                    self.kernel, self.rec(subscript, 'i'))]
+                result = self.make_subscript(
+                        ary,
+                        make_var(access_info.array_name),
+                        simplify_using_aff(
+                            self.kernel, self.rec(subscript, 'i')))
 
             if access_info.vector_index is not None:
                 return self.codegen_state.ast_builder.add_vector_access(
@@ -262,8 +268,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     def map_linear_subscript(self, expr, type_context):
         from pymbolic.primitives import Variable
         if not isinstance(expr.aggregate, Variable):
-                raise RuntimeError("linear indexing on non-variable: %s"
-                        % expr)
+            raise RuntimeError("linear indexing on non-variable: %s"
+                    % expr)
 
         if expr.aggregate.name in self.kernel.arg_dict:
             arg = self.kernel.arg_dict[expr.aggregate.name]
@@ -280,8 +286,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 else:
                     offset = 0
 
-                return var(expr.aggregate.name)[
-                        self.rec(offset + expr.index, 'i')]
+                return self.make_subscript(
+                        arg,
+                        var(expr.aggregate.name),
+                        self.rec(offset + expr.index, 'i'))
 
         elif expr.aggregate.name in self.kernel.temporary_variables:
             raise RuntimeError("linear indexing is not supported on temporaries: %s"
@@ -290,6 +298,9 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         else:
             raise RuntimeError(
                     "nothing known about variable '%s'" % expr.aggregate.name)
+
+    def make_subscript(self, array, base_expr, subscript):
+        return base_expr[subscript]
 
     def map_floor_div(self, expr, type_context):
         from loopy.symbolic import get_dependencies
@@ -703,7 +714,7 @@ class CExpressionToCodeMapper(RecursiveMapper):
         if isinstance(expr.function, Variable):
             func = expr.function.name
         else:
-            func = self.rec(expr.function, PREC_CALL)
+            func = self.rec(expr.function, PREC_CALL+1)
 
         return self.parenthesize_if_needed(
                 "%s(%s)" % (
@@ -729,7 +740,7 @@ class CExpressionToCodeMapper(RecursiveMapper):
     def map_subscript(self, expr, enclosing_prec):
         return self.parenthesize_if_needed(
                 "%s[%s]" % (
-                    self.rec(expr.aggregate, PREC_CALL),
+                    self.rec(expr.aggregate, PREC_CALL+1),
                     self.rec(expr.index, PREC_NONE)),
                 enclosing_prec, PREC_CALL)
 

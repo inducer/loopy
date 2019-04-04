@@ -766,8 +766,8 @@ class SweptInameStrideCollector(CoefficientCollectorBase):
     def map_algebraic_leaf(self, expr):
         # subscripts that are not involved in :attr:`target_names` are treated
         # as constants.
-        if isinstance(expr, p.Subscript) and (self.target_names is None or
-                expr.aggregate.name not in self.target_names):
+        if isinstance(expr, p.Subscript) and (self.target_names is None
+                or expr.aggregate.name not in self.target_names):
             return {1: expr}
 
         return super(SweptInameStrideCollector, self).map_algebraic_leaf(expr)
@@ -1393,16 +1393,17 @@ class LoopyParser(ParserBase):
 
     def parse_prefix(self, pstate):
         from pymbolic.parser import (_PREC_UNARY, _less, _greater, _identifier,
-        _openbracket, _closebracket, _colon)
+                _openbracket, _closebracket, _colon)
+        import loopy as lp
 
         if pstate.is_next(_less):
             pstate.advance()
             if pstate.is_next(_greater):
-                typename = None
+                typename = lp.Optional(None)
                 pstate.advance()
             else:
                 pstate.expect(_identifier)
-                typename = pstate.next_str()
+                typename = lp.Optional(pstate.next_str())
                 pstate.advance()
                 pstate.expect(_greater)
                 pstate.advance()
@@ -1710,9 +1711,9 @@ def constraint_to_cond_expr(cns):
     # Looks like this is ok after all--get_aff() performs some magic.
     # Not entirely sure though... FIXME
     #
-    #ls = cns.get_local_space()
-    #if ls.dim(dim_type.div):
-        #raise RuntimeError("constraint has an existentially quantified variable")
+    # ls = cns.get_local_space()
+    # if ls.dim(dim_type.div):
+    #     raise RuntimeError("constraint has an existentially quantified variable")
 
     expr = aff_to_expr(cns.get_aff())
 

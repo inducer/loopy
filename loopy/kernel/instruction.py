@@ -25,6 +25,7 @@ THE SOFTWARE.
 from six.moves import intern
 from pytools import ImmutableRecord, memoize_method
 from loopy.diagnostic import LoopyError
+from loopy.tools import Optional
 from warnings import warn
 
 
@@ -473,7 +474,7 @@ class InstructionBase(ImmutableRecord):
 
         from loopy.tools import intern_frozenset_of_ids
 
-        if self.id is not None:
+        if self.id is not None:  # pylint:disable=access-member-before-definition
             self.id = intern(self.id)
         self.depends_on = intern_frozenset_of_ids(self.depends_on)
         self.groups = intern_frozenset_of_ids(self.groups)
@@ -583,23 +584,23 @@ class memory_ordering(object):  # noqa
     """
 
     @_deprecated_memory_ordering_class_method
-    def RELAXED():
+    def RELAXED():  # pylint:disable=no-method-argument
         return MemoryOrdering.RELAXED
 
     @_deprecated_memory_ordering_class_method
-    def ACQUIRE():
+    def ACQUIRE():  # pylint:disable=no-method-argument
         return MemoryOrdering.ACQUIRE
 
     @_deprecated_memory_ordering_class_method
-    def RELEASE():
+    def RELEASE():  # pylint:disable=no-method-argument
         return MemoryOrdering.RELEASE
 
     @_deprecated_memory_ordering_class_method
-    def ACQ_REL():
+    def ACQ_REL():  # pylint:disable=no-method-argument
         return MemoryOrdering.ACQ_REL
 
     @_deprecated_memory_ordering_class_method
-    def SEQ_CST():
+    def SEQ_CST():  # pylint:disable=no-method-argument
         return MemoryOrdering.SEQ_CST
 
     @staticmethod
@@ -660,23 +661,23 @@ class memory_scope(object):  # noqa
     """
 
     @_deprecated_memory_scope_class_method
-    def WORK_ITEM():
-        return MemoryScope.PRIVATE
+    def WORK_ITEM():  # pylint:disable=no-method-argument
+        return MemoryScope.WORK_ITEM
 
     @_deprecated_memory_scope_class_method
-    def WORK_GROUP():
+    def WORK_GROUP():  # pylint:disable=no-method-argument
         return MemoryScope.WORK_GROUP
 
     @_deprecated_memory_scope_class_method
-    def DEVICE():
+    def DEVICE():  # pylint:disable=no-method-argument
         return MemoryScope.DEVICE
 
     @_deprecated_memory_scope_class_method
-    def ALL_SVM_DEVICES():
+    def ALL_SVM_DEVICES():  # pylint:disable=no-method-argument
         return MemoryScope.ALL_SVM_DEVICES
 
     @_deprecated_memory_scope_class_method
-    def auto():
+    def auto():  # pylint:disable=no-method-argument
         return MemoryScope.auto
 
     @staticmethod
@@ -742,6 +743,10 @@ class OrderedAtomic(VarAtomicity):
         return (super(OrderedAtomic, self).__eq__(other)
                 and self.ordering == other.ordering
                 and self.scope == other.scope)
+
+    @property
+    def op_name(self):
+        raise NotImplementedError
 
     def __str__(self):
         return "%s[%s]%s/%s" % (
@@ -847,8 +852,9 @@ class Assignment(MultiAssignmentBase):
 
     .. attribute:: temp_var_type
 
-        if not *None*, a type that will be assigned to the new temporary variable
-        created from the assignee
+        A :class:`loopy.Optional`. If not empty, contains the type that
+        will be assigned to the new temporary variable created from the
+        assignment.
 
     .. attribute:: atomicity
 
@@ -902,7 +908,7 @@ class Assignment(MultiAssignmentBase):
             within_inames_is_final=None,
             within_inames=None,
             boostable=None, boostable_into=None, tags=None,
-            temp_var_type=None, atomicity=(),
+            temp_var_type=Optional(), atomicity=(),
             priority=0, predicates=frozenset(),
             insn_deps=None, insn_deps_is_final=None,
             forced_iname_deps=None, forced_iname_deps_is_final=None):
@@ -939,7 +945,8 @@ class Assignment(MultiAssignmentBase):
 
         self.assignee = assignee
         self.expression = expression
-        self.temp_var_type = temp_var_type
+
+        self.temp_var_type = _check_and_fix_temp_var_type(temp_var_type)
         self.atomicity = atomicity
 
     # {{{ implement InstructionBase interface
@@ -1015,8 +1022,9 @@ class CallInstruction(MultiAssignmentBase):
 
     .. attribute:: temp_var_types
 
-        if not *None*, a type that will be assigned to the new temporary variable
-        created from the assignee
+        A tuple of `:class:loopy.Optional`. If an entry is not empty, it
+        contains the type that will be assigned to the new temporary variable
+        created from the assigment.
 
     .. automethod:: __init__
     """
@@ -1090,9 +1098,11 @@ class CallInstruction(MultiAssignmentBase):
         self.expression = expression
 
         if temp_var_types is None:
-            self.temp_var_types = (None,) * len(self.assignees)
+            self.temp_var_types = (Optional(),) * len(self.assignees)
         else:
-            self.temp_var_types = temp_var_types
+            self.temp_var_types = tuple(
+                    _check_and_fix_temp_var_type(tvt, stacklevel=3)
+                    for tvt in temp_var_types)
 
     # {{{ implement InstructionBase interface
 
@@ -1194,6 +1204,10 @@ def modify_assignee_assignee_for_array_call(assignee):
 
 
 def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
+
+    if temp_var_types is None:
+        temp_var_types = (Optional(),) * len(assignees)
+
     if len(assignees) > 1 or len(assignees) == 0 or is_array_call(assignees,
             expression):
         atomicity = kwargs.pop("atomicity", ())
@@ -1223,16 +1237,29 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
                     expression=expression,
                     temp_var_types=temp_var_types,
                     **kwargs)
-
     else:
         return Assignment(
                 assignee=assignees[0],
                 expression=expression,
-                temp_var_type=(
-                    temp_var_types[0]
-                    if temp_var_types is not None
-                    else None),
+                temp_var_type=temp_var_types[0],
                 **kwargs)
+
+    atomicity = kwargs.pop("atomicity", ())
+    if atomicity:
+        raise LoopyError("atomic operations with more than one "
+                "left-hand side not supported")
+
+    from pymbolic.primitives import Call
+    from loopy.symbolic import Reduction
+    if not isinstance(expression, (Call, Reduction)):
+        raise LoopyError("right-hand side in multiple assignment must be "
+                "function call or reduction, got: '%s'" % expression)
+
+    return CallInstruction(
+            assignees=assignees,
+            expression=expression,
+            temp_var_types=temp_var_types,
+            **kwargs)
 
 
 # {{{ c instruction
@@ -1566,6 +1593,37 @@ def _get_insn_eq_key(insn):
 
 def _get_insn_hash_key(insn):
     return insn._key_builder.hash_key()
+
+# }}}
+
+
+# {{{ _check_and_fix_temp_var_type
+
+def _check_and_fix_temp_var_type(temp_var_type, stacklevel=2):
+    """Check temp_var_type for deprecated usage, and convert to the right value.
+    """
+
+    import loopy as lp
+
+    if temp_var_type is None:
+        warn("temp_var_type should be Optional() if no temporary, not None. "
+             "This usage will be disallowed soon.",
+             DeprecationWarning, stacklevel=1 + stacklevel)
+        temp_var_type = lp.Optional()
+
+    elif temp_var_type is lp.auto:
+        warn("temp_var_type should be Optional(None) if "
+             "unspecified, not auto. This usage will be disallowed soon.",
+             DeprecationWarning, stacklevel=1 + stacklevel)
+        temp_var_type = lp.Optional(None)
+
+    elif not isinstance(temp_var_type, lp.Optional):
+        warn("temp_var_type should be an instance of Optional. "
+             "Other values for temp_var_type will be disallowed soon.",
+             DeprecationWarning, stacklevel=1 + stacklevel)
+        temp_var_type = lp.Optional(temp_var_type)
+
+    return temp_var_type
 
 # }}}
 

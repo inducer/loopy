@@ -400,9 +400,9 @@ class CMathCallable(ScalarCallable):
                 if dtype == np.float64:
                     pass  # fabs
                 elif dtype == np.float32:
-                    name = name + "f"  # fabsf
-                elif dtype == np.float128:
-                    name = name + "l"  # fabsl
+                    name = name + "f"  # fminf
+                elif dtype == np.float128:  # pylint:disable=no-member
+                    name = name + "l"  # fminl
                 else:
                     raise LoopyTypeError("%s does not support type %s" % (name,
                         dtype))
@@ -610,8 +610,8 @@ class CASTBuilder(ASTBuilderBase):
                 temporaries_written_in_subkernel)
         subkernel = kernel.schedule[schedule_index].kernel_name
         sub_knl_temps = (
-                temporaries_read_in_subkernel(kernel, subkernel) |
-                temporaries_written_in_subkernel(kernel, subkernel))
+                temporaries_read_in_subkernel(kernel, subkernel)
+                | temporaries_written_in_subkernel(kernel, subkernel))
 
         for tv in sorted(
                 six.itervalues(kernel.temporary_variables),

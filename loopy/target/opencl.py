@@ -683,7 +683,7 @@ class OpenCLCASTBuilder(CASTBuilder):
                     var_kind = "__global"
                 else:
                     raise LoopyError("unexpected kind of variable '%s' in "
-                            "atomic operation: "
+                            "atomic operation: '%s'"
                             % (lhs_var.name, type(lhs_var).__name__))
 
                 old_val = "*(%s *) &" % ctype + old_val
@@ -720,6 +720,45 @@ class OpenCLCASTBuilder(CASTBuilder):
     # }}}
 
     # }}}
+
+# }}}
+
+
+# {{{ volatile mem acccess target
+
+class VolatileMemExpressionToOpenCLCExpressionMapper(
+        ExpressionToOpenCLCExpressionMapper):
+    def make_subscript(self, array, base_expr, subscript):
+        registry = self.codegen_state.ast_builder.target.get_dtype_registry()
+
+        from loopy.kernel.data import AddressSpace
+        if array.address_space == AddressSpace.GLOBAL:
+            aspace = "__global "
+        elif array.address_space == AddressSpace.LOCAL:
+            aspace = "__local "
+        elif array.address_space == AddressSpace.PRIVATE:
+            aspace = ""
+        else:
+            raise ValueError("unexpected value of address space")
+
+        from pymbolic import var
+        return var(
+                "(%s volatile %s *) "
+                % (
+                    registry.dtype_to_ctype(array.dtype),
+                    aspace,
+                    )
+                )(base_expr)[subscript]
+
+
+class VolatileMemOpenCLCASTBuilder(OpenCLCASTBuilder):
+    def get_expression_to_c_expression_mapper(self, codegen_state):
+        return VolatileMemExpressionToOpenCLCExpressionMapper(codegen_state)
+
+
+class VolatileMemOpenCLTarget(OpenCLTarget):
+    def get_device_ast_builder(self):
+        return VolatileMemOpenCLCASTBuilder(self)
 
 # }}}
 

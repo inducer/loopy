@@ -32,6 +32,7 @@ from functools import reduce
 from loopy.kernel.data import (
         MultiAssignmentBase, TemporaryVariable, AddressSpace)
 from loopy.diagnostic import warn_with_kernel, LoopyError
+from loopy.symbolic import CoefficientCollector
 from pytools import Record, memoize_method
 from loopy.kernel.function_interface import ScalarCallable, CallableKernel
 from loopy.kernel import LoopKernel
@@ -592,6 +593,11 @@ class MemAccess(Record):
        A :class:`str` that specifies the variable name of the data
        accessed.
 
+    .. attribute:: variable_tag
+
+       A :class:`str` that specifies the variable tag of a
+       :class:`pymbolic.primitives.TaggedVariable`.
+
     .. attribute:: count_granularity
 
        A :class:`str` that specifies whether this operation should be counted
@@ -608,7 +614,8 @@ class MemAccess(Record):
     """
 
     def __init__(self, mtype=None, dtype=None, lid_strides=None, gid_strides=None,
-                 direction=None, variable=None, count_granularity=None):
+                 direction=None, variable=None, variable_tag=None,
+                 count_granularity=None):
 
         if count_granularity not in CountGranularity.ALL+[None]:
             raise ValueError("Op.__init__: count_granularity '%s' is "
@@ -618,12 +625,14 @@ class MemAccess(Record):
         if dtype is None:
             Record.__init__(self, mtype=mtype, dtype=dtype, lid_strides=lid_strides,
                             gid_strides=gid_strides, direction=direction,
-                            variable=variable, count_granularity=count_granularity)
+                            variable=variable, variable_tag=variable_tag,
+                            count_granularity=count_granularity)
         else:
             from loopy.types import to_loopy_type
             Record.__init__(self, mtype=mtype, dtype=to_loopy_type(dtype),
                             lid_strides=lid_strides, gid_strides=gid_strides,
                             direction=direction, variable=variable,
+                            variable_tag=variable_tag,
                             count_granularity=count_granularity)
 
     def __hash__(self):
@@ -633,7 +642,7 @@ class MemAccess(Record):
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
-        return "MemAccess(%s, %s, %s, %s, %s, %s, %s)" % (
+        return "MemAccess(%s, %s, %s, %s, %s, %s, %s, %s)" % (
             self.mtype,
             self.dtype,
             None if self.lid_strides is None else dict(
@@ -642,6 +651,7 @@ class MemAccess(Record):
                 sorted(six.iteritems(self.gid_strides))),
             self.direction,
             self.variable,
+            self.variable_tag,
             self.count_granularity)
 
 # }}}
@@ -854,6 +864,19 @@ class ExpressionOpCounter(CounterBase):
 # }}}
 
 
+# {{{ modified coefficient collector that ignores denominator of floor div
+
+class _IndexStrideCoefficientCollector(CoefficientCollector):
+
+    def map_floor_div(self, expr):
+        from warnings import warn
+        warn("_IndexStrideCoefficientCollector encountered FloorDiv, ignoring "
+             "denominator in expression %s" % (expr))
+        return self.rec(expr.numerator)
+
+# }}}
+
+
 def _get_lid_and_gid_strides(knl, array, index):
     # find all local and global index tags and corresponding inames
     from loopy.symbolic import get_dependencies
@@ -881,7 +904,6 @@ def _get_lid_and_gid_strides(knl, array, index):
     # where l0, l1, l2, g0, g1, and g2 come from flattened index
     # [... + g2*gid2 + g1*gid1 + g0*gid0 + ... + l2*lid2 + l1*lid1 + l0*lid0]
 
-    from loopy.symbolic import CoefficientCollector
     from loopy.kernel.array import FixedStrideArrayDimTag
     from pymbolic.primitives import Variable
     from loopy.symbolic import simplify_using_aff
@@ -895,7 +917,7 @@ def _get_lid_and_gid_strides(knl, array, index):
             for idx, axis_tag in zip(index, array.dim_tags):
                 # collect index coefficients
                 try:
-                    coeffs = CoefficientCollector()(
+                    coeffs = _IndexStrideCoefficientCollector()(
                               simplify_using_aff(knl, idx))
                 except ExpressionNotAffineError:
                     total_iname_stride = None
@@ -1005,6 +1027,10 @@ class GlobalMemAccessCounter(MemAccessCounter):
 
     def map_subscript(self, expr):
         name = expr.aggregate.name
+        try:
+            var_tag = expr.aggregate.tag
+        except AttributeError:
+            var_tag = None
 
         if name in self.knl.arg_dict:
             array = self.knl.arg_dict[name]
@@ -1033,6 +1059,7 @@ class GlobalMemAccessCounter(MemAccessCounter):
                             lid_strides=dict(sorted(six.iteritems(lid_strides))),
                             gid_strides=dict(sorted(six.iteritems(gid_strides))),
                             variable=name,
+                            variable_tag=var_tag,
                             count_granularity=count_granularity
                             ): 1}
                           ) + self.rec(expr.index_tuple)
@@ -1609,6 +1636,7 @@ def get_mem_access_map_for_single_kernel(knl, callables_table,
                             gid_strides=mem_access.gid_strides,
                             direction=mem_access.direction,
                             variable=mem_access.variable,
+                            variable_tag=mem_access.variable_tag,
                             count_granularity=mem_access.count_granularity),
                         ct)
                         for mem_access, ct in six.iteritems(access_map.count_map)),

@@ -305,12 +305,10 @@ def _default_check_result(result, ref_result):
     if not np.allclose(ref_result, result, rtol=1e-3, atol=1e-3):
         l2_err = (
                 np.sum(np.abs(ref_result-result)**2)
-                /
-                np.sum(np.abs(ref_result)**2))
+                / np.sum(np.abs(ref_result)**2))
         linf_err = (
                 np.max(np.abs(ref_result-result))
-                /
-                np.max(np.abs(ref_result-result)))
+                / np.max(np.abs(ref_result-result)))
         return (False,
                 "results do not match -- (rel) l_2 err: %g, l_inf err: %g"
                 % (l2_err, linf_err))

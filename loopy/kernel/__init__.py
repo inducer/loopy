@@ -117,15 +117,15 @@ class kernel_state(object):  # noqa
     """
 
     @_deperecated_kernel_state_class_method
-    def INITIAL():
-        return KernelState.INITITAL
+    def INITIAL():  # pylint:disable=no-method-argument
+        return KernelState.INITIAL
 
     @_deperecated_kernel_state_class_method
-    def PREPROCESSED():
+    def PREPROCESSED():  # pylint:disable=no-method-argument
         return KernelState.PREPROCESSED
 
     @_deperecated_kernel_state_class_method
-    def SCHEDULED():
+    def SCHEDULED():  # pylint:disable=no-method-argument
         return KernelState.SCHEDULED
 
 # }}}
@@ -138,7 +138,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     .. note::
 
         This data structure and its attributes should be considered immutable,
-        even if it contains mutable data types. See :method:`copy` for an easy
+        even if it contains mutable data types. See :meth:`copy` for an easy
         way of producing a modified copy.
 
     .. attribute:: domains
@@ -1463,13 +1463,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             # {{{ check that 'reconstituted' object has same hash
 
             from loopy.tools import LoopyKeyBuilder
-            LoopyKeyBuilder()(self)
-
-            assert p_hash_digest == self._pytools_persistent_hash_digest
+            assert p_hash_digest == LoopyKeyBuilder()(self)
 
             # }}}
-        else:
-            self._pytools_persistent_hash_digest = p_hash_digest
+
+        self._pytools_persistent_hash_digest = p_hash_digest
 
         from loopy.kernel.tools import SetOperationCacheManager
         self.cache_manager = SetOperationCacheManager()

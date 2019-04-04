@@ -754,7 +754,7 @@ def generate_loop_schedules_internal(
                         preschedule=sched_state.preschedule[1:]),
                     allow_boost=rec_allow_boost,
                     debug=debug):
-                yield result
+            yield result
 
     # }}}
 

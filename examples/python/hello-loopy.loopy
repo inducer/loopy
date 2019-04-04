@@ -1,7 +1,7 @@
 # This is a version of hello-loopy.py that can be run through
 # a loopy binary using
 #
-# ./loopy --lang=loopy hello-loopy-lp.py -
+# ./loopy --lang=loopy hello-loopy.loopy -
 
 knl = lp.make_kernel(
         "{ [i]: 0<=i<n }",

@@ -243,6 +243,14 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         self.inner_reduction = self.base_reduction_class(**kwargs)
 
     @property
+    def base_reduction_class(self):
+        raise NotImplementedError
+
+    @property
+    def which(self):
+        raise NotImplementedError
+
+    @property
     def arg_count(self):
         return 2
 
@@ -310,6 +318,15 @@ class ArgExtOp(ReductionOpFunction):
 
 
 class _ArgExtremumReductionOperation(ReductionOperation):
+
+    @property
+    def which(self):
+        raise NotImplementedError
+
+    @property
+    def neutral_sign(self):
+        raise NotImplementedError
+
     def prefix(self, scalar_dtype, index_dtype):
         return "loopy_arg%s_%s_%s" % (self.which,
                 scalar_dtype.numpy_dtype.type.__name__,
