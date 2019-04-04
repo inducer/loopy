@@ -30,6 +30,7 @@ from loopy.diagnostic import LoopyError
 
 from loopy.tools import update_persistent_hash
 from loopy.kernel import LoopKernel
+from loopy.kernel.data import ValueArg, ArrayArg
 
 __doc__ = """
 
@@ -587,6 +588,11 @@ class CallableKernel(InKernelCallable):
             assert isinstance(arg_id, str)
 
             if isinstance(descr, ArrayArgDescriptor):
+                if not isinstance(self.subkernel.arg_dict[arg_id], ArrayArg):
+                    raise LoopyError("Array passed to a scalar type argument "
+                            " '%s' in the function '%s'." % (
+                                arg_id, self.subkernel.name))
+
                 new_arg = self.subkernel.arg_dict[arg_id].copy(
                         shape=descr.shape,
                         dim_tags=descr.dim_tags,
@@ -595,11 +601,15 @@ class CallableKernel(InKernelCallable):
                 new_args = [new_arg if arg.name == arg_id else arg for arg in
                         new_args]
             elif isinstance(descr, ValueArgDescriptor):
-                pass
+                if not isinstance(self.subkernel.arg_dict[arg_id], ValueArg):
+                    raise LoopyError("Scalar passed to an array type argument "
+                            " '%s' in the function '%s'." % (
+                                arg_id, self.subkernel.name))
             else:
                 raise LoopyError("Descriptor must be either an instance of "
                         "ArrayArgDescriptor or ValueArgDescriptor -- got %s." %
                         type(descr))
+
         descriptor_specialized_knl = self.subkernel.copy(args=new_args)
         from loopy.preprocess import traverse_to_infer_arg_descr
         descriptor_specialized_knl, callables_table = (

@@ -315,9 +315,9 @@ def test_multi_arg_array_call(ctx_factory):
     queue = cl.CommandQueue(ctx)
     import pymbolic.primitives as p
     n = 10
-    acc_i = p.Variable("acc_i")
+    acc_i = p.Variable("acc_i")[0]
     i = p.Variable("i")
-    index = p.Variable("index")
+    index = p.Variable("index")[0]
     a_i = p.Subscript(p.Variable("a"), p.Variable("i"))
     argmin_kernel = lp.make_function(
             "{[i]: 0 <= i < n}",
