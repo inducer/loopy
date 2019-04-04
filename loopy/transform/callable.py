@@ -38,7 +38,6 @@ from loopy.kernel.function_interface import (get_kw_pos_association,
         CallableKernel, ScalarCallable)
 from loopy.program import Program, ResolvedFunctionMarker
 from loopy.symbolic import SubArrayRef
-from pymbolic.primitives import Subscript
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -648,7 +647,9 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
         parameter_shapes = []
         for par in parameters:
             if isinstance(par, SubArrayRef):
-                parameter_shapes.append(_shape_1_if_empty(par.get_array_arg_descriptor(caller_knl).shape))
+                parameter_shapes.append(
+                        _shape_1_if_empty(
+                            par.get_array_arg_descriptor(caller_knl).shape))
             else:
                 parameter_shapes.append((1, ))
 

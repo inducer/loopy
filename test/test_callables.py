@@ -465,7 +465,7 @@ def test_empty_sub_array_refs(ctx_factory, inline):
             """
             []:z[i] = wence_function([]:x[i], []:y[i])
             """,
-            [lp.GlobalArg('x, y', dtype=np.float64, shape=(10, )), ...])
+            [lp.GlobalArg('x, y', dtype=np.float64, shape=(10, )), '...'])
 
     caller = lp.register_callable_kernel(caller, callee)
 
