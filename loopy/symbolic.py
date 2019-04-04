@@ -862,6 +862,9 @@ class SubArrayRef(p.Expression):
                 pw_aff_to_expr(
                     kernel.get_iname_bounds(iname.name).upper_bound_pw_aff)+1
                 for iname in self.swept_inames)
+        if self.swept_inames == ():
+            sub_shape = (1, )
+            sub_dim_tags = (DimTag(1),)
 
         return ArrayArgDescriptor(
                 address_space=aspace,
@@ -1411,7 +1414,11 @@ class LoopyParser(ParserBase):
         elif pstate.is_next(_openbracket):
             pstate.advance()
             pstate.expect_not_end()
-            swept_inames = self.parse_expression(pstate)
+            if pstate.is_next(_closebracket):
+                swept_inames = ()
+            else:
+                swept_inames = self.parse_expression(pstate)
+
             pstate.expect(_closebracket)
             pstate.advance()
             pstate.expect(_colon)

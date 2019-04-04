@@ -445,6 +445,37 @@ def test_non_sub_array_refs_arguments(ctx_factory):
     print(inlined)
 
 
+@pytest.mark.parametrize("inline", [False, True])
+def test_empty_sub_array_refs(ctx_factory, inline):
+    # See: https://github.com/OP2/PyOP2/pull/559#discussion_r272208618
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    x = np.random.randn(10)
+    y = np.random.randn(10)
+
+    callee = lp.make_function(
+            "{[d]:0<=d<1}",
+            """
+            a[d] = b[d] - c[d]
+
+            """, name='wence_function')
+
+    caller = lp.make_kernel("{[i]: 0<=i<10}",
+            """
+            []:z[i] = wence_function([]:x[i], []:y[i])
+            """,
+            [lp.GlobalArg('x, y', dtype=np.float64, shape=(10, )), ...])
+
+    caller = lp.register_callable_kernel(caller, callee)
+
+    if inline:
+        caller = lp.inline_callable_kernel(caller, callee.name)
+
+    evt, (out, ) = caller(queue, x=x, y=y)
+    assert np.allclose(out, x-y)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
