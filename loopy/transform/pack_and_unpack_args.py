@@ -287,29 +287,26 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
                         new_ilp_inames),
                     expression=new_call_insn.expression.function(*new_params),
                     assignees=new_assignees)
-            old_insn_to_new_insns[insn] = (packing_insns + [new_call_insn] +
+            old_insn_to_new_insns[insn.id] = (packing_insns + [new_call_insn] +
                     unpacking_insns)
 
     if old_insn_to_new_insns:
         new_instructions = []
         for insn in kernel.instructions:
-            if insn in old_insn_to_new_insns:
+            if insn.id in old_insn_to_new_insns:
                 # Replacing the current instruction with the group of
                 # instructions including the packing and unpacking instructions
-                new_instructions.extend(old_insn_to_new_insns[insn])
+                new_instructions.extend(old_insn_to_new_insns[insn.id])
             else:
                 # for the instructions that depend on the call instruction that
                 # are to be packed and unpacked, we need to add the complete
                 # instruction block as a dependency for them.
                 new_depends_on = insn.depends_on
-                if insn.depends_on & set(
-                        old_insn.id for old_insn in old_insn_to_new_insns):
+                if insn.depends_on & set(old_insn_to_new_insns):
                     # need to add the unpack instructions on dependencies.
-                    for old_insn_id in insn.depends_on & set(
-                            old_insn.id for old_insn in old_insn_to_new_insns):
-                        old_insn = kernel.id_to_insn[old_insn_id]
+                    for old_insn_id in insn.depends_on & set(old_insn_to_new_insns):
                         new_depends_on |= frozenset(i.id for i
-                                in old_insn_to_new_insns[old_insn])
+                                in old_insn_to_new_insns[old_insn_id])
                 new_instructions.append(insn.copy(depends_on=new_depends_on))
         kernel = kernel.copy(
             domains=kernel.domains + new_domains,
