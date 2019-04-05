@@ -121,8 +121,9 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
         from pymbolic import var
 
         dim_type = isl.dim_type.set
-        ilp_inames = set(iname for iname in insn.within_inames if isinstance(
-            kernel.iname_to_tag.get(iname), (IlpBaseTag, VectorizeTag)))
+        ilp_inames = set(iname for iname in insn.within_inames
+                         if all(isinstance(tag, (IlpBaseTag, VectorizeTag))
+                                for tag in kernel.iname_to_tags.get(iname, [])))
         new_ilp_inames = set()
         ilp_inames_map = {}
         for iname in ilp_inames:

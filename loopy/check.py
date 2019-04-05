@@ -185,8 +185,9 @@ def _get_all_unique_iname_tags(kernel):
     *kernel* that inherit from :class:`loopy.kernel.data.UniqueTag`.
     """
     from loopy.kernel.data import UniqueTag
-    iname_tags = [kernel.iname_to_tag.get(iname) for iname in
-        kernel.all_inames()]
+    from itertools import chain
+    iname_tags = list(chain(*(kernel.iname_to_tags.get(iname, []) for iname in
+                              kernel.all_inames())))
     return set(
             tag for tag in iname_tags if
             isinstance(tag, UniqueTag))
