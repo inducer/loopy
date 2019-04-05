@@ -36,7 +36,7 @@ from islpy import dim_type
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from pytools import memoize_on_first_arg
 from loopy.tools import natsorted
-from loopy.program import Program
+from loopy.program import Program, iterate_over_kernels_if_given_program
 
 import logging
 logger = logging.getLogger(__name__)
@@ -463,7 +463,9 @@ class DomainChanger:
 
 # {{{ graphviz / dot export
 
-def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
+@iterate_over_kernels_if_given_program
+def get_dot_dependency_graph(kernel, callables_table, iname_cluster=True,
+        use_insn_id=False):
     """Return a string in the `dot <http://graphviz.org/>`_ language depicting
     dependencies among kernel instructions.
     """
@@ -475,7 +477,7 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
     if iname_cluster and not kernel.schedule:
         try:
             from loopy.schedule import get_one_scheduled_kernel
-            kernel = get_one_scheduled_kernel(kernel)
+            kernel = get_one_scheduled_kernel(kernel, callables_table)
         except RuntimeError as e:
             iname_cluster = False
             from warnings import warn

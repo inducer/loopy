@@ -354,24 +354,6 @@ class CUDACASTBuilder(CASTBuilder):
 
         return FunctionDeclarationWrapper(fdecl)
 
-    def generate_code(self, kernel, codegen_state, impl_arg_info):
-        code, implemented_domains = (
-                super(CudaTarget, self).generate_code(
-                    kernel, codegen_state, impl_arg_info))
-
-        return code, implemented_domains
-
-    def generate_body(self, kernel, codegen_state):
-        body, implemented_domains = (
-                super(CudaTarget, self).generate_body(kernel, codegen_state))
-
-        from loopy.kernel.data import ImageArg
-
-        if any(isinstance(arg, ImageArg) for arg in kernel.args):
-            raise NotImplementedError("not yet: texture arguments in CUDA")
-
-        return body, implemented_domains
-
     def preamble_generators(self):
 
         return (

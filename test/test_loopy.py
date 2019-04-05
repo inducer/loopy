@@ -2888,7 +2888,7 @@ def test_dep_cycle_printing_and_error():
 
     from loopy.diagnostic import DependencyCycleFound
     with pytest.raises(DependencyCycleFound):
-        print(lp.generate_code(knl).device_code())
+        print(lp.generate_code_v2(knl).device_code())
 
 
 def test_backwards_dep_printing_and_error():

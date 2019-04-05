@@ -283,7 +283,7 @@ class KernelInliner(SubstitutionMapper):
             from numbers import Integral
             if not all(isinstance(d, Integral) for d in callee_arg.shape):
                 raise LoopyError(
-                    "Argument: {0} in callee kernel: {1} does not have "
+                    "Argument: {0} in callee kernel does not have "
                     "constant shape.".format(callee_arg))
 
             flatten_index = 0
