@@ -579,9 +579,13 @@ class CASTBuilder(ASTBuilderBase):
         if self.target.fortran_abi:
             name += "_"
 
+        if codegen_state.kernel.is_called_from_host:
+            name = Value("void", name)
+        else:
+            name = Value("static void", name)
         return FunctionDeclarationWrapper(
                 FunctionDeclaration(
-                    Value("void", name),
+                    name,
                     [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
                         for idi in codegen_state.implemented_data_info]))
 
