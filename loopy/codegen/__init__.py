@@ -580,6 +580,7 @@ def generate_code_v2(program):
     """
     from loopy.kernel import LoopKernel
     from loopy.program import make_program
+    from cgen import FunctionBody
 
     if isinstance(program, LoopKernel):
         program = make_program(program)
@@ -621,13 +622,14 @@ def generate_code_v2(program):
             collective_device_program = collective_device_program.copy(
                     ast=Collection([callee_prog_ast, collective_device_program.ast]))
             if isinstance(callee_prog_ast, Collection):
+                # if there is a read only constant in the kernel
                 for entry in callee_prog_ast.contents:
-                    try:
+                    if isinstance(entry, FunctionBody):
                         callee_fdecls.append(entry.fdecl)
-                    except AttributeError:
-                        pass
-            else:
+            elif isinstance(callee_prog_ast, FunctionBody):
                 callee_fdecls.append(callee_prog_ast.fdecl)
+            else:
+                raise NotImplementedError()
 
     # collecting the function declarations of callee kernels
     for callee_fdecl in callee_fdecls:
