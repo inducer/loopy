@@ -629,7 +629,8 @@ def generate_code_v2(program):
             elif isinstance(callee_prog_ast, FunctionBody):
                 callee_fdecls.append(callee_prog_ast.fdecl)
             else:
-                raise NotImplementedError()
+                raise NotImplementedError("Do not know how to add forward"
+                        " declarations for %r." % type(callee_prog_ast))
 
     # collecting the function declarations of callee kernels
     for callee_fdecl in callee_fdecls:
