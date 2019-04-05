@@ -620,7 +620,14 @@ def generate_code_v2(program):
             callee_prog_ast = callee_cgr.device_programs[0].ast
             collective_device_program = collective_device_program.copy(
                     ast=Collection([callee_prog_ast, collective_device_program.ast]))
-            callee_fdecls.append(callee_prog_ast.fdecl)
+            if isinstance(callee_prog_ast, Collection):
+                for entry in callee_prog_ast.contents:
+                    try:
+                        callee_fdecls.append(entry.fdecl)
+                    except AttributeError:
+                        pass
+            else:
+                callee_fdecls.append(callee_prog_ast.fdecl)
 
     # collecting the function declarations of callee kernels
     for callee_fdecl in callee_fdecls:
