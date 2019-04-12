@@ -372,7 +372,8 @@ class CMathCallable(ScalarCallable):
 
         # unary functions
         if name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
-                    "tan", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor"]:
+                    "tan", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor",
+                    "erf", "erfc"]:
 
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 0:
@@ -466,7 +467,7 @@ def scope_c_math_functions(target, identifier):
     if identifier in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin",
                       "sinh", "pow", "atan2", "tanh", "exp", "log", "log10",
                       "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
-                      "fabs", "tan"]:
+                      "fabs", "tan", "erf", "erfc"]:
         return CMathCallable(name=identifier)
     return None
 
