@@ -286,15 +286,15 @@ class temp_var_scope(object):  # noqa
     """
 
     @_deprecated_temp_var_scope_class_method
-    def PRIVATE():
+    def PRIVATE():  # pylint:disable=no-method-argument
         return AddressSpace.PRIVATE
 
     @_deprecated_temp_var_scope_class_method
-    def LOCAL():
+    def LOCAL():  # pylint:disable=no-method-argument
         return AddressSpace.LOCAL
 
     @_deprecated_temp_var_scope_class_method
-    def GLOBAL():
+    def GLOBAL():  # pylint:disable=no-method-argument
         return AddressSpace.GLOBAL
 
     @classmethod
@@ -330,8 +330,9 @@ class KernelArgument(ImmutableRecord):
 
         import loopy as lp
         if dtype is lp.auto:
-            warn("Argument/temporary data type should be None if unspecified, "
-                    "not auto. This usage will be disallowed in 2018.",
+            warn("Argument/temporary data type for '%s' should be None if "
+                   "unspecified, not auto. This usage will be disallowed in 2018."
+                    % kwargs["name"],
                     DeprecationWarning, stacklevel=2)
 
             dtype = None

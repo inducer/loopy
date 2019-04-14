@@ -675,7 +675,12 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
         iname_to_tag = list(six.iteritems(iname_to_tag))
 
     # flatten iterables of tags for each iname
-    from collections import Iterable
+
+    try:
+        from collections.abc import Iterable
+    except ImportError:
+        from collections import Iterable  # pylint:disable=no-name-in-module
+
     unpack_iname_to_tag = []
     for iname, tags in iname_to_tag:
         if isinstance(tags, Iterable) and not isinstance(tags, str):

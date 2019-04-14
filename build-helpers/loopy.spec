@@ -15,6 +15,7 @@ import packaging # pip install packaging to add
 a = Analysis(['../bin/loopy'],
              pathex=[expanduser('~/src/loopy')],
              hiddenimports=[
+                "decorator",
                 "appdirs",
                 "packaging.markers",
                 "packaging.specifiers",
