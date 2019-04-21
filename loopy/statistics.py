@@ -1295,9 +1295,9 @@ def count_insn_runs(knl, callables_table, insn, count_redundant_work,
 
     if disregard_local_axes:
         from loopy.kernel.data import LocalIndexTag
-        insn_inames = [iname
-                for iname in insn_inames
-                if not knl.iname_tags_of_type(iname, LocalIndexTag)]
+        insn_inames = frozenset(
+                [iname for iname in insn_inames
+                    if not knl.iname_tags_of_type(iname, LocalIndexTag)])
 
     inames_domain = knl.get_inames_domain(insn_inames)
     domain = (inames_domain.project_out_except(
@@ -1568,7 +1568,6 @@ def _process_subgroup_size(knl, subgroup_size_requested):
 
 # {{{ get_mem_access_map
 
-
 def get_mem_access_map_for_single_kernel(knl, callables_table,
         numpy_types=True, count_redundant_work=False, subgroup_size=None):
 
@@ -1632,6 +1631,7 @@ def get_mem_access_map_for_single_kernel(knl, callables_table,
                             gid_strides=mem_access.gid_strides,
                             direction=mem_access.direction,
                             variable=mem_access.variable,
+                            variable_tag=mem_access.variable_tag,
                             count_granularity=mem_access.count_granularity),
                         ct)
                         for mem_access, ct in six.iteritems(access_map.count_map)),
