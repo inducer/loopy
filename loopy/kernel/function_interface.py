@@ -598,7 +598,7 @@ class ManglerCallable(ScalarCallable):
             # The function mangler does not agree with the arg id to dtypes
             # provided. Indicating that is illegal.
             raise LoopyError("Function %s not coherent with the provided types." % (
-                self.name, kernel.target))
+                self.name))
 
     def mangle_result(self, kernel):
         """

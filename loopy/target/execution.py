@@ -827,7 +827,7 @@ class KernelExecutorBase(object):
                 dtype = np.dtype(dtype)
             if isinstance(dtype, np.dtype):
                 from loopy.types import NumpyType
-                dtype = NumpyType(dtype, self.kernel.target)
+                dtype = NumpyType(dtype, self.program.target)
 
             return dtype
 
@@ -835,7 +835,7 @@ class KernelExecutorBase(object):
             arg_to_dtype = frozenset(
                     (k, process_dtype(v)) for k, v in six.iteritems(arg_to_dtype))
 
-        kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype)
+        kernel = self.get_typed_and_scheduled_program(arg_to_dtype)
 
         from loopy.codegen import generate_code_v2
         code = generate_code_v2(kernel)
