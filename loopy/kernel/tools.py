@@ -490,7 +490,8 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
 
     for insn in kernel.instructions:
         if isinstance(insn, MultiAssignmentBase):
-            op = "%s <- %s" % (insn.assignees, insn.expression)
+            lhs = ', '.join(str(assignee) for assignee in insn.assignees)
+            op = "%s <- %s" % (lhs, insn.expression)
             if len(op) > 200:
                 op = op[:200] + "..."
 

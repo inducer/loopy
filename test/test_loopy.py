@@ -2909,6 +2909,68 @@ def test_backwards_dep_printing_and_error():
     print(knl)
 
 
+def test_backwards_dep_printing_and_error():
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            """
+            c[i] = a[i] + b[i]                       {id=insn1}
+            c[i] = 2*c[i]                            {id=insn2, dep=insn1}
+            c[i] = 7*c[i] + a[i]*a[i] + b[i]*b[i]    {id=insn3, dep=insn2}
+            b[i] = b[i] + c[i]                                 {id=insn4, dep=insn3}
+            d[i] = 7*a[i ]                                     {id=insn5, dep=insn4}
+            a[i] = a[i] + d[i]                                 {id=insn6, dep=insn5}
+            """, [
+                lp.GlobalArg('a, b', dtype=np.float64),
+                "..."
+            ])
+
+    # Used to crash with KeyError
+    print(knl)
+
+
+def test_dump_binary(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            """
+            out[i] = i
+            """)
+
+    knl = lp.fix_parameters(knl, n=128)
+    ref_knl = knl
+
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, knl, parameters=dict(n=5),
+            dump_binary=True)
+
+
+def test_temp_var_type_deprecated_usage():
+    import warnings
+    warnings.simplefilter("always")
+
+    with pytest.warns(DeprecationWarning):
+        lp.Assignment("x", 1, temp_var_type=lp.auto)
+
+    with pytest.warns(DeprecationWarning):
+        lp.Assignment("x", 1, temp_var_type=None)
+
+    with pytest.warns(DeprecationWarning):
+        lp.Assignment("x", 1, temp_var_type=np.dtype(np.int32))
+
+    from loopy.symbolic import parse
+
+    with pytest.warns(DeprecationWarning):
+        lp.CallInstruction("(x,)", parse("f(1)"), temp_var_types=(lp.auto,))
+
+    with pytest.warns(DeprecationWarning):
+        lp.CallInstruction("(x,)", parse("f(1)"), temp_var_types=(None,))
+
+    with pytest.warns(DeprecationWarning):
+        lp.CallInstruction("(x,)", parse("f(1)"),
+                temp_var_types=(np.dtype(np.int32),))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

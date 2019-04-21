@@ -163,7 +163,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
         matching contexts.  See :func:`loopy.match.parse_stack_match`
         for syntax.
     :arg temporary_scope: If given, override the choice of
-    :class:`AddressSpace` for the created temporary.
+        :class:`AddressSpace` for the created temporary.
     :arg default_tag: The default :ref:`iname-tags` to be assigned to the
         inames used for fetching and storing
     :arg fetch_bounding_box: If the access footprint is non-convex

@@ -1000,13 +1000,13 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
         if len(temp_var.shape) != len(new_temp_shape):
             raise LoopyError("Existing and new temporary '%s' do not "
-                    "have matching number of dimensions "
+                    "have matching number of dimensions ('%d' vs. '%d') "
                     % (temporary_name,
                         len(temp_var.shape), len(new_temp_shape)))
 
         if temp_var.base_indices != (0,) * len(new_temp_shape):
             raise LoopyError("Existing and new temporary '%s' do not "
-                    "have matching number of dimensions "
+                    "have matching number of dimensions ('%d' vs. '%d') "
                     % (temporary_name,
                         len(temp_var.shape), len(new_temp_shape)))
 

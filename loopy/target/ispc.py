@@ -405,7 +405,7 @@ class ISPCASTBuilder(CASTBuilder):
                     simplify_using_aff(kernel, idx) for idx in lhs.index_tuple)
 
             access_info = get_access_info(kernel.target, ary, index_tuple,
-                    lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
+                    lambda expr: evaluate(expr, codegen_state.var_subst_map),
                     codegen_state.vectorization_info)
 
             from loopy.kernel.data import ArrayArg, TemporaryVariable
@@ -433,15 +433,15 @@ class ISPCASTBuilder(CASTBuilder):
             for term in terms:
                 if (isinstance(term, Variable)
                             and kernel.iname_tags_of_type(term.name, LocalIndexTag)):
-                        tag, = kernel.iname_tags_of_type(
-                            term.name, LocalIndexTag, min_num=1, max_num=1)
-                        if tag.axis == 0:
-                            if saw_l0:
-                                raise LoopyError(
-                                    "streaming store must have stride 1 in "
-                                    "local index, got: %s" % subscript)
-                            saw_l0 = True
-                            continue
+                    tag, = kernel.iname_tags_of_type(
+                        term.name, LocalIndexTag, min_num=1, max_num=1)
+                    if tag.axis == 0:
+                        if saw_l0:
+                            raise LoopyError(
+                                "streaming store must have stride 1 in "
+                                "local index, got: %s" % subscript)
+                        saw_l0 = True
+                        continue
                 else:
                     for dep in get_dependencies(term):
                         if filter_iname_tags_by_type(
