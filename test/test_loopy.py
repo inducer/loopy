@@ -2910,6 +2910,8 @@ def test_backwards_dep_printing_and_error():
 
 
 def test_dump_binary(ctx_factory):
+    pytest.skip("Not investing time in passing test depends on feature which was "
+            "deprecated in 2016")
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
