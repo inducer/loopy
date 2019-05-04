@@ -550,6 +550,25 @@ def test_split_iname_only_if_in_within():
             assert insn.within_inames == frozenset({'i'})
 
 
+def test_nested_substs_in_insns(ctx_factory):
+    ctx = ctx_factory()
+    import loopy as lp
+
+    ref_knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        a(x) := 2 * x
+        b(x) := x**2
+        c(x) := 7 * x
+        f[i] = c(b(a(i)))
+        """
+    )
+
+    knl = lp.expand_subst(ref_knl)
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
