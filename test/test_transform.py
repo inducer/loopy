@@ -565,6 +565,7 @@ def test_nested_substs_in_insns(ctx_factory):
     )
 
     knl = lp.expand_subst(ref_knl)
+    assert not knl.substitutions
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
