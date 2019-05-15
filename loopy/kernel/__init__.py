@@ -297,7 +297,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         # {{{ process assumptions
 
-        if assumptions is None:
+        if assumptions is None and domains:
             dom0_space = domains[0].get_space()
             assumptions_space = isl.Space.params_alloc(
                     dom0_space.get_ctx(), dom0_space.dim(dim_type.param))
@@ -306,6 +306,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                         dim_type.param, i,
                         dom0_space.get_dim_name(dim_type.param, i))
             assumptions = isl.BasicSet.universe(assumptions_space)
+
+        elif assumptions is None and not domains:
+            assumptions = isl.BasicSet.read_from_str(
+                    isl.DEFAULT_CONTEXT, "[] -> { : 1 = 1}")
 
         elif isinstance(assumptions, str):
             assumptions_set_str = "[%s] -> { : %s}" \
