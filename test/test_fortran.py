@@ -515,8 +515,8 @@ def test_fortran_subroutines(ctx_factory):
           integer i, n
           real*8  a(n,n)
 
-          call twice(1:n, i)
-          call twice(i, 1:n)
+          call twice(n, a(1:n, i))
+          call twice(n, a(i, 1:n))
 
 
         end subroutine
