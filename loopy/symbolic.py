@@ -1120,7 +1120,8 @@ class RuleAwareIdentityMapper(IdentityMapper):
         if name not in self.rule_mapping_context.old_subst_rules:
             return super(RuleAwareIdentityMapper, self).map_call(expr, expn_state)
         else:
-            return self.map_substitution(name, tag, expr.parameters, expn_state)
+            return self.map_substitution(name, tag, self.rec(
+                expr.parameters, expn_state), expn_state)
 
     @staticmethod
     def make_new_arg_context(rule_name, arg_names, arguments, arg_context):

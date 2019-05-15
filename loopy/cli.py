@@ -108,9 +108,11 @@ def main():
                 ".loopy": "loopy",
                 ".floopy": "fortran",
                 ".f90": "fortran",
+                ".F90": "fortran",
                 ".fpp": "fortran",
                 ".f": "fortran",
                 ".f77": "fortran",
+                ".F77": "fortran",
                 }.get(ext)
         with open(args.infile, "r") as infile_fd:
             infile_content = infile_fd.read()

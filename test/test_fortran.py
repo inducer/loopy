@@ -498,6 +498,33 @@ def test_precompute_some_exist(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=128, m=128, ell=128))
 
 
+def test_fortran_subroutines(ctx_factory):
+    fortran_src = """
+        subroutine twice(n, a)
+          implicit none
+          real*8  a(n)
+          integer i,n
+
+          do i=1,n
+            a(i) = a(i) * 2
+          end do
+        end subroutine
+
+        subroutine twice_cross(n, a, i)
+          implicit none
+          integer i, n
+          real*8  a(n,n)
+
+          call twice(1:n, i)
+          call twice(i, 1:n)
+
+
+        end subroutine
+        """
+    knl, = lp.parse_fortran(fortran_src)
+    pytest.xfail("not yet fully implemented")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

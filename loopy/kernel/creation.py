@@ -1136,9 +1136,8 @@ class ArgumentGuesser:
 
     def make_new_arg(self, arg_name):
         arg_name = arg_name.strip()
-
-        from loopy.kernel.data import ValueArg, ArrayArg
         import loopy as lp
+        from loopy.kernel.data import ValueArg, ArrayArg
 
         if arg_name in self.all_params:
             return ValueArg(arg_name)

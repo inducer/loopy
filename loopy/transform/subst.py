@@ -34,7 +34,6 @@ from pytools import ImmutableRecord
 from pymbolic import var
 
 from loopy.program import iterate_over_kernels_if_given_program
-from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 import logging
@@ -476,7 +475,14 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 
 @iterate_over_kernels_if_given_program
 def expand_subst(kernel, within=None):
-    assert isinstance(kernel, LoopKernel)
+    """
+    Returns an instance of :class:`loopy.LoopKernel` with the substitutions
+    referenced in instructions of *kernel* matched by *within* expanded.
+
+    :arg within: a stack match as understood by
+        :func:`loopy.match.parse_stack_match`.
+    """
+
     if not kernel.substitutions:
         return kernel
 

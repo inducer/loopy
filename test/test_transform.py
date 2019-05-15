@@ -23,6 +23,7 @@ THE SOFTWARE.
 """
 
 import sys
+import six
 import numpy as np
 import loopy as lp
 import pyopencl as cl
@@ -570,6 +571,28 @@ def test_split_iname_only_if_in_within():
             assert insn.within_inames == frozenset({'i_outer', 'i_inner'})
         if insn.id == 'not_to_split':
             assert insn.within_inames == frozenset({'i'})
+
+
+def test_nested_substs_in_insns(ctx_factory):
+    ctx = ctx_factory()
+    import loopy as lp
+
+    ref_prg = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        a(x) := 2 * x
+        b(x) := x**2
+        c(x) := 7 * x
+        f[i] = c(b(a(i)))
+        """
+    )
+
+    prg = lp.expand_subst(ref_prg)
+    assert not any(
+            cknl.subkernel.substitutions
+            for cknl in six.itervalues(prg.callables_table.resolved_functions))
+
+    lp.auto_test_vs_ref(ref_prg, ctx, prg)
 
 
 if __name__ == "__main__":

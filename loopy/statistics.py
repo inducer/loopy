@@ -1298,8 +1298,8 @@ def count_insn_runs(knl, callables_table, insn, count_redundant_work,
     if disregard_local_axes:
         from loopy.kernel.data import LocalIndexTag
         insn_inames = frozenset(
-            [iname for iname in insn_inames
-             if not knl.iname_tags_of_type(iname, LocalIndexTag)])
+                [iname for iname in insn_inames
+                    if not knl.iname_tags_of_type(iname, LocalIndexTag)])
 
     inames_domain = knl.get_inames_domain(insn_inames)
     domain = (inames_domain.project_out_except(

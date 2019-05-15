@@ -401,9 +401,9 @@ class CMathCallable(ScalarCallable):
                 if dtype == np.float64:
                     pass  # fabs
                 elif dtype == np.float32:
-                    name = name + "f"  # fminf
+                    name = name + "f"  # fabsf
                 elif dtype == np.float128:  # pylint:disable=no-member
-                    name = name + "l"  # fminl
+                    name = name + "l"  # fabsl
                 else:
                     raise LoopyTypeError("%s does not support type %s" % (name,
                         dtype))
