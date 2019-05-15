@@ -218,11 +218,16 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         self.block_nest = []
 
+    def add_instruction(self, insn):
+        scope = self.scope_stack[-1]
+
+        scope.previous_instruction_id = insn.id
+        scope.instructions.append(insn)
+
     def add_expression_instruction(self, lhs, rhs):
         scope = self.scope_stack[-1]
 
-        new_id = intern("insn%d" % self.insn_id_counter)
-        self.insn_id_counter += 1
+        new_id = self.get_insn_id()
 
         from loopy.kernel.data import Assignment
         insn = Assignment(
@@ -233,8 +238,13 @@ class F2LoopyTranslator(FTreeWalkerBase):
                 predicates=frozenset(self.conditions),
                 tags=tuple(self.instruction_tags))
 
-        scope.previous_instruction_id = new_id
-        scope.instructions.append(insn)
+        self.add_instruction(insn)
+
+    def get_insn_id(self):
+        new_id = intern("insn%d" % self.insn_id_counter)
+        self.insn_id_counter += 1
+
+        return new_id
 
     # {{{ map_XXX functions
 
@@ -437,7 +447,23 @@ class F2LoopyTranslator(FTreeWalkerBase):
         raise NotImplementedError("goto")
 
     def map_Call(self, node):
-        raise NotImplementedError("call")
+        scope = self.scope_stack[-1]
+
+        new_id = self.get_insn_id()
+
+        from pymbolic import var
+
+        # FIXME: Actually process arguments
+        from loopy.kernel.data import CallInstruction
+        insn = CallInstruction(
+                (), var(node.designator)(),
+                within_inames=frozenset(
+                    scope.active_loopy_inames),
+                id=new_id,
+                predicates=frozenset(self.conditions),
+                tags=tuple(self.instruction_tags))
+
+        self.add_instruction(insn)
 
     def map_Return(self, node):
         raise NotImplementedError("return")
@@ -725,7 +751,11 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
             result.append(knl)
 
-        return result
+        ctable = lp.CallablesTable({knl.name: lp.CallableKernel(result)})
+
+        return lp.Program(
+                result[0].name,
+                ctable)
 
 # }}}
 
