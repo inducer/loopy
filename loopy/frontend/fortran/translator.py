@@ -732,8 +732,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
             # }}}
 
-            from loopy.version import MOST_RECENT_LANGUAGE_VERSION
-            knl = lp.make_kernel(
+            knl = lp.make_function(
                     sub.index_sets,
                     sub.instructions,
                     kernel_data,
@@ -742,7 +741,6 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     index_dtype=self.index_dtype,
                     target=self.target,
                     seq_dependencies=seq_dependencies,
-                    lang_version=MOST_RECENT_LANGUAGE_VERSION
                     )
 
             from loopy.loop import fuse_loop_domains
@@ -751,11 +749,23 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
             result.append(knl)
 
-        ctable = lp.CallablesTable({knl.name: lp.CallableKernel(result)})
+        from loopy.kernel.tools import identify_root_kernel
+        from loopy.program import make_program
+        from loopy.transform.callable import register_callable_kernel
 
-        return lp.Program(
-                result[0].name,
-                ctable)
+        root_knl_name = identify_root_kernel(result)
+        root_knl = [knl for knl in result if knl.name ==
+                root_knl_name][0].copy(is_called_from_host=True)
+        print(root_knl)
+        callee_kernels = [knl for knl in result if knl.name != root_knl_name]
+        print(callee_kernels[0])
+        prog = make_program(root_knl)
+        for callee_knl in callee_kernels:
+            #FIXME: This would need some sort of traversal to be valid
+            # for all cases
+            prog = register_callable_kernel(prog, callee_knl)
+
+        return prog
 
 # }}}
 

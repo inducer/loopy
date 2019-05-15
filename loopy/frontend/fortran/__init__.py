@@ -263,7 +263,7 @@ def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
 
     from fparser import api
     tree = api.parse(source, isfree=free_form, isstrict=strict,
-            analyze=False, ignore_comments=False, filename=filename)
+            analyze=False, ignore_comments=False)
 
     if tree is None:
         raise LoopyError("Fortran parser was unhappy with source code "
