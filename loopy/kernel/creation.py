@@ -1939,6 +1939,17 @@ class SliceToInameReplacer(IdentityMapper):
         ctx = self.knl.isl_context
         space = isl.Space.create_from_names(ctx,
                 set=list(self.iname_domains.keys()))
+        from loopy.symbolic import DependencyMapper
+        args_as_params_for_domains = set()
+        for _, (start, stop, step) in self.iname_domains.items():
+            args_as_params_for_domains |= DependencyMapper()(start)
+            args_as_params_for_domains |= DependencyMapper()(stop)
+            args_as_params_for_domains |= DependencyMapper()(step)
+
+        space = space.add_dims(1, len(args_as_params_for_domains))
+        for i, arg in enumerate(args_as_params_for_domains):
+            space = space.set_dim_id(1, i, isl.Id(arg.name))
+
         iname_set = isl.BasicSet.universe(space)
 
         from loopy.isl_helpers import make_slab

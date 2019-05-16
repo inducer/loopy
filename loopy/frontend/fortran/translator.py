@@ -37,7 +37,7 @@ import islpy as isl
 from islpy import dim_type
 from loopy.symbolic import IdentityMapper
 from loopy.diagnostic import LoopyError
-from pymbolic.primitives import Wildcard
+from pymbolic.primitives import (Wildcard, Slice)
 
 
 # {{{ subscript base shifter
@@ -72,9 +72,19 @@ class SubscriptIndexBaseShifter(IdentityMapper):
                 subscript[i] -= dims[i][0]
             elif len(dims[i]) == 1:
                 # base index is 1 implicitly
-                subscript[i] -= 1
+                if not isinstance(subscript[i], Slice):
+                    subscript[i] -= 1
 
         return expr.aggregate[self.rec(tuple(subscript))]
+
+    def map_slice(self, expr):
+        start = expr.start-1
+        stop = expr.stop
+        if expr.step:
+            step = expr.step
+        else:
+            step = 1
+        return Slice((start, stop, step))
 
 # }}}
 
@@ -456,7 +466,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
         # FIXME: Actually process arguments
         from loopy.kernel.data import CallInstruction
         insn = CallInstruction(
-                (), var(node.designator)(),
+                (), var(node.designator)(*(scope.process_expression_for_loopy(
+                    self.parse_expr(node, item)) for item in node.items)),
                 within_inames=frozenset(
                     scope.active_loopy_inames),
                 id=new_id,
@@ -707,6 +718,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
                                 arg_name,
                                 dtype=sub.get_type(arg_name),
                                 shape=sub.get_loopy_shape(arg_name),
+                                is_output_only=False,
                                 ))
                 else:
                     kernel_data.append(
@@ -731,6 +743,9 @@ class F2LoopyTranslator(FTreeWalkerBase):
                             shape=sub.get_loopy_shape(var_name)))
 
             # }}}
+
+            if sub.index_sets == []:
+                sub.index_sets = [isl.BasicSet('{:}')]
 
             knl = lp.make_function(
                     sub.index_sets,
@@ -763,7 +778,10 @@ class F2LoopyTranslator(FTreeWalkerBase):
         for callee_knl in callee_kernels:
             #FIXME: This would need some sort of traversal to be valid
             # for all cases
+            # THIS IS A VERY IMPORTANT FIXME!!
             prog = register_callable_kernel(prog, callee_knl)
+
+        print(prog)
 
         return prog
 
