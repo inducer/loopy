@@ -781,8 +781,6 @@ class F2LoopyTranslator(FTreeWalkerBase):
             # THIS IS A VERY IMPORTANT FIXME!!
             prog = register_callable_kernel(prog, callee_knl)
 
-        print(prog)
-
         return prog
 
 # }}}
