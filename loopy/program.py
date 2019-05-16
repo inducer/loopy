@@ -595,6 +595,9 @@ class CallablesTable(ImmutableRecord):
             history = dict((func_id, frozenset([func_id])) for func_id in
                     resolved_functions)
 
+        assert all(call.subkernel.name == name for name, call in
+                resolved_functions.items() if isinstance(call, CallableKernel))
+
         super(CallablesTable, self).__init__(
                 resolved_functions=resolved_functions,
                 history=history,
@@ -822,6 +825,10 @@ class CallablesTable(ImmutableRecord):
                     unique_function_identifier = (
                             next_indexed_function_identifier(
                                 unique_function_identifier))
+        if isinstance(in_kernel_callable, CallableKernel):
+            in_kernel_callable = (in_kernel_callable.copy(
+                subkernel=in_kernel_callable.subkernel.copy(
+                    name=unique_function_identifier)))
 
         updated_resolved_functions = self.resolved_functions.copy()
         updated_resolved_functions[unique_function_identifier] = (
@@ -883,6 +890,10 @@ class CallablesTable(ImmutableRecord):
 
             if func_id in renames_needed:
                 new_func_id = renames_needed[func_id]
+                if isinstance(in_knl_callable, CallableKernel):
+                    in_knl_callable = (in_knl_callable.copy(
+                        subkernel=in_knl_callable.subkernel.copy(
+                            name=new_func_id)))
                 new_resolved_functions[new_func_id] = (
                         in_knl_callable)
                 new_history[new_func_id] = self.history[func_id]
