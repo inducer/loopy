@@ -42,7 +42,9 @@ from pymbolic.primitives import (Wildcard, Slice)
 
 # {{{ subscript base shifter
 
-class SubscriptIndexBaseShifter(IdentityMapper):
+class SubscriptIndexAdjuster(IdentityMapper):
+    """Adjust base indices of subscripts and lengths of slices."""
+
     def __init__(self, scope):
         self.scope = scope
 
@@ -60,31 +62,53 @@ class SubscriptIndexBaseShifter(IdentityMapper):
         if not isinstance(subscript, tuple):
             subscript = (subscript,)
 
-        subscript = list(subscript)
-
         if len(dims) != len(subscript):
             raise TranslationError("inconsistent number of indices "
                     "to '%s'" % name)
 
+        new_subscript = []
         for i in range(len(dims)):
             if len(dims[i]) == 2:
-                # has a base index
-                subscript[i] -= dims[i][0]
+                # has an explicit base index
+                base_index, end_index = dims[i]
             elif len(dims[i]) == 1:
-                # base index is 1 implicitly
-                if not isinstance(subscript[i], Slice):
-                    subscript[i] -= 1
+                base_index = 1
+                end_index, = dims[i]
 
-        return expr.aggregate[self.rec(tuple(subscript))]
+            sub_i = subscript[i]
+            if isinstance(sub_i, Slice):
+                start = sub_i.start
+                if start is None:
+                    start = base_index
 
-    def map_slice(self, expr):
-        start = expr.start-1
-        stop = expr.stop
-        if expr.step:
-            step = expr.step
-        else:
-            step = 1
-        return Slice((start, stop, step))
+                step = sub_i.step
+                if step is None:
+                    step = 1
+
+                stop = sub_i.stop
+                if stop is None:
+                    stop = end_index
+
+                if step != 1:
+                    # FIXME
+                    raise NotImplementedError("Fortran slice processing for "
+                            "non-unit strides")
+
+                sub_i = Slice((
+                        start - base_index,
+
+                        # FIXME This is only correct for unit strides
+                        stop - base_index + 1,
+
+                        step
+                        ))
+
+            else:
+                sub_i = sub_i - base_index
+
+            new_subscript.append(sub_i)
+
+        return expr.aggregate[self.rec(tuple(new_subscript))]
 
 # }}}
 
@@ -197,7 +221,7 @@ class Scope(object):
 
         expr = submap(expr)
 
-        subshift = SubscriptIndexBaseShifter(self)
+        subshift = SubscriptIndexAdjuster(self)
         expr = subshift(expr)
 
         return expr
