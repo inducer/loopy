@@ -768,9 +768,6 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
             # }}}
 
-            if sub.index_sets == []:
-                sub.index_sets = [isl.BasicSet('{:}')]
-
             knl = lp.make_function(
                     sub.index_sets,
                     sub.instructions,

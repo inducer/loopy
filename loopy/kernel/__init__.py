@@ -143,8 +143,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     .. attribute:: domains
 
-        a list of :class:`islpy.BasicSet` instances
-        representing the :ref:`domain-tree`.
+        a list of :class:`islpy.BasicSet` instances representing the
+        :ref:`domain-tree`.  May be empty.
 
     .. attribute:: instructions
 
@@ -611,7 +611,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         for dom in self.domains:
             return dom.get_ctx()
 
-        assert False
+        return isl.DEFAULT_CONTEXT
 
     @memoize_method
     def combine_domains(self, domains):
