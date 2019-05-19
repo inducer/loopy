@@ -334,10 +334,6 @@ class Program(ImmutableRecord):
         """
         Returns an instance of :class:`loopy.LoopKernel` denoting the topmost
         level kernel.
-
-        .. note::
-
-            Syntactic sugar.
         """
         return self.callables_table[self.name].subkernel
 
@@ -345,27 +341,16 @@ class Program(ImmutableRecord):
     def arg_dict(self):
         """
         Returns ``arg_dict`` of the ``root_kernel``.
-
-        .. note::
-
-            Syntactic sugar.
         """
         return self.root_kernel.arg_dict
 
     @property
     def args(self):
-        """
-        Returns ``args`` of the ``root_kernel``.
-
-        .. note::
-
-            Syntactic sugar.
-        """
+        """Returns ``args`` of the ``root_kernel``."""
         return self.root_kernel.args[:]
 
     def with_root_kernel(self, root_kernel):
-        """
-        Returns a copy of *self* with the topmost level kernel as
+        """:returns: a copy of *self* with the topmost level kernel as
         *root_kernel*.
         """
         new_in_knl_callable = self.callables_table[

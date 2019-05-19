@@ -487,7 +487,6 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         from pymbolic import var
 
-        # FIXME: Actually process arguments
         from loopy.kernel.data import CallInstruction
         insn = CallInstruction(
                 (), var(node.designator)(*(scope.process_expression_for_loopy(
