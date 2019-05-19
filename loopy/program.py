@@ -374,7 +374,17 @@ class Program(ImmutableRecord):
         return pex(*args, **kwargs)
 
     def __str__(self):
-        return self.root_kernel.__str__()
+        # FIXME: do a topological sort by the call graph
+
+        def strify_callable(clbl):
+            if isinstance(clbl, CallableKernel):
+                return str(clbl.subkernel)
+            else:
+                return str(clbl)
+
+        return "\n".join(
+                strify_callable(clbl)
+                for name, clbl in six.iteritems(self.callables_table))
 
 # }}}
 
