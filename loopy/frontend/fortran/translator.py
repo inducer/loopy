@@ -129,9 +129,6 @@ class Scope(object):
     def __init__(self, subprogram_name, arg_names=set()):
         self.subprogram_name = subprogram_name
 
-        # map name to data
-        self.data_statements = {}
-
         # map first letter to type
         self.implicit_types = {}
 
@@ -142,7 +139,7 @@ class Scope(object):
         self.type_map = {}
 
         # map name to data
-        self.data = {}
+        self.data_map = {}
 
         self.arg_names = arg_names
 
@@ -382,7 +379,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         tp = self.dtype_from_stmt(node)
 
-        for name, shape in self.parse_dimension_specs(node, node.entity_decls):
+        for name, shape, initializer in self.parse_dimension_specs(
+                node, node.entity_decls):
             if shape is not None:
                 assert name not in scope.dim_map
                 scope.dim_map[name] = shape
@@ -390,6 +388,9 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
             assert name not in scope.type_map
             scope.type_map[name] = tp
+
+            assert name not in scope.data_map
+            scope.data_map[name] = initializer
 
         return []
 
@@ -402,7 +403,10 @@ class F2LoopyTranslator(FTreeWalkerBase):
     def map_Dimension(self, node):
         scope = self.scope_stack[-1]
 
-        for name, shape in self.parse_dimension_specs(node, node.items):
+        for name, shape, initializer in self.parse_dimension_specs(node, node.items):
+            if initializer is not None:
+                raise LoopyError("initializer in dimension statement")
+
             if shape is not None:
                 assert name not in scope.dim_map
                 scope.dim_map[name] = shape
@@ -744,6 +748,10 @@ class F2LoopyTranslator(FTreeWalkerBase):
             for arg_name in sub.arg_names:
                 dims = sub.dim_map.get(arg_name)
 
+                if sub.data_map.get(arg_name) is not None:
+                    raise NotImplementedError(
+                            "initializer for argument %s" % arg_name)
+
                 if dims is not None:
                     # default order is set to "F" in kernel creation below
                     kernel_data.append(
@@ -770,10 +778,18 @@ class F2LoopyTranslator(FTreeWalkerBase):
                 if sub.implicit_types is None and dtype is None:
                     continue
 
+                kwargs = {}
+                if sub.data_map.get(var_name) is not None:
+                    kwargs["read_only"] = True
+                    kwargs["address_space"] = lp.AddressSpace.PRIVATE
+                    kwargs["initializer"] = np.array(
+                            sub.data_map[var_name], dtype=dtype)
+
                 kernel_data.append(
                         lp.TemporaryVariable(
                             var_name, dtype=dtype,
-                            shape=sub.get_loopy_shape(var_name)))
+                            shape=sub.get_loopy_shape(var_name),
+                            **kwargs))
 
             # }}}
 
