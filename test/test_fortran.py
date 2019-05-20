@@ -521,8 +521,8 @@ def test_fortran_subroutines(ctx_factory):
 
         end subroutine
         """
-    knl = lp.parse_fortran(fortran_src)
-    print(lp.generate_code_v2(knl).device_code())
+    prg = lp.parse_fortran(fortran_src)
+    print(lp.generate_code_v2(prg).device_code())
 
 
 if __name__ == "__main__":
