@@ -89,19 +89,29 @@ class SubscriptIndexAdjuster(IdentityMapper):
                 if stop is None:
                     stop = end_index
 
-                if step != 1:
+                if step == 1:
+                    sub_i = Slice((
+                            start - base_index,
+
+                            # FIXME This is only correct for unit strides
+                            stop - base_index + 1,
+
+                            step
+                            ))
+                elif step == -1:
+                    sub_i = Slice((
+                            start - base_index,
+
+                            # FIXME This is only correct for unit strides
+                            stop - base_index - 1,
+
+                            step
+                            ))
+
+                else:
                     # FIXME
                     raise NotImplementedError("Fortran slice processing for "
                             "non-unit strides")
-
-                sub_i = Slice((
-                        start - base_index,
-
-                        # FIXME This is only correct for unit strides
-                        stop - base_index + 1,
-
-                        step
-                        ))
 
             else:
                 sub_i = sub_i - base_index
