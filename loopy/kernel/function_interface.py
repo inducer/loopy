@@ -240,7 +240,7 @@ class InKernelCallable(ImmutableRecord):
 
         raise NotImplementedError()
 
-    def with_descrs(self, arg_id_to_descr, callables_table):
+    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table):
         """
         :arg arg_id_to_descr: a mapping from argument identifiers
             (integers for positional arguments, names for keyword
@@ -373,7 +373,7 @@ class ScalarCallable(InKernelCallable):
         raise LoopyError("No type inference information present for "
                 "the function %s." % (self.name))
 
-    def with_descrs(self, arg_id_to_descr, callables_table):
+    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table):
 
         arg_id_to_descr[-1] = ValueArgDescriptor()
         return (
@@ -574,7 +574,7 @@ class CallableKernel(InKernelCallable):
         return self.copy(subkernel=specialized_kernel,
                 arg_id_to_dtype=new_arg_id_to_dtype), callables_table
 
-    def with_descrs(self, arg_id_to_descr, callables_table):
+    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table):
 
         # tune the subkernel so that we have the matching shapes and
         # dim_tags
@@ -589,9 +589,10 @@ class CallableKernel(InKernelCallable):
 
             if isinstance(descr, ArrayArgDescriptor):
                 if not isinstance(self.subkernel.arg_dict[arg_id], ArrayArg):
-                    raise LoopyError("Array passed to a scalar type argument "
-                            " '%s' in the function '%s'." % (
-                                arg_id, self.subkernel.name))
+                    raise LoopyError("Array passed to a scalar argument "
+                            " '%s' of the function '%s' (in '%s')" % (
+                                arg_id, self.subkernel.name,
+                                caller_kernel.name))
 
                 new_arg = self.subkernel.arg_dict[arg_id].copy(
                         shape=descr.shape,
@@ -602,12 +603,13 @@ class CallableKernel(InKernelCallable):
                         new_args]
             elif isinstance(descr, ValueArgDescriptor):
                 if not isinstance(self.subkernel.arg_dict[arg_id], ValueArg):
-                    raise LoopyError("Scalar passed to an array type argument "
-                            " '%s' in the function '%s'." % (
-                                arg_id, self.subkernel.name))
+                    raise LoopyError("Scalar passed to an array argument "
+                            " '%s' of the callable '%s' (in '%s')" % (
+                                arg_id, self.subkernel.name,
+                                caller_kernel.name))
             else:
                 raise LoopyError("Descriptor must be either an instance of "
-                        "ArrayArgDescriptor or ValueArgDescriptor -- got %s." %
+                        "ArrayArgDescriptor or ValueArgDescriptor -- got %s" %
                         type(descr))
 
         descriptor_specialized_knl = self.subkernel.copy(args=new_args)
