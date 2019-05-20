@@ -154,8 +154,9 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
       :func:`parse_fortran`.
     * ``FILENAME``: the file name of the code being processed
 
-    The transform code must define ``RESULT``, conventionally a list of
-    kernels, which is returned from this function unmodified.
+    The transform code must define ``RESULT``, conventionally a list of kernels
+    or a :class:`loopy.Program`, which is returned from this function
+    unmodified.
 
     An example of *source* may look as follows::
 
@@ -236,10 +237,10 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
     return proc_dict["RESULT"]
 
 
-def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
+def parse_fortran(source, filename="<floopy code>", free_form=None, strict=None,
         seq_dependencies=None, auto_dependencies=None, target=None):
     """
-    :returns: a list of :class:`loopy.LoopKernel` objects
+    :returns: a :class:`loopy.Program`
     """
 
     if seq_dependencies is not None and auto_dependencies is not None:
@@ -253,6 +254,10 @@ def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
 
     if seq_dependencies is None:
         seq_dependencies = True
+    if free_form is None:
+        free_form = True
+    if strict is None:
+        strict = True
 
     import logging
     console = logging.StreamHandler()
@@ -273,7 +278,24 @@ def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
     f2loopy = F2LoopyTranslator(filename, target=target)
     f2loopy(tree)
 
-    return f2loopy.make_kernels(seq_dependencies=seq_dependencies)
+    kernels = f2loopy.make_kernels(seq_dependencies=seq_dependencies)
+
+    from loopy.kernel.tools import identify_root_kernel
+    from loopy.program import make_program
+    from loopy.transform.callable import register_callable_kernel
+
+    root_knl_name = identify_root_kernel(kernels)
+    root_knl = [knl for knl in kernels if knl.name ==
+            root_knl_name][0].copy(is_called_from_host=True)
+    callee_kernels = [knl for knl in kernels if knl.name != root_knl_name]
+    prog = make_program(root_knl)
+    for callee_knl in callee_kernels:
+        #FIXME: This would need some sort of traversal to be valid
+        # for all cases
+        # THIS IS A VERY IMPORTANT FIXME!!
+        prog = register_callable_kernel(prog, callee_knl)
+
+    return prog
 
 
 # vim: foldmethod=marker

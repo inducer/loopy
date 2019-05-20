@@ -810,22 +810,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
             result.append(knl)
 
-        from loopy.kernel.tools import identify_root_kernel
-        from loopy.program import make_program
-        from loopy.transform.callable import register_callable_kernel
-
-        root_knl_name = identify_root_kernel(result)
-        root_knl = [knl for knl in result if knl.name ==
-                root_knl_name][0].copy(is_called_from_host=True)
-        callee_kernels = [knl for knl in result if knl.name != root_knl_name]
-        prog = make_program(root_knl)
-        for callee_knl in callee_kernels:
-            #FIXME: This would need some sort of traversal to be valid
-            # for all cases
-            # THIS IS A VERY IMPORTANT FIXME!!
-            prog = register_callable_kernel(prog, callee_knl)
-
-        return prog
+        return result
 
 # }}}
 
