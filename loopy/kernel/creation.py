@@ -34,7 +34,7 @@ from loopy.symbolic import (
 from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
-        SubstitutionRule, AddressSpace)
+        SubstitutionRule, AddressSpace, ValueArg)
 from loopy.kernel.instruction import (CInstruction, _DataObliviousInstruction,
         CallInstruction)
 from loopy.diagnostic import LoopyError, warn_with_kernel
@@ -1932,14 +1932,18 @@ class SliceToInameReplacer(IdentityMapper):
         def _convert_array_to_slices(arg):
             if isinstance(arg, Variable):
                 if (arg.name in self.knl.temporary_variables):
-                    array_arg = self.knl.temporary_variables[arg.name]
+                    array_arg_shape = (
+                            self.knl.temporary_variables[arg.name].shape)
                 else:
                     assert arg.name in self.knl.arg_dict
-                    array_arg = self.knl.arg_dict[arg.name]
+                    if isinstance(self.knl.arg_dict[arg.name], ValueArg):
+                        array_arg_shape = ()
+                    else:
+                        array_arg_shape = self.knl.arg_dict[arg.name].shape
 
-                if array_arg.shape != ():
+                if array_arg_shape != ():
                     return Subscript(arg, tuple(Slice(()) for _ in
-                        array_arg.shape))
+                        array_arg_shape))
             return arg
 
         return Call(expr.function,
