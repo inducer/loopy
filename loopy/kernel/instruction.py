@@ -22,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
 from six.moves import intern
 from pytools import ImmutableRecord, memoize_method
 from loopy.diagnostic import LoopyError
@@ -1136,6 +1137,22 @@ class CallInstruction(MultiAssignmentBase):
         if self.predicates:
             result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
         return result
+
+    def arg_id_to_val(self):
+        """:returns: a :class:`dict` mapping argument identifiers (non-negative numbers
+            for positional arguments, strings for keyword args, and negative numbers
+            for assignees) to their respective values
+        """
+
+        from pymbolic.primitives import CallWithKwargs
+        arg_id_to_val = dict(enumerate(self.expression.parameters))
+        if isinstance(self.expression, CallWithKwargs):
+            for kw, val in six.iteritems(self.expression.kw_parameters):
+                arg_id_to_val[kw] = val
+        for i, arg in enumerate(self.assignees):
+            arg_id_to_val[-i-1] = arg
+
+        return arg_id_to_val
 
     @property
     def atomicity(self):
