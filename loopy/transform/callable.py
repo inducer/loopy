@@ -628,8 +628,8 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
             # Call to a callable kernel can only occur through a
             # CallInstruction.
             continue
-        # getting the caller->callee arg association
 
+        # get the caller->callee arg association
         parameters = insn.expression.parameters[:]
         kw_parameters = {}
         if isinstance(insn.expression, CallWithKwargs):
@@ -658,7 +658,7 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
             parameter_shapes.append(_shape_1_if_empty(kw_parameters[pos_to_kw[i]])
                     .get_array_arg_descriptor(caller_knl).shape)
 
-        # inserting the assignees at the required positions.
+        # insert the assignees at the required positions
         assignee_write_count = -1
         for i, arg in enumerate(callee_knl.args):
             if arg.is_output_only:
@@ -686,7 +686,7 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
                 raise NotImplementedError("Unknown instruction %s." %
                         type(insn))
 
-        # subkernel with instructions adjusted according to the new dimensions.
+        # subkernel with instructions adjusted according to the new dimensions
         new_callee_knl = callee_knl.copy(instructions=new_callee_insns)
 
         return new_callee_knl

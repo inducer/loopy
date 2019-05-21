@@ -103,6 +103,78 @@ class ArrayArgDescriptor(ImmutableRecord):
 
     update_persistent_hash = update_persistent_hash
 
+
+def get_arg_descriptor_for_expression(kernel, expr):
+    """
+    :returns: a :class:`ArrayArgDescriptor` or a :class:`ValueArgDescriptor`
+        describing the argument expression *expr* in *kernel*.
+    """
+    from loopy.symbolic import (SubArrayRef, pw_aff_to_expr, Variable,
+            SweptInameStrideCollector)
+    from loopy.kernel.data import TemporaryVariable, ArrayArg
+
+    if isinstance(expr, SubArrayRef):
+        name = expr.subscript.aggregate.name
+        arg = kernel.get_arg_descriptor(name)
+
+        if not isinstance(arg, (TemporaryVariable, ArrayArg)):
+            raise LoopyError("unsupported argument type "
+                    "'%s' of '%s' in call statement"
+                    % (type(arg).__name__, expr.name))
+
+        aspace = arg.address_space
+
+        from loopy.kernel.array import FixedStrideArrayDimTag as DimTag
+        from loopy.isl_helpers import simplify_via_aff
+        sub_dim_tags = []
+        sub_shape = []
+
+        # FIXME This blindly assumes that dim_tag has a stride and
+        # will not work for non-stride dim tags (e.g. vec or sep).
+
+        # FIXME: This will almost always be nonlinear--when does this
+        # actually help? Maybe the
+        linearized_index = simplify_via_aff(
+                sum(
+                    dim_tag.stride*iname for dim_tag, iname in
+                    zip(arg.dim_tags, expr.subscript.index_tuple)))
+
+        strides_as_dict = SweptInameStrideCollector(
+                tuple(iname.name for iname in expr.swept_inames)
+                )(linearized_index)
+        sub_dim_tags = tuple(
+                DimTag(strides_as_dict[iname]) for iname in expr.swept_inames)
+        sub_shape = tuple(
+                pw_aff_to_expr(
+                    kernel.get_iname_bounds(iname.name).upper_bound_pw_aff)+1
+                for iname in expr.swept_inames)
+        if expr.swept_inames == ():
+            sub_shape = (1, )
+            sub_dim_tags = (DimTag(1),)
+
+        return ArrayArgDescriptor(
+                address_space=aspace,
+                dim_tags=sub_dim_tags,
+                shape=sub_shape)
+
+    elif isinstance(expr, Variable):
+        arg = kernel.get_arg_descriptor(expr.name)
+
+        if isinstance(arg, (TemporaryVariable, ArrayArg)):
+            return ArrayArgDescriptor(
+                    address_space=arg.aspace,
+                    dim_tags=arg.dim_tags,
+                    shape=arg.shape)
+        elif isinstance(arg, ValueArg):
+            return ValueArgDescriptor()
+        else:
+            raise LoopyError("unsupported argument type "
+                    "'%s' of '%s' in call statement"
+                    % (type(arg).__name__, expr.name))
+
+    else:
+        return ValueArgDescriptor()
+
 # }}}
 
 

@@ -826,55 +826,6 @@ class SubArrayRef(p.Expression):
         return EvaluatorWithDeficientContext(swept_inames_to_zeros)(
                 self.subscript)
 
-    def get_array_arg_descriptor(self, kernel):
-        """
-        Returns the dim_tags, memory scope, shape informations of a
-        :class:`SubArrayRef` argument in the caller kernel packed into
-        :class:`ArrayArgDescriptor` for the instance of :class:`SubArrayRef` in
-        the given *kernel*.
-        """
-        from loopy.kernel.function_interface import ArrayArgDescriptor
-
-        name = self.subscript.aggregate.name
-
-        if name in kernel.temporary_variables:
-            assert name not in kernel.arg_dict
-            arg = kernel.temporary_variables[name]
-        else:
-            assert name in kernel.arg_dict
-            arg = kernel.arg_dict[name]
-
-        aspace = arg.address_space
-
-        from loopy.kernel.array import FixedStrideArrayDimTag as DimTag
-        from loopy.isl_helpers import simplify_via_aff
-        sub_dim_tags = []
-        sub_shape = []
-        try:
-            linearized_index = simplify_via_aff(
-                    sum(dim_tag.stride*iname for dim_tag, iname in
-                    zip(arg.dim_tags, self.subscript.index_tuple)))
-        except isl.Error:
-            linearized_index = sum(dim_tag.stride*iname for dim_tag, iname in
-                    zip(arg.dim_tags, self.subscript.index_tuple))
-
-        strides_as_dict = SweptInameStrideCollector(tuple(iname.name for iname in
-            self.swept_inames))(linearized_index)
-        sub_dim_tags = tuple(
-                DimTag(strides_as_dict[iname]) for iname in self.swept_inames)
-        sub_shape = tuple(
-                pw_aff_to_expr(
-                    kernel.get_iname_bounds(iname.name).upper_bound_pw_aff)+1
-                for iname in self.swept_inames)
-        if self.swept_inames == ():
-            sub_shape = (1, )
-            sub_dim_tags = (DimTag(1),)
-
-        return ArrayArgDescriptor(
-                address_space=aspace,
-                dim_tags=sub_dim_tags,
-                shape=sub_shape)
-
     def __getinitargs__(self):
         return (self.swept_inames, self.subscript)
 
