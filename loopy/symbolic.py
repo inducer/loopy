@@ -1635,6 +1635,7 @@ def guarded_pwaff_from_expr(space, expr, vars_to_zero=None):
 
 # {{{ simplify using aff
 
+# FIXME: redundant with simplify_via_aff
 def simplify_using_aff(kernel, expr):
     inames = get_dependencies(expr) & kernel.all_inames()
 
