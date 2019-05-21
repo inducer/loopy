@@ -27,7 +27,7 @@ THE SOFTWARE.
 import numpy as np
 
 from pymbolic.mapper import CSECachingMapperMixin
-from pymbolic.primitives import Slice, Variable, Subscript
+from pymbolic.primitives import Slice, Variable, Subscript, Call
 from loopy.tools import intern_frozenset_of_ids, Optional
 from loopy.symbolic import (
         IdentityMapper, WalkMapper, SubArrayRef)
@@ -1928,6 +1928,24 @@ class SliceToInameReplacer(IdentityMapper):
         else:
             return IdentityMapper.map_subscript(self, expr)
 
+    def map_call(self, expr):
+        def _convert_array_to_slices(arg):
+            if isinstance(arg, Variable):
+                if (arg.name in self.knl.temporary_variables):
+                    array_arg = self.knl.temporary_variables[arg.name]
+                else:
+                    assert arg.name in self.knl.arg_dict
+                    array_arg = self.knl.arg_dict[arg.name]
+
+                if array_arg.shape != ():
+                    return Subscript(arg, tuple(Slice(()) for _ in
+                        array_arg.shape))
+            return arg
+
+        return Call(expr.function,
+                tuple(self.rec(_convert_array_to_slices(par)) for par in
+                    expr.parameters))
+
     def get_iname_domain_as_isl_set(self):
         """
         Returns the extra domain constraints imposed by the slice inames,
@@ -1959,7 +1977,7 @@ class SliceToInameReplacer(IdentityMapper):
         return iname_set
 
 
-def realize_slices_as_sub_array_refs(kernel):
+def realize_slices_array_inputs_as_sub_array_refs(kernel):
     """
     Returns a kernel with the instances of :class:`pymbolic.primitives.Slice`
     encountered in expressions replaced as `loopy.symbolic.SubArrayRef`.
@@ -2301,7 +2319,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     knl = create_temporaries(knl, default_order)
 
     # convert slices to iname domains
-    knl = realize_slices_as_sub_array_refs(knl)
+    knl = realize_slices_array_inputs_as_sub_array_refs(knl)
 
     # -------------------------------------------------------------------------
     # Ordering dependency:

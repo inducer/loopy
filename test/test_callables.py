@@ -476,6 +476,52 @@ def test_empty_sub_array_refs(ctx_factory, inline):
     assert np.allclose(out, x-y)
 
 
+@pytest.mark.parametrize("inline", [False, True])
+def test_array_inputs_to_callee_kernels(ctx_factory, inline):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    n = 2 ** 4
+
+    x = np.random.rand(n, n)
+    y = np.random.rand(n, n)
+
+    child_knl = lp.make_function(
+            "{[i, j]:0<=i, j < 16}",
+            """
+            g[i, j] = 2*e[i, j] + 3*f[i, j]
+            """, name="linear_combo")
+
+    parent_knl = lp.make_kernel(
+            "{:}",
+            """
+            z[:, :] = linear_combo(x, y)
+            """,
+            kernel_data=[
+                lp.GlobalArg(
+                    name='x',
+                    dtype=np.float64,
+                    shape=(16, 16)),
+                lp.GlobalArg(
+                    name='y',
+                    dtype=np.float64,
+                    shape=(16, 16)),
+                lp.GlobalArg(
+                    name='z',
+                    dtype=np.float64,
+                    shape=(16, 16)), '...'],
+            )
+
+    knl = lp.register_callable_kernel(
+            parent_knl, child_knl)
+    if inline:
+        knl = lp.inline_callable_kernel(knl, 'linear_combo')
+
+    evt, (out, ) = knl(queue, x=x, y=y)
+
+    assert (np.linalg.norm(2*x+3*y-out)/(
+        np.linalg.norm(2*x+3*y))) < 1e-15
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
