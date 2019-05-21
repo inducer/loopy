@@ -2187,7 +2187,8 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
 
         from loopy.kernel.function_interface import get_arg_descriptor_for_expression
         arg_id_to_descr = dict(
-                (arg_id, get_arg_descriptor_for_expression(arg))
+                (arg_id, get_arg_descriptor_for_expression(
+                    self.caller_kernel, arg))
                 for arg_id, arg in six.iteritems(arg_id_to_val))
 
         # specializing the function according to the parameter description
