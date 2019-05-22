@@ -639,7 +639,8 @@ class CallableKernel(InKernelCallable):
                             " '%s' of the function '%s' (in '%s')." % (
                                 arg_id, self.subkernel.name,
                                 caller_kernel.name))
-                if (len(self.subkernel.arg_dict[arg_id].shape) !=
+                if self.subkernel.arg_dict[arg_id].shape and (
+                        len(self.subkernel.arg_dict[arg_id].shape) !=
                         len(descr.shape)):
                     raise LoopyError("Dimension mismatch for argument "
                             " '%s' of the function '%s' (in '%s')." % (
