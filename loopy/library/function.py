@@ -35,7 +35,7 @@ class MakeTupleCallable(ScalarCallable):
         return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
             name_in_target="loopy_make_tuple"), callables_table)
 
-    def with_descrs(self, arg_id_to_descr, callables_table):
+    def with_descrs(self, arg_id_to_descr, callables_table, expr):
         from loopy.kernel.function_interface import ValueArgDescriptor
         new_arg_id_to_descr = dict(((id, ValueArgDescriptor()),
             (-id-1, ValueArgDescriptor())) for id in arg_id_to_descr.keys())

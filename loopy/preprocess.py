@@ -2210,7 +2210,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         new_in_knl_callable, self.callables_table = (
                 in_knl_callable.with_descrs(
                     combined_arg_id_to_descr, self.caller_kernel,
-                    self.callables_table))
+                    self.callables_table, expr))
         self.callables_table, new_func_id = (
                 self.callables_table.with_callable(
                     expr.function.function,
