@@ -261,8 +261,9 @@ class StringifyMapper(StringifyMapperBase):
         return expr.name
 
     def map_sub_array_ref(self, expr, prec):
-        return "SubArrayRef({inames}, ({subscr}))".format(
-                inames=self.rec(expr.swept_inames, prec),
+        return "[{inames}]: {subscr}".format(
+                inames=','.join(self.rec(iname, prec) for iname in
+                    expr.swept_inames),
                 subscr=self.rec(expr.subscript, prec))
 
 

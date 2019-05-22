@@ -590,7 +590,13 @@ class CallableKernel(InKernelCallable):
             if isinstance(descr, ArrayArgDescriptor):
                 if not isinstance(self.subkernel.arg_dict[arg_id], ArrayArg):
                     raise LoopyError("Array passed to a scalar argument "
-                            " '%s' of the function '%s' (in '%s')" % (
+                            " '%s' of the function '%s' (in '%s')." % (
+                                arg_id, self.subkernel.name,
+                                caller_kernel.name))
+                if (len(self.subkernel.arg_dict[arg_id].shape) !=
+                        len(descr.shape)):
+                    raise LoopyError("Dimension mismatch for argument "
+                            " '%s' of the function '%s' (in '%s')." % (
                                 arg_id, self.subkernel.name,
                                 caller_kernel.name))
 
