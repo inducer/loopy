@@ -147,7 +147,6 @@ def get_arg_descriptor_for_expression(kernel, expr):
         aspace = arg.address_space
 
         from loopy.kernel.array import FixedStrideArrayDimTag as DimTag
-        from loopy.symbolic import simplify_using_aff
         sub_dim_tags = []
         sub_shape = []
 
@@ -156,11 +155,8 @@ def get_arg_descriptor_for_expression(kernel, expr):
 
         # FIXME: This will almost always be nonlinear--when does this
         # actually help? Maybe the
-        linearized_index = simplify_using_aff(
-                kernel,
-                sum(
-                    dim_tag.stride*iname for dim_tag, iname in
-                    zip(arg.dim_tags, expr.subscript.index_tuple)))
+        linearized_index = sum(dim_tag.stride*iname for dim_tag, iname in
+                zip(arg.dim_tags, expr.subscript.index_tuple))
 
         strides_as_dict = SweptInameStrideCollector(
                 tuple(iname.name for iname in expr.swept_inames)
@@ -183,13 +179,13 @@ def get_arg_descriptor_for_expression(kernel, expr):
     elif isinstance(expr, Variable):
         arg = kernel.get_var_descriptor(expr.name)
 
-        if isinstance(arg, (TemporaryVariable, ArrayArg)):
+        if isinstance(arg, ValueArg) or (isinstance(arg, TemporaryVariable)
+                and arg.shape == ()):
+            return ValueArgDescriptor()
+        elif isinstance(arg, (ArrayArg, TemporaryVariable)):
             raise LoopyError("may not pass entire array "
                     "'%s' in call statement in kernel '%s'"
                     % (expr.name, kernel.name))
-
-        elif isinstance(arg, ValueArg):
-            return ValueArgDescriptor()
         else:
             raise LoopyError("unsupported argument type "
                     "'%s' of '%s' in call statement"
@@ -672,25 +668,33 @@ class CallableKernel(InKernelCallable):
     def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table, expr):
         # tune the subkernel so that we have the matching shapes and
         # dim_tags
+        print('Started arg_descr_inferring for {0}'.format(self.subkernel.name))
 
         # {{{ map the arg_descrs so that all the variables are from the callees
         # perspective
+
+        domain_dependent_vars = frozenset().union(
+                *(frozenset(dom.get_var_names(1)) for dom in
+                    self.subkernel.domains))
 
         # FIXME: This is ill-formed, because par can be an expression, e.g.
         # 2*i+2 or 2*(i+1). A key feature of expression is that structural
         # equality and semantic equality are not the same, so even if the
         # SubstitutionMapper allowed non-variables, it would have to solve the
         # (considerable) problem of expression equivalence.
+
+        import numbers
         substs = {}
         assumptions = {}
         for arg, par in zip(self.subkernel.args, expr.parameters):
-            if isinstance(arg, ValueArg) and isinstance(par, Variable):
-                # FIXME: This would not deal with other expression, instead
-                # do a linear solve like the host <-> kernel interface
-                if par in substs:
-                    assumptions[arg.name] = substs[par].name
-                else:
-                    substs[par] = Variable(arg.name)
+            if isinstance(arg, ValueArg) and arg.name in domain_dependent_vars:
+                if isinstance(par, Variable):
+                    if par in substs:
+                        assumptions[arg.name] = substs[par].name
+                    else:
+                        substs[par] = Variable(arg.name)
+                elif isinstance(par, numbers.Number):
+                    assumptions[arg.name] = par
 
         def subst_func(expr):
             if expr in substs:
@@ -764,8 +768,8 @@ class CallableKernel(InKernelCallable):
                     callables_table))
 
         if assumptions:
-            args_added_knl = assume(args_added_knl, 'and '.join([
-                '{0} = {1}'.format(key, val) for key, val in assumptions.items()]))
+            args_added_knl = assume(args_added_knl, ' and '.join([
+                '{0}={1}'.format(key, val) for key, val in assumptions.items()]))
 
         return (
                 self.copy(
