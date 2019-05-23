@@ -34,7 +34,7 @@ from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
         Assignment, CInstruction, _DataObliviousInstruction)
 from loopy.symbolic import IdentityMapper, SubstitutionMapper, CombineMapper
 from loopy.isl_helpers import simplify_via_aff
-from loopy.kernel.function_interface import (get_kw_pos_association,
+from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
 from loopy.program import Program, ResolvedFunctionMarker
 from loopy.symbolic import SubArrayRef
@@ -616,10 +616,10 @@ class DimChanger(IdentityMapper):
 def _match_caller_callee_argument_dimension_for_single_kernel(
         caller_knl, callee_knl):
     """
-    Returns a copy of *caller_knl* with the instance of
-    :class:`loopy.kernel.function_interface.CallableKernel` addressed by
-    *callee_function_name* in the *caller_knl* aligned with the argument
-    dimesnsions required by *caller_knl*.
+    :returns: a copy of *caller_knl* with the instance of
+        :class:`loopy.kernel.function_interface.CallableKernel` addressed by
+        *callee_function_name* in the *caller_knl* aligned with the argument
+        dimensions required by *caller_knl*.
     """
     for insn in caller_knl.instructions:
         if not isinstance(insn, CallInstruction) or (
@@ -628,14 +628,6 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
             # Call to a callable kernel can only occur through a
             # CallInstruction.
             continue
-        # getting the caller->callee arg association
-
-        parameters = insn.expression.parameters[:]
-        kw_parameters = {}
-        if isinstance(insn.expression, CallWithKwargs):
-            kw_parameters = insn.expression.kw_parameters
-
-        assignees = insn.assignees
 
         def _shape_1_if_empty(shape):
             assert isinstance(shape, tuple)
@@ -644,34 +636,18 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
             else:
                 return shape
 
-        parameter_shapes = []
-        for par in parameters:
-            if isinstance(par, SubArrayRef):
-                parameter_shapes.append(
-                        _shape_1_if_empty(
-                            par.get_array_arg_descriptor(caller_knl).shape))
-            else:
-                parameter_shapes.append((1, ))
+        from loopy.kernel.function_interface import (
+                ArrayArgDescriptor, get_arg_descriptor_for_expression)
+        arg_id_to_shape = {}
+        for arg_id, arg in six.iteritems(insn.arg_id_to_val()):
+            arg_descr = get_arg_descriptor_for_expression(caller_knl, arg)
+            if isinstance(arg_descr, ArrayArgDescriptor):
+                arg_id_to_shape[arg_id] = _shape_1_if_empty(arg_descr)
 
-        kw_to_pos, pos_to_kw = get_kw_pos_association(callee_knl)
-        for i in range(len(parameters), len(parameters)+len(kw_parameters)):
-            parameter_shapes.append(_shape_1_if_empty(kw_parameters[pos_to_kw[i]])
-                    .get_array_arg_descriptor(caller_knl).shape)
-
-        # inserting the assignees at the required positions.
-        assignee_write_count = -1
-        for i, arg in enumerate(callee_knl.args):
-            if arg.is_output_only:
-                assignee = assignees[-assignee_write_count-1]
-                parameter_shapes.insert(i, _shape_1_if_empty(assignee
-                        .get_array_arg_descriptor(caller_knl).shape))
-                assignee_write_count -= 1
-
-        callee_arg_to_desired_dim_tag = dict(zip([arg.name for arg in
-            callee_knl.args], parameter_shapes))
         dim_changer = DimChanger(
                 callee_knl.arg_dict,
-                callee_arg_to_desired_dim_tag)
+                arg_id_to_shape)
+
         new_callee_insns = []
         for callee_insn in callee_knl.instructions:
             if isinstance(callee_insn, MultiAssignmentBase):
@@ -686,7 +662,7 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
                 raise NotImplementedError("Unknown instruction %s." %
                         type(insn))
 
-        # subkernel with instructions adjusted according to the new dimensions.
+        # subkernel with instructions adjusted according to the new dimensions
         new_callee_knl = callee_knl.copy(instructions=new_callee_insns)
 
         return new_callee_knl
