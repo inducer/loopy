@@ -59,6 +59,7 @@ def potential_loop_nest_map(kernel):
 
 @iterate_over_kernels_if_given_program
 def fuse_loop_domains(kernel):
+    # FIXME: This should be moved to loopy.transforms.iname
     from loopy.kernel.tools import is_domain_dependent_on_inames
 
     while True:
