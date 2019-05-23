@@ -522,6 +522,38 @@ def test_array_inputs_to_callee_kernels(ctx_factory, inline):
         np.linalg.norm(2*x+3*y))) < 1e-15
 
 
+def test_stride_depending_on_args():
+    twice = lp.make_function(
+            "{[i, j]: 0<=i, j < n}",
+            """
+            b[i, j] = 2*a[i, j]
+            """, [lp.ValueArg('n'), lp.GlobalArg('a'), lp.GlobalArg('b')],
+            name='twice')
+
+    thrice = lp.make_function(
+            "{[i, j]: 0<=i, j < n}",
+            """
+            b[i, j] = 3*a[i, j]
+            """, [lp.ValueArg('n'), lp.GlobalArg('a', shape=lp.auto),
+                lp.GlobalArg('b', shape=lp.auto)],
+            name='thrice')
+
+    prog = lp.make_kernel(
+            "{[i0,i1,i2,i3,i4,i5,i6,i7]: 0<=i0, i1, i2, i3, i4, i5, i6, i7< N}",
+            """
+            [i0, i1]: y[i0, i1] = twice(N, [i2, i3]: x[2*i2, i3])
+            [i4, i5]: z[i4, i5] = thrice(N, [i6, i7]: x[2*i6+1, i7])
+            """, [
+                lp.ValueArg('N', dtype=np.int32), lp.GlobalArg('x',
+                    shape=lp.auto, dtype=np.float64), ...])
+
+    prog = lp.register_callable_kernel(prog, twice)
+    prog = lp.register_callable_kernel(prog, thrice)
+
+    # FIXME: actually test something
+    print(lp.generate_code_v2(prog).device_code())
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

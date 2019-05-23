@@ -31,6 +31,8 @@ from loopy.diagnostic import LoopyError
 from loopy.tools import update_persistent_hash
 from loopy.kernel import LoopKernel
 from loopy.kernel.data import ValueArg, ArrayArg
+from loopy.symbolic import (SubstitutionMapper, DependencyMapper)
+from pymbolic.primitives import Variable
 
 __doc__ = """
 
@@ -50,6 +52,12 @@ __doc__ = """
 
 class ValueArgDescriptor(ImmutableRecord):
     hash_fields = ()
+
+    def map_expr(self, subst_mapper):
+        return self.copy()
+
+    def depends_on(self):
+        return frozenset()
 
     update_persistent_hash = update_persistent_hash
 
@@ -100,6 +108,18 @@ class ArrayArgDescriptor(ImmutableRecord):
             "shape",
             "address_space",
             "dim_tags")
+
+    def map_expr(self, subst_mapper):
+        new_shape = tuple(subst_mapper(axis_len) for axis_len in self.shape)
+        new_dim_tags = tuple(dim_tag.map_expr(subst_mapper) for dim_tag in
+                self.dim_tags)
+        return self.copy(shape=new_shape, dim_tags=new_dim_tags)
+
+    def depends_on(self):
+        result = DependencyMapper(composite_leaves=False)(self.shape) | (
+                DependencyMapper(composite_leaves=False)(tuple(dim_tag.stride for
+                    dim_tag in self.dim_tags)))
+        return frozenset(var.name for var in result)
 
     update_persistent_hash = update_persistent_hash
 
@@ -314,7 +334,7 @@ class InKernelCallable(ImmutableRecord):
 
         raise NotImplementedError()
 
-    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table):
+    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table, expr):
         """
         :arg arg_id_to_descr: a mapping from argument identifiers
             (integers for positional arguments, names for keyword
@@ -447,7 +467,7 @@ class ScalarCallable(InKernelCallable):
         raise LoopyError("No type inference information present for "
                 "the function %s." % (self.name))
 
-    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table):
+    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table, expr):
 
         arg_id_to_descr[-1] = ValueArgDescriptor()
         return (
@@ -648,10 +668,36 @@ class CallableKernel(InKernelCallable):
         return self.copy(subkernel=specialized_kernel,
                 arg_id_to_dtype=new_arg_id_to_dtype), callables_table
 
-    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table):
-
+    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table, expr):
         # tune the subkernel so that we have the matching shapes and
         # dim_tags
+
+        # {{{ map the arg_descrs so that all the variables are from the callees
+        # perspective
+
+        substs = {}
+        for arg, par in zip(self.subkernel.args, expr.parameters):
+            if isinstance(arg, ValueArg):
+                substs[par] = Variable(arg.name)
+
+        def subst_func(expr):
+            if expr in substs:
+                return substs[expr]
+            else:
+                return expr
+
+        subst_mapper = SubstitutionMapper(subst_func)
+
+        arg_id_to_descr = dict((arg_id, descr.map_expr(subst_mapper)) for
+                arg_id, descr in arg_id_to_descr.items())
+
+        # }}}
+
+        dependents = frozenset().union(*(descr.depends_on() for descr in
+            arg_id_to_descr.values()))
+        # the strides should be dependent only on variables known to the callee
+        assert dependents <= (frozenset(self.subkernel.arg_dict.keys()) |
+                frozenset(self.subkernel.temporary_variables.keys()))
 
         new_args = self.subkernel.args[:]
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
@@ -664,7 +710,14 @@ class CallableKernel(InKernelCallable):
             if isinstance(descr, ArrayArgDescriptor):
                 if not isinstance(self.subkernel.arg_dict[arg_id], ArrayArg):
                     raise LoopyError("Array passed to a scalar argument "
-                            " '%s' of the function '%s' (in '%s')" % (
+                            " '%s' of the function '%s' (in '%s')." % (
+                                arg_id, self.subkernel.name,
+                                caller_kernel.name))
+                if self.subkernel.arg_dict[arg_id].shape and (
+                        len(self.subkernel.arg_dict[arg_id].shape) !=
+                        len(descr.shape)):
+                    raise LoopyError("Dimension mismatch for argument "
+                            " '%s' of the function '%s' (in '%s')." % (
                                 arg_id, self.subkernel.name,
                                 caller_kernel.name))
 
