@@ -519,11 +519,6 @@ class F2LoopyTranslator(FTreeWalkerBase):
     def map_ArithmeticIf(self, node):
         raise NotImplementedError("arithmetic-if")
 
-    def map_If(self, node):
-        raise NotImplementedError("if")
-        # node.expr
-        # node.content[0]
-
     def realize_conditional(self, node, context_cond=None):
         scope = self.scope_stack[-1]
 
@@ -549,6 +544,15 @@ class F2LoopyTranslator(FTreeWalkerBase):
             self.conditions_data.append((None, cond_var))
 
         self.conditions.append(cond_expr)
+
+    def map_If(self, node):
+        self.realize_conditional(node, None)
+
+        for c in node.content:
+            self.rec(c)
+
+        self.conditions_data.pop()
+        self.conditions.pop()
 
     def map_IfThen(self, node):
         self.block_nest.append("if")
