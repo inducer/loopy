@@ -675,6 +675,11 @@ class CallableKernel(InKernelCallable):
         # {{{ map the arg_descrs so that all the variables are from the callees
         # perspective
 
+        # FIXME: This is ill-formed, because par can be an expression, e.g.
+        # 2*i+2 or 2*(i+1). A key feature of expression is that structural
+        # equality and semantic equality are not the same, so even if the
+        # SubstitutionMapper allowed non-variables, it would have to solve the
+        # (considerable) problem of expression equivalence.
         substs = {}
         for arg, par in zip(self.subkernel.args, expr.parameters):
             if isinstance(arg, ValueArg):
