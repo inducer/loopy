@@ -32,7 +32,8 @@ def potential_loop_nest_map(kernel):
     """Returns a dictionary mapping inames to other inames that *could*
     be nested around them.
 
-    :seealso: :func:`loopy.schedule.loop_nest_map`
+    * :seealso: :func:`loopy.schedule.loop_nest_map`
+    * :seealso: :func:`loopy.schedule.find_loop_nest_around_map`
     """
 
     result = {}
@@ -65,6 +66,8 @@ def fuse_loop_domains(kernel):
         parents_per_domain = kernel.parents_per_domain()
         all_parents_per_domain = kernel.all_parents_per_domain()
 
+        iname_to_insns = kernel.iname_to_insns()
+
         new_domains = None
 
         for inner_iname, outer_inames in six.iteritems(lnm):
@@ -76,6 +79,12 @@ def fuse_loop_domains(kernel):
 
                 if inner_domain_idx == outer_domain_idx:
                     break
+
+                if iname_to_insns[inner_iname] != iname_to_insns[outer_iname]:
+                    # The two inames are imperfectly nested. Domain fusion
+                    # might be invalid when the inner loop is empty, leading to
+                    # the outer loop also being empty.
+                    continue
 
                 if (
                         outer_domain_idx in all_parents_per_domain[inner_domain_idx]

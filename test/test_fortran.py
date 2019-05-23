@@ -517,12 +517,32 @@ def test_fortran_subroutines(ctx_factory):
 
           call twice(n, a(1:n, i))
           call twice(n, a(i, 1:n))
-
-
         end subroutine
         """
     prg = lp.parse_fortran(fortran_src)
     print(lp.generate_code_v2(prg).device_code())
+
+
+def test_domain_fusion_imperfectly_nested():
+    fortran_src = """
+        subroutine imperfect(n, m, a, b)
+            implicit none
+            integer i, j, n, m
+            real a(n), b(n,n)
+
+            do i=1, n
+                a(i) = i
+                do j=1, m
+                    b(i,j) = i*j
+                end do
+            end do
+        end subroutine
+        """
+
+    prg = lp.parse_fortran(fortran_src)
+    # If n > 0 and m == 0, a single domain would be empty,
+    # leading (incorrectly) to no assignments to 'a'.
+    assert len(prg["imperfect"].subkernel.domains) > 1
 
 
 if __name__ == "__main__":
