@@ -545,10 +545,33 @@ def test_stride_depending_on_args():
             [i4, i5]: z[i4, i5] = thrice(N, [i6, i7]: x[2*i6+1, i7])
             """, [
                 lp.ValueArg('N', dtype=np.int32), lp.GlobalArg('x',
-                    shape=lp.auto, dtype=np.float64), ...])
+                    shape=lp.auto, dtype=np.float64), '...'])
 
     prog = lp.register_callable_kernel(prog, twice)
     prog = lp.register_callable_kernel(prog, thrice)
+
+    # FIXME: actually test something
+    print(lp.generate_code_v2(prog).device_code())
+
+
+def test_unknown_stride_to_callee():
+    twice = lp.make_function(
+            "{[i, j]: 0<=i, j < n}",
+            """
+            b[i, j] = 2*a[i, j]
+            """, [lp.ValueArg('n'), lp.GlobalArg('a'), lp.GlobalArg('b')],
+            name='twice')
+
+    prog = lp.make_kernel(
+            "{[i,i0,i1,i2,i3]: 0<=i0, i1, i2, i3< N and 0<=i<Nvar}",
+            """
+            [i0, i1]: y[i0, i1, i] = twice(N, [i2, i3]: x[2*i2, i3, i])
+            """, [
+                lp.ValueArg('N', dtype=np.int32), lp.ValueArg('Nvar',
+                    dtype=np.int32), lp.GlobalArg('x', shape=lp.auto,
+                        dtype=np.float64), ...])
+
+    prog = lp.register_callable_kernel(prog, twice)
 
     # FIXME: actually test something
     print(lp.generate_code_v2(prog).device_code())

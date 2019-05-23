@@ -461,7 +461,7 @@ class ReductionCallable(ScalarCallable):
         new_arg_id_to_descr[-1] = ValueArgDescriptor()
         return (
                 self.copy(arg_id_to_descr=arg_id_to_descr),
-                callables_table)
+                callables_table, ())
 
     def generate_preambles(self, target):
         if isinstance(self.name, ArgExtOp):

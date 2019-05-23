@@ -42,7 +42,7 @@ class MakeTupleCallable(ScalarCallable):
 
         return (
                 self.copy(arg_id_to_descr=new_arg_id_to_descr),
-                callables_table)
+                callables_table, ())
 
 
 class IndexOfCallable(ScalarCallable):
