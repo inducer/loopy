@@ -127,7 +127,8 @@ class ArrayArgDescriptor(ImmutableRecord):
 def get_arg_descriptor_for_expression(kernel, expr):
     """
     :returns: a :class:`ArrayArgDescriptor` or a :class:`ValueArgDescriptor`
-        describing the argument expression *expr* in *kernel*.
+        describing the argument expression *expr* which occurs
+        in a call in the code of *kernel*.
     """
     from pymbolic.primitives import Variable
     from loopy.symbolic import (SubArrayRef, pw_aff_to_expr,
@@ -183,10 +184,10 @@ def get_arg_descriptor_for_expression(kernel, expr):
         arg = kernel.get_var_descriptor(expr.name)
 
         if isinstance(arg, (TemporaryVariable, ArrayArg)):
-            return ArrayArgDescriptor(
-                    address_space=arg.aspace,
-                    dim_tags=arg.dim_tags,
-                    shape=arg.shape)
+            raise LoopyError("may not pass entire array "
+                    "'%s' in call statement in kernel '%s'"
+                    % (expr.name, kernel.name))
+
         elif isinstance(arg, ValueArg):
             return ValueArgDescriptor()
         else:
