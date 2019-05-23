@@ -2169,48 +2169,35 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
 
     def map_call(self, expr, expn_state, **kwargs):
         from pymbolic.primitives import Call, CallWithKwargs
-        from loopy.kernel.function_interface import ValueArgDescriptor
-        from loopy.symbolic import ResolvedFunction, SubArrayRef
+        from loopy.symbolic import ResolvedFunction
 
         if not isinstance(expr.function, ResolvedFunction):
             # ignore if the call is not to a ResolvedFunction
             return super(ArgDescrInferenceMapper, self).map_call(expr, expn_state)
 
-        if isinstance(expr, Call):
-            kw_parameters = {}
-        else:
-            assert isinstance(expr, CallWithKwargs)
-            kw_parameters = expr.kw_parameters
-
-        # descriptors for the args and kwargs of the Call
-        arg_id_to_descr = dict((i, par.get_array_arg_descriptor(self.caller_kernel))
-                if isinstance(par, SubArrayRef) else (i, ValueArgDescriptor())
-                for i, par in tuple(enumerate(expr.parameters)) +
-                tuple(kw_parameters.items()))
-
-        assignee_id_to_descr = {}
+        arg_id_to_val = dict(enumerate(expr.parameters))
+        if isinstance(expr, CallWithKwargs):
+            arg_id_to_val.update(expr.kw_parameters)
 
         if 'assignees' in kwargs:
             # If supplied with assignees then this is a CallInstruction
             assignees = kwargs['assignees']
-            assert isinstance(assignees, tuple)
-            for i, par in enumerate(assignees):
-                if isinstance(par, SubArrayRef):
-                    assignee_id_to_descr[-i-1] = (
-                            par.get_array_arg_descriptor(self.caller_kernel))
-                else:
-                    assignee_id_to_descr[-i-1] = ValueArgDescriptor()
+            for i, arg in enumerate(assignees):
+                arg_id_to_val[-i-1] = arg
 
-        # gathering all the descriptors
-        combined_arg_id_to_descr = arg_id_to_descr.copy()
-        combined_arg_id_to_descr.update(assignee_id_to_descr)
+        from loopy.kernel.function_interface import get_arg_descriptor_for_expression
+        arg_id_to_descr = dict(
+                (arg_id, get_arg_descriptor_for_expression(
+                    self.caller_kernel, arg))
+                for arg_id, arg in six.iteritems(arg_id_to_val))
 
         # specializing the function according to the parameter description
         in_knl_callable = self.callables_table[expr.function.name]
         new_in_knl_callable, self.callables_table = (
                 in_knl_callable.with_descrs(
-                    combined_arg_id_to_descr, self.caller_kernel,
+                    arg_id_to_descr, self.caller_kernel,
                     self.callables_table, expr))
+
         self.callables_table, new_func_id = (
                 self.callables_table.with_callable(
                     expr.function.function,
@@ -2229,7 +2216,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
                         for child in expr.parameters),
                     dict(
                         (key, self.rec(val, expn_state))
-                        for key, val in six.iteritems(kw_parameters))
+                        for key, val in six.iteritems(expr.kw_parameters))
                     )
 
     map_call_with_kwargs = map_call
