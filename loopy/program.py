@@ -196,7 +196,7 @@ def initialize_callables_table_from_kernel(kernel):
     return callables_table
 
 
-# {{{ program definition
+# {{{ program
 
 class Program(ImmutableRecord):
     """
@@ -230,6 +230,9 @@ class Program(ImmutableRecord):
 
     .. automethod:: __init__
     .. automethod:: with_root_kernel
+    .. method:: __getitem__(name)
+
+        Look up the resolved callable with identifier *name*.
     """
     def __init__(self,
             name,
@@ -362,6 +365,9 @@ class Program(ImmutableRecord):
         return self.copy(
                 callables_table=self.callables_table.copy(
                     resolved_functions=new_resolved_functions))
+
+    def __getitem__(self, name):
+        return self.callables_table[name]
 
     def __call__(self, *args, **kwargs):
         key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
