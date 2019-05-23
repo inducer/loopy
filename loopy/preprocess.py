@@ -2193,7 +2193,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
 
         # specializing the function according to the parameter description
         in_knl_callable = self.callables_table[expr.function.name]
-        new_in_knl_callable, self.callables_table = (
+        new_in_knl_callable, self.callables_table, new_vars = (
                 in_knl_callable.with_descrs(
                     arg_id_to_descr, self.caller_kernel,
                     self.callables_table, expr))
@@ -2207,8 +2207,9 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
             return Call(
                     ResolvedFunction(new_func_id),
                     tuple(self.rec(child, expn_state)
-                    for child in expr.parameters))
+                    for child in expr.parameters)+new_vars)
         else:
+            # FIXME: Order for vars when kwards are present?
             assert isinstance(expr, CallWithKwargs)
             return CallWithKwargs(
                     ResolvedFunction(new_func_id),

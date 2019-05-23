@@ -473,7 +473,7 @@ class ScalarCallable(InKernelCallable):
         arg_id_to_descr[-1] = ValueArgDescriptor()
         return (
                 self.copy(arg_id_to_descr=arg_id_to_descr),
-                callables_table)
+                callables_table, ())
 
     def with_hw_axes_sizes(self, global_size, local_size):
         return self.copy()
@@ -682,9 +682,15 @@ class CallableKernel(InKernelCallable):
         # SubstitutionMapper allowed non-variables, it would have to solve the
         # (considerable) problem of expression equivalence.
         substs = {}
+        assumptions = {}
         for arg, par in zip(self.subkernel.args, expr.parameters):
-            if isinstance(arg, ValueArg):
-                substs[par] = Variable(arg.name)
+            if isinstance(arg, ValueArg) and isinstance(par, Variable):
+                # FIXME: This would not deal with other expression, instead
+                # do a linear solve like the host <-> kernel interface
+                if par in substs:
+                    assumptions[arg.name] = substs[par].name
+                else:
+                    substs[par] = Variable(arg.name)
 
         def subst_func(expr):
             if expr in substs:
@@ -701,9 +707,9 @@ class CallableKernel(InKernelCallable):
 
         dependents = frozenset().union(*(descr.depends_on() for descr in
             arg_id_to_descr.values()))
-        # the strides should be dependent only on variables known to the callee
-        assert dependents <= (frozenset(self.subkernel.arg_dict.keys()) |
-                frozenset(self.subkernel.temporary_variables.keys()))
+        unknown_deps = dependents - self.subkernel.all_variable_names()
+        # FIXME: Need to make sure that we make the name of the variables
+        # unique, and then run a subst_mapper
 
         new_args = self.subkernel.args[:]
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
@@ -746,16 +752,26 @@ class CallableKernel(InKernelCallable):
                         type(descr))
 
         descriptor_specialized_knl = self.subkernel.copy(args=new_args)
+        # add the variables on which the strides/shapes depend but not provided
+        # as arguments
+        args_added_knl = descriptor_specialized_knl.copy(
+                args=descriptor_specialized_knl.args
+                + [ValueArg(dep) for dep in unknown_deps])
         from loopy.preprocess import traverse_to_infer_arg_descr
-        descriptor_specialized_knl, callables_table = (
-                traverse_to_infer_arg_descr(descriptor_specialized_knl,
+        from loopy.transform.parameter import assume
+        args_added_knl, callables_table = (
+                traverse_to_infer_arg_descr(args_added_knl,
                     callables_table))
+
+        if assumptions:
+            args_added_knl = assume(args_added_knl, 'and '.join([
+                '{0} = {1}'.format(key, val) for key, val in assumptions.items()]))
 
         return (
                 self.copy(
-                    subkernel=descriptor_specialized_knl,
+                    subkernel=args_added_knl,
                     arg_id_to_descr=arg_id_to_descr),
-                callables_table)
+                callables_table, tuple(Variable(dep) for dep in unknown_deps))
 
     def with_packing_for_args(self):
         from loopy.kernel.data import AddressSpace
