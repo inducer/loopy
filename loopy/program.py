@@ -362,7 +362,8 @@ class Program(ImmutableRecord):
     def with_kernel(self, kernel):
         # FIXME: Currently only replaces kernel. Should also work for adding.
         # FIXME: Document
-        new_in_knl_callable = self.callables_table[kernel.name].copy(subkernel=kernel)
+        new_in_knl_callable = self.callables_table[kernel.name].copy(
+                subkernel=kernel)
         new_resolved_functions = self.callables_table.resolved_functions.copy()
         new_resolved_functions[kernel.name] = new_in_knl_callable
         return self.copy(
@@ -599,9 +600,6 @@ class CallablesTable(ImmutableRecord):
             history = dict((func_id, frozenset([func_id])) for func_id in
                     resolved_functions)
 
-        assert all(call.subkernel.name == name for name, call in
-                resolved_functions.items() if isinstance(call, CallableKernel))
-
         super(CallablesTable, self).__init__(
                 resolved_functions=resolved_functions,
                 history=history,
@@ -829,10 +827,6 @@ class CallablesTable(ImmutableRecord):
                     unique_function_identifier = (
                             next_indexed_function_identifier(
                                 unique_function_identifier))
-        if isinstance(in_kernel_callable, CallableKernel):
-            in_kernel_callable = (in_kernel_callable.copy(
-                subkernel=in_kernel_callable.subkernel.copy(
-                    name=unique_function_identifier)))
 
         updated_resolved_functions = self.resolved_functions.copy()
         updated_resolved_functions[unique_function_identifier] = (
@@ -902,6 +896,10 @@ class CallablesTable(ImmutableRecord):
                         in_knl_callable)
                 new_history[new_func_id] = self.history[func_id]
             else:
+                if isinstance(in_knl_callable, CallableKernel):
+                    in_knl_callable = in_knl_callable.copy(
+                        subkernel=in_knl_callable.subkernel.copy(
+                            name=func_id))
                 new_resolved_functions[func_id] = in_knl_callable
                 new_history[func_id] = self.history[func_id]
 
