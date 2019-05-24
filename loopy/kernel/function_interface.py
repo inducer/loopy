@@ -725,8 +725,8 @@ class CallableKernel(InKernelCallable):
 
             if isinstance(descr, ArrayArgDescriptor):
                 if not isinstance(self.subkernel.arg_dict[arg_id], ArrayArg):
-                    raise LoopyError("Array passed to a scalar argument "
-                            " '%s' of the function '%s' (in '%s')." % (
+                    raise LoopyError("Array passed to scalar argument "
+                            "'%s' of the function '%s' (in '%s')." % (
                                 arg_id, self.subkernel.name,
                                 caller_kernel.name))
                 if self.subkernel.arg_dict[arg_id].shape and (
@@ -746,8 +746,8 @@ class CallableKernel(InKernelCallable):
                         new_args]
             elif isinstance(descr, ValueArgDescriptor):
                 if not isinstance(self.subkernel.arg_dict[arg_id], ValueArg):
-                    raise LoopyError("Scalar passed to an array argument "
-                            " '%s' of the callable '%s' (in '%s')" % (
+                    raise LoopyError("Scalar passed to array argument "
+                            "'%s' of the callable '%s' (in '%s')" % (
                                 arg_id, self.subkernel.name,
                                 caller_kernel.name))
             else:
