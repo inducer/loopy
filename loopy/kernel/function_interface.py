@@ -165,7 +165,8 @@ def get_arg_descriptor_for_expression(kernel, expr):
                 DimTag(strides_as_dict[iname]) for iname in expr.swept_inames)
         sub_shape = tuple(
                 pw_aff_to_expr(
-                    kernel.get_iname_bounds(iname.name).upper_bound_pw_aff)+1
+                    kernel.get_iname_bounds(iname.name).upper_bound_pw_aff
+                    - kernel.get_iname_bounds(iname.name).lower_bound_pw_aff)+1
                 for iname in expr.swept_inames)
         if expr.swept_inames == ():
             sub_shape = (1, )
