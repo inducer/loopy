@@ -669,7 +669,6 @@ class CallableKernel(InKernelCallable):
     def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table, expr):
         # tune the subkernel so that we have the matching shapes and
         # dim_tags
-        print('Started arg_descr_inferring for {0}'.format(self.subkernel.name))
 
         # {{{ map the arg_descrs so that all the variables are from the callees
         # perspective
