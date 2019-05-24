@@ -356,18 +356,21 @@ class Program(ImmutableRecord):
         """:returns: a copy of *self* with the topmost level kernel as
         *root_kernel*.
         """
-        new_in_knl_callable = self.callables_table[
-                self.name].copy(subkernel=root_kernel)
-        new_resolved_functions = (
-                self.callables_table.resolved_functions.copy())
-        new_resolved_functions[self.name] = new_in_knl_callable
+        assert self.name == root_kernel.name
+        return self.with_kernel(root_kernel)
 
+    def with_kernel(self, kernel):
+        # FIXME: Currently only replaces kernel. Should also work for adding.
+        # FIXME: Document
+        new_in_knl_callable = self.callables_table[kernel.name].copy(subkernel=kernel)
+        new_resolved_functions = self.callables_table.resolved_functions.copy()
+        new_resolved_functions[kernel.name] = new_in_knl_callable
         return self.copy(
                 callables_table=self.callables_table.copy(
                     resolved_functions=new_resolved_functions))
 
     def __getitem__(self, name):
-        return self.callables_table[name]
+        return self.callables_table[name].subkernel
 
     def __call__(self, *args, **kwargs):
         key = self.target.get_kernel_executor_cache_key(*args, **kwargs)

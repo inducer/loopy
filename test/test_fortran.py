@@ -542,7 +542,7 @@ def test_domain_fusion_imperfectly_nested():
     prg = lp.parse_fortran(fortran_src)
     # If n > 0 and m == 0, a single domain would be empty,
     # leading (incorrectly) to no assignments to 'a'.
-    assert len(prg["imperfect"].subkernel.domains) > 1
+    assert len(prg["imperfect"].domains) > 1
 
 
 if __name__ == "__main__":
