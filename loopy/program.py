@@ -370,8 +370,15 @@ class Program(ImmutableRecord):
                 callables_table=self.callables_table.copy(
                     resolved_functions=new_resolved_functions))
 
+    def __iter__(self):
+        return six.iterkeys(self.callables_table.resolved_functions)
+
     def __getitem__(self, name):
-        return self.callables_table[name].subkernel
+        result = self.callables_table[name]
+        if isinstance(result, CallableKernel):
+            return result.subkernel
+        else:
+            return result
 
     def __call__(self, *args, **kwargs):
         key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
