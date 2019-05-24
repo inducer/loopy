@@ -808,8 +808,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     seq_dependencies=seq_dependencies,
                     )
 
-            from loopy.loop import fuse_loop_domains
-            knl = fuse_loop_domains(knl)
+            from loopy.loop import merge_loop_domains
+            knl = merge_loop_domains(knl)
             knl = lp.fold_constants(knl)
 
             result.append(knl)

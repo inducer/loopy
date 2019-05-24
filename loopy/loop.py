@@ -58,7 +58,7 @@ def potential_loop_nest_map(kernel):
 
 
 @iterate_over_kernels_if_given_program
-def fuse_loop_domains(kernel):
+def merge_loop_domains(kernel):
     # FIXME: This should be moved to loopy.transforms.iname
     from loopy.kernel.tools import is_domain_dependent_on_inames
 
@@ -73,7 +73,7 @@ def fuse_loop_domains(kernel):
 
         for inner_iname, outer_inames in six.iteritems(lnm):
             for outer_iname in outer_inames:
-                # {{{ check if it's safe to fuse
+                # {{{ check if it's safe to merge
 
                 inner_domain_idx = kernel.get_home_domain_index(inner_iname)
                 outer_domain_idx = kernel.get_home_domain_index(outer_iname)
@@ -95,7 +95,7 @@ def fuse_loop_domains(kernel):
                         and not
                         outer_domain_idx == parents_per_domain[inner_domain_idx]):
                     # Outer domain is not a direct parent of the inner
-                    # domain. Unable to fuse.
+                    # domain. Unable to merge.
                     continue
 
                 outer_dom = kernel.domains[outer_domain_idx]
@@ -105,7 +105,7 @@ def fuse_loop_domains(kernel):
                 if is_domain_dependent_on_inames(kernel, inner_domain_idx,
                         outer_inames):
                     # Bounds of inner domain depend on outer domain.
-                    # Unable to fuse.
+                    # Unable to merge.
                     continue
 
                 # }}}
