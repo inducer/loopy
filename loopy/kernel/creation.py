@@ -1875,25 +1875,25 @@ class SliceToInameReplacer(IdentityMapper):
 
         An instance of :class:`loopy.LoopKernel`
 
-    .. attribute:: iname_domains
+    .. attribute:: subarray_ref_bounds
 
-        An instance of :class:`dict` to store the slices enountered in the
+        A :class:`list` (one entry for each :class:`SubArrayRef` to be created)
+        of :class:`dict` instances to store the slices enountered in the
         expressions as a mapping from ``iname`` to a tuple of ``(start, stop,
-        step)``, which describes the affine constraint imposed on the ``iname``
-        by the corresponding slice notation its intended to replace.
-
-    :Example:
-
-        ``x[:, i, :, j]`` would be mapped to ``[islice_0, islice_1]:
-        x[islice_0, i, islice_1, j]``
-
+        step)``, which describes the boxy (i.e. affine) constraints imposed on
+        the ``iname`` by the corresponding slice notation its intended to
+        replace.
     """
     def __init__(self, knl, var_name_gen):
         self.var_name_gen = var_name_gen
         self.knl = knl
-        self.iname_domains = {}
+
+        self.subarray_ref_bounds = []
 
     def map_subscript(self, expr):
+        subscript_iname_bounds = {}
+        self.subarray_ref_bounds.append(subscript_iname_bounds)
+
         updated_index = []
         swept_inames = []
         for i, index in enumerate(expr.index_tuple):
@@ -1910,7 +1910,7 @@ class SliceToInameReplacer(IdentityMapper):
                             "-- maybe add the shape for the sliced argument.")
                 start, stop, step = get_slice_params(
                         index, domain_length)
-                self.iname_domains[unique_var_name] = (start, stop, step)
+                subscript_iname_bounds[unique_var_name] = (start, stop, step)
 
                 if step > 0:
                     updated_index.append(step*Variable(unique_var_name))
@@ -1950,35 +1950,38 @@ class SliceToInameReplacer(IdentityMapper):
                 tuple(self.rec(_convert_array_to_slices(par)) for par in
                     expr.parameters))
 
+    # FIXME: Missing map_call_with_kwargs
+
     def get_iname_domain_as_isl_set(self):
         """
         Returns the extra domain constraints imposed by the slice inames,
         recorded in :attr:`iname_domains`.
         """
-        if not self.iname_domains:
-            return None
+        subarray_ref_domains = []
+        for sar_bounds in self.subarray_ref_bounds:
+            ctx = self.knl.isl_context
+            space = isl.Space.create_from_names(ctx,
+                    set=list(sar_bounds.keys()))
+            from loopy.symbolic import DependencyMapper
+            args_as_params_for_domains = set()
+            for _, (start, stop, step) in sar_bounds.items():
+                args_as_params_for_domains |= DependencyMapper()(start)
+                args_as_params_for_domains |= DependencyMapper()(stop)
+                args_as_params_for_domains |= DependencyMapper()(step)
 
-        ctx = self.knl.isl_context
-        space = isl.Space.create_from_names(ctx,
-                set=list(self.iname_domains.keys()))
-        from loopy.symbolic import DependencyMapper
-        args_as_params_for_domains = set()
-        for _, (start, stop, step) in self.iname_domains.items():
-            args_as_params_for_domains |= DependencyMapper()(start)
-            args_as_params_for_domains |= DependencyMapper()(stop)
-            args_as_params_for_domains |= DependencyMapper()(step)
+            space = space.add_dims(dim_type.param, len(args_as_params_for_domains))
+            for i, arg in enumerate(args_as_params_for_domains):
+                space = space.set_dim_id(dim_type.param, i, isl.Id(arg.name))
 
-        space = space.add_dims(1, len(args_as_params_for_domains))
-        for i, arg in enumerate(args_as_params_for_domains):
-            space = space.set_dim_id(1, i, isl.Id(arg.name))
+            iname_set = isl.BasicSet.universe(space)
 
-        iname_set = isl.BasicSet.universe(space)
+            from loopy.isl_helpers import make_slab
+            for iname, (start, stop, step) in sar_bounds.items():
+                iname_set = iname_set & make_slab(space, iname, start, stop, step)
 
-        from loopy.isl_helpers import make_slab
-        for iname, (start, stop, step) in self.iname_domains.items():
-            iname_set = iname_set & make_slab(space, iname, start, stop, step)
+            subarray_ref_domains.append(iname_set)
 
-        return iname_set
+        return subarray_ref_domains
 
 
 def realize_slices_array_inputs_as_sub_array_refs(kernel):
@@ -2004,15 +2007,11 @@ def realize_slices_array_inputs_as_sub_array_refs(kernel):
             raise NotImplementedError("Unknown type of instruction -- %s" %
                     type(insn))
 
-    slice_iname_domains = slice_replacer.get_iname_domain_as_isl_set()
-
-    if slice_iname_domains:
-        from loopy.kernel.tools import DomainChanger
-        domch = DomainChanger(kernel.copy(instructions=new_insns), frozenset())
-        return kernel.copy(domains=domch.get_domains_with(slice_iname_domains),
-                instructions=new_insns)
-    else:
-        return kernel.copy(instructions=new_insns)
+    return kernel.copy(
+            domains=(
+                kernel.domains
+                + slice_replacer.get_iname_domain_as_isl_set()),
+            instructions=new_insns)
 
 # }}}
 
