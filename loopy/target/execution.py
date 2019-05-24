@@ -533,7 +533,7 @@ class ExecutionWrapperGeneratorBase(object):
                         gen("(%s,) = %s.shape" % (", ".join(shape), arg.name))
                         gen("(%s,) = %s.strides" % (", ".join(strides), arg.name))
 
-                        gen("if not %s:"
+                        gen("if not (%s):"
                                 % self.get_strides_check_expr(
                                     shape, strides,
                                     (strify(s) for s in sym_strides)))
