@@ -85,6 +85,9 @@ def fuse_loop_domains(kernel):
                     # The two inames are imperfectly nested. Domain fusion
                     # might be invalid when the inner loop is empty, leading to
                     # the outer loop also being empty.
+
+                    # FIXME: Not fully correct, does not consider reductions
+                    # https://gitlab.tiker.net/inducer/loopy/issues/172
                     continue
 
                 if (

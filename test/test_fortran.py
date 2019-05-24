@@ -498,7 +498,7 @@ def test_precompute_some_exist(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=128, m=128, ell=128))
 
 
-def test_fortran_subroutines(ctx_factory):
+def test_fortran_subroutines():
     fortran_src = """
         subroutine twice(n, a)
           implicit none
