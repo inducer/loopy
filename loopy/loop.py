@@ -81,6 +81,13 @@ def merge_loop_domains(kernel):
                 if inner_domain_idx == outer_domain_idx:
                     break
 
+                if (not iname_to_insns[inner_iname]
+                        or not iname_to_insns[outer_iname]):
+                    # Inames without instructions occur when used in
+                    # a SubArrayRef. We don't want monster SubArrayRef domains,
+                    # so refuse to merge those.
+                    continue
+
                 if iname_to_insns[inner_iname] != iname_to_insns[outer_iname]:
                     # The two inames are imperfectly nested. Domain fusion
                     # might be invalid when the inner loop is empty, leading to
