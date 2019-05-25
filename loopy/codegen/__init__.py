@@ -22,6 +22,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
+logger = logging.getLogger(__name__)
+
 import six
 
 from loopy.diagnostic import LoopyError, warn
@@ -39,9 +42,7 @@ from functools import reduce
 from loopy.kernel.function_interface import CallableKernel
 from cgen import Collection
 
-
-import logging
-logger = logging.getLogger(__name__)
+from pytools import ProcessLogger
 
 
 # {{{ implemented data info
@@ -457,7 +458,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target):
     from loopy.check import pre_codegen_checks
     pre_codegen_checks(kernel, callables_table)
 
-    logger.info("%s: generate code: start" % kernel.name)
+    codegen_plog = ProcessLogger(logger, "%s: generate code" % kernel.name)
 
     # {{{ examine arg list
 
@@ -564,7 +565,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target):
             implemented_domains=LazilyUnpicklingDict(
                     codegen_result.implemented_domains))
 
-    logger.info("%s: generate code: done" % kernel.name)
+    codegen_plog.done()
 
     if CACHING_ENABLED:
         code_gen_cache.store_if_not_present(input_kernel, codegen_result)

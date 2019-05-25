@@ -22,7 +22,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
+logger = logging.getLogger(__name__)
+
 from loopy.diagnostic import LoopyError
+from pytools import ProcessLogger
 
 
 def c_preprocess(source, defines=None, filename=None, include_paths=None):
@@ -243,6 +247,8 @@ def parse_fortran(source, filename="<floopy code>", free_form=None, strict=None,
     :returns: a :class:`loopy.Program`
     """
 
+    parse_plog = ProcessLogger(logger, "parsing fortran file '%s'" % filename)
+
     if seq_dependencies is not None and auto_dependencies is not None:
         raise TypeError(
                 "may not specify both seq_dependencies and auto_dependencies")
@@ -294,6 +300,8 @@ def parse_fortran(source, filename="<floopy code>", free_form=None, strict=None,
         # for all cases
         # THIS IS A VERY IMPORTANT FIXME!!
         prog = register_callable_kernel(prog, callee_knl)
+
+    parse_plog.done()
 
     return prog
 

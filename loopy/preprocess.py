@@ -22,6 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
+logger = logging.getLogger(__name__)
 
 import six
 from loopy.diagnostic import (
@@ -42,8 +44,8 @@ from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
 from loopy.program import Program, iterate_over_kernels_if_given_program
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
-import logging
-logger = logging.getLogger(__name__)
+
+from pytools import ProcessLogger
 
 
 # {{{ prepare for caching
@@ -2320,7 +2322,7 @@ def preprocess_single_kernel(kernel, callables_table, device=None):
 
     # }}}
 
-    logger.info("%s: preprocess start" % kernel.name)
+    prepro_logger = ProcessLogger(logger, "%s: preprocess" % kernel.name)
 
     from loopy.check import check_identifiers_in_subst_rules
     check_identifiers_in_subst_rules(kernel)
@@ -2378,10 +2380,10 @@ def preprocess_single_kernel(kernel, callables_table, device=None):
 
     kernel = kernel.target.preprocess(kernel)
 
-    logger.info("%s: preprocess done" % kernel.name)
-
     kernel = kernel.copy(
             state=KernelState.PREPROCESSED)
+
+    prepro_logger.done()
 
     # {{{ prepare for caching
 
