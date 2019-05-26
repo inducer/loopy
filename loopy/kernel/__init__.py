@@ -983,7 +983,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return (
                 set(
                     arg.name for arg in self.args
-                    if isinstance(arg, ArrayArg))
+                    if isinstance(arg, ArrayArg)
+                    and arg.address_space == AddressSpace.GLOBAL)
                 | set(
                     tv.name
                     for tv in six.itervalues(self.temporary_variables)
