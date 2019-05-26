@@ -1954,6 +1954,8 @@ def infer_args_are_output_only(kernel):
 # }}}
 
 
+# {{{ identify_root_kernel
+
 class CallCollector(CombineMapper):
     def combine(self, values):
         import operator
@@ -2005,5 +2007,7 @@ def identify_root_kernel(kernels):
 
     root_knl_name, = (kernel_names - all_calls)
     return root_knl_name
+
+# }}}
 
 # vim: foldmethod=marker
