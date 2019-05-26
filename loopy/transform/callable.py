@@ -44,7 +44,7 @@ __doc__ = """
 
 .. autofunction:: register_function_id_to_in_knl_callable_mapper
 
-.. autofunction:: eegister_callable_kernel
+.. autofunction:: register_callable_kernel
 """
 
 
