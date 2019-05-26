@@ -216,40 +216,46 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    n = 2 ** 4
+    n = 2 ** 5
 
-    x_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
-    y_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
+    x_dev = cl.random.rand(queue, (n, n, n, n, n), np.float64)
+    y_dev = cl.random.rand(queue, (n, n, n, n, n), np.float64)
 
     callee_knl = lp.make_function(
-            "{[i, j]:0<=i, j < 16}",
+            "{[i, j]:0<=i, j < 32}",
             """
             g[i, j] = 2*e[i, j] + 3*f[i, j]
             """, name='linear_combo')
 
-    callee_knl = lp.split_iname(callee_knl, "i", 4, inner_tag="l.0", outer_tag="g.0")
+    callee_knl = lp.split_iname(callee_knl, "i", 2, inner_tag="l.0", outer_tag="g.0")
 
     caller_knl = lp.make_kernel(
-            "{[i, j, k, l, m]: 0<=i, j, k, l, m<16}",
+            "{[i, j, k, l, m]: 0<=i, j, k, l, m<32}",
             """
             [j, l]: z[i, j, k, l, m] = linear_combo([j, l]: x[i, j, k, l, m],
                                                      [j, l]: y[i, j, k, l, m])
             """
             )
-    caller_knl = lp.split_iname(caller_knl, "i", 4, inner_tag="l.1", outer_tag="g.1")
+    caller_knl = lp.split_iname(caller_knl, "i", 8, inner_tag="l.1", outer_tag="g.1")
 
     knl = lp.register_callable_kernel(
             caller_knl, callee_knl)
 
+    knl = lp.set_options(knl, 'return_dict')
+
+    gsize, lsize = knl.get_grid_size_upper_bounds_as_exprs()
+
     if inline:
         knl = lp.inline_callable_kernel(knl, 'linear_combo')
 
-    evt, (out, ) = knl(queue, x=x_dev, y=y_dev)
+    evt, out = knl(queue, x=x_dev, y=y_dev)
 
     x_host = x_dev.get()
     y_host = y_dev.get()
 
-    assert np.linalg.norm(2*x_host+3*y_host-out.get())/np.linalg.norm(
+    assert gsize == (16, 4)
+    assert lsize == (2, 8)
+    assert np.linalg.norm(2*x_host+3*y_host-out['z'].get())/np.linalg.norm(
             2*x_host+3*y_host) < 1e-15
 
 
