@@ -121,7 +121,12 @@ class ArrayArgDescriptor(ImmutableRecord):
                     dim_tag in self.dim_tags)))
         return frozenset(var.name for var in result)
 
-    update_persistent_hash = update_persistent_hash
+    # FIXME ArrayArgDescriptor should never need to be persisted, remove
+    # this method when that is so.
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.update_for_pymbolic_expression(key_hash, self.shape)
+        key_builder.rec(key_hash, self.address_space)
+        key_builder.rec(key_hash, self.dim_tags)
 
 
 def get_arg_descriptor_for_expression(kernel, expr):
