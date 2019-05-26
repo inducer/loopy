@@ -237,13 +237,13 @@ class GridOverrideForCalleeKernel(ImmutableRecord):
     :func:`loopy.kernel.function_interface.GridOverrideForCalleeKernel.__call__`,
     :func:`loopy.kernel.function_interface.CallbleKernel.with_hw_axes_sizes`.
 
-    .. attribute:: local_size
-
-        The local work group size that has to be set in the callee kernel.
-
     .. attribute:: global_size
 
         The global work group size that to be set in the callee kernel.
+
+    .. attribute:: local_size
+
+        The local work group size that has to be set in the callee kernel.
 
     .. note::
 
@@ -252,12 +252,12 @@ class GridOverrideForCalleeKernel(ImmutableRecord):
     """
     fields = set(["local_size", "global_size"])
 
-    def __init__(self, local_size, global_size):
-        self.local_size = local_size
+    def __init__(self, global_size, local_size):
         self.global_size = global_size
+        self.local_size = local_size
 
     def __call__(self, insn_ids, callables_table, ignore_auto=True):
-        return self.local_size, self.global_size
+        return self.global_size, self.local_size
 
 # }}}
 
@@ -802,7 +802,7 @@ class CallableKernel(InKernelCallable):
         return self.copy(
                 subkernel=self.subkernel.copy(
                     overridden_get_grid_sizes_for_insn_ids=(
-                        GridOverrideForCalleeKernel(lsize, gsize))))
+                        GridOverrideForCalleeKernel(gsize, lsize))))
 
     def is_ready_for_codegen(self):
         return (self.arg_id_to_dtype is not None and
