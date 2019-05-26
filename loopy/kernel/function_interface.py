@@ -385,7 +385,7 @@ class InKernelCallable(ImmutableRecord):
 
         return self.copy(arg_id_to_dtype=new_arg_id_to_dtype)
 
-    def with_hw_axes_sizes(self, local_size, global_size):
+    def with_hw_axes_sizes(self, global_size, local_size):
         """
         Returns a copy of *self* with modifications to comply with the grid
         sizes ``(local_size, global_size)`` of the program in which it is
