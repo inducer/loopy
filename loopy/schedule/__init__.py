@@ -1658,16 +1658,17 @@ def _insn_ids_reaching_end(schedule, kind, reverse):
     return insn_ids_alive_at_scope[-1]
 
 
-def append_barrier_or_raise_error(schedule, dep, verify_only):
+def append_barrier_or_raise_error(kernel_name, schedule, dep, verify_only):
     if verify_only:
         from loopy.diagnostic import MissingBarrierError
         raise MissingBarrierError(
-                "Dependency '%s' (for variable '%s') "
+                "%s: Dependency '%s' (for variable '%s') "
                 "requires synchronization "
                 "by a %s barrier (add a 'no_sync_with' "
                 "instruction option to state that no "
                 "synchronization is needed)"
                 % (
+                    kernel_name,
                     dep.dep_descr.format(
                         tgt=dep.target.id, src=dep.source.id),
                     dep.variable,
@@ -1738,7 +1739,8 @@ def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0
                 for dep in chain.from_iterable(
                         dep_tracker.gen_dependencies_with_target_at(insn)
                         for insn in loop_head):
-                    append_barrier_or_raise_error(result, dep, verify_only)
+                    append_barrier_or_raise_error(
+                            kernel.name, result, dep, verify_only)
                     # This barrier gets inserted outside the loop, hence it is
                     # executed unconditionally and so kills all sources before
                     # the loop.
@@ -1770,7 +1772,7 @@ def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0
             elif isinstance(sched_item, RunInstruction):
                 for dep in dep_tracker.gen_dependencies_with_target_at(
                         sched_item.insn_id):
-                    append_barrier_or_raise_error(result, dep, verify_only)
+                    append_barrier_or_raise_error(kernel.name, result, dep, verify_only)
                     dep_tracker.discard_all_sources()
                     break
                 result.append(sched_item)
