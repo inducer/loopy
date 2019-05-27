@@ -2419,7 +2419,7 @@ def infer_hw_axes_sizes(program):
           collective value.
     """
 
-    local_size, global_size = program.get_grid_size_upper_bounds()
+    global_size, local_size = program.get_grid_size_upper_bounds()
 
     resolved_function_with_hw_axes_sizes_inferred = {}
 
@@ -2430,7 +2430,7 @@ def infer_hw_axes_sizes(program):
                     in_knl_callable)
         else:
             resolved_function_with_hw_axes_sizes_inferred[func_id] = (
-                    in_knl_callable.with_hw_axes_sizes(local_size, global_size))
+                    in_knl_callable.with_hw_axes_sizes(global_size, local_size))
 
     new_callables_table = (
             program.callables_table.copy(
