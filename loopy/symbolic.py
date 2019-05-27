@@ -1490,15 +1490,34 @@ def simplify_using_aff(kernel, expr):
 # }}}
 
 
+# {{{ qpolynomial_to_expr
+
+def _term_to_expr(space, term):
+    from pymbolic.primitives import Variable
+
+    result = term.get_coefficient_val().to_python()
+    for dt in isl._CHECK_DIM_TYPES:
+        for i in range(term.dim(dt)):
+            exp = term.get_exp(dt, i)
+            if exp:
+                result = result*Variable(space.get_dim_name(dt, i))**exp
+
+    for i in range(term.dim(dim_type.div)):
+        raise NotImplementedError("divs in terms")
+        # FIXME print the qpoly, match the semantics
+        result += aff_to_expr(term.get_div(i))
+
+    return result
+
+
+def qpolynomial_to_expr(qpoly):
+    space = qpoly.space
+    return sum(_term_to_expr(space, t) for t in qpoly.get_terms())
+
+# }}}
+
+
 # {{{ expression/set <-> constraint conversion
-
-def eq_constraint_from_expr(space, expr):
-    return isl.Constraint.equality_from_aff(aff_from_expr(space, expr))
-
-
-def ineq_constraint_from_expr(space, expr):
-    return isl.Constraint.inequality_from_aff(aff_from_expr(space, expr))
-
 
 def constraint_to_cond_expr(cns):
     # Looks like this is ok after all--get_aff() performs some magic.
