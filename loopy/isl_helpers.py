@@ -24,6 +24,11 @@ THE SOFTWARE.
 """
 
 
+import numpy as np
+
+from pymbolic.mapper.evaluator import \
+        EvaluationMapper as EvaluationMapperBase
+
 from loopy.diagnostic import StaticValueFindingError
 
 import islpy as isl
@@ -570,6 +575,92 @@ def find_max_of_pwaff_with_params(pw_aff, n_allowed_params):
             pw_aff_set.dim(dim_type.param) - n_allowed_params)
 
     return pw_aff_set.dim_max(pw_aff_set.dim(dim_type.set)-1)
+
+# }}}
+
+
+# {{{ subst_into_pwqpolynomial
+
+class QPolynomialEvaluationMapper(EvaluationMapperBase):
+    def __init__(self, space):
+        self.zero = isl.QPolynomial.zero_on_domain(space)
+
+        context = {}
+        for name, (dt, pos) in space.get_var_dict().items():
+            if dt == dim_type.set:
+                dt = dim_type.in_
+
+            context[name] = isl.QPolynomial.var_on_domain(space, dt, pos)
+
+        super(QPolynomialEvaluationMapper, self).__init__(context)
+
+    def map_constant(self, expr):
+        if isinstance(expr, np.integer):
+            expr = int(expr)
+
+        return self.zero + expr
+
+    def map_quotient(self, expr):
+        raise TypeError("true division in '%s' not supported "
+                "for as-pwaff evaluation" % expr)
+
+
+def subst_into_pwqpolynomial(space, poly, var_dict):
+    if not poly.get_pieces():
+        return isl.PwQPolynomial.zero(space)
+
+    i_begin_subst_space = poly.dim(dim_type.param)
+
+    new_var_dict = {}
+    for i in range(i_begin_subst_space):
+        old_name = poly.space.get_dim_name(dim_type.param, i)
+        new_name = old_name + "'"
+        new_var_dict[new_name] = var_dict[old_name]
+        poly = poly.set_dim_name(dim_type.param, i, new_name)
+
+    var_dict = new_var_dict
+    del new_var_dict
+
+    poly = poly.add_dims(dim_type.param, space.dim(dim_type.param))
+    for i in range(space.dim(dim_type.param)):
+        poly = poly.set_dim_name(dim_type.param, i+i_begin_subst_space,
+                space.get_dim_name(dim_type.param, i))
+
+    par_domain = isl.BasicSet.universe(poly.space).params()
+    par_space = par_domain.space
+
+    from loopy.symbolic import guarded_aff_from_expr, qpolynomial_to_expr
+    for i in range(i_begin_subst_space):
+        name = poly.space.get_dim_name(dim_type.param, i)
+        aff = guarded_aff_from_expr(par_space, var_dict[name])
+        aff = aff.set_coefficient_val(dim_type.param, i, -1)
+        par_domain = par_domain.add_constraint(
+                isl.Constraint.equality_from_aff(aff))
+
+    new_pieces = []
+    for valid_set, qpoly in poly.get_pieces():
+        valid_set = valid_set & par_domain
+        if valid_set.plain_is_empty():
+            continue
+
+        valid_set = valid_set.project_out(dim_type.param, 0, i_begin_subst_space)
+        from pymbolic.mapper.substitutor import (
+                SubstitutionMapper, make_subst_func)
+        sub_mapper = SubstitutionMapper(make_subst_func(var_dict))
+        expr = sub_mapper(qpolynomial_to_expr(qpoly))
+        qpoly = QPolynomialEvaluationMapper(valid_set.space)(expr)
+
+        new_pieces.append((valid_set, qpoly))
+
+    if not new_pieces:
+        raise ValueError("no pieces of PwQPolynomial survived the substitution")
+    valid_set, qpoly = new_pieces[0]
+    result = isl.PwQPolynomial.alloc(valid_set, qpoly)
+    for valid_set, qpoly in new_pieces[1:]:
+        result = result.add_disjoint(
+                isl.PwQPolynomial.alloc(valid_set, qpoly))
+
+    return result
 
 # }}}
 
