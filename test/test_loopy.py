@@ -2970,6 +2970,22 @@ def test_temp_var_type_deprecated_usage():
                 temp_var_types=(np.dtype(np.int32),))
 
 
+def test_shape_mismatch_check(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    prg = lp.make_kernel(
+            "{[i,j]: 0 <= i < n and 0 <= j < m}",
+            "c[i] = sum(j, a[i,j]*b[j])",
+            default_order="F")
+
+    a = np.random.rand(10, 10).astype(np.float32)
+    b = np.random.rand(10).astype(np.float32)
+
+    with pytest.raises(TypeError, match="strides mismatch"):
+        prg(queue, a=a, b=b)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
