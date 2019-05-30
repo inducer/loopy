@@ -607,7 +607,9 @@ class QPolynomialEvaluationMapper(EvaluationMapperBase):
 
 def subst_into_pwqpolynomial(space, poly, var_dict):
     if not poly.get_pieces():
-        return isl.PwQPolynomial.zero(space)
+        result = isl.PwQPolynomial.zero(space.insert_dims(dim_type.out, 0, 1))
+        assert result.dim(dim_type.out) == 1
+        return result
 
     i_begin_subst_space = poly.dim(dim_type.param)
 
@@ -660,6 +662,7 @@ def subst_into_pwqpolynomial(space, poly, var_dict):
         result = result.add_disjoint(
                 isl.PwQPolynomial.alloc(valid_set, qpoly))
 
+    assert result.dim(dim_type.out)
     return result
 
 # }}}
