@@ -1483,11 +1483,7 @@ def get_op_map_for_single_kernel(knl, callables_table,
     if numpy_types:
         return ToCountMap(
                     init_dict=dict(
-                        (Op(
-                            dtype=op.dtype.numpy_dtype,
-                            name=op.name,
-                            count_granularity=op.count_granularity),
-                        ct)
+                        (op.copy(dtype=op.dtype.numpy_dtype), ct)
                         for op, ct in six.iteritems(op_map.count_map)),
                     val_type=op_map.val_type
                     )
@@ -1698,16 +1694,7 @@ def get_mem_access_map_for_single_kernel(knl, callables_table,
     if numpy_types:
         return ToCountMap(
                     init_dict=dict(
-                        (MemAccess(
-                            mtype=mem_access.mtype,
-                            dtype=mem_access.dtype.numpy_dtype,
-                            lid_strides=mem_access.lid_strides,
-                            gid_strides=mem_access.gid_strides,
-                            direction=mem_access.direction,
-                            variable=mem_access.variable,
-                            variable_tag=mem_access.variable_tag,
-                            count_granularity=mem_access.count_granularity),
-                        ct)
+                        (mem_access.copy(dtype=mem_access.dtype.numpy_dtype), ct)
                         for mem_access, ct in six.iteritems(access_map.count_map)),
                     val_type=access_map.val_type
                     )
