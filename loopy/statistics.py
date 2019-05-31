@@ -483,6 +483,48 @@ class ToCountMap(object):
 # }}}
 
 
+# {{{ subst_into_to_count_map
+
+def subst_into_guarded_pwqpolynomial(new_space, guarded_poly, subst_dict):
+    from loopy.isl_helpers import subst_into_pwqpolynomial, get_param_subst_domain
+
+    poly = subst_into_pwqpolynomial(
+            new_space, guarded_poly.pwqpolynomial, subst_dict)
+
+    valid_domain = guarded_poly.valid_domain
+    i_begin_subst_space = valid_domain.dim(dim_type.param)
+
+    valid_domain, subst_domain, _ = get_param_subst_domain(
+            new_space, guarded_poly.valid_domain, subst_dict)
+
+    valid_domain = valid_domain & subst_domain
+    valid_domain = valid_domain.project_out(dim_type.param, 0, i_begin_subst_space)
+    return GuardedPwQPolynomial(poly, valid_domain)
+
+
+def subst_into_to_count_map(space, tcm, subst_dict):
+    from loopy.isl_helpers import subst_into_pwqpolynomial
+    result = {}
+    for key, value in six.iteritems(tcm.count_map):
+        # FIXME: This strips away the guards. Rather than being stripped,
+        # they should also have the substitution applied
+        if isinstance(value, GuardedPwQPolynomial):
+            result[key] = subst_into_guarded_pwqpolynomial(space, value, subst_dict)
+
+        elif isinstance(value, isl.PwQPolynomial):
+            result[key] = subst_into_pwqpolynomial(space, value, subst_dict)
+
+        elif isinstance(value, int):
+            result[key] = value
+
+        else:
+            raise ValueError("unexpected value type")
+
+    return ToCountMap(result, val_type=isl.PwQPolynomial)
+
+# }}}
+
+
 def stringify_stats_mapping(m):
     result = ""
     for key in sorted(m.keys(), key=lambda k: str(k)):
