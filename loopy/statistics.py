@@ -208,6 +208,11 @@ class ToCountMap(object):
     def __repr__(self):
         return repr(self.count_map)
 
+    def __str__(self):
+        return "\n".join(
+                "%s: %s" % (k, v)
+                for k, v in six.iteritems(self.count_map))
+
     def __len__(self):
         return len(self.count_map)
 
