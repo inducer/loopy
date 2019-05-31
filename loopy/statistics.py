@@ -587,27 +587,38 @@ class Op(Record):
        implementation-dependent grouping of work-items within a work-group,
        analagous to an NVIDIA CUDA warp.
 
+    .. attribute:: kernel_name
+
+        A :class:`str` representing the kernel name where the operation occurred.
+
     """
 
-    def __init__(self, dtype=None, name=None, count_granularity=None):
+    def __init__(self, dtype=None, name=None, count_granularity=None,
+            kernel_name=None):
         if count_granularity not in CountGranularity.ALL+[None]:
             raise ValueError("Op.__init__: count_granularity '%s' is "
                     "not allowed. count_granularity options: %s"
                     % (count_granularity, CountGranularity.ALL+[None]))
         if dtype is None:
             Record.__init__(self, dtype=dtype, name=name,
-                            count_granularity=count_granularity)
+                            count_granularity=count_granularity,
+                            kernel_name=kernel_name)
         else:
             from loopy.types import to_loopy_type
             Record.__init__(self, dtype=to_loopy_type(dtype), name=name,
-                            count_granularity=count_granularity)
+                            count_granularity=count_granularity,
+                            kernel_name=kernel_name)
 
     def __hash__(self):
         return hash(repr(self))
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
-        return "Op(%s, %s, %s)" % (self.dtype, self.name, self.count_granularity)
+        if self.kernel_name is not None:
+            return "Op(%s, %s, %s, %s)" % (
+                    self.dtype, self.name, self.count_granularity, self.kernel_name)
+        else:
+            return "Op(%s, %s, %s)" % (self.dtype, self.name, self.count_granularity)
 
 # }}}
 
@@ -673,11 +684,14 @@ class MemAccess(Record):
        implementation-dependent grouping of work-items within a work-group,
        analagous to an NVIDIA CUDA warp.
 
+    .. attribute:: kernel_name
+
+        A :class:`str` representing the kernel name where the operation occurred.
     """
 
     def __init__(self, mtype=None, dtype=None, lid_strides=None, gid_strides=None,
                  direction=None, variable=None, variable_tag=None,
-                 count_granularity=None):
+                 count_granularity=None, kernel_name=None):
 
         if count_granularity not in CountGranularity.ALL+[None]:
             raise ValueError("Op.__init__: count_granularity '%s' is "
@@ -688,14 +702,16 @@ class MemAccess(Record):
             Record.__init__(self, mtype=mtype, dtype=dtype, lid_strides=lid_strides,
                             gid_strides=gid_strides, direction=direction,
                             variable=variable, variable_tag=variable_tag,
-                            count_granularity=count_granularity)
+                            count_granularity=count_granularity,
+                            kernel_name=kernel_name)
         else:
             from loopy.types import to_loopy_type
             Record.__init__(self, mtype=mtype, dtype=to_loopy_type(dtype),
                             lid_strides=lid_strides, gid_strides=gid_strides,
                             direction=direction, variable=variable,
                             variable_tag=variable_tag,
-                            count_granularity=count_granularity)
+                            count_granularity=count_granularity,
+                            kernel_name=kernel_name)
 
     def __hash__(self):
         # Note that this means lid_strides and gid_strides must be sorted
@@ -704,7 +720,7 @@ class MemAccess(Record):
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
-        return "MemAccess(%s, %s, %s, %s, %s, %s, %s, %s)" % (
+        return "MemAccess(%s, %s, %s, %s, %s, %s, %s, %s, %s)" % (
             self.mtype,
             self.dtype,
             None if self.lid_strides is None else dict(
@@ -714,7 +730,8 @@ class MemAccess(Record):
             self.direction,
             self.variable,
             self.variable_tag,
-            self.count_granularity)
+            self.count_granularity,
+            self.kernel_name)
 
 # }}}
 
