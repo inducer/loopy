@@ -73,10 +73,19 @@ __doc__ = """
 
 # {{{ GuardedPwQPolynomial
 
+def _get_param_tuple(obj):
+    return tuple(
+            obj.get_dim_name(dim_type.param, i)
+            for i in range(obj.dim(dim_type.param)))
+
+
 class GuardedPwQPolynomial(object):
     def __init__(self, pwqpolynomial, valid_domain):
         self.pwqpolynomial = pwqpolynomial
         self.valid_domain = valid_domain
+
+        assert (_get_param_tuple(pwqpolynomial.space)
+                == _get_param_tuple(valid_domain.space))
 
     def __add__(self, other):
         if isinstance(other, GuardedPwQPolynomial):
