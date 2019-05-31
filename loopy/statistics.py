@@ -787,8 +787,8 @@ class CounterBase(CombineMapper):
     map_derivative = map_common_subexpression
     map_slice = map_common_subexpression
 
-    # preprocessing should have removed these
     def map_reduction(self, expr):
+        # preprocessing should have removed these
         raise RuntimeError("%s encountered %s--not supposed to happen"
                 % (type(self).__name__, type(expr).__name__))
 
@@ -1838,7 +1838,7 @@ def get_synchronization_map_for_single_kernel(knl, callables_table,
     one = isl.PwQPolynomial('{ 1 }')
 
     def get_count_poly(iname_list):
-        if iname_list:  # (if iname_list is not empty)
+        if iname_list:
             ct = (count(knl, (
                             knl.get_inames_domain(iname_list).
                             project_out_except(iname_list, [dim_type.set])
