@@ -157,6 +157,12 @@ class ToCountMap(object):
     def __init__(self, init_dict=None, val_type=GuardedPwQPolynomial):
         if init_dict is None:
             init_dict = {}
+
+        for val in init_dict.values():
+            if isinstance(val, isl.PwQPolynomial):
+                assert val.dim(dim_type.out)
+            elif isinstance(val, GuardedPwQPolynomial):
+                assert val.pwqpolynomial.dim(dim_type.out)
         self.count_map = init_dict
         self.val_type = val_type
 
