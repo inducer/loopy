@@ -605,50 +605,88 @@ class QPolynomialEvaluationMapper(EvaluationMapperBase):
                 "for as-pwaff evaluation" % expr)
 
 
-def subst_into_pwqpolynomial(space, poly, var_dict):
+def get_param_subst_domain(new_space, base_obj, subst_dict):
+    """Modify the :mod:`islpy` object *base_obj* to incorporate parameters for
+    the keys of *subst_dict*, and rename existing parameters to include a
+    trailing prime.
+
+    :arg new_space: A :class:`islpy.Space` for that contains the keys of
+        *subst_dict*
+    :arg subst_dict: A dictionary mapping parameters occurring in *base_obj*
+        to their values in terms of variables in *new_space*
+    :returns: a tuple ``(base_obj, subst_domain, subst_dict)``, where
+        *base_obj* is the passed *base_obj* with the space extended to cover
+        the new parameters in *new_space*, *subst_domain* is an
+        :class:`islpy.BasicSet` incorporating the constraints from *subst_dict*
+        and existing in the same space as *base_obj*, and *subst_dict*
+        is a copy of the passed *subst_dict* modified to incorporate primed
+        variable names in the keys.
+    """
+
+    # {{{ rename subst_dict keys and base_obj parameters to include trailing prime
+
+    i_begin_subst_space = base_obj.dim(dim_type.param)
+
+    new_subst_dict = {}
+    for i in range(i_begin_subst_space):
+        old_name = base_obj.space.get_dim_name(dim_type.param, i)
+        new_name = old_name + "'"
+        new_subst_dict[new_name] = subst_dict[old_name]
+        base_obj = base_obj.set_dim_name(dim_type.param, i, new_name)
+
+    subst_dict = new_subst_dict
+    del new_subst_dict
+
+    # }}}
+
+    # {{{ add dimensions to base_obj
+
+    base_obj = base_obj.add_dims(dim_type.param, new_space.dim(dim_type.param))
+    for i in range(new_space.dim(dim_type.param)):
+        base_obj = base_obj.set_dim_name(dim_type.param, i+i_begin_subst_space,
+                new_space.get_dim_name(dim_type.param, i))
+
+    # }}}
+
+    # {{{ build subst_domain
+
+    subst_domain = isl.BasicSet.universe(base_obj.space).params()
+
+    from loopy.symbolic import guarded_aff_from_expr
+    for i in range(i_begin_subst_space):
+        name = base_obj.space.get_dim_name(dim_type.param, i)
+        aff = guarded_aff_from_expr(subst_domain.space, subst_dict[name])
+        aff = aff.set_coefficient_val(dim_type.param, i, -1)
+        subst_domain = subst_domain.add_constraint(
+                isl.Constraint.equality_from_aff(aff))
+
+    # }}}
+
+    return base_obj, subst_domain, subst_dict
+
+
+def subst_into_pwqpolynomial(new_space, poly, subst_dict):
     if not poly.get_pieces():
-        result = isl.PwQPolynomial.zero(space.insert_dims(dim_type.out, 0, 1))
+        result = isl.PwQPolynomial.zero(new_space.insert_dims(dim_type.out, 0, 1))
         assert result.dim(dim_type.out) == 1
         return result
 
     i_begin_subst_space = poly.dim(dim_type.param)
 
-    new_var_dict = {}
-    for i in range(i_begin_subst_space):
-        old_name = poly.space.get_dim_name(dim_type.param, i)
-        new_name = old_name + "'"
-        new_var_dict[new_name] = var_dict[old_name]
-        poly = poly.set_dim_name(dim_type.param, i, new_name)
+    poly, subst_domain, subst_dict = get_param_subst_domain(
+            new_space, poly, subst_dict)
 
-    var_dict = new_var_dict
-    del new_var_dict
-
-    poly = poly.add_dims(dim_type.param, space.dim(dim_type.param))
-    for i in range(space.dim(dim_type.param)):
-        poly = poly.set_dim_name(dim_type.param, i+i_begin_subst_space,
-                space.get_dim_name(dim_type.param, i))
-
-    par_domain = isl.BasicSet.universe(poly.space).params()
-    par_space = par_domain.space
-
-    from loopy.symbolic import guarded_aff_from_expr, qpolynomial_to_expr
-    for i in range(i_begin_subst_space):
-        name = poly.space.get_dim_name(dim_type.param, i)
-        aff = guarded_aff_from_expr(par_space, var_dict[name])
-        aff = aff.set_coefficient_val(dim_type.param, i, -1)
-        par_domain = par_domain.add_constraint(
-                isl.Constraint.equality_from_aff(aff))
-
+    from loopy.symbolic import qpolynomial_to_expr
     new_pieces = []
     for valid_set, qpoly in poly.get_pieces():
-        valid_set = valid_set & par_domain
+        valid_set = valid_set & subst_domain
         if valid_set.plain_is_empty():
             continue
 
         valid_set = valid_set.project_out(dim_type.param, 0, i_begin_subst_space)
         from pymbolic.mapper.substitutor import (
                 SubstitutionMapper, make_subst_func)
-        sub_mapper = SubstitutionMapper(make_subst_func(var_dict))
+        sub_mapper = SubstitutionMapper(make_subst_func(subst_dict))
         expr = sub_mapper(qpolynomial_to_expr(qpoly))
         qpoly = QPolynomialEvaluationMapper(valid_set.space)(expr)
 
@@ -656,6 +694,7 @@ def subst_into_pwqpolynomial(space, poly, var_dict):
 
     if not new_pieces:
         raise ValueError("no pieces of PwQPolynomial survived the substitution")
+
     valid_set, qpoly = new_pieces[0]
     result = isl.PwQPolynomial.alloc(valid_set, qpoly)
     for valid_set, qpoly in new_pieces[1:]:
