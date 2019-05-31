@@ -183,8 +183,8 @@ class ToCountMap(object):
     def __mul__(self, other):
         if isinstance(other, GuardedPwQPolynomial):
             return ToCountMap(dict(
-                (index, self.count_map[index]*other)
-                for index in self.keys()))
+                (index, value*other)
+                for index, value in six.iteritems(self.count_map)))
         else:
             raise ValueError("ToCountMap: Attempted to multiply "
                                 "ToCountMap by {0} {1}."
