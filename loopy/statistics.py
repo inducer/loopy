@@ -1836,42 +1836,6 @@ def get_mem_access_map(program, numpy_types=True, count_redundant_work=False,
 def get_synchronization_map_for_single_kernel(knl, callables_table,
         subgroup_size=None):
 
-    """Count the number of synchronization events each work-item encounters in
-    a loopy kernel.
-
-    :arg knl: A :class:`loopy.LoopKernel` whose barriers are to be counted.
-
-    :arg subgroup_size: (currently unused) An :class:`int`, :class:`str`
-        ``'guess'``, or *None* that specifies the sub-group size. An OpenCL
-        sub-group is an implementation-dependent grouping of work-items within
-        a work-group, analagous to an NVIDIA CUDA warp. subgroup_size is used,
-        e.g., when counting a :class:`MemAccess` whose count_granularity
-        specifies that it should only be counted once per sub-group. If set to
-        *None* an attempt to find the sub-group size using the device will be
-        made, if this fails an error will be raised. If a :class:`str`
-        ``'guess'`` is passed as the subgroup_size, get_mem_access_map will
-        attempt to find the sub-group size using the device and, if
-        unsuccessful, will make a wild guess.
-
-    :return: A dictionary mapping each type of synchronization event to an
-        :class:`islpy.PwQPolynomial` holding the number of events per
-        work-item.
-
-        Possible keys include ``barrier_local``, ``barrier_global``
-        (if supported by the target) and ``kernel_launch``.
-
-    Example usage::
-
-        # (first create loopy kernel and specify array data types)
-
-        sync_map = get_synchronization_map(knl)
-        params = {'n': 512, 'm': 256, 'l': 128}
-        barrier_ct = sync_map['barrier_local'].eval_with_dict(params)
-
-        # (now use this count to, e.g., predict performance)
-
-    """
-
     if not knl.options.ignore_boostable_into:
         raise LoopyError("Kernel '%s': Using operation counting requires the option "
                 "ignore_boostable_into to be set." % knl.name)
@@ -1924,6 +1888,41 @@ def get_synchronization_map_for_single_kernel(knl, callables_table,
 
 
 def get_synchronization_map(program, subgroup_size=None):
+    """Count the number of synchronization events each work-item encounters in
+    a loopy kernel.
+
+    :arg knl: A :class:`loopy.LoopKernel` whose barriers are to be counted.
+
+    :arg subgroup_size: (currently unused) An :class:`int`, :class:`str`
+        ``'guess'``, or *None* that specifies the sub-group size. An OpenCL
+        sub-group is an implementation-dependent grouping of work-items within
+        a work-group, analagous to an NVIDIA CUDA warp. subgroup_size is used,
+        e.g., when counting a :class:`MemAccess` whose count_granularity
+        specifies that it should only be counted once per sub-group. If set to
+        *None* an attempt to find the sub-group size using the device will be
+        made, if this fails an error will be raised. If a :class:`str`
+        ``'guess'`` is passed as the subgroup_size, get_mem_access_map will
+        attempt to find the sub-group size using the device and, if
+        unsuccessful, will make a wild guess.
+
+    :return: A dictionary mapping each type of synchronization event to an
+        :class:`islpy.PwQPolynomial` holding the number of events per
+        work-item.
+
+        Possible keys include ``barrier_local``, ``barrier_global``
+        (if supported by the target) and ``kernel_launch``.
+
+    Example usage::
+
+        # (first create loopy kernel and specify array data types)
+
+        sync_map = get_synchronization_map(knl)
+        params = {'n': 512, 'm': 256, 'l': 128}
+        barrier_ct = sync_map['barrier_local'].eval_with_dict(params)
+
+        # (now use this count to, e.g., predict performance)
+
+    """
 
     from loopy.preprocess import preprocess_program, infer_unknown_types
 
