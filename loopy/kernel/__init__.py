@@ -1048,6 +1048,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         in *insn_ids*.
 
         :arg insn_ids: a :class:`frozenset` of instruction IDs
+        :arg callables_table: an instance of :class:`loopy.Program.CallablesTable`
 
         *global_size* and *local_size* are instances of :class:`dict` with
         mapping of the form from ``axis`` to :class:`islpy.PwAff` objects.
@@ -1080,6 +1081,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                     frozenset(insn.id for insn in callee_kernel.instructions),
                     callables_table, ignore_auto)
 
+            # FIXME: Should assert that nothing is being overwritten
             global_sizes.update(gsize)
             local_sizes.update(lsize)
 
@@ -1133,6 +1135,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         in *insn_ids*.
 
         :arg insn_ids: a :class:`frozenset` of instruction IDs
+        :arg callables_table: an instance of :class:`loopy.Program.CallablesTable`
 
         *global_size* and *local_size* are :class:`islpy.PwAff` objects.
         """
@@ -1185,6 +1188,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         in *insn_ids*.
 
         :arg insn_ids: a :class:`frozenset` of instruction IDs
+        :arg callables_table: an instance of :class:`loopy.Program.CallablesTable`
 
         *global_size* and *local_size* are :mod:`pymbolic` expressions
         """
@@ -1213,6 +1217,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of *all* instructions in the kernel.
+
+        :arg callables_table: an instance of :class:`loopy.Program.CallablesTable`
 
         *global_size* and *local_size* are :mod:`pymbolic` expressions
         """
