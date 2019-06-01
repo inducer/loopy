@@ -218,16 +218,25 @@ def test_op_counter_bitwise():
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
-    i32add = op_map[lp.Op(np.int32, 'add', CG.SUBGROUP)].eval_with_dict(params)
-    i32bw = op_map[lp.Op(np.int32, 'bw', CG.SUBGROUP)].eval_with_dict(params)
-    i64bw = op_map[lp.Op(np.dtype(np.int64), 'bw', CG.SUBGROUP)
-                   ].eval_with_dict(params)
-    i64mul = op_map[lp.Op(np.dtype(np.int64), 'mul', CG.SUBGROUP)
-                    ].eval_with_dict(params)
-    i64add = op_map[lp.Op(np.dtype(np.int64), 'add', CG.SUBGROUP)
-                    ].eval_with_dict(params)
-    i64shift = op_map[lp.Op(np.dtype(np.int64), 'shift', CG.SUBGROUP)
-                      ].eval_with_dict(params)
+    print(op_map)
+    i32add = op_map[
+            lp.Op(np.int32, 'add', CG.SUBGROUP, 'bitwise')
+            ].eval_with_dict(params)
+    i32bw = op_map[
+            lp.Op(np.int32, 'bw', CG.SUBGROUP, 'bitwise')
+            ].eval_with_dict(params)
+    i64bw = op_map[
+            lp.Op(np.dtype(np.int64), 'bw', CG.SUBGROUP, 'bitwise')
+            ].eval_with_dict(params)
+    i64mul = op_map[
+            lp.Op(np.dtype(np.int64), 'mul', CG.SUBGROUP, 'bitwise')
+            ].eval_with_dict(params)
+    i64add = op_map[
+            lp.Op(np.dtype(np.int64), 'add', CG.SUBGROUP, 'bitwise')
+            ].eval_with_dict(params)
+    i64shift = op_map[
+            lp.Op(np.dtype(np.int64), 'shift', CG.SUBGROUP, 'bitwise')
+            ].eval_with_dict(params)
     # (count-per-sub-group)*n_subgroups
     assert i32add == n*m*ell*n_subgroups
     assert i32bw == 2*n*m*ell*n_subgroups
@@ -922,11 +931,10 @@ def test_barrier_counter_nobarriers():
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
     assert len(sync_map) == 1
-    assert sync_map["kernel_launch"].eval_with_dict(params) == 1
+    assert sync_map.filter_by(kind="kernel_launch").eval_and_sum(params) == 1
 
 
 def test_barrier_counter_barriers():
-
     knl = lp.make_kernel(
             "[n,m,ell] -> {[i,k,j]: 0<=i<50 and 1<=k<98 and 0<=j<10}",
             [
@@ -948,8 +956,23 @@ def test_barrier_counter_barriers():
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
-    barrier_count = sync_map["barrier_local"].eval_with_dict(params)
+    barrier_count = sync_map.filter_by(kind="barrier_local").eval_and_sum(params)
     assert barrier_count == 50*10*2
+
+
+def test_barrier_count_single():
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<128}",
+            """
+            <> c[i] = 15*i {id=yoink}
+            c[i+1] = c[i]  {dep=yoink}
+            """)
+
+    knl = lp.tag_inames(knl, {"i": "l.0"})
+    sync_map = lp.get_synchronization_map(knl)
+    print(sync_map)
+    barrier_count = sync_map.filter_by(kind="barrier_local").eval_and_sum()
+    assert barrier_count == 1
 
 
 def test_all_counters_parallel_matmul():
@@ -978,8 +1001,8 @@ def test_all_counters_parallel_matmul():
 
     sync_map = lp.get_synchronization_map(knl)
     assert len(sync_map) == 2
-    assert sync_map["kernel_launch"].eval_with_dict(params) == 1
-    assert sync_map["barrier_local"].eval_with_dict(params) == 2*m/bsize
+    assert sync_map.filter_by(kind="kernel_launch").eval_and_sum(params) == 1
+    assert sync_map.filter_by(kind="barrier_local").eval_and_sum(params) == 2*m/bsize
 
     op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True)
     f32mul = op_map[
@@ -1096,9 +1119,8 @@ def test_floor_div_coefficient_collector():
     n_subgroups = n_workgroups*subgroups_per_group
 
     # count local f32 accesses
-    f32_local = lp.get_mem_access_map(
-        knl, count_redundant_work=True, subgroup_size=SGS
-        ).filter_by(dtype=[np.float32], mtype=["local"]).eval_and_sum(params)
+    m = lp.get_mem_access_map(knl, count_redundant_work=True, subgroup_size=SGS)
+    f32_local = m.filter_by(dtype=[np.float32], mtype=["local"]).eval_and_sum(params)
 
     # (count-per-sub-group)*n_subgroups
     assert f32_local == 2*(rept+1)*n_subgroups
@@ -1176,7 +1198,7 @@ def test_gather_access_footprint():
     fp = gather_access_footprints(knl)
 
     for key, footprint in six.iteritems(fp):
-        print(key, count(knl, footprint))
+        print(key, count(knl.root_kernel, footprint))
 
 
 def test_gather_access_footprint_2():
@@ -1191,8 +1213,8 @@ def test_gather_access_footprint_2():
 
     params = {"n": 200}
     for key, footprint in six.iteritems(fp):
-        assert count(knl, footprint).eval_with_dict(params) == 200
-        print(key, count(knl, footprint))
+        assert count(knl.root_kernel, footprint).eval_with_dict(params) == 200
+        print(key, count(knl.root_kernel, footprint))
 
 
 def test_summations_and_filters():
@@ -1316,8 +1338,8 @@ def test_strided_footprint():
     x_l_foot = footprints[('x', 'read')]
 
     from loopy.statistics import count
-    num = count(knl, x_l_foot).eval_with_dict(param_dict)
-    denom = count(knl, x_l_foot.remove_divs()).eval_with_dict(param_dict)
+    num = count(knl.root_kernel, x_l_foot).eval_with_dict(param_dict)
+    denom = count(knl.root_kernel, x_l_foot.remove_divs()).eval_with_dict(param_dict)
 
     assert 2*num < denom
 

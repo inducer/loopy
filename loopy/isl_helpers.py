@@ -828,6 +828,7 @@ def get_param_subst_domain(new_space, base_obj, subst_dict):
 
 def subst_into_pwqpolynomial(new_space, poly, subst_dict):
     if not poly.get_pieces():
+        assert new_space.is_params()
         result = isl.PwQPolynomial.zero(new_space.insert_dims(dim_type.out, 0, 1))
         assert result.dim(dim_type.out) == 1
         return result
