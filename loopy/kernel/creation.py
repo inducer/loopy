@@ -1330,6 +1330,7 @@ def expand_cses(instructions, inames_to_dup, cse_prefix="cse_expr"):
         if dtype is not None:
             dtype = np.dtype(dtype)
 
+        import loopy as lp
         from loopy.kernel.data import TemporaryVariable
         new_temp_vars.append(TemporaryVariable(
                 name=new_var_name,
