@@ -615,7 +615,7 @@ def auto_test_vs_ref(
 
         logger.info("%s: timing run" % (knl.name))
 
-        timing_rounds = warmup_rounds
+        timing_rounds = max(warmup_rounds, 1)
 
         while True:
             from time import time
