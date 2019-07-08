@@ -2885,6 +2885,49 @@ def test_non_integral_array_idx_raises():
         print(lp.generate_code_v2(knl).device_code())
 
 
+def test_type_inference_walks_fn_in_comparison():
+    # Reported by Lawrence Mitchell
+    # See: https://gitlab.tiker.net/inducer/loopy/issues/180
+
+    knl = lp.make_kernel(
+        [
+            "{ [p] : 0 <= p <= 2 }",
+            "{ [i] : 0 <= i <= 2 }",
+        ],
+        """
+        t2 = 0.0 {id=insn}
+        t1 = 0.0 {id=insn_0, dep=insn}
+        t1 = t1 + t0[p, i]*w_0[1 + i*2] {id=insn_1, dep=insn_0}
+        t2 = t2 + t0[p, i]*w_0[i*2] {id=insn_2, dep=insn_1}
+        A[p] = A[p]+(0.2 if abs(-1.2+t2) <= 0.1 and abs(-0.15+t1) <= 0.05 else 0.0
+                                            ) {dep=insn_2}
+        """, [
+            lp.GlobalArg(
+                name='A', dtype=np.float64,
+                shape=(3)),
+            lp.GlobalArg(
+                name='w_0', dtype=np.float64,
+                shape=(6),),
+            lp.TemporaryVariable(
+                name='t0', dtype=np.float64,
+                shape=(3, 3),
+                read_only=True,
+                address_space=lp.AddressSpace.LOCAL,
+                initializer=np.array([[1., 0., 0.],
+                    [0., 1., 0.],
+                    [0., 0., 1.]]),),
+            lp.TemporaryVariable(
+                name='t1', dtype=np.float64,
+                shape=()),
+            lp.TemporaryVariable(
+                name='t2', dtype=np.float64,
+                shape=()),
+            ],
+        target=lp.CTarget())
+
+    print(lp.generate_code_v2(knl).device_code())
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
