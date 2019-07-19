@@ -386,6 +386,14 @@ class ArrayArg(ArrayBase, KernelArgument):
                 +
                 " aspace: %s" % aspace_str)
 
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+        super(ArrayArg, self).update_persistent_hash(key_hash, key_builder)
+        key_builder.rec(key_hash, self.address_space)
+        key_builder.rec(key_hash, self.is_output_only)
+
 
 # Making this a function prevents incorrect use in isinstance.
 # Note: This is *not* deprecated, as it is super-common and

@@ -941,6 +941,23 @@ def test_auto_test_can_detect_problems(ctx_factory):
                 parameters=dict(n=123))
 
 
+def test_auto_test_zero_warmup_rounds(ctx_factory):
+    ctx = ctx_factory()
+
+    ref_knl = lp.make_kernel(
+        "{[i,j]: 0<=i,j<n}",
+        """
+        a[i,j] = 25
+        """)
+
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, dict(a=np.float32))
+
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, ref_knl,
+            parameters=dict(n=12),
+            warmup_rounds=0)
+
+
 def test_sci_notation_literal(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -2969,6 +2986,18 @@ def test_shape_mismatch_check(ctx_factory):
 
     with pytest.raises(TypeError, match="strides mismatch"):
         prg(queue, a=a, b=b)
+
+
+def test_array_arg_extra_kwargs_persis_hash():
+    from loopy.tools import LoopyKeyBuilder
+
+    a = lp.ArrayArg('a', shape=(10, ), dtype=np.float64,
+            address_space=lp.AddressSpace.LOCAL)
+    not_a = lp.ArrayArg('a', shape=(10, ), dtype=np.float64,
+            address_space=lp.AddressSpace.PRIVATE)
+
+    key_builder = LoopyKeyBuilder()
+    assert key_builder(a) != key_builder(not_a)
 
 
 if __name__ == "__main__":
