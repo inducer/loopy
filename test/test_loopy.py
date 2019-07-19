@@ -3003,6 +3003,18 @@ def test_shape_mismatch_check(ctx_factory):
         prg(queue, a=a, b=b)
 
 
+def test_array_arg_extra_kwargs_persis_hash():
+    from loopy.tools import LoopyKeyBuilder
+
+    a = lp.ArrayArg('a', shape=(10, ), dtype=np.float64,
+            address_space=lp.AddressSpace.LOCAL)
+    not_a = lp.ArrayArg('a', shape=(10, ), dtype=np.float64,
+            address_space=lp.AddressSpace.PRIVATE)
+
+    key_builder = LoopyKeyBuilder()
+    assert key_builder(a) != key_builder(not_a)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
