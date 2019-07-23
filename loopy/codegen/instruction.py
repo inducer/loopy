@@ -282,8 +282,6 @@ def generate_c_instruction_code(codegen_state, insn):
 def generate_nop_instruction_code(codegen_state, insn):
     if codegen_state.vectorization_info is not None:
         raise Unvectorizable("C instructions cannot be vectorized")
-    #from cgen import Comment
-    #return Comment("no-op (insn=%s)" % (insn.id))
     return codegen_state.ast_builder.emit_comment(
         "no-op (insn=%s)" % (insn.id))
 
