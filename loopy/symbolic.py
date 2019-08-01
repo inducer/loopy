@@ -73,7 +73,8 @@ class IdentityMapperMixin(object):
         return expr
 
     def map_array_literal(self, expr, *args, **kwargs):
-        return type(expr)(tuple(self.rec(ch, *args, **kwargs) for ch in expr.children))
+        return type(expr)(tuple(self.rec(ch, *args, **kwargs)
+                                for ch in expr.children))
 
     def map_group_hw_index(self, expr, *args, **kwargs):
         return expr
@@ -85,7 +86,8 @@ class IdentityMapperMixin(object):
         return expr
 
     def map_reduction(self, expr, *args, **kwargs):
-        mapped_inames = [self.rec(p.Variable(iname), *args, **kwargs) for iname in expr.inames]
+        mapped_inames = [self.rec(p.Variable(iname), *args, **kwargs)
+                         for iname in expr.inames]
 
         new_inames = []
         for iname, new_sym_iname in zip(expr.inames, mapped_inames):
