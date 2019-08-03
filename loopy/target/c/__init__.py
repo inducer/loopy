@@ -1159,10 +1159,17 @@ class CVecASTBuilder(CASTBuilder):
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
             lbound, ubound, inner):
 
-        from loopy.kernel.data import CVectorizeTag
+        from loopy.kernel.data import CVectorizeTag, OpenMPSIMDTag
 
         if codegen_state.kernel.iname_tags_of_type(iname, CVectorizeTag):
             return inner
+
+        if codegen_state.kernel.iname_tags_of_type(iname, OpenMPSIMDTag):
+            from cgen import Block, Pragma
+            loop = super(CVecASTBuilder, self).emit_sequential_loop(
+                codegen_state, iname, iname_dtype, lbound, ubound, inner)
+            loop = Block([Pragma("omp simd"), loop])
+            return loop
 
         return super(CVecASTBuilder, self).emit_sequential_loop(
             codegen_state, iname, iname_dtype, lbound, ubound, inner)

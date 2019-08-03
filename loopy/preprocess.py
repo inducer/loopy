@@ -2489,7 +2489,141 @@ def limit_boostability(kernel):
 # }}}
 
 
+# {{{ realize omp simd
+
+def add_omp_simd(kernel):
+    from loopy.kernel.data import OpenMPSIMDTag, ArrayArg
+    from loopy.kernel.tools import DomainChanger
+    from loopy.isl_helpers import duplicate_axes
+    from loopy.transform.iname import tag_inames
+    from loopy import Assignment
+    from loopy.symbolic import IdentityMapper, SubstitutionMapper
+    from pymbolic.mapper.substitutor import make_subst_func
+    from pymbolic.primitives import Variable
+
+    # any variable not in subscript?
+    class OutsideVariableFinder(IdentityMapper):
+
+        def __init__(self, find_names):
+            self.result = False
+            self.find_names = find_names
+
+        def map_variable(self, expr, *args, **kwargs):
+            if expr.name in self.find_names:
+                self.result = True
+            return super(OutsideVariableFinder, self).map_variable(
+                expr, args, kwargs)
+
+        def map_subscript(self, expr, *args, **kwargs):
+            return expr
+
+    class VariableFinder(IdentityMapper):
+
+        def __init__(self, find_names, regex=False):
+            self.regex = regex
+            if regex:
+                import re
+                self.find_names = [re.compile(name) for name in find_names]
+            else:
+                self.find_names = find_names
+            self.result = False
+
+        def map_variable(self, expr, *args, **kwargs):
+            if self.regex:
+                for regex in self.find_names:
+                    if regex.match(expr.name):
+                        self.result = True
+                        break
+            elif expr.name in self.find_names:
+                self.result = True
+            return super(VariableFinder, self).map_variable(expr, args, kwargs)
+
+    class SubscriptFinder(IdentityMapper):
+
+        def __init__(self, find_aggregate_name, find_index_names):
+            self.find_aggregate_aname = find_aggregate_name
+            self.find_index_names = find_index_names
+            self.result = False
+
+        def map_subscript(self, expr, *args, **kwargs):
+            if expr.aggregate.name == self.find_aggregate_aname:
+                vf = VariableFinder(self.find_index_names)
+                vf(expr.index)
+                if vf.result:
+                    self.result = True
+            return super(SubscriptFinder, self).map_subscript(expr, args, kwargs)
+
+    simd_inames = []
+    new_simd_inames = []
+
+    for i in sorted(kernel.all_inames()):
+        if kernel.iname_tags_of_type(i, OpenMPSIMDTag):
+            simd_inames.append(i)
+            j = i + "_p"
+            new_simd_inames.append(j)
+
+            # create domains for new inames
+            domch = DomainChanger(kernel, frozenset([i]))
+            kernel = kernel.copy(domains=domch.get_domains_with(
+                duplicate_axes(domch.domain, [i], [j])))
+
+            # change omp_simd to ilp.seq for non-vectorizable instructions
+            kernel = tag_inames(kernel, [(i, "ilp.seq")], retag=True)
+            kernel = tag_inames(kernel, [(j, "omp_simd")])
+
+    if not simd_inames:
+        return kernel
+
+    iname_map = dict(zip(simd_inames, new_simd_inames))
+    subst_mapper = SubstitutionMapper(
+        make_subst_func(dict((Variable(o), Variable(n))
+                             for (o, n) in zip(simd_inames, new_simd_inames))))
+    globals = [name for name, arg in kernel.arg_dict.items()
+               if isinstance(arg, ArrayArg) and arg.shape[0] is not None]
+    gbf = VariableFinder(globals)
+
+    new_insts = []
+    for inst in kernel.instructions:
+        if isinstance(inst, Assignment) and (inst.within_inames & set(simd_inames)):
+            should_simd = True
+
+            # reduction over globals are sequantialized
+            if should_simd and globals:
+                gbf.result = False
+                gbf(inst.assignee)
+                if gbf.result:
+                    should_simd = False
+
+            # cannot have inames outside of subscript
+            if should_simd:
+                ovf = OutsideVariableFinder(
+                    list(inst.within_inames & set(simd_inames)))
+                ovf(inst.expression)
+                if ovf.result:
+                    should_simd = False
+
+            # quick hack to turn off simd for gathering
+            # this is OK since omp vectorization will note be used in practice
+            # this is just for gathering data for the paper
+            if inst.assignee.aggregate.name[:3] == "dat":
+                should_simd = False
+
+            if should_simd:
+                lhs = subst_mapper(inst.assignee)
+                rhs = subst_mapper(inst.expression)
+                within_inames = frozenset(iname_map[i] if i in iname_map else i
+                                          for i in inst.within_inames)
+                inst = inst.copy(assignee=lhs, expression=rhs,
+                                 within_inames=within_inames)
+
+        new_insts.append(inst)
+    kernel = kernel.copy(instructions=new_insts)
+    return kernel
+
+# }}}
+
 # {{{ realize C vector extension
+
 
 def realize_c_vec(kernel):
 
@@ -2578,21 +2712,28 @@ def realize_c_vec(kernel):
 
     cvec_inames = []
     new_cvec_inames = []
+    simd_inames = []
 
     for i in sorted(kernel.all_inames()):
         if kernel.iname_tags_of_type(i, CVectorizeTag):
             cvec_inames.append(i)
             j = i + "_p"  # TODO: use proper name generator
+            k = i + "_simd"
             new_cvec_inames.append(j)
+            simd_inames.append(k)
 
             # create domains for new inames
             domch = DomainChanger(kernel, frozenset([i]))
             kernel = kernel.copy(domains=domch.get_domains_with(
                 duplicate_axes(domch.domain, [i], [j])))
+            domch = DomainChanger(kernel, frozenset([i]))
+            kernel = kernel.copy(domains=domch.get_domains_with(
+                duplicate_axes(domch.domain, [i], [k])))
 
             # change c_vec to ilp.seq for non-vectorizable instructions
             kernel = tag_inames(kernel, [(i, "ilp.seq")], retag=True)
             kernel = tag_inames(kernel, [(j, "c_vec")])
+            kernel = tag_inames(kernel, [(k, "omp_simd")])
 
     if not cvec_inames:
         return kernel
@@ -2601,6 +2742,10 @@ def realize_c_vec(kernel):
     subst_mapper = SubstitutionMapper(
         make_subst_func(dict((Variable(o), Variable(n))
                              for (o, n) in zip(cvec_inames, new_cvec_inames))))
+    iname_map_simd = dict(zip(cvec_inames, simd_inames))
+    subst_mapper_simd = SubstitutionMapper(
+        make_subst_func(dict((Variable(o), Variable(n))
+                             for (o, n) in zip(cvec_inames, simd_inames))))
 
     # TODO: find vector version of these function calls
     func_names = set(["abs_*", "fabs_*", "cos_*", "sin_*", "exp_*", "pow_*",
@@ -2616,6 +2761,7 @@ def realize_c_vec(kernel):
     for inst in kernel.instructions:
         if isinstance(inst, Assignment) and (inst.within_inames & set(cvec_inames)):
             can_vectorize = True
+            should_simd = False
 
             # reduction over globals are sequentialized
             if can_vectorize and globals:
@@ -2631,6 +2777,7 @@ def realize_c_vec(kernel):
                 function_finder(inst.expression)
                 if function_finder.result:
                     can_vectorize = False
+                    should_simd = True
 
             # non privitized array indexed with c_vec iname cannot be vectorized
             if can_vectorize:
@@ -2662,6 +2809,7 @@ def realize_c_vec(kernel):
                 ovf(inst.expression)
                 if ovf.result:
                     can_vectorize = False
+                    should_simd = True
 
             # conditionals cannot be vectorized
             if can_vectorize:
@@ -2669,6 +2817,7 @@ def realize_c_vec(kernel):
                 cf(inst.expression)
                 if cf.result:
                     can_vectorize = False
+                    should_simd = True
 
             # constant rhs cannot be vectorized (GCC doesn't like it)
             if can_vectorize:
@@ -2683,6 +2832,13 @@ def realize_c_vec(kernel):
                 lhs = subst_mapper(inst.assignee)
                 rhs = subst_mapper(inst.expression)
                 within_inames = frozenset(iname_map[i] if i in iname_map else i
+                                          for i in inst.within_inames)
+                inst = inst.copy(assignee=lhs, expression=rhs,
+                                 within_inames=within_inames)
+            elif should_simd:
+                lhs = subst_mapper_simd(inst.assignee)
+                rhs = subst_mapper_simd(inst.expression)
+                within_inames = frozenset(iname_map_simd[i] if i in iname_map_simd else i
                                           for i in inst.within_inames)
                 inst = inst.copy(assignee=lhs, expression=rhs,
                                  within_inames=within_inames)
@@ -2923,6 +3079,9 @@ def preprocess_kernel(kernel, device=None):
     # need to be duplicated by this.
 
     kernel = realize_ilp(kernel)
+
+    kernel = add_omp_simd(kernel)
+    kernel = realize_c_vec(kernel)
 
     kernel = find_temporary_address_space(kernel)
 
