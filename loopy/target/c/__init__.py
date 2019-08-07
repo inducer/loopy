@@ -367,13 +367,13 @@ class CMathCallable(ScalarCallable):
     def with_types(self, arg_id_to_dtype, caller_kernel, callables_table):
         name = self.name
 
-        if name in ["abs", "min", "max"]:
+        if name in ["min", "max"]:
             name = "f" + name
 
         # unary functions
-        if name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
+        if name in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
                     "tan", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor",
-                    "erf", "erfc"]:
+                    "erf", "erfc", "real", "imag", "conj"]:
 
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 0:
@@ -392,17 +392,27 @@ class CMathCallable(ScalarCallable):
             if dtype.kind in ('u', 'i'):
                 # ints and unsigned casted to float32
                 dtype = np.float32
-            elif dtype.kind == 'c':
+
+            if dtype.kind == "f":
+                if name == "abs":
+                    name = "f" + name
+            elif dtype.kind == "c" and name in ["abs", "acos", "asin", "atan", "cos",
+                                                "cosh", "sin", "sinh", "tan", "tanh",
+                                                "exp", "log", "sqrt", "real", "imag"]:
+                name = "c" + name
+            elif dtype.kind == "c" and name in ["conj"]:
+                pass
+            else:
                 raise LoopyTypeError("%s does not support type %s" % (name, dtype))
 
             from loopy.target.opencl import OpenCLTarget
             if not isinstance(caller_kernel.target, OpenCLTarget):
                 # for CUDA, C Targets the name must be modified
-                if dtype == np.float64:
+                if dtype in [np.float64, np.complex128]:
                     pass  # fabs
-                elif dtype == np.float32:
+                elif dtype in [np.float32, np.complex64]:
                     name = name + "f"  # fminf
-                elif dtype == np.float128:  # pylint:disable=no-member
+                elif dtype == [np.float128, np.complex256]:  # pylint:disable=no-member
                     name = name + "l"  # fminl
                 else:
                     raise LoopyTypeError("%s does not support type %s" % (name,
@@ -434,20 +444,26 @@ class CMathCallable(ScalarCallable):
                      if id >= 0])
 
             if dtype.kind == "c":
-                raise LoopyTypeError("%s does not support complex numbers")
+                if name == "pow":
+                    name = "c" + name
+                else:
+                    raise LoopyTypeError("%s does not support complex numbers")
 
-            elif dtype.kind == "f":
-                from loopy.target.opencl import OpenCLTarget
-                if not isinstance(caller_kernel.target, OpenCLTarget):
-                    if dtype == np.float64:
-                        pass  # fmin
-                    elif dtype == np.float32:
-                        name = name + "f"  # fminf
-                    elif dtype == np.float128:  # pylint:disable=no-member
-                        name = name + "l"  # fminl
-                    else:
-                        raise LoopyTypeError("%s does not support type %s"
-                                             % (name, dtype))
+            from loopy.target.opencl import OpenCLTarget
+            if not isinstance(caller_kernel.target, OpenCLTarget):
+                # for CUDA, C Targets the name must be modified
+                if dtype in [np.float64, np.complex128]:
+                    pass  # fabs
+                elif dtype in [np.float32, np.complex64]:
+                    name = name + "f"  # fminf
+                elif dtype == [np.float128, np.complex256]:  # pylint:disable=no-member
+                    name = name + "l"  # fminl
+                else:
+                    raise LoopyTypeError("%s does not support type %s"
+                                         % (name, dtype))
+            else:
+                    raise LoopyTypeError("%s does not support type %s"
+                                         % (name, dtype))
             dtype = NumpyType(dtype)
             return (
                     self.copy(name_in_target=name,
@@ -467,7 +483,7 @@ def scope_c_math_functions(target, identifier):
     if identifier in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin",
                       "sinh", "pow", "atan2", "tanh", "exp", "log", "log10",
                       "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
-                      "fabs", "tan", "erf", "erfc"]:
+                      "fabs", "tan", "erf", "erfc", "real", "imag", "conj"]:
         return CMathCallable(name=identifier)
     return None
 
