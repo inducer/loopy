@@ -469,7 +469,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             raise LoopyError("could not map '%s' to a complex type name." % dtype)
 
     def map_quotient(self, expr, type_context):
-        num = self.rec(expr.numerator, type_context, num_tgt_dtype=None)
+        num = self.rec(expr.numerator, type_context)
 
         # analogous to ^{-1}
         denom = self.rec(expr.denominator, type_context)
