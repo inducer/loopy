@@ -416,7 +416,6 @@ def test_fuse_kernels(ctx_factory):
     lp.auto_test_vs_ref(xyderiv, ctx, knl, parameters=dict(nelements=20, ndofs=4))
 
 
-@pytest.mark.xfail
 def test_parse_and_fuse_two_kernels():
     fortran_src = """
         subroutine fill(out, a, n)
