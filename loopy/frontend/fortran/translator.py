@@ -797,17 +797,13 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
             # }}}
 
-            index_dtype = self.index_dtype
-            if index_dtype is None:
-                index_dtype = np.int32
-
             knl = lp.make_function(
                     sub.index_sets,
                     sub.instructions,
                     kernel_data,
                     name=sub.subprogram_name,
                     default_order="F",
-                    index_dtype=index_dtype,
+                    index_dtype=self.index_dtype,
                     target=self.target,
                     seq_dependencies=seq_dependencies,
                     )
