@@ -60,15 +60,15 @@ def test_fill(ctx_factory):
 
         !$loopy begin
         !
-        ! fill = lp.parse_fortran(SOURCE)
+        ! fill, = lp.parse_fortran(SOURCE)
         ! fill = lp.split_iname(fill, "i", split_amount,
         !     outer_tag="g.0", inner_tag="l.0")
-        ! RESULT = fill
+        ! RESULT = [fill]
         !
         !$loopy end
         """
 
-    knl = lp.parse_transformed_fortran(fortran_src,
+    knl, = lp.parse_transformed_fortran(fortran_src,
             pre_transform_code="split_amount = 128")
 
     assert "i_inner" in knl.root_kernel.all_inames()
@@ -92,7 +92,7 @@ def test_fill_const(ctx_factory):
         end
         """
 
-    knl = lp.parse_fortran(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     ctx = ctx_factory()
 
@@ -115,7 +115,7 @@ def test_asterisk_in_shape(ctx_factory):
         end
         """
 
-    knl = lp.parse_fortran(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -139,7 +139,7 @@ def test_assignment_to_subst(ctx_factory):
         end
         """
 
-    knl = lp.parse_fortran(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     ref_knl = knl
 
@@ -166,7 +166,7 @@ def test_assignment_to_subst_two_defs(ctx_factory):
         end
         """
 
-    knl = lp.parse_fortran(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     ref_knl = knl
 
@@ -194,7 +194,7 @@ def test_assignment_to_subst_indices(ctx_factory):
         end
         """
 
-    knl = lp.parse_fortran(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     knl = lp.fix_parameters(knl, n=5)
 
@@ -231,7 +231,7 @@ def test_if(ctx_factory):
         end
         """
 
-    knl = lp.parse_fortran(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     ref_knl = knl
 
@@ -265,7 +265,7 @@ def test_tagged(ctx_factory):
         end
         """
 
-    knl = lp.parse_fortran(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     assert sum(1 for insn in lp.find_instructions(knl, "tag:input")) == 2
 
@@ -293,7 +293,7 @@ def test_matmul(ctx_factory, buffer_inames):
         end subroutine
         """
 
-    knl = lp.parse_fortran(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     assert len(knl.root_kernel.domains) == 1
 
@@ -355,7 +355,7 @@ def test_batched_sparse():
 
         """
 
-    knl = lp.parse_fortran(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     knl = lp.split_iname(knl, "i", 128)
     knl = lp.tag_inames(knl, {"i_outer": "g.0"})
@@ -399,11 +399,11 @@ def test_fuse_kernels(ctx_factory):
         result(e,i,j) = prev + d(i,k)*q(e,k,j)
         """
 
-    xderiv = lp.parse_fortran(
+    xderiv, = lp.parse_fortran(
             fortran_template.format(inner=xd_line, name="xderiv"))
-    yderiv = lp.parse_fortran(
+    yderiv, = lp.parse_fortran(
             fortran_template.format(inner=yd_line, name="yderiv"))
-    xyderiv = lp.parse_fortran(
+    xyderiv, = lp.parse_fortran(
             fortran_template.format(
                 inner=(xd_line + "\n" + yd_line), name="xyderiv"))
 
@@ -442,17 +442,15 @@ def test_parse_and_fuse_two_kernels():
 
         !$loopy begin
         !
-        ! prg = lp.parse_fortran(SOURCE)
-        ! fill = prg["fill"]
-        ! twice = prg["twice"]
+        ! fill, twice = lp.parse_fortran(SOURCE)
         ! knl = lp.fuse_kernels((fill, twice))
         ! print(knl)
-        ! RESULT = knl
+        ! RESULT = [knl]
         !
         !$loopy end
         """
 
-    knl = lp.parse_transformed_fortran(fortran_src)
+    knl, = lp.parse_transformed_fortran(fortran_src)
 
 
 def test_precompute_some_exist(ctx_factory):
@@ -472,7 +470,7 @@ def test_precompute_some_exist(ctx_factory):
         end subroutine
         """
 
-    knl = lp.parse_fortran(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     assert len(knl.root_kernel.domains) == 1
 
