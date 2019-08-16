@@ -248,7 +248,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
             applied_iname_rewrites=None,
             cache_manager=None,
-            index_dtype=np.int32,
+            index_dtype=None,
             options=None,
 
             state=KernelState.INITIAL,
@@ -292,6 +292,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if cache_manager is None:
             from loopy.kernel.tools import SetOperationCacheManager
             cache_manager = SetOperationCacheManager()
+        if index_dtype is None:
+            index_dtype = np.int32
 
         # }}}
 
