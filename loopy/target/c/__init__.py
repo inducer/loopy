@@ -393,15 +393,17 @@ class CMathCallable(ScalarCallable):
                 # ints and unsigned casted to float32
                 dtype = np.float32
 
-            if dtype.kind == "f":
+            if name in ["real", "imag"]:
+                name = "c" + name # No float equivalents but type promotion applies.
+            elif  name in ["conj"]:
+                pass # Ditto
+            elif dtype.kind == "f":
                 if name == "abs":
                     name = "f" + name
             elif dtype.kind == "c" and name in ["abs", "acos", "asin", "atan", "cos",
                                                 "cosh", "sin", "sinh", "tan", "tanh",
-                                                "exp", "log", "sqrt", "real", "imag"]:
+                                                "exp", "log", "sqrt"]:
                 name = "c" + name
-            elif dtype.kind == "c" and name in ["conj"]:
-                pass
             else:
                 raise LoopyTypeError("%s does not support type %s" % (name, dtype))
 
