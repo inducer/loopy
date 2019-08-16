@@ -332,7 +332,14 @@ class SubstitutionRuleExpander(IdentityMapper):
 # {{{ loopy-specific primitives
 
 class Literal(p.Leaf):
-    """A literal to be used during code generation."""
+    """A literal to be used during code generation.
+
+    .. note::
+
+        Only used in the output of
+        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
+        similar mappers). Not for use in Loopy source representation.
+    """
 
     def __init__(self, s):
         self.s = s
@@ -349,9 +356,14 @@ class Literal(p.Leaf):
 
 
 class ArrayLiteral(p.Leaf):
-    "An array literal."
+    """An array literal.
 
-    # Currently only used after loopy -> C expression translation.
+    .. note::
+
+        Only used in the output of
+        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
+        similar mappers). Not for use in Loopy source representation.
+    """
 
     def __init__(self, children):
         self.children = children
@@ -381,10 +393,24 @@ class HardwareAxisIndex(p.Leaf):
 
 
 class GroupHardwareAxisIndex(HardwareAxisIndex):
+    """
+    .. note::
+
+        Only used in the output of
+        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
+        similar mappers). Not for use in Loopy source representation.
+    """
     mapper_method = "map_group_hw_index"
 
 
 class LocalHardwareAxisIndex(HardwareAxisIndex):
+    """
+    .. note::
+
+        Only used in the output of
+        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
+        similar mappers). Not for use in Loopy source representation.
+    """
     mapper_method = "map_local_hw_index"
 
 
