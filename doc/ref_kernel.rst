@@ -346,6 +346,11 @@ Loopy's expressions are a slight superset of the expressions supported by
 * ``cast(type, value)``: No parse syntax currently.
   See :class:`loopy.symbolic.TypeCast`.
 
+* If constants in expressions are subclasses of :class:`numpy.generic`,
+  generated code will contain literals of exactly that type, making them
+  *explicitly typed*. Constants given as Python types such as :class:`int`,
+  :class:`float` or :class:`complex` are called *implicitly* typed and
+  adapt to the type of the expected result.
 
 TODO: Functions
 TODO: Reductions
