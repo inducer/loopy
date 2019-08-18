@@ -191,9 +191,6 @@ class ConstantFoldingMapper(ConstantFoldingMapperBase,
 
 
 class StringifyMapper(StringifyMapperBase):
-    def __init__(self):
-        super(StringifyMapper, self).__init__(constant_mapper=repr)
-
     def map_literal(self, expr, *args):
         return expr.s
 
@@ -249,6 +246,9 @@ class EqualityPreservingStringifyMapper(StringifyMapperBase):
     ``expr_1 == expr_2``
     """
 
+    def __init__(self):
+        super(EqualityPreservingStringifyMapper, self).__init__(constant_mapper=repr)
+
     def map_constant(self, expr, enclosing_prec):
         if isinstance(expr, np.generic):
             # Explicitly typed: Emitted string must reflect type exactly.
@@ -257,7 +257,7 @@ class EqualityPreservingStringifyMapper(StringifyMapperBase):
 
             return "%s(%s)" % (type(expr).__name__, repr(expr))
         else:
-            return super(StringifyMapper, self).map_constant(
+            return super(EqualityPreservingStringifyMapper, self).map_constant(
                     expr, enclosing_prec)
 
 
