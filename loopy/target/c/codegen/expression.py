@@ -359,14 +359,16 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         return cast(self.rec(expr.child, type_context))
 
     def map_constant(self, expr, type_context):
+        from loopy.symbolic import Literal
+
         if isinstance(expr, (complex, np.complexfloating)):
             try:
                 dtype = expr.dtype
             except AttributeError:
-                # (COMPLEX_GUESS_LOGIC)
-                # This made it through type 'guessing' above, and it
-                # was concluded above (search for COMPLEX_GUESS_LOGIC),
-                # that nothing was lost by using single precision.
+                # (COMPLEX_GUESS_LOGIC) This made it through type 'guessing' in
+                # type inference, and it was concluded there (search for
+                # COMPLEX_GUESS_LOGIC in loopy.type_inference), that no
+                # accuracy was lost by using single precision.
                 cast_type = "cfloat"
             else:
                 if dtype == np.complex128:
@@ -378,10 +380,36 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                             "generation: %s" % type(expr))
 
             return var("%s_new" % cast_type)(expr.real, expr.imag)
+        elif isinstance(expr, np.generic):
+            # Explicitly typed: Generated code must reflect type exactly.
+
+            # FIXME: This assumes a 32-bit architecture.
+            if isinstance(expr, np.float32):
+                return Literal(repr(expr)+"f")
+
+            elif isinstance(expr, np.float64):
+                return Literal(repr(expr))
+
+            # Disabled for now, possibly should be a subtarget.
+            # elif isinstance(expr, np.float128):
+            #     return Literal(repr(expr)+"l")
+
+            elif isinstance(expr, np.integer):
+                suffix = ""
+                iinfo = np.iinfo(expr)
+                if iinfo.min < 0:
+                    suffix += "u"
+                if iinfo.max > (2**31-1):
+                    suffix += "l"
+                return Literal(repr(expr)+suffix)
+
+            else:
+                raise LoopyError("do not know how to generate code for "
+                        "constant of numpy type '%s'" % type(expr).__name__)
+
         else:
-            from loopy.symbolic import Literal
             if type_context == "f":
-                return Literal(repr(float(expr))+"f")
+                return Literal(repr(np.float32(expr))+"f")
             elif type_context == "d":
                 return Literal(repr(float(expr)))
             elif type_context == "i":
