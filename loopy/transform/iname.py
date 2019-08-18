@@ -1344,6 +1344,9 @@ def _split_reduction(kernel, inames, direction, within=None):
         inames = inames.split(",")
     inames = set(inames)
 
+    if not (inames <= kernel.all_inames()):
+        raise LoopyError("Unknown inames: {}.".format(inames-kernel.all_inames()))
+
     from loopy.match import parse_stack_match
     within = parse_stack_match(within)
 

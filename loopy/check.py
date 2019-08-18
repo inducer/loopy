@@ -940,12 +940,8 @@ def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
 # {{{ check that all instructions are scheduled
 
 def check_that_all_insns_are_scheduled(kernel):
-    from loopy.kernel.instruction import NoOpInstruction
 
-    all_schedulable_insns = set(
-        insn.id for insn in kernel.instructions
-        # nops are not schedulable
-        if not isinstance(insn, NoOpInstruction))
+    all_schedulable_insns = set(insn.id for insn in kernel.instructions)
     from loopy.schedule import sched_item_to_insn_id
     scheduled_insns = set(
         insn_id
