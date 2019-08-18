@@ -520,7 +520,7 @@ class TypeCast(LoopyExpressionBase):
     mapper_method = intern("map_type_cast")
 
 
-class TaggedVariable(LoopyExpressionBase):
+class TaggedVariable(LoopyExpressionBase, p.Variable):
     """This is an identifier with a tag, such as 'matrix$one', where
     'one' identifies this specific use of the identifier. This mechanism
     may then be used to address these uses--such as by prefetching only
