@@ -191,18 +191,6 @@ class ConstantFoldingMapper(ConstantFoldingMapperBase,
 
 
 class StringifyMapper(StringifyMapperBase):
-    """
-    .. note::
-
-        For the benefit of
-        :meth:`loopy.tools.LoopyEqKeyBuilder.update_for_pymbolic_field`,
-        this mapper satisfies the invariant
-
-        ``mapper(expr_1) == mapper(expr_2)``
-        if and only if
-        ``expr_1 == expr_2``
-    """
-
     def __init__(self):
         super(StringifyMapper, self).__init__(constant_mapper=repr)
 
@@ -217,17 +205,6 @@ class StringifyMapper(StringifyMapperBase):
 
     def map_local_hw_index(self, expr, enclosing_prec):
         return "loc.%d" % expr.index
-
-    def map_constant(self, expr, enclosing_prec):
-        if isinstance(expr, np.generic):
-            # Explicitly typed: Emitted string must reflect type exactly.
-
-            # FIXME: This syntax cannot currently be parsed.
-
-            return "%s(%s)" % (type(expr).__name__, repr(expr))
-        else:
-            return super(StringifyMapper, self).map_constant(
-                    expr, enclosing_prec)
 
     def map_reduction(self, expr, prec):
         from pymbolic.mapper.stringifier import PREC_NONE
@@ -259,6 +236,29 @@ class StringifyMapper(StringifyMapperBase):
     def map_type_cast(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_NONE
         return "cast(%s, %s)" % (repr(expr.type), self.rec(expr.child, PREC_NONE))
+
+
+class EqualityPreservingStringifyMapper(StringifyMapperBase):
+    """
+    For the benefit of
+    :meth:`loopy.tools.LoopyEqKeyBuilder.update_for_pymbolic_field`,
+    this mapper satisfies the invariant
+
+    ``mapper(expr_1) == mapper(expr_2)``
+    if and only if
+    ``expr_1 == expr_2``
+    """
+
+    def map_constant(self, expr, enclosing_prec):
+        if isinstance(expr, np.generic):
+            # Explicitly typed: Emitted string must reflect type exactly.
+
+            # FIXME: This syntax cannot currently be parsed.
+
+            return "%s(%s)" % (type(expr).__name__, repr(expr))
+        else:
+            return super(StringifyMapper, self).map_constant(
+                    expr, enclosing_prec)
 
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
