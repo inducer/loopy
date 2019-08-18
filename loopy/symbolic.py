@@ -357,7 +357,16 @@ class SubstitutionRuleExpander(IdentityMapper):
 
 # {{{ loopy-specific primitives
 
-class Literal(p.Leaf):
+class LoopyExpressionBase(p.Expression):
+    def stringifier(self):
+        from loopy.diagnostic import LoopyError
+        raise LoopyError("pymbolic < 2019.1 is in use. Please upgrade.")
+
+    def make_stringifier(self, originating_stringifier=None):
+        return StringifyMapper()
+
+
+class Literal(LoopyExpressionBase):
     """A literal to be used during code generation.
 
     .. note::
@@ -370,9 +379,6 @@ class Literal(p.Leaf):
     def __init__(self, s):
         self.s = s
 
-    def stringifier(self):
-        return StringifyMapper
-
     def __getinitargs__(self):
         return (self.s,)
 
@@ -381,7 +387,7 @@ class Literal(p.Leaf):
     mapper_method = "map_literal"
 
 
-class ArrayLiteral(p.Leaf):
+class ArrayLiteral(LoopyExpressionBase):
     """An array literal.
 
     .. note::
@@ -394,9 +400,6 @@ class ArrayLiteral(p.Leaf):
     def __init__(self, children):
         self.children = children
 
-    def stringifier(self):
-        return StringifyMapper
-
     def __getinitargs__(self):
         return (self.children,)
 
@@ -405,12 +408,9 @@ class ArrayLiteral(p.Leaf):
     mapper_method = "map_array_literal"
 
 
-class HardwareAxisIndex(p.Leaf):
+class HardwareAxisIndex(LoopyExpressionBase):
     def __init__(self, axis):
         self.axis = axis
-
-    def stringifier(self):
-        return StringifyMapper
 
     def __getinitargs__(self):
         return (self.axis,)
@@ -440,18 +440,15 @@ class LocalHardwareAxisIndex(HardwareAxisIndex):
     mapper_method = "map_local_hw_index"
 
 
-class FunctionIdentifier(p.Leaf):
+class FunctionIdentifier(LoopyExpressionBase):
     """A base class for symbols representing functions."""
 
     init_arg_names = ()
 
-    def stringifier(self):
-        return StringifyMapper
-
     mapper_method = intern("map_loopy_function_identifier")
 
 
-class TypedCSE(p.CommonSubexpression):
+class TypedCSE(LoopyExpressionBase, p.CommonSubexpression):
     """A :class:`pymbolic.primitives.CommonSubexpression` annotated with
     a :class:`numpy.dtype`.
     """
@@ -467,7 +464,7 @@ class TypedCSE(p.CommonSubexpression):
         return dict(dtype=self.dtype)
 
 
-class TypeAnnotation(p.Expression):
+class TypeAnnotation(LoopyExpressionBase):
     """Undocumented for now. Currently only used internally around LHSs of
     assignments that create temporaries.
     """
@@ -480,13 +477,10 @@ class TypeAnnotation(p.Expression):
     def __getinitargs__(self):
         return (self.type, self.child)
 
-    def stringifier(self):
-        return StringifyMapper
-
     mapper_method = intern("map_type_annotation")
 
 
-class TypeCast(p.Expression):
+class TypeCast(LoopyExpressionBase):
     """Only defined for numerical types with semantics matching
     :meth:`numpy.ndarray.astype`.
 
@@ -523,13 +517,10 @@ class TypeCast(p.Expression):
     def __getinitargs__(self):
         return (self._type_name, self.child)
 
-    def stringifier(self):
-        return StringifyMapper
-
     mapper_method = intern("map_type_cast")
 
 
-class TaggedVariable(p.Variable):
+class TaggedVariable(LoopyExpressionBase):
     """This is an identifier with a tag, such as 'matrix$one', where
     'one' identifies this specific use of the identifier. This mechanism
     may then be used to address these uses--such as by prefetching only
@@ -545,13 +536,10 @@ class TaggedVariable(p.Variable):
     def __getinitargs__(self):
         return self.name, self.tag
 
-    def stringifier(self):
-        return StringifyMapper
-
     mapper_method = intern("map_tagged_variable")
 
 
-class Reduction(p.Expression):
+class Reduction(LoopyExpressionBase):
     """Represents a reduction operation on :attr:`exprs`
     across :attr:`inames`.
 
@@ -638,9 +626,6 @@ class Reduction(p.Expression):
                 and other.inames == self.inames
                 and other.expr == self.expr)
 
-    def stringifier(self):
-        return StringifyMapper
-
     @property
     def is_tuple_typed(self):
         return self.operation.arg_count > 1
@@ -653,7 +638,7 @@ class Reduction(p.Expression):
     mapper_method = intern("map_reduction")
 
 
-class LinearSubscript(p.Expression):
+class LinearSubscript(LoopyExpressionBase):
     """Represents a linear index into a multi-dimensional array, completely
     ignoring any multi-dimensional layout.
     """
@@ -667,13 +652,10 @@ class LinearSubscript(p.Expression):
     def __getinitargs__(self):
         return self.aggregate, self.index
 
-    def stringifier(self):
-        return StringifyMapper
-
     mapper_method = intern("map_linear_subscript")
 
 
-class RuleArgument(p.Expression):
+class RuleArgument(LoopyExpressionBase):
     """Represents a (numbered) argument of a :class:`loopy.SubstitutionRule`.
     Only used internally in the rule-aware mappers to match subst rules
     independently of argument names.
@@ -686,9 +668,6 @@ class RuleArgument(p.Expression):
 
     def __getinitargs__(self):
         return (self.index,)
-
-    def stringifier(self):
-        return StringifyMapper
 
     mapper_method = intern("map_rule_argument")
 
