@@ -382,14 +382,17 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             return var("%s_new" % cast_type)(expr.real, expr.imag)
         elif isinstance(expr, np.generic):
             # Explicitly typed: Generated code must reflect type exactly.
+
+            # FIXME: This assumes a 32-bit architecture.
             if isinstance(expr, np.float32):
                 return Literal(repr(expr)+"f")
 
             elif isinstance(expr, np.float64):
                 return Literal(repr(expr))
 
-            elif isinstance(expr, np.float128):
-                return Literal(repr(expr)+"l")
+            # Disabled for now, possibly should be a subtarget.
+            # elif isinstance(expr, np.float128):
+            #     return Literal(repr(expr)+"l")
 
             elif isinstance(expr, np.integer):
                 suffix = ""
