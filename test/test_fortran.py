@@ -45,6 +45,97 @@ __all__ = [
 pytestmark = pytest.mark.importorskip("fparser")
 
 
+def test_fp_prec_comparison():
+    # FIXME: This test should succeed even when the number is exactly
+    # representable in single precision.
+    #
+    # https://gitlab.tiker.net/inducer/loopy/issues/187
+
+    fortran_src_dp = """
+        subroutine assign_scalar(a)
+          real*8 a(1)
+
+          a(1) = 1.1d0
+        end
+        """
+
+    prg_dp = lp.parse_fortran(fortran_src_dp)
+
+    fortran_src_sp = """
+        subroutine assign_scalar(a)
+          real*8 a(1)
+
+          a(1) = 1.1
+        end
+        """
+
+    prg_sp = lp.parse_fortran(fortran_src_sp)
+
+    assert prg_sp != prg_dp
+
+
+def test_assign_double_precision_scalar(ctx_factory):
+    fortran_src = """
+        subroutine assign_scalar(a)
+          real*8 a(1)
+
+          a(1) = 1.1d0
+        end
+        """
+
+    prg = lp.parse_fortran(fortran_src)
+    print(lp.generate_code_v2(prg).device_code())
+    assert "1.1;" in lp.generate_code_v2(prg).device_code()
+    queue = cl.CommandQueue(ctx_factory())
+
+    a_dev = cl.array.empty(queue, 1, dtype=np.float64, order="F")
+    prg(queue, a=a_dev)
+
+    abs_err = abs(a_dev.get()[0] - 1.1)
+    assert abs_err < 1e-15
+
+
+def test_assign_double_precision_scalar_as_rational(ctx_factory):
+    fortran_src = """
+        subroutine assign_scalar(a)
+          real*8 a(1)
+
+          a(1) = 11
+          a(1) = a(1) / 10
+        end
+        """
+
+    prg = lp.parse_fortran(fortran_src)
+    queue = cl.CommandQueue(ctx_factory())
+
+    a_dev = cl.array.empty(queue, 1, dtype=np.float64, order="F")
+    prg(queue, a=a_dev)
+
+    abs_err = abs(a_dev.get()[0] - 1.1)
+    assert abs_err < 1e-15
+
+
+def test_assign_single_precision_scalar(ctx_factory):
+    fortran_src = """
+        subroutine assign_scalar(a)
+          real*8 a(1)
+
+          a(1) = 1.1
+        end
+        """
+
+    prg = lp.parse_fortran(fortran_src)
+    assert "1.1f" in lp.generate_code_v2(prg).device_code()
+    queue = cl.CommandQueue(ctx_factory())
+
+    a_dev = cl.array.empty(queue, 1, dtype=np.float64, order="F")
+    prg(queue, a=a_dev)
+
+    abs_err = abs(a_dev.get()[0] - 1.1)
+    assert abs_err > 1e-15
+    assert abs_err < 1e-6
+
+
 def test_fill(ctx_factory):
     fortran_src = """
         subroutine fill(out, a, n)
@@ -452,7 +543,7 @@ def test_parse_and_fuse_two_kernels():
         !$loopy end
         """
 
-    knl = lp.parse_transformed_fortran(fortran_src)
+    lp.parse_transformed_fortran(fortran_src)
 
 
 def test_precompute_some_exist(ctx_factory):
