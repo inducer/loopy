@@ -335,7 +335,6 @@ class DependencyMapper(DependencyMapperBase):
         return self.combine(
                 self.rec(child, *args, **kwargs) for child in expr.parameters)
 
-<<<<<<< HEAD
     def map_call_with_kwargs(self, expr, *args):
         # Loopy does not have first-class functions. Do not descend
         # into 'function' attribute of Call.
@@ -343,15 +342,9 @@ class DependencyMapper(DependencyMapperBase):
                 self.rec(child, *args) for child in expr.parameters+tuple(
                     expr.kw_parameters.values()))
 
-    def map_reduction(self, expr):
-        deps = self.rec(expr.expr)
-||||||| merged common ancestors
-    def map_reduction(self, expr):
-        deps = self.rec(expr.expr)
-=======
     def map_reduction(self, expr, *args, **kwargs):
         deps = self.rec(expr.expr, *args, **kwargs)
->>>>>>> master
+
         return deps - set(p.Variable(iname) for iname in expr.inames)
 
     def map_tagged_variable(self, expr, *args, **kwargs):
