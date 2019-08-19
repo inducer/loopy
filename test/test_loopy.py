@@ -281,7 +281,7 @@ def make_random_value():
             return np.complex128(cval)
 
 
-def make_random_expression(var_values, size):
+def make_random_expression(prefix, var_values, size):
     from random import randrange
     import pymbolic.primitives as p
     v = randrange(1500)
@@ -293,74 +293,94 @@ def make_random_expression(var_values, size):
         else:
             cls = p.Product
         return cls(tuple(
-            make_random_expression(var_values, size)
+            make_random_expression(prefix, var_values, size)
             for i in range(term_count)))
     elif v < 750:
         return make_random_value()
     elif v < 1000:
-        var_name = "var_%d" % len(var_values)
+        var_name = "var_%s_%d" % (prefix, len(var_values))
         assert var_name not in var_values
         var_values[var_name] = make_random_value()
         return p.Variable(var_name)
     elif v < 1250:
         # Cannot use '-' because that destroys numpy constants.
         return p.Sum((
-            make_random_expression(var_values, size),
-            - make_random_expression(var_values, size)))
+            make_random_expression(prefix, var_values, size),
+            - make_random_expression(prefix, var_values, size)))
     elif v < 1500:
         # Cannot use '/' because that destroys numpy constants.
         return p.Quotient(
-                make_random_expression(var_values, size),
-                make_random_expression(var_values, size))
+                make_random_expression(prefix, var_values, size),
+                make_random_expression(prefix, var_values, size))
 
 
 def generate_random_fuzz_examples(count):
     for i in range(count):
         size = [0]
         var_values = {}
-        expr = make_random_expression(var_values, size)
+        expr = make_random_expression("e%d" % i, var_values, size)
         yield expr, var_values
 
 
-def test_fuzz_code_generator(ctx_factory):
+@pytest.mark.parametrize("random_seed", [0, 1, 2])
+def test_fuzz_expression_code_gen(ctx_factory, random_seed=0):
+    from pymbolic import evaluate
+
+    def get_numpy_type(x):
+        if isinstance(x, (complex, np.complexfloating)):
+            return np.complex128
+        else:
+            return np.float64
+
+    from random import seed
+
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    if ctx.devices[0].platform.vendor.startswith("Advanced Micro"):
-        pytest.skip("crashes on AMD 15.12")
+    seed(random_seed)
 
-    #from expr_fuzz import get_fuzz_examples
-    #for expr, var_values in get_fuzz_examples():
-    for expr, var_values in generate_random_fuzz_examples(50):
-        from pymbolic import evaluate
+    data = []
+    instructions = []
+
+    ref_values = {}
+
+    for i, (expr, var_values) in enumerate(
+            generate_random_fuzz_examples(50)):
+
+        var_name = "expr%d" % i
+
         try:
-            true_value = evaluate(expr, var_values)
+            ref_values[var_name] = evaluate(expr, var_values)
         except ZeroDivisionError:
             continue
 
-        def get_dtype(x):
-            if isinstance(x, (complex, np.complexfloating)):
-                return np.complex128
-            else:
-                return np.float64
+        data.append(lp.GlobalArg(var_name, np.complex128, shape=()))
+        data.extend([
+            lp.TemporaryVariable(name, get_numpy_type(val))
+            for name, val in six.iteritems(var_values)
+            ])
+        instructions.extend([
+            lp.Assignment(name, get_numpy_type(val)(val))
+            for name, val in six.iteritems(var_values)
+            ])
+        instructions.append(lp.Assignment(var_name, expr))
 
-        knl = lp.make_kernel("{ : }",
-                [lp.Assignment("value", expr)],
-                [lp.GlobalArg("value", np.complex128, shape=())]
-                + [
-                    lp.ValueArg(name, get_dtype(val))
-                    for name, val in six.iteritems(var_values)
-                    ])
-        ck = lp.CompiledKernel(ctx, knl)
-        evt, (lp_value,) = ck(queue, out_host=True, **var_values)
-        err = abs(true_value-lp_value)/abs(true_value)
+    knl = lp.make_kernel("{ : }", instructions, data)
+    print(knl)
+
+    knl = lp.set_options(knl, return_dict=True)
+    evt, lp_values = knl(queue, out_host=True)
+
+    for name, ref_value in six.iteritems(ref_values):
+        lp_value = lp_values[name]
+        err = abs(ref_value-lp_value)/abs(ref_value)
         if abs(err) > 1e-10:
             print(80*"-")
-            print("WRONG: rel error=%g" % err)
-            print("true=%r" % true_value)
+            print("WRONG: %s rel error=%g" % (name, err))
+            print("true=%r" % ref_value)
             print("loopy=%r" % lp_value)
             print(80*"-")
-            print(ck.get_code())
+            print(knl)
             print(80*"-")
             print(var_values)
             print(80*"-")
