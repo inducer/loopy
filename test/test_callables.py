@@ -575,7 +575,7 @@ def test_unknown_stride_to_callee():
             """, [
                 lp.ValueArg('N', dtype=np.int32), lp.ValueArg('Nvar',
                     dtype=np.int32), lp.GlobalArg('x', shape=lp.auto,
-                        dtype=np.float64), ...])
+                        dtype=np.float64), '...'])
 
     prog = lp.register_callable_kernel(prog, twice)
 
