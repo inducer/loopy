@@ -1242,18 +1242,14 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
     if temp_var_types is None:
         temp_var_types = (Optional(),) * len(assignees)
 
-    if len(assignees) > 1 or len(assignees) == 0 or is_array_call(assignees,
-            expression):
+    from pymbolic.primitives import Call, CallWithKwargs
+    from loopy.symbolic import Reduction
+
+    if isinstance(expression, (Call, CallWithKwargs, Reduction)):
         atomicity = kwargs.pop("atomicity", ())
         if atomicity:
             raise LoopyError("atomic operations with more than one "
                     "left-hand side not supported")
-
-        from pymbolic.primitives import Call, CallWithKwargs
-        from loopy.symbolic import Reduction
-        if not isinstance(expression, (Call, CallWithKwargs, Reduction)):
-            raise LoopyError("right-hand side in multiple assignment must be "
-                    "function call or reduction, got: '%s'" % expression)
 
         if not is_array_call(assignees, expression):
             return CallInstruction(
@@ -1272,28 +1268,24 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
                     temp_var_types=temp_var_types,
                     **kwargs)
     else:
+        from loopy.symbolic import DependencyMapper, SubArrayRef
+        if len(assignees) != 1:
+            raise LoopyError("right-hand side in multiple assignment must be"
+                    " function call or reduction, got: '%s'" % expression)
+        if is_array_call(assignees, expression):
+            raise LoopyError("right-hand side in array calls must be"
+                    " function, got: '%s'" % expression)
+
+        if any(isinstance(var, SubArrayRef) for var in
+                DependencyMapper()((expression, assignees[0]))):
+            raise LoopyError("RHS in an instruction using SubArrayRefs can"
+                    " only be function calls")
+
         return Assignment(
                 assignee=assignees[0],
                 expression=expression,
                 temp_var_type=temp_var_types[0],
                 **kwargs)
-
-    atomicity = kwargs.pop("atomicity", ())
-    if atomicity:
-        raise LoopyError("atomic operations with more than one "
-                "left-hand side not supported")
-
-    from pymbolic.primitives import Call
-    from loopy.symbolic import Reduction
-    if not isinstance(expression, (Call, Reduction)):
-        raise LoopyError("right-hand side in multiple assignment must be "
-                "function call or reduction, got: '%s'" % expression)
-
-    return CallInstruction(
-            assignees=assignees,
-            expression=expression,
-            temp_var_types=temp_var_types,
-            **kwargs)
 
 
 # {{{ c instruction
