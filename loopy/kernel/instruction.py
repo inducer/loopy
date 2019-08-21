@@ -1272,10 +1272,6 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
         if len(assignees) != 1:
             raise LoopyError("right-hand side in multiple assignment must be"
                     " function call or reduction, got: '%s'" % expression)
-        if is_array_call(assignees, expression):
-            raise LoopyError("right-hand side in array calls must be"
-                    " function, got: '%s'" % expression)
-
         if any(isinstance(var, SubArrayRef) for var in
                 DependencyMapper()((expression, assignees[0]))):
             raise LoopyError("RHS in an instruction using SubArrayRefs can"
