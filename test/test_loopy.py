@@ -3015,6 +3015,19 @@ def test_array_arg_extra_kwargs_persis_hash():
     assert key_builder(a) != key_builder(not_a)
 
 
+def test_non_integral_array_idx_raises():
+    knl = lp.make_kernel(
+            "{[i, j]: 0<=i<=4 and 0<=j<16}",
+            """
+            out[j] = 0 {id=init}
+            out[i] = a[1.94**i-1] {dep=init}
+            """, [lp.GlobalArg('a', np.float64), '...'])
+
+    from loopy.diagnostic import LoopyError
+    with pytest.raises(LoopyError):
+        print(lp.generate_code_v2(knl).device_code())
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
