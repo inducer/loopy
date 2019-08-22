@@ -80,12 +80,14 @@ class SubscriptIndicesIsIntChecker(TypeInferenceMapper):
 
 
 def check_for_integer_subscript_indices(kernel):
+    from pymbolic.primitives import Subscript
     idx_int_checker = SubscriptIndicesIsIntChecker(kernel)
     for insn in kernel.instructions:
         if isinstance(insn, MultiAssignmentBase):
             idx_int_checker(insn.expression, return_tuple=isinstance(insn,
                 CallInstruction), return_dtype_set=True)
-            [idx_int_checker(assignee) for assignee in insn.assignees]
+            [idx_int_checker(assignee) for assignee in insn.assignees if
+                    isinstance(assignee, Subscript)]
         elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
             pass
         else:
