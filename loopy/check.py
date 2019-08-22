@@ -29,6 +29,9 @@ from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper
 from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_kernel
+from loopy.type_inference import TypeInferenceMapper
+from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
+        _DataObliviousInstruction)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -64,6 +67,29 @@ def check_identifiers_in_subst_rules(knl):
 # FIXME: Replace with an enum. See
 # https://gitlab.tiker.net/inducer/loopy/issues/85
 VALID_NOSYNC_SCOPES = frozenset(["local", "global", "any"])
+
+
+class SubscriptIndicesIsIntChecker(TypeInferenceMapper):
+    def map_subscript(self, expr):
+        for idx in expr.index_tuple:
+            if not self.rec(idx)[0].is_integral():
+                raise LoopyError("Non integral array indices obtained in"
+                        " {}.".format(expr))
+
+        return self.rec(expr.aggregate)
+
+
+def check_for_integer_subscript_indices(kernel):
+    idx_int_checker = SubscriptIndicesIsIntChecker(kernel)
+    for insn in kernel.instructions:
+        if isinstance(insn, MultiAssignmentBase):
+            idx_int_checker(insn.expression)
+            [idx_int_checker(assignee) for assignee in insn.assignees]
+        elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
+            pass
+        else:
+            raise NotImplementedError("Unknown insn type %s." % (
+                type(insn).__name__))
 
 
 def check_insn_attributes(kernel):
@@ -620,6 +646,7 @@ def pre_schedule_checks(kernel):
     try:
         logger.debug("%s: pre-schedule check: start" % kernel.name)
 
+        check_for_integer_subscript_indices(kernel)
         check_for_duplicate_insn_ids(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel)
