@@ -1220,7 +1220,7 @@ should call :func:`loopy.get_one_scheduled_kernel`:
       2: RETURN FROM KERNEL rotate_v2
       3: ... gbarrier
       4: CALL KERNEL rotate_v2_0(extra_args=[], extra_inames=[])
-      5:     arr[((1 + i_inner + i_outer*16) % n)] = tmp  {id=rotate}
+      5:     arr[(1 + i_inner + i_outer*16) % n] = tmp  {id=rotate}
       6: RETURN FROM KERNEL rotate_v2_0
    ---------------------------------------------------------------------------
 
