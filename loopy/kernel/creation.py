@@ -1892,7 +1892,7 @@ class SliceToInameReplacer(IdentityMapper):
         subscript_iname_bounds = {}
         self.subarray_ref_bounds.append(subscript_iname_bounds)
 
-        updated_index = []
+        new_index = []
         swept_inames = []
         for i, index in enumerate(expr.index_tuple):
             if isinstance(index, Slice):
@@ -1910,19 +1910,16 @@ class SliceToInameReplacer(IdentityMapper):
                         index, domain_length)
                 subscript_iname_bounds[unique_var_name] = (start, stop, step)
 
-                if step > 0:
-                    updated_index.append(step*Variable(unique_var_name))
-                else:
-                    updated_index.append(start+step*Variable(unique_var_name))
+                new_index.append(start+step*Variable(unique_var_name))
 
                 swept_inames.append(Variable(unique_var_name))
             else:
-                updated_index.append(index)
+                new_index.append(index)
 
         if swept_inames:
             return SubArrayRef(tuple(swept_inames), Subscript(
                 self.rec(expr.aggregate),
-                self.rec(tuple(updated_index))))
+                self.rec(tuple(new_index))))
         else:
             return IdentityMapper.map_subscript(self, expr)
 
