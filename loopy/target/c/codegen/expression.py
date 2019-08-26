@@ -397,7 +397,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             elif isinstance(expr, np.integer):
                 suffix = ""
                 iinfo = np.iinfo(expr)
-                if iinfo.min < 0:
+                if iinfo.min == 0:
                     suffix += "u"
                 if iinfo.max > (2**31-1):
                     suffix += "l"
