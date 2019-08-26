@@ -297,7 +297,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     def make_subscript(self, array, base_expr, subscript):
         return base_expr[subscript]
 
-    def map_floor_div(self, expr, type_context):
+    def map_integer_div_operator(self, base_func_name, op_func, expr, type_context):
         from loopy.symbolic import get_dependencies
         iname_deps = get_dependencies(expr) & self.kernel.all_inames()
         domain = self.kernel.get_inames_domain(iname_deps)
@@ -310,30 +310,45 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         num_nonneg = is_nonnegative(expr.numerator, domain)
         den_nonneg = is_nonnegative(expr.denominator, domain)
 
+        result_dtype = self.infer_type(expr)
+        suffix = result_dtype.numpy_dtype.type.__name__
+
         def seen_func(name):
-            idt = self.kernel.index_dtype
             from loopy.codegen import SeenFunction
             self.codegen_state.seen_functions.add(
-                    SeenFunction(name, name, (idt, idt)))
+                    SeenFunction(
+                        name, "%s_%s" % (name, suffix),
+                        (result_dtype, result_dtype)))
 
         if den_nonneg:
             if num_nonneg:
-                # parenthesize to avoid negative signs being dragged in from the
-                # outside by associativity
-                return (
-                        self.rec(expr.numerator, type_context)
-                        //
+                return op_func(
+                        self.rec(expr.numerator, type_context),
                         self.rec(expr.denominator, type_context))
             else:
-                seen_func("int_floor_div_pos_b")
-                return var("int_floor_div_pos_b")(
+                seen_func("%s_pos_b" % base_func_name)
+                return var("%s_pos_b_%s" % (base_func_name, suffix))(
                         self.rec(expr.numerator, 'i'),
                         self.rec(expr.denominator, 'i'))
         else:
-            seen_func("int_floor_div")
-            return var("int_floor_div")(
+            seen_func(base_func_name)
+            return var("%s_%s" % (base_func_name, suffix))(
                     self.rec(expr.numerator, 'i'),
                     self.rec(expr.denominator, 'i'))
+
+    def map_floor_div(self, expr, type_context):
+        import operator
+        return self.map_integer_div_operator(
+                "loopy_floor_div", operator.floordiv, expr, type_context)
+
+    def map_remainder(self, expr, type_context):
+        tgt_dtype = self.infer_type(expr)
+        if tgt_dtype.is_complex():
+            raise RuntimeError("complex remainder not defined")
+
+        import operator
+        return self.map_integer_div_operator(
+                "loopy_mod", operator.mod, expr, type_context)
 
     def map_if(self, expr, type_context):
         result_type = self.infer_type(expr)
@@ -677,14 +692,6 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             return var("%s_divide" % self.complex_type_name(tgt_dtype))(
                     self.rec(expr.numerator, type_context, tgt_dtype),
                     self.rec(expr.denominator, type_context, tgt_dtype))
-
-    def map_remainder(self, expr, type_context):
-        tgt_dtype = self.infer_type(expr)
-        if tgt_dtype.is_complex():
-            raise RuntimeError("complex remainder not defined")
-
-        return super(ExpressionToCExpressionMapper, self).map_remainder(
-                expr, type_context)
 
     def map_power(self, expr, type_context):
         def base_impl(expr, type_context):
