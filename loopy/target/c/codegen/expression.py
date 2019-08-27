@@ -29,7 +29,7 @@ import numpy as np
 
 from pymbolic.mapper import RecursiveMapper, IdentityMapper
 from pymbolic.mapper.stringifier import (PREC_NONE, PREC_CALL, PREC_PRODUCT,
-        PREC_POWER, PREC_SHIFT,
+        PREC_SHIFT,
         PREC_UNARY, PREC_LOGICAL_OR, PREC_LOGICAL_AND,
         PREC_BITWISE_AND, PREC_BITWISE_OR)
 
@@ -755,10 +755,21 @@ class CExpressionToCodeMapper(RecursiveMapper):
         else:
             return s
 
-    def join_rec(self, joiner, iterable, prec):
+    def join_rec(self, joiner, iterable, prec, force_parens_around=()):
         f = joiner.join("%s" for i in iterable)
         return f % tuple(
-                self.rec(i, prec) for i in iterable)
+                self.rec_with_force_parens_around(
+                    i, prec, force_parens_around=force_parens_around)
+                for i in iterable)
+
+    def rec_with_force_parens_around(
+            self, expr, enclosing_prec, force_parens_around=()):
+        result = self.rec(expr, enclosing_prec)
+
+        if isinstance(expr, force_parens_around):
+            result = "(%s)" % result
+
+        return result
 
     def join(self, joiner, iterable):
         f = joiner.join("%s" for i in iterable)
@@ -804,14 +815,6 @@ class CExpressionToCodeMapper(RecursiveMapper):
                     self.rec(expr.aggregate, PREC_CALL+1),
                     self.rec(expr.index, PREC_NONE)),
                 enclosing_prec, PREC_CALL)
-
-    def map_floor_div(self, expr, enclosing_prec):
-        # parenthesize to avoid negative signs being dragged in from the
-        # outside by associativity
-        return "(%s / %s)" % (
-                    self.rec(expr.numerator, PREC_PRODUCT),
-                    # analogous to ^{-1}
-                    self.rec(expr.denominator, PREC_POWER))
 
     def map_min(self, expr, enclosing_prec):
         what = type(expr).__name__.lower()
@@ -906,33 +909,42 @@ class CExpressionToCodeMapper(RecursiveMapper):
                 self.join_rec(" + ", expr.children, PREC_SUM),
                 enclosing_prec, PREC_SUM)
 
+    multiplicative_primitives = (p.Product, p.Quotient, p.FloorDiv, p.Remainder)
+
     def map_product(self, expr, enclosing_prec):
-        # Spaces prevent '**z' (times dereference z), which
-        # is hard to read.
+        force_parens_around = (p.Quotient, p.FloorDiv, p.Remainder)
+
+        # Spaces prevent '**z' (times dereference z), which is hard to read.
         return self.parenthesize_if_needed(
-                self.join_rec(" * ", expr.children, PREC_PRODUCT),
+                self.join_rec(" * ", expr.children, PREC_PRODUCT,
+                    force_parens_around=force_parens_around),
                 enclosing_prec, PREC_PRODUCT)
 
-    def map_quotient(self, expr, enclosing_prec):
-        num = self.rec(expr.numerator, PREC_PRODUCT)
+    def _map_division_operator(self, operator, expr, enclosing_prec):
+        num_s = self.rec_with_force_parens_around(expr.numerator, PREC_PRODUCT,
+                force_parens_around=self.multiplicative_primitives)
 
-        # analogous to ^{-1}
-        denom = self.rec(expr.denominator, PREC_POWER)
+        denom_s = self.rec_with_force_parens_around(expr.denominator, PREC_PRODUCT,
+                force_parens_around=self.multiplicative_primitives)
 
         return self.parenthesize_if_needed(
-                "%s / %s" % (
+                "%s %s %s" % (
                     # Space is necessary--otherwise '/*'
                     # (i.e. divide-dererference) becomes
                     # start-of-comment in C.
-                    num,
-                    denom),
+                    num_s,
+                    operator,
+                    denom_s),
                 enclosing_prec, PREC_PRODUCT)
 
+    def map_quotient(self, expr, enclosing_prec):
+        return self._map_division_operator("/", expr, enclosing_prec)
+
+    def map_floor_div(self, expr, enclosing_prec):
+        return self._map_division_operator("/", expr, enclosing_prec)
+
     def map_remainder(self, expr, enclosing_prec):
-        return "(%s %% %s)" % (
-                    self.rec(expr.numerator, PREC_PRODUCT),
-                    # PREC_POWER analogous to ^{-1}
-                    self.rec(expr.denominator, PREC_POWER))
+        return self._map_division_operator("%", expr, enclosing_prec)
 
     def map_power(self, expr, enclosing_prec):
         return "pow(%s, %s)" % (
