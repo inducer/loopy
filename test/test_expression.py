@@ -215,7 +215,7 @@ def make_nonzero_random_int_expression(prefix, var_values, size, nonneg):
     assert False
 
 
-def generate_random_fuzz_examples(count, expr_type):
+def generate_random_fuzz_examples(expr_type):
     i = 0
     while True:
         size = [0]
@@ -247,7 +247,7 @@ def assert_parse_roundtrip(expr):
     assert expr == parsed_expr
 
 
-@pytest.mark.parametrize("random_seed", [0, 1, 2])
+@pytest.mark.parametrize("random_seed", [0, 1, 2, 3, 4, 5])
 @pytest.mark.parametrize("expr_type", ["int", "int_nonneg", "real", "complex"])
 def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
     from pymbolic import evaluate
@@ -286,11 +286,11 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
 
     var_names = []
 
-    fuzz_iter = iter(generate_random_fuzz_examples(50, expr_type))
+    fuzz_iter = iter(generate_random_fuzz_examples(expr_type))
     count = 0
 
     while True:
-        if count == 20:
+        if count == 10:
             break
 
         i, expr, var_values = next(fuzz_iter)
