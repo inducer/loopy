@@ -73,7 +73,7 @@ class SubscriptIndicesIsIntChecker(TypeInferenceMapper):
     def map_subscript(self, expr):
         for idx in expr.index_tuple:
             if not self.rec(idx)[0].is_integral():
-                raise LoopyError("Non integral array indices obtained in"
+                raise LoopyError("Non-integral array indices obtained in"
                         " {}.".format(expr))
 
         return self.rec(expr.aggregate)
