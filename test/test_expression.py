@@ -445,15 +445,23 @@ def test_integer_associativity():
     knl = lp.make_kernel(
             "{[i] : 0<=i<arraylen}",
             """
-            e := (i / (ncomp * elemsize))
-            d := ((i / elemsize) % ncomp)
+            e := (i // (ncomp * elemsize))
+            d := ((i // elemsize) % ncomp)
             s := (i % elemsize)
             v[i] = u[ncomp * indices[(s) + elemsize*(e)] + (d)]
             """)
 
     knl = lp.add_and_infer_dtypes(
             knl, {"u": np.float64, "elemsize, ncomp, indices": np.int32})
-    assert ("elemsize * (i / (ncomp * elemsize))"
+    import islpy as isl
+    knl = lp.assume(
+            knl, isl.BasicSet("[elemsize, ncomp] -> "
+            "{ : elemsize>= 0 and ncomp >= 0}"))
+    print(lp.generate_code_v2(knl).device_code())
+    assert (
+            "u[ncomp * indices[i % elemsize + elemsize "
+            "* loopy_floor_div_int32(i, ncomp * elemsize)] "
+            "+ loopy_mod_pos_b_int32(i / elemsize, ncomp)]"
             in lp.generate_code_v2(knl).device_code())
 
 
