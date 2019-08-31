@@ -16,6 +16,8 @@ dependencies:
 - matplotlib
 - ipykernel
 
+- pip
+
 - pip:
     - git+https://github.com/inducer/pytools.git
     - git+https://github.com/inducer/cgen.git
