@@ -15,6 +15,7 @@ dependencies:
 # Only needed to make pylint succeed
 - matplotlib
 - ipykernel
+- ply
 
 - pip
 
