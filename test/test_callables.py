@@ -44,7 +44,6 @@ def test_register_function_lookup(ctx_factory):
     from testlib import register_log2_lookup
 
     x = np.random.rand(10)
-    ctx = cl.create_some_context()
     queue = cl.CommandQueue(ctx)
 
     prog = lp.make_kernel(
