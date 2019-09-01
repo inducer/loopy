@@ -1925,16 +1925,26 @@ class SliceToInameReplacer(IdentityMapper):
 
     def map_call(self, expr):
         def _convert_array_to_slices(arg):
+            # FIXME: We do not support something like A[1] should point to the
+            # second row if 'A' is 3 x 3 array.
             if isinstance(arg, Variable):
+                from loopy.kernel.data import auto
                 if (arg.name in self.knl.temporary_variables):
-                    array_arg_shape = (
-                            self.knl.temporary_variables[arg.name].shape)
-                else:
-                    assert arg.name in self.knl.arg_dict
+                    if self.knl.temporary_variables[arg.name].shape in [
+                            auto, None]:
+                        # do not convert arrays with unknown shapes to slices.
+                        array_arg_shape = ()
+                    else:
+                        array_arg_shape = (
+                                self.knl.temporary_variables[arg.name].shape)
+                elif arg.name in self.knl.arg_dict:
                     if isinstance(self.knl.arg_dict[arg.name], ValueArg):
                         array_arg_shape = ()
                     else:
                         array_arg_shape = self.knl.arg_dict[arg.name].shape
+                else:
+                    assert arg.name in self.knl.all_inames()
+                    array_arg_shape = ()
 
                 if array_arg_shape != ():
                     return Subscript(arg, tuple(Slice(()) for _ in
