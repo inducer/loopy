@@ -1898,8 +1898,10 @@ def get_direct_callee_kernels(kernel, callables_table, insn_ids=None,):
         insn = kernel.id_to_insn[insn_id]
         from loopy.kernel.instruction import (CallInstruction,
                 MultiAssignmentBase, CInstruction, _DataObliviousInstruction)
+        from pymbolic.primitives import Call
         if isinstance(insn, CallInstruction):
-            if insn.expression.function.name in callables_table:
+            if isinstance(insn.expression, Call) and (
+                    insn.expression.function.name in callables_table):
                 in_knl_callable = callables_table[
                         insn.expression.function.name]
                 if isinstance(in_knl_callable, CallableKernel):

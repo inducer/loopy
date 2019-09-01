@@ -120,7 +120,6 @@ from loopy.transform.batch import to_batched, save_temporaries_in_loop
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.add_barrier import add_barrier
-from loopy.transform.write_to_python import write_to_python
 from loopy.transform.callable import (register_callable_kernel,
         register_function_id_to_in_knl_callable_mapper, inline_callable_kernel)
 from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
@@ -156,6 +155,7 @@ from loopy.target.ispc import ISPCTarget
 from loopy.target.numba import NumbaTarget, NumbaCudaTarget
 
 from loopy.tools import Optional
+from loopy.tools import dump_as_python
 
 
 __all__ = [
@@ -240,7 +240,7 @@ __all__ = [
 
         "add_barrier",
 
-        "write_to_python",
+        "dump_as_python",
 
         "register_callable_kernel",
         "register_function_id_to_in_knl_callable_mapper",

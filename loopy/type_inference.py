@@ -642,8 +642,13 @@ class TypeInferenceMapper(CombineMapper):
     def map_logical_not(self, expr):
         return [NumpyType(np.dtype(np.int32))]
 
-    map_logical_and = map_logical_not
-    map_logical_or = map_logical_not
+    def map_logical_and(self, expr):
+        for child in expr.children:
+            self.rec(child)
+
+        return [NumpyType(np.dtype(np.int32))]
+
+    map_logical_or = map_logical_and
 
     def map_group_hw_index(self, expr, *args):
         return [self.kernel.index_dtype]
@@ -992,8 +997,9 @@ def infer_unknown_types_for_a_single_kernel(kernel, callables_table,
             # just a dummy run over the expression, to pass over all the
             # functions
             if _instruction_missed_during_inference(insn):
-                type_inf_mapper(insn.expression, return_tuple=isinstance(insn,
-                    lp.CallInstruction), return_dtype_set=True)
+                type_inf_mapper(insn.expression,
+                        return_tuple=len(insn.assignees) > 1,
+                        return_dtype_set=True)
         elif isinstance(insn, (_DataObliviousInstruction,
                 lp.CInstruction)):
             pass
