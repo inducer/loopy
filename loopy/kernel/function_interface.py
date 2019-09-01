@@ -217,14 +217,19 @@ def get_kw_pos_association(kernel):
     write_count = -1
 
     for arg in kernel.args:
-        if not arg.is_output_only:
-            kw_to_pos[arg.name] = read_count
-            pos_to_kw[read_count] = arg.name
-            read_count += 1
-        else:
+        if arg.name in kernel.get_written_variables():
             kw_to_pos[arg.name] = write_count
             pos_to_kw[write_count] = arg.name
             write_count -= 1
+        if arg.name in kernel.get_read_variables():
+            kw_to_pos[arg.name] = read_count
+            pos_to_kw[read_count] = arg.name
+            read_count += 1
+        if not (arg.name in kernel.get_read_variables() or arg.name in
+                kernel.get_written_variables()):
+            kw_to_pos[arg.name] = read_count
+            pos_to_kw[read_count] = arg.name
+            read_count += 1
 
     return kw_to_pos, pos_to_kw
 
@@ -513,18 +518,23 @@ class ScalarCallable(InKernelCallable):
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
         """
-        Returns a pymbolic call for C-based targets, when the instructions
-        involve multiple return values along with the required type casting.
-        The first assignee is returned, but the rest of them are appended to
-        the parameters and passed by reference.
-
-        *Example:* ``c, d = f(a, b)`` is returned as ``c = f(a, b, &d)``
-
         :arg insn: An instance of :class:`loopy.kernel.instructions.CallInstruction`.
         :arg target: An instance of :class:`loopy.target.TargetBase`.
         :arg expression_to_code_mapper: An instance of :class:`IdentityMapper`
             responsible for code mapping from :mod:`loopy` syntax to the
             **target syntax**.
+
+        :returns: A tuple of the call to be generated and an instance of
+            :class:`bool` whether the first assignee is a part of the LHS in
+            the assignment instruction.
+
+        .. note::
+
+            The default implementation returns the first assignees and the
+            references of the rest of the assignees are appended to the
+            arguments of the call.
+
+            *Example:* ``c, d = f(a, b)`` is returned as ``c = f(a, b, &d)``
         """
 
         # Currently this is formulated such that the first argument is returned
@@ -569,9 +579,12 @@ class ScalarCallable(InKernelCallable):
                                 tgt_dtype).expr))
 
         # assignee is returned whenever the size of assignees is non zero.
-        assignee_is_returned = len(assignees) > 0
+        first_assignee_is_returned = len(insn.assignees) > 0
 
-        return var(self.name_in_target)(*c_parameters), assignee_is_returned
+        # TODO: Maybe this interface a bit confusing. Should we allow this
+        # method to directly return a cgen.Assign or cgen.ExpressionStatement?
+
+        return var(self.name_in_target)(*c_parameters), first_assignee_is_returned
 
     def generate_preambles(self, target):
         return
@@ -660,11 +673,9 @@ class CallableKernel(InKernelCallable):
                     expect_completion=True))
 
         new_arg_id_to_dtype = {}
-        for arg in specialized_kernel.args:
-            # associate the updated_arg_id_to_dtype with keyword as well as
-            # positional id.
-            new_arg_id_to_dtype[arg.name] = arg.dtype
-            new_arg_id_to_dtype[kw_to_pos[arg.name]] = arg.dtype
+        for pos, kw in pos_to_kw.items():
+            new_arg_id_to_dtype[kw] = specialized_kernel.arg_dict[kw].dtype
+            new_arg_id_to_dtype[pos] = specialized_kernel.arg_dict[kw].dtype
 
         # Return the kernel call with specialized subkernel and the corresponding
         # new arg_id_to_dtype
@@ -839,7 +850,7 @@ class CallableKernel(InKernelCallable):
             parameters.append(kw_parameters[pos_to_kw[i]])
             par_dtypes.append(self.arg_id_to_dtype[pos_to_kw[i]])
 
-        # insert the assigness at the required positions
+        # insert the assignees at the required positions
         assignee_write_count = -1
         for i, arg in enumerate(self.subkernel.args):
             if arg.is_output_only:

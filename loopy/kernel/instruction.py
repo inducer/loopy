@@ -1119,14 +1119,7 @@ class CallInstruction(MultiAssignmentBase):
 
     @memoize_method
     def assignee_var_names(self):
-        #FIXME: This needs to be smarter, instead of just making all
-        # as written
-        from loopy.symbolic import SubArrayRef
-        return (
-                tuple(_get_assignee_var_name(a) for a in self.assignees) +
-                tuple(par.subscript.aggregate.name for par in
-                    self.expression.parameters if isinstance(par,
-                        SubArrayRef)))
+        return tuple(_get_assignee_var_name(a) for a in self.assignees)
 
     def assignee_subscript_deps(self):
         return tuple(

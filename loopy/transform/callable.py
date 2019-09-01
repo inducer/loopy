@@ -172,8 +172,9 @@ def register_callable_kernel(program, callee_kernel):
     # check to make sure that the variables with 'out' direction is equal to
     # the number of assigness in the callee kernel intructions.
     expected_num_assignees = len([arg for arg in callee_kernel.args if
-        arg.is_output_only])
-    expected_num_parameters = len(callee_kernel.args) - expected_num_assignees
+        arg.name in callee_kernel.get_written_variables()])
+    expected_num_parameters = len([arg for arg in callee_kernel.args if
+        arg.name in callee_kernel.get_read_variables()])
     for in_knl_callable in program.callables_table.values():
         if isinstance(in_knl_callable, CallableKernel):
             caller_kernel = in_knl_callable.subkernel

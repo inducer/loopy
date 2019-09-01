@@ -908,6 +908,8 @@ class CASTBuilder(ASTBuilderBase):
                 in_knl_callable.name_in_target == 'loopy_make_tuple'):
             return self.emit_tuple_assignment(codegen_state, insn)
 
+        # takes "is_returned" to infer whether insn.assignees[0] is a part of
+        # LHS.
         in_knl_callable_as_call, is_returned = in_knl_callable.emit_call_insn(
                 insn=insn,
                 target=self.target,
