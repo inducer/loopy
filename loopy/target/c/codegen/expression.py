@@ -427,52 +427,9 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         "for constant '%s'" % expr)
 
     def map_call(self, expr, type_context):
-        from pymbolic.primitives import Subscript
-
-        # {{{ implement indexof, indexof_vec
 
         identifier_name = (
                 self.codegen_state.callables_table[expr.function.name].name)
-        if identifier_name in ["indexof", "indexof_vec"]:
-            if len(expr.parameters) != 1:
-                raise LoopyError("%s takes exactly one argument" % identifier_name)
-            arg, = expr.parameters
-            if not isinstance(arg, Subscript):
-                raise LoopyError(
-                        "argument to %s must be a subscript" % identifier_name)
-
-            ary = self.find_array(arg)
-
-            from loopy.kernel.array import get_access_info
-            from pymbolic import evaluate
-            access_info = get_access_info(self.kernel.target, ary, arg.index,
-                    lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
-                    self.codegen_state.vectorization_info)
-
-            from loopy.kernel.data import ImageArg
-            if isinstance(ary, ImageArg):
-                raise LoopyError("%s does not support images" % identifier_name)
-
-            if identifier_name == "indexof":
-                return access_info.subscripts[0]
-            elif identifier_name == "indexof_vec":
-                from loopy.kernel.array import VectorArrayDimTag
-                ivec = None
-                for iaxis, dim_tag in enumerate(ary.dim_tags):
-                    if isinstance(dim_tag, VectorArrayDimTag):
-                        ivec = iaxis
-
-                if ivec is None:
-                    return access_info.subscripts[0]
-                else:
-                    return (
-                        access_info.subscripts[0]*ary.shape[ivec]
-                        + access_info.vector_index)
-
-            else:
-                raise RuntimeError("should not get here")
-
-        # }}}
 
         from loopy.kernel.function_interface import ManglerCallable
         if isinstance(self.codegen_state.callables_table[expr.function.name],

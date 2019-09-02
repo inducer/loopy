@@ -23,6 +23,7 @@ THE SOFTWARE.
 """
 
 from loopy.kernel.function_interface import ScalarCallable
+from loopy.diagnostic import LoopyError
 
 
 class MakeTupleCallable(ScalarCallable):
@@ -53,6 +54,54 @@ class IndexOfCallable(ScalarCallable):
 
         return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype),
                 callables_table)
+
+    def emit_call(self, expression_to_code_mapper, expression, target):
+        from pymbolic.primitives import Subscript
+
+        if len(expression.parameters) != 1:
+            raise LoopyError("%s takes exactly one argument" % self.name)
+        arg, = expression.parameters
+        if not isinstance(arg, Subscript):
+            raise LoopyError(
+                    "argument to %s must be a subscript" % self.name)
+
+        ary = expression_to_code_mapper.find_array(arg)
+
+        from loopy.kernel.array import get_access_info
+        from pymbolic import evaluate
+        access_info = get_access_info(expression_to_code_mapper.kernel.target,
+                ary, arg.index, lambda expr: evaluate(expr,
+                    expression_to_code_mapper.codegen_state.var_subst_map),
+                expression_to_code_mapper.codegen_state.vectorization_info)
+
+        from loopy.kernel.data import ImageArg
+        if isinstance(ary, ImageArg):
+            raise LoopyError("%s does not support images" % self.name)
+
+        if self.name == "indexof":
+            return access_info.subscripts[0]
+        elif self.name == "indexof_vec":
+            from loopy.kernel.array import VectorArrayDimTag
+            ivec = None
+            for iaxis, dim_tag in enumerate(ary.dim_tags):
+                if isinstance(dim_tag, VectorArrayDimTag):
+                    ivec = iaxis
+
+            if ivec is None:
+                return access_info.subscripts[0]
+            else:
+                return (
+                    access_info.subscripts[0]*ary.shape[ivec]
+                    + access_info.vector_index)
+
+        else:
+            raise RuntimeError("should not get here")
+
+    def emit_call_insn(self, insn, target, expression_to_code_mapper):
+        return self.emit_call(
+                expression_to_code_mapper,
+                insn.expression,
+                target), True
 
 
 def loopy_specific_callable_func_id_to_knl_callable_mappers(target, identifier):
