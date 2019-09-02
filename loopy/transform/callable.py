@@ -641,12 +641,18 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
                 return shape
 
         from loopy.kernel.function_interface import (
-                ArrayArgDescriptor, get_arg_descriptor_for_expression)
+                ArrayArgDescriptor, get_arg_descriptor_for_expression,
+                get_kw_pos_association)
+        _, pos_to_kw = get_kw_pos_association(callee_knl)
         arg_id_to_shape = {}
         for arg_id, arg in six.iteritems(insn.arg_id_to_val()):
+            arg_id = pos_to_kw[arg_id]
+
             arg_descr = get_arg_descriptor_for_expression(caller_knl, arg)
             if isinstance(arg_descr, ArrayArgDescriptor):
-                arg_id_to_shape[arg_id] = _shape_1_if_empty(arg_descr)
+                arg_id_to_shape[arg_id] = _shape_1_if_empty(arg_descr.shape)
+            else:
+                arg_id_to_shape[arg_id] = (1, )
 
         dim_changer = DimChanger(
                 callee_knl.arg_dict,
