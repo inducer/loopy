@@ -158,10 +158,18 @@ def get_arg_descriptor_for_expression(kernel, expr):
         # FIXME This blindly assumes that dim_tag has a stride and
         # will not work for non-stride dim tags (e.g. vec or sep).
 
-        # FIXME: This will almost always be nonlinear--when does this
+        # (AK) FIXME: This will almost always be nonlinear--when does this
         # actually help? Maybe the
-        linearized_index = sum(dim_tag.stride*iname for dim_tag, iname in
-                zip(arg.dim_tags, expr.subscript.index_tuple))
+        # (KK) Reply: This helps in identifying identities like
+        # "2*(i//2) + i%2" := "i"
+        # See the kernel in
+        # test_callables.py::test_shape_translation_through_sub_array_refs
+
+        from loopy.symbolic import simplify_using_aff
+        linearized_index = simplify_using_aff(
+                kernel,
+                sum(dim_tag.stride*iname for dim_tag, iname in
+                    zip(arg.dim_tags, expr.subscript.index_tuple)))
 
         strides_as_dict = SweptInameStrideCollector(
                 tuple(iname.name for iname in expr.swept_inames)
