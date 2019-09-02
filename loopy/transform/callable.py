@@ -174,7 +174,10 @@ def register_callable_kernel(program, callee_kernel):
     expected_num_assignees = len([arg for arg in callee_kernel.args if
         arg.name in callee_kernel.get_written_variables()])
     expected_num_parameters = len([arg for arg in callee_kernel.args if
-        arg.name in callee_kernel.get_read_variables()])
+        arg.name in callee_kernel.get_read_variables()]) + len(
+                [arg for arg in callee_kernel.args if arg.name not in
+                    (callee_kernel.get_read_variables() |
+                        callee_kernel.get_written_variables())])
     for in_knl_callable in program.callables_table.values():
         if isinstance(in_knl_callable, CallableKernel):
             caller_kernel = in_knl_callable.subkernel

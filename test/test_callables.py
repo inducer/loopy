@@ -217,8 +217,8 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
 
     n = 2 ** 5
 
-    x_dev = cl.random.rand(queue, (n, n, n, n, n), np.float64)
-    y_dev = cl.random.rand(queue, (n, n, n, n, n), np.float64)
+    x_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
+    y_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
 
     callee_knl = lp.make_function(
             "{[i, j]:0<=i, j < 32}",
@@ -410,25 +410,24 @@ def test_packing_unpacking(ctx_factory, inline):
 
 
 def test_non_sub_array_refs_arguments(ctx_factory):
-    import loopy as lp
     from loopy.transform.callable import _match_caller_callee_argument_dimension_
 
     callee = lp.make_function("{[i] : 0 <= i < 6}", "a[i] = a[i] + j",
             [lp.GlobalArg("a", dtype="double", shape=(6,), is_output_only=False),
                 lp.ValueArg("j", dtype="int")], name="callee")
-    caller1 = lp.make_kernel("{[j] : 0 <= j < 2}", "callee(a[:], b[0])",
+    caller1 = lp.make_kernel("{[j] : 0 <= j < 2}", "a[:] = callee(a[:], b[0])",
             [lp.GlobalArg("a", dtype="double", shape=(6, ), is_output_only=False),
             lp.GlobalArg("b", dtype="double", shape=(1, ), is_output_only=False)],
             name="caller", target=lp.CTarget())
 
-    caller2 = lp.make_kernel("{[j] : 0 <= j < 2}", "callee(a[:], 3.1415926)",
+    caller2 = lp.make_kernel("{[j] : 0 <= j < 2}", "a[:]=callee(a[:], 3.1415926)",
             [lp.GlobalArg("a", dtype="double", shape=(6, ),
                 is_output_only=False)],
             name="caller", target=lp.CTarget())
 
-    caller3 = lp.make_kernel("{[j] : 0 <= j < 2}", "callee(a[:], kappa)",
+    caller3 = lp.make_kernel("{[j] : 0 <= j < 2}", "a[:]=callee(a[:], kappa)",
             [lp.GlobalArg("a", dtype="double", shape=(6, ),
-                is_output_only=False)],
+                is_output_only=False), '...'],
             name="caller", target=lp.CTarget())
 
     registered = lp.register_callable_kernel(caller1, callee)
