@@ -43,8 +43,8 @@ jobs:
             testResultsFiles: 'test/pytest.xml'
 
 -
-    displayName: "Python3 - run tests twice to test cache behavior"
     job: 'Python3Twice'
+    displayName: "Python3 - run tests twice to test cache behavior"
     pool:
         vmImage: 'ubuntu-latest'
 
