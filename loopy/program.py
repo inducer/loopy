@@ -401,7 +401,7 @@ class Program(ImmutableRecord):
 
         return "\n".join(
                 strify_callable(clbl)
-                for name, clbl in six.iteritems(self.callables_table))
+                for name, clbl in self.callables_table.items())
 
 # }}}
 
