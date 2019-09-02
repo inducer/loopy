@@ -55,9 +55,7 @@ jobs:
             CONDA_ENVIRONMENT=.test-conda-env-py3.yml
             curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
             . ./build-and-test-py-project-within-miniconda.sh
-            cd ..
-            curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
-            . ./build-and-test-py-project-within-miniconda.sh
+            ${PY_EXE} -m pytest -rw --durations=10 --tb=native  --junitxml=pytest.xml -rxs $TESTABLES
 
         displayName: 'Pytest Conda'
 
