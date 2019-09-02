@@ -726,8 +726,14 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         if isinstance(writer_insn, lp.Assignment):
             result = type_inf_mapper(expr, return_dtype_set=True)
         elif isinstance(writer_insn, lp.CallInstruction):
-            return_dtype_set = type_inf_mapper(expr, return_tuple=True,
+            # FIXME: Unnecessary separation of logic between CallInstruction
+            # and Assignment.
+            return_dtype_set = type_inf_mapper(expr,
+                    return_tuple=len(writer_insn.assignees) != 1,
                     return_dtype_set=True)
+
+            if len(writer_insn.assignees) == 1:
+                return_dtype_set = (return_dtype_set, )
 
             result = []
             for return_dtype_set in return_dtype_set:
