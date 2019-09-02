@@ -2,7 +2,7 @@ jobs:
 -
     job: 'Python2'
     pool:
-        vmImage: 'ubuntu-16.04'
+        vmImage: 'ubuntu-latest'
 
     steps:
     -
@@ -24,7 +24,7 @@ jobs:
 -
     job: 'Python3'
     pool:
-        vmImage: 'ubuntu-16.04'
+        vmImage: 'ubuntu-latest'
 
     steps:
     -
@@ -43,13 +43,36 @@ jobs:
             testResultsFiles: 'test/pytest.xml'
 
 -
+    job: 'Python3Twice'
+    displayName: "Python3 - run tests twice to test cache behavior"
+    pool:
+        vmImage: 'ubuntu-latest'
+
+    steps:
+    -
+        script: |
+            set -e
+            CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+            curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
+            . ./build-and-test-py-project-within-miniconda.sh
+            ${PY_EXE} -m pytest -rw --durations=10 --tb=native  --junitxml=pytest.xml -rxs $TESTABLES
+
+        displayName: 'Pytest Conda'
+
+    -
+        task: PublishTestResults@2
+        inputs:
+            testResultsFormat: 'JUnit'
+            testResultsFiles: 'test/pytest.xml'
+
+-
     job: 'Flake8'
     pool:
-        vmImage: 'ubuntu-16.04'
+        vmImage: 'ubuntu-latest'
     strategy:
         matrix:
-            Python36:
-                python.version: '3.6'
+            Python37:
+                python.version: '3.7'
 
     steps:
     -
@@ -68,7 +91,7 @@ jobs:
 -
     job: 'Pylint'
     pool:
-        vmImage: 'ubuntu-16.04'
+        vmImage: 'ubuntu-latest'
 
     steps:
     -
