@@ -500,6 +500,21 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         except KeyError:
             pass
 
+        if name in self.all_inames():
+            from loopy import TemporaryVariable
+            return TemporaryVariable(
+                    name=name,
+                    dtype=self.index_dtype,
+                    shape=())
+
+        try:
+            dtype, name = self.mangle_symbol(self.target.get_device_ast_builder(),
+                    name)
+            from loopy import ValueArg
+            return ValueArg(name, dtype)
+        except TypeError:
+            pass
+
         raise ValueError("nothing known about variable '%s'" % name)
 
     @property
