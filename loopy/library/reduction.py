@@ -455,7 +455,7 @@ class ReductionCallable(ScalarCallable):
         return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
                 name_in_target=name_in_target), callables_table
 
-    def with_descrs(self, arg_id_to_descr, callables_table, expr):
+    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table, expr):
         from loopy.kernel.function_interface import ValueArgDescriptor
         new_arg_id_to_descr = arg_id_to_descr.copy()
         new_arg_id_to_descr[-1] = ValueArgDescriptor()
