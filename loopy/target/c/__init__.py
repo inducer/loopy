@@ -351,6 +351,10 @@ def c_symbol_mangler(kernel, name):
     # float NAN as defined in C99 standard
     if name == "NAN":
         return NumpyType(np.dtype(np.float32)), name
+
+    if name in ["INT_MAX", "INT_MIN"]:
+        return NumpyType(np.dtype(np.int32)), name
+
     return None
 
 # }}}
