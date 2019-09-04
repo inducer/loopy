@@ -192,8 +192,9 @@ def get_arg_descriptor_for_expression(kernel, expr):
 
     elif isinstance(expr, Variable):
         arg = kernel.get_var_descriptor(expr.name)
+        from loopy.kernel.array import ArrayBase
 
-        if isinstance(arg, ValueArg) or (isinstance(arg, TemporaryVariable)
+        if isinstance(arg, ValueArg) or (isinstance(arg, ArrayBase)
                 and arg.shape == ()):
             return ValueArgDescriptor()
         elif isinstance(arg, (ArrayArg, TemporaryVariable)):
