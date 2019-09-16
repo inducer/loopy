@@ -75,7 +75,9 @@ def to_codegen_result(
 def generate_instruction_code(codegen_state, insn):
     kernel = codegen_state.kernel
 
-    from loopy.kernel.instruction import Assignment, CallInstruction, CInstruction
+    from loopy.kernel.instruction import (
+        Assignment, CallInstruction, CInstruction, NoOpInstruction
+    )
 
     if isinstance(insn, Assignment):
         ast = generate_assignment_instruction_code(codegen_state, insn)
@@ -83,6 +85,8 @@ def generate_instruction_code(codegen_state, insn):
         ast = generate_call_code(codegen_state, insn)
     elif isinstance(insn, CInstruction):
         ast = generate_c_instruction_code(codegen_state, insn)
+    elif isinstance(insn, NoOpInstruction):
+        ast = generate_nop_instruction_code(codegen_state, insn)
     else:
         raise RuntimeError("unexpected instruction type")
 
@@ -274,5 +278,11 @@ def generate_c_instruction_code(codegen_state, insn):
 
     return Block(body)
 
+
+def generate_nop_instruction_code(codegen_state, insn):
+    if codegen_state.vectorization_info is not None:
+        raise Unvectorizable("C instructions cannot be vectorized")
+    return codegen_state.ast_builder.emit_comment(
+        "no-op (insn=%s)" % (insn.id))
 
 # vim: foldmethod=marker

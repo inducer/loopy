@@ -389,6 +389,15 @@ def change_arg_to_image(knl, name):
 
 def tag_array_axes(knl, ary_names, dim_tags):
     """
+    :arg dim_tags: a tuple of
+        :class:`loopy.kernel.array.ArrayDimImplementationTag` or a string that
+        parses to one. See :func:`loopy.kernel.array.parse_dim_tags` for a
+        description of the allowed string format.
+
+        For example, *dim_tags* could be ``"N2,N0,N1"`` to determine
+        that the second axis is the fastest-varying, the last is
+        the next-fastest, and the first is the slowest.
+
     .. versionchanged:: 2016.2
 
         This function was called :func:`tag_data_axes` before version 2016.2.
