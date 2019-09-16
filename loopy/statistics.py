@@ -218,7 +218,7 @@ class ToCountMap(object):
 
     def __mul__(self, other):
         return self.copy(dict(
-            (index, other*value)
+            (index, value*other)
             for index, value in six.iteritems(self.count_map)))
 
     __rmul__ = __mul__
@@ -503,7 +503,7 @@ class ToCountPolynomialMap(ToCountMap):
     #TODO test and document
     def eval(self, params):
         raise NotImplementedError()
-        # FIXME: Not sure what you are trying to achieve here.
+        # FIXME: Not sure what's the goal here, I get a PyLint error.
         # result = self.copy()
         # for key, val in self.items():
         #     result[key] = val.eval_with_dict(params)
@@ -926,7 +926,7 @@ class ExpressionOpCounter(CounterBase):
                 knl, callables_table, kernel_rec)
         self.count_within_subscripts = count_within_subscripts
 
-    # FIXME: Revert to SUBGROUP
+    # FIXME(AK): Revert to SUBGROUP
     # KK: Trying that now...
     arithmetic_count_granularity = CountGranularity.SUBGROUP
 
@@ -1195,7 +1195,7 @@ class MemAccessCounterBase(CounterBase):
 # {{{ LocalMemAccessCounter
 
 class LocalMemAccessCounter(MemAccessCounterBase):
-    # FIXME: Revert to SUBGROUP
+    # FIXME(AK): Revert to SUBGROUP
     # KK: Trying that now...
     # local_mem_count_granularity = CountGranularity.WORKITEM
     local_mem_count_granularity = CountGranularity.SUBGROUP
@@ -1298,7 +1298,7 @@ class GlobalMemAccessCounter(MemAccessCounterBase):
         lid_strides, gid_strides = _get_lid_and_gid_strides(
                                         self.knl, array, index_tuple)
 
-        # FIXME: Revert to subgroup
+        # FIXME(AK): Revert to subgroup
         # global_access_count_granularity = CountGranularity.WORKITEM
         global_access_count_granularity = CountGranularity.SUBGROUP
 
@@ -1753,16 +1753,6 @@ def get_op_map(program, numpy_types=True, count_redundant_work=False,
             count_redundant_work=count_redundant_work,
             count_within_subscripts=count_within_subscripts,
             subgroup_size=subgroup_size)
-
-    # FIXME: Maybe we want this, but the current structure of
-    # ToCountPolynomialMap doesn't allow it.
-    return sum(_get_op_map_for_single_kernel(
-            clbl.subkernel, program.callables_table,
-            count_redundant_work=count_redundant_work,
-            count_within_subscripts=count_within_subscripts,
-            subgroup_size=subgroup_size) for clbl in
-            program.callables_table.values() if isinstance(clbl,
-                CallableKernel))
 
 # }}}
 
