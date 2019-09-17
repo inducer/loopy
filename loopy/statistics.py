@@ -500,16 +500,6 @@ class ToCountPolynomialMap(ToCountMap):
 
         return type(self)(space, count_map)
 
-    #TODO test and document
-    def eval(self, params):
-        raise NotImplementedError()
-        # FIXME: Not sure what's the goal here, I get a PyLint error.
-        # result = self.copy()
-        # for key, val in self.items():
-        #     result[key] = val.eval_with_dict(params)
-        # result.val_type = int
-        # return result
-
     def eval_and_sum(self, params=None):
         """Add all counts and evaluate with provided parameter dict *params*
 
