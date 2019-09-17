@@ -926,8 +926,6 @@ class ExpressionOpCounter(CounterBase):
                 knl, callables_table, kernel_rec)
         self.count_within_subscripts = count_within_subscripts
 
-    # FIXME(AK): Revert to SUBGROUP
-    # KK: Trying that now...
     arithmetic_count_granularity = CountGranularity.SUBGROUP
 
     def combine(self, values):
@@ -1195,9 +1193,6 @@ class MemAccessCounterBase(CounterBase):
 # {{{ LocalMemAccessCounter
 
 class LocalMemAccessCounter(MemAccessCounterBase):
-    # FIXME(AK): Revert to SUBGROUP
-    # KK: Trying that now...
-    # local_mem_count_granularity = CountGranularity.WORKITEM
     local_mem_count_granularity = CountGranularity.SUBGROUP
 
     def count_var_access(self, dtype, name, index):
@@ -1298,8 +1293,6 @@ class GlobalMemAccessCounter(MemAccessCounterBase):
         lid_strides, gid_strides = _get_lid_and_gid_strides(
                                         self.knl, array, index_tuple)
 
-        # FIXME(AK): Revert to subgroup
-        # global_access_count_granularity = CountGranularity.WORKITEM
         global_access_count_granularity = CountGranularity.SUBGROUP
 
         # Account for broadcasts once per subgroup
