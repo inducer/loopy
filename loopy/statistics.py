@@ -814,11 +814,8 @@ class CounterBase(CombineMapper):
 
         from loopy.type_inference import TypeInferenceMapper
         self.type_inf = TypeInferenceMapper(knl, callables_table)
-
-        zero_qpoly = isl.QPolynomial.zero_on_domain(self.param_space)
-        one_qpoly = zero_qpoly + 1
-        self.zero = isl.PwQPolynomial.from_qpolynomial(zero_qpoly)
-        self.one = isl.PwQPolynomial.from_qpolynomial(one_qpoly)
+        self.zero = get_kernel_zero_pwqpolynomial(self.knl)
+        self.one = self.zero + 1
 
     @property
     @memoize_method
