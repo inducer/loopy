@@ -83,7 +83,7 @@ __doc__ = """
 
 def get_kernel_parameter_space(kernel):
     return isl.Space.create_from_names(kernel.isl_context,
-            set=[], params=kernel.outer_params()).params()
+            set=[], params=sorted(list(kernel.outer_params()))).params()
 
 
 def get_kernel_zero_pwqpolynomial(kernel):
@@ -160,7 +160,7 @@ class GuardedPwQPolynomial(object):
         return str(self.pwqpolynomial)
 
     def __repr__(self):
-        return repr(self.pwqpolynomial)
+        return "Guarded" + repr(self.pwqpolynomial)
 
 # }}}
 
@@ -232,7 +232,8 @@ class ToCountMap(object):
     def __str__(self):
         return "\n".join(
                 "%s: %s" % (k, v)
-                for k, v in six.iteritems(self.count_map))
+                for k, v in sorted(six.iteritems(self.count_map),
+                    key=lambda k: str(k)))
 
     def __len__(self):
         return len(self.count_map)
@@ -499,14 +500,6 @@ class ToCountPolynomialMap(ToCountMap):
 
         return type(self)(space, count_map)
 
-    #TODO test and document
-    def eval(self, params):
-        result = self.copy()
-        for key, val in self.items():
-            result[key] = val.eval_with_dict(params)
-        result.val_type = int
-        return result
-
     def eval_and_sum(self, params=None):
         """Add all counts and evaluate with provided parameter dict *params*
 
@@ -573,6 +566,18 @@ def subst_into_to_count_map(space, tcm, subst_dict):
     return tcm.copy(space=space, count_map=new_count_map)
 
 # }}}
+
+
+def stringify_stats_mapping(m):
+
+    from warnings import warn
+    warn("stringify_stats_mapping is deprecated and will be removed in 2020."
+            " Use ToCountMap.__str__() instead.", DeprecationWarning, stacklevel=2)
+
+    result = ""
+    for key in sorted(m.keys(), key=lambda k: str(k)):
+        result += ("%s : %s\n" % (key, m[key]))
+    return result
 
 
 # {{{ CountGranularity
@@ -809,7 +814,6 @@ class CounterBase(CombineMapper):
 
         from loopy.type_inference import TypeInferenceMapper
         self.type_inf = TypeInferenceMapper(knl, callables_table)
-
         self.zero = get_kernel_zero_pwqpolynomial(self.knl)
         self.one = self.zero + 1
 
@@ -840,7 +844,6 @@ class CounterBase(CombineMapper):
         if isinstance(clbl, CallableKernel):
             sub_result = self.kernel_rec(clbl.subkernel)
 
-            assert len(clbl.subkernel.args) == len(expr.parameters)
             arg_dict = dict(
                     (arg.name, value)
                     for arg, value in zip(
@@ -910,8 +913,7 @@ class ExpressionOpCounter(CounterBase):
                 knl, callables_table, kernel_rec)
         self.count_within_subscripts = count_within_subscripts
 
-    # FIXME: Revert to SUBGROUP
-    arithmetic_count_granularity = CountGranularity.WORKITEM
+    arithmetic_count_granularity = CountGranularity.SUBGROUP
 
     def combine(self, values):
         return sum(values)
@@ -1178,8 +1180,7 @@ class MemAccessCounterBase(CounterBase):
 # {{{ LocalMemAccessCounter
 
 class LocalMemAccessCounter(MemAccessCounterBase):
-    # FIXME: Revert to SUBGROUP
-    local_mem_count_granularity = CountGranularity.WORKITEM
+    local_mem_count_granularity = CountGranularity.SUBGROUP
 
     def count_var_access(self, dtype, name, index):
         count_map = {}
@@ -1279,8 +1280,7 @@ class GlobalMemAccessCounter(MemAccessCounterBase):
         lid_strides, gid_strides = _get_lid_and_gid_strides(
                                         self.knl, array, index_tuple)
 
-        # FIXME: Revert to subgroup
-        global_access_count_granularity = CountGranularity.WORKITEM
+        global_access_count_granularity = CountGranularity.SUBGROUP
 
         # Account for broadcasts once per subgroup
         count_granularity = CountGranularity.WORKITEM if (
