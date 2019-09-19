@@ -547,7 +547,7 @@ Consider this example:
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
-      for (int i_outer = 0; i_outer <= -1 + ((15 + n) / 16); ++i_outer)
+      for (int i_outer = 0; i_outer <= -1 + (15 + n) / 16; ++i_outer)
         for (int i_inner = 0; i_inner <= (-16 + n + -16 * i_outer >= 0 ? 15 : -1 + n + -16 * i_outer); ++i_inner)
           a[16 * i_outer + i_inner] = 0.0f;
     ...
@@ -579,7 +579,7 @@ relation to loop nesting. For example, it's perfectly possible to request
     #define lid(N) ((int) get_local_id(N))
     ...
       for (int i_inner = 0; i_inner <= (-17 + n >= 0 ? 15 : -1 + n); ++i_inner)
-        for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + ((15 + n + 15 * i_inner) / 16); ++i_outer)
+        for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + (15 + n + 15 * i_inner) / 16; ++i_outer)
           a[16 * i_outer + i_inner] = 0.0f;
     ...
 
@@ -603,8 +603,8 @@ commonly called 'loop tiling':
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
-      for (int i_outer = 0; i_outer <= ((-16 + n) / 16); ++i_outer)
-        for (int j_outer = 0; j_outer <= ((-16 + n) / 16); ++j_outer)
+      for (int i_outer = 0; i_outer <= (-16 + n) / 16; ++i_outer)
+        for (int j_outer = 0; j_outer <= (-16 + n) / 16; ++j_outer)
           for (int i_inner = 0; i_inner <= 15; ++i_inner)
             for (int j_inner = 0; j_inner <= 15; ++j_inner)
               out[n * (16 * i_outer + i_inner) + 16 * j_outer + j_inner] = a[n * (16 * j_outer + j_inner) + 16 * i_outer + i_inner];
@@ -645,9 +645,8 @@ loop's tag to ``"unr"``:
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
-    #define int_floor_div_pos_b(a,b) (                 ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b)                 )
     ...
-      for (int i_outer = 0; i_outer <= int_floor_div_pos_b(-4 + n, 4); ++i_outer)
+      for (int i_outer = 0; i_outer <= loopy_floor_div_pos_b_int32(-4 + n, 4); ++i_outer)
       {
         a[4 * i_outer] = 0.0f;
         a[1 + 4 * i_outer] = 0.0f;
@@ -767,7 +766,7 @@ assumption:
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
-      for (int i_outer = 0; i_outer <= -1 + ((3 + n) / 4); ++i_outer)
+      for (int i_outer = 0; i_outer <= -1 + (3 + n) / 4; ++i_outer)
       {
         a[4 * i_outer] = 0.0f;
         if (-2 + -4 * i_outer + n >= 0)
@@ -797,7 +796,7 @@ enabling some cost savings:
     #define lid(N) ((int) get_local_id(N))
     ...
       /* bulk slab for 'i_outer' */
-      for (int i_outer = 0; i_outer <= -2 + ((3 + n) / 4); ++i_outer)
+      for (int i_outer = 0; i_outer <= -2 + (3 + n) / 4; ++i_outer)
       {
         a[4 * i_outer] = 0.0f;
         a[1 + 4 * i_outer] = 0.0f;
@@ -806,7 +805,7 @@ enabling some cost savings:
       }
       /* final slab for 'i_outer' */
       {
-        int const i_outer = -1 + n + -1 * (3 * n / 4);
+        int const i_outer = -1 + n + -1 * ((3 * n) / 4);
     <BLANKLINE>
         if (-1 + n >= 0)
         {
@@ -1222,7 +1221,7 @@ should call :func:`loopy.get_one_scheduled_kernel`:
       2: RETURN FROM KERNEL rotate_v2
       3: ... gbarrier
       4: CALL KERNEL rotate_v2_0(extra_args=[], extra_inames=[])
-      5:     arr[((1 + i_inner + i_outer*16) % n)] = tmp  {id=rotate}
+      5:     arr[(1 + i_inner + i_outer*16) % n] = tmp  {id=rotate}
       6: RETURN FROM KERNEL rotate_v2_0
    ---------------------------------------------------------------------------
 
@@ -1262,7 +1261,7 @@ put those instructions into the schedule.
       4: ... gbarrier
       5: CALL KERNEL rotate_v2_0(extra_args=['tmp_save_slot'], extra_inames=[])
       6:     tmp = tmp_save_slot[tmp_reload_hw_dim_0_rotate_v2_0, tmp_reload_hw_dim_1_rotate_v2_0]  {id=tmp.reload}
-      7:     arr[((1 + i_inner + i_outer*16) % n)] = tmp  {id=rotate}
+      7:     arr[(1 + i_inner + i_outer*16) % n] = tmp  {id=rotate}
       8: RETURN FROM KERNEL rotate_v2_0
    ---------------------------------------------------------------------------
 
@@ -1299,7 +1298,7 @@ The kernel translates into two OpenCL kernels.
      int tmp;
    <BLANKLINE>
      tmp = tmp_save_slot[16 * gid(0) + lid(0)];
-     arr[((1 + lid(0) + gid(0) * 16) % n)] = tmp;
+     arr[(1 + lid(0) + gid(0) * 16) % n] = tmp;
    }
 
 Now we can execute the kernel.

@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
+import six  # noqa: F401
 from six.moves import range
 
 import sys
@@ -248,119 +248,6 @@ def test_multi_cse(ctx_factory):
 
     print(knl)
     print(lp.generate_code_v2(knl))
-
-
-# {{{ code generator fuzzing
-
-def make_random_value():
-    from random import randrange, uniform
-    v = randrange(3)
-    if v == 0:
-        while True:
-            z = randrange(-1000, 1000)
-            if z:
-                return z
-
-    elif v == 1:
-        return uniform(-10, 10)
-    else:
-        cval = uniform(-10, 10) + 1j*uniform(-10, 10)
-        if randrange(0, 2) == 0:
-            return np.complex128(cval)
-        else:
-            return np.complex128(cval)
-
-
-def make_random_expression(var_values, size):
-    from random import randrange
-    import pymbolic.primitives as p
-    v = randrange(1500)
-    size[0] += 1
-    if v < 500 and size[0] < 40:
-        term_count = randrange(2, 5)
-        if randrange(2) < 1:
-            cls = p.Sum
-        else:
-            cls = p.Product
-        return cls(tuple(
-            make_random_expression(var_values, size)
-            for i in range(term_count)))
-    elif v < 750:
-        return make_random_value()
-    elif v < 1000:
-        var_name = "var_%d" % len(var_values)
-        assert var_name not in var_values
-        var_values[var_name] = make_random_value()
-        return p.Variable(var_name)
-    elif v < 1250:
-        # Cannot use '-' because that destroys numpy constants.
-        return p.Sum((
-            make_random_expression(var_values, size),
-            - make_random_expression(var_values, size)))
-    elif v < 1500:
-        # Cannot use '/' because that destroys numpy constants.
-        return p.Quotient(
-                make_random_expression(var_values, size),
-                make_random_expression(var_values, size))
-
-
-def generate_random_fuzz_examples(count):
-    for i in range(count):
-        size = [0]
-        var_values = {}
-        expr = make_random_expression(var_values, size)
-        yield expr, var_values
-
-
-def test_fuzz_code_generator(ctx_factory):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-
-    if ctx.devices[0].platform.vendor.startswith("Advanced Micro"):
-        pytest.skip("crashes on AMD 15.12")
-
-    #from expr_fuzz import get_fuzz_examples
-    #for expr, var_values in get_fuzz_examples():
-    for expr, var_values in generate_random_fuzz_examples(50):
-        from pymbolic import evaluate
-        try:
-            true_value = evaluate(expr, var_values)
-        except ZeroDivisionError:
-            continue
-
-        def get_dtype(x):
-            if isinstance(x, (complex, np.complexfloating)):
-                return np.complex128
-            else:
-                return np.float64
-
-        knl = lp.make_kernel("{ : }",
-                [lp.Assignment("value", expr)],
-                [lp.GlobalArg("value", np.complex128, shape=())]
-                + [
-                    lp.ValueArg(name, get_dtype(val))
-                    for name, val in six.iteritems(var_values)
-                    ])
-        ck = lp.CompiledKernel(ctx, knl)
-        evt, (lp_value,) = ck(queue, out_host=True, **var_values)
-        err = abs(true_value-lp_value)/abs(true_value)
-        if abs(err) > 1e-10:
-            print(80*"-")
-            print("WRONG: rel error=%g" % err)
-            print("true=%r" % true_value)
-            print("loopy=%r" % lp_value)
-            print(80*"-")
-            print(ck.get_code())
-            print(80*"-")
-            print(var_values)
-            print(80*"-")
-            print(repr(expr))
-            print(80*"-")
-            print(expr)
-            print(80*"-")
-            1/0
-
-# }}}
 
 
 def test_bare_data_dependency(ctx_factory):
@@ -958,21 +845,6 @@ def test_auto_test_zero_warmup_rounds(ctx_factory):
             warmup_rounds=0)
 
 
-def test_sci_notation_literal(ctx_factory):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-
-    set_kernel = lp.make_kernel(
-         ''' { [i]: 0<=i<12 } ''',
-         ''' out[i] = 1e-12''')
-
-    set_kernel = lp.set_options(set_kernel, write_cl=True)
-
-    evt, (out,) = set_kernel(queue)
-
-    assert (np.abs(out.get() - 1e-12) < 1e-20).all()
-
-
 def test_variable_size_temporary():
     knl = lp.make_kernel(
          ''' { [i,j]: 0<=i,j<n } ''',
@@ -986,56 +858,6 @@ def test_variable_size_temporary():
     # Make sure that code generation succeeds even if
     # there are variable-length arrays.
     lp.generate_code_v2(knl).device_code()
-
-
-def test_indexof(ctx_factory):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-
-    knl = lp.make_kernel(
-         ''' { [i,j]: 0<=i,j<5 } ''',
-         ''' out[i,j] = indexof(out[i,j])''')
-
-    knl = lp.set_options(knl, write_cl=True)
-
-    (evt, (out,)) = knl(queue)
-    out = out.get()
-
-    assert np.array_equal(out.ravel(order="C"), np.arange(25))
-
-
-def test_indexof_vec(ctx_factory):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-
-    if ctx.devices[0].platform.name.startswith("Portable"):
-        # Accurate as of 2015-10-08
-        pytest.skip("POCL miscompiles vector code")
-
-    knl = lp.make_kernel(
-         ''' { [i,j,k]: 0<=i,j,k<4 } ''',
-         ''' out[i,j,k] = indexof_vec(out[i,j,k])''')
-
-    knl = lp.tag_inames(knl, {"i": "vec"})
-    knl = lp.tag_array_axes(knl, "out", "vec,c,c")
-    knl = lp.set_options(knl, write_cl=True)
-
-    (evt, (out,)) = knl(queue)
-    #out = out.get()
-    #assert np.array_equal(out.ravel(order="C"), np.arange(25))
-
-
-def test_is_expression_equal():
-    from loopy.symbolic import is_expression_equal
-    from pymbolic import var
-
-    x = var("x")
-    y = var("y")
-
-    assert is_expression_equal(x+2, 2+x)
-
-    assert is_expression_equal((x+2)**2, x**2 + 4*x + 4)
-    assert is_expression_equal((x+y)**2, x**2 + 2*x*y + y**2)
 
 
 @pytest.mark.parametrize("dtype", [np.int32, np.int64, np.float32, np.float64])
@@ -3041,6 +2863,19 @@ def test_type_inference_walks_fn_in_comparison():
         target=lp.CTarget())
 
     print(lp.generate_code_v2(knl).device_code())
+
+
+def test_non_integral_array_idx_raises():
+    knl = lp.make_kernel(
+            "{[i, j]: 0<=i<=4 and 0<=j<16}",
+            """
+            out[j] = 0 {id=init}
+            out[i] = a[1.94**i-1] {dep=init}
+            """, [lp.GlobalArg('a', np.float64), '...'])
+
+    from loopy.diagnostic import LoopyError
+    with pytest.raises(LoopyError):
+        print(lp.generate_code_v2(knl).device_code())
 
 
 if __name__ == "__main__":

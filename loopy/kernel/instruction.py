@@ -1328,8 +1328,6 @@ class CInstruction(InstructionBase):
             set("iname_exprs code read_variables assignees".split())
     pymbolic_fields = InstructionBase.pymbolic_fields | \
             set("assignees".split())
-    pymbolic_set_fields = InstructionBase.pymbolic_set_fields | \
-            set(["read_variables"])
 
     def __init__(self,
             iname_exprs, code,

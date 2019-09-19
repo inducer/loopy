@@ -53,7 +53,7 @@ def dtype_to_type_context(target, dtype):
     return None
 
 
-# {{{ vetorizability checker
+# {{{ vectorizability checker
 
 class VectorizabilityChecker(RecursiveMapper):
     """The return value from this mapper is a :class:`bool` indicating whether
