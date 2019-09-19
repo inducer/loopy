@@ -564,6 +564,29 @@ def test_unknown_stride_to_callee():
     print(lp.generate_code_v2(prog).device_code())
 
 
+def test_argument_matching_for_inplace_update(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    twice = lp.make_function(
+            "{[i]: 0<=i<10}",
+            """
+            x[i] = 2*x[i]
+            """, name='twice')
+
+    knl = lp.make_kernel(
+            "{:}",
+            """
+            x[:] = twice(x[:])
+            """, [lp.GlobalArg('x', shape=(10,), dtype=np.float64)])
+
+    knl = lp.register_callable_kernel(knl, twice)
+
+    x = np.random.randn(10)
+    evt, (out, ) = knl(queue, np.copy(x))
+
+    assert np.allclose(2*x, out)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
