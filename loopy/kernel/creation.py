@@ -37,6 +37,7 @@ from loopy.kernel.data import (
         SubstitutionRule, AddressSpace, ValueArg)
 from loopy.kernel.instruction import (CInstruction, _DataObliviousInstruction,
         CallInstruction)
+from loopy.program import iterate_over_kernels_if_given_program
 from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
 from islpy import dim_type
@@ -1753,6 +1754,7 @@ def add_inferred_inames(knl):
 
 # {{{ apply single-writer heuristic
 
+@iterate_over_kernels_if_given_program
 def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
     logger.debug("%s: default deps" % kernel.name)
 
@@ -2175,56 +2177,55 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     # {{{ handle kernel language version
 
-    if not is_callee_kernel:
-        from loopy.version import LANGUAGE_VERSION_SYMBOLS
+    from loopy.version import LANGUAGE_VERSION_SYMBOLS
 
-        version_to_symbol = dict(
-                (getattr(loopy.version, lvs), lvs)
-                for lvs in LANGUAGE_VERSION_SYMBOLS)
+    version_to_symbol = dict(
+            (getattr(loopy.version, lvs), lvs)
+            for lvs in LANGUAGE_VERSION_SYMBOLS)
 
-        lang_version = kwargs.pop("lang_version", None)
+    lang_version = kwargs.pop("lang_version", None)
+    if lang_version is None:
+        # {{{ peek into caller's module to look for LOOPY_KERNEL_LANGUAGE_VERSION
+
+        # This *is* gross. But it seems like the right thing interface-wise.
+        import inspect
+        caller_globals = inspect.currentframe().f_back.f_globals
+
+        for ver_sym in LANGUAGE_VERSION_SYMBOLS:
+            try:
+                lang_version = caller_globals[ver_sym]
+                break
+            except KeyError:
+                pass
+
+        # }}}
+
         if lang_version is None:
-            # {{{ peek into caller's module to look for LOOPY_KERNEL_LANGUAGE_VERSION
+            from warnings import warn
+            from loopy.diagnostic import LoopyWarning
+            from loopy.version import (
+                    MOST_RECENT_LANGUAGE_VERSION,
+                    FALLBACK_LANGUAGE_VERSION)
+            warn("'lang_version' was not passed to make_kernel(). "
+                    "To avoid this warning, pass "
+                    "lang_version={ver} in this invocation. "
+                    "(Or say 'from loopy.version import "
+                    "{sym_ver}' in "
+                    "the global scope of the calling frame.)"
+                    .format(
+                        ver=MOST_RECENT_LANGUAGE_VERSION,
+                        sym_ver=version_to_symbol[MOST_RECENT_LANGUAGE_VERSION]
+                        ),
+                    LoopyWarning, stacklevel=2)
 
-            # This *is* gross. But it seems like the right thing interface-wise.
-            import inspect
-            caller_globals = inspect.currentframe().f_back.f_globals
+            lang_version = FALLBACK_LANGUAGE_VERSION
 
-            for ver_sym in LANGUAGE_VERSION_SYMBOLS:
-                try:
-                    lang_version = caller_globals[ver_sym]
-                    break
-                except KeyError:
-                    pass
-
-            # }}}
-
-            if lang_version is None:
-                from warnings import warn
-                from loopy.diagnostic import LoopyWarning
-                from loopy.version import (
-                        MOST_RECENT_LANGUAGE_VERSION,
-                        FALLBACK_LANGUAGE_VERSION)
-                warn("'lang_version' was not passed to make_kernel(). "
-                        "To avoid this warning, pass "
-                        "lang_version={ver} in this invocation. "
-                        "(Or say 'from loopy.version import "
-                        "{sym_ver}' in "
-                        "the global scope of the calling frame.)"
-                        .format(
-                            ver=MOST_RECENT_LANGUAGE_VERSION,
-                            sym_ver=version_to_symbol[MOST_RECENT_LANGUAGE_VERSION]
-                            ),
-                        LoopyWarning, stacklevel=2)
-
-                lang_version = FALLBACK_LANGUAGE_VERSION
-
-        if lang_version not in version_to_symbol:
-            raise LoopyError("Language version '%s' is not known." % (lang_version,))
-        if lang_version >= (2018, 1):
-            options = options.copy(enforce_variable_access_ordered=True)
-        if lang_version >= (2018, 2):
-            options = options.copy(ignore_boostable_into=True)
+    if lang_version not in version_to_symbol:
+        raise LoopyError("Language version '%s' is not known." % (lang_version,))
+    if lang_version >= (2018, 1):
+        options = options.copy(enforce_variable_access_ordered=True)
+    if lang_version >= (2018, 2):
+        options = options.copy(ignore_boostable_into=True)
 
     # }}}
 
@@ -2382,11 +2383,6 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
 
 def make_function(*args, **kwargs):
-    lang_version = kwargs.pop('lang_version', None)
-    if lang_version:
-        raise LoopyError("lang_version should be set for program, not "
-                "functions.")
-
     kwargs['is_callee_kernel'] = True
     return make_kernel(*args, **kwargs)
 

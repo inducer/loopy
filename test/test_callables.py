@@ -63,38 +63,35 @@ def test_register_function_lookup(ctx_factory):
 def test_register_knl(ctx_factory, inline):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
-    n = 2 ** 4
+    n = 4
 
     x = np.random.rand(n, n, n, n, n)
     y = np.random.rand(n, n, n, n, n)
 
     grandchild_knl = lp.make_function(
-            "{[i, j]:0<= i, j< 16}",
+            "{[i, j]:0<= i, j< 4}",
             """
             c[i, j] = 2*a[i, j] + 3*b[i, j]
             """, name='linear_combo1')
 
     child_knl = lp.make_function(
-            "{[i, j]:0<=i, j < 16}",
+            "{[i, j]:0<=i, j < 4}",
             """
             [i, j]: g[i, j] = linear_combo1([i, j]: e[i, j], [i, j]: f[i, j])
             """, name='linear_combo2')
 
     parent_knl = lp.make_kernel(
-            "{[i, j, k, l, m]: 0<=i, j, k, l, m<16}",
+            "{[i, j, k, l, m]: 0<=i, j, k, l, m<4}",
             """
             [j, l]: z[i, j, k, l, m] = linear_combo2([j, l]: x[i, j, k, l, m],
                                                      [j, l]: y[i, j, k, l, m])
             """,
             kernel_data=[
                 lp.GlobalArg(
-                    name='x',
+                    name='x, y',
                     dtype=np.float64,
-                    shape=(16, 16, 16, 16, 16)),
-                lp.GlobalArg(
-                    name='y',
-                    dtype=np.float64,
-                    shape=(16, 16, 16, 16, 16)), '...'],
+                    shape=(n, n, n, n, n)),
+                '...']
             )
 
     knl = lp.register_callable_kernel(
@@ -115,36 +112,29 @@ def test_register_knl(ctx_factory, inline):
 def test_slices_with_negative_step(ctx_factory, inline):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
-    n = 2 ** 4
+    n = 4
 
     x = np.random.rand(n, n, n, n, n)
     y = np.random.rand(n, n, n, n, n)
 
     child_knl = lp.make_function(
-            "{[i, j]:0<=i, j < 16}",
+            "{[i, j]:0<=i, j < 4}",
             """
             g[i, j] = 2*e[i, j] + 3*f[i, j]
             """, name="linear_combo")
 
     parent_knl = lp.make_kernel(
-            "{[i, k, m]: 0<=i, k, m<16}",
+            "{[i, k, m]: 0<=i, k, m<4}",
             """
-            z[i, 15:-1:-1, k, :, m] = linear_combo(x[i, :, k, :, m],
+            z[i, 3:-1:-1, k, :, m] = linear_combo(x[i, :, k, :, m],
                                                    y[i, :, k, :, m])
             """,
             kernel_data=[
                 lp.GlobalArg(
-                    name='x',
+                    name='x, y, z',
                     dtype=np.float64,
-                    shape=(16, 16, 16, 16, 16)),
-                lp.GlobalArg(
-                    name='y',
-                    dtype=np.float64,
-                    shape=(16, 16, 16, 16, 16)),
-                lp.GlobalArg(
-                    name='z',
-                    dtype=np.float64,
-                    shape=(16, 16, 16, 16, 16)), '...'],
+                    shape=(n, n, n, n, n)),
+                '...']
             )
 
     knl = lp.register_callable_kernel(
@@ -163,7 +153,7 @@ def test_register_knl_with_call_with_kwargs(ctx_factory, inline):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    n = 2 ** 2
+    n = 4
 
     a_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float32)
     b_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float32)
@@ -215,27 +205,27 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    n = 2 ** 5
+    n = 4
 
     x_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
     y_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
 
     callee_knl = lp.make_function(
-            "{[i, j]:0<=i, j < 32}",
+            "{[i, j]:0<=i, j < 4}",
             """
             g[i, j] = 2*e[i, j] + 3*f[i, j]
             """, name='linear_combo')
 
-    callee_knl = lp.split_iname(callee_knl, "i", 2, inner_tag="l.0", outer_tag="g.0")
+    callee_knl = lp.split_iname(callee_knl, "i", 1, inner_tag="l.0", outer_tag="g.0")
 
     caller_knl = lp.make_kernel(
-            "{[i, j, k, l, m]: 0<=i, j, k, l, m<32}",
+            "{[i, j, k, l, m]: 0<=i, j, k, l, m<4}",
             """
             [j, l]: z[i, j, k, l, m] = linear_combo([j, l]: x[i, j, k, l, m],
                                                      [j, l]: y[i, j, k, l, m])
             """
             )
-    caller_knl = lp.split_iname(caller_knl, "i", 8, inner_tag="l.1", outer_tag="g.1")
+    caller_knl = lp.split_iname(caller_knl, "i", 4, inner_tag="l.1", outer_tag="g.1")
 
     knl = lp.register_callable_kernel(
             caller_knl, callee_knl)
@@ -252,8 +242,8 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
     x_host = x_dev.get()
     y_host = y_dev.get()
 
-    assert gsize == (16, 4)
-    assert lsize == (2, 8)
+    assert gsize == (4, 1)
+    assert lsize == (1, 4)
     assert np.linalg.norm(2*x_host+3*y_host-out['z'].get())/np.linalg.norm(
             2*x_host+3*y_host) < 1e-15
 
@@ -484,13 +474,13 @@ def test_empty_sub_array_refs(ctx_factory, inline):
 def test_array_inputs_to_callee_kernels(ctx_factory, inline):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
-    n = 2 ** 4
+    n = 2 ** 3
 
     x = np.random.rand(n, n)
     y = np.random.rand(n, n)
 
     child_knl = lp.make_function(
-            "{[i, j]:0<=i, j < 16}",
+            "{[i, j]:0<=i, j < 8}",
             """
             g[i, j] = 2*e[i, j] + 3*f[i, j]
             """, name="linear_combo")
@@ -502,17 +492,10 @@ def test_array_inputs_to_callee_kernels(ctx_factory, inline):
             """,
             kernel_data=[
                 lp.GlobalArg(
-                    name='x',
+                    name='x, y, z',
                     dtype=np.float64,
-                    shape=(16, 16)),
-                lp.GlobalArg(
-                    name='y',
-                    dtype=np.float64,
-                    shape=(16, 16)),
-                lp.GlobalArg(
-                    name='z',
-                    dtype=np.float64,
-                    shape=(16, 16)), '...'],
+                    shape=(n, n)),
+                '...']
             )
 
     knl = lp.register_callable_kernel(

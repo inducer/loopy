@@ -1157,7 +1157,7 @@ this, :mod:`loopy` will complain that global barrier needs to be inserted:
    >>> cgr = lp.generate_code_v2(knl)
    Traceback (most recent call last):
    ...
-   loopy.diagnostic.MissingBarrierError: Dependency 'rotate depends on maketmp' (for variable 'arr') requires synchronization by a global barrier (add a 'no_sync_with' instruction option to state that no synchronization is needed)
+   loopy.diagnostic.MissingBarrierError: rotate_v1: Dependency 'rotate depends on maketmp' (for variable 'arr') requires synchronization by a global barrier (add a 'no_sync_with' instruction option to state that no synchronization is needed)
 
 The syntax for a inserting a global barrier instruction is
 ``... gbarrier``. :mod:`loopy` also supports manually inserting local
@@ -1554,7 +1554,7 @@ information provided. Now we will count the operations:
 
     >>> op_map = lp.get_op_map(knl, subgroup_size=32)
     >>> print(lp.stringify_stats_mapping(op_map))
-    Op(np:dtype('float32'), add, subgroup) : ...
+    Op(np:dtype('float32'), add, subgroup, loopy_kernel) : ...
 
 Each line of output will look roughly like::
 

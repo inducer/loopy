@@ -1208,7 +1208,7 @@ def is_array_call(assignees, expression):
     return False
 
 
-def modify_assignee_assignee_for_array_call(assignee):
+def modify_assignee_for_array_call(assignee):
     """
     Converts the assignee subscript or variable as a SubArrayRef.
     """
@@ -1258,7 +1258,7 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
             # assignee as an instance of SubArrayRef. If not given as a
             # SubArrayRef
             return CallInstruction(
-                    assignees=tuple(modify_assignee_assignee_for_array_call(
+                    assignees=tuple(modify_assignee_for_array_call(
                         assignee) for assignee in assignees),
                     expression=expression,
                     temp_var_types=temp_var_types,

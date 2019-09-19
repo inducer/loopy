@@ -998,7 +998,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, callables_table,
             # functions
             if _instruction_missed_during_inference(insn):
                 type_inf_mapper(insn.expression,
-                        return_tuple=len(insn.assignees) > 1,
+                        return_tuple=len(insn.assignees) != 1,
                         return_dtype_set=True)
         elif isinstance(insn, (_DataObliviousInstruction,
                 lp.CInstruction)):

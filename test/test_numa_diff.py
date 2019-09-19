@@ -60,7 +60,8 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     source = source.replace("datafloat", "real*4")
 
     hsv_r, hsv_s = [
-           knl for knl in lp.parse_fortran(source, filename, seq_dependencies=False)
+           knl for knl in lp.parse_fortran(source, filename,
+               seq_dependencies=False, return_list_of_knls=True)
            if "KernelR" in knl.name or "KernelS" in knl.name
            ]
     hsv_r = lp.tag_instructions(hsv_r, "rknl")
@@ -229,6 +230,15 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
 
     hsv = tap_hsv
 
+    hsv = lp.set_options(hsv,
+            ignore_boostable_into=True,
+            cl_build_options=[
+                 "-cl-denorms-are-zero",
+                 "-cl-fast-relaxed-math",
+                 "-cl-finite-math-only",
+                 "-cl-mad-enable",
+                 "-cl-no-signed-zeros"])
+
     if 1:
         print("OPS")
         op_map = lp.get_op_map(hsv, subgroup_size=32)
@@ -237,14 +247,6 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
         print("MEM")
         gmem_map = lp.get_mem_access_map(hsv, subgroup_size=32).to_bytes()
         print(lp.stringify_stats_mapping(gmem_map))
-
-    hsv = lp.set_options(hsv, cl_build_options=[
-         "-cl-denorms-are-zero",
-         "-cl-fast-relaxed-math",
-         "-cl-finite-math-only",
-         "-cl-mad-enable",
-         "-cl-no-signed-zeros",
-         ])
 
     # FIXME: renaming's a bit tricky in this program model.
     # add a simple transformation for it

@@ -130,10 +130,10 @@ from loopy.type_inference import infer_unknown_types
 from loopy.preprocess import (preprocess_kernel, realize_reduction,
         preprocess_program)
 from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
-from loopy.statistics import (ToCountMap, CountGranularity,
-        Op, MemAccess, get_op_map, get_mem_access_map,
-        get_synchronization_map,
-        gather_access_footprints, gather_access_footprint_bytes)
+from loopy.statistics import (ToCountMap, ToCountPolynomialMap,
+        CountGranularity, stringify_stats_mapping, Op, MemAccess, get_op_map,
+        get_mem_access_map, get_synchronization_map,
+        gather_access_footprints, gather_access_footprint_bytes, Sync)
 from loopy.codegen import (
         PreambleInfo,
         generate_code, generate_code_v2, generate_body)
@@ -269,9 +269,11 @@ __all__ = [
         "PreambleInfo",
         "generate_code", "generate_code_v2", "generate_body",
 
-        "ToCountMap", "CountGranularity", "Op",
-        "MemAccess", "get_op_map", "get_mem_access_map", "get_synchronization_map",
+        "ToCountMap", "ToCountPolynomialMap", "CountGranularity",
+        "stringify_stats_mapping", "Op", "MemAccess", "get_op_map",
+        "get_mem_access_map", "get_synchronization_map",
         "gather_access_footprints", "gather_access_footprint_bytes",
+        "Sync",
 
         "CompiledKernel",
 

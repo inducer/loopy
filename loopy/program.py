@@ -56,6 +56,25 @@ __doc__ = """
 """
 
 
+def find_in_knl_callable_from_identifier(
+        function_id_to_in_knl_callable_mappers, target, identifier):
+    """
+    Returns an instance of
+    :class:`loopy.kernel.function_interface.InKernelCallable` if the
+    :arg:`identifier` is known to any kernel function scoper, otherwise returns
+    *None*.
+    """
+    for func_id_to_in_knl_callable_mapper in (
+            function_id_to_in_knl_callable_mappers):
+        # fixme: do we really need to given target for the function
+        in_knl_callable = func_id_to_in_knl_callable_mapper(
+                target, identifier)
+        if in_knl_callable is not None:
+            return in_knl_callable
+
+    return None
+
+
 class ResolvedFunctionMarker(RuleAwareIdentityMapper):
     """
     Mapper to convert the  ``function`` attribute of a
@@ -82,23 +101,6 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
         self.function_id_to_in_knl_callable_mappers = (
                 function_id_to_in_knl_callable_mappers)
 
-    def find_in_knl_callable_from_identifier(self, identifier):
-        """
-        Returns an instance of
-        :class:`loopy.kernel.function_interface.InKernelCallable` if the
-        :arg:`identifier` is known to any kernel function scoper, otherwise returns
-        *None*.
-        """
-        for func_id_to_in_knl_callable_mapper in (
-                self.function_id_to_in_knl_callable_mappers):
-            # fixme: do we really need to given target for the function
-            in_knl_callable = func_id_to_in_knl_callable_mapper(
-                    self.kernel.target, identifier)
-            if in_knl_callable is not None:
-                return in_knl_callable
-
-        return None
-
     def map_call(self, expr, expn_state):
         from loopy.symbolic import parse_tagged_name
 
@@ -117,7 +119,9 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
         if not isinstance(expr.function, ResolvedFunction):
 
             # search the kernel for the function.
-            in_knl_callable = self.find_in_knl_callable_from_identifier(
+            in_knl_callable = find_in_knl_callable_from_identifier(
+                    self.function_id_to_in_knl_callable_mappers,
+                    self.kernel.target,
                     expr.function.name)
 
             if in_knl_callable:
@@ -139,16 +143,6 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
         # this is an unknown function as of yet, do not modify it
         return super(ResolvedFunctionMarker, self).map_call_with_kwargs(expr,
                 expn_state)
-
-    def map_reduction(self, expr, expn_state):
-        for func_id in (
-                expr.operation.get_scalar_callables()):
-            in_knl_callable = self.find_in_knl_callable_from_identifier(func_id)
-            assert in_knl_callable is not None
-            self.callables_table, _ = (
-                    self.callables_table.with_added_callable(func_id,
-                        in_knl_callable))
-        return super(ResolvedFunctionMarker, self).map_reduction(expr, expn_state)
 
 
 def _default_func_id_to_kernel_callable_mappers(target):
@@ -525,8 +519,7 @@ class CallablesCountingMapper(CombineMapper):
     map_call_with_kwargs = map_call
 
     def map_reduction(self, expr):
-        return Counter(expr.operation.get_scalar_callables()) + (
-                super(CallablesCountingMapper, self).map_reduction(expr))
+        return super(CallablesCountingMapper, self).map_reduction(expr)
 
     def map_constant(self, expr):
         return Counter()
@@ -774,13 +767,18 @@ class CallablesTable(ImmutableRecord):
         # {{{ non-edit mode
 
         if not self.is_being_edited:
-            if function.name in self.resolved_functions and (
-                    self.resolved_functions[function.name] == in_kernel_callable):
+            if isinstance(function, ReductionOpFunction):
+                function_name = function
+            else:
+                function_name = function.name
+
+            if function_name in self.resolved_functions and (
+                    self.resolved_functions[function_name] == in_kernel_callable):
                 # if not being edited, check that the given function is
                 # equal to the old version of the callable.
                 return self, function
             else:
-                print('Old: ', self.resolved_functions[function.name])
+                print('Old: ', self.resolved_functions[function_name])
                 print('New: ', in_kernel_callable)
                 raise LoopyError("Use 'with_enter_edit_callables_mode' first.")
 

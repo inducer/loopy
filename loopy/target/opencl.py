@@ -25,6 +25,7 @@ THE SOFTWARE.
 """
 
 import numpy as np
+import six
 
 from loopy.target.c import CTarget, CASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
@@ -183,14 +184,17 @@ class OpenCLCallable(ScalarCallable):
                 return (
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
-            dtype = np.find_common_type(
+            common_dtype = np.find_common_type(
                     [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
                         if (id >= 0 and dtype is not None)])
 
-            if dtype.kind in ['u', 'i', 'f']:
-                if dtype.kind == 'f':
+            if common_dtype.kind in ['u', 'i', 'f']:
+                if common_dtype.kind == 'f':
                     name = 'f'+name
-                dtype = NumpyType(dtype)
+
+                target = [dtype.target for dtype in six.itervalues(arg_id_to_dtype)
+                        if (id >= 0 and dtype is not None)][0]
+                dtype = NumpyType(common_dtype, target)
                 return (
                         self.copy(name_in_target=name,
                             arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
@@ -198,7 +202,7 @@ class OpenCLCallable(ScalarCallable):
             else:
                 # Unsupported type.
                 raise LoopyError("%s function not supported for the types %s" %
-                        (name, dtype))
+                        (name, common_dtype))
 
         if name == "dot":
             for id in arg_id_to_dtype:
@@ -319,6 +323,8 @@ def opencl_symbol_mangler(kernel, name):
         return NumpyType(np.dtype(np.int32)), name
     elif name.startswith("LONG_"):
         return NumpyType(np.dtype(np.int64)), name
+    elif name == "HUGE_VAL":
+        return NumpyType(np.dtype(np.float64)), name
     else:
         return None
 

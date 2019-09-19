@@ -51,7 +51,7 @@ class ReductionOperation(object):
     def arg_count(self):
         raise NotImplementedError
 
-    def neutral_element(self, *dtypes):
+    def neutral_element(self, dtypes, callables_table, target):
         raise NotImplementedError
 
     def __hash__(self):
@@ -83,9 +83,6 @@ class ReductionOperation(object):
 
         raise LoopyError("unable to parse reduction type: '%s'"
                 % op_type)
-
-    def get_scalar_callables(self):
-        return frozenset()
 
 
 class ScalarReductionOperation(ReductionOperation):
@@ -128,29 +125,43 @@ class ScalarReductionOperation(ReductionOperation):
 
 
 class SumReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, dtype):
+    def neutral_element(self, dtype, callables_table, target):
         # FIXME: Document that we always use an int here.
-        return 0
+        from loopy import auto
+        if dtype not in [None, auto] and dtype.numpy_dtype.kind == 'f':
+            return 0.0, callables_table
 
-    def __call__(self, dtype, operand1, operand2):
-        return operand1 + operand2
+        return 0, callables_table
+
+    def __call__(self, dtype, operand1, operand2, callables_table, target):
+        return operand1 + operand2, callables_table
 
 
 class ProductReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, dtype):
+    def neutral_element(self, dtype, callables_table, target):
         # FIXME: Document that we always use an int here.
-        return 1
+        from loopy import auto
+        if dtype not in [None, auto] and dtype.numpy_dtype.kind == 'f':
+            return 1.0, callables_table
 
-    def __call__(self, dtype, operand1, operand2):
-        return operand1 * operand2
+        return 1, callables_table
+
+    def __call__(self, dtype, operand1, operand2, callables_table, target):
+        return operand1 * operand2, callables_table
 
 
 def get_le_neutral(dtype):
     """Return a number y that satisfies (x <= y) for all y."""
 
     if dtype.numpy_dtype.kind == "f":
-        # OpenCL 1.1, section 6.11.2
-        return var("INFINITY")
+        # OpenCL 1.2, section 6.12.2
+        if dtype.numpy_dtype.itemsize == 4:
+            #float
+            return var("INFINITY")
+        elif dtype.numpy_dtype.itemsize == 8:
+            #double
+            return var("HUGE_VAL")
+
     elif dtype.numpy_dtype.kind == "i":
         # OpenCL 1.1, section 6.11.3
         if dtype.numpy_dtype.itemsize == 4:
@@ -167,8 +178,13 @@ def get_ge_neutral(dtype):
     """Return a number y that satisfies (x >= y) for all y."""
 
     if dtype.numpy_dtype.kind == "f":
-        # OpenCL 1.1, section 6.11.2
-        return -var("INFINITY")
+        # OpenCL 1.2, section 6.12.2
+        if dtype.numpy_dtype.itemsize == 4:
+            #float
+            return -var("INFINITY")
+        elif dtype.numpy_dtype.itemsize == 8:
+            #double
+            return -var("HUGE_VAL")
     elif dtype.numpy_dtype.kind == "i":
         # OpenCL 1.1, section 6.11.3
         if dtype.numpy_dtype.itemsize == 4:
@@ -182,25 +198,53 @@ def get_ge_neutral(dtype):
 
 
 class MaxReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, dtype):
-        return get_ge_neutral(dtype)
+    def neutral_element(self, dtype, callables_table, target):
+        return get_ge_neutral(dtype), callables_table
 
-    def __call__(self, dtype, operand1, operand2):
-        return ResolvedFunction("max")(operand1, operand2)
+    def __call__(self, dtype, operand1, operand2, callables_table, target):
+        dtype, = dtype
 
-    def get_scalar_callables(self):
-        return frozenset(["max"])
+        # getting the callable 'max' from target
+        from loopy.program import (find_in_knl_callable_from_identifier,
+                _default_func_id_to_kernel_callable_mappers)
+        max_scalar_callable = find_in_knl_callable_from_identifier(
+                _default_func_id_to_kernel_callable_mappers(target),
+                target, "max")
+
+        # type specialize the callable
+        max_scalar_callable, callables_table = max_scalar_callable.with_types(
+                {0: dtype, 1: dtype}, None, callables_table)
+
+        # populate callables_table
+        callables_table, func_id = callables_table.with_added_callable(
+                'max', max_scalar_callable)
+
+        return ResolvedFunction(func_id)(operand1, operand2), callables_table
 
 
 class MinReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, dtype):
-        return get_le_neutral(dtype)
+    def neutral_element(self, dtype, callables_table, target):
+        return get_le_neutral(dtype), callables_table
 
-    def __call__(self, dtype, operand1, operand2):
-        return ResolvedFunction("min")(operand1, operand2)
+    def __call__(self, dtype, operand1, operand2, callables_table, target):
+        dtype, = dtype
 
-    def get_scalar_callables(self):
-        return frozenset(["min"])
+        # getting the callable 'max' from target
+        from loopy.program import (find_in_knl_callable_from_identifier,
+                _default_func_id_to_kernel_callable_mappers)
+        min_scalar_callable = find_in_knl_callable_from_identifier(
+                _default_func_id_to_kernel_callable_mappers(target),
+                target, "min")
+
+        # type specialize the callable
+        min_scalar_callable, callables_table = min_scalar_callable.with_types(
+                {0: dtype, 1: dtype}, None, callables_table)
+
+        # populate callables_table
+        callables_table, func_id = callables_table.with_added_callable(
+                'min', min_scalar_callable)
+
+        return ResolvedFunction(func_id)(operand1, operand2), callables_table
 
 
 # {{{ base class for symbolic reduction ops
@@ -259,10 +303,26 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
                 scalar_dtype.numpy_dtype.type.__name__,
                 segment_flag_dtype.numpy_dtype.type.__name__)
 
-    def neutral_element(self, scalar_dtype, segment_flag_dtype):
-        scalar_neutral_element = self.inner_reduction.neutral_element(scalar_dtype)
-        return ResolvedFunction("make_tuple")(scalar_neutral_element,
-                segment_flag_dtype.numpy_dtype.type(0))
+    def neutral_element(self, scalar_dtype, segment_flag_dtype,
+            callables_table, target):
+        scalar_neutral_element, calables_table = (
+                self.inner_reduction.neutral_element(
+                    scalar_dtype, callables_table, target))
+
+        from loopy.program import (find_in_knl_callable_from_identifier,
+                _default_func_id_to_kernel_callable_mappers)
+        make_tuple_scalar_callable = find_in_knl_callable_from_identifier(
+                _default_func_id_to_kernel_callable_mappers(target),
+                target, "make_tuple")
+        make_tuple_scalar_callable, _ = (
+                make_tuple_scalar_callable.with_types(
+                    dict(enumerate([scalar_dtype, segment_flag_dtype])), None,
+                    None))
+        callables_table, func_id = callables_table.with_added_callable(
+                "make_tuple", make_tuple_scalar_callable)
+
+        return ResolvedFunction(func_id)(scalar_neutral_element,
+                segment_flag_dtype.numpy_dtype.type(0)), callables_table
 
     def result_dtypes(self, kernel, scalar_dtype, segment_flag_dtype):
         return (self.inner_reduction.result_dtypes(kernel, scalar_dtype)
@@ -277,11 +337,27 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
     def __eq__(self, other):
         return type(self) == type(other)
 
-    def __call__(self, dtypes, operand1, operand2):
-        return ResolvedFunction(SegmentedOp(self))(*(operand1 + operand2))
+    def __call__(self, dtypes, operand1, operand2, callables_table, target):
+        # getting the callable 'max' from target
 
-    def get_scalar_callables(self):
-        return frozenset(["make_tuple", SegmentedOp(self)])
+        from loopy.program import (find_in_knl_callable_from_identifier,
+                _default_func_id_to_kernel_callable_mappers)
+        segmented_scalar_callable = find_in_knl_callable_from_identifier(
+                _default_func_id_to_kernel_callable_mappers(target),
+                target, SegmentedOp(self))
+
+        # type specialize the callable
+        segmented_scalar_callable, callables_table = (
+                segmented_scalar_callable.with_types(
+                    {0: dtypes[0], 1: dtypes[1], 2: dtypes[0], 3: dtypes[1]},
+                    None, callables_table))
+
+        # populate callables_table
+        callables_table, func_id = callables_table.with_added_callable(
+                SegmentedOp(self), segmented_scalar_callable)
+
+        return (ResolvedFunction(func_id)(*(operand1 + operand2)),
+                callables_table)
 
 
 class SegmentedSumReductionOperation(_SegmentedScalarReductionOperation):
@@ -335,12 +411,27 @@ class _ArgExtremumReductionOperation(ReductionOperation):
     def result_dtypes(self, kernel, scalar_dtype, index_dtype):
         return (scalar_dtype, index_dtype)
 
-    def neutral_element(self, scalar_dtype, index_dtype):
+    def neutral_element(self, scalar_dtype, index_dtype, callables_table,
+            target):
         scalar_neutral_func = (
                 get_ge_neutral if self.neutral_sign < 0 else get_le_neutral)
         scalar_neutral_element = scalar_neutral_func(scalar_dtype)
-        return ResolvedFunction("make_tuple")(scalar_neutral_element,
-                index_dtype.numpy_dtype.type(-1))
+
+        from loopy.program import (find_in_knl_callable_from_identifier,
+                _default_func_id_to_kernel_callable_mappers)
+
+        make_tuple_scalar_callable = find_in_knl_callable_from_identifier(
+                _default_func_id_to_kernel_callable_mappers(target),
+                target, "make_tuple")
+        make_tuple_scalar_callable, _ = (
+                make_tuple_scalar_callable.with_types(
+                    dict(enumerate([scalar_dtype, index_dtype])), None,
+                    None))
+        callables_table, func_id = callables_table.with_added_callable(
+                "make_tuple", make_tuple_scalar_callable)
+
+        return ResolvedFunction(func_id)(scalar_neutral_element,
+                index_dtype.numpy_dtype.type(-1)), callables_table
 
     def __str__(self):
         return self.which
@@ -355,11 +446,27 @@ class _ArgExtremumReductionOperation(ReductionOperation):
     def arg_count(self):
         return 2
 
-    def __call__(self, dtypes, operand1, operand2):
-        return ResolvedFunction(ArgExtOp(self))(*(operand1 + operand2))
+    def __call__(self, dtypes, operand1, operand2, callables_table, target):
+        # getting the callable 'max' from target
 
-    def get_scalar_callables(self):
-        return frozenset([self.which, "make_tuple", ArgExtOp(self)])
+        from loopy.program import (find_in_knl_callable_from_identifier,
+                _default_func_id_to_kernel_callable_mappers)
+        arg_ext_scalar_callable = find_in_knl_callable_from_identifier(
+                _default_func_id_to_kernel_callable_mappers(target),
+                target, ArgExtOp(self))
+
+        # type specialize the callable
+        arg_ext_scalar_callable, callables_table = (
+                arg_ext_scalar_callable.with_types(
+                    {0: dtypes[0], 1: dtypes[1], 2: dtypes[0], 3: dtypes[1]},
+                    None, callables_table))
+
+        # populate callables_table
+        callables_table, func_id = callables_table.with_added_callable(
+                ArgExtOp(self), arg_ext_scalar_callable)
+
+        return (ResolvedFunction(func_id)(*(operand1 + operand2)),
+                callables_table)
 
 
 class ArgMaxReductionOperation(_ArgExtremumReductionOperation):

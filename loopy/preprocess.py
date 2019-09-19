@@ -38,8 +38,7 @@ from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment, filter_iname_tags_by_type
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
-from loopy.symbolic import RuleAwareIdentityMapper
-
+from loopy.symbolic import RuleAwareIdentityMapper, ReductionCallbackMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
 from loopy.program import Program, iterate_over_kernels_if_given_program
@@ -899,6 +898,18 @@ def _insert_subdomain_into_domain_tree(kernel, domains, subdomain):
 # }}}
 
 
+class RealizeReductionCallbackMapper(ReductionCallbackMapper):
+    def __init__(self, callback, callables_table):
+        super(RealizeReductionCallbackMapper, self).__init__(
+                callback)
+        self.callables_table = callables_table
+
+    def map_reduction(self, expr, **kwargs):
+        result, self.callables_table = self.callback(expr, self.rec,
+                **kwargs)
+        return result
+
+
 def realize_reduction_for_single_kernel(kernel, callables_table,
         insn_id_filter=None, unknown_types_ok=True, automagic_scans_ok=False,
         force_scan=False, force_outer_iname_for_scan=None):
@@ -1046,13 +1057,16 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
         init_id = insn_id_gen(
                 "%s_%s_init" % (insn.id, "_".join(expr.inames)))
 
+        expression, callables_table = expr.operation.neutral_element(
+                *arg_dtypes, callables_table=callables_table, target=kernel.target)
+
         init_insn = make_assignment(
                 id=init_id,
                 assignees=acc_vars,
                 within_inames=outer_insn_inames - frozenset(expr.inames),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=init_insn_depends_on,
-                expression=expr.operation.neutral_element(*arg_dtypes),
+                expression=expression,
                 predicates=insn.predicates,)
 
         generated_insns.append(init_insn)
@@ -1087,13 +1101,17 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
         else:
             reduction_expr = expr.expr
 
+        expression, callables_table = expr.operation(
+                arg_dtypes,
+                _strip_if_scalar(acc_vars, acc_vars),
+                reduction_expr,
+                callables_table,
+                kernel.target)
+
         reduction_insn = make_assignment(
                 id=update_id,
                 assignees=acc_vars,
-                expression=expr.operation(
-                    arg_dtypes,
-                    _strip_if_scalar(acc_vars, acc_vars),
-                    reduction_expr),
+                expression=expression,
                 depends_on=frozenset(reduction_insn_depends_on) | insn.depends_on,
                 within_inames=update_insn_iname_deps,
                 within_inames_is_final=insn.within_inames_is_final,
@@ -1105,9 +1123,9 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
         if nresults == 1:
             assert len(acc_vars) == 1
-            return acc_vars[0]
+            return acc_vars[0], callables_table
         else:
-            return acc_vars
+            return acc_vars, callables_table
 
     # }}}
 
@@ -1190,7 +1208,8 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
         base_iname_deps = outer_insn_inames - frozenset(expr.inames)
 
-        neutral = expr.operation.neutral_element(*arg_dtypes)
+        neutral, callables_table = expr.operation.neutral_element(*arg_dtypes,
+                callables_table=callables_table, target=kernel.target)
         init_id = insn_id_gen("%s_%s_init" % (insn.id, red_iname))
         init_insn = make_assignment(
                 id=init_id,
@@ -1243,17 +1262,20 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
             reduction_expr = expr.expr
 
         transfer_id = insn_id_gen("%s_%s_transfer" % (insn.id, red_iname))
+        expression, callables_table = expr.operation(
+                arg_dtypes,
+                _strip_if_scalar(
+                    neutral_var_names,
+                    tuple(var(nvn) for nvn in neutral_var_names)),
+                reduction_expr,
+                callables_table,
+                kernel.target)
         transfer_insn = make_assignment(
                 id=transfer_id,
                 assignees=tuple(
                     acc_var[outer_local_iname_vars + (var(red_iname),)]
                     for acc_var in acc_vars),
-                expression=expr.operation(
-                    arg_dtypes,
-                    _strip_if_scalar(
-                        neutral_var_names,
-                        tuple(var(nvn) for nvn in neutral_var_names)),
-                    reduction_expr),
+                expression=expression,
                 within_inames=(
                     (outer_insn_inames - frozenset(expr.inames))
                     | frozenset([red_iname])),
@@ -1282,22 +1304,26 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
             new_iname_tags[stage_exec_iname] = kernel.iname_tags(red_iname)
 
             stage_id = insn_id_gen("red_%s_stage_%d" % (red_iname, istage))
+            expression, callables_table = expr.operation(
+                    arg_dtypes,
+                    _strip_if_scalar(acc_vars, tuple(
+                        acc_var[
+                            outer_local_iname_vars + (var(stage_exec_iname),)]
+                        for acc_var in acc_vars)),
+                    _strip_if_scalar(acc_vars, tuple(
+                        acc_var[
+                            outer_local_iname_vars + (
+                                var(stage_exec_iname) + new_size,)]
+                        for acc_var in acc_vars)),
+                    callables_table,
+                    kernel.target)
+
             stage_insn = make_assignment(
                     id=stage_id,
                     assignees=tuple(
                         acc_var[outer_local_iname_vars + (var(stage_exec_iname),)]
                         for acc_var in acc_vars),
-                    expression=expr.operation(
-                        arg_dtypes,
-                        _strip_if_scalar(acc_vars, tuple(
-                            acc_var[
-                                outer_local_iname_vars + (var(stage_exec_iname),)]
-                            for acc_var in acc_vars)),
-                        _strip_if_scalar(acc_vars, tuple(
-                            acc_var[
-                                outer_local_iname_vars + (
-                                    var(stage_exec_iname) + new_size,)]
-                            for acc_var in acc_vars))),
+                    expression=expression,
                     within_inames=(
                         base_iname_deps | frozenset([stage_exec_iname])),
                     within_inames_is_final=insn.within_inames_is_final,
@@ -1318,9 +1344,10 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
         if nresults == 1:
             assert len(acc_vars) == 1
-            return acc_vars[0][outer_local_iname_vars + (0,)]
+            return acc_vars[0][outer_local_iname_vars + (0,)], callables_table
         else:
-            return [acc_var[outer_local_iname_vars + (0,)] for acc_var in acc_vars]
+            return [acc_var[outer_local_iname_vars + (0,)] for acc_var in
+                    acc_vars], callables_table
     # }}}
 
     # {{{ utils (stateful)
@@ -1414,6 +1441,9 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
         if global_barrier is not None:
             init_insn_depends_on |= frozenset([global_barrier])
 
+        expression, callables_table = expr.operation.neutral_element(
+                *arg_dtypes, callables_table=callables_table, target=kernel.target)
+
         init_insn = make_assignment(
                 id=init_id,
                 assignees=acc_vars,
@@ -1421,7 +1451,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                     (sweep_iname,) + expr.inames),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=init_insn_depends_on,
-                expression=expr.operation.neutral_element(*arg_dtypes),
+                expression=expression,
                 predicates=insn.predicates,
                 )
 
@@ -1440,13 +1470,17 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
         if insn.within_inames_is_final:
             update_insn_iname_deps = insn.within_inames | set([track_iname])
 
+        expression, callables_table = expr.operation(
+                arg_dtypes,
+                _strip_if_scalar(acc_vars, acc_vars),
+                _strip_if_scalar(acc_vars, updated_inner_exprs),
+                callables_table,
+                kernel.target)
+
         scan_insn = make_assignment(
                 id=update_id,
                 assignees=acc_vars,
-                expression=expr.operation(
-                    arg_dtypes,
-                    _strip_if_scalar(acc_vars, acc_vars),
-                    _strip_if_scalar(acc_vars, updated_inner_exprs)),
+                expression=expression,
                 depends_on=frozenset(update_insn_depends_on),
                 within_inames=update_insn_iname_deps,
                 no_sync_with=insn.no_sync_with,
@@ -1460,9 +1494,9 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
         if nresults == 1:
             assert len(acc_vars) == 1
-            return acc_vars[0]
+            return acc_vars[0], callables_table
         else:
-            return acc_vars
+            return acc_vars, callables_table
 
     # }}}
 
@@ -1536,7 +1570,8 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
         base_iname_deps = (outer_insn_inames
                 - frozenset(expr.inames) - frozenset([sweep_iname]))
 
-        neutral = expr.operation.neutral_element(*arg_dtypes)
+        neutral, callables_table = expr.operation.neutral_element(
+                *arg_dtypes, callables_table=callables_table, target=kernel.target)
 
         init_insn_depends_on = insn.depends_on
 
@@ -1635,19 +1670,23 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
             write_stage_id = insn_id_gen(
                     "scan_%s_write_stage_%d" % (scan_iname, istage))
+
+            expression, callables_table = expr.operation(
+                arg_dtypes,
+                _strip_if_scalar(acc_vars, read_vars),
+                _strip_if_scalar(acc_vars, tuple(
+                    acc_var[
+                        outer_local_iname_vars + (var(stage_exec_iname),)]
+                    for acc_var in acc_vars)),
+                callables_table,
+                kernel.target)
+
             write_stage_insn = make_assignment(
                     id=write_stage_id,
                     assignees=tuple(
                         acc_var[outer_local_iname_vars + (var(stage_exec_iname),)]
                         for acc_var in acc_vars),
-                    expression=expr.operation(
-                        arg_dtypes,
-                        _strip_if_scalar(acc_vars, read_vars),
-                        _strip_if_scalar(acc_vars, tuple(
-                            acc_var[
-                                outer_local_iname_vars + (var(stage_exec_iname),)]
-                            for acc_var in acc_vars))
-                        ),
+                    expression=expression,
                     within_inames=(
                         base_iname_deps | frozenset([stage_exec_iname])),
                     within_inames_is_final=insn.within_inames_is_final,
@@ -1668,10 +1707,11 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
         if nresults == 1:
             assert len(acc_vars) == 1
-            return acc_vars[0][outer_local_iname_vars + (output_idx,)]
+            return (acc_vars[0][outer_local_iname_vars + (output_idx,)],
+                    callables_table)
         else:
             return [acc_var[outer_local_iname_vars + (output_idx,)]
-                    for acc_var in acc_vars]
+                    for acc_var in acc_vars], callables_table
 
     # }}}
 
@@ -1765,7 +1805,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
             # to reduce over. It's rather similar to an array with () shape in
             # numpy.)
 
-            return expr.expr
+            return expr.expr, callables_table
 
         # }}}
 
@@ -1833,8 +1873,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
     # }}}
 
-    from loopy.symbolic import ReductionCallbackMapper
-    cb_mapper = ReductionCallbackMapper(map_reduction)
+    cb_mapper = RealizeReductionCallbackMapper(map_reduction, callables_table)
 
     insn_queue = kernel.instructions[:]
     insn_id_replacements = {}
@@ -1862,13 +1901,14 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
         # Run reduction expansion.
         from loopy.symbolic import Reduction
         if isinstance(insn.expression, Reduction) and nresults > 1:
+            # FIXME[KK]: With the new mapper emitting callables_table
+            # something should be done.
             new_expressions = cb_mapper(insn.expression,
                     callables_table=callables_table,
                     nresults=nresults)
         else:
-            new_expressions = (
-                    cb_mapper(insn.expression,
-                        callables_table=callables_table),)
+            new_expressions = cb_mapper(insn.expression,
+                    callables_table=callables_table),
 
         if generated_insns:
             # An expansion happened, so insert the generated stuff plus
@@ -1955,32 +1995,28 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
             _hackily_ensure_multi_assignment_return_values_are_scoped_private(
                 kernel))
 
-    return kernel
+    return kernel, cb_mapper.callables_table
 
 
 def realize_reduction(program, *args, **kwargs):
     assert isinstance(program, Program)
 
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.callables_table.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = realize_reduction_for_single_kernel(
-                    in_knl_callable.subkernel, program.callables_table,
-                    *args, **kwargs)
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=new_subkernel)
+    callables_table = program.callables_table.copy()
+    kernels_to_scan = [in_knl_callable.subkernel for in_knl_callable in
+            program.callables_table.values() if isinstance(in_knl_callable,
+                CallableKernel)]
 
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of callable %s." % (
-                type(in_knl_callable).__name__))
+    for knl in kernels_to_scan:
+        new_knl, callables_table = realize_reduction_for_single_kernel(
+                knl, callables_table, *args, **kwargs)
+        in_knl_callable = callables_table[knl.name].copy(
+                subkernel=new_knl)
+        resolved_functions = callables_table.resolved_functions.copy()
+        resolved_functions[knl.name] = in_knl_callable
+        callables_table = callables_table.copy(
+            resolved_functions=resolved_functions)
 
-        new_resolved_functions[func_id] = in_knl_callable
-
-    new_callables_table = program.callables_table.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(callables_table=new_callables_table)
+    return program.copy(callables_table=callables_table)
 
 # }}}
 
@@ -2338,29 +2374,12 @@ def preprocess_single_kernel(kernel, callables_table, device=None):
 
     # }}}
 
-    from loopy.transform.subst import expand_subst
-    kernel = expand_subst(kernel)
-
     # Ordering restriction:
     # Type inference and reduction iname uniqueness don't handle substitutions.
     # Get them out of the way.
 
     check_for_writes_to_predicates(kernel)
     check_reduction_iname_uniqueness(kernel)
-
-    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
-    kernel = apply_single_writer_depencency_heuristic(kernel)
-
-    # Ordering restrictions:
-    #
-    # - realize_reduction must happen after type inference because it needs
-    #   to be able to determine the types of the reduced expressions.
-    #
-    # - realize_reduction must happen after default dependencies are added
-    #   because it manipulates the depends_on field, which could prevent
-    #   defaults from being applied.
-    kernel = realize_reduction_for_single_kernel(kernel,
-            callables_table, unknown_types_ok=False)
 
     # Ordering restriction:
     # add_axes_to_temporaries_for_ilp because reduction accumulators
@@ -2450,6 +2469,23 @@ def preprocess_program(program, device=None):
                 DeprecationWarning, stacklevel=2)
 
     program = infer_unknown_types(program, expect_completion=False)
+
+    from loopy.transform.subst import expand_subst
+    program = expand_subst(program)
+
+    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
+    program = apply_single_writer_depencency_heuristic(program)
+
+    # Ordering restrictions:
+    #
+    # - realize_reduction must happen after type inference because it needs
+    #   to be able to determine the types of the reduced expressions.
+    #
+    # - realize_reduction must happen after default dependencies are added
+    #   because it manipulates the depends_on field, which could prevent
+    #   defaults from being applied.
+
+    program = realize_reduction(program, unknown_types_ok=False)
 
     # {{{ preprocess callable kernels
 

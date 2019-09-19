@@ -33,8 +33,6 @@ from loopy.type_inference import TypeInferenceMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
 
-from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
-        _DataObliviousInstruction)
 from functools import reduce
 
 import logging
@@ -145,9 +143,9 @@ class SubscriptIndicesIsIntChecker(TypeInferenceMapper):
         return self.rec(expr.aggregate)
 
 
-def check_for_integer_subscript_indices(kernel):
+def check_for_integer_subscript_indices(kernel, callables_table):
     from pymbolic.primitives import Subscript
-    idx_int_checker = SubscriptIndicesIsIntChecker(kernel)
+    idx_int_checker = SubscriptIndicesIsIntChecker(kernel, callables_table)
     for insn in kernel.instructions:
         if isinstance(insn, MultiAssignmentBase):
             idx_int_checker(insn.expression, return_tuple=isinstance(insn,
@@ -763,7 +761,7 @@ def pre_schedule_checks(kernel, callables_table):
     try:
         logger.debug("%s: pre-schedule check: start" % kernel.name)
 
-        check_for_integer_subscript_indices(kernel)
+        check_for_integer_subscript_indices(kernel, callables_table)
         check_for_duplicate_insn_ids(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel, callables_table)

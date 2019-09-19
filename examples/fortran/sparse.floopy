@@ -23,11 +23,11 @@ subroutine sparse(rowstarts, colindices, values, m, n, nvals, x, y)
 end
 
 !$loopy begin
-! sparse, = lp.parse_fortran(SOURCE, FILENAME)
+! sparse = lp.parse_fortran(SOURCE, FILENAME)
 ! sparse = lp.split_iname(sparse, "i", 128)
 ! sparse = lp.tag_inames(sparse, {"i_outer": "g.0"})
 ! sparse = lp.tag_inames(sparse, {"i_inner": "l.0"})
 ! sparse = lp.split_iname(sparse, "j", 4)
 ! sparse = lp.tag_inames(sparse, {"j_inner": "unr"})
-! RESULT = [sparse]
+! RESULT = sparse
 !$loopy end
