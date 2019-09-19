@@ -50,7 +50,7 @@ __doc__ = """
 
 # {{{ register function lookup
 
-def _resolved_callables_from_function_lookup(program,
+def _resolve_callables_from_function_lookup(program,
         func_id_to_in_kernel_callable_mapper):
     """
     Returns a copy of *program* with the expression nodes marked "Resolved"
@@ -124,7 +124,7 @@ def register_function_id_to_in_knl_callable_mapper(program,
         new_func_id_mappers = program.func_id_to_in_knl_callable_mappers + (
                 [func_id_to_in_knl_callable_mapper])
 
-    program = _resolved_callables_from_function_lookup(program,
+    program = _resolve_callables_from_function_lookup(program,
             func_id_to_in_knl_callable_mapper)
 
     new_program = program.copy(
@@ -173,8 +173,14 @@ def register_callable_kernel(program, callee_kernel):
     # the number of assigness in the callee kernel intructions.
     expected_num_assignees = len([arg for arg in callee_kernel.args if
         arg.name in callee_kernel.get_written_variables()])
-    expected_num_parameters = len([arg for arg in callee_kernel.args if
+    expected_max_num_parameters = len([arg for arg in callee_kernel.args if
         arg.name in callee_kernel.get_read_variables()]) + len(
+                [arg for arg in callee_kernel.args if arg.name not in
+                    (callee_kernel.get_read_variables() |
+                        callee_kernel.get_written_variables())])
+    expected_min_num_parameters = len([arg for arg in callee_kernel.args if
+        arg.name in callee_kernel.get_read_variables() and arg.name not in
+        callee_kernel.get_written_variables()]) + len(
                 [arg for arg in callee_kernel.args if arg.name not in
                     (callee_kernel.get_read_variables() |
                         callee_kernel.get_written_variables())])
@@ -195,11 +201,21 @@ def register_callable_kernel(program, callee_kernel):
                                 "match." % (
                                     callee_kernel.name, insn.id))
                     if len(insn.expression.parameters+tuple(
-                            kw_parameters.values())) != expected_num_parameters:
-                        raise LoopyError("The number of expected arguments "
-                                "for the callee kernel %s and the number of "
-                                "parameters in instruction %s do not match."
-                                % (callee_kernel.name, insn.id))
+                            kw_parameters.values())) > expected_max_num_parameters:
+                        raise LoopyError("The number of"
+                                " parameters in instruction '%s' exceed"
+                                " the max. number of arguments possible"
+                                " for the callee kernel '%s' => arg matching"
+                                " not possible."
+                                % (insn.id, callee_kernel.name))
+                    if len(insn.expression.parameters+tuple(
+                            kw_parameters.values())) < expected_min_num_parameters:
+                        raise LoopyError("The number of"
+                                " parameters in instruction '%s' is less than"
+                                " the min. number of arguments possible"
+                                " for the callee kernel '%s' => arg matching"
+                                " not possible."
+                                % (insn.id, callee_kernel.name))
 
                 elif isinstance(insn, (MultiAssignmentBase, CInstruction,
                         _DataObliviousInstruction)):

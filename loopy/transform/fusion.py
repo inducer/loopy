@@ -419,6 +419,11 @@ def fuse_kernels(programs, suffixes=None, data_flow=None):
         *data_flow* was added in version 2016.2
     """
 
+    from loopy.program import make_program
+
+    programs = [make_program(knl) if isinstance(knl, LoopKernel) else knl for
+            knl in programs]
+
     # all the resolved functions in programs must be registered in
     # main_callables_table
     main_prog_callables_info = (

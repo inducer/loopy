@@ -241,10 +241,54 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
     return proc_dict["RESULT"]
 
 
+def _add_assignees_to_calls(knl, all_kernels):
+    new_insns = []
+    subroutine_dict = dict((kernel.name, kernel) for kernel in all_kernels)
+    from loopy.kernel.instruction import (Assignment, CallInstruction,
+            CInstruction, _DataObliviousInstruction,
+            modify_assignee_for_array_call)
+    from pymbolic.primitives import Call, Variable
+
+    for insn in knl.instructions:
+        if isinstance(insn, CallInstruction):
+            if isinstance(insn.expression, Call) and (
+                    insn.expression.function.name in subroutine_dict):
+                assignees = []
+                new_params = []
+                subroutine = subroutine_dict[insn.expression.function.name]
+                for par, arg in zip(insn.expression.parameters, subroutine.args):
+                    if arg.name in subroutine.get_written_variables():
+                        par = modify_assignee_for_array_call(par)
+                        assignees.append(par)
+                    if arg.name in subroutine.get_read_variables():
+                        new_params.append(par)
+                    if arg.name not in (subroutine.get_written_variables() |
+                            subroutine.get_read_variables()):
+                        new_params.append(par)
+
+                new_insns.append(
+                        insn.copy(
+                            assignees=tuple(assignees),
+                            expression=Variable(
+                                insn.expression.function.name)(*new_params)))
+            else:
+                new_insns.append(insn)
+            pass
+        elif isinstance(insn, (Assignment, CInstruction,
+                _DataObliviousInstruction)):
+            new_insns.append(insn)
+        else:
+            raise NotImplementedError(type(insn).__name__)
+
+    return knl.copy(instructions=new_insns)
+
+
 def parse_fortran(source, filename="<floopy code>", free_form=None, strict=None,
-        seq_dependencies=None, auto_dependencies=None, target=None):
+        seq_dependencies=None, auto_dependencies=None, target=None,
+        return_list_of_knls=False):
     """
-    :returns: a :class:`loopy.Program`
+    :returns: an instance of :class:`list` of :class:`loopy.LoopKernel`s if
+        *return_list_of_knls* is True else a :class:`loopy.Program`.
     """
 
     parse_plog = ProcessLogger(logger, "parsing fortran file '%s'" % filename)
@@ -285,6 +329,11 @@ def parse_fortran(source, filename="<floopy code>", free_form=None, strict=None,
     f2loopy(tree)
 
     kernels = f2loopy.make_kernels(seq_dependencies=seq_dependencies)
+
+    if return_list_of_knls:
+        return kernels
+
+    kernels = [_add_assignees_to_calls(knl, kernels) for knl in kernels]
 
     from loopy.kernel.tools import identify_root_kernel
     from loopy.program import make_program

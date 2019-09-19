@@ -67,7 +67,7 @@ end subroutine volumeKernel
 
 !$loopy begin
 !
-! volumeKernel, = lp.parse_fortran(SOURCE, FILENAME)
+! volumeKernel = lp.parse_fortran(SOURCE, FILENAME)
 ! volumeKernel = lp.split_iname(volumeKernel,
 !     "e", 32, outer_tag="g.1", inner_tag="g.0")
 ! volumeKernel = lp.fix_parameters(volumeKernel,
@@ -76,6 +76,6 @@ end subroutine volumeKernel
 !     i="l.0", j="l.1", k="l.2",
 !     i_1="l.0", j_1="l.1", k_1="l.2"
 !     ))
-! RESULT = [volumeKernel]
+! RESULT = volumeKernel
 !
 !$loopy end

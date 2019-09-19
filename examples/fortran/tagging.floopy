@@ -23,13 +23,13 @@ end
 !       "factor 4.0",
 !       "real_type real*8",
 !       ])
-! fill, = lp.parse_fortran(SOURCE, FILENAME)
+! fill = lp.parse_fortran(SOURCE, FILENAME)
 ! fill = lp.add_barrier(fill, "tag:init", "tag:mult", "gb1")
 ! fill = lp.split_iname(fill, "i", 128,
 !     outer_tag="g.0", inner_tag="l.0")
 ! fill = lp.split_iname(fill, "i_1", 128,
 !     outer_tag="g.0", inner_tag="l.0")
-! RESULT = [fill]
+! RESULT = fill
 !
 !$loopy end
 

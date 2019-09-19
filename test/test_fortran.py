@@ -533,9 +533,11 @@ def test_parse_and_fuse_two_kernels():
 
         !$loopy begin
         !
-        ! prg = lp.parse_fortran(SOURCE)
-        ! fill = prg["fill"]
-        ! twice = prg["twice"]
+        ! # FIXME: correct this after the "Module" is done.
+        ! # prg = lp.parse_fortran(SOURCE)
+        ! # fill = prg["fill"]
+        ! # twice = prg["twice"]
+        ! fill, twice = lp.parse_fortran(SOURCE, return_list_of_knls=True)
         ! knl = lp.fuse_kernels((fill, twice))
         ! print(knl)
         ! RESULT = knl
