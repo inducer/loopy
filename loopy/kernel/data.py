@@ -338,7 +338,8 @@ class KernelArgument(ImmutableRecord):
             dtype = None
 
         kwargs["dtype"] = dtype
-        kwargs["is_output_only"] = kwargs.pop("is_output_only", None)
+        kwargs["is_output"] = kwargs.pop("is_output", None)
+        kwargs["is_input"] = kwargs.pop("is_input", None)
 
         ImmutableRecord.__init__(self, **kwargs)
 
@@ -351,20 +352,27 @@ class ArrayArg(ArrayBase, KernelArgument):
             An attribute of :class:`AddressSpace` defining the address
             space in which the array resides.
 
-        .. attribute:: is_output_only
+        .. attribute:: is_output
 
             An instance of :class:`bool`. If set to *True*, recorded to be
             returned from the kernel.
+
+        .. attribute:: is_input
+
+            An instance of :class:`bool`. If set to *True*, expected to be
+            provided by the user.
         """)
 
     allowed_extra_kwargs = [
             "address_space",
-            "is_output_only"]
+            "is_output",
+            "is_input"]
 
     def __init__(self, *args, **kwargs):
         if "address_space" not in kwargs:
             raise TypeError("'address_space' must be specified")
-        kwargs["is_output_only"] = kwargs.pop("is_output_only", None)
+        kwargs["is_output"] = kwargs.pop("is_output", None)
+        kwargs["is_input"] = kwargs.pop("is_input", None)
 
         super(ArrayArg, self).__init__(*args, **kwargs)
 
@@ -392,7 +400,8 @@ class ArrayArg(ArrayBase, KernelArgument):
         """
         super(ArrayArg, self).update_persistent_hash(key_hash, key_builder)
         key_builder.rec(key_hash, self.address_space)
-        key_builder.rec(key_hash, self.is_output_only)
+        key_builder.rec(key_hash, self.is_output)
+        key_builder.rec(key_hash, self.is_input)
 
 
 # Making this a function prevents incorrect use in isinstance.
@@ -413,7 +422,8 @@ class ConstantArg(ArrayBase, KernelArgument):
     max_target_axes = 1
 
     # Constant Arg cannot be an output
-    is_output_only = False
+    is_output = False
+    is_input = True
 
     def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
         return ast_builder.get_constant_arg_decl(self.name + name_suffix, shape,
@@ -436,13 +446,14 @@ class ImageArg(ArrayBase, KernelArgument):
 
 class ValueArg(KernelArgument):
     def __init__(self, name, dtype=None, approximately=1000, target=None,
-            is_output_only=False):
+            is_output=False, is_input=True):
 
         KernelArgument.__init__(self, name=name,
                 dtype=dtype,
                 approximately=approximately,
                 target=target,
-                is_output_only=is_output_only)
+                is_output=is_output,
+                is_input=is_input)
 
     def __str__(self):
         import loopy as lp

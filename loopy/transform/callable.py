@@ -171,22 +171,8 @@ def register_callable_kernel(program, callee_kernel):
 
     # check to make sure that the variables with 'out' direction is equal to
     # the number of assigness in the callee kernel intructions.
-    expected_num_assignees = len([arg for arg in callee_kernel.args if
-        arg.name in callee_kernel.get_written_variables()])
-
-    # can only predict the range of actual number of parameters to a kernel
-    # call, as a variable intended for pure output can be read
-    expected_max_num_parameters = len([arg for arg in callee_kernel.args if
-        arg.name in callee_kernel.get_read_variables()]) + len(
-                [arg for arg in callee_kernel.args if arg.name not in
-                    (callee_kernel.get_read_variables() |
-                        callee_kernel.get_written_variables())])
-    expected_min_num_parameters = len([arg for arg in callee_kernel.args if
-        arg.name in callee_kernel.get_read_variables() and arg.name not in
-        callee_kernel.get_written_variables()]) + len(
-                [arg for arg in callee_kernel.args if arg.name not in
-                    (callee_kernel.get_read_variables() |
-                        callee_kernel.get_written_variables())])
+    expected_num_assignees = sum(arg.is_output for arg in callee_kernel.args)
+    expected_num_arguments = sum(arg.is_input for arg in callee_kernel.args)
     for in_knl_callable in program.callables_table.values():
         if isinstance(in_knl_callable, CallableKernel):
             caller_kernel = in_knl_callable.subkernel
@@ -204,19 +190,11 @@ def register_callable_kernel(program, callee_kernel):
                                 "match." % (
                                     callee_kernel.name, insn.id))
                     if len(insn.expression.parameters+tuple(
-                            kw_parameters.values())) > expected_max_num_parameters:
+                            kw_parameters.values())) != expected_num_arguments:
                         raise LoopyError("The number of"
-                                " parameters in instruction '%s' exceed"
-                                " the max. number of arguments possible"
-                                " for the callee kernel '%s' => arg matching"
-                                " not possible."
-                                % (insn.id, callee_kernel.name))
-                    if len(insn.expression.parameters+tuple(
-                            kw_parameters.values())) < expected_min_num_parameters:
-                        raise LoopyError("The number of"
-                                " parameters in instruction '%s' is less than"
-                                " the min. number of arguments possible"
-                                " for the callee kernel '%s' => arg matching"
+                                " arguments in instruction '%s' do match"
+                                " the number of input arguments in"
+                                " the callee kernel '%s' => arg matching"
                                 " not possible."
                                 % (insn.id, callee_kernel.name))
 
@@ -409,7 +387,7 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
     assignee_pos = 0
     parameter_pos = 0
     for i, arg in enumerate(callee_knl.args):
-        if arg.is_output_only:
+        if arg.is_output:
             arg_map[arg.name] = assignees[assignee_pos]
             assignee_pos += 1
         else:

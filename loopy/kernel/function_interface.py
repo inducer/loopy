@@ -226,16 +226,13 @@ def get_kw_pos_association(kernel):
     write_count = -1
 
     for arg in kernel.args:
-        if arg.name in kernel.get_written_variables():
+        if arg.is_output:
             kw_to_pos[arg.name] = write_count
             pos_to_kw[write_count] = arg.name
             write_count -= 1
-        if arg.name in kernel.get_read_variables():
-            kw_to_pos[arg.name] = read_count
-            pos_to_kw[read_count] = arg.name
-            read_count += 1
-        if not (arg.name in kernel.get_read_variables() or arg.name in
-                kernel.get_written_variables()):
+        if arg.is_input:
+            # if an argument is both input and output then the input is given
+            # more significance in kw_to_pos
             kw_to_pos[arg.name] = read_count
             pos_to_kw[read_count] = arg.name
             read_count += 1
@@ -862,7 +859,7 @@ class CallableKernel(InKernelCallable):
         # insert the assignees at the required positions
         assignee_write_count = -1
         for i, arg in enumerate(self.subkernel.args):
-            if arg.is_output_only:
+            if arg.is_output and not arg.is_input:
                 assignee = assignees[-assignee_write_count-1]
                 parameters.insert(i, assignee)
                 par_dtypes.insert(i, self.arg_id_to_dtype[assignee_write_count])

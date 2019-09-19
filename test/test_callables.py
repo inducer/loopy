@@ -327,6 +327,9 @@ def test_multi_arg_array_call(ctx_factory):
                 lp.Assignment(id="update", assignee=acc_i,
                     expression=p.Variable("min")(acc_i, a_i),
                     depends_on="init1,init2")],
+            [
+                lp.GlobalArg('acc_i, index', is_input=False, is_output=True),
+                "..."],
             name="custom_argmin")
 
     argmin_kernel = lp.fix_parameters(argmin_kernel, n=n)
@@ -403,21 +406,22 @@ def test_non_sub_array_refs_arguments(ctx_factory):
     from loopy.transform.callable import _match_caller_callee_argument_dimension_
 
     callee = lp.make_function("{[i] : 0 <= i < 6}", "a[i] = a[i] + j",
-            [lp.GlobalArg("a", dtype="double", shape=(6,), is_output_only=False),
+            [lp.GlobalArg("a", dtype="double", shape=(6,), is_output=True,
+                is_input=True),
                 lp.ValueArg("j", dtype="int")], name="callee")
     caller1 = lp.make_kernel("{[j] : 0 <= j < 2}", "a[:] = callee(a[:], b[0])",
-            [lp.GlobalArg("a", dtype="double", shape=(6, ), is_output_only=False),
-            lp.GlobalArg("b", dtype="double", shape=(1, ), is_output_only=False)],
+            [lp.GlobalArg("a", dtype="double", shape=(6, ), is_output=False),
+            lp.GlobalArg("b", dtype="double", shape=(1, ), is_output=False)],
             name="caller", target=lp.CTarget())
 
     caller2 = lp.make_kernel("{[j] : 0 <= j < 2}", "a[:]=callee(a[:], 3.1415926)",
             [lp.GlobalArg("a", dtype="double", shape=(6, ),
-                is_output_only=False)],
+                is_output=False)],
             name="caller", target=lp.CTarget())
 
     caller3 = lp.make_kernel("{[j] : 0 <= j < 2}", "a[:]=callee(a[:], kappa)",
             [lp.GlobalArg("a", dtype="double", shape=(6, ),
-                is_output_only=False), '...'],
+                is_output=False), '...'],
             name="caller", target=lp.CTarget())
 
     registered = lp.register_callable_kernel(caller1, callee)
@@ -582,7 +586,7 @@ def test_argument_matching_for_inplace_update(ctx_factory):
     knl = lp.register_callable_kernel(knl, twice)
 
     x = np.random.randn(10)
-    evt, (out, ) = knl(queue, np.copy(x))
+    evt, (out, ) = knl(queue, x=np.copy(x))
 
     assert np.allclose(2*x, out)
 
