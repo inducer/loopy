@@ -23,7 +23,7 @@ def make_scalar(kernel, var_name):
     kernel = ScalarChanger(rule_mapping_context, var_name).map_kernel(kernel)
 
     new_args = [ValueArg(arg.name, arg.dtype, target=arg.target,
-        is_output_only=arg.is_output_only) if arg.name == var_name else arg for
+        is_output=arg.is_output) if arg.name == var_name else arg for
         arg in kernel.args]
     new_temps = dict((tv.name, tv.copy(shape=(), dim_tags=None))
             if tv.name == var_name else (tv.name, tv) for tv in

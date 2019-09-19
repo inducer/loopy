@@ -725,7 +725,7 @@ class KernelExecutorBase(object):
         self.packing_controller = SeparateArrayPackingController(program)
 
         self.output_names = tuple(arg.name for arg in self.program.args
-                if arg.is_output_only)
+                if arg.is_output)
 
         self.has_runtime_typed_args = any(
                 arg.dtype is None

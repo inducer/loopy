@@ -118,7 +118,7 @@ def make_ref_args(program, impl_arg_info, queue, parameters):
             shape = evaluate_shape(arg.unvec_shape, parameters)
             dtype = kernel_arg.dtype
 
-            is_output = kernel_arg.is_output_only
+            is_output = kernel_arg.is_output
 
             if arg.arg_class is ImageArg:
                 storage_array = ary = cl_array.empty(
