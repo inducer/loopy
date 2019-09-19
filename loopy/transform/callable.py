@@ -173,6 +173,9 @@ def register_callable_kernel(program, callee_kernel):
     # the number of assigness in the callee kernel intructions.
     expected_num_assignees = len([arg for arg in callee_kernel.args if
         arg.name in callee_kernel.get_written_variables()])
+
+    # can only predict the range of actual number of parameters to a kernel
+    # call, as a variable intended for pure output can be read
     expected_max_num_parameters = len([arg for arg in callee_kernel.args if
         arg.name in callee_kernel.get_read_variables()]) + len(
                 [arg for arg in callee_kernel.args if arg.name not in
