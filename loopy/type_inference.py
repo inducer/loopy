@@ -692,7 +692,7 @@ class TypeInferenceMapper(CombineMapper):
                     for rec_result in rec_results]
 
     def map_sub_array_ref(self, expr):
-        return self.rec(expr.get_begin_subscript())
+        return self.rec(expr.subscript)
 
 
 # }}}
