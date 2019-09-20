@@ -859,10 +859,12 @@ class CallableKernel(InKernelCallable):
         # insert the assignees at the required positions
         assignee_write_count = -1
         for i, arg in enumerate(self.subkernel.args):
-            if arg.is_output and not arg.is_input:
-                assignee = assignees[-assignee_write_count-1]
-                parameters.insert(i, assignee)
-                par_dtypes.insert(i, self.arg_id_to_dtype[assignee_write_count])
+            if arg.is_output:
+                if not arg.is_input:
+                    assignee = assignees[-assignee_write_count-1]
+                    parameters.insert(i, assignee)
+                    par_dtypes.insert(i, self.arg_id_to_dtype[assignee_write_count])
+
                 assignee_write_count -= 1
 
         # no type casting in array calls
