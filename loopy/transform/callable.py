@@ -154,24 +154,20 @@ class _RegisterCalleeKernel(ImmutableRecord):
         return None
 
 
-def subarrayrefs_are_equiv(sar1, sar2):
+def subarrayrefs_are_equiv(sar1, sar2, knl):
     """
     Compares if two instance of :class:`loopy.symbolic.SubArrayRef`s point
     to the same array region.
     """
-    if len(sar1.swept_inames) != len(sar2.swept_inames):
-        return False
+    from loopy.kernel.function_interface import get_arg_descriptor_for_expression
 
-    iname_map = dict(zip(sar1.swept_inames, sar2.swept_inames))
-
-    from pymbolic.mapper.substitutor import make_subst_func
-    from loopy.symbolic import SubstitutionMapper
-    sar1_substed = SubstitutionMapper(make_subst_func(iname_map))(sar1)
-
-    return sar1_substed == sar2
+    return get_arg_descriptor_for_expression(knl, sar1) == (
+            get_arg_descriptor_for_expression(knl, sar2)) and (
+                    sar1.get_begin_subscript(knl) ==
+                    sar2.get_begin_subscript(knl))
 
 
-def _check_correctness_of_args_and_assignees(insn, callee_kernel):
+def _check_correctness_of_args_and_assignees(insn, callee_kernel, caller_knl):
     from loopy.kernel.function_interface import get_kw_pos_association
     kw_to_pos, pos_to_kw = get_kw_pos_association(callee_kernel)
     callee_args_to_insn_params = [[] for _ in callee_kernel.args]
@@ -222,7 +218,8 @@ def _check_correctness_of_args_and_assignees(insn, callee_kernel):
                 raise LoopyError("Found multiple parameters mapping to an"
                         " argument which is not both input and output in"
                         " ''.".format())
-            if not subarrayrefs_are_equiv(insn_params[0], insn_params[1]):
+            if not subarrayrefs_are_equiv(insn_params[0], insn_params[1],
+                    caller_knl):
                 raise LoopyError("'{}' and '{}' point to the same argument in"
                         " the callee, but are unequal.".format(
                             insn_params[0], insn_params[1]))
@@ -276,7 +273,8 @@ def register_callable_kernel(program, callee_kernel):
                                 " not possible."
                                 % (insn.id, callee_kernel.name))
 
-                    _check_correctness_of_args_and_assignees(insn, callee_kernel)
+                    _check_correctness_of_args_and_assignees(insn,
+                            callee_kernel, caller_kernel)
 
                 elif isinstance(insn, (MultiAssignmentBase, CInstruction,
                         _DataObliviousInstruction)):
