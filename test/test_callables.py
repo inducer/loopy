@@ -364,13 +364,13 @@ def test_packing_unpacking(ctx_factory, inline):
     callee1 = lp.make_function(
             "{[i]: 0<=i<6}",
             """
-            a[i] = 2*b[i]
+            b[i] = 2*a[i]
             """, name="callee_fn1")
 
     callee2 = lp.make_function(
             "{[i, j]: 0<=i<2 and 0 <= j < 3}",
             """
-            a[i, j] = 3*b[i, j]
+            b[i, j] = 3*a[i, j]
             """, name="callee_fn2")
 
     knl = lp.make_kernel(
@@ -456,8 +456,7 @@ def test_empty_sub_array_refs(ctx_factory, inline):
     callee = lp.make_function(
             "{[d]:0<=d<1}",
             """
-            a[d] = b[d] - c[d]
-
+            c[d] = a[d] - b[d]
             """, name='wence_function')
 
     caller = lp.make_kernel("{[i]: 0<=i<10}",
@@ -583,6 +582,29 @@ def test_argument_matching_for_inplace_update(ctx_factory):
             """
             x[:] = twice(x[:])
             """, [lp.GlobalArg('x', shape=(10,), dtype=np.float64)])
+
+    knl = lp.register_callable_kernel(knl, twice)
+
+    x = np.random.randn(10)
+    evt, (out, ) = knl(queue, x=np.copy(x))
+
+    assert np.allclose(2*x, out)
+
+
+def test_non_zero_start_in_subarray_ref(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    twice = lp.make_function(
+            "{[i]: 0<=i<10}",
+            """
+            b[i] = 2*a[i]
+            """, name='twice')
+
+    knl = lp.make_kernel(
+            "{[i, j]: -5<=i<5 and 0<=j<10}",
+            """
+            [i]:y[i+5] = twice([j]: x[j])
+            """, [lp.GlobalArg('x, y', shape=(10,), dtype=np.float64)])
 
     knl = lp.register_callable_kernel(knl, twice)
 
