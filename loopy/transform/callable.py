@@ -154,6 +154,84 @@ class _RegisterCalleeKernel(ImmutableRecord):
         return None
 
 
+def subarrayrefs_are_equiv(sar1, sar2):
+    """
+    Compares if two instance of :class:`loopy.symbolic.SubArrayRef`s point
+    to the same array region.
+    """
+    if len(sar1.swept_inames) != len(sar2.swept_inames):
+        return False
+
+    iname_map = dict(zip(sar1.swept_inames, sar2.swept_inames))
+
+    from pymbolic.mapper.substitutor import make_subst_func
+    from loopy.symbolic import SubstitutionMapper
+    sar1_substed = SubstitutionMapper(make_subst_func(iname_map))(sar1)
+
+    return sar1_substed == sar2
+
+
+def _check_correctness_of_args_and_assignees(insn, callee_kernel):
+    from loopy.kernel.function_interface import get_kw_pos_association
+    kw_to_pos, pos_to_kw = get_kw_pos_association(callee_kernel)
+    callee_args_to_insn_params = [[] for _ in callee_kernel.args]
+    expr = insn.expression
+    from pymbolic.primitives import Call, CallWithKwargs
+    if isinstance(expr, Call):
+        expr = CallWithKwargs(expr.function, expr.parameters, kw_parameters={})
+    for i, param in enumerate(expr.parameters):
+        pos = kw_to_pos[callee_kernel.args[i].name]
+        if pos < 0:
+            raise LoopyError("#{} argument meant for output obtained as an"
+                    " input in '{}'.".format(i, insn))
+
+        assert pos == i
+
+        callee_args_to_insn_params[i].append(param)
+
+    for kw, param in six.iteritems(expr.kw_parameters):
+        pos = kw_to_pos[kw]
+        if pos < 0:
+            raise LoopyError("KW-argument '{}' meant for output obtained as an"
+                    " input in '{}'.".format(kw, insn))
+        callee_args_to_insn_params[pos].append(param)
+
+    num_pure_assignees = 0
+    for i, assignee in enumerate(insn.assignees):
+        pos = kw_to_pos[pos_to_kw[-i-1]]
+
+        if pos < 0:
+            pos = (len(expr.parameters) +
+                    len(expr.kw_parameters)+num_pure_assignees)
+            num_pure_assignees += 1
+
+        callee_args_to_insn_params[pos].append(assignee)
+
+    # TODO: Some of the checks might be redundant.
+
+    for arg, insn_params in zip(callee_kernel.args,
+            callee_args_to_insn_params):
+        if len(insn_params) == 1:
+            # making sure that the argument is either only input or output
+            if arg.is_input == arg.is_output:
+                raise LoopyError("Argument '{}' in '{}' should be passed in"
+                        " both assignees and parameters in Call.".format(
+                            insn_params[0], insn))
+        elif len(insn_params) == 2:
+            if arg.is_input != arg.is_output:
+                raise LoopyError("Found multiple parameters mapping to an"
+                        " argument which is not both input and output in"
+                        " ''.".format())
+            if not subarrayrefs_are_equiv(insn_params[0], insn_params[1]):
+                raise LoopyError("'{}' and '{}' point to the same argument in"
+                        " the callee, but are unequal.".format(
+                            insn_params[0], insn_params[1]))
+        else:
+            raise LoopyError("Multiple(>2) arguments pointing to the same"
+                    " argument for '{}' in '{}'.".format(callee_kernel.name,
+                        insn))
+
+
 def register_callable_kernel(program, callee_kernel):
     """Returns a copy of *caller_kernel*, which would resolve *function_name* in an
     expression as a call to *callee_kernel*.
@@ -197,6 +275,8 @@ def register_callable_kernel(program, callee_kernel):
                                 " the callee kernel '%s' => arg matching"
                                 " not possible."
                                 % (insn.id, callee_kernel.name))
+
+                    _check_correctness_of_args_and_assignees(insn, callee_kernel)
 
                 elif isinstance(insn, (MultiAssignmentBase, CInstruction,
                         _DataObliviousInstruction)):
