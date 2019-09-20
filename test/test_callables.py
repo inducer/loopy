@@ -260,19 +260,19 @@ def test_shape_translation_through_sub_array_ref(ctx_factory, inline):
     callee1 = lp.make_function(
             "{[i]: 0<=i<6}",
             """
-            a[i] = 2*abs(b[i])
+            b[i] = 2*abs(a[i])
             """, name="callee_fn1")
 
     callee2 = lp.make_function(
             "{[i, j]: 0<=i<3 and 0 <= j < 2}",
             """
-            a[i, j] = 3*b[i, j]
+            b[i, j] = 3*a[i, j]
             """, name="callee_fn2")
 
     callee3 = lp.make_function(
             "{[i]: 0<=i<6}",
             """
-            a[i] = 5*b[i]
+            b[i] = 5*a[i]
             """, name="callee_fn3")
 
     knl = lp.make_kernel(
@@ -328,6 +328,7 @@ def test_multi_arg_array_call(ctx_factory):
                     expression=p.Variable("min")(acc_i, a_i),
                     depends_on="init1,init2")],
             [
+                lp.GlobalArg('a'),
                 lp.GlobalArg('acc_i, index', is_input=False, is_output=True),
                 "..."],
             name="custom_argmin")
