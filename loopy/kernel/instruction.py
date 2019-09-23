@@ -543,7 +543,8 @@ def _get_assignee_subscript_deps(expr):
     elif isinstance(expr, LinearSubscript):
         return get_dependencies(expr.index)
     elif isinstance(expr, SubArrayRef):
-        return get_dependencies(expr.get_begin_subscript().index)
+        return get_dependencies(expr.subscript.index) - (
+                frozenset(iname.name for iname in expr.swept_inames))
     else:
         raise RuntimeError("invalid lvalue '%s'" % expr)
 

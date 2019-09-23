@@ -242,6 +242,18 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
 
 
 def _add_assignees_to_calls(knl, all_kernels):
+    """
+    Returns a copy of *knl* coming from the fortran parser adjusted to the
+    loopy specification that written variables of a call must appear in the
+    assignee.
+
+    :param knl: An instance of :class:`loopy.LoopKernel`, which have incorrect
+        calls to the kernels in *all_kernels* by stuffing both the input and
+        output arguments into parameters.
+
+    :param all_kernels: An instance of :class:`list` of loopy kernels which
+        may be called by *kernel*.
+    """
     new_insns = []
     subroutine_dict = dict((kernel.name, kernel) for kernel in all_kernels)
     from loopy.kernel.instruction import (Assignment, CallInstruction,

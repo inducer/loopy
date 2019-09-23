@@ -1923,33 +1923,54 @@ def get_direct_callee_kernels(kernel, callables_table, insn_ids=None,):
 
 # {{{ direction helper tools
 
-def infer_args_are_output_only(kernel):
+def infer_args_are_input_output(kernel):
     """
-    Returns a copy of *kernel* with the attribute ``is_output_only`` set.
+    Returns a copy of *kernel* with the attributes ``is_input`` and
+    ``is_output`` of the arguments set.
 
     .. note::
 
-        If the attribute ``is_output_only`` is not supplied from an user, then
-        infers it as an output argument if it is written at some point in the
-        kernel.
+        If the attribute ``is_output`` of an argument is not supplied from an
+        user, then it is inferred as an output argument if it is written at
+        some point in the kernel.
+
+        If the attribute ``is_input`` of an argument of  is not supplied from
+        an user, then it is inferred as an input argument if it is either read
+        at some point in the kernel or it is neither read nor written.
     """
     from loopy.kernel.data import ArrayArg, ValueArg, ConstantArg, ImageArg
     new_args = []
 
     for arg in kernel.args:
         if isinstance(arg, (ArrayArg, ImageArg, ValueArg)):
-            if arg.is_output_only is not None:
-                assert isinstance(arg.is_output_only, bool)
-                new_args.append(arg)
+            if arg.is_output is not None:
+                assert isinstance(arg.is_output, bool)
             else:
                 if arg.name in kernel.get_written_variables():
-                    new_args.append(arg.copy(is_output_only=True))
+                    arg = arg.copy(is_output=True)
                 else:
-                    new_args.append(arg.copy(is_output_only=False))
+                    arg = arg.copy(is_output=False)
+
+            if arg.is_input is not None:
+                assert isinstance(arg.is_input, bool)
+            else:
+                if arg.name in kernel.get_read_variables() or (
+                        (arg.name not in kernel.get_read_variables()) and (
+                            arg.name not in kernel.get_written_variables())):
+                    arg = arg.copy(is_input=True)
+                else:
+                    arg = arg.copy(is_input=False)
         elif isinstance(arg, ConstantArg):
-            new_args.append(arg)
+            pass
         else:
             raise NotImplementedError("Unkonwn argument type %s." % type(arg))
+
+        if not (arg.is_input or arg.is_output):
+            raise LoopyError("Kernel argument must be either input or output."
+                    " '{}' in '{}' does not follow it.".format(arg.name,
+                        kernel.name))
+
+        new_args.append(arg)
 
     return kernel.copy(args=new_args)
 

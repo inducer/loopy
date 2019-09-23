@@ -154,6 +154,81 @@ class _RegisterCalleeKernel(ImmutableRecord):
         return None
 
 
+def subarrayrefs_are_equiv(sar1, sar2, knl):
+    """
+    Compares if two instance of :class:`loopy.symbolic.SubArrayRef`s point
+    to the same array region.
+    """
+    from loopy.kernel.function_interface import get_arg_descriptor_for_expression
+
+    return get_arg_descriptor_for_expression(knl, sar1) == (
+            get_arg_descriptor_for_expression(knl, sar2)) and (
+                    sar1.get_begin_subscript(knl) ==
+                    sar2.get_begin_subscript(knl))
+
+
+def _check_correctness_of_args_and_assignees(insn, callee_kernel, caller_knl):
+    from loopy.kernel.function_interface import get_kw_pos_association
+    kw_to_pos, pos_to_kw = get_kw_pos_association(callee_kernel)
+    callee_args_to_insn_params = [[] for _ in callee_kernel.args]
+    expr = insn.expression
+    from pymbolic.primitives import Call, CallWithKwargs
+    if isinstance(expr, Call):
+        expr = CallWithKwargs(expr.function, expr.parameters, kw_parameters={})
+    for i, param in enumerate(expr.parameters):
+        pos = kw_to_pos[callee_kernel.args[i].name]
+        if pos < 0:
+            raise LoopyError("#{} argument meant for output obtained as an"
+                    " input in '{}'.".format(i, insn))
+
+        assert pos == i
+
+        callee_args_to_insn_params[i].append(param)
+
+    for kw, param in six.iteritems(expr.kw_parameters):
+        pos = kw_to_pos[kw]
+        if pos < 0:
+            raise LoopyError("KW-argument '{}' meant for output obtained as an"
+                    " input in '{}'.".format(kw, insn))
+        callee_args_to_insn_params[pos].append(param)
+
+    num_pure_assignees = 0
+    for i, assignee in enumerate(insn.assignees):
+        pos = kw_to_pos[pos_to_kw[-i-1]]
+
+        if pos < 0:
+            pos = (len(expr.parameters) +
+                    len(expr.kw_parameters)+num_pure_assignees)
+            num_pure_assignees += 1
+
+        callee_args_to_insn_params[pos].append(assignee)
+
+    # TODO: Some of the checks might be redundant.
+
+    for arg, insn_params in zip(callee_kernel.args,
+            callee_args_to_insn_params):
+        if len(insn_params) == 1:
+            # making sure that the argument is either only input or output
+            if arg.is_input == arg.is_output:
+                raise LoopyError("Argument '{}' in '{}' should be passed in"
+                        " both assignees and parameters in Call.".format(
+                            insn_params[0], insn))
+        elif len(insn_params) == 2:
+            if arg.is_input != arg.is_output:
+                raise LoopyError("Found multiple parameters mapping to an"
+                        " argument which is not both input and output in"
+                        " ''.".format())
+            if not subarrayrefs_are_equiv(insn_params[0], insn_params[1],
+                    caller_knl):
+                raise LoopyError("'{}' and '{}' point to the same argument in"
+                        " the callee, but are unequal.".format(
+                            insn_params[0], insn_params[1]))
+        else:
+            raise LoopyError("Multiple(>2) arguments pointing to the same"
+                    " argument for '{}' in '{}'.".format(callee_kernel.name,
+                        insn))
+
+
 def register_callable_kernel(program, callee_kernel):
     """Returns a copy of *caller_kernel*, which would resolve *function_name* in an
     expression as a call to *callee_kernel*.
@@ -171,19 +246,8 @@ def register_callable_kernel(program, callee_kernel):
 
     # check to make sure that the variables with 'out' direction is equal to
     # the number of assigness in the callee kernel intructions.
-    expected_num_assignees = len([arg for arg in callee_kernel.args if
-        arg.name in callee_kernel.get_written_variables()])
-    expected_max_num_parameters = len([arg for arg in callee_kernel.args if
-        arg.name in callee_kernel.get_read_variables()]) + len(
-                [arg for arg in callee_kernel.args if arg.name not in
-                    (callee_kernel.get_read_variables() |
-                        callee_kernel.get_written_variables())])
-    expected_min_num_parameters = len([arg for arg in callee_kernel.args if
-        arg.name in callee_kernel.get_read_variables() and arg.name not in
-        callee_kernel.get_written_variables()]) + len(
-                [arg for arg in callee_kernel.args if arg.name not in
-                    (callee_kernel.get_read_variables() |
-                        callee_kernel.get_written_variables())])
+    expected_num_assignees = sum(arg.is_output for arg in callee_kernel.args)
+    expected_num_arguments = sum(arg.is_input for arg in callee_kernel.args)
     for in_knl_callable in program.callables_table.values():
         if isinstance(in_knl_callable, CallableKernel):
             caller_kernel = in_knl_callable.subkernel
@@ -201,21 +265,16 @@ def register_callable_kernel(program, callee_kernel):
                                 "match." % (
                                     callee_kernel.name, insn.id))
                     if len(insn.expression.parameters+tuple(
-                            kw_parameters.values())) > expected_max_num_parameters:
+                            kw_parameters.values())) != expected_num_arguments:
                         raise LoopyError("The number of"
-                                " parameters in instruction '%s' exceed"
-                                " the max. number of arguments possible"
-                                " for the callee kernel '%s' => arg matching"
+                                " arguments in instruction '%s' do not match"
+                                " the number of input arguments in"
+                                " the callee kernel '%s' => arg matching"
                                 " not possible."
                                 % (insn.id, callee_kernel.name))
-                    if len(insn.expression.parameters+tuple(
-                            kw_parameters.values())) < expected_min_num_parameters:
-                        raise LoopyError("The number of"
-                                " parameters in instruction '%s' is less than"
-                                " the min. number of arguments possible"
-                                " for the callee kernel '%s' => arg matching"
-                                " not possible."
-                                % (insn.id, callee_kernel.name))
+
+                    _check_correctness_of_args_and_assignees(insn,
+                            callee_kernel, caller_kernel)
 
                 elif isinstance(insn, (MultiAssignmentBase, CInstruction,
                         _DataObliviousInstruction)):
@@ -307,7 +366,8 @@ class KernelInliner(SubstitutionMapper):
                     "constant shape.".format(callee_arg))
 
             flatten_index = 0
-            for i, idx in enumerate(sar.get_begin_subscript().index_tuple):
+            for i, idx in enumerate(sar.get_begin_subscript(
+                    self.caller).index_tuple):
                 flatten_index += idx*caller_arg.dim_tags[i].stride
 
             flatten_index += sum(
@@ -406,7 +466,7 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
     assignee_pos = 0
     parameter_pos = 0
     for i, arg in enumerate(callee_knl.args):
-        if arg.is_output_only:
+        if arg.is_output:
             arg_map[arg.name] = assignees[assignee_pos]
             assignee_pos += 1
         else:

@@ -2367,8 +2367,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_for_duplicate_names(knl)
     check_written_variable_names(knl)
 
-    from loopy.kernel.tools import infer_args_are_output_only
-    knl = infer_args_are_output_only(knl)
+    from loopy.kernel.tools import infer_args_are_input_output
+    knl = infer_args_are_input_output(knl)
 
     from loopy.preprocess import prepare_for_caching
     knl = prepare_for_caching(knl)

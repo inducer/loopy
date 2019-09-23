@@ -198,7 +198,9 @@ class CombineMapper(CombineMapperBase):
         return self.rec(expr.expr, *args, **kwargs)
 
     def map_sub_array_ref(self, expr):
-        return self.rec(expr.get_begin_subscript())
+        return self.combine((
+            self.rec(expr.subscript),
+            self.combine(tuple(self.rec(idx) for idx in expr.swept_inames))))
 
     map_linear_subscript = CombineMapperBase.map_subscript
 
@@ -353,9 +355,9 @@ class DependencyMapper(DependencyMapperBase):
     def map_loopy_function_identifier(self, expr, *args, **kwargs):
         return set()
 
-    def map_sub_array_ref(self, expr, *args):
-        deps = self.rec(expr.subscript, *args)
-        return deps - set(iname for iname in expr.swept_inames)
+    def map_sub_array_ref(self, expr, *args, **kwargs):
+        deps = self.rec(expr.subscript, *args, **kwargs)
+        return deps - set(expr.swept_inames)
 
     map_linear_subscript = DependencyMapperBase.map_subscript
 
@@ -845,7 +847,7 @@ class SubArrayRef(LoopyExpressionBase):
         self.swept_inames = swept_inames
         self.subscript = subscript
 
-    def get_begin_subscript(self):
+    def get_begin_subscript(self, kernel):
         """
         Returns an instance of :class:`pymbolic.primitives.Subscript`, the
         beginning subscript of the array swept by the *SubArrayRef*.
@@ -853,9 +855,14 @@ class SubArrayRef(LoopyExpressionBase):
         **Example:** Consider ``[i, k]: a[i, j, k, l]``. The beginning
         subscript would be ``a[0, j, 0, l]``
         """
-        # TODO: Set the zero to the minimum value of the iname.
+
+        def _get_lower_bound(iname):
+            pwaff = kernel.get_iname_bounds(iname).lower_bound_pw_aff
+            return int(pw_aff_to_expr(pwaff))
+
         swept_inames_to_zeros = dict(
-                (swept_iname.name, 0) for swept_iname in self.swept_inames)
+                (swept_iname.name, _get_lower_bound(swept_iname.name)) for
+                swept_iname in self.swept_inames)
 
         return EvaluatorWithDeficientContext(swept_inames_to_zeros)(
                 self.subscript)
