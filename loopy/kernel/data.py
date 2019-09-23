@@ -354,8 +354,8 @@ class ArrayArg(ArrayBase, KernelArgument):
 
         .. attribute:: is_output
 
-            An instance of :class:`bool`. If set to *True*, recorded to be
-            returned from the kernel.
+            An instance of :class:`bool`. If set to *True*, the argument is used
+            to return information to the caller
 
         .. attribute:: is_input
 
