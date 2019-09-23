@@ -360,7 +360,7 @@ class ArrayArg(ArrayBase, KernelArgument):
         .. attribute:: is_input
 
             An instance of :class:`bool`. If set to *True*, expected to be
-            provided by the user.
+            provided by the caller.
         """)
 
     allowed_extra_kwargs = [

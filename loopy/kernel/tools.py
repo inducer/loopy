@@ -1965,6 +1965,11 @@ def infer_args_are_input_output(kernel):
         else:
             raise NotImplementedError("Unkonwn argument type %s." % type(arg))
 
+        if not (arg.is_input or arg.is_output):
+            raise LoopyError("Kernel argument must be either input or output."
+                    " '{}' in '{}' does not follow it.".format(arg.name,
+                        kernel.name))
+
         new_args.append(arg)
 
     return kernel.copy(args=new_args)

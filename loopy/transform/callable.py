@@ -267,7 +267,7 @@ def register_callable_kernel(program, callee_kernel):
                     if len(insn.expression.parameters+tuple(
                             kw_parameters.values())) != expected_num_arguments:
                         raise LoopyError("The number of"
-                                " arguments in instruction '%s' do match"
+                                " arguments in instruction '%s' do not match"
                                 " the number of input arguments in"
                                 " the callee kernel '%s' => arg matching"
                                 " not possible."
