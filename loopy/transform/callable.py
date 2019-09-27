@@ -44,286 +44,67 @@ __doc__ = """
 
 .. autofunction:: register_function_id_to_in_knl_callable_mapper
 
-.. autofunction:: register_callable_kernel
+.. autofunction:: fuse_translation_units
 """
 
 
-# {{{ register function lookup
-
-def _resolve_callables_from_function_lookup(program,
-        func_id_to_in_kernel_callable_mapper):
+def register_callable(translation_unit, function_identifier, callable_,
+        redefining_not_ok=True):
     """
-    Returns a copy of *program* with the expression nodes marked "Resolved"
-    if any match is found through the given
-    *func_id_to_in_kernel_callable_mapper*.
-
-    :arg func_id_to_in_kernel_callable_mapper: A function with signature
-        ``(target, identifier)`` that returns either an instance of
-        :class:`loopy.InKernelCallable` or *None*.
-    """
-    callables_table = program.callables_table
-
-    callable_knls = dict(
-            (func_id, in_knl_callable) for func_id, in_knl_callable in
-            callables_table.items() if isinstance(in_knl_callable,
-                CallableKernel))
-    edited_callable_knls = {}
-
-    for func_id, in_knl_callable in callable_knls.items():
-        kernel = in_knl_callable.subkernel
-
-        from loopy.symbolic import SubstitutionRuleMappingContext
-        rule_mapping_context = SubstitutionRuleMappingContext(
-                kernel.substitutions, kernel.get_var_name_generator())
-
-        resolved_function_marker = ResolvedFunctionMarker(
-                rule_mapping_context, kernel, callables_table,
-                [func_id_to_in_kernel_callable_mapper])
-
-        new_subkernel = rule_mapping_context.finish_kernel(
-                resolved_function_marker.map_kernel(kernel))
-        callables_table = resolved_function_marker.callables_table
-
-        edited_callable_knls[func_id] = in_knl_callable.copy(
-                subkernel=new_subkernel)
-
-    new_resolved_functions = {}
-
-    for func_id, in_knl_callable in callables_table.items():
-        if func_id in edited_callable_knls:
-            new_resolved_functions[func_id] = edited_callable_knls[func_id]
-        else:
-            new_resolved_functions[func_id] = in_knl_callable
-
-    callables_table = callables_table.copy(
-            resolved_functions=new_resolved_functions)
-
-    return program.copy(callables_table=callables_table)
-
-
-def register_function_id_to_in_knl_callable_mapper(program,
-        func_id_to_in_knl_callable_mapper):
-    """
-    Returns a copy of *program* with the *function_lookup* registered.
-
-    :arg func_id_to_in_knl_callable_mapper: A function of signature ``(target,
-        identifier)`` returning a
-        :class:`loopy.kernel.function_interface.InKernelCallable` or *None* if
-        the *function_identifier* is not known.
+    :param translation_unit: A :class:`loopy.Program`.
+    :param callable_: A :class:`loopy.InKernelCallable`.
     """
 
-    # adding the function lookup to the set of function lookers in the kernel.
-    if func_id_to_in_knl_callable_mapper not in (
-            program.func_id_to_in_knl_callable_mappers):
-        from loopy.tools import unpickles_equally
-        if not unpickles_equally(func_id_to_in_knl_callable_mapper):
-            raise LoopyError("function '%s' does not "
-                    "compare equally after being upickled "
-                    "and would disrupt loopy's caches"
-                    % func_id_to_in_knl_callable_mapper)
-        new_func_id_mappers = program.func_id_to_in_knl_callable_mappers + (
-                [func_id_to_in_knl_callable_mapper])
+    if isinstance(callable_, LoopKernel):
+        callable_ = CallableKernel(callable_)
 
-    program = _resolve_callables_from_function_lookup(program,
-            func_id_to_in_knl_callable_mapper)
+    from loopy.kernel.function_interface import InKernelCallable
+    assert isinstance(callable_, InKernelCallable)
 
-    new_program = program.copy(
-            func_id_to_in_knl_callable_mappers=new_func_id_mappers)
+    if (function_identifier in translation_unit.callables) and (
+            redefining_not_ok):
+        raise LoopyError("Redifining function identifier not allowed. Set the"
+                " option 'redefining_not_ok=False' to bypass this error.")
 
-    return new_program
+    callables = translation_unit.copy()
+    callables[function_identifier] = callable_
 
-# }}}
+    return translation_unit.copy(
+            callables=callables)
 
 
-# {{{ register_callable_kernel
-
-class _RegisterCalleeKernel(ImmutableRecord):
+def fuse_translation_units(translation_units, collision_not_ok=True):
     """
-    Helper class to make the function scoper from
-    :func:`loopy.transform.register_callable_kernel` picklable. As python
-    cannot pickle lexical closures.
-    """
-    fields = set(['callable_kernel'])
+    :param translation_units: A list of :class:`loopy.Program`.
+    :param collision_not_ok: An instance of :class:`bool`.
 
-    def __init__(self, callable_kernel):
-        self.callable_kernel = callable_kernel
-
-    def __call__(self, target, identifier):
-        if identifier == self.callable_kernel.subkernel.name:
-            return self.callable_kernel
-        return None
-
-
-def subarrayrefs_are_equiv(sar1, sar2, knl):
-    """
-    Compares if two instance of :class:`loopy.symbolic.SubArrayRef`s point
-    to the same array region.
-    """
-    from loopy.kernel.function_interface import get_arg_descriptor_for_expression
-
-    return get_arg_descriptor_for_expression(knl, sar1) == (
-            get_arg_descriptor_for_expression(knl, sar2)) and (
-                    sar1.get_begin_subscript(knl) ==
-                    sar2.get_begin_subscript(knl))
-
-
-def _check_correctness_of_args_and_assignees(insn, callee_kernel, caller_knl):
-    from loopy.kernel.function_interface import get_kw_pos_association
-    kw_to_pos, pos_to_kw = get_kw_pos_association(callee_kernel)
-    callee_args_to_insn_params = [[] for _ in callee_kernel.args]
-    expr = insn.expression
-    from pymbolic.primitives import Call, CallWithKwargs
-    if isinstance(expr, Call):
-        expr = CallWithKwargs(expr.function, expr.parameters, kw_parameters={})
-    for i, param in enumerate(expr.parameters):
-        pos = kw_to_pos[callee_kernel.args[i].name]
-        if pos < 0:
-            raise LoopyError("#{} argument meant for output obtained as an"
-                    " input in '{}'.".format(i, insn))
-
-        assert pos == i
-
-        callee_args_to_insn_params[i].append(param)
-
-    for kw, param in six.iteritems(expr.kw_parameters):
-        pos = kw_to_pos[kw]
-        if pos < 0:
-            raise LoopyError("KW-argument '{}' meant for output obtained as an"
-                    " input in '{}'.".format(kw, insn))
-        callee_args_to_insn_params[pos].append(param)
-
-    num_pure_assignees = 0
-    for i, assignee in enumerate(insn.assignees):
-        pos = kw_to_pos[pos_to_kw[-i-1]]
-
-        if pos < 0:
-            pos = (len(expr.parameters) +
-                    len(expr.kw_parameters)+num_pure_assignees)
-            num_pure_assignees += 1
-
-        callee_args_to_insn_params[pos].append(assignee)
-
-    # TODO: Some of the checks might be redundant.
-
-    for arg, insn_params in zip(callee_kernel.args,
-            callee_args_to_insn_params):
-        if len(insn_params) == 1:
-            # making sure that the argument is either only input or output
-            if arg.is_input == arg.is_output:
-                raise LoopyError("Argument '{}' in '{}' should be passed in"
-                        " both assignees and parameters in Call.".format(
-                            insn_params[0], insn))
-        elif len(insn_params) == 2:
-            if arg.is_input != arg.is_output:
-                raise LoopyError("Found multiple parameters mapping to an"
-                        " argument which is not both input and output in"
-                        " ''.".format())
-            if not subarrayrefs_are_equiv(insn_params[0], insn_params[1],
-                    caller_knl):
-                raise LoopyError("'{}' and '{}' point to the same argument in"
-                        " the callee, but are unequal.".format(
-                            insn_params[0], insn_params[1]))
-        else:
-            raise LoopyError("Multiple(>2) arguments pointing to the same"
-                    " argument for '{}' in '{}'.".format(callee_kernel.name,
-                        insn))
-
-
-def register_callable_kernel(program, callee_kernel):
-    """Returns a copy of *caller_kernel*, which would resolve *function_name* in an
-    expression as a call to *callee_kernel*.
-
-    :arg caller_kernel: An instance of :class:`loopy.kernel.LoopKernel`.
-    :arg function_name: An instance of :class:`str`.
-    :arg callee_kernel: An instance of :class:`loopy.kernel.LoopKernel`.
+    :returns: An instance of :class:`loopy.Program` which contains all the
+        callables from each of the *translation_units.
     """
 
-    # {{{ sanity checks
+    for i in range(1, len(translation_units)):
+        if translation_units[i].target != translation_units[i-1].target:
+            raise LoopyError("fuse_translation_units should have"
+                    " translation_units to be of the same target to be able to"
+                    " fuse.")
+    callables_table = {}
+    for trans_unit in translation_units:
+        callables_table.update(trans_unit.callables_table.copy())
 
-    assert isinstance(program, Program)
-    assert isinstance(callee_kernel, LoopKernel), ('{0} !='
-            '{1}'.format(type(callee_kernel), LoopKernel))
+    # {{{
 
-    # check to make sure that the variables with 'out' direction is equal to
-    # the number of assigness in the callee kernel intructions.
-    expected_num_assignees = sum(arg.is_output for arg in callee_kernel.args)
-    expected_num_arguments = sum(arg.is_input for arg in callee_kernel.args)
-    for in_knl_callable in program.callables_table.values():
-        if isinstance(in_knl_callable, CallableKernel):
-            caller_kernel = in_knl_callable.subkernel
-            for insn in caller_kernel.instructions:
-                if isinstance(insn, CallInstruction) and (
-                        insn.expression.function.name == callee_kernel.name):
-                    if isinstance(insn.expression, CallWithKwargs):
-                        kw_parameters = insn.expression.kw_parameters
-                    else:
-                        kw_parameters = {}
-                    if len(insn.assignees) != expected_num_assignees:
-                        raise LoopyError("The number of arguments with 'out' "
-                                "direction " "in callee kernel %s and the number "
-                                "of assignees in " "instruction %s do not "
-                                "match." % (
-                                    callee_kernel.name, insn.id))
-                    if len(insn.expression.parameters+tuple(
-                            kw_parameters.values())) != expected_num_arguments:
-                        raise LoopyError("The number of"
-                                " arguments in instruction '%s' do not match"
-                                " the number of input arguments in"
-                                " the callee kernel '%s' => arg matching"
-                                " not possible."
-                                % (insn.id, callee_kernel.name))
-
-                    _check_correctness_of_args_and_assignees(insn,
-                            callee_kernel, caller_kernel)
-
-                elif isinstance(insn, (MultiAssignmentBase, CInstruction,
-                        _DataObliviousInstruction)):
-                    pass
-                else:
-                    raise NotImplementedError("unknown instruction %s" % type(insn))
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown callable type %s." %
-                    type(in_knl_callable).__name__)
+    if len(callables_table) != sum(len(trans_unit.callables_table) for trans_unit in
+            translation_units) and collision_not_ok:
+        raise LoopyError("translation units in fuse_translation_units cannot"
+                " not contain callables with same names.")
 
     # }}}
 
-    # take the function resolvers from the Program and resolve the functions in
-    # the callee kernel
-    from loopy.symbolic import SubstitutionRuleMappingContext
-    rule_mapping_context = SubstitutionRuleMappingContext(
-            callee_kernel.substitutions,
-            callee_kernel.get_var_name_generator())
-
-    resolved_function_marker = ResolvedFunctionMarker(
-            rule_mapping_context, callee_kernel, program.callables_table,
-            program.func_id_to_in_knl_callable_mappers)
-
-    callee_kernel = rule_mapping_context.finish_kernel(
-            resolved_function_marker.map_kernel(callee_kernel))
-    callables_table = resolved_function_marker.callables_table.copy()
-
-    program = program.copy(callables_table=callables_table)
-
-    # making the target of the child kernel to be same as the target of parent
-    # kernel.
-    callable_kernel = CallableKernel(subkernel=callee_kernel.copy(
-                        target=program.target,
-                        is_called_from_host=False))
-
-    # FIXME disabling global barriers for callee kernel (for now)
-    from loopy import set_options
-    callee_kernel = set_options(callee_kernel, "disable_global_barriers")
-
-    # FIXME: the number of callables is wrong. This is horrible please
-    # compensate.
-
-    return register_function_id_to_in_knl_callable_mapper(
-            program,
-            _RegisterCalleeKernel(callable_kernel))
-
-# }}}
+    return Program(
+            entrypoints=frozenset().union(*(
+                t.entrypoints for t in translation_units)),
+            callables_table=callables_table,
+            target=translation_units[0].target)
 
 
 # {{{ kernel inliner mapper

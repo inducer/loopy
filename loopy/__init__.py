@@ -51,7 +51,7 @@ from loopy.kernel.data import (
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
 from loopy.program import (
-        CallablesTable, Program, make_program)
+        Program, make_program)
 
 from loopy.kernel import LoopKernel, KernelState, kernel_state
 from loopy.kernel.tools import (
@@ -120,8 +120,8 @@ from loopy.transform.batch import to_batched, save_temporaries_in_loop
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.add_barrier import add_barrier
-from loopy.transform.callable import (register_callable_kernel,
-        register_function_id_to_in_knl_callable_mapper, inline_callable_kernel)
+from loopy.transform.callable import (register_callable,
+        fuse_translation_units, inline_callable_kernel)
 from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
 
 # }}}
@@ -242,8 +242,8 @@ __all__ = [
 
         "dump_as_python",
 
-        "register_callable_kernel",
-        "register_function_id_to_in_knl_callable_mapper",
+        "register_callable",
+        "fuse_translation_units",
         "inline_callable_kernel",
 
         "pack_and_unpack_args_for_call",
