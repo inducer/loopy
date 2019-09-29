@@ -150,13 +150,15 @@ class ASTBuilderBase(object):
 
     # {{{ library
 
-    def function_id_in_knl_callable_mapper(self):
+    @property
+    def known_callables(self):
         """
-        Returns an instance of list of the functions of signature
-        ``(target, identifiers)`` returning either an instance of
-        :class:`InKernelCallable` if a match is found or *None*.
+        Returns a mapping from function ids to corresponding
+        :class:`loopy.kernel.function_interface.InKernelCallable` for the
+        function ids known to *self.target*.
         """
-        return []
+        # FIXME: @inducer: Do we need to move this to TargetBase?
+        return {}
 
     def symbol_manglers(self):
         return []

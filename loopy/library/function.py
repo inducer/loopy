@@ -104,25 +104,25 @@ class IndexOfCallable(ScalarCallable):
                 target), True
 
 
-def loopy_specific_callable_func_id_to_knl_callable_mappers(target, identifier):
+def get_loopy_callables():
     """
-    Returns an instance of :class:`InKernelCallable` for the *idenitifer*
-    which is not present in *target*, but whose interface is given by
-    :mod:`loo.py`. Callables that fall in this category are --
+    Returns a mapping from function ids to corresponding
+    :class:`loopy.kernel.function_interface.InKernelCallable` for functions
+    whose interface is provided by :mod:`loopy`. Callables that fall in this
+    category are --
 
     - reductions leading to function calls like ``argmin``, ``argmax``.
     - callables that have a predefined meaning in :mod:`loo.py` like
       ``make_tuple``, ``index_of``, ``indexof_vec``.
     """
-    if identifier == "make_tuple":
-        return MakeTupleCallable(name="make_tuple")
+    known_callables = {
+            "make_tuple": MakeTupleCallable(name="make_tuple"),
+            "indexof": IndexOfCallable(name="indexof"),
+            "indexof_vec": IndexOfCallable(name="indexof_vec"),
+            }
 
-    if identifier in ["indexof", "indexof_vec"]:
-        return IndexOfCallable(name=identifier)
-
-    from loopy.library.reduction import (
-            reduction_func_id_to_in_knl_callable_mapper)
-    return reduction_func_id_to_in_knl_callable_mapper(target, identifier)
+    from loopy.library.reduction import get_reduction_callables
+    return known_callables.update(get_reduction_callables())
 
 
 # vim: foldmethod=marker

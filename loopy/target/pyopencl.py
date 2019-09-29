@@ -275,12 +275,10 @@ class PyOpenCLCallable(ScalarCallable):
                 callables_table)
 
 
-def pyopencl_function_id_to_in_knl_callable_mapper(target, identifier):
-    if identifier in ["sqrt", "exp", "log", "sin", "cos", "tan", "sinh", "cosh",
-            "tanh", "conj", "real", "imag", "abs"]:
-        return PyOpenCLCallable(name=identifier)
-
-    return None
+def get_pyopencl_callables():
+    pyopencl_ids = ["sqrt", "exp", "log", "sin", "cos", "tan", "sinh", "cosh",
+            "tanh", "conj", "real", "imag", "abs"]
+    return dict((id_, PyOpenCLCallable(name=id_)) for id_ in pyopencl_ids)
 
 # }}}
 
@@ -796,13 +794,14 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
     # {{{ library
 
-    def function_id_in_knl_callable_mapper(self):
-        from loopy.library.random123 import (
-                random123_function_id_to_in_knl_callable_mapper)
+    @property
+    def known_callables(self):
+        from loopy.library.random123 import get_random123_callables
         return (
-                [pyopencl_function_id_to_in_knl_callable_mapper,
-                    random123_function_id_to_in_knl_callable_mapper] + super(
-                    PyOpenCLCASTBuilder, self).function_id_in_knl_callable_mapper())
+                super(
+                    PyOpenCLCASTBuilder, self).known_callables).update(
+                            get_pyopencl_callables()).update(
+                                    get_random123_callables())
 
     def preamble_generators(self):
         return ([

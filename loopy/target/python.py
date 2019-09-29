@@ -180,12 +180,13 @@ class PythonASTBuilderBase(ASTBuilderBase):
 
     # {{{ code generation guts
 
-    def function_id_in_knl_callable_mapper(self):
-        from loopy.target.c import scope_c_math_functions
+    @property
+    def known_callables(self):
+        from loopy.target.c import get_c_callables
         return (
                 super(PythonASTBuilderBase,
-                    self).function_id_in_knl_callable_mapper() +
-                [scope_c_math_functions])
+                    self).known_callables.update(
+                        get_c_callables()))
 
     def preamble_generators(self):
         return (

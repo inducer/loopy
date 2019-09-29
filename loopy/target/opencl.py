@@ -288,7 +288,7 @@ class OpenCLCallable(ScalarCallable):
                 callables_table)
 
 
-def scope_opencl_functions(target, identifier):
+def get_opencl_callables():
     """
     Returns an instance of :class:`InKernelCallable` if the function defined by
     *identifier* is known in OpenCL.
@@ -296,10 +296,8 @@ def scope_opencl_functions(target, identifier):
     opencl_function_ids = set(["max", "min", "dot"]) | set(
             _CL_SIMPLE_MULTI_ARG_FUNCTIONS) | set(VECTOR_LITERAL_FUNCS)
 
-    if identifier in opencl_function_ids:
-        return OpenCLCallable(name=identifier)
-
-    return None
+    return dict((id_, OpenCLCallable(name=id_)) for id_ in
+        opencl_function_ids)
 
 # }}}
 
@@ -447,10 +445,12 @@ class OpenCLTarget(CTarget):
 class OpenCLCASTBuilder(CASTBuilder):
     # {{{ library
 
-    def function_id_in_knl_callable_mapper(self):
+    @property
+    def known_callables(self):
         return (
-                [scope_opencl_functions] + super(
-                    OpenCLCASTBuilder, self).function_id_in_knl_callable_mapper())
+                super(
+                    OpenCLCASTBuilder, self).known_callables).update(
+                            get_opencl_callables())
 
     def symbol_manglers(self):
         return (

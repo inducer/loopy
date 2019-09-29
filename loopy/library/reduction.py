@@ -626,11 +626,14 @@ class ReductionCallable(ScalarCallable):
         return
 
 
-def reduction_func_id_to_in_knl_callable_mapper(target, identifier):
-    if isinstance(identifier, ReductionOpFunction):
-        return ReductionCallable(name=identifier)
+def get_reduction_callables(target, identifier):
 
-    return None
+    return dict((id_, ReductionCallable(id_)) for id_ in [
+        ReductionOpFunction(SegmentedSumReductionOperation),
+        ReductionOpFunction(SegmentedProductReductionOperation),
+        ReductionOpFunction(ArgMaxReductionOperation),
+        ReductionOpFunction(ArgMinReductionOperation),
+        ])
 
 # }}}
 

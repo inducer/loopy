@@ -184,12 +184,9 @@ class CudaCallable(ScalarCallable):
                 callables_table)
 
 
-def scope_cuda_functions(target, identifier):
-    if identifier in set(["dot"]) | set(
-            _CUDA_SPECIFIC_FUNCTIONS):
-        return CudaCallable(name=identifier)
-
-    return None
+def get_cuda_callables():
+    cuda_func_ids = set(["dot"]) | set(_CUDA_SPECIFIC_FUNCTIONS)
+    return dict((id_, CudaCallable(name=id_)) for id_ in cuda_func_ids)
 
 # }}}
 
@@ -312,9 +309,11 @@ class CUDACASTBuilder(CASTBuilder):
 
     # {{{ library
 
-    def function_id_in_knl_callable_mapper(self):
-        return [scope_cuda_functions] + (
-                super(CUDACASTBuilder, self).function_id_in_knl_callable_mapper())
+    @property
+    def known_callables(self):
+        return (
+                super(CUDACASTBuilder, self).known_callables().update(
+                        get_cuda_callables()))
 
     # }}}
 

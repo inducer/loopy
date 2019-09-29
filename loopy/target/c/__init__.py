@@ -523,17 +523,17 @@ class CMathCallable(ScalarCallable):
                 callables_table)
 
 
-def scope_c_math_functions(target, identifier):
+def get_c_callables():
     """
     Returns an instance of :class:`InKernelCallable` if the function
     represented by :arg:`identifier` is known in C, otherwise returns *None*.
     """
-    if identifier in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin",
+    cmath_ids = ["abs", "acos", "asin", "atan", "cos", "cosh", "sin",
                       "sinh", "pow", "atan2", "tanh", "exp", "log", "log10",
                       "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
-                      "fabs", "tan", "erf", "erfc"]:
-        return CMathCallable(name=identifier)
-    return None
+                      "fabs", "tan", "erf", "erfc"]
+
+    return dict((id_, CMathCallable(id_)) for id_ in cmath_ids)
 
 # }}}
 
@@ -553,10 +553,12 @@ class CASTBuilder(ASTBuilderBase):
                     _preamble_generator,
                     ])
 
-    def function_id_in_knl_callable_mapper(self):
+    @property
+    def known_callables(self):
         return (
-                super(CASTBuilder, self).function_id_in_knl_callable_mapper() + [
-                    scope_c_math_functions])
+                super(CASTBuilder,
+                    self).known_callables.update(
+                    get_c_callables()))
 
     # }}}
 
