@@ -447,10 +447,9 @@ class OpenCLCASTBuilder(CASTBuilder):
 
     @property
     def known_callables(self):
-        return (
-                super(
-                    OpenCLCASTBuilder, self).known_callables).update(
-                            get_opencl_callables())
+        callables = super(OpenCLCASTBuilder, self).known_callables
+        callables.update(get_opencl_callables())
+        return callables
 
     def symbol_manglers(self):
         return (

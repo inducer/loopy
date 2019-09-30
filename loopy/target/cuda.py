@@ -311,9 +311,9 @@ class CUDACASTBuilder(CASTBuilder):
 
     @property
     def known_callables(self):
-        return (
-                super(CUDACASTBuilder, self).known_callables().update(
-                        get_cuda_callables()))
+        callables = super(CUDACASTBuilder, self).known_callables
+        callables.update(get_cuda_callables())
+        return callables
 
     # }}}
 

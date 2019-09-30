@@ -626,8 +626,7 @@ class ReductionCallable(ScalarCallable):
         return
 
 
-def get_reduction_callables(target, identifier):
-
+def get_reduction_callables():
     return dict((id_, ReductionCallable(id_)) for id_ in [
         ReductionOpFunction(SegmentedSumReductionOperation),
         ReductionOpFunction(SegmentedProductReductionOperation),

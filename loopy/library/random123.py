@@ -231,10 +231,7 @@ class Random123Callable(ScalarCallable):
         return
 
 
-def random123_function_id_to_in_knl_callable_mapper(target, identifier):
-    if identifier in FUNC_NAMES_TO_RNG:
-        return Random123Callable(name=identifier)
-
-    return None
+def get_random123_callables():
+    return dict((id_, Random123Callable(id_)) for id_ in FUNC_NAMES_TO_RNG)
 
 # vim: foldmethod=marker

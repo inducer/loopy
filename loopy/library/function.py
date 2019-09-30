@@ -115,14 +115,15 @@ def get_loopy_callables():
     - callables that have a predefined meaning in :mod:`loo.py` like
       ``make_tuple``, ``index_of``, ``indexof_vec``.
     """
+    from loopy.library.reduction import get_reduction_callables
     known_callables = {
             "make_tuple": MakeTupleCallable(name="make_tuple"),
             "indexof": IndexOfCallable(name="indexof"),
             "indexof_vec": IndexOfCallable(name="indexof_vec"),
             }
+    known_callables.update(get_reduction_callables())
 
-    from loopy.library.reduction import get_reduction_callables
-    return known_callables.update(get_reduction_callables())
+    return known_callables
 
 
 # vim: foldmethod=marker

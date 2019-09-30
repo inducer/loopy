@@ -555,10 +555,9 @@ class CASTBuilder(ASTBuilderBase):
 
     @property
     def known_callables(self):
-        return (
-                super(CASTBuilder,
-                    self).known_callables.update(
-                    get_c_callables()))
+        callables = super(CASTBuilder, self).known_callables
+        callables.update(get_c_callables())
+        return callables
 
     # }}}
 
