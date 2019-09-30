@@ -458,9 +458,10 @@ class PyOpenCLTarget(OpenCLTarget):
     def get_kernel_executor_cache_key(self, queue, **kwargs):
         return queue.context
 
-    def get_kernel_executor(self, kernel, queue, **kwargs):
+    def get_kernel_executor(self, program, queue, **kwargs):
         from loopy.target.pyopencl_execution import PyOpenCLKernelExecutor
-        return PyOpenCLKernelExecutor(queue.context, kernel)
+        return PyOpenCLKernelExecutor(queue.context, program,
+                entrypoint=kwargs.pop('entrypoint'))
 
     def with_device(self, device):
         return type(self)(device)
@@ -797,11 +798,10 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     @property
     def known_callables(self):
         from loopy.library.random123 import get_random123_callables
-        return (
-                super(
-                    PyOpenCLCASTBuilder, self).known_callables).update(
-                            get_pyopencl_callables()).update(
-                                    get_random123_callables())
+        callables = super(PyOpenCLCASTBuilder, self).known_callables
+        callables.update(get_pyopencl_callables())
+        callables.update(get_random123_callables())
+        return callables
 
     def preamble_generators(self):
         return ([

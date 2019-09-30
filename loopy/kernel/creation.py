@@ -2151,7 +2151,6 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     target = kwargs.pop("target", None)
     seq_dependencies = kwargs.pop("seq_dependencies", False)
     fixed_parameters = kwargs.pop("fixed_parameters", {})
-    is_callee_kernel = kwargs.pop("is_callee_kernel", False)
 
     if defines:
         from warnings import warn
@@ -2375,15 +2374,12 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     creation_plog.done()
 
-    if is_callee_kernel:
-        return knl
-    else:
-        from loopy.program import make_program
-        return make_program(knl)
+    from loopy.program import make_program
+    return make_program(knl)
 
 
 def make_function(*args, **kwargs):
-    kwargs['is_callee_kernel'] = True
+    #FIXME: Do we need this anymore??
     return make_kernel(*args, **kwargs)
 
 # }}}

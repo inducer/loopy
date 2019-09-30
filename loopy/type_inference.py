@@ -35,7 +35,6 @@ from loopy.diagnostic import (
         TypeInferenceFailure, DependencyTypeInferenceFailure)
 from loopy.kernel.instruction import _DataObliviousInstruction
 
-from loopy.program import CallablesTable
 from loopy.symbolic import (
         LinearSubscript, parse_tagged_name, RuleAwareIdentityMapper,
         SubstitutionRuleExpander, ResolvedFunction,
@@ -1036,8 +1035,25 @@ def infer_unknown_types_for_a_single_kernel(kernel, callables_table,
 
 def infer_unknown_types(program, expect_completion=False):
     """Infer types on temporaries and arguments."""
+    1/0
+
+    from loopy.kernel.data import auto
 
     callables_table = program.callables_table
+
+    history_of_callable_ids = initialize_history(callables_table)
+
+    for e in program.entrypoints:
+        arg_id_to_dtype = dict((arg.name, arg.dtype) for arg in
+                callables_table[e].args if arg.dtype not in (None, auto))
+        new_callable, callables_table = callables_table[e].with_types(
+                arg_id_to_dtype, None, callables_table)
+        callables_table, _ = add_to_callables(e, callables_table,
+                history_of_callable_ids,
+                is_entrypoint=True)
+
+        # FIXME: Just a temporary_check... Remove before MR.
+        assert callables_table[e] == new_callable
 
     type_uninferred_knl_callable = (
             callables_table[program.name])

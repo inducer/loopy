@@ -61,12 +61,13 @@ class SeparateArrayPackingController(object):
     It also repacks outgoing arrays of this type back into an object array.
     """
 
-    def __init__(self, program):
+    def __init__(self, program, entrypoint):
+
         # map from arg name
         self.packing_info = {}
 
         from loopy.kernel.array import ArrayBase
-        for arg in program.args:
+        for arg in program[entrypoint].args:
             if not isinstance(arg, ArrayBase):
                 continue
 
@@ -715,26 +716,31 @@ class KernelExecutorBase(object):
     .. automethod:: __call__
     """
 
-    def __init__(self, program):
+    def __init__(self, program, entrypoint):
         """
         :arg kernel: a loopy.LoopKernel
         """
 
         self.program = program
+        self.entrypoint = entrypoint
 
-        self.packing_controller = SeparateArrayPackingController(program)
+        self.packing_controller = SeparateArrayPackingController(program,
+                entrypoint)
 
-        self.output_names = tuple(arg.name for arg in self.program.args
+        self.output_names = tuple(arg.name for arg in self.program[entrypoint].args
                 if arg.is_output)
 
         self.has_runtime_typed_args = any(
                 arg.dtype is None
-                for arg in program.args)
+                for arg in program[entrypoint].args)
 
     def get_typed_and_scheduled_program_uncached(self, arg_to_dtype_set):
         from loopy.kernel.tools import add_dtypes
 
         program = self.program
+        program = program.with_resolved_callables()
+        print(program)
+        1/0
 
         if arg_to_dtype_set:
             var_to_dtype = {}
@@ -782,7 +788,8 @@ class KernelExecutorBase(object):
             except KeyError:
                 pass
 
-        logger.debug("%s: typed-and-scheduled cache miss" % self.program.name)
+        logger.debug("%s: typed-and-scheduled cache miss" %
+                self.program.entrypoints)
 
         kernel = self.get_typed_and_scheduled_program_uncached(arg_to_dtype_set)
 
@@ -792,10 +799,13 @@ class KernelExecutorBase(object):
         return kernel
 
     def arg_to_dtype_set(self, kwargs):
+        kwargs = kwargs.copy()
         if not self.has_runtime_typed_args:
             return None
 
-        impl_arg_to_arg = self.program.impl_arg_to_arg
+        entrypoint = kwargs.pop('entrypoint')
+
+        impl_arg_to_arg = self.program[entrypoint].impl_arg_to_arg
         arg_to_dtype = {}
         for arg_name, val in six.iteritems(kwargs):
             arg = impl_arg_to_arg.get(arg_name, None)

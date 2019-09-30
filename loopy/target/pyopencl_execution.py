@@ -255,7 +255,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
     .. automethod:: __call__
     """
 
-    def __init__(self, context, program):
+    def __init__(self, context, program, entrypoint):
         """
         :arg context: a :class:`pyopencl.Context`
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
@@ -264,7 +264,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
             specific arguments.
         """
 
-        super(PyOpenCLKernelExecutor, self).__init__(program)
+        super(PyOpenCLKernelExecutor, self).__init__(program, entrypoint)
 
         self.context = context
 

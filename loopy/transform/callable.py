@@ -36,7 +36,7 @@ from loopy.symbolic import IdentityMapper, SubstitutionMapper, CombineMapper
 from loopy.isl_helpers import simplify_via_aff
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
-from loopy.program import Program, ResolvedFunctionMarker
+from loopy.program import Program
 from loopy.symbolic import SubArrayRef
 
 __doc__ = """

@@ -183,10 +183,9 @@ class PythonASTBuilderBase(ASTBuilderBase):
     @property
     def known_callables(self):
         from loopy.target.c import get_c_callables
-        return (
-                super(PythonASTBuilderBase,
-                    self).known_callables.update(
-                        get_c_callables()))
+        callables = super(PythonASTBuilderBase, self).known_callables
+        callables.update(get_c_callables())
+        return callables
 
     def preamble_generators(self):
         return (
