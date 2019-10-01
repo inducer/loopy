@@ -40,6 +40,7 @@ from loopy.symbolic import (
         SubstitutionRuleExpander, ResolvedFunction,
         SubstitutionRuleMappingContext, SubArrayRef)
 from pymbolic.primitives import Variable, Subscript, Lookup
+from loopy.program import CallablesInferenceContext
 
 import logging
 logger = logging.getLogger(__name__)
@@ -196,7 +197,7 @@ def change_names_of_pymbolic_calls(kernel, pymbolic_calls_to_new_names):
 # {{{ type inference mapper
 
 class TypeInferenceMapper(CombineMapper):
-    def __init__(self, kernel, callables_table, new_assignments=None):
+    def __init__(self, kernel, clbl_inf_ctx, new_assignments=None):
         """
         :arg new_assignments: mapping from names to either
             :class:`loopy.kernel.data.TemporaryVariable`
@@ -205,12 +206,12 @@ class TypeInferenceMapper(CombineMapper):
             instances
         """
         self.kernel = kernel
-        assert isinstance(callables_table, CallablesTable)
+        assert isinstance(clbl_inf_ctx, CallablesInferenceContext)
         if new_assignments is None:
             new_assignments = {}
         self.new_assignments = new_assignments
         self.symbols_with_unknown_types = set()
-        self.callables_table = callables_table
+        self.clbl_inf_ctx = clbl_inf_ctx
         self.old_calls_to_new_calls = {}
 
     def __call__(self, expr, return_tuple=False, return_dtype_set=False):
@@ -244,16 +245,16 @@ class TypeInferenceMapper(CombineMapper):
     # /!\ Introduce caches with care--numpy.float32(x) and numpy.float64(x)
     # are Python-equal (for many common constants such as integers).
 
-    def copy(self, callables_table=None):
-        if callables_table is None:
-            callables_table = self.callables_table
-        return type(self)(self.kernel, callables_table,
+    def copy(self, clbl_inf_ctx=None):
+        if clbl_inf_ctx is None:
+            clbl_inf_ctx = self.clbl_inf_ctx
+        return type(self)(self.kernel, clbl_inf_ctx,
                 self.new_assignments)
 
     def with_assignments(self, names_to_vars):
         new_ass = self.new_assignments.copy()
         new_ass.update(names_to_vars)
-        return type(self)(self.kernel, self.callables_table, new_ass)
+        return type(self)(self.kernel, self.clbl_inf_ctx, new_ass)
 
     @staticmethod
     def combine(dtype_sets):
@@ -430,7 +431,7 @@ class TypeInferenceMapper(CombineMapper):
 
         # specializing the known function wrt type
         if isinstance(expr.function, ResolvedFunction):
-            in_knl_callable = self.callables_table[expr.function.name]
+            in_knl_callable = self.clbl_inf_ctx[expr.function.name]
 
             # {{{ checking that there is no overwriting of types of in_knl_callable
 
@@ -467,17 +468,18 @@ class TypeInferenceMapper(CombineMapper):
                                 "InKernelCallable?")
 
             # }}}
-            in_knl_callable, self.callables_table = (
+
+            in_knl_callable, self.clbl_inf_ctx = (
                     in_knl_callable.with_types(
                         arg_id_to_dtype, self.kernel,
-                        self.callables_table))
+                        self.clbl_inf_ctx))
 
             in_knl_callable = in_knl_callable.with_target(self.kernel.target)
 
             # storing the type specialized function so that it can be used for
             # later use
-            self.callables_table, new_function_id = (
-                    self.callables_table.with_callable(
+            self.clbl_inf_ctx, new_function_id = (
+                    self.clbl_inf_ctx.with_callable(
                         expr.function.function,
                         in_knl_callable))
 
@@ -750,13 +752,13 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
     if not dtype_sets:
         return (
                 None, type_inf_mapper.symbols_with_unknown_types, None,
-                type_inf_mapper.callables_table)
+                type_inf_mapper.clbl_inf_ctx)
 
     result = type_inf_mapper.combine(dtype_sets)
 
     return (result, type_inf_mapper.symbols_with_unknown_types,
             type_inf_mapper.old_calls_to_new_calls,
-            type_inf_mapper.callables_table)
+            type_inf_mapper.clbl_inf_ctx)
 
 # }}}
 
@@ -783,7 +785,7 @@ class _DictUnionView:
 
 # {{{ infer_unknown_types
 
-def infer_unknown_types_for_a_single_kernel(kernel, callables_table,
+def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx,
         expect_completion=False):
     """Infer types on temporaries and arguments."""
 
@@ -846,7 +848,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, callables_table,
             new_temp_vars,
             new_arg_dict
             ])
-    type_inf_mapper = TypeInferenceMapper(kernel, callables_table,
+    type_inf_mapper = TypeInferenceMapper(kernel, clbl_inf_ctx,
             item_lookup)
 
     from loopy.symbolic import SubstitutionRuleExpander
@@ -882,13 +884,13 @@ def infer_unknown_types_for_a_single_kernel(kernel, callables_table,
             debug("inferring type for %s %s", type(item).__name__, item.name)
             try:
                 (result, symbols_with_unavailable_types,
-                        new_old_calls_to_new_calls, callables_table) = (
+                        new_old_calls_to_new_calls, clbl_inf_ctx) = (
                         _infer_var_type(
                                 kernel, item.name, type_inf_mapper, subst_expander))
             except DependencyTypeInferenceFailure:
                 result = tuple()
             type_inf_mapper = type_inf_mapper.copy(
-                    callables_table=callables_table)
+                    clbl_inf_ctx=clbl_inf_ctx)
 
             failed = not result
             if not failed:
@@ -1006,7 +1008,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, callables_table,
             raise NotImplementedError("Unknown instructions type %s." % (
                 type(insn).__name__))
 
-    callables_table = type_inf_mapper.callables_table
+    clbl_inf_ctx = type_inf_mapper.clbl_inf_ctx
     old_calls_to_new_calls.update(type_inf_mapper.old_calls_to_new_calls)
 
     end_time = time.time()
@@ -1030,13 +1032,12 @@ def infer_unknown_types_for_a_single_kernel(kernel, callables_table,
         from loopy.check import check_functions_are_resolved
         check_functions_are_resolved(type_specialized_kernel)
 
-    return type_specialized_kernel, callables_table
+    return type_specialized_kernel, clbl_inf_ctx
 
 
 def infer_unknown_types(program, expect_completion=False):
     """Infer types on temporaries and arguments."""
     from loopy.kernel.data import auto
-    from loopy.program import CallablesInferenceContext
 
     clbl_inf_ctx = CallablesInferenceContext(program.callables_table)
 
