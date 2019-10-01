@@ -25,7 +25,7 @@ THE SOFTWARE.
 import six
 import re
 
-from pytools import ImmutableRecord, memoize_method
+from pytools import ImmutableRecord
 from pymbolic.primitives import Variable
 from functools import wraps
 
@@ -491,19 +491,28 @@ class CallablesIDCollector(CombineMapper):
     map_type_cast = map_constant
 
 
+def _get_callables_ids(callables):
+    clbl_id_collector = CallablesIDCollector()
+
+    return frozenset().union(*(
+        clbl_id_collector.map_kernel(clbl.subkernel) for clbl in
+        callables.values() if isinstance(clbl, CallableKernel)))
+
+
 class CallablesInferenceContext(ImmutableRecord):
-    def __init__(self, callables, history=None):
+    def __init__(self, callables, old_callables_id=None, history=None):
         assert isinstance(callables, dict)
         if history is None:
             history = dict((func_id, frozenset([func_id])) for func_id in
                     callables)
 
-        super(CallablesInferenceContext, self).__init__(callables, history)
+        if old_callables_id is None:
+            self.old_callables_ids = _get_callables_ids(callables)
 
-        clbl_id_collector = CallablesIDCollector()
-        self.old_callables_ids = frozenset().union(*(
-            clbl_id_collector.map_kernel(clbl.subkernel) for clbl in
-            callables.values() if isinstance(clbl, CallableKernel)))
+        super(CallablesInferenceContext, self).__init__(
+                callables=callables,
+                old_callables_id=old_callables_id,
+                history=history)
 
     # {{{ interface to perform edits on callables
 
@@ -561,7 +570,7 @@ class CallablesInferenceContext(ImmutableRecord):
 
             unique_function_identifier = function.name
 
-            while unique_function_identifier in self.resolved_functions:
+            while unique_function_identifier in self.callables:
                 unique_function_identifier = (
                         next_indexed_function_identifier(
                             unique_function_identifier))
@@ -588,8 +597,6 @@ class CallablesInferenceContext(ImmutableRecord):
         then all the renaming is done such that one of flavors of the callable
         is renamed back to ``sin``.
         """
-        1/0
-
         assert self.is_being_edited
 
         new_callables_count = self.callables_count
@@ -645,6 +652,13 @@ class CallablesInferenceContext(ImmutableRecord):
         return program.copy(callables_table=new_callables_table)
 
     # }}}
+
+    def __getitem__(self, name):
+        result = self.callables[name]
+        if isinstance(result, CallableKernel):
+            return result.subkernel
+        else:
+            return result
 
 
 # {{{ helper functions
