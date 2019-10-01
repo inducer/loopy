@@ -734,19 +734,17 @@ class KernelExecutorBase(object):
                 arg.dtype is None
                 for arg in program[entrypoint].args)
 
-    def get_typed_and_scheduled_program_uncached(self, arg_to_dtype_set):
+    def get_typed_and_scheduled_program_uncached(self, entrypoint, arg_to_dtype_set):
         from loopy.kernel.tools import add_dtypes
 
         program = self.program
         program = program.with_resolved_callables()
-        print(program)
-        1/0
 
         if arg_to_dtype_set:
             var_to_dtype = {}
             for var, dtype in arg_to_dtype_set:
                 try:
-                    dest_name = program.impl_arg_to_arg[var].name
+                    dest_name = program[entrypoint].impl_arg_to_arg[var].name
                 except KeyError:
                     dest_name = var
 
@@ -774,7 +772,7 @@ class KernelExecutorBase(object):
 
         return program
 
-    def get_typed_and_scheduled_program(self, arg_to_dtype_set):
+    def get_typed_and_scheduled_program(self, entrypoint, arg_to_dtype_set):
         from loopy import CACHING_ENABLED
 
         from loopy.preprocess import prepare_for_caching
@@ -792,7 +790,8 @@ class KernelExecutorBase(object):
         logger.debug("%s: typed-and-scheduled cache miss" %
                 self.program.entrypoints)
 
-        kernel = self.get_typed_and_scheduled_program_uncached(arg_to_dtype_set)
+        kernel = self.get_typed_and_scheduled_program_uncached(entrypoint,
+                arg_to_dtype_set)
 
         if CACHING_ENABLED:
             typed_and_scheduled_cache.store_if_not_present(cache_key, kernel)
@@ -827,12 +826,12 @@ class KernelExecutorBase(object):
 
     # {{{ debugging aids
 
-    def get_highlighted_code(self, arg_to_dtype=None, code=None):
+    def get_highlighted_code(self, entrypoint, arg_to_dtype=None, code=None):
         if code is None:
-            code = self.get_code(arg_to_dtype)
+            code = self.get_code(entrypoint, arg_to_dtype)
         return get_highlighted_code(code)
 
-    def get_code(self, arg_to_dtype=None):
+    def get_code(self, entrypoint, arg_to_dtype=None):
         def process_dtype(dtype):
             if isinstance(dtype, type) and issubclass(dtype, np.generic):
                 dtype = np.dtype(dtype)
@@ -846,7 +845,7 @@ class KernelExecutorBase(object):
             arg_to_dtype = frozenset(
                     (k, process_dtype(v)) for k, v in six.iteritems(arg_to_dtype))
 
-        kernel = self.get_typed_and_scheduled_program(arg_to_dtype)
+        kernel = self.get_typed_and_scheduled_program(entrypoint, arg_to_dtype)
 
         from loopy.codegen import generate_code_v2
         code = generate_code_v2(kernel)

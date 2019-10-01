@@ -278,8 +278,9 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
         return generator(kernel, codegen_result)
 
     @memoize_method
-    def program_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
-        program = self.get_typed_and_scheduled_program(arg_to_dtype_set)
+    def program_info(self, entrypoint, arg_to_dtype_set=frozenset(),
+            all_kwargs=None):
+        program = self.get_typed_and_scheduled_program(entrypoint, arg_to_dtype_set)
 
         from loopy.codegen import generate_code_v2
         from loopy.target.execution import get_highlighted_code
@@ -351,7 +352,8 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         kwargs = self.packing_controller.unpack(kwargs)
 
-        program_info = self.program_info(self.arg_to_dtype_set(kwargs))
+        program_info = self.program_info(kwargs['entrypoint'],
+                self.arg_to_dtype_set(kwargs))
 
         return program_info.invoker(
                 program_info.cl_kernels, queue, allocator, wait_for,
