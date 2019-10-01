@@ -335,7 +335,8 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         return hash(type(self))
 
     def __eq__(self, other):
-        return type(self) == type(other)
+        return type(self) == type(other) and (self.inner_reduction ==
+                other.inner_reduction)
 
     def __call__(self, dtypes, operand1, operand2, callables_table, target):
         # getting the callable 'max' from target
