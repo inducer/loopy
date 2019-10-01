@@ -48,7 +48,6 @@ __doc__ = """
 .. currentmodule:: loopy
 
 .. autoclass:: Program
-.. autoclass:: CallablesTable
 
 .. autofunction:: make_program
 .. autofunction:: iterate_over_kernels_if_given_program
@@ -199,7 +198,7 @@ class Program(ImmutableRecord):
 
         # {{{ sanity checks
 
-        assert isinstance(callables_table, CallablesTable)
+        assert isinstance(callables_table, dict)
 
         # }}}
 
@@ -497,224 +496,32 @@ class CallablesIDCollector(CombineMapper):
     map_type_cast = map_constant
 
 
-# {{{ callables table
+class CallablesInferenceContext(ImmutableRecord):
+    def __init__(self, callables, history=None):
+        assert isinstance(callables, dict)
+        if history is None:
+            history = dict((func_id, frozenset([func_id])) for func_id in
+                    callables)
 
-class CallablesTable(ImmutableRecord):
-    """
-    Records the information of all the callables called in a :class:`loopy.Program`.
+        super(CallablesTable, self).__init__(callables, history)
 
-    .. attribute:: resolved_functions
-
-        An instance of :class:`dict` that contains a mapping from function
-        identifier to instances of
-        :class:`loopy.kernel.function_interface.InKernelCallable`
-
-    .. attribute:: is_being_edited
-
-        An instance of :class:`bool` which is intended to aid the working of
-        :meth:`with_enter_edit_callables_mode`, :meth:`with_callable` and
-        :meth:`with_exit_edit_callables_mode`.
-
-    .. attribute:: history
-
-        An instance of :class:`dict` that contains a mapping from function
-        identifier to and instance of :class:`list`that would contain all the
-        names taken by a function before the current name.(For example: one
-        possibility could be ``{'sin_1': ['sin', 'sin_0', 'sin_1']}``). This
-        attribute is ephemeral i.e. should be only active when
-        *is_being_edited*=True.
-
-    .. automethod:: __init__
-    .. automethod:: callables_count
-    .. automethod:: with_added_callable
-    .. automethod:: with_edit_callables_mode
-    .. automethod:: with_callable
-    .. automethod:: with_exit_edit_callables_mode
-    """
-    def __init__(self, resolved_functions,
-            is_being_edited=False,
-            history=None):
-
-        # FIXME: Maybe resolved_functions is an unnecessary name, how about
-        # just callables?
-
-        if history is not None:
-            assert is_being_edited
-
-        super(CallablesTable, self).__init__(
-                resolved_functions=resolved_functions,
-                history=history,
-                is_being_edited=is_being_edited)
-
-    hash_fields = (
-            "resolved_functions",
-            "is_being_edited",
-            "history")
-
-    def __hash__(self):
-        return hash((
-            frozenset(six.iteritems(self.resolved_functions)),
-            frozenset(six.iteritems(self.history)),
-            self.is_being_edited
-            ))
-
-    update_persistent_hash = update_persistent_hash
-
-    @property
-    @memoize_method
-    def get_callable_ids(self):
-        """
-        Returns a :class:`frozenset` of the callable identfiers throughout all
-        the kernels in *self*.
-        """
         clbl_id_collector = CallablesIDCollector()
-        return frozenset().union(*(clbl_id_collector.map_kernel(clbl.subkernel)
-            for clbl in self.values() if isinstance(clbl, CallableKernel)))
+        self.old_callables_ids = frozenset().union(*(
+            clbl_id_collector.map_kernel(clbl.subkernel) for clbl in
+            self.values() if isinstance(clbl, CallableKernel)))
 
     # {{{ interface to perform edits on callables
-
-    def with_added_callable(self, function, in_kernel_callable):
-        """
-        Returns an instance of :class:`tuple` of ``(new_self, new_function)``.
-        ``new_self`` is a copy of *self* with the *function* associated with the
-        *in_kernel_callable*. ``new_function`` is the function identifier that
-        should be noted in the expression node so that it could be associated
-        with an instance of :class:`InKernelCallable`.
-
-        .. note::
-
-            - Always checks whether the
-              :attr:``loopy.CallablesTable.resolved_functions` has
-              *in_kernel_callable*, does not introduce copies.
-
-            - The difference between
-              :meth:`loopy.CallablesTable.with_added_callable`
-              and :meth:`CallablesTable.with_callable` being that
-              the former has no support for renaming the callable back i.e.
-              ``with_callable`` supports renaming from ``sin_0`` to ``sin``,
-              if possible, through the member method
-              ``loopy.CallablesTable.with_exit_edit_callables_mode``
-
-              This subtle difference makes --
-
-              - :meth:`loopy.CallablesTable.with_added_callable` suitable
-                for usage while resolving the functions first time, where no
-                renaming is needed.
-
-              - :meth:`loopy.CallablesTable.with_callable` suitable for
-                implementing edits in callables during inference-walks.
-        """
-
-        # {{{ sanity checks
-
-        if isinstance(function, str):
-            function = Variable(function)
-
-        assert isinstance(function, (Variable, ReductionOpFunction))
-
-        # }}}
-
-        history = self.history.copy()
-
-        if in_kernel_callable in self.resolved_functions.values():
-            # the callable already exists, implies return the function
-            # identifier corresponding to that callable.
-            for func_id, in_knl_callable in self.resolved_functions.items():
-                if in_knl_callable == in_kernel_callable:
-                    history[func_id] = history[func_id] | frozenset([function.name])
-                    return (
-                            self.copy(
-                                history=history),
-                            func_id)
-        else:
-
-            # {{{ handle ReductionOpFunction
-
-            if isinstance(function, ReductionOpFunction):
-                unique_function_identifier = function.copy()
-                updated_resolved_functions = self.resolved_functions.copy()
-                updated_resolved_functions[unique_function_identifier] = (
-                        in_kernel_callable)
-                history[unique_function_identifier] = frozenset(
-                        [unique_function_identifier])
-
-                return (
-                        self.copy(
-                            history=history,
-                            resolved_functions=updated_resolved_functions),
-                        unique_function_identifier)
-
-            # }}}
-
-            unique_function_identifier = function.name
-
-            if isinstance(in_kernel_callable, CallableKernel) and (
-                    in_kernel_callable.subkernel.is_called_from_host):
-                # do not rename root kernel
-                pass
-            else:
-                while unique_function_identifier in self.resolved_functions:
-                    unique_function_identifier = (
-                            next_indexed_function_identifier(
-                                unique_function_identifier))
-
-        updated_resolved_functions = self.resolved_functions.copy()
-        updated_resolved_functions[unique_function_identifier] = (
-                in_kernel_callable)
-
-        history[unique_function_identifier] = frozenset(
-                [unique_function_identifier])
-
-        return (
-                self.copy(
-                    history=history,
-                    resolved_functions=updated_resolved_functions),
-                Variable(unique_function_identifier))
-
-    def with_edit_callables_mode(self):
-        """
-        Returns a copy of *self* for a walk traversal through all the callables.
-        """
-        return self.copy(
-                is_being_edited=True)
 
     def with_callable(self, function, in_kernel_callable):
         """
         Returns an instance of :class:`tuple` ``(new_self, new_function)``.
-        Also refer -- :meth:`loopy.CallablesTable.with_added_callable`
-
 
         :arg function: An instance of :class:`pymbolic.primitives.Variable` or
             :class:`loopy.library.reduction.ReductionOpFunction`.
 
         :arg in_kernel_callable: An instance of
             :class:`loopy.InKernelCallable`.
-
-        .. note::
-
-            - Use :meth:`with_added_callable` if a callable is being resolved for the
-              first time.
         """
-
-        # {{{ non-edit mode
-
-        if not self.is_being_edited:
-            if isinstance(function, ReductionOpFunction):
-                function_name = function
-            else:
-                function_name = function.name
-
-            if function_name in self.resolved_functions and (
-                    self.resolved_functions[function_name] == in_kernel_callable):
-                # if not being edited, check that the given function is
-                # equal to the old version of the callable.
-                return self, function
-            else:
-                print('Old: ', self.resolved_functions[function_name])
-                print('New: ', in_kernel_callable)
-                raise LoopyError("Use 'with_enter_edit_callables_mode' first.")
-
-        # }}}
 
         # {{{ sanity checks
 
@@ -883,8 +690,8 @@ def make_program(kernel):
     #FIXME(For inducer): Deriving the target of this program from the kernel's
     # target.
     program = Program(
-            callables_table=CallablesTable({kernel.name:
-                CallableKernel(kernel)}),
+            callables_table={
+                kernel.name: CallableKernel(kernel)},
             target=kernel.target)
 
     return program
