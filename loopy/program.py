@@ -534,46 +534,45 @@ class CallablesInferenceContext(ImmutableRecord):
 
         history = self.history.copy()
 
-        if in_kernel_callable in self.resolved_functions.values():
-
+        if in_kernel_callable in self.callables.values():
             # the callable already exists, hence return the function
             # identifier corresponding to that callable.
-            for func_id, in_knl_callable in self.resolved_functions.items():
+            for func_id, in_knl_callable in self.callables.items():
                 if in_knl_callable == in_kernel_callable:
                     history[func_id] = history[func_id] | frozenset([function.name])
                     return (
                             self.copy(
                                 history=history),
                             func_id)
+
+            assert False
         else:
             # {{{ handle ReductionOpFunction
 
             if isinstance(function, ReductionOpFunction):
+                # FIXME: Check what happens if we have 2 same ArgMax functions
+                # with different types in the same kernel!
                 unique_function_identifier = function.copy()
-                updated_resolved_functions = self.resolved_functions.copy()
-                updated_resolved_functions[unique_function_identifier] = (
+                updated_callables = self.callables.copy()
+                updated_callables[unique_function_identifier] = (
                         in_kernel_callable)
 
                 return (
                         self.copy(
-                            resolved_functions=updated_resolved_functions),
+                            callables=updated_callables),
                         unique_function_identifier)
 
             # }}}
+
             unique_function_identifier = function.name
 
-            if isinstance(in_kernel_callable, CallableKernel) and (
-                    in_kernel_callable.subkernel.is_called_from_host):
-                # do not rename root kernel
-                pass
-            else:
-                while unique_function_identifier in self.resolved_functions:
-                    unique_function_identifier = (
-                            next_indexed_function_identifier(
-                                unique_function_identifier))
+            while unique_function_identifier in self.resolved_functions:
+                unique_function_identifier = (
+                        next_indexed_function_identifier(
+                            unique_function_identifier))
 
-        updated_resolved_functions = self.resolved_functions.copy()
-        updated_resolved_functions[unique_function_identifier] = (
+        updated_callables = self.callables.copy()
+        updated_callables[unique_function_identifier] = (
                 in_kernel_callable)
 
         history[unique_function_identifier] = (
@@ -582,10 +581,10 @@ class CallablesInferenceContext(ImmutableRecord):
         return (
                 self.copy(
                     history=history,
-                    resolved_functions=updated_resolved_functions),
+                    callables=updated_callables),
                 Variable(unique_function_identifier))
 
-    def with_exit_edit_callables_mode(self, old_callables_count):
+    def finish_program(self, program):
         """
         Returns a copy of *self* with renaming of the callables done whenever
         possible.
@@ -647,33 +646,9 @@ class CallablesInferenceContext(ImmutableRecord):
                 new_resolved_functions[func_id] = in_knl_callable
                 new_history[func_id] = self.history[func_id]
 
-        return self.copy(
-                is_being_edited=False,
-                resolved_functions=new_resolved_functions,
-                history=new_history)
+        return program.copy(callables_table=new_callables_table)
 
     # }}}
-
-    # {{{ behave like a dict
-
-    def __getitem__(self, item):
-        return self.resolved_functions[item]
-
-    def __contains__(self, item):
-        return item in self.resolved_functions
-
-    def items(self):
-        return six.iteritems(self.resolved_functions)
-
-    def values(self):
-        return six.itervalues(self.resolved_functions)
-
-    def keys(self):
-        return six.iterkeys(self.resolved_functions)
-
-    # }}}
-
-# }}}
 
 
 # {{{ helper functions

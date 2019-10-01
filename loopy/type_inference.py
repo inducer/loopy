@@ -1035,51 +1035,21 @@ def infer_unknown_types_for_a_single_kernel(kernel, callables_table,
 
 def infer_unknown_types(program, expect_completion=False):
     """Infer types on temporaries and arguments."""
-    1/0
-
     from loopy.kernel.data import auto
+    from loopy.program import CallablesInferenceContext
 
-    callables_table = program.callables_table
-
-    history_of_callable_ids = initialize_history(callables_table)
+    clbl_inf_ctx = CallablesInferenceContext(program.callables_table)
 
     for e in program.entrypoints:
+        # FIXME: Need to add docs which say that we need not add the current
+        # callable to the clbl_inf_ctx while writing the "with_types"
         arg_id_to_dtype = dict((arg.name, arg.dtype) for arg in
-                callables_table[e].args if arg.dtype not in (None, auto))
-        new_callable, callables_table = callables_table[e].with_types(
-                arg_id_to_dtype, None, callables_table)
-        callables_table, _ = add_to_callables(e, callables_table,
-                history_of_callable_ids,
-                is_entrypoint=True)
+                program[e].args if arg.dtype not in (None, auto))
+        new_callable, clbl_inf_ctx = program[e].with_types(
+                arg_id_to_dtype, None, clbl_inf_ctx)
+        clbl_inf_ctx, _ = clbl_inf_ctx.with_callable(e, new_callable)
 
-        # FIXME: Just a temporary_check... Remove before MR.
-        assert callables_table[e] == new_callable
-
-    type_uninferred_knl_callable = (
-            callables_table[program.name])
-    type_uninferred_root_kernel = type_uninferred_knl_callable.subkernel
-
-    old_callables_count = callables_table.callables_count
-    callables_table = (
-            program.callables_table.with_edit_callables_mode())
-    root_kernel, callables_table = (
-            infer_unknown_types_for_a_single_kernel(
-                type_uninferred_root_kernel,
-                callables_table, expect_completion))
-
-    type_inferred_knl_callable = type_uninferred_knl_callable.copy(
-            subkernel=root_kernel)
-
-    callables_table, _ = (
-            callables_table.with_callable(
-                program.name,
-                type_inferred_knl_callable))
-
-    callables_table = (
-            callables_table.with_exit_edit_callables_mode(
-                old_callables_count))
-
-    return program.copy(callables_table=callables_table)
+    return clbl_inf_ctx.finish_program(program)
 
 # }}}
 
