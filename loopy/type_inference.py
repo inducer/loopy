@@ -1045,7 +1045,7 @@ def infer_unknown_types(program, expect_completion=False):
         # callable to the clbl_inf_ctx while writing the "with_types"
         arg_id_to_dtype = dict((arg.name, arg.dtype) for arg in
                 program[e].args if arg.dtype not in (None, auto))
-        new_callable, clbl_inf_ctx = program[e].with_types(
+        new_callable, clbl_inf_ctx = program.callables_table[e].with_types(
                 arg_id_to_dtype, None, clbl_inf_ctx)
         clbl_inf_ctx, _ = clbl_inf_ctx.with_callable(e, new_callable)
 

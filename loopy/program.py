@@ -281,20 +281,18 @@ class Program(ImmutableRecord):
         # FIXME: Document
         new_in_knl_callable = self.callables_table[kernel.name].copy(
                 subkernel=kernel)
-        new_resolved_functions = self.callables_table.resolved_functions.copy()
-        new_resolved_functions[kernel.name] = new_in_knl_callable
-        return self.copy(
-                callables_table=self.callables_table.copy(
-                    resolved_functions=new_resolved_functions))
+        new_callables = self.callables_table.copy()
+        new_callables[kernel.name] = new_in_knl_callable
+        return self.copy(callables_table=new_callables)
 
     def with_resolved_callables(self):
 
         from loopy.library.function import get_loopy_callables
         known_callables = self.target.get_device_ast_builder().known_callables
         known_callables.update(get_loopy_callables())
-        known_callables.update(self.callables_table.resolved_functions)
+        known_callables.update(self.callables_table)
         # update the known callables from the target.
-        resolved_functions = dict((e, self.callables_table[e]) for e in
+        callables_table = dict((e, self.callables_table[e]) for e in
                 self.entrypoints)
 
         # start a traversal to collect all the callables
@@ -302,10 +300,10 @@ class Program(ImmutableRecord):
 
         while queue:
             top = queue[0]
-            assert top in resolved_functions
+            assert top in callables_table
             queue = queue[1:]
 
-            knl = resolved_functions[top].subkernel
+            knl = callables_table[top].subkernel
             rule_mapping_context = SubstitutionRuleMappingContext(
                     knl.substitutions, knl.get_var_name_generator())
             callables_collector = CallableResolver(
@@ -313,19 +311,17 @@ class Program(ImmutableRecord):
                     known_callables)
             knl = rule_mapping_context.finish_kernel(
                     callables_collector.map_kernel(knl))
-            resolved_functions[top] = resolved_functions[top].copy(subkernel=knl)
+            callables_table[top] = callables_table[top].copy(subkernel=knl)
 
             for func, clbl in six.iteritems(callables_collector.resolved_functions):
-                if func not in resolved_functions:
+                if func not in callables_table:
                     if isinstance(clbl, CallableKernel):
                         queue.append(func)
-                    resolved_functions[func] = clbl
+                    callables_table[func] = clbl
                 else:
-                    assert resolved_functions[func] == clbl
+                    assert callables_table[func] == clbl
 
-        new_callables_table = CallablesTable(resolved_functions=resolved_functions)
-
-        return self.copy(callables_table=new_callables_table)
+        return self.copy(callables_table=callables_table)
 
     def __iter__(self):
         #FIXME: Document
@@ -466,8 +462,7 @@ class CallablesIDCollector(CombineMapper):
         return reduce(operator.or_, values, frozenset())
 
     def map_resolved_function(self, expr):
-        return frozenset([self.kernel.scoped_functions[
-            expr.name]])
+        return frozenset([expr.name])
 
     def map_constant(self, expr):
         return frozenset()
@@ -503,12 +498,12 @@ class CallablesInferenceContext(ImmutableRecord):
             history = dict((func_id, frozenset([func_id])) for func_id in
                     callables)
 
-        super(CallablesTable, self).__init__(callables, history)
+        super(CallablesInferenceContext, self).__init__(callables, history)
 
         clbl_id_collector = CallablesIDCollector()
         self.old_callables_ids = frozenset().union(*(
             clbl_id_collector.map_kernel(clbl.subkernel) for clbl in
-            self.values() if isinstance(clbl, CallableKernel)))
+            callables.values() if isinstance(clbl, CallableKernel)))
 
     # {{{ interface to perform edits on callables
 
@@ -593,6 +588,7 @@ class CallablesInferenceContext(ImmutableRecord):
         then all the renaming is done such that one of flavors of the callable
         is renamed back to ``sin``.
         """
+        1/0
 
         assert self.is_being_edited
 
@@ -682,8 +678,8 @@ def iterate_over_kernels_if_given_program(transform_for_single_kernel):
     def _collective_transform(program_or_kernel, *args, **kwargs):
         if isinstance(program_or_kernel, Program):
             program = program_or_kernel
-            new_resolved_functions = {}
-            for func_id, in_knl_callable in program.callables_table.items():
+            new_callables = {}
+            for func_id, in_knl_callable in six.iteritems(program.callables_table):
                 if isinstance(in_knl_callable, CallableKernel):
                     new_subkernel = transform_for_single_kernel(
                             in_knl_callable.subkernel, *args, **kwargs)
@@ -695,11 +691,9 @@ def iterate_over_kernels_if_given_program(transform_for_single_kernel):
                     raise NotImplementedError("Unknown type of callable %s." % (
                         type(in_knl_callable).__name__))
 
-                new_resolved_functions[func_id] = in_knl_callable
+                new_callables[func_id] = in_knl_callable
 
-            new_callables_table = program.callables_table.copy(
-                    resolved_functions=new_resolved_functions)
-            return program.copy(callables_table=new_callables_table)
+            return program.copy(callables_table=new_callables)
         else:
             assert isinstance(program_or_kernel, LoopKernel)
             kernel = program_or_kernel
