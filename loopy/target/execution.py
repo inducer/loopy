@@ -757,7 +757,8 @@ class KernelExecutorBase(object):
                             "no known variable/argument with that name"
                             % var)
 
-            program = add_dtypes(program, var_to_dtype)
+            program = program.with_kernel(add_dtypes(program[entrypoint],
+                var_to_dtype))
 
         from loopy.type_inference import infer_unknown_types
         program = infer_unknown_types(program, expect_completion=True)

@@ -48,25 +48,20 @@ logger = logging.getLogger(__name__)
 
 # {{{ add and infer argument dtypes
 
-def add_dtypes(program, dtype_dict):
+def add_dtypes(kernel, dtype_dict):
     """Specify remaining unspecified argument/temporary variable types.
 
     :arg dtype_dict: a mapping from variable names to :class:`numpy.dtype`
         instances
     """
-    root_kernel = program.root_kernel
     dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(
-            root_kernel, dtype_dict)
+            kernel, dtype_dict)
 
     if dtype_dict_remainder:
         raise RuntimeError("unused argument dtypes: %s"
                 % ", ".join(dtype_dict_remainder))
-    root_kernel
 
-    root_kernel_with_added_dtypes = (
-            root_kernel.copy(args=new_args, temporary_variables=new_temp_vars))
-
-    return program.with_root_kernel(root_kernel_with_added_dtypes)
+    return kernel.copy(args=new_args, temporary_variables=new_temp_vars)
 
 
 def _add_dtypes_overdetermined(knl, dtype_dict):
