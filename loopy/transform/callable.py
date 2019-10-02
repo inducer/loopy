@@ -154,19 +154,6 @@ class _RegisterCalleeKernel(ImmutableRecord):
         return None
 
 
-def subarrayrefs_are_equiv(sar1, sar2, knl):
-    """
-    Compares if two instance of :class:`loopy.symbolic.SubArrayRef`s point
-    to the same array region.
-    """
-    from loopy.kernel.function_interface import get_arg_descriptor_for_expression
-
-    return get_arg_descriptor_for_expression(knl, sar1) == (
-            get_arg_descriptor_for_expression(knl, sar2)) and (
-                    sar1.get_begin_subscript(knl) ==
-                    sar2.get_begin_subscript(knl))
-
-
 def _check_correctness_of_args_and_assignees(insn, callee_kernel, caller_knl):
     from loopy.kernel.function_interface import get_kw_pos_association
     kw_to_pos, pos_to_kw = get_kw_pos_association(callee_kernel)
@@ -178,8 +165,8 @@ def _check_correctness_of_args_and_assignees(insn, callee_kernel, caller_knl):
     for i, param in enumerate(expr.parameters):
         pos = kw_to_pos[callee_kernel.args[i].name]
         if pos < 0:
-            raise LoopyError("#{} argument meant for output obtained as an"
-                    " input in '{}'.".format(i, insn))
+            raise LoopyError("#{}(1-based) argument meant for output obtained as an"
+                    " input in '{}'.".format(i+1, insn))
 
         assert pos == i
 
@@ -188,7 +175,7 @@ def _check_correctness_of_args_and_assignees(insn, callee_kernel, caller_knl):
     for kw, param in six.iteritems(expr.kw_parameters):
         pos = kw_to_pos[kw]
         if pos < 0:
-            raise LoopyError("KW-argument '{}' meant for output obtained as an"
+            raise LoopyError("Keyword argument '{}' meant for output obtained as an"
                     " input in '{}'.".format(kw, insn))
         callee_args_to_insn_params[pos].append(param)
 
@@ -203,8 +190,6 @@ def _check_correctness_of_args_and_assignees(insn, callee_kernel, caller_knl):
 
         callee_args_to_insn_params[pos].append(assignee)
 
-    # TODO: Some of the checks might be redundant.
-
     for arg, insn_params in zip(callee_kernel.args,
             callee_args_to_insn_params):
         if len(insn_params) == 1:
@@ -218,14 +203,15 @@ def _check_correctness_of_args_and_assignees(insn, callee_kernel, caller_knl):
                 raise LoopyError("Found multiple parameters mapping to an"
                         " argument which is not both input and output in"
                         " ''.".format())
-            if not subarrayrefs_are_equiv(insn_params[0], insn_params[1],
-                    caller_knl):
-                raise LoopyError("'{}' and '{}' point to the same argument in"
-                        " the callee, but are unequal.".format(
-                            insn_params[0], insn_params[1]))
+            if insn_params[0] != insn_params[1]:
+                raise LoopyError("Unequal SubArrayRefs '{}', '{}' passed as '{}'"
+                        " to '{}'.".format(insn_params[0], insn_params[1],
+                            arg.name, callee_kernel.name))
         else:
-            raise LoopyError("Multiple(>2) arguments pointing to the same"
-                    " argument for '{}' in '{}'.".format(callee_kernel.name,
+            # repitition due incorrect usage of kwargs and
+            # positional args
+            raise LoopyError("Multiple(>2) arguments obtained for"
+                    " '{}' in '{}'.".format(callee_kernel.name,
                         insn))
 
 

@@ -533,7 +533,7 @@ def test_parse_and_fuse_two_kernels():
 
         !$loopy begin
         !
-        ! # FIXME: correct this after the "Module" is done.
+        ! # FIXME: correct this after the "TranslationUnit" is done.
         ! prg = lp.parse_fortran(SOURCE)
         ! fill = prg["fill"]
         ! twice = prg["twice"]
