@@ -356,7 +356,8 @@ class KernelInliner(SubstitutionMapper):
                     "constant shape.".format(callee_arg))
 
             flatten_index = 0
-            for i, idx in enumerate(sar.get_begin_subscript(
+            from loopy.symbolic import get_start_subscript_from_sar
+            for i, idx in enumerate(get_start_subscript_from_sar(sar,
                     self.caller).index_tuple):
                 flatten_index += idx*caller_arg.dim_tags[i].stride
 

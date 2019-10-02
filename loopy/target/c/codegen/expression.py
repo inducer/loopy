@@ -167,7 +167,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         return var(expr.name)
 
     def map_sub_array_ref(self, expr, type_context):
-        return var("&")(self.rec(expr.get_begin_subscript(self.kernel),
+        from loopy.symbolic import get_start_subscript_from_sar
+        return var("&")(self.rec(get_start_subscript_from_sar(expr, self.kernel),
             type_context))
 
     def map_subscript(self, expr, type_context):
