@@ -371,8 +371,16 @@ class ArrayArg(ArrayBase, KernelArgument):
     def __init__(self, *args, **kwargs):
         if "address_space" not in kwargs:
             raise TypeError("'address_space' must be specified")
-        kwargs["is_output"] = kwargs.pop("is_output", None)
-        kwargs["is_input"] = kwargs.pop("is_input", None)
+
+        is_output_only = kwargs.pop("is_output_only", None)
+        if is_output_only is not None:
+            warn("'is_output_only' is deprecated. Use 'is_output', 'is_input'"
+                    " instead.", DeprecationWarning, stacklevel=2)
+            kwargs["is_output"] = is_output_only
+            kwargs["is_input"] = not is_output_only
+        else:
+            kwargs["is_output"] = kwargs.pop("is_output", None)
+            kwargs["is_input"] = kwargs.pop("is_input", None)
 
         super(ArrayArg, self).__init__(*args, **kwargs)
 
