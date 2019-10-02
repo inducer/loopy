@@ -154,14 +154,29 @@ class _RegisterCalleeKernel(ImmutableRecord):
         return None
 
 
-def _check_correctness_of_args_and_assignees(insn, callee_kernel, caller_knl):
+def _check_correctness_of_args_and_assignees(insn, callee_kernel):
+    """
+    Checks that --
+    1. the call in *insn* agrees the :attr:`~loopy.ArrayArg.is_input` and
+    :attr:`~loopy.ArrayArg.is_output` for the corresponding arguments in
+    *callee_kernel*,
+    2. the call does not get multiple values for a keyword argument,
+    3. only the arguments that are both output and input appear in the
+    assignees as well as parameters in *insn*'s call.
+    """
     from loopy.kernel.function_interface import get_kw_pos_association
     kw_to_pos, pos_to_kw = get_kw_pos_association(callee_kernel)
+
+    # mapping from argument index in callee to the assignees/paramters mapping
+    # to it
     callee_args_to_insn_params = [[] for _ in callee_kernel.args]
     expr = insn.expression
-    from pymbolic.primitives import Call, CallWithKwargs
+    from pymbolic.primitives import Call
     if isinstance(expr, Call):
         expr = CallWithKwargs(expr.function, expr.parameters, kw_parameters={})
+
+    # {{{ check that call parameters are input arguments in callee
+
     for i, param in enumerate(expr.parameters):
         pos = kw_to_pos[callee_kernel.args[i].name]
         if pos < 0:
@@ -179,6 +194,20 @@ def _check_correctness_of_args_and_assignees(insn, callee_kernel, caller_knl):
                     " input in '{}'.".format(kw, insn))
         callee_args_to_insn_params[pos].append(param)
 
+    # }}}
+
+    # {{{ check that positional and Keyword arguments and positional do not map
+    # to the same callee arg
+
+    if any(len(pars) >= 2 for pars in callee_args_to_insn_params):
+        raise LoopyError("{}() got multiple values for keyword argument"
+                " '{}'".format(callee_kernel.name, callee_kernel.args[i].name))
+
+    # }}}
+
+    # {{{ check that only the args which are both input and output appear both
+    # in assignees and parameters
+
     num_pure_assignees = 0
     for i, assignee in enumerate(insn.assignees):
         pos = kw_to_pos[pos_to_kw[-i-1]]
@@ -195,7 +224,7 @@ def _check_correctness_of_args_and_assignees(insn, callee_kernel, caller_knl):
         if len(insn_params) == 1:
             # making sure that the argument is either only input or output
             if arg.is_input == arg.is_output:
-                raise LoopyError("Argument '{}' in '{}' should be passed in"
+                raise LoopyError("Parameter '{}' in '{}' should be passed in"
                         " both assignees and parameters in Call.".format(
                             insn_params[0], insn))
         elif len(insn_params) == 2:
@@ -208,11 +237,10 @@ def _check_correctness_of_args_and_assignees(insn, callee_kernel, caller_knl):
                         " to '{}'.".format(insn_params[0], insn_params[1],
                             arg.name, callee_kernel.name))
         else:
-            # repitition due incorrect usage of kwargs and
-            # positional args
-            raise LoopyError("Multiple(>2) arguments obtained for"
-                    " '{}' in '{}'.".format(callee_kernel.name,
-                        insn))
+            # should not reach here
+            assert False
+
+        # }}}
 
 
 def register_callable_kernel(program, callee_kernel):
@@ -230,37 +258,13 @@ def register_callable_kernel(program, callee_kernel):
     assert isinstance(callee_kernel, LoopKernel), ('{0} !='
             '{1}'.format(type(callee_kernel), LoopKernel))
 
-    # check to make sure that the variables with 'out' direction is equal to
-    # the number of assigness in the callee kernel intructions.
-    expected_num_assignees = sum(arg.is_output for arg in callee_kernel.args)
-    expected_num_arguments = sum(arg.is_input for arg in callee_kernel.args)
     for in_knl_callable in program.callables_table.values():
         if isinstance(in_knl_callable, CallableKernel):
             caller_kernel = in_knl_callable.subkernel
             for insn in caller_kernel.instructions:
                 if isinstance(insn, CallInstruction) and (
                         insn.expression.function.name == callee_kernel.name):
-                    if isinstance(insn.expression, CallWithKwargs):
-                        kw_parameters = insn.expression.kw_parameters
-                    else:
-                        kw_parameters = {}
-                    if len(insn.assignees) != expected_num_assignees:
-                        raise LoopyError("The number of arguments with 'out' "
-                                "direction " "in callee kernel %s and the number "
-                                "of assignees in " "instruction %s do not "
-                                "match." % (
-                                    callee_kernel.name, insn.id))
-                    if len(insn.expression.parameters+tuple(
-                            kw_parameters.values())) != expected_num_arguments:
-                        raise LoopyError("The number of"
-                                " arguments in instruction '%s' do not match"
-                                " the number of input arguments in"
-                                " the callee kernel '%s' => arg matching"
-                                " not possible."
-                                % (insn.id, callee_kernel.name))
-
-                    _check_correctness_of_args_and_assignees(insn,
-                            callee_kernel, caller_kernel)
+                    _check_correctness_of_args_and_assignees(insn, callee_kernel)
 
                 elif isinstance(insn, (MultiAssignmentBase, CInstruction,
                         _DataObliviousInstruction)):
@@ -439,8 +443,6 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
     parameters = instruction.expression.parameters  # reads
 
     # add keyword parameters
-    from pymbolic.primitives import CallWithKwargs
-
     if isinstance(instruction.expression, CallWithKwargs):
         from loopy.kernel.function_interface import get_kw_pos_association
 
