@@ -1930,13 +1930,13 @@ def infer_args_are_input_output(kernel):
 
     .. note::
 
-        If the attribute ``is_output`` of an argument is not supplied from an
-        user, then it is inferred as an output argument if it is written at
+        If the :attr:`~loopy.ArrayArg.is_output` is not supplied from a user,
+        then the array is inferred as an output argument if it is written at
         some point in the kernel.
 
-        If the attribute ``is_input`` of an argument of  is not supplied from
-        an user, then it is inferred as an input argument if it is either read
-        at some point in the kernel or it is neither read nor written.
+        If the :attr:`~loopy.ArrayArg.is_input` is not supplied from a user,
+        then the array is inferred as an input argument if it is either read at
+        some point in the kernel or it is neither read nor written.
     """
     from loopy.kernel.data import ArrayArg, ValueArg, ConstantArg, ImageArg
     new_args = []
