@@ -1888,9 +1888,18 @@ class SliceToInameReplacer(IdentityMapper):
         self.var_name_gen = var_name_gen
         self.knl = knl
 
+        # caching to map equivalent slices to equivalent SubArrayRefs
+        self.cache = {}
+
         self.subarray_ref_bounds = []
 
+    def clear_cache(self):
+        self.cache = {}
+
     def map_subscript(self, expr):
+        if expr in self.cache:
+            return self.cache[expr]
+
         subscript_iname_bounds = {}
         self.subarray_ref_bounds.append(subscript_iname_bounds)
 
@@ -1919,11 +1928,15 @@ class SliceToInameReplacer(IdentityMapper):
                 new_index.append(index)
 
         if swept_inames:
-            return SubArrayRef(tuple(swept_inames), Subscript(
+            result = SubArrayRef(tuple(swept_inames), Subscript(
                 self.rec(expr.aggregate),
                 self.rec(tuple(new_index))))
         else:
-            return IdentityMapper.map_subscript(self, expr)
+            result = IdentityMapper.map_subscript(self, expr)
+
+        self.cache[expr] = result
+
+        return result
 
     def map_call(self, expr):
         def _convert_array_to_slices(arg):
@@ -2013,6 +2026,8 @@ def realize_slices_array_inputs_as_sub_array_refs(kernel):
         else:
             raise NotImplementedError("Unknown type of instruction -- %s" %
                     type(insn))
+
+        slice_replacer.clear_cache()
 
     return kernel.copy(
             domains=(
