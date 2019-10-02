@@ -32,8 +32,6 @@ from loopy.diagnostic import LoopyError
 from pymbolic import var
 
 from loopy.kernel import LoopKernel
-from loopy.kernel.function_interface import CallableKernel
-from loopy.program import rename_resolved_functions_in_a_single_kernel
 
 
 def _apply_renames_in_exprs(kernel, var_renames):
@@ -291,7 +289,51 @@ def _fuse_two_kernels(knla, knlb):
 # }}}
 
 
-def fuse_loop_kernels(kernels, suffixes=None, data_flow=None):
+def fuse_kernels(kernels, suffixes=None, data_flow=None):
+    """Return a kernel that performs all the operations in all entries
+    of *kernels*.
+
+    :arg kernels: A list of :class:`loopy.LoopKernel` instances to be fused.
+    :arg suffixes: If given, must be a list of strings of a length matching
+        that of *kernels*. This will be used to disambiguate the names
+        of temporaries, as described below.
+    :arg data_flow: A list of data dependencies
+        ``[(var_name, from_kernel, to_kernel), ...]``.
+        Based on this, the fuser will create dependencies between all
+        writers of *var_name* in ``kernels[from_kernel]`` to
+        readers of *var_name* in ``kernels[to_kernel]``.
+        *from_kernel* and *to_kernel* are indices into *kernels*.
+
+    The components of the kernels are fused as follows:
+
+    *   The resulting kernel will have a domain involving all the inames
+        and parameters occurring across *kernels*.
+        Inames with matching names across *kernels* are fused in such a way
+        that they remain a single iname in the fused kernel.
+        Use :func:`loopy.rename_iname` if this is not desired.
+
+    *   The projection of the domains of each pair of kernels onto their
+        common subset of inames must match in order for fusion to
+        succeed.
+
+    *   Assumptions are fused by taking their conjunction.
+
+    *   If kernel arguments with matching names are encountered across
+        *kernels*, their declarations must match in order for fusion to
+        succeed.
+
+    *   Temporaries are automatically renamed to remain uniquely associated
+        with each instruction stream.
+
+    *   The resulting kernel will contain all instructions from each entry
+        of *kernels*. Clashing instruction IDs will be renamed to ensure
+        uniqueness.
+
+    .. versionchanged:: 2016.2
+
+        *data_flow* was added in version 2016.2
+    """
+
     assert all(isinstance(knl, LoopKernel) for knl in kernels)
     kernels = list(kernels)
 
@@ -372,107 +414,5 @@ def fuse_loop_kernels(kernels, suffixes=None, data_flow=None):
     # }}}
 
     return result
-
-
-def fuse_kernels(programs, suffixes=None, data_flow=None):
-    """Return a kernel that performs all the operations in all entries
-    of *kernels*.
-
-    :arg kernels: A list of :class:`loopy.LoopKernel` instances to be fused.
-    :arg suffixes: If given, must be a list of strings of a length matching
-        that of *kernels*. This will be used to disambiguate the names
-        of temporaries, as described below.
-    :arg data_flow: A list of data dependencies
-        ``[(var_name, from_kernel, to_kernel), ...]``.
-        Based on this, the fuser will create dependencies between all
-        writers of *var_name* in ``kernels[from_kernel]`` to
-        readers of *var_name* in ``kernels[to_kernel]``.
-        *from_kernel* and *to_kernel* are indices into *kernels*.
-
-    The components of the kernels are fused as follows:
-
-    *   The resulting kernel will have a domain involving all the inames
-        and parameters occurring across *kernels*.
-        Inames with matching names across *kernels* are fused in such a way
-        that they remain a single iname in the fused kernel.
-        Use :func:`loopy.rename_iname` if this is not desired.
-
-    *   The projection of the domains of each pair of kernels onto their
-        common subset of inames must match in order for fusion to
-        succeed.
-
-    *   Assumptions are fused by taking their conjunction.
-
-    *   If kernel arguments with matching names are encountered across
-        *kernels*, their declarations must match in order for fusion to
-        succeed.
-
-    *   Temporaries are automatically renamed to remain uniquely associated
-        with each instruction stream.
-
-    *   The resulting kernel will contain all instructions from each entry
-        of *kernels*. Clashing instruction IDs will be renamed to ensure
-        uniqueness.
-
-    .. versionchanged:: 2016.2
-
-        *data_flow* was added in version 2016.2
-    """
-
-    from loopy.program import make_program
-
-    programs = [make_program(knl) if isinstance(knl, LoopKernel) else knl for
-            knl in programs]
-
-    # all the resolved functions in programs must be registered in
-    # main_callables_table
-    main_prog_callables_info = (
-            programs[0].callables_table)
-    old_root_kernel_callable = (
-            programs[0].callables_table[programs[0].name])
-    kernels = [programs[0].root_kernel]
-
-    # removing the callable collisions that maybe present
-    for prog in programs[1:]:
-        root_kernel = prog.root_kernel
-        renames_needed = {}
-        for old_func_id, in_knl_callable in prog.callables_table.items():
-            if isinstance(in_knl_callable, CallableKernel):
-                # Fusing programs with multiple callable kernels is tough.
-                # Reason: Need to first figure out the order in which the
-                # callable kernels must be resolved into
-                # main_callables_table, because of renaming is
-                # needed to be done in the callable kernels before registering.
-                # Hence disabling it until required.
-                if in_knl_callable.subkernel.name != prog.name:
-                    raise LoopyError("fuse_kernels cannot fuse programs with "
-                            "multiple callable kernels.")
-
-                # root kernel are dealt at the end after performing all the
-                # renaming.
-                continue
-            main_prog_callables_info, new_func_id = (
-                    main_prog_callables_info.with_added_callable(var(old_func_id),
-                        in_knl_callable))
-
-            if old_func_id != new_func_id:
-                renames_needed[old_func_id] = new_func_id
-
-        if renames_needed:
-            root_kernel = rename_resolved_functions_in_a_single_kernel(
-                    root_kernel, renames_needed)
-
-        kernels.append(root_kernel)
-
-    new_root_kernel = fuse_loop_kernels(kernels, suffixes, data_flow)
-    new_root_kernel_callable = old_root_kernel_callable.copy(
-            subkernel=new_root_kernel.copy(name=programs[0].name))
-
-    # TODO: change the name of the final root kernel.
-    main_prog_callables_info, _ = main_prog_callables_info.with_added_callable(
-            var(programs[0].name), new_root_kernel_callable)
-
-    return programs[0].copy(
-            callables_table=main_prog_callables_info)
 
 # vim: foldmethod=marker
