@@ -231,8 +231,8 @@ def get_kw_pos_association(kernel):
             pos_to_kw[write_count] = arg.name
             write_count -= 1
         if arg.is_input:
-            # if an argument is both input and output then the input is given
-            # more significance in kw_to_pos
+            # if an argument is both input and output then kw_to_pos is
+            # overwritten with its expected position in the parameters
             kw_to_pos[arg.name] = read_count
             pos_to_kw[read_count] = arg.name
             read_count += 1
