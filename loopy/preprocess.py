@@ -376,18 +376,15 @@ def _check_reduction_is_triangular(kernel, expr, scan_param):
 
     sweep_lower_bound = isl.align_spaces(
             scan_param.sweep_lower_bound,
-            affs[0],
-            across_dim_types=True)
+            affs[0])
 
     sweep_upper_bound = isl.align_spaces(
             scan_param.sweep_upper_bound,
-            affs[0],
-            across_dim_types=True)
+            affs[0])
 
     scan_lower_bound = isl.align_spaces(
             scan_param.scan_lower_bound,
-            affs[0],
-            across_dim_types=True)
+            affs[0])
 
     from itertools import product
 
