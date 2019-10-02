@@ -296,11 +296,9 @@ def _add_assignees_to_calls(knl, all_kernels):
 
 
 def parse_fortran(source, filename="<floopy code>", free_form=None, strict=None,
-        seq_dependencies=None, auto_dependencies=None, target=None,
-        return_list_of_knls=False):
+        seq_dependencies=None, auto_dependencies=None, target=None):
     """
-    :returns: an instance of :class:`list` of :class:`loopy.LoopKernel`s if
-        *return_list_of_knls* is True else a :class:`loopy.Program`.
+    :returns: A :class:`loopy.Program`.
     """
 
     parse_plog = ProcessLogger(logger, "parsing fortran file '%s'" % filename)
@@ -341,9 +339,6 @@ def parse_fortran(source, filename="<floopy code>", free_form=None, strict=None,
     f2loopy(tree)
 
     kernels = f2loopy.make_kernels(seq_dependencies=seq_dependencies)
-
-    if return_list_of_knls:
-        return kernels
 
     kernels = [_add_assignees_to_calls(knl, kernels) for knl in kernels]
 

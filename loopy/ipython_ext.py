@@ -9,7 +9,7 @@ import loopy as lp
 class LoopyMagics(Magics):
     @cell_magic
     def fortran_kernel(self, line, cell):
-        result = lp.parse_fortran(cell, return_list_of_knls=True)
+        result = lp.parse_fortran(cell)
 
         for knl in result:
             self.shell.user_ns[knl.name] = knl

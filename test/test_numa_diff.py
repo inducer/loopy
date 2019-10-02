@@ -61,7 +61,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
 
     hsv_r, hsv_s = [
            knl for knl in lp.parse_fortran(source, filename,
-               seq_dependencies=False, return_list_of_knls=True)
+               seq_dependencies=False)
            if "KernelR" in knl.name or "KernelS" in knl.name
            ]
     hsv_r = lp.tag_instructions(hsv_r, "rknl")
