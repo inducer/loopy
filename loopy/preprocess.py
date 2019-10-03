@@ -796,7 +796,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
                     TemporaryVariable(
                         name=new_assignee_name,
                         dtype=None,
-                        scope=AddressSpace.PRIVATE))
+                        address_space=AddressSpace.PRIVATE))
 
             from pymbolic import var
             new_assignee = var(new_assignee_name)
@@ -982,7 +982,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     name=name,
                     shape=(),
                     dtype=None,
-                    scope=AddressSpace.PRIVATE)
+                    address_space=AddressSpace.PRIVATE)
 
         from pymbolic import var
         temp_vars = tuple(var(n) for n in temp_var_names)
