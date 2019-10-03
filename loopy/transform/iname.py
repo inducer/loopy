@@ -1158,6 +1158,7 @@ def rename_iname(knl, old_iname, new_iname, existing_ok=False, within=None):
 
     var_name_gen = knl.get_var_name_generator()
 
+    # FIXME: Distinguish existing iname vs. existing other variable
     does_exist = var_name_gen.is_name_conflicting(new_iname)
 
     if old_iname not in knl.all_inames():
@@ -1343,6 +1344,9 @@ def _split_reduction(kernel, inames, direction, within=None):
     if isinstance(inames, str):
         inames = inames.split(",")
     inames = set(inames)
+
+    if not (inames <= kernel.all_inames()):
+        raise LoopyError("Unknown inames: {}.".format(inames-kernel.all_inames()))
 
     from loopy.match import parse_stack_match
     within = parse_stack_match(within)
