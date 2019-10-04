@@ -594,7 +594,7 @@ class TemporaryVariable(ArrayBase):
         if order is None:
             order = "C"
 
-        if base_indices is None:
+        if base_indices is None and shape is not auto:
             base_indices = (0,) * len(shape)
 
         if not read_only and initializer is not None:
