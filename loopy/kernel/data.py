@@ -525,7 +525,7 @@ class TemporaryVariable(ArrayBase):
             "_base_storage_access_may_be_aliasing",
             ]
 
-    def __init__(self, name, dtype=None, shape=(), address_space=None,
+    def __init__(self, name, dtype=None, shape=auto, address_space=None,
             dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
             base_indices=None, storage_shape=None,
             base_storage=None, initializer=None, read_only=False,
@@ -535,6 +535,8 @@ class TemporaryVariable(ArrayBase):
         :arg shape: :class:`loopy.auto` or a shape tuple
         :arg base_indices: :class:`loopy.auto` or a tuple of base indices
         """
+
+        assert shape == auto or isinstance(shape, tuple)
 
         scope = kwargs.pop("scope", None)
         if scope is not None:
@@ -579,7 +581,10 @@ class TemporaryVariable(ArrayBase):
 
             if shape is auto:
                 shape = initializer.shape
-
+            else:
+                if shape != initializer.shape:
+                    raise LoopyError("Shape of '{}' does match that of the"
+                            " initializer.".format(name))
         else:
             raise LoopyError(
                     "temporary variable '%s': "
