@@ -536,8 +536,6 @@ class TemporaryVariable(ArrayBase):
         :arg base_indices: :class:`loopy.auto` or a tuple of base indices
         """
 
-        assert shape == auto or isinstance(shape, tuple)
-
         scope = kwargs.pop("scope", None)
         if scope is not None:
             warn("Passing 'scope' is deprecated. Use 'address_space' instead.",
