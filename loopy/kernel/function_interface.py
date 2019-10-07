@@ -688,7 +688,8 @@ class CallableKernel(InKernelCallable):
         return self.copy(subkernel=specialized_kernel,
                 arg_id_to_dtype=new_arg_id_to_dtype), callables_table
 
-    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table, expr):
+    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table,
+            expr=None):
         # tune the subkernel so that we have the matching shapes and
         # dim_tags
 
@@ -708,32 +709,37 @@ class CallableKernel(InKernelCallable):
         import numbers
         substs = {}
         assumptions = {}
-        for arg, par in zip(self.subkernel.args, expr.parameters):
-            if isinstance(arg, ValueArg) and arg.name in domain_dependent_vars:
-                if isinstance(par, Variable):
-                    if par in substs:
-                        assumptions[arg.name] = substs[par].name
-                    else:
-                        substs[par] = Variable(arg.name)
-                elif isinstance(par, numbers.Number):
-                    assumptions[arg.name] = par
 
-        def subst_func(expr):
-            if expr in substs:
-                return substs[expr]
-            else:
-                return expr
+        if expr:
+            for arg, par in zip(self.subkernel.args, expr.parameters):
+                if isinstance(arg, ValueArg) and arg.name in domain_dependent_vars:
+                    if isinstance(par, Variable):
+                        if par in substs:
+                            assumptions[arg.name] = substs[par].name
+                        else:
+                            substs[par] = Variable(arg.name)
+                    elif isinstance(par, numbers.Number):
+                        assumptions[arg.name] = par
 
-        subst_mapper = SubstitutionMapper(subst_func)
+            def subst_func(expr):
+                if expr in substs:
+                    return substs[expr]
+                else:
+                    return expr
 
-        arg_id_to_descr = dict((arg_id, descr.map_expr(subst_mapper)) for
-                arg_id, descr in arg_id_to_descr.items())
+            subst_mapper = SubstitutionMapper(subst_func)
+
+            arg_id_to_descr = dict((arg_id, descr.map_expr(subst_mapper)) for
+                    arg_id, descr in arg_id_to_descr.items())
 
         # }}}
 
         dependents = frozenset().union(*(descr.depends_on() for descr in
             arg_id_to_descr.values()))
         unknown_deps = dependents - self.subkernel.all_variable_names()
+
+        if expr is None:
+            assert dependents == frozenset()
         # FIXME: Need to make sure that we make the name of the variables
         # unique, and then run a subst_mapper
 
