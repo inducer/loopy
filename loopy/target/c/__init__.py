@@ -80,22 +80,82 @@ class DTypeRegistryWrapper(object):
 # {{{ preamble generator
 
 def _preamble_generator(preamble_info):
-    c_funcs = set(func.c_name for func in preamble_info.seen_functions)
-    if "int_floor_div" in c_funcs:
-        yield ("05_int_floor_div", """
-            #define int_floor_div(a,b) \
-              (( (a) - \
-                 ( ( (a)<0 ) != ( (b)<0 )) \
-                  *( (b) + ( (b)<0 ) - ( (b)>=0 ) )) \
-               / (b) )
+    integer_type_names = ["int8", "int16", "int32", "int64"]
+
+    def_integer_types_macro = ("03_def_integer_types", r"""
+            #define LOOPY_CALL_WITH_INTEGER_TYPES(MACRO_NAME) \
+                MACRO_NAME(int8, char) \
+                MACRO_NAME(int16, short) \
+                MACRO_NAME(int32, int) \
+                MACRO_NAME(int64, long)
             """)
 
-    if "int_floor_div_pos_b" in c_funcs:
-        yield ("05_int_floor_div_pos_b", """
-            #define int_floor_div_pos_b(a,b) ( \
-                ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b) \
-                )
+    undef_integer_types_macro = ("05_undef_integer_types", """
+            #undef LOOPY_CALL_WITH_INTEGER_TYPES
             """)
+
+    function_defs = {
+            "loopy_floor_div": r"""
+            #define LOOPY_DEFINE_FLOOR_DIV(SUFFIX, TYPE) \
+                inline TYPE loopy_floor_div_##SUFFIX(TYPE a, TYPE b) \
+                { \
+                    if ((a<0) != (b<0)) \
+                        a = a - (b + (b<0) - (b>=0)); \
+                    return a/b; \
+                }
+            LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_FLOOR_DIV)
+            #undef LOOPY_DEFINE_FLOOR_DIV
+            """,
+
+            "loopy_floor_div_pos_b": r"""
+            #define LOOPY_DEFINE_FLOOR_DIV_POS_B(SUFFIX, TYPE) \
+                inline TYPE loopy_floor_div_pos_b_##SUFFIX(TYPE a, TYPE b) \
+                { \
+                    if (a<0) \
+                        a = a - (b-1); \
+                    return a/b; \
+                }
+            LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_FLOOR_DIV_POS_B)
+            #undef LOOPY_DEFINE_FLOOR_DIV_POS_B
+            """,
+
+            "loopy_mod": r"""
+            #define LOOPY_DEFINE_MOD(SUFFIX, TYPE) \
+                inline TYPE loopy_mod_##SUFFIX(TYPE a, TYPE b) \
+                { \
+                    TYPE result = a%b; \
+                    if (result < 0 && b > 0) \
+                        result += b; \
+                    if (result > 0 && b < 0) \
+                        result = result + b; \
+                    return result; \
+                }
+            LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_MOD)
+            #undef LOOPY_DEFINE_MOD
+            """,
+
+            "loopy_mod_pos_b": r"""
+            #define LOOPY_DEFINE_MOD_POS_B(SUFFIX, TYPE) \
+                inline TYPE loopy_mod_pos_b_##SUFFIX(TYPE a, TYPE b) \
+                { \
+                    TYPE result = a%b; \
+                    if (result < 0) \
+                        result += b; \
+                    return result; \
+                }
+            LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_MOD_POS_B)
+            #undef LOOPY_DEFINE_MOD_POS_B
+            """,
+            }
+
+    c_funcs = set(func.c_name for func in preamble_info.seen_functions)
+
+    for func_name, func_body in six.iteritems(function_defs):
+        if any((func_name + "_" + tpname) in c_funcs
+                for tpname in integer_type_names):
+            yield def_integer_types_macro
+            yield ("04_%s" % func_name, func_body)
+            yield undef_integer_types_macro
 
 # }}}
 

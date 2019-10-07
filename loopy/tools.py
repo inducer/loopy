@@ -180,7 +180,9 @@ class LoopyEqKeyBuilder(object):
         self.field_dict[field_name] = value
 
     def update_for_pymbolic_field(self, field_name, value):
-        self.field_dict[field_name] = str(value).encode("utf-8")
+        from loopy.symbolic import EqualityPreservingStringifyMapper
+        self.field_dict[field_name] = \
+                EqualityPreservingStringifyMapper()(value).encode("utf-8")
 
     def key(self):
         """A key suitable for equality comparison."""

@@ -29,7 +29,7 @@ import numpy as np
 
 from pymbolic.mapper import RecursiveMapper, IdentityMapper
 from pymbolic.mapper.stringifier import (PREC_NONE, PREC_CALL, PREC_PRODUCT,
-        PREC_POWER, PREC_SHIFT,
+        PREC_SHIFT,
         PREC_UNARY, PREC_LOGICAL_OR, PREC_LOGICAL_AND,
         PREC_BITWISE_AND, PREC_BITWISE_OR)
 
@@ -302,7 +302,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     def make_subscript(self, array, base_expr, subscript):
         return base_expr[subscript]
 
-    def map_floor_div(self, expr, type_context):
+    def map_integer_div_operator(self, base_func_name, op_func, expr, type_context):
         from loopy.symbolic import get_dependencies
         iname_deps = get_dependencies(expr) & self.kernel.all_inames()
         domain = self.kernel.get_inames_domain(iname_deps)
@@ -315,30 +315,45 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         num_nonneg = is_nonnegative(expr.numerator, domain)
         den_nonneg = is_nonnegative(expr.denominator, domain)
 
+        result_dtype = self.infer_type(expr)
+        suffix = result_dtype.numpy_dtype.type.__name__
+
         def seen_func(name):
-            idt = self.kernel.index_dtype
             from loopy.codegen import SeenFunction
             self.codegen_state.seen_functions.add(
-                    SeenFunction(name, name, (idt, idt)))
+                    SeenFunction(
+                        name, "%s_%s" % (name, suffix),
+                        (result_dtype, result_dtype)))
 
         if den_nonneg:
             if num_nonneg:
-                # parenthesize to avoid negative signs being dragged in from the
-                # outside by associativity
-                return (
-                        self.rec(expr.numerator, type_context)
-                        //
+                return op_func(
+                        self.rec(expr.numerator, type_context),
                         self.rec(expr.denominator, type_context))
             else:
-                seen_func("int_floor_div_pos_b")
-                return var("int_floor_div_pos_b")(
+                seen_func("%s_pos_b" % base_func_name)
+                return var("%s_pos_b_%s" % (base_func_name, suffix))(
                         self.rec(expr.numerator, 'i'),
                         self.rec(expr.denominator, 'i'))
         else:
-            seen_func("int_floor_div")
-            return var("int_floor_div")(
+            seen_func(base_func_name)
+            return var("%s_%s" % (base_func_name, suffix))(
                     self.rec(expr.numerator, 'i'),
                     self.rec(expr.denominator, 'i'))
+
+    def map_floor_div(self, expr, type_context):
+        import operator
+        return self.map_integer_div_operator(
+                "loopy_floor_div", operator.floordiv, expr, type_context)
+
+    def map_remainder(self, expr, type_context):
+        tgt_dtype = self.infer_type(expr)
+        if tgt_dtype.is_complex():
+            raise RuntimeError("complex remainder not defined")
+
+        import operator
+        return self.map_integer_div_operator(
+                "loopy_mod", operator.mod, expr, type_context)
 
     def map_if(self, expr, type_context):
         result_type = self.infer_type(expr)
@@ -364,14 +379,16 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         return cast(self.rec(expr.child, type_context))
 
     def map_constant(self, expr, type_context):
+        from loopy.symbolic import Literal
+
         if isinstance(expr, (complex, np.complexfloating)):
             try:
                 dtype = expr.dtype
             except AttributeError:
-                # (COMPLEX_GUESS_LOGIC)
-                # This made it through type 'guessing' above, and it
-                # was concluded above (search for COMPLEX_GUESS_LOGIC),
-                # that nothing was lost by using single precision.
+                # (COMPLEX_GUESS_LOGIC) This made it through type 'guessing' in
+                # type inference, and it was concluded there (search for
+                # COMPLEX_GUESS_LOGIC in loopy.type_inference), that no
+                # accuracy was lost by using single precision.
                 cast_type = "cfloat"
             else:
                 if dtype == np.complex128:
@@ -383,10 +400,36 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                             "generation: %s" % type(expr))
 
             return var("%s_new" % cast_type)(expr.real, expr.imag)
+        elif isinstance(expr, np.generic):
+            # Explicitly typed: Generated code must reflect type exactly.
+
+            # FIXME: This assumes a 32-bit architecture.
+            if isinstance(expr, np.float32):
+                return Literal(repr(expr)+"f")
+
+            elif isinstance(expr, np.float64):
+                return Literal(repr(expr))
+
+            # Disabled for now, possibly should be a subtarget.
+            # elif isinstance(expr, np.float128):
+            #     return Literal(repr(expr)+"l")
+
+            elif isinstance(expr, np.integer):
+                suffix = ""
+                iinfo = np.iinfo(expr)
+                if iinfo.min == 0:
+                    suffix += "u"
+                if iinfo.max > (2**31-1):
+                    suffix += "l"
+                return Literal(repr(expr)+suffix)
+
+            else:
+                raise LoopyError("do not know how to generate code for "
+                        "constant of numpy type '%s'" % type(expr).__name__)
+
         else:
-            from loopy.symbolic import Literal
             if type_context == "f":
-                return Literal(repr(float(expr))+"f")
+                return Literal(repr(np.float32(expr))+"f")
             elif type_context == "d":
                 return Literal(repr(float(expr)))
             elif type_context == "i":
@@ -624,14 +667,6 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     self.rec(expr.numerator, type_context, tgt_dtype),
                     self.rec(expr.denominator, type_context, tgt_dtype))
 
-    def map_remainder(self, expr, type_context):
-        tgt_dtype = self.infer_type(expr)
-        if tgt_dtype.is_complex():
-            raise RuntimeError("complex remainder not defined")
-
-        return super(ExpressionToCExpressionMapper, self).map_remainder(
-                expr, type_context)
-
     def map_power(self, expr, type_context):
         def base_impl(expr, type_context):
             from pymbolic.primitives import is_constant, is_zero
@@ -694,10 +729,21 @@ class CExpressionToCodeMapper(RecursiveMapper):
         else:
             return s
 
-    def join_rec(self, joiner, iterable, prec):
+    def join_rec(self, joiner, iterable, prec, force_parens_around=()):
         f = joiner.join("%s" for i in iterable)
         return f % tuple(
-                self.rec(i, prec) for i in iterable)
+                self.rec_with_force_parens_around(
+                    i, prec, force_parens_around=force_parens_around)
+                for i in iterable)
+
+    def rec_with_force_parens_around(
+            self, expr, enclosing_prec, force_parens_around=()):
+        result = self.rec(expr, enclosing_prec)
+
+        if isinstance(expr, force_parens_around):
+            result = "(%s)" % result
+
+        return result
 
     def join(self, joiner, iterable):
         f = joiner.join("%s" for i in iterable)
@@ -743,14 +789,6 @@ class CExpressionToCodeMapper(RecursiveMapper):
                     self.rec(expr.aggregate, PREC_CALL+1),
                     self.rec(expr.index, PREC_NONE)),
                 enclosing_prec, PREC_CALL)
-
-    def map_floor_div(self, expr, enclosing_prec):
-        # parenthesize to avoid negative signs being dragged in from the
-        # outside by associativity
-        return "(%s / %s)" % (
-                    self.rec(expr.numerator, PREC_PRODUCT),
-                    # analogous to ^{-1}
-                    self.rec(expr.denominator, PREC_POWER))
 
     def map_min(self, expr, enclosing_prec):
         what = type(expr).__name__.lower()
@@ -845,33 +883,42 @@ class CExpressionToCodeMapper(RecursiveMapper):
                 self.join_rec(" + ", expr.children, PREC_SUM),
                 enclosing_prec, PREC_SUM)
 
+    multiplicative_primitives = (p.Product, p.Quotient, p.FloorDiv, p.Remainder)
+
     def map_product(self, expr, enclosing_prec):
-        # Spaces prevent '**z' (times dereference z), which
-        # is hard to read.
+        force_parens_around = (p.Quotient, p.FloorDiv, p.Remainder)
+
+        # Spaces prevent '**z' (times dereference z), which is hard to read.
         return self.parenthesize_if_needed(
-                self.join_rec(" * ", expr.children, PREC_PRODUCT),
+                self.join_rec(" * ", expr.children, PREC_PRODUCT,
+                    force_parens_around=force_parens_around),
                 enclosing_prec, PREC_PRODUCT)
 
-    def map_quotient(self, expr, enclosing_prec):
-        num = self.rec(expr.numerator, PREC_PRODUCT)
+    def _map_division_operator(self, operator, expr, enclosing_prec):
+        num_s = self.rec_with_force_parens_around(expr.numerator, PREC_PRODUCT,
+                force_parens_around=self.multiplicative_primitives)
 
-        # analogous to ^{-1}
-        denom = self.rec(expr.denominator, PREC_POWER)
+        denom_s = self.rec_with_force_parens_around(expr.denominator, PREC_PRODUCT,
+                force_parens_around=self.multiplicative_primitives)
 
         return self.parenthesize_if_needed(
-                "%s / %s" % (
+                "%s %s %s" % (
                     # Space is necessary--otherwise '/*'
                     # (i.e. divide-dererference) becomes
                     # start-of-comment in C.
-                    num,
-                    denom),
+                    num_s,
+                    operator,
+                    denom_s),
                 enclosing_prec, PREC_PRODUCT)
 
+    def map_quotient(self, expr, enclosing_prec):
+        return self._map_division_operator("/", expr, enclosing_prec)
+
+    def map_floor_div(self, expr, enclosing_prec):
+        return self._map_division_operator("/", expr, enclosing_prec)
+
     def map_remainder(self, expr, enclosing_prec):
-        return "(%s %% %s)" % (
-                    self.rec(expr.numerator, PREC_PRODUCT),
-                    # PREC_POWER analogous to ^{-1}
-                    self.rec(expr.denominator, PREC_POWER))
+        return self._map_division_operator("%", expr, enclosing_prec)
 
     def map_power(self, expr, enclosing_prec):
         return "pow(%s, %s)" % (

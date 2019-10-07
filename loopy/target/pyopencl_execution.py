@@ -175,7 +175,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             args=", ".join(
                 ["_lpy_cl_kernels", "queue"]
                 + args
-                + ["wait_for=wait_for"])))
+                + ["wait_for=wait_for", "allocator=allocator"])))
 
         if program.root_kernel.options.cl_exec_manage_array_events:
             gen("")

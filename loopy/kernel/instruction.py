@@ -438,6 +438,16 @@ class InstructionBase(ImmutableRecord):
                 # First sort the fields, as a canonical form
                 items = tuple(sorted(field_value, key=str))
                 key_builder.update_for_pymbolic_field(field_name, items)
+
+            # from CExpression
+            elif field_name == "iname_exprs":
+                from loopy.symbolic import EqualityPreservingStringifyMapper
+                key_builder.field_dict[field_name] = [
+                        (iname, EqualityPreservingStringifyMapper()(expr)
+                            .encode("utf-8"))
+                        for iname, expr in self.iname_exprs
+                        ]
+
             else:
                 key_builder.update_for_field(field_name, field_value)
 
@@ -1302,9 +1312,7 @@ class CInstruction(InstructionBase):
     fields = InstructionBase.fields | \
             set("iname_exprs code read_variables assignees".split())
     pymbolic_fields = InstructionBase.pymbolic_fields | \
-            set("iname_exprs assignees".split())
-    pymbolic_set_fields = InstructionBase.pymbolic_set_fields | \
-            set(["read_variables"])
+            set("assignees".split())
 
     def __init__(self,
             iname_exprs, code,
