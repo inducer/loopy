@@ -491,27 +491,33 @@ class CallablesIDCollector(CombineMapper):
     map_type_cast = map_constant
 
 
-def _get_callables_ids(callables):
+def _get_callable_ids_for_knl(knl, callables):
     clbl_id_collector = CallablesIDCollector()
 
+    return frozenset().union((
+        _get_callable_ids_for_knl(callables[clbl].subkernel) if
+        isinstance(callables[clbl], CallableKernel) else clbl
+        for clbl in clbl_id_collector.map_kernel(knl)))
+
+
+def _get_callable_ids(callables, entrypoints):
     return frozenset().union(*(
-        clbl_id_collector.map_kernel(clbl.subkernel) for clbl in
-        callables.values() if isinstance(clbl, CallableKernel)))
+        _get_callable_ids_for_knl(callables[e].subkernel, callables) for e in
+        entrypoints))
+
+
+def make_clbl_inf_ctx(callables, entrypoints):
+    return CallablesInferenceContext(callables, _get_callable_ids(callables,
+        entrypoints))
 
 
 class CallablesInferenceContext(ImmutableRecord):
-    def __init__(self, callables, old_callables_id=None, history=None):
+    def __init__(self, callables, old_callable_ids, history={}):
         assert isinstance(callables, dict)
-        if history is None:
-            history = dict((func_id, frozenset([func_id])) for func_id in
-                    callables)
-
-        if old_callables_id is None:
-            self.old_callables_ids = _get_callables_ids(callables)
 
         super(CallablesInferenceContext, self).__init__(
                 callables=callables,
-                old_callables_id=old_callables_id,
+                old_callable_ids=old_callable_ids,
                 history=history)
 
     # {{{ interface to perform edits on callables
@@ -543,7 +549,7 @@ class CallablesInferenceContext(ImmutableRecord):
             # identifier corresponding to that callable.
             for func_id, in_knl_callable in self.callables.items():
                 if in_knl_callable == in_kernel_callable:
-                    history[func_id] = history[func_id] | frozenset([function.name])
+                    history[func_id] = function.name
                     return (
                             self.copy(
                                 history=history),
@@ -554,8 +560,9 @@ class CallablesInferenceContext(ImmutableRecord):
             # {{{ handle ReductionOpFunction
 
             if isinstance(function, ReductionOpFunction):
-                # FIXME: Check what happens if we have 2 same ArgMax functions
-                # with different types in the same kernel!
+                # FIXME: Check if we have 2 ArgMax functions
+                # with different types in the same kernel the generated code
+                # does not mess up the types.
                 unique_function_identifier = function.copy()
                 updated_callables = self.callables.copy()
                 updated_callables[unique_function_identifier] = (
@@ -579,8 +586,7 @@ class CallablesInferenceContext(ImmutableRecord):
         updated_callables[unique_function_identifier] = (
                 in_kernel_callable)
 
-        history[unique_function_identifier] = (
-                history[function.name] | frozenset([unique_function_identifier]))
+        history[unique_function_identifier] = function.name
 
         return (
                 self.copy(
@@ -588,42 +594,66 @@ class CallablesInferenceContext(ImmutableRecord):
                     callables=updated_callables),
                 Variable(unique_function_identifier))
 
-    def finish_program(self, program):
+    def finish_program(self, program, renamed_entrypoints):
         """
-        Returns a copy of *self* with renaming of the callables done whenever
-        possible.
+        Returns a copy of *program* with renaming of the callables done whenever
+        needed.
 
         *For example: * If all the ``sin`` got diverged as ``sin_0, sin_1``,
         then all the renaming is done such that one of flavors of the callable
         is renamed back to ``sin``.
-        """
-        assert self.is_being_edited
 
-        new_callables_count = self.callables_count
+        :param renamed_entrypoints: A :class:`frozenset` of the names of the
+            renamed callable kernels which correspond to the entrypoints in
+            *self.callables_table*.
+        """
+        assert len(renamed_entrypoints) == len(program.entrypoints)
+        new_callable_ids = _get_callable_ids(self.callables, renamed_entrypoints)
+
+        callees_with_entrypoint_names = (program.entrypoints &
+                new_callable_ids) - renamed_entrypoints
+
+        renames = {}
+        new_callables = {}
+
+        for c in callees_with_entrypoint_names:
+            unique_function_identifier = c
+
+            while unique_function_identifier in self.callables:
+                unique_function_identifier = (
+                        next_indexed_function_identifier(
+                            unique_function_identifier))
+
+            renames[c] = unique_function_identifier
+
+        # we should perform a rewrite here.
+
+        for e in renamed_entrypoints:
+            renames[e] = self.history[e]
+            assert renames[e] in program.entrypoints
+            new_subkernel = self.callables[e].subkernel.copy(name=self.history[e])
+            new_callables[self.history[e]] = self.callables[e].copy(
+                    subkernel=new_subkernel)
 
         # {{{ calculate the renames needed
 
-        renames_needed = {}
-        for old_func_id in old_callables_count-new_callables_count:
-            # this implies that all the function instances having the name
-            # "func_id" have been renamed to something else.
-            for new_func_id in (
-                    six.viewkeys(new_callables_count)-six.viewkeys(renames_needed)):
-                if old_func_id in self.history[new_func_id]:
-                    renames_needed[new_func_id] = old_func_id
+        for old_func_id in ((self.old_callable_ids-new_callable_ids) -
+                program.entrypoints):
+            # at this point we should not rename anything to the names of
+            # entrypoints
+            for new_func_id in (new_callable_ids-six.viewkeys(renames)):
+                if old_func_id == self.history[new_func_id]:
+                    renames[new_func_id] = old_func_id
                     break
         # }}}
 
-        new_resolved_functions = {}
-        new_history = {}
-
-        for func_id in new_callables_count:
-            in_knl_callable = self.resolved_functions[func_id]
+        for func_id in new_callable_ids-renamed_entrypoints:
+            in_knl_callable = self.callables[func_id]
             if isinstance(in_knl_callable, CallableKernel):
                 # if callable kernel, perform renames inside its expressions.
                 old_subkernel = in_knl_callable.subkernel
                 new_subkernel = rename_resolved_functions_in_a_single_kernel(
-                        old_subkernel, renames_needed)
+                        old_subkernel, renames)
                 in_knl_callable = (
                         in_knl_callable.copy(subkernel=new_subkernel))
             elif isinstance(in_knl_callable, ScalarCallable):
@@ -632,24 +662,21 @@ class CallablesInferenceContext(ImmutableRecord):
                 raise NotImplementedError("Unknown callable type %s." %
                         type(in_knl_callable).__name__)
 
-            if func_id in renames_needed:
-                new_func_id = renames_needed[func_id]
+            if func_id in renames:
+                new_func_id = renames[func_id]
                 if isinstance(in_knl_callable, CallableKernel):
                     in_knl_callable = (in_knl_callable.copy(
                         subkernel=in_knl_callable.subkernel.copy(
                             name=new_func_id)))
-                new_resolved_functions[new_func_id] = (
-                        in_knl_callable)
-                new_history[new_func_id] = self.history[func_id]
+                new_callables[new_func_id] = in_knl_callable
             else:
                 if isinstance(in_knl_callable, CallableKernel):
                     in_knl_callable = in_knl_callable.copy(
                         subkernel=in_knl_callable.subkernel.copy(
                             name=func_id))
-                new_resolved_functions[func_id] = in_knl_callable
-                new_history[func_id] = self.history[func_id]
+                new_callables[func_id] = in_knl_callable
 
-        return program.copy(callables_table=new_callables_table)
+        return program.copy(callables_table=new_callables)
 
     # }}}
 
