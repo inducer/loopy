@@ -468,13 +468,15 @@ class OpenCLCASTBuilder(CASTBuilder):
     # {{{ top-level codegen
 
     def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+            schedule_index, is_entrypoint):
+        raise NotImplementedError("this should probably take is is_entrypoint"
+                " or something equivalent.")
         fdecl = super(OpenCLCASTBuilder, self).get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
         from loopy.target.c import FunctionDeclarationWrapper
         assert isinstance(fdecl, FunctionDeclarationWrapper)
-        if not codegen_state.kernel.is_called_from_host:
+        if not is_entrypoint:
             # auxiliary kernels need not mention opencl speicific qualifiers
             # for a functions signature
             return fdecl
@@ -485,6 +487,8 @@ class OpenCLCASTBuilder(CASTBuilder):
         fdecl = CLKernel(fdecl)
 
         from loopy.schedule import get_insn_ids_for_block_at
+        raise NotImplementedError("this should pll the grid size from the"
+                "translation unit?")
         _, local_sizes = codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
                 get_insn_ids_for_block_at(
                     codegen_state.kernel.schedule, schedule_index),
