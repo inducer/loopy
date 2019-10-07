@@ -553,7 +553,7 @@ class CallablesInferenceContext(ImmutableRecord):
                     return (
                             self.copy(
                                 history=history),
-                            func_id)
+                            Variable(func_id))
 
             assert False
         else:

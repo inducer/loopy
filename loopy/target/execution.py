@@ -759,9 +759,10 @@ class KernelExecutorBase(object):
                 var_to_dtype))
 
         from loopy.type_inference import infer_unknown_types
+        from loopy.kernel import KernelState
         program = infer_unknown_types(program, expect_completion=True)
 
-        if program.root_kernel.schedule is None:
+        if program.state < KernelState.SCHEDULED:
             from loopy.preprocess import preprocess_program
             program = preprocess_program(program)
 
