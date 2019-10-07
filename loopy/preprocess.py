@@ -2433,42 +2433,6 @@ def preprocess_single_kernel(kernel, callables_table, device=None):
     return kernel
 
 
-# {{{ hw axes inference
-
-def infer_hw_axes_sizes(program):
-    """
-    Returns copy of *program* with the hardware axes sizes inferred.
-
-    .. note::
-
-        - Firstly, computes the collective hardware axes sizes from all the
-          callable kernels.
-        - Then, overrides the grid sizes of all the callable kernels to the
-          collective value.
-    """
-
-    global_size, local_size = program.get_grid_size_upper_bounds()
-
-    resolved_function_with_hw_axes_sizes_inferred = {}
-
-    for func_id, in_knl_callable in (
-            program.callables_table.items()):
-        if func_id == program.name:
-            resolved_function_with_hw_axes_sizes_inferred[func_id] = (
-                    in_knl_callable)
-        else:
-            resolved_function_with_hw_axes_sizes_inferred[func_id] = (
-                    in_knl_callable.with_hw_axes_sizes(global_size, local_size))
-
-    new_callables_table = (
-            program.callables_table.copy(
-                resolved_functions=resolved_function_with_hw_axes_sizes_inferred))
-
-    return program.copy(callables_table=new_callables_table)
-
-# }}}
-
-
 def preprocess_program(program, device=None):
 
     if device is not None:
@@ -2527,8 +2491,6 @@ def preprocess_program(program, device=None):
 
     # infer arg descrs of the callables
     program = infer_arg_descr(program)
-
-    program = infer_hw_axes_sizes(program)
 
     return program
 
