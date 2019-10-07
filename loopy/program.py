@@ -631,9 +631,6 @@ class CallablesInferenceContext(ImmutableRecord):
         for e in renamed_entrypoints:
             renames[e] = self.history[e]
             assert renames[e] in program.entrypoints
-            new_subkernel = self.callables[e].subkernel.copy(name=self.history[e])
-            new_callables[self.history[e]] = self.callables[e].copy(
-                    subkernel=new_subkernel)
 
         # {{{ calculate the renames needed
 
@@ -646,6 +643,13 @@ class CallablesInferenceContext(ImmutableRecord):
                     renames[new_func_id] = old_func_id
                     break
         # }}}
+
+        for e in renamed_entrypoints:
+            new_subkernel = self.callables[e].subkernel.copy(name=self.history[e])
+            new_subkernel = rename_resolved_functions_in_a_single_kernel(
+                    new_subkernel, renames)
+            new_callables[self.history[e]] = self.callables[e].copy(
+                    subkernel=new_subkernel)
 
         for func_id in new_callable_ids-renamed_entrypoints:
             in_knl_callable = self.callables[func_id]
