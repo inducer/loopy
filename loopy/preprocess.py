@@ -2011,10 +2011,7 @@ def realize_reduction(program, *args, **kwargs):
                 knl, callables_table, *args, **kwargs)
         in_knl_callable = callables_table[knl.name].copy(
                 subkernel=new_knl)
-        resolved_functions = callables_table.resolved_functions.copy()
-        resolved_functions[knl.name] = in_knl_callable
-        callables_table = callables_table.copy(
-            resolved_functions=resolved_functions)
+        callables_table[knl.name] = in_knl_callable
 
     return program.copy(callables_table=callables_table)
 
@@ -2312,23 +2309,35 @@ def infer_arg_descr(program):
     :attr:`loopy.InKernelCallable.arg_id_to_descr` inferred for all the
     callables.
     """
-    root_kernel_callable = program.callables_table[program.name]
-    old_callables_count = program.callables_table.callables_count
-    callables_table = (
-            program.callables_table.with_edit_callables_mode())
-    root_kernel = program.root_kernel
 
-    new_root_kernel, callables_table = traverse_to_infer_arg_descr(
-            root_kernel, callables_table)
-    new_root_kernel_callable = root_kernel_callable.copy(
-            subkernel=new_root_kernel)
-    callables_table, _ = callables_table.with_callable(program.name,
-            new_root_kernel_callable)
+    from loopy.program import make_clbl_inf_ctx
+    from loopy.kernel.array import ArrayBase
+    from loopy.kernel.function_interface import (ArrayArgDescriptor,
+            ValueArgDescriptor)
 
-    callables_table = callables_table.with_exit_edit_callables_mode(
-            old_callables_count)
+    clbl_inf_ctx = make_clbl_inf_ctx(program.callables_table,
+            program.entrypoints)
 
-    return program.copy(callables_table=callables_table)
+    renamed_entrypoints = set()
+
+    for e in program.entrypoints:
+        # FIXME: Need to add docs which say that we need not add the current
+        # callable to the clbl_inf_ctx while writing the "with_types"
+        # This is treacherous, we should use traverse... instead.
+        def _tuple_if_int(s):
+            if isinstance(s, int):
+                return s,
+            return s
+        arg_id_to_descr = dict((arg.name, ArrayArgDescriptor(
+            _tuple_if_int(arg.shape), arg.address_space, arg.dim_tags) if
+            isinstance(arg, ArrayBase) else ValueArgDescriptor()) for arg in
+            program[e].args)
+        new_callable, clbl_inf_ctx, _ = program.callables_table[e].with_descrs(
+                arg_id_to_descr, None, clbl_inf_ctx)
+        clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable)
+        renamed_entrypoints.add(new_name.name)
+
+    return clbl_inf_ctx.finish_program(program, renamed_entrypoints)
 
 # }}}
 
@@ -2496,7 +2505,7 @@ def preprocess_program(program, device=None):
     #
     # [1] https://docs.python.org/3/library/stdtypes.html#dictionary-view-objects
 
-    new_resolved_functions = {}
+    new_callables = {}
     for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             new_subkernel = preprocess_single_kernel(
@@ -2510,11 +2519,9 @@ def preprocess_program(program, device=None):
             raise NotImplementedError("Unknown callable type %s." % (
                 type(in_knl_callable).__name__))
 
-        new_resolved_functions[func_id] = in_knl_callable
+        new_callables[func_id] = in_knl_callable
 
-    new_callables_table = program.callables_table.copy(
-            resolved_functions=new_resolved_functions)
-    program = program.copy(callables_table=new_callables_table)
+    program = program.copy(callables_table=new_callables)
 
     # }}}
 
