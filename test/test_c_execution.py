@@ -275,7 +275,7 @@ def test_c_execution_with_global_temporaries():
     # global constant temporaries is None
 
     from loopy.target.c import ExecutableCTarget
-    from loopy.kernel.data import temp_var_scope as scopes
+    AS = lp.AddressSpace        # noqa
     n = 10
 
     knl = lp.make_kernel('{[i]: 0 <= i < n}',
@@ -287,7 +287,7 @@ def test_c_execution_with_global_temporaries():
                               initializer=np.arange(n, dtype=np.int32),
                               dtype=np.int32,
                               read_only=True,
-                              scope=scopes.GLOBAL)],
+                              address_space=AS.GLOBAL)],
         target=ExecutableCTarget())
 
     knl = lp.fix_parameters(knl, n=n)
