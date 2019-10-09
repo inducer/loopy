@@ -717,7 +717,7 @@ class RuleArgument(LoopyExpressionBase):
     mapper_method = intern("map_rule_argument")
 
 
-class ResolvedFunction(p.Expression):
+class ResolvedFunction(LoopyExpressionBase):
     """
     A function invocation whose definition is known in a :mod:`loopy` kernel.
     Each instance of :class:`loopy.symbolic.ResolvedFunction` in an expression
@@ -755,9 +755,6 @@ class ResolvedFunction(p.Expression):
 
     def __getinitargs__(self):
         return (self.function, )
-
-    def stringifier(self):
-        return StringifyMapper
 
     mapper_method = intern("map_resolved_function")
 
@@ -805,7 +802,7 @@ class SweptInameStrideCollector(CoefficientCollectorBase):
         return super(SweptInameStrideCollector, self).map_algebraic_leaf(expr)
 
 
-class SubArrayRef(p.Expression):
+class SubArrayRef(LoopyExpressionBase):
     """
     An algebraic expression to map an affine memory layout pattern (known as
     sub-arary) as consecutive elements of the sweeping axes which are defined
@@ -913,9 +910,6 @@ class SubArrayRef(p.Expression):
         return (other.__class__ == self.__class__
                 and other.subscript == self.subscript
                 and other.swept_inames == self.swept_inames)
-
-    def stringifier(self):
-        return StringifyMapper
 
     mapper_method = intern("map_sub_array_ref")
 
