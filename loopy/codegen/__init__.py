@@ -40,9 +40,8 @@ from loopy.symbolic import CombineMapper
 from functools import reduce
 
 from loopy.kernel.function_interface import CallableKernel
-from cgen import Collection
 
-from pytools import ProcessLogger
+from pytools import ProcessLogger, memoize_method
 
 
 # {{{ implemented data info
@@ -201,6 +200,11 @@ class CodeGenerationState(object):
     .. attribute:: callables_table
 
         An instance of :class:`loopy.CallablesTable`.
+
+    .. attribute:: is_entrypoint
+
+        A :class:`bool` to indicate if the code is being generated for an
+        entrypoint kernel
     """
 
     def __init__(self, kernel, target,
@@ -208,6 +212,7 @@ class CodeGenerationState(object):
             seen_dtypes, seen_functions, seen_atomic_dtypes, var_subst_map,
             allow_complex,
             callables_table,
+            is_entrypoint,
             vectorization_info=None, var_name_generator=None,
             is_generating_device_code=None,
             gen_program_name=None,
@@ -223,6 +228,7 @@ class CodeGenerationState(object):
         self.var_subst_map = var_subst_map.copy()
         self.allow_complex = allow_complex
         self.callables_table = callables_table
+        self.is_entrypoint = is_entrypoint
         self.vectorization_info = vectorization_info
         self.var_name_generator = var_name_generator
         self.is_generating_device_code = is_generating_device_code
@@ -233,9 +239,8 @@ class CodeGenerationState(object):
 
     def copy(self, kernel=None, target=None, implemented_data_info=None,
             implemented_domain=None, implemented_predicates=frozenset(),
-            var_subst_map=None, vectorization_info=None,
-            is_generating_device_code=None,
-            gen_program_name=None,
+            var_subst_map=None, is_entrypoint=None, vectorization_info=None,
+            is_generating_device_code=None, gen_program_name=None,
             schedule_index_end=None):
 
         if kernel is None:
@@ -246,6 +251,9 @@ class CodeGenerationState(object):
 
         if implemented_data_info is None:
             implemented_data_info = self.implemented_data_info
+
+        if is_entrypoint is None:
+            is_entrypoint = self.is_entrypoint
 
         if vectorization_info is False:
             vectorization_info = None
@@ -275,6 +283,7 @@ class CodeGenerationState(object):
                 var_subst_map=var_subst_map or self.var_subst_map,
                 allow_complex=self.allow_complex,
                 callables_table=self.callables_table,
+                is_entrypoint=is_entrypoint,
                 vectorization_info=vectorization_info,
                 var_name_generator=self.var_name_generator,
                 is_generating_device_code=is_generating_device_code,
@@ -422,7 +431,8 @@ class PreambleInfo(ImmutableRecord):
 
 # {{{ main code generation entrypoint
 
-def generate_code_for_a_single_kernel(kernel, callables_table, target):
+def generate_code_for_a_single_kernel(kernel, callables_table, target,
+        is_entrypoint):
     """
     :returns: a :class:`CodeGenerationResult`
 
@@ -518,7 +528,8 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target):
                 + kernel.name
                 + kernel.target.host_program_name_suffix),
             schedule_index_end=len(kernel.schedule),
-            callables_table=callables_table)
+            callables_table=callables_table,
+            is_entrypoint=is_entrypoint)
 
     from loopy.codegen.result import generate_host_or_device_program
 
@@ -573,6 +584,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target):
     return codegen_result
 
 
+@memoize_method
 def generate_code_v2(program):
     """
     Returns an instance of :class:`CodeGenerationResult`.
@@ -581,7 +593,7 @@ def generate_code_v2(program):
     """
     from loopy.kernel import LoopKernel
     from loopy.program import make_program
-    from cgen import FunctionBody
+    from loopy.codegen.result import CodeGenerationResult
 
     if isinstance(program, LoopKernel):
         program = make_program(program)
@@ -598,56 +610,44 @@ def generate_code_v2(program):
     from loopy.type_inference import infer_unknown_types
     program = infer_unknown_types(program, expect_completion=True)
 
-    codegen_results = {}
+    host_programs = []
+    device_programs = []
+    device_preambles = []
+    implemented_data_infos = []
 
     for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
-            codegen_results[func_id] = (
-                    generate_code_for_a_single_kernel(in_knl_callable.subkernel,
-                        program.callables_table, program.target))
-            if not in_knl_callable.subkernel.is_called_from_host:
-                assert codegen_results[func_id].host_program is None
-
-    device_preambles = []
-    for cgr in codegen_results.values():
-        device_preambles.extend(cgr.device_preambles)
-
-    # collecting the function declarations of callee kernels
-    for in_knl_callable in program.callables_table.values():
-        for preamble in in_knl_callable.generate_preambles(program.target):
-            device_preambles.append(preamble)
-
-    collective_device_program = codegen_results[program.name].device_programs[0]
-    callee_fdecls = []
-
-    for func_id, callee_cgr in codegen_results.items():
-        if func_id != program.name:
-            assert len(callee_cgr.device_programs) == 1
-            callee_prog_ast = callee_cgr.device_programs[0].ast
-            collective_device_program = collective_device_program.copy(
-                    ast=Collection([callee_prog_ast, collective_device_program.ast]))
-            if isinstance(callee_prog_ast, Collection):
-                # if there is a read only constant in the kernel
-                for entry in callee_prog_ast.contents:
-                    if isinstance(entry, FunctionBody):
-                        callee_fdecls.append(entry.fdecl)
-            elif isinstance(callee_prog_ast, FunctionBody):
-                callee_fdecls.append(callee_prog_ast.fdecl)
+            #FIXME:
+            # 1. Diverge the kernels which are both entrypoint and callees at this
+            #    point. By diverge we should rename the callees in kernels.
+            # 2. Then pass the callee versions by saying is_entrypoint=False
+            cgr = generate_code_for_a_single_kernel(in_knl_callable.subkernel,
+                        program.callables_table, program.target, True)
+            if func_id in program.entrypoints:
+                host_programs.extend(cgr.host_programs)
+                implemented_data_infos.append(cgr.implemented_data_info)
             else:
-                raise NotImplementedError("Do not know how to add forward"
-                        " declarations for %r." % type(callee_prog_ast))
+                assert cgr.host_programs == []
+                assert len(cgr.device_programs) == 1
+                #FIXME:
+                # if isinstance(callee_prog_ast, Collection):
+                #     for entry in callee_prog_ast.contents:
+                #         if isinstance(entry, FunctionBody):
+                #             callee_fdecls.append(entry.fdecl)
 
-    # collecting the function declarations of callee kernels
-    for callee_fdecl in callee_fdecls:
-        collective_device_program = collective_device_program.copy(
-                ast=Collection([callee_fdecl, collective_device_program.ast]))
+                device_programs.insert(
+                        cgr.device_programs[0].ast.fdecl, 0)
 
-    collective_device_programs = [collective_device_program] + (
-            codegen_results[program.name].device_programs[1:])
+            device_programs.extend(cgr.device_programs)
+            device_preambles.extend(cgr.device_preambles)
 
-    return codegen_results[program.name].copy(
-            device_programs=collective_device_programs,
-            device_preambles=device_preambles)
+        device_preambles.extend(list(in_knl_callable.generate_preambles(
+            program.target)))
+
+    return CodeGenerationResult(
+            host_programs=host_programs,
+            device_programs=device_programs,
+            implemented_data_infos=implemented_data_infos)
 
 
 def generate_code(kernel, device=None):

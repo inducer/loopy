@@ -29,7 +29,7 @@ from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper, CombineMapper, ResolvedFunction
 from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_kernel
-from loopy.type_inference import TypeInferenceMapper
+from loopy.type_inference import TypeReader
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
 
@@ -133,7 +133,7 @@ def check_functions_are_resolved(kernel):
 VALID_NOSYNC_SCOPES = frozenset(["local", "global", "any"])
 
 
-class SubscriptIndicesIsIntChecker(TypeInferenceMapper):
+class SubscriptIndicesIsIntChecker(TypeReader):
     def map_subscript(self, expr):
         for idx in expr.index_tuple:
             if not self.rec(idx)[0].is_integral():

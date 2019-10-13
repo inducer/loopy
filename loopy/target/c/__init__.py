@@ -645,7 +645,7 @@ class CASTBuilder(ASTBuilderBase):
         if self.target.fortran_abi:
             name += "_"
 
-        if codegen_state.kernel.is_called_from_host:
+        if codegen_state.is_entrypoint:
             name = Value("void", name)
         else:
             name = Value("static void", name)

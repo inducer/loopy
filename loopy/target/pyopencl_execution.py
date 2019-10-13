@@ -288,7 +288,8 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         dev_code = codegen_result.device_code()
 
-        if self.program.root_kernel.options.write_cl:
+        if program[entrypoint].options.write_cl:
+            #FIXME: redirect to "translation unit" level option as well.
             output = dev_code
             if self.program.root_kernel.options.highlight_cl:
                 output = get_highlighted_code(output)
@@ -299,15 +300,17 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
                 with open(self.program.root_kernel.options.write_cl, "w") as outf:
                     outf.write(output)
 
-        if self.program.root_kernel.options.edit_cl:
+        if program[entrypoint].options.edit_cl:
+            #FIXME: redirect to "translation unit" level option as well.
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.cl")
 
         import pyopencl as cl
 
+        #FIXME: redirect to "translation unit" level option as well.
         cl_program = (
                 cl.Program(self.context, dev_code)
-                .build(options=program.root_kernel.options.cl_build_options))
+                .build(options=program[entrypoint].options.cl_build_options))
 
         cl_kernels = _Kernels()
         for dp in codegen_result.device_programs:
@@ -316,7 +319,11 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
         return _KernelInfo(
                 program=program,
                 cl_kernels=cl_kernels,
-                implemented_data_info=codegen_result.implemented_data_info,
+                implemented_data_info=[i for i, h in
+                    zip(codegen_result.implemented_data_infos,
+                        codegen_result.host_programs) if
+                    h.name.endswith(entrypoint)][0],
+                # implemented_data_info=codegen_result.implemented_data_info[0],
                 invoker=self.get_invoker(program, codegen_result))
 
     def __call__(self, queue, **kwargs):

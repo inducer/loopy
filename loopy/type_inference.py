@@ -695,6 +695,50 @@ class TypeInferenceMapper(CombineMapper):
     def map_sub_array_ref(self, expr):
         return self.rec(expr.subscript)
 
+# }}}
+
+
+# {{{ TypeReader
+
+class TypeReader(TypeInferenceMapper):
+    def __init__(self, kernel, callables, new_assignments={}):
+        self.kernel = kernel
+        self.callables = callables
+        self.new_assignments = new_assignments
+
+    # {{{ disabled interface
+
+    def copy(self, *args, **kwargs):
+        raise ValueError("Not allowed in TypeReader")
+
+    # }}}
+
+    def map_call(self, expr, return_tuple=False):
+        identifier = expr.function
+        if isinstance(identifier, (Variable, ResolvedFunction)):
+            identifier = identifier.name
+
+        # specializing the known function wrt type
+        if isinstance(expr.function, ResolvedFunction):
+            in_knl_callable = self.callables[expr.function.name]
+
+            arg_id_to_dtype = in_knl_callable.arg_id_to_dtype
+
+            if arg_id_to_dtype is None:
+                return []
+
+            # collecting result dtypes in order of the assignees
+            if -1 in arg_id_to_dtype and arg_id_to_dtype[-1] is not None:
+                if return_tuple:
+                    return [get_return_types_as_tuple(arg_id_to_dtype)]
+                else:
+                    return [arg_id_to_dtype[-1]]
+        else:
+            raise NotImplementedError()
+
+        return []
+
+    map_call_with_kwargs = map_call
 
 # }}}
 

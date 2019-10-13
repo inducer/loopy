@@ -243,65 +243,6 @@ class Program(ImmutableRecord):
 
         return self.copy(entrypoints=entrypoints)
 
-    def get_grid_size_upper_bounds(self, entrypoint, ignore_auto=False):
-        #FIXME: docs
-        """Return a tuple (global_size, local_size) containing a grid that
-        could accommodate execution of *all* instructions in the kernel.
-
-        *global_size* and *local_size* are :class:`islpy.PwAff` objects.
-        """
-        # do the check over here, get the thing as a dict.
-        def to_dim_tuple(size_dict, which, forced_sizes={}):
-            forced_sizes = forced_sizes.copy()
-
-            size_list = []
-            sorted_axes = sorted(six.iterkeys(size_dict))
-
-            while sorted_axes or forced_sizes:
-                if sorted_axes:
-                    cur_axis = sorted_axes.pop(0)
-                else:
-                    cur_axis = None
-
-                if len(size_list) in forced_sizes:
-                    size_list.append(forced_sizes.pop(len(size_list)))
-                    continue
-
-                assert cur_axis is not None
-
-                if cur_axis > len(size_list):
-                    raise LoopyError("%s axis %d unused for %s" % (
-                        which, len(size_list), self.name))
-
-                size_list.append(size_dict[cur_axis])
-
-            return tuple(size_list)
-
-        global_sizes, local_sizes = (self.callables_table[entrypoint]
-                .subkernel
-                .get_grid_size_upper_bounds(
-                    self.callables_table, ignore_auto=ignore_auto))
-
-        return (to_dim_tuple(global_sizes, "global"),
-                to_dim_tuple(local_sizes, "local", forced_sizes=self.local_sizes))
-
-    def get_grid_size_upper_bounds_as_exprs(self, entrypoint, ignore_auto=False):
-        #FIXME: docs
-        """Return a tuple (global_size, local_size) containing a grid that
-        could accommodate execution of *all* instructions in the kernel.
-
-        *global_size* and *local_size* are :mod:`pymbolic` expressions
-        """
-        # do the check over here, get the thing as a dict.
-        grid_size, group_size = self.get_grid_sizes_for_insn_ids(
-                entrypoint, ignore_auto)
-
-        def tup_to_exprs(tup):
-            from loopy.symbolic import pw_aff_to_expr
-            return tuple(pw_aff_to_expr(i, int_ok=True) for i in tup)
-
-        return tup_to_exprs(grid_size), tup_to_exprs(group_size)
-
     @property
     def state(self):
         """ Returns an instance of :class:`loopy.kernel.KernelState`. """

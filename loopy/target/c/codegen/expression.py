@@ -39,7 +39,7 @@ from pymbolic import var
 
 
 from loopy.expression import dtype_to_type_context
-from loopy.type_inference import TypeInferenceMapper
+from loopy.type_inference import TypeReader
 
 from loopy.diagnostic import LoopyError
 from loopy.tools import is_integer
@@ -54,7 +54,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         self.codegen_state = codegen_state
 
         if type_inf_mapper is None:
-            type_inf_mapper = TypeInferenceMapper(self.kernel,
+            type_inf_mapper = TypeReader(self.kernel,
                     self.codegen_state.callables_table)
         self.type_inf_mapper = type_inf_mapper
 

@@ -866,6 +866,8 @@ class KernelExecutorBase(object):
             except KeyError:
                 pass
 
+        import pudb; pu.db
+
         logger.debug("%s: invoker cache miss" % kernel.name)
 
         invoker = self.get_invoker_uncached(kernel, *args)

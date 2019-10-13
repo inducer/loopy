@@ -66,7 +66,11 @@ class GeneratedProgram(ImmutableRecord):
 
 class CodeGenerationResult(ImmutableRecord):
     """
-    .. attribute:: host_program
+    .. attribute:: host_programs
+
+        A list of :class:`GeneratedProgram` instances
+        intended to run on the host.
+
     .. attribute:: device_programs
 
         A list of :class:`GeneratedProgram` instances
@@ -99,12 +103,12 @@ class CodeGenerationResult(ImmutableRecord):
 
         if codegen_state.is_generating_device_code:
             kwargs = {
-                    "host_program": None,
+                    "host_programs": [],
                     "device_programs": [prg],
                     }
         else:
             kwargs = {
-                    "host_program": prg,
+                    "host_programs": [prg],
                     "device_programs": [],
                     }
 
@@ -118,8 +122,8 @@ class CodeGenerationResult(ImmutableRecord):
 
         return (
                 "".join(preamble_codes)
-                +
-                str(self.host_program.ast))
+                + "\n"
+                + "\n\n".join(str(hp.ast) for hp in self.host_programs))
 
     def device_code(self):
         preamble_codes = process_preambles(getattr(self, "device_preambles", []))
@@ -141,7 +145,7 @@ class CodeGenerationResult(ImmutableRecord):
                 + "\n"
                 + "\n\n".join(str(dp.ast) for dp in self.device_programs)
                 + "\n\n"
-                + str(self.host_program.ast))
+                + "\n\n".join(str(hp.ast) for hp in self.host_programs))
 
     def current_program(self, codegen_state):
         if codegen_state.is_generating_device_code:
@@ -150,7 +154,10 @@ class CodeGenerationResult(ImmutableRecord):
             else:
                 result = None
         else:
-            result = self.host_program
+            if self.host_programs:
+                result = self.host_programs[-1]
+            else:
+                result = None
 
         if result is None:
             ast = codegen_state.ast_builder.ast_block_class([])
@@ -174,7 +181,11 @@ class CodeGenerationResult(ImmutableRecord):
         else:
             assert program.name == codegen_state.gen_program_name
             assert not program.is_device_program
-            return self.copy(host_program=program)
+            return self.copy(
+                    host_programs=(
+                        self.host_programs[:-1]
+                        +
+                        [program]))
 
     def current_ast(self, codegen_state):
         return self.current_program(codegen_state).ast
@@ -195,7 +206,7 @@ def merge_codegen_results(codegen_state, elements, collapse=True):
 
     if not elements:
         return CodeGenerationResult(
-                host_program=None,
+                host_programs=[],
                 device_programs=[],
                 implemented_domains={},
                 implemented_data_info=codegen_state.implemented_data_info)
@@ -293,7 +304,7 @@ def generate_host_or_device_program(codegen_state, schedule_index):
         codegen_result = build_loop_nest(codegen_state, schedule_index)
 
     if (codegen_state.is_generating_device_code) or (
-            codegen_state.kernel.is_called_from_host):
+            codegen_state.is_entrypoint):
         codegen_result = merge_codegen_results(
                 codegen_state,
                 ast_builder.generate_top_of_body(codegen_state)
@@ -317,8 +328,10 @@ def generate_host_or_device_program(codegen_state, schedule_index):
                     body_ast=ast_builder.process_ast(body_ast)))
     else:
         codegen_result = codegen_result.copy(
-                host_program=None)
+                host_programs=[])
 
     return codegen_result
 
 # }}}
+
+# vim: foldmethod=marker

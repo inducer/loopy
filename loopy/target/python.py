@@ -29,7 +29,7 @@ import numpy as np
 
 from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import StringifyMapper
-from loopy.type_inference import TypeInferenceMapper
+from loopy.type_inference import TypeReader
 from loopy.kernel.data import ValueArg
 from loopy.diagnostic import LoopyError  # noqa
 from loopy.target import ASTBuilderBase
@@ -44,7 +44,7 @@ class ExpressionToPythonMapper(StringifyMapper):
         self.codegen_state = codegen_state
 
         if type_inf_mapper is None:
-            type_inf_mapper = TypeInferenceMapper(self.kernel,
+            type_inf_mapper = TypeReader(self.kernel,
                     self.codegen_state.callables_table)
         self.type_inf_mapper = type_inf_mapper
 

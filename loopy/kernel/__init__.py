@@ -1139,7 +1139,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return global_sizes, local_sizes
 
     def get_grid_sizes_for_insn_ids(self, insn_ids, callables_table,
-            ignore_auto=False):
+            ignore_auto=False, return_dict=False):
         #Fixme: Re-add the memoize wrap here?
         # Fixme: docs
         """Return a tuple (global_size, local_size) containing a grid that
@@ -1161,10 +1161,40 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         global_sizes, local_sizes = self.get_grid_sizes_for_insn_ids_as_dicts(
                 insn_ids, callables_table, ignore_auto=ignore_auto)
 
-        return global_sizes, local_sizes
+        if return_dict:
+            return global_sizes, local_sizes
+
+        def to_dim_tuple(size_dict, which, forced_sizes={}):
+            forced_sizes = forced_sizes.copy()
+
+            size_list = []
+            sorted_axes = sorted(six.iterkeys(size_dict))
+
+            while sorted_axes or forced_sizes:
+                if sorted_axes:
+                    cur_axis = sorted_axes.pop(0)
+                else:
+                    cur_axis = None
+
+                if len(size_list) in forced_sizes:
+                    size_list.append(forced_sizes.pop(len(size_list)))
+                    continue
+
+                assert cur_axis is not None
+
+                if cur_axis > len(size_list):
+                    raise LoopyError("%s axis %d unused for %s" % (
+                        which, len(size_list), self.name))
+
+                size_list.append(size_dict[cur_axis])
+
+            return tuple(size_list)
+
+        return (to_dim_tuple(global_sizes, "global"),
+                to_dim_tuple(local_sizes, "local", forced_sizes=self.local_sizes))
 
     def get_grid_sizes_for_insn_ids_as_exprs(self, insn_ids,
-            callables_table, ignore_auto=False):
+            callables_table, ignore_auto=False, return_dict=False):
         # FIXME docs
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of all instructions whose IDs are given
@@ -1177,16 +1207,24 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         """
 
         grid_size, group_size = self.get_grid_sizes_for_insn_ids(
-                insn_ids, callables_table, ignore_auto)
+                insn_ids, callables_table, ignore_auto, return_dict)
 
-        def dict_to_exprs(d):
+        if return_dict:
+            def dict_to_exprs(d):
+                from loopy.symbolic import pw_aff_to_expr
+                return dict((k, pw_aff_to_expr(v, int_ok=True)) for k, v in
+                    six.iteritems(d))
+
+            return dict_to_exprs(grid_size), dict_to_exprs(group_size)
+
+        def tup_to_exprs(tup):
             from loopy.symbolic import pw_aff_to_expr
-            return dict((k, pw_aff_to_expr(v, int_ok=True)) for k, v in
-                six.iteritems(d))
+            return tuple(pw_aff_to_expr(i, int_ok=True) for i in tup)
 
-        return dict_to_exprs(grid_size), dict_to_exprs(group_size)
+        return tup_to_exprs(grid_size), tup_to_exprs(group_size)
 
-    def get_grid_size_upper_bounds(self, callables_table, ignore_auto=False):
+    def get_grid_size_upper_bounds(self, callables_table, ignore_auto=False,
+            return_dict=False):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of *all* instructions in the kernel.
 
@@ -1194,11 +1232,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         """
         return self.get_grid_sizes_for_insn_ids(
                 frozenset(insn.id for insn in self.instructions),
-                callables_table,
-                ignore_auto=ignore_auto)
+                callables_table, ignore_auto=ignore_auto)
 
     def get_grid_size_upper_bounds_as_exprs(self, callables_table,
-            ignore_auto=False):
+            ignore_auto=False, return_dict=False):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of *all* instructions in the kernel.
 
@@ -1206,11 +1243,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         *global_size* and *local_size* are :mod:`pymbolic` expressions
         """
-
         return self.get_grid_sizes_for_insn_ids_as_exprs(
                 frozenset(insn.id for insn in self.instructions),
-                callables_table,
-                ignore_auto=ignore_auto)
+                callables_table, ignore_auto=ignore_auto,
+                return_dict=return_dict)
 
     # }}}
 
