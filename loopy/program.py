@@ -479,9 +479,10 @@ def _get_callable_ids_for_knl(knl, callables):
     clbl_id_collector = CallablesIDCollector()
 
     return frozenset().union(*(
-        _get_callable_ids_for_knl(callables[clbl].subkernel, callables) if
-        isinstance(callables[clbl], CallableKernel) else frozenset([clbl])
-        for clbl in clbl_id_collector.map_kernel(knl))) | frozenset([knl.name])
+        _get_callable_ids_for_knl(callables[clbl].subkernel, callables) |
+        frozenset([clbl]) if isinstance(callables[clbl], CallableKernel) else
+        frozenset([clbl])
+        for clbl in clbl_id_collector.map_kernel(knl)))
 
 
 def _get_callable_ids(callables, entrypoints):
