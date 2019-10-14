@@ -316,6 +316,7 @@ class Program(ImmutableRecord):
         if self.entrypoints is None:
             if len([clbl for clbl in self.callables_table.values() if
                     isinstance(clbl, CallableKernel)]) == 1:
+                #FIXME: in place update, can we do any better?
                 self.entrypoints = frozenset([clbl.subkernel.name for
                     clbl in self.callables_table.values() if isinstance(clbl,
                         CallableKernel)])

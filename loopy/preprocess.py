@@ -2314,6 +2314,7 @@ def infer_arg_descr(program):
     from loopy.kernel.array import ArrayBase
     from loopy.kernel.function_interface import (ArrayArgDescriptor,
             ValueArgDescriptor)
+    from loopy import auto
 
     clbl_inf_ctx = make_clbl_inf_ctx(program.callables_table,
             program.entrypoints)
@@ -2331,7 +2332,7 @@ def infer_arg_descr(program):
         arg_id_to_descr = dict((arg.name, ArrayArgDescriptor(
             _tuple_if_int(arg.shape), arg.address_space, arg.dim_tags) if
             isinstance(arg, ArrayBase) else ValueArgDescriptor()) for arg in
-            program[e].args)
+            program[e].args if arg.shape not in (None, auto))
         new_callable, clbl_inf_ctx, _ = program.callables_table[e].with_descrs(
                 arg_id_to_descr, None, clbl_inf_ctx)
         clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable)
@@ -2434,6 +2435,20 @@ def preprocess_single_kernel(kernel, callables_table, device=None):
 
 
 def preprocess_program(program, device=None):
+
+    if len([clbl for clbl in six.itervalues(program.callables_table) if
+            isinstance(clbl, CallableKernel)]) == 1:
+        program = program.with_entrypoints(','.join(clbl.name for clbl in
+            six.itervalues(program.callables_table) if isinstance(clbl,
+                CallableKernel)))
+
+    if not program.entrypoints:
+        raise LoopyError("Translation unit did not receive any entrypoints")
+
+    from loopy.kernel import KernelState
+
+    if program.state < KernelState.CALLS_RESOLVED:
+        program = program.with_resolved_callables()
 
     if device is not None:
         # FIXME: Time to remove this? (Git blame shows 5 years ago)
