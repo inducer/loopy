@@ -39,7 +39,7 @@ from loopy.version import DATA_MODEL_VERSION
 from loopy.symbolic import CombineMapper
 from functools import reduce
 
-from loopy.kernel.function_interface import CallableKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 from pytools import ProcessLogger, memoize_method
 
@@ -442,10 +442,6 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
     """
 
     from loopy.kernel import KernelState
-    if kernel.schedule is None:
-        from loopy.schedule import get_one_scheduled_kernel
-        kernel = get_one_scheduled_kernel(kernel, callables_table)
-
     if kernel.state != KernelState.SCHEDULED:
         raise LoopyError("cannot generate code for a kernel that has not been "
                 "scheduled")
@@ -584,6 +580,40 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
     return codegen_result
 
 
+def diverge_callee_entrypoints(program):
+    from loopy.program import _get_callable_ids
+    from pytools import UniqueNameGenerator
+    callable_ids = _get_callable_ids(program.callables_table,
+            program.entrypoints)
+
+    new_callables = {}
+    renames = {}
+
+    vng = UniqueNameGenerator(list(six.iterkeys(program.callables_table)))
+
+    for clbl_id in callable_ids & program.entrypoints:
+        renames[clbl_id] = vng(based_on=clbl_id)
+
+    for name, clbl in six.iteritems(program.callables_table):
+        if isinstance(clbl, CallableKernel):
+            from loopy.program import (
+                    rename_resolved_functions_in_a_single_kernel)
+            knl = rename_resolved_functions_in_a_single_kernel(
+                    clbl.subkernel, renames)
+            new_callables[name] = clbl.copy(subkernel=knl)
+        elif isinstance(clbl, ScalarCallable):
+            new_callables[name] = clbl
+        else:
+            raise NotImplementedError(type(clbl))
+
+    for clbl_id in callable_ids & program.entrypoints:
+        knl = new_callables[clbl_id].subkernel.copy(name=renames[clbl_id])
+        new_callables[renames[clbl_id]] = new_callables[clbl_id].copy(
+                subkernel=knl)
+
+    return program.copy(callables_table=new_callables)
+
+
 @memoize_method
 def generate_code_v2(program):
     """
@@ -610,9 +640,29 @@ def generate_code_v2(program):
     from loopy.type_inference import infer_unknown_types
     program = infer_unknown_types(program, expect_completion=True)
 
+    new_callables = {}
+
+    for name, clbl in six.iteritems(program.callables_table):
+        if isinstance(clbl, CallableKernel):
+            from loopy.schedule import get_one_scheduled_kernel
+            knl = clbl.subkernel
+            if knl.schedule is None:
+                knl = get_one_scheduled_kernel(
+                            knl, program.callables_table)
+            new_callables[name] = clbl.copy(subkernel=knl)
+        elif isinstance(clbl, ScalarCallable):
+            new_callables[name] = clbl
+        else:
+            raise NotImplementedError(type(clbl))
+
+    program = program.copy(callables_table=new_callables)
+
+    program = diverge_callee_entrypoints(program)
+
     host_programs = []
     device_programs = []
     device_preambles = []
+    callee_fdecls = []
     implemented_data_infos = []
 
     for func_id, in_knl_callable in program.callables_table.items():
@@ -622,21 +672,21 @@ def generate_code_v2(program):
             #    point. By diverge we should rename the callees in kernels.
             # 2. Then pass the callee versions by saying is_entrypoint=False
             cgr = generate_code_for_a_single_kernel(in_knl_callable.subkernel,
-                        program.callables_table, program.target, True)
+                        program.callables_table, program.target, func_id in
+                        program.entrypoints)
             if func_id in program.entrypoints:
                 host_programs.extend(cgr.host_programs)
                 implemented_data_infos.append(cgr.implemented_data_info)
             else:
-                assert cgr.host_programs == []
+                # FIXME: This assertion should be valid
+                # assert cgr.host_programs == []
                 assert len(cgr.device_programs) == 1
                 #FIXME:
                 # if isinstance(callee_prog_ast, Collection):
                 #     for entry in callee_prog_ast.contents:
                 #         if isinstance(entry, FunctionBody):
                 #             callee_fdecls.append(entry.fdecl)
-
-                device_programs.insert(
-                        cgr.device_programs[0].ast.fdecl, 0)
+                callee_fdecls.append(cgr.device_programs[0].ast.fdecl)
 
             device_programs.extend(cgr.device_programs)
             device_preambles.extend(cgr.device_preambles)
@@ -644,6 +694,11 @@ def generate_code_v2(program):
         device_preambles.extend(list(in_knl_callable.generate_preambles(
             program.target)))
 
+    # adding the callee fdecls to the device_programs
+    from cgen import Collection
+    device_programs = ([device_programs[0].copy(
+            ast=Collection(callee_fdecls+[device_programs[0].ast]))] +
+            device_programs[1:])
     return CodeGenerationResult(
             host_programs=host_programs,
             device_programs=device_programs,

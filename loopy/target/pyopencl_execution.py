@@ -315,8 +315,9 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
                 .build(options=program[entrypoint].options.cl_build_options))
 
         cl_kernels = _Kernels()
-        for dp in codegen_result.device_programs:
-            setattr(cl_kernels, dp.name, getattr(cl_program, dp.name))
+        for dp in program.entrypoints:
+            #FIXME: This will fail for barriers, use a better option here.
+            setattr(cl_kernels, dp, getattr(cl_program, dp))
 
         return _KernelInfo(
                 program=program,
