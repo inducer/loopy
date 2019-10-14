@@ -310,6 +310,13 @@ class Program(ImmutableRecord):
         else:
             return result
 
+    def __getattr__(self, attr):
+        if attr in self.entrypoints:
+            return lambda *args, **kwargs: self(*args, entrypoint=attr,
+                    **kwargs)
+
+        return super(Program, self).__getattr__(attr)
+
     def __call__(self, *args, **kwargs):
         entrypoint = kwargs.get('entrypoint', None)
 
