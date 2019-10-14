@@ -478,10 +478,10 @@ class CallablesIDCollector(CombineMapper):
 def _get_callable_ids_for_knl(knl, callables):
     clbl_id_collector = CallablesIDCollector()
 
-    return frozenset().union((
-        _get_callable_ids_for_knl(callables[clbl].subkernel) if
+    return frozenset().union(*(
+        _get_callable_ids_for_knl(callables[clbl].subkernel, callables) if
         isinstance(callables[clbl], CallableKernel) else clbl
-        for clbl in clbl_id_collector.map_kernel(knl)))
+        for clbl in clbl_id_collector.map_kernel(knl))) | frozenset([knl.name])
 
 
 def _get_callable_ids(callables, entrypoints):
@@ -670,10 +670,7 @@ class CallablesInferenceContext(ImmutableRecord):
 
     def __getitem__(self, name):
         result = self.callables[name]
-        if isinstance(result, CallableKernel):
-            return result.subkernel
-        else:
-            return result
+        return result
 
 
 # {{{ helper functions

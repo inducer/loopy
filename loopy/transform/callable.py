@@ -102,7 +102,7 @@ def fuse_translation_units(translation_units, collision_not_ok=True):
 
     return Program(
             entrypoints=frozenset().union(*(
-                t.entrypoints for t in translation_units)),
+                t.entrypoints or frozenset() for t in translation_units)),
             callables_table=callables_table,
             target=translation_units[0].target)
 
