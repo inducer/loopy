@@ -480,7 +480,7 @@ def _get_callable_ids_for_knl(knl, callables):
 
     return frozenset().union(*(
         _get_callable_ids_for_knl(callables[clbl].subkernel, callables) if
-        isinstance(callables[clbl], CallableKernel) else clbl
+        isinstance(callables[clbl], CallableKernel) else frozenset([clbl])
         for clbl in clbl_id_collector.map_kernel(knl))) | frozenset([knl.name])
 
 
