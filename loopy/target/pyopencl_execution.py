@@ -152,8 +152,8 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
     # {{{ generate invocation
 
     def generate_invocation(self, gen, program_name, args,
-            program, implemented_data_info):
-        if program.root_kernel.options.cl_exec_manage_array_events:
+            kernel, implemented_data_info):
+        if kernel.options.cl_exec_manage_array_events:
             gen("""
                 if wait_for is None:
                     wait_for = []
@@ -177,13 +177,13 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                 + args
                 + ["wait_for=wait_for", "allocator=allocator"])))
 
-        if program.root_kernel.options.cl_exec_manage_array_events:
+        if kernel.options.cl_exec_manage_array_events:
             gen("")
             from loopy.kernel.data import ArrayArg
             for arg in implemented_data_info:
                 if (issubclass(arg.arg_class, ArrayArg)
                         and arg.base_name in (
-                            program.root_kernel.get_written_variables())):
+                            kernel.get_written_variables())):
                     gen("{arg_name}.add_event(_lpy_evt)".format(arg_name=arg.name))
 
     # }}}
@@ -191,7 +191,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
     # {{{
 
     def generate_output_handler(
-            self, gen, options, program, implemented_data_info):
+            self, gen, options, kernel, implemented_data_info):
 
         from loopy.kernel.data import KernelArgument
 
@@ -209,7 +209,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                         continue
 
                     is_written = arg.base_name in (
-                            program.root_kernel.get_written_variables())
+                            kernel.get_written_variables())
                     if is_written:
                         gen("%s = %s.get(queue=queue)" % (arg.name, arg.name))
 
@@ -221,12 +221,12 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                         for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
                         if arg.base_name in
-                        program.root_kernel.get_written_variables()))
+                        kernel.get_written_variables()))
         else:
             out_args = [arg
                     for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
-                    if arg.base_name in program.root_kernel.get_written_variables()]
+                    if arg.base_name in kernel.get_written_variables()]
             if out_args:
                 gen("return _lpy_evt, (%s,)"
                         % ", ".join(arg.name for arg in out_args))
@@ -273,15 +273,17 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
             self.program = program.copy(target=(
                 program.target.with_device(context.devices[0])))
 
-    def get_invoker_uncached(self, kernel, codegen_result):
+    def get_invoker_uncached(self, program, entrypoint, codegen_result):
         generator = PyOpenCLExecutionWrapperGenerator()
-        return generator(kernel, codegen_result)
+        return generator(program, entrypoint, codegen_result)
 
     @memoize_method
     def program_info(self, entrypoint, arg_to_dtype_set=frozenset(),
             all_kwargs=None):
-        program = self.get_typed_and_scheduled_program(entrypoint, arg_to_dtype_set)
+        program = self.get_typed_and_scheduled_program(entrypoint,
+                arg_to_dtype_set)
 
+        # FIXME: now just need to add the types to the arguments
         from loopy.codegen import generate_code_v2
         from loopy.target.execution import get_highlighted_code
         codegen_result = generate_code_v2(program)
@@ -324,7 +326,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
                         codegen_result.host_programs) if
                     h.name.endswith(entrypoint)][0],
                 # implemented_data_info=codegen_result.implemented_data_info[0],
-                invoker=self.get_invoker(program, codegen_result))
+                invoker=self.get_invoker(program, entrypoint, codegen_result))
 
     def __call__(self, queue, **kwargs):
         """
@@ -361,6 +363,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         program_info = self.program_info(kwargs['entrypoint'],
                 self.arg_to_dtype_set(kwargs))
+        kwargs.pop('entrypoint')
 
         return program_info.invoker(
                 program_info.cl_kernels, queue, allocator, wait_for,
