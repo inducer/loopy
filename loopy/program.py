@@ -260,8 +260,9 @@ class Program(ImmutableRecord):
         return self.copy(callables_table=new_callables)
 
     def with_resolved_callables(self):
-
         from loopy.library.function import get_loopy_callables
+        from loopy.kernel import KernelState
+
         known_callables = self.target.get_device_ast_builder().known_callables
         known_callables.update(get_loopy_callables())
         known_callables.update(self.callables_table)
@@ -285,6 +286,7 @@ class Program(ImmutableRecord):
                     known_callables)
             knl = rule_mapping_context.finish_kernel(
                     callables_collector.map_kernel(knl))
+            knl = knl.copy(state=KernelState.CALLS_RESOLVED)
             callables_table[top] = callables_table[top].copy(subkernel=knl)
 
             for func, clbl in six.iteritems(callables_collector.resolved_functions):

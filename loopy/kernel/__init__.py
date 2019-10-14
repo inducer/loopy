@@ -97,8 +97,9 @@ class _UniqueVarNameGenerator(UniqueNameGenerator):
 
 class KernelState:  # noqa
     INITIAL = 0
-    PREPROCESSED = 1
-    SCHEDULED = 2
+    CALLS_RESOLVED = 1
+    PREPROCESSED = 2
+    SCHEDULED = 3
 
 # {{{ kernel_state, KernelState compataibility
 
@@ -327,6 +328,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         if state not in [
                 KernelState.INITIAL,
+                KernelState.CALLS_RESOLVED,
                 KernelState.PREPROCESSED,
                 KernelState.SCHEDULED,
                 ]:

@@ -599,7 +599,7 @@ def generate_code_v2(program):
         program = make_program(program)
 
     from loopy.kernel import KernelState
-    if program.state == KernelState.INITIAL:
+    if program.state < KernelState.PREPROCESSED:
         # Note that we cannot have preprocessing separately for everyone.
         # Since, now the preprocessing of each one depends on the other.
         # So we check if any one of the callable kernels are not preprocesses
