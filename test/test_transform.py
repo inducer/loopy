@@ -135,7 +135,7 @@ def test_to_batched_temp(ctx_factory):
              "cnst",
              dtype=np.float32,
              shape=(),
-             scope=lp.temp_var_scope.PRIVATE), '...'])
+             address_space=lp.AddressSpace.PRIVATE), '...'])
     knl = lp.add_and_infer_dtypes(knl, dict(out=np.float32,
                                             x=np.float32,
                                             a=np.float32))

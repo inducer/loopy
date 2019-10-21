@@ -698,7 +698,7 @@ def set_temporary_scope(kernel, temp_var_names, scope):
         except KeyError:
             raise LoopyError("temporary '%s' not found" % tv_name)
 
-        new_temp_vars[tv_name] = tv.copy(scope=scope)
+        new_temp_vars[tv_name] = tv.copy(address_space=scope)
 
     return kernel.copy(temporary_variables=new_temp_vars)
 
