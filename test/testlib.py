@@ -171,11 +171,6 @@ class Log2Callable(lp.ScalarCallable):
                 callables_table)
 
 
-def register_log2_lookup(target, identifier):
-    if identifier == 'log2':
-        return Log2Callable(name='log2')
-    return None
-
 # }}}
 
 # vim: foldmethod=marker

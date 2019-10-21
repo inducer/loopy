@@ -1900,14 +1900,18 @@ class SliceToInameReplacer(IdentityMapper):
             if isinstance(index, Slice):
                 unique_var_name = self.var_name_gen(based_on="i")
                 if expr.aggregate.name in self.knl.arg_dict:
-                    domain_length = self.knl.arg_dict[expr.aggregate.name].shape[i]
-                elif expr.aggregate.name in self.knl.temporary_variables:
-                    domain_length = self.knl.temporary_variables[
-                            expr.aggregate.name].shape[i]
+                    shape = self.knl.arg_dict[expr.aggregate.name].shape
                 else:
+                    assert expr.aggregate.name in self.knl.temporary_variables
+                    shape = self.knl.temporary_variables[
+                            expr.aggregate.name].shape
+                if shape is None or shape[i] is None:
                     raise LoopyError("Slice notation is only supported for "
                             "variables whose shapes are known at creation time "
-                            "-- maybe add the shape for the sliced argument.")
+                            "-- maybe add the shape for '{}'.".format(
+                                expr.aggregate.name))
+
+                domain_length = shape[i]
                 start, stop, step = get_slice_params(
                         index, domain_length)
                 subscript_iname_bounds[unique_var_name] = (start, stop, step)
@@ -2025,7 +2029,7 @@ def realize_slices_array_inputs_as_sub_array_refs(kernel):
 
 # {{{ kernel creation top-level
 
-def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
+def make_function(domains, instructions, kernel_data=["..."], **kwargs):
     """User-facing kernel creation entrypoint.
 
     :arg domains:
@@ -2378,9 +2382,13 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     return make_program(knl)
 
 
-def make_function(*args, **kwargs):
-    #FIXME: Do we need this anymore??
-    return make_kernel(*args, **kwargs)
+def make_kernel(*args, **kwargs):
+    tunit = make_function(*args, **kwargs)
+    name, = [name for name in tunit.callables_table]
+    return tunit.with_entrypoints(name)
+
+
+make_kernel.__doc__ = make_function.__doc__
 
 # }}}
 

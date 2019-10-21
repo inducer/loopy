@@ -42,7 +42,7 @@ from loopy.symbolic import SubArrayRef
 __doc__ = """
 .. currentmodule:: loopy
 
-.. autofunction:: register_function_id_to_in_knl_callable_mapper
+.. autofunction:: register_callable
 
 .. autofunction:: fuse_translation_units
 """
@@ -61,16 +61,16 @@ def register_callable(translation_unit, function_identifier, callable_,
     from loopy.kernel.function_interface import InKernelCallable
     assert isinstance(callable_, InKernelCallable)
 
-    if (function_identifier in translation_unit.callables) and (
+    if (function_identifier in translation_unit.callables_table) and (
             redefining_not_ok):
         raise LoopyError("Redifining function identifier not allowed. Set the"
                 " option 'redefining_not_ok=False' to bypass this error.")
 
-    callables = translation_unit.copy()
+    callables = translation_unit.callables_table.copy()
     callables[function_identifier] = callable_
 
     return translation_unit.copy(
-            callables=callables)
+            callables_table=callables)
 
 
 def fuse_translation_units(translation_units, collision_not_ok=True):

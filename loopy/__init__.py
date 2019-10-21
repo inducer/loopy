@@ -178,7 +178,7 @@ __all__ = [
 
         "ScalarCallable", "CallableKernel",
 
-        "CallablesTable", "Program", "make_program",
+        "Program", "make_program",
 
         "KernelArgument",
         "ValueArg", "ArrayArg", "GlobalArg", "ConstantArg", "ImageArg",

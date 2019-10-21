@@ -41,7 +41,7 @@ def test_register_function_lookup(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    from testlib import register_log2_lookup
+    from testlib import Log2Callable
 
     x = np.random.rand(10)
     queue = cl.CommandQueue(ctx)
@@ -51,8 +51,7 @@ def test_register_function_lookup(ctx_factory):
             """
             y[i] = log2(x[i])
             """)
-    prog = lp.register_function_id_to_in_knl_callable_mapper(prog,
-            register_log2_lookup)
+    prog = lp.register_callable(prog, 'log2', Log2Callable('log2'))
 
     evt, (out, ) = prog(queue, x=x)
 
@@ -94,10 +93,8 @@ def test_register_knl(ctx_factory, inline):
                 '...']
             )
 
-    knl = lp.register_callable_kernel(
-            parent_knl, child_knl)
-    knl = lp.register_callable_kernel(
-            knl, grandchild_knl)
+    knl = lp.fuse_translation_units([grandchild_knl, child_knl, parent_knl])
+
     if inline:
         knl = lp.inline_callable_kernel(knl, 'linear_combo2')
         knl = lp.inline_callable_kernel(knl, 'linear_combo1')

@@ -199,7 +199,8 @@ class CodeGenerationState(object):
 
     .. attribute:: callables_table
 
-        An instance of :class:`loopy.CallablesTable`.
+        A mapping from callable names to instances of
+        :class:`loopy.kernel.function_interface.InKernelCallable`.
 
     .. attribute:: is_entrypoint
 
@@ -699,10 +700,12 @@ def generate_code_v2(program):
     device_programs = ([device_programs[0].copy(
             ast=Collection(callee_fdecls+[device_programs[0].ast]))] +
             device_programs[1:])
-    return CodeGenerationResult(
+    cgr = CodeGenerationResult(
             host_programs=host_programs,
             device_programs=device_programs,
             implemented_data_infos=implemented_data_infos)
+
+    return cgr
 
 
 def generate_code(kernel, device=None):
