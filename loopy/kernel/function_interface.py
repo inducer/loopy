@@ -739,7 +739,7 @@ class CallableKernel(InKernelCallable):
         unknown_deps = dependents - self.subkernel.all_variable_names()
 
         if expr is None:
-            assert dependents == frozenset()
+            assert unknown_deps == frozenset()
         # FIXME: Need to make sure that we make the name of the variables
         # unique, and then run a subst_mapper
 

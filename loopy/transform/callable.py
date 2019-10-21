@@ -554,7 +554,7 @@ def _match_caller_callee_argument_dimension_(program, callee_function_name):
 
     .. note::
 
-        The callee kernel addressed by *callee_funciton_name*, should be
+        The callee kernel addressed by *callee_function_name*, should be
         called only once.
     """
     assert isinstance(program, Program)

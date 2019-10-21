@@ -403,7 +403,8 @@ def test_non_sub_array_refs_arguments(ctx_factory):
     callee = lp.make_function("{[i] : 0 <= i < 6}", "a[i] = a[i] + j",
             [lp.GlobalArg("a", dtype="double", shape=(6,), is_output=True,
                 is_input=True),
-                lp.ValueArg("j", dtype="int")], name="callee")
+                lp.ValueArg("j", dtype="int")], name="callee",
+            target=lp.CTarget())
     caller1 = lp.make_kernel("{[j] : 0 <= j < 2}", "a[:] = callee(a[:], b[0])",
             [lp.GlobalArg("a", dtype="double", shape=(6, ), is_output=False),
             lp.GlobalArg("b", dtype="double", shape=(1, ), is_output=False)],
@@ -420,20 +421,22 @@ def test_non_sub_array_refs_arguments(ctx_factory):
             name="caller", target=lp.CTarget())
 
     registered = lp.merge([caller1, callee])
-    inlined = _match_caller_callee_argument_dimension_(registered, callee.name)
-    inlined = lp.inline_callable_kernel(inlined, callee.name)
+    inlined = _match_caller_callee_argument_dimension_(registered, 'callee')
+    inlined = lp.inline_callable_kernel(inlined, 'callee')
 
     print(inlined)
 
     registered = lp.merge([caller2, callee])
-    inlined = _match_caller_callee_argument_dimension_(registered, callee.name)
-    inlined = lp.inline_callable_kernel(inlined, callee.name)
+    inlined = _match_caller_callee_argument_dimension_(registered, 'callee')
+    inlined = lp.inline_callable_kernel(inlined, 'callee')
 
     print(inlined)
 
     registered = lp.merge([caller3, callee])
-    inlined = _match_caller_callee_argument_dimension_(registered, callee.name)
-    inlined = lp.inline_callable_kernel(inlined, callee.name)
+    inlined = _match_caller_callee_argument_dimension_(registered, 'callee')
+    inlined = lp.inline_callable_kernel(inlined, 'callee')
+
+    print(inlined)
 
     print(inlined)
 
@@ -462,7 +465,7 @@ def test_empty_sub_array_refs(ctx_factory, inline):
     caller = lp.merge([caller, callee])
 
     if inline:
-        caller = lp.inline_callable_kernel(caller, callee.name)
+        caller = lp.inline_callable_kernel(caller, 'wence_function')
 
     evt, (out, ) = caller(queue, x=x, y=y)
     assert np.allclose(out, x-y)

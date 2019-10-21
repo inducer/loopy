@@ -321,7 +321,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
 def pack_and_unpack_args_for_call(program, *args, **kwargs):
     assert isinstance(program, Program)
 
-    new_resolved_functions = {}
+    new_callables = {}
     for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             new_subkernel = pack_and_unpack_args_for_call_for_single_kernel(
@@ -329,17 +329,14 @@ def pack_and_unpack_args_for_call(program, *args, **kwargs):
                     *args, **kwargs)
             in_knl_callable = in_knl_callable.copy(
                     subkernel=new_subkernel)
-
         elif isinstance(in_knl_callable, ScalarCallable):
             pass
         else:
             raise NotImplementedError("Unknown type of callable %s." % (
                 type(in_knl_callable).__name__))
 
-        new_resolved_functions[func_id] = in_knl_callable
+        new_callables[func_id] = in_knl_callable
 
-    new_callables_table = program.callables_table.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(callables_table=new_callables_table)
+    return program.copy(callables_table=new_callables)
 
 # vim: foldmethod=marker

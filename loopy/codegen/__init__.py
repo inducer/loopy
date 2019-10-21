@@ -703,6 +703,7 @@ def generate_code_v2(program):
     cgr = CodeGenerationResult(
             host_programs=host_programs,
             device_programs=device_programs,
+            device_preambles=device_preambles,
             implemented_data_infos=implemented_data_infos)
 
     return cgr

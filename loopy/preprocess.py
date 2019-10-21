@@ -2314,7 +2314,7 @@ def infer_arg_descr(program):
     from loopy.kernel.array import ArrayBase
     from loopy.kernel.function_interface import (ArrayArgDescriptor,
             ValueArgDescriptor)
-    from loopy import auto
+    from loopy import auto, ValueArg
 
     clbl_inf_ctx = make_clbl_inf_ctx(program.callables_table,
             program.entrypoints)
@@ -2329,10 +2329,17 @@ def infer_arg_descr(program):
             if isinstance(s, int):
                 return s,
             return s
-        arg_id_to_descr = dict((arg.name, ArrayArgDescriptor(
-            _tuple_if_int(arg.shape), arg.address_space, arg.dim_tags) if
-            isinstance(arg, ArrayBase) else ValueArgDescriptor()) for arg in
-            program[e].args if arg.shape not in (None, auto))
+        arg_id_to_descr = {}
+        for arg in program[e].args:
+            if isinstance(arg, ArrayBase):
+                if arg.shape not in (None, auto):
+                    arg_id_to_descr[arg.name] = ArrayArgDescriptor(
+                            _tuple_if_int(arg.shape), arg.address_space,
+                            arg.dim_tags)
+            elif isinstance(arg, ValueArg):
+                arg_id_to_descr[arg.name] = ValueArgDescriptor()
+            else:
+                raise NotImplementedError()
         new_callable, clbl_inf_ctx, _ = program.callables_table[e].with_descrs(
                 arg_id_to_descr, None, clbl_inf_ctx)
         clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable)
