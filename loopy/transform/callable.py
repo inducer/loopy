@@ -25,10 +25,8 @@ THE SOFTWARE.
 import six
 
 import islpy as isl
-from pymbolic.primitives import CallWithKwargs
 
 from loopy.kernel import LoopKernel
-from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
         Assignment, CInstruction, _DataObliviousInstruction)
@@ -44,7 +42,7 @@ __doc__ = """
 
 .. autofunction:: register_callable
 
-.. autofunction:: fuse_translation_units
+.. autofunction:: merge
 """
 
 
@@ -73,7 +71,7 @@ def register_callable(translation_unit, function_identifier, callable_,
             callables_table=callables)
 
 
-def fuse_translation_units(translation_units, collision_not_ok=True):
+def merge(translation_units, collision_not_ok=True):
     """
     :param translation_units: A list of :class:`loopy.Program`.
     :param collision_not_ok: An instance of :class:`bool`.
@@ -84,7 +82,7 @@ def fuse_translation_units(translation_units, collision_not_ok=True):
 
     for i in range(1, len(translation_units)):
         if translation_units[i].target != translation_units[i-1].target:
-            raise LoopyError("fuse_translation_units should have"
+            raise LoopyError("merge() should have"
                     " translation_units to be of the same target to be able to"
                     " fuse.")
     callables_table = {}
@@ -95,7 +93,7 @@ def fuse_translation_units(translation_units, collision_not_ok=True):
 
     if len(callables_table) != sum(len(trans_unit.callables_table) for trans_unit in
             translation_units) and collision_not_ok:
-        raise LoopyError("translation units in fuse_translation_units cannot"
+        raise LoopyError("translation units in merge() cannot"
                 " not contain callables with same names.")
 
     # }}}
@@ -362,23 +360,15 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
 
 # {{{ inline callable kernel
 
-def _inline_single_callable_kernel(caller_kernel, function_name,
+def _inline_single_callable_kernel(caller_kernel, callee_kernel,
         callables_table):
-    old_insns = caller_kernel.instructions
-    for insn in old_insns:
+    for insn in caller_kernel.instructions:
         if isinstance(insn, CallInstruction):
             # FIXME This seems to use identifiers across namespaces. Why not
             # check whether the function is a scoped function first? ~AK
-            if insn.expression.function.name in callables_table:
-                history_of_identifier = callables_table.history[
-                        insn.expression.function.name]
-
-                if function_name in history_of_identifier:
-                    in_knl_callable = callables_table[
-                            insn.expression.function.name]
-                    assert isinstance(in_knl_callable, CallableKernel)
-                    caller_kernel = _inline_call_instruction(
-                            caller_kernel, in_knl_callable.subkernel, insn)
+            if insn.expression.function.name == callee_kernel.name:
+                caller_kernel = _inline_call_instruction(
+                        caller_kernel, callee_kernel, insn)
         elif isinstance(insn, (MultiAssignmentBase, CInstruction,
                 _DataObliviousInstruction)):
             pass
@@ -387,7 +377,7 @@ def _inline_single_callable_kernel(caller_kernel, function_name,
                     "Unknown instruction type %s"
                     % type(insn).__name__)
 
-    return caller_kernel, callables_table
+    return caller_kernel
 
 
 # FIXME This should take a 'within' parameter to be able to only inline
@@ -398,34 +388,26 @@ def inline_callable_kernel(program, function_name):
     (scoped) name *function_name* inlined.
     """
     from loopy.preprocess import infer_arg_descr
+    program = program.with_resolved_callables()
     program = infer_arg_descr(program)
     callables_table = program.callables_table
-    old_callables_table = callables_table.copy()
+    new_callables = {}
+    callee = program[function_name]
 
-    edited_callable_kernels = {}
-
-    for func_id, in_knl_callable in old_callables_table.items():
-        if function_name not in old_callables_table.history[func_id] and (
-                isinstance(in_knl_callable, CallableKernel)):
-            caller_kernel = in_knl_callable.subkernel
-            caller_kernel, callables_table = (
-                    _inline_single_callable_kernel(caller_kernel,
-                        function_name,
-                        callables_table))
-            edited_callable_kernels[func_id] = in_knl_callable.copy(
-                    subkernel=caller_kernel)
-
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in callables_table.items():
-        if func_id in edited_callable_kernels:
-            new_resolved_functions[func_id] = edited_callable_kernels[func_id]
+    for func_id, in_knl_callable in six.iteritems(callables_table):
+        if isinstance(in_knl_callable, CallableKernel):
+            caller = in_knl_callable.subkernel
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=_inline_single_callable_kernel(caller,
+                        callee, program.callables_table))
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
         else:
-            new_resolved_functions[func_id] = in_knl_callable
+            raise NotImplementedError()
 
-    callables_table = callables_table.copy(
-            resolved_functions=new_resolved_functions)
+        new_callables[func_id] = in_knl_callable
 
-    return program.copy(callables_table=callables_table)
+    return program.copy(callables_table=new_callables)
 
 # }}}
 

@@ -132,7 +132,11 @@ class CallableResolver(RuleAwareIdentityMapper):
                             )
             else:
                 # FIXME: Once function mangler is completely deprecated raise here.
+                # Oh function mangler I loathe you so much!
                 pass
+        else:
+            self.resolved_functions[expr.function.name] = (
+                    self.known_callables[expr.function.name])
 
         return super(CallableResolver, self).map_call_with_kwargs(expr,
                 expn_state)
@@ -225,8 +229,9 @@ class Program(ImmutableRecord):
                     six.itervalues(self.callables_table) if
                     isinstance(callable_knl, CallableKernel)) > (
                             KernelState.INITIAL):
-                raise LoopyError("One of the kenels in the program has been "
-                        "preprocessed, cannot modify target now.")
+                if not isinstance(kwargs['target'], type(self.target)):
+                    raise LoopyError("One of the kenels in the program has been "
+                            "preprocessed, cannot modify target now.")
 
         return super(Program, self).copy(**kwargs)
 

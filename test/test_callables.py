@@ -93,7 +93,7 @@ def test_register_knl(ctx_factory, inline):
                 '...']
             )
 
-    knl = lp.fuse_translation_units([grandchild_knl, child_knl, parent_knl])
+    knl = lp.merge([grandchild_knl, child_knl, parent_knl])
 
     if inline:
         knl = lp.inline_callable_kernel(knl, 'linear_combo2')
@@ -134,8 +134,7 @@ def test_slices_with_negative_step(ctx_factory, inline):
                 '...']
             )
 
-    knl = lp.register_callable_kernel(
-            parent_knl, child_knl)
+    knl = lp.merge([parent_knl, child_knl])
     if inline:
         knl = lp.inline_callable_kernel(knl, 'linear_combo')
 
@@ -177,8 +176,7 @@ def test_register_knl_with_call_with_kwargs(ctx_factory, inline):
                                                      e=[j, l]: c[i, j, k, l, m])
             """)
 
-    knl = lp.register_callable_kernel(
-            caller_knl, callee_knl)
+    knl = lp.merge([caller_knl, callee_knl])
     if inline:
         knl = lp.inline_callable_kernel(knl, 'linear_combo')
 
@@ -220,16 +218,15 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
             """
             [j, l]: z[i, j, k, l, m] = linear_combo([j, l]: x[i, j, k, l, m],
                                                      [j, l]: y[i, j, k, l, m])
-            """
-            )
+            """, name='caller')
     caller_knl = lp.split_iname(caller_knl, "i", 4, inner_tag="l.1", outer_tag="g.1")
 
-    knl = lp.register_callable_kernel(
-            caller_knl, callee_knl)
+    knl = lp.merge([caller_knl, callee_knl])
 
     knl = lp.set_options(knl, 'return_dict')
 
-    gsize, lsize = knl.get_grid_size_upper_bounds_as_exprs()
+    gsize, lsize = knl['caller'].get_grid_size_upper_bounds_as_exprs(
+            knl.callables_table)
 
     if inline:
         knl = lp.inline_callable_kernel(knl, 'linear_combo')
@@ -280,9 +277,9 @@ def test_shape_translation_through_sub_array_ref(ctx_factory, inline):
             [l]: y3[l, l] = callee_fn3([l]: x3[l, l])
             """)
 
-    knl = lp.register_callable_kernel(knl, callee1)
-    knl = lp.register_callable_kernel(knl, callee2)
-    knl = lp.register_callable_kernel(knl, callee3)
+    knl = lp.merge([knl, callee1])
+    knl = lp.merge([knl, callee2])
+    knl = lp.merge([knl, callee3])
 
     if inline:
         knl = lp.inline_callable_kernel(knl, 'callee_fn1')
@@ -341,7 +338,7 @@ def test_multi_arg_array_call(ctx_factory):
     knl = lp.fix_parameters(knl, n=n)
     knl = lp.set_options(knl, return_dict=True)
 
-    knl = lp.register_callable_kernel(knl, argmin_kernel)
+    knl = lp.merge([knl, argmin_kernel])
     b = np.random.randn(n)
     evt, out_dict = knl(queue, b=b)
     tol = 1e-15
@@ -377,8 +374,8 @@ def test_packing_unpacking(ctx_factory, inline):
             [k]: y2[k] = callee_fn2([k]: x2[k])
             """)
 
-    knl = lp.register_callable_kernel(knl, callee1)
-    knl = lp.register_callable_kernel(knl, callee2)
+    knl = lp.merge([knl, callee1])
+    knl = lp.merge([knl, callee2])
 
     knl = lp.pack_and_unpack_args_for_call(knl, 'callee_fn1')
     knl = lp.pack_and_unpack_args_for_call(knl, 'callee_fn2')
@@ -422,19 +419,19 @@ def test_non_sub_array_refs_arguments(ctx_factory):
                 is_output=False), '...'],
             name="caller", target=lp.CTarget())
 
-    registered = lp.register_callable_kernel(caller1, callee)
+    registered = lp.merge([caller1, callee])
     inlined = _match_caller_callee_argument_dimension_(registered, callee.name)
     inlined = lp.inline_callable_kernel(inlined, callee.name)
 
     print(inlined)
 
-    registered = lp.register_callable_kernel(caller2, callee)
+    registered = lp.merge([caller2, callee])
     inlined = _match_caller_callee_argument_dimension_(registered, callee.name)
     inlined = lp.inline_callable_kernel(inlined, callee.name)
 
     print(inlined)
 
-    registered = lp.register_callable_kernel(caller3, callee)
+    registered = lp.merge([caller3, callee])
     inlined = _match_caller_callee_argument_dimension_(registered, callee.name)
     inlined = lp.inline_callable_kernel(inlined, callee.name)
 
@@ -462,7 +459,7 @@ def test_empty_sub_array_refs(ctx_factory, inline):
             """,
             [lp.GlobalArg('x, y', dtype=np.float64, shape=(10, )), '...'])
 
-    caller = lp.register_callable_kernel(caller, callee)
+    caller = lp.merge([caller, callee])
 
     if inline:
         caller = lp.inline_callable_kernel(caller, callee.name)
@@ -499,8 +496,7 @@ def test_array_inputs_to_callee_kernels(ctx_factory, inline):
                 '...']
             )
 
-    knl = lp.register_callable_kernel(
-            parent_knl, child_knl)
+    knl = lp.merge([parent_knl, child_knl])
     if inline:
         knl = lp.inline_callable_kernel(knl, 'linear_combo')
 
@@ -535,8 +531,8 @@ def test_stride_depending_on_args():
                 lp.ValueArg('N', dtype=np.int32), lp.GlobalArg('x',
                     shape=lp.auto, dtype=np.float64), '...'])
 
-    prog = lp.register_callable_kernel(prog, twice)
-    prog = lp.register_callable_kernel(prog, thrice)
+    prog = lp.merge([prog, twice])
+    prog = lp.merge([prog, thrice])
 
     # FIXME: actually test something
     print(lp.generate_code_v2(prog).device_code())
@@ -559,7 +555,7 @@ def test_unknown_stride_to_callee():
                     dtype=np.int32), lp.GlobalArg('x', shape=lp.auto,
                         dtype=np.float64), '...'])
 
-    prog = lp.register_callable_kernel(prog, twice)
+    prog = lp.merge([prog, twice])
 
     # FIXME: actually test something
     print(lp.generate_code_v2(prog).device_code())
@@ -580,7 +576,7 @@ def test_argument_matching_for_inplace_update(ctx_factory):
             x[:] = twice(x[:])
             """, [lp.GlobalArg('x', shape=(10,), dtype=np.float64)])
 
-    knl = lp.register_callable_kernel(knl, twice)
+    knl = lp.merge([knl, twice])
 
     x = np.random.randn(10)
     evt, (out, ) = knl(queue, x=np.copy(x))
@@ -603,7 +599,7 @@ def test_non_zero_start_in_subarray_ref(ctx_factory):
             [i]:y[i+5] = twice([j]: x[j])
             """, [lp.GlobalArg('x, y', shape=(10,), dtype=np.float64)])
 
-    knl = lp.register_callable_kernel(knl, twice)
+    knl = lp.merge([knl, twice])
 
     x = np.random.randn(10)
     evt, (out, ) = knl(queue, x=np.copy(x))

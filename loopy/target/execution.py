@@ -744,25 +744,26 @@ class KernelExecutorBase(object):
 
     def get_typed_and_scheduled_program_uncached(self, entrypoint, arg_to_dtype_set):
         from loopy.kernel.tools import add_dtypes
+        from loopy.kernel import KernelState
 
         program = self.program
         program = program.with_resolved_callables()
 
-        var_to_dtype = {}
-        entry_knl = program[entrypoint]
-        for var, dtype in arg_to_dtype_set:
-            if var in entry_knl.impl_arg_to_arg:
-                dest_name = entry_knl.impl_arg_to_arg[var].name
-            else:
-                dest_name = var
+        if arg_to_dtype_set:
+            var_to_dtype = {}
+            entry_knl = program[entrypoint]
+            for var, dtype in arg_to_dtype_set:
+                if var in entry_knl.impl_arg_to_arg:
+                    dest_name = entry_knl.impl_arg_to_arg[var].name
+                else:
+                    dest_name = var
 
-            var_to_dtype[dest_name] = dtype
+                var_to_dtype[dest_name] = dtype
 
-        program = program.with_kernel(add_dtypes(entry_knl, var_to_dtype))
+            program = program.with_kernel(add_dtypes(entry_knl, var_to_dtype))
 
-        from loopy.type_inference import infer_unknown_types
-        from loopy.kernel import KernelState
-        program = infer_unknown_types(program, expect_completion=True)
+            from loopy.type_inference import infer_unknown_types
+            program = infer_unknown_types(program, expect_completion=True)
 
         if program.state < KernelState.SCHEDULED:
             from loopy.preprocess import preprocess_program
