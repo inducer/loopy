@@ -376,18 +376,15 @@ def _check_reduction_is_triangular(kernel, expr, scan_param):
 
     sweep_lower_bound = isl.align_spaces(
             scan_param.sweep_lower_bound,
-            affs[0],
-            across_dim_types=True)
+            affs[0])
 
     sweep_upper_bound = isl.align_spaces(
             scan_param.sweep_upper_bound,
-            affs[0],
-            across_dim_types=True)
+            affs[0])
 
     scan_lower_bound = isl.align_spaces(
             scan_param.scan_lower_bound,
-            affs[0],
-            across_dim_types=True)
+            affs[0])
 
     from itertools import product
 
@@ -799,7 +796,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
                     TemporaryVariable(
                         name=new_assignee_name,
                         dtype=None,
-                        scope=AddressSpace.PRIVATE))
+                        address_space=AddressSpace.PRIVATE))
 
             from pymbolic import var
             new_assignee = var(new_assignee_name)
@@ -985,7 +982,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     name=name,
                     shape=(),
                     dtype=None,
-                    scope=AddressSpace.PRIVATE)
+                    address_space=AddressSpace.PRIVATE)
 
         from pymbolic import var
         temp_vars = tuple(var(n) for n in temp_var_names)

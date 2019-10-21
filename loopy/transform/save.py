@@ -228,7 +228,7 @@ class TemporarySaver(object):
             return TemporaryVariable(
                 name=self.name,
                 dtype=temporary.dtype,
-                scope=AddressSpace.GLOBAL,
+                address_space=AddressSpace.GLOBAL,
                 shape=self.new_shape)
 
         @property

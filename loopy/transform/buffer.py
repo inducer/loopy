@@ -378,7 +378,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
             dtype=var_descr.dtype,
             base_indices=(0,)*len(abm.non1_storage_shape),
             shape=tuple(abm.non1_storage_shape),
-            scope=temporary_scope)
+            address_space=temporary_scope)
 
     new_temporary_variables[buf_var_name] = temp_var
 
