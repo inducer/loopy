@@ -372,7 +372,7 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
 def add_prefetch(program, *args, **kwargs):
     assert isinstance(program, Program)
 
-    new_resolved_functions = {}
+    new_callables = {}
     for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             new_subkernel = add_prefetch_for_single_kernel(
@@ -387,11 +387,9 @@ def add_prefetch(program, *args, **kwargs):
             raise NotImplementedError("Unknown type of callable %s." % (
                 type(in_knl_callable).__name__))
 
-        new_resolved_functions[func_id] = in_knl_callable
+        new_callables[func_id] = in_knl_callable
 
-    new_callables_table = program.callables_table.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(callables_table=new_callables_table)
+    return program.copy(callables_table=new_callables)
 
 # }}}
 

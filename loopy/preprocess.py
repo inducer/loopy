@@ -1723,7 +1723,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
         from loopy.type_inference import (
                 infer_arg_and_reduction_dtypes_for_reduction_expression)
-        arg_dtypes, reduction_dtypes, callables_table = (
+        arg_dtypes, reduction_dtypes = (
                 infer_arg_and_reduction_dtypes_for_reduction_expression(
                     temp_kernel, expr, callables_table, unknown_types_ok))
 

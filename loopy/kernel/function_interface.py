@@ -79,7 +79,8 @@ class ArrayArgDescriptor(ImmutableRecord):
 
     .. attribute:: dim_tags
 
-        A tuple of instances of :class:`loopy.kernel.array._StrideArrayDimTagBase`
+        A tuple of instances of
+        :class:`loopy.kernel.array.ArrayDimImplementationTag`
     """
 
     fields = set(['shape', 'address_space', 'dim_tags'])
@@ -88,13 +89,13 @@ class ArrayArgDescriptor(ImmutableRecord):
 
         # {{{ sanity checks
 
-        from loopy.kernel.array import FixedStrideArrayDimTag
+        from loopy.kernel.array import ArrayDimImplementationTag
 
         assert isinstance(shape, tuple)
         assert isinstance(dim_tags, tuple)
 
         # FIXME at least vector dim tags should be supported
-        assert all(isinstance(dim_tag, FixedStrideArrayDimTag) for dim_tag in
+        assert all(isinstance(dim_tag, ArrayDimImplementationTag) for dim_tag in
                 dim_tags)
 
         # }}}
@@ -117,8 +118,8 @@ class ArrayArgDescriptor(ImmutableRecord):
 
     def depends_on(self):
         result = DependencyMapper(composite_leaves=False)(self.shape) | (
-                DependencyMapper(composite_leaves=False)(tuple(dim_tag.stride for
-                    dim_tag in self.dim_tags)))
+                frozenset().union(*(dim_tag.depends_on() for dim_tag in
+                    self.dim_tags)))
         return frozenset(var.name for var in result)
 
     # FIXME ArrayArgDescriptor should never need to be persisted, remove

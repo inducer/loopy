@@ -315,8 +315,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
                 .build(options=program[entrypoint].options.cl_build_options))
 
         cl_kernels = _Kernels()
-        for dp in program.entrypoints:
-            #FIXME: This will fail for barriers, use a better option here.
+        for dp in cl_program.kernel_names.split(';'):
             setattr(cl_kernels, dp, getattr(cl_program, dp))
 
         return _KernelInfo(

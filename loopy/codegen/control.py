@@ -179,7 +179,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
             if sched_item.synchronization_kind in ["global", "local"]:
                 # host code is assumed globally and locally synchronous
                 return CodeGenerationResult(
-                        host_program=None,
+                        host_programs=[],
                         device_programs=[],
                         implemented_domains={},
                         implemented_data_info=codegen_state.implemented_data_info)

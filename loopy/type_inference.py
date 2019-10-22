@@ -542,6 +542,8 @@ class TypeInferenceMapper(CombineMapper):
                 in_knl_callable = ManglerCallable(
                         identifier, function_mangler, arg_id_to_dtype,
                         arg_id_to_descr, mangle_result.target_name)
+                # FIXME: we have not tested how it works with mangler callable
+                # yet.
                 self.callables_table, new_function_id = (
                         self.callables_table.with_added_callable(
                             expr.function, in_knl_callable))
@@ -713,6 +715,11 @@ class TypeReader(TypeInferenceMapper):
 
     # }}}
 
+    def with_assignments(self, names_to_vars):
+        new_ass = self.new_assignments.copy()
+        new_ass.update(names_to_vars)
+        return type(self)(self.kernel, self.callables, new_ass)
+
     def map_call(self, expr, return_tuple=False):
         identifier = expr.function
         if isinstance(identifier, (Variable, ResolvedFunction)):
@@ -749,7 +756,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
 
     if var_name in kernel.all_params():
         return [kernel.index_dtype], [], {}, (
-                type_inf_mapper.callables_table)
+                type_inf_mapper.clbl_inf_ctx)
 
     from functools import partial
     debug = partial(_debug, kernel)
@@ -1107,7 +1114,7 @@ def infer_unknown_types(program, expect_completion=False):
 
 def infer_arg_and_reduction_dtypes_for_reduction_expression(
         kernel, expr, callables_table, unknown_types_ok):
-    type_inf_mapper = TypeInferenceMapper(kernel, callables_table)
+    type_inf_mapper = TypeReader(kernel, callables_table)
     import loopy as lp
 
     if expr.is_tuple_typed:
@@ -1138,8 +1145,7 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
             if dt is not lp.auto else dt
             for dt in reduction_dtypes)
 
-    return tuple(arg_dtypes), reduction_dtypes, (
-            type_inf_mapper.callables_table)
+    return tuple(arg_dtypes), reduction_dtypes
 
 # }}}
 
