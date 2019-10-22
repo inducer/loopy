@@ -39,6 +39,7 @@ from loopy.tools import natsorted
 from loopy.symbolic import CombineMapper
 from loopy.kernel import LoopKernel
 from loopy.program import Program, iterate_over_kernels_if_given_program
+from loopy.kernel.function_interface import CallableKernel
 from loopy.kernel.instruction import (MultiAssignmentBase,
         _DataObliviousInstruction)
 from functools import reduce
@@ -48,20 +49,36 @@ logger = logging.getLogger(__name__)
 
 # {{{ add and infer argument dtypes
 
-def add_dtypes(kernel, dtype_dict):
+def add_dtypes(prog_or_kernel, dtype_dict):
     """Specify remaining unspecified argument/temporary variable types.
 
     :arg dtype_dict: a mapping from variable names to :class:`numpy.dtype`
         instances
     """
+    if isinstance(prog_or_kernel, Program):
+        kernel_names = [clbl.subkernel.name for clbl in
+                six.itervalues(prog_or_kernel.callables_table) if isinstance(clbl,
+                    CallableKernel)]
+        if len(kernel_names) != 1:
+            raise LoopyError("add_dtypes may not take a Program with more than"
+                    " one callable kernels. Please provide individual kernels"
+                    " instead.")
+
+        kernel_name, = kernel_names
+
+        return prog_or_kernel.with_kernel(
+                add_dtypes(prog_or_kernel[kernel_name], dtype_dict))
+
+    assert isinstance(prog_or_kernel, LoopKernel)
+
     dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(
-            kernel, dtype_dict)
+            prog_or_kernel, dtype_dict)
 
     if dtype_dict_remainder:
         raise RuntimeError("unused argument dtypes: %s"
                 % ", ".join(dtype_dict_remainder))
 
-    return kernel.copy(args=new_args, temporary_variables=new_temp_vars)
+    return prog_or_kernel.copy(args=new_args, temporary_variables=new_temp_vars)
 
 
 def _add_dtypes_overdetermined(knl, dtype_dict):
@@ -113,8 +130,18 @@ def get_arguments_with_incomplete_dtype(knl):
             if arg.dtype is None]
 
 
-def add_and_infer_dtypes(prog, dtype_dict, expect_completion=False):
+def add_and_infer_dtypes(prog, dtype_dict, expect_completion=False,
+        kernel_name=None):
     assert isinstance(prog, Program)
+    if kernel_name is None:
+        kernel_names = [clbl.subkernel.name for clbl in
+                six.itervalues(prog.callables_table) if isinstance(clbl,
+                    CallableKernel)]
+        if len(kernel_names) != 1:
+            raise LoopyError("Provide 'kernel_name' argument.")
+
+        kernel_name, = kernel_names
+
     processed_dtype_dict = {}
 
     for k, v in six.iteritems(dtype_dict):
@@ -123,7 +150,7 @@ def add_and_infer_dtypes(prog, dtype_dict, expect_completion=False):
             if subkey:
                 processed_dtype_dict[subkey] = v
 
-    prog = add_dtypes(prog, processed_dtype_dict)
+    prog = prog.with_kernel(add_dtypes(prog[kernel_name], processed_dtype_dict))
 
     from loopy.type_inference import infer_unknown_types
     return infer_unknown_types(prog, expect_completion=expect_completion)
@@ -1882,8 +1909,6 @@ def get_direct_callee_kernels(kernel, callables_table, insn_ids=None,):
 
     if insn_ids is None:
         insn_ids = frozenset(insn.id for insn in kernel.instructions)
-
-    from loopy.kernel.function_interface import CallableKernel
 
     def _get_callee_kernel_if_insn_has_callable_kernel(insn_id):
         """Returns callee kernel if the instruction has a call to a

@@ -84,7 +84,7 @@ class SeparateArrayPackingController(object):
                     sep_shape=arg.sep_shape(),
                     subscripts_and_names=subscripts_and_names,
                     is_written=arg.name in
-                    program.root_kernel.get_written_variables())
+                    program[entrypoint].get_written_variables())
 
     def unpack(self, kernel_kwargs):
         if not self.packing_info:

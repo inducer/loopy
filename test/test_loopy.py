@@ -97,7 +97,7 @@ def test_complicated_subst(ctx_factory):
 
     print(knl)
 
-    sr_keys = list(knl.root_kernel.substitutions.keys())
+    sr_keys = list(knl['loopy_kernel'].substitutions.keys())
     for letter, how_many in [
             ("f", 1),
             ("g", 1),
@@ -145,13 +145,13 @@ def test_type_inference_with_type_dependencies():
     prog = lp.infer_unknown_types(prog)
 
     from loopy.types import to_loopy_type
-    assert prog.root_kernel.temporary_variables["a"].dtype == to_loopy_type(
+    assert prog['loopy_kernel'].temporary_variables["a"].dtype == to_loopy_type(
             np.int32)
-    assert prog.root_kernel.temporary_variables["b"].dtype == to_loopy_type(
+    assert prog['loopy_kernel'].temporary_variables["b"].dtype == to_loopy_type(
             np.float32)
-    assert prog.root_kernel.temporary_variables["c"].dtype == to_loopy_type(
+    assert prog['loopy_kernel'].temporary_variables["c"].dtype == to_loopy_type(
             np.float32)
-    assert prog.root_kernel.temporary_variables["d"].dtype == to_loopy_type(
+    assert prog['loopy_kernel'].temporary_variables["d"].dtype == to_loopy_type(
             np.complex128)
 
 
@@ -268,9 +268,8 @@ def test_bare_data_dependency(ctx_factory):
                 lp.ValueArg("n", np.int32),
                 ])
 
-    cknl = lp.CompiledKernel(ctx, knl)
     n = 20000
-    evt, (a,) = cknl(queue, n=n, out_host=True)
+    evt, (a,) = knl(queue, n=n, out_host=True)
 
     assert a.shape == (n,)
     assert (a == 1).all()
@@ -291,7 +290,8 @@ def test_ilp_write_race_detection_global(ctx_factory):
                 lp.ValueArg("n", np.int32, approximately=1000),
                 ],
             assumptions="n>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget(ctx.devices[0]),
+            name="loopy_kernel")
 
     knl = lp.tag_inames(knl, dict(j="ilp"))
 
@@ -301,7 +301,7 @@ def test_ilp_write_race_detection_global(ctx_factory):
         from loopy.diagnostic import WriteRaceConditionWarning
         from warnings import catch_warnings
         with catch_warnings(record=True) as warn_list:
-            list(lp.generate_loop_schedules(knl.root_kernel,
+            list(lp.generate_loop_schedules(knl["loopy_kernel"],
                     knl.callables_table))
 
             assert any(isinstance(w.message, WriteRaceConditionWarning)
@@ -317,12 +317,13 @@ def test_ilp_write_race_avoidance_local(ctx_factory):
                 "<> a[i] = 5+i+j",
                 ],
             [],
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget(ctx.devices[0]),
+            name="loopy_kernel")
 
     knl = lp.tag_inames(knl, dict(i="l.0", j="ilp"))
 
     knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    assert knl.root_kernel.temporary_variables["a"].shape == (16, 17)
+    assert knl["loopy_kernel"].temporary_variables["a"].shape == (16, 17)
 
 
 def test_ilp_write_race_avoidance_private(ctx_factory):
@@ -334,12 +335,13 @@ def test_ilp_write_race_avoidance_private(ctx_factory):
                 "<> a = 5+j",
                 ],
             [],
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget(ctx.devices[0]),
+            name="loopy_kernel")
 
     knl = lp.tag_inames(knl, dict(j="ilp"))
 
     knl = lp.preprocess_kernel(knl)
-    assert knl.root_kernel.temporary_variables["a"].shape == (16,)
+    assert knl["loopy_kernel"].temporary_variables["a"].shape == (16,)
 
 # }}}
 
@@ -581,10 +583,11 @@ def test_dependent_domain_insn_iname_finding(ctx_factory):
                 lp.GlobalArg("strengths",
                     None, shape="nsources"),
                 "..."],
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget(ctx.devices[0]),
+            name="loopy_kernel")
 
     print(prog)
-    assert "isrc_box" in prog.root_kernel.insn_inames("set_strength")
+    assert "isrc_box" in prog["loopy_kernel"].insn_inames("set_strength")
 
     prog = lp.add_dtypes(prog,
         dict(
@@ -607,10 +610,11 @@ def test_inames_deps_from_write_subscript(ctx_factory):
             [
                 lp.GlobalArg("box_source_starts,box_source_counts_nonchild,a",
                     None, shape=None),
-                "..."])
+                "..."],
+            name="loopy_kernel")
 
     print(prog)
-    assert "i" in prog.root_kernel.insn_inames("myred")
+    assert "i" in prog['loopy_kernel'].insn_inames("myred")
 
 
 def test_modulo_indexing(ctx_factory):
