@@ -724,7 +724,7 @@ class TemporarySaver(object):
 
 # {{{ auto save and reload across kernel calls
 
-def save_and_reload_temporaries(program):
+def save_and_reload_temporaries(program, entrypoint=None):
     """
     Add instructions to save and reload temporary variables that are live
     across kernel calls.
@@ -747,13 +747,17 @@ def save_and_reload_temporaries(program):
 
     :returns: The resulting kernel
     """
+    if entrypoint is None:
+        if len(program.entrypoints) != 1:
+            raise LoopyError("Missing argument 'entrypoint'.")
+        entrypoint = list(program.entrypoints)[0]
 
-    knl = program.root_kernel
+    knl = program[entrypoint]
 
     if not knl.schedule:
         program = lp.preprocess_program(program)
         from loopy.schedule import get_one_scheduled_kernel
-        knl = get_one_scheduled_kernel(program.root_kernel,
+        knl = get_one_scheduled_kernel(program[entrypoint],
                 program.callables_table)
 
     assert knl.schedule is not None
@@ -797,7 +801,7 @@ def save_and_reload_temporaries(program):
                         .format(temporary, sched_item.kernel_name))
                 saver.save(temporary, sched_item.kernel_name)
 
-    return program.with_root_kernel(saver.finish())
+    return program.with_kernel(saver.finish())
 
 # }}}
 

@@ -993,12 +993,13 @@ def test_within_inames_and_reduction():
                 lp.TemporaryVariable("phi", dtype=np.float32, shape=("n",)),
                 ],
             target=lp.CTarget(),
+            name="loopy_kernel"
             )
 
     prog = lp.preprocess_kernel(prog)
 
-    assert 'i' not in prog.root_kernel.insn_inames("insn_0_j_update")
-    print(prog.root_kernel.stringify(with_dependencies=True))
+    assert 'i' not in prog["loopy_kernel"].insn_inames("insn_0_j_update")
+    print(prog["loopy_kernel"].stringify(with_dependencies=True))
 
 
 def test_literal_local_barrier(ctx_factory):
@@ -1112,7 +1113,7 @@ def save_and_reload_temporaries_test(queue, prog, out_expect, debug=False):
 
     from loopy.transform.save import save_and_reload_temporaries
     prog = save_and_reload_temporaries(prog)
-    prog = prog.with_root_kernel(lp.get_one_scheduled_kernel(prog.root_kernel,
+    prog = prog.with_kernel(lp.get_one_scheduled_kernel(prog["loopy_kernel"],
         prog.callables_table))
 
     if debug:
@@ -1615,7 +1616,7 @@ def test_regression_no_ret_call_removal(ctx_factory):
             "f(sum(i, x[i]))")
     prog = lp.add_and_infer_dtypes(prog, {"x": np.float32})
     prog = lp.preprocess_kernel(prog)
-    assert len(prog.root_kernel.instructions) == 3
+    assert len(prog["loopy_kernel"].instructions) == 3
 
 
 def test_regression_persistent_hash():
@@ -1628,8 +1629,8 @@ def test_regression_persistent_hash():
             "cse_exprvar = d[0]*d[0]")
     from loopy.tools import LoopyKeyBuilder
     lkb = LoopyKeyBuilder()
-    assert (lkb(knl1.root_kernel.instructions[0]) !=
-            lkb(knl2.root_kernel.instructions[0]))
+    assert (lkb(knl1["loopy_kernel"].instructions[0]) !=
+            lkb(knl2["loopy_kernel"].instructions[0]))
     assert lkb(knl1) != lkb(knl2)
 
 
@@ -1648,7 +1649,7 @@ def test_sequential_dependencies(ctx_factory):
             end
             """, seq_dependencies=True)
 
-    print(prog.root_kernel.stringify(with_dependencies=True))
+    print(prog["loopy_kernel"].stringify(with_dependencies=True))
 
     lp.auto_test_vs_ref(prog, ctx, prog, parameters=dict(n=5))
 
@@ -1706,10 +1707,10 @@ def test_global_barrier(ctx_factory):
 
     knl = lp.preprocess_kernel(knl)
     assert (
-            knl.root_kernel.temporary_variables["z"].address_space ==
+            knl["loopy_kernel"].temporary_variables["z"].address_space ==
             lp.AddressSpace.GLOBAL)
     assert (
-            knl.root_kernel.temporary_variables["v"].address_space ==
+            knl["loopy_kernel"].temporary_variables["v"].address_space ==
             lp.AddressSpace.GLOBAL)
 
     print(knl)
@@ -1873,7 +1874,7 @@ def test_const_temp_with_initializer_not_saved():
     prog = lp.save_and_reload_temporaries(prog)
 
     # This ensures no save slot was added.
-    assert len(prog.root_kernel.temporary_variables) == 1
+    assert len(prog["loopy_kernel"].temporary_variables) == 1
 
 
 def test_header_extract():
@@ -2066,12 +2067,12 @@ def test_unscheduled_insn_detection():
         "...")
 
     prog = lp.preprocess_kernel(prog)
-    knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.callables_table)
-    prog = prog.with_root_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(prog["loopy_kernel"], prog.callables_table)
+    prog = prog.with_kernel(knl)
     insn1, = lp.find_instructions(prog, "id:insn1")
-    insns = prog.root_kernel.instructions[:]
+    insns = prog["loopy_kernel"].instructions[:]
     insns.append(insn1.copy(id="insn2"))
-    prog = prog.with_root_kernel(prog.root_kernel.copy(instructions=insns))
+    prog = prog.with_kernel(prog["loopy_kernel"].copy(instructions=insns))
 
     from loopy.diagnostic import UnscheduledInstructionError
     with pytest.raises(UnscheduledInstructionError):
@@ -2236,7 +2237,7 @@ def test_barrier_insertion_near_top_of_loop():
     prog = lp.set_temporary_scope(prog, "a", "local")
     prog = lp.set_temporary_scope(prog, "b", "local")
     prog = lp.preprocess_kernel(prog)
-    knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.callables_table)
+    knl = lp.get_one_scheduled_kernel(prog["loopy_kernel"], prog.callables_table)
 
     print(knl)
 
@@ -2264,7 +2265,7 @@ def test_barrier_insertion_near_bottom_of_loop():
     prog = lp.set_temporary_scope(prog, "a", "local")
     prog = lp.set_temporary_scope(prog, "b", "local")
     prog = lp.preprocess_kernel(prog)
-    knl = lp.get_one_scheduled_kernel(prog.root_kernel, prog.callables_table)
+    knl = lp.get_one_scheduled_kernel(prog["loopy_kernel"], prog.callables_table)
 
     print(knl)
 
@@ -2294,10 +2295,10 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
     from testlib import GridOverride
 
     # artifically expand via overridden_get_grid_sizes_for_insn_ids
-    knl = prog.root_kernel
+    knl = prog["loopy_kernel"]
     knl = knl.copy(overridden_get_grid_sizes_for_insn_ids=GridOverride(
         knl.copy(), vecsize))
-    prog = prog.with_root_kernel(knl)
+    prog = prog.with_kernel(knl)
     # make sure we can generate the code
     lp.generate_code_v2(prog)
 
@@ -2322,7 +2323,7 @@ def test_multi_argument_reduction_type_inference():
                 allow_simultaneous=True),
             allow_simultaneous=True)
 
-    t_inf_mapper = TypeInferenceMapper(prog.root_kernel,
+    t_inf_mapper = TypeInferenceMapper(prog["loopy_kernel"],
             prog.callables_table)
 
     assert (
@@ -2356,7 +2357,7 @@ def test_global_barrier_order_finding():
             end
             """)
 
-    assert (lp.get_global_barrier_order(prog.root_kernel) == ("top", "yoink",
+    assert (lp.get_global_barrier_order(prog["loopy_kernel"]) == ("top", "yoink",
         "postloop"))
 
     for insn, barrier in (
@@ -2367,7 +2368,7 @@ def test_global_barrier_order_finding():
             ("yoink", "top"),
             ("postloop", "yoink"),
             ("zzzv", "postloop")):
-        assert lp.find_most_recent_global_barrier(prog.root_kernel, insn) == barrier
+        assert lp.find_most_recent_global_barrier(prog["loopy_kernel"], insn) == barrier
 
 
 def test_global_barrier_error_if_unordered():
@@ -2380,7 +2381,7 @@ def test_global_barrier_error_if_unordered():
 
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
-        lp.get_global_barrier_order(prog.root_kernel)
+        lp.get_global_barrier_order(prog["loopy_kernel"])
 
 
 def test_struct_assignment(ctx_factory):
@@ -2449,7 +2450,7 @@ def test_kernel_var_name_generator():
             <>b_s0 = 0
             """)
 
-    vng = prog.root_kernel.get_var_name_generator()
+    vng = prog["loopy_kernel"].get_var_name_generator()
 
     assert vng("a_s0") != "a_s0"
     assert vng("b") != "b"
@@ -2472,7 +2473,7 @@ def test_fixed_parameters(ctx_factory):
 
 def test_parameter_inference():
     knl = lp.make_kernel("{[i]: 0 <= i < n and i mod 2 = 0}", "")
-    assert knl.root_kernel.all_params() == set(["n"])
+    assert knl["loopy_kernel"].all_params() == set(["n"])
 
 
 def test_execution_backend_can_cache_dtypes(ctx_factory):
@@ -2504,14 +2505,14 @@ def test_wildcard_dep_matching():
 
     all_insns = set("insn%d" % i for i in range(1, 6))
 
-    assert prog.root_kernel.id_to_insn["insn1"].depends_on == set()
-    assert (prog.root_kernel.id_to_insn["insn2"].depends_on == all_insns -
+    assert prog["loopy_kernel"].id_to_insn["insn1"].depends_on == set()
+    assert (prog["loopy_kernel"].id_to_insn["insn2"].depends_on == all_insns -
             set(["insn2"]))
-    assert (prog.root_kernel.id_to_insn["insn3"].depends_on == all_insns -
+    assert (prog["loopy_kernel"].id_to_insn["insn3"].depends_on == all_insns -
             set(["insn3"]))
-    assert (prog.root_kernel.id_to_insn["insn4"].depends_on == set(["insn1",
+    assert (prog["loopy_kernel"].id_to_insn["insn4"].depends_on == set(["insn1",
         "insn2"]))
-    assert (prog.root_kernel.id_to_insn["insn5"].depends_on == all_insns -
+    assert (prog["loopy_kernel"].id_to_insn["insn5"].depends_on == all_insns -
             set(["insn1", "insn5"]))
 
 
@@ -2625,7 +2626,7 @@ def test_add_prefetch_works_in_lhs_index():
     prog = lp.add_prefetch(prog, "a1_map", "k", default_tag="l.auto")
 
     from loopy.symbolic import get_dependencies
-    for insn in prog.root_kernel.instructions:
+    for insn in prog["loopy_kernel"].instructions:
         assert "a1_map" not in get_dependencies(insn.assignees)
 
 
@@ -2679,7 +2680,7 @@ def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
     prog = lp.tag_inames(prog, "i:l.0")
     prog = lp.preprocess_kernel(prog)
 
-    knl = lp.get_one_scheduled_kernel(prog.root_kernel,
+    knl = lp.get_one_scheduled_kernel(prog["loopy_kernel"],
             prog.callables_table)
 
     assert barrier_between(knl, "first", "second") == expect_barrier
