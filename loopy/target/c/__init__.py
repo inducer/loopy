@@ -79,7 +79,7 @@ class DTypeRegistryWrapper(object):
 
 def c99_preamble_generator(preamble_info):
     if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
-        yield("10_inttypes", "#include <inttypes.h>")
+        yield("10_stdint", "#include <stdint.h>")
 
 
 def _preamble_generator(preamble_info):
@@ -320,7 +320,9 @@ class CExpression(object):
 
 
 class CFamilyTarget(TargetBase):
-    """A target for plain "C", without any parallel extensions.
+    """A target for "least-common denominator C", without any parallel
+    extensions, and without use of any C99 specifics. Intended to be
+    usable as a common base for C99, C++, OpenCL, CUDA, and the like.
     """
 
     hash_fields = TargetBase.hash_fields + ("fortran_abi",)
@@ -1066,15 +1068,20 @@ def generate_header(kernel, codegen_result=None):
 # {{{ C99 target
 
 class CTarget(CFamilyTarget):
+    """This target may emit code using all features of C99.
+    For a target base supporting "least-common-denominator" C,
+    see :class:`CFamilyTarget`.
+    """
+
     def get_device_ast_builder(self):
         return CASTBuilder(self)
 
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (
-                DTypeRegistry, fill_registry_with_c_inttypes_types)
+                DTypeRegistry, fill_registry_with_c99_stdint_types)
         result = DTypeRegistry()
-        fill_registry_with_c_inttypes_types(result)
+        fill_registry_with_c99_stdint_types(result)
         return DTypeRegistryWrapper(result)
 
 
