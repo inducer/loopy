@@ -448,8 +448,8 @@ def parse_reduction_op(name):
 
 def reduction_function_mangler(kernel, func_id, arg_dtypes):
     if isinstance(func_id, ArgExtOp):
-        from loopy.target.opencl import CTarget
-        if not isinstance(kernel.target, CTarget):
+        from loopy.target.opencl import CFamilyTarget
+        if not isinstance(kernel.target, CFamilyTarget):
             raise LoopyError("%s: only C-like targets supported for now" % func_id)
 
         op = func_id.reduction_op
@@ -470,8 +470,8 @@ def reduction_function_mangler(kernel, func_id, arg_dtypes):
                 )
 
     elif isinstance(func_id, SegmentedOp):
-        from loopy.target.opencl import CTarget
-        if not isinstance(kernel.target, CTarget):
+        from loopy.target.opencl import CFamilyTarget
+        if not isinstance(kernel.target, CFamilyTarget):
             raise LoopyError("%s: only C-like targets supported for now" % func_id)
 
         op = func_id.reduction_op
