@@ -77,6 +77,11 @@ class DTypeRegistryWrapper(object):
 
 # {{{ preamble generator
 
+def c99_preamble_generator(preamble_info):
+    if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
+        yield("10_inttypes", "#include <inttypes.h>")
+
+
 def _preamble_generator(preamble_info):
     integer_type_names = ["int8", "int16", "int32", "int64"]
 
@@ -366,29 +371,6 @@ class CTarget(TargetBase):
         raise NotImplementedError()
 
     # }}}
-
-
-# {{{ executable c target
-
-class ExecutableCTarget(CTarget):
-    """
-    An executable CTarget that uses (by default) JIT compilation of C-code
-    """
-
-    def __init__(self, compiler=None, fortran_abi=False):
-        super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
-        from loopy.target.c.c_execution import CCompiler
-        self.compiler = compiler or CCompiler()
-
-    def get_kernel_executor(self, knl, *args, **kwargs):
-        from loopy.target.c.c_execution import CKernelExecutor
-        return CKernelExecutor(knl, compiler=self.compiler)
-
-    def get_host_ast_builder(self):
-        # enable host code generation
-        return CASTBuilder(self)
-
-# }}}
 
 
 class _ConstRestrictPointer(Pointer):
@@ -1077,6 +1059,54 @@ def generate_header(kernel, codegen_result=None):
         fde(dev_prg.ast)
 
     return fde.decls
+
+# }}}
+
+
+# {{{ C99 target
+
+class C99Target(CTarget):
+    def get_device_ast_builder(self):
+        return C99ASTBuilder(self)
+
+    @memoize_method
+    def get_dtype_registry(self):
+        from loopy.target.c.compyte.dtypes import (
+                DTypeRegistry, fill_registry_with_c_inttypes_types)
+        result = DTypeRegistry()
+        fill_registry_with_c_inttypes_types(result)
+        return DTypeRegistryWrapper(result)
+
+
+class C99ASTBuilder(CASTBuilder):
+    def preamble_generators(self):
+        return (
+                super(CASTBuilder, self).preamble_generators() + [
+                    c99_preamble_generator,
+                    ])
+
+# }}}
+
+
+# {{{ executable c target
+
+class ExecutableCTarget(C99Target):
+    """
+    An executable CTarget that uses (by default) JIT compilation of C-code
+    """
+
+    def __init__(self, compiler=None, fortran_abi=False):
+        super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
+        from loopy.target.c.c_execution import CCompiler
+        self.compiler = compiler or CCompiler()
+
+    def get_kernel_executor(self, knl, *args, **kwargs):
+        from loopy.target.c.c_execution import CKernelExecutor
+        return CKernelExecutor(knl, compiler=self.compiler)
+
+    def get_host_ast_builder(self):
+        # enable host code generation
+        return CASTBuilder(self)
 
 # }}}
 
