@@ -1081,7 +1081,7 @@ class CTarget(CFamilyTarget):
 class CASTBuilder(CFamilyASTBuilder):
     def preamble_generators(self):
         return (
-                super(CFamilyASTBuilder, self).preamble_generators() + [
+                super(CASTBuilder, self).preamble_generators() + [
                     c99_preamble_generator,
                     ])
 
