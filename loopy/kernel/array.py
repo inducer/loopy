@@ -619,7 +619,7 @@ class ArrayBase(ImmutableRecord):
 
         If an integer N is given, the array would be declared
         with ``__attribute__((aligned(N)))`` in code generation for
-        :class:`loopy.CTarget`.
+        :class:`loopy.CFamilyTarget`.
 
         .. versionadded:: 2018.1
 

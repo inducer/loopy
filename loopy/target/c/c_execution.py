@@ -306,8 +306,8 @@ class IDIToCDLL(object):
     """
     def __init__(self, target):
         self.target = target
-        from loopy.target.c import CTarget
-        self.registry = CTarget().get_dtype_registry().wrapped_registry
+        from loopy.target.c import CFamilyTarget
+        self.registry = CFamilyTarget().get_dtype_registry().wrapped_registry
 
     def __call__(self, knl, idi):
         # next loop through the implemented data info to get the arg data
