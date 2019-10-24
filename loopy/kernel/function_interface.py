@@ -676,8 +676,7 @@ class CallableKernel(InKernelCallable):
         specialized_kernel, callables_table = (
                 infer_unknown_types_for_a_single_kernel(
                     pre_specialized_subkernel,
-                    callables_table,
-                    expect_completion=True))
+                    callables_table))
 
         new_arg_id_to_dtype = {}
         for pos, kw in pos_to_kw.items():
