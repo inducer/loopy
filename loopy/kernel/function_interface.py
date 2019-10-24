@@ -30,7 +30,7 @@ from loopy.diagnostic import LoopyError
 
 from loopy.tools import update_persistent_hash
 from loopy.kernel import LoopKernel
-from loopy.kernel.data import ValueArg, ArrayArg
+from loopy.kernel.data import ValueArg, ArrayArg, ConstantArg
 from loopy.symbolic import (SubstitutionMapper, DependencyMapper)
 from pymbolic.primitives import Variable
 
@@ -752,7 +752,8 @@ class CallableKernel(InKernelCallable):
             assert isinstance(arg_id, str)
 
             if isinstance(descr, ArrayArgDescriptor):
-                if not isinstance(self.subkernel.arg_dict[arg_id], ArrayArg):
+                if not isinstance(self.subkernel.arg_dict[arg_id], (ArrayArg,
+                        ConstantArg)):
                     raise LoopyError("Array passed to scalar argument "
                             "'%s' of the function '%s' (in '%s')." % (
                                 arg_id, self.subkernel.name,
