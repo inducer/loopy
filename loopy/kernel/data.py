@@ -418,12 +418,19 @@ def GlobalArg(*args, **kwargs):
 
 class ConstantArg(ArrayBase, KernelArgument):
     __doc__ = ArrayBase.__doc__
-    min_target_axes = 0
-    max_target_axes = 1
+
+    def __init__(self, *args, **kwargs):
+        if kwargs.pop('address_space', AddressSpace.GLOBAL) != AddressSpace.GLOBAL:
+            raise LoopyError("'address_space' for ConstantArg must be GLOBAL.")
+        super(ConstantArg, self).__init__(*args, **kwargs)
 
     # Constant Arg cannot be an output
     is_output = False
     is_input = True
+    address_space = AddressSpace.GLOBAL
+
+    min_target_axes = 0
+    max_target_axes = 1
 
     def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
         return ast_builder.get_constant_arg_decl(self.name + name_suffix, shape,
