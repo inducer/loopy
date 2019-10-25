@@ -211,17 +211,33 @@ class Program(ImmutableRecord):
     update_persistent_hash = update_persistent_hash
 
     def copy(self, **kwargs):
-        if 'target' in kwargs:
+        target = kwargs.pop('target', None)
+        program = super(Program, self).copy(**kwargs)
+        if target:
             from loopy.kernel import KernelState
             if max(callable_knl.subkernel.state for callable_knl in
                     six.itervalues(self.callables_table) if
                     isinstance(callable_knl, CallableKernel)) > (
                             KernelState.INITIAL):
-                if not isinstance(kwargs['target'], type(self.target)):
+                if not isinstance(target, type(self.target)):
                     raise LoopyError("One of the kenels in the program has been "
                             "preprocessed, cannot modify target now.")
+            callables = {}
+            for func_id, clbl in six.iteritems(program.callables_table):
+                if isinstance(clbl, CallableKernel):
+                    knl = clbl.subkernel
+                    knl = knl.copy(target=target)
+                    clbl = clbl.copy(subkernel=knl)
+                elif isinstance(clbl, ScalarCallable):
+                    pass
+                else:
+                    raise NotImplementedError()
+                callables[func_id] = clbl
 
-        return super(Program, self).copy(**kwargs)
+            program = super(Program, program).copy(
+                callables_table=callables, target=target)
+
+        return program
 
     def with_entrypoints(self, entrypoints):
         """
