@@ -142,18 +142,6 @@ class CallableResolver(RuleAwareIdentityMapper):
                 expn_state)
 
 
-def _default_func_id_to_kernel_callable_mappers(target):
-    """
-    Returns a list of functions that are provided through *target* by deafault.
-    """
-    from loopy.library.function import (
-            loopy_specific_callable_func_id_to_knl_callable_mappers)
-    return (
-            [loopy_specific_callable_func_id_to_knl_callable_mappers] + (
-                target.get_device_ast_builder().function_id_in_knl_callable_mapper(
-                    )))
-
-
 # {{{ program
 
 class Program(ImmutableRecord):
@@ -541,10 +529,17 @@ class CallablesInferenceContext(ImmutableRecord):
             for func_id, in_knl_callable in self.callables.items():
                 if in_knl_callable == in_kernel_callable:
                     history[func_id] = function.name
-                    return (
-                            self.copy(
-                                history=history),
-                            Variable(func_id))
+                    if isinstance(func_id, str):
+                        return (
+                                self.copy(
+                                    history=history),
+                                Variable(func_id))
+                    else:
+                        assert isinstance(func_id, ReductionOpFunction)
+                        return (
+                                self.copy(
+                                    history=history),
+                                func_id)
 
             assert False
         else:
@@ -629,7 +624,8 @@ class CallablesInferenceContext(ImmutableRecord):
                 program.entrypoints):
             # at this point we should not rename anything to the names of
             # entrypoints
-            for new_func_id in (new_callable_ids-six.viewkeys(renames)):
+            for new_func_id in (new_callable_ids-six.viewkeys(renames)) & set(
+                    six.iterkeys(self.history)):
                 if old_func_id == self.history[new_func_id]:
                     renames[new_func_id] = old_func_id
                     break
@@ -733,6 +729,22 @@ def iterate_over_kernels_if_given_program(transform_for_single_kernel):
             return transform_for_single_kernel(kernel, *args, **kwargs)
 
     return wraps(transform_for_single_kernel)(_collective_transform)
+
+
+def update_table(callables_table, clbl_id, clbl):
+    from loopy.kernel.function_interface import InKernelCallable
+    assert isinstance(clbl, InKernelCallable)
+
+    for i, c in six.iteritems(callables_table):
+        if c == clbl:
+            return i, callables_table
+
+    while clbl_id in callables_table:
+        clbl_id = next_indexed_function_identifier(clbl_id)
+
+    callables_table[clbl_id] = clbl
+
+    return clbl_id, callables_table
 
 # }}}
 
