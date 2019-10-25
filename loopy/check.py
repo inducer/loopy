@@ -760,7 +760,12 @@ def pre_schedule_checks(kernel, callables_table):
     try:
         logger.debug("%s: pre-schedule check: start" % kernel.name)
 
-        check_for_integer_subscript_indices(kernel, callables_table)
+        from loopy.kernel.data import auto
+        if all(arg.dtype not in [None, auto] for arg in kernel.args) and (
+                all(tv.dtype not in [None, auto] for tv in
+                    six.itervalues(kernel.temporary_variables))):
+            # only check if all types are known
+            check_for_integer_subscript_indices(kernel, callables_table)
         check_for_duplicate_insn_ids(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel, callables_table)
