@@ -272,9 +272,12 @@ class Program(ImmutableRecord):
         from loopy.library.function import get_loopy_callables
         from loopy.kernel import KernelState
 
-        known_callables = self.target.get_device_ast_builder().known_callables
+        if self.state >= KernelState.CALLS_RESOLVED:
+            return self
+
+        known_callables = self.callables_table
+        known_callables.update(self.target.get_device_ast_builder().known_callables)
         known_callables.update(get_loopy_callables())
-        known_callables.update(self.callables_table)
         # update the known callables from the target.
         callables_table = dict((e, self.callables_table[e]) for e in
                 self.entrypoints)

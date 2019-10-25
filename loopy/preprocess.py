@@ -2357,8 +2357,6 @@ preprocess_cache = WriteOncePersistentDict(
 
 def preprocess_single_kernel(kernel, callables_table, device=None):
     from loopy.kernel import KernelState
-    if kernel.state >= KernelState.PREPROCESSED:
-        return kernel
 
     # {{{ cache retrieval
 
@@ -2442,6 +2440,9 @@ def preprocess_single_kernel(kernel, callables_table, device=None):
 
 
 def preprocess_program(program, device=None):
+    from loopy.kernel import KernelState
+    if program.state >= KernelState.PREPROCESSED:
+        return program
 
     if len([clbl for clbl in six.itervalues(program.callables_table) if
             isinstance(clbl, CallableKernel)]) == 1:
@@ -2452,10 +2453,7 @@ def preprocess_program(program, device=None):
     if not program.entrypoints:
         raise LoopyError("Translation unit did not receive any entrypoints")
 
-    from loopy.kernel import KernelState
-
-    if program.state < KernelState.CALLS_RESOLVED:
-        program = program.with_resolved_callables()
+    program = program.with_resolved_callables()
 
     if device is not None:
         # FIXME: Time to remove this? (Git blame shows 5 years ago)
