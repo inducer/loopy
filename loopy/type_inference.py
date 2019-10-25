@@ -522,8 +522,7 @@ class TypeInferenceMapper(CombineMapper):
                     break
 
             if mangle_result is not None:
-                from loopy.kernel.function_interface import (ManglerCallable,
-                        ValueArgDescriptor)
+                from loopy.kernel.function_interface import ManglerCallable
 
                 # creating arg_id_to_dtype, arg_id_to_descr from arg_dtypes
                 arg_id_to_dtype = dict((i, dt.with_target(self.kernel.target))
@@ -531,21 +530,16 @@ class TypeInferenceMapper(CombineMapper):
                 arg_id_to_dtype.update(dict((-i-1,
                     dtype.with_target(self.kernel.target)) for i, dtype in enumerate(
                         mangle_result.result_dtypes)))
-                arg_descrs = tuple((i, ValueArgDescriptor()) for i, _ in
-                        enumerate(mangle_result.arg_dtypes))
-                res_descrs = tuple((-i-1, ValueArgDescriptor()) for i, _ in
-                        enumerate(mangle_result.result_dtypes))
-                arg_id_to_descr = dict(arg_descrs+res_descrs)
 
                 # creating the ManglerCallable object corresponding to the
                 # function.
                 in_knl_callable = ManglerCallable(
                         identifier, function_mangler, arg_id_to_dtype,
-                        arg_id_to_descr, mangle_result.target_name)
+                        name_in_target=mangle_result.target_name)
                 # FIXME: we have not tested how it works with mangler callable
                 # yet.
-                self.callables_table, new_function_id = (
-                        self.callables_table.with_added_callable(
+                self.clbl_inf_ctx, new_function_id = (
+                        self.clbl_inf_ctx.with_callable(
                             expr.function, in_knl_callable))
 
                 if isinstance(expr, Call):
