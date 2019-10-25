@@ -763,7 +763,6 @@ class F2LoopyTranslator(FTreeWalkerBase):
                                 arg_name,
                                 dtype=sub.get_type(arg_name),
                                 shape=sub.get_loopy_shape(arg_name),
-                                is_output=False,
                                 ))
                 else:
                     kernel_data.append(

@@ -22,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
 import logging
 logger = logging.getLogger(__name__)
 
@@ -296,12 +297,7 @@ def _add_assignees_to_calls(knl, all_kernels):
 
 
 def parse_fortran(source, filename="<floopy code>", free_form=None, strict=None,
-        seq_dependencies=None, auto_dependencies=None, target=None,
-        return_list_of_knls=False):
-    """
-    :returns: an instance of :class:`list` of :class:`loopy.LoopKernel`s if
-        *return_list_of_knls* is True else a :class:`loopy.Program`.
-    """
+        seq_dependencies=None, auto_dependencies=None, target=None):
 
     parse_plog = ProcessLogger(logger, "parsing fortran file '%s'" % filename)
 
@@ -342,25 +338,17 @@ def parse_fortran(source, filename="<floopy code>", free_form=None, strict=None,
 
     kernels = f2loopy.make_kernels(seq_dependencies=seq_dependencies)
 
-    if return_list_of_knls:
-        return kernels
+    from loopy.transform.callable import merge
+    prog = merge(kernels)
+    all_kernels = [clbl.subkernel for clbl in
+            six.itervalues(prog.callables_table)]
 
-    kernels = [_add_assignees_to_calls(knl, kernels) for knl in kernels]
+    for knl in all_kernels:
+        prog.with_kernel(_add_assignees_to_calls(knl, all_kernels))
 
-    from loopy.kernel.tools import identify_root_kernel
-    from loopy.program import make_program
-    from loopy.transform.callable import register_callable_kernel
-
-    root_knl_name = identify_root_kernel(kernels)
-    root_knl = [knl for knl in kernels if knl.name ==
-            root_knl_name][0].copy(is_called_from_host=True)
-    callee_kernels = [knl for knl in kernels if knl.name != root_knl_name]
-    prog = make_program(root_knl)
-    for callee_knl in callee_kernels:
-        #FIXME: This would need some sort of traversal to be valid
-        # for all cases
-        # THIS IS A VERY IMPORTANT FIXME!!
-        prog = register_callable_kernel(prog, callee_knl)
+    if len(all_kernels) == 1:
+        # guesssing in the case of only one function
+        prog = prog.with_entrypoints(all_kernels[0].name)
 
     parse_plog.done()
 
