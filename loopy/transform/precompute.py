@@ -31,15 +31,14 @@ from loopy.symbolic import (get_dependencies,
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
 from pymbolic.mapper.substitutor import make_subst_func
+from loopy.program import Program
+from loopy.kernel.function_interface import CallableKernel
 import numpy as np
 
 from pymbolic import var
 
 from loopy.transform.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
         AccessDescriptor)
-
-from loopy.program import Program
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 
 class RuleAccessDescriptor(AccessDescriptor):
@@ -261,7 +260,7 @@ class _not_provided(object):  # noqa: N801
     pass
 
 
-def precompute_for_single_kernel(kernel, callables_table, subst_use,
+def precompute(kernel, subst_use,
         sweep_inames=[], within=None, storage_axes=None, temporary_name=None,
         precompute_inames=None, precompute_outer_inames=None,
         storage_axis_to_tag={},
@@ -273,6 +272,7 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
         fetch_bounding_box=False,
         temporary_address_space=None,
         compute_insn_id=None,
+        callables_table=None,
         **kwargs):
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
@@ -358,6 +358,18 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
     Trivial storage axes (i.e. axes of length 1 with respect to the sweep) are
     eliminated.
     """
+    if isinstance(kernel, Program):
+        kernel_names = [i for i, clbl in
+                six.iteritems(kernel.callables_table) if isinstance(clbl,
+                    CallableKernel)]
+        if len(kernel_names) != 1:
+            raise LoopyError()
+
+        return kernel.with_kernel(precompute(kernel[kernel_names[0]],
+            subst_use, sweep_inames, within, storage_axes, temporary_name,
+            precompute_inames, precompute_outer_inames, storage_axis_to_tag,
+            default_tag, dtype, fetch_bounding_box, temporary_address_space,
+            compute_insn_id, kernel.callables_table, **kwargs))
 
     # {{{ unify temporary_address_space / temporary_scope
 
@@ -1051,29 +1063,5 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
     return kernel
 
-
-def precompute(program, *args, **kwargs):
-    assert isinstance(program, Program)
-
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.callables_table.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = precompute_for_single_kernel(
-                    in_knl_callable.subkernel, program.callables_table,
-                    *args, **kwargs)
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=new_subkernel)
-
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of callable %s." % (
-                type(in_knl_callable).__name__))
-
-        new_resolved_functions[func_id] = in_knl_callable
-
-    new_callables_table = program.callables_table.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(callables_table=new_callables_table)
 
 # vim: foldmethod=marker

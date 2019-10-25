@@ -33,7 +33,7 @@ from pymbolic.mapper.substitutor import make_subst_func
 from pytools import ImmutableRecord
 from pymbolic import var
 
-from loopy.program import iterate_over_kernels_if_given_program
+from loopy.program import iterate_over_kernels_if_given_program, Program
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 import logging
@@ -46,7 +46,6 @@ class ExprDescriptor(ImmutableRecord):
 
 # {{{ extract_subst
 
-@iterate_over_kernels_if_given_program
 def extract_subst(kernel, subst_name, template, parameters=()):
     """
     :arg subst_name: The name of the substitution rule to be created.
@@ -58,6 +57,16 @@ def extract_subst(kernel, subst_name, template, parameters=()):
     The template may contain '*' wildcards that will have to match exactly across all
     unifications.
     """
+
+    if isinstance(kernel, Program):
+        kernel_names = [i for i, clbl in
+                six.iteritems(kernel.callables_table) if isinstance(clbl,
+                    CallableKernel)]
+        if len(kernel_names) != 1:
+            raise LoopyError()
+
+        return kernel.with_kernel(extract_subst(kernel[kernel_names[0]],
+            subst_name, template, parameters))
 
     if isinstance(template, str):
         from pymbolic import parse

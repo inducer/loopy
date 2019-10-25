@@ -23,6 +23,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
+
 from loopy.transform.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
         AccessDescriptor)
 from loopy.symbolic import (get_dependencies,
@@ -33,9 +35,9 @@ from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder, PymbolicExpressionHashWrapper
 from loopy.version import DATA_MODEL_VERSION
 from loopy.diagnostic import LoopyError
-from loopy.program import Program
 from loopy.kernel import LoopKernel
-from loopy.kernel.function_interface import ScalarCallable, CallableKernel
+from loopy.program import Program
+from loopy.kernel.function_interface import CallableKernel
 
 from pymbolic import var
 
@@ -133,10 +135,10 @@ buffer_array_cache = WriteOncePersistentDict(
 
 
 # Adding an argument? also add something to the cache_key below.
-def buffer_array_for_single_kernel(kernel, callables_table, var_name,
-        buffer_inames, init_expression=None, store_expression=None,
-        within=None, default_tag="l.auto", temporary_scope=None,
-        temporary_is_local=None, fetch_bounding_box=False):
+def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
+        store_expression=None, within=None, default_tag="l.auto",
+        temporary_scope=None, temporary_is_local=None,
+        fetch_bounding_box=False, callables_table=None):
     """Replace accesses to *var_name* with ones to a temporary, which is
     created and acts as a buffer. To perform this transformation, the access
     footprint to *var_name* is determined and a temporary of a suitable
@@ -171,6 +173,18 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
         rectangular (and hence convex) superset of the footprint to be
         fetched.
     """
+
+    if isinstance(kernel, Program):
+        kernel_names = [i for i, clbl in
+                six.iteritems(kernel.callables_table) if isinstance(clbl,
+                    CallableKernel)]
+        if len(kernel_names) != 1:
+            raise LoopyError()
+
+        return kernel.with_kernel(buffer_array(kernel[kernel_names[0]],
+            var_name, buffer_inames, init_expression, store_expression, within,
+            default_tag, temporary_scope, temporary_is_local,
+            fetch_bounding_box, kernel.callables_table))
 
     assert isinstance(kernel, LoopKernel)
 
@@ -543,29 +557,5 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
 
     return kernel
 
-
-def buffer_array(program, *args, **kwargs):
-    assert isinstance(program, Program)
-
-    new_resolved_functions = {}
-    for func_id, in_knl_callable in program.callables_table.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = buffer_array_for_single_kernel(
-                    in_knl_callable.subkernel, program.callables_table,
-                    *args, **kwargs)
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=new_subkernel)
-
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError("Unknown type of callable %s." % (
-                type(in_knl_callable).__name__))
-
-        new_resolved_functions[func_id] = in_knl_callable
-
-    new_callables_table = program.callables_table.copy(
-            resolved_functions=new_resolved_functions)
-    return program.copy(callables_table=new_callables_table)
 
 # vim: foldmethod=marker
