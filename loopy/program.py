@@ -333,17 +333,6 @@ class Program(ImmutableRecord):
     def __call__(self, *args, **kwargs):
         entrypoint = kwargs.get('entrypoint', None)
 
-        if self.entrypoints is None:
-            if len([clbl for clbl in self.callables_table.values() if
-                    isinstance(clbl, CallableKernel)]) == 1:
-                #FIXME: in place update, can we do any better?
-                self.entrypoints = frozenset([clbl.subkernel.name for
-                    clbl in self.callables_table.values() if isinstance(clbl,
-                        CallableKernel)])
-            else:
-                raise LoopyError("entrypoint attribute unset. Use"
-                        " 'with_entrypoints' before calling.")
-
         if entrypoint is None:
             # did not receive an entrypoint for the program to execute
             if len(self.entrypoints) == 1:
