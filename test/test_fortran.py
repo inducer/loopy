@@ -162,7 +162,7 @@ def test_fill(ctx_factory):
     knl = lp.parse_transformed_fortran(fortran_src,
             pre_transform_code="split_amount = 128")
 
-    assert "i_inner" in knl.root_kernel.all_inames()
+    assert "i_inner" in knl["fill"].all_inames()
 
     ctx = ctx_factory()
 
@@ -291,9 +291,9 @@ def test_assignment_to_subst_indices(ctx_factory):
 
     ref_knl = knl
 
-    assert "a" in knl.root_kernel.temporary_variables
+    assert "a" in knl['fill'].temporary_variables
     knl = lp.assignment_to_subst(knl, "a")
-    assert "a" not in knl.root_kernel.temporary_variables
+    assert "a" not in knl['fill'].temporary_variables
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
@@ -384,31 +384,31 @@ def test_matmul(ctx_factory, buffer_inames):
         end subroutine
         """
 
-    knl = lp.parse_fortran(fortran_src)
+    prog = lp.parse_fortran(fortran_src)
 
-    assert len(knl.root_kernel.domains) == 1
+    assert len(prog['dgemm'].domains) == 1
 
-    ref_knl = knl
+    ref_prog = prog
 
-    knl = lp.split_iname(knl, "i", 16,
+    prog = lp.split_iname(prog, "i", 16,
             outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_iname(knl, "j", 8,
+    prog = lp.split_iname(prog, "j", 8,
             outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_iname(knl, "k", 32)
-    knl = lp.assume(knl, "n mod 32 = 0")
-    knl = lp.assume(knl, "m mod 32 = 0")
-    knl = lp.assume(knl, "ell mod 16 = 0")
+    prog = lp.split_iname(prog, "k", 32)
+    prog = lp.assume(prog, "n mod 32 = 0")
+    prog = lp.assume(prog, "m mod 32 = 0")
+    prog = lp.assume(prog, "ell mod 16 = 0")
 
-    knl = lp.extract_subst(knl, "a_acc", "a[i1,i2]", parameters="i1, i2")
-    knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")
-    knl = lp.precompute(knl, "a_acc", "k_inner,i_inner", default_tag="l.auto")
-    knl = lp.precompute(knl, "b_acc", "j_inner,k_inner", default_tag="l.auto")
+    prog = lp.extract_subst(prog, "a_acc", "a[i1,i2]", parameters="i1, i2")
+    prog = lp.extract_subst(prog, "b_acc", "b[i1,i2]", parameters="i1, i2")
+    prog = lp.precompute(prog, "a_acc", "k_inner,i_inner", default_tag="l.auto")
+    prog = lp.precompute(prog, "b_acc", "j_inner,k_inner", default_tag="l.auto")
 
-    knl = lp.buffer_array(knl, "c", buffer_inames=buffer_inames,
+    prog = lp.buffer_array(prog, "c", buffer_inames=buffer_inames,
             init_expression="0", store_expression="base+buffer")
 
     ctx = ctx_factory()
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=128, m=128, ell=128))
+    lp.auto_test_vs_ref(ref_prog, ctx, prog, parameters=dict(n=128, m=128, ell=128))
 
 
 @pytest.mark.xfail
@@ -498,10 +498,11 @@ def test_fuse_kernels(ctx_factory):
             fortran_template.format(
                 inner=(xd_line + "\n" + yd_line), name="xyderiv"))
 
-    knl = lp.fuse_kernels((xderiv, yderiv), data_flow=[("result", 0, 1)])
-    knl = lp.prioritize_loops(knl, "e,i,j,k")
+    knl = lp.fuse_kernels((xderiv["xderiv"], yderiv["yderiv"]),
+            data_flow=[("result", 0, 1)])
+    knl = knl.with_kernel(lp.prioritize_loops(knl["xderiv_and_yderiv"], "e,i,j,k"))
 
-    assert len(knl.root_kernel.temporary_variables) == 2
+    assert len(knl["xderiv_and_yderiv"].temporary_variables) == 2
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(xyderiv, ctx, knl, parameters=dict(nelements=20, ndofs=4))
@@ -533,11 +534,9 @@ def test_parse_and_fuse_two_kernels():
 
         !$loopy begin
         !
-        ! # FIXME: correct this after the "Module" is done.
-        ! # prg = lp.parse_fortran(SOURCE)
-        ! # fill = prg["fill"]
-        ! # twice = prg["twice"]
-        ! fill, twice = lp.parse_fortran(SOURCE, return_list_of_knls=True)
+        ! prg = lp.parse_fortran(SOURCE)
+        ! fill = prg["fill"]
+        ! twice = prg["twice"]
         ! knl = lp.fuse_kernels((fill, twice))
         ! print(knl)
         ! RESULT = knl
@@ -567,7 +566,7 @@ def test_precompute_some_exist(ctx_factory):
 
     knl = lp.parse_fortran(fortran_src)
 
-    assert len(knl.root_kernel.domains) == 1
+    assert len(knl['dgemm'].domains) == 1
 
     knl = lp.split_iname(knl, "i", 8,
             outer_tag="g.0", inner_tag="l.1")
@@ -614,7 +613,7 @@ def test_fortran_subroutines():
           call twice(n, a(i, 1:n))
         end subroutine
         """
-    prg = lp.parse_fortran(fortran_src)
+    prg = lp.parse_fortran(fortran_src).with_entrypoints("twice_cross")
     print(lp.generate_code_v2(prg).device_code())
 
 
