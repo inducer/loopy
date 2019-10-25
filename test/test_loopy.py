@@ -2304,7 +2304,7 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
 
 
 def test_multi_argument_reduction_type_inference():
-    from loopy.type_inference import TypeInferenceMapper
+    from loopy.type_inference import TypeReader
     from loopy.library.reduction import SegmentedSumReductionOperation
     from loopy.types import to_loopy_type
     op = SegmentedSumReductionOperation()
@@ -2323,7 +2323,7 @@ def test_multi_argument_reduction_type_inference():
                 allow_simultaneous=True),
             allow_simultaneous=True)
 
-    t_inf_mapper = TypeInferenceMapper(prog["loopy_kernel"],
+    t_inf_mapper = TypeReader(prog["loopy_kernel"],
             prog.callables_table)
 
     assert (
@@ -2368,7 +2368,8 @@ def test_global_barrier_order_finding():
             ("yoink", "top"),
             ("postloop", "yoink"),
             ("zzzv", "postloop")):
-        assert lp.find_most_recent_global_barrier(prog["loopy_kernel"], insn) == barrier
+        assert lp.find_most_recent_global_barrier(prog["loopy_kernel"],
+                insn) == barrier
 
 
 def test_global_barrier_error_if_unordered():
@@ -2577,12 +2578,14 @@ def test_preamble_with_separate_temporaries(ctx_factory):
 
 
 def test_arg_inference_for_predicates():
-    knl = lp.make_kernel("{[i]: 0 <= i < 10}",
+    prog = lp.make_kernel("{[i]: 0 <= i < 10}",
             """
             if incr[i]
               a = a + 1
             end
-            """)
+            """, name="loopy_kernel")
+
+    knl = prog["loopy_kernel"]
 
     assert "incr" in knl.arg_dict
     assert knl.arg_dict["incr"].shape == (10,)
