@@ -117,7 +117,9 @@ class ArrayArgDescriptor(ImmutableRecord):
         return self.copy(shape=new_shape, dim_tags=new_dim_tags)
 
     def depends_on(self):
-        result = DependencyMapper(composite_leaves=False)(self.shape) | (
+        from loopy.kernel.data import auto
+        result = DependencyMapper(composite_leaves=False)([lngth for lngth in
+            self.shape if lngth not in [None, auto]]) | (
                 frozenset().union(*(dim_tag.depends_on() for dim_tag in
                     self.dim_tags)))
         return frozenset(var.name for var in result)
