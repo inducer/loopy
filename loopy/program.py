@@ -379,7 +379,7 @@ class Program(ImmutableRecord):
 
         return "\n".join(
                 strify_callable(clbl)
-                for name, clbl in self.callables_table.items())
+                for name, clbl in six.iteritems(self.callables_table))
 
 # }}}
 
@@ -545,7 +545,7 @@ class CallablesInferenceContext(ImmutableRecord):
         if in_kernel_callable in self.callables.values():
             # the callable already exists, hence return the function
             # identifier corresponding to that callable.
-            for func_id, in_knl_callable in self.callables.items():
+            for func_id, in_knl_callable in six.iteritems(self.callables):
                 if in_knl_callable == in_kernel_callable:
                     history[func_id] = function.name
                     if isinstance(func_id, str):

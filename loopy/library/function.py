@@ -22,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
 from loopy.kernel.function_interface import ScalarCallable
 from loopy.diagnostic import LoopyError
 
@@ -49,7 +50,7 @@ class MakeTupleCallable(ScalarCallable):
 class IndexOfCallable(ScalarCallable):
     def with_types(self, arg_id_to_dtype, kernel, callables_table):
         new_arg_id_to_dtype = dict((i, dtype) for i, dtype in
-                arg_id_to_dtype.items() if dtype is not None)
+                six.iteritems(arg_id_to_dtype) if dtype is not None)
         new_arg_id_to_dtype[-1] = kernel.index_dtype
 
         return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype),

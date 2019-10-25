@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
+import six
 from six.moves import zip
 
 from pytools import ImmutableRecord
@@ -393,7 +393,7 @@ class InKernelCallable(ImmutableRecord):
         new_arg_id_to_dtype = None
         if self.arg_id_to_dtype is not None:
             new_arg_id_to_dtype = dict((id, with_target_if_not_None(dtype)) for id,
-                    dtype in self.arg_id_to_dtype.items())
+                    dtype in six.iteritems(self.arg_id_to_dtype))
 
         return self.copy(arg_id_to_dtype=new_arg_id_to_dtype)
 
@@ -679,7 +679,7 @@ class CallableKernel(InKernelCallable):
                     callables_table))
 
         new_arg_id_to_dtype = {}
-        for pos, kw in pos_to_kw.items():
+        for pos, kw in six.iteritems(pos_to_kw):
             new_arg_id_to_dtype[kw] = specialized_kernel.arg_dict[kw].dtype
             new_arg_id_to_dtype[pos] = specialized_kernel.arg_dict[kw].dtype
 
@@ -730,7 +730,7 @@ class CallableKernel(InKernelCallable):
             subst_mapper = SubstitutionMapper(subst_func)
 
             arg_id_to_descr = dict((arg_id, descr.map_expr(subst_mapper)) for
-                    arg_id, descr in arg_id_to_descr.items())
+                    arg_id, descr in six.iteritems(arg_id_to_descr))
 
         # }}}
 
@@ -746,7 +746,7 @@ class CallableKernel(InKernelCallable):
         new_args = self.subkernel.args[:]
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
-        for arg_id, descr in arg_id_to_descr.items():
+        for arg_id, descr in six.iteritems(arg_id_to_descr):
             if isinstance(arg_id, int):
                 arg_id = pos_to_kw[arg_id]
             assert isinstance(arg_id, str)
@@ -798,7 +798,8 @@ class CallableKernel(InKernelCallable):
 
         if assumptions:
             args_added_knl = assume(args_added_knl, ' and '.join([
-                '{0}={1}'.format(key, val) for key, val in assumptions.items()]))
+                '{0}={1}'.format(key, val) for key, val in
+                six.iteritems(assumptions)]))
 
         return (
                 self.copy(
@@ -812,7 +813,7 @@ class CallableKernel(InKernelCallable):
 
         arg_id_to_descr = {}
 
-        for pos, kw in pos_to_kw.items():
+        for pos, kw in six.iteritems(pos_to_kw):
             arg = self.subkernel.arg_dict[kw]
             arg_id_to_descr[pos] = ArrayArgDescriptor(
                     shape=arg.shape,
@@ -931,7 +932,7 @@ class ManglerCallable(ScalarCallable):
     def with_types(self, arg_id_to_dtype, kernel, callables_table):
         if self.arg_id_to_dtype is not None:
             # specializing an already specialized function.
-            for arg_id, dtype in arg_id_to_dtype.items():
+            for arg_id, dtype in six.iteritems(arg_id_to_dtype):
                 # only checking for the ones which have been provided
                 # if does not match, returns an error.
                 if self.arg_id_to_dtype[arg_id] != arg_id_to_dtype[arg_id]:

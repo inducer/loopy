@@ -1975,7 +1975,7 @@ class SliceToInameReplacer(IdentityMapper):
                     set=list(sar_bounds.keys()))
             from loopy.symbolic import DependencyMapper
             args_as_params_for_domains = set()
-            for _, (start, stop, step) in sar_bounds.items():
+            for _, (start, stop, step) in six.iteritems(sar_bounds):
                 args_as_params_for_domains |= DependencyMapper()(start)
                 args_as_params_for_domains |= DependencyMapper()(stop)
                 args_as_params_for_domains |= DependencyMapper()(step)
@@ -1987,7 +1987,7 @@ class SliceToInameReplacer(IdentityMapper):
             iname_set = isl.BasicSet.universe(space)
 
             from loopy.isl_helpers import make_slab
-            for iname, (start, stop, step) in sar_bounds.items():
+            for iname, (start, stop, step) in six.iteritems(sar_bounds):
                 iname_set = iname_set & make_slab(space, iname, start, stop, step)
 
             subarray_ref_domains.append(iname_set)

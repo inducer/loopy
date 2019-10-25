@@ -666,7 +666,7 @@ def generate_code_v2(program):
     callee_fdecls = []
     implemented_data_infos = []
 
-    for func_id, in_knl_callable in program.callables_table.items():
+    for func_id, in_knl_callable in six.iteritems(program.callables_table):
         if isinstance(in_knl_callable, CallableKernel):
             #FIXME:
             # 1. Diverge the kernels which are both entrypoint and callees at this

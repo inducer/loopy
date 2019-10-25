@@ -2490,7 +2490,7 @@ def preprocess_program(program, device=None):
     # [1] https://docs.python.org/3/library/stdtypes.html#dictionary-view-objects
 
     new_callables = {}
-    for func_id, in_knl_callable in program.callables_table.items():
+    for func_id, in_knl_callable in six.iteritems(program.callables_table):
         if isinstance(in_knl_callable, CallableKernel):
             new_subkernel = preprocess_single_kernel(
                     in_knl_callable.subkernel, program.callables_table,
