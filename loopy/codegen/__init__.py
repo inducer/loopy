@@ -720,8 +720,11 @@ def generate_code(kernel, device=None):
     if len(codegen_result.device_programs) > 1:
         raise LoopyError("kernel passed to generate_code yielded multiple "
                 "device programs. Use generate_code_v2.")
+    if len(codegen_result.host_programs) > 1:
+        raise LoopyError("kernel passed to generate_code yielded multiple "
+                "host programs. Use generate_code_v2.")
 
-    return codegen_result.device_code(), codegen_result.implemented_data_info
+    return codegen_result.device_code(), codegen_result.implemented_data_infos[0]
 
 # }}}
 
