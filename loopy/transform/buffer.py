@@ -37,7 +37,7 @@ from loopy.version import DATA_MODEL_VERSION
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.program import Program
-from loopy.kernel.function_interface import CallableKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 from pymbolic import var
 
@@ -135,10 +135,10 @@ buffer_array_cache = WriteOncePersistentDict(
 
 
 # Adding an argument? also add something to the cache_key below.
-def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
-        store_expression=None, within=None, default_tag="l.auto",
-        temporary_scope=None, temporary_is_local=None,
-        fetch_bounding_box=False, callables_table=None):
+def buffer_array_for_single_kernel(kernel, callables_table, var_name,
+        buffer_inames, init_expression=None, store_expression=None,
+        within=None, default_tag="l.auto", temporary_scope=None,
+        temporary_is_local=None, fetch_bounding_box=False):
     """Replace accesses to *var_name* with ones to a temporary, which is
     created and acts as a buffer. To perform this transformation, the access
     footprint to *var_name* is determined and a temporary of a suitable
@@ -556,6 +556,26 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
                 cache_key, prepare_for_caching(kernel))
 
     return kernel
+
+
+def buffer_array(program, *args, **kwargs):
+    assert isinstance(program, Program)
+
+    new_callables = {}
+
+    for func_id, clbl in six.iteritems(program.callables_table):
+        if isinstance(clbl, CallableKernel):
+            clbl = clbl.copy(
+                    subkernel=buffer_array_for_single_kernel(clbl.subkernel,
+                        program.callables_table, *args, **kwargs))
+        elif isinstance(clbl, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError()
+
+        new_callables[func_id] = clbl
+
+    return program.copy(callables_table=new_callables)
 
 
 # vim: foldmethod=marker

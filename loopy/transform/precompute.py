@@ -32,7 +32,7 @@ from loopy.symbolic import (get_dependencies,
 from loopy.diagnostic import LoopyError
 from pymbolic.mapper.substitutor import make_subst_func
 from loopy.program import Program
-from loopy.kernel.function_interface import CallableKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 import numpy as np
 
 from pymbolic import var
@@ -260,7 +260,7 @@ class _not_provided(object):  # noqa: N801
     pass
 
 
-def precompute(kernel, subst_use,
+def precompute_for_single_kernel(kernel, callables_table, subst_use,
         sweep_inames=[], within=None, storage_axes=None, temporary_name=None,
         precompute_inames=None, precompute_outer_inames=None,
         storage_axis_to_tag={},
@@ -272,7 +272,6 @@ def precompute(kernel, subst_use,
         fetch_bounding_box=False,
         temporary_address_space=None,
         compute_insn_id=None,
-        callables_table=None,
         **kwargs):
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
@@ -1063,5 +1062,23 @@ def precompute(kernel, subst_use,
 
     return kernel
 
+
+def precompute(program, *args, **kwargs):
+    assert isinstance(program, Program)
+    new_callables = {}
+
+    for func_id, clbl in six.iteritems(program.callables_table):
+        if isinstance(clbl, CallableKernel):
+            knl = precompute_for_single_kernel(clbl.subkernel,
+                    program.callables_table, *args, **kwargs)
+            clbl = clbl.copy(subkernel=knl)
+        elif isinstance(clbl, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError()
+
+        new_callables[func_id] = clbl
+
+    return program.copy(callables_table=new_callables)
 
 # vim: foldmethod=marker

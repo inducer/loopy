@@ -81,6 +81,7 @@ __doc__ = """
 
 # {{{ set loop priority
 
+@iterate_over_kernels_if_given_program
 def set_loop_priority(kernel, loop_priority):
     from warnings import warn
     warn("set_loop_priority is deprecated. Use prioritize_loops instead. "
@@ -95,6 +96,7 @@ def set_loop_priority(kernel, loop_priority):
     return kernel.copy(loop_priority=frozenset([loop_priority]))
 
 
+@iterate_over_kernels_if_given_program
 def prioritize_loops(kernel, loop_priority):
     """Indicates the textual order in which loops should be entered in the
     kernel code. Note that this priority has an advisory role only. If the
@@ -1052,6 +1054,8 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
         if len([clbl for clbl in six.itervalues(knl.callables_table) if
                 isinstance(clbl, CallableKernel)]) == 1:
             knl = knl[list(knl.entrypoints)[0]]
+
+    assert isinstance(knl, LoopKernel)
 
     from loopy.kernel.data import ConcurrentTag
 
