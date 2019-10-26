@@ -739,6 +739,45 @@ class TypeReader(TypeInferenceMapper):
 
         return []
 
+    def map_variable(self, expr):
+        if expr.name in self.kernel.all_inames():
+            return [self.kernel.index_dtype]
+
+        result = self.kernel.mangle_symbol(
+                self.kernel.target.get_device_ast_builder(),
+                expr.name)
+
+        if result is not None:
+            result_dtype, _ = result
+            return [result_dtype]
+
+        obj = self.new_assignments.get(expr.name)
+
+        if obj is None:
+            obj = self.kernel.arg_dict.get(expr.name)
+
+        if obj is None:
+            obj = self.kernel.temporary_variables.get(expr.name)
+
+        if obj is None:
+            raise TypeInferenceFailure("name not known in type inference: %s"
+                    % expr.name)
+
+        from loopy.kernel.data import TemporaryVariable, KernelArgument
+        import loopy as lp
+        if isinstance(obj, (KernelArgument, TemporaryVariable)):
+            assert obj.dtype is not lp.auto
+            result = [obj.dtype]
+            if result[0] is None:
+                raise DependencyTypeInferenceFailure(
+                        ", ".join(sorted(expr.name)))
+            else:
+                return result
+
+        else:
+            raise RuntimeError("unexpected type inference "
+                    "object type for '%s'" % expr.name)
+
     map_call_with_kwargs = map_call
 
 # }}}
