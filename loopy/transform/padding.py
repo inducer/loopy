@@ -28,8 +28,10 @@ THE SOFTWARE.
 from pytools import MovedFunctionDeprecationWrapper
 from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 
-from loopy.program import iterate_over_kernels_if_given_program
+from loopy.program import iterate_over_kernels_if_given_program, Program
 from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel
+from loopy.diagnostic import LoopyError
 
 
 class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
@@ -410,6 +412,15 @@ def split_array_axis(kernel, array_names, axis_nr, count,
 # {{{ find_padding_multiple
 
 def find_padding_multiple(kernel, variable, axis, align_bytes, allowed_waste=0.1):
+    if isinstance(kernel, Program):
+        kernel_names = [i for i, clbl in six.iteritems(kernel.callables_table)
+                if isinstance(clbl, CallableKernel)]
+        if len(kernel_names) > 1:
+            raise LoopyError()
+        return find_padding_multiple(kernel[kernel_names[0]], variable, axis,
+                align_bytes, allowed_waste)
+    assert isinstance(kernel, LoopKernel)
+
     arg = kernel.arg_dict[variable]
 
     if arg.dim_tags is None:
