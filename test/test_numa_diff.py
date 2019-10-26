@@ -59,11 +59,10 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
 
     source = source.replace("datafloat", "real*4")
 
-    hsv_r, hsv_s = [
-           knl for knl in lp.parse_fortran(source, filename,
-               seq_dependencies=False, return_list_of_knls=True)
-           if "KernelR" in knl.name or "KernelS" in knl.name
-           ]
+    program = lp.parse_fortran(source, filename, seq_dependencies=False)
+
+    hsv_r, hsv_s = program["strongVolumeKernelR"], program["strongVolumeKernelS"]
+
     hsv_r = lp.tag_instructions(hsv_r, "rknl")
     hsv_s = lp.tag_instructions(hsv_s, "sknl")
     hsv = lp.fuse_kernels([hsv_r, hsv_s], ["_r", "_s"])
