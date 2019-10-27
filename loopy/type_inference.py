@@ -734,8 +734,6 @@ class TypeReader(TypeInferenceMapper):
                     return [get_return_types_as_tuple(arg_id_to_dtype)]
                 else:
                     return [arg_id_to_dtype[-1]]
-        else:
-            raise NotImplementedError()
 
         return []
 
@@ -1122,6 +1120,8 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx,
 def infer_unknown_types(program, expect_completion=False):
     """Infer types on temporaries and arguments."""
     from loopy.kernel.data import auto
+
+    program = program.with_resolved_callables()
 
     clbl_inf_ctx = make_clbl_inf_ctx(program.callables_table,
             program.entrypoints)
