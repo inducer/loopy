@@ -170,6 +170,10 @@ class ASTBuilderBase(object):
 
     # {{{ code generation guts
 
+    @property
+    def ast_module(self):
+        raise NotImplementedError()
+
     def get_function_definition(self, codegen_state, codegen_result,
             schedule_index, function_decl, function_body):
         raise NotImplementedError

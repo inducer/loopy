@@ -802,6 +802,11 @@ class CASTBuilder(ASTBuilderBase):
 
     # {{{ code generation guts
 
+    @property
+    def ast_module(self):
+        import cgen
+        return cgen
+
     def get_expression_to_code_mapper(self, codegen_state):
         return self.get_expression_to_c_expression_mapper(codegen_state)
 

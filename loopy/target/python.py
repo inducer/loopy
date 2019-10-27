@@ -33,7 +33,7 @@ from loopy.type_inference import TypeReader
 from loopy.kernel.data import ValueArg
 from loopy.diagnostic import LoopyError  # noqa
 from loopy.target import ASTBuilderBase
-from genpy import Suite
+from genpy import Suite, Collection
 
 
 # {{{ expression to code
@@ -139,17 +139,6 @@ class ExpressionToPythonMapper(StringifyMapper):
 # }}}
 
 
-# {{{ genpy extensions
-
-class Collection(Suite):
-    def generate(self):
-        for item in self.contents:
-            for item_line in item.generate():
-                yield item_line
-
-# }}}
-
-
 # {{{ ast builder
 
 def _numpy_single_arg_function_mangler(kernel, name, arg_dtypes):
@@ -178,8 +167,6 @@ class PythonASTBuilderBase(ASTBuilderBase):
     """A Python host AST builder for integration with PyOpenCL.
     """
 
-    # {{{ code generation guts
-
     @property
     def known_callables(self):
         from loopy.target.c import get_c_callables
@@ -192,6 +179,13 @@ class PythonASTBuilderBase(ASTBuilderBase):
                 super(PythonASTBuilderBase, self).preamble_generators() + [
                     _base_python_preamble_generator
                     ])
+
+    # {{{ code generation guts
+
+    @property
+    def ast_module(self):
+        import genpy
+        return genpy
 
     def get_function_declaration(self, codegen_state, codegen_result,
             schedule_index):

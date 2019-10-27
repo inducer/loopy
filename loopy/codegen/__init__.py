@@ -696,9 +696,9 @@ def generate_code_v2(program):
             program.target)))
 
     # adding the callee fdecls to the device_programs
-    from cgen import Collection
     device_programs = ([device_programs[0].copy(
-            ast=Collection(callee_fdecls+[device_programs[0].ast]))] +
+            ast=program.target.get_device_ast_builder().ast_module.Collection(
+                callee_fdecls+[device_programs[0].ast]))] +
             device_programs[1:])
     cgr = CodeGenerationResult(
             host_programs=host_programs,
