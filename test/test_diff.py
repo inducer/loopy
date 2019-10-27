@@ -55,18 +55,20 @@ def test_diff(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    knl = lp.make_function(
+    knl = lp.make_kernel(
          """{ [i,j]: 0<=i,j<n }""",
          """
          <> a = 1/(1+sinh(x[i] + y[j])**2)
          z[i] = sum(j, exp(a * x[j]))
-         """)
+         """, name="diff")
 
     knl = lp.fix_parameters(knl, n=50)
 
     from loopy.transform.diff import diff_kernel
-    dknl, diff_map = diff_kernel(knl, "z", "x")
-    dknl = lp.make_program(dknl)
+    #FIXME Is this the correct interface. Does it make sense to take the entire
+    #translation unit?
+    dknl, diff_map = diff_kernel(knl["diff"], "z", "x")
+    dknl = knl.with_kernel(dknl)
     dknl = lp.remove_unused_arguments(dknl)
 
     dknl = lp.add_inames_to_insn(dknl, "diff_i0", "writes:a_dx or writes:a")

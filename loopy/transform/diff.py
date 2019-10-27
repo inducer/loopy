@@ -342,6 +342,8 @@ class DifferentiationContext(object):
                     arg.dtype,
                     shape=shape,
                     dim_tags=dim_tags,
+                    is_input=arg.is_input,
+                    is_output=arg.is_output
                 ))
 
         elif var_name in self.kernel.temporary_variables:
