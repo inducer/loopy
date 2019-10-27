@@ -590,7 +590,7 @@ def diverge_callee_entrypoints(program):
     new_callables = {}
     renames = {}
 
-    vng = UniqueNameGenerator(list(six.iterkeys(program.callables_table)))
+    vng = UniqueNameGenerator(set(six.iterkeys(program.callables_table)))
 
     for clbl_id in callable_ids & program.entrypoints:
         renames[clbl_id] = vng(based_on=clbl_id)
