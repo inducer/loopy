@@ -32,6 +32,8 @@ from loopy.diagnostic import LoopyError
 from pymbolic import var
 
 from loopy.kernel import LoopKernel
+from loopy.program import Program
+from loopy.kernel.function_interface import CallableKernel
 
 
 def _apply_renames_in_exprs(kernel, var_renames):
@@ -333,6 +335,16 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
 
         *data_flow* was added in version 2016.2
     """
+    if all(isinstance(kernel, Program) for kernel in kernels):
+        new_kernels = []
+        for knl in kernels:
+            kernel_names = [i for i, clbl in
+                    six.iteritems(knl.callables_table) if isinstance(clbl,
+                        CallableKernel)]
+        if len(kernel_names) != 1:
+            raise LoopyError()
+        new_kernels.append(knl[kernel_names[0]])
+        kernels = new_kernels[:]
 
     assert all(isinstance(knl, LoopKernel) for knl in kernels)
     kernels = list(kernels)
