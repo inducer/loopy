@@ -659,9 +659,10 @@ def test_domain_tree_nesting():
         TV('num_vals_offset', initializer=num_vals_offset, read_only=True,
             scope=scopes.PRIVATE),
         lp.GlobalArg('B', shape=(100, 31), dtype=np.float64),
-        lp.GlobalArg('out', shape=(100, 12), dtype=np.float64)])
+        lp.GlobalArg('out', shape=(100, 12), dtype=np.float64)],
+        name="nested_domain")
 
-    parents_per_domain = knl.root_kernel.parents_per_domain()
+    parents_per_domain = knl["nested_domain"].parents_per_domain()
 
     def depth(i):
         if parents_per_domain[i] is None:

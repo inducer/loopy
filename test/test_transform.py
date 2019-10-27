@@ -136,7 +136,8 @@ def test_to_batched_temp(ctx_factory):
              "cnst",
              dtype=np.float32,
              shape=(),
-             scope=lp.temp_var_scope.PRIVATE), '...'])
+             scope=lp.temp_var_scope.PRIVATE), '...'],
+         name="test_to_batch")
     prog = lp.add_and_infer_dtypes(prog, dict(out=np.float32,
                                             x=np.float32,
                                             a=np.float32))
@@ -151,7 +152,7 @@ def test_to_batched_temp(ctx_factory):
     bref_prog = lp.to_batched(ref_prog, "nbatches", "out,x")
 
     # checking that cnst is not being bathced
-    assert bprog.root_kernel.temporary_variables['cnst'].shape == ()
+    assert bprog["test_to_batch"].temporary_variables['cnst'].shape == ()
 
     a = np.random.randn(5, 5)
     x = np.random.randn(7, 5)
@@ -168,10 +169,10 @@ def test_save_temporaries_in_loop(ctx_factory):
             "{[i, j]: 0 <= i, j < 4}",
             """
             <> a[j] = j {inames=i:j}
-            """)
+            """, name="save_temps")
 
     prog = lp.save_temporaries_in_loop(prog, 'i', ['a'])
-    assert prog.root_kernel.temporary_variables['a'].shape == (4, 4)
+    assert prog["save_temps"].temporary_variables['a'].shape == (4, 4)
 
 
 def test_add_barrier(ctx_factory):
@@ -291,7 +292,7 @@ def test_extract_subst(ctx_factory):
             "{[i]: 0<=i<n}",
             """
                 a[i] = 23*b[i]**2 + 25*b[i]**2
-                """)
+                """, name="extract_subst")
 
     prog = lp.extract_subst(prog, "bsquare", "alpha*b[i]**2", "alpha")
 
@@ -299,7 +300,7 @@ def test_extract_subst(ctx_factory):
 
     from loopy.symbolic import parse
 
-    insn, = prog.root_kernel.instructions
+    insn, = prog["extract_subst"].instructions
     assert insn.expression == parse("bsquare(23) + bsquare(25)")
 
 
@@ -375,7 +376,7 @@ def test_precompute_confusing_subst_arguments(ctx_factory):
         """
         D(i):=a[i+1]-a[i]
         b[i,j] = D(j)
-        """)
+        """, name="precomputer")
 
     prog = lp.add_and_infer_dtypes(prog, dict(a=np.float32))
 
@@ -386,7 +387,7 @@ def test_precompute_confusing_subst_arguments(ctx_factory):
 
     from loopy.symbolic import get_dependencies
     assert "i_inner" not in get_dependencies(
-            prog.root_kernel.substitutions["D"].expression)
+            prog["precomputer"].substitutions["D"].expression)
     prog = lp.precompute(prog, "D")
 
     lp.auto_test_vs_ref(
@@ -403,7 +404,7 @@ def test_precompute_nested_subst(ctx_factory):
         E:=a[i]
         D:=E*E
         b[i] = D
-        """)
+        """, name="precomputer")
 
     prog = lp.add_and_infer_dtypes(prog, dict(a=np.float32))
 
@@ -414,19 +415,19 @@ def test_precompute_nested_subst(ctx_factory):
 
     from loopy.symbolic import get_dependencies
     assert "i_inner" not in get_dependencies(
-            prog.root_kernel.substitutions["D"].expression)
+            prog["precomputer"].substitutions["D"].expression)
     prog = lp.precompute(prog, "D", "i_inner", default_tag="l.auto")
 
     # There's only one surviving 'E' rule.
     assert len([
         rule_name
-        for rule_name in prog.root_kernel.substitutions
+        for rule_name in prog["precomputer"].substitutions
         if rule_name.startswith("E")]) == 1
 
     # That rule should use the newly created prefetch inames,
     # not the prior 'i_inner'
     assert "i_inner" not in get_dependencies(
-            prog.root_kernel.substitutions["E"].expression)
+            prog["precomputer"].substitutions["E"].expression)
 
     lp.auto_test_vs_ref(
             ref_prog, ctx, prog,
@@ -505,7 +506,7 @@ def test_add_nosync():
 
         <>tmp5[i] = 0 {id=insn5,groups=g1}
         tmp5[i] = 1 {id=insn6,conflicts=g1}
-        """)
+        """, name="nosync")
 
     orig_prog = lp.set_temporary_scope(orig_prog, "tmp3", "local")
     orig_prog = lp.set_temporary_scope(orig_prog, "tmp5", "local")
@@ -514,27 +515,27 @@ def test_add_nosync():
     prog = lp.add_nosync(orig_prog, "any", "writes:tmp", "writes:tmp2",
             empty_ok=True)
     assert frozenset() == (
-            prog.root_kernel.id_to_insn["insn2"].no_sync_with)
+            prog["nosync"].id_to_insn["insn2"].no_sync_with)
 
     # Dependency present
     prog = lp.add_nosync(orig_prog, "local", "writes:tmp3", "reads:tmp3")
     assert frozenset() == (
-            prog.root_kernel.id_to_insn["insn3"].no_sync_with)
+            prog["nosync"].id_to_insn["insn3"].no_sync_with)
     assert frozenset([("insn3", "local")]) == (
-            prog.root_kernel.id_to_insn["insn4"].no_sync_with)
+            prog["nosync"].id_to_insn["insn4"].no_sync_with)
 
     # Bidirectional
     prog = lp.add_nosync(
             orig_prog, "local", "writes:tmp3", "reads:tmp3", bidirectional=True)
     assert frozenset([("insn4", "local")]) == (
-            prog.root_kernel.id_to_insn["insn3"].no_sync_with)
+            prog["nosync"].id_to_insn["insn3"].no_sync_with)
     assert frozenset([("insn3", "local")]) == (
-            prog.root_kernel.id_to_insn["insn4"].no_sync_with)
+            prog["nosync"].id_to_insn["insn4"].no_sync_with)
 
     # Groups
     prog = lp.add_nosync(orig_prog, "local", "insn5", "insn6")
     assert frozenset([("insn5", "local")]) == (
-            prog.root_kernel.id_to_insn["insn6"].no_sync_with)
+            prog["nosync"].id_to_insn["insn6"].no_sync_with)
 
 
 def test_uniquify_instruction_ids():
@@ -543,14 +544,14 @@ def test_uniquify_instruction_ids():
     i3 = lp.Assignment("b", 1, id=lp.UniqueName("b"))
     i4 = lp.Assignment("b", 1, id=lp.UniqueName("b"))
 
-    prog = lp.make_kernel("{[i]: i = 1}", [])
-    new_root_kernel = prog.root_kernel.copy(instructions=[i1, i2, i3, i4])
-    prog = prog.with_root_kernel(new_root_kernel)
+    prog = lp.make_kernel("{[i]: i = 1}", [], name="lpy_knl")
+    new_root_kernel = prog["lpy_knl"].copy(instructions=[i1, i2, i3, i4])
+    prog = prog.with_kernel(new_root_kernel)
 
     from loopy.transform.instruction import uniquify_instruction_ids
     prog = uniquify_instruction_ids(prog)
 
-    insn_ids = set(insn.id for insn in prog.root_kernel.instructions)
+    insn_ids = set(insn.id for insn in prog["lpy_knl"].instructions)
 
     assert len(insn_ids) == 4
     assert all(isinstance(id, str) for id in insn_ids)
@@ -562,11 +563,11 @@ def test_split_iname_only_if_in_within():
             """
             c[i] = 3*d[i] {id=to_split}
             a[i] = 2*b[i] {id=not_to_split}
-            """)
+            """, name="splitter")
 
     prog = lp.split_iname(prog, "i", 4, within='id:to_split')
 
-    for insn in prog.root_kernel.instructions:
+    for insn in prog["splitter"].instructions:
         if insn.id == 'to_split':
             assert insn.within_inames == frozenset({'i_outer', 'i_inner'})
         if insn.id == 'not_to_split':
@@ -590,7 +591,7 @@ def test_nested_substs_in_insns(ctx_factory):
     prg = lp.expand_subst(ref_prg)
     assert not any(
             cknl.subkernel.substitutions
-            for cknl in six.itervalues(prg.callables_table.resolved_functions))
+            for cknl in six.itervalues(prg.callables_table))
 
     lp.auto_test_vs_ref(ref_prg, ctx, prg)
 
