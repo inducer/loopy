@@ -321,11 +321,8 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
         return _KernelInfo(
                 program=program,
                 cl_kernels=cl_kernels,
-                implemented_data_info=[i for i, h in
-                    zip(codegen_result.implemented_data_infos,
-                        codegen_result.host_programs) if
-                    h.name.endswith(entrypoint)][0],
-                # implemented_data_info=codegen_result.implemented_data_info[0],
+                implemented_data_info=codegen_result.implemented_data_infos[
+                    entrypoint],
                 invoker=self.get_invoker(program, entrypoint, codegen_result))
 
     def __call__(self, queue, **kwargs):

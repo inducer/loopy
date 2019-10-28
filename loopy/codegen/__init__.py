@@ -26,10 +26,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 import six
+import islpy as isl
 
+from collections import OrderedDict
 from loopy.diagnostic import LoopyError, warn
 from pytools import ImmutableRecord
-import islpy as isl
 
 from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
@@ -660,11 +661,11 @@ def generate_code_v2(program):
 
     program = diverge_callee_entrypoints(program)
 
-    host_programs = []
+    host_programs = OrderedDict()
     device_programs = []
     device_preambles = []
     callee_fdecls = []
-    implemented_data_infos = []
+    implemented_data_infos = OrderedDict()
 
     for func_id, in_knl_callable in six.iteritems(program.callables_table):
         if isinstance(in_knl_callable, CallableKernel):
@@ -676,8 +677,9 @@ def generate_code_v2(program):
                         program.callables_table, program.target, func_id in
                         program.entrypoints)
             if func_id in program.entrypoints:
-                host_programs.extend(cgr.host_programs)
-                implemented_data_infos.append(cgr.implemented_data_info)
+                assert len(cgr.host_programs) == 1
+                host_programs[func_id] = cgr.host_programs[func_id]
+                implemented_data_infos[func_id] = cgr.implemented_data_info
             else:
                 # FIXME: This assertion should be valid
                 # assert cgr.host_programs == []

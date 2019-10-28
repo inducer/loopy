@@ -635,9 +635,7 @@ class ExecutionWrapperGeneratorBase(object):
         options = program[entrypoint].options
         #FIXME: endswith is ugly maybe make
         # codegen_result.implemented_data_infos a dict?
-        implemented_data_info = [i for i, h in
-                zip(codegen_result.implemented_data_infos,
-                    codegen_result.host_programs) if h.name.endswith(entrypoint)][0]
+        implemented_data_info = codegen_result.implemented_data_infos[entrypoint]
 
         from loopy.kernel.data import KernelArgument
         gen = PythonFunctionGenerator(
@@ -669,8 +667,7 @@ class ExecutionWrapperGeneratorBase(object):
             gen, program[entrypoint], implemented_data_info, options)
 
         #FIXME: should we make this as a dict as well.
-        host_program_name, = [h.name for h in codegen_result.host_programs if
-                h.name.endswith(entrypoint)]
+        host_program_name = codegen_result.host_programs[entrypoint].name
 
         self.generate_invocation(gen, host_program_name, args,
                 program[entrypoint], implemented_data_info)
