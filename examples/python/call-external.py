@@ -83,12 +83,6 @@ class BLASCallable(lp.ScalarCallable):
         yield("99_cblas", "#include <cblas.h>")
         return
 
-
-def blas_fn_lookup(target, identifier):
-    if identifier == 'gemv':
-        return BLASCallable(name='gemv')
-    return None
-
 # }}}
 
 
@@ -105,7 +99,6 @@ knl = lp.make_kernel(
         target=CTarget(),
         lang_version=(2018, 2))
 
-knl = lp.register_function_id_to_in_knl_callable_mapper(
-        knl, blas_fn_lookup)
+knl = lp.register_callable(knl, "gemv", BLASCallable(name="gemv"))
 
 print(lp.generate_code_v2(knl).device_code())
