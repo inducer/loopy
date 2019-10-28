@@ -384,7 +384,8 @@ class ExecutableCTarget(CTarget):
 
     def get_kernel_executor(self, knl, *args, **kwargs):
         from loopy.target.c.c_execution import CKernelExecutor
-        return CKernelExecutor(knl, compiler=self.compiler)
+        return CKernelExecutor(knl, entrypoint=kwargs.pop('entrypoint'),
+                compiler=self.compiler)
 
     def get_host_ast_builder(self):
         # enable host code generation
