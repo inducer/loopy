@@ -234,23 +234,23 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
     # add keyword parameters
     from pymbolic.primitives import CallWithKwargs
 
+    from loopy.kernel.function_interface import get_kw_pos_association
+    kw_to_pos, pos_to_kw = get_kw_pos_association(callee_knl)
     if isinstance(instruction.expression, CallWithKwargs):
-        from loopy.kernel.function_interface import get_kw_pos_association
-
-        _, pos_to_kw = get_kw_pos_association(callee_knl)
         kw_parameters = instruction.expression.kw_parameters
-        for i in range(len(parameters), len(parameters) + len(kw_parameters)):
-            parameters = parameters + (kw_parameters[pos_to_kw[i]],)
+    else:
+        kw_parameters = {}
 
-    assignee_pos = 0
-    parameter_pos = 0
-    for i, arg in enumerate(callee_knl.args):
-        if arg.is_output:
-            arg_map[arg.name] = assignees[assignee_pos]
-            assignee_pos += 1
-        else:
-            arg_map[arg.name] = parameters[parameter_pos]
-            parameter_pos += 1
+    for kw, par in six.iteritems(kw_parameters):
+        arg_map[kw] = par
+
+    for i, par in enumerate(parameters):
+        arg_map[pos_to_kw[i]] = par
+
+    for i, assignee in enumerate(assignees):
+        arg_map[pos_to_kw[-i-1]] = assignee
+
+    print(arg_map)
 
     # }}}
 
@@ -555,10 +555,19 @@ def _match_caller_callee_argument_dimension_(program, callee_function_name):
     .. note::
 
         The callee kernel addressed by *callee_function_name*, should be
-        called only once.
+        called at only one location throughout the program, as multiple
+        invocations would demand complex renaming logic which is not
+        implemented yet.
     """
+
+    # {{{  sanity checks
+
     assert isinstance(program, Program)
     assert isinstance(callee_function_name, str)
+    assert callee_function_name not in program.entrypoints
+    assert callee_function_name in program.callables_table
+
+    # }}}
 
     is_invoking_callee = _FunctionCalledChecker(
             callee_function_name).map_kernel
@@ -568,16 +577,13 @@ def _match_caller_callee_argument_dimension_(program, callee_function_name):
                 CallableKernel) and
             is_invoking_callee(in_knl_callable.subkernel)]
 
-    old_callee_knl = program.callables_table[
-            callee_function_name].subkernel
+    from pymbolic.primitives import Call
+    assert len([insn for insn in caller_knl.instructions if (isinstance(insn,
+        CallInstruction) and isinstance(insn.expression, Call) and
+        insn.expression.function.name == callee_function_name)]) == 1
     new_callee_kernel = _match_caller_callee_argument_dimension_for_single_kernel(
-            caller_knl, old_callee_knl)
-
-    new_callables_table = program.callables_table.copy()
-    new_callables_table.resolved_functions[callee_function_name] = (
-            new_callables_table[callee_function_name].copy(
-                subkernel=new_callee_kernel))
-    return program.copy(callables_table=new_callables_table)
+            caller_knl, program[callee_function_name])
+    return program.with_kernel(new_callee_kernel)
 
 # }}}
 
