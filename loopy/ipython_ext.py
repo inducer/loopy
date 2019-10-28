@@ -9,10 +9,8 @@ import loopy as lp
 class LoopyMagics(Magics):
     @cell_magic
     def fortran_kernel(self, line, cell):
-        result = lp.parse_fortran(cell, return_list_of_knls=True)
-
-        for knl in result:
-            self.shell.user_ns[knl.name] = knl
+        result = lp.parse_fortran(cell)
+        self.shell.user_ns['prog'] = result
 
     @cell_magic
     def transformed_fortran_kernel(self, line, cell):
@@ -20,8 +18,7 @@ class LoopyMagics(Magics):
                 cell,
                 transform_code_context=self.shell.user_ns)
 
-        for knl in result:
-            self.shell.user_ns[knl.name] = knl
+        self.shell.user_ns['prog'] = result
 
 
 def load_ipython_extension(ip):

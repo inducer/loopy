@@ -311,10 +311,6 @@ class Program(ImmutableRecord):
 
         return self.copy(callables_table=callables_table)
 
-    def __iter__(self):
-        #FIXME: Document
-        return six.iterkeys(self.callables_table.resolved_functions)
-
     def __getitem__(self, name):
         result = self.callables_table[name]
         if isinstance(result, CallableKernel):
