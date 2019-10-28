@@ -127,7 +127,11 @@ class ArrayArgDescriptor(ImmutableRecord):
     # FIXME ArrayArgDescriptor should never need to be persisted, remove
     # this method when that is so.
     def update_persistent_hash(self, key_hash, key_builder):
-        key_builder.update_for_pymbolic_expression(key_hash, self.shape)
+        for shape_i in self.shape:
+            if shape_i is None:
+                key_builder.rec(key_hash, shape_i)
+            else:
+                key_builder.update_for_pymbolic_expression(key_hash, shape_i)
         key_builder.rec(key_hash, self.address_space)
         key_builder.rec(key_hash, self.dim_tags)
 
