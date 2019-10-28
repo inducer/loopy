@@ -438,8 +438,6 @@ def test_non_sub_array_refs_arguments(ctx_factory):
 
     print(inlined)
 
-    print(inlined)
-
 
 @pytest.mark.parametrize("inline", [False, True])
 def test_empty_sub_array_refs(ctx_factory, inline):
