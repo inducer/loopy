@@ -1704,7 +1704,7 @@ def get_access_range(domain, subscript, assumptions, shape=None,
             dim_type.out, 0, dn)
     del access_map_as_map
 
-    return access_map.range()
+    return access_map
 
 # }}}
 
@@ -1833,7 +1833,7 @@ class AccessRangeOverlapChecker(object):
         for expr in exprs:
             arm(expr, self.kernel.insn_inames(insn))
 
-        for name, arange in six.iteritems(arm.access_ranges):
+        for name, arange in six.iteritems(arm.access_ranges.range()):
             if arm.bad_subscripts[name]:
                 aranges[name] = True
                 continue

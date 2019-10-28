@@ -343,7 +343,7 @@ class _AccessCheckMapper(WalkMapper):
 
             try:
                 access_range = get_access_range(self.domain, subscript,
-                        self.kernel.assumptions)
+                        self.kernel.assumptions).range()
             except UnableToDetermineAccessRange:
                 # Likely: index was non-affine, nothing we can do.
                 return

@@ -1089,7 +1089,7 @@ class AccessFootprintGatherer(CombineMapper):
 
         try:
             access_range = get_access_range(self.domain, subscript,
-                    self.kernel.assumptions)
+                    self.kernel.assumptions).range()
         except isl.Error:
             # Likely: index was non-linear, nothing we can do.
             if self.ignore_uncountable:

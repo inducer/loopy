@@ -1481,7 +1481,7 @@ def find_shapes_of_vars(knl, var_names, feed_expression):
     from loopy.diagnostic import StaticValueFindingError
 
     for var_name in var_names:
-        access_range = armap.access_ranges[var_name]
+        access_range = armap.access_ranges[var_name].range()
         bad_subscripts = armap.bad_subscripts[var_name]
 
         if access_range is not None:
