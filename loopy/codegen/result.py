@@ -216,7 +216,7 @@ def merge_codegen_results(codegen_state, elements, collapse=True):
 
     if not elements:
         return CodeGenerationResult(
-                host_programs=[],
+                host_programs=OrderedDict(),
                 device_programs=[],
                 implemented_domains={},
                 implemented_data_info=codegen_state.implemented_data_info)
@@ -338,7 +338,7 @@ def generate_host_or_device_program(codegen_state, schedule_index):
                     body_ast=ast_builder.process_ast(body_ast)))
     else:
         codegen_result = codegen_result.copy(
-                host_programs=[])
+                host_programs=OrderedDict())
 
     return codegen_result
 

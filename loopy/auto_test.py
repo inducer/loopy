@@ -446,10 +446,8 @@ def auto_test_vs_ref(
                 properties=cl.command_queue_properties.PROFILING_ENABLE)
         ref_codegen_result = lp.generate_code_v2(ref_prog)
 
-        #FIXME: This is not correct, but I am thinking of moving to a dict of
-        #implemented_data_info anyway. That should make it more elegant.
-        assert len(ref_prog.entrypoints) == 1
-        ref_implemented_data_info = ref_codegen_result.implemented_data_infos[0]
+        ref_implemented_data_info = ref_codegen_result.implemented_data_infos[
+                ref_entrypoint]
 
         logger.info("%s (ref): trying %s for the reference calculation" % (
             ref_entrypoint, dev))
@@ -530,10 +528,9 @@ def auto_test_vs_ref(
     test_prog = infer_unknown_types(test_prog, expect_completion=True)
     test_prog_codegen_result = lp.generate_code_v2(test_prog)
 
-    assert len(test_prog.entrypoints) == 1
-
     args = make_args(test_prog[test_entrypoint],
-            test_prog_codegen_result.implemented_data_infos[0],
+            test_prog_codegen_result.implemented_data_infos[
+                test_entrypoint],
             queue, ref_arg_data, parameters)
     args["out_host"] = False
 

@@ -25,6 +25,7 @@ THE SOFTWARE.
 """
 
 import six
+from collections import OrderedDict
 from loopy.codegen.result import merge_codegen_results, wrap_in_if
 import islpy as isl
 from loopy.schedule import (
@@ -179,7 +180,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
             if sched_item.synchronization_kind in ["global", "local"]:
                 # host code is assumed globally and locally synchronous
                 return CodeGenerationResult(
-                        host_programs=[],
+                        host_programs=OrderedDict(),
                         device_programs=[],
                         implemented_domains={},
                         implemented_data_info=codegen_state.implemented_data_info)
