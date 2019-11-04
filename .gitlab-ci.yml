@@ -17,27 +17,6 @@ Python 2.7 POCL:
       junit: test/pytest.xml
 
 
-Python 2.7 with legacy PyOpenCL:
-  script:
-  - export PY_EXE=python2.7
-  - export PYOPENCL_TEST=portable
-  - export EXTRA_INSTALL="pybind11 numpy mako"
-  - export REQUIREMENTS_TXT="requirements-old-pyopencl.txt"
-  - export LOOPY_NO_CACHE=1
-  - export NO_DOCTESTS=1
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
-  tags:
-  - python2.7
-  - pocl
-  except:
-  - tags
-  retry: 2
-  artifacts:
-    reports:
-      junit: test/pytest.xml
-
-
 Python 3 POCL:
   script:
   - export PY_EXE=python3
