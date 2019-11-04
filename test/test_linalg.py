@@ -27,7 +27,8 @@ import pytest
 import sys
 import numpy as np
 import pyopencl as cl
-import pyopencl.array as cl_array
+import pyopencl.array as cl_array  # noqa: F401
+import pyopencl.cltypes as cltypes
 import loopy as lp
 
 import logging
@@ -71,15 +72,13 @@ def test_axpy(ctx_factory):
 
     n = 3145182
 
-    vec = cl_array.vec
-
     if ctx.devices[0].platform.vendor.startswith("Advanced Micro"):
         pytest.skip("crashes on AMD 15.12")
 
     for dtype, check, a, b in [
             (np.complex64, None, 5, 7),
-            (vec.float4, check_float4,
-                vec.make_float4(1, 2, 3, 4), vec.make_float4(6, 7, 8, 9)),
+            (cltypes.float4, check_float4,
+                cltypes.make_float4(1, 2, 3, 4), cltypes.make_float4(6, 7, 8, 9)),
             (np.float32, None, 5, 7),
             ]:
         knl = lp.make_kernel(
@@ -163,7 +162,7 @@ def test_plain_matrix_mul(ctx_factory):
     n = get_suitable_size(ctx)
 
     for dtype, check, vec_size in [
-            (cl_array.vec.float4, check_float4, 4),
+            (cltypes.float4, check_float4, 4),
             (np.float32, None, 1),
             ]:
         knl = lp.make_kernel(
