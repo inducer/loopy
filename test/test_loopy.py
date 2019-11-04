@@ -500,7 +500,7 @@ def test_offsets_and_slicing(ctx_factory):
     b_full_h[b_sub] = 2*a_full_h[a_sub]
 
     #print(cknl.get_highlighted_code({"a": a.dtype}))
-    knl = lp.set_options(write_cl=True)
+    knl = lp.set_options(knl, write_cl=True)
 
     knl(queue, a=a, b=b)
 
