@@ -1009,7 +1009,7 @@ def guess_var_shape(kernel, var_name):
                 "The following error occurred: %s"
                 % (var_name, str(e)))
 
-    if armap.access_range.range() is None:
+    if armap.access_range is None:
         if armap.bad_subscripts:
             from loopy.symbolic import LinearSubscript
             if any(isinstance(sub, LinearSubscript)
@@ -1045,12 +1045,12 @@ def guess_var_shape(kernel, var_name):
         from loopy.symbolic import pw_aff_to_expr
 
         shape = []
-        for i in range(armap.access_range.range().dim(dim_type.set)):
+        for i in range(armap.access_range.dim(dim_type.set)):
             try:
                 shape.append(
                         pw_aff_to_expr(static_max_of_pw_aff(
                             kernel.cache_manager.dim_max(
-                                armap.access_range.range(), i) + 1,
+                                armap.access_range, i) + 1,
                             constants_only=False)))
             except Exception:
                 print("While trying to find shape axis %d of "

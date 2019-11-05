@@ -1713,7 +1713,7 @@ def get_access_range(domain, subscript, assumptions, shape=None,
 
 class BatchedAccessRangeMapper(WalkMapper):
 
-    def __init__(self, kernel, var_names, overestimate=None):
+    def __init__(self, kernel, var_names, overestimate=None, return_iname=False):
         self.kernel = kernel
         self.var_names = set(var_names)
         from collections import defaultdict
@@ -1724,6 +1724,7 @@ class BatchedAccessRangeMapper(WalkMapper):
             overestimate = False
 
         self.overestimate = overestimate
+        self.return_iname = return_iname
 
     def map_subscript(self, expr, inames):
         domain = self.kernel.get_inames_domain(inames)
@@ -1747,6 +1748,9 @@ class BatchedAccessRangeMapper(WalkMapper):
         except UnableToDetermineAccessRange:
             self.bad_subscripts[arg_name].append(expr)
             return
+
+        if not self.return_iname:
+            access_range = access_range.range()
 
         if self.access_ranges[arg_name] is None:
             self.access_ranges[arg_name] = access_range
@@ -1788,10 +1792,10 @@ class AccessRangeMapper(object):
     BatchedAccessRangeMapper does the same traversal in *O(m + n)* time.
     """
 
-    def __init__(self, kernel, var_name, overestimate=None):
+    def __init__(self, kernel, var_name, overestimate=None, return_iname=False):
         self.var_name = var_name
         self.inner_mapper = BatchedAccessRangeMapper(
-                kernel, [var_name], overestimate)
+                kernel, [var_name], overestimate, return_iname)
 
     def __call__(self, expr, inames):
         return self.inner_mapper(expr, inames)
@@ -1833,7 +1837,7 @@ class AccessRangeOverlapChecker(object):
         for expr in exprs:
             arm(expr, self.kernel.insn_inames(insn))
 
-        for name, arange in six.iteritems(arm.access_ranges.range()):
+        for name, arange in six.iteritems(arm.access_ranges):
             if arm.bad_subscripts[name]:
                 aranges[name] = True
                 continue
