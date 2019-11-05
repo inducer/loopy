@@ -473,7 +473,8 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
                 )
     result = make_kernel(set_str,
             "output[%s] = input[%s]"
-            % (commad_indices, commad_indices))
+            % (commad_indices, commad_indices),
+            lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
     result = tag_array_axes(result, "input", old_dim_tags)
     result = tag_array_axes(result, "output", new_dim_tags)

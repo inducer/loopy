@@ -23,8 +23,10 @@ THE SOFTWARE.
 """
 
 from six.moves import range, zip
-from pytools import Record
+import os
 from warnings import warn
+
+from pytools import Record
 
 import numpy as np
 
@@ -321,7 +323,7 @@ def _default_check_result(result, ref_result):
 
 # {{{ find device for reference test
 
-def _enumerate_cl_devices_for_ref_test(blacklist_ref_vendors):
+def _enumerate_cl_devices_for_ref_test(blacklist_ref_vendors, need_image_support):
     import pyopencl as cl
 
     noncpu_devs = []
@@ -336,8 +338,17 @@ def _enumerate_cl_devices_for_ref_test(blacklist_ref_vendors):
                     for bl in blacklist_ref_vendors):
                 continue
 
+            if need_image_support:
+                if not dev.image_support:
+                    continue
+                if pf.vendor == "The pocl project":
+                    # Hahaha, no.
+                    continue
+
             if dev.type & cl.device_type.CPU:
-                if "Intel" in dev.platform.vendor:
+                if ("Intel" in dev.platform.vendor
+                        and os.environ.get("LOOPY_INTEL_CL_OK_FOR_TEST_REF")
+                        is None):
                     # Sorry, Intel, your CPU CL has gotten too crashy of late.
                     # (Feb 2016)
                     continue
@@ -427,7 +438,12 @@ def auto_test_vs_ref(
 
     ref_errors = []
 
-    for dev in _enumerate_cl_devices_for_ref_test(blacklist_ref_vendors):
+    from loopy.kernel.data import ImageArg
+    need_ref_image_support = any(isinstance(arg, ImageArg) for arg in ref_knl.args)
+
+    for dev in _enumerate_cl_devices_for_ref_test(
+            blacklist_ref_vendors, need_ref_image_support):
+
         ref_ctx = cl.Context([dev])
         ref_queue = cl.CommandQueue(ref_ctx,
                 properties=cl.command_queue_properties.PROFILING_ENABLE)

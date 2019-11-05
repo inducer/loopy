@@ -1868,7 +1868,7 @@ def infer_arg_is_output_only(kernel):
     from loopy.kernel.data import ArrayArg, ValueArg, ConstantArg, ImageArg
     new_args = []
     for arg in kernel.args:
-        if isinstance(arg, (ArrayArg, ImageArg, ValueArg)):
+        if isinstance(arg, ArrayArg):
             if arg.is_output_only is not None:
                 assert isinstance(arg.is_output_only, bool)
                 new_args.append(arg)
@@ -1877,7 +1877,7 @@ def infer_arg_is_output_only(kernel):
                     new_args.append(arg.copy(is_output_only=True))
                 else:
                     new_args.append(arg.copy(is_output_only=False))
-        elif isinstance(arg, ConstantArg):
+        elif isinstance(arg, (ConstantArg, ImageArg, ValueArg)):
             new_args.append(arg)
         else:
             raise NotImplementedError("Unkonwn argument type %s." % type(arg))
