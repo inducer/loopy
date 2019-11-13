@@ -578,21 +578,45 @@ def test_diamond_tiling(ctx_factory):
         """
         u[ix, it+2] = (
             2*u[ix, it+1]
-            + dt**2/dx**2 * (u[ix+1, it+1] - 2*u[ix, it+1] + u[ix-1, it+1]) 
+            + dt**2/dx**2 * (u[ix+1, it+1] - 2*u[ix, it+1] + u[ix-1, it+1])
             - u[ix, it])
         """)
+    ref_knl = lp.set_options(ref_knl, write_cl=True)
+
+    # FIXME: Handle priorities in map_domain
+    knl_for_transform = ref_knl
 
     ref_knl = lp.prioritize_loops(ref_knl, "it, ix")
 
-    ref_knl = lp.set_options(ref_knl, write_cl=True)
     nx = 43
     u = np.zeros((nx, 200))
     x = np.linspace(-1, 1, nx)
     dx = x[1] - x[0]
     u[:, 0] = u[:, 1] = np.exp(-100*x**2)
 
+    import islpy as isl
+    if 1:
+        m = isl.BasicMap(
+            "[nx,nt] -> {[ix, it] -> [tx, tt, tparity, itt, itx]: "
+            "16*(tx - tt + tparity) + itx - itt = ix - it and "
+            "16*(tx + tt) + itt + itx = ix + it and "
+            "0<=tparity<2 and 0 <= itx - itt < 16 and 0 <= itt+itx < 16}")
+        knl = lp.map_domain(knl_for_transform, m)
+        knl = lp.prioritize_loops(knl, "tt,tparity,tx,itt,itx")
+    else:
+        # This is more like what split_iname does, but it is *not*
+        # a correct tiling for the stencil operator.
+        m = isl.BasicMap(
+            "[nx,nt] -> {[ix, it] -> [tx, tt, itt, itx]: "
+            "16*tx + itx = ix and "
+            "16*tt + itt = it and "
+            "0 <= itx < 16 and 0 <= itt< 16}")
+
+        knl = lp.map_domain(knl_for_transform, m)
+        knl = lp.prioritize_loops(knl, "tt,tx,itt,itx")
+
     u_dev = cl.array.to_device(queue, u)
-    ref_knl(queue, u=u_dev, dx=dx, dt=dx)
+    knl(queue, u=u_dev, dx=dx, dt=dx)
 
     u = u_dev.get()
     import matplotlib.pyplot as plt
