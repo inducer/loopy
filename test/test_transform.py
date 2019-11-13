@@ -552,7 +552,6 @@ def test_split_iname_only_if_in_within():
 
 def test_nested_substs_in_insns(ctx_factory):
     ctx = ctx_factory()
-    import loopy as lp
 
     ref_knl = lp.make_kernel(
         "{[i]: 0<=i<10}",
@@ -568,6 +567,37 @@ def test_nested_substs_in_insns(ctx_factory):
     assert not knl.substitutions
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
+def test_diamond_tiling(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    ref_knl = lp.make_kernel(
+        "[nx,nt] -> {[ix, it]: 1<=ix<nx-1 and 0<=it<nt}",
+        """
+        u[ix, it+2] = (
+            2*u[ix, it+1]
+            + dt**2/dx**2 * (u[ix+1, it+1] - 2*u[ix, it+1] + u[ix-1, it+1]) 
+            - u[ix, it])
+        """)
+
+    ref_knl = lp.prioritize_loops(ref_knl, "it, ix")
+
+    ref_knl = lp.set_options(ref_knl, write_cl=True)
+    nx = 43
+    u = np.zeros((nx, 200))
+    x = np.linspace(-1, 1, nx)
+    dx = x[1] - x[0]
+    u[:, 0] = u[:, 1] = np.exp(-100*x**2)
+
+    u_dev = cl.array.to_device(queue, u)
+    ref_knl(queue, u=u_dev, dx=dx, dt=dx)
+
+    u = u_dev.get()
+    import matplotlib.pyplot as plt
+    plt.imshow(u.T)
+    plt.show()
 
 
 if __name__ == "__main__":
