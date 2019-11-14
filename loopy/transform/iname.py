@@ -1773,20 +1773,34 @@ class _MapDomainMapper(RuleAwareIdentityMapper):
         self.substitutions = substitutions
 
     def map_reduction(self, expr, expn_state):
-        overlap = frozenset(expr.inames) & self.old_inames
-        if (overlap
-                and self.split_iname not in expn_state.arg_context
+        red_overlap = frozenset(expr.inames) & self.old_inames
+        arg_ctx_overlap = frozenset(expn_state.arg_context) & self.old_inames
+        if (red_overlap
                 and self.within(
                     expn_state.kernel,
                     expn_state.instruction)):
-            # FIXME
-            if len(overlap) != len(self.old_inames):
-                raise LoopyError("...")
+            if len(red_overlap) != len(self.old_inames):
+                raise LoopyError("reduction '%s' involves a part "
+                        "of the map domain inames. Reductions must "
+                        "either involve all or none of the map domain "
+                        "inames." % str(expr))
 
-            raise NotImplementedError("reductions")
+            if arg_ctx_overlap:
+                if arg_ctx_overlap == red_overlap:
+                    # All variables are shadowed by context, that's OK.
+                    return super(_MapDomainMapper, self).map_reduction(
+                            expr, expn_state)
+                else:
+                    raise LoopyError("reduction '%s' has"
+                            "some of the reduction variables affected "
+                            "by the map_domain shadowed by context. "
+                            "Either all or none must be shadowed."
+                            % str(expr))
+
             new_inames = list(expr.inames)
-            new_inames.remove(self.split_iname)
-            new_inames.extend([self.outer_iname, self.inner_iname])
+            for old_iname in self.old_inames:
+                new_inames.remove(old_iname)
+            new_inames.extend(self.new_inames)
 
             from loopy.symbolic import Reduction
             return Reduction(expr.operation, tuple(new_inames),
