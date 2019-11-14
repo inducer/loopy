@@ -595,25 +595,13 @@ def test_diamond_tiling(ctx_factory):
     u[:, 0] = u[:, 1] = np.exp(-100*x**2)
 
     import islpy as isl
-    if 1:
-        m = isl.BasicMap(
-            "[nx,nt] -> {[ix, it] -> [tx, tt, tparity, itt, itx]: "
-            "16*(tx - tt + tparity) + itx - itt = ix - it and "
-            "16*(tx + tt) + itt + itx = ix + it and "
-            "0<=tparity<2 and 0 <= itx - itt < 16 and 0 <= itt+itx < 16}")
-        knl = lp.map_domain(knl_for_transform, m)
-        knl = lp.prioritize_loops(knl, "tt,tparity,tx,itt,itx")
-    else:
-        # This is more like what split_iname does, but it is *not*
-        # a correct tiling for the stencil operator.
-        m = isl.BasicMap(
-            "[nx,nt] -> {[ix, it] -> [tx, tt, itt, itx]: "
-            "16*tx + itx = ix and "
-            "16*tt + itt = it and "
-            "0 <= itx < 16 and 0 <= itt< 16}")
-
-        knl = lp.map_domain(knl_for_transform, m)
-        knl = lp.prioritize_loops(knl, "tt,tx,itt,itx")
+    m = isl.BasicMap(
+        "[nx,nt] -> {[ix, it] -> [tx, tt, tparity, itt, itx]: "
+        "16*(tx - tt + tparity) + itx - itt = ix - it and "
+        "16*(tx + tt) + itt + itx = ix + it and "
+        "0<=tparity<2 and 0 <= itx - itt < 16 and 0 <= itt+itx < 16}")
+    knl = lp.map_domain(knl_for_transform, m)
+    knl = lp.prioritize_loops(knl, "tt,tparity,tx,itt,itx")
 
     u_dev = cl.array.to_device(queue, u)
     knl(queue, u=u_dev, dx=dx, dt=dx)
