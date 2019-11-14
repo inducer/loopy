@@ -597,8 +597,8 @@ def test_diamond_tiling(ctx_factory):
     import islpy as isl
     m = isl.BasicMap(
         "[nx,nt] -> {[ix, it] -> [tx, tt, tparity, itt, itx]: "
-        "16*(tx - tt + tparity) + itx - itt = ix - it and "
-        "16*(tx + tt) + itt + itx = ix + it and "
+        "16*(tx - tt) + itx - itt = ix - it and "
+        "16*(tx + tt + tparity) + itt + itx = ix + it and "
         "0<=tparity<2 and 0 <= itx - itt < 16 and 0 <= itt+itx < 16}")
     knl = lp.map_domain(knl_for_transform, m)
     knl = lp.prioritize_loops(knl, "tt,tparity,tx,itt,itx")
