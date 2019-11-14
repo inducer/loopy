@@ -1781,7 +1781,7 @@ class _MapDomainMapper(RuleAwareIdentityMapper):
                     expn_state.instruction)):
             # FIXME
             if len(overlap) != len(self.old_inames):
-                raise LoopyError(...)
+                raise LoopyError("...")
 
             raise NotImplementedError("reductions")
             new_inames = list(expr.inames)
