@@ -569,7 +569,7 @@ def test_nested_substs_in_insns(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
-def test_diamond_tiling(ctx_factory):
+def test_diamond_tiling(ctx_factory, interactive=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -581,18 +581,11 @@ def test_diamond_tiling(ctx_factory):
             + dt**2/dx**2 * (u[ix+1, it+1] - 2*u[ix, it+1] + u[ix-1, it+1])
             - u[ix, it])
         """)
-    ref_knl = lp.set_options(ref_knl, write_cl=True)
 
     # FIXME: Handle priorities in map_domain
     knl_for_transform = ref_knl
 
     ref_knl = lp.prioritize_loops(ref_knl, "it, ix")
-
-    nx = 43
-    u = np.zeros((nx, 200))
-    x = np.linspace(-1, 1, nx)
-    dx = x[1] - x[0]
-    u[:, 0] = u[:, 1] = np.exp(-100*x**2)
 
     import islpy as isl
     m = isl.BasicMap(
@@ -603,13 +596,30 @@ def test_diamond_tiling(ctx_factory):
     knl = lp.map_domain(knl_for_transform, m)
     knl = lp.prioritize_loops(knl, "tt,tparity,tx,itt,itx")
 
-    u_dev = cl.array.to_device(queue, u)
-    knl(queue, u=u_dev, dx=dx, dt=dx)
+    if interactive:
+        nx = 43
+        u = np.zeros((nx, 200))
+        x = np.linspace(-1, 1, nx)
+        dx = x[1] - x[0]
+        u[:, 0] = u[:, 1] = np.exp(-100*x**2)
 
-    u = u_dev.get()
-    import matplotlib.pyplot as plt
-    plt.imshow(u.T)
-    plt.show()
+        u_dev = cl.array.to_device(queue, u)
+        knl(queue, u=u_dev, dx=dx, dt=dx)
+
+        u = u_dev.get()
+        import matplotlib.pyplot as plt
+        plt.imshow(u.T)
+        plt.show()
+    else:
+        types = {"dt,dx,u": np.float64}
+        knl = lp.add_and_infer_dtypes(knl, types)
+        ref_knl = lp.add_and_infer_dtypes(ref_knl, types)
+
+        lp.auto_test_vs_ref(ref_knl, ctx, knl,
+                parameters={
+                    "nx": 200, "nt": 300,
+                    "dx": 1, "dt": 1
+                    })
 
 
 if __name__ == "__main__":
