@@ -362,8 +362,9 @@ class _AccessCheckMapper(WalkMapper):
 
             if not access_range.is_subset(shape_domain):
                 raise LoopyError("'%s' in instruction '%s' "
-                        "accesses out-of-bounds array element"
-                        % (expr, self.insn_id))
+                        "accesses out-of-bounds array element (could not"
+                        " establish '%s' is a subset of '%s')."
+                        % (expr, self.insn_id, access_range, shape_domain))
 
 
 def check_bounds(kernel):
