@@ -809,6 +809,22 @@ def test_custom_iname_tag():
 # }}}
 
 
+def test_remove_instructions_with_recursive_deps():
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<10}",
+            """
+            y[i] = 0 {id=insn0}
+            a[i] = 2*b[i] {id=insn1}
+            c[i] = 2*b[i] {id=insn2}
+            y[i] = y[i] + x[i] {id=insn3}
+            """, seq_dependencies=True)
+
+    knl = lp.remove_instructions(knl, set(['insn1', 'insn2']))
+
+    assert knl.id_to_insn['insn3'].depends_on == frozenset(['insn0'])
+    assert knl.id_to_insn['insn0'].depends_on == frozenset()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
