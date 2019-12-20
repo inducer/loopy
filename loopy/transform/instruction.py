@@ -150,15 +150,23 @@ def add_dependency(kernel, insn_match, depends_on):
 def remove_instructions(kernel, insn_ids):
     """Return a new kernel with instructions in *insn_ids* removed.
 
-    Dependencies across (one, for now) deleted isntructions are propagated.
-    Behavior is undefined for now for chains of dependencies within the
-    set of deleted instructions.
+    Dependencies across deleted isntructions are recursively propagated.
 
     This also updates *no_sync_with* for all instructions.
+
+    :arg insn_ids: An instance of :class:`set` or :class:`str` as
+        understood by :func:`loopy.match.parse_match`.
     """
 
     if not insn_ids:
         return kernel
+
+    if isinstance(insn_ids, str):
+        from loopy.match import parse_match
+        within = parse_match(insn_ids)
+
+        insn_ids = set([insn.id for insn in kernel.instructions if
+            within(kernel, insn)])
 
     assert isinstance(insn_ids, set)
     id_to_insn = kernel.id_to_insn
@@ -175,10 +183,14 @@ def remove_instructions(kernel, insn_ids):
         else:
             depends_on = insn.depends_on
 
-        new_deps = depends_on - insn_ids
+        while depends_on & insn_ids:
+            new_deps = depends_on - insn_ids
+            for dep_id in depends_on & insn_ids:
+                new_deps = new_deps | id_to_insn[dep_id].depends_on
 
-        for dep_id in depends_on & insn_ids:
-            new_deps = new_deps | id_to_insn[dep_id].depends_on
+            depends_on = new_deps.copy()
+
+        assert not (depends_on & insn_ids)
 
         # update no_sync_with
 
@@ -187,7 +199,7 @@ def remove_instructions(kernel, insn_ids):
                 if insn_id not in insn_ids)
 
         new_insns.append(
-                insn.copy(depends_on=new_deps, no_sync_with=new_no_sync_with))
+                insn.copy(depends_on=depends_on, no_sync_with=new_no_sync_with))
 
     return kernel.copy(
             instructions=new_insns)
