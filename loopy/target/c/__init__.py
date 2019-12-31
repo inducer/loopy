@@ -654,7 +654,7 @@ def get_c_callables():
 
 class CFamilyASTBuilder(ASTBuilderBase):
 
-    function_qualifier = 'inline'
+    preamble_function_qualifier = 'inline'
 
     # {{{ library
 
@@ -668,7 +668,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
         return (
                 super().preamble_generators() + [
                     lambda preamble_info: _preamble_generator(preamble_info,
-                        self.function_qualifier),
+                        self.preamble_function_qualifier),
                     ])
 
     @property
