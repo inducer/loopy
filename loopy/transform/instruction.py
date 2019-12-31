@@ -176,6 +176,20 @@ def remove_instructions(kernel, insn_ids):
     assert isinstance(insn_ids, set)
     id_to_insn = kernel.id_to_insn
 
+    # for each insn_id to be removed get deps in terms of remaining
+    # insns
+    retargeted_deps = {}
+    for insn_id in insn_ids:
+        depends_on = id_to_insn[insn_id].depends_on
+        while depends_on & insn_ids:
+            new_deps = depends_on - insn_ids
+            for dep_id in depends_on & insn_ids:
+                new_deps = new_deps | id_to_insn[dep_id].depends_on
+
+            depends_on = new_deps.copy()
+
+        retargeted_deps[insn_id] = depends_on
+
     new_insns = []
     for insn in kernel.instructions:
         if insn.id in insn_ids:
@@ -188,23 +202,20 @@ def remove_instructions(kernel, insn_ids):
         else:
             depends_on = insn.depends_on
 
-        while depends_on & insn_ids:
-            new_deps = depends_on - insn_ids
-            for dep_id in depends_on & insn_ids:
-                new_deps = new_deps | id_to_insn[dep_id].depends_on
+        new_deps = depends_on - insn_ids
 
-            depends_on = new_deps.copy()
+        for insn_id in (depends_on & insn_ids):
+            new_deps = new_deps | retargeted_deps[insn_id]
 
-        assert not (depends_on & insn_ids)
+        assert not (new_deps & insn_ids)
 
         # update no_sync_with
-
         new_no_sync_with = frozenset((insn_id, scope)
                 for insn_id, scope in insn.no_sync_with
                 if insn_id not in insn_ids)
 
         new_insns.append(
-                insn.copy(depends_on=depends_on, no_sync_with=new_no_sync_with))
+                insn.copy(depends_on=new_deps, no_sync_with=new_no_sync_with))
 
     return kernel.copy(
             instructions=new_insns)
