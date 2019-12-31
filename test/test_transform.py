@@ -825,6 +825,32 @@ def test_remove_instructions_with_recursive_deps():
     assert knl.id_to_insn['insn0'].depends_on == frozenset()
 
 
+def test_prefetch_with_within(ctx_factory):
+    knl = lp.make_kernel(
+            "{[i, j, k]: 0<=i<100 and 0<=j,k<256}",
+            """
+            f[j] = 3.14 * j {id=set_f}
+            ... gbarrier {id=insn_gbar}
+            y[i, k] = f[k] * x[i, k] {id=set_y}
+            """, [lp.GlobalArg('x', shape=lp.auto, dtype=float), '...'],
+            seq_dependencies=True)
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, 'j', 32, inner_tag="l.0", outer_tag="g.0")
+    knl = lp.split_iname(knl, 'i', 32, inner_tag="l.0", outer_tag="g.0")
+
+    knl = lp.add_prefetch(knl, 'f', prefetch_insn_id='f_prftch', within='id:set_y',
+            sweep_inames='k',
+            dim_arg_names='iprftch',
+            default_tag=None,
+            temporary_address_space=lp.AddressSpace.LOCAL)
+    knl = lp.add_dependency(knl, 'id:f_prftch', 'id:insn_gbar')
+    knl = lp.split_iname(knl, 'iprftch', 32, inner_tag="l.0")
+
+    lp.auto_test_vs_ref(ref_knl, ctx_factory(), knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
