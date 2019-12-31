@@ -155,15 +155,20 @@ def remove_instructions(kernel, insn_ids):
     This also updates *no_sync_with* for all instructions.
 
     :arg insn_ids: An instance of :class:`set` or :class:`str` as
-        understood by :func:`loopy.match.parse_match`.
+        understood by :func:`loopy.match.parse_match` or
+        :class:`loopy.match.MatchExpressionBase`.
     """
 
     if not insn_ids:
         return kernel
 
+    from loopy.match import MatchExpressionBase
+
     if isinstance(insn_ids, str):
         from loopy.match import parse_match
-        within = parse_match(insn_ids)
+        insn_ids = parse_match(insn_ids)
+    if isinstance(insn_ids, MatchExpressionBase):
+        within = insn_ids
 
         insn_ids = set([insn.id for insn in kernel.instructions if
             within(kernel, insn)])
