@@ -411,9 +411,13 @@ def test_indexof_vec(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    if ctx.devices[0].platform.name.startswith("Portable"):
-        # Accurate as of 2015-10-08
-        pytest.skip("POCL miscompiles vector code")
+    if (
+            # Accurate as of 2015-10-08
+            ctx.devices[0].platform.name.startswith("Portable")
+            or
+            # Accurate as of 2019-11-04
+            ctx.devices[0].platform.name.startswith("Intel")):
+        pytest.skip("target ICD miscompiles vector code")
 
     knl = lp.make_kernel(
          ''' { [i,j,k]: 0<=i,j,k<4 } ''',

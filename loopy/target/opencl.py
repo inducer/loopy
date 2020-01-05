@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 import numpy as np
 
-from loopy.target.c import CTarget, CASTBuilder
+from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from pytools import memoize_method
 from loopy.diagnostic import LoopyError
@@ -304,7 +304,7 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
 
 # {{{ target
 
-class OpenCLTarget(CTarget):
+class OpenCLTarget(CFamilyTarget):
     """A target for the OpenCL C heterogeneous compute programming language.
     """
 
@@ -362,7 +362,7 @@ class OpenCLTarget(CTarget):
 
 # {{{ ast builder
 
-class OpenCLCASTBuilder(CASTBuilder):
+class OpenCLCASTBuilder(CFamilyASTBuilder):
     # {{{ library
 
     def function_manglers(self):
