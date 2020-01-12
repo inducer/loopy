@@ -34,8 +34,7 @@ import numpy as np
 import islpy as isl
 from islpy import dim_type
 from loopy.diagnostic import LoopyError, warn_with_kernel
-from pytools import memoize_on_first_arg
-from loopy.tools import natsorted
+from pytools import memoize_on_first_arg, natsorted
 
 import logging
 logger = logging.getLogger(__name__)
