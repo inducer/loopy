@@ -465,6 +465,7 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
                 id=insn_id[insn.id],
                 within_inames=within_inames,
                 # TODO: probaby need to keep priority in callee kernel
+                predicates=instruction.predicates | insn.predicates,
                 priority=instruction.priority,
                 depends_on=depends_on,
                 tags=insn.tags | instruction.tags,
@@ -475,6 +476,7 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
                 id=insn_id[insn.id],
                 within_inames=within_inames,
                 # TODO: probaby need to keep priority in callee kernel
+                predicates=instruction.predicates | insn.predicates,
                 priority=instruction.priority,
                 depends_on=depends_on,
                 tags=insn.tags | instruction.tags,
