@@ -436,7 +436,7 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
                 arg_dtypes=arg_dtypes)
 
     # binary functions
-    if (name in ["fmax", "fmin"]
+    if (name in ["fmax", "fmin", "copysign"]
             and len(arg_dtypes) == 2):
 
         dtype = np.find_common_type(
