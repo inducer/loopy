@@ -142,7 +142,7 @@ from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
         parse_fortran)
 
 from loopy.target import TargetBase, ASTBuilderBase
-from loopy.target.c import CTarget, ExecutableCTarget, generate_header
+from loopy.target.c import CFamilyTarget, CTarget, ExecutableCTarget, generate_header
 from loopy.target.cuda import CudaTarget
 from loopy.target.opencl import OpenCLTarget
 from loopy.target.pyopencl import PyOpenCLTarget
@@ -271,7 +271,7 @@ __all__ = [
         "LoopyError", "LoopyWarning",
 
         "TargetBase",
-        "CTarget", "ExecutableCTarget", "generate_header",
+        "CFamilyTarget", "CTarget", "ExecutableCTarget", "generate_header",
         "CudaTarget", "OpenCLTarget",
         "PyOpenCLTarget", "ISPCTarget",
         "NumbaTarget", "NumbaCudaTarget",
@@ -473,7 +473,8 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
                 )
     result = make_kernel(set_str,
             "output[%s] = input[%s]"
-            % (commad_indices, commad_indices))
+            % (commad_indices, commad_indices),
+            lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
     result = tag_array_axes(result, "input", old_dim_tags)
     result = tag_array_axes(result, "output", new_dim_tags)

@@ -1158,12 +1158,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     # {{{ set up temp variable
 
     import loopy as lp
-    if dtype is None:
-        dtype = lp.auto
-    else:
+    if dtype is not None:
         dtype = np.dtype(dtype)
-
-    import loopy as lp
 
     if temporary_address_space is None:
         temporary_address_space = lp.auto

@@ -107,9 +107,7 @@ def test_complicated_subst(ctx_factory):
         assert substs_with_letter == how_many
 
 
-def test_type_inference_no_artificial_doubles(ctx_factory):
-    ctx = ctx_factory()
-
+def test_type_inference_no_artificial_doubles():
     knl = lp.make_kernel(
             "{[i]: 0<=i<n}",
             """
@@ -124,7 +122,7 @@ def test_type_inference_no_artificial_doubles(ctx_factory):
                 ],
             assumptions="n>=1")
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
+    knl = lp.preprocess_kernel(knl)
     for k in lp.generate_loop_schedules(knl):
         code = lp.generate_code(k)
         assert "double" not in code
@@ -186,7 +184,7 @@ def test_simple_side_effect(ctx_factory):
             [lp.GlobalArg("a", np.float32, shape=(100,))]
             )
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
+    knl = lp.preprocess_kernel(knl)
     kernel_gen = lp.generate_loop_schedules(knl)
 
     for gen_knl in kernel_gen:
@@ -208,7 +206,7 @@ def test_owed_barriers(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
+    knl = lp.preprocess_kernel(knl)
     kernel_gen = lp.generate_loop_schedules(knl)
 
     for gen_knl in kernel_gen:
@@ -229,7 +227,7 @@ def test_wg_too_small(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
+    knl = lp.preprocess_kernel(knl)
     kernel_gen = lp.generate_loop_schedules(knl)
 
     import pytest
@@ -252,7 +250,7 @@ def test_multi_cse(ctx_factory):
     knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
     knl = lp.add_prefetch(knl, "a", [])
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
+    knl = lp.preprocess_kernel(knl)
     kernel_gen = lp.generate_loop_schedules(knl)
 
     for gen_knl in kernel_gen:
@@ -278,9 +276,8 @@ def test_bare_data_dependency(ctx_factory):
                 lp.ValueArg("n", np.int32),
                 ])
 
-    cknl = lp.CompiledKernel(ctx, knl)
     n = 20000
-    evt, (a,) = cknl(queue, n=n, out_host=True)
+    evt, (a,) = knl(queue, n=n, out_host=True)
 
     assert a.shape == (n,)
     assert (a == 1).all()
@@ -288,10 +285,7 @@ def test_bare_data_dependency(ctx_factory):
 
 # {{{ test race detection
 
-@pytest.mark.skipif("sys.version_info < (2,6)")
-def test_ilp_write_race_detection_global(ctx_factory):
-    ctx = ctx_factory()
-
+def test_ilp_write_race_detection_global():
     knl = lp.make_kernel(
             "[n] -> {[i,j]: 0<=i,j<n }",
             [
@@ -305,7 +299,7 @@ def test_ilp_write_race_detection_global(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(j="ilp"))
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
+    knl = lp.preprocess_kernel(knl)
 
     with lp.CacheMode(False):
         from loopy.diagnostic import WriteRaceConditionWarning
@@ -317,9 +311,7 @@ def test_ilp_write_race_detection_global(ctx_factory):
                     for w in warn_list)
 
 
-def test_ilp_write_race_avoidance_local(ctx_factory):
-    ctx = ctx_factory()
-
+def test_ilp_write_race_avoidance_local():
     knl = lp.make_kernel(
             "{[i,j]: 0<=i<16 and 0<=j<17 }",
             [
@@ -329,14 +321,12 @@ def test_ilp_write_race_avoidance_local(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(i="l.0", j="ilp"))
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
+    knl = lp.preprocess_kernel(knl)
     for k in lp.generate_loop_schedules(knl):
         assert k.temporary_variables["a"].shape == (16, 17)
 
 
-def test_ilp_write_race_avoidance_private(ctx_factory):
-    ctx = ctx_factory()
-
+def test_ilp_write_race_avoidance_private():
     knl = lp.make_kernel(
             "{[j]: 0<=j<16 }",
             [
@@ -346,7 +336,7 @@ def test_ilp_write_race_avoidance_private(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(j="ilp"))
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
+    knl = lp.preprocess_kernel(knl)
     for k in lp.generate_loop_schedules(knl):
         assert k.temporary_variables["a"].shape == (16,)
 
@@ -494,9 +484,7 @@ def test_offsets_and_slicing(ctx_factory):
             assumptions="n>=1 and m>=1",
             default_offset=lp.auto)
 
-    knl = lp.tag_data_axes(knl, "a,b", "stride:auto,stride:1")
-
-    cknl = lp.CompiledKernel(ctx, knl)
+    knl = lp.tag_array_axes(knl, "a,b", "stride:auto,stride:1")
 
     a_full = cl.clrandom.rand(queue, (n, n), np.float64)
     a_full_h = a_full.get()
@@ -511,8 +499,10 @@ def test_offsets_and_slicing(ctx_factory):
 
     b_full_h[b_sub] = 2*a_full_h[a_sub]
 
-    print(cknl.get_highlighted_code({"a": a.dtype}))
-    cknl(queue, a=a, b=b)
+    #print(cknl.get_highlighted_code({"a": a.dtype}))
+    knl = lp.set_options(knl, write_cl=True)
+
+    knl(queue, a=a, b=b)
 
     import numpy.linalg as la
     assert la.norm(b_full.get() - b_full_h) < 1e-13
@@ -657,7 +647,7 @@ def test_vector_types(ctx_factory, vec_len):
 
     ref_knl = knl
 
-    knl = lp.tag_data_axes(knl, "out", "c,vec")
+    knl = lp.tag_array_axes(knl, "out", "c,vec")
     knl = lp.tag_inames(knl, dict(j="unr"))
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
@@ -1030,7 +1020,7 @@ def test_literal_local_barrier(ctx_factory):
 
 
 def test_local_barrier_mem_kind():
-    def __test_type(mtype, expected):
+    def _test_type(mtype, expected):
         insn = '... lbarrier'
         if mtype:
             insn += '{mem_kind=%s}' % mtype
@@ -1046,9 +1036,9 @@ def test_local_barrier_mem_kind():
         cgr = lp.generate_code_v2(knl)
         assert 'barrier(%s)' % expected in cgr.device_code()
 
-    __test_type('', 'CLK_LOCAL_MEM_FENCE')
-    __test_type('global', 'CLK_GLOBAL_MEM_FENCE')
-    __test_type('local', 'CLK_LOCAL_MEM_FENCE')
+    _test_type('', 'CLK_LOCAL_MEM_FENCE')
+    _test_type('global', 'CLK_GLOBAL_MEM_FENCE')
+    _test_type('local', 'CLK_LOCAL_MEM_FENCE')
 
 
 def test_kernel_splitting(ctx_factory):
@@ -1868,7 +1858,7 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
                 "..."
                 ])
 
-    knl = lp.set_options(knl, write_cl=True, highlight_cl=True)
+    knl = lp.set_options(knl, write_cl=True)
     knl = lp.fix_parameters(knl, n=a.shape[0])
 
     evt, (a2,) = knl(queue, out_host=True)
@@ -2036,6 +2026,13 @@ def test_tight_loop_bounds(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
+    if (queue.device.platform.vendor == "Intel(R) Corporation"
+            and queue.device.driver_version in [
+                "2019.8.7.0",
+                "2019.8.8.0",
+                ]):
+        pytest.skip("Intel CL miscompiles this kernel")
+
     knl = lp.make_kernel(
         ["{ [i] : 0 <= i <= 5 }",
          "[i] -> { [j] : 2 * i - 2 < j <= 2 * i and 0 <= j <= 9 }"],
@@ -2049,6 +2046,8 @@ def test_tight_loop_bounds(ctx_factory):
         silenced_warnings="write_race(insn)")
 
     knl = lp.split_iname(knl, "i", 5, inner_tag="l.0", outer_tag="g.0")
+
+    knl = lp.set_options(knl, write_cl=True)
 
     evt, (out,) = knl(queue, out_host=True)
 
@@ -2169,11 +2168,11 @@ def test_complicated_argmin_reduction(ctx_factory):
                                     and qbx_forced_limit * center_side[ictr] > 0)
                             )
 
-                    <> post_dist_sq = if(matches, dist_sq, HUGE)
+                    <> post_dist_sq = dist_sq if matches else HUGE
                 end
                 <> min_dist_sq, <> min_ictr = argmin(ictr, ictr, post_dist_sq)
 
-                tgt_to_qbx_center[itgt] = if(min_dist_sq < HUGE, min_ictr, -1)
+                tgt_to_qbx_center[itgt] = min_ictr if min_dist_sq < HUGE else -1
             end
             """)
 
@@ -2686,7 +2685,7 @@ def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
             a[%s] = 13  {id=second,dep=first}
             """ % second_index,
             [
-                lp.TemporaryVariable("a", lp.auto, shape=(256,),
+                lp.TemporaryVariable("a", dtype=None, shape=(256,),
                     address_space=lp.AddressSpace.LOCAL),
                 ])
 
@@ -2705,7 +2704,7 @@ def test_half_complex_conditional(ctx_factory):
     knl = lp.make_kernel(
             "{[i]: 0 <= i < 10}",
             """
-           tmp[i] = if(i < 5, 0, 0j)
+           tmp[i] = 0 if i < 5 else 0j
            """)
 
     knl(queue)
@@ -2869,6 +2868,15 @@ def test_backwards_dep_printing_and_error():
 
 def test_dump_binary(ctx_factory):
     ctx = ctx_factory()
+
+    device = ctx.devices[0]
+
+    if (device.platform.vendor == "Intel(R) Corporation"
+            and device.driver_version in [
+                "2019.8.7.0",
+                "2019.8.8.0",
+                ]):
+        pytest.skip("Intel CL doesn't implement Kernel.program")
 
     knl = lp.make_kernel(
             "{ [i]: 0<=i<n }",

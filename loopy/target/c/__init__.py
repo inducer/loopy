@@ -77,6 +77,11 @@ class DTypeRegistryWrapper(object):
 
 # {{{ preamble generator
 
+def c99_preamble_generator(preamble_info):
+    if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
+        yield("10_stdint", "#include <stdint.h>")
+
+
 def _preamble_generator(preamble_info):
     integer_type_names = ["int8", "int16", "int32", "int64"]
 
@@ -314,8 +319,10 @@ class CExpression(object):
 # }}}
 
 
-class CTarget(TargetBase):
-    """A target for plain "C", without any parallel extensions.
+class CFamilyTarget(TargetBase):
+    """A target for "least-common denominator C", without any parallel
+    extensions, and without use of any C99 specifics. Intended to be
+    usable as a common base for C99, C++, OpenCL, CUDA, and the like.
     """
 
     hash_fields = TargetBase.hash_fields + ("fortran_abi",)
@@ -323,7 +330,7 @@ class CTarget(TargetBase):
 
     def __init__(self, fortran_abi=False):
         self.fortran_abi = fortran_abi
-        super(CTarget, self).__init__()
+        super(CFamilyTarget, self).__init__()
 
     def split_kernel_at_global_barriers(self):
         return False
@@ -332,7 +339,7 @@ class CTarget(TargetBase):
         return DummyHostASTBuilder(self)
 
     def get_device_ast_builder(self):
-        return CASTBuilder(self)
+        return CFamilyASTBuilder(self)
 
     # {{{ types
 
@@ -366,29 +373,6 @@ class CTarget(TargetBase):
         raise NotImplementedError()
 
     # }}}
-
-
-# {{{ executable c target
-
-class ExecutableCTarget(CTarget):
-    """
-    An executable CTarget that uses (by default) JIT compilation of C-code
-    """
-
-    def __init__(self, compiler=None, fortran_abi=False):
-        super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
-        from loopy.target.c.c_execution import CCompiler
-        self.compiler = compiler or CCompiler()
-
-    def get_kernel_executor(self, knl, *args, **kwargs):
-        from loopy.target.c.c_execution import CKernelExecutor
-        return CKernelExecutor(knl, compiler=self.compiler)
-
-    def get_host_ast_builder(self):
-        # enable host code generation
-        return CASTBuilder(self)
-
-# }}}
 
 
 class _ConstRestrictPointer(Pointer):
@@ -452,7 +436,7 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
                 arg_dtypes=arg_dtypes)
 
     # binary functions
-    if (name in ["fmax", "fmin"]
+    if (name in ["fmax", "fmin", "copysign"]
             and len(arg_dtypes) == 2):
 
         dtype = np.find_common_type(
@@ -484,24 +468,24 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
 # }}}
 
 
-class CASTBuilder(ASTBuilderBase):
+class CFamilyASTBuilder(ASTBuilderBase):
     # {{{ library
 
     def function_manglers(self):
         return (
-                super(CASTBuilder, self).function_manglers() + [
+                super(CFamilyASTBuilder, self).function_manglers() + [
                     c_math_mangler
                     ])
 
     def symbol_manglers(self):
         return (
-                super(CASTBuilder, self).symbol_manglers() + [
+                super(CFamilyASTBuilder, self).symbol_manglers() + [
                     c_symbol_mangler
                     ])
 
     def preamble_generators(self):
         return (
-                super(CASTBuilder, self).preamble_generators() + [
+                super(CFamilyASTBuilder, self).preamble_generators() + [
                     _preamble_generator,
                     ])
 
@@ -1064,7 +1048,7 @@ def generate_header(kernel, codegen_result=None):
         functions.
     """
 
-    if not isinstance(kernel.target, CTarget):
+    if not isinstance(kernel.target, CFamilyTarget):
         raise LoopyError(
                 'Header generation for non C-based languages are not implemented')
 
@@ -1077,6 +1061,59 @@ def generate_header(kernel, codegen_result=None):
         fde(dev_prg.ast)
 
     return fde.decls
+
+# }}}
+
+
+# {{{ C99 target
+
+class CTarget(CFamilyTarget):
+    """This target may emit code using all features of C99.
+    For a target base supporting "least-common-denominator" C,
+    see :class:`CFamilyTarget`.
+    """
+
+    def get_device_ast_builder(self):
+        return CASTBuilder(self)
+
+    @memoize_method
+    def get_dtype_registry(self):
+        from loopy.target.c.compyte.dtypes import (
+                DTypeRegistry, fill_registry_with_c99_stdint_types)
+        result = DTypeRegistry()
+        fill_registry_with_c99_stdint_types(result)
+        return DTypeRegistryWrapper(result)
+
+
+class CASTBuilder(CFamilyASTBuilder):
+    def preamble_generators(self):
+        return (
+                super(CASTBuilder, self).preamble_generators() + [
+                    c99_preamble_generator,
+                    ])
+
+# }}}
+
+
+# {{{ executable c target
+
+class ExecutableCTarget(CTarget):
+    """
+    An executable CFamilyTarget that uses (by default) JIT compilation of C-code
+    """
+
+    def __init__(self, compiler=None, fortran_abi=False):
+        super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
+        from loopy.target.c.c_execution import CCompiler
+        self.compiler = compiler or CCompiler()
+
+    def get_kernel_executor(self, knl, *args, **kwargs):
+        from loopy.target.c.c_execution import CKernelExecutor
+        return CKernelExecutor(knl, compiler=self.compiler)
+
+    def get_host_ast_builder(self):
+        # enable host code generation
+        return CFamilyASTBuilder(self)
 
 # }}}
 
