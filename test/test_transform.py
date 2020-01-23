@@ -570,6 +570,21 @@ def test_nested_substs_in_insns(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
+def test_extract_subst_with_iname_deps_in_templ(ctx_factory):
+    knl = lp.make_kernel(
+            "{[i, j, k]: 0<=i<100 and 0<=j,k<5}",
+            """
+            y[i, j, k] = x[i, j, k]
+            """,
+            [lp.GlobalArg('x,y', shape=lp.auto, dtype=float)],
+            lang_version=(2018, 2))
+
+    knl = lp.extract_subst(knl, 'rule1', 'x[i, arg1, arg2]',
+            parameters=('arg1', 'arg2'))
+
+    lp.auto_test_vs_ref(knl, ctx_factory(), knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
