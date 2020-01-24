@@ -212,12 +212,12 @@ def find_loop_nest_with_map(kernel):
     """
     result = {}
 
-    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag
 
     all_nonpar_inames = set(
             iname for iname in kernel.all_inames()
             if not kernel.iname_tags_of_type(iname,
-                    (ConcurrentTag, IlpBaseTag, VectorizeTag)))
+                    (ConcurrentTag, IlpBaseTag)))
 
     iname_to_insns = kernel.iname_to_insns()
 
@@ -276,7 +276,7 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
 
     result = {}
 
-    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag
     for insn in kernel.instructions:
         for iname in kernel.insn_inames(insn):
             if kernel.iname_tags_of_type(iname, ConcurrentTag):
@@ -310,7 +310,7 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
                         continue
 
                     if kernel.iname_tags_of_type(dep_insn_iname,
-                                (ConcurrentTag, IlpBaseTag, VectorizeTag)):
+                                (ConcurrentTag, IlpBaseTag)):
                         # Parallel tags don't really nest, so we'll disregard
                         # them here.
                         continue
@@ -1878,6 +1878,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             iname
             for iname, tags in six.iteritems(kernel.iname_to_tags)
             if filter_iname_tags_by_type(tags, ConcurrentTag))
+    # (ConcurrentTag includes VectorizeTag)
 
     loop_nest_with_map = find_loop_nest_with_map(kernel)
     loop_nest_around_map = find_loop_nest_around_map(kernel)
