@@ -807,6 +807,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         tag_key_uses = defaultdict(list)
 
         from loopy.kernel.data import HardwareConcurrentTag
+        # Note: HardwareConcurrent tags include Vectorize tags
 
         for iname in cond_inames:
             tags = self.iname_tags_of_type(iname, HardwareConcurrentTag, max_num=1)

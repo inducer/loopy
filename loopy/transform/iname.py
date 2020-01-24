@@ -1022,6 +1022,7 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
             iname
             for iname in knl.all_inames()
             if knl.iname_tags_of_type(iname, ConcurrentTag))
+    # Note: Concurrent tags include Vectorize tags
 
     # First we extract the minimal necessary information from the kernel
     if use_boostable_into:
@@ -1045,6 +1046,7 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_iname_sets):
         # Check whether this iname has a parallel tag and discard it if so
+        # Note: Concurrent tags include Vectorize tags
         if (iname in knl.iname_to_tags
                 and knl.iname_tags_of_type(iname, ConcurrentTag)):
             continue
