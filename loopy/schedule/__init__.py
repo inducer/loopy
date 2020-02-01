@@ -1878,7 +1878,6 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             iname
             for iname, tags in six.iteritems(kernel.iname_to_tags)
             if filter_iname_tags_by_type(tags, ConcurrentTag))
-    # (ConcurrentTag includes VectorizeTag)
 
     loop_nest_with_map = find_loop_nest_with_map(kernel)
     loop_nest_around_map = find_loop_nest_around_map(kernel)
