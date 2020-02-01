@@ -95,7 +95,6 @@ def get_usable_inames_for_conditional(kernel, sched_index):
         # - ILP indices are not available in loop bounds, they only get defined
         #   at the innermost level of nesting.
 
-        # Note: Concurrent tags include Vectorize tags, but IlpBase tags do not
         if (
                 kernel.iname_tags_of_type(iname, ConcurrentTag)
                 and not (kernel.iname_tags_of_type(iname, LocalIndexTagBase)

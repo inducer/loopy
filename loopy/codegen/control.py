@@ -42,7 +42,6 @@ def get_admissible_conditional_inames_for(codegen_state, sched_index):
 
     from loopy.kernel.data import (LocalIndexTag, HardwareConcurrentTag,
                                    filter_iname_tags_by_type)
-    # Note: HardwareConcurrent tags include Vectorize tags
 
     from loopy.schedule import find_active_inames_at, has_barrier_within
     result = find_active_inames_at(kernel, sched_index)

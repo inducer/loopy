@@ -244,7 +244,6 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
         hw_inames_left = [iname for iname in all_inames_by_insns
                 if kernel.iname_tags_of_type(iname, HardwareConcurrentTag)
                 and not kernel.iname_tags_of_type(iname, VectorizeTag)]
-        # Note: HardwareConcurrent tags include Vectorize tags
 
     if not hw_inames_left:
         return next_func(codegen_state)

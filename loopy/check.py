@@ -188,8 +188,6 @@ def _is_racing_iname_tag(tv, tag):
     from loopy.kernel.data import (AddressSpace,
             LocalIndexTagBase, GroupIndexTag, ConcurrentTag, auto)
 
-    # TODO Question: now that Concurrent tags include Vectorize tags,
-    # should something change here?
     if tv.address_space == AddressSpace.PRIVATE:
         return (
                 isinstance(tag, ConcurrentTag)
@@ -215,8 +213,6 @@ def _is_racing_iname_tag(tv, tag):
 def check_for_write_races(kernel):
     from loopy.kernel.data import ConcurrentTag
 
-    # TODO Question: now that Concurrent tags include Vectorize tags,
-    # should something change here?
     for insn in kernel.instructions:
         for assignee_name, assignee_indices in zip(
                 insn.assignee_var_names(),
@@ -279,7 +275,6 @@ def check_for_orphaned_user_hardware_axes(kernel):
 def check_for_data_dependent_parallel_bounds(kernel):
     from loopy.kernel.data import ConcurrentTag
 
-    # Note: Concurrent tags include Vectorize tags
     for i, dom in enumerate(kernel.domains):
         dom_inames = set(dom.get_var_names(dim_type.set))
         par_inames = set(
