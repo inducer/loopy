@@ -41,6 +41,7 @@ def get_admissible_conditional_inames_for(codegen_state, sched_index):
     kernel = codegen_state.kernel
 
     from loopy.kernel.data import (LocalIndexTag, HardwareConcurrentTag,
+                                   VectorizeTag,
                                    filter_iname_tags_by_type)
 
     from loopy.schedule import find_active_inames_at, has_barrier_within
@@ -49,7 +50,8 @@ def get_admissible_conditional_inames_for(codegen_state, sched_index):
     has_barrier = has_barrier_within(kernel, sched_index)
 
     for iname, tags in six.iteritems(kernel.iname_to_tags):
-        if (filter_iname_tags_by_type(tags, HardwareConcurrentTag)
+        if (filter_iname_tags_by_type(tags, HardwareConcurrentTag) -
+                filter_iname_tags_by_type(tags, VectorizeTag)
                 and codegen_state.is_generating_device_code):
             if not has_barrier or not filter_iname_tags_by_type(tags, LocalIndexTag):
                 result.add(iname)

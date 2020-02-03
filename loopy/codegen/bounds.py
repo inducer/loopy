@@ -59,6 +59,7 @@ def get_usable_inames_for_conditional(kernel, sched_index):
     from loopy.schedule import (
         find_active_inames_at, get_insn_ids_for_block_at, has_barrier_within)
     from loopy.kernel.data import (ConcurrentTag, LocalIndexTagBase,
+                                   VectorizeTag,
                                    IlpBaseTag)
 
     result = find_active_inames_at(kernel, sched_index)
@@ -96,7 +97,8 @@ def get_usable_inames_for_conditional(kernel, sched_index):
         #   at the innermost level of nesting.
 
         if (
-                kernel.iname_tags_of_type(iname, ConcurrentTag)
+                kernel.iname_tags_of_type(iname, ConcurrentTag) -
+                kernel.iname_tags_of_type(iname, VectorizeTag)
                 and not (kernel.iname_tags_of_type(iname, LocalIndexTagBase)
                     and crosses_barrier)
                 and not kernel.iname_tags_of_type(iname, IlpBaseTag)
