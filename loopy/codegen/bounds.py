@@ -93,12 +93,12 @@ def get_usable_inames_for_conditional(kernel, sched_index):
         #
         # - local indices may not be used in conditionals that cross barriers.
         #
-        # - ILP indices are not available in loop bounds, they only get defined
-        #   at the innermost level of nesting.
+        # - ILP indices and vector lane indices are not available in loop
+        #   bounds, they only get defined at the innermost level of nesting.
 
         if (
-                kernel.iname_tags_of_type(iname, ConcurrentTag) -
-                kernel.iname_tags_of_type(iname, VectorizeTag)
+                kernel.iname_tags_of_type(iname, ConcurrentTag)
+                and not kernel.iname_tags_of_type(iname, VectorizeTag)
                 and not (kernel.iname_tags_of_type(iname, LocalIndexTagBase)
                     and crosses_barrier)
                 and not kernel.iname_tags_of_type(iname, IlpBaseTag)
