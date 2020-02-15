@@ -68,7 +68,7 @@ def get_usable_inames_for_conditional(kernel, sched_index):
     # Find our containing subkernel. Grab inames for all insns from there.
     within_subkernel = False
 
-    for sched_item_index, sched_item in enumerate(kernel.schedule[:sched_index+1]):
+    for sched_item_index, sched_item in enumerate(kernel.schedule[:sched_index]):
         from loopy.schedule import CallKernel, ReturnFromKernel
         if isinstance(sched_item, CallKernel):
             within_subkernel = True
