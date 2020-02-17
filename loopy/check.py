@@ -220,12 +220,12 @@ def check_for_write_races(kernel):
             assignee_inames = assignee_indices & kernel.all_inames()
             if not assignee_inames <= kernel.insn_inames(insn):
                 raise LoopyError(
-                        "assignee of instructiosn '%s' references "
+                        "assignee of instructions '%s' references "
                         "iname that the instruction does not depend on"
                         % insn.id)
 
             if assignee_name in kernel.arg_dict:
-                # Any parallel tags that are not depended upon by the assignee
+                # Any concurrent tags that are not depended upon by the assignee
                 # will cause write races.
 
                 raceable_parallel_insn_inames = set(
