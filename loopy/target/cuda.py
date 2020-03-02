@@ -28,7 +28,7 @@ import numpy as np
 
 from pytools import memoize_method
 
-from loopy.target.c import CTarget, CASTBuilder
+from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
@@ -169,7 +169,7 @@ class ExpressionToCudaCExpressionMapper(ExpressionToCExpressionMapper):
 
 # {{{ target
 
-class CudaTarget(CTarget):
+class CudaTarget(CFamilyTarget):
     """A target for Nvidia's CUDA GPU programming language."""
 
     def __init__(self, extern_c=True):
@@ -216,7 +216,7 @@ class CudaTarget(CTarget):
 
 # {{{ ast builder
 
-class CUDACASTBuilder(CASTBuilder):
+class CUDACASTBuilder(CFamilyASTBuilder):
     # {{{ library
 
     def function_manglers(self):

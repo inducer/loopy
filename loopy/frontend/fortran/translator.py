@@ -339,11 +339,11 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         return []
 
-    map_Logical = map_type_decl
-    map_Integer = map_type_decl
-    map_Real = map_type_decl
-    map_Complex = map_type_decl
-    map_DoublePrecision = map_type_decl
+    map_Logical = map_type_decl  # noqa: N815
+    map_Integer = map_type_decl  # noqa: N815
+    map_Real = map_type_decl  # noqa: N815
+    map_Complex = map_type_decl  # noqa: N815
+    map_DoublePrecision = map_type_decl  # noqa: N815
 
     def map_Dimension(self, node):
         scope = self.scope_stack[-1]

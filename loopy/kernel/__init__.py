@@ -35,14 +35,13 @@ import islpy as isl
 from islpy import dim_type
 import re
 
-from pytools import UniqueNameGenerator, generate_unique_names
+from pytools import UniqueNameGenerator, generate_unique_names, natsorted
 
 from loopy.library.function import (
         default_function_mangler,
         single_arg_function_mangler)
 
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
-from loopy.tools import natsorted
 from loopy.diagnostic import StaticValueFindingError
 from loopy.kernel.data import filter_iname_tags_by_type
 from warnings import warn
