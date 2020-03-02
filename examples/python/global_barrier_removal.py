@@ -23,8 +23,8 @@ knl = lp.add_and_infer_dtypes(knl,
 from loopy.preprocess import preprocess_kernel
 knl = preprocess_kernel(knl)
 
-from loopy.schedule import get_one_scheduled_kernel
-knl = get_one_scheduled_kernel(knl)
+from loopy.schedule import get_one_linearized_kernel
+knl = get_one_linearized_kernel(knl)
 
 # map schedule onto host or device
 print(knl)

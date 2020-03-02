@@ -1204,9 +1204,9 @@ Here is what happens when we try to generate code for the kernel:
 
 This happens due to the kernel splitting done by :mod:`loopy`. The splitting
 happens when the instruction schedule is generated. To see the schedule, we
-should call :func:`loopy.get_one_scheduled_kernel`:
+should call :func:`loopy.get_one_linearized_kernel`:
 
-   >>> knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+   >>> knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
    >>> print(knl)
    ---------------------------------------------------------------------------
    KERNEL: rotate_v2
@@ -1233,12 +1233,12 @@ goes for local temporaries).
 :func:`loopy.save_and_reload_temporaries` for the purpose of handling the
 task of saving and restoring temporary values across global barriers. This
 function adds instructions to the kernel without scheduling them. That means
-that :func:`loopy.get_one_scheduled_kernel` needs to be called one more time to
+that :func:`loopy.get_one_linearized_kernel` needs to be called one more time to
 put those instructions into the schedule.
 
-   >>> knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+   >>> knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
    >>> knl = lp.save_and_reload_temporaries(knl)
-   >>> knl = lp.get_one_scheduled_kernel(knl)  # Schedule added instructions
+   >>> knl = lp.get_one_linearized_kernel(knl)  # Schedule added instructions
    >>> print(knl)
    ---------------------------------------------------------------------------
    KERNEL: rotate_v2
