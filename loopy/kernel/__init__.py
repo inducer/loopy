@@ -98,33 +98,25 @@ class _UniqueVarNameGenerator(UniqueNameGenerator):
 
 # {{{ loop kernel object
 
+class _deprecated_KernelState_SCHEDULED(object):  # noqa
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, klass):
+        warn(
+            "'KernelState.SCHEDULE' is deprecated. "
+            "Use 'KernelState.LINEARIZED'.",
+            DeprecationWarning, stacklevel=2)
+        return self.f()
+
 class KernelState:  # noqa
     INITIAL = 0
     PREPROCESSED = 1
     LINEARIZED = 2
 
-    @property
-    def SCHEDULED(self):
-        warn(
-            "Use of 'KernelState.SCHEDULED' is deprecated, "
-            "use 'KernelState.LINEARIZED' instead.",
-            DeprecationWarning, stacklevel=2)
-
-        return self.LINEARIZED
-
-'''
-    def update_persistent_hash(self, key_hash, key_builder):
-        """Custom hash computation function for use with
-        :class:`pytools.persistent_dict.PersistentDict`.
-        """
-
-        key_builder.rec(key_hash, self.INITIAL)
-        key_builder.rec(key_hash, self.PREPROCESSED)
-        key_builder.rec(key_hash, self.LINEARIZED)
-
-    def __hash__(self):
-        return hash(repr(self))
-'''
+    @_deprecated_KernelState_SCHEDULED
+    def SCHEDULED():  # pylint:disable=no-method-argument
+        return KernelState.LINEARIZED
 
 # {{{ kernel_state, KernelState compataibility
 
