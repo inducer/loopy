@@ -242,7 +242,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     # {{{ constructor
 
-    def __init__(self, domains, instructions, args=None, schedule=None,
+    def __init__(self, domains, instructions, args=None,
+            schedule=None,
+            linearization=None,
             name="loopy_kernel",
             preambles=None,
             preamble_generators=None,
@@ -350,6 +352,23 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 KernelState.SCHEDULED,
                 ]:
             raise ValueError("invalid value for 'state'")
+
+        # `linearization` is replacing `schedule`, but we're not changing
+        # this under the hood yet, so for now, store it inside `schedule`
+        # and raise deprecation warning anyway
+        if schedule is not None:
+            if linearization is not None:
+                # these should not both be present
+                raise ValueError(
+                    "received both `schedule` and `linearization` args, "
+                    "'LoopKernel.schedule' is deprecated. "
+                    "Use 'LoopKernel.linearization'.")
+            warn(
+                "'LoopKernel.schedule' is deprecated. "
+                "Use 'LoopKernel.linearization'.",
+                DeprecationWarning, stacklevel=2)
+        elif linearization is not None:
+            schedule = linearization
 
         from collections import defaultdict
         assert not isinstance(iname_to_tags, defaultdict)
@@ -1406,6 +1425,14 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 result[sub_arg_name] = arg
 
         return result
+
+    # }}}
+
+    # {{{ handle linearization variable that doesn't yet exist
+
+    @property
+    def linearization(self):
+        return self.schedule
 
     # }}}
 
