@@ -73,7 +73,7 @@ def test_ispc_target(occa_mode=False):
             default_tag="l.auto")
 
     codegen_result = lp.generate_code_v2(
-                lp.get_one_linearized_kernel(
+                lp.get_one_scheduled_kernel(
                     lp.preprocess_kernel(knl)))
 
     print(codegen_result.device_code())
@@ -99,7 +99,7 @@ def test_cuda_target():
 
     print(
             lp.generate_code(
-                lp.get_one_linearized_kernel(
+                lp.get_one_scheduled_kernel(
                     lp.preprocess_kernel(knl)))[0])
 
 
@@ -142,7 +142,7 @@ def test_generate_c_snippet():
     knl = lp.prioritize_loops(knl, "I,k_outer,k_inner")
 
     knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_linearized_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
     print(lp.generate_body(knl))
 
 
@@ -354,7 +354,7 @@ def test_ispc_streaming_stores():
     knl = lp.set_argument_order(knl, vars + ["n"])
 
     knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_linearized_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
     lp.generate_code_v2(knl).all_code()
 
 
