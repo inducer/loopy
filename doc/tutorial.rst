@@ -1213,7 +1213,7 @@ should call :func:`loopy.get_one_linearized_kernel`:
    ---------------------------------------------------------------------------
    ...
    ---------------------------------------------------------------------------
-   SCHEDULE:
+   LINEARIZATION:
       0: CALL KERNEL rotate_v2(extra_args=[], extra_inames=[])
       1:     tmp = arr[i_inner + i_outer*16]  {id=maketmp}
       2: RETURN FROM KERNEL rotate_v2
@@ -1251,7 +1251,7 @@ put those instructions into the schedule.
    ---------------------------------------------------------------------------
    ...
    ---------------------------------------------------------------------------
-   SCHEDULE:
+   LINEARIZATION:
       0: CALL KERNEL rotate_v2(extra_args=['tmp_save_slot'], extra_inames=[])
       1:     tmp = arr[i_inner + i_outer*16]  {id=maketmp}
       2:     tmp_save_slot[tmp_save_hw_dim_0_rotate_v2, tmp_save_hw_dim_1_rotate_v2] = tmp  {id=tmp.save}
