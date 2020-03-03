@@ -2029,6 +2029,15 @@ def _get_one_scheduled_kernel_inner(kernel):
 
 
 def get_one_scheduled_kernel(kernel):
+    warn_with_kernel(
+        kernel, "get_one_scheduled_kernel_deprecated",
+        "get_one_scheduled_kernel is deprecated. "
+        "Use get_one_linearized_kernel instead.",
+        DeprecationWarning)
+    return get_one_linearized_kernel(kernel)
+
+
+def get_one_linearized_kernel(kernel):
     from loopy import CACHING_ENABLED
 
     sched_cache_key = kernel
