@@ -1308,9 +1308,9 @@ class CSEToAssignmentMapper(IdentityMapper):
             else:
                 dtype = None
 
-            # If 'expr' is a decendent of a reduction node, the reduction variable
+            # If 'expr' is a descendant of a reduction node, the reduction variable
             # is added to the set 'additional_inames'. However, 'expr' may not
-            # actually use all inames in 'additional_inames'. The followng code uses
+            # actually use all inames in 'additional_inames'. The following code uses
             # 'DependencyMapper' to pick the inames from 'additional_inames' which
             # are actually used.
             from loopy.symbolic import DependencyMapper
