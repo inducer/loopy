@@ -104,7 +104,7 @@ class _deprecated_KernelState_SCHEDULED(object):  # noqa
 
     def __get__(self, obj, klass):
         warn(
-            "'KernelState.SCHEDULE' is deprecated. "
+            "'KernelState.SCHEDULED' is deprecated. "
             "Use 'KernelState.LINEARIZED'.",
             DeprecationWarning, stacklevel=2)
         return self.f()
