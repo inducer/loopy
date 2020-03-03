@@ -1378,7 +1378,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if "schedule" in what and kernel.schedule is not None:
             lines.extend(sep)
             if show_labels:
-                lines.append("SCHEDULE:")
+                lines.append("LINEARIZATION:")
             from loopy.schedule import dump_schedule
             lines.append(dump_schedule(kernel, kernel.schedule))
 
