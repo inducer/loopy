@@ -51,9 +51,6 @@ jobs:
     pytest_twice:
         name: Pytest twice (for cache behavior) on Py${{ matrix.python-version }}
         runs-on: ubuntu-latest
-        strategy:
-            matrix:
-                python-version: [2.7, 3.6, 3.7, 3.8]
         steps:
         -   uses: actions/checkout@v2
         -   name: "Main Script"
