@@ -37,14 +37,27 @@ jobs:
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-pylint.sh
                 . ./prepare-and-run-pylint.sh loopy test/test_*.py
 
-    pytest:
-        name: Pytest on Py${{ matrix.python-version }}
+    pytest3:
+        name: Conda Pytest Py3
         runs-on: ubuntu-latest
         steps:
         -   uses: actions/checkout@v2
         -   name: "Main Script"
             run: |
                 CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
+                . ./build-and-test-py-project-within-miniconda.sh
+
+    pytest2:
+        name: Conda Pytest Py2
+        runs-on: ubuntu-latest
+        steps:
+        -   uses: actions/checkout@v2
+        -   name: "Main Script"
+            run: |
+                sed 's/python=3/python=2.7/' .test-conda-env-py3.yml > .test-conda-env-py2.yml
+                cat .test-conda-env-py2.yml
+                CONDA_ENVIRONMENT=.test-conda-env-py2.yml
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
 
@@ -59,5 +72,5 @@ jobs:
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
                 ${PY_EXE} -m pytest -rw --durations=10 --tb=native  --junitxml=pytest.xml -rxs $TESTABLES
-#
+
 # vim: sw=4
