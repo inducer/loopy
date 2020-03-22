@@ -769,7 +769,7 @@ def test_multiple_writes_to_local_temporary():
     # writes are OK.
 
     knl = lp.make_kernel(
-        "{[i,e]: 0<=i<5 and 0<=e<nelements}",
+        "{[i]: 0<=i<5}",
         """
         <> temp[i, 0] = 17
         temp[i, 1] = 15
