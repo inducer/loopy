@@ -74,7 +74,7 @@ def test_collect_common_factors(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-            "{[i,j,k]: 0<=i,j<n}",
+            "{[i,j]: 0<=i,j<n}",
             """
             <float32> out_tmp = 0 {id=out_init,inames=i}
             out_tmp = out_tmp + alpha[i]*a[i,j]*b1[j] {id=out_up1,dep=out_init}
