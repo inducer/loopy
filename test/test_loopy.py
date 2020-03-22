@@ -952,7 +952,7 @@ def test_atomic_init(dtype):
     vec_width = 4
 
     knl = lp.make_kernel(
-            "{ [i,j]: 0<=i<100 }",
+            "{ [i]: 0<=i<100 }",
             """
             out[i%4] = 0 {id=init, atomic=init}
             """,
