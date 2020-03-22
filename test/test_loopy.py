@@ -1926,8 +1926,9 @@ def test_scalars_with_base_storage(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
+    import islpy as isl
     knl = lp.make_kernel(
-            "{ [i]: 0<=i<1}",
+            [isl.BasicSet("[] -> {[]: }")],  # empty (domain w/unused inames errors)
             "a = 1",
             [lp.TemporaryVariable("a", dtype=np.float64,
                                   shape=(), base_storage="base")])
