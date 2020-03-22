@@ -1184,6 +1184,19 @@ def rename_iname(knl, old_iname, new_iname, existing_ok=False, within=None):
 
 # {{{ remove unused inames
 
+def get_used_inames(knl):
+    import loopy as lp
+    exp_knl = lp.expand_subst(knl)
+
+    used_inames = set()
+    for insn in exp_knl.instructions:
+        used_inames.update(
+                exp_knl.insn_inames(insn.id)
+                | insn.reduction_inames())
+
+    return used_inames
+
+
 def remove_unused_inames(knl, inames=None):
     """Delete those among *inames* that are unused, i.e. project them
     out of the domain. If these inames pose implicit restrictions on
@@ -1204,17 +1217,7 @@ def remove_unused_inames(knl, inames=None):
 
     # {{{ check which inames are unused
 
-    import loopy as lp
-    exp_knl = lp.expand_subst(knl)
-
-    inames = set(inames)
-    used_inames = set()
-    for insn in exp_knl.instructions:
-        used_inames.update(
-                exp_knl.insn_inames(insn.id)
-                | insn.reduction_inames())
-
-    unused_inames = inames - used_inames
+    unused_inames = set(inames) - get_used_inames(knl)
 
     # }}}
 
