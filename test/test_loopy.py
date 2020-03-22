@@ -456,7 +456,7 @@ def test_nonlinear_index(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-            "{[i,j]: 0<=i,j<n }",
+            "{[i]: 0<=i<n }",
             """
                 a[i*i] = 17
                 """,
