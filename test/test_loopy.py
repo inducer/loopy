@@ -177,7 +177,7 @@ def test_simple_side_effect(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-            "{[i,j]: 0<=i,j<100}",
+            "{[i]: 0<=i<100}",
             """
                 a[i] = a[i] + 1
                 """,
