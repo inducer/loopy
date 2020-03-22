@@ -1238,6 +1238,23 @@ def remove_unused_inames(knl, inames=None):
 
     return knl
 
+
+def remove_any_newly_unused_inames(transformation_func):
+
+    def wrapper(knl, *args, **kwargs):
+        # determine which inames were already unused
+        inames_already_unused = knl.all_inames() - get_used_inames(knl)
+
+        # call transform
+        transformed_knl = transformation_func(knl, *args, **kwargs)
+
+        # Remove inames that are unused due to transform
+        return remove_unused_inames(
+            transformed_knl,
+            transformed_knl.all_inames()-inames_already_unused)
+
+    return wrapper
+
 # }}}
 
 
