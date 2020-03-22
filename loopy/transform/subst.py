@@ -27,6 +27,7 @@ import six
 from loopy.symbolic import (
         RuleAwareIdentityMapper, SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
+from loopy.transform.iname import remove_any_newly_unused_inames
 
 from pytools import ImmutableRecord
 from pymbolic import var
@@ -256,6 +257,7 @@ class AssignmentToSubstChanger(RuleAwareIdentityMapper):
             return var(subst_name)(*index)
 
 
+@remove_any_newly_unused_inames
 def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         force_retain_argument=False):
     """Extract an assignment (to a temporary variable or an argument)
