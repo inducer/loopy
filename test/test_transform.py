@@ -385,7 +385,7 @@ def test_precompute_nested_subst(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-        "{[i,j]: 0<=i<n and 0<=j<5}",
+        "{[i]: 0<=i<n}",
         """
         E:=a[i]
         D:=E*E
@@ -396,7 +396,6 @@ def test_precompute_nested_subst(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.tag_inames(knl, dict(j="g.1"))
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
     from loopy.symbolic import get_dependencies
