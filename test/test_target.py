@@ -231,8 +231,9 @@ def test_tuple(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
+    import islpy as isl
     knl = lp.make_kernel(
-            "{ [i]: 0 = i }",
+            [isl.BasicSet("[] -> {[]: }")],
             """
             a, b = make_tuple(1, 2.)
             """)
