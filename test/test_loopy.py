@@ -564,7 +564,7 @@ def test_dependent_domain_insn_iname_finding(ctx_factory):
 
     knl = lp.make_kernel([
             "{[isrc_box]: 0<=isrc_box<nsrc_boxes}",
-            "{[isrc,idim]: isrc_start<=isrc<isrc_end and 0<=idim<dim}",
+            "{[isrc]: isrc_start<=isrc<isrc_end}",
             ],
             """
                 <> src_ibox = source_boxes[isrc_box]
