@@ -1244,9 +1244,9 @@ def remove_any_newly_unused_inames(transformation_func):
     def wrapper(knl, *args, **kwargs):
 
         # check for remove_unused_inames argument, default: True
-        remove_unused_inames = kwargs.pop("remove_unused_inames", True)
+        remove_newly_unused_inames = kwargs.pop("remove_newly_unused_inames", True)
 
-        if remove_unused_inames:
+        if remove_newly_unused_inames:
             # determine which inames were already unused
             inames_already_unused = knl.all_inames() - get_used_inames(knl)
 
