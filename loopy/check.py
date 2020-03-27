@@ -185,12 +185,15 @@ def check_for_inactive_iname_access(kernel):
 
 
 def check_for_unused_inames(kernel):
-    # don't linearize if kernel has unused inames
+    # Warn if kernel has unused inames
     from loopy.transform.iname import get_used_inames
     unused_inames = kernel.all_inames() - get_used_inames(kernel)
     if unused_inames:
-        raise LoopyError(
-            "cannot linearize a kernel with unused inames: %s"
+        warn_with_kernel(
+            kernel, "unused_inames",
+            "Found unused inames in kernel: %s "
+            "Unused inames during linearization will be prohibited in "
+            "Loopy version 2021.X."
             % (unused_inames))
 
 
