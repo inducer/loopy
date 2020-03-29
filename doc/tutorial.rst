@@ -1204,16 +1204,16 @@ Here is what happens when we try to generate code for the kernel:
 
 This happens due to the kernel splitting done by :mod:`loopy`. The splitting
 happens when the instruction schedule is generated. To see the schedule, we
-should call :func:`loopy.get_one_scheduled_kernel`:
+should call :func:`loopy.get_one_linearized_kernel`:
 
-   >>> knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+   >>> knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
    >>> print(knl)
    ---------------------------------------------------------------------------
    KERNEL: rotate_v2
    ---------------------------------------------------------------------------
    ...
    ---------------------------------------------------------------------------
-   SCHEDULE:
+   LINEARIZATION:
       0: CALL KERNEL rotate_v2(extra_args=[], extra_inames=[])
       1:     tmp = arr[i_inner + i_outer*16]  {id=maketmp}
       2: RETURN FROM KERNEL rotate_v2
@@ -1233,12 +1233,12 @@ goes for local temporaries).
 :func:`loopy.save_and_reload_temporaries` for the purpose of handling the
 task of saving and restoring temporary values across global barriers. This
 function adds instructions to the kernel without scheduling them. That means
-that :func:`loopy.get_one_scheduled_kernel` needs to be called one more time to
+that :func:`loopy.get_one_linearized_kernel` needs to be called one more time to
 put those instructions into the schedule.
 
-   >>> knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+   >>> knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
    >>> knl = lp.save_and_reload_temporaries(knl)
-   >>> knl = lp.get_one_scheduled_kernel(knl)  # Schedule added instructions
+   >>> knl = lp.get_one_linearized_kernel(knl)  # Schedule added instructions
    >>> print(knl)
    ---------------------------------------------------------------------------
    KERNEL: rotate_v2
@@ -1251,7 +1251,7 @@ put those instructions into the schedule.
    ---------------------------------------------------------------------------
    ...
    ---------------------------------------------------------------------------
-   SCHEDULE:
+   LINEARIZATION:
       0: CALL KERNEL rotate_v2(extra_args=['tmp_save_slot'], extra_inames=[])
       1:     tmp = arr[i_inner + i_outer*16]  {id=maketmp}
       2:     tmp_save_slot[tmp_save_hw_dim_0_rotate_v2, tmp_save_hw_dim_1_rotate_v2] = tmp  {id=tmp.save}
