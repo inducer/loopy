@@ -440,7 +440,7 @@ def auto_test_vs_ref(
     ref_errors = []
 
     from loopy.kernel.data import ImageArg
-    need_ref_image_support = any(isinstance(arg, ImageArg) for arg in ref_knl.args)
+    need_ref_image_support = any(isinstance(arg, ImageArg) for arg in ref_prog.args)
 
     for dev in _enumerate_cl_devices_for_ref_test(
             blacklist_ref_vendors, need_ref_image_support):

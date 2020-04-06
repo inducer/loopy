@@ -2033,6 +2033,15 @@ def _get_one_scheduled_kernel_inner(kernel, callables_table):
     return next(iter(generate_loop_schedules(kernel, callables_table)))
 
 
+def get_one_scheduled_kernel(kernel, callables_table):
+    warn_with_kernel(
+        kernel, "get_one_scheduled_kernel_deprecated",
+        "get_one_scheduled_kernel is deprecated. "
+        "Use get_one_linearized_kernel instead.",
+        DeprecationWarning)
+    return get_one_linearized_kernel(kernel, callables_table)
+
+
 def get_one_linearized_kernel(kernel, callables_table):
     from loopy import CACHING_ENABLED
 

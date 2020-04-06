@@ -542,8 +542,9 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
     def function_id_in_knl_callable_mapper(self):
         return (
-                super(CASTBuilder, self).function_id_in_knl_callable_mapper() + [
-                    scope_c_math_functions])
+                super(CFamilyASTBuilder,
+                    self).function_id_in_knl_callable_mapper() + [
+                        scope_c_math_functions])
 
     # }}}
 
