@@ -34,8 +34,7 @@ import numpy as np
 import islpy as isl
 from islpy import dim_type
 from loopy.diagnostic import LoopyError, warn_with_kernel
-from pytools import memoize_on_first_arg
-from loopy.tools import natsorted
+from pytools import memoize_on_first_arg, natsorted
 from loopy.symbolic import CombineMapper
 from loopy.kernel import LoopKernel
 from loopy.program import Program, iterate_over_kernels_if_given_program
@@ -1937,7 +1936,7 @@ def infer_args_are_output_only(kernel):
     new_args = []
 
     for arg in kernel.args:
-        if isinstance(arg, (ArrayArg, ImageArg, ValueArg)):
+        if isinstance(arg, ArrayArg):
             if arg.is_output_only is not None:
                 assert isinstance(arg.is_output_only, bool)
                 new_args.append(arg)
@@ -1946,7 +1945,7 @@ def infer_args_are_output_only(kernel):
                     new_args.append(arg.copy(is_output_only=True))
                 else:
                     new_args.append(arg.copy(is_output_only=False))
-        elif isinstance(arg, ConstantArg):
+        elif isinstance(arg, (ConstantArg, ImageArg, ValueArg)):
             new_args.append(arg)
         else:
             raise NotImplementedError("Unkonwn argument type %s." % type(arg))

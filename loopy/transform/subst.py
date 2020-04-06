@@ -25,10 +25,8 @@ THE SOFTWARE.
 import six
 
 from loopy.symbolic import (
-        get_dependencies, SubstitutionMapper,
         RuleAwareIdentityMapper, SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
-from pymbolic.mapper.substitutor import make_subst_func
 
 from pytools import ImmutableRecord
 from pymbolic import var
@@ -83,40 +81,13 @@ def extract_subst(kernel, subst_name, template, parameters=()):
 
     # }}}
 
-    # {{{ deal with iname deps of template that are not independent_inames
-
-    # (We call these 'matching_vars', because they have to match exactly in
-    # every CSE. As above, they might need to be renamed to make them unique
-    # within the kernel.)
-
-    matching_vars = []
-    old_to_new = {}
-
-    for iname in (get_dependencies(template)
-            - set(parameters)
-            - kernel.non_iname_variable_names()):
-        if iname in kernel.all_inames():
-            # need to rename to be unique
-            new_iname = var_name_gen(iname)
-            old_to_new[iname] = var(new_iname)
-            matching_vars.append(new_iname)
-        else:
-            matching_vars.append(iname)
-
-    if old_to_new:
-        template = (
-                SubstitutionMapper(make_subst_func(old_to_new))
-                (template))
-
-    # }}}
-
     # {{{ gather up expressions
 
     expr_descriptors = []
 
     from loopy.symbolic import UnidirectionalUnifier
     unif = UnidirectionalUnifier(
-            lhs_mapping_candidates=set(parameters) | set(matching_vars))
+            lhs_mapping_candidates=set(parameters))
 
     def gather_exprs(expr, mapper):
         urecs = unif(template, expr)

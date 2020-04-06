@@ -212,12 +212,12 @@ def find_loop_nest_with_map(kernel):
     """
     result = {}
 
-    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag
 
     all_nonpar_inames = set(
             iname for iname in kernel.all_inames()
             if not kernel.iname_tags_of_type(iname,
-                    (ConcurrentTag, IlpBaseTag, VectorizeTag)))
+                    (ConcurrentTag, IlpBaseTag)))
 
     iname_to_insns = kernel.iname_to_insns()
 
@@ -276,7 +276,7 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
 
     result = {}
 
-    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag
     for insn in kernel.instructions:
         for iname in kernel.insn_inames(insn):
             if kernel.iname_tags_of_type(iname, ConcurrentTag):
@@ -310,7 +310,7 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
                         continue
 
                     if kernel.iname_tags_of_type(dep_insn_iname,
-                                (ConcurrentTag, IlpBaseTag, VectorizeTag)):
+                                (ConcurrentTag, IlpBaseTag)):
                         # Parallel tags don't really nest, so we'll disregard
                         # them here.
                         continue
@@ -2033,7 +2033,7 @@ def _get_one_scheduled_kernel_inner(kernel, callables_table):
     return next(iter(generate_loop_schedules(kernel, callables_table)))
 
 
-def get_one_scheduled_kernel(kernel, callables_table):
+def get_one_linearized_kernel(kernel, callables_table):
     from loopy import CACHING_ENABLED
 
     sched_cache_key = kernel

@@ -620,7 +620,8 @@ def test_poisson_fem(ctx_factory):
 
 def test_domain_tree_nesting():
     # From https://github.com/inducer/loopy/issues/78
-    from loopy.kernel.data import temp_var_scope as scopes
+
+    AS = lp.AddressSpace        # noqa
 
     out_map = np.array([1, 2], dtype=np.int32)
     if_val = np.array([-1, 0], dtype=np.int32)
@@ -652,12 +653,13 @@ def test_domain_tree_nesting():
     end
     """,
     [
-        TV('out_map', initializer=out_map, read_only=True, scope=scopes.PRIVATE),
-        TV('if_val', initializer=if_val, read_only=True, scope=scopes.PRIVATE),
-        TV('vals', initializer=vals, read_only=True, scope=scopes.PRIVATE),
-        TV('num_vals', initializer=num_vals, read_only=True, scope=scopes.PRIVATE),
+        TV('out_map', initializer=out_map, read_only=True, address_space=AS.PRIVATE),
+        TV('if_val', initializer=if_val, read_only=True, address_space=AS.PRIVATE),
+        TV('vals', initializer=vals, read_only=True, address_space=AS.PRIVATE),
+        TV('num_vals', initializer=num_vals, read_only=True,
+           address_space=AS.PRIVATE),
         TV('num_vals_offset', initializer=num_vals_offset, read_only=True,
-            scope=scopes.PRIVATE),
+           address_space=AS.PRIVATE),
         lp.GlobalArg('B', shape=(100, 31), dtype=np.float64),
         lp.GlobalArg('out', shape=(100, 12), dtype=np.float64)])
 

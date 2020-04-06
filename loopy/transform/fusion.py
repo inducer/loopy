@@ -213,9 +213,9 @@ def _fuse_two_kernels(knla, knlb):
     knlb = _apply_renames_in_exprs(knlb, b_var_renames)
 
     from pymbolic.imperative.transform import \
-            fuse_instruction_streams_with_unique_ids
+            fuse_statement_streams_with_unique_ids
     new_instructions, old_b_id_to_new_b_id = \
-            fuse_instruction_streams_with_unique_ids(
+            fuse_statement_streams_with_unique_ids(
                     knla.instructions, knlb.instructions)
 
     # {{{ fuse assumptions

@@ -521,6 +521,10 @@ class ReductionCallable(ScalarCallable):
 
 def reduction_func_id_to_in_knl_callable_mapper(target, identifier):
     if isinstance(identifier, ReductionOpFunction):
+        from loopy.target.c import CFamilyTarget
+        if not isinstance(target, CFamilyTarget):
+            raise LoopyError("%s: only C-like targets supported for now" %
+                    identifier)
         return ReductionCallable(name=identifier)
 
     return None

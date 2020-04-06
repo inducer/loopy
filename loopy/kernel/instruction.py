@@ -67,7 +67,8 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: depends_on_is_final
 
         A :class:`bool` determining whether :attr:`depends_on` constitutes
-        the *entire* list of iname dependencies.
+        the *entire* list of iname dependencies. If *not* marked final,
+        various semi-broken heuristics will try to add further dependencies.
 
         Defaults to *False*.
 

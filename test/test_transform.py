@@ -136,7 +136,7 @@ def test_to_batched_temp(ctx_factory):
              "cnst",
              dtype=np.float32,
              shape=(),
-             scope=lp.temp_var_scope.PRIVATE), '...'])
+             scope=lp.AddressSpace.PRIVATE), '...'])
     prog = lp.add_and_infer_dtypes(prog, dict(out=np.float32,
                                             x=np.float32,
                                             a=np.float32))
@@ -593,6 +593,21 @@ def test_nested_substs_in_insns(ctx_factory):
             for cknl in six.itervalues(prg.callables_table.resolved_functions))
 
     lp.auto_test_vs_ref(ref_prg, ctx, prg)
+
+
+def test_extract_subst_with_iname_deps_in_templ(ctx_factory):
+    knl = lp.make_kernel(
+            "{[i, j, k]: 0<=i<100 and 0<=j,k<5}",
+            """
+            y[i, j, k] = x[i, j, k]
+            """,
+            [lp.GlobalArg('x,y', shape=lp.auto, dtype=float)],
+            lang_version=(2018, 2))
+
+    knl = lp.extract_subst(knl, 'rule1', 'x[i, arg1, arg2]',
+            parameters=('arg1', 'arg2'))
+
+    lp.auto_test_vs_ref(knl, ctx_factory(), knl)
 
 
 if __name__ == "__main__":

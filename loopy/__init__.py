@@ -129,10 +129,12 @@ from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
 from loopy.type_inference import infer_unknown_types
 from loopy.preprocess import (preprocess_kernel, realize_reduction,
         preprocess_program)
-from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
-from loopy.statistics import (ToCountMap, CountGranularity,
-        Op, MemAccess, get_op_map, get_mem_access_map,
-        get_synchronization_map,
+from loopy.schedule import (
+    generate_loop_schedules, get_one_scheduled_kernel, get_one_linearized_kernel)
+from loopy.statistics import (ToCountMap, CountGranularity, stringify_stats_mapping,
+        Op, MemAccess, get_op_poly, get_op_map, get_lmem_access_poly,
+        get_DRAM_access_poly, get_gmem_access_poly, get_mem_access_map,
+        get_synchronization_poly, get_synchronization_map,
         gather_access_footprints, gather_access_footprint_bytes)
 from loopy.codegen import (
         PreambleInfo,
@@ -147,7 +149,7 @@ from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
         parse_fortran)
 
 from loopy.target import TargetBase, ASTBuilderBase
-from loopy.target.c import CTarget, ExecutableCTarget, generate_header
+from loopy.target.c import CFamilyTarget, CTarget, ExecutableCTarget, generate_header
 from loopy.target.cuda import CudaTarget
 from loopy.target.opencl import OpenCLTarget
 from loopy.target.pyopencl import PyOpenCLTarget, NvidiaPyOpenCLTarget
@@ -264,13 +266,16 @@ __all__ = [
         "infer_unknown_types",
 
         "preprocess_kernel", "realize_reduction", "preprocess_program",
-        "generate_loop_schedules", "get_one_scheduled_kernel",
+        "generate_loop_schedules",
+        "get_one_scheduled_kernel", "get_one_linearized_kernel",
         "GeneratedProgram", "CodeGenerationResult",
         "PreambleInfo",
         "generate_code", "generate_code_v2", "generate_body",
 
-        "ToCountMap", "CountGranularity", "Op",
-        "MemAccess", "get_op_map", "get_mem_access_map", "get_synchronization_map",
+        "ToCountMap", "CountGranularity", "stringify_stats_mapping", "Op",
+        "MemAccess", "get_op_poly", "get_op_map", "get_lmem_access_poly",
+        "get_DRAM_access_poly", "get_gmem_access_poly", "get_mem_access_map",
+        "get_synchronization_poly", "get_synchronization_map",
         "gather_access_footprints", "gather_access_footprint_bytes",
 
         "CompiledKernel",
@@ -285,7 +290,7 @@ __all__ = [
         "LoopyError", "LoopyWarning",
 
         "TargetBase",
-        "CTarget", "ExecutableCTarget", "generate_header",
+        "CFamilyTarget", "CTarget", "ExecutableCTarget", "generate_header",
         "CudaTarget", "OpenCLTarget",
         "PyOpenCLTarget", "NvidiaPyOpenCLTarget", "ISPCTarget",
         "NumbaTarget", "NumbaCudaTarget",
@@ -492,7 +497,8 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
                 )
     result = make_kernel(set_str,
             "output[%s] = input[%s]"
-            % (commad_indices, commad_indices))
+            % (commad_indices, commad_indices),
+            lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
     result = tag_array_axes(result, "input", old_dim_tags)
     result = tag_array_axes(result, "output", new_dim_tags)
