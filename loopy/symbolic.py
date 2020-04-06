@@ -282,7 +282,7 @@ class EqualityPreservingStringifyMapper(StringifyMapperBase):
     """
 
     def __init__(self):
-        super(EqualityPreservingStringifyMapper, self).__init__(constant_mapper=repr)
+        super(EqualityPreservingStringifyMapper, self).__init__()
 
     def map_constant(self, expr, enclosing_prec):
         if isinstance(expr, np.generic):
@@ -292,8 +292,15 @@ class EqualityPreservingStringifyMapper(StringifyMapperBase):
 
             return "%s(%s)" % (type(expr).__name__, repr(expr))
         else:
-            return super(EqualityPreservingStringifyMapper, self).map_constant(
-                    expr, enclosing_prec)
+            result = repr(expr)
+
+            from pymbolic.mapper.stringifier import PREC_SUM
+            if not (result.startswith("(") and result.endswith(")")) \
+                    and ("-" in result or "+" in result) \
+                    and (enclosing_prec > PREC_SUM):
+                return self.parenthesize(result)
+            else:
+                return result
 
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):

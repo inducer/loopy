@@ -1158,6 +1158,7 @@ def rename_iname(knl, old_iname, new_iname, existing_ok=False, within=None):
 
     var_name_gen = knl.get_var_name_generator()
 
+    # FIXME: Distinguish existing iname vs. existing other variable
     does_exist = var_name_gen.is_name_conflicting(new_iname)
 
     if old_iname not in knl.all_inames():

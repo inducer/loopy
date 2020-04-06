@@ -231,7 +231,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
     kernel = codegen_state.kernel
 
     from loopy.kernel.data import (UniqueTag, HardwareConcurrentTag,
-                LocalIndexTag, GroupIndexTag)
+                LocalIndexTag, GroupIndexTag, VectorizeTag)
 
     from loopy.schedule import get_insn_ids_for_block_at
     insn_ids_for_block = get_insn_ids_for_block_at(kernel.schedule, schedule_index)
@@ -242,7 +242,8 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
             all_inames_by_insns |= kernel.insn_inames(insn_id)
 
         hw_inames_left = [iname for iname in all_inames_by_insns
-                if kernel.iname_tags_of_type(iname, HardwareConcurrentTag)]
+                if kernel.iname_tags_of_type(iname, HardwareConcurrentTag)
+                and not kernel.iname_tags_of_type(iname, VectorizeTag)]
 
     if not hw_inames_left:
         return next_func(codegen_state)
@@ -364,8 +365,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         # {{{ find bounds
 
-        aligned_domain = isl.align_spaces(domain, slab, across_dim_types=True,
-                obj_bigger_ok=True)
+        aligned_domain = isl.align_spaces(domain, slab, obj_bigger_ok=True)
 
         dom_and_slab = aligned_domain & slab
 
@@ -389,8 +389,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
         impl_domain = isl.align_spaces(
             codegen_state.implemented_domain,
             dom_and_slab,
-            obj_bigger_ok=True,
-            across_dim_types=True
+            obj_bigger_ok=True
             ).params()
 
         lbound = (

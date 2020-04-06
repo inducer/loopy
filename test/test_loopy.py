@@ -69,7 +69,7 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
             """,
             [lp.TemporaryVariable(
                 'cnst', shape=('n'), initializer=cnst,
-                scope=lp.AddressSpace.GLOBAL,
+                address_space=lp.AddressSpace.GLOBAL,
                 read_only=True), '...'])
     knl = lp.fix_parameters(knl, n=16)
     knl = lp.add_barrier(knl, "id:first", "id:second")
@@ -268,9 +268,8 @@ def test_bare_data_dependency(ctx_factory):
                 lp.ValueArg("n", np.int32),
                 ])
 
-    cknl = lp.CompiledKernel(ctx, knl)
     n = 20000
-    evt, (a,) = cknl(queue, n=n, out_host=True)
+    evt, (a,) = knl(queue, n=n, out_host=True)
 
     assert a.shape == (n,)
     assert (a == 1).all()
@@ -321,13 +320,12 @@ def test_ilp_write_race_avoidance_local(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(i="l.0", j="ilp"))
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
+    knl = lp.preprocess_kernel(knl)
     assert knl.root_kernel.temporary_variables["a"].shape == (16, 17)
 
 
 def test_ilp_write_race_avoidance_private(ctx_factory):
     ctx = ctx_factory()
-
     knl = lp.make_kernel(
             "{[j]: 0<=j<16 }",
             [
@@ -933,7 +931,7 @@ def test_atomic_load(ctx_factory, dtype):
                 lp.GlobalArg("a", dtype, shape=lp.auto),
                 lp.GlobalArg("b", dtype, shape=lp.auto),
                 lp.TemporaryVariable('temp', dtype, for_atomic=True,
-                                     scope=AddressSpace.LOCAL),
+                                     address_space=AddressSpace.LOCAL),
                 "..."
                 ],
             silenced_warnings=["write_race(init)", "write_race(temp_sum)"])
@@ -1016,7 +1014,7 @@ def test_literal_local_barrier(ctx_factory):
 
 
 def test_local_barrier_mem_kind():
-    def __test_type(mtype, expected):
+    def _test_type(mtype, expected):
         insn = '... lbarrier'
         if mtype:
             insn += '{mem_kind=%s}' % mtype
@@ -1032,9 +1030,9 @@ def test_local_barrier_mem_kind():
         cgr = lp.generate_code_v2(knl)
         assert 'barrier(%s)' % expected in cgr.device_code()
 
-    __test_type('', 'CLK_LOCAL_MEM_FENCE')
-    __test_type('global', 'CLK_GLOBAL_MEM_FENCE')
-    __test_type('local', 'CLK_LOCAL_MEM_FENCE')
+    _test_type('', 'CLK_LOCAL_MEM_FENCE')
+    _test_type('global', 'CLK_GLOBAL_MEM_FENCE')
+    _test_type('local', 'CLK_LOCAL_MEM_FENCE')
 
 
 def test_kernel_splitting(ctx_factory):
@@ -1834,13 +1832,13 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
                 lp.TemporaryVariable("tmp",
                     initializer=a,
                     shape=lp.auto,
-                    scope=lp.AddressSpace.PRIVATE,
+                    address_space=lp.AddressSpace.PRIVATE,
                     read_only=True,
                     order=tmp_order),
                 "..."
                 ])
 
-    knl = lp.set_options(knl, write_cl=True, highlight_cl=True)
+    knl = lp.set_options(knl, write_cl=True)
     knl = lp.fix_parameters(knl, n=a.shape[0])
 
     evt, (a2,) = knl(queue, out_host=True)
@@ -1859,7 +1857,7 @@ def test_const_temp_with_initializer_not_saved():
             lp.TemporaryVariable("tmp",
                 initializer=np.arange(10),
                 shape=lp.auto,
-                scope=lp.AddressSpace.PRIVATE,
+                address_space=lp.AddressSpace.PRIVATE,
                 read_only=True),
             "..."
             ],
@@ -2007,6 +2005,13 @@ def test_tight_loop_bounds(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
+    if (queue.device.platform.vendor == "Intel(R) Corporation"
+            and queue.device.driver_version in [
+                "2019.8.7.0",
+                "2019.8.8.0",
+                ]):
+        pytest.skip("Intel CL miscompiles this kernel")
+
     knl = lp.make_kernel(
         ["{ [i] : 0 <= i <= 5 }",
          "[i] -> { [j] : 2 * i - 2 < j <= 2 * i and 0 <= j <= 9 }"],
@@ -2020,6 +2025,8 @@ def test_tight_loop_bounds(ctx_factory):
         silenced_warnings="write_race(insn)")
 
     knl = lp.split_iname(knl, "i", 5, inner_tag="l.0", outer_tag="g.0")
+
+    knl = lp.set_options(knl, write_cl=True)
 
     evt, (out,) = knl(queue, out_host=True)
 
@@ -2085,7 +2092,7 @@ def test_integer_reduction(ctx_factory):
         var_int = np.random.randint(1000, size=n).astype(vtype)
         var_lp = lp.TemporaryVariable('var', initializer=var_int,
                                    read_only=True,
-                                   scope=lp.AddressSpace.PRIVATE,
+                                   address_space=lp.AddressSpace.PRIVATE,
                                    dtype=to_loopy_type(vtype),
                                    shape=lp.auto)
 
@@ -2145,11 +2152,11 @@ def test_complicated_argmin_reduction(ctx_factory):
                                     and qbx_forced_limit * center_side[ictr] > 0)
                             )
 
-                    <> post_dist_sq = if(matches, dist_sq, HUGE)
+                    <> post_dist_sq = dist_sq if matches else HUGE
                 end
                 <> min_dist_sq, <> min_ictr = argmin(ictr, ictr, post_dist_sq)
 
-                tgt_to_qbx_center[itgt] = if(min_dist_sq < HUGE, min_ictr, -1)
+                tgt_to_qbx_center[itgt] = min_ictr if min_dist_sq < HUGE else -1
             end
             """)
 
@@ -2279,7 +2286,7 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
               end
                    """,
                    [lp.TemporaryVariable("a", np.float32, shape=(10,), order='C',
-                                         scope=lp.AddressSpace.LOCAL),
+                                         address_space=lp.AddressSpace.LOCAL),
                     lp.GlobalArg("b", np.float32, shape=(11,), order='C')],
                seq_dependencies=True)
 
@@ -2539,7 +2546,7 @@ def test_preamble_with_separate_temporaries(ctx_factory):
     [lp.GlobalArg('out', shape=('n',)),
      lp.TemporaryVariable(
         'offsets', shape=(offsets.size,), initializer=offsets,
-        scope=lp.AddressSpace.GLOBAL,
+        address_space=lp.AddressSpace.GLOBAL,
         read_only=True),
      lp.GlobalArg('data', shape=(data.size,), dtype=np.float64)],
     )
@@ -2668,8 +2675,8 @@ def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
             a[%s] = 13  {id=second,dep=first}
             """ % second_index,
             [
-                lp.TemporaryVariable("a", lp.auto, shape=(256,),
-                    scope=lp.AddressSpace.LOCAL),
+                lp.TemporaryVariable("a", dtype=None, shape=(256,),
+                    address_space=lp.AddressSpace.LOCAL),
                 ])
 
     prog = lp.tag_inames(prog, "i:l.0")
@@ -2688,7 +2695,7 @@ def test_half_complex_conditional(ctx_factory):
     knl = lp.make_kernel(
             "{[i]: 0 <= i < 10}",
             """
-           tmp[i] = if(i < 5, 0, 0j)
+           tmp[i] = 0 if i < 5 else 0j
            """)
 
     knl(queue)
@@ -2753,6 +2760,15 @@ def test_dump_binary(ctx_factory):
     pytest.skip("Not investing time in passing test depends on feature which was "
             "deprecated in 2016")
     ctx = ctx_factory()
+
+    device = ctx.devices[0]
+
+    if (device.platform.vendor == "Intel(R) Corporation"
+            and device.driver_version in [
+                "2019.8.7.0",
+                "2019.8.8.0",
+                ]):
+        pytest.skip("Intel CL doesn't implement Kernel.program")
 
     knl = lp.make_kernel(
             "{ [i]: 0<=i<n }",

@@ -82,7 +82,6 @@ class SeparateTemporariesPreambleTestMangler(
 class SeparateTemporariesPreambleTestPreambleGenerator(
         SeparateTemporariesPreambleTestDataHolder):
     def __call__(self, preamble_info):
-        from loopy.kernel.data import temp_var_scope as scopes
 
         # find a function matching our name
         func_match = next(
@@ -98,7 +97,7 @@ class SeparateTemporariesPreambleTestPreambleGenerator(
                 var = lp.TemporaryVariable(
                     'lookup', initializer=self.arr, dtype=self.arr.dtype,
                     shape=self.arr.shape,
-                    scope=scopes.GLOBAL, read_only=True)
+                    address_space=lp.AddressSpace.GLOBAL, read_only=True)
                 # and code
                 code = """
         int {name}(int start, int end, int match)

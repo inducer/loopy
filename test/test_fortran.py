@@ -366,6 +366,12 @@ def test_tagged(ctx_factory):
     "i_inner,j_inner",
     ])
 def test_matmul(ctx_factory, buffer_inames):
+    ctx = ctx_factory()
+
+    if (buffer_inames and
+            ctx.devices[0].platform.name == "Portable Computing Language"):
+        pytest.skip("crashes on pocl")
+
     logging.basicConfig(level=logging.INFO)
 
     fortran_src = """
@@ -407,7 +413,6 @@ def test_matmul(ctx_factory, buffer_inames):
     knl = lp.buffer_array(knl, "c", buffer_inames=buffer_inames,
             init_expression="0", store_expression="base+buffer")
 
-    ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=128, m=128, ell=128))
 
 
