@@ -1240,7 +1240,9 @@ def remove_unused_inames(knl, inames=None):
 
 
 def remove_any_newly_unused_inames(transformation_func):
+    from functools import wraps
 
+    @wraps(transformation_func)
     def wrapper(knl, *args, **kwargs):
 
         # check for remove_unused_inames argument, default: True
