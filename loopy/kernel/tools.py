@@ -1942,9 +1942,8 @@ def infer_args_are_input_output(kernel):
 
     for arg in kernel.args:
         if isinstance(arg, ArrayArg):
-            if arg.is_output_only is not None:
-                assert isinstance(arg.is_output_only, bool)
-                new_args.append(arg)
+            if arg.is_output is not None:
+                assert isinstance(arg.is_output, bool)
             else:
                 if arg.name in kernel.get_written_variables():
                     arg = arg.copy(is_output=True)
@@ -1959,9 +1958,9 @@ def infer_args_are_input_output(kernel):
                             arg.name not in kernel.get_written_variables())):
                     arg = arg.copy(is_input=True)
                 else:
-                    new_args.append(arg.copy(is_output_only=False))
+                    arg = arg.copy(is_input=False)
         elif isinstance(arg, (ConstantArg, ImageArg, ValueArg)):
-            new_args.append(arg)
+            pass
         else:
             raise NotImplementedError("Unkonwn argument type %s." % type(arg))
 
