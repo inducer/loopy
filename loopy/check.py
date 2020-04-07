@@ -194,7 +194,7 @@ def check_for_unused_inames(kernel):
             "Found unused inames in kernel: %s "
             "Unused inames during linearization will be prohibited in "
             "Loopy version 2021.X."
-            % (unused_inames))
+            % unused_inames)
 
 
 def _is_racing_iname_tag(tv, tag):
