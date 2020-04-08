@@ -345,7 +345,7 @@ class InstructionBase(ImmutableRecord):
         """
         raise NotImplementedError
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f):
         """Return a new copy of *self* where *f* has been applied to every
         expression occurring in *self*. *args* will be passed as extra
         arguments (in addition to the expression) to *f*.
@@ -960,10 +960,10 @@ class Assignment(MultiAssignmentBase):
     def assignee_subscript_deps(self):
         return (_get_assignee_subscript_deps(self.assignee),)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f):
         return self.copy(
-                assignee=f(self.assignee, *args),
-                expression=f(self.expression, *args),
+                assignee=f(self.assignee),
+                expression=f(self.expression),
                 predicates=frozenset(
                     f(pred, *args) for pred in self.predicates))
 
@@ -1358,7 +1358,7 @@ class _DataObliviousInstruction(InstructionBase):
     def assignee_subscript_deps(self):
         return frozenset()
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f):
         return self.copy(
                 predicates=frozenset(
                     f(pred) for pred in self.predicates))
