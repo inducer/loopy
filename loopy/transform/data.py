@@ -285,15 +285,15 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     if temporary_name is None:
         temporary_name = var_name_gen("%s_fetch" % c_name)
 
-    arg = kernel.arg_dict[var_name]
+    var_descr = kernel.get_var_descriptor(var_name)
 
     # {{{ make parameter names and unification template
 
     parameters = []
-    for i in range(arg.num_user_axes()):
+    for i in range(var_descr.num_user_axes()):
         based_on = "%s_dim_%d" % (c_name, i)
-        if arg.dim_names is not None:
-            based_on = "%s_dim_%s" % (c_name, arg.dim_names[i])
+        if var_descr.dim_names is not None:
+            based_on = "%s_dim_%s" % (c_name, var_descr.dim_names[i])
         if dim_arg_names is not None and i < len(dim_arg_names):
             based_on = dim_arg_names[i]
 
@@ -322,7 +322,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     kernel, subst_use, sweep_inames, inames_to_be_removed = \
             _process_footprint_subscripts(
                     kernel,  rule_name, sweep_inames,
-                    footprint_subscripts, arg)
+                    footprint_subscripts, var_descr)
 
     # Our _not_provided is actually a different object from the one in the
     # precompute module, but precompute acutally uses that to adjust its
@@ -331,7 +331,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     from loopy.transform.precompute import precompute
     new_kernel = precompute(kernel, subst_use, sweep_inames,
             precompute_inames=dim_arg_names,
-            default_tag=default_tag, dtype=arg.dtype,
+            default_tag=default_tag, dtype=var_descr.dtype,
             fetch_bounding_box=fetch_bounding_box,
             temporary_name=temporary_name,
             temporary_address_space=temporary_address_space,
