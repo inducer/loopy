@@ -349,7 +349,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if state not in [
                 KernelState.INITIAL,
                 KernelState.PREPROCESSED,
-                KernelState.SCHEDULED,
+                KernelState.LINEARIZED,
                 ]:
             raise ValueError("invalid value for 'state'")
 
