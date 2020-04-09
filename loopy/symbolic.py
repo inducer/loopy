@@ -971,7 +971,8 @@ class RuleAwareIdentityMapper(IdentityMapper):
                 # may perform tasks entirely unrelated to subst rules, so
                 # we must map assignees, too.
                 self.map_instruction(kernel,
-                    insn.with_transformed_expressions(self, kernel, insn))
+                    insn.with_transformed_expressions(
+                        lambda expr: self(expr, kernel, insn)))
                 for insn in kernel.instructions]
 
         return kernel.copy(instructions=new_insns)

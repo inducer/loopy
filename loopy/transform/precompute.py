@@ -229,7 +229,8 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
         for insn in kernel.instructions:
             self.replaced_something = False
 
-            insn = insn.with_transformed_expressions(self, kernel, insn)
+            insn = insn.with_transformed_expressions(
+                    lambda expr: self(expr, kernel, insn))
 
             if self.replaced_something:
                 insn = insn.copy(
