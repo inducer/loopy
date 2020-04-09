@@ -1326,6 +1326,9 @@ class CInstruction(InstructionBase):
                 for a in self.assignees)
 
     def with_transformed_expressions(self, f, assignee_f=None):
+        if assignee_f is None:
+            assignee_f = f
+
         return self.copy(
                 iname_exprs=[
                     (name, f(expr))
