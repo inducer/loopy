@@ -585,6 +585,40 @@ def test_extract_subst_with_iname_deps_in_templ(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx_factory(), knl)
 
 
+def test_prefetch_local_into_private():
+    # https://gitlab.tiker.net/inducer/loopy/-/issues/210
+    n = 32
+    m = 32
+    n_vecs = 32
+
+    knl = lp.make_kernel(
+        """{[k,i,j]:
+            0<=k<n_vecs and
+            0<=i<m and
+            0<=j<n}""",
+        """
+        result[i,k] = sum(j, mat[i, j] * vec[j, k])
+        """,
+        kernel_data=[
+            lp.GlobalArg("result", np.float32, shape=(m, n_vecs), order="C"),
+            lp.GlobalArg("mat", np.float32, shape=(m, n), order="C"),
+            lp.GlobalArg("vec", np.float32, shape=(n, n_vecs), order="C")
+        ],
+        assumptions="n > 0 \
+                     and m > 0 \
+                     and n_vecs > 0",
+        name="mxm"
+    )
+
+    knl = lp.fix_parameters(knl, m=m, n=n, n_vecs=n_vecs)
+    knl = lp.prioritize_loops(knl, "i,k,j")
+
+    knl = lp.add_prefetch(
+            knl, "mat", "i, j", temporary_name="s_mat", default_tag="for")
+    knl = lp.add_prefetch(
+            knl, "s_mat", "j", temporary_name="p_mat", default_tag="for")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
