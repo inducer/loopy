@@ -445,7 +445,8 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
     )
     # }}}
 
-    inner_insns = [noop_start]
+    #inner_insns = [noop_start]
+    inner_insns = []
 
     for insn in callee_knl.instructions:
         insn = insn.with_transformed_expressions(subst_mapper)
@@ -454,7 +455,7 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
         depends_on = frozenset(map(insn_id.get, insn.depends_on)) | (
                 instruction.depends_on)
         if insn.id in heads:
-            depends_on = depends_on | set([noop_start.id])
+            depends_on = depends_on | set(noop_start.depends_on)
 
         new_atomicity = tuple(
                 type(atomicity)(var_map[p.Variable(atomicity.var_name)].name)
@@ -483,7 +484,8 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
             )
         inner_insns.append(insn)
 
-    inner_insns.append(noop_end)
+    inner_insns[-1].id = instruction.id
+    #inner_insns.append(noop_end)
 
     new_insns = []
     for insn in kernel.instructions:
@@ -680,7 +682,6 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
                 new_callee_insns.append(callee_insn.copy(expression=dim_changer(
                     callee_insn.expression),
                     assignee=dim_changer(callee_insn.assignee)))
-
             elif isinstance(callee_insn, (CInstruction,
                     _DataObliviousInstruction)):
                 pass

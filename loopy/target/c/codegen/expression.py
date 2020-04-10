@@ -428,6 +428,9 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         "constant of numpy type '%s'" % type(expr).__name__)
 
         else:
+            if isinstance(expr, float):
+                return Literal(repr(expr)+"f")
+
             if type_context == "f":
                 return Literal(repr(np.float32(expr))+"f")
             elif type_context == "d":
