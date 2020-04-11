@@ -1726,8 +1726,8 @@ def get_subkernels(kernel):
     See also :class:`loopy.schedule.CallKernel`.
     """
     from loopy.kernel import KernelState
-    if kernel.state != KernelState.SCHEDULED:
-        raise LoopyError("Kernel must be scheduled")
+    if kernel.state != KernelState.LINEARIZED:
+        raise LoopyError("Kernel must be linearized")
 
     from loopy.schedule import CallKernel
 
@@ -1743,7 +1743,7 @@ def get_subkernel_to_insn_id_map(kernel):
     kernel must be scheduled.
     """
     from loopy.kernel import KernelState
-    if kernel.state != KernelState.SCHEDULED:
+    if kernel.state != KernelState.LINEARIZED:
         raise LoopyError("Kernel must be scheduled")
 
     from loopy.schedule import (
