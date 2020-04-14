@@ -306,18 +306,6 @@ class LexSchedule(object):
         # the values in these missing dims should be zero, so add them
         self.pad_lex_pts_with_zeros()
 
-    def loopy_insn_id_to_lex_sched_id(self):
-        """Return a dictionary mapping insn_id to int_id, where ``insn_id`` and
-            ``int_id`` refer to the ``insn_id`` and ``int_id`` attributes of
-            :class:`LexScheduleStatement`.
-        """
-        return {
-            self.stmt_instance_before.stmt.insn_id:
-                self.stmt_instance_before.stmt.int_id,
-            self.stmt_instance_after.stmt.insn_id:
-                self.stmt_instance_after.stmt.int_id,
-            }
-
     def max_lex_dims(self):
         return max([
             len(self.stmt_instance_before.lex_pt),
@@ -457,11 +445,6 @@ class LexSchedule(object):
     def get_lex_var_names(self):
         return [self.lex_var_prefix+str(i)
                 for i in range(self.max_lex_dims())]
-
-    def __eq__(self, other):
-        return (
-            self.stmt_instance_before == other.stmt_instance_before
-            and self.stmt_instance_after == other.stmt_instance_after)
 
     def __str__(self):
         sched_str = "Before: {\n"
