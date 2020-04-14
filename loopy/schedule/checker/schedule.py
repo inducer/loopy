@@ -51,16 +51,6 @@ class LexScheduleStatement(object):
         self.int_id = int_id
         self.within_inames = within_inames
 
-    def __eq__(self, other):
-        return (
-            self.insn_id == other.insn_id
-            and self.int_id == other.int_id
-            and self.within_inames == other.within_inames
-            )
-
-    def __hash__(self):
-        return hash(repr(self))
-
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.
