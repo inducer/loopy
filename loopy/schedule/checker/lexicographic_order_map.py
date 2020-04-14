@@ -23,44 +23,6 @@ THE SOFTWARE.
 import islpy as isl
 
 
-def get_statement_ordering_map(
-        sched_map_before, sched_map_after, lex_map, before_marker="'"):
-    """Return a mapping that maps each statement instance to
-        all statement instances occuring later.
-
-    :arg sched_map_before: An :class:`islpy.Map` representing instruction
-        instance order for the dependee as a mapping from each statement
-        instance to a point in the lexicographic ordering.
-
-    :arg sched_map_after: An :class:`islpy.Map` representing instruction
-        instance order for the depender as a mapping from each statement
-        instance to a point in the lexicographic ordering.
-
-    :arg lex_map: An :class:`islpy.Map` representing a lexicographic
-        ordering as a mapping from each point in lexicographic time
-        to every point that occurs later in lexicographic time. E.g.::
-
-            {[i0', i1', i2', ...] -> [i0, i1, i2, ...] :
-                i0' < i0 or (i0' = i0 and i1' < i1)
-                or (i0' = i0 and i1' = i1 and i2' < i2) ...}
-
-    :returns: An :class:`islpy.Map` representing the lex schedule as
-        a mapping from each statement instance to all statement instances
-        occuring later. I.e., we compose B -> L -> A^-1, where B
-        is sched_map_before, A is sched_map_after, and L is the
-        lexicographic ordering map.
-
-    """
-
-    sio = sched_map_before.apply_range(
-        lex_map).apply_range(sched_map_after.reverse())
-    # append marker to in names
-    for i in range(sio.dim(isl.dim_type.in_)):
-        sio = sio.set_dim_name(isl.dim_type.in_, i, sio.get_dim_name(
-            isl.dim_type.in_, i)+before_marker)
-    return sio
-
-
 def get_lex_order_constraint(islvars, before_names, after_names):
     """Return a constraint represented as an :class:`islpy.Set`
         defining a 'happens before' relationship in a lexicographic
