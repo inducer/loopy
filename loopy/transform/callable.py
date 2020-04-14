@@ -683,7 +683,7 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
 
             elif isinstance(callee_insn, (CInstruction,
                     _DataObliviousInstruction)):
-                pass
+                new_callee_insns.append(callee_insn)
             else:
                 raise NotImplementedError("Unknown instruction %s." %
                         type(insn))
