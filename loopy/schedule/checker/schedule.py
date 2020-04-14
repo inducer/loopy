@@ -177,9 +177,6 @@ class LexSchedule(object):
         next_insn_lex_pt = [0]
         stmt_since_last_block_at_tier = [False]
         next_sid = 0
-        stmt_added_since_last_EnterLoop = False
-        stmt_added_since_last_LeaveLoop = False
-        #stmt_added_since_last_new_block = False  # blocks start at open/close loop
         for linearization_item in linearization_items_ordered:
             if isinstance(linearization_item, EnterLoop):
                 iname = linearization_item.iname
@@ -188,8 +185,8 @@ class LexSchedule(object):
 
                 # We could always increment next_insn_lex_pt[-1] here since this new
                 # section of code comes after the previous section (statements
-                # since last opened/closed loop), but if we have not added any statements
-                # within this block yet, we don't have to
+                # since last opened/closed loop), but if we have not added any
+                # statements within this block yet, we don't have to
                 # (effectively ignoring that section of code).
                 if stmt_since_last_block_at_tier[-1]:
                     next_insn_lex_pt[-1] = next_insn_lex_pt[-1]+1
@@ -214,8 +211,8 @@ class LexSchedule(object):
 
                 # We could always increment next_insn_lex_pt[-1] here since this new
                 # block of code comes after the previous block (all statements
-                # since last opened/closed loop), but if we have not added any statements
-                # within this block yet, we don't have to
+                # since last opened/closed loop), but if we have not added any
+                # statements within this block yet, we don't have to
                 # (effectively ignoring that section of code).
                 stmt_since_last_block_at_tier.pop()
                 if stmt_since_last_block_at_tier[-1]:
@@ -255,7 +252,8 @@ class LexSchedule(object):
                     next_sid += 1
 
                     # all current (nested) blocks now contain a statement
-                    stmt_since_last_block_at_tier = [True]*len(stmt_since_last_block_at_tier)
+                    stmt_since_last_block_at_tier = [True]*len(
+                        stmt_since_last_block_at_tier)
                 elif lp_insn_id == before_insn_id:
                     # add before sched item
                     self.stmt_instance_before = LexScheduleStatementInstance(
@@ -270,7 +268,8 @@ class LexSchedule(object):
                     next_sid += 1
 
                     # all current (nested) blocks now contain a statement
-                    stmt_since_last_block_at_tier = [True]*len(stmt_since_last_block_at_tier)
+                    stmt_since_last_block_at_tier = [True]*len(
+                        stmt_since_last_block_at_tier)
                 elif lp_insn_id == after_insn_id:
                     # add after sched item
                     self.stmt_instance_after = LexScheduleStatementInstance(
@@ -285,7 +284,8 @@ class LexSchedule(object):
                     next_sid += 1
 
                     # all current (nested) blocks now contain a statement
-                    stmt_since_last_block_at_tier = [True]*len(stmt_since_last_block_at_tier)
+                    stmt_since_last_block_at_tier = [True]*len(
+                        stmt_since_last_block_at_tier)
             else:
                 pass
             # to save time, stop when we've created both statements

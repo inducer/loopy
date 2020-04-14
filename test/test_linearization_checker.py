@@ -31,7 +31,6 @@ from pyopencl.tools import (  # noqa
     as pytest_generate_tests)
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 import logging
-from loopy.kernel import KernelState
 from loopy import (
     preprocess_kernel,
     get_one_linearized_kernel,
@@ -95,37 +94,37 @@ def test_lexschedule_and_islmap_creation():
     linearization_items = knl.linearization
 
     # Create LexSchedule: mapping of {statement instance: lex point}
-    lex_sched_AB = get_schedule_for_statement_pair(
+    lex_sched_ab = get_schedule_for_statement_pair(
         knl,
         linearization_items,
         "insn_a",
         "insn_b",
         )
-    lex_sched_AC = get_schedule_for_statement_pair(
+    lex_sched_ac = get_schedule_for_statement_pair(
         knl,
         linearization_items,
         "insn_a",
         "insn_c",
         )
-    lex_sched_AD = get_schedule_for_statement_pair(
+    lex_sched_ad = get_schedule_for_statement_pair(
         knl,
         linearization_items,
         "insn_a",
         "insn_d",
         )
-    lex_sched_BC = get_schedule_for_statement_pair(
+    lex_sched_bc = get_schedule_for_statement_pair(
         knl,
         linearization_items,
         "insn_b",
         "insn_c",
         )
-    lex_sched_BD = get_schedule_for_statement_pair(
+    lex_sched_bd = get_schedule_for_statement_pair(
         knl,
         linearization_items,
         "insn_b",
         "insn_d",
         )
-    lex_sched_CD = get_schedule_for_statement_pair(
+    lex_sched_cd = get_schedule_for_statement_pair(
         knl,
         linearization_items,
         "insn_c",
@@ -134,13 +133,13 @@ def test_lexschedule_and_islmap_creation():
 
     # Relationship between insn_a and insn_b ---------------------------------------
 
-    assert lex_sched_AB.stmt_instance_before.lex_pt == [0, 'i', 0, 'k', 0]
-    assert lex_sched_AB.stmt_instance_after.lex_pt == [0, 'i', 1, 'j', 0]
+    assert lex_sched_ab.stmt_instance_before.lex_pt == [0, 'i', 0, 'k', 0]
+    assert lex_sched_ab.stmt_instance_after.lex_pt == [0, 'i', 1, 'j', 0]
 
     # Get two isl maps representing the LexSchedule
 
     isl_sched_map_before, isl_sched_map_after = \
-         get_isl_maps_for_LexSchedule(lex_sched_AB, knl, "insn_a", "insn_b")
+         get_isl_maps_for_LexSchedule(lex_sched_ab, knl, "insn_a", "insn_b")
 
     # Create expected maps, align, compare
 
@@ -166,13 +165,13 @@ def test_lexschedule_and_islmap_creation():
     # ------------------------------------------------------------------------------
     # Relationship between insn_a and insn_c ---------------------------------------
 
-    assert lex_sched_AC.stmt_instance_before.lex_pt == [0, 'i', 0, 'k', 0]
-    assert lex_sched_AC.stmt_instance_after.lex_pt == [0, 'i', 1, 'j', 0]
+    assert lex_sched_ac.stmt_instance_before.lex_pt == [0, 'i', 0, 'k', 0]
+    assert lex_sched_ac.stmt_instance_after.lex_pt == [0, 'i', 1, 'j', 0]
 
     # Get two isl maps representing the LexSchedule
 
     isl_sched_map_before, isl_sched_map_after = \
-         get_isl_maps_for_LexSchedule(lex_sched_AC, knl, "insn_a", "insn_c")
+         get_isl_maps_for_LexSchedule(lex_sched_ac, knl, "insn_a", "insn_c")
 
     # Create expected maps, align, compare
 
@@ -198,13 +197,13 @@ def test_lexschedule_and_islmap_creation():
     # ------------------------------------------------------------------------------
     # Relationship between insn_a and insn_d ---------------------------------------
 
-    assert lex_sched_AD.stmt_instance_before.lex_pt == [0, 'i', 0, 'k', 0]
-    assert lex_sched_AD.stmt_instance_after.lex_pt == [1, 't', 0, 0, 0]
+    assert lex_sched_ad.stmt_instance_before.lex_pt == [0, 'i', 0, 'k', 0]
+    assert lex_sched_ad.stmt_instance_after.lex_pt == [1, 't', 0, 0, 0]
 
     # Get two isl maps representing the LexSchedule
 
     isl_sched_map_before, isl_sched_map_after = \
-         get_isl_maps_for_LexSchedule(lex_sched_AD, knl, "insn_a", "insn_d")
+         get_isl_maps_for_LexSchedule(lex_sched_ad, knl, "insn_a", "insn_d")
 
     # Create expected maps, align, compare
 
@@ -231,15 +230,15 @@ def test_lexschedule_and_islmap_creation():
     # Relationship between insn_b and insn_c ---------------------------------------
 
     # insn_b and insn_c could have been linearized in either order
-    if lex_sched_BC.stmt_instance_before.stmt.int_id == 0:
+    if lex_sched_bc.stmt_instance_before.stmt.int_id == 0:
         # insn_c comes first
-        assert lex_sched_BC.stmt_instance_before.lex_pt == [0, 'i', 0, 'j', 0]
-        assert lex_sched_BC.stmt_instance_after.lex_pt == [0, 'i', 0, 'j', 1]
+        assert lex_sched_bc.stmt_instance_before.lex_pt == [0, 'i', 0, 'j', 0]
+        assert lex_sched_bc.stmt_instance_after.lex_pt == [0, 'i', 0, 'j', 1]
 
         # Get two isl maps representing the LexSchedule
 
         isl_sched_map_before, isl_sched_map_after = \
-             get_isl_maps_for_LexSchedule(lex_sched_BC, knl, "insn_b", "insn_c")
+             get_isl_maps_for_LexSchedule(lex_sched_bc, knl, "insn_b", "insn_c")
 
         # Create expected maps, align, compare
 
@@ -261,15 +260,15 @@ def test_lexschedule_and_islmap_creation():
 
         assert isl_sched_map_before == isl_sched_map_before_expected
         assert isl_sched_map_after == isl_sched_map_after_expected
-    elif lex_sched_BC.stmt_instance_before.stmt.int_id == 1:
+    elif lex_sched_bc.stmt_instance_before.stmt.int_id == 1:
         # insn_c comes first
-        assert lex_sched_BC.stmt_instance_before.lex_pt == [0, 'i', 0, 'j', 1]
-        assert lex_sched_BC.stmt_instance_after.lex_pt == [0, 'i', 0, 'j', 0]
+        assert lex_sched_bc.stmt_instance_before.lex_pt == [0, 'i', 0, 'j', 1]
+        assert lex_sched_bc.stmt_instance_after.lex_pt == [0, 'i', 0, 'j', 0]
 
         # Get two isl maps representing the LexSchedule
 
         isl_sched_map_before, isl_sched_map_after = \
-             get_isl_maps_for_LexSchedule(lex_sched_BC, knl, "insn_b", "insn_c")
+             get_isl_maps_for_LexSchedule(lex_sched_bc, knl, "insn_b", "insn_c")
 
         # Create expected maps, align, compare
 
@@ -295,13 +294,13 @@ def test_lexschedule_and_islmap_creation():
     # ------------------------------------------------------------------------------
     # Relationship between insn_b and insn_d ---------------------------------------
 
-    assert lex_sched_BD.stmt_instance_before.lex_pt == [0, 'i', 0, 'j', 0]
-    assert lex_sched_BD.stmt_instance_after.lex_pt == [1, 't', 0, 0, 0]
+    assert lex_sched_bd.stmt_instance_before.lex_pt == [0, 'i', 0, 'j', 0]
+    assert lex_sched_bd.stmt_instance_after.lex_pt == [1, 't', 0, 0, 0]
 
     # Get two isl maps representing the LexSchedule
 
     isl_sched_map_before, isl_sched_map_after = \
-         get_isl_maps_for_LexSchedule(lex_sched_BD, knl, "insn_b", "insn_d")
+         get_isl_maps_for_LexSchedule(lex_sched_bd, knl, "insn_b", "insn_d")
 
     # Create expected maps, align, compare
 
@@ -327,13 +326,13 @@ def test_lexschedule_and_islmap_creation():
     # ------------------------------------------------------------------------------
     # Relationship between insn_c and insn_d ---------------------------------------
 
-    assert lex_sched_CD.stmt_instance_before.lex_pt == [0, 'i', 0, 'j', 0]
-    assert lex_sched_CD.stmt_instance_after.lex_pt == [1, 't', 0, 0, 0]
+    assert lex_sched_cd.stmt_instance_before.lex_pt == [0, 'i', 0, 'j', 0]
+    assert lex_sched_cd.stmt_instance_after.lex_pt == [1, 't', 0, 0, 0]
 
     # Get two isl maps representing the LexSchedule
 
     isl_sched_map_before, isl_sched_map_after = \
-         get_isl_maps_for_LexSchedule(lex_sched_CD, knl, "insn_c", "insn_d")
+         get_isl_maps_for_LexSchedule(lex_sched_cd, knl, "insn_c", "insn_d")
 
     # Create expected maps, align, compare
 
