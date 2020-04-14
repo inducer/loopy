@@ -143,13 +143,6 @@ def align_isl_maps_by_var_names(input_map, target_map):
     return aligned_input_map
 
 
-def append_marker_to_strings(strings, marker="'"):
-    if not isinstance(strings, list):
-        raise ValueError("append_marker_to_strings did not receive a list")
-    else:
-        return [s+marker for s in strings]
-
-
 def _union_of_isl_sets_or_maps(set_list):
     union = set_list[0]
     for s in set_list[1:]:
