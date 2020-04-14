@@ -458,19 +458,6 @@ class LexSchedule(object):
         return [self.lex_var_prefix+str(i)
                 for i in range(self.max_lex_dims())]
 
-    def get_lex_order_map_for_sched_space(self):
-        """Return an :class:`islpy.BasicMap` that maps each point in a
-            lexicographic ordering to every point that is
-            lexocigraphically greater.
-        """
-
-        from loopy.schedule.checker.lexicographic_order_map import (
-            create_lex_order_map,
-        )
-        n_dims = self.max_lex_dims()
-        return create_lex_order_map(
-            n_dims, before_names=self.get_lex_var_names())
-
     def __eq__(self, other):
         return (
             self.stmt_instance_before == other.stmt_instance_before
