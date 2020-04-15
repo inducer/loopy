@@ -475,6 +475,43 @@ def test_empty_sub_array_refs(ctx_factory, inline):
     evt, (out, ) = caller(queue, x=x, y=y)
     assert np.allclose(out, x-y)
 
+def test_nested_callable_inline():
+    callee1 = lp.make_function(
+            "{[i]: 0<=i<1}",
+            """
+            <>tmp = 0
+            if tmp == 0
+                y[i] = 2*x[i]
+            end
+            """, name='callee1')
+    callee2 = lp.make_kernel(
+            "{[i]: 0<=i<1}",
+            """
+            <> tmp = 10
+            if tmp == 10
+                []:y[i] = callee1([]: x[i])
+            end
+            tmp = tmp + 1
+            y[2]= tmp
+            """, name='callee2')
+
+    caller = lp.make_kernel("{[i]: 0<=i<10}",
+                            """
+                            []:z[i] = callee2([]:x[i])
+                            """,
+                            [lp.GlobalArg('x', dtype=float, shape=lp.auto),
+                                '...'])
+    from loopy.transform.callable import _match_caller_callee_argument_dimension_
+
+    callee2 = lp.register_callable_kernel(callee2, callee1)
+    callee2 = _match_caller_callee_argument_dimension_(callee2, callee1.name)
+    callee2 = lp.inline_callable_kernel(callee2, callee1.name)
+    callee2 = callee2.root_kernel
+    caller = lp.register_callable_kernel(caller, callee2)
+    caller = _match_caller_callee_argument_dimension_(caller, callee2.name)
+    caller = lp.inline_callable_kernel(caller, callee2.name)
+    print(caller)
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
