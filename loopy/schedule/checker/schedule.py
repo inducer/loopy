@@ -316,17 +316,18 @@ class LexSchedule(object):
             dimensions.
         """
 
+        def _pad_lex_pt_with_zeros(stmt_inst, length):
+            return LexScheduleStatementInstance(
+                stmt_inst.stmt,
+                stmt_inst.lex_pt[:] + [0]*(length-len(stmt_inst.lex_pt)),
+                )
+
         max_lex_dim = self.max_lex_dims()
-        self.stmt_instance_before = LexScheduleStatementInstance(
-            self.stmt_instance_before.stmt,
-            self.stmt_instance_before.lex_pt[:] + [0]*(
-                max_lex_dim-len(self.stmt_instance_before.lex_pt))
-            )
-        self.stmt_instance_after = LexScheduleStatementInstance(
-            self.stmt_instance_after.stmt,
-            self.stmt_instance_after.lex_pt[:] + [0]*(
-                max_lex_dim-len(self.stmt_instance_after.lex_pt))
-            )
+
+        self.stmt_instance_before = _pad_lex_pt_with_zeros(
+            self.stmt_instance_before, max_lex_dim)
+        self.stmt_instance_after = _pad_lex_pt_with_zeros(
+            self.stmt_instance_after, max_lex_dim)
 
     def create_isl_maps(
             self,
