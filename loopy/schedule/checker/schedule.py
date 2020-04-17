@@ -365,79 +365,61 @@ class LexSchedule(object):
         """
 
         from loopy.schedule.checker.utils import (
-            create_symbolic_isl_map_from_tuples,
-            add_dims_to_isl_set
-        )
-
-        from loopy.schedule.checker.utils import (
             list_var_names_in_isl_sets,
+            get_isl_space,
+            create_symbolic_isl_map_from_tuples,
+            add_dims_to_isl_set,
         )
-        if dom_inames_ordered_before is None:
-            dom_inames_ordered_before = list_var_names_in_isl_sets(
-                [dom_before])
-        if dom_inames_ordered_after is None:
-            dom_inames_ordered_after = list_var_names_in_isl_sets(
-                [dom_after])
 
-        # create an isl space
-        # {('statement', <inames> used in >=1 statement domain>) ->
-        #  (lexicographic ordering dims)}
-        from loopy.schedule.checker.utils import (
-            get_isl_space
-        )
         params_sched = []
         out_names_sched = self.get_lex_var_names()
 
-        in_names_sched_before = [
-            self.statement_var_name] + dom_inames_ordered_before[:]
-        sched_space_before = get_isl_space(
-            params_sched, in_names_sched_before, out_names_sched)
-        in_names_sched_after = [
-            self.statement_var_name] + dom_inames_ordered_after[:]
-        sched_space_after = get_isl_space(
-            params_sched, in_names_sched_after, out_names_sched)
+        def _get_isl_map_for_stmt_inst(
+                stmt_inst, dom, dom_inames_ordered):
 
-        # Insert 'statement' dim into domain so that its space allows for
-        # intersection with sched map later
-        doms_to_intersect_before = [
+            # create an isl space
+            # {('statement', <inames> used in statement domain>) ->
+            #  (lexicographic ordering dims)}
+            if dom_inames_ordered is None:
+                dom_inames_ordered = list_var_names_in_isl_sets([dom])
+
+            in_names_sched = [
+                self.statement_var_name] + dom_inames_ordered[:]
+            sched_space = get_isl_space(
+                params_sched, in_names_sched, out_names_sched)
+
+            # Insert 'statement' dim into domain so that its space allows
+            # for intersection with sched map later
+            dom_to_intersect = [
                 add_dims_to_isl_set(
-                    dom_before, isl.dim_type.set,
-                    [self.statement_var_name], 0),
-                ]
-        doms_to_intersect_after = [
-                add_dims_to_isl_set(
-                    dom_after, isl.dim_type.set,
-                    [self.statement_var_name], 0),
-                ]
+                    dom, isl.dim_type.set, [self.statement_var_name], 0), ]
 
-        # Each isl map representing the schedule maps
-        # statement instances -> lex time
+            # Each isl map representing the schedule will map
+            # statement instances -> lex time.
+            # Right now, statement instance tuples consist of single int.
+            # Add all inames from domains to each map domain tuple.
+            tuple_pair = [(
+                (stmt_inst.stmt.int_id, ) + tuple(dom_inames_ordered),
+                stmt_inst.lex_pt
+                )]
 
-        # Right now, statement tuples consist of single int.
-        # Add all inames from domains to map domain tuples.
+            # create isl map
+            return create_symbolic_isl_map_from_tuples(
+                tuple_pairs_with_domains=zip(tuple_pair, dom_to_intersect),
+                space=sched_space,
+                statement_var_name=self.statement_var_name,
+                )
 
-        # create isl map
-        return (
-            create_symbolic_isl_map_from_tuples(
-                zip(
-                    [(
-                        (self.stmt_instance_before.stmt.int_id,)
-                        + tuple(dom_inames_ordered_before),
-                        self.stmt_instance_before.lex_pt
-                    )],
-                    doms_to_intersect_before
-                ),
-                sched_space_before, self.statement_var_name),
-            create_symbolic_isl_map_from_tuples(
-                zip(
-                    [(
-                        (self.stmt_instance_after.stmt.int_id,)
-                        + tuple(dom_inames_ordered_after),
-                        self.stmt_instance_after.lex_pt)],
-                    doms_to_intersect_after
-                ),
-                sched_space_after, self.statement_var_name)
-            )
+        map_before = _get_isl_map_for_stmt_inst(
+            self.stmt_instance_before,
+            dom_before,
+            dom_inames_ordered_before)
+        map_after = _get_isl_map_for_stmt_inst(
+            self.stmt_instance_after,
+            dom_after,
+            dom_inames_ordered_after)
+
+        return (map_before, map_after)
 
     def get_lex_var_names(self):
         return [self.lex_var_prefix+str(i)
