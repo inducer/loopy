@@ -182,7 +182,7 @@ class LexSchedule(object):
         # keep track of the next point in our lexicographic ordering
         # initially this as a 1-d point with value 0
         next_insn_lex_pt = [0]
-        stmt_since_last_block_at_tier = [False]
+        stmt_added_since_prev_block_at_tier = [False]
         next_sid = 0
         for linearization_item in linearization_items_ordered:
             if isinstance(linearization_item, EnterLoop):
@@ -193,19 +193,20 @@ class LexSchedule(object):
                 # We could always increment next_insn_lex_pt[-1] here since this new
                 # section of code comes after the previous section (statements
                 # since last opened/closed loop), but if we have not added any
-                # statements within this block yet, we don't have to
+                # statements within the previous section yet, we don't have to
                 # (effectively ignoring that section of code).
-                if stmt_since_last_block_at_tier[-1]:
+                if stmt_added_since_prev_block_at_tier[-1]:
                     next_insn_lex_pt[-1] = next_insn_lex_pt[-1]+1
-                    stmt_since_last_block_at_tier[-1] = False
+                    stmt_added_since_prev_block_at_tier[-1] = False
 
                 # upon entering a loop, we enter a new (deeper) tier,
                 # add one lex dimension for the loop variable,
                 # add second lex dim to enumerate code blocks within new loop, and
-                # append a dim to stmt_since_last_block_at_tier to represent new tier
+                # append a dim to stmt_added_since_prev_block_at_tier to represent
+                # new tier
                 next_insn_lex_pt.append(iname)
                 next_insn_lex_pt.append(0)
-                stmt_since_last_block_at_tier.append(False)
+                stmt_added_since_prev_block_at_tier.append(False)
             elif isinstance(linearization_item, LeaveLoop):
                 if linearization_item.iname in loops_to_ignore:
                     continue
@@ -219,12 +220,12 @@ class LexSchedule(object):
                 # We could always increment next_insn_lex_pt[-1] here since this new
                 # block of code comes after the previous block (all statements
                 # since last opened/closed loop), but if we have not added any
-                # statements within this block yet, we don't have to
+                # statements within the previous section yet, we don't have to
                 # (effectively ignoring that section of code).
-                stmt_since_last_block_at_tier.pop()
-                if stmt_since_last_block_at_tier[-1]:
+                stmt_added_since_prev_block_at_tier.pop()
+                if stmt_added_since_prev_block_at_tier[-1]:
                     next_insn_lex_pt[-1] = next_insn_lex_pt[-1]+1
-                    stmt_since_last_block_at_tier[-1] = False
+                    stmt_added_since_prev_block_at_tier[-1] = False
             elif isinstance(linearization_item, (RunInstruction, Barrier)):
                 from loopy.schedule.checker.utils import (
                     _get_insn_id_from_linearization_item,
@@ -238,7 +239,9 @@ class LexSchedule(object):
                     continue
 
                 # only process before/after insns, otherwise ignore
-                if lp_insn_id == before_insn_id and lp_insn_id == after_insn_id:
+                stmt_added = False
+
+                if lp_insn_id == before_insn_id:
                     # add before sched item
                     self.stmt_instance_before = LexScheduleStatementInstance(
                             LexScheduleStatement(
@@ -246,6 +249,9 @@ class LexSchedule(object):
                                 int_id=next_sid,  # int representing insn
                                 ),
                             next_insn_lex_pt[:])
+                    stmt_added = True
+
+                if lp_insn_id == after_insn_id:
                     # add after sched item
                     self.stmt_instance_after = LexScheduleStatementInstance(
                             LexScheduleStatement(
@@ -253,46 +259,19 @@ class LexSchedule(object):
                                 int_id=next_sid,  # int representing insn
                                 ),
                             next_insn_lex_pt[:])
+                    stmt_added = True
 
+                # Note: before/after may refer to same stmt, in which case
+                # both of the above conditionals execute
+
+                if stmt_added:
                     # increment lex dim val enumerating items in current code block
                     next_insn_lex_pt[-1] = next_insn_lex_pt[-1] + 1
                     next_sid += 1
 
                     # all current (nested) blocks now contain a statement
-                    stmt_since_last_block_at_tier = [True]*len(
-                        stmt_since_last_block_at_tier)
-                elif lp_insn_id == before_insn_id:
-                    # add before sched item
-                    self.stmt_instance_before = LexScheduleStatementInstance(
-                            LexScheduleStatement(
-                                insn_id=lp_insn_id,
-                                int_id=next_sid,  # int representing insn
-                                ),
-                            next_insn_lex_pt[:])
-
-                    # increment lex dim val enumerating items in current code block
-                    next_insn_lex_pt[-1] = next_insn_lex_pt[-1] + 1
-                    next_sid += 1
-
-                    # all current (nested) blocks now contain a statement
-                    stmt_since_last_block_at_tier = [True]*len(
-                        stmt_since_last_block_at_tier)
-                elif lp_insn_id == after_insn_id:
-                    # add after sched item
-                    self.stmt_instance_after = LexScheduleStatementInstance(
-                            LexScheduleStatement(
-                                insn_id=lp_insn_id,
-                                int_id=next_sid,  # int representing insn
-                                ),
-                            next_insn_lex_pt[:])
-
-                    # increment lex dim val enumerating items in current code block
-                    next_insn_lex_pt[-1] = next_insn_lex_pt[-1] + 1
-                    next_sid += 1
-
-                    # all current (nested) blocks now contain a statement
-                    stmt_since_last_block_at_tier = [True]*len(
-                        stmt_since_last_block_at_tier)
+                    stmt_added_since_prev_block_at_tier = [True]*len(
+                        stmt_added_since_prev_block_at_tier)
             else:
                 pass
             # to save time, stop when we've created both statements
