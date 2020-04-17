@@ -444,17 +444,13 @@ class LexSchedule(object):
                 for i in range(self.max_lex_dims())]
 
     def __str__(self):
-        sched_str = "Before: {\n"
-        domain_elem = "[%s=%s,<inames>]" % (
-            self.statement_var_name,
-            self.stmt_instance_before.stmt.int_id)
-        sched_str += "%s -> %s;\n" % (domain_elem, self.stmt_instance_before.lex_pt)
-        sched_str += "}\n"
 
-        sched_str += "After: {\n"
-        domain_elem = "[%s=%s,<inames>]" % (
-            self.statement_var_name,
-            self.stmt_instance_after.stmt.int_id)
-        sched_str += "%s -> %s;\n" % (domain_elem, self.stmt_instance_after.lex_pt)
-        sched_str += "}"
-        return sched_str
+        def stringify_sched_stmt_instance(stmt_inst):
+            return "{\n[%s=%s,<inames>] -> %s;\n}" % (
+                self.statement_var_name,
+                stmt_inst.stmt.int_id,
+                stmt_inst.lex_pt)
+
+        return "Before: %s\nAfter: %s" % (
+            stringify_sched_stmt_instance(self.stmt_instance_before),
+            stringify_sched_stmt_instance(self.stmt_instance_after))
