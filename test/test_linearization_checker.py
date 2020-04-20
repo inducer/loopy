@@ -197,163 +197,170 @@ def test_lexschedule_and_islmap_creation():
     # ------------------------------------------------------------------------------
     # Relationship between insn_a and insn_d ---------------------------------------
 
-    assert lex_sched_ad.stmt_instance_before.lex_pt == [0, 'i', 0, 'k', 0]
-    assert lex_sched_ad.stmt_instance_after.lex_pt == [1, 't', 0, 0, 0]
+    # insn_a and insn_d could have been linearized in either order
+    # (i loop could be before or after t loop)
+    def perform_insn_ad_checks_with(sid_a, sid_d):
+        assert lex_sched_ad.stmt_instance_before.lex_pt == [sid_a, 'i', 0, 'k', 0]
+        assert lex_sched_ad.stmt_instance_after.lex_pt == [sid_d, 't', 0, 0, 0]
 
-    # Get two isl maps representing the LexSchedule
+        # Get two isl maps representing the LexSchedule
 
-    isl_sched_map_before, isl_sched_map_after = \
-         get_isl_maps_for_LexSchedule(lex_sched_ad, knl, "insn_a", "insn_d")
+        isl_sched_map_before, isl_sched_map_after = \
+             get_isl_maps_for_LexSchedule(lex_sched_ad, knl, "insn_a", "insn_d")
 
-    # Create expected maps, align, compare
+        # Create expected maps, align, compare
 
-    isl_sched_map_before_expected = isl.Map(
-        "[pi, pk] -> { "
-        "[statement = 0, i, k] -> [l0 = 0, l1 = i, l2 = 0, l3 = k, l4 = 0] : "
-        "0 <= i < pi and 0 <= k < pk }"
-        )
-    isl_sched_map_before_expected = align_isl_maps_by_var_names(
-        isl_sched_map_before_expected, isl_sched_map_before)
+        isl_sched_map_before_expected = isl.Map(
+            "[pi, pk] -> { "
+            "[statement = %d, i, k] -> [l0 = %d, l1 = i, l2 = 0, l3 = k, l4 = 0] : "
+            "0 <= i < pi and 0 <= k < pk }"
+            % (sid_a, sid_a)
+            )
+        isl_sched_map_before_expected = align_isl_maps_by_var_names(
+            isl_sched_map_before_expected, isl_sched_map_before)
 
-    isl_sched_map_after_expected = isl.Map(
-        "[pt] -> { "
-        "[statement = 1, t] -> [l0 = 1, l1 = t, l2 = 0, l3 = 0, l4 = 0] : "
-        "0 <= t < pt }"
-        )
-    isl_sched_map_after_expected = align_isl_maps_by_var_names(
-        isl_sched_map_after_expected, isl_sched_map_after)
+        isl_sched_map_after_expected = isl.Map(
+            "[pt] -> { "
+            "[statement = %d, t] -> [l0 = %d, l1 = t, l2 = 0, l3 = 0, l4 = 0] : "
+            "0 <= t < pt }"
+            % (sid_d, sid_d)
+            )
+        isl_sched_map_after_expected = align_isl_maps_by_var_names(
+            isl_sched_map_after_expected, isl_sched_map_after)
 
-    assert isl_sched_map_before == isl_sched_map_before_expected
-    assert isl_sched_map_after == isl_sched_map_after_expected
+        assert isl_sched_map_before == isl_sched_map_before_expected
+        assert isl_sched_map_after == isl_sched_map_after_expected
+
+    if lex_sched_ad.stmt_instance_before.stmt.int_id == 0:
+        perform_insn_ad_checks_with(0, 1)
+    else:
+        perform_insn_ad_checks_with(1, 0)
 
     # ------------------------------------------------------------------------------
     # Relationship between insn_b and insn_c ---------------------------------------
 
     # insn_b and insn_c could have been linearized in either order
+    # (i loop could be before or after t loop)
+    def perform_insn_bc_checks_with(sid_b, sid_c):
+        assert lex_sched_bc.stmt_instance_before.lex_pt == [0, 'i', 0, 'j', sid_b]
+        assert lex_sched_bc.stmt_instance_after.lex_pt == [0, 'i', 0, 'j', sid_c]
+
+        # Get two isl maps representing the LexSchedule
+
+        isl_sched_map_before, isl_sched_map_after = \
+             get_isl_maps_for_LexSchedule(lex_sched_bc, knl, "insn_b", "insn_c")
+
+        # Create expected maps, align, compare
+
+        isl_sched_map_before_expected = isl.Map(
+            "[pi, pj] -> { "
+            "[statement = %d, i, j] -> [l0 = 0, l1 = i, l2 = 0, l3 = j, l4 = %d] : "
+            "0 <= i < pi and 0 <= j < pj }"
+            % (sid_b, sid_b)
+            )
+        isl_sched_map_before_expected = align_isl_maps_by_var_names(
+            isl_sched_map_before_expected, isl_sched_map_before)
+
+        isl_sched_map_after_expected = isl.Map(
+            "[pi, pj] -> { "
+            "[statement = %d, i, j] -> [l0 = 0, l1 = i, l2 = 0, l3 = j, l4 = %d] : "
+            "0 <= i < pi and 0 <= j < pj }"
+            % (sid_c, sid_c)
+            )
+        isl_sched_map_after_expected = align_isl_maps_by_var_names(
+            isl_sched_map_after_expected, isl_sched_map_after)
+
+        assert isl_sched_map_before == isl_sched_map_before_expected
+        assert isl_sched_map_after == isl_sched_map_after_expected
+
     if lex_sched_bc.stmt_instance_before.stmt.int_id == 0:
-        # insn_c comes first
-        assert lex_sched_bc.stmt_instance_before.lex_pt == [0, 'i', 0, 'j', 0]
-        assert lex_sched_bc.stmt_instance_after.lex_pt == [0, 'i', 0, 'j', 1]
-
-        # Get two isl maps representing the LexSchedule
-
-        isl_sched_map_before, isl_sched_map_after = \
-             get_isl_maps_for_LexSchedule(lex_sched_bc, knl, "insn_b", "insn_c")
-
-        # Create expected maps, align, compare
-
-        isl_sched_map_before_expected = isl.Map(
-            "[pi, pj] -> { "
-            "[statement = 0, i, j] -> [l0 = 0, l1 = i, l2 = 0, l3 = j, l4 = 1] : "
-            "0 <= i < pi and 0 <= j < pj }"
-            )
-        isl_sched_map_before_expected = align_isl_maps_by_var_names(
-            isl_sched_map_before_expected, isl_sched_map_before)
-
-        isl_sched_map_after_expected = isl.Map(
-            "[pi, pj] -> { "
-            "[statement = 1, i, j] -> [l0 = 0, l1 = i, l2 = 0, l3 = j, l4 = 0] : "
-            "0 <= i < pi and 0 <= j < pj }"
-            )
-        isl_sched_map_after_expected = align_isl_maps_by_var_names(
-            isl_sched_map_after_expected, isl_sched_map_after)
-
-        assert isl_sched_map_before == isl_sched_map_before_expected
-        assert isl_sched_map_after == isl_sched_map_after_expected
-    elif lex_sched_bc.stmt_instance_before.stmt.int_id == 1:
-        # insn_c comes first
-        assert lex_sched_bc.stmt_instance_before.lex_pt == [0, 'i', 0, 'j', 1]
-        assert lex_sched_bc.stmt_instance_after.lex_pt == [0, 'i', 0, 'j', 0]
-
-        # Get two isl maps representing the LexSchedule
-
-        isl_sched_map_before, isl_sched_map_after = \
-             get_isl_maps_for_LexSchedule(lex_sched_bc, knl, "insn_b", "insn_c")
-
-        # Create expected maps, align, compare
-
-        isl_sched_map_before_expected = isl.Map(
-            "[pi, pj] -> { "
-            "[statement = 1, i, j] -> [l0 = 0, l1 = i, l2 = 0, l3 = j, l4 = 1] : "
-            "0 <= i < pi and 0 <= j < pj }"
-            )
-        isl_sched_map_before_expected = align_isl_maps_by_var_names(
-            isl_sched_map_before_expected, isl_sched_map_before)
-
-        isl_sched_map_after_expected = isl.Map(
-            "[pi, pj] -> { "
-            "[statement = 0, i, j] -> [l0 = 0, l1 = i, l2 = 0, l3 = j, l4 = 0] : "
-            "0 <= i < pi and 0 <= j < pj }"
-            )
-        isl_sched_map_after_expected = align_isl_maps_by_var_names(
-            isl_sched_map_after_expected, isl_sched_map_after)
-
-        assert isl_sched_map_before == isl_sched_map_before_expected
-        assert isl_sched_map_after == isl_sched_map_after_expected
+        perform_insn_bc_checks_with(0, 1)
+    else:
+        perform_insn_bc_checks_with(1, 0)
 
     # ------------------------------------------------------------------------------
     # Relationship between insn_b and insn_d ---------------------------------------
 
-    assert lex_sched_bd.stmt_instance_before.lex_pt == [0, 'i', 0, 'j', 0]
-    assert lex_sched_bd.stmt_instance_after.lex_pt == [1, 't', 0, 0, 0]
+    # insn_b and insn_d could have been linearized in either order
+    # (i loop could be before or after t loop)
+    def perform_insn_bd_checks_with(sid_b, sid_d):
+        assert lex_sched_bd.stmt_instance_before.lex_pt == [sid_b, 'i', 0, 'j', 0]
+        assert lex_sched_bd.stmt_instance_after.lex_pt == [sid_d, 't', 0, 0, 0]
 
-    # Get two isl maps representing the LexSchedule
+        # Get two isl maps representing the LexSchedule
 
-    isl_sched_map_before, isl_sched_map_after = \
-         get_isl_maps_for_LexSchedule(lex_sched_bd, knl, "insn_b", "insn_d")
+        isl_sched_map_before, isl_sched_map_after = \
+             get_isl_maps_for_LexSchedule(lex_sched_bd, knl, "insn_b", "insn_d")
 
-    # Create expected maps, align, compare
+        # Create expected maps, align, compare
 
-    isl_sched_map_before_expected = isl.Map(
-        "[pi, pj] -> { "
-        "[statement = 0, i, j] -> [l0 = 0, l1 = i, l2 = 0, l3 = j, l4 = 0] : "
-        "0 <= i < pi and 0 <= j < pj }"
-        )
-    isl_sched_map_before_expected = align_isl_maps_by_var_names(
-        isl_sched_map_before_expected, isl_sched_map_before)
+        isl_sched_map_before_expected = isl.Map(
+            "[pi, pj] -> { "
+            "[statement = %d, i, j] -> [l0 = %d, l1 = i, l2 = 0, l3 = j, l4 = 0] : "
+            "0 <= i < pi and 0 <= j < pj }"
+            % (sid_b, sid_b)
+            )
+        isl_sched_map_before_expected = align_isl_maps_by_var_names(
+            isl_sched_map_before_expected, isl_sched_map_before)
 
-    isl_sched_map_after_expected = isl.Map(
-        "[pt] -> { "
-        "[statement = 1, t] -> [l0 = 1, l1 = t, l2 = 0, l3 = 0, l4 = 0] : "
-        "0 <= t < pt }"
-        )
-    isl_sched_map_after_expected = align_isl_maps_by_var_names(
-        isl_sched_map_after_expected, isl_sched_map_after)
+        isl_sched_map_after_expected = isl.Map(
+            "[pt] -> { "
+            "[statement = %d, t] -> [l0 = %d, l1 = t, l2 = 0, l3 = 0, l4 = 0] : "
+            "0 <= t < pt }"
+            % (sid_d, sid_d)
+            )
+        isl_sched_map_after_expected = align_isl_maps_by_var_names(
+            isl_sched_map_after_expected, isl_sched_map_after)
 
-    assert isl_sched_map_before == isl_sched_map_before_expected
-    assert isl_sched_map_after == isl_sched_map_after_expected
+        assert isl_sched_map_before == isl_sched_map_before_expected
+        assert isl_sched_map_after == isl_sched_map_after_expected
+
+    if lex_sched_bd.stmt_instance_before.stmt.int_id == 0:
+        perform_insn_bd_checks_with(0, 1)
+    else:
+        perform_insn_bd_checks_with(1, 0)
 
     # ------------------------------------------------------------------------------
     # Relationship between insn_c and insn_d ---------------------------------------
 
-    assert lex_sched_cd.stmt_instance_before.lex_pt == [0, 'i', 0, 'j', 0]
-    assert lex_sched_cd.stmt_instance_after.lex_pt == [1, 't', 0, 0, 0]
+    # insn_c and insn_d could have been linearized in either order
+    # (i loop could be before or after t loop)
+    def perform_insn_cd_checks_with(sid_c, sid_d):
+        assert lex_sched_cd.stmt_instance_before.lex_pt == [sid_c, 'i', 0, 'j', 0]
+        assert lex_sched_cd.stmt_instance_after.lex_pt == [sid_d, 't', 0, 0, 0]
 
-    # Get two isl maps representing the LexSchedule
+        # Get two isl maps representing the LexSchedule
 
-    isl_sched_map_before, isl_sched_map_after = \
-         get_isl_maps_for_LexSchedule(lex_sched_cd, knl, "insn_c", "insn_d")
+        isl_sched_map_before, isl_sched_map_after = \
+             get_isl_maps_for_LexSchedule(lex_sched_cd, knl, "insn_c", "insn_d")
 
-    # Create expected maps, align, compare
+        # Create expected maps, align, compare
 
-    isl_sched_map_before_expected = isl.Map(
-        "[pi, pj] -> { "
-        "[statement = 0, i, j] -> [l0 = 0, l1 = i, l2 = 0, l3 = j, l4 = 0] : "
-        "0 <= i < pi and 0 <= j < pj }"
-        )
-    isl_sched_map_before_expected = align_isl_maps_by_var_names(
-        isl_sched_map_before_expected, isl_sched_map_before)
+        isl_sched_map_before_expected = isl.Map(
+            "[pi, pj] -> { "
+            "[statement = %d, i, j] -> [l0 = %d, l1 = i, l2 = 0, l3 = j, l4 = 0] : "
+            "0 <= i < pi and 0 <= j < pj }"
+            % (sid_c, sid_c)
+            )
+        isl_sched_map_before_expected = align_isl_maps_by_var_names(
+            isl_sched_map_before_expected, isl_sched_map_before)
 
-    isl_sched_map_after_expected = isl.Map(
-        "[pt] -> { "
-        "[statement = 1, t] -> [l0 = 1, l1 = t, l2 = 0, l3 = 0, l4 = 0] : "
-        "0 <= t < pt }"
-        )
-    isl_sched_map_after_expected = align_isl_maps_by_var_names(
-        isl_sched_map_after_expected, isl_sched_map_after)
+        isl_sched_map_after_expected = isl.Map(
+            "[pt] -> { "
+            "[statement = %d, t] -> [l0 = %d, l1 = t, l2 = 0, l3 = 0, l4 = 0] : "
+            "0 <= t < pt }"
+            % (sid_d, sid_d)
+            )
+        isl_sched_map_after_expected = align_isl_maps_by_var_names(
+            isl_sched_map_after_expected, isl_sched_map_after)
 
-    assert isl_sched_map_before == isl_sched_map_before_expected
-    assert isl_sched_map_after == isl_sched_map_after_expected
+        assert isl_sched_map_before == isl_sched_map_before_expected
+        assert isl_sched_map_after == isl_sched_map_after_expected
+
+    if lex_sched_cd.stmt_instance_before.stmt.int_id == 0:
+        perform_insn_cd_checks_with(0, 1)
+    else:
+        perform_insn_cd_checks_with(1, 0)
 
 
 if __name__ == "__main__":
