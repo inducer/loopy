@@ -364,8 +364,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         # {{{ find bounds
 
-        aligned_domain = isl.align_spaces(domain, slab, across_dim_types=True,
-                obj_bigger_ok=True)
+        aligned_domain = isl.align_spaces(domain, slab, obj_bigger_ok=True)
 
         dom_and_slab = aligned_domain & slab
 
@@ -389,8 +388,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
         impl_domain = isl.align_spaces(
             codegen_state.implemented_domain,
             dom_and_slab,
-            obj_bigger_ok=True,
-            across_dim_types=True
+            obj_bigger_ok=True
             ).params()
 
         lbound = (

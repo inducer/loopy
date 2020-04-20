@@ -73,8 +73,8 @@ class IdentityMapperMixin(object):
         return expr
 
     def map_array_literal(self, expr, *args, **kwargs):
-        return type(expr)(tuple(self.rec(ch, *args, **kwargs) for ch in
-            expr.children))
+        return type(expr)(tuple(self.rec(ch, *args, **kwargs)
+                                for ch in expr.children))
 
     def map_group_hw_index(self, expr, *args, **kwargs):
         return expr
@@ -86,7 +86,8 @@ class IdentityMapperMixin(object):
         return expr
 
     def map_reduction(self, expr, *args, **kwargs):
-        mapped_inames = [self.rec(p.Variable(iname), *args) for iname in expr.inames]
+        mapped_inames = [self.rec(p.Variable(iname), *args, **kwargs)
+                         for iname in expr.inames]
 
         new_inames = []
         for iname, new_sym_iname in zip(expr.inames, mapped_inames):
@@ -137,37 +138,37 @@ class PartialEvaluationMapper(
 
 
 class WalkMapper(WalkMapperBase):
-    def map_literal(self, expr, *args):
-        self.visit(expr)
+    def map_literal(self, expr, *args, **kwargs):
+        self.visit(expr, *args, **kwargs)
 
-    def map_array_literal(self, expr, *args):
-        if not self.visit(expr):
+    def map_array_literal(self, expr, *args, **kwargs):
+        if not self.visit(expr, *args, **kwargs):
             return
 
         for ch in expr.children:
-            self.rec(ch, *args)
+            self.rec(ch, *args, **kwargs)
 
-    def map_group_hw_index(self, expr, *args):
-        self.visit(expr)
+    def map_group_hw_index(self, expr, *args, **kwargs):
+        self.visit(expr, *args, **kwargs)
 
-    def map_local_hw_index(self, expr, *args):
-        self.visit(expr)
+    def map_local_hw_index(self, expr, *args, **kwargs):
+        self.visit(expr, *args, **kwargs)
 
-    def map_reduction(self, expr, *args):
-        if not self.visit(expr):
+    def map_reduction(self, expr, *args, **kwargs):
+        if not self.visit(expr, *args, **kwargs):
             return
 
-        self.rec(expr.expr, *args)
+        self.rec(expr.expr, *args, **kwargs)
 
-    def map_type_cast(self, expr, *args):
-        if not self.visit(expr):
+    def map_type_cast(self, expr, *args, **kwargs):
+        if not self.visit(expr, *args, **kwargs):
             return
-        self.rec(expr.child, *args)
+        self.rec(expr.child, *args, **kwargs)
 
     map_tagged_variable = WalkMapperBase.map_variable
 
-    def map_loopy_function_identifier(self, expr, *args):
-        self.visit(expr)
+    def map_loopy_function_identifier(self, expr, *args, **kwargs):
+        self.visit(expr, *args, **kwargs)
 
     map_linear_subscript = WalkMapperBase.map_subscript
 
@@ -193,8 +194,8 @@ class CallbackMapper(CallbackMapperBase, IdentityMapper):
 
 
 class CombineMapper(CombineMapperBase):
-    def map_reduction(self, expr):
-        return self.rec(expr.expr)
+    def map_reduction(self, expr, *args, **kwargs):
+        return self.rec(expr.expr, *args, **kwargs)
 
     def map_sub_array_ref(self, expr):
         return self.rec(expr.get_begin_subscript())
@@ -266,6 +267,30 @@ class StringifyMapper(StringifyMapperBase):
                 subscr=self.rec(expr.subscript, prec))
 
 
+class EqualityPreservingStringifyMapper(StringifyMapperBase):
+    """
+    For the benefit of
+    :meth:`loopy.tools.LoopyEqKeyBuilder.update_for_pymbolic_field`,
+    this mapper satisfies the invariant
+
+    ``mapper(expr_1) == mapper(expr_2)``
+    if and only if
+    ``expr_1 == expr_2``
+    """
+
+    def map_constant(self, expr, enclosing_prec):
+        if isinstance(expr, np.generic):
+            # Explicitly typed: Emitted string must reflect type exactly.
+
+            # FIXME: This syntax cannot currently be parsed.
+
+            return "%s(%s)" % (type(expr).__name__, repr(expr))
+        else:
+            expr = repr(expr)
+            return super(EqualityPreservingStringifyMapper, self).map_constant(
+                    expr, enclosing_prec)
+
+
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
     def map_reduction(self, expr, other, unis):
         if not isinstance(other, type(expr)):
@@ -295,17 +320,17 @@ class UnidirectionalUnifier(UnidirectionalUnifierBase):
 
 
 class DependencyMapper(DependencyMapperBase):
-    def map_group_hw_index(self, expr):
+    def map_group_hw_index(self, expr, *args, **kwargs):
         return set()
 
-    def map_local_hw_index(self, expr):
+    def map_local_hw_index(self, expr, *args, **kwargs):
         return set()
 
-    def map_call(self, expr, *args):
+    def map_call(self, expr, *args, **kwargs):
         # Loopy does not have first-class functions. Do not descend
         # into 'function' attribute of Call.
         return self.combine(
-                self.rec(child, *args) for child in expr.parameters)
+                self.rec(child, *args, **kwargs) for child in expr.parameters)
 
     def map_call_with_kwargs(self, expr, *args):
         # Loopy does not have first-class functions. Do not descend
@@ -314,14 +339,14 @@ class DependencyMapper(DependencyMapperBase):
                 self.rec(child, *args) for child in expr.parameters+tuple(
                     expr.kw_parameters.values()))
 
-    def map_reduction(self, expr):
-        deps = self.rec(expr.expr)
+    def map_reduction(self, expr, *args, **kwargs):
+        deps = self.rec(expr.expr, *args, **kwargs)
         return deps - set(p.Variable(iname) for iname in expr.inames)
 
-    def map_tagged_variable(self, expr):
+    def map_tagged_variable(self, expr, *args, **kwargs):
         return set([expr])
 
-    def map_loopy_function_identifier(self, expr):
+    def map_loopy_function_identifier(self, expr, *args, **kwargs):
         return set()
 
     def map_sub_array_ref(self, expr, *args):
@@ -330,8 +355,8 @@ class DependencyMapper(DependencyMapperBase):
 
     map_linear_subscript = DependencyMapperBase.map_subscript
 
-    def map_type_cast(self, expr):
-        return self.rec(expr.child)
+    def map_type_cast(self, expr, *args, **kwargs):
+        return self.rec(expr.child, *args, **kwargs)
 
     def map_resolved_function(self, expr):
         return self.rec(expr.function)
@@ -376,14 +401,27 @@ class SubstitutionRuleExpander(IdentityMapper):
 
 # {{{ loopy-specific primitives
 
-class Literal(p.Leaf):
-    """A literal to be used during code generation."""
+class LoopyExpressionBase(p.Expression):
+    def stringifier(self):
+        from loopy.diagnostic import LoopyError
+        raise LoopyError("pymbolic < 2019.1 is in use. Please upgrade.")
+
+    def make_stringifier(self, originating_stringifier=None):
+        return StringifyMapper()
+
+
+class Literal(LoopyExpressionBase):
+    """A literal to be used during code generation.
+
+    .. note::
+
+        Only used in the output of
+        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
+        similar mappers). Not for use in Loopy source representation.
+    """
 
     def __init__(self, s):
         self.s = s
-
-    def stringifier(self):
-        return StringifyMapper
 
     def __getinitargs__(self):
         return (self.s,)
@@ -393,16 +431,18 @@ class Literal(p.Leaf):
     mapper_method = "map_literal"
 
 
-class ArrayLiteral(p.Leaf):
-    "An array literal."
+class ArrayLiteral(LoopyExpressionBase):
+    """An array literal.
 
-    # Currently only used after loopy -> C expression translation.
+    .. note::
+
+        Only used in the output of
+        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
+        similar mappers). Not for use in Loopy source representation.
+    """
 
     def __init__(self, children):
         self.children = children
-
-    def stringifier(self):
-        return StringifyMapper
 
     def __getinitargs__(self):
         return (self.children,)
@@ -412,12 +452,9 @@ class ArrayLiteral(p.Leaf):
     mapper_method = "map_array_literal"
 
 
-class HardwareAxisIndex(p.Leaf):
+class HardwareAxisIndex(LoopyExpressionBase):
     def __init__(self, axis):
         self.axis = axis
-
-    def stringifier(self):
-        return StringifyMapper
 
     def __getinitargs__(self):
         return (self.axis,)
@@ -426,25 +463,36 @@ class HardwareAxisIndex(p.Leaf):
 
 
 class GroupHardwareAxisIndex(HardwareAxisIndex):
+    """
+    .. note::
+
+        Only used in the output of
+        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
+        similar mappers). Not for use in Loopy source representation.
+    """
     mapper_method = "map_group_hw_index"
 
 
 class LocalHardwareAxisIndex(HardwareAxisIndex):
+    """
+    .. note::
+
+        Only used in the output of
+        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
+        similar mappers). Not for use in Loopy source representation.
+    """
     mapper_method = "map_local_hw_index"
 
 
-class FunctionIdentifier(p.Leaf):
+class FunctionIdentifier(LoopyExpressionBase):
     """A base class for symbols representing functions."""
 
     init_arg_names = ()
 
-    def stringifier(self):
-        return StringifyMapper
-
     mapper_method = intern("map_loopy_function_identifier")
 
 
-class TypedCSE(p.CommonSubexpression):
+class TypedCSE(LoopyExpressionBase, p.CommonSubexpression):
     """A :class:`pymbolic.primitives.CommonSubexpression` annotated with
     a :class:`numpy.dtype`.
     """
@@ -460,7 +508,7 @@ class TypedCSE(p.CommonSubexpression):
         return dict(dtype=self.dtype)
 
 
-class TypeAnnotation(p.Expression):
+class TypeAnnotation(LoopyExpressionBase):
     """Undocumented for now. Currently only used internally around LHSs of
     assignments that create temporaries.
     """
@@ -473,13 +521,10 @@ class TypeAnnotation(p.Expression):
     def __getinitargs__(self):
         return (self.type, self.child)
 
-    def stringifier(self):
-        return StringifyMapper
-
     mapper_method = intern("map_type_annotation")
 
 
-class TypeCast(p.Expression):
+class TypeCast(LoopyExpressionBase):
     """Only defined for numerical types with semantics matching
     :meth:`numpy.ndarray.astype`.
 
@@ -516,13 +561,10 @@ class TypeCast(p.Expression):
     def __getinitargs__(self):
         return (self._type_name, self.child)
 
-    def stringifier(self):
-        return StringifyMapper
-
     mapper_method = intern("map_type_cast")
 
 
-class TaggedVariable(p.Variable):
+class TaggedVariable(LoopyExpressionBase, p.Variable):
     """This is an identifier with a tag, such as 'matrix$one', where
     'one' identifies this specific use of the identifier. This mechanism
     may then be used to address these uses--such as by prefetching only
@@ -538,13 +580,10 @@ class TaggedVariable(p.Variable):
     def __getinitargs__(self):
         return self.name, self.tag
 
-    def stringifier(self):
-        return StringifyMapper
-
     mapper_method = intern("map_tagged_variable")
 
 
-class Reduction(p.Expression):
+class Reduction(LoopyExpressionBase):
     """Represents a reduction operation on :attr:`exprs`
     across :attr:`inames`.
 
@@ -630,9 +669,6 @@ class Reduction(p.Expression):
                 and other.inames == self.inames
                 and other.expr == self.expr)
 
-    def stringifier(self):
-        return StringifyMapper
-
     @property
     def is_tuple_typed(self):
         return self.operation.arg_count > 1
@@ -645,7 +681,7 @@ class Reduction(p.Expression):
     mapper_method = intern("map_reduction")
 
 
-class LinearSubscript(p.Expression):
+class LinearSubscript(LoopyExpressionBase):
     """Represents a linear index into a multi-dimensional array, completely
     ignoring any multi-dimensional layout.
     """
@@ -659,13 +695,10 @@ class LinearSubscript(p.Expression):
     def __getinitargs__(self):
         return self.aggregate, self.index
 
-    def stringifier(self):
-        return StringifyMapper
-
     mapper_method = intern("map_linear_subscript")
 
 
-class RuleArgument(p.Expression):
+class RuleArgument(LoopyExpressionBase):
     """Represents a (numbered) argument of a :class:`loopy.SubstitutionRule`.
     Only used internally in the rule-aware mappers to match subst rules
     independently of argument names.
@@ -679,13 +712,10 @@ class RuleArgument(p.Expression):
     def __getinitargs__(self):
         return (self.index,)
 
-    def stringifier(self):
-        return StringifyMapper
-
     mapper_method = intern("map_rule_argument")
 
 
-class ResolvedFunction(p.Expression):
+class ResolvedFunction(LoopyExpressionBase):
     """
     A function invocation whose definition is known in a :mod:`loopy` kernel.
     Each instance of :class:`loopy.symbolic.ResolvedFunction` in an expression
@@ -723,9 +753,6 @@ class ResolvedFunction(p.Expression):
 
     def __getinitargs__(self):
         return (self.function, )
-
-    def stringifier(self):
-        return StringifyMapper
 
     mapper_method = intern("map_resolved_function")
 
@@ -773,7 +800,7 @@ class SweptInameStrideCollector(CoefficientCollectorBase):
         return super(SweptInameStrideCollector, self).map_algebraic_leaf(expr)
 
 
-class SubArrayRef(p.Expression):
+class SubArrayRef(LoopyExpressionBase):
     """
     An algebraic expression to map an affine memory layout pattern (known as
     sub-arary) as consecutive elements of the sweeping axes which are defined
@@ -881,9 +908,6 @@ class SubArrayRef(p.Expression):
         return (other.__class__ == self.__class__
                 and other.subscript == self.subscript
                 and other.swept_inames == self.swept_inames)
-
-    def stringifier(self):
-        return StringifyMapper
 
     mapper_method = intern("map_sub_array_ref")
 
@@ -1120,7 +1144,8 @@ class RuleAwareIdentityMapper(IdentityMapper):
         if name not in self.rule_mapping_context.old_subst_rules:
             return super(RuleAwareIdentityMapper, self).map_call(expr, expn_state)
         else:
-            return self.map_substitution(name, tag, expr.parameters, expn_state)
+            return self.map_substitution(name, tag, self.rec(
+                expr.parameters, expn_state), expn_state)
 
     @staticmethod
     def make_new_arg_context(rule_name, arg_names, arguments, arg_context):

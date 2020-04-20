@@ -629,7 +629,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 result = dom
             else:
                 aligned_dom, aligned_result = isl.align_two(
-                        dom, result, across_dim_types=True)
+                        dom, result)
                 result = aligned_result & aligned_dom
 
         return result

@@ -79,23 +79,88 @@ class DTypeRegistryWrapper(object):
 
 # {{{ preamble generator
 
+def c99_preamble_generator(preamble_info):
+    if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
+        yield("10_stdint", "#include <stdint.h>")
+
+
 def _preamble_generator(preamble_info):
-    c_funcs = set(func.c_name for func in preamble_info.seen_functions)
-    if "int_floor_div" in c_funcs:
-        yield ("05_int_floor_div", """
-            #define int_floor_div(a,b) \
-              (( (a) - \
-                 ( ( (a)<0 ) != ( (b)<0 )) \
-                  *( (b) + ( (b)<0 ) - ( (b)>=0 ) )) \
-               / (b) )
+    integer_type_names = ["int8", "int16", "int32", "int64"]
+
+    def_integer_types_macro = ("03_def_integer_types", r"""
+            #define LOOPY_CALL_WITH_INTEGER_TYPES(MACRO_NAME) \
+                MACRO_NAME(int8, char) \
+                MACRO_NAME(int16, short) \
+                MACRO_NAME(int32, int) \
+                MACRO_NAME(int64, long)
             """)
 
-    if "int_floor_div_pos_b" in c_funcs:
-        yield ("05_int_floor_div_pos_b", """
-            #define int_floor_div_pos_b(a,b) ( \
-                ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b) \
-                )
+    undef_integer_types_macro = ("05_undef_integer_types", """
+            #undef LOOPY_CALL_WITH_INTEGER_TYPES
             """)
+
+    function_defs = {
+            "loopy_floor_div": r"""
+            #define LOOPY_DEFINE_FLOOR_DIV(SUFFIX, TYPE) \
+                inline TYPE loopy_floor_div_##SUFFIX(TYPE a, TYPE b) \
+                { \
+                    if ((a<0) != (b<0)) \
+                        a = a - (b + (b<0) - (b>=0)); \
+                    return a/b; \
+                }
+            LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_FLOOR_DIV)
+            #undef LOOPY_DEFINE_FLOOR_DIV
+            """,
+
+            "loopy_floor_div_pos_b": r"""
+            #define LOOPY_DEFINE_FLOOR_DIV_POS_B(SUFFIX, TYPE) \
+                inline TYPE loopy_floor_div_pos_b_##SUFFIX(TYPE a, TYPE b) \
+                { \
+                    if (a<0) \
+                        a = a - (b-1); \
+                    return a/b; \
+                }
+            LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_FLOOR_DIV_POS_B)
+            #undef LOOPY_DEFINE_FLOOR_DIV_POS_B
+            """,
+
+            "loopy_mod": r"""
+            #define LOOPY_DEFINE_MOD(SUFFIX, TYPE) \
+                inline TYPE loopy_mod_##SUFFIX(TYPE a, TYPE b) \
+                { \
+                    TYPE result = a%b; \
+                    if (result < 0 && b > 0) \
+                        result += b; \
+                    if (result > 0 && b < 0) \
+                        result = result + b; \
+                    return result; \
+                }
+            LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_MOD)
+            #undef LOOPY_DEFINE_MOD
+            """,
+
+            "loopy_mod_pos_b": r"""
+            #define LOOPY_DEFINE_MOD_POS_B(SUFFIX, TYPE) \
+                inline TYPE loopy_mod_pos_b_##SUFFIX(TYPE a, TYPE b) \
+                { \
+                    TYPE result = a%b; \
+                    if (result < 0) \
+                        result += b; \
+                    return result; \
+                }
+            LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_MOD_POS_B)
+            #undef LOOPY_DEFINE_MOD_POS_B
+            """,
+            }
+
+    c_funcs = set(func.c_name for func in preamble_info.seen_functions)
+
+    for func_name, func_body in six.iteritems(function_defs):
+        if any((func_name + "_" + tpname) in c_funcs
+                for tpname in integer_type_names):
+            yield def_integer_types_macro
+            yield ("04_%s" % func_name, func_body)
+            yield undef_integer_types_macro
 
 # }}}
 
@@ -256,8 +321,10 @@ class CExpression(object):
 # }}}
 
 
-class CTarget(TargetBase):
-    """A target for plain "C", without any parallel extensions.
+class CFamilyTarget(TargetBase):
+    """A target for "least-common denominator C", without any parallel
+    extensions, and without use of any C99 specifics. Intended to be
+    usable as a common base for C99, C++, OpenCL, CUDA, and the like.
     """
 
     hash_fields = TargetBase.hash_fields + ("fortran_abi",)
@@ -265,7 +332,7 @@ class CTarget(TargetBase):
 
     def __init__(self, fortran_abi=False):
         self.fortran_abi = fortran_abi
-        super(CTarget, self).__init__()
+        super(CFamilyTarget, self).__init__()
 
     def split_kernel_at_global_barriers(self):
         return False
@@ -274,7 +341,7 @@ class CTarget(TargetBase):
         return DummyHostASTBuilder(self)
 
     def get_device_ast_builder(self):
-        return CASTBuilder(self)
+        return CFamilyASTBuilder(self)
 
     # {{{ types
 
@@ -308,29 +375,6 @@ class CTarget(TargetBase):
         raise NotImplementedError()
 
     # }}}
-
-
-# {{{ executable c target
-
-class ExecutableCTarget(CTarget):
-    """
-    An executable CTarget that uses (by default) JIT compilation of C-code
-    """
-
-    def __init__(self, compiler=None, fortran_abi=False):
-        super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
-        from loopy.target.c.c_execution import CCompiler
-        self.compiler = compiler or CCompiler()
-
-    def get_kernel_executor(self, knl, *args, **kwargs):
-        from loopy.target.c.c_execution import CKernelExecutor
-        return CKernelExecutor(knl, compiler=self.compiler)
-
-    def get_host_ast_builder(self):
-        # enable host code generation
-        return CASTBuilder(self)
-
-# }}}
 
 
 class _ConstRestrictPointer(Pointer):
@@ -492,25 +536,25 @@ def scope_c_math_functions(target, identifier):
 # }}}
 
 
-class CASTBuilder(ASTBuilderBase):
+class CFamilyASTBuilder(ASTBuilderBase):
     # {{{ library
 
     def symbol_manglers(self):
         return (
-                super(CASTBuilder, self).symbol_manglers() + [
+                super(CFamilyASTBuilder, self).symbol_manglers() + [
                     c_symbol_mangler
                     ])
 
     def preamble_generators(self):
         return (
-                super(CASTBuilder, self).preamble_generators() + [
+                super(CFamilyASTBuilder, self).preamble_generators() + [
                     _preamble_generator,
                     ])
 
     def function_id_in_knl_callable_mapper(self):
         return (
-                super(CASTBuilder, self).function_id_in_knl_callable_mapper() + [
-                    scope_c_math_functions])
+                super(CFamilyASTBuilder, self).function_id_in_knl_callable_mapper()
+                + [scope_c_math_functions])
 
     # }}}
 
@@ -1024,7 +1068,7 @@ def generate_header(kernel, codegen_result=None):
         functions.
     """
 
-    if not isinstance(kernel.target, CTarget):
+    if not isinstance(kernel.target, CFamilyTarget):
         raise LoopyError(
                 'Header generation for non C-based languages are not implemented')
 
@@ -1037,6 +1081,59 @@ def generate_header(kernel, codegen_result=None):
         fde(dev_prg.ast)
 
     return fde.decls
+
+# }}}
+
+
+# {{{ C99 target
+
+class CTarget(CFamilyTarget):
+    """This target may emit code using all features of C99.
+    For a target base supporting "least-common-denominator" C,
+    see :class:`CFamilyTarget`.
+    """
+
+    def get_device_ast_builder(self):
+        return CASTBuilder(self)
+
+    @memoize_method
+    def get_dtype_registry(self):
+        from loopy.target.c.compyte.dtypes import (
+                DTypeRegistry, fill_registry_with_c99_stdint_types)
+        result = DTypeRegistry()
+        fill_registry_with_c99_stdint_types(result)
+        return DTypeRegistryWrapper(result)
+
+
+class CASTBuilder(CFamilyASTBuilder):
+    def preamble_generators(self):
+        return (
+                super(CASTBuilder, self).preamble_generators() + [
+                    c99_preamble_generator,
+                    ])
+
+# }}}
+
+
+# {{{ executable c target
+
+class ExecutableCTarget(CTarget):
+    """
+    An executable CFamilyTarget that uses (by default) JIT compilation of C-code
+    """
+
+    def __init__(self, compiler=None, fortran_abi=False):
+        super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
+        from loopy.target.c.c_execution import CCompiler
+        self.compiler = compiler or CCompiler()
+
+    def get_kernel_executor(self, knl, *args, **kwargs):
+        from loopy.target.c.c_execution import CKernelExecutor
+        return CKernelExecutor(knl, compiler=self.compiler)
+
+    def get_host_ast_builder(self):
+        # enable host code generation
+        return CFamilyASTBuilder(self)
 
 # }}}
 

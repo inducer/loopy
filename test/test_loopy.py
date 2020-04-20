@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
+import six  # noqa: F401
 from six.moves import range
 
 import sys
@@ -69,7 +69,7 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
             """,
             [lp.TemporaryVariable(
                 'cnst', shape=('n'), initializer=cnst,
-                scope=lp.AddressSpace.GLOBAL,
+                address_space=lp.AddressSpace.GLOBAL,
                 read_only=True), '...'])
     knl = lp.fix_parameters(knl, n=16)
     knl = lp.add_barrier(knl, "id:first", "id:second")
@@ -248,119 +248,6 @@ def test_multi_cse(ctx_factory):
 
     print(knl)
     print(lp.generate_code_v2(knl))
-
-
-# {{{ code generator fuzzing
-
-def make_random_value():
-    from random import randrange, uniform
-    v = randrange(3)
-    if v == 0:
-        while True:
-            z = randrange(-1000, 1000)
-            if z:
-                return z
-
-    elif v == 1:
-        return uniform(-10, 10)
-    else:
-        cval = uniform(-10, 10) + 1j*uniform(-10, 10)
-        if randrange(0, 2) == 0:
-            return np.complex128(cval)
-        else:
-            return np.complex128(cval)
-
-
-def make_random_expression(var_values, size):
-    from random import randrange
-    import pymbolic.primitives as p
-    v = randrange(1500)
-    size[0] += 1
-    if v < 500 and size[0] < 40:
-        term_count = randrange(2, 5)
-        if randrange(2) < 1:
-            cls = p.Sum
-        else:
-            cls = p.Product
-        return cls(tuple(
-            make_random_expression(var_values, size)
-            for i in range(term_count)))
-    elif v < 750:
-        return make_random_value()
-    elif v < 1000:
-        var_name = "var_%d" % len(var_values)
-        assert var_name not in var_values
-        var_values[var_name] = make_random_value()
-        return p.Variable(var_name)
-    elif v < 1250:
-        # Cannot use '-' because that destroys numpy constants.
-        return p.Sum((
-            make_random_expression(var_values, size),
-            - make_random_expression(var_values, size)))
-    elif v < 1500:
-        # Cannot use '/' because that destroys numpy constants.
-        return p.Quotient(
-                make_random_expression(var_values, size),
-                make_random_expression(var_values, size))
-
-
-def generate_random_fuzz_examples(count):
-    for i in range(count):
-        size = [0]
-        var_values = {}
-        expr = make_random_expression(var_values, size)
-        yield expr, var_values
-
-
-def test_fuzz_code_generator(ctx_factory):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-
-    if ctx.devices[0].platform.vendor.startswith("Advanced Micro"):
-        pytest.skip("crashes on AMD 15.12")
-
-    #from expr_fuzz import get_fuzz_examples
-    #for expr, var_values in get_fuzz_examples():
-    for expr, var_values in generate_random_fuzz_examples(50):
-        from pymbolic import evaluate
-        try:
-            true_value = evaluate(expr, var_values)
-        except ZeroDivisionError:
-            continue
-
-        def get_dtype(x):
-            if isinstance(x, (complex, np.complexfloating)):
-                return np.complex128
-            else:
-                return np.float64
-
-        knl = lp.make_kernel("{ : }",
-                [lp.Assignment("value", expr)],
-                [lp.GlobalArg("value", np.complex128, shape=())]
-                + [
-                    lp.ValueArg(name, get_dtype(val))
-                    for name, val in six.iteritems(var_values)
-                    ])
-        ck = lp.CompiledKernel(ctx, knl)
-        evt, (lp_value,) = ck(queue, out_host=True, **var_values)
-        err = abs(true_value-lp_value)/abs(true_value)
-        if abs(err) > 1e-10:
-            print(80*"-")
-            print("WRONG: rel error=%g" % err)
-            print("true=%r" % true_value)
-            print("loopy=%r" % lp_value)
-            print(80*"-")
-            print(ck.get_code())
-            print(80*"-")
-            print(var_values)
-            print(80*"-")
-            print(repr(expr))
-            print(80*"-")
-            print(expr)
-            print(80*"-")
-            1/0
-
-# }}}
 
 
 def test_bare_data_dependency(ctx_factory):
@@ -941,19 +828,21 @@ def test_auto_test_can_detect_problems(ctx_factory):
                 parameters=dict(n=123))
 
 
-def test_sci_notation_literal(ctx_factory):
+def test_auto_test_zero_warmup_rounds(ctx_factory):
     ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
 
-    set_kernel = lp.make_kernel(
-         ''' { [i]: 0<=i<12 } ''',
-         ''' out[i] = 1e-12''')
+    ref_knl = lp.make_kernel(
+        "{[i,j]: 0<=i,j<n}",
+        """
+        a[i,j] = 25
+        """)
 
-    set_kernel = lp.set_options(set_kernel, write_cl=True)
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, dict(a=np.float32))
 
-    evt, (out,) = set_kernel(queue)
-
-    assert (np.abs(out.get() - 1e-12) < 1e-20).all()
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, ref_knl,
+            parameters=dict(n=12),
+            warmup_rounds=0)
 
 
 def test_variable_size_temporary():
@@ -1094,7 +983,7 @@ def test_atomic_load(ctx_factory, dtype):
                 lp.GlobalArg("a", dtype, shape=lp.auto),
                 lp.GlobalArg("b", dtype, shape=lp.auto),
                 lp.TemporaryVariable('temp', dtype, for_atomic=True,
-                                     scope=AddressSpace.LOCAL),
+                                     address_space=AddressSpace.LOCAL),
                 "..."
                 ],
             silenced_warnings=["write_race(init)", "write_race(temp_sum)"])
@@ -1995,7 +1884,7 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
                 lp.TemporaryVariable("tmp",
                     initializer=a,
                     shape=lp.auto,
-                    scope=lp.AddressSpace.PRIVATE,
+                    address_space=lp.AddressSpace.PRIVATE,
                     read_only=True,
                     order=tmp_order),
                 "..."
@@ -2020,7 +1909,7 @@ def test_const_temp_with_initializer_not_saved():
             lp.TemporaryVariable("tmp",
                 initializer=np.arange(10),
                 shape=lp.auto,
-                scope=lp.AddressSpace.PRIVATE,
+                address_space=lp.AddressSpace.PRIVATE,
                 read_only=True),
             "..."
             ],
@@ -2246,7 +2135,7 @@ def test_integer_reduction(ctx_factory):
         var_int = np.random.randint(1000, size=n).astype(vtype)
         var_lp = lp.TemporaryVariable('var', initializer=var_int,
                                    read_only=True,
-                                   scope=lp.AddressSpace.PRIVATE,
+                                   address_space=lp.AddressSpace.PRIVATE,
                                    dtype=to_loopy_type(vtype),
                                    shape=lp.auto)
 
@@ -2440,7 +2329,7 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
               end
                    """,
                    [lp.TemporaryVariable("a", np.float32, shape=(10,), order='C',
-                                         scope=lp.AddressSpace.LOCAL),
+                                         address_space=lp.AddressSpace.LOCAL),
                     lp.GlobalArg("b", np.float32, shape=(11,), order='C')],
                seq_dependencies=True)
 
@@ -2700,7 +2589,7 @@ def test_preamble_with_separate_temporaries(ctx_factory):
     [lp.GlobalArg('out', shape=('n',)),
      lp.TemporaryVariable(
         'offsets', shape=(offsets.size,), initializer=offsets,
-        scope=lp.AddressSpace.GLOBAL,
+        address_space=lp.AddressSpace.GLOBAL,
         read_only=True),
      lp.GlobalArg('data', shape=(data.size,), dtype=np.float64)],
     )
@@ -2830,7 +2719,7 @@ def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
             """ % second_index,
             [
                 lp.TemporaryVariable("a", lp.auto, shape=(256,),
-                    scope=lp.AddressSpace.LOCAL),
+                    address_space=lp.AddressSpace.LOCAL),
                 ])
 
     prog = lp.tag_inames(prog, "i:l.0")
@@ -2953,6 +2842,47 @@ def test_temp_var_type_deprecated_usage():
     with pytest.warns(DeprecationWarning):
         lp.CallInstruction("(x,)", parse("f(1)"),
                 temp_var_types=(np.dtype(np.int32),))
+
+
+def test_shape_mismatch_check(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    prg = lp.make_kernel(
+            "{[i,j]: 0 <= i < n and 0 <= j < m}",
+            "c[i] = sum(j, a[i,j]*b[j])",
+            default_order="F")
+
+    a = np.random.rand(10, 10).astype(np.float32)
+    b = np.random.rand(10).astype(np.float32)
+
+    with pytest.raises(TypeError, match="strides mismatch"):
+        prg(queue, a=a, b=b)
+
+
+def test_array_arg_extra_kwargs_persis_hash():
+    from loopy.tools import LoopyKeyBuilder
+
+    a = lp.ArrayArg('a', shape=(10, ), dtype=np.float64,
+            address_space=lp.AddressSpace.LOCAL)
+    not_a = lp.ArrayArg('a', shape=(10, ), dtype=np.float64,
+            address_space=lp.AddressSpace.PRIVATE)
+
+    key_builder = LoopyKeyBuilder()
+    assert key_builder(a) != key_builder(not_a)
+
+
+def test_non_integral_array_idx_raises():
+    knl = lp.make_kernel(
+            "{[i, j]: 0<=i<=4 and 0<=j<16}",
+            """
+            out[j] = 0 {id=init}
+            out[i] = a[1.94**i-1] {dep=init}
+            """, [lp.GlobalArg('a', np.float64), '...'])
+
+    from loopy.diagnostic import LoopyError
+    with pytest.raises(LoopyError):
+        print(lp.generate_code_v2(knl).device_code())
 
 
 if __name__ == "__main__":
