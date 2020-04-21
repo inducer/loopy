@@ -520,17 +520,28 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         n_dtype = self.infer_type(expr.numerator).numpy_dtype
         d_dtype = self.infer_type(expr.denominator).numpy_dtype
 
-        if (n_dtype.kind not in "fc"
-            and d_dtype.kind not in "fc"):
-            # must both be integers
-            if type_context == "f":
-                num = var("(float) ")(num)
-                denom = var("(float) ")(denom)
-            elif type_context == "d":
-                num = var("(double) ")(num)
-                denom = var("(double) ")(denom)
+        if not self.allow_complex:
+            return base_impl(expr, type_context)
 
-        return type(expr)(num, denom)
+        n_complex = 'c' == n_dtype.kind
+        d_complex = 'c' == d_dtype.kind
+
+        tgt_dtype = self.infer_type(expr)
+
+        if not (n_complex or d_complex):
+            return base_impl(expr, type_context)
+        elif n_complex and not d_complex:
+            return var("%s_divider" % self.complex_type_name(tgt_dtype))(
+                    self.rec(expr.numerator, type_context, tgt_dtype),
+                    self.rec(expr.denominator, type_context))
+        elif not n_complex and d_complex:
+            return var("%s_rdivide" % self.complex_type_name(tgt_dtype))(
+                    self.rec(expr.numerator, type_context),
+                    self.rec(expr.denominator, type_context, tgt_dtype))
+        else:
+            return var("%s_divide" % self.complex_type_name(tgt_dtype))(
+                    self.rec(expr.numerator, type_context, tgt_dtype),
+                    self.rec(expr.denominator, type_context, tgt_dtype))
 
     def map_power(self, expr, type_context):
         from pymbolic.primitives import is_constant, is_zero
