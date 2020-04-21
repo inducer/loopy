@@ -74,7 +74,7 @@ def test_collect_common_factors(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-            "{[i,j,k]: 0<=i,j<n}",
+            "{[i,j]: 0<=i,j<n}",
             """
             <float32> out_tmp = 0 {id=out_init,inames=i}
             out_tmp = out_tmp + alpha[i]*a[i,j]*b1[j] {id=out_up1,dep=out_init}
@@ -385,7 +385,7 @@ def test_precompute_nested_subst(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-        "{[i,j]: 0<=i<n and 0<=j<5}",
+        "{[i]: 0<=i<n}",
         """
         E:=a[i]
         D:=E*E
@@ -396,7 +396,6 @@ def test_precompute_nested_subst(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.tag_inames(knl, dict(j="g.1"))
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
     from loopy.symbolic import get_dependencies

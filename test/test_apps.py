@@ -566,7 +566,7 @@ def test_poisson_fem(ctx_factory):
     sdim = 3
 
     knl = lp.make_kernel(
-            "{ [c,i,j,k,ell,ell2,ell3]: \
+            "{ [c,i,j,k,ell,ell2]: \
             0 <= c < nels and \
             0 <= i < nbf and \
             0 <= j < nbf and \
