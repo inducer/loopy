@@ -377,7 +377,7 @@ def test_statement_instance_ordering_creation():
     )
     from loopy.schedule.checker.utils import (
         align_isl_maps_by_var_names,
-        append_marker_to_in_dim_names,
+        append_marker_to_isl_map_var_names,
     )
     from loopy.schedule.checker.lexicographic_order_map import (
         get_statement_ordering_map,
@@ -482,7 +482,8 @@ def test_statement_instance_ordering_creation():
         "}"
         )
     # isl ignores these apostrophes, so explicitly add them
-    expected_sio = append_marker_to_in_dim_names(expected_sio, "'")
+    expected_sio = append_marker_to_isl_map_var_names(
+        expected_sio, isl.dim_type.in_, "'")
 
     check_sio_for_insn_pair(
         "insn_a", "insn_b", expected_lex_order_map, expected_sio)
@@ -498,7 +499,8 @@ def test_statement_instance_ordering_creation():
         "}"
         )
     # isl ignores these apostrophes, so explicitly add them
-    expected_sio = append_marker_to_in_dim_names(expected_sio, "'")
+    expected_sio = append_marker_to_isl_map_var_names(
+        expected_sio, isl.dim_type.in_, "'")
 
     check_sio_for_insn_pair(
         "insn_a", "insn_c", expected_lex_order_map, expected_sio)
@@ -512,7 +514,8 @@ def test_statement_instance_ordering_creation():
         "}"
         )
     # isl ignores these apostrophes, so explicitly add them
-    expected_sio = append_marker_to_in_dim_names(expected_sio, "'")
+    expected_sio = append_marker_to_isl_map_var_names(
+        expected_sio, isl.dim_type.in_, "'")
 
     check_sio_for_insn_pair(
         "insn_a", "insn_d", expected_lex_order_map, expected_sio)
@@ -530,7 +533,8 @@ def test_statement_instance_ordering_creation():
         "}"
         )
     # isl ignores these apostrophes, so explicitly add them
-    expected_sio = append_marker_to_in_dim_names(expected_sio, "'")
+    expected_sio = append_marker_to_isl_map_var_names(
+        expected_sio, isl.dim_type.in_, "'")
 
     check_sio_for_insn_pair(
         "insn_b", "insn_c", expected_lex_order_map, expected_sio)
@@ -544,7 +548,8 @@ def test_statement_instance_ordering_creation():
         "}"
         )
     # isl ignores these apostrophes, so explicitly add them
-    expected_sio = append_marker_to_in_dim_names(expected_sio, "'")
+    expected_sio = append_marker_to_isl_map_var_names(
+        expected_sio, isl.dim_type.in_, "'")
 
     check_sio_for_insn_pair(
         "insn_b", "insn_d", expected_lex_order_map, expected_sio)
@@ -558,7 +563,8 @@ def test_statement_instance_ordering_creation():
         "}"
         )
     # isl ignores these apostrophes, so explicitly add them
-    expected_sio = append_marker_to_in_dim_names(expected_sio, "'")
+    expected_sio = append_marker_to_isl_map_var_names(
+        expected_sio, isl.dim_type.in_, "'")
 
     check_sio_for_insn_pair(
         "insn_c", "insn_d", expected_lex_order_map, expected_sio)

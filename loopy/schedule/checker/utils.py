@@ -143,19 +143,32 @@ def align_isl_maps_by_var_names(input_map, target_map):
     return aligned_input_map
 
 
+def append_marker_to_isl_map_var_names(old_isl_map, dim_type, marker="'"):
+    """Return an isl_map with marker appended to
+        dim_type dimension names.
+
+    :arg old_isl_map: A :class:`islpy.Map`.
+
+    :arg dim_type: A :class:`islpy.dim_type`, i.e., an :class:`int`,
+        specifying the dimension to be marked.
+
+    :returns: A :class:`islpy.Map` matching `old_isl_map` with
+        apostrophes appended to dim_type dimension names.
+
+    """
+
+    new_map = old_isl_map.copy()
+    for i in range(len(old_isl_map.get_var_names(dim_type))):
+        new_map = new_map.set_dim_name(dim_type, i, old_isl_map.get_dim_name(
+            dim_type, i)+marker)
+    return new_map
+
+
 def append_marker_to_strings(strings, marker="'"):
     if not isinstance(strings, list):
         raise ValueError("append_marker_to_strings did not receive a list")
     else:
         return [s+marker for s in strings]
-
-
-def append_marker_to_in_dim_names(islmap, marker="'"):
-    # append marker to in names
-    for i in range(islmap.dim(isl.dim_type.in_)):
-        islmap = islmap.set_dim_name(isl.dim_type.in_, i, islmap.get_dim_name(
-            isl.dim_type.in_, i)+marker)
-    return islmap
 
 
 def _union_of_isl_sets_or_maps(set_list):

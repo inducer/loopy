@@ -56,9 +56,10 @@ def get_statement_ordering_map(
         lex_map).apply_range(sched_map_after.reverse())
     # append marker to in names
     from loopy.schedule.checker.utils import (
-        append_marker_to_in_dim_names,
+        append_marker_to_isl_map_var_names,
     )
-    return append_marker_to_in_dim_names(sio, before_marker)
+    return append_marker_to_isl_map_var_names(
+        sio, isl.dim_type.in_, before_marker)
 
 
 def get_lex_order_constraint(islvars, before_names, after_names):
