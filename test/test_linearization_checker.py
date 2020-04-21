@@ -46,6 +46,8 @@ else:
     faulthandler.enable()
 
 
+# {{{ test LexSchedule and isl map creation
+
 def test_lexschedule_and_islmap_creation():
     import islpy as isl
     from loopy.schedule.checker import (
@@ -361,6 +363,207 @@ def test_lexschedule_and_islmap_creation():
         perform_insn_cd_checks_with(0, 1)
     else:
         perform_insn_cd_checks_with(1, 0)
+
+# }}}
+
+
+# {{{ test statement instance ordering creation
+
+def test_statement_instance_ordering_creation():
+    import islpy as isl
+    from loopy.schedule.checker import (
+        get_schedule_for_statement_pair,
+        get_isl_maps_for_LexSchedule,
+    )
+    from loopy.schedule.checker.utils import (
+        align_isl_maps_by_var_names,
+        append_marker_to_in_dim_names,
+    )
+    from loopy.schedule.checker.lexicographic_order_map import (
+        get_statement_ordering_map,
+    )
+
+    # example kernel (add deps to fix loop order)
+    knl = lp.make_kernel(
+        [
+            "{[i]: 0<=i<pi}",
+            "{[k]: 0<=k<pk}",
+            "{[j]: 0<=j<pj}",
+            "{[t]: 0<=t<pt}",
+        ],
+        """
+        for i
+            for k
+                <>temp = b[i,k]  {id=insn_a}
+            end
+            for j
+                a[i,j] = temp + 1  {id=insn_b,dep=insn_a}
+                c[i,j] = d[i,j]  {id=insn_c,dep=insn_b}
+            end
+        end
+        for t
+            e[t] = f[t]  {id=insn_d, dep=insn_c}
+        end
+        """,
+        name="example",
+        assumptions="pi,pj,pk,pt >= 1",
+        lang_version=(2018, 2)
+        )
+    knl = lp.add_and_infer_dtypes(
+            knl,
+            {"b": np.float32, "d": np.float32, "f": np.float32})
+    knl = lp.prioritize_loops(knl, "i,k")
+    knl = lp.prioritize_loops(knl, "i,j")
+
+    # get a linearization
+    knl = preprocess_kernel(knl)
+    knl = get_one_linearized_kernel(knl)
+    linearization_items = knl.linearization
+
+    def check_sio_for_insn_pair(
+            insn_id_before,
+            insn_id_after,
+            expected_lex_order_map,
+            expected_sio,
+            ):
+
+        lex_sched = get_schedule_for_statement_pair(
+            knl,
+            linearization_items,
+            insn_id_before,
+            insn_id_after,
+            )
+
+        # Get two isl maps representing the LexSchedule
+        isl_sched_map_before, isl_sched_map_after = \
+             get_isl_maps_for_LexSchedule(lex_sched, knl, insn_id_before, insn_id_after)
+
+        # get map representing lexicographic ordering
+        sched_lex_order_map = lex_sched.get_lex_order_map_for_sched_space()
+
+        assert sched_lex_order_map == expected_lex_order_map
+
+        # create statement instance ordering,
+        # maps each statement instance to all statement instances occuring later
+        sio = get_statement_ordering_map(
+            isl_sched_map_before,
+            isl_sched_map_after,
+            sched_lex_order_map,
+            )
+
+        print(sio)
+        print(expected_sio)
+
+        sio_aligned = align_isl_maps_by_var_names(sio, expected_sio)
+
+        print(sio_aligned)
+        print(expected_sio)
+
+        assert sio_aligned == expected_sio
+
+    expected_lex_order_map = isl.Map(
+        "{ "
+        "[l0, l1, l2, l3, l4] -> [l0_, l1_, l2_, l3_, l4_] : l0_ > l0; "
+        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_, l2_, l3_, l4_] : l1_ > l1; "
+        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_= l1, l2_, l3_, l4_] : l2_ > l2; "
+        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_= l1, l2_= l2, l3_, l4_] : l3_ > l3; "
+        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_= l1, l2_= l2, l3_= l3, l4_] : l4_ > l4 "
+        "}"
+        )
+
+    # Relationship between insn_a and insn_b ---------------------------------------
+
+    expected_sio = isl.Map(
+        "[pi, pj, pk] -> { "
+        "[statement' = 0, i', k'] -> [statement = 1, i, j] : "
+        "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj and 0 <= i < pi and i > i'; "
+        "[statement' = 0, i', k'] -> [statement = 1, i = i', j] : "
+        "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj "
+        "}"
+        )
+    # isl ignores these apostrophes, so explicitly add them
+    expected_sio = append_marker_to_in_dim_names(expected_sio, "'")
+
+    check_sio_for_insn_pair(
+        "insn_a", "insn_b", expected_lex_order_map, expected_sio)
+
+    # Relationship between insn_a and insn_c ---------------------------------------
+
+    expected_sio = isl.Map(
+        "[pi, pj, pk] -> { "
+        "[statement' = 0, i', k'] -> [statement = 1, i, j] : "
+        "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj and 0 <= i < pi and i > i'; "
+        "[statement' = 0, i', k'] -> [statement = 1, i = i', j] : "
+        "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj "
+        "}"
+        )
+    # isl ignores these apostrophes, so explicitly add them
+    expected_sio = append_marker_to_in_dim_names(expected_sio, "'")
+
+    check_sio_for_insn_pair(
+        "insn_a", "insn_c", expected_lex_order_map, expected_sio)
+
+    # Relationship between insn_a and insn_d ---------------------------------------
+
+    expected_sio = isl.Map(
+        "[pt, pi, pk] -> { "
+        "[statement' = 0, i', k'] -> [statement = 1, t] : "
+        "0 <= i' < pi and 0 <= k' < pk and 0 <= t < pt "
+        "}"
+        )
+    # isl ignores these apostrophes, so explicitly add them
+    expected_sio = append_marker_to_in_dim_names(expected_sio, "'")
+
+    check_sio_for_insn_pair(
+        "insn_a", "insn_d", expected_lex_order_map, expected_sio)
+
+    # Relationship between insn_b and insn_c ---------------------------------------
+
+    expected_sio = isl.Map(
+        "[pi, pj] -> { "
+        "[statement' = 0, i', j'] -> [statement = 1, i, j] : "
+        "0 <= i' < pi and 0 <= j' < pj and i > i' and 0 <= i < pi and 0 <= j < pj; "
+        "[statement' = 0, i', j'] -> [statement = 1, i = i', j] : "
+        "0 <= i' < pi and 0 <= j' < pj and j > j' and 0 <= j < pj; "
+        "[statement' = 0, i', j'] -> [statement = 1, i = i', j = j'] : "
+        "0 <= i' < pi and 0 <= j' < pj "
+        "}"
+        )
+    # isl ignores these apostrophes, so explicitly add them
+    expected_sio = append_marker_to_in_dim_names(expected_sio, "'")
+
+    check_sio_for_insn_pair(
+        "insn_b", "insn_c", expected_lex_order_map, expected_sio)
+
+    # Relationship between insn_b and insn_d ---------------------------------------
+
+    expected_sio = isl.Map(
+        "[pt, pi, pj] -> { "
+        "[statement' = 0, i', j'] -> [statement = 1, t] : "
+        "0 <= i' < pi and 0 <= j' < pj and 0 <= t < pt "
+        "}"
+        )
+    # isl ignores these apostrophes, so explicitly add them
+    expected_sio = append_marker_to_in_dim_names(expected_sio, "'")
+
+    check_sio_for_insn_pair(
+        "insn_b", "insn_d", expected_lex_order_map, expected_sio)
+
+    # Relationship between insn_c and insn_d ---------------------------------------
+
+    expected_sio = isl.Map(
+        "[pt, pi, pj] -> { "
+        "[statement' = 0, i', j'] -> [statement = 1, t] : "
+        "0 <= i' < pi and 0 <= j' < pj and 0 <= t < pt "
+        "}"
+        )
+    # isl ignores these apostrophes, so explicitly add them
+    expected_sio = append_marker_to_in_dim_names(expected_sio, "'")
+
+    check_sio_for_insn_pair(
+        "insn_c", "insn_d", expected_lex_order_map, expected_sio)
+
+# }}}
 
 
 if __name__ == "__main__":
