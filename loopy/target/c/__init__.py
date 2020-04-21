@@ -504,7 +504,7 @@ class CMathCallable(ScalarCallable):
                 if name == "pow":
                     name = "c" + name
                 else:
-                    raise LoopyTypeError("%s does not support complex numbers")
+                    raise LoopyTypeError("%s does not support complex numbers" % name)
 
             from loopy.target.opencl import OpenCLTarget
             if not isinstance(caller_kernel.target, OpenCLTarget):
