@@ -408,6 +408,12 @@ class CMathCallable(ScalarCallable):
     C-Target.
     """
 
+    _real_map = {
+        np.dtype(np.complex64): np.dtype(np.float32),
+        np.dtype(np.complex128): np.dtype(np.float64),
+        np.dtype(np.complex256): np.dtype(np.float128)
+    }
+
     def with_types(self, arg_id_to_dtype, caller_kernel, callables_table):
         name = self.name
 
@@ -417,7 +423,7 @@ class CMathCallable(ScalarCallable):
         # unary functions
         if name in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
                     "tan", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor",
-                    "erf", "erfc", "real", "imag", "conj", "fabs"]:
+                    "erf", "erfc", "real", "imag", "conj"]:
 
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 0:
@@ -464,10 +470,15 @@ class CMathCallable(ScalarCallable):
                     raise LoopyTypeError("%s does not support type %s" % (name,
                         dtype))
 
+            if self.name in ["abs", "real", "float"] and dtype.kind == "c":
+                out_dtype = self._real_map[dtype]
+            else:
+                out_dtype = dtype
+
             return (
                     self.copy(name_in_target=name,
                         arg_id_to_dtype={0: NumpyType(dtype), -1:
-                            NumpyType(dtype)}),
+                            NumpyType(out_dtype)}),
                     callables_table)
 
         # binary functions
