@@ -150,6 +150,14 @@ def append_marker_to_strings(strings, marker="'"):
         return [s+marker for s in strings]
 
 
+def append_marker_to_in_dim_names(islmap, marker="'"):
+    # append marker to in names
+    for i in range(islmap.dim(isl.dim_type.in_)):
+        islmap = islmap.set_dim_name(isl.dim_type.in_, i, islmap.get_dim_name(
+            isl.dim_type.in_, i)+marker)
+    return islmap
+
+
 def _union_of_isl_sets_or_maps(set_list):
     union = set_list[0]
     for s in set_list[1:]:

@@ -55,10 +55,10 @@ def get_statement_ordering_map(
     sio = sched_map_before.apply_range(
         lex_map).apply_range(sched_map_after.reverse())
     # append marker to in names
-    for i in range(sio.dim(isl.dim_type.in_)):
-        sio = sio.set_dim_name(isl.dim_type.in_, i, sio.get_dim_name(
-            isl.dim_type.in_, i)+before_marker)
-    return sio
+    from loopy.schedule.checker.utils import (
+        append_marker_to_in_dim_names,
+    )
+    return append_marker_to_in_dim_names(sio, before_marker)
 
 
 def get_lex_order_constraint(islvars, before_names, after_names):
