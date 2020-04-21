@@ -435,8 +435,8 @@ def test_statement_instance_ordering_creation():
             )
 
         # Get two isl maps representing the LexSchedule
-        isl_sched_map_before, isl_sched_map_after = \
-             get_isl_maps_for_LexSchedule(lex_sched, knl, insn_id_before, insn_id_after)
+        isl_sched_map_before, isl_sched_map_after = get_isl_maps_for_LexSchedule(
+            lex_sched, knl, insn_id_before, insn_id_after)
 
         # get map representing lexicographic ordering
         sched_lex_order_map = lex_sched.get_lex_order_map_for_sched_space()
@@ -463,11 +463,11 @@ def test_statement_instance_ordering_creation():
 
     expected_lex_order_map = isl.Map(
         "{ "
-        "[l0, l1, l2, l3, l4] -> [l0_, l1_, l2_, l3_, l4_] : l0_ > l0; "
-        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_, l2_, l3_, l4_] : l1_ > l1; "
-        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_= l1, l2_, l3_, l4_] : l2_ > l2; "
-        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_= l1, l2_= l2, l3_, l4_] : l3_ > l3; "
-        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_= l1, l2_= l2, l3_= l3, l4_] : l4_ > l4 "
+        "[l0, l1, l2, l3, l4] -> [l0_, l1_, l2_, l3_, l4_]: l0_ > l0; "
+        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_, l2_, l3_, l4_]: l1_ > l1; "
+        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_= l1, l2_, l3_, l4_]: l2_ > l2; "
+        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_= l1, l2_= l2, l3_, l4_]: l3_ > l3; "
+        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_= l1, l2_= l2, l3_= l3, l4_]: l4_ > l4"
         "}"
         )
 
