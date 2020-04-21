@@ -1320,20 +1320,6 @@ def generate_loop_schedules_internal(
 # }}}
 
 
-# {{{ filter nops from schedule
-
-def filter_nops_from_schedule(kernel, schedule):
-    from loopy.kernel.instruction import NoOpInstruction
-    return [
-            sched_item
-            for sched_item in schedule
-            if (not isinstance(sched_item, RunInstruction)
-                or not isinstance(kernel.id_to_insn[sched_item.insn_id],
-                    NoOpInstruction))]
-
-# }}}
-
-
 # {{{ convert barrier instructions to proper barriers
 
 def convert_barrier_instructions_to_barriers(kernel, schedule):
@@ -1970,7 +1956,6 @@ def generate_loop_schedules_inner(kernel, callables_table, debug_args={}):
                 sched_state, debug=debug, **schedule_gen_kwargs):
             debug.stop()
 
-            gen_sched = filter_nops_from_schedule(kernel, gen_sched)
             gen_sched = convert_barrier_instructions_to_barriers(
                     kernel, gen_sched)
 

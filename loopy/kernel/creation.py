@@ -1330,17 +1330,15 @@ def expand_cses(instructions, inames_to_dup, cse_prefix="cse_expr"):
 
         new_var_name = var_name_gen(base_name)
 
-        if dtype is None:
-            import loopy as lp
-            dtype = lp.auto
-        else:
+        if dtype is not None:
             dtype = np.dtype(dtype)
 
+        import loopy as lp
         from loopy.kernel.data import TemporaryVariable
         new_temp_vars.append(TemporaryVariable(
                 name=new_var_name,
                 dtype=dtype,
-                scope=lp.auto,
+                address_space=lp.auto,
                 shape=()))
 
         from pymbolic.primitives import Variable

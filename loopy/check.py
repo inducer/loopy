@@ -27,8 +27,12 @@ from six.moves import range
 
 from islpy import dim_type
 import islpy as isl
+from loopy.program import CallablesTable
 from loopy.symbolic import WalkMapper, CombineMapper, ResolvedFunction
 from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_kernel
+from loopy.type_inference import TypeInferenceMapper
+from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
+        CInstruction, _DataObliviousInstruction)
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         _DataObliviousInstruction)
@@ -130,6 +134,32 @@ def check_functions_are_resolved(kernel):
 # FIXME: Replace with an enum. See
 # https://gitlab.tiker.net/inducer/loopy/issues/85
 VALID_NOSYNC_SCOPES = frozenset(["local", "global", "any"])
+
+
+class SubscriptIndicesIsIntChecker(TypeInferenceMapper):
+    def map_subscript(self, expr):
+        for idx in expr.index_tuple:
+            if not self.rec(idx)[0].is_integral():
+                raise LoopyError("Non-integral array indices obtained in"
+                        " {}.".format(expr))
+
+        return self.rec(expr.aggregate)
+
+
+def check_for_integer_subscript_indices(kernel, callables_table):
+    from pymbolic.primitives import Subscript
+    idx_int_checker = SubscriptIndicesIsIntChecker(kernel, callables_table)
+    for insn in kernel.instructions:
+        if isinstance(insn, MultiAssignmentBase):
+            idx_int_checker(insn.expression, return_tuple=isinstance(insn,
+                CallInstruction), return_dtype_set=True)
+            [idx_int_checker(assignee) for assignee in insn.assignees if
+                    isinstance(assignee, Subscript)]
+        elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
+            pass
+        else:
+            raise NotImplementedError("Unknown insn type %s." % (
+                type(insn).__name__))
 
 
 def check_insn_attributes(kernel):
@@ -734,6 +764,7 @@ def pre_schedule_checks(kernel, callables_table):
     try:
         logger.debug("%s: pre-schedule check: start" % kernel.name)
 
+        check_for_integer_subscript_indices(kernel, callables_table)
         check_for_duplicate_insn_ids(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel, callables_table)
@@ -940,12 +971,8 @@ def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
 # {{{ check that all instructions are scheduled
 
 def check_that_all_insns_are_scheduled(kernel):
-    from loopy.kernel.instruction import NoOpInstruction
 
-    all_schedulable_insns = set(
-        insn.id for insn in kernel.instructions
-        # nops are not schedulable
-        if not isinstance(insn, NoOpInstruction))
+    all_schedulable_insns = set(insn.id for insn in kernel.instructions)
     from loopy.schedule import sched_item_to_insn_id
     scheduled_insns = set(
         insn_id

@@ -476,7 +476,15 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 
 @iterate_over_kernels_if_given_program
 def expand_subst(kernel, within=None):
+    """
+    Returns an instance of :class:`loopy.LoopKernel` with the substitutions
+    referenced in instructions of *kernel* matched by *within* expanded.
+
+    :arg within: a stack match as understood by
+        :func:`loopy.match.parse_stack_match`.
+    """
     assert isinstance(kernel, LoopKernel)
+
     if not kernel.substitutions:
         return kernel
 

@@ -48,7 +48,7 @@ def test_pw_aff_to_conditional_expr():
     from loopy.symbolic import pw_aff_to_expr
     cond = isl.PwAff("[i] -> { [(0)] : i = 0; [(-1 + i)] : i > 0 }")
     expr = pw_aff_to_expr(cond)
-    assert str(expr) == "If(i == 0, 0, -1 + i)"
+    assert str(expr) == "0 if i == 0 else -1 + i"
 
 
 if __name__ == "__main__":

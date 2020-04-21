@@ -135,7 +135,7 @@ def test_to_batched_temp(ctx_factory):
              "cnst",
              dtype=np.float32,
              shape=(),
-             scope=lp.temp_var_scope.PRIVATE), '...'])
+             address_space=lp.AddressSpace.PRIVATE), '...'])
     prog = lp.add_and_infer_dtypes(prog, dict(out=np.float32,
                                             x=np.float32,
                                             a=np.float32))
@@ -570,6 +570,26 @@ def test_split_iname_only_if_in_within():
             assert insn.within_inames == frozenset({'i_outer', 'i_inner'})
         if insn.id == 'not_to_split':
             assert insn.within_inames == frozenset({'i'})
+
+
+def test_nested_substs_in_insns(ctx_factory):
+    ctx = ctx_factory()
+    import loopy as lp
+
+    ref_knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        a(x) := 2 * x
+        b(x) := x**2
+        c(x) := 7 * x
+        f[i] = c(b(a(i)))
+        """
+    )
+
+    knl = lp.expand_subst(ref_knl)
+    assert not knl.substitutions
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
 if __name__ == "__main__":

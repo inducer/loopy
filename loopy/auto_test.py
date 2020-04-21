@@ -580,6 +580,7 @@ def auto_test_vs_ref(
 
         evt_start = cl.enqueue_marker(queue)
 
+        timing_rounds = max(warmup_rounds, 1)
         for i in range(timing_rounds):
             if not AUTO_TEST_SKIP_RUN:
                 evt, _ = test_prog(queue, **args)

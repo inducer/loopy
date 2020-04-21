@@ -29,7 +29,7 @@ if os.environ.get("AKPYTHON_EXEC_IMPORT_UNAVAILABLE") is not None:
     _git_rev = None
 
 else:
-    import loopy._git_rev as _git_rev_mod
+    import loopy._git_rev as _git_rev_mod  # pylint: disable=no-name-in-module,import-error  # noqa: E501
     _git_rev = _git_rev_mod.GIT_REVISION
 
     # If we're running from a dev tree, the last install (and hence the most
@@ -42,7 +42,7 @@ else:
 # }}}
 
 
-VERSION = (2018, 1)
+VERSION = (2019, 1)
 VERSION_STATUS = ""
 VERSION_TEXT = ".".join(str(x) for x in VERSION) + VERSION_STATUS
 
