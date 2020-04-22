@@ -58,6 +58,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     self.codegen_state.callables_table)
         self.type_inf_mapper = type_inf_mapper
 
+        self.allow_complex = codegen_state.allow_complex
+
         self.fortran_abi = fortran_abi
 
     # {{{ helpers
@@ -512,10 +514,23 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             raise LoopyError("could not map '%s' to a complex type name." % dtype)
 
     def map_quotient(self, expr, type_context):
-        num = self.rec(expr.numerator, type_context)
+        def base_impl(expr, type_context, num_tgt_dtype=None):
+            num = self.rec(expr.numerator, type_context, num_tgt_dtype)
 
-        # analogous to ^{-1}
-        denom = self.rec(expr.denominator, type_context)
+            # analogous to ^{-1}
+            denom = self.rec(expr.denominator, type_context)
+
+            if (n_dtype.kind not in "fc"
+                    and d_dtype.kind not in "fc"):
+                # must both be integers
+                if type_context == "f":
+                    num = var("(float) ")(num)
+                    denom = var("(float) ")(denom)
+                elif type_context == "d":
+                    num = var("(double) ")(num)
+                    denom = var("(double) ")(denom)
+
+            return type(expr)(num, denom)
 
         n_dtype = self.infer_type(expr.numerator).numpy_dtype
         d_dtype = self.infer_type(expr.denominator).numpy_dtype
