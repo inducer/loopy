@@ -378,22 +378,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         from loopy.symbolic import Literal
 
         if isinstance(expr, (complex, np.complexfloating)):
-            try:
-                dtype = expr.dtype
-            except AttributeError:
-                # (COMPLEX_GUESS_LOGIC)
-                # This made it through type 'guessing' above, and it
-                # was concluded above (search for COMPLEX_GUESS_LOGIC),
-                # that nothing was lost by using single precision.
-                dtype = np.complex64
-
-            try:
-                cast_type = self.complex_types[dtype]
-            except KeyError:
-                raise RuntimeError("unsupported complex type in expression "
-                                   "generation: %s" % type(expr))
-
-            return var("%s_new" % cast_type)(expr.real, expr.imag)
+            return p.Sum((expr.real, p.Product((var("_Complex_I"), expr.imag))))
         elif isinstance(expr, np.generic):
             # Explicitly typed: Generated code must reflect type exactly.
 
