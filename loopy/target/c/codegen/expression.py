@@ -509,54 +509,17 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         from loopy.types import NumpyType
 
         try:
-            return self.complex_types[dtype]
+            if isinstance(dtype, NumpyType):
+                return self.complex_types[dtype.dtype.type]
+            else:
+                return self.complex_types[dtype.type]
         except KeyError:
             raise LoopyError("could not map '%s' to a complex type name." % dtype)
 
     def map_quotient(self, expr, type_context):
-        def base_impl(expr, type_context, num_tgt_dtype=None):
-            num = self.rec(expr.numerator, type_context, num_tgt_dtype)
-
-            # analogous to ^{-1}
-            denom = self.rec(expr.denominator, type_context)
-
-            if (n_dtype.kind not in "fc"
-                    and d_dtype.kind not in "fc"):
-                # must both be integers
-                if type_context == "f":
-                    num = var("(float) ")(num)
-                    denom = var("(float) ")(denom)
-                elif type_context == "d":
-                    num = var("(double) ")(num)
-                    denom = var("(double) ")(denom)
-
-            return type(expr)(num, denom)
-
-        n_dtype = self.infer_type(expr.numerator).numpy_dtype
-        d_dtype = self.infer_type(expr.denominator).numpy_dtype
-
-        if not self.allow_complex:
-            return base_impl(expr, type_context)
-
-        n_complex = 'c' == n_dtype.kind
-        d_complex = 'c' == d_dtype.kind
-
-        tgt_dtype = self.infer_type(expr)
-
-        if not (n_complex or d_complex):
-            return base_impl(expr, type_context)
-        elif n_complex and not d_complex:
-            return var("%s_divider" % self.complex_type_name(tgt_dtype))(
-                    self.rec(expr.numerator, type_context, tgt_dtype),
-                    self.rec(expr.denominator, type_context))
-        elif not n_complex and d_complex:
-            return var("%s_rdivide" % self.complex_type_name(tgt_dtype))(
-                    self.rec(expr.numerator, type_context),
-                    self.rec(expr.denominator, type_context, tgt_dtype))
-        else:
-            return var("%s_divide" % self.complex_type_name(tgt_dtype))(
-                    self.rec(expr.numerator, type_context, tgt_dtype),
-                    self.rec(expr.denominator, type_context, tgt_dtype))
+        target_dtype = self.infer_type(expr)
+        return type(expr)(self.rec(expr.numerator, type_context, target_dtype),
+                          self.rec(expr.denominator, type_context, target_dtype))
 
     def map_power(self, expr, type_context):
         from pymbolic.primitives import is_constant, is_zero
