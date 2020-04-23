@@ -102,7 +102,7 @@ def _preamble_generator(preamble_info):
     function_defs = {
             "loopy_floor_div": r"""
             #define LOOPY_DEFINE_FLOOR_DIV(SUFFIX, TYPE) \
-                inline TYPE loopy_floor_div_##SUFFIX(TYPE a, TYPE b) \
+                static inline TYPE loopy_floor_div_##SUFFIX(TYPE a, TYPE b) \
                 { \
                     if ((a<0) != (b<0)) \
                         a = a - (b + (b<0) - (b>=0)); \
@@ -114,7 +114,7 @@ def _preamble_generator(preamble_info):
 
             "loopy_floor_div_pos_b": r"""
             #define LOOPY_DEFINE_FLOOR_DIV_POS_B(SUFFIX, TYPE) \
-                inline TYPE loopy_floor_div_pos_b_##SUFFIX(TYPE a, TYPE b) \
+                static inline TYPE loopy_floor_div_pos_b_##SUFFIX(TYPE a, TYPE b) \
                 { \
                     if (a<0) \
                         a = a - (b-1); \
@@ -126,7 +126,7 @@ def _preamble_generator(preamble_info):
 
             "loopy_mod": r"""
             #define LOOPY_DEFINE_MOD(SUFFIX, TYPE) \
-                inline TYPE loopy_mod_##SUFFIX(TYPE a, TYPE b) \
+                static inline TYPE loopy_mod_##SUFFIX(TYPE a, TYPE b) \
                 { \
                     TYPE result = a%b; \
                     if (result < 0 && b > 0) \
@@ -141,7 +141,7 @@ def _preamble_generator(preamble_info):
 
             "loopy_mod_pos_b": r"""
             #define LOOPY_DEFINE_MOD_POS_B(SUFFIX, TYPE) \
-                inline TYPE loopy_mod_pos_b_##SUFFIX(TYPE a, TYPE b) \
+                static inline TYPE loopy_mod_pos_b_##SUFFIX(TYPE a, TYPE b) \
                 { \
                     TYPE result = a%b; \
                     if (result < 0) \
