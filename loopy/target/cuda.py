@@ -309,6 +309,8 @@ def cuda_preamble_generator(preamble_info):
 # {{{ ast builder
 
 class CUDACASTBuilder(CFamilyASTBuilder):
+    preamble_function_qualifier = 'inline __device__'
+
     # {{{ library
 
     def function_id_in_knl_callable_mapper(self):
