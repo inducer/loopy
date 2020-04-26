@@ -147,13 +147,7 @@ def get_isl_maps_for_LexSchedule(
     # }}}
 
     # {{{ Get isl maps
-    isl_sched_map_before, isl_sched_map_after = \
-        lex_sched.create_isl_maps(
-            dom_before,
-            dom_after,
-        )
+    return lex_sched.create_isl_maps(dom_before, dom_after)
     # }}}
-
-    return isl_sched_map_before, isl_sched_map_after
 
 # }}}
