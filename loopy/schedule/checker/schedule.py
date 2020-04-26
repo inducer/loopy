@@ -107,8 +107,10 @@ class LexScheduleStatementInstance(object):
 
 
 class LexSchedule(object):
-    """A program ordering represented as a mapping from statement
-       instances to points in a lexicographic ordering.
+    """Given a pair of statements in a linearized kernel, LexSchedule
+    determines the (relative) order in which the instances are executed,
+    by creating a mapping from statement instances to points in a single
+    lexicographic ordering.
 
     .. attribute:: stmt_instance_before
 
