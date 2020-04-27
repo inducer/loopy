@@ -140,8 +140,8 @@ def test_lexschedule_and_islmap_creation():
 
     # Get two isl maps representing the LexSchedule
 
-    isl_sched_map_before, isl_sched_map_after = \
-         get_isl_maps_for_LexSchedule(lex_sched_ab, knl, "insn_a", "insn_b")
+    isl_sched_map_before, isl_sched_map_after = get_isl_maps_for_LexSchedule(
+        lex_sched_ab, knl)
 
     # Create expected maps, align, compare
 
@@ -172,8 +172,8 @@ def test_lexschedule_and_islmap_creation():
 
     # Get two isl maps representing the LexSchedule
 
-    isl_sched_map_before, isl_sched_map_after = \
-         get_isl_maps_for_LexSchedule(lex_sched_ac, knl, "insn_a", "insn_c")
+    isl_sched_map_before, isl_sched_map_after = get_isl_maps_for_LexSchedule(
+        lex_sched_ac, knl)
 
     # Create expected maps, align, compare
 
@@ -207,8 +207,8 @@ def test_lexschedule_and_islmap_creation():
 
         # Get two isl maps representing the LexSchedule
 
-        isl_sched_map_before, isl_sched_map_after = \
-             get_isl_maps_for_LexSchedule(lex_sched_ad, knl, "insn_a", "insn_d")
+        isl_sched_map_before, isl_sched_map_after = get_isl_maps_for_LexSchedule(
+            lex_sched_ad, knl)
 
         # Create expected maps, align, compare
 
@@ -249,8 +249,8 @@ def test_lexschedule_and_islmap_creation():
 
         # Get two isl maps representing the LexSchedule
 
-        isl_sched_map_before, isl_sched_map_after = \
-             get_isl_maps_for_LexSchedule(lex_sched_bc, knl, "insn_b", "insn_c")
+        isl_sched_map_before, isl_sched_map_after = get_isl_maps_for_LexSchedule(
+            lex_sched_bc, knl)
 
         # Create expected maps, align, compare
 
@@ -291,8 +291,8 @@ def test_lexschedule_and_islmap_creation():
 
         # Get two isl maps representing the LexSchedule
 
-        isl_sched_map_before, isl_sched_map_after = \
-             get_isl_maps_for_LexSchedule(lex_sched_bd, knl, "insn_b", "insn_d")
+        isl_sched_map_before, isl_sched_map_after = get_isl_maps_for_LexSchedule(
+            lex_sched_bd, knl)
 
         # Create expected maps, align, compare
 
@@ -333,8 +333,8 @@ def test_lexschedule_and_islmap_creation():
 
         # Get two isl maps representing the LexSchedule
 
-        isl_sched_map_before, isl_sched_map_after = \
-             get_isl_maps_for_LexSchedule(lex_sched_cd, knl, "insn_c", "insn_d")
+        isl_sched_map_before, isl_sched_map_after = get_isl_maps_for_LexSchedule(
+            lex_sched_cd, knl)
 
         # Create expected maps, align, compare
 

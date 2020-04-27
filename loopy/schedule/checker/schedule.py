@@ -107,8 +107,10 @@ class LexScheduleStatementInstance(object):
 
 
 class LexSchedule(object):
-    """A program ordering represented as a mapping from statement
-       instances to points in a lexicographic ordering.
+    """Given a pair of statements in a linearized kernel, LexSchedule
+    determines the (relative) order in which the instances are executed,
+    by creating a mapping from statement instances to points in a single
+    lexicographic ordering.
 
     .. attribute:: stmt_instance_before
 
@@ -169,6 +171,8 @@ class LexSchedule(object):
         # LexScheduleStatements
         self.stmt_instance_before = None
         self.stmt_instance_after = None
+        # TODO when/after dependencies are added, consider the possibility
+        # of removing the two-statements-per-LexSchedule limitation
 
         # make sure we don't have an iname name conflict
         # TODO use loopy's existing tool for ensuring unique var names
@@ -228,9 +232,9 @@ class LexSchedule(object):
                     stmt_added_since_prev_block_at_tier[-1] = False
             elif isinstance(linearization_item, (RunInstruction, Barrier)):
                 from loopy.schedule.checker.utils import (
-                    _get_insn_id_from_linearization_item,
+                    get_insn_id_from_linearization_item,
                 )
-                lp_insn_id = _get_insn_id_from_linearization_item(linearization_item)
+                lp_insn_id = get_insn_id_from_linearization_item(linearization_item)
                 if lp_insn_id is None:
                     # TODO make sure it's okay to ignore barriers without id
                     # (because they'll never be part of a dependency?)
