@@ -436,7 +436,7 @@ def test_statement_instance_ordering_creation():
 
         # Get two isl maps representing the LexSchedule
         isl_sched_map_before, isl_sched_map_after = get_isl_maps_for_LexSchedule(
-            lex_sched, knl, insn_id_before, insn_id_after)
+            lex_sched, knl)
 
         # get map representing lexicographic ordering
         sched_lex_order_map = lex_sched.get_lex_order_map_for_sched_space()
