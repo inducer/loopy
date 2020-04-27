@@ -108,12 +108,7 @@ def get_schedule_for_statement_pair(
 
 # {{{ Get isl map pair for LexSchedule
 
-def get_isl_maps_for_LexSchedule(
-        lex_sched,
-        knl,
-        insn_id_before,
-        insn_id_after,
-        ):
+def get_isl_maps_for_LexSchedule(lex_sched, knl):
     """Create a pair of :class:`islpy.Map`s representing a
         :class:`loopy.schedule.checker.LexSchedule` as two mappings
         from statement instances to lexicographic time, one for
@@ -127,12 +122,6 @@ def get_isl_maps_for_LexSchedule(
     :arg knl: A :class:`loopy.kernel.LoopKernel` containing the
         linearization items that will be used to create a schedule.
 
-    :arg insn_id_before: An instruction identifier that is unique within
-        a :class:`loopy.kernel.LoopKernel`.
-
-    :arg insn_id_after: An instruction identifier that is unique within
-        a :class:`loopy.kernel.LoopKernel`.
-
     :returns: A two-tuple containing two :class:`islpy.Map`s
         representing the schedule as two mappings
         from statement instances to lexicographic time, one for
@@ -140,10 +129,10 @@ def get_isl_maps_for_LexSchedule(
     """
 
     # {{{ Get iname domains
-    insn_before_inames = knl.id_to_insn[insn_id_before].within_inames
-    insn_after_inames = knl.id_to_insn[insn_id_after].within_inames
-    dom_before = knl.get_inames_domain(insn_before_inames)
-    dom_after = knl.get_inames_domain(insn_after_inames)
+    dom_before = knl.get_inames_domain(
+        knl.id_to_insn[lex_sched.stmt_instance_before.stmt.insn_id].within_inames)
+    dom_after = knl.get_inames_domain(
+        knl.id_to_insn[lex_sched.stmt_instance_after.stmt.insn_id].within_inames)
     # }}}
 
     # {{{ Get isl maps
