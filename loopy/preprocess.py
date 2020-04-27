@@ -37,6 +37,7 @@ from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment, filter_iname_tags_by_type
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
+from loopy.transform.iname import remove_any_newly_unused_inames
 
 import logging
 logger = logging.getLogger(__name__)
@@ -882,6 +883,7 @@ def _insert_subdomain_into_domain_tree(kernel, domains, subdomain):
 # }}}
 
 
+@remove_any_newly_unused_inames
 def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                       automagic_scans_ok=False, force_scan=False,
                       force_outer_iname_for_scan=None):
@@ -1923,8 +1925,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
     kernel = lp.replace_instruction_ids(kernel, insn_id_replacements)
 
     kernel = lp.tag_inames(kernel, new_iname_tags)
-
-    # TODO: remove unused inames...
 
     kernel = (
             _hackily_ensure_multi_assignment_return_values_are_scoped_private(

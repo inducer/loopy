@@ -184,6 +184,19 @@ def check_for_inactive_iname_access(kernel):
                         ", ".join(expression_inames - kernel.insn_inames(insn))))
 
 
+def check_for_unused_inames(kernel):
+    # Warn if kernel has unused inames
+    from loopy.transform.iname import get_used_inames
+    unused_inames = kernel.all_inames() - get_used_inames(kernel)
+    if unused_inames:
+        warn_with_kernel(
+            kernel, "unused_inames",
+            "Found unused inames in kernel: %s "
+            "Unused inames during linearization will be prohibited in "
+            "Loopy version 2021.X."
+            % unused_inames)
+
+
 def _is_racing_iname_tag(tv, tag):
     from loopy.kernel.data import (AddressSpace,
             LocalIndexTagBase, GroupIndexTag, ConcurrentTag, auto)
@@ -658,6 +671,7 @@ def pre_schedule_checks(kernel):
         check_loop_priority_inames_known(kernel)
         check_multiple_tags_allowed(kernel)
         check_for_inactive_iname_access(kernel)
+        check_for_unused_inames(kernel)
         check_for_write_races(kernel)
         check_for_data_dependent_parallel_bounds(kernel)
         check_bounds(kernel)
