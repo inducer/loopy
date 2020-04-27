@@ -171,6 +171,8 @@ class LexSchedule(object):
         # LexScheduleStatements
         self.stmt_instance_before = None
         self.stmt_instance_after = None
+        # TODO when/after dependencies are added, consider the possibility
+        # of removing the two-statements-per-LexSchedule limitation
 
         # make sure we don't have an iname name conflict
         # TODO use loopy's existing tool for ensuring unique var names
