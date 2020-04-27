@@ -111,7 +111,7 @@ def test_eq_constraint(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-            "{[i,j]: 0<= i,j < 32}",
+            "{[i]: 0<= i < 32}",
             [
                 "a[i] = b[i]"
                 ],
