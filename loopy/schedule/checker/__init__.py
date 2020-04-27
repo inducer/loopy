@@ -78,10 +78,10 @@ def get_schedule_for_statement_pair(
     #  Test which exercises this: test_linearization_checker_with_stroud_bernstein())
     from loopy.schedule.checker.utils import (
         get_concurrent_inames,
-        _get_EnterLoop_inames,
+        get_EnterLoop_inames,
     )
     conc_inames, _ = get_concurrent_inames(preproc_knl)
-    enterloop_inames = _get_EnterLoop_inames(linearization_items, preproc_knl)
+    enterloop_inames = get_EnterLoop_inames(linearization_items, preproc_knl)
     conc_loop_inames = conc_inames & enterloop_inames
     if conc_loop_inames:
         from warnings import warn

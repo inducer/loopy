@@ -230,9 +230,9 @@ class LexSchedule(object):
                     stmt_added_since_prev_block_at_tier[-1] = False
             elif isinstance(linearization_item, (RunInstruction, Barrier)):
                 from loopy.schedule.checker.utils import (
-                    _get_insn_id_from_linearization_item,
+                    get_insn_id_from_linearization_item,
                 )
-                lp_insn_id = _get_insn_id_from_linearization_item(linearization_item)
+                lp_insn_id = get_insn_id_from_linearization_item(linearization_item)
                 if lp_insn_id is None:
                     # TODO make sure it's okay to ignore barriers without id
                     # (because they'll never be part of a dependency?)
