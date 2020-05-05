@@ -28,7 +28,6 @@ def get_schedule_for_statement_pair(
         linearization_items,
         insn_id_before,
         insn_id_after,
-        prohibited_var_names=set(),
         ):
     """Create a :class:`loopy.schedule.checker.schedule.LexSchedule`
         representing the order of two statements as a mapping from
@@ -51,10 +50,6 @@ def get_schedule_for_statement_pair(
     :arg insn_id_after: An instruction identifier that is unique within
         a :class:`loopy.kernel.LoopKernel`.
 
-    :arg prohibited_var_names: A set of :class:`str` representing
-        variable names that should not be used when creating names for
-        dimensions in a :class:`loopy.schedule.checker.LexSchedule`.
-
     :returns: A :class:`loopy.schedule.checker.schedule.LexSchedule`
         representing the order of two statements as a mapping from
         :class:`loopy.schedule.checker.LexScheduleStatementInstance`
@@ -64,11 +59,6 @@ def get_schedule_for_statement_pair(
     # {{{ Preprocess if not already preprocessed
     from loopy import preprocess_kernel
     preproc_knl = preprocess_kernel(knl)
-    # }}}
-
-    # {{{ By default, don't create LexSchedule variables matching existing inames
-    if not prohibited_var_names:
-        prohibited_var_names = preproc_knl.all_inames()
     # }}}
 
     # {{{ Find any EnterLoop inames that are tagged as concurrent
@@ -98,7 +88,6 @@ def get_schedule_for_statement_pair(
         linearization_items,
         insn_id_before,
         insn_id_after,
-        prohibited_var_names=prohibited_var_names,
         loops_to_ignore=conc_loop_inames,
         )
     # }}}

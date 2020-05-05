@@ -141,15 +141,14 @@ class LexSchedule(object):
 
     """
 
-    statement_var_name = "statement"
-    lex_var_prefix = "l"
+    statement_var_name = "_lp_statement"
+    lex_var_prefix = "_lp_l"
 
     def __init__(
             self,
             linearization_items_ordered,
             before_insn_id,
             after_insn_id,
-            prohibited_var_names=[],
             loops_to_ignore=set(),
             ):
         """
@@ -162,10 +161,6 @@ class LexSchedule(object):
         :arg after_insn_id: A :class:`str` instruction id specifying
             the depender in this pair of instructions.
 
-        :arg prohibited_var_names: A list of :class:`str` variable names
-            that may not be used as the statement variable name (e.g.,
-            because they are already being used as inames).
-
         """
 
         # LexScheduleStatements
@@ -173,11 +168,6 @@ class LexSchedule(object):
         self.stmt_instance_after = None
         # TODO when/after dependencies are added, consider the possibility
         # of removing the two-statements-per-LexSchedule limitation
-
-        # make sure we don't have an iname name conflict
-        # TODO use loopy's existing tool for ensuring unique var names
-        assert not any(
-            iname == self.statement_var_name for iname in prohibited_var_names)
 
         from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
 
