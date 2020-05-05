@@ -391,7 +391,6 @@ class LexSchedule(object):
             return create_symbolic_isl_map_from_tuples(
                 tuple_pairs_with_domains=zip(tuple_pair, dom_to_intersect),
                 space=sched_space,
-                statement_var_name=self.statement_var_name,
                 )
 
         map_before = _get_isl_map_for_stmt_inst(
