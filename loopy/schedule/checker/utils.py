@@ -190,7 +190,6 @@ def list_var_names_in_isl_sets(
 def create_symbolic_isl_map_from_tuples(
         tuple_pairs_with_domains,
         space,
-        statement_var_name,
         ):
     """Return an :class:`islpy.Map` constructed using the provided space,
         mapping input->output tuples provided in `tuple_pairs_with_domains`,
@@ -204,9 +203,6 @@ def create_symbolic_isl_map_from_tuples(
         :class:`islpy.Set` constraining variable bounds.
 
     :arg space: A :class:`islpy.Space` to be used to create the map.
-
-    :arg statement_var_name: A :class:`str` specifying the name of the
-        isl variable used to represent the unique :class:`int` statement id.
 
     :returns: A :class:`islpy.Map` constructed using the provided space
         as follows. For each `((tup_in, tup_out), domain)` in
