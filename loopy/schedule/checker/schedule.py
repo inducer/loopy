@@ -141,8 +141,8 @@ class LexSchedule(object):
 
     """
 
-    statement_var_name = "_lp_statement"
-    lex_var_prefix = "_lp_l"
+    statement_var_name = "_lp_sched_statement"
+    lex_var_prefix = "_lp_sched_l"
 
     def __init__(
             self,
