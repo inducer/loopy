@@ -595,9 +595,14 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
         new_callee_insns = []
         for callee_insn in callee_knl.instructions:
             if isinstance(callee_insn, MultiAssignmentBase):
-                new_callee_insns.append(callee_insn.copy(expression=dim_changer(
-                    callee_insn.expression),
-                    assignee=dim_changer(callee_insn.assignee)))
+                if isinstance(callee_insn, CallInstruction):
+                    new_callee_insns.append(callee_insn.copy(expression=dim_changer(
+                        callee_insn.expression),
+                        assignees=dim_changer(callee_insn.assignees)))
+                else:
+                    new_callee_insns.append(callee_insn.copy(expression=dim_changer(
+                        callee_insn.expression),
+                        assignee=dim_changer(callee_insn.assignee)))
 
             elif isinstance(callee_insn, (CInstruction,
                     _DataObliviousInstruction)):
