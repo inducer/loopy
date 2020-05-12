@@ -485,23 +485,40 @@ def test_statement_instance_ordering_creation():
 
         assert sio_aligned == expected_sio
 
-    expected_lex_order_map = isl.Map(
-        "{ "
-        "[l0, l1, l2, l3, l4] -> [l0_, l1_, l2_, l3_, l4_]: l0_ > l0; "
-        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_, l2_, l3_, l4_]: l1_ > l1; "
-        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_= l1, l2_, l3_, l4_]: l2_ > l2; "
-        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_= l1, l2_= l2, l3_, l4_]: l3_ > l3; "
-        "[l0, l1, l2, l3, l4] -> [l0_= l0, l1_= l1, l2_= l2, l3_= l3, l4_]: l4_ > l4"
-        "}"
-        )
+    expected_lex_order_map = isl.Map("{ "
+        "[_lp_sched_l0, _lp_sched_l1, _lp_sched_l2, _lp_sched_l3, _lp_sched_l4] -> "
+        "[_lp_sched_l0_, _lp_sched_l1_, _lp_sched_l2_, _lp_sched_l3_, _lp_sched_l4_]"
+        ":"
+        "("
+        "_lp_sched_l0_ > _lp_sched_l0 "
+        ") or ("
+        "_lp_sched_l0_= _lp_sched_l0 and "
+        "_lp_sched_l1_ > _lp_sched_l1 "
+        ") or ("
+        "_lp_sched_l0_= _lp_sched_l0 and "
+        "_lp_sched_l1_= _lp_sched_l1 and "
+        "_lp_sched_l2_ > _lp_sched_l2 "
+        ") or ("
+        "_lp_sched_l0_= _lp_sched_l0 and "
+        "_lp_sched_l1_= _lp_sched_l1 and "
+        "_lp_sched_l2_= _lp_sched_l2 and "
+        "_lp_sched_l3_ > _lp_sched_l3 "
+        ") or ("
+        "_lp_sched_l0_= _lp_sched_l0 and "
+        "_lp_sched_l1_= _lp_sched_l1 and "
+        "_lp_sched_l2_= _lp_sched_l2 and "
+        "_lp_sched_l3_= _lp_sched_l3 and "
+        "_lp_sched_l4_ > _lp_sched_l4"
+        ")"
+        "}")
 
     # Relationship between insn_a and insn_b ---------------------------------------
 
     expected_sio = isl.Map(
         "[pi, pj, pk] -> { "
-        "[statement' = 0, i', k'] -> [statement = 1, i, j] : "
+        "[_lp_sched_statement'=0, i', k'] -> [_lp_sched_statement=1, i, j]:"
         "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj and 0 <= i < pi and i > i'; "
-        "[statement' = 0, i', k'] -> [statement = 1, i = i', j] : "
+        "[_lp_sched_statement'=0, i', k'] -> [_lp_sched_statement=1, i=i', j]:"
         "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj "
         "}"
         )
@@ -516,9 +533,9 @@ def test_statement_instance_ordering_creation():
 
     expected_sio = isl.Map(
         "[pi, pj, pk] -> { "
-        "[statement' = 0, i', k'] -> [statement = 1, i, j] : "
+        "[_lp_sched_statement'=0, i', k'] -> [_lp_sched_statement=1, i, j]:"
         "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj and 0 <= i < pi and i > i'; "
-        "[statement' = 0, i', k'] -> [statement = 1, i = i', j] : "
+        "[_lp_sched_statement'=0, i', k'] -> [_lp_sched_statement=1, i=i', j]:"
         "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj "
         "}"
         )
@@ -533,7 +550,7 @@ def test_statement_instance_ordering_creation():
 
     expected_sio = isl.Map(
         "[pt, pi, pk] -> { "
-        "[statement' = 0, i', k'] -> [statement = 1, t] : "
+        "[_lp_sched_statement'=0, i', k'] -> [_lp_sched_statement=1, t]:"
         "0 <= i' < pi and 0 <= k' < pk and 0 <= t < pt "
         "}"
         )
@@ -548,11 +565,11 @@ def test_statement_instance_ordering_creation():
 
     expected_sio = isl.Map(
         "[pi, pj] -> { "
-        "[statement' = 0, i', j'] -> [statement = 1, i, j] : "
+        "[_lp_sched_statement'=0, i', j'] -> [_lp_sched_statement=1, i, j]:"
         "0 <= i' < pi and 0 <= j' < pj and i > i' and 0 <= i < pi and 0 <= j < pj; "
-        "[statement' = 0, i', j'] -> [statement = 1, i = i', j] : "
+        "[_lp_sched_statement'=0, i', j'] -> [_lp_sched_statement=1, i=i', j]:"
         "0 <= i' < pi and 0 <= j' < pj and j > j' and 0 <= j < pj; "
-        "[statement' = 0, i', j'] -> [statement = 1, i = i', j = j'] : "
+        "[_lp_sched_statement'=0, i', j'] -> [_lp_sched_statement=1, i=i', j=j']:"
         "0 <= i' < pi and 0 <= j' < pj "
         "}"
         )
@@ -567,7 +584,7 @@ def test_statement_instance_ordering_creation():
 
     expected_sio = isl.Map(
         "[pt, pi, pj] -> { "
-        "[statement' = 0, i', j'] -> [statement = 1, t] : "
+        "[_lp_sched_statement'=0, i', j'] -> [_lp_sched_statement=1, t]:"
         "0 <= i' < pi and 0 <= j' < pj and 0 <= t < pt "
         "}"
         )
@@ -582,7 +599,7 @@ def test_statement_instance_ordering_creation():
 
     expected_sio = isl.Map(
         "[pt, pi, pj] -> { "
-        "[statement' = 0, i', j'] -> [statement = 1, t] : "
+        "[_lp_sched_statement'=0, i', j'] -> [_lp_sched_statement=1, t]:"
         "0 <= i' < pi and 0 <= j' < pj and 0 <= t < pt "
         "}"
         )
