@@ -46,7 +46,7 @@ def get_statement_ordering_map(
 
     :returns: An :class:`islpy.Map` representing the lex schedule as
         a mapping from each statement instance to all statement instances
-        occuring later. I.e., we compose B -> L -> A^-1, where B
+        occuring later. I.e., we compose B ◦ L ◦ A^-1, where B
         is sched_map_before, A is sched_map_after, and L is the
         lexicographic ordering map.
 
