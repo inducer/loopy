@@ -82,12 +82,12 @@ class DTypeRegistryWrapper(object):
 def c99_preamble_generator(preamble_info):
     from loopy.types import to_loopy_type
     if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
-        yield("10_stdint", "#include <stdint.h>")
+        yield("00_stdint", "#include <stdint.h>")
     if any(dtype == to_loopy_type(np.dtype("bool"))
            for dtype in preamble_info.seen_dtypes):
-        yield("10_stdbool", "#include <stdbool.h>")
+        yield("00_stdbool", "#include <stdbool.h>")
     if any(dtype.is_complex() for dtype in preamble_info.seen_dtypes):
-        yield("10_complex", "#include <complex.h>")
+        yield("00_complex", "#include <complex.h>")
 
 
 def _preamble_generator(preamble_info):
@@ -420,6 +420,26 @@ class CMathCallable(ScalarCallable):
         np.dtype(np.complex256): np.dtype(np.float128)
     }
 
+    def generate_preambles(self, target):
+        if self.name_in_target.startswith("loopy_" + self.name):
+            template = {
+                "min": r"""
+                        static inline {TYPE} {NAME}({TYPE} a, {TYPE} b)
+                        {{ return a < b ? a : b; }}
+                """,
+                "max": r"""
+                        static inline {TYPE} {NAME}({TYPE} a, {TYPE} b)
+                        {{ return a > b ? a : b; }}
+                """,
+                "abs": r"""
+                        static inline {TYPE} {NAME}({TYPE} a)
+                        {{ return a < 0 ? -a : a; }}
+                """
+            }[self.name]
+            typ = target.dtype_to_typename(self.arg_id_to_dtype[-1])
+            yield ("06_def_" + self.name,
+                   template.format(TYPE=typ, NAME=self.name_in_target))
+
     def with_types(self, arg_id_to_dtype, caller_kernel, callables_table):
         name = self.name
 
@@ -442,17 +462,23 @@ class CMathCallable(ScalarCallable):
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
 
-            dtype = arg_id_to_dtype[0]
-            dtype = dtype.numpy_dtype
+            ltype = arg_id_to_dtype[0]
+            dtype = ltype.numpy_dtype
 
             if dtype.kind in ('u', 'i'):
+                if name == "abs":
+                    name = "loopy_abs_" + caller_kernel.target.dtype_to_typename(ltype)
+                    return (
+                        self.copy(name_in_target="loopy_abs",
+                                  arg_id_to_dtype={0: ltype, -1: ltype}),
+                        callables_table)
                 # ints and unsigned casted to float32
                 dtype = np.float32
 
             if name in ["real", "imag"]:
-                name = "c" + name # No float equivalents but type promotion applies.
-            elif  name in ["conj"]:
-                pass # Ditto
+                name = "c" + name  # No float equivalents but type promotion applies.
+            elif name in ["conj"]:
+                pass            # Ditto
             elif dtype.kind == "f":
                 if name == "abs":
                     name = "f" + name
@@ -470,7 +496,7 @@ class CMathCallable(ScalarCallable):
                     pass  # fabs
                 elif dtype in [np.float32, np.complex64]:
                     name = name + "f"  # fminf
-                elif dtype == [np.float128, np.complex256]:  # pylint:disable=no-member
+                elif dtype in [np.float128, np.complex256]:
                     name = name + "l"  # fminl
                 else:
                     raise LoopyTypeError("%s does not support type %s" % (name,
@@ -510,21 +536,25 @@ class CMathCallable(ScalarCallable):
                 if name == "pow":
                     name = "c" + name
                 else:
-                    raise LoopyTypeError("%s does not support complex numbers" % name)
-
-            from loopy.target.opencl import OpenCLTarget
-            if not isinstance(caller_kernel.target, OpenCLTarget):
-                # for CUDA, C Targets the name must be modified
-                if dtype in [np.float64, np.complex128]:
-                    pass  # fabs
-                elif dtype in [np.float32, np.complex64]:
-                    name = name + "f"  # fminf
-                elif dtype == [np.float128, np.complex256]:  # pylint:disable=no-member
-                    name = name + "l"  # fminl
-                else:
-                    raise LoopyTypeError("%s does not support type %s"
-                                         % (name, dtype))
+                    raise LoopyTypeError(
+                        "%s does not support complex numbers" % name)
+            if dtype.kind in {'u', 'i'} and name in {"fmax", "fmin"}:
+                ltype = NumpyType(dtype)
+                name = "loopy_" + name[1:] + "_" + caller_kernel.target.dtype_to_typename(ltype)
             else:
+                from loopy.target.opencl import OpenCLTarget
+                if not isinstance(caller_kernel.target, OpenCLTarget):
+                    # for CUDA, C Targets the name must be modified
+                    if dtype in [np.float64, np.complex128]:
+                        pass  # fabs
+                    elif dtype in [np.float32, np.complex64]:
+                        name = name + "f"  # fminf
+                    elif dtype in [np.float128, np.complex256]:
+                        name = name + "l"  # fminl
+                    else:
+                        raise LoopyTypeError("%s does not support type %s"
+                                             % (name, dtype))
+                else:
                     raise LoopyTypeError("%s does not support type %s"
                                          % (name, dtype))
             dtype = NumpyType(dtype)
