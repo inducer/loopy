@@ -80,8 +80,14 @@ class DTypeRegistryWrapper(object):
 # {{{ preamble generator
 
 def c99_preamble_generator(preamble_info):
+    from loopy.types import to_loopy_type
     if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
-        yield("10_stdint", "#include <stdint.h>")
+        yield("00_stdint", "#include <stdint.h>")
+    if any(dtype == to_loopy_type(np.dtype("bool"))
+           for dtype in preamble_info.seen_dtypes):
+        yield("00_stdbool", "#include <stdbool.h>")
+    if any(dtype.is_complex() for dtype in preamble_info.seen_dtypes):
+        yield("00_complex", "#include <complex.h>")
 
 
 def _preamble_generator(preamble_info):
@@ -102,7 +108,7 @@ def _preamble_generator(preamble_info):
     function_defs = {
             "loopy_floor_div": r"""
             #define LOOPY_DEFINE_FLOOR_DIV(SUFFIX, TYPE) \
-                inline TYPE loopy_floor_div_##SUFFIX(TYPE a, TYPE b) \
+                static inline TYPE loopy_floor_div_##SUFFIX(TYPE a, TYPE b) \
                 { \
                     if ((a<0) != (b<0)) \
                         a = a - (b + (b<0) - (b>=0)); \
@@ -114,7 +120,7 @@ def _preamble_generator(preamble_info):
 
             "loopy_floor_div_pos_b": r"""
             #define LOOPY_DEFINE_FLOOR_DIV_POS_B(SUFFIX, TYPE) \
-                inline TYPE loopy_floor_div_pos_b_##SUFFIX(TYPE a, TYPE b) \
+                static inline TYPE loopy_floor_div_pos_b_##SUFFIX(TYPE a, TYPE b) \
                 { \
                     if (a<0) \
                         a = a - (b-1); \
@@ -126,7 +132,7 @@ def _preamble_generator(preamble_info):
 
             "loopy_mod": r"""
             #define LOOPY_DEFINE_MOD(SUFFIX, TYPE) \
-                inline TYPE loopy_mod_##SUFFIX(TYPE a, TYPE b) \
+                static inline TYPE loopy_mod_##SUFFIX(TYPE a, TYPE b) \
                 { \
                     TYPE result = a%b; \
                     if (result < 0 && b > 0) \
@@ -141,7 +147,7 @@ def _preamble_generator(preamble_info):
 
             "loopy_mod_pos_b": r"""
             #define LOOPY_DEFINE_MOD_POS_B(SUFFIX, TYPE) \
-                inline TYPE loopy_mod_pos_b_##SUFFIX(TYPE a, TYPE b) \
+                static inline TYPE loopy_mod_pos_b_##SUFFIX(TYPE a, TYPE b) \
                 { \
                     TYPE result = a%b; \
                     if (result < 0) \
@@ -408,16 +414,42 @@ class CMathCallable(ScalarCallable):
     C-Target.
     """
 
+    _real_map = {
+        np.dtype(np.complex64): np.dtype(np.float32),
+        np.dtype(np.complex128): np.dtype(np.float64),
+        np.dtype(np.complex256): np.dtype(np.float128)
+    }
+
+    def generate_preambles(self, target):
+        if self.name_in_target.startswith("loopy_" + self.name):
+            template = {
+                "min": r"""
+                        static inline {TYPE} {NAME}({TYPE} a, {TYPE} b)
+                        {{ return a < b ? a : b; }}
+                """,
+                "max": r"""
+                        static inline {TYPE} {NAME}({TYPE} a, {TYPE} b)
+                        {{ return a > b ? a : b; }}
+                """,
+                "abs": r"""
+                        static inline {TYPE} {NAME}({TYPE} a)
+                        {{ return a < 0 ? -a : a; }}
+                """
+            }[self.name]
+            typ = target.dtype_to_typename(self.arg_id_to_dtype[-1])
+            yield ("06_def_" + self.name,
+                   template.format(TYPE=typ, NAME=self.name_in_target))
+
     def with_types(self, arg_id_to_dtype, caller_kernel, callables_table):
         name = self.name
 
-        if name in ["abs", "min", "max"]:
+        if name in ["min", "max"]:
             name = "f" + name
 
         # unary functions
-        if name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
+        if name in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
                     "tan", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor",
-                    "erf", "erfc"]:
+                    "erf", "erfc", "real", "imag", "conj"]:
 
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 0:
@@ -430,32 +462,55 @@ class CMathCallable(ScalarCallable):
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
 
-            dtype = arg_id_to_dtype[0]
-            dtype = dtype.numpy_dtype
+            ltype = arg_id_to_dtype[0]
+            dtype = ltype.numpy_dtype
 
             if dtype.kind in ('u', 'i'):
+                if name == "abs":
+                    name = "loopy_abs_" + caller_kernel.target.dtype_to_typename(ltype)
+                    return (
+                        self.copy(name_in_target="loopy_abs",
+                                  arg_id_to_dtype={0: ltype, -1: ltype}),
+                        callables_table)
                 # ints and unsigned casted to float32
                 dtype = np.float32
-            elif dtype.kind == 'c':
+
+            if name in ["real", "imag"]:
+                name = "c" + name  # No float equivalents but type promotion applies.
+            elif name in ["conj"]:
+                pass            # Ditto
+            elif dtype.kind == "f":
+                if name == "abs":
+                    name = "f" + name
+            elif dtype.kind == "c" and name in ["abs", "acos", "asin", "atan", "cos",
+                                                "cosh", "sin", "sinh", "tan", "tanh",
+                                                "exp", "log", "sqrt"]:
+                name = "c" + name
+            else:
                 raise LoopyTypeError("%s does not support type %s" % (name, dtype))
 
             from loopy.target.opencl import OpenCLTarget
             if not isinstance(caller_kernel.target, OpenCLTarget):
                 # for CUDA, C Targets the name must be modified
-                if dtype == np.float64:
+                if dtype in [np.float64, np.complex128]:
                     pass  # fabs
-                elif dtype == np.float32:
+                elif dtype in [np.float32, np.complex64]:
                     name = name + "f"  # fminf
-                elif dtype == np.float128:  # pylint:disable=no-member
+                elif dtype in [np.float128, np.complex256]:
                     name = name + "l"  # fminl
                 else:
                     raise LoopyTypeError("%s does not support type %s" % (name,
                         dtype))
 
+            if self.name in ["abs", "real", "float"] and dtype.kind == "c":
+                out_dtype = self._real_map[dtype]
+            else:
+                out_dtype = dtype
+
             return (
                     self.copy(name_in_target=name,
                         arg_id_to_dtype={0: NumpyType(dtype), -1:
-                            NumpyType(dtype)}),
+                            NumpyType(out_dtype)}),
                     callables_table)
 
         # binary functions
@@ -478,20 +533,30 @@ class CMathCallable(ScalarCallable):
                      if id >= 0])
 
             if dtype.kind == "c":
-                raise LoopyTypeError("%s does not support complex numbers")
-
-            elif dtype.kind == "f":
+                if name == "pow":
+                    name = "c" + name
+                else:
+                    raise LoopyTypeError(
+                        "%s does not support complex numbers" % name)
+            if dtype.kind in {'u', 'i'} and name in {"fmax", "fmin"}:
+                ltype = NumpyType(dtype)
+                name = "loopy_" + name[1:] + "_" + caller_kernel.target.dtype_to_typename(ltype)
+            else:
                 from loopy.target.opencl import OpenCLTarget
                 if not isinstance(caller_kernel.target, OpenCLTarget):
-                    if dtype == np.float64:
-                        pass  # fmin
-                    elif dtype == np.float32:
+                    # for CUDA, C Targets the name must be modified
+                    if dtype in [np.float64, np.complex128]:
+                        pass  # fabs
+                    elif dtype in [np.float32, np.complex64]:
                         name = name + "f"  # fminf
-                    elif dtype == np.float128:  # pylint:disable=no-member
+                    elif dtype in [np.float128, np.complex256]:
                         name = name + "l"  # fminl
                     else:
                         raise LoopyTypeError("%s does not support type %s"
                                              % (name, dtype))
+                else:
+                    raise LoopyTypeError("%s does not support type %s"
+                                         % (name, dtype))
             dtype = NumpyType(dtype)
             return (
                     self.copy(name_in_target=name,
@@ -499,7 +564,7 @@ class CMathCallable(ScalarCallable):
                     callables_table)
 
         return (
-                self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                self.copy(name_in_target=name, arg_id_to_dtype=arg_id_to_dtype),
                 callables_table)
 
 
@@ -511,7 +576,7 @@ def scope_c_math_functions(target, identifier):
     if identifier in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin",
                       "sinh", "pow", "atan2", "tanh", "exp", "log", "log10",
                       "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
-                      "fabs", "tan", "erf", "erfc"]:
+                      "tan", "erf", "erfc", "real", "imag", "conj"]:
         return CMathCallable(name=identifier)
     return None
 
@@ -1081,9 +1146,11 @@ class CTarget(CFamilyTarget):
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (
-                DTypeRegistry, fill_registry_with_c99_stdint_types)
+                DTypeRegistry, fill_registry_with_c99_stdint_types,
+                fill_registry_with_c99_complex_types)
         result = DTypeRegistry()
         fill_registry_with_c99_stdint_types(result)
+        fill_registry_with_c99_complex_types(result)
         return DTypeRegistryWrapper(result)
 
 

@@ -63,6 +63,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         self.fortran_abi = fortran_abi
 
     # {{{ helpers
+    complex_types = {np.complex64: "complex float",
+                     np.complex128: "complex double"}
 
     def with_assignments(self, names_to_vars):
         type_inf_mapper = self.type_inf_mapper.with_assignments(names_to_vars)
@@ -92,13 +94,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         return ary
 
     def wrap_in_typecast(self, actual_type, needed_dtype, s):
-        if (actual_type.is_complex() and needed_dtype.is_complex()
-                and actual_type != needed_dtype):
-            return var("%s_cast" % self.complex_type_name(needed_dtype))(s)
-        elif not actual_type.is_complex() and needed_dtype.is_complex():
-            return var("%s_fromreal" % self.complex_type_name(needed_dtype))(s)
-        else:
-            return s
+        return s
 
     def rec(self, expr, type_context=None, needed_dtype=None):
         if needed_dtype is None:
@@ -382,24 +378,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         from loopy.symbolic import Literal
 
         if isinstance(expr, (complex, np.complexfloating)):
-            try:
-                dtype = expr.dtype
-            except AttributeError:
-                # (COMPLEX_GUESS_LOGIC) This made it through type 'guessing' in
-                # type inference, and it was concluded there (search for
-                # COMPLEX_GUESS_LOGIC in loopy.type_inference), that no
-                # accuracy was lost by using single precision.
-                cast_type = "cfloat"
-            else:
-                if dtype == np.complex128:
-                    cast_type = "cdouble"
-                elif dtype == np.complex64:
-                    cast_type = "cfloat"
-                else:
-                    raise RuntimeError("unsupported complex type in expression "
-                            "generation: %s" % type(expr))
-
-            return var("%s_new" % cast_type)(expr.real, expr.imag)
+            return p.Sum((expr.real, p.Product((var("_Complex_I"), expr.imag))))
         elif isinstance(expr, np.generic):
             # Explicitly typed: Generated code must reflect type exactly.
 
@@ -513,199 +492,33 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
     def complex_type_name(self, dtype):
         from loopy.types import NumpyType
-        if not isinstance(dtype, NumpyType):
-            raise LoopyError("'%s' is not a complex type" % dtype)
 
-        if dtype.dtype == np.complex64:
-            return "cfloat"
-        if dtype.dtype == np.complex128:
-            return "cdouble"
-        else:
-            raise RuntimeError
-
-    def map_sum(self, expr, type_context):
-        def base_impl(expr, type_context):
-            return super(ExpressionToCExpressionMapper, self).map_sum(
-                    expr, type_context)
-
-        # I've added 'type_context == "i"' because of the following
-        # idiotic corner case: Code generation for subscripts comes
-        # through here, and it may involve variables that we know
-        # nothing about (offsets and such). If we fall into the allow_complex
-        # branch, we'll try to do type inference on these variables,
-        # and stuff breaks. This band-aid works around that. -AK
-        if not self.allow_complex or type_context == "i":
-            return base_impl(expr, type_context)
-
-        tgt_dtype = self.infer_type(expr)
-        is_complex = tgt_dtype.is_complex()
-
-        if not is_complex:
-            return base_impl(expr, type_context)
-        else:
-            tgt_name = self.complex_type_name(tgt_dtype)
-
-            reals = []
-            complexes = []
-            for child in expr.children:
-                if self.infer_type(child).is_complex():
-                    complexes.append(child)
-                else:
-                    reals.append(child)
-
-            real_sum = p.flattened_sum([self.rec(r, type_context) for r in reals])
-
-            c_applied = [self.rec(c, type_context, tgt_dtype) for c in complexes]
-
-            def binary_tree_add(start, end):
-                if start + 1 == end:
-                    return c_applied[start]
-                mid = (start + end)//2
-                lsum = binary_tree_add(start, mid)
-                rsum = binary_tree_add(mid, end)
-                return var("%s_add" % tgt_name)(lsum, rsum)
-
-            complex_sum = binary_tree_add(0, len(c_applied))
-
-            if real_sum:
-                return var("%s_radd" % tgt_name)(real_sum, complex_sum)
+        try:
+            if isinstance(dtype, NumpyType):
+                return self.complex_types[dtype.dtype.type]
             else:
-                return complex_sum
-
-    def map_product(self, expr, type_context):
-        def base_impl(expr, type_context):
-            return super(ExpressionToCExpressionMapper, self).map_product(
-                    expr, type_context)
-
-        # I've added 'type_context == "i"' because of the following
-        # idiotic corner case: Code generation for subscripts comes
-        # through here, and it may involve variables that we know
-        # nothing about (offsets and such). If we fall into the allow_complex
-        # branch, we'll try to do type inference on these variables,
-        # and stuff breaks. This band-aid works around that. -AK
-        if not self.allow_complex or type_context == "i":
-            return base_impl(expr, type_context)
-
-        tgt_dtype = self.infer_type(expr)
-        is_complex = tgt_dtype.is_complex()
-
-        if not is_complex:
-            return base_impl(expr, type_context)
-        else:
-            tgt_name = self.complex_type_name(tgt_dtype)
-
-            reals = []
-            complexes = []
-            for child in expr.children:
-                if self.infer_type(child).is_complex():
-                    complexes.append(child)
-                else:
-                    reals.append(child)
-
-            real_prd = p.flattened_product(
-                    [self.rec(r, type_context) for r in reals])
-
-            c_applied = [self.rec(c, type_context, tgt_dtype) for c in complexes]
-
-            def binary_tree_mul(start, end):
-                if start + 1 == end:
-                    return c_applied[start]
-                mid = (start + end)//2
-                lsum = binary_tree_mul(start, mid)
-                rsum = binary_tree_mul(mid, end)
-                return var("%s_mul" % tgt_name)(lsum, rsum)
-
-            complex_prd = binary_tree_mul(0, len(complexes))
-
-            if real_prd:
-                return var("%s_rmul" % tgt_name)(real_prd, complex_prd)
-            else:
-                return complex_prd
+                return self.complex_types[dtype.type]
+        except KeyError:
+            raise LoopyError("could not map '%s' to a complex type name." % dtype)
 
     def map_quotient(self, expr, type_context):
-        def base_impl(expr, type_context, num_tgt_dtype=None):
-            num = self.rec(expr.numerator, type_context, num_tgt_dtype)
-
-            # analogous to ^{-1}
-            denom = self.rec(expr.denominator, type_context)
-
-            if (n_dtype.kind not in "fc"
-                    and d_dtype.kind not in "fc"):
-                # must both be integers
-                if type_context == "f":
-                    num = var("(float) ")(num)
-                    denom = var("(float) ")(denom)
-                elif type_context == "d":
-                    num = var("(double) ")(num)
-                    denom = var("(double) ")(denom)
-
-            return type(expr)(num, denom)
-
-        n_dtype = self.infer_type(expr.numerator).numpy_dtype
-        d_dtype = self.infer_type(expr.denominator).numpy_dtype
-
-        if not self.allow_complex:
-            return base_impl(expr, type_context)
-
-        n_complex = 'c' == n_dtype.kind
-        d_complex = 'c' == d_dtype.kind
-
-        tgt_dtype = self.infer_type(expr)
-
-        if not (n_complex or d_complex):
-            return base_impl(expr, type_context)
-        elif n_complex and not d_complex:
-            return var("%s_divider" % self.complex_type_name(tgt_dtype))(
-                    self.rec(expr.numerator, type_context, tgt_dtype),
-                    self.rec(expr.denominator, type_context))
-        elif not n_complex and d_complex:
-            return var("%s_rdivide" % self.complex_type_name(tgt_dtype))(
-                    self.rec(expr.numerator, type_context),
-                    self.rec(expr.denominator, type_context, tgt_dtype))
-        else:
-            return var("%s_divide" % self.complex_type_name(tgt_dtype))(
-                    self.rec(expr.numerator, type_context, tgt_dtype),
-                    self.rec(expr.denominator, type_context, tgt_dtype))
+        target_dtype = self.infer_type(expr)
+        return type(expr)(self.rec(expr.numerator, type_context, target_dtype),
+                          self.rec(expr.denominator, type_context, target_dtype))
 
     def map_power(self, expr, type_context):
-        def base_impl(expr, type_context):
-            from pymbolic.primitives import is_constant, is_zero
-            if is_constant(expr.exponent):
-                if is_zero(expr.exponent):
-                    return 1
-                elif is_zero(expr.exponent - 1):
-                    return self.rec(expr.base, type_context)
-                elif is_zero(expr.exponent - 2):
-                    return self.rec(expr.base*expr.base, type_context)
+        from pymbolic.primitives import is_constant, is_zero
+        if is_constant(expr.exponent):
+            if is_zero(expr.exponent):
+                return 1
+            elif is_zero(expr.exponent - 1):
+                return self.rec(expr.base, type_context)
+            elif is_zero(expr.exponent - 2):
+                return self.rec(expr.base*expr.base, type_context)
 
-            return type(expr)(
-                    self.rec(expr.base, type_context),
-                    self.rec(expr.exponent, type_context))
-
-        if not self.allow_complex:
-            return base_impl(expr, type_context)
-
-        tgt_dtype = self.infer_type(expr)
-        if tgt_dtype.is_complex():
-            if expr.exponent in [2, 3, 4]:
-                value = expr.base
-                for i in range(expr.exponent-1):
-                    value = value * expr.base
-                return self.rec(value, type_context)
-            else:
-                b_complex = self.infer_type(expr.base).is_complex()
-                e_complex = self.infer_type(expr.exponent).is_complex()
-
-                if b_complex and not e_complex:
-                    return var("%s_powr" % self.complex_type_name(tgt_dtype))(
-                            self.rec(expr.base, type_context, tgt_dtype),
-                            self.rec(expr.exponent, type_context))
-                else:
-                    return var("%s_pow" % self.complex_type_name(tgt_dtype))(
-                            self.rec(expr.base, type_context, tgt_dtype),
-                            self.rec(expr.exponent, type_context, tgt_dtype))
-
-        return base_impl(expr, type_context)
+        return type(expr)(
+            self.rec(expr.base, type_context),
+            self.rec(expr.exponent, type_context))
 
     # }}}
 
