@@ -1380,7 +1380,7 @@ def draw_dependencies_as_unicode_arrows(
                 .replace(style.RESET_ALL, ""))
         return len(s)
 
-    def truncate_without_color_escapes(s, l):
+    def truncate_without_color_escapes(s, length):
         # FIXME: This is a bit dumb--it removes color escapes when truncation
         # is needed.
 
@@ -1388,7 +1388,7 @@ def draw_dependencies_as_unicode_arrows(
                 .replace(fore.RED, "")
                 .replace(style.RESET_ALL, ""))
 
-        return s[:l] + u"…"
+        return s[:length] + u"…"
 
     def conform_to_uniform_length(s):
         len_s = len_without_color_escapes(s)
@@ -1510,7 +1510,7 @@ def stringify_instruction_list(kernel):
                     ", ".join("%s=%s" % (name, expr)
                         for name, expr in insn.iname_exprs))
 
-            trailing = [l for l in insn.code.split("\n")]
+            trailing = insn.code.split("\n")
         elif isinstance(insn, lp.BarrierInstruction):
             lhs = ""
             rhs = "... %sbarrier" % insn.synchronization_kind[0]

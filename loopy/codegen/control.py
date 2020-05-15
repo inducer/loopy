@@ -197,14 +197,14 @@ def get_required_predicates(kernel, sched_index):
     return result
 
 
-def group_by(l, key, merge):
-    if not l:
-        return l
+def group_by(entry, key, merge):
+    if not entry:
+        return entry
 
     result = []
-    previous = l[0]
+    previous = entry[0]
 
-    for item in l[1:]:
+    for item in entry[1:]:
         if key(previous) == key(item):
             previous = merge(previous, item)
 

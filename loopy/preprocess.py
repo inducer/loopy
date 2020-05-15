@@ -1372,7 +1372,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         track_iname = var_name_gen(
                 "{sweep_iname}__seq_scan"
-                .format(scan_iname=scan_iname, sweep_iname=sweep_iname))
+                .format(sweep_iname=sweep_iname))
 
         get_or_add_sweep_tracking_iname_and_domain(
                 scan_iname, sweep_iname, sweep_min_value, scan_min_value,
@@ -1482,7 +1482,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         track_iname = var_name_gen(
                 "{sweep_iname}__pre_scan"
-                .format(scan_iname=scan_iname, sweep_iname=sweep_iname))
+                .format(sweep_iname=sweep_iname))
 
         get_or_add_sweep_tracking_iname_and_domain(
                 scan_iname, sweep_iname, sweep_min_value, scan_min_value, stride,
