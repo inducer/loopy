@@ -651,11 +651,15 @@ class SchedulerState(ImmutableRecord):
             return None
 
 
-def schedule_as_many_insns_as_possible(sched_state):
+def schedule_as_many_run_insns_as_possible(sched_state):
     """
     Returns an instance of :class:`loopy.schedule.SchedulerState`, by appending
     all available instructions in the current loop nesting to the schedule.
     """
+    if sched_state.preschedule:
+        #FIXME: unsure how to perform this optimization for a scheduler with a
+        # preschedule, bail for now.
+        return sched_state
 
     # {{{ topological sort
 
@@ -690,7 +694,6 @@ def schedule_as_many_insns_as_possible(sched_state):
     for insn in toposorted_insns:
         if isinstance(insn, MultiAssignmentBase):
             if insn.within_inames == frozenset(sched_state.active_inames):
-                #FIXME: should we do any changes to preschedule?
                 sched_item = RunInstruction(insn_id=insn.id)
                 updated_schedule = updated_sched_state.schedule + (sched_item, )
                 updated_scheduled_insn_ids = (updated_sched_state.scheduled_insn_ids
