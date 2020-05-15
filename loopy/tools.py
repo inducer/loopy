@@ -210,11 +210,11 @@ def remove_common_indentation(code, require_leading_newline=True,
 
     test_line = None
     if ignore_lines_starting_with:
-        for l in lines:
-            strip_l = l.lstrip()
+        for line in lines:
+            strip_l = line.lstrip()
             if (strip_l
                     and not strip_l.startswith(ignore_lines_starting_with)):
-                test_line = l
+                test_line = line
                 break
 
     else:

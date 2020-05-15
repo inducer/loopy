@@ -273,8 +273,7 @@ class UnidirectionalUnifier(UnidirectionalUnifierBase):
         if not isinstance(other, type(expr)):
             return self.treat_mismatch(expr, other, unis)
         if (expr.inames != other.inames
-                or type(expr.operation) != type(other.operation)  # noqa
-                ):
+                or type(expr.operation) != type(other.operation)):  # noqa
             return []
 
         return self.rec(expr.expr, other.expr, unis)
