@@ -29,7 +29,7 @@ import sys
 import islpy as isl
 from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
-from pytools import MinRecursionLimit, ProcessLogger
+from pytools import natsorted, MinRecursionLimit, ProcessLogger
 
 from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
@@ -571,6 +571,7 @@ class SchedulerState(ImmutableRecord):
 
     .. attribute:: loop_priority
 
+        #FIXME: incorrect docs.
         See :func:`loop_nest_around_map`.
 
     .. attribute:: breakable_inames
@@ -585,6 +586,10 @@ class SchedulerState(ImmutableRecord):
         scheduler.  See :attr:`ilp_inames`, :attr:`vec_inames`.
 
     .. rubric:: Time-varying scheduler state
+
+    .. attribute:: insn_ids_to_try
+
+        #FIXME: docs?
 
     .. attribute:: active_inames
 
@@ -644,6 +649,64 @@ class SchedulerState(ImmutableRecord):
             return self.active_inames[-1]
         else:
             return None
+
+
+def schedule_as_many_insns_as_possible(sched_state):
+    """
+    Returns an instance of :class:`loopy.schedule.SchedulerState`, by appending
+    all available instructions in the current loop nesting to the schedule.
+    """
+
+    # {{{ topological sort
+
+    visited_insn_ids = set()
+    toposorted_insns = []
+
+    def insert_insn_into_order(insn):
+        if insn.id in visited_insn_ids:
+            return
+        visited_insn_ids.add(insn.id)
+
+        for dep_id in natsorted(insn.depends_on & sched_state.unscheduled_insn_ids):
+            dep_insn = sched_state.kernel.id_to_insn[dep_id]
+            if frozenset(sched_state.active_inames) <= dep_insn.within_inames:
+                insert_insn_into_order(dep_insn)
+
+        toposorted_insns.append(insn)
+
+    for unscheduled_insn_id in sched_state.unscheduled_insn_ids:
+        unscheduled_insn = sched_state.kernel.id_to_insn[unscheduled_insn_id]
+        if frozenset(sched_state.active_inames) <= unscheduled_insn.within_inames:
+            insert_insn_into_order(unscheduled_insn)
+
+    # }}}
+
+    # select the top instructions in toposorted_insns only which have active
+    # inames corresponding to those of sched_state
+    from loopy.kernel.instruction import MultiAssignmentBase
+
+    updated_sched_state = sched_state.copy()
+
+    for insn in toposorted_insns:
+        if isinstance(insn, MultiAssignmentBase):
+            if insn.within_inames == frozenset(sched_state.active_inames):
+                #FIXME: should we do any changes to preschedule?
+                sched_item = RunInstruction(insn_id=insn.id)
+                updated_schedule = updated_sched_state.schedule + (sched_item, )
+                updated_scheduled_insn_ids = (updated_sched_state.scheduled_insn_ids
+                        | frozenset([insn.id]))
+                updated_unscheduled_insn_ids = (
+                        updated_sched_state.unscheduled_insn_ids
+                        - frozenset([insn.id]))
+                updated_sched_state = updated_sched_state.copy(
+                        insn_ids_to_try=None,
+                        schedule=updated_schedule,
+                        scheduled_insn_ids=updated_scheduled_insn_ids,
+                        unscheduled_insn_ids=updated_unscheduled_insn_ids)
+                continue
+        break
+
+    return updated_sched_state
 
 
 def generate_loop_schedules_internal(
