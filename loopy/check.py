@@ -475,9 +475,15 @@ def declares_nosync_with(kernel, var_address_space, dep_a, dep_b):
 
 
 class DependencyTraversingMapper(object):
-    def __init__(self, insn_id_to_dep_reqs, depends_on):
+    """
+    Helper class to traverse the dependency graph.
+    """
+    def __init__(self, insn_id_to_dep_reqs, depends_on, rev_depends):
         self.insn_id_to_dep_reqs = insn_id_to_dep_reqs
         self.depends_on = depends_on
+        self.rev_depends = rev_depends
+        self.visited = set()
+        self.memoized_rev_deps = {}
 
     def move(self, insn_id, rev_deps):
         if insn_id in rev_deps:
@@ -485,18 +491,34 @@ class DependencyTraversingMapper(object):
             raise DependencyCycleFound("Dependency cycle found:"
                     " '{}'.".format(rev_deps))
 
-        self.insn_id_to_dep_reqs[insn_id] -= rev_deps
-        new_rev_deps = rev_deps | set([insn_id])
-        for depender in self.depends_on[insn_id]:
-            self.move(depender, new_rev_deps)
+        if insn_id in self.visited:
+            return
+
+        if self.rev_depends[insn_id] <= self.visited:
+            new_rev_deps = rev_deps | self.memoized_rev_deps.pop(insn_id,
+                    set()) | set([insn_id])
+
+            self.insn_id_to_dep_reqs[insn_id] -= new_rev_deps
+            self.visited.add(insn_id)
+            for dep in self.depends_on[insn_id]:
+                self.move(dep, new_rev_deps)
+        else:
+            memoized_rev_deps = self.memoized_rev_deps.get(insn_id, set())
+            memoized_rev_deps.update(rev_deps)
 
         return
 
 
 class ReverseDependencyTraversingMapper(object):
-    def __init__(self, insn_id_to_dep_reqs, rev_depends):
+    """
+    Helper class to traverse the reverse dependency graph.
+    """
+    def __init__(self, insn_id_to_dep_reqs, rev_depends, depends_on):
         self.insn_id_to_dep_reqs = insn_id_to_dep_reqs
         self.rev_depends = rev_depends
+        self.depends_on = depends_on
+        self.visited = set()
+        self.memoized_deps = {}
 
     def move(self, insn_id, deps):
         if insn_id in deps:
@@ -504,10 +526,20 @@ class ReverseDependencyTraversingMapper(object):
             raise DependencyCycleFound("Dependency cycle found:"
                     " '{}'.".format(deps))
 
-        self.insn_id_to_dep_reqs[insn_id] -= deps
-        new_deps = deps | set([insn_id])
-        for depender in self.rev_depends[insn_id]:
-            self.move(depender, new_deps)
+        if insn_id in self.visited:
+            return
+
+        if self.depends_on[insn_id] <= self.visited:
+            new_deps = deps | self.memoized_deps.pop(insn_id,
+                    set()) | set([insn_id])
+
+            self.insn_id_to_dep_reqs[insn_id] -= new_deps
+            self.visited.add(insn_id)
+            for rev_dep in self.rev_depends[insn_id]:
+                self.move(rev_dep, new_deps)
+        else:
+            memoized_deps = self.memoized_deps.get(insn_id, set())
+            memoized_deps.update(deps)
 
         return
 
@@ -583,17 +615,23 @@ def _check_variable_access_ordered_inner(kernel):
     # }}}
 
     forward_dep_traverser = DependencyTraversingMapper(insn_id_to_dep_reqs,
-            depends_on)
+            depends_on, rev_depends)
     reverse_dep_traverser = ReverseDependencyTraversingMapper(insn_id_to_dep_reqs,
-            rev_depends)
+            rev_depends, depends_on)
 
     for insn_id, rev_deps in six.iteritems(rev_depends):
         if not rev_deps:
             forward_dep_traverser.move(insn_id, set())
 
+    assert set([insn.id for insn in kernel.instructions]) == (
+            forward_dep_traverser.visited)
+
     for insn_id, deps in six.iteritems(depends_on):
         if not deps:
             reverse_dep_traverser.move(insn_id, set())
+
+    assert set([insn.id for insn in kernel.instructions]) == (
+            reverse_dep_traverser.visited)
 
     for insn_id, dep_ids in six.iteritems(insn_id_to_dep_reqs):
         insn = kernel.id_to_insn[insn_id]
