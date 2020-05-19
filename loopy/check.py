@@ -624,15 +624,25 @@ def _check_variable_access_ordered_inner(kernel):
         if not rev_deps:
             forward_dep_traverser.move(insn_id, set())
 
-    assert set([insn.id for insn in kernel.instructions]) == (
+    if set([insn.id for insn in kernel.instructions]) != (
+            forward_dep_traverser.visited):
+        not_visited_insns = set([insn.id for insn in kernel.instructions]) - (
             forward_dep_traverser.visited)
+        from loopy.diagnostic import DependencyCycleFound
+        raise DependencyCycleFound("Dependency cycle found in:"
+                " '{}'.".format(not_visited_insns))
 
     for insn_id, deps in six.iteritems(depends_on):
         if not deps:
             reverse_dep_traverser.move(insn_id, set())
 
-    assert set([insn.id for insn in kernel.instructions]) == (
+    if set([insn.id for insn in kernel.instructions]) != (
+            reverse_dep_traverser.visited):
+        not_visited_insns = set([insn.id for insn in kernel.instructions]) - (
             reverse_dep_traverser.visited)
+        from loopy.diagnostic import DependencyCycleFound
+        raise DependencyCycleFound("Dependency cycle found in:"
+                " '{}'.".format(not_visited_insns))
 
     for insn_id, dep_ids in six.iteritems(insn_id_to_dep_reqs):
         insn = kernel.id_to_insn[insn_id]
