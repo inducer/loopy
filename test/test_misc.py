@@ -36,7 +36,7 @@ from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_compute_sccs():
-    from loopy.tools import compute_sccs
+    from pytools.graph import compute_sccs
     import random
 
     rng = random.Random(0)
