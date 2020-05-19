@@ -92,14 +92,32 @@ def get_lex_order_constraint(islvars, before_names, after_names):
 
     """
 
+    # Initialize constraint with i0' < i0
     lex_order_constraint = islvars[before_names[0]].lt_set(islvars[after_names[0]])
+
+    # Initialize conjunction constraint with True.
+    # For each dim d, starting with d=1, this conjunction will have d equalities,
+    # e.g., (i0' = i0 and i1' = i1 and ... i(d-1)' = i(d-1))
+    equality_constraint_conj = islvars[0].eq_set(islvars[0])
+
     for i in range(1, len(before_names)):
-        lex_order_constraint_conj = islvars[before_names[i]].lt_set(
-            islvars[after_names[i]])
-        for j in range(i):
-            lex_order_constraint_conj = lex_order_constraint_conj & \
-                islvars[before_names[j]].eq_set(islvars[after_names[j]])
-        lex_order_constraint = lex_order_constraint | lex_order_constraint_conj
+
+        # Add the next equality constraint to equality_constraint_conj
+        equality_constraint_conj = equality_constraint_conj & \
+            islvars[before_names[i-1]].eq_set(islvars[after_names[i-1]])
+
+        # Create a conjunction constraint by combining a less-than
+        # constraint for this dim, e.g., (i1' < i1), with the current
+        # equality constraint conjunction.
+        # For each dim d, starting with d=1, this conjunction will have d equalities,
+        # and one inequality,
+        # e.g., (i0' = i0 and i1' = i1 and ... i(d-1)' = i(d-1) and id' < id)
+        full_conj_constraint = islvars[before_names[i]].lt_set(
+            islvars[after_names[i]]) & equality_constraint_conj
+
+        # Union this new constraint with the current lex_order_constraint
+        lex_order_constraint = lex_order_constraint | full_conj_constraint
+
     return lex_order_constraint
 
 
