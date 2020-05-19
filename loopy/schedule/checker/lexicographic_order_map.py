@@ -153,13 +153,13 @@ def create_lex_order_map(
 
     """
 
-    if before_names is None:
-        before_names = ["i%s" % (i) for i in range(n_dims)]
     if after_names is None:
+        after_names = ["i%s" % (i) for i in range(n_dims)]
+    if before_names is None:
         from loopy.schedule.checker.utils import (
             append_marker_to_strings,
         )
-        after_names = append_marker_to_strings(before_names, marker="_")
+        before_names = append_marker_to_strings(after_names, marker="'")
 
     assert len(before_names) == len(after_names) == n_dims
     dim_type = isl.dim_type

@@ -409,7 +409,7 @@ class LexSchedule(object):
         )
         n_dims = self.max_lex_dims()
         return create_lex_order_map(
-            n_dims, before_names=self.get_lex_var_names())
+            n_dims, after_names=self.get_lex_var_names())
 
     def __str__(self):
 

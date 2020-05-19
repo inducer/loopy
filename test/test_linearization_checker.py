@@ -486,31 +486,37 @@ def test_statement_instance_ordering_creation():
         assert sio_aligned == expected_sio
 
     expected_lex_order_map = isl.Map("{ "
-        "[_lp_sched_l0, _lp_sched_l1, _lp_sched_l2, _lp_sched_l3, _lp_sched_l4] -> "
-        "[_lp_sched_l0_, _lp_sched_l1_, _lp_sched_l2_, _lp_sched_l3_, _lp_sched_l4_]"
+        "[_lp_sched_l0', _lp_sched_l1', _lp_sched_l2', _lp_sched_l3', _lp_sched_l4']"
+        " -> [_lp_sched_l0, _lp_sched_l1, _lp_sched_l2, _lp_sched_l3, _lp_sched_l4]"
         ":"
         "("
-        "_lp_sched_l0_ > _lp_sched_l0 "
+        "_lp_sched_l0' < _lp_sched_l0 "
         ") or ("
-        "_lp_sched_l0_= _lp_sched_l0 and "
-        "_lp_sched_l1_ > _lp_sched_l1 "
+        "_lp_sched_l0'= _lp_sched_l0 and "
+        "_lp_sched_l1' < _lp_sched_l1 "
         ") or ("
-        "_lp_sched_l0_= _lp_sched_l0 and "
-        "_lp_sched_l1_= _lp_sched_l1 and "
-        "_lp_sched_l2_ > _lp_sched_l2 "
+        "_lp_sched_l0'= _lp_sched_l0 and "
+        "_lp_sched_l1'= _lp_sched_l1 and "
+        "_lp_sched_l2' < _lp_sched_l2 "
         ") or ("
-        "_lp_sched_l0_= _lp_sched_l0 and "
-        "_lp_sched_l1_= _lp_sched_l1 and "
-        "_lp_sched_l2_= _lp_sched_l2 and "
-        "_lp_sched_l3_ > _lp_sched_l3 "
+        "_lp_sched_l0'= _lp_sched_l0 and "
+        "_lp_sched_l1'= _lp_sched_l1 and "
+        "_lp_sched_l2'= _lp_sched_l2 and "
+        "_lp_sched_l3' < _lp_sched_l3 "
         ") or ("
-        "_lp_sched_l0_= _lp_sched_l0 and "
-        "_lp_sched_l1_= _lp_sched_l1 and "
-        "_lp_sched_l2_= _lp_sched_l2 and "
-        "_lp_sched_l3_= _lp_sched_l3 and "
-        "_lp_sched_l4_ > _lp_sched_l4"
+        "_lp_sched_l0'= _lp_sched_l0 and "
+        "_lp_sched_l1'= _lp_sched_l1 and "
+        "_lp_sched_l2'= _lp_sched_l2 and "
+        "_lp_sched_l3'= _lp_sched_l3 and "
+        "_lp_sched_l4' < _lp_sched_l4"
         ")"
         "}")
+
+    # Isl ignores these apostrophes, but test would still pass since it ignores
+    # variable names when checking for equality. Even so, explicitly add apostrophes
+    # for sanity.
+    expected_lex_order_map = append_marker_to_isl_map_var_names(
+        expected_lex_order_map, isl.dim_type.in_, "'")
 
     # Relationship between insn_a and insn_b ---------------------------------------
 
