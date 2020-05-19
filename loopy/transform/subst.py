@@ -27,6 +27,7 @@ import six
 from loopy.symbolic import (
         RuleAwareIdentityMapper, SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
+from loopy.transform.iname import remove_any_newly_unused_inames
 
 from pytools import ImmutableRecord
 from pymbolic import var
@@ -148,8 +149,30 @@ def extract_subst(kernel, subst_name, template, parameters=()):
 
     new_insns = []
 
+    def transform_assignee(expr):
+        # Assignment LHS's cannot be subst rules. Treat them
+        # specially.
+
+        import pymbolic.primitives as prim
+        if isinstance(expr, tuple):
+            return tuple(
+                    transform_assignee(expr_i)
+                    for expr_i in expr)
+
+        elif isinstance(expr, prim.Subscript):
+            return type(expr)(
+                    expr.aggregate,
+                    cbmapper(expr.index))
+
+        elif isinstance(expr, prim.Variable):
+            return expr
+        else:
+            raise ValueError("assignment LHS not understood")
+
     for insn in kernel.instructions:
-        new_insns.append(insn.with_transformed_expressions(cbmapper))
+        new_insns.append(
+                insn.with_transformed_expressions(
+                    cbmapper, assignee_f=transform_assignee))
 
     from loopy.kernel.data import SubstitutionRule
     new_substs = {
@@ -256,6 +279,7 @@ class AssignmentToSubstChanger(RuleAwareIdentityMapper):
             return var(subst_name)(*index)
 
 
+@remove_any_newly_unused_inames
 def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         force_retain_argument=False):
     """Extract an assignment (to a temporary variable or an argument)

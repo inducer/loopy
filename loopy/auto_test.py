@@ -534,7 +534,7 @@ def auto_test_vs_ref(
     from loopy.target.pyopencl import PyOpenCLTarget
     if test_knl.state not in [
             KernelState.PREPROCESSED,
-            KernelState.SCHEDULED]:
+            KernelState.LINEARIZED]:
         if isinstance(test_knl.target, PyOpenCLTarget):
             test_knl = test_knl.copy(target=PyOpenCLTarget(ctx.devices[0]))
 

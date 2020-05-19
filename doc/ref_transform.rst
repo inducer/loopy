@@ -118,7 +118,7 @@ Finishing up
 
 .. autofunction:: generate_loop_schedules
 
-.. autofunction:: get_one_scheduled_kernel
+.. autofunction:: get_one_linearized_kernel
 
 .. autofunction:: save_and_reload_temporaries
 

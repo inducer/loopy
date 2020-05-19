@@ -39,13 +39,13 @@ def defines_to_python_code(defines_str):
     import re
     define_re = re.compile(r"^\#define\s+([a-zA-Z0-9_]+)\s+(.*)$")
     result = []
-    for l in defines_str.split("\n"):
-        if not l.strip():
+    for line in defines_str.split("\n"):
+        if not line.strip():
             continue
 
-        match = define_re.match(l)
+        match = define_re.match(line)
         if match is None:
-            raise RuntimeError("#define not understood: '%s'" % l)
+            raise RuntimeError("#define not understood: '%s'" % line)
 
         result.append(
                 "%s = %s" % (match.group(1), to_python_literal(match.group(2))))
