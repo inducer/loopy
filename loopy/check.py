@@ -476,7 +476,7 @@ def declares_nosync_with(kernel, var_address_space, dep_a, dep_b):
 
 class DependencyTraversingMapper(object):
     """
-    Helper class to traverse the dependency graph.
+    Helper class to traverse the dependency graph in a postorder fashion.
     """
     def __init__(self, insn_id_to_dep_reqs, depends_on, rev_depends):
         self.insn_id_to_dep_reqs = insn_id_to_dep_reqs
@@ -503,7 +503,7 @@ class DependencyTraversingMapper(object):
             for dep in self.depends_on[insn_id]:
                 self.move(dep, new_rev_deps)
         else:
-            memoized_rev_deps = self.memoized_rev_deps.get(insn_id, set())
+            memoized_rev_deps = self.memoized_rev_deps.setdefault(insn_id, set())
             memoized_rev_deps.update(rev_deps)
 
         return
@@ -511,7 +511,8 @@ class DependencyTraversingMapper(object):
 
 class ReverseDependencyTraversingMapper(object):
     """
-    Helper class to traverse the reverse dependency graph.
+    Helper class to traverse the reverse dependency graph in a postorder
+    fashion.
     """
     def __init__(self, insn_id_to_dep_reqs, rev_depends, depends_on):
         self.insn_id_to_dep_reqs = insn_id_to_dep_reqs
@@ -538,7 +539,7 @@ class ReverseDependencyTraversingMapper(object):
             for rev_dep in self.rev_depends[insn_id]:
                 self.move(rev_dep, new_deps)
         else:
-            memoized_deps = self.memoized_deps.get(insn_id, set())
+            memoized_deps = self.memoized_deps.setdefault(insn_id, set())
             memoized_deps.update(deps)
 
         return
@@ -665,9 +666,9 @@ def _check_variable_access_ordered_inner(kernel):
                     # Do not enforce ordering for aliasing-based relationships
                     # in different groups.
                     if (is_relationship_by_aliasing and (
-                            bool(writer.groups & dep_id.conflicts_with_groups)
+                            bool(insn.groups & dep.conflicts_with_groups)
                             or
-                            bool(dep_id.groups & writer.conflicts_with_groups))):
+                            bool(dep.groups & insn.conflicts_with_groups))):
                         continue
 
                     msg = ("No dependency relationship found between "
