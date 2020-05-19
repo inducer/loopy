@@ -1,3 +1,4 @@
+# coding: utf-8
 __copyright__ = "Copyright (C) 2019 James Stevens"
 
 __license__ = """
