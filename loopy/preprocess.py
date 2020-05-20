@@ -1979,7 +1979,7 @@ def find_idempotence(kernel):
 
     # Find SCCs of dep_graph. These are used for checking if the instruction is
     # in a dependency cycle.
-    from loopy.tools import compute_sccs
+    from pytools.graph import compute_sccs
 
     sccs = dict((item, scc)
             for scc in compute_sccs(dep_graph)

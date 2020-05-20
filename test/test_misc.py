@@ -24,7 +24,6 @@ THE SOFTWARE.
 
 import six  # noqa
 import pytest
-from six.moves import range
 
 import sys
 
@@ -33,50 +32,6 @@ logger = logging.getLogger(__name__)
 
 
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
-
-
-def test_compute_sccs():
-    from loopy.tools import compute_sccs
-    import random
-
-    rng = random.Random(0)
-
-    def generate_random_graph(nnodes):
-        graph = dict((i, set()) for i in range(nnodes))
-        for i in range(nnodes):
-            for j in range(nnodes):
-                # Edge probability 2/n: Generates decently interesting inputs.
-                if rng.randint(0, nnodes - 1) <= 1:
-                    graph[i].add(j)
-        return graph
-
-    def verify_sccs(graph, sccs):
-        visited = set()
-
-        def visit(node):
-            if node in visited:
-                return []
-            else:
-                visited.add(node)
-                result = []
-                for child in graph[node]:
-                    result = result + visit(child)
-                return result + [node]
-
-        for scc in sccs:
-            scc = set(scc)
-            assert not scc & visited
-            # Check that starting from each element of the SCC results
-            # in the same set of reachable nodes.
-            for scc_root in scc:
-                visited.difference_update(scc)
-                result = visit(scc_root)
-                assert set(result) == scc, (set(result), scc)
-
-    for nnodes in range(10, 20):
-        for i in range(40):
-            graph = generate_random_graph(nnodes)
-            verify_sccs(graph, compute_sccs(graph))
 
 
 def test_SetTrie():

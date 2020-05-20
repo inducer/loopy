@@ -532,7 +532,7 @@ def infer_unknown_types(kernel, expect_completion=False):
                 if read_var in names_for_type_inference))
             for written_var in names_for_type_inference)
 
-    from loopy.tools import compute_sccs
+    from pytools.graph import compute_sccs
 
     # To speed up processing, we sort the variables by computing the SCCs of the
     # type dependency graph. Each SCC represents a set of variables whose types
