@@ -478,14 +478,16 @@ class DependencyTraversingMapper(object):
     """
     Helper class to traverse the dependency graph in a postorder fashion.
     """
-    def __init__(self, insn_id_to_dep_reqs, depends_on, rev_depends):
+    def __init__(self, insn_id_to_dep_reqs, depends_on, rev_depends,
+            topological_order):
         self.insn_id_to_dep_reqs = insn_id_to_dep_reqs
         self.depends_on = depends_on
         self.rev_depends = rev_depends
+        self.topological_order = topological_order
         self.visited = set()
         self.memoized_rev_deps = {}
 
-    def move(self, insn_id, rev_deps):
+    def rec(self, insn_id, rev_deps):
         if insn_id in rev_deps:
             from loopy.diagnostic import DependencyCycleFound
             raise DependencyCycleFound("Dependency cycle found:"
@@ -500,13 +502,20 @@ class DependencyTraversingMapper(object):
 
             self.insn_id_to_dep_reqs[insn_id] -= new_rev_deps
             self.visited.add(insn_id)
-            for dep in self.depends_on[insn_id]:
-                self.move(dep, new_rev_deps)
+
+            deps = self.depends_on[insn_id]
+            # FIXME: Adding the line below emits segfault for huge kernels
+            # deps = sorted(list(deps), key=lambda elem:
+            #         (-self.topological_order[elem]))
+            for dep in deps:
+                self.rec(dep, new_rev_deps)
         else:
             memoized_rev_deps = self.memoized_rev_deps.setdefault(insn_id, set())
             memoized_rev_deps.update(rev_deps)
 
         return
+
+    __call__ = rec
 
 
 class ReverseDependencyTraversingMapper(object):
@@ -514,14 +523,16 @@ class ReverseDependencyTraversingMapper(object):
     Helper class to traverse the reverse dependency graph in a postorder
     fashion.
     """
-    def __init__(self, insn_id_to_dep_reqs, rev_depends, depends_on):
+    def __init__(self, insn_id_to_dep_reqs, rev_depends, depends_on,
+            topological_order):
         self.insn_id_to_dep_reqs = insn_id_to_dep_reqs
         self.rev_depends = rev_depends
         self.depends_on = depends_on
+        self.topological_order = topological_order
         self.visited = set()
         self.memoized_deps = {}
 
-    def move(self, insn_id, deps):
+    def rec(self, insn_id, deps):
         if insn_id in deps:
             from loopy.diagnostic import DependencyCycleFound
             raise DependencyCycleFound("Dependency cycle found:"
@@ -536,13 +547,20 @@ class ReverseDependencyTraversingMapper(object):
 
             self.insn_id_to_dep_reqs[insn_id] -= new_deps
             self.visited.add(insn_id)
-            for rev_dep in self.rev_depends[insn_id]:
-                self.move(rev_dep, new_deps)
+            rev_deps = self.rev_depends[insn_id]
+            # FIXME: Adding the line below emits segfault for huge kernels
+            # rev_deps = sorted(list(rev_deps), key=lambda elem:
+            #         (-self.topological_order[elem]))
+
+            for rev_dep in rev_deps:
+                self.rec(rev_dep, new_deps)
         else:
             memoized_deps = self.memoized_deps.setdefault(insn_id, set())
             memoized_deps.update(deps)
 
         return
+
+    __call__ = rec
 
 
 def _get_address_space(kernel, var):
@@ -560,6 +578,32 @@ def _get_address_space(kernel, var):
             # because those won't be written.
             raise ValueError("could not determine address_space of '%s'" % var)
     return address_space
+
+
+def _get_topological_order(kernel):
+    from pytools import natsorted
+
+    # {{{ topological sort
+
+    visited_insn_ids = set()
+    insn_order = []
+
+    def insert_insn_into_order(insn):
+        if insn.id in visited_insn_ids:
+            return
+        visited_insn_ids.add(insn.id)
+
+        for dep_id in natsorted(insn.depends_on):
+            insert_insn_into_order(kernel.id_to_insn[dep_id])
+
+        insn_order.append(insn)
+
+    for insn in kernel.instructions:
+        insert_insn_into_order(insn)
+
+    # }}}
+
+    return dict((insn.id, i) for i, insn in enumerate(insn_order))
 
 
 def _check_variable_access_ordered_inner(kernel):
@@ -615,14 +659,15 @@ def _check_variable_access_ordered_inner(kernel):
             rev_depends[dep].add(insn.id)
     # }}}
 
+    topological_order = _get_topological_order(kernel)
     forward_dep_traverser = DependencyTraversingMapper(insn_id_to_dep_reqs,
-            depends_on, rev_depends)
+            depends_on, rev_depends, topological_order)
     reverse_dep_traverser = ReverseDependencyTraversingMapper(insn_id_to_dep_reqs,
-            rev_depends, depends_on)
+            rev_depends, depends_on, topological_order)
 
     for insn_id, rev_deps in six.iteritems(rev_depends):
         if not rev_deps:
-            forward_dep_traverser.move(insn_id, set())
+            forward_dep_traverser(insn_id, set())
 
     if set([insn.id for insn in kernel.instructions]) != (
             forward_dep_traverser.visited):
@@ -634,7 +679,7 @@ def _check_variable_access_ordered_inner(kernel):
 
     for insn_id, deps in six.iteritems(depends_on):
         if not deps:
-            reverse_dep_traverser.move(insn_id, set())
+            reverse_dep_traverser(insn_id, set())
 
     if set([insn.id for insn in kernel.instructions]) != (
             reverse_dep_traverser.visited):
