@@ -474,95 +474,6 @@ def declares_nosync_with(kernel, var_address_space, dep_a, dep_b):
     return ab_nosync and ba_nosync
 
 
-class DependencyTraversingMapper(object):
-    """
-    Helper class to traverse the dependency graph in a postorder fashion.
-    """
-    def __init__(self, insn_id_to_dep_reqs, depends_on, rev_depends,
-            topological_order):
-        self.insn_id_to_dep_reqs = insn_id_to_dep_reqs
-        self.depends_on = depends_on
-        self.rev_depends = rev_depends
-        self.topological_order = topological_order
-        self.visited = set()
-        self.memoized_rev_deps = {}
-
-    def rec(self, insn_id, rev_deps):
-        if insn_id in rev_deps:
-            from loopy.diagnostic import DependencyCycleFound
-            raise DependencyCycleFound("Dependency cycle found:"
-                    " '{}'.".format(rev_deps))
-
-        if insn_id in self.visited:
-            return
-
-        if self.rev_depends[insn_id] <= self.visited:
-            new_rev_deps = rev_deps | self.memoized_rev_deps.pop(insn_id,
-                    set()) | set([insn_id])
-
-            self.insn_id_to_dep_reqs[insn_id] -= new_rev_deps
-            self.visited.add(insn_id)
-
-            deps = self.depends_on[insn_id]
-            # FIXME: Adding the line below emits segfault for huge kernels
-            # deps = sorted(list(deps), key=lambda elem:
-            #         (-self.topological_order[elem]))
-            for dep in deps:
-                self.rec(dep, new_rev_deps)
-        else:
-            memoized_rev_deps = self.memoized_rev_deps.setdefault(insn_id, set())
-            memoized_rev_deps.update(rev_deps)
-
-        return
-
-    __call__ = rec
-
-
-class ReverseDependencyTraversingMapper(object):
-    """
-    Helper class to traverse the reverse dependency graph in a postorder
-    fashion.
-    """
-    def __init__(self, insn_id_to_dep_reqs, rev_depends, depends_on,
-            topological_order):
-        self.insn_id_to_dep_reqs = insn_id_to_dep_reqs
-        self.rev_depends = rev_depends
-        self.depends_on = depends_on
-        self.topological_order = topological_order
-        self.visited = set()
-        self.memoized_deps = {}
-
-    def rec(self, insn_id, deps):
-        if insn_id in deps:
-            from loopy.diagnostic import DependencyCycleFound
-            raise DependencyCycleFound("Dependency cycle found:"
-                    " '{}'.".format(deps))
-
-        if insn_id in self.visited:
-            return
-
-        if self.depends_on[insn_id] <= self.visited:
-            new_deps = deps | self.memoized_deps.pop(insn_id,
-                    set()) | set([insn_id])
-
-            self.insn_id_to_dep_reqs[insn_id] -= new_deps
-            self.visited.add(insn_id)
-            rev_deps = self.rev_depends[insn_id]
-            # FIXME: Adding the line below emits segfault for huge kernels
-            # rev_deps = sorted(list(rev_deps), key=lambda elem:
-            #         (-self.topological_order[elem]))
-
-            for rev_dep in rev_deps:
-                self.rec(rev_dep, new_deps)
-        else:
-            memoized_deps = self.memoized_deps.setdefault(insn_id, set())
-            memoized_deps.update(deps)
-
-        return
-
-    __call__ = rec
-
-
 def _get_address_space(kernel, var):
     from loopy.kernel.data import ValueArg, AddressSpace, ArrayArg
     if var in kernel.temporary_variables:
@@ -603,7 +514,7 @@ def _get_topological_order(kernel):
 
     # }}}
 
-    return dict((insn.id, i) for i, insn in enumerate(insn_order))
+    return [insn.id for insn in insn_order]
 
 
 def _check_variable_access_ordered_inner(kernel):
@@ -660,34 +571,50 @@ def _check_variable_access_ordered_inner(kernel):
     # }}}
 
     topological_order = _get_topological_order(kernel)
-    forward_dep_traverser = DependencyTraversingMapper(insn_id_to_dep_reqs,
-            depends_on, rev_depends, topological_order)
-    reverse_dep_traverser = ReverseDependencyTraversingMapper(insn_id_to_dep_reqs,
-            rev_depends, depends_on, topological_order)
 
-    for insn_id, rev_deps in six.iteritems(rev_depends):
-        if not rev_deps:
-            forward_dep_traverser(insn_id, set())
+    # {{{ forward dep. traversal
 
-    if set([insn.id for insn in kernel.instructions]) != (
-            forward_dep_traverser.visited):
-        not_visited_insns = set([insn.id for insn in kernel.instructions]) - (
-            forward_dep_traverser.visited)
-        from loopy.diagnostic import DependencyCycleFound
-        raise DependencyCycleFound("Dependency cycle found in:"
-                " '{}'.".format(not_visited_insns))
+    # memoized_predecessors: mapping from insn_id to its direct/indirect predecessors
+    memoized_predecessors = {}
 
-    for insn_id, deps in six.iteritems(depends_on):
-        if not deps:
-            reverse_dep_traverser(insn_id, set())
+    for insn_id in topological_order[::-1]:
+        # accumulated_predecessors:insn_id's direct+indirect predecessors
+        accumulated_predecessors = memoized_predecessors.pop(insn_id, set())
 
-    if set([insn.id for insn in kernel.instructions]) != (
-            reverse_dep_traverser.visited):
-        not_visited_insns = set([insn.id for insn in kernel.instructions]) - (
-            reverse_dep_traverser.visited)
-        from loopy.diagnostic import DependencyCycleFound
-        raise DependencyCycleFound("Dependency cycle found in:"
-                " '{}'.".format(not_visited_insns))
+        if insn_id in accumulated_predecessors:
+            from loopy.diagnostic import DependencyCycleFound
+            raise DependencyCycleFound("Dependency cycle found:"
+                    " '{}'.".format(accumulated_predecessors))
+
+        insn_id_to_dep_reqs[insn_id] -= accumulated_predecessors
+
+        for dep in depends_on[insn_id]:
+            memoized_predecessors.setdefault(dep, set()).update(
+                    accumulated_predecessors | set([insn_id]))
+
+    # }}}
+
+    # {{{ reverse dep. traversal
+
+    # memoized_successors: mapping from insn_id to its direct/indirect successors
+    memoized_successors = {}
+
+    for insn_id in topological_order:
+        # accumulated_predecessors:insn_id's direct+indirect predecessors
+        accumulated_successors = memoized_successors.pop(insn_id, set())
+
+        if insn_id in accumulated_successors:
+            from loopy.diagnostic import DependencyCycleFound
+            raise DependencyCycleFound("Dependency cycle found:"
+                    " '{}'.".format(accumulated_predecessors))
+
+        insn_id_to_dep_reqs[insn_id] -= accumulated_successors
+
+        for rev_dep in rev_depends[insn_id]:
+            memoized_successors.setdefault(rev_dep, set()).update(
+                    accumulated_successors | set([insn_id]))
+
+    # }}}
 
     for insn_id, dep_ids in six.iteritems(insn_id_to_dep_reqs):
         insn = kernel.id_to_insn[insn_id]
