@@ -577,6 +577,7 @@ def _check_variable_access_ordered_inner(kernel):
     # memoized_predecessors: mapping from insn_id to its direct/indirect predecessors
     memoized_predecessors = {}
 
+    # reverse postorder traversal of dependency graph
     for insn_id in topological_order[::-1]:
         # accumulated_predecessors:insn_id's direct+indirect predecessors
         accumulated_predecessors = memoized_predecessors.pop(insn_id, set())
@@ -594,11 +595,17 @@ def _check_variable_access_ordered_inner(kernel):
 
     # }}}
 
+    if memoized_predecessors:
+        from loopy.diagnostic import DependencyCycleFound
+        raise DependencyCycleFound("Dependency cycle found:"
+                " '{}'.".format(next(iter(six.viewvalues(memoized_predecessors)))))
+
     # {{{ reverse dep. traversal
 
     # memoized_successors: mapping from insn_id to its direct/indirect successors
     memoized_successors = {}
 
+    # postorder traversal of dependency graph
     for insn_id in topological_order:
         # accumulated_predecessors:insn_id's direct+indirect predecessors
         accumulated_successors = memoized_successors.pop(insn_id, set())
@@ -615,6 +622,11 @@ def _check_variable_access_ordered_inner(kernel):
                     accumulated_successors | set([insn_id]))
 
     # }}}
+
+    if memoized_successors:
+        from loopy.diagnostic import DependencyCycleFound
+        raise DependencyCycleFound("Dependency cycle found:"
+                " '{}'.".format(next(iter(six.viewvalues(memoized_successors)))))
 
     for insn_id, dep_ids in six.iteritems(insn_id_to_dep_reqs):
         insn = kernel.id_to_insn[insn_id]
