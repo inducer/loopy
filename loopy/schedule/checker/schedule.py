@@ -28,11 +28,17 @@ class LexScheduleStatement(object):
 
     .. attribute:: insn_id
 
-       A :class:`str` specifying the instruction id.
+       A :class:`str` specifying the :mod:`loopy` instruction id
+       for this statement.
 
     .. attribute:: int_id
 
-       A :class:`int` uniquely identifying the instruction.
+       A :class:`int` uniquely identifying the statement within a
+       :class:`LexSchedule`. A :class:`LexSchedule` describes a mapping
+       from points in a space of statement instances to points in a
+       lexicographic ordering. The `statement` dimension of a point
+       in the statement instance space representing an instance of this
+       statement is assigned this value (`int_id`).
 
     .. attribute:: within_inames
 
