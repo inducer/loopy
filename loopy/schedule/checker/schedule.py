@@ -73,7 +73,7 @@ class LexScheduleStatement(object):
 
 
 class LexScheduleStatementInstance(object):
-    """A representation of a :mod:`loopy` statement instance.
+    """A representation of a statement instance.
 
     .. attribute:: stmt
 
