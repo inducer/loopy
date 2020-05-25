@@ -28,16 +28,17 @@ class LexScheduleStatement(object):
 
     .. attribute:: insn_id
 
-       A :class:`str` specifying the instruction id.
+       A :class:`str` specifying the :mod:`loopy` instruction id
+       for this statement.
 
     .. attribute:: int_id
 
-       A :class:`int` uniquely identifying the instruction.
-
-    .. attribute:: within_inames
-
-       A :class:`list` of :class:`str` inames identifying the loops within
-       which this statement will be executed.
+       A :class:`int` uniquely identifying the statement within a
+       :class:`LexSchedule`. A :class:`LexSchedule` describes a mapping
+       from points in a space of statement instances to points in a
+       lexicographic ordering. The `statement` dimension of a point
+       in the statement instance space representing an instance of this
+       statement is assigned this value (`int_id`).
 
     """
 
@@ -45,17 +46,14 @@ class LexScheduleStatement(object):
             self,
             insn_id,  # loopy insn id
             int_id=None,  # sid int (statement id within LexSchedule)
-            within_inames=None,  # [string, ]
             ):
         self.insn_id = insn_id  # string
         self.int_id = int_id
-        self.within_inames = within_inames
 
     def __eq__(self, other):
         return (
             self.insn_id == other.insn_id
             and self.int_id == other.int_id
-            and self.within_inames == other.within_inames
             )
 
     def update_persistent_hash(self, key_hash, key_builder):
@@ -65,19 +63,13 @@ class LexScheduleStatement(object):
 
         key_builder.rec(key_hash, self.insn_id)
         key_builder.rec(key_hash, self.int_id)
-        key_builder.rec(key_hash, self.within_inames)
 
     def __str__(self):
         if self.int_id is not None:
             int_id = ":%d" % (self.int_id)
         else:
             int_id = ""
-        if self.within_inames:
-            within_inames = " {%s}" % (",".join(self.within_inames))
-        else:
-            within_inames = ""
-        return "%s%s%s" % (
-            self.insn_id, int_id, within_inames)
+        return "%s%s" % (self.insn_id, int_id)
 
 
 class LexScheduleStatementInstance(object):
