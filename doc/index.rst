@@ -69,7 +69,6 @@ Please check :ref:`installation` to get started.
     ref_kernel
     ref_transform
     ref_other
-    ref_naming
     misc
 
 Indices and tables
