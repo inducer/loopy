@@ -31,7 +31,7 @@ def get_schedule_for_statement_pair(
         ):
     """Create a :class:`loopy.schedule.checker.schedule.LexSchedule`
         representing the order of two statements as a mapping from
-        :class:`loopy.schedule.checker.LexScheduleStatementInstance`
+        :class:`loopy.schedule.checker.LexScheduleStatementInstanceSet`
         to lexicographic time.
 
     :arg knl: A :class:`loopy.kernel.LoopKernel` containing the
@@ -52,7 +52,7 @@ def get_schedule_for_statement_pair(
 
     :returns: A :class:`loopy.schedule.checker.schedule.LexSchedule`
         representing the order of two statements as a mapping from
-        :class:`loopy.schedule.checker.LexScheduleStatementInstance`
+        :class:`loopy.schedule.checker.LexScheduleStatementInstanceSet`
         to lexicographic time.
     """
 
@@ -105,7 +105,7 @@ def get_isl_maps_for_LexSchedule(lex_sched, knl):
 
     :arg lex_sched: A :class:`loopy.schedule.checker.schedule.LexSchedule`
         representing the order of two statements as a mapping from
-        :class:`loopy.schedule.checker.LexScheduleStatementInstance`
+        :class:`loopy.schedule.checker.LexScheduleStatementInstanceSet`
         to lexicographic time.
 
     :arg knl: A :class:`loopy.kernel.LoopKernel` containing the
