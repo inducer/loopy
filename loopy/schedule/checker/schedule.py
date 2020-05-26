@@ -79,7 +79,7 @@ class LexScheduleStatementInstance(object):
 
        A :class:`LexScheduleStatement`.
 
-    .. attribute:: lex_pt
+    .. attribute:: lex_points
 
        A list of :class:`int` or as :class:`str` :mod:`loopy` inames representing
        a point or set of points in a lexicographic ordering.
@@ -89,13 +89,13 @@ class LexScheduleStatementInstance(object):
     def __init__(
             self,
             stmt,  # a LexScheduleStatement
-            lex_pt,  # [string/int, ]
+            lex_points,  # [string/int, ]
             ):
         self.stmt = stmt
-        self.lex_pt = lex_pt
+        self.lex_points = lex_points
 
     def __str__(self):
-        return "{%s, %s}" % (self.stmt, self.lex_pt)
+        return "{%s, %s}" % (self.stmt, self.lex_points)
 
 
 class LexSchedule(object):
@@ -167,7 +167,7 @@ class LexSchedule(object):
 
         # keep track of the next point in our lexicographic ordering
         # initially this as a 1-d point with value 0
-        next_insn_lex_pt = [0]
+        next_insn_lex_tuple = [0]
         stmt_added_since_prev_block_at_tier = [False]
         next_sid = 0
         for linearization_item in linearization_items_ordered:
@@ -176,13 +176,13 @@ class LexSchedule(object):
                 if iname in loops_to_ignore:
                     continue
 
-                # We could always increment next_insn_lex_pt[-1] here since this new
-                # section of code comes after the previous section (statements
-                # since last opened/closed loop), but if we have not added any
-                # statements within the previous section yet, we don't have to
-                # (effectively ignoring that section of code).
+                # We could always increment next_insn_lex_tuple[-1] here since
+                # this new section of code comes after the previous section
+                # (statements since last opened/closed loop), but if we have
+                # not added any statements within the previous section yet, we
+                # don't have to (effectively ignoring that section of code).
                 if stmt_added_since_prev_block_at_tier[-1]:
-                    next_insn_lex_pt[-1] = next_insn_lex_pt[-1]+1
+                    next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1]+1
                     stmt_added_since_prev_block_at_tier[-1] = False
 
                 # upon entering a loop, we enter a new (deeper) tier,
@@ -190,8 +190,8 @@ class LexSchedule(object):
                 # add second lex dim to enumerate code blocks within new loop, and
                 # append a dim to stmt_added_since_prev_block_at_tier to represent
                 # new tier
-                next_insn_lex_pt.append(iname)
-                next_insn_lex_pt.append(0)
+                next_insn_lex_tuple.append(iname)
+                next_insn_lex_tuple.append(0)
                 stmt_added_since_prev_block_at_tier.append(False)
             elif isinstance(linearization_item, LeaveLoop):
                 if linearization_item.iname in loops_to_ignore:
@@ -200,17 +200,17 @@ class LexSchedule(object):
                 # pop lex dimension for enumerating code blocks within this loop, and
                 # pop lex dimension for the loop variable, and
                 # increment lex dim val enumerating items in current code block
-                next_insn_lex_pt.pop()
-                next_insn_lex_pt.pop()
+                next_insn_lex_tuple.pop()
+                next_insn_lex_tuple.pop()
 
-                # We could always increment next_insn_lex_pt[-1] here since this new
-                # block of code comes after the previous block (all statements
-                # since last opened/closed loop), but if we have not added any
-                # statements within the previous section yet, we don't have to
-                # (effectively ignoring that section of code).
+                # We could always increment next_insn_lex_tuple[-1] here since
+                # this new block of code comes after the previous block (all
+                # statements since last opened/closed loop), but if we have not
+                # added any statements within the previous section yet, we
+                # don't have to (effectively ignoring that section of code).
                 stmt_added_since_prev_block_at_tier.pop()
                 if stmt_added_since_prev_block_at_tier[-1]:
-                    next_insn_lex_pt[-1] = next_insn_lex_pt[-1]+1
+                    next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1]+1
                     stmt_added_since_prev_block_at_tier[-1] = False
             elif isinstance(linearization_item, (RunInstruction, Barrier)):
                 from loopy.schedule.checker.utils import (
@@ -234,7 +234,7 @@ class LexSchedule(object):
                                 insn_id=lp_insn_id,
                                 int_id=next_sid,  # int representing insn
                                 ),
-                            next_insn_lex_pt[:])
+                            next_insn_lex_tuple[:])
                     stmt_added = True
 
                 if lp_insn_id == after_insn_id:
@@ -244,7 +244,7 @@ class LexSchedule(object):
                                 insn_id=lp_insn_id,
                                 int_id=next_sid,  # int representing insn
                                 ),
-                            next_insn_lex_pt[:])
+                            next_insn_lex_tuple[:])
                     stmt_added = True
 
                 # Note: before/after may refer to same stmt, in which case
@@ -252,7 +252,7 @@ class LexSchedule(object):
 
                 if stmt_added:
                     # increment lex dim val enumerating items in current code block
-                    next_insn_lex_pt[-1] = next_insn_lex_pt[-1] + 1
+                    next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1] + 1
                     next_sid += 1
 
                     # all current (nested) blocks now contain a statement
@@ -266,14 +266,14 @@ class LexSchedule(object):
 
         # at this point, lex_schedule may contain lex points missing dimensions,
         # the values in these missing dims should be zero, so add them
-        self.pad_lex_pts_with_zeros()
+        self.pad_lex_tuples_with_zeros()
 
     def max_lex_dims(self):
         return max([
-            len(self.stmt_instance_before.lex_pt),
-            len(self.stmt_instance_after.lex_pt)])
+            len(self.stmt_instance_before.lex_points),
+            len(self.stmt_instance_after.lex_points)])
 
-    def pad_lex_pts_with_zeros(self):
+    def pad_lex_tuples_with_zeros(self):
         """Find the maximum number of lexicographic dimensions represented
             in the lexicographic ordering, and if any
             :class:`LexScheduleStatement` maps to a point in lexicographic
@@ -281,17 +281,17 @@ class LexSchedule(object):
             dimensions.
         """
 
-        def _pad_lex_pt_with_zeros(stmt_inst, length):
+        def _pad_lex_tuple_with_zeros(stmt_inst, length):
             return LexScheduleStatementInstance(
                 stmt_inst.stmt,
-                stmt_inst.lex_pt[:] + [0]*(length-len(stmt_inst.lex_pt)),
+                stmt_inst.lex_points[:] + [0]*(length-len(stmt_inst.lex_points)),
                 )
 
         max_lex_dim = self.max_lex_dims()
 
-        self.stmt_instance_before = _pad_lex_pt_with_zeros(
+        self.stmt_instance_before = _pad_lex_tuple_with_zeros(
             self.stmt_instance_before, max_lex_dim)
-        self.stmt_instance_after = _pad_lex_pt_with_zeros(
+        self.stmt_instance_after = _pad_lex_tuple_with_zeros(
             self.stmt_instance_after, max_lex_dim)
 
     def create_isl_maps(
@@ -366,7 +366,7 @@ class LexSchedule(object):
             # Add all inames from domains to each map domain tuple.
             tuple_pair = [(
                 (stmt_inst.stmt.int_id, ) + tuple(dom_inames_ordered),
-                stmt_inst.lex_pt
+                stmt_inst.lex_points
                 )]
 
             # create isl map
@@ -396,7 +396,7 @@ class LexSchedule(object):
             return "{\n[%s=%s,<inames>] -> %s;\n}" % (
                 self.statement_var_name,
                 stmt_inst.stmt.int_id,
-                stmt_inst.lex_pt)
+                stmt_inst.lex_points)
 
         return "Before: %s\nAfter: %s" % (
             stringify_sched_stmt_instance(self.stmt_instance_before),
