@@ -151,8 +151,8 @@ Tag                             Meaning
 
 .. }}}
 
-Variable Name Registry
-----------------------
+Identifiers
+-----------
 
 Reserved Kernel Variable Names
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -162,6 +162,9 @@ kernel variables, users should *not* use names beginning with ``_lp``. This
 prefix is used for certain variables created when operating on Loopy's kernel
 IR. For Loopy developers, further information on name prefixes used within
 submodules is below.
+
+Variable Name Registry
+^^^^^^^^^^^^^^^^^^^^^^
 
 Some Loopy submodules append a sub-prefix to the ``_lp`` prefix for
 internally-created variable names. These prefixes should only be used for names
