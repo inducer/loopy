@@ -72,8 +72,9 @@ class LexScheduleStatement(object):
         return "%s%s" % (self.insn_id, int_id)
 
 
-class LexScheduleStatementInstance(object):
-    """A representation of a statement instance.
+class LexScheduleStatementInstanceSet(object):
+    """A representation of a set of instances of a
+    :class:`LexScheduleStatement`.
 
     .. attribute:: stmt
 
@@ -106,7 +107,7 @@ class LexSchedule(object):
 
     .. attribute:: stmt_instance_before
 
-       A :class:`LexScheduleStatementInstance` describing the dependee
+       A :class:`LexScheduleStatementInstanceSet` describing the dependee
        statement's order relative to the depender statment by mapping
        a statement to a point or set of points in a lexicographic
        ordering. Points in lexicographic ordering are represented as
@@ -114,7 +115,7 @@ class LexSchedule(object):
 
     .. attribute:: stmt_instance_after
 
-       A :class:`LexScheduleStatementInstance` describing the depender
+       A :class:`LexScheduleStatementInstanceSet` describing the depender
        statement's order relative to the dependee statment by mapping
        a statement to a point or set of points in a lexicographic
        ordering. Points in lexicographic ordering are represented as
@@ -229,7 +230,7 @@ class LexSchedule(object):
 
                 if lp_insn_id == before_insn_id:
                     # add before sched item
-                    self.stmt_instance_before = LexScheduleStatementInstance(
+                    self.stmt_instance_before = LexScheduleStatementInstanceSet(
                             LexScheduleStatement(
                                 insn_id=lp_insn_id,
                                 int_id=next_sid,  # int representing insn
@@ -239,7 +240,7 @@ class LexSchedule(object):
 
                 if lp_insn_id == after_insn_id:
                     # add after sched item
-                    self.stmt_instance_after = LexScheduleStatementInstance(
+                    self.stmt_instance_after = LexScheduleStatementInstanceSet(
                             LexScheduleStatement(
                                 insn_id=lp_insn_id,
                                 int_id=next_sid,  # int representing insn
@@ -282,7 +283,7 @@ class LexSchedule(object):
         """
 
         def _pad_lex_tuple_with_zeros(stmt_inst, length):
-            return LexScheduleStatementInstance(
+            return LexScheduleStatementInstanceSet(
                 stmt_inst.stmt,
                 stmt_inst.lex_points[:] + [0]*(length-len(stmt_inst.lex_points)),
                 )
