@@ -44,10 +44,10 @@ class LexScheduleStatement(object):
 
     def __init__(
             self,
-            insn_id,  # loopy insn id
-            int_id=None,  # sid int (statement id within LexSchedule)
+            insn_id,
+            int_id=None,
             ):
-        self.insn_id = insn_id  # string
+        self.insn_id = insn_id
         self.int_id = int_id
 
     def __eq__(self, other):
@@ -89,8 +89,8 @@ class LexScheduleStatementInstanceSet(object):
 
     def __init__(
             self,
-            stmt,  # a LexScheduleStatement
-            lex_points,  # [string/int, ]
+            stmt,
+            lex_points,
             ):
         self.stmt = stmt
         self.lex_points = lex_points
