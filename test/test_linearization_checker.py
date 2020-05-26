@@ -46,9 +46,9 @@ else:
     faulthandler.enable()
 
 
-# {{{ test LexSchedule and isl map creation
+# {{{ test PairwiseScheduleBuilder and isl map creation
 
-def test_lexschedule_and_islmap_creation():
+def test_pairwise_schedule_and_islmap_creation():
     import islpy as isl
     from loopy.schedule.checker import (
         get_schedule_for_statement_pair,
@@ -397,7 +397,7 @@ def test_statement_instance_ordering_creation():
     import islpy as isl
     from loopy.schedule.checker import (
         get_schedule_for_statement_pair,
-        get_isl_maps_for_LexSchedule,
+        get_isl_maps_from_PairwiseScheduleBuilder,
     )
     from loopy.schedule.checker.utils import (
         align_isl_maps_by_var_names,
@@ -451,19 +451,19 @@ def test_statement_instance_ordering_creation():
             expected_sio,
             ):
 
-        lex_sched = get_schedule_for_statement_pair(
+        sched_builder = get_schedule_for_statement_pair(
             knl,
             linearization_items,
             insn_id_before,
             insn_id_after,
             )
 
-        # Get two isl maps representing the LexSchedule
-        isl_sched_map_before, isl_sched_map_after = get_isl_maps_for_LexSchedule(
-            lex_sched, knl)
+        # Get two isl maps from the PairwiseScheduleBuilder
+        isl_sched_map_before, isl_sched_map_after = \
+            get_isl_maps_from_PairwiseScheduleBuilder(sched_builder, knl)
 
         # get map representing lexicographic ordering
-        sched_lex_order_map = lex_sched.get_lex_order_map_for_sched_space()
+        sched_lex_order_map = sched_builder.get_lex_order_map_for_sched_space()
 
         assert sched_lex_order_map == expected_lex_order_map
 
