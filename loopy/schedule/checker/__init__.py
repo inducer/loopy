@@ -97,12 +97,12 @@ def get_schedule_for_statement_pair(
 
 # {{{ Get isl map pair from PairwiseScheduleBuilder
 
-def get_isl_maps_from_PairwiseScheduleBuilder(lex_sched, knl):
+def get_isl_maps_from_PairwiseScheduleBuilder(sched_builder, knl):
     """Create a pair of :class:`islpy.Map`s representing a
         sub-schedule as two mappings from statement instances to lexicographic
         time, one for the dependee statement and one for the depender.
 
-    :arg lex_sched: A
+    :arg sched_builder: A
         :class:`loopy.schedule.checker.schedule.PairwiseScheduleBuilder`
         representing the order of two statements as a mapping from
         :class:`loopy.schedule.checker.PairwiseScheduleStatementInstanceSet`
@@ -119,13 +119,15 @@ def get_isl_maps_from_PairwiseScheduleBuilder(lex_sched, knl):
 
     # {{{ Get iname domains
     dom_before = knl.get_inames_domain(
-        knl.id_to_insn[lex_sched.stmt_instance_before.stmt.insn_id].within_inames)
+        knl.id_to_insn[
+            sched_builder.stmt_instance_before.stmt.insn_id].within_inames)
     dom_after = knl.get_inames_domain(
-        knl.id_to_insn[lex_sched.stmt_instance_after.stmt.insn_id].within_inames)
+        knl.id_to_insn[
+            sched_builder.stmt_instance_after.stmt.insn_id].within_inames)
     # }}}
 
     # {{{ Get isl maps
-    return lex_sched.create_isl_maps(dom_before, dom_after)
+    return sched_builder.create_isl_maps(dom_before, dom_after)
     # }}}
 
 # }}}

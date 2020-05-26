@@ -168,7 +168,7 @@ class PairwiseScheduleBuilder(object):
 
         from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
 
-        # go through linearization_items_ordered and generate self.lex_schedule
+        # go through linearization_items_ordered and generate pairwise sub-schedule
 
         # keep track of the next tuple of points in our lexicographic
         # ordering, initially this as a 1-d point with value 0
@@ -269,7 +269,7 @@ class PairwiseScheduleBuilder(object):
             if self.stmt_instance_before and self.stmt_instance_after:
                 break
 
-        # At this point, lex_schedule may contain lex point tuples
+        # At this point, pairwise sub-schedule may contain lex point tuples
         # missing dimensions; the values in these missing dims should
         # be zero, so add them.
         self.pad_lex_tuples_with_zeros()
