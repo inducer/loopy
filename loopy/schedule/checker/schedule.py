@@ -111,19 +111,21 @@ class PairwiseScheduleBuilder(object):
 
     .. attribute:: stmt_instance_before
 
-       A :class:`PairwiseScheduleStatementInstanceSet` describing the dependee
-       statement's order relative to the depender statment by mapping
-       a statement to a point or set of points in a lexicographic
-       ordering. Points in lexicographic ordering are represented as
-       a list of :class:`int` or as :class:`str` :mod:`loopy` inames.
+       A :class:`PairwiseScheduleStatementInstanceSet` whose ordering relative
+       to `stmt_instance_after is described by PairwiseScheduleBuilder. This
+       is achieved by mapping the statement instances in both sets to points
+       in a single lexicographic ordering. Points in lexicographic ordering
+       are represented as a list of :class:`int` or as :class:`str`
+       :mod:`loopy` inames.
 
     .. attribute:: stmt_instance_after
 
-       A :class:`PairwiseScheduleStatementInstanceSet` describing the depender
-       statement's order relative to the dependee statment by mapping
-       a statement to a point or set of points in a lexicographic
-       ordering. Points in lexicographic ordering are represented as
-       a list of :class:`int` or as :class:`str` :mod:`loopy` inames.
+       A :class:`PairwiseScheduleStatementInstanceSet` whose ordering relative
+       to `stmt_instance_before is described by PairwiseScheduleBuilder. This
+       is achieved by mapping the statement instances in both sets to points
+       in a single lexicographic ordering. Points in lexicographic ordering
+       are represented as a list of :class:`int` or as :class:`str`
+       :mod:`loopy` inames.
 
     .. attribute:: statement_var_name
 
@@ -153,10 +155,10 @@ class PairwiseScheduleBuilder(object):
             order will be described by this :class:`PairwiseScheduleBuilder`.
 
         :arg before_insn_id: A :class:`str` instruction id specifying
-            the dependee in this pair of instructions.
+            stmt_instance_before in this pair of instructions.
 
         :arg after_insn_id: A :class:`str` instruction id specifying
-            the depender in this pair of instructions.
+            stmt_instancce_after in this pair of instructions.
 
         """
 
@@ -308,30 +310,30 @@ class PairwiseScheduleBuilder(object):
             ):
         """Create two isl maps representing lex schedule as two mappings
             from statement instances to lexicographic time, one for
-            the dependee and one for the depender.
+            ``stmt_instance_before`` and one for ``stmt_instance_after``.
 
         :arg dom_before: A :class:`islpy.BasicSet` representing the
-            domain for the dependee statement.
+            domain for ``stmt_instance_before``.
 
         :arg dom_after: A :class:`islpy.BasicSet` representing the
-            domain for the dependee statement.
+            domain for ``stmt_instance_after``.
 
         :arg dom_inames_ordered_before: A list of :class:`str`
-            representing the union of inames used in instances of the
-            dependee statement. ``statement_var_name`` and
+            representing the union of inames used in
+            ``stmt_instance_before``. ``statement_var_name`` and
             ``dom_inames_ordered_before`` are the names of the dims of
-            the space of the ISL map domain for the dependee.
+            the space of the ISL map domain.
 
         :arg dom_inames_ordered_after: A list of :class:`str`
-            representing the union of inames used in instances of the
-            depender statement. ``statement_var_name`` and
+            representing the union of inames used in
+            ``stmt_instance_after``. ``statement_var_name`` and
             ``dom_inames_ordered_after`` are the names of the dims of
-            the space of the ISL map domain for the depender.
+            the space of the ISL map domain.
 
         :returns: A two-tuple containing two :class:`islpy.Map`s
             representing the schedule as two mappings
             from statement instances to lexicographic time, one for
-            the dependee and one for the depender.
+            each of the two :class:`PairwiseScheduleStatementInstanceSet`s.
 
         """
 
