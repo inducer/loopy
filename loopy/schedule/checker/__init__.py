@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 
-# {{{ Create LexSchedule for statement pair
+# {{{ Create PairwiseScheduleBuilder for statement pair
 
 def get_schedule_for_statement_pair(
         knl,
@@ -29,9 +29,9 @@ def get_schedule_for_statement_pair(
         insn_id_before,
         insn_id_after,
         ):
-    """Create a :class:`loopy.schedule.checker.schedule.LexSchedule`
+    """Create a :class:`loopy.schedule.checker.schedule.PairwiseScheduleBuilder`
         representing the order of two statements as a mapping from
-        :class:`loopy.schedule.checker.LexScheduleStatementInstanceSet`
+        :class:`loopy.schedule.checker.PairwiseScheduleStatementInstanceSet`
         to lexicographic time.
 
     :arg knl: A :class:`loopy.kernel.LoopKernel` containing the
@@ -50,9 +50,9 @@ def get_schedule_for_statement_pair(
     :arg insn_id_after: An instruction identifier that is unique within
         a :class:`loopy.kernel.LoopKernel`.
 
-    :returns: A :class:`loopy.schedule.checker.schedule.LexSchedule`
+    :returns: A :class:`loopy.schedule.checker.schedule.PairwiseScheduleBuilder`
         representing the order of two statements as a mapping from
-        :class:`loopy.schedule.checker.LexScheduleStatementInstanceSet`
+        :class:`loopy.schedule.checker.PairwiseScheduleStatementInstanceSet`
         to lexicographic time.
     """
 
@@ -62,7 +62,7 @@ def get_schedule_for_statement_pair(
     # }}}
 
     # {{{ Find any EnterLoop inames that are tagged as concurrent
-    # so that LexSchedule knows to ignore them
+    # so that PairwiseScheduleBuilder knows to ignore them
     # (In the future, this shouldn't be necessary because there
     #  won't be any inames with ConcurrentTags in EnterLoop linearization items.
     #  Test which exercises this: test_linearization_checker_with_stroud_bernstein())
@@ -81,10 +81,10 @@ def get_schedule_for_statement_pair(
             "Ignoring these loops." % (conc_loop_inames, preproc_knl.name))
     # }}}
 
-    # {{{ Create LexSchedule: mapping of {statement instance: lex point}
+    # {{{ Create PairwiseScheduleBuilder: mapping of {statement instance: lex point}
     # include only instructions involved in this dependency
-    from loopy.schedule.checker.schedule import LexSchedule
-    return LexSchedule(
+    from loopy.schedule.checker.schedule import PairwiseScheduleBuilder
+    return PairwiseScheduleBuilder(
         linearization_items,
         insn_id_before,
         insn_id_after,
@@ -95,17 +95,17 @@ def get_schedule_for_statement_pair(
 # }}}
 
 
-# {{{ Get isl map pair for LexSchedule
+# {{{ Get isl map pair from PairwiseScheduleBuilder
 
-def get_isl_maps_for_LexSchedule(lex_sched, knl):
+def get_isl_maps_from_PairwiseScheduleBuilder(lex_sched, knl):
     """Create a pair of :class:`islpy.Map`s representing a
-        :class:`loopy.schedule.checker.LexSchedule` as two mappings
-        from statement instances to lexicographic time, one for
-        the dependee statement and one for the depender.
+        sub-schedule as two mappings from statement instances to lexicographic
+        time, one for the dependee statement and one for the depender.
 
-    :arg lex_sched: A :class:`loopy.schedule.checker.schedule.LexSchedule`
+    :arg lex_sched: A
+        :class:`loopy.schedule.checker.schedule.PairwiseScheduleBuilder`
         representing the order of two statements as a mapping from
-        :class:`loopy.schedule.checker.LexScheduleStatementInstanceSet`
+        :class:`loopy.schedule.checker.PairwiseScheduleStatementInstanceSet`
         to lexicographic time.
 
     :arg knl: A :class:`loopy.kernel.LoopKernel` containing the

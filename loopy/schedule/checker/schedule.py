@@ -23,7 +23,7 @@ THE SOFTWARE.
 import islpy as isl
 
 
-class LexScheduleStatement(object):
+class PairwiseScheduleStatement(object):
     """A representation of a :mod:`loopy` statement.
 
     .. attribute:: insn_id
@@ -34,20 +34,20 @@ class LexScheduleStatement(object):
     .. attribute:: int_id
 
        A :class:`int` uniquely identifying the statement within a
-       :class:`LexSchedule`. A :class:`LexSchedule` describes a mapping
-       from points in a space of statement instances to points in a
-       lexicographic ordering. The `statement` dimension of a point
-       in the statement instance space representing an instance of this
-       statement is assigned this value (`int_id`).
+       :class:`PairwiseScheduleBuilder`. A :class:`PairwiseScheduleBuilder`
+       builds a mapping from points in a space of statement instances to
+       points in a lexicographic ordering. The `statement` dimension of a
+       point in the statement instance space representing an instance of
+       this statement is assigned this value (`int_id`).
 
     """
 
     def __init__(
             self,
-            insn_id,  # loopy insn id
-            int_id=None,  # sid int (statement id within LexSchedule)
+            insn_id,
+            int_id=None,
             ):
-        self.insn_id = insn_id  # string
+        self.insn_id = insn_id
         self.int_id = int_id
 
     def __eq__(self, other):
@@ -72,25 +72,29 @@ class LexScheduleStatement(object):
         return "%s%s" % (self.insn_id, int_id)
 
 
-class LexScheduleStatementInstanceSet(object):
-    """A representation of a set of instances of a
-    :class:`LexScheduleStatement`.
+class PairwiseScheduleStatementInstanceSet(object):
+    """A representation of a set of (non-concurrent) instances of a
+    statement being executed. The ordering of the instances is described
+    by the `lex_points` attribute, a list representing points in a
+    lexicographic ordering of statements. Each field in the list
+    corresponds to a dimension in the lexicographic ordering.
 
     .. attribute:: stmt
 
-       A :class:`LexScheduleStatement`.
+       A :class:`PairwiseScheduleStatement`.
 
     .. attribute:: lex_points
 
-       A list of :class:`int` or as :class:`str` :mod:`loopy` inames representing
-       a point or set of points in a lexicographic ordering.
+       A list containing one value for each dimension in a lexicographic
+       ordering. These values describe the ordering of the statements,
+       and may be :class:`str` :mod:`loopy` inames or :class:`int`.
 
     """
 
     def __init__(
             self,
-            stmt,  # a LexScheduleStatement
-            lex_points,  # [string/int, ]
+            stmt,
+            lex_points,
             ):
         self.stmt = stmt
         self.lex_points = lex_points
@@ -99,15 +103,15 @@ class LexScheduleStatementInstanceSet(object):
         return "{%s, %s}" % (self.stmt, self.lex_points)
 
 
-class LexSchedule(object):
-    """Given a pair of statements in a linearized kernel, LexSchedule
+class PairwiseScheduleBuilder(object):
+    """Given a pair of statements in a linearized kernel, PairwiseScheduleBuilder
     determines the (relative) order in which the instances are executed,
     by creating a mapping from statement instances to points in a single
     lexicographic ordering.
 
     .. attribute:: stmt_instance_before
 
-       A :class:`LexScheduleStatementInstanceSet` describing the dependee
+       A :class:`PairwiseScheduleStatementInstanceSet` describing the dependee
        statement's order relative to the depender statment by mapping
        a statement to a point or set of points in a lexicographic
        ordering. Points in lexicographic ordering are represented as
@@ -115,7 +119,7 @@ class LexSchedule(object):
 
     .. attribute:: stmt_instance_after
 
-       A :class:`LexScheduleStatementInstanceSet` describing the depender
+       A :class:`PairwiseScheduleStatementInstanceSet` describing the depender
        statement's order relative to the dependee statment by mapping
        a statement to a point or set of points in a lexicographic
        ordering. Points in lexicographic ordering are represented as
@@ -146,7 +150,7 @@ class LexSchedule(object):
             ):
         """
         :arg linearization_items_ordered: A list of :class:`ScheduleItem` whose
-            order will be described by this :class:`LexSchedule`.
+            order will be described by this :class:`PairwiseScheduleBuilder`.
 
         :arg before_insn_id: A :class:`str` instruction id specifying
             the dependee in this pair of instructions.
@@ -156,18 +160,18 @@ class LexSchedule(object):
 
         """
 
-        # LexScheduleStatements
+        # PairwiseScheduleBuilder statements
         self.stmt_instance_before = None
         self.stmt_instance_after = None
         # TODO when/after dependencies are added, consider the possibility
-        # of removing the two-statements-per-LexSchedule limitation
+        # of removing the two-statements-per-PairwiseScheduleBuilder limitation
 
         from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
 
         # go through linearization_items_ordered and generate self.lex_schedule
 
-        # keep track of the next point in our lexicographic ordering
-        # initially this as a 1-d point with value 0
+        # keep track of the next tuple of points in our lexicographic
+        # ordering, initially this as a 1-d point with value 0
         next_insn_lex_tuple = [0]
         stmt_added_since_prev_block_at_tier = [False]
         next_sid = 0
@@ -230,8 +234,8 @@ class LexSchedule(object):
 
                 if lp_insn_id == before_insn_id:
                     # add before sched item
-                    self.stmt_instance_before = LexScheduleStatementInstanceSet(
-                            LexScheduleStatement(
+                    self.stmt_instance_before = PairwiseScheduleStatementInstanceSet(
+                            PairwiseScheduleStatement(
                                 insn_id=lp_insn_id,
                                 int_id=next_sid,  # int representing insn
                                 ),
@@ -240,8 +244,8 @@ class LexSchedule(object):
 
                 if lp_insn_id == after_insn_id:
                     # add after sched item
-                    self.stmt_instance_after = LexScheduleStatementInstanceSet(
-                            LexScheduleStatement(
+                    self.stmt_instance_after = PairwiseScheduleStatementInstanceSet(
+                            PairwiseScheduleStatement(
                                 insn_id=lp_insn_id,
                                 int_id=next_sid,  # int representing insn
                                 ),
@@ -265,8 +269,9 @@ class LexSchedule(object):
             if self.stmt_instance_before and self.stmt_instance_after:
                 break
 
-        # at this point, lex_schedule may contain lex points missing dimensions,
-        # the values in these missing dims should be zero, so add them
+        # At this point, lex_schedule may contain lex point tuples
+        # missing dimensions; the values in these missing dims should
+        # be zero, so add them.
         self.pad_lex_tuples_with_zeros()
 
     def max_lex_dims(self):
@@ -277,13 +282,12 @@ class LexSchedule(object):
     def pad_lex_tuples_with_zeros(self):
         """Find the maximum number of lexicographic dimensions represented
             in the lexicographic ordering, and if any
-            :class:`LexScheduleStatement` maps to a point in lexicographic
-            time with fewer dimensions, add a zero for each of the missing
-            dimensions.
+            :class:`PairwiseScheduleStatement` maps to a lex point tuple with
+            fewer dimensions, add a zero for each of the missing dimensions.
         """
 
         def _pad_lex_tuple_with_zeros(stmt_inst, length):
-            return LexScheduleStatementInstanceSet(
+            return PairwiseScheduleStatementInstanceSet(
                 stmt_inst.stmt,
                 stmt_inst.lex_points[:] + [0]*(length-len(stmt_inst.lex_points)),
                 )
