@@ -23,6 +23,6 @@ Reserved Name Prefixes
 =============== =============================
 Prefix          Module
 =============== =============================
-``_lp``         loopy
+``_lp``         :mod:`loopy`
 ``_lp_sched``   loopy.linearization.checker
 =============== =============================
