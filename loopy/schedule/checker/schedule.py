@@ -73,8 +73,11 @@ class LexScheduleStatement(object):
 
 
 class LexScheduleStatementInstanceSet(object):
-    """A representation of a set of instances of a
-    :class:`LexScheduleStatement`.
+    """A representation of a set of (non-concurrent) instances of a
+    statement being executed. The ordering of the instances is described
+    by the `lex_points` attribute, a list representing points in a
+    lexicographic ordering of statements. Each field in the list
+    corresponds to a dimension in the lexicographic ordering.
 
     .. attribute:: stmt
 
@@ -82,8 +85,9 @@ class LexScheduleStatementInstanceSet(object):
 
     .. attribute:: lex_points
 
-       A list of :class:`int` or as :class:`str` :mod:`loopy` inames representing
-       a point or set of points in a lexicographic ordering.
+       A list containing one value for each dimension in a lexicographic
+       ordering. These values describe the ordering of the statements,
+       and may be :class:`str` :mod:`loopy` inames or :class:`int`.
 
     """
 
