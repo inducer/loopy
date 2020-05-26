@@ -166,8 +166,8 @@ class LexSchedule(object):
 
         # go through linearization_items_ordered and generate self.lex_schedule
 
-        # keep track of the next point in our lexicographic ordering
-        # initially this as a 1-d point with value 0
+        # keep track of the next tuple of points in our lexicographic
+        # ordering, initially this as a 1-d point with value 0
         next_insn_lex_tuple = [0]
         stmt_added_since_prev_block_at_tier = [False]
         next_sid = 0
@@ -265,8 +265,9 @@ class LexSchedule(object):
             if self.stmt_instance_before and self.stmt_instance_after:
                 break
 
-        # at this point, lex_schedule may contain lex points missing dimensions,
-        # the values in these missing dims should be zero, so add them
+        # At this point, lex_schedule may contain lex point tuples
+        # missing dimensions; the values in these missing dims should
+        # be zero, so add them.
         self.pad_lex_tuples_with_zeros()
 
     def max_lex_dims(self):
@@ -277,9 +278,8 @@ class LexSchedule(object):
     def pad_lex_tuples_with_zeros(self):
         """Find the maximum number of lexicographic dimensions represented
             in the lexicographic ordering, and if any
-            :class:`LexScheduleStatement` maps to a point in lexicographic
-            time with fewer dimensions, add a zero for each of the missing
-            dimensions.
+            :class:`LexScheduleStatement` maps to a lex point tuple with
+            fewer dimensions, add a zero for each of the missing dimensions.
         """
 
         def _pad_lex_tuple_with_zeros(stmt_inst, length):
