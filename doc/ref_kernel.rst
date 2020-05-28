@@ -182,9 +182,9 @@ Reserved Prefix    Scope/Module(s)
 ================== ==================================
 
 .. note::
-    Existing code may not yet fully satisfy these naming requirements. Name
-    changes are in progress, and prefixes will be added to this registry as
-    they are created.
+    Existing Loopy code may not yet fully satisfy these naming requirements.
+    Name changes are in progress, and prefixes will be added to this registry
+    as they are created.
 
 .. _instructions:
 
