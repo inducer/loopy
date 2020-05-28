@@ -172,11 +172,11 @@ created within the listed module, and the prefixes must be disjoint, i.e., the
 prefix used within any module may not itself be a prefix of the prefix for
 another module.
 
-Reserved Name Prefixes
-""""""""""""""""""""""
+Reserved Variable Name Prefixes
+"""""""""""""""""""""""""""""""
 
 ================================== ==================================
-Reserved Prefix for Variable Names Scope/Module(s)
+Reserved Prefix                    Scope/Module(s)
 ================================== ==================================
 ``_lp_linchk_``                    :mod:`loopy.linearization.checker`
 ================================== ==================================
