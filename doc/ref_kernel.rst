@@ -175,11 +175,16 @@ another module.
 Reserved Variable Name Prefixes
 """""""""""""""""""""""""""""""
 
-================================== ==================================
-Reserved Prefix                    Scope/Module(s)
-================================== ==================================
-``_lp_linchk_``                    :mod:`loopy.linearization.checker`
-================================== ==================================
+================== ==================================
+Reserved Prefix    Scope/Module(s)
+================== ==================================
+``_lp_linchk_``    :mod:`loopy.linearization.checker`
+================== ==================================
+
+.. note::
+    Existing code may not yet fully satisfy these naming requirements. Name
+    changes are in progress, and prefixes will be added to this registry as
+    they are created.
 
 .. _instructions:
 
