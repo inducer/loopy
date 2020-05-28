@@ -285,6 +285,9 @@ class PyOpenCLTarget(OpenCLTarget):
     warnings) and support for complex numbers.
     """
 
+    # FIXME make prefixes conform to naming rules
+    # (see Reference: Loopy’s Model of a Kernel)
+
     host_program_name_prefix = "_lpy_host_"
     host_program_name_suffix = ""
 
