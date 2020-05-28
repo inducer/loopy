@@ -167,8 +167,9 @@ Variable Name Registry
 ^^^^^^^^^^^^^^^^^^^^^^
 
 Individual Loopy submodules use their own prefix beginning with ``_lp_`` for
-internally-created variable names. These prefixes are only used for names
-created within the listed submodule.
+internally-created variable names. Each prefix is only used for names created
+within the listed submodule, and the prefix used within any module may not
+itself be a prefix of the prefix for another module.
 
 Reserved Name Prefixes
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -176,7 +177,6 @@ Reserved Name Prefixes
 =============== ==================================
 Prefix          Module
 =============== ==================================
-``_lp``         :mod:`loopy`
 ``_lp_sched``   :mod:`loopy.linearization.checker`
 =============== ==================================
 
