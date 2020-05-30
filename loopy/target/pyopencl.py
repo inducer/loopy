@@ -1,3 +1,4 @@
+# coding: utf-8
 """OpenCL target integrated with PyOpenCL."""
 
 from __future__ import division, absolute_import
