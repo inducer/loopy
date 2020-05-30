@@ -154,32 +154,32 @@ Tag                             Meaning
 Identifiers
 -----------
 
-Reserved Kernel Variable Names
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Reserved Identifiers
+^^^^^^^^^^^^^^^^^^^^
 
-The variable name prefix ``_lp_`` is reserved for internal usage; when creating
-kernel variables, users should *not* use names beginning with ``_lp_``. This
-prefix is used for variables created internally when operating on Loopy's kernel
-IR. For Loopy developers, further information on name prefixes used within
-submodules is below.
+The identifier prefix ``_lp_`` is reserved for internal usage; when creating
+*inames*, *argument names*, *temporary variable names*, *substitution rule
+names*, *instruction IDs*, and other identifiers, users should *not* use names
+beginning with ``_lp_``.  This prefix is used for identifiers created
+internally when operating on Loopy's kernel IR. For Loopy developers, further
+information on name prefixes used within submodules is below.
 
-Variable Name Registry
-^^^^^^^^^^^^^^^^^^^^^^
+Identifier Registry
+^^^^^^^^^^^^^^^^^^^
 
 Individual Loopy submodules use their own prefix beginning with ``_lp_`` for
-all internally-created IR variable names. Each prefix is only used for names
+all internally-created identifiers. Each prefix is only used for identifiers
 created within the listed module, and the prefixes must be disjoint, i.e., the
 prefix used within any module may not itself be a prefix of the prefix for
 another module.
 
-Reserved Variable Name Prefixes
-"""""""""""""""""""""""""""""""
+**Reserved Identifier Prefixes**
 
-================== ==================================
-Reserved Prefix    Usage (module or purpose)
-================== ==================================
-``_lp_linchk_``    :mod:`loopy.linearization.checker`
-================== ==================================
+======================= ==================================
+Reserved Prefix         Usage (module or purpose)
+======================= ==================================
+``_lp_linchk_``         :mod:`loopy.linearization.checker`
+======================= ==================================
 
 .. note::
     Existing Loopy code may not yet fully satisfy these naming requirements.
