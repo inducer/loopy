@@ -176,7 +176,7 @@ Reserved Variable Name Prefixes
 """""""""""""""""""""""""""""""
 
 ================== ==================================
-Reserved Prefix    Scope/Module(s)
+Reserved Prefix    Usage (module or purpose)
 ================== ==================================
 ``_lp_linchk_``    :mod:`loopy.linearization.checker`
 ================== ==================================
