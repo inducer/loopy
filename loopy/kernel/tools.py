@@ -1598,9 +1598,10 @@ def get_global_barrier_order(kernel):
 
     See also :class:`loopy.instruction.BarrierInstruction`.
     """
-    dep_graph = {
-            insn.id: insn.depends_on
-            for insn in kernel.instructions}
+    dep_graph = {insn.id: set() for insn in kernel.instructions}
+    for insn in kernel.instructions:
+        for dep in insn.depends_on:
+            dep_graph[dep].add(insn.id)
 
     from pytools.graph import compute_topological_order
     order = compute_topological_order(dep_graph)
