@@ -1428,9 +1428,7 @@ def stringify_instruction_list(kernel):
     for insn in kernel.instructions:
         dep_graph[insn.id] = natsorted(insn.depends_on)
 
-    printed_insn_order = [
-            kernel.id_to_insn[insn_id]
-            for insn_id in compute_topological_order(dep_graph)]
+    printed_insn_order = compute_topological_order(dep_graph)
 
     del dep_graph
 
