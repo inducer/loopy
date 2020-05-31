@@ -1427,6 +1427,8 @@ def stringify_instruction_list(kernel):
 
     def insert_insn_into_order(insn):
         if insn.id in printed_insn_ids:
+            # Note: dependency cycles are deliberately ignored so that printing
+            # succeeds.
             return
         printed_insn_ids.add(insn.id)
 
