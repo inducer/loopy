@@ -1422,15 +1422,21 @@ def draw_dependencies_as_unicode_arrows(
 def stringify_instruction_list(kernel):
     # {{{ topological sort
 
-    from pytools.graph import compute_topological_order
+    printed_insn_ids = set()
+    printed_insn_order = []
 
-    dep_graph = {}
+    def insert_insn_into_order(insn):
+        if insn.id in printed_insn_ids:
+            return
+        printed_insn_ids.add(insn.id)
+
+        for dep_id in natsorted(insn.depends_on):
+            insert_insn_into_order(kernel.id_to_insn[dep_id])
+
+        printed_insn_order.append(insn)
+
     for insn in kernel.instructions:
-        dep_graph[insn.id] = natsorted(insn.depends_on)
-
-    printed_insn_order = compute_topological_order(dep_graph)
-
-    del dep_graph
+        insert_insn_into_order(insn)
 
     # }}}
 
