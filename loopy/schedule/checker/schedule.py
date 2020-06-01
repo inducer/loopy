@@ -72,7 +72,7 @@ class PairwiseScheduleStatement(object):
         return "%s%s" % (self.insn_id, int_id)
 
 
-class PairwiseScheduleStatementInstanceSet(object):
+class StatementInstanceSet(object):
     """A representation of a set of (non-concurrent) instances of a
     statement being executed. The ordering of the instances is described
     by the `lex_points` attribute, a list representing points in a
@@ -111,7 +111,7 @@ class PairwiseScheduleBuilder(object):
 
     .. attribute:: stmt_instance_before
 
-       A :class:`PairwiseScheduleStatementInstanceSet` whose ordering relative
+       A :class:`StatementInstanceSet` whose ordering relative
        to `stmt_instance_after is described by PairwiseScheduleBuilder. This
        is achieved by mapping the statement instances in both sets to points
        in a single lexicographic ordering. Points in lexicographic ordering
@@ -120,7 +120,7 @@ class PairwiseScheduleBuilder(object):
 
     .. attribute:: stmt_instance_after
 
-       A :class:`PairwiseScheduleStatementInstanceSet` whose ordering relative
+       A :class:`StatementInstanceSet` whose ordering relative
        to `stmt_instance_before is described by PairwiseScheduleBuilder. This
        is achieved by mapping the statement instances in both sets to points
        in a single lexicographic ordering. Points in lexicographic ordering
@@ -236,7 +236,7 @@ class PairwiseScheduleBuilder(object):
 
                 if lp_insn_id == before_insn_id:
                     # add before sched item
-                    self.stmt_instance_before = PairwiseScheduleStatementInstanceSet(
+                    self.stmt_instance_before = StatementInstanceSet(
                             PairwiseScheduleStatement(
                                 insn_id=lp_insn_id,
                                 int_id=next_sid,  # int representing insn
@@ -246,7 +246,7 @@ class PairwiseScheduleBuilder(object):
 
                 if lp_insn_id == after_insn_id:
                     # add after sched item
-                    self.stmt_instance_after = PairwiseScheduleStatementInstanceSet(
+                    self.stmt_instance_after = StatementInstanceSet(
                             PairwiseScheduleStatement(
                                 insn_id=lp_insn_id,
                                 int_id=next_sid,  # int representing insn
@@ -289,7 +289,7 @@ class PairwiseScheduleBuilder(object):
         """
 
         def _pad_lex_tuple_with_zeros(stmt_inst, length):
-            return PairwiseScheduleStatementInstanceSet(
+            return StatementInstanceSet(
                 stmt_inst.stmt,
                 stmt_inst.lex_points[:] + [0]*(length-len(stmt_inst.lex_points)),
                 )
@@ -333,7 +333,7 @@ class PairwiseScheduleBuilder(object):
         :returns: A two-tuple containing two :class:`islpy.Map`s
             representing the schedule as two mappings
             from statement instances to lexicographic time, one for
-            each of the two :class:`PairwiseScheduleStatementInstanceSet`s.
+            each of the two :class:`StatementInstanceSet`s.
 
         """
 
