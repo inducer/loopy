@@ -91,6 +91,22 @@ def get_schedule_for_statement_pair(
         sched_a, sched_b = get_isl_maps_from_PairwiseScheduleBuilder(
             sched_builder_ab, knl)
 
+        print(sched_a)
+        print(sched_b)
+
+    Example Output::
+
+        [pi, pj, pk] -> {
+        [_lp_linchk_statement = 0, i, j, k] ->
+        [_lp_linchk_l0 = 0, _lp_linchk_l1 = i, _lp_linchk_l2 = 0,
+        _lp_linchk_l3 = j, _lp_linchk_l4 = 0] :
+        0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
+        [pi, pj, pk] -> {
+        [_lp_linchk_statement = 1, i, j, k] ->
+        [_lp_linchk_l0 = 0, _lp_linchk_l1 = i, _lp_linchk_l2 = 1,
+        _lp_linchk_l3 = k, _lp_linchk_l4 = 0] :
+        0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
+
     """
 
     # {{{ Preprocess if not already preprocessed
