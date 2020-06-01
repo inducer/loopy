@@ -136,7 +136,11 @@ class PairwiseScheduleBuilder(object):
 
        A :class:`str` specifying the prefix to be used for the variables
        representing the dimensions in the lexicographic ordering. E.g.,
-       a prefix of "lex" might yield variables "lex0", "lex1", "lex2".
+       a prefix of "_lp_linchk_lex" might yield variables "_lp_linchk_lex0",
+       "_lp_linchk_lex1", "_lp_linchk_lex2". Note the identifier prefix
+       policies described in the documentation under
+       *Loopy's Model of a Kernel* -> *Identifiers*.
+       .
 
     """
 
