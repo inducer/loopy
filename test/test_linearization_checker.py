@@ -145,9 +145,9 @@ def test_lexschedule_and_islmap_creation():
 
     isl_sched_before_expected = isl.Map(
         "[pi, pk] -> { "
-        "[_lp_sched_statement=0, i, k] -> "
-        "[_lp_sched_l0=0, _lp_sched_l1=i, _lp_sched_l2=0, _lp_sched_l3=k, "
-        "_lp_sched_l4=0] : "
+        "[_lp_linchk_statement=0, i, k] -> "
+        "[_lp_linchk_l0=0, _lp_linchk_l1=i, _lp_linchk_l2=0, _lp_linchk_l3=k, "
+        "_lp_linchk_l4=0] : "
         "0 <= i < pi and 0 <= k < pk }"
         )
     isl_sched_before_expected = align_isl_maps_by_var_names(
@@ -155,9 +155,9 @@ def test_lexschedule_and_islmap_creation():
 
     isl_sched_after_expected = isl.Map(
         "[pi, pj] -> { "
-        "[_lp_sched_statement=1, i, j] -> "
-        "[_lp_sched_l0=0, _lp_sched_l1=i, _lp_sched_l2=1, _lp_sched_l3=j, "
-        "_lp_sched_l4=0] : "
+        "[_lp_linchk_statement=1, i, j] -> "
+        "[_lp_linchk_l0=0, _lp_linchk_l1=i, _lp_linchk_l2=1, _lp_linchk_l3=j, "
+        "_lp_linchk_l4=0] : "
         "0 <= i < pi and 0 <= j < pj }"
         )
     isl_sched_after_expected = align_isl_maps_by_var_names(
@@ -181,9 +181,9 @@ def test_lexschedule_and_islmap_creation():
 
     isl_sched_before_expected = isl.Map(
         "[pi, pk] -> { "
-        "[_lp_sched_statement=0, i, k] -> "
-        "[_lp_sched_l0=0, _lp_sched_l1=i, _lp_sched_l2=0, _lp_sched_l3=k, "
-        "_lp_sched_l4=0] : "
+        "[_lp_linchk_statement=0, i, k] -> "
+        "[_lp_linchk_l0=0, _lp_linchk_l1=i, _lp_linchk_l2=0, _lp_linchk_l3=k, "
+        "_lp_linchk_l4=0] : "
         "0 <= i < pi and 0 <= k < pk }"
         )
     isl_sched_before_expected = align_isl_maps_by_var_names(
@@ -191,9 +191,9 @@ def test_lexschedule_and_islmap_creation():
 
     isl_sched_after_expected = isl.Map(
         "[pi, pj] -> { "
-        "[_lp_sched_statement=1, i, j] -> "
-        "[_lp_sched_l0=0, _lp_sched_l1=i, _lp_sched_l2=1, _lp_sched_l3=j, "
-        "_lp_sched_l4=0] : "
+        "[_lp_linchk_statement=1, i, j] -> "
+        "[_lp_linchk_l0=0, _lp_linchk_l1=i, _lp_linchk_l2=1, _lp_linchk_l3=j, "
+        "_lp_linchk_l4=0] : "
         "0 <= i < pi and 0 <= j < pj }"
         )
     isl_sched_after_expected = align_isl_maps_by_var_names(
@@ -220,9 +220,9 @@ def test_lexschedule_and_islmap_creation():
 
         isl_sched_before_expected = isl.Map(
             "[pi, pk] -> { "
-            "[_lp_sched_statement=%d, i, k] -> "
-            "[_lp_sched_l0=%d, _lp_sched_l1=i, _lp_sched_l2=0, _lp_sched_l3=k, "
-            "_lp_sched_l4=0] : "
+            "[_lp_linchk_statement=%d, i, k] -> "
+            "[_lp_linchk_l0=%d, _lp_linchk_l1=i, _lp_linchk_l2=0, _lp_linchk_l3=k, "
+            "_lp_linchk_l4=0] : "
             "0 <= i < pi and 0 <= k < pk }"
             % (sid_a, sid_a)
             )
@@ -231,9 +231,9 @@ def test_lexschedule_and_islmap_creation():
 
         isl_sched_after_expected = isl.Map(
             "[pt] -> { "
-            "[_lp_sched_statement=%d, t] -> "
-            "[_lp_sched_l0=%d, _lp_sched_l1=t, _lp_sched_l2=0, _lp_sched_l3=0, "
-            "_lp_sched_l4=0] : "
+            "[_lp_linchk_statement=%d, t] -> "
+            "[_lp_linchk_l0=%d, _lp_linchk_l1=t, _lp_linchk_l2=0, _lp_linchk_l3=0, "
+            "_lp_linchk_l4=0] : "
             "0 <= t < pt }"
             % (sid_d, sid_d)
             )
@@ -266,9 +266,9 @@ def test_lexschedule_and_islmap_creation():
 
         isl_sched_before_expected = isl.Map(
             "[pi, pj] -> { "
-            "[_lp_sched_statement=%d, i, j] -> "
-            "[_lp_sched_l0=0, _lp_sched_l1=i, _lp_sched_l2=0, _lp_sched_l3=j, "
-            "_lp_sched_l4=%d] : "
+            "[_lp_linchk_statement=%d, i, j] -> "
+            "[_lp_linchk_l0=0, _lp_linchk_l1=i, _lp_linchk_l2=0, _lp_linchk_l3=j, "
+            "_lp_linchk_l4=%d] : "
             "0 <= i < pi and 0 <= j < pj }"
             % (sid_b, sid_b)
             )
@@ -277,9 +277,9 @@ def test_lexschedule_and_islmap_creation():
 
         isl_sched_after_expected = isl.Map(
             "[pi, pj] -> { "
-            "[_lp_sched_statement=%d, i, j] -> "
-            "[_lp_sched_l0=0, _lp_sched_l1=i, _lp_sched_l2=0, _lp_sched_l3=j, "
-            "_lp_sched_l4=%d] : "
+            "[_lp_linchk_statement=%d, i, j] -> "
+            "[_lp_linchk_l0=0, _lp_linchk_l1=i, _lp_linchk_l2=0, _lp_linchk_l3=j, "
+            "_lp_linchk_l4=%d] : "
             "0 <= i < pi and 0 <= j < pj }"
             % (sid_c, sid_c)
             )
@@ -312,9 +312,9 @@ def test_lexschedule_and_islmap_creation():
 
         isl_sched_before_expected = isl.Map(
             "[pi, pj] -> { "
-            "[_lp_sched_statement=%d, i, j] -> "
-            "[_lp_sched_l0=%d, _lp_sched_l1=i, _lp_sched_l2=0, _lp_sched_l3=j, "
-            "_lp_sched_l4=0] : "
+            "[_lp_linchk_statement=%d, i, j] -> "
+            "[_lp_linchk_l0=%d, _lp_linchk_l1=i, _lp_linchk_l2=0, _lp_linchk_l3=j, "
+            "_lp_linchk_l4=0] : "
             "0 <= i < pi and 0 <= j < pj }"
             % (sid_b, sid_b)
             )
@@ -323,9 +323,9 @@ def test_lexschedule_and_islmap_creation():
 
         isl_sched_after_expected = isl.Map(
             "[pt] -> { "
-            "[_lp_sched_statement=%d, t] -> "
-            "[_lp_sched_l0=%d, _lp_sched_l1=t, _lp_sched_l2=0, _lp_sched_l3=0, "
-            "_lp_sched_l4=0] : "
+            "[_lp_linchk_statement=%d, t] -> "
+            "[_lp_linchk_l0=%d, _lp_linchk_l1=t, _lp_linchk_l2=0, _lp_linchk_l3=0, "
+            "_lp_linchk_l4=0] : "
             "0 <= t < pt }"
             % (sid_d, sid_d)
             )
@@ -358,9 +358,9 @@ def test_lexschedule_and_islmap_creation():
 
         isl_sched_before_expected = isl.Map(
             "[pi, pj] -> { "
-            "[_lp_sched_statement=%d, i, j] -> "
-            "[_lp_sched_l0=%d, _lp_sched_l1=i, _lp_sched_l2=0, _lp_sched_l3=j, "
-            "_lp_sched_l4=0] : "
+            "[_lp_linchk_statement=%d, i, j] -> "
+            "[_lp_linchk_l0=%d, _lp_linchk_l1=i, _lp_linchk_l2=0, _lp_linchk_l3=j, "
+            "_lp_linchk_l4=0] : "
             "0 <= i < pi and 0 <= j < pj }"
             % (sid_c, sid_c)
             )
@@ -369,9 +369,9 @@ def test_lexschedule_and_islmap_creation():
 
         isl_sched_after_expected = isl.Map(
             "[pt] -> { "
-            "[_lp_sched_statement=%d, t] -> "
-            "[_lp_sched_l0=%d, _lp_sched_l1=t, _lp_sched_l2=0, _lp_sched_l3=0, "
-            "_lp_sched_l4=0] : "
+            "[_lp_linchk_statement=%d, t] -> "
+            "[_lp_linchk_l0=%d, _lp_linchk_l1=t, _lp_linchk_l2=0, _lp_linchk_l3=0, "
+            "_lp_linchk_l4=0] : "
             "0 <= t < pt }"
             % (sid_d, sid_d)
             )

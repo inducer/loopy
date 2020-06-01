@@ -140,8 +140,8 @@ class PairwiseScheduleBuilder(object):
 
     """
 
-    statement_var_name = "_lp_sched_statement"
-    lex_var_prefix = "_lp_sched_l"
+    statement_var_name = "_lp_linchk_statement"
+    lex_var_prefix = "_lp_linchk_l"
 
     def __init__(
             self,
