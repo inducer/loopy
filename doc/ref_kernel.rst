@@ -167,11 +167,11 @@ information on name prefixes used within submodules is below.
 Identifier Registry
 ^^^^^^^^^^^^^^^^^^^
 
-Individual Loopy submodules use their own prefix beginning with ``_lp_`` for
-all internally-created identifiers. Each prefix is only used for identifiers
-created within the listed module, and the prefixes must be disjoint, i.e., the
-prefix used within any module may not itself be a prefix of the prefix for
-another module.
+Functionality in :mod:`loopy` *must* use identifiers beginning with ``_lp_`` for
+all internally-created identifiers. Additionally, each name beginning with
+``_lp_`` must start with one of the reserved prefixes below. New prefixes may
+be registered by adding them to the table below. New prefixes may not themselves
+be the prefix of an existing prefix.
 
 **Reserved Identifier Prefixes**
 
@@ -182,6 +182,7 @@ Reserved Prefix         Usage (module or purpose)
 ======================= ==================================
 
 .. note::
+
     Existing Loopy code may not yet fully satisfy these naming requirements.
     Name changes are in progress, and prefixes will be added to this registry
     as they are created.
