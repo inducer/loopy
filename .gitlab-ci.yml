@@ -1,7 +1,7 @@
 Python 2.7 POCL:
   script:
   - export PY_EXE=python2.7
-  - export PYOPENCL_TEST=portable
+  - export PYOPENCL_TEST=portable:pthread
   - export EXTRA_INSTALL="pybind11 numpy mako"
   - export LOOPY_NO_CACHE=1
   - export NO_DOCTESTS=1
@@ -20,7 +20,7 @@ Python 2.7 POCL:
 Python 3 POCL:
   script:
   - export PY_EXE=python3
-  - export PYOPENCL_TEST=portable
+  - export PYOPENCL_TEST=portable:pthread
   - export EXTRA_INSTALL="pybind11 numpy mako"
   - export LOOPY_NO_CACHE=1
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
@@ -57,7 +57,7 @@ Python 3 Intel:
 Python 3 POCL Twice With Cache:
   script:
   - export PY_EXE=python3
-  - export PYOPENCL_TEST=portable
+  - export PYOPENCL_TEST=portable:pthread
   - export EXTRA_INSTALL="pybind11 numpy mako"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
@@ -77,7 +77,7 @@ Python 3 POCL Twice With Cache:
 # PyPy POCL:
 #   script:
 #   - export PY_EXE=pypy
-#   - export PYOPENCL_TEST=portable
+#   - export PYOPENCL_TEST=portable:pthread
 #   - export EXTRA_INSTALL="pybind11 numpy mako"
 #   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
 #   - ". ./build-and-test-py-project.sh"
@@ -90,7 +90,7 @@ Python 3 POCL Twice With Cache:
 Python 3 POCL Examples:
   script:
   - export PY_EXE=python3
-  - export PYOPENCL_TEST=portable
+  - export PYOPENCL_TEST=portable:pthread
   - export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipykernel nbconvert"
   - ". ./build-py-project-and-run-examples.sh"
   tags:
