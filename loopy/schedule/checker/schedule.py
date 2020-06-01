@@ -23,8 +23,8 @@ THE SOFTWARE.
 import islpy as isl
 
 
-class PairwiseScheduleStatement(object):
-    """A representation of a :mod:`loopy` statement.
+class StatementRef(object):
+    """A reference to a :mod:`loopy` statement.
 
     .. attribute:: insn_id
 
@@ -81,7 +81,7 @@ class StatementInstanceSet(object):
 
     .. attribute:: stmt
 
-       A :class:`PairwiseScheduleStatement`.
+       A :class:`StatementRef`.
 
     .. attribute:: lex_points
 
@@ -237,7 +237,7 @@ class PairwiseScheduleBuilder(object):
                 if lp_insn_id == before_insn_id:
                     # add before sched item
                     self.stmt_instance_before = StatementInstanceSet(
-                            PairwiseScheduleStatement(
+                            StatementRef(
                                 insn_id=lp_insn_id,
                                 int_id=next_sid,  # int representing insn
                                 ),
@@ -247,7 +247,7 @@ class PairwiseScheduleBuilder(object):
                 if lp_insn_id == after_insn_id:
                     # add after sched item
                     self.stmt_instance_after = StatementInstanceSet(
-                            PairwiseScheduleStatement(
+                            StatementRef(
                                 insn_id=lp_insn_id,
                                 int_id=next_sid,  # int representing insn
                                 ),
@@ -284,7 +284,7 @@ class PairwiseScheduleBuilder(object):
     def pad_lex_tuples_with_zeros(self):
         """Find the maximum number of lexicographic dimensions represented
             in the lexicographic ordering, and if any
-            :class:`PairwiseScheduleStatement` maps to a lex point tuple with
+            :class:`StatementRef` maps to a lex point tuple with
             fewer dimensions, add a zero for each of the missing dimensions.
         """
 
