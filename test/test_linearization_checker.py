@@ -243,7 +243,7 @@ def test_lexschedule_and_islmap_creation():
         assert isl_sched_before == isl_sched_before_expected
         assert isl_sched_after == isl_sched_after_expected
 
-    if sched_ad.stmt_instance_before.stmt.int_id == 0:
+    if sched_ad.stmt_instance_before.stmt_ref.int_id == 0:
         perform_insn_ad_checks_with(0, 1)
     else:
         perform_insn_ad_checks_with(1, 0)
@@ -289,7 +289,7 @@ def test_lexschedule_and_islmap_creation():
         assert isl_sched_before == isl_sched_before_expected
         assert isl_sched_after == isl_sched_after_expected
 
-    if sched_bc.stmt_instance_before.stmt.int_id == 0:
+    if sched_bc.stmt_instance_before.stmt_ref.int_id == 0:
         perform_insn_bc_checks_with(0, 1)
     else:
         perform_insn_bc_checks_with(1, 0)
@@ -335,7 +335,7 @@ def test_lexschedule_and_islmap_creation():
         assert isl_sched_before == isl_sched_before_expected
         assert isl_sched_after == isl_sched_after_expected
 
-    if sched_bd.stmt_instance_before.stmt.int_id == 0:
+    if sched_bd.stmt_instance_before.stmt_ref.int_id == 0:
         perform_insn_bd_checks_with(0, 1)
     else:
         perform_insn_bd_checks_with(1, 0)
@@ -381,7 +381,7 @@ def test_lexschedule_and_islmap_creation():
         assert isl_sched_before == isl_sched_before_expected
         assert isl_sched_after == isl_sched_after_expected
 
-    if sched_cd.stmt_instance_before.stmt.int_id == 0:
+    if sched_cd.stmt_instance_before.stmt_ref.int_id == 0:
         perform_insn_cd_checks_with(0, 1)
     else:
         perform_insn_cd_checks_with(1, 0)

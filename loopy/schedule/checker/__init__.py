@@ -120,10 +120,10 @@ def get_isl_maps_from_PairwiseScheduleBuilder(sched_builder, knl):
     # {{{ Get iname domains
     dom_before = knl.get_inames_domain(
         knl.id_to_insn[
-            sched_builder.stmt_instance_before.stmt.insn_id].within_inames)
+            sched_builder.stmt_instance_before.stmt_ref.insn_id].within_inames)
     dom_after = knl.get_inames_domain(
         knl.id_to_insn[
-            sched_builder.stmt_instance_after.stmt.insn_id].within_inames)
+            sched_builder.stmt_instance_after.stmt_ref.insn_id].within_inames)
     # }}}
 
     # {{{ Get isl maps

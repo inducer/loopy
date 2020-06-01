@@ -79,7 +79,7 @@ class StatementInstanceSet(object):
     lexicographic ordering of statements. Each field in the list
     corresponds to a dimension in the lexicographic ordering.
 
-    .. attribute:: stmt
+    .. attribute:: stmt_ref
 
        A :class:`StatementRef`.
 
@@ -93,14 +93,14 @@ class StatementInstanceSet(object):
 
     def __init__(
             self,
-            stmt,
+            stmt_ref,
             lex_points,
             ):
-        self.stmt = stmt
+        self.stmt_ref = stmt_ref
         self.lex_points = lex_points
 
     def __str__(self):
-        return "{%s, %s}" % (self.stmt, self.lex_points)
+        return "{%s, %s}" % (self.stmt_ref, self.lex_points)
 
 
 class PairwiseScheduleBuilder(object):
@@ -290,7 +290,7 @@ class PairwiseScheduleBuilder(object):
 
         def _pad_lex_tuple_with_zeros(stmt_inst, length):
             return StatementInstanceSet(
-                stmt_inst.stmt,
+                stmt_inst.stmt_ref,
                 stmt_inst.lex_points[:] + [0]*(length-len(stmt_inst.lex_points)),
                 )
 
@@ -372,7 +372,7 @@ class PairwiseScheduleBuilder(object):
             # Right now, statement instance tuples consist of single int.
             # Add all inames from domains to each map domain tuple.
             tuple_pair = [(
-                (stmt_inst.stmt.int_id, ) + tuple(dom_inames_ordered),
+                (stmt_inst.stmt_ref.int_id, ) + tuple(dom_inames_ordered),
                 stmt_inst.lex_points
                 )]
 
@@ -402,7 +402,7 @@ class PairwiseScheduleBuilder(object):
         def stringify_sched_stmt_instance(stmt_inst):
             return "{\n[%s=%s,<inames>] -> %s;\n}" % (
                 self.statement_var_name,
-                stmt_inst.stmt.int_id,
+                stmt_inst.stmt_ref.int_id,
                 stmt_inst.lex_points)
 
         return "Before: %s\nAfter: %s" % (
