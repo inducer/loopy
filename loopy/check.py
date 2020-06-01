@@ -492,29 +492,14 @@ def _get_address_space(kernel, var):
 
 
 def _get_topological_order(kernel):
-    from pytools import natsorted
+    from pytools.graph import compute_topological_order
 
-    # {{{ topological sort
-
-    visited_insn_ids = set()
-    insn_order = []
-
-    def insert_insn_into_order(insn):
-        if insn.id in visited_insn_ids:
-            return
-        visited_insn_ids.add(insn.id)
-
-        for dep_id in natsorted(insn.depends_on):
-            insert_insn_into_order(kernel.id_to_insn[dep_id])
-
-        insn_order.append(insn)
-
+    rev_dep_map = {insn.id: set() for insn in kernel.instructions}
     for insn in kernel.instructions:
-        insert_insn_into_order(insn)
+        for dep in insn.depends_on:
+            rev_dep_map[dep].add(insn.id)
 
-    # }}}
-
-    return [insn.id for insn in insn_order]
+    return compute_topological_order(rev_dep_map)
 
 
 def _check_variable_access_ordered_inner(kernel):
