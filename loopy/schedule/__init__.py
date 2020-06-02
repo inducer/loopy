@@ -691,23 +691,31 @@ def schedule_as_many_run_insns_as_possible(sched_state):
 
     updated_sched_state = sched_state.copy()
 
+    num_insns_to_be_scheduled = 0
+
     for insn in toposorted_insns:
+        num_insns_to_be_scheduled += 1
         if isinstance(insn, MultiAssignmentBase):
             if insn.within_inames == frozenset(sched_state.active_inames):
-                sched_item = RunInstruction(insn_id=insn.id)
-                updated_schedule = updated_sched_state.schedule + (sched_item, )
-                updated_scheduled_insn_ids = (updated_sched_state.scheduled_insn_ids
-                        | frozenset([insn.id]))
-                updated_unscheduled_insn_ids = (
-                        updated_sched_state.unscheduled_insn_ids
-                        - frozenset([insn.id]))
-                updated_sched_state = updated_sched_state.copy(
-                        insn_ids_to_try=None,
-                        schedule=updated_schedule,
-                        scheduled_insn_ids=updated_scheduled_insn_ids,
-                        unscheduled_insn_ids=updated_unscheduled_insn_ids)
                 continue
         break
+
+    schedulable_insn_ids = tuple(insn.id for insn in
+            toposorted_insns[:num_insns_to_be_scheduled])
+    sched_items = tuple(RunInstruction(insn_id=insn_id) for insn_id in
+            schedulable_insn_ids)
+
+    updated_schedule = updated_sched_state.schedule + sched_items
+    updated_scheduled_insn_ids = (updated_sched_state.scheduled_insn_ids
+            | frozenset(schedulable_insn_ids))
+    updated_unscheduled_insn_ids = (
+            updated_sched_state.unscheduled_insn_ids
+            - frozenset(schedulable_insn_ids))
+    updated_sched_state = updated_sched_state.copy(
+            insn_ids_to_try=None,
+            schedule=updated_schedule,
+            scheduled_insn_ids=updated_scheduled_insn_ids,
+            unscheduled_insn_ids=updated_unscheduled_insn_ids)
 
     return updated_sched_state
 
