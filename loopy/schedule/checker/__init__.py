@@ -117,7 +117,7 @@ def get_schedule_for_statement_pair(
     # }}}
 
     # {{{ find any EnterLoop inames that are tagged as concurrent
-    
+
     # so that PairwiseScheduleBuilder knows to ignore them
     # (In the future, this shouldn't be necessary because there
     #  won't be any inames with ConcurrentTags in EnterLoop linearization items.
@@ -157,7 +157,7 @@ def get_schedule_for_statement_pair(
 # {{{ get_isl_maps_from_PairwiseScheduleBuilder
 
 def get_isl_maps_from_PairwiseScheduleBuilder(sched_builder, knl):
-    """Create a pair of :class:`islpy.Map`\ s representing a
+    r"""Create a pair of :class:`islpy.Map`\ s representing a
     sub-schedule as two mappings from statement instances to lexicographic
     time, one for the dependee statement and one for the depender.
 
