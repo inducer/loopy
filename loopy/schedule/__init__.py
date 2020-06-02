@@ -29,7 +29,7 @@ import sys
 import islpy as isl
 from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
-from pytools import natsorted, MinRecursionLimit, ProcessLogger
+from pytools import memoize_method, MinRecursionLimit, ProcessLogger
 
 from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
@@ -650,6 +650,17 @@ class SchedulerState(ImmutableRecord):
         else:
             return None
 
+    @memoize_method
+    def get_insn_ids_in_a_topologically_sorted_order(self):
+        from pytools.graph import compute_topological_order
+
+        rev_dep_map = {insn.id: set() for insn in self.kernel.instructions}
+        for insn in self.kernel.instructions:
+            for dep in insn.depends_on:
+                rev_dep_map[dep].add(insn.id)
+
+        return compute_topological_order(rev_dep_map)
+
 
 def schedule_as_many_run_insns_as_possible(sched_state):
     """
@@ -663,25 +674,11 @@ def schedule_as_many_run_insns_as_possible(sched_state):
 
     # {{{ topological sort
 
-    visited_insn_ids = set()
-    toposorted_insns = []
-
-    def insert_insn_into_order(insn):
-        if insn.id in visited_insn_ids:
-            return
-        visited_insn_ids.add(insn.id)
-
-        for dep_id in natsorted(insn.depends_on & sched_state.unscheduled_insn_ids):
-            dep_insn = sched_state.kernel.id_to_insn[dep_id]
-            if frozenset(sched_state.active_inames) <= dep_insn.within_inames:
-                insert_insn_into_order(dep_insn)
-
-        toposorted_insns.append(insn)
-
-    for unscheduled_insn_id in sched_state.unscheduled_insn_ids:
-        unscheduled_insn = sched_state.kernel.id_to_insn[unscheduled_insn_id]
-        if frozenset(sched_state.active_inames) <= unscheduled_insn.within_inames:
-            insert_insn_into_order(unscheduled_insn)
+    toposorted_insn_ids = tuple(insn_id for insn_id in
+            sched_state.get_insn_ids_in_a_topologically_sorted_order() if
+            insn_id in sched_state.unscheduled_insn_ids and (
+                sched_state.kernel.id_to_insn[insn_id].within_inames >=
+                frozenset(sched_state.active_inames)))
 
     # }}}
 
@@ -693,24 +690,24 @@ def schedule_as_many_run_insns_as_possible(sched_state):
 
     num_insns_to_be_scheduled = 0
 
-    for insn in toposorted_insns:
-        num_insns_to_be_scheduled += 1
+    for insn_id in toposorted_insn_ids:
+        insn = sched_state.kernel.id_to_insn[insn_id]
         if isinstance(insn, MultiAssignmentBase):
             if insn.within_inames == frozenset(sched_state.active_inames):
+                num_insns_to_be_scheduled += 1
                 continue
         break
 
-    schedulable_insn_ids = tuple(insn.id for insn in
-            toposorted_insns[:num_insns_to_be_scheduled])
+    newly_scheduled_insn_ids = toposorted_insn_ids[:num_insns_to_be_scheduled]
     sched_items = tuple(RunInstruction(insn_id=insn_id) for insn_id in
-            schedulable_insn_ids)
+            newly_scheduled_insn_ids)
 
     updated_schedule = updated_sched_state.schedule + sched_items
     updated_scheduled_insn_ids = (updated_sched_state.scheduled_insn_ids
-            | frozenset(schedulable_insn_ids))
+            | frozenset(newly_scheduled_insn_ids))
     updated_unscheduled_insn_ids = (
             updated_sched_state.unscheduled_insn_ids
-            - frozenset(schedulable_insn_ids))
+            - frozenset(newly_scheduled_insn_ids))
     updated_sched_state = updated_sched_state.copy(
             insn_ids_to_try=None,
             schedule=updated_schedule,
