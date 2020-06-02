@@ -1,3 +1,4 @@
+# coding: utf-8
 """OpenCL target integrated with PyOpenCL."""
 
 from __future__ import division, absolute_import
@@ -284,6 +285,9 @@ class PyOpenCLTarget(OpenCLTarget):
     features such as run-time knowledge of the target device (to generate
     warnings) and support for complex numbers.
     """
+
+    # FIXME make prefixes conform to naming rules
+    # (see Reference: Loopy’s Model of a Kernel)
 
     host_program_name_prefix = "_lpy_host_"
     host_program_name_suffix = ""
