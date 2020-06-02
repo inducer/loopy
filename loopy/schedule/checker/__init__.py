@@ -71,7 +71,7 @@ def get_schedule_for_statement_pair(
         # Get a linearization
         knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
 
-        # Get a pairwise schedule* -------------------------------------------
+        # Get a pairwise schedule --------------------------------------------
 
         from loopy.schedule.checker import (
             get_schedule_for_statement_pair,
