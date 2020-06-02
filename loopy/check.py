@@ -493,6 +493,7 @@ def _get_address_space(kernel, var):
 
 def _get_topological_order(kernel):
     from pytools.graph import compute_topological_order, CycleError
+    from loopy.diagnostic import DependencyCycleFound
 
     rev_dep_map = {insn.id: set() for insn in kernel.instructions}
     for insn in kernel.instructions:
@@ -502,8 +503,40 @@ def _get_topological_order(kernel):
     try:
         order = compute_topological_order(rev_dep_map)
     except CycleError as e:
-        from loopy.diagnostic import DependencyCycleFound
-        raise DependencyCycleFound(str(e))
+        root = e.node
+
+        visited = set()
+        visiting = [root]
+        stack = [(root, iter(rev_dep_map[root]))]
+
+        # Depth first traversal from root
+        while stack:
+            node, children = stack.pop()
+
+            for child in children:
+                # note: each iteration removes child from children
+                if child in visiting:
+                    cycle = visiting[visiting.index(child):]+[child, ]
+                    raise DependencyCycleFound('->'.join(cycle))
+
+                if child in visited:
+                    continue
+
+                visiting.append(child)
+
+                # put (node, children) back on stack
+                stack.append((node, children))
+
+                # put (child, grandchildren) on stack
+                stack.append((child, iter(rev_dep_map.get(child, ()))))
+                break
+            else:
+                # loop did not break,
+                # so either this is a leaf or all children have been visited
+                assert node == visiting.pop()
+                visited.add(node)
+
+        assert False
 
     return order
 
