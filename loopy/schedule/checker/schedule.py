@@ -107,7 +107,8 @@ class PairwiseScheduleBuilder(object):
     """Given a pair of statements in a linearized kernel, PairwiseScheduleBuilder
     determines the (relative) order in which the instances are executed,
     by creating a mapping from statement instances to points in a single
-    lexicographic ordering.
+    lexicographic ordering. To create a PairwiseScheduleBuilder, use
+    :func:`loopy.schedule.checker.get_schedule_for_statement_pair`.
 
     .. attribute:: stmt_instance_before
 
@@ -140,71 +141,6 @@ class PairwiseScheduleBuilder(object):
         "_lp_linchk_lex1", "_lp_linchk_lex2". Note the identifier prefix
         policies described in the documentation under
         *Loopy's Model of a Kernel* -> *Identifiers*.
-
-    Example usage::
-
-        # Make kernel --------------------------------------------------------
-        knl = lp.make_kernel(
-            "{[i,j,k]: 0<=i<pi and 0<=j<pj and 0<=k<pk}",
-            [
-                "a[i,j] = j  {id=insn_a}",
-                "b[i,k] = k+a[i,0]  {id=insn_b,dep=insn_a}",
-            ])
-        knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
-        knl = lp.prioritize_loops(knl, "i,j")
-        knl = lp.prioritize_loops(knl, "i,k")
-
-        # Get a linearization
-        knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-
-        # Get a pairwise schedule* -------------------------------------------
-
-        # *Note: Unless it is necessary to construct a PairwiseScheduleBuilder
-        # directly, this should be accomplished by calling the wrapper:
-        # from loopy.schedule.checker import (
-        #     get_schedule_for_statement_pair,
-        # )
-        # sched_builder_ab = get_schedule_for_statement_pair(
-        #     knl,
-        #     knl.linearization,
-        #     "insn_a",
-        #     "insn_b",
-        #     )
-
-        # Get list of concurent inames (for the schedule builder to ignore)
-        conc_loop_inames = set()
-
-        from loopy.schedule.checker.schedule import PairwiseScheduleBuilder
-        sched_builder_ab = PairwiseScheduleBuilder(
-            knl.linearization,
-            "insn_a",
-            "insn_b",
-            loops_to_ignore=conc_loop_inames,
-            )
-
-        # Get two isl maps from the PairwiseScheduleBuilder ------------------
-
-        from loopy.schedule.checker import (
-            get_isl_maps_from_PairwiseScheduleBuilder,
-        )
-        sched_a, sched_b = get_isl_maps_from_PairwiseScheduleBuilder(
-            sched_builder_ab, knl)
-
-        print(sched_a)
-        print(sched_b)
-
-    Example Output::
-
-        [pi, pj, pk] -> {
-        [_lp_linchk_statement = 0, i, j, k] ->
-        [_lp_linchk_l0 = 0, _lp_linchk_l1 = i, _lp_linchk_l2 = 0,
-        _lp_linchk_l3 = j, _lp_linchk_l4 = 0] :
-        0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
-        [pi, pj, pk] -> {
-        [_lp_linchk_statement = 1, i, j, k] ->
-        [_lp_linchk_l0 = 0, _lp_linchk_l1 = i, _lp_linchk_l2 = 1,
-        _lp_linchk_l3 = k, _lp_linchk_l4 = 0] :
-        0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
 
     """
 
