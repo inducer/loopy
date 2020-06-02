@@ -184,7 +184,9 @@ def list_var_names_in_isl_sets(
     inames = set()
     for isl_set in isl_sets:
         inames.update(isl_set.get_var_names(set_dim))
-    return list(inames)
+
+    # sorting is not necessary, but keeps results consistent between runs
+    return sorted(list(inames))
 
 
 def create_symbolic_isl_map_from_tuples(
