@@ -38,7 +38,7 @@ class StatementRef(object):
         builds a mapping from points in a space of statement instances to
         points in a lexicographic ordering. The `statement` dimension of a
         point in the statement instance space representing an instance of
-        this statement is assigned this value (`int_id`).
+        this statement is assigned this value.
 
     """
 
@@ -88,7 +88,6 @@ class StatementInstanceSet(object):
         A list containing one value for each dimension in a lexicographic
         ordering. These values describe the ordering of the statements,
         and may be :class:`str` :mod:`loopy` inames or :class:`int`.
-
     """
 
     def __init__(
@@ -131,7 +130,7 @@ class PairwiseScheduleBuilder(object):
 
     .. attribute:: statement_var_name
 
-        A :class:`str` specifying the name of the isl variable used
+        A :class:`str` specifying the name of the variable used
         to represent the unique :class:`int` statement id.
 
     .. attribute:: lex_var_prefix
@@ -139,10 +138,7 @@ class PairwiseScheduleBuilder(object):
         A :class:`str` specifying the prefix to be used for the variables
         representing the dimensions in the lexicographic ordering. E.g.,
         a prefix of "_lp_linchk_lex" might yield variables "_lp_linchk_lex0",
-        "_lp_linchk_lex1", "_lp_linchk_lex2". Note the identifier prefix
-        policies described in the documentation under
-        *Loopy's Model of a Kernel* -> *Identifiers*.
-
+        "_lp_linchk_lex1", "_lp_linchk_lex2". Cf. :ref:`reserved-identifiers`.
     """
 
     statement_var_name = "_lp_linchk_statement"
