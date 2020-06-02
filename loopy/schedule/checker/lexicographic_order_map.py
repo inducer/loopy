@@ -63,16 +63,10 @@ def get_statement_ordering_map(
         sio, isl.dim_type.in_, before_marker)
 
 
-def get_lex_order_constraint(islvars, before_names, after_names):
+def get_lex_order_constraint(before_names, after_names, islvars=None):
     """Return a constraint represented as an :class:`islpy.Set`
         defining a 'happens before' relationship in a lexicographic
         ordering.
-
-    :arg islvars: A dictionary from variable names to :class:`islpy.PwAff`
-        instances that represent each of the variables
-        (islvars may be produced by `islpy.make_zero_and_vars`). The key
-        '0' is also include and represents a :class:`islpy.PwAff` zero constant.
-        This dictionary defines the space to be used for the set.
 
     :arg before_names: A list of :class:`str` variable names representing
         the lexicographic space dimensions for a point in lexicographic
@@ -81,6 +75,14 @@ def get_lex_order_constraint(islvars, before_names, after_names):
     :arg after_names: A list of :class:`str` variable names representing
         the lexicographic space dimensions for a point in lexicographic
         time that occurs after. (see example below)
+
+    :arg islvars: A dictionary from variable names to :class:`islpy.PwAff`
+        instances that represent each of the variables
+        (islvars may be produced by `islpy.make_zero_and_vars`). The key
+        '0' is also include and represents a :class:`islpy.PwAff` zero constant.
+        This dictionary defines the space to be used for the set. If no
+        value is passed, the dictionary will be made using ``before_names``
+        and ``after_names``.
 
     :returns: An :class:`islpy.Set` representing a constraint that enforces a
         lexicographic ordering. E.g., if ``before_names = [i0', i1', i2']`` and
@@ -91,6 +93,10 @@ def get_lex_order_constraint(islvars, before_names, after_names):
                 or (i0' = i0 and i1' = i1 and i2' < i2)}
 
     """
+
+    # If no islvars passed, make them using the names provided
+    if islvars is None:
+        islvars = isl.make_zero_and_vars(before_names+after_names, [])
 
     # Initialize constraint with i0' < i0
     lex_order_constraint = islvars[before_names[0]].lt_set(islvars[after_names[0]])
@@ -164,12 +170,7 @@ def create_lex_order_map(
     assert len(before_names) == len(after_names) == n_dims
     dim_type = isl.dim_type
 
-    islvars = isl.make_zero_and_vars(
-            before_names+after_names,
-            [])
-
-    lex_order_constraint = get_lex_order_constraint(
-        islvars, before_names, after_names)
+    lex_order_constraint = get_lex_order_constraint(before_names, after_names)
 
     lex_map = isl.Map.from_domain(lex_order_constraint)
     lex_map = lex_map.move_dims(
