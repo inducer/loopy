@@ -492,14 +492,20 @@ def _get_address_space(kernel, var):
 
 
 def _get_topological_order(kernel):
-    from pytools.graph import compute_topological_order
+    from pytools.graph import compute_topological_order, CycleError
 
     rev_dep_map = {insn.id: set() for insn in kernel.instructions}
     for insn in kernel.instructions:
         for dep in insn.depends_on:
             rev_dep_map[dep].add(insn.id)
 
-    return compute_topological_order(rev_dep_map)
+    try:
+        order = compute_topological_order(rev_dep_map)
+    except CycleError as e:
+        from loopy.diagnostic import DependencyCycleFound
+        raise DependencyCycleFound(str(e))
+
+    return order
 
 
 def _check_variable_access_ordered_inner(kernel):
@@ -567,11 +573,6 @@ def _check_variable_access_ordered_inner(kernel):
         # accumulated_predecessors:insn_id's direct+indirect predecessors
         accumulated_predecessors = memoized_predecessors.pop(insn_id, set())
 
-        if insn_id in accumulated_predecessors:
-            from loopy.diagnostic import DependencyCycleFound
-            raise DependencyCycleFound("Dependency cycle found:"
-                    " '{}'.".format(accumulated_predecessors))
-
         insn_id_to_dep_reqs[insn_id] -= accumulated_predecessors
 
         for dep in depends_on[insn_id]:
@@ -579,11 +580,6 @@ def _check_variable_access_ordered_inner(kernel):
                     accumulated_predecessors | set([insn_id]))
 
     # }}}
-
-    if memoized_predecessors:
-        from loopy.diagnostic import DependencyCycleFound
-        raise DependencyCycleFound("Dependency cycle found:"
-                " '{}'.".format(next(iter(six.viewvalues(memoized_predecessors)))))
 
     # {{{ reverse dep. traversal
 
@@ -595,11 +591,6 @@ def _check_variable_access_ordered_inner(kernel):
         # accumulated_predecessors:insn_id's direct+indirect predecessors
         accumulated_successors = memoized_successors.pop(insn_id, set())
 
-        if insn_id in accumulated_successors:
-            from loopy.diagnostic import DependencyCycleFound
-            raise DependencyCycleFound("Dependency cycle found:"
-                    " '{}'.".format(accumulated_predecessors))
-
         insn_id_to_dep_reqs[insn_id] -= accumulated_successors
 
         for rev_dep in rev_depends[insn_id]:
@@ -607,11 +598,6 @@ def _check_variable_access_ordered_inner(kernel):
                     accumulated_successors | set([insn_id]))
 
     # }}}
-
-    if memoized_successors:
-        from loopy.diagnostic import DependencyCycleFound
-        raise DependencyCycleFound("Dependency cycle found:"
-                " '{}'.".format(next(iter(six.viewvalues(memoized_successors)))))
 
     for insn_id, dep_ids in six.iteritems(insn_id_to_dep_reqs):
         insn = kernel.id_to_insn[insn_id]
