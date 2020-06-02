@@ -107,8 +107,9 @@ class PairwiseScheduleBuilder(object):
     """Given a pair of statements in a linearized kernel, PairwiseScheduleBuilder
     determines the (relative) order in which the instances are executed,
     by creating a mapping from statement instances to points in a single
-    lexicographic ordering. To create a PairwiseScheduleBuilder, use
-    :func:`loopy.schedule.checker.get_schedule_for_statement_pair`.
+    lexicographic ordering. The function
+    :func:`loopy.schedule.checker.get_schedule_for_statement_pair` is the
+    preferred method of creating a PairwiseScheduleBuilder.
 
     .. attribute:: stmt_instance_before
 
