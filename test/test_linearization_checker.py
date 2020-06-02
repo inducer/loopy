@@ -475,13 +475,7 @@ def test_statement_instance_ordering_creation():
             sched_lex_order_map,
             )
 
-        print(sio)
-        print(expected_sio)
-
         sio_aligned = align_isl_maps_by_var_names(sio, expected_sio)
-
-        print(sio_aligned)
-        print(expected_sio)
 
         assert sio_aligned == expected_sio
 
