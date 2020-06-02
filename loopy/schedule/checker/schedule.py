@@ -23,8 +23,8 @@ THE SOFTWARE.
 import islpy as isl
 
 
-class PairwiseScheduleStatement(object):
-    """A representation of a :mod:`loopy` statement.
+class StatementRef(object):
+    """A reference to a :mod:`loopy` statement.
 
     .. attribute:: insn_id
 
@@ -72,16 +72,16 @@ class PairwiseScheduleStatement(object):
         return "%s%s" % (self.insn_id, int_id)
 
 
-class PairwiseScheduleStatementInstanceSet(object):
+class StatementInstanceSet(object):
     """A representation of a set of (non-concurrent) instances of a
     statement being executed. The ordering of the instances is described
     by the `lex_points` attribute, a list representing points in a
     lexicographic ordering of statements. Each field in the list
     corresponds to a dimension in the lexicographic ordering.
 
-    .. attribute:: stmt
+    .. attribute:: stmt_ref
 
-       A :class:`PairwiseScheduleStatement`.
+       A :class:`StatementRef`.
 
     .. attribute:: lex_points
 
@@ -93,14 +93,14 @@ class PairwiseScheduleStatementInstanceSet(object):
 
     def __init__(
             self,
-            stmt,
+            stmt_ref,
             lex_points,
             ):
-        self.stmt = stmt
+        self.stmt_ref = stmt_ref
         self.lex_points = lex_points
 
     def __str__(self):
-        return "{%s, %s}" % (self.stmt, self.lex_points)
+        return "{%s, %s}" % (self.stmt_ref, self.lex_points)
 
 
 class PairwiseScheduleBuilder(object):
@@ -111,7 +111,7 @@ class PairwiseScheduleBuilder(object):
 
     .. attribute:: stmt_instance_before
 
-       A :class:`PairwiseScheduleStatementInstanceSet` whose ordering relative
+       A :class:`StatementInstanceSet` whose ordering relative
        to `stmt_instance_after is described by PairwiseScheduleBuilder. This
        is achieved by mapping the statement instances in both sets to points
        in a single lexicographic ordering. Points in lexicographic ordering
@@ -120,7 +120,7 @@ class PairwiseScheduleBuilder(object):
 
     .. attribute:: stmt_instance_after
 
-       A :class:`PairwiseScheduleStatementInstanceSet` whose ordering relative
+       A :class:`StatementInstanceSet` whose ordering relative
        to `stmt_instance_before is described by PairwiseScheduleBuilder. This
        is achieved by mapping the statement instances in both sets to points
        in a single lexicographic ordering. Points in lexicographic ordering
@@ -136,12 +136,80 @@ class PairwiseScheduleBuilder(object):
 
        A :class:`str` specifying the prefix to be used for the variables
        representing the dimensions in the lexicographic ordering. E.g.,
-       a prefix of "lex" might yield variables "lex0", "lex1", "lex2".
+       a prefix of "_lp_linchk_lex" might yield variables "_lp_linchk_lex0",
+       "_lp_linchk_lex1", "_lp_linchk_lex2". Note the identifier prefix
+       policies described in the documentation under
+       *Loopy's Model of a Kernel* -> *Identifiers*.
+
+    Example usage::
+
+        # Make kernel --------------------------------------------------------
+        knl = lp.make_kernel(
+            "{[i,j,k]: 0<=i<pi and 0<=j<pj and 0<=k<pk}",
+            [
+                "a[i,j] = j  {id=insn_a}",
+                "b[i,k] = k+a[i,0]  {id=insn_b,dep=insn_a}",
+            ])
+        knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
+        knl = lp.prioritize_loops(knl, "i,j")
+        knl = lp.prioritize_loops(knl, "i,k")
+
+        # Get a linearization
+        knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+
+        # Get a pairwise schedule* -------------------------------------------
+
+        # *Note: Unless it is necessary to construct a PairwiseScheduleBuilder
+        # directly, this should be accomplished by calling the wrapper:
+        # from loopy.schedule.checker import (
+        #     get_schedule_for_statement_pair,
+        # )
+        # sched_builder_ab = get_schedule_for_statement_pair(
+        #     knl,
+        #     knl.linearization,
+        #     "insn_a",
+        #     "insn_b",
+        #     )
+
+        # Get list of concurent inames (for the schedule builder to ignore)
+        conc_loop_inames = set()
+
+        from loopy.schedule.checker.schedule import PairwiseScheduleBuilder
+        sched_builder_ab = PairwiseScheduleBuilder(
+            knl.linearization,
+            "insn_a",
+            "insn_b",
+            loops_to_ignore=conc_loop_inames,
+            )
+
+        # Get two isl maps from the PairwiseScheduleBuilder ------------------
+
+        from loopy.schedule.checker import (
+            get_isl_maps_from_PairwiseScheduleBuilder,
+        )
+        sched_a, sched_b = get_isl_maps_from_PairwiseScheduleBuilder(
+            sched_builder_ab, knl)
+
+        print(sched_a)
+        print(sched_b)
+
+    Example Output::
+
+        [pi, pj, pk] -> {
+        [_lp_linchk_statement = 0, i, j, k] ->
+        [_lp_linchk_l0 = 0, _lp_linchk_l1 = i, _lp_linchk_l2 = 0,
+        _lp_linchk_l3 = j, _lp_linchk_l4 = 0] :
+        0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
+        [pi, pj, pk] -> {
+        [_lp_linchk_statement = 1, i, j, k] ->
+        [_lp_linchk_l0 = 0, _lp_linchk_l1 = i, _lp_linchk_l2 = 1,
+        _lp_linchk_l3 = k, _lp_linchk_l4 = 0] :
+        0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
 
     """
 
-    statement_var_name = "_lp_sched_statement"
-    lex_var_prefix = "_lp_sched_l"
+    statement_var_name = "_lp_linchk_statement"
+    lex_var_prefix = "_lp_linchk_l"
 
     def __init__(
             self,
@@ -236,8 +304,8 @@ class PairwiseScheduleBuilder(object):
 
                 if lp_insn_id == before_insn_id:
                     # add before sched item
-                    self.stmt_instance_before = PairwiseScheduleStatementInstanceSet(
-                            PairwiseScheduleStatement(
+                    self.stmt_instance_before = StatementInstanceSet(
+                            StatementRef(
                                 insn_id=lp_insn_id,
                                 int_id=next_sid,  # int representing insn
                                 ),
@@ -246,8 +314,8 @@ class PairwiseScheduleBuilder(object):
 
                 if lp_insn_id == after_insn_id:
                     # add after sched item
-                    self.stmt_instance_after = PairwiseScheduleStatementInstanceSet(
-                            PairwiseScheduleStatement(
+                    self.stmt_instance_after = StatementInstanceSet(
+                            StatementRef(
                                 insn_id=lp_insn_id,
                                 int_id=next_sid,  # int representing insn
                                 ),
@@ -284,13 +352,13 @@ class PairwiseScheduleBuilder(object):
     def pad_lex_tuples_with_zeros(self):
         """Find the maximum number of lexicographic dimensions represented
             in the lexicographic ordering, and if any
-            :class:`PairwiseScheduleStatement` maps to a lex point tuple with
+            :class:`StatementRef` maps to a lex point tuple with
             fewer dimensions, add a zero for each of the missing dimensions.
         """
 
         def _pad_lex_tuple_with_zeros(stmt_inst, length):
-            return PairwiseScheduleStatementInstanceSet(
-                stmt_inst.stmt,
+            return StatementInstanceSet(
+                stmt_inst.stmt_ref,
                 stmt_inst.lex_points[:] + [0]*(length-len(stmt_inst.lex_points)),
                 )
 
@@ -333,7 +401,7 @@ class PairwiseScheduleBuilder(object):
         :returns: A two-tuple containing two :class:`islpy.Map`s
             representing the schedule as two mappings
             from statement instances to lexicographic time, one for
-            each of the two :class:`PairwiseScheduleStatementInstanceSet`s.
+            each of the two :class:`StatementInstanceSet`s.
 
         """
 
@@ -372,7 +440,7 @@ class PairwiseScheduleBuilder(object):
             # Right now, statement instance tuples consist of single int.
             # Add all inames from domains to each map domain tuple.
             tuple_pair = [(
-                (stmt_inst.stmt.int_id, ) + tuple(dom_inames_ordered),
+                (stmt_inst.stmt_ref.int_id, ) + tuple(dom_inames_ordered),
                 stmt_inst.lex_points
                 )]
 
@@ -415,7 +483,7 @@ class PairwiseScheduleBuilder(object):
         def stringify_sched_stmt_instance(stmt_inst):
             return "{\n[%s=%s,<inames>] -> %s;\n}" % (
                 self.statement_var_name,
-                stmt_inst.stmt.int_id,
+                stmt_inst.stmt_ref.int_id,
                 stmt_inst.lex_points)
 
         return "Before: %s\nAfter: %s" % (

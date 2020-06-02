@@ -151,6 +151,42 @@ Tag                             Meaning
 
 .. }}}
 
+Identifiers
+-----------
+
+Reserved Identifiers
+^^^^^^^^^^^^^^^^^^^^
+
+The identifier prefix ``_lp_`` is reserved for internal usage; when creating
+*inames*, *argument names*, *temporary variable names*, *substitution rule
+names*, *instruction IDs*, and other identifiers, users should *not* use names
+beginning with ``_lp_``.  This prefix is used for identifiers created
+internally when operating on Loopy's kernel IR. For Loopy developers, further
+information on name prefixes used within submodules is below.
+
+Identifier Registry
+^^^^^^^^^^^^^^^^^^^
+
+Functionality in :mod:`loopy` *must* use identifiers beginning with ``_lp_`` for
+all internally-created identifiers. Additionally, each name beginning with
+``_lp_`` must start with one of the reserved prefixes below. New prefixes may
+be registered by adding them to the table below. New prefixes may not themselves
+be the prefix of an existing prefix.
+
+**Reserved Identifier Prefixes**
+
+======================= ==================================
+Reserved Prefix         Usage (module or purpose)
+======================= ==================================
+``_lp_linchk_``         :mod:`loopy.linearization.checker`
+======================= ==================================
+
+.. note::
+
+    Existing Loopy code may not yet fully satisfy these naming requirements.
+    Name changes are in progress, and prefixes will be added to this registry
+    as they are created.
+
 .. _instructions:
 
 Instructions

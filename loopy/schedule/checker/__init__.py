@@ -31,7 +31,7 @@ def get_schedule_for_statement_pair(
         ):
     """Create a :class:`loopy.schedule.checker.schedule.PairwiseScheduleBuilder`
         representing the order of two statements as a mapping from
-        :class:`loopy.schedule.checker.PairwiseScheduleStatementInstanceSet`
+        :class:`loopy.schedule.checker.StatementInstanceSet`
         to lexicographic time.
 
     :arg knl: A :class:`loopy.kernel.LoopKernel` containing the
@@ -40,7 +40,7 @@ def get_schedule_for_statement_pair(
     :arg linearization_items: A list of :class:`loopy.schedule.ScheduleItem`
         (to be renamed to `loopy.schedule.LinearizationItem`) containing
         the two linearization items for which a schedule will be
-        created. This list may be a partial linearization for a
+        created. This list may be a *partial* linearization for a
         kernel since this function may be used during the linearization
         process.
 
@@ -52,8 +52,61 @@ def get_schedule_for_statement_pair(
 
     :returns: A :class:`loopy.schedule.checker.schedule.PairwiseScheduleBuilder`
         representing the order of two statements as a mapping from
-        :class:`loopy.schedule.checker.PairwiseScheduleStatementInstanceSet`
+        :class:`loopy.schedule.checker.StatementInstanceSet`
         to lexicographic time.
+
+    Example usage::
+
+        # Make kernel --------------------------------------------------------
+        knl = lp.make_kernel(
+            "{[i,j,k]: 0<=i<pi and 0<=j<pj and 0<=k<pk}",
+            [
+                "a[i,j] = j  {id=insn_a}",
+                "b[i,k] = k+a[i,0]  {id=insn_b,dep=insn_a}",
+            ])
+        knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
+        knl = lp.prioritize_loops(knl, "i,j")
+        knl = lp.prioritize_loops(knl, "i,k")
+
+        # Get a linearization
+        knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+
+        # Get a pairwise schedule* -------------------------------------------
+
+        from loopy.schedule.checker import (
+            get_schedule_for_statement_pair,
+        )
+        sched_builder_ab = get_schedule_for_statement_pair(
+            knl,
+            knl.linearization,
+            "insn_a",
+            "insn_b",
+            )
+
+        # Get two isl maps from the PairwiseScheduleBuilder ------------------
+
+        from loopy.schedule.checker import (
+            get_isl_maps_from_PairwiseScheduleBuilder,
+        )
+        sched_a, sched_b = get_isl_maps_from_PairwiseScheduleBuilder(
+            sched_builder_ab, knl)
+
+        print(sched_a)
+        print(sched_b)
+
+    Example Output::
+
+        [pi, pj, pk] -> {
+        [_lp_linchk_statement = 0, i, j, k] ->
+        [_lp_linchk_l0 = 0, _lp_linchk_l1 = i, _lp_linchk_l2 = 0,
+        _lp_linchk_l3 = j, _lp_linchk_l4 = 0] :
+        0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
+        [pi, pj, pk] -> {
+        [_lp_linchk_statement = 1, i, j, k] ->
+        [_lp_linchk_l0 = 0, _lp_linchk_l1 = i, _lp_linchk_l2 = 1,
+        _lp_linchk_l3 = k, _lp_linchk_l4 = 0] :
+        0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
+
     """
 
     # {{{ Preprocess if not already preprocessed
@@ -105,7 +158,7 @@ def get_isl_maps_from_PairwiseScheduleBuilder(sched_builder, knl):
     :arg sched_builder: A
         :class:`loopy.schedule.checker.schedule.PairwiseScheduleBuilder`
         representing the order of two statements as a mapping from
-        :class:`loopy.schedule.checker.PairwiseScheduleStatementInstanceSet`
+        :class:`loopy.schedule.checker.StatementInstanceSet`
         to lexicographic time.
 
     :arg knl: A :class:`loopy.kernel.LoopKernel` containing the
@@ -120,10 +173,10 @@ def get_isl_maps_from_PairwiseScheduleBuilder(sched_builder, knl):
     # {{{ Get iname domains
     dom_before = knl.get_inames_domain(
         knl.id_to_insn[
-            sched_builder.stmt_instance_before.stmt.insn_id].within_inames)
+            sched_builder.stmt_instance_before.stmt_ref.insn_id].within_inames)
     dom_after = knl.get_inames_domain(
         knl.id_to_insn[
-            sched_builder.stmt_instance_after.stmt.insn_id].within_inames)
+            sched_builder.stmt_instance_after.stmt_ref.insn_id].within_inames)
     # }}}
 
     # {{{ Get isl maps
