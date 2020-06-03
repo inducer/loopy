@@ -626,6 +626,8 @@ def _check_variable_access_ordered_inner(kernel):
     # reverse dep. graph traversal in topological sort order
     discard_dep_reqs_in_order(insn_id_to_dep_reqs, rev_depends, topological_order)
 
+    # {{{ handle dependency requirements that weren't satisfied
+
     for insn_id, dep_ids in six.iteritems(insn_id_to_dep_reqs):
         insn = kernel.id_to_insn[insn_id]
         vars_written_by_insn = insn.write_dependency_names() & (
@@ -636,7 +638,7 @@ def _check_variable_access_ordered_inner(kernel):
                     kernel.get_written_variables() | (
                         kernel.get_read_variables()))
             eq_classes_accessed_by_dep = set().union(
-                    *(aliasing_equiv_classes[_] for _ in vars_accessed_by_dep))
+                    *(aliasing_equiv_classes[var] for var in vars_accessed_by_dep))
 
             for var_written_by_insn in vars_written_by_insn:
                 eq_class = aliasing_equiv_classes[var_written_by_insn]
@@ -686,6 +688,8 @@ def _check_variable_access_ordered_inner(kernel):
 
                     from loopy.diagnostic import VariableAccessNotOrdered
                     raise VariableAccessNotOrdered(msg)
+
+    # }}}
 
     logger.debug("%s: check_variable_access_ordered: done" % kernel.name)
 
