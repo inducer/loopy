@@ -632,7 +632,7 @@ def _check_variable_access_ordered_inner(kernel):
         insn = kernel.id_to_insn[insn_id]
         vars_written_by_insn = insn.write_dependency_names() & (
                 kernel.get_written_variables())
-        for dep_id in dep_ids:
+        for dep_id in dep_ids:  # iterate through deps reqs. which weren't satisfied
             dep = kernel.id_to_insn[dep_id]
             vars_accessed_by_dep = dep.dependency_names() & (
                     kernel.get_written_variables() | (
@@ -640,9 +640,14 @@ def _check_variable_access_ordered_inner(kernel):
             eq_classes_accessed_by_dep = set().union(
                     *(aliasing_equiv_classes[var] for var in vars_accessed_by_dep))
 
+            found_var_responsible_for_dep_req = False
+
+            # iterate through all the variables written by 'insn' to find
+            # which was responsible for the dependency requirement
             for var_written_by_insn in vars_written_by_insn:
                 eq_class = aliasing_equiv_classes[var_written_by_insn]
                 if eq_class & eq_classes_accessed_by_dep:
+                    found_var_responsible_for_dep_req = True
                     unaliased_readers = rmap.get(var_written_by_insn, set())
                     unaliased_writers = wmap.get(var_written_by_insn, set())
                     is_relationship_by_aliasing = not (
@@ -688,6 +693,8 @@ def _check_variable_access_ordered_inner(kernel):
 
                     from loopy.diagnostic import VariableAccessNotOrdered
                     raise VariableAccessNotOrdered(msg)
+
+            assert found_var_responsible_for_dep_req
 
     # }}}
 
