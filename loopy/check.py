@@ -596,41 +596,35 @@ def _check_variable_access_ordered_inner(kernel):
 
     topological_order = _get_topological_order(kernel)
 
-    # {{{ forward dep. traversal
+    def discard_dep_reqs_in_order(insn_id_to_dep_reqs, edges, order):
+        """
+        Subtracts dependency requirements of insn_ids by all direct/indirect
+        predecessors of a directed graph of insn_ids as nodes and *edges* as
+        the connectivity.
 
-    # memoized_predecessors: mapping from insn_id to its direct/indirect predecessors
-    memoized_predecessors = {}
+        :arg order: An instance of :class:`list` of instruction ids in which the
+            *edges* graph is to be traversed.
+        """
+        # memoized_predecessors: mapping from insn_id to its direct/indirect
+        # predecessors
+        memoized_predecessors = {}
 
-    # reverse postorder traversal of dependency graph
-    for insn_id in topological_order[::-1]:
-        # accumulated_predecessors:insn_id's direct+indirect predecessors
-        accumulated_predecessors = memoized_predecessors.pop(insn_id, set())
+        # reverse postorder traversal of dependency graph
+        for insn_id in order:
+            # accumulated_predecessors:insn_id's direct+indirect predecessors
+            accumulated_predecessors = memoized_predecessors.pop(insn_id, set())
 
-        insn_id_to_dep_reqs[insn_id] -= accumulated_predecessors
+            insn_id_to_dep_reqs[insn_id] -= accumulated_predecessors
 
-        for dep in depends_on[insn_id]:
-            memoized_predecessors.setdefault(dep, set()).update(
-                    accumulated_predecessors | set([insn_id]))
+            for successor in edges[insn_id]:
+                memoized_predecessors.setdefault(successor, set()).update(
+                        accumulated_predecessors | set([insn_id]))
 
-    # }}}
-
-    # {{{ reverse dep. traversal
-
-    # memoized_successors: mapping from insn_id to its direct/indirect successors
-    memoized_successors = {}
-
-    # postorder traversal of dependency graph
-    for insn_id in topological_order:
-        # accumulated_predecessors:insn_id's direct+indirect predecessors
-        accumulated_successors = memoized_successors.pop(insn_id, set())
-
-        insn_id_to_dep_reqs[insn_id] -= accumulated_successors
-
-        for rev_dep in rev_depends[insn_id]:
-            memoized_successors.setdefault(rev_dep, set()).update(
-                    accumulated_successors | set([insn_id]))
-
-    # }}}
+    # forward dep. graph traversal in reverse topological sort order
+    discard_dep_reqs_in_order(insn_id_to_dep_reqs, depends_on,
+            topological_order[::-1])
+    # reverse dep. graph traversal in topological sort order
+    discard_dep_reqs_in_order(insn_id_to_dep_reqs, rev_depends, topological_order)
 
     for insn_id, dep_ids in six.iteritems(insn_id_to_dep_reqs):
         insn = kernel.id_to_insn[insn_id]
