@@ -677,6 +677,7 @@ def schedule_as_many_run_insns_as_possible(sched_state):
         return sched_state
 
     if not sched_state.within_subkernel:
+        # cannot schedule RunInstructions when not in subkernel
         return sched_state
 
     # {{{ topological sort
