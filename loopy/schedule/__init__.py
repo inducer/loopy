@@ -676,6 +676,9 @@ def schedule_as_many_run_insns_as_possible(sched_state):
     if isinstance(next_preschedule_item, (CallKernel, ReturnFromKernel, Barrier)):
         return sched_state
 
+    if not sched_state.within_subkernel:
+        return sched_state
+
     # {{{ topological sort
 
     toposorted_insn_ids = tuple(insn_id for insn_id in
