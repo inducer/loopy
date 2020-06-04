@@ -667,9 +667,13 @@ def schedule_as_many_run_insns_as_possible(sched_state):
     Returns an instance of :class:`loopy.schedule.SchedulerState`, by appending
     all available instructions in the current loop nesting to the schedule.
     """
-    if sched_state.preschedule:
-        #FIXME: unsure how to perform this optimization for a scheduler with a
-        # preschedule, bail for now.
+
+    next_preschedule_item = (
+        sched_state.preschedule[0]
+        if len(sched_state.preschedule) > 0
+        else None)
+
+    if isinstance(next_preschedule_item, (CallKernel, ReturnFromKernel, Barrier)):
         return sched_state
 
     # {{{ topological sort
@@ -699,6 +703,12 @@ def schedule_as_many_run_insns_as_possible(sched_state):
         break
 
     newly_scheduled_insn_ids = toposorted_insn_ids[:num_insns_to_be_scheduled]
+    num_presched_insns_newly_scheduled = len(set(newly_scheduled_insn_ids) &
+            sched_state.prescheduled_insn_ids)
+
+    assert all(isinstance(sched_item, RunInstruction) and sched_item.insn_id in
+            newly_scheduled_insn_ids for sched_item in
+            sched_state.preschedule[:num_presched_insns_newly_scheduled])
     sched_items = tuple(RunInstruction(insn_id=insn_id) for insn_id in
             newly_scheduled_insn_ids)
 
@@ -712,7 +722,9 @@ def schedule_as_many_run_insns_as_possible(sched_state):
             insn_ids_to_try=None,
             schedule=updated_schedule,
             scheduled_insn_ids=updated_scheduled_insn_ids,
-            unscheduled_insn_ids=updated_unscheduled_insn_ids)
+            unscheduled_insn_ids=updated_unscheduled_insn_ids,
+            preschedule=sched_state.preschedule[num_presched_insns_newly_scheduled:]
+            )
 
     return updated_sched_state
 
