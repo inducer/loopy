@@ -405,6 +405,7 @@ class PairwiseScheduleBuilder(object):
                 stmt_inst.stmt_ref.int_id,
                 stmt_inst.lex_points)
 
-        return "Before: %s\nAfter: %s" % (
+        return "%s(\nBefore: %s\nAfter: %s\n)" % (
+            self.__class__.__name__,
             stringify_sched_stmt_instance(self.stmt_instance_before),
             stringify_sched_stmt_instance(self.stmt_instance_after))
