@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 
-# {{{ Create PairwiseScheduleBuilder for statement pair
+# {{{ create PairwiseScheduleBuilder for statement pair
 
 def get_schedule_for_statement_pair(
         knl,
@@ -30,9 +30,9 @@ def get_schedule_for_statement_pair(
         insn_id_after,
         ):
     """Create a :class:`loopy.schedule.checker.schedule.PairwiseScheduleBuilder`
-        representing the order of two statements as a mapping from
-        :class:`loopy.schedule.checker.StatementInstanceSet`
-        to lexicographic time.
+    representing the order of two statements as a mapping from
+    :class:`loopy.schedule.checker.StatementInstanceSet`
+    to lexicographic time.
 
     :arg knl: A :class:`loopy.kernel.LoopKernel` containing the
         linearization items that will be used to create a schedule.
@@ -105,12 +105,15 @@ def get_schedule_for_statement_pair(
 
     """
 
-    # {{{ Preprocess if not already preprocessed
+    # {{{ preprocess if not already preprocessed
+
     from loopy import preprocess_kernel
     preproc_knl = preprocess_kernel(knl)
+
     # }}}
 
-    # {{{ Find any EnterLoop inames that are tagged as concurrent
+    # {{{ find any EnterLoop inames that are tagged as concurrent
+
     # so that PairwiseScheduleBuilder knows to ignore them
     # (In the future, this shouldn't be necessary because there
     #  won't be any inames with ConcurrentTags in EnterLoop linearization items.
@@ -128,9 +131,11 @@ def get_schedule_for_statement_pair(
             "get_schedule_for_statement_pair encountered EnterLoop for inames %s "
             "with ConcurrentTag(s) in linearization for kernel %s. "
             "Ignoring these loops." % (conc_loop_inames, preproc_knl.name))
+
     # }}}
 
     # {{{ Create PairwiseScheduleBuilder: mapping of {statement instance: lex point}
+
     # include only instructions involved in this dependency
     from loopy.schedule.checker.schedule import PairwiseScheduleBuilder
     return PairwiseScheduleBuilder(
@@ -139,6 +144,7 @@ def get_schedule_for_statement_pair(
         insn_id_after,
         loops_to_ignore=conc_loop_inames,
         )
+
     # }}}
 
 # }}}
