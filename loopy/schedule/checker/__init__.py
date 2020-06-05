@@ -57,7 +57,7 @@ def get_schedule_for_statement_pair(
 
     Example usage::
 
-        # Make kernel --------------------------------------------------------
+        # Make kernel ------------------------------------------------------------
         knl = lp.make_kernel(
             "{[i,j,k]: 0<=i<pi and 0<=j<pj and 0<=k<pk}",
             [
@@ -71,7 +71,7 @@ def get_schedule_for_statement_pair(
         # Get a linearization
         knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
 
-        # Get a pairwise schedule --------------------------------------------
+        # Get a pairwise schedule ------------------------------------------------
 
         from loopy.schedule.checker import (
             get_schedule_for_statement_pair,
@@ -83,13 +83,9 @@ def get_schedule_for_statement_pair(
             "insn_b",
             )
 
-        # Get two isl maps from the PairwiseScheduleBuilder ------------------
+        # Get two isl maps from the PairwiseScheduleBuilder ----------------------
 
-        from loopy.schedule.checker import (
-            get_isl_maps_from_PairwiseScheduleBuilder,
-        )
-        sched_a, sched_b = get_isl_maps_from_PairwiseScheduleBuilder(
-            sched_builder_ab, knl)
+        sched_a, sched_b = sched_builder_ab.create_isl_maps(knl)
 
         print(sched_a)
         print(sched_b)
@@ -143,44 +139,6 @@ def get_schedule_for_statement_pair(
         insn_id_after,
         loops_to_ignore=conc_loop_inames,
         )
-    # }}}
-
-# }}}
-
-
-# {{{ Get isl map pair from PairwiseScheduleBuilder
-
-def get_isl_maps_from_PairwiseScheduleBuilder(sched_builder, knl):
-    """Create a pair of :class:`islpy.Map`s representing a
-        sub-schedule as two mappings from statement instances to lexicographic
-        time, one for the dependee statement and one for the depender.
-
-    :arg sched_builder: A
-        :class:`loopy.schedule.checker.schedule.PairwiseScheduleBuilder`
-        representing the order of two statements as a mapping from
-        :class:`loopy.schedule.checker.StatementInstanceSet`
-        to lexicographic time.
-
-    :arg knl: A :class:`loopy.kernel.LoopKernel` containing the
-        linearization items that will be used to create a schedule.
-
-    :returns: A two-tuple containing two :class:`islpy.Map`s
-        representing the schedule as two mappings
-        from statement instances to lexicographic time, one for
-        the dependee and one for the depender.
-    """
-
-    # {{{ Get iname domains
-    dom_before = knl.get_inames_domain(
-        knl.id_to_insn[
-            sched_builder.stmt_instance_before.stmt_ref.insn_id].within_inames)
-    dom_after = knl.get_inames_domain(
-        knl.id_to_insn[
-            sched_builder.stmt_instance_after.stmt_ref.insn_id].within_inames)
-    # }}}
-
-    # {{{ Get isl maps
-    return sched_builder.create_isl_maps(dom_before, dom_after)
     # }}}
 
 # }}}

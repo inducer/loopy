@@ -308,20 +308,18 @@ class PairwiseScheduleBuilder(object):
 
     def create_isl_maps(
             self,
-            dom_before,
-            dom_after,
+            knl,
             dom_inames_ordered_before=None,
             dom_inames_ordered_after=None,
             ):
-        """Create two isl maps representing lex schedule as two mappings
-            from statement instances to lexicographic time, one for
-            ``stmt_instance_before`` and one for ``stmt_instance_after``.
+        """Create a pair of :class:`islpy.Map`s representing a pairwise schedule
+            as two mappings from statement instances to lexicographic time,
+            one for ``stmt_instance_before`` and one for ``stmt_instance_after``.
 
-        :arg dom_before: A :class:`islpy.BasicSet` representing the
-            domain for ``stmt_instance_before``.
-
-        :arg dom_after: A :class:`islpy.BasicSet` representing the
-            domain for ``stmt_instance_after``.
+        :arg knl: A :class:`loopy.kernel.LoopKernel` containing the
+            linearization items that are described by the schedule. This
+            kernel will be used to get the domains associated with the inames
+            used in the statements.
 
         :arg dom_inames_ordered_before: A list of :class:`str`
             representing the union of inames used in
@@ -336,7 +334,7 @@ class PairwiseScheduleBuilder(object):
             the space of the ISL map domain.
 
         :returns: A two-tuple containing two :class:`islpy.Map`s
-            representing the schedule as two mappings
+            representing the a pairwise schedule as two mappings
             from statement instances to lexicographic time, one for
             each of the two :class:`StatementInstanceSet`s.
 
@@ -352,8 +350,11 @@ class PairwiseScheduleBuilder(object):
         params_sched = []
         out_names_sched = self.get_lex_var_names()
 
-        def _get_isl_map_for_stmt_inst(
-                stmt_inst, dom, dom_inames_ordered):
+        def _get_isl_map_for_stmt_inst(stmt_inst, dom_inames_ordered):
+
+            # Get inames domain for statement instance (a BasicSet)
+            dom = knl.get_inames_domain(
+                knl.id_to_insn[stmt_inst.stmt_ref.insn_id].within_inames)
 
             # create an isl space
             # {('statement', <inames> used in statement domain>) ->
@@ -389,11 +390,9 @@ class PairwiseScheduleBuilder(object):
 
         map_before = _get_isl_map_for_stmt_inst(
             self.stmt_instance_before,
-            dom_before,
             dom_inames_ordered_before)
         map_after = _get_isl_map_for_stmt_inst(
             self.stmt_instance_after,
-            dom_after,
             dom_inames_ordered_after)
 
         return (map_before, map_after)

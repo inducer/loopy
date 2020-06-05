@@ -50,7 +50,6 @@ def test_lexschedule_and_islmap_creation():
     import islpy as isl
     from loopy.schedule.checker import (
         get_schedule_for_statement_pair,
-        get_isl_maps_from_PairwiseScheduleBuilder,
     )
     from loopy.schedule.checker.utils import (
         align_isl_maps_by_var_names,
@@ -138,8 +137,7 @@ def test_lexschedule_and_islmap_creation():
 
     # Get two isl maps from the PairwiseScheduleBuilder
 
-    isl_sched_before, isl_sched_after = get_isl_maps_from_PairwiseScheduleBuilder(
-        sched_ab, knl)
+    isl_sched_before, isl_sched_after = sched_ab.create_isl_maps(knl)
 
     # Create expected maps, align, compare
 
@@ -174,8 +172,7 @@ def test_lexschedule_and_islmap_creation():
 
     # Get two isl maps from the PairwiseScheduleBuilder
 
-    isl_sched_before, isl_sched_after = get_isl_maps_from_PairwiseScheduleBuilder(
-        sched_ac, knl)
+    isl_sched_before, isl_sched_after = sched_ac.create_isl_maps(knl)
 
     # Create expected maps, align, compare
 
@@ -213,8 +210,7 @@ def test_lexschedule_and_islmap_creation():
 
         # Get two isl maps from the PairwiseScheduleBuilder
 
-        isl_sched_before, isl_sched_after = \
-            get_isl_maps_from_PairwiseScheduleBuilder(sched_ad, knl)
+        isl_sched_before, isl_sched_after = sched_ad.create_isl_maps(knl)
 
         # Create expected maps, align, compare
 
@@ -259,8 +255,7 @@ def test_lexschedule_and_islmap_creation():
 
         # Get two isl maps from the PairwiseScheduleBuilder
 
-        isl_sched_before, isl_sched_after = \
-            get_isl_maps_from_PairwiseScheduleBuilder(sched_bc, knl)
+        isl_sched_before, isl_sched_after = sched_bc.create_isl_maps(knl)
 
         # Create expected maps, align, compare
 
@@ -305,8 +300,7 @@ def test_lexschedule_and_islmap_creation():
 
         # Get two isl maps from the PairwiseScheduleBuilder
 
-        isl_sched_before, isl_sched_after = \
-            get_isl_maps_from_PairwiseScheduleBuilder(sched_bd, knl)
+        isl_sched_before, isl_sched_after = sched_bd.create_isl_maps(knl)
 
         # Create expected maps, align, compare
 
@@ -351,8 +345,7 @@ def test_lexschedule_and_islmap_creation():
 
         # Get two isl maps from the PairwiseScheduleBuilder
 
-        isl_sched_before, isl_sched_after = \
-            get_isl_maps_from_PairwiseScheduleBuilder(sched_cd, knl)
+        isl_sched_before, isl_sched_after = sched_cd.create_isl_maps(knl)
 
         # Create expected maps, align, compare
 
