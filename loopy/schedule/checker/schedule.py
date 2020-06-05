@@ -98,8 +98,9 @@ class StatementInstanceSet(object):
         self.stmt_ref = stmt_ref
         self.lex_points = lex_points
 
-    def __str__(self):
-        return "{%s, %s}" % (self.stmt_ref, self.lex_points)
+    def __repr__(self):
+        return "%s(%s, %s)" % (
+            self.__class__.__name__, self.stmt_ref, self.lex_points)
 
 
 class PairwiseScheduleBuilder(object):
