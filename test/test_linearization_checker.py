@@ -390,7 +390,6 @@ def test_statement_instance_ordering_creation():
     import islpy as isl
     from loopy.schedule.checker import (
         get_schedule_for_statement_pair,
-        get_isl_maps_from_PairwiseScheduleBuilder,
     )
     from loopy.schedule.checker.utils import (
         align_isl_maps_by_var_names,
@@ -452,8 +451,7 @@ def test_statement_instance_ordering_creation():
             )
 
         # Get two isl maps from the PairwiseScheduleBuilder
-        isl_sched_map_before, isl_sched_map_after = \
-            get_isl_maps_from_PairwiseScheduleBuilder(sched_builder, knl)
+        isl_sched_map_before, isl_sched_map_after = sched_builder.build_maps(knl)
 
         # get map representing lexicographic ordering
         sched_lex_order_map = sched_builder.get_lex_order_map_for_sched_space()
