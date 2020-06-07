@@ -303,7 +303,7 @@ class PairwiseScheduleBuilder(object):
         self.stmt_instance_after = _pad_lex_tuple_with_zeros(
             self.stmt_instance_after, max_lex_dim)
 
-    def create_isl_maps(
+    def build_maps(
             self,
             knl,
             dom_inames_ordered_before=None,

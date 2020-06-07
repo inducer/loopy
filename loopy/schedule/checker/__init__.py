@@ -85,7 +85,7 @@ def get_schedule_for_statement_pair(
 
         # Get two isl maps from the PairwiseScheduleBuilder ----------------------
 
-        sched_a, sched_b = sched_builder_ab.create_isl_maps(knl)
+        sched_a, sched_b = sched_builder_ab.build_maps(knl)
 
         print(sched_a)
         print(sched_b)
