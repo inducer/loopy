@@ -23,8 +23,8 @@ THE SOFTWARE.
 import islpy as isl
 
 
-def prettier_map_string(isl_map):
-    return str(isl_map
+def prettier_map_string(map_obj):
+    return str(map_obj
                ).replace("{ ", "{\n").replace(" }", "\n}").replace("; ", ";\n")
 
 
