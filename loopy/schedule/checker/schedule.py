@@ -347,7 +347,7 @@ class PairwiseScheduleBuilder(object):
         params_sched = []
         out_names_sched = self.get_lex_var_names()
 
-        def _get_isl_map_for_stmt_inst(stmt_inst, dom_inames_ordered):
+        def _get_map_for_stmt_inst(stmt_inst, dom_inames_ordered):
 
             # Get inames domain for statement instance (a BasicSet)
             dom = knl.get_inames_domain(
@@ -385,10 +385,10 @@ class PairwiseScheduleBuilder(object):
                 space=sched_space,
                 )
 
-        map_before = _get_isl_map_for_stmt_inst(
+        map_before = _get_map_for_stmt_inst(
             self.stmt_instance_before,
             dom_inames_ordered_before)
-        map_after = _get_isl_map_for_stmt_inst(
+        map_after = _get_map_for_stmt_inst(
             self.stmt_instance_after,
             dom_inames_ordered_after)
 
