@@ -23,8 +23,8 @@ THE SOFTWARE.
 import islpy as isl
 
 
-def prettier_map_string(isl_map):
-    return str(isl_map
+def prettier_map_string(map_obj):
+    return str(map_obj
                ).replace("{ ", "{\n").replace(" }", "\n}").replace("; ", ";\n")
 
 
@@ -35,12 +35,12 @@ def get_islvars_from_space(space):
     return isl.make_zero_and_vars(in_names+out_names, param_names)
 
 
-def add_dims_to_isl_set(isl_set, dim_type, names, new_pose_start):
+def add_dims_to_isl_set(isl_set, dim_type, names, new_idx_start):
     new_set = isl_set.insert_dims(
-        dim_type, new_pose_start, len(names)
-        ).set_dim_name(dim_type, new_pose_start, names[0])
+        dim_type, new_idx_start, len(names)
+        ).set_dim_name(dim_type, new_idx_start, names[0])
     for i, name in enumerate(names[1:]):
-        new_set = new_set.set_dim_name(dim_type, new_pose_start+1+i, name)
+        new_set = new_set.set_dim_name(dim_type, new_idx_start+1+i, name)
     return new_set
 
 
@@ -90,27 +90,27 @@ def reorder_dims_by_name(
     other_dim_len = len(isl_set.get_var_names(other_dim_type))
 
     new_set = isl_set.copy()
-    for desired_pose, name in enumerate(desired_dims_ordered):
+    for desired_idx, name in enumerate(desired_dims_ordered):
         # if iname doesn't exist in set, add dim:
         if name not in new_set.get_var_names(dim_type):
             if add_missing:
                 # insert missing dim in correct location
                 new_set = new_set.insert_dims(
-                    dim_type, desired_pose, 1
+                    dim_type, desired_idx, 1
                     ).set_dim_name(
-                    dim_type, desired_pose, name)
+                    dim_type, desired_idx, name)
         else:  # iname exists in set
-            current_pose = new_set.find_dim_by_name(dim_type, name)
-            if current_pose != desired_pose:
-                # move_dims(dst_type, dst_pose, src_type, src_pose, n)
+            current_idx = new_set.find_dim_by_name(dim_type, name)
+            if current_idx != desired_idx:
+                # move_dims(dst_type, dst_idx, src_type, src_idx, n)
 
                 # first move to other dim because isl is stupid
                 new_set = new_set.move_dims(
-                    other_dim_type, other_dim_len, dim_type, current_pose, 1)
+                    other_dim_type, other_dim_len, dim_type, current_idx, 1)
 
                 # now move it where we actually want it
                 new_set = new_set.move_dims(
-                    dim_type, desired_pose, other_dim_type, other_dim_len, 1)
+                    dim_type, desired_idx, other_dim_type, other_dim_len, 1)
 
     return new_set
 
