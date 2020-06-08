@@ -139,50 +139,17 @@ def reorder_dims_by_name(
     return new_set
 
 
-def align_isl_maps_by_var_names(input_map, target_map):
+def ensure_dim_names_match_and_align(obj_map, tgt_map):
 
     # first make sure names match
     for dt in [isl.dim_type.in_, isl.dim_type.out, isl.dim_type.param]:
         map_names_match_check(
-            input_map, target_map.get_var_names(dt), dt,
+            obj_map, tgt_map.get_var_names(dt), dt,
             assert_permutation=True)
 
-    aligned_input_map = isl.align_spaces(input_map, target_map)
+    aligned_obj_map = isl.align_spaces(obj_map, tgt_map)
 
-    # TODO remove once satisfied that above can replace below:
-
-    # align params
-    _aligned_input_map = input_map.align_params(target_map.space)
-
-    # align in_ dims
-    target_map_in_names = target_map.space.get_var_names(isl.dim_type.in_)
-    _aligned_input_map = reorder_dims_by_name(
-        _aligned_input_map,
-        isl.dim_type.in_,
-        target_map_in_names,
-        add_missing=False,
-        new_names_are_permutation_only=True,
-        )
-
-    # align out dims
-    target_map_out_names = target_map.space.get_var_names(isl.dim_type.out)
-    _aligned_input_map = reorder_dims_by_name(
-        _aligned_input_map,
-        isl.dim_type.out,
-        target_map_out_names,
-        add_missing=False,
-        new_names_are_permutation_only=True,
-        )
-
-    assert aligned_input_map == _aligned_input_map
-    assert aligned_input_map.get_var_names(
-        isl.dim_type.param) == _aligned_input_map.get_var_names(isl.dim_type.param)
-    assert aligned_input_map.get_var_names(
-        isl.dim_type.in_) == _aligned_input_map.get_var_names(isl.dim_type.in_)
-    assert aligned_input_map.get_var_names(
-        isl.dim_type.out) == _aligned_input_map.get_var_names(isl.dim_type.out)
-
-    return aligned_input_map
+    return aligned_obj_map
 
 
 def _get_union(list_items):
