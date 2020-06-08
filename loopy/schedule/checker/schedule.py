@@ -353,7 +353,7 @@ class PairwiseScheduleBuilder(object):
             dom = knl.get_inames_domain(
                 knl.id_to_insn[stmt_inst.stmt_ref.insn_id].within_inames)
 
-            # create an isl space
+            # create space (an isl space in current implementation)
             # {('statement', <inames> used in statement domain>) ->
             #  (lexicographic ordering dims)}
             if dom_inames_ordered is None:
@@ -370,7 +370,7 @@ class PairwiseScheduleBuilder(object):
                 add_dims_to_isl_set(
                     dom, isl.dim_type.set, [self.statement_var_name], 0), ]
 
-            # Each isl map representing the schedule will map
+            # Each map representing the schedule will map
             # statement instances -> lex time.
             # Right now, statement instance tuples consist of single int.
             # Add all inames from domains to each map domain tuple.
@@ -379,7 +379,7 @@ class PairwiseScheduleBuilder(object):
                 stmt_inst.lex_points
                 )]
 
-            # create isl map
+            # create map
             return create_symbolic_map_from_tuples(
                 tuple_pairs_with_domains=zip(tuple_pair, dom_to_intersect),
                 space=sched_space,
