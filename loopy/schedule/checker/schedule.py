@@ -340,7 +340,7 @@ class PairwiseScheduleBuilder(object):
         from loopy.schedule.checker.utils import (
             list_var_names_in_isl_sets,
             get_isl_space,
-            create_symbolic_isl_map_from_tuples,
+            create_symbolic_map_from_tuples,
             add_dims_to_isl_set,
         )
 
@@ -380,7 +380,7 @@ class PairwiseScheduleBuilder(object):
                 )]
 
             # create isl map
-            return create_symbolic_isl_map_from_tuples(
+            return create_symbolic_map_from_tuples(
                 tuple_pairs_with_domains=zip(tuple_pair, dom_to_intersect),
                 space=sched_space,
                 )

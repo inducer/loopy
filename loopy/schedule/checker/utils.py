@@ -161,7 +161,7 @@ def list_var_names_in_isl_sets(
     return sorted(list(inames))
 
 
-def create_symbolic_isl_map_from_tuples(
+def create_symbolic_map_from_tuples(
         tuple_pairs_with_domains,
         space,
         ):
@@ -191,7 +191,6 @@ def create_symbolic_isl_map_from_tuples(
 
     dim_type = isl.dim_type
 
-    #param_names = space.get_var_names(isl.dim_type.param)
     space_out_names = space.get_var_names(dim_type.out)
     space_in_names = space.get_var_names(isl.dim_type.in_)
 
