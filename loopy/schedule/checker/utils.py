@@ -44,6 +44,27 @@ def add_dims_to_isl_set(isl_set, dim_type, names, new_idx_start):
     return new_set
 
 
+def map_names_match_check(
+        obj_map,
+        desired_names,
+        dim_type,
+        assert_subset=True,
+        assert_permutation=True,
+        ):
+
+    obj_map_names = obj_map.space.get_var_names(dim_type)
+    if assert_permutation:
+        if not set(obj_map_names) == set(desired_names):
+            raise ValueError(
+                "Set of map names %s for dim %s does not match target set %s"
+                % (obj_map_names, dim_type, desired_names))
+    elif assert_subset:
+        if not set(obj_map_names).issubset(desired_names):
+            raise ValueError(
+                "Map names %s for dim %s are not a subset of target names %s"
+                % (obj_map_names, dim_type, desired_names))
+
+
 def reorder_dims_by_name(
         isl_set, dim_type, desired_dims_ordered,
         add_missing=False, new_names_are_permutation_only=False):
@@ -75,7 +96,10 @@ def reorder_dims_by_name(
 
     """
 
-    assert set(isl_set.get_var_names(dim_type)).issubset(desired_dims_ordered)
+    map_names_match_check(
+        isl_set, desired_dims_ordered, dim_type,
+        assert_subset=True, assert_permutation=False)
+
     assert dim_type != isl.dim_type.param
 
     if new_names_are_permutation_only and (
@@ -117,13 +141,23 @@ def reorder_dims_by_name(
 
 def align_isl_maps_by_var_names(input_map, target_map):
 
+    # first make sure names match
+    for dt in [isl.dim_type.in_, isl.dim_type.out, isl.dim_type.param]:
+        map_names_match_check(
+            input_map, target_map.get_var_names(dt), dt,
+            assert_permutation=True)
+
+    aligned_input_map = isl.align_spaces(input_map, target_map)
+
+    # TODO remove once satisfied that above can replace below:
+
     # align params
-    aligned_input_map = input_map.align_params(target_map.space)
+    _aligned_input_map = input_map.align_params(target_map.space)
 
     # align in_ dims
     target_map_in_names = target_map.space.get_var_names(isl.dim_type.in_)
-    aligned_input_map = reorder_dims_by_name(
-        aligned_input_map,
+    _aligned_input_map = reorder_dims_by_name(
+        _aligned_input_map,
         isl.dim_type.in_,
         target_map_in_names,
         add_missing=False,
@@ -132,13 +166,21 @@ def align_isl_maps_by_var_names(input_map, target_map):
 
     # align out dims
     target_map_out_names = target_map.space.get_var_names(isl.dim_type.out)
-    aligned_input_map = reorder_dims_by_name(
-        aligned_input_map,
+    _aligned_input_map = reorder_dims_by_name(
+        _aligned_input_map,
         isl.dim_type.out,
         target_map_out_names,
         add_missing=False,
         new_names_are_permutation_only=True,
         )
+
+    assert aligned_input_map == _aligned_input_map
+    assert aligned_input_map.get_var_names(
+        isl.dim_type.param) == _aligned_input_map.get_var_names(isl.dim_type.param)
+    assert aligned_input_map.get_var_names(
+        isl.dim_type.in_) == _aligned_input_map.get_var_names(isl.dim_type.in_)
+    assert aligned_input_map.get_var_names(
+        isl.dim_type.out) == _aligned_input_map.get_var_names(isl.dim_type.out)
 
     return aligned_input_map
 
