@@ -171,9 +171,9 @@ def append_marker_to_strings(strings, marker="'"):
         return [s+marker for s in strings]
 
 
-def _union_of_isl_sets_or_maps(set_list):
-    union = set_list[0]
-    for s in set_list[1:]:
+def _get_union(list_items):
+    union = list_items[0]
+    for s in list_items[1:]:
         union = union.union(s)
     return union
 
@@ -189,7 +189,7 @@ def list_var_names_in_isl_sets(
     return sorted(list(inames))
 
 
-def create_symbolic_isl_map_from_tuples(
+def create_symbolic_map_from_tuples(
         tuple_pairs_with_domains,
         space,
         ):
@@ -219,7 +219,6 @@ def create_symbolic_isl_map_from_tuples(
 
     dim_type = isl.dim_type
 
-    #param_names = space.get_var_names(isl.dim_type.param)
     space_out_names = space.get_var_names(dim_type.out)
     space_in_names = space.get_var_names(isl.dim_type.in_)
 
@@ -276,7 +275,7 @@ def create_symbolic_isl_map_from_tuples(
         all_maps.append(
             map_from_set.intersect_domain(dom_with_all_inames))
 
-    return _union_of_isl_sets_or_maps(all_maps)
+    return _get_union(all_maps)
 
 
 def set_all_isl_space_names(
