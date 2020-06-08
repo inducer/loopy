@@ -65,32 +65,21 @@ def map_names_match_check(
                 % (obj_map_names, dim_type, desired_names))
 
 
-def reorder_dims_by_name(
-        isl_set, dim_type, desired_dims_ordered,
-        add_missing=False, new_names_are_permutation_only=False):
+def insert_missing_dims_and_reorder_by_name(
+        isl_set, dim_type, desired_dims_ordered):
     """Return an isl_set with the dimensions in the specified order.
 
     :arg isl_set: A :class:`islpy.Set` whose dimensions are
-        to be reordered.
+        to be reordered and, if necessary, augmented with missing dimensions.
 
     :arg dim_type: A :class:`islpy.dim_type`, i.e., an :class:`int`,
         specifying the dimension to be reordered.
 
     :arg desired_dims_ordered: A :class:`list` of :class:`str` elements
-        representing the desired dimensions order by dimension name.
-
-    :arg add_missing: A :class:`bool` specifying whether to insert
-        dimensions (by name) found in `desired_dims_ordered` that are not
-        present in `isl_set`.
-
-    :arg new_names_are_permutation_only: A :class:`bool` indicating that
-        `desired_dims_ordered` contains the same names as the specified
-        dimensions in `isl_set`, and does not, e.g., contain additional
-        dimension names not found in `isl_set`. If set to True, and these
-        two sets of names do not match, an error is produced.
+        representing the desired dimensions in order by dimension name.
 
     :returns: An :class:`islpy.Set` matching `isl_set` with the
-        dimension order matching `desired_dims_ordered`, optionally
+        dimension order matching `desired_dims_ordered`,
         including additional dimensions present in `desred_dims_ordered`
         that are not present in `isl_set`.
 
@@ -98,7 +87,7 @@ def reorder_dims_by_name(
 
     map_names_match_check(
         isl_set, desired_dims_ordered, dim_type,
-        assert_subset=True, assert_permutation=new_names_are_permutation_only)
+        assert_subset=True, assert_permutation=False)
 
     assert dim_type != isl.dim_type.param
 
@@ -109,12 +98,11 @@ def reorder_dims_by_name(
     for desired_idx, name in enumerate(desired_dims_ordered):
         # if iname doesn't exist in set, add dim:
         if name not in new_set.get_var_names(dim_type):
-            if add_missing:
-                # insert missing dim in correct location
-                new_set = new_set.insert_dims(
-                    dim_type, desired_idx, 1
-                    ).set_dim_name(
-                    dim_type, desired_idx, name)
+            # insert missing dim in correct location
+            new_set = new_set.insert_dims(
+                dim_type, desired_idx, 1
+                ).set_dim_name(
+                dim_type, desired_idx, name)
         else:  # iname exists in set
             current_idx = new_set.find_dim_by_name(dim_type, name)
             if current_idx != desired_idx:
@@ -237,11 +225,9 @@ def create_symbolic_map_from_tuples(
         # if there are any dimensions in dom that are missing from
         # map_from_set, we have a problem I think?
         # (assertion checks this in add_missing...
-        dom_with_all_inames = reorder_dims_by_name(
+        dom_with_all_inames = insert_missing_dims_and_reorder_by_name(
             dom, isl.dim_type.set,
             space_in_names,
-            add_missing=True,
-            new_names_are_permutation_only=False,
             )
 
         # intersect domain with this map
