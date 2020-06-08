@@ -143,9 +143,9 @@ def align_isl_maps_by_var_names(input_map, target_map):
     return aligned_input_map
 
 
-def _union_of_isl_sets_or_maps(set_list):
-    union = set_list[0]
-    for s in set_list[1:]:
+def _get_union(list_items):
+    union = list_items[0]
+    for s in list_items[1:]:
         union = union.union(s)
     return union
 
@@ -247,7 +247,7 @@ def create_symbolic_map_from_tuples(
         all_maps.append(
             map_from_set.intersect_domain(dom_with_all_inames))
 
-    return _union_of_isl_sets_or_maps(all_maps)
+    return _get_union(all_maps)
 
 
 def set_all_isl_space_names(
