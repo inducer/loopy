@@ -54,7 +54,7 @@ def test_pairwise_schedule_and_map_creation():
         get_schedule_for_statement_pair,
     )
     from loopy.schedule.checker.utils import (
-        align_isl_maps_by_var_names,
+        ensure_dim_names_match_and_align,
     )
 
     # example kernel
@@ -150,7 +150,7 @@ def test_pairwise_schedule_and_map_creation():
         "_lp_linchk_l4=0] : "
         "0 <= i < pi and 0 <= k < pk }"
         )
-    sched_map_before_expected = align_isl_maps_by_var_names(
+    sched_map_before_expected = ensure_dim_names_match_and_align(
         sched_map_before_expected, sched_map_before)
 
     sched_map_after_expected = isl.Map(
@@ -160,7 +160,7 @@ def test_pairwise_schedule_and_map_creation():
         "_lp_linchk_l4=0] : "
         "0 <= i < pi and 0 <= j < pj }"
         )
-    sched_map_after_expected = align_isl_maps_by_var_names(
+    sched_map_after_expected = ensure_dim_names_match_and_align(
         sched_map_after_expected, sched_map_after)
 
     assert sched_map_before == sched_map_before_expected
@@ -185,7 +185,7 @@ def test_pairwise_schedule_and_map_creation():
         "_lp_linchk_l4=0] : "
         "0 <= i < pi and 0 <= k < pk }"
         )
-    sched_map_before_expected = align_isl_maps_by_var_names(
+    sched_map_before_expected = ensure_dim_names_match_and_align(
         sched_map_before_expected, sched_map_before)
 
     sched_map_after_expected = isl.Map(
@@ -195,7 +195,7 @@ def test_pairwise_schedule_and_map_creation():
         "_lp_linchk_l4=0] : "
         "0 <= i < pi and 0 <= j < pj }"
         )
-    sched_map_after_expected = align_isl_maps_by_var_names(
+    sched_map_after_expected = ensure_dim_names_match_and_align(
         sched_map_after_expected, sched_map_after)
 
     assert sched_map_before == sched_map_before_expected
@@ -224,7 +224,7 @@ def test_pairwise_schedule_and_map_creation():
             "0 <= i < pi and 0 <= k < pk }"
             % (sid_a, sid_a)
             )
-        sched_map_before_expected = align_isl_maps_by_var_names(
+        sched_map_before_expected = ensure_dim_names_match_and_align(
             sched_map_before_expected, sched_map_before)
 
         sched_map_after_expected = isl.Map(
@@ -235,7 +235,7 @@ def test_pairwise_schedule_and_map_creation():
             "0 <= t < pt }"
             % (sid_d, sid_d)
             )
-        sched_map_after_expected = align_isl_maps_by_var_names(
+        sched_map_after_expected = ensure_dim_names_match_and_align(
             sched_map_after_expected, sched_map_after)
 
         assert sched_map_before == sched_map_before_expected
@@ -269,7 +269,7 @@ def test_pairwise_schedule_and_map_creation():
             "0 <= i < pi and 0 <= j < pj }"
             % (sid_b, sid_b)
             )
-        sched_map_before_expected = align_isl_maps_by_var_names(
+        sched_map_before_expected = ensure_dim_names_match_and_align(
             sched_map_before_expected, sched_map_before)
 
         sched_map_after_expected = isl.Map(
@@ -280,7 +280,7 @@ def test_pairwise_schedule_and_map_creation():
             "0 <= i < pi and 0 <= j < pj }"
             % (sid_c, sid_c)
             )
-        sched_map_after_expected = align_isl_maps_by_var_names(
+        sched_map_after_expected = ensure_dim_names_match_and_align(
             sched_map_after_expected, sched_map_after)
 
         assert sched_map_before == sched_map_before_expected
@@ -314,7 +314,7 @@ def test_pairwise_schedule_and_map_creation():
             "0 <= i < pi and 0 <= j < pj }"
             % (sid_b, sid_b)
             )
-        sched_map_before_expected = align_isl_maps_by_var_names(
+        sched_map_before_expected = ensure_dim_names_match_and_align(
             sched_map_before_expected, sched_map_before)
 
         sched_map_after_expected = isl.Map(
@@ -325,7 +325,7 @@ def test_pairwise_schedule_and_map_creation():
             "0 <= t < pt }"
             % (sid_d, sid_d)
             )
-        sched_map_after_expected = align_isl_maps_by_var_names(
+        sched_map_after_expected = ensure_dim_names_match_and_align(
             sched_map_after_expected, sched_map_after)
 
         assert sched_map_before == sched_map_before_expected
@@ -359,7 +359,7 @@ def test_pairwise_schedule_and_map_creation():
             "0 <= i < pi and 0 <= j < pj }"
             % (sid_c, sid_c)
             )
-        sched_map_before_expected = align_isl_maps_by_var_names(
+        sched_map_before_expected = ensure_dim_names_match_and_align(
             sched_map_before_expected, sched_map_before)
 
         sched_map_after_expected = isl.Map(
@@ -370,7 +370,7 @@ def test_pairwise_schedule_and_map_creation():
             "0 <= t < pt }"
             % (sid_d, sid_d)
             )
-        sched_map_after_expected = align_isl_maps_by_var_names(
+        sched_map_after_expected = ensure_dim_names_match_and_align(
             sched_map_after_expected, sched_map_after)
 
         assert sched_map_before == sched_map_before_expected
