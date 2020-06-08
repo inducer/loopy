@@ -392,7 +392,7 @@ def test_statement_instance_ordering_creation():
         get_schedule_for_statement_pair,
     )
     from loopy.schedule.checker.utils import (
-        align_isl_maps_by_var_names,
+        ensure_dim_names_match_and_align,
         append_marker_to_isl_map_var_names,
     )
     from loopy.schedule.checker.lexicographic_order_map import (
@@ -466,7 +466,7 @@ def test_statement_instance_ordering_creation():
             sched_lex_order_map,
             )
 
-        sio_aligned = align_isl_maps_by_var_names(sio, expected_sio)
+        sio_aligned = ensure_dim_names_match_and_align(sio, expected_sio)
 
         assert sio_aligned == expected_sio
 
