@@ -98,17 +98,9 @@ def reorder_dims_by_name(
 
     map_names_match_check(
         isl_set, desired_dims_ordered, dim_type,
-        assert_subset=True, assert_permutation=False)
+        assert_subset=True, assert_permutation=new_names_are_permutation_only)
 
     assert dim_type != isl.dim_type.param
-
-    if new_names_are_permutation_only and (
-            set(isl_set.get_var_names(dim_type))
-            != set(desired_dims_ordered)):
-        raise ValueError(
-            "Var name sets must match with new_names_are_permutation_only=True. "
-            "isl vars: %s, desired dims: %s"
-            % (isl_set.get_var_names(dim_type), desired_dims_ordered))
 
     other_dim_type = isl.dim_type.param
     other_dim_len = len(isl_set.get_var_names(other_dim_type))
