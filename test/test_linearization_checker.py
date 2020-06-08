@@ -451,7 +451,7 @@ def test_statement_instance_ordering_creation():
             )
 
         # Get two isl maps from the PairwiseScheduleBuilder
-        isl_sched_map_before, isl_sched_map_after = sched_builder.build_maps(knl)
+        sched_map_before, sched_map_after = sched_builder.build_maps(knl)
 
         # get map representing lexicographic ordering
         sched_lex_order_map = sched_builder.get_lex_order_map_for_sched_space()
@@ -461,8 +461,8 @@ def test_statement_instance_ordering_creation():
         # create statement instance ordering,
         # maps each statement instance to all statement instances occuring later
         sio = get_statement_ordering_map(
-            isl_sched_map_before,
-            isl_sched_map_after,
+            sched_map_before,
+            sched_map_after,
             sched_lex_order_map,
             )
 
