@@ -69,7 +69,7 @@ class StatementRef(object):
             int_id = ":%d" % (self.int_id)
         else:
             int_id = ""
-        return "%s%s" % (self.insn_id, int_id)
+        return "%s(%s%s)" % (self.__class__.__name__, self.insn_id, int_id)
 
 
 class StatementInstanceSet(object):
