@@ -581,7 +581,7 @@ class TemporaryVariable(ArrayBase):
                 shape = initializer.shape
             else:
                 if shape != initializer.shape:
-                    raise LoopyError("Shape of '{}' does match that of the"
+                    raise LoopyError("Shape of '{}' does not match that of the"
                             " initializer.".format(name))
         else:
             raise LoopyError(
