@@ -318,20 +318,21 @@ class PyOpenCLTarget(OpenCLTarget):
 
         if self.device is not None:
             assert other.device is not None
-            return (self.device.persistent_unique_id
-                    == other.device.persistent_unique_id)
+            return (self.device.hashable_model_and_version_identifier
+                    == other.device.hashable_model_and_version_identifier)
         else:
             assert other.device is None
             return True
 
     def update_persistent_hash(self, key_hash, key_builder):
         super(PyOpenCLTarget, self).update_persistent_hash(key_hash, key_builder)
-        key_builder.rec(key_hash, getattr(self.device, "persistent_unique_id", None))
+        key_builder.rec(key_hash, getattr(
+            self.device, "hashable_model_and_version_identifier", None))
 
     def __getstate__(self):
         dev_id = None
         if self.device is not None:
-            dev_id = self.device.persistent_unique_id
+            dev_id = self.device.hashable_model_and_version_identifier
 
         return {
                 "device_id": dev_id,
@@ -354,7 +355,7 @@ class PyOpenCLTarget(OpenCLTarget):
                 dev
                 for plat in cl.get_platforms()
                 for dev in plat.get_devices()
-                if dev.persistent_unique_id == dev_id]
+                if dev.hashable_model_and_version_identifier == dev_id]
 
             if matches:
                 self.device = matches[0]
