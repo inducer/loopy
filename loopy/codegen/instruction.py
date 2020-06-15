@@ -274,7 +274,7 @@ def generate_c_instruction_code(codegen_state, insn):
     if body:
         body.append(Line())
 
-    body.extend(Line(l) for l in insn.code.split("\n"))
+    body.extend(Line(line) for line in insn.code.split("\n"))
 
     return Block(body)
 

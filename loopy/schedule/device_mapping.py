@@ -31,7 +31,7 @@ from loopy.schedule.tools import get_block_boundaries
 def map_schedule_onto_host_or_device(kernel):
     # FIXME: Should be idempotent.
     from loopy.kernel import KernelState
-    assert kernel.state == KernelState.SCHEDULED
+    assert kernel.state == KernelState.LINEARIZED
 
     from functools import partial
     device_prog_name_gen = partial(

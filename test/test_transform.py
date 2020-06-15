@@ -74,7 +74,7 @@ def test_collect_common_factors(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-            "{[i,j,k]: 0<=i,j<n}",
+            "{[i,j]: 0<=i,j<n}",
             """
             <float32> out_tmp = 0 {id=out_init,inames=i}
             out_tmp = out_tmp + alpha[i]*a[i,j]*b1[j] {id=out_up1,dep=out_init}
@@ -385,7 +385,7 @@ def test_precompute_nested_subst(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-        "{[i,j]: 0<=i<n and 0<=j<5}",
+        "{[i]: 0<=i<n}",
         """
         E:=a[i]
         D:=E*E
@@ -396,7 +396,6 @@ def test_precompute_nested_subst(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.tag_inames(knl, dict(j="g.1"))
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
     from loopy.symbolic import get_dependencies
@@ -568,6 +567,55 @@ def test_nested_substs_in_insns(ctx_factory):
     assert not knl.substitutions
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
+def test_extract_subst_with_iname_deps_in_templ(ctx_factory):
+    knl = lp.make_kernel(
+            "{[i, j, k]: 0<=i<100 and 0<=j,k<5}",
+            """
+            y[i, j, k] = x[i, j, k]
+            """,
+            [lp.GlobalArg('x,y', shape=lp.auto, dtype=float)],
+            lang_version=(2018, 2))
+
+    knl = lp.extract_subst(knl, 'rule1', 'x[i, arg1, arg2]',
+            parameters=('arg1', 'arg2'))
+
+    lp.auto_test_vs_ref(knl, ctx_factory(), knl)
+
+
+def test_prefetch_local_into_private():
+    # https://gitlab.tiker.net/inducer/loopy/-/issues/210
+    n = 32
+    m = 32
+    n_vecs = 32
+
+    knl = lp.make_kernel(
+        """{[k,i,j]:
+            0<=k<n_vecs and
+            0<=i<m and
+            0<=j<n}""",
+        """
+        result[i,k] = sum(j, mat[i, j] * vec[j, k])
+        """,
+        kernel_data=[
+            lp.GlobalArg("result", np.float32, shape=(m, n_vecs), order="C"),
+            lp.GlobalArg("mat", np.float32, shape=(m, n), order="C"),
+            lp.GlobalArg("vec", np.float32, shape=(n, n_vecs), order="C")
+        ],
+        assumptions="n > 0 \
+                     and m > 0 \
+                     and n_vecs > 0",
+        name="mxm"
+    )
+
+    knl = lp.fix_parameters(knl, m=m, n=n, n_vecs=n_vecs)
+    knl = lp.prioritize_loops(knl, "i,k,j")
+
+    knl = lp.add_prefetch(
+            knl, "mat", "i, j", temporary_name="s_mat", default_tag="for")
+    knl = lp.add_prefetch(
+            knl, "s_mat", "j", temporary_name="p_mat", default_tag="for")
 
 
 if __name__ == "__main__":

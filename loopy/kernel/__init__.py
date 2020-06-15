@@ -35,14 +35,13 @@ import islpy as isl
 from islpy import dim_type
 import re
 
-from pytools import UniqueNameGenerator, generate_unique_names
+from pytools import UniqueNameGenerator, generate_unique_names, natsorted
 
 from loopy.library.function import (
         default_function_mangler,
         single_arg_function_mangler)
 
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
-from loopy.tools import natsorted
 from loopy.diagnostic import StaticValueFindingError
 from loopy.kernel.data import filter_iname_tags_by_type
 from warnings import warn
@@ -99,10 +98,25 @@ class _UniqueVarNameGenerator(UniqueNameGenerator):
 
 # {{{ loop kernel object
 
+class _deprecated_KernelState_SCHEDULED(object):  # noqa
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, klass):
+        warn(
+            "'KernelState.SCHEDULED' is deprecated. "
+            "Use 'KernelState.LINEARIZED'.",
+            DeprecationWarning, stacklevel=2)
+        return self.f()
+
 class KernelState:  # noqa
     INITIAL = 0
     PREPROCESSED = 1
-    SCHEDULED = 2
+    LINEARIZED = 2
+
+    @_deprecated_KernelState_SCHEDULED
+    def SCHEDULED():  # pylint:disable=no-method-argument
+        return KernelState.LINEARIZED
 
 # {{{ kernel_state, KernelState compataibility
 
@@ -228,7 +242,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     # {{{ constructor
 
-    def __init__(self, domains, instructions, args=None, schedule=None,
+    def __init__(self, domains, instructions, args=None,
+            schedule=None,
+            linearization=None,
             name="loopy_kernel",
             preambles=None,
             preamble_generators=None,
@@ -333,9 +349,26 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if state not in [
                 KernelState.INITIAL,
                 KernelState.PREPROCESSED,
-                KernelState.SCHEDULED,
+                KernelState.LINEARIZED,
                 ]:
             raise ValueError("invalid value for 'state'")
+
+        # `linearization` is replacing `schedule`, but we're not changing
+        # this under the hood yet, so for now, store it inside `schedule`
+        # and raise deprecation warning anyway
+        if schedule is not None:
+            if linearization is not None:
+                # these should not both be present
+                raise ValueError(
+                    "received both `schedule` and `linearization` args, "
+                    "'LoopKernel.schedule' is deprecated. "
+                    "Use 'LoopKernel.linearization'.")
+            warn(
+                "'LoopKernel.schedule' is deprecated. "
+                "Use 'LoopKernel.linearization'.",
+                DeprecationWarning, stacklevel=2)
+        elif linearization is not None:
+            schedule = linearization
 
         from collections import defaultdict
         assert not isinstance(iname_to_tags, defaultdict)
@@ -1345,7 +1378,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if "schedule" in what and kernel.schedule is not None:
             lines.extend(sep)
             if show_labels:
-                lines.append("SCHEDULE:")
+                lines.append("LINEARIZATION:")
             from loopy.schedule import dump_schedule
             lines.append(dump_schedule(kernel, kernel.schedule))
 
@@ -1392,6 +1425,14 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 result[sub_arg_name] = arg
 
         return result
+
+    # }}}
+
+    # {{{ handle linearization variable that doesn't yet exist
+
+    @property
+    def linearization(self):
+        return self.schedule
 
     # }}}
 

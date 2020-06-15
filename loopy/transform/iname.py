@@ -977,8 +977,8 @@ def _get_iname_duplication_options(insn_iname_sets, old_common_inames=frozenset(
             # is inspected.  For each element of the power set without the
             # empty and the full set, one duplication option is generated.
             for insns_to_dup in it.chain.from_iterable(
-                    it.combinations(iname_insns, l)
-                    for l in range(1, len(iname_insns))):
+                    it.combinations(iname_insns, i)
+                    for i in range(1, len(iname_insns))):
                 yield (
                     iname,
                     tuple(insn | old_common_inames for insn in insns_to_dup))
@@ -1184,6 +1184,19 @@ def rename_iname(knl, old_iname, new_iname, existing_ok=False, within=None):
 
 # {{{ remove unused inames
 
+def get_used_inames(knl):
+    import loopy as lp
+    exp_knl = lp.expand_subst(knl)
+
+    used_inames = set()
+    for insn in exp_knl.instructions:
+        used_inames.update(
+                exp_knl.insn_inames(insn.id)
+                | insn.reduction_inames())
+
+    return used_inames
+
+
 def remove_unused_inames(knl, inames=None):
     """Delete those among *inames* that are unused, i.e. project them
     out of the domain. If these inames pose implicit restrictions on
@@ -1204,17 +1217,7 @@ def remove_unused_inames(knl, inames=None):
 
     # {{{ check which inames are unused
 
-    import loopy as lp
-    exp_knl = lp.expand_subst(knl)
-
-    inames = set(inames)
-    used_inames = set()
-    for insn in exp_knl.instructions:
-        used_inames.update(
-                exp_knl.insn_inames(insn.id)
-                | insn.reduction_inames())
-
-    unused_inames = inames - used_inames
+    unused_inames = set(inames) - get_used_inames(knl)
 
     # }}}
 
@@ -1234,6 +1237,33 @@ def remove_unused_inames(knl, inames=None):
     # }}}
 
     return knl
+
+
+def remove_any_newly_unused_inames(transformation_func):
+    from functools import wraps
+
+    @wraps(transformation_func)
+    def wrapper(knl, *args, **kwargs):
+
+        # check for remove_unused_inames argument, default: True
+        remove_newly_unused_inames = kwargs.pop("remove_newly_unused_inames", True)
+
+        if remove_newly_unused_inames:
+            # determine which inames were already unused
+            inames_already_unused = knl.all_inames() - get_used_inames(knl)
+
+            # call transform
+            transformed_knl = transformation_func(knl, *args, **kwargs)
+
+            # Remove inames that are unused due to transform
+            return remove_unused_inames(
+                transformed_knl,
+                transformed_knl.all_inames()-inames_already_unused)
+        else:
+            # call transform
+            return transformation_func(knl, *args, **kwargs)
+
+    return wrapper
 
 # }}}
 

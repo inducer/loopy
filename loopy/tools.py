@@ -210,11 +210,11 @@ def remove_common_indentation(code, require_leading_newline=True,
 
     test_line = None
     if ignore_lines_starting_with:
-        for l in lines:
-            strip_l = l.lstrip()
+        for line in lines:
+            strip_l = line.lstrip()
             if (strip_l
                     and not strip_l.startswith(ignore_lines_starting_with)):
-                test_line = l
+                test_line = line
                 break
 
     else:
@@ -351,65 +351,6 @@ def empty_aligned(shape, dtype, order='C', n=64):
             dtype=dtype).reshape(shape, order=order)
 
     return array
-
-# }}}
-
-
-# {{{ compute SCCs with Tarjan's algorithm
-
-def compute_sccs(graph):
-    to_search = set(graph.keys())
-    visit_order = {}
-    scc_root = {}
-    sccs = []
-
-    while to_search:
-        top = next(iter(to_search))
-        call_stack = [(top, iter(graph[top]), None)]
-        visit_stack = []
-        visiting = set()
-
-        scc = []
-
-        while call_stack:
-            top, children, last_popped_child = call_stack.pop()
-
-            if top not in visiting:
-                # Unvisited: mark as visited, initialize SCC root.
-                count = len(visit_order)
-                visit_stack.append(top)
-                visit_order[top] = count
-                scc_root[top] = count
-                visiting.add(top)
-                to_search.discard(top)
-
-            # Returned from a recursion, update SCC.
-            if last_popped_child is not None:
-                scc_root[top] = min(
-                    scc_root[top],
-                    scc_root[last_popped_child])
-
-            for child in children:
-                if child not in visit_order:
-                    # Recurse.
-                    call_stack.append((top, children, child))
-                    call_stack.append((child, iter(graph[child]), None))
-                    break
-                if child in visiting:
-                    scc_root[top] = min(
-                        scc_root[top],
-                        visit_order[child])
-            else:
-                if scc_root[top] == visit_order[top]:
-                    scc = []
-                    while visit_stack[-1] != top:
-                        scc.append(visit_stack.pop())
-                    scc.append(visit_stack.pop())
-                    for item in scc:
-                        visiting.remove(item)
-                    sccs.append(scc)
-
-    return sccs
 
 # }}}
 
@@ -672,21 +613,5 @@ def is_interned(s):
 
 def intern_frozenset_of_ids(fs):
     return frozenset(intern(s) for s in fs)
-
-
-def natorder(key):
-    # Return natural ordering for strings, as opposed to dictionary order.
-    # E.g. will result in
-    #  'abc1' < 'abc9' < 'abc10'
-    # rather than
-    #  'abc1' < 'abc10' < 'abc9'
-    # Based on
-    # http://code.activestate.com/recipes/285264-natural-string-sorting/#c7
-    import re
-    return [int(n) if n else s for n, s in re.findall(r'(\d+)|(\D+)', key)]
-
-
-def natsorted(seq, key=lambda x: x):
-    return sorted(seq, key=lambda y: natorder(key(y)))
 
 # vim: foldmethod=marker

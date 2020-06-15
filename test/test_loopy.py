@@ -177,7 +177,7 @@ def test_simple_side_effect(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-            "{[i,j]: 0<=i,j<100}",
+            "{[i]: 0<=i<100}",
             """
                 a[i] = a[i] + 1
                 """,
@@ -456,7 +456,7 @@ def test_nonlinear_index(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-            "{[i,j]: 0<=i,j<n }",
+            "{[i]: 0<=i<n }",
             """
                 a[i*i] = 17
                 """,
@@ -564,7 +564,7 @@ def test_dependent_domain_insn_iname_finding(ctx_factory):
 
     knl = lp.make_kernel([
             "{[isrc_box]: 0<=isrc_box<nsrc_boxes}",
-            "{[isrc,idim]: isrc_start<=isrc<isrc_end and 0<=idim<dim}",
+            "{[isrc]: isrc_start<=isrc<isrc_end}",
             ],
             """
                 <> src_ibox = source_boxes[isrc_box]
@@ -769,7 +769,7 @@ def test_multiple_writes_to_local_temporary():
     # writes are OK.
 
     knl = lp.make_kernel(
-        "{[i,e]: 0<=i<5 and 0<=e<nelements}",
+        "{[i]: 0<=i<5}",
         """
         <> temp[i, 0] = 17
         temp[i, 1] = 15
@@ -952,7 +952,7 @@ def test_atomic_init(dtype):
     vec_width = 4
 
     knl = lp.make_kernel(
-            "{ [i,j]: 0<=i<100 }",
+            "{ [i]: 0<=i<100 }",
             """
             out[i%4] = 0 {id=init, atomic=init}
             """,
@@ -1555,7 +1555,7 @@ def test_finite_difference_expr_subst(ctx_factory):
             gpu_knl, "f_subst", "inew_inner", fetch_bounding_box=True,
             default_tag="l.auto")
 
-    precomp_knl = lp.tag_inames(precomp_knl, {"j_0_outer": "unr"})
+    precomp_knl = lp.tag_inames(precomp_knl, {"j_outer": "unr"})
     precomp_knl = lp.set_options(precomp_knl, return_dict=True)
     evt, _ = precomp_knl(queue, u=u, h=h)
 
@@ -1926,8 +1926,9 @@ def test_scalars_with_base_storage(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
+    import islpy as isl
     knl = lp.make_kernel(
-            "{ [i]: 0<=i<1}",
+            [isl.BasicSet("[] -> {[]: }")],  # empty (domain w/unused inames errors)
             "a = 1",
             [lp.TemporaryVariable("a", dtype=np.float64,
                                   shape=(), base_storage="base")])

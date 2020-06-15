@@ -34,8 +34,7 @@ import numpy as np
 import islpy as isl
 from islpy import dim_type
 from loopy.diagnostic import LoopyError, warn_with_kernel
-from pytools import memoize_on_first_arg
-from loopy.tools import natsorted
+from pytools import memoize_on_first_arg, natsorted
 
 import logging
 logger = logging.getLogger(__name__)
@@ -1381,7 +1380,7 @@ def draw_dependencies_as_unicode_arrows(
                 .replace(style.RESET_ALL, ""))
         return len(s)
 
-    def truncate_without_color_escapes(s, l):
+    def truncate_without_color_escapes(s, length):
         # FIXME: This is a bit dumb--it removes color escapes when truncation
         # is needed.
 
@@ -1389,7 +1388,7 @@ def draw_dependencies_as_unicode_arrows(
                 .replace(fore.RED, "")
                 .replace(style.RESET_ALL, ""))
 
-        return s[:l] + u"…"
+        return s[:length] + u"…"
 
     def conform_to_uniform_length(s):
         len_s = len_without_color_escapes(s)
@@ -1428,6 +1427,8 @@ def stringify_instruction_list(kernel):
 
     def insert_insn_into_order(insn):
         if insn.id in printed_insn_ids:
+            # Note: dependency cycles are deliberately ignored so that printing
+            # succeeds.
             return
         printed_insn_ids.add(insn.id)
 
@@ -1511,7 +1512,7 @@ def stringify_instruction_list(kernel):
                     ", ".join("%s=%s" % (name, expr)
                         for name, expr in insn.iname_exprs))
 
-            trailing = [l for l in insn.code.split("\n")]
+            trailing = insn.code.split("\n")
         elif isinstance(insn, lp.BarrierInstruction):
             lhs = ""
             rhs = "... %sbarrier" % insn.synchronization_kind[0]
@@ -1583,6 +1584,13 @@ def stringify_instruction_list(kernel):
 
 # {{{ global barrier order finding
 
+def _is_global_barrier(kernel, insn_id):
+    insn = kernel.id_to_insn[insn_id]
+    from loopy.kernel.instruction import BarrierInstruction
+    return isinstance(insn, BarrierInstruction) and \
+        insn.synchronization_kind == "global"
+
+
 @memoize_on_first_arg
 def get_global_barrier_order(kernel):
     """Return a :class:`tuple` of the listing the ids of global barrier instructions
@@ -1590,49 +1598,27 @@ def get_global_barrier_order(kernel):
 
     See also :class:`loopy.instruction.BarrierInstruction`.
     """
-    barriers = []
-    visiting = set()
-    visited = set()
+    dep_graph = {insn.id: set() for insn in kernel.instructions}
+    for insn in kernel.instructions:
+        for dep in insn.depends_on:
+            dep_graph[dep].add(insn.id)
 
-    unvisited = set(insn.id for insn in kernel.instructions)
+    from pytools.graph import compute_topological_order
+    order = compute_topological_order(dep_graph)
 
-    def is_barrier(my_insn_id):
-        insn = kernel.id_to_insn[my_insn_id]
-        from loopy.kernel.instruction import BarrierInstruction
-        return isinstance(insn, BarrierInstruction) and \
-            insn.synchronization_kind == "global"
+    barriers = [
+            insn_id for insn_id in order
+            if _is_global_barrier(kernel, insn_id)]
 
-    while unvisited:
-        stack = [unvisited.pop()]
-
-        while stack:
-            top = stack[-1]
-
-            if top in visiting:
-                visiting.remove(top)
-                if is_barrier(top):
-                    barriers.append(top)
-
-            if top in visited:
-                stack.pop()
-                continue
-
-            visited.add(top)
-            visiting.add(top)
-
-            for child in kernel.id_to_insn[top].depends_on:
-                # Check for no cycles.
-                assert child not in visiting
-                stack.append(child)
+    del order
 
     # Ensure this is the only possible order.
     #
     # We do this by looking at the barriers in order.
     # We check for each adjacent pair (a,b) in the order if a < b,
     # i.e. if a is reachable by a chain of dependencies from b.
-
-    visiting.clear()
-    visited.clear()
+    visited = set()
+    visiting = set()
 
     for prev_barrier, barrier in zip(barriers, barriers[1:]):
         # Check if prev_barrier is reachable from barrier.
@@ -1690,12 +1676,6 @@ def find_most_recent_global_barrier(kernel, insn_id):
     if len(insn.depends_on) == 0:
         return None
 
-    def is_barrier(my_insn_id):
-        insn = kernel.id_to_insn[my_insn_id]
-        from loopy.kernel.instruction import BarrierInstruction
-        return isinstance(insn, BarrierInstruction) and \
-            insn.synchronization_kind == "global"
-
     global_barrier_to_ordinal = dict(
             (b, i) for i, b in enumerate(global_barrier_order))
 
@@ -1705,7 +1685,7 @@ def find_most_recent_global_barrier(kernel, insn_id):
                 else -1)
 
     direct_barrier_dependencies = set(
-            dep for dep in insn.depends_on if is_barrier(dep))
+            dep for dep in insn.depends_on if _is_global_barrier(kernel, dep))
 
     if len(direct_barrier_dependencies) > 0:
         return max(direct_barrier_dependencies, key=get_barrier_ordinal)
@@ -1727,8 +1707,8 @@ def get_subkernels(kernel):
     See also :class:`loopy.schedule.CallKernel`.
     """
     from loopy.kernel import KernelState
-    if kernel.state != KernelState.SCHEDULED:
-        raise LoopyError("Kernel must be scheduled")
+    if kernel.state != KernelState.LINEARIZED:
+        raise LoopyError("Kernel must be linearized")
 
     from loopy.schedule import CallKernel
 
@@ -1744,7 +1724,7 @@ def get_subkernel_to_insn_id_map(kernel):
     kernel must be scheduled.
     """
     from loopy.kernel import KernelState
-    if kernel.state != KernelState.SCHEDULED:
+    if kernel.state != KernelState.LINEARIZED:
         raise LoopyError("Kernel must be scheduled")
 
     from loopy.schedule import (

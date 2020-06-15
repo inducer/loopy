@@ -212,12 +212,12 @@ def find_loop_nest_with_map(kernel):
     """
     result = {}
 
-    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag
 
     all_nonpar_inames = set(
             iname for iname in kernel.all_inames()
             if not kernel.iname_tags_of_type(iname,
-                    (ConcurrentTag, IlpBaseTag, VectorizeTag)))
+                    (ConcurrentTag, IlpBaseTag)))
 
     iname_to_insns = kernel.iname_to_insns()
 
@@ -276,7 +276,7 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
 
     result = {}
 
-    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag
     for insn in kernel.instructions:
         for iname in kernel.insn_inames(insn):
             if kernel.iname_tags_of_type(iname, ConcurrentTag):
@@ -310,7 +310,7 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
                         continue
 
                     if kernel.iname_tags_of_type(dep_insn_iname,
-                                (ConcurrentTag, IlpBaseTag, VectorizeTag)):
+                                (ConcurrentTag, IlpBaseTag)):
                         # Parallel tags don't really nest, so we'll disregard
                         # them here.
                         continue
@@ -1841,7 +1841,7 @@ def generate_loop_schedules(kernel, debug_args={}):
 
 def generate_loop_schedules_inner(kernel, debug_args={}):
     from loopy.kernel import KernelState
-    if kernel.state not in (KernelState.PREPROCESSED, KernelState.SCHEDULED):
+    if kernel.state not in (KernelState.PREPROCESSED, KernelState.LINEARIZED):
         raise LoopyError("cannot schedule a kernel that has not been "
                 "preprocessed")
 
@@ -1852,7 +1852,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
     debug = ScheduleDebugger(**debug_args)
 
-    preschedule = kernel.schedule if kernel.state == KernelState.SCHEDULED else ()
+    preschedule = kernel.schedule if kernel.state == KernelState.LINEARIZED else ()
 
     prescheduled_inames = set(
             insn.iname
@@ -1904,7 +1904,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
             unscheduled_insn_ids=set(insn.id for insn in kernel.instructions),
             scheduled_insn_ids=frozenset(),
-            within_subkernel=kernel.state != KernelState.SCHEDULED,
+            within_subkernel=kernel.state != KernelState.LINEARIZED,
             may_schedule_global_barriers=True,
 
             preschedule=preschedule,
@@ -1973,11 +1973,11 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
             new_kernel = kernel.copy(
                     schedule=gen_sched,
-                    state=KernelState.SCHEDULED)
+                    state=KernelState.LINEARIZED)
 
             from loopy.schedule.device_mapping import \
                     map_schedule_onto_host_or_device
-            if kernel.state != KernelState.SCHEDULED:
+            if kernel.state != KernelState.LINEARIZED:
                 # Device mapper only gets run once.
                 new_kernel = map_schedule_onto_host_or_device(new_kernel)
 
@@ -2029,6 +2029,15 @@ def _get_one_scheduled_kernel_inner(kernel):
 
 
 def get_one_scheduled_kernel(kernel):
+    warn_with_kernel(
+        kernel, "get_one_scheduled_kernel_deprecated",
+        "get_one_scheduled_kernel is deprecated. "
+        "Use get_one_linearized_kernel instead.",
+        DeprecationWarning)
+    return get_one_linearized_kernel(kernel)
+
+
+def get_one_linearized_kernel(kernel):
     from loopy import CACHING_ENABLED
 
     sched_cache_key = kernel

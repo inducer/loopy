@@ -1,3 +1,4 @@
+# coding: utf-8
 """OpenCL target integrated with PyOpenCL."""
 
 from __future__ import division, absolute_import
@@ -285,6 +286,9 @@ class PyOpenCLTarget(OpenCLTarget):
     warnings) and support for complex numbers.
     """
 
+    # FIXME make prefixes conform to naming rules
+    # (see Reference: Loopy’s Model of a Kernel)
+
     host_program_name_prefix = "_lpy_host_"
     host_program_name_suffix = ""
 
@@ -299,7 +303,26 @@ class PyOpenCLTarget(OpenCLTarget):
         self.device = device
         self.pyopencl_module_name = pyopencl_module_name
 
-    comparison_fields = ["device"]
+    # NB: Not including 'device', as that is handled specially here.
+    hash_fields = OpenCLTarget.hash_fields + (
+            "pyopencl_module_name",)
+    comparison_fields = OpenCLTarget.comparison_fields + (
+            "pyopencl_module_name",)
+
+    def __eq__(self, other):
+        if not super(PyOpenCLTarget, self).__eq__(other):
+            return False
+
+        if (self.device is None) != (other.device is None):
+            return False
+
+        if self.device is not None:
+            assert other.device is not None
+            return (self.device.persistent_unique_id
+                    == other.device.persistent_unique_id)
+        else:
+            assert other.device is None
+            return True
 
     def update_persistent_hash(self, key_hash, key_builder):
         super(PyOpenCLTarget, self).update_persistent_hash(key_hash, key_builder)

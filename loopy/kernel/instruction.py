@@ -66,7 +66,8 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: depends_on_is_final
 
         A :class:`bool` determining whether :attr:`depends_on` constitutes
-        the *entire* list of iname dependencies.
+        the *entire* list of iname dependencies. If *not* marked final,
+        various semi-broken heuristics will try to add further dependencies.
 
         Defaults to *False*.
 
@@ -344,10 +345,13 @@ class InstructionBase(ImmutableRecord):
         """
         raise NotImplementedError
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, assignee_f=None):
         """Return a new copy of *self* where *f* has been applied to every
         expression occurring in *self*. *args* will be passed as extra
         arguments (in addition to the expression) to *f*.
+
+        If *assignee_f* is passed, then left-hand sides of assignments are
+        passed to it. If it is not given, it defaults to the same as *f*.
         """
         raise NotImplementedError
 
@@ -959,12 +963,15 @@ class Assignment(MultiAssignmentBase):
     def assignee_subscript_deps(self):
         return (_get_assignee_subscript_deps(self.assignee),)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, assignee_f=None):
+        if assignee_f is None:
+            assignee_f = f
+
         return self.copy(
-                assignee=f(self.assignee, *args),
-                expression=f(self.expression, *args),
+                assignee=assignee_f(self.assignee),
+                expression=f(self.expression),
                 predicates=frozenset(
-                    f(pred, *args) for pred in self.predicates))
+                    f(pred) for pred in self.predicates))
 
     # }}}
 
@@ -1114,12 +1121,15 @@ class CallInstruction(MultiAssignmentBase):
                 _get_assignee_subscript_deps(a)
                 for a in self.assignees)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, assignee_f=None):
+        if assignee_f is None:
+            assignee_f = f
+
         return self.copy(
-                assignees=f(self.assignees, *args),
-                expression=f(self.expression, *args),
+                assignees=assignee_f(self.assignees),
+                expression=f(self.expression),
                 predicates=frozenset(
-                    f(pred, *args) for pred in self.predicates))
+                    f(pred) for pred in self.predicates))
 
     # }}}
 
@@ -1315,14 +1325,17 @@ class CInstruction(InstructionBase):
                 _get_assignee_subscript_deps(a)
                 for a in self.assignees)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, assignee_f=None):
+        if assignee_f is None:
+            assignee_f = f
+
         return self.copy(
                 iname_exprs=[
-                    (name, f(expr, *args))
+                    (name, f(expr))
                     for name, expr in self.iname_exprs],
-                assignees=[f(a, *args) for a in self.assignees],
+                assignees=[assignee_f(a) for a in self.assignees],
                 predicates=frozenset(
-                    f(pred, *args) for pred in self.predicates))
+                    f(pred) for pred in self.predicates))
 
     # }}}
 
@@ -1357,7 +1370,7 @@ class _DataObliviousInstruction(InstructionBase):
     def assignee_subscript_deps(self):
         return frozenset()
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, assignee_f=None):
         return self.copy(
                 predicates=frozenset(
                     f(pred) for pred in self.predicates))

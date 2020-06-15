@@ -37,6 +37,7 @@ from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment, filter_iname_tags_by_type
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
+from loopy.transform.iname import remove_any_newly_unused_inames
 
 import logging
 logger = logging.getLogger(__name__)
@@ -289,7 +290,7 @@ def _classify_reduction_inames(kernel, inames):
     nonlocal_par = []
 
     from loopy.kernel.data import (
-            LocalIndexTagBase, UnrolledIlpTag, UnrollTag, VectorizeTag,
+            LocalIndexTagBase, UnrolledIlpTag, UnrollTag,
             ConcurrentTag, filter_iname_tags_by_type)
 
     for iname in inames:
@@ -303,7 +304,7 @@ def _classify_reduction_inames(kernel, inames):
         elif filter_iname_tags_by_type(iname_tags, LocalIndexTagBase):
             local_par.append(iname)
 
-        elif filter_iname_tags_by_type(iname_tags, (ConcurrentTag, VectorizeTag)):
+        elif filter_iname_tags_by_type(iname_tags, ConcurrentTag):
             nonlocal_par.append(iname)
 
         else:
@@ -882,6 +883,7 @@ def _insert_subdomain_into_domain_tree(kernel, domains, subdomain):
 # }}}
 
 
+@remove_any_newly_unused_inames
 def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                       automagic_scans_ok=False, force_scan=False,
                       force_outer_iname_for_scan=None):
@@ -1370,7 +1372,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         track_iname = var_name_gen(
                 "{sweep_iname}__seq_scan"
-                .format(scan_iname=scan_iname, sweep_iname=sweep_iname))
+                .format(sweep_iname=sweep_iname))
 
         get_or_add_sweep_tracking_iname_and_domain(
                 scan_iname, sweep_iname, sweep_min_value, scan_min_value,
@@ -1480,7 +1482,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         track_iname = var_name_gen(
                 "{sweep_iname}__pre_scan"
-                .format(scan_iname=scan_iname, sweep_iname=sweep_iname))
+                .format(sweep_iname=sweep_iname))
 
         get_or_add_sweep_tracking_iname_and_domain(
                 scan_iname, sweep_iname, sweep_min_value, scan_min_value, stride,
@@ -1924,8 +1926,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
     kernel = lp.tag_inames(kernel, new_iname_tags)
 
-    # TODO: remove unused inames...
-
     kernel = (
             _hackily_ensure_multi_assignment_return_values_are_scoped_private(
                 kernel))
@@ -1979,7 +1979,7 @@ def find_idempotence(kernel):
 
     # Find SCCs of dep_graph. These are used for checking if the instruction is
     # in a dependency cycle.
-    from loopy.tools import compute_sccs
+    from pytools.graph import compute_sccs
 
     sccs = dict((item, scc)
             for scc in compute_sccs(dep_graph)

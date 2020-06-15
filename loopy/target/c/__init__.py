@@ -80,6 +80,11 @@ class DTypeRegistryWrapper(object):
 def c99_preamble_generator(preamble_info):
     if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
         yield("10_stdint", "#include <stdint.h>")
+    if any(dtype.numpy_dtype == np.dtype("bool")
+           for dtype in preamble_info.seen_dtypes):
+        yield("10_stdbool", "#include <stdbool.h>")
+    if any(dtype.is_complex() for dtype in preamble_info.seen_dtypes):
+        yield("10_complex", "#include <complex.h>")
 
 
 def _preamble_generator(preamble_info):
@@ -436,7 +441,7 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
                 arg_dtypes=arg_dtypes)
 
     # binary functions
-    if (name in ["fmax", "fmin"]
+    if (name in ["fmax", "fmin", "copysign"]
             and len(arg_dtypes) == 2):
 
         dtype = np.find_common_type(
@@ -1079,9 +1084,11 @@ class CTarget(CFamilyTarget):
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (
-                DTypeRegistry, fill_registry_with_c99_stdint_types)
+                DTypeRegistry, fill_registry_with_c99_stdint_types,
+                fill_registry_with_c99_complex_types)
         result = DTypeRegistry()
         fill_registry_with_c99_stdint_types(result)
+        fill_registry_with_c99_complex_types(result)
         return DTypeRegistryWrapper(result)
 
 
