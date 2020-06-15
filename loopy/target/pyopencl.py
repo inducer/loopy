@@ -727,6 +727,13 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         from genpy import Suite, Assign, Assert, Line, Comment
         from pymbolic.mapper.stringifier import PREC_NONE
 
+        import pyopencl.version as cl_ver
+        if cl_ver.VERSION < (2020, 2):
+            from warnings import warn
+            warn("Your kernel invocation will likely fail because your "
+                    "version of PyOpenCL does not support allow_empty_ndrange. "
+                    "Please upgrade to version 2020.2 or newer.")
+
         # TODO: Generate finer-grained dependency structure
         return Suite([
             Comment("{{{ enqueue %s" % name),
@@ -738,7 +745,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             arry_arg_code,
             Assign("_lpy_evt", "%(pyopencl_module_name)s.enqueue_nd_range_kernel("
                 "queue, _lpy_knl, "
-                "%(gsize)s, %(lsize)s,  wait_for=wait_for, g_times_l=True)"
+                "%(gsize)s, %(lsize)s,  wait_for=wait_for, "
+                "g_times_l=True, allow_empty_ndrange=True)"
                 % dict(
                     pyopencl_module_name=self.target.pyopencl_module_name,
                     gsize=ecm(gsize, prec=PREC_NONE, type_context="i"),

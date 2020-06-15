@@ -99,7 +99,7 @@ setup(name="loo.py",
 
       extras_require={
           "pyopencl":  [
-              "pyopencl>=2015.2",
+              "pyopencl>=2020.2",
               ],
           "fortran":  [
               # Note that this is *not* regular 'f2py2e', this is
