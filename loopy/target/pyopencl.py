@@ -644,7 +644,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                 + ["wait_for=None", "allocator=None"])
 
         from genpy import (For, Function, Suite, Import, ImportAs, Return,
-                FromImport, If, Assign, Line, Statement as S)
+                FromImport, Line, Statement as S)
         return Function(
                 codegen_result.current_program(codegen_state).name,
                 args,
@@ -652,11 +652,6 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     FromImport("struct", ["pack as _lpy_pack"]),
                     ImportAs("pyopencl", "_lpy_cl"),
                     Import("pyopencl.tools"),
-                    Line(),
-                    If("allocator is None",
-                        Assign(
-                            "allocator",
-                            "_lpy_cl_tools.DeferredAllocator(queue.context)")),
                     Line(),
                     ] + [
                     Line(),
