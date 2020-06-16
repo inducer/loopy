@@ -68,8 +68,8 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
             out[ii] = 2*out[ii]+cnst[ii]{id=second}
             """,
             [lp.TemporaryVariable(
-                'cnst', shape=('n'), initializer=cnst,
-                address_space=lp.AddressSpace.GLOBAL,
+                'cnst', initializer=cnst,
+                scope=lp.AddressSpace.GLOBAL,
                 read_only=True), '...'])
     knl = lp.fix_parameters(knl, n=16)
     knl = lp.add_barrier(knl, "id:first", "id:second")

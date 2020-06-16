@@ -934,7 +934,8 @@ class ArrayBase(ImmutableRecord):
         return len(target_axes)
 
     def num_user_axes(self, require_answer=True):
-        if self.shape is not None:
+        from loopy import auto
+        if self.shape not in (None, auto):
             return len(self.shape)
         if self.dim_tags is not None:
             return len(self.dim_tags)
