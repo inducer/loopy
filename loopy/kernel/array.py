@@ -1194,11 +1194,10 @@ class ArrayBase(ImmutableRecord):
             else:
                 return idx
 
-        from pytools import indices_in_shape
         return [
                 (unwrap_1d_indices(i),
                     self.name + "".join("_s%d" % sub_i for sub_i in i))
-                for i in indices_in_shape(sep_shape)]
+                for i in np.ndindex(sep_shape)]
 
 # }}}
 
