@@ -2859,6 +2859,33 @@ def test_non_integral_array_idx_raises():
         print(lp.generate_code_v2(knl).device_code())
 
 
+@pytest.mark.parametrize("tag", ["for", "l.0", "g.0", "fixed"])
+def test_empty_domain(ctx_factory, tag):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    prg = lp.make_kernel(
+            "{[i,j]: 0 <= i < n}",
+            """
+            for i
+                c = 1
+            end
+            """)
+
+    if tag == "fixed":
+        prg = lp.fix_parameters(prg, n=0)
+        kwargs = {}
+    else:
+        prg = lp.tag_inames(prg, {"i": tag})
+        kwargs = {"n": 0}
+
+    prg = lp.set_options(prg, write_code=True)
+    c = cl.array.zeros(queue, (), dtype=np.int32)
+    prg(queue, c=c, **kwargs)
+
+    assert (c.get() == 0).all()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
