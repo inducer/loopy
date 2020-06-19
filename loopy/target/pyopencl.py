@@ -318,20 +318,21 @@ class PyOpenCLTarget(OpenCLTarget):
 
         if self.device is not None:
             assert other.device is not None
-            return (self.device.persistent_unique_id
-                    == other.device.persistent_unique_id)
+            return (self.device.hashable_model_and_version_identifier
+                    == other.device.hashable_model_and_version_identifier)
         else:
             assert other.device is None
             return True
 
     def update_persistent_hash(self, key_hash, key_builder):
         super(PyOpenCLTarget, self).update_persistent_hash(key_hash, key_builder)
-        key_builder.rec(key_hash, getattr(self.device, "persistent_unique_id", None))
+        key_builder.rec(key_hash, getattr(
+            self.device, "hashable_model_and_version_identifier", None))
 
     def __getstate__(self):
         dev_id = None
         if self.device is not None:
-            dev_id = self.device.persistent_unique_id
+            dev_id = self.device.hashable_model_and_version_identifier
 
         return {
                 "device_id": dev_id,
@@ -354,7 +355,7 @@ class PyOpenCLTarget(OpenCLTarget):
                 dev
                 for plat in cl.get_platforms()
                 for dev in plat.get_devices()
-                if dev.persistent_unique_id == dev_id]
+                if dev.hashable_model_and_version_identifier == dev_id]
 
             if matches:
                 self.device = matches[0]
@@ -643,7 +644,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                 + ["wait_for=None", "allocator=None"])
 
         from genpy import (For, Function, Suite, Import, ImportAs, Return,
-                FromImport, If, Assign, Line, Statement as S)
+                FromImport, Line, Statement as S)
         return Function(
                 codegen_result.current_program(codegen_state).name,
                 args,
@@ -651,11 +652,6 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     FromImport("struct", ["pack as _lpy_pack"]),
                     ImportAs("pyopencl", "_lpy_cl"),
                     Import("pyopencl.tools"),
-                    Line(),
-                    If("allocator is None",
-                        Assign(
-                            "allocator",
-                            "_lpy_cl_tools.DeferredAllocator(queue.context)")),
                     Line(),
                     ] + [
                     Line(),
@@ -731,6 +727,13 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         from genpy import Suite, Assign, Assert, Line, Comment
         from pymbolic.mapper.stringifier import PREC_NONE
 
+        import pyopencl.version as cl_ver
+        if cl_ver.VERSION < (2020, 2):
+            from warnings import warn
+            warn("Your kernel invocation will likely fail because your "
+                    "version of PyOpenCL does not support allow_empty_ndrange. "
+                    "Please upgrade to version 2020.2 or newer.")
+
         # TODO: Generate finer-grained dependency structure
         return Suite([
             Comment("{{{ enqueue %s" % name),
@@ -742,7 +745,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             arry_arg_code,
             Assign("_lpy_evt", "%(pyopencl_module_name)s.enqueue_nd_range_kernel("
                 "queue, _lpy_knl, "
-                "%(gsize)s, %(lsize)s,  wait_for=wait_for, g_times_l=True)"
+                "%(gsize)s, %(lsize)s,  wait_for=wait_for, "
+                "g_times_l=True, allow_empty_ndrange=True)"
                 % dict(
                     pyopencl_module_name=self.target.pyopencl_module_name,
                     gsize=ecm(gsize, prec=PREC_NONE, type_context="i"),
