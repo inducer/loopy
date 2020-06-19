@@ -597,8 +597,7 @@ def _check_variable_access_ordered_inner(kernel):
 
     for insn_id, dep_ids in six.iteritems(insn_id_to_dep_reqs):
         insn = kernel.id_to_insn[insn_id]
-        vars_written_by_insn = insn.write_dependency_names() & (
-                kernel.get_written_variables())
+        vars_written_by_insn = set(insn.assignee_var_names())
         for dep_id in dep_ids:  # iterate through deps reqs. which weren't satisfied
             dep = kernel.id_to_insn[dep_id]
             vars_accessed_by_dep = dep.dependency_names() & (
