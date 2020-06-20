@@ -516,16 +516,15 @@ def _check_variable_access_ordered_inner(kernel):
 
     logger.debug("%s: check_variable_access_ordered: start" % kernel.name)
 
-    # insn_id_to_dep_reqs: A mapping from insn_id to set of insn_ids between
-    # whom dependency requirements should be proved in order to assert
-    # variable access ordering.
-    insn_id_to_dep_reqs = dict((insn.id, set()) for insn in
-            kernel.instructions)
+    # dep_reqs_to_vars: A mapping from (writer_id, dep_req_id) between whom
+    # dependency must be established to the variables which prompted the
+    # dependency requirement.
+    dep_reqs_to_vars = {}
 
     wmap = kernel.writer_map()
     rmap = kernel.reader_map()
 
-    # {{{ populate 'insn_id_to_dep_reqs'
+    # {{{ populate 'dep_reqs_to_vars'
 
     for var in kernel.get_written_variables():
         address_space = _get_address_space(kernel, var)
@@ -542,7 +541,8 @@ def _check_variable_access_ordered_inner(kernel):
                 declares_nosync_with(kernel, address_space, writer,
                     req_dep)])
 
-            insn_id_to_dep_reqs[writer] |= required_deps
+            for req_dep in required_deps:
+                dep_reqs_to_vars.setdefault((writer, req_dep), set()).add(var)
 
     # }}}
 
@@ -563,7 +563,7 @@ def _check_variable_access_ordered_inner(kernel):
 
     topological_order = _get_topological_order(kernel)
 
-    def discard_dep_reqs_in_order(insn_id_to_dep_reqs, edges, order):
+    def discard_dep_reqs_in_order(dep_reqs_to_vars, edges, order):
         """
         Subtracts dependency requirements of insn_ids by all direct/indirect
         predecessors of a directed graph of insn_ids as nodes and *edges* as
@@ -581,86 +581,72 @@ def _check_variable_access_ordered_inner(kernel):
             # accumulated_predecessors:insn_id's direct+indirect predecessors
             accumulated_predecessors = memoized_predecessors.pop(insn_id, set())
 
-            insn_id_to_dep_reqs[insn_id] -= accumulated_predecessors
+            for pred in accumulated_predecessors:
+                dep_reqs_to_vars.pop((insn_id, pred), None)
 
             for successor in edges[insn_id]:
                 memoized_predecessors.setdefault(successor, set()).update(
                         accumulated_predecessors | set([insn_id]))
 
     # forward dep. graph traversal in reverse topological sort order
-    discard_dep_reqs_in_order(insn_id_to_dep_reqs, depends_on,
+    discard_dep_reqs_in_order(dep_reqs_to_vars, depends_on,
             topological_order[::-1])
     # reverse dep. graph traversal in topological sort order
-    discard_dep_reqs_in_order(insn_id_to_dep_reqs, rev_depends, topological_order)
+    discard_dep_reqs_in_order(dep_reqs_to_vars, rev_depends, topological_order)
 
     # {{{ handle dependency requirements that weren't satisfied
 
-    for insn_id, dep_ids in six.iteritems(insn_id_to_dep_reqs):
-        insn = kernel.id_to_insn[insn_id]
-        vars_written_by_insn = set(insn.assignee_var_names())
-        for dep_id in dep_ids:  # iterate through deps reqs. which weren't satisfied
-            dep = kernel.id_to_insn[dep_id]
-            vars_accessed_by_dep = dep.dependency_names() & (
-                    kernel.get_written_variables() | (
-                        kernel.get_read_variables()))
-            eq_classes_accessed_by_dep = set().union(
-                    *(aliasing_equiv_classes[var] for var in vars_accessed_by_dep))
+    for (writer_id, other_id), variables in six.iteritems(dep_reqs_to_vars):
+        writer = kernel.id_to_insn[writer_id]
+        other = kernel.id_to_insn[other_id]
 
-            found_var_responsible_for_dep_req = False
+        for var in variables:
+            eq_class = aliasing_equiv_classes[var]
+            unaliased_readers = rmap.get(var, set())
+            unaliased_writers = wmap.get(var, set())
 
-            # iterate through all the variables written by 'insn' to find
-            # which was responsible for the dependency requirement
-            for var_written_by_insn in vars_written_by_insn:
-                eq_class = aliasing_equiv_classes[var_written_by_insn]
-                if eq_class & eq_classes_accessed_by_dep:
-                    found_var_responsible_for_dep_req = True
-                    unaliased_readers = rmap.get(var_written_by_insn, set())
-                    unaliased_writers = wmap.get(var_written_by_insn, set())
-                    is_relationship_by_aliasing = not (
-                        insn_id in unaliased_writers
-                        and (dep_id in unaliased_writers
-                            or dep_id in unaliased_readers))
+            is_relationship_by_aliasing = not (
+                writer_id in unaliased_writers
+                and (writer_id in unaliased_writers
+                    or other_id in unaliased_readers))
 
-                    # Do not enforce ordering for disjoint access ranges
-                    if (not is_relationship_by_aliasing and not
-                        overlap_checker.do_access_ranges_overlap_conservative(
-                                insn_id, "w", dep_id, "any",
-                                var_written_by_insn)):
-                        continue
+            # Do not enforce ordering for disjoint access ranges
+            if (not is_relationship_by_aliasing and not
+                overlap_checker.do_access_ranges_overlap_conservative(
+                        writer_id, "w", other_id, "any", var)):
+                continue
 
-                    # Do not enforce ordering for aliasing-based relationships
-                    # in different groups.
-                    if (is_relationship_by_aliasing and (
-                            bool(insn.groups & dep.conflicts_with_groups)
-                            or
-                            bool(dep.groups & insn.conflicts_with_groups))):
-                        continue
+            # Do not enforce ordering for aliasing-based relationships
+            # in different groups.
+            if (is_relationship_by_aliasing and (
+                    bool(insn.groups & other.conflicts_with_groups)
+                    or
+                    bool(other.groups & writer.conflicts_with_groups))):
+                continue
 
-                    msg = ("No dependency relationship found between "
-                            "'{writer_id}' which writes {var} and "
-                            "'{other_id}' which also accesses {var}. "
-                            "Either add a (possibly indirect) dependency "
-                            "between the two, or add them to each others' nosync "
-                            "set to indicate that no ordering is intended, or "
-                            "turn off this check by setting the "
-                            "'enforce_variable_access_ordered' option "
-                            "(more issues of this type may exist--only reporting "
-                            "the first one)"
-                            .format(
-                                writer_id=insn_id,
-                                other_id=dep_id,
-                                var=(
-                                    "the variable '%s'" % var_written_by_insn
-                                    if len(eq_class) == 1
-                                    else (
-                                        "the aliasing equivalence class '%s'"
-                                        % ", ".join(eq_class))
-                                    )))
+                msg = ("No dependency relationship found between "
+                        "'{writer_id}' which writes {var} and "
+                        "'{other_id}' which also accesses {var}. "
+                        "Either add a (possibly indirect) dependency "
+                        "between the two, or add them to each others' nosync "
+                        "set to indicate that no ordering is intended, or "
+                        "turn off this check by setting the "
+                        "'enforce_variable_access_ordered' option "
+                        "(more issues of this type may exist--only reporting "
+                        "the first one)"
+                        .format(
+                            writer_id=writer_id,
+                            other_id=other_id,
+                            var=(
+                                "the variable '%s'" % var
+                                if len(eq_class) == 1
+                                else (
+                                    "the aliasing equivalence class '%s'"
+                                    % ", ".join(eq_class))
+                                )))
 
-                    from loopy.diagnostic import VariableAccessNotOrdered
-                    raise VariableAccessNotOrdered(msg)
-
-            assert found_var_responsible_for_dep_req
+                from loopy.diagnostic import VariableAccessNotOrdered
+                raise VariableAccessNotOrdered(msg)
 
     # }}}
 
