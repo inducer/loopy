@@ -624,29 +624,29 @@ def _check_variable_access_ordered_inner(kernel):
                     bool(other.groups & writer.conflicts_with_groups))):
                 continue
 
-                msg = ("No dependency relationship found between "
-                        "'{writer_id}' which writes {var} and "
-                        "'{other_id}' which also accesses {var}. "
-                        "Either add a (possibly indirect) dependency "
-                        "between the two, or add them to each others' nosync "
-                        "set to indicate that no ordering is intended, or "
-                        "turn off this check by setting the "
-                        "'enforce_variable_access_ordered' option "
-                        "(more issues of this type may exist--only reporting "
-                        "the first one)"
-                        .format(
-                            writer_id=writer_id,
-                            other_id=other_id,
-                            var=(
-                                "the variable '%s'" % var
-                                if len(eq_class) == 1
-                                else (
-                                    "the aliasing equivalence class '%s'"
-                                    % ", ".join(eq_class))
-                                )))
+            msg = ("No dependency relationship found between "
+                    "'{writer_id}' which writes {var} and "
+                    "'{other_id}' which also accesses {var}. "
+                    "Either add a (possibly indirect) dependency "
+                    "between the two, or add them to each others' nosync "
+                    "set to indicate that no ordering is intended, or "
+                    "turn off this check by setting the "
+                    "'enforce_variable_access_ordered' option "
+                    "(more issues of this type may exist--only reporting "
+                    "the first one)"
+                    .format(
+                        writer_id=writer_id,
+                        other_id=other_id,
+                        var=(
+                            "the variable '%s'" % var
+                            if len(eq_class) == 1
+                            else (
+                                "the aliasing equivalence class '%s'"
+                                % ", ".join(eq_class))
+                            )))
 
-                from loopy.diagnostic import VariableAccessNotOrdered
-                raise VariableAccessNotOrdered(msg)
+            from loopy.diagnostic import VariableAccessNotOrdered
+            raise VariableAccessNotOrdered(msg)
 
     # }}}
 
