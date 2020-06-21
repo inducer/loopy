@@ -54,6 +54,16 @@ class SumpyBenchmarkSuite:
     time_schedule.timeout = 600.0
     time_generate_code.timeout = 600.0
 
+    # No warmup is needed
+    time_instantiate.warmup_time = 0
+    time_preprocess.warmup_time = 0
+    time_schedule.warmup_time = 0
+    time_generate_code.warmup_time = 0
+
+    # These are expensive operations. Run only once
+    time_schedule.number = 1
+    time_generate_code.number = 1
+
     # Run memory benchmarks as well
     peakmem_instantiate = time_instantiate
     peakmem_preprocess = time_preprocess
