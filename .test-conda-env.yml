@@ -1,0 +1,18 @@
+name: test-conda-env
+channels:
+- conda-forge
+- nodefaults
+
+dependencies:
+- git
+- numpy
+- pocl
+- pocl-cuda
+- islpy
+- pyopencl
+- python=3
+
+- pip
+- pip:
+    - git+https://github.com/inducer/pytools
+    - git+https://github.com/inducer/pymbolic

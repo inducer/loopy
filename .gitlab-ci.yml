@@ -141,3 +141,18 @@ Flake8:
   - python3
   except:
   - tags
+
+Benchmarks:
+  script:
+  - export CONDA_ENVIRONMENT=.test-conda-env.yml
+  - export PROJECT=loopy
+  - export PYOPENCL_TEST=portable:pthread
+  - export LOOPY_NO_CACHE=1
+  - export ASV_FACTOR=1.5
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-benchmark-py-project.sh
+  - ". ./build-and-benchmark-py-project.sh"
+  tags:
+  - linux
+  - benchmark
+  except:
+  - tags
