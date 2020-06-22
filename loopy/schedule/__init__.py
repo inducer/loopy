@@ -190,8 +190,13 @@ def find_active_inames_at(kernel, sched_indices):
 
     from loopy.schedule import EnterLoop, LeaveLoop
 
+    max_sched_idx = sorted_sched_indices[-1]
+
+    if sorted_sched_indices and sorted_sched_indices[0] == 0:
+        sorted_sched_indices.pop(0)
+
     for sched_idx, sched_item in enumerate(
-            kernel.schedule[:sorted_sched_indices[-1]]):
+            kernel.schedule[:max_sched_idx]):
         if isinstance(sched_item, EnterLoop):
             active_inames.append(sched_item.iname)
         if isinstance(sched_item, LeaveLoop):
@@ -202,7 +207,7 @@ def find_active_inames_at(kernel, sched_indices):
             sorted_sched_indices.pop(0)
 
     # eventually everythin should be popped
-    assert sorted_sched_indices in ([], [0])
+    assert len(sorted_sched_indices) == 0
 
     return [sched_idx_to_active_inames[idx] for idx in sched_indices]
 
@@ -520,8 +525,13 @@ def get_subkernel_indices(kernel, sched_indices):
     sorted_sched_indices = sorted(sched_indices)
     sched_idx_to_subkernel_idx = {0: None}
 
+    max_sched_idx = sorted_sched_indices[-1]
+
+    if sorted_sched_indices and sorted_sched_indices[0] == 0:
+        sorted_sched_indices.pop(0)
+
     for sched_idx, sched_item in enumerate(
-            kernel.schedule[:sorted_sched_indices[-1]]):
+            kernel.schedule[:max_sched_idx]):
         if isinstance(sched_item, CallKernel):
             subkernel_index = sched_idx
         elif isinstance(sched_item, ReturnFromKernel):
@@ -532,7 +542,7 @@ def get_subkernel_indices(kernel, sched_indices):
             sorted_sched_indices.pop(0)
 
     # eventually everythin should be popped
-    assert sorted_sched_indices in ([], [0])
+    assert len(sorted_sched_indices) == 0
 
     return [sched_idx_to_subkernel_idx[sched_idx] for sched_idx in
             sched_indices]
