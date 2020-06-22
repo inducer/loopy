@@ -1017,7 +1017,9 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
     def emit_comment(self, s):
         from cgen import Comment
-        return Comment(s)
+        # Attaching empty comment wrapping in block needed 
+        # otw compiler error due to empty block
+        return Block([Comment(s), Comment(" ")])
 
     @property
     def can_implement_conditionals(self):
