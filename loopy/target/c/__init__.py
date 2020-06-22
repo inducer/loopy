@@ -1204,10 +1204,12 @@ class CVecTarget(CTarget):
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (
-                DTypeRegistry, fill_registry_with_c_types)
+                DTypeRegistry, fill_registry_with_c_types,
+                fill_registry_with_c99_complex_types)
         result = DTypeRegistry()
         fill_registry_with_c_types(result, respect_windows=False,
                 include_bool=True)
+        fill_registry_with_c99_complex_types(result)
         return DTypeRegistryWrapperVec(result)
 
     def get_device_ast_builder(self):
