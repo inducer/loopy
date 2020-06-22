@@ -529,7 +529,7 @@ def get_subkernel_indices(kernel, sched_indices):
 
         if sched_idx == (sorted_sched_indices[0]-1):
             sched_idx_to_subkernel_idx[sched_idx+1] = subkernel_index
-            sorted_sched_indices.pop()
+            sorted_sched_indices.pop(0)
 
     # eventually everythin should be popped
     assert sorted_sched_indices in ([], [0])
