@@ -279,15 +279,17 @@ def build_loop_nest(codegen_state, schedule_index):
     from loopy.schedule import find_used_inames_within
     from loopy.codegen.bounds import get_usable_inames_for_conditional
 
+    admissible_cond_inames = get_usable_inames_for_conditional(kernel,
+            my_sched_indices)
+
     sched_index_info_entries = [
             ScheduleIndexInfo(
-                schedule_indices=[i],
-                admissible_cond_inames=(
-                    get_usable_inames_for_conditional(kernel, i)),
-                required_predicates=get_required_predicates(kernel, i),
-                used_inames_within=find_used_inames_within(kernel, i)
+                schedule_indices=[my_sched_idx],
+                admissible_cond_inames=admissible_cond_inames[i],
+                required_predicates=get_required_predicates(kernel, my_sched_idx),
+                used_inames_within=find_used_inames_within(kernel, my_sched_idx)
                 )
-            for i in my_sched_indices
+            for i, my_sched_idx in enumerate(my_sched_indices)
             ]
 
     sched_index_info_entries = group_by(

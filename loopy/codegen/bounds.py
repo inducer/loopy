@@ -55,57 +55,56 @@ def get_approximate_convex_bounds_checks(domain, check_inames, implemented_domai
 
 # {{{ on which inames may a conditional depend?
 
-def get_usable_inames_for_conditional(kernel, sched_index):
+def get_usable_inames_for_conditional(kernel, sched_indices):
+
     from loopy.schedule import (
-        find_active_inames_at, get_insn_ids_for_block_at, has_barrier_within)
+        find_active_inames_at, get_insn_ids_for_block_at, has_barrier_within,
+        get_subkernel_indices)
     from loopy.kernel.data import (ConcurrentTag, LocalIndexTagBase,
                                    VectorizeTag,
                                    IlpBaseTag)
 
-    result = find_active_inames_at(kernel, sched_index)
-    crosses_barrier = has_barrier_within(kernel, sched_index)
-
+    active_inames_list = find_active_inames_at(kernel, sched_indices)
+    crosses_barrier_list = has_barrier_within(kernel, sched_indices)
     # Find our containing subkernel. Grab inames for all insns from there.
-    within_subkernel = False
+    subkernel_index_list = get_subkernel_indices(kernel, sched_indices)
 
-    for sched_item_index, sched_item in enumerate(kernel.schedule[:sched_index]):
-        from loopy.schedule import CallKernel, ReturnFromKernel
-        if isinstance(sched_item, CallKernel):
-            within_subkernel = True
-            subkernel_index = sched_item_index
-        elif isinstance(sched_item, ReturnFromKernel):
-            within_subkernel = False
+    inames_for_subkernel = {}
 
-    if not within_subkernel:
-        # Outside all subkernels - use only inames available to host.
-        return frozenset(result)
+    for subknl_idx in set(idx for idx in subkernel_index_list if idx is not None):
+        insn_ids_for_subkernel = get_insn_ids_for_block_at(
+                kernel.schedule, subknl_idx)
 
-    insn_ids_for_subkernel = get_insn_ids_for_block_at(
-        kernel.schedule, subkernel_index)
+        inames_for_subkernel[subknl_idx] = (
+            iname
+            for insn in insn_ids_for_subkernel
+            for iname in kernel.insn_inames(insn))
 
-    inames_for_subkernel = (
-        iname
-        for insn in insn_ids_for_subkernel
-        for iname in kernel.insn_inames(insn))
+    result = []
 
-    for iname in inames_for_subkernel:
-        # Parallel inames are defined within a subkernel, BUT:
-        #
-        # - local indices may not be used in conditionals that cross barriers.
-        #
-        # - ILP indices and vector lane indices are not available in loop
-        #   bounds, they only get defined at the innermost level of nesting.
+    for active_inames, crosses_barrier, subknl_idx in zip(active_inames_list,
+            crosses_barrier_list, subkernel_index_list):
+        if subknl_idx is not None:
+            for iname in inames_for_subkernel[subknl_idx]:
+                # Parallel inames are defined within a subkernel, BUT:
+                #
+                # - local indices may not be used in conditionals that cross barriers
+                #
+                # - ILP indices and vector lane indices are not available in loop
+                #   bounds, they only get defined at the innermost level of nesting
 
-        if (
-                kernel.iname_tags_of_type(iname, ConcurrentTag)
-                and not kernel.iname_tags_of_type(iname, VectorizeTag)
-                and not (kernel.iname_tags_of_type(iname, LocalIndexTagBase)
-                    and crosses_barrier)
-                and not kernel.iname_tags_of_type(iname, IlpBaseTag)
-        ):
-            result.add(iname)
+                if (
+                        kernel.iname_tags_of_type(iname, ConcurrentTag)
+                        and not kernel.iname_tags_of_type(iname, VectorizeTag)
+                        and not (kernel.iname_tags_of_type(iname, LocalIndexTagBase)
+                            and crosses_barrier)
+                        and not kernel.iname_tags_of_type(iname, IlpBaseTag)
+                ):
+                    active_inames.add(iname)
 
-    return frozenset(result)
+        result.append(frozenset(active_inames))
+
+    return result
 
 # }}}
 

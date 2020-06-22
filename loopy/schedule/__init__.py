@@ -115,6 +115,16 @@ class Barrier(ScheduleItem):
 # {{{ schedule utilities
 
 def gather_schedule_block(schedule, start_idx):
+    """
+    Returns a :class:`tuple` of (list of schedule items, index just after the
+    block) for a block.
+
+    :arg schedule: An instance of :class:`list` of
+        :class:`loopy.schedule.ScheduleItem`s.
+
+    :arg start_idx: The index of a :class:`loopy.schedule.BeginBlockItem` of
+        the block whose schedule items are to be returned.
+    """
     assert isinstance(schedule[start_idx], BeginBlockItem)
     level = 0
 
@@ -166,32 +176,102 @@ def get_insn_ids_for_block_at(schedule, start_idx):
             if isinstance(sub_sched_item, RunInstruction))
 
 
-def find_active_inames_at(kernel, sched_index):
+def find_active_inames_at(kernel, sched_indices):
+    """
+    Returns an instance of :class:`list` of :class:`set`s of inames occuring at
+    each schedule index in *sched_indices*.
+
+    :arg sched_indices: A list of schedule indices of *kernel*.
+    """
     active_inames = []
+    sched_idx_to_active_inames = {0: set()}
+
+    sorted_sched_indices = sorted(sched_indices)
 
     from loopy.schedule import EnterLoop, LeaveLoop
-    for sched_item in kernel.schedule[:sched_index]:
+
+    for sched_idx, sched_item in enumerate(
+            kernel.schedule[:sorted_sched_indices[-1]]):
         if isinstance(sched_item, EnterLoop):
             active_inames.append(sched_item.iname)
         if isinstance(sched_item, LeaveLoop):
             active_inames.pop()
 
-    return set(active_inames)
+        if sched_idx == (sorted_sched_indices[0]-1):
+            sched_idx_to_active_inames[sched_idx+1] = set(active_inames)
+            sorted_sched_indices.pop(0)
+
+    # eventually everythin should be popped
+    assert sorted_sched_indices in ([], [0])
+
+    return [sched_idx_to_active_inames[idx] for idx in sched_indices]
 
 
-def has_barrier_within(kernel, sched_index):
-    sched_item = kernel.schedule[sched_index]
+def has_barrier_within(kernel, sched_indices):
+    """
+    Returns a :class:`list` of :class:`bool`s, with an entry for each schedule
+    index in *sched_indices* denoting if either there is barrier at the
+    schedule index or the schedule index is a
+    :class:`loopy.schedule.BeginBlockItem` containing a barrier in the block.
 
-    if isinstance(sched_item, BeginBlockItem):
-        loop_contents, _ = gather_schedule_block(
-                kernel.schedule, sched_index)
-        from pytools import any
-        return any(isinstance(subsched_item, Barrier)
-                for subsched_item in loop_contents)
-    elif isinstance(sched_item, Barrier):
-        return True
-    else:
-        return False
+    :arg sched_indices: A list of schedule indices of *kernel*.
+    """
+    sched_idx_to_has_barrier_within = {}
+    begin_block_sched_indices = []
+
+    for sched_idx in sched_indices:
+        sched_item = kernel.schedule[sched_idx]
+
+        if isinstance(sched_item, Barrier):
+            sched_idx_to_has_barrier_within[sched_idx] = True
+        elif isinstance(sched_item, BeginBlockItem):
+            begin_block_sched_indices.append(sched_idx)
+        else:
+            sched_idx_to_has_barrier_within[sched_idx] = False
+
+    begin_block_sched_indices.sort()
+
+    for sched_idx in begin_block_sched_indices:
+        if sched_idx in sched_idx_to_has_barrier_within:
+            # this block has already been dealt in a previous block
+            continue
+
+        block_contents, _ = gather_schedule_block(
+                kernel.schedule, sched_idx)
+
+        level = 1
+        # block_stack: list of [sched_idx, has_barrier_within]'s for every
+        # level of block
+        block_stack = [[sched_idx, False]]
+
+        for i, sched_item in enumerate(block_contents[1:], start=sched_idx+1):
+            if level == 0:
+                break
+
+            if isinstance(sched_item, BeginBlockItem):
+                level += 1
+
+                block_stack.append([i, False])
+            elif isinstance(sched_item, EndBlockItem):
+                level -= 1
+
+                exit_block_sched_idx, exit_block_contains_barrier = block_stack.pop()
+
+                if block_stack:
+                    # inner block contains barrier => outer block contains barrier
+                    block_stack[-1][1] |= exit_block_contains_barrier
+
+                sched_idx_to_has_barrier_within[exit_block_sched_idx] = (
+                        exit_block_contains_barrier)
+            elif isinstance(sched_item, Barrier):
+                block_stack[-1][1] = True
+            else:
+                pass
+
+        assert level == 0
+
+    return [sched_idx_to_has_barrier_within[sched_idx] for sched_idx in
+            sched_indices]
 
 
 def find_used_inames_within(kernel, sched_index):
@@ -423,6 +503,40 @@ def sched_item_to_insn_id(sched_item):
         if (hasattr(sched_item, "originating_insn_id")
                 and sched_item.originating_insn_id is not None):
             yield sched_item.originating_insn_id
+
+
+def get_subkernel_indices(kernel, sched_indices):
+    """
+    Returns an instance of :class:`list` of :class:`int`s, with an entry for
+    each schedule index in *sched_indices* denoting the index of
+    :class:`loopy.schedule.CallKernel` for the subkernel it is in, if no
+    subkernel contains a schedule index its entry is set to *None*.
+
+    :arg sched_indices: A list of schedule indices of *kernel*.
+    """
+    from loopy.schedule import CallKernel, ReturnFromKernel
+
+    subkernel_index = None
+    sorted_sched_indices = sorted(sched_indices)
+    sched_idx_to_subkernel_idx = {0: None}
+
+    for sched_idx, sched_item in enumerate(
+            kernel.schedule[:sorted_sched_indices[-1]]):
+        if isinstance(sched_item, CallKernel):
+            subkernel_index = sched_idx
+        elif isinstance(sched_item, ReturnFromKernel):
+            subkernel_index = None
+
+        if sched_idx == (sorted_sched_indices[0]-1):
+            sched_idx_to_subkernel_idx[sched_idx+1] = subkernel_index
+            sorted_sched_indices.pop()
+
+    # eventually everythin should be popped
+    assert sorted_sched_indices in ([], [0])
+
+    return [sched_idx_to_subkernel_idx[sched_idx] for sched_idx in
+            sched_indices]
+
 
 # }}}
 
