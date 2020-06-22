@@ -63,7 +63,6 @@ def get_usable_inames_for_conditional(kernel, sched_indices):
     from loopy.kernel.data import (ConcurrentTag, LocalIndexTagBase,
                                    VectorizeTag,
                                    IlpBaseTag)
-
     active_inames_list = find_active_inames_at(kernel, sched_indices)
     crosses_barrier_list = has_barrier_within(kernel, sched_indices)
     # Find our containing subkernel. Grab inames for all insns from there.
@@ -75,10 +74,23 @@ def get_usable_inames_for_conditional(kernel, sched_indices):
         insn_ids_for_subkernel = get_insn_ids_for_block_at(
                 kernel.schedule, subknl_idx)
 
-        inames_for_subkernel[subknl_idx] = [
+        all_inames_in_the_subknl = [
             iname
             for insn in insn_ids_for_subkernel
             for iname in kernel.insn_inames(insn)]
+
+        def is_eligible_in_conditional(iname):
+            # Parallel inames are defined within a subkernel, BUT:
+            #
+            # - ILP indices and vector lane indices are not available in loop
+            #   bounds, they only get defined at the innermost level of nesting.
+            return (
+                    kernel.iname_tags_of_type(iname, ConcurrentTag)
+                    and not kernel.iname_tags_of_type(iname, VectorizeTag)
+                    and not kernel.iname_tags_of_type(iname, IlpBaseTag))
+
+        inames_for_subkernel[subknl_idx] = [iname for iname in
+                all_inames_in_the_subknl if is_eligible_in_conditional(iname)]
 
     result = []
 
@@ -86,20 +98,9 @@ def get_usable_inames_for_conditional(kernel, sched_indices):
             crosses_barrier_list, subkernel_index_list):
         if subknl_idx is not None:
             for iname in inames_for_subkernel[subknl_idx]:
-                # Parallel inames are defined within a subkernel, BUT:
-                #
-                # - local indices may not be used in conditionals that cross barriers
-                #
-                # - ILP indices and vector lane indices are not available in loop
-                #   bounds, they only get defined at the innermost level of nesting
-
-                if (
-                        kernel.iname_tags_of_type(iname, ConcurrentTag)
-                        and not kernel.iname_tags_of_type(iname, VectorizeTag)
-                        and not (kernel.iname_tags_of_type(iname, LocalIndexTagBase)
-                            and crosses_barrier)
-                        and not kernel.iname_tags_of_type(iname, IlpBaseTag)
-                ):
+                # local indices may not be used in conditionals that cross barriers
+                if (not (kernel.iname_tags_of_type(iname, LocalIndexTagBase)
+                            and crosses_barrier)):
                     active_inames.add(iname)
 
         result.append(frozenset(active_inames))
