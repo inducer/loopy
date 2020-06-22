@@ -75,10 +75,10 @@ def get_usable_inames_for_conditional(kernel, sched_indices):
         insn_ids_for_subkernel = get_insn_ids_for_block_at(
                 kernel.schedule, subknl_idx)
 
-        inames_for_subkernel[subknl_idx] = (
+        inames_for_subkernel[subknl_idx] = [
             iname
             for insn in insn_ids_for_subkernel
-            for iname in kernel.insn_inames(insn))
+            for iname in kernel.insn_inames(insn)]
 
     result = []
 
