@@ -44,6 +44,7 @@ from loopy.type_inference import TypeInferenceMapper
 from loopy.diagnostic import LoopyError, LoopyWarning
 from loopy.tools import is_integer
 from loopy.types import LoopyType
+from loopy.target.c import CExpression
 
 
 # {{{ Loopy expression to C expression mapper
@@ -112,7 +113,6 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             prec = PREC_NONE
 
         assert prec == PREC_NONE
-        from loopy.target.c import CExpression
         return CExpression(
                 self.codegen_state.ast_builder.get_c_expression_to_code_mapper(),
                 self.rec(expr, type_context, needed_dtype))
