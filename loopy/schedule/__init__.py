@@ -734,8 +734,12 @@ def schedule_as_many_run_insns_as_possible(sched_state):
     updated_unscheduled_insn_ids = (
             updated_sched_state.unscheduled_insn_ids
             - frozenset(newly_scheduled_insn_ids))
+    if newly_scheduled_insn_ids:
+        new_insn_ids_to_try = None
+    else:
+        new_insn_ids_to_try = sched_state.insn_ids_to_try
     updated_sched_state = updated_sched_state.copy(
-            insn_ids_to_try=None,
+            insn_ids_to_try=new_insn_ids_to_try,
             schedule=updated_schedule,
             scheduled_insn_ids=updated_scheduled_insn_ids,
             unscheduled_insn_ids=updated_unscheduled_insn_ids,
@@ -1116,6 +1120,7 @@ def generate_loop_schedules_internal(
                                 sched_state.schedule
                                 + (LeaveLoop(iname=last_entered_loop),)),
                             active_inames=sched_state.active_inames[:-1],
+                            insn_ids_to_try=insn_ids_to_try,
                             preschedule=(
                                 sched_state.preschedule
                                 if last_entered_loop
@@ -1332,6 +1337,7 @@ def generate_loop_schedules_internal(
                                 entered_inames=(
                                     sched_state.entered_inames
                                     | frozenset((iname,))),
+                                insn_ids_to_try=insn_ids_to_try,
                                 preschedule=(
                                     sched_state.preschedule
                                     if iname not in sched_state.prescheduled_inames
