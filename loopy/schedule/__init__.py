@@ -658,7 +658,7 @@ class SchedulerState(ImmutableRecord):
 
 
 class LazyTopologicalSortGetter(object):
-    """Returns instruction ids of the kernel in a topologically sorted order
+    """Returns instructions of the kernel in a topologically sorted order
     """
 
     def __init__(self, kernel):
@@ -673,7 +673,8 @@ class LazyTopologicalSortGetter(object):
             for dep in insn.depends_on:
                 rev_dep_map[dep].add(insn.id)
 
-        return compute_topological_order(rev_dep_map)
+        ids = compute_topological_order(rev_dep_map)
+        return [self.kernel.id_to_insn[insn_id] for insn_id in ids]
 
 
 def schedule_as_many_run_insns_as_possible(sched_state):
@@ -696,11 +697,12 @@ def schedule_as_many_run_insns_as_possible(sched_state):
 
     # {{{ topological sort
 
-    toposorted_insn_ids = tuple(insn_id for insn_id in
+    def filter_insn(insn):
+        return insn.within_inames >= frozenset(sched_state.active_inames)
+
+    toposorted_insn_ids = tuple(insn.id for insn in
             sched_state.lazy_topological_sort_getter() if
-            insn_id in sched_state.unscheduled_insn_ids and (
-                sched_state.kernel.id_to_insn[insn_id].within_inames >=
-                frozenset(sched_state.active_inames)))
+            insn.id in sched_state.unscheduled_insn_ids and filter_insn(insn))
 
     # }}}
 
