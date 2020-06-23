@@ -644,7 +644,9 @@ class SchedulerState(ImmutableRecord):
 
     .. attribute:: lazy_topological_sort_getter
 
-        Used to get a topologically sort of the instructions lazily.
+        Used to get a topological sort of the instructions lazily.
+        Topological sorting is expensive, so this is done only once and only
+        when requested.
     """
 
     @property
