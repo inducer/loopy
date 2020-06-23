@@ -619,7 +619,7 @@ def _check_variable_access_ordered_inner(kernel):
             # Do not enforce ordering for aliasing-based relationships
             # in different groups.
             if (is_relationship_by_aliasing and (
-                    bool(insn.groups & other.conflicts_with_groups)
+                    bool(writer.groups & other.conflicts_with_groups)
                     or
                     bool(other.groups & writer.conflicts_with_groups))):
                 continue
