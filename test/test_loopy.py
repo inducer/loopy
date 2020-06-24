@@ -1705,8 +1705,8 @@ def test_global_barrier(ctx_factory):
                     ... gbarrier {id=top}
                     <> z[i] = z[i+1] + z[i]  {id=wr_z,dep=top}
                     <> v[i] = 11  {id=wr_v,dep=top}
-                    ... gbarrier {dep=wr_z:wr_v,id=yoink}
-                    z[i] = z[i] - z[i+1] + v[i] {id=iupd, dep=wr_z}
+                    ... gbarrier {id=yoink,dep=wr_z:wr_v}
+                    z[i] = z[i] - z[i+1] + v[i] {id=iupd, dep=yoink}
                 end
                 ... gbarrier {dep=iupd,id=postloop}
                 z[i] = z[i] - z[i+1] + v[i]  {dep=postloop}
