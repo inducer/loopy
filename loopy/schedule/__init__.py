@@ -704,7 +704,7 @@ def schedule_as_many_run_insns_as_possible(sched_state):
     newly_scheduled_insn_ids = []
 
     for insn in toposorted_insns:
-        if insn.id in sched_state.unscheduled_insn_ids:
+        if not insn.id in sched_state.unscheduled_insn_ids:
             continue
         if not insn.within_inames >= have_inames:
             continue
