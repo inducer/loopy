@@ -29,7 +29,7 @@ import sys
 import islpy as isl
 from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
-from pytools import memoize_method, MinRecursionLimit, ProcessLogger
+from pytools import MinRecursionLimit, ProcessLogger
 
 from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
@@ -642,11 +642,9 @@ class SchedulerState(ImmutableRecord):
         in them that are left to schedule. If a group name occurs in this
         mapping, that group is considered active.
 
-    .. attribute:: lazy_topological_sort_getter
+    .. attribute:: insns_in_topologically_sorted_order
 
-        Used to get a topological sort of the instructions lazily.
-        Topological sorting is expensive, so this is done only once and only
-        when requested.
+        A list of loopy :class:`Instruction` objects in topologically sorted order
     """
 
     @property
@@ -657,24 +655,16 @@ class SchedulerState(ImmutableRecord):
             return None
 
 
-class LazyTopologicalSortGetter(object):
-    """Returns instructions of the kernel in a topologically sorted order
-    """
+def get_insns_in_topologically_sorted_order(kernel):
+    from pytools.graph import compute_topological_order
 
-    def __init__(self, kernel):
-        self.kernel = kernel
+    rev_dep_map = {insn.id: set() for insn in kernel.instructions}
+    for insn in kernel.instructions:
+        for dep in insn.depends_on:
+            rev_dep_map[dep].add(insn.id)
 
-    @memoize_method
-    def __call__(self):
-        from pytools.graph import compute_topological_order
-
-        rev_dep_map = {insn.id: set() for insn in self.kernel.instructions}
-        for insn in self.kernel.instructions:
-            for dep in insn.depends_on:
-                rev_dep_map[dep].add(insn.id)
-
-        ids = compute_topological_order(rev_dep_map)
-        return [self.kernel.id_to_insn[insn_id] for insn_id in ids]
+    ids = compute_topological_order(rev_dep_map)
+    return [kernel.id_to_insn[insn_id] for insn_id in ids]
 
 
 def schedule_as_many_run_insns_as_possible(sched_state):
@@ -699,7 +689,7 @@ def schedule_as_many_run_insns_as_possible(sched_state):
 
     have_inames = frozenset(sched_state.active_inames) | sched_state.parallel_inames
 
-    toposorted_insns = sched_state.lazy_topological_sort_getter()
+    toposorted_insns = sched_state.insns_in_topologically_sorted_order
 
     # }}}
 
@@ -1979,7 +1969,8 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             group_insn_counts=group_insn_counts(kernel),
             active_group_counts={},
 
-            lazy_topological_sort_getter=LazyTopologicalSortGetter(kernel),
+            insns_in_topologically_sorted_order=(
+                get_insns_in_topologically_sorted_order(kernel)),
     )
 
     schedule_gen_kwargs = {}
