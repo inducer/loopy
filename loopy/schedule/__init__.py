@@ -699,12 +699,7 @@ def schedule_as_many_run_insns_as_possible(sched_state):
 
     have_inames = frozenset(sched_state.active_inames) | sched_state.parallel_inames
 
-    def filter_insn(insn):
-        return insn.within_inames >= have_inames
-
-    toposorted_insn_ids = tuple(insn.id for insn in
-            sched_state.lazy_topological_sort_getter() if
-            insn.id in sched_state.unscheduled_insn_ids and filter_insn(insn))
+    toposorted_insns = sched_state.lazy_topological_sort_getter()
 
     # }}}
 
@@ -716,16 +711,21 @@ def schedule_as_many_run_insns_as_possible(sched_state):
 
     num_insns_to_be_scheduled = 0
 
-    for insn_id in toposorted_insn_ids:
-        insn = sched_state.kernel.id_to_insn[insn_id]
+    newly_scheduled_insn_ids = []
+
+    for insn in toposorted_insns:
+        if insn.id in sched_state.unscheduled_insn_ids:
+            continue
+        if not insn.within_inames >= have_inames:
+            continue
         if isinstance(insn, MultiAssignmentBase):
             if (insn.within_inames - sched_state.parallel_inames) == frozenset(
                     sched_state.active_inames):
+                newly_scheduled_insn_ids.append(insn.id)
                 num_insns_to_be_scheduled += 1
                 continue
         break
 
-    newly_scheduled_insn_ids = toposorted_insn_ids[:num_insns_to_be_scheduled]
     num_presched_insns_newly_scheduled = len(set(newly_scheduled_insn_ids) &
             sched_state.prescheduled_insn_ids)
 
