@@ -697,8 +697,10 @@ def schedule_as_many_run_insns_as_possible(sched_state):
 
     # {{{ topological sort
 
+    have_inames = frozenset(sched_state.active_inames) | sched_state.parallel_inames
+
     def filter_insn(insn):
-        return insn.within_inames >= frozenset(sched_state.active_inames)
+        return insn.within_inames >= have_inames
 
     toposorted_insn_ids = tuple(insn.id for insn in
             sched_state.lazy_topological_sort_getter() if
@@ -717,7 +719,8 @@ def schedule_as_many_run_insns_as_possible(sched_state):
     for insn_id in toposorted_insn_ids:
         insn = sched_state.kernel.id_to_insn[insn_id]
         if isinstance(insn, MultiAssignmentBase):
-            if insn.within_inames == frozenset(sched_state.active_inames):
+            if (insn.within_inames - sched_state.parallel_inames) == frozenset(
+                    sched_state.active_inames):
                 num_insns_to_be_scheduled += 1
                 continue
         break
