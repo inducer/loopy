@@ -965,8 +965,8 @@ Consider the following example:
     <BLANKLINE>
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
       {
-        a_temp[lid(0)] = a[16 * gid(0) + lid(0)];
         acc_k = 0.0f;
+        a_temp[lid(0)] = a[16 * gid(0) + lid(0)];
       }
       barrier(CLK_LOCAL_MEM_FENCE) /* for a_temp (insn_0_k_update depends on insn) */;
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
