@@ -685,13 +685,9 @@ def schedule_as_many_run_insns_as_possible(sched_state):
         # cannot schedule RunInstructions when not in subkernel
         return sched_state
 
-    # {{{ topological sort
-
     have_inames = frozenset(sched_state.active_inames) | sched_state.parallel_inames
 
     toposorted_insns = sched_state.insns_in_topologically_sorted_order
-
-    # }}}
 
     # select the top instructions in toposorted_insns only which have active
     # inames corresponding to those of sched_state
@@ -699,20 +695,20 @@ def schedule_as_many_run_insns_as_possible(sched_state):
 
     updated_sched_state = sched_state.copy()
 
-    num_insns_to_be_scheduled = 0
-
     newly_scheduled_insn_ids = []
+    ignored_unscheduled_insn_ids = set()
 
     for insn in toposorted_insns:
-        if not insn.id in sched_state.unscheduled_insn_ids:
+        if insn.id in sched_state.scheduled_insn_ids:
             continue
         if not insn.within_inames >= have_inames:
+            ignored_unscheduled_insn_ids.add(insn.id)
             continue
         if isinstance(insn, MultiAssignmentBase):
             if (insn.within_inames - sched_state.parallel_inames) == frozenset(
-                    sched_state.active_inames):
+                    sched_state.active_inames) and not (insn.depends_on &
+                            ignored_unscheduled_insn_ids):
                 newly_scheduled_insn_ids.append(insn.id)
-                num_insns_to_be_scheduled += 1
                 continue
         break
 
