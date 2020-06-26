@@ -80,11 +80,16 @@ def get_slab_decomposition(kernel, iname):
 
         if upper_incr:
             assert upper_incr > 0
-            upper_slab = ("final", isl.BasicSet.universe(space)
-                    .add_constraint(
-                        isl.Constraint.inequality_from_aff(
-                            iname_rel_aff(space,
-                                iname, ">", upper_bound_aff-upper_incr))))
+            upper_bset = isl.BasicSet.universe(space).add_constraint(
+                isl.Constraint.inequality_from_aff(
+                    iname_rel_aff(space,
+                        iname, ">", upper_bound_aff-upper_incr)))
+            if lower_incr:
+                # Ensure that this slab is actually distinct from the
+                # lower one, if it exists.
+                _, lower_bset = lower_slab
+                upper_bset, = upper_bset.subtract(lower_bset).get_basic_sets()
+            upper_slab = ("final", upper_bset)
             upper_bulk_bound = (
                     isl.Constraint.inequality_from_aff(
                         iname_rel_aff(space,
