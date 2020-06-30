@@ -561,7 +561,7 @@ class ScheduleDebugInput(Exception):
 # }}}
 
 
-# {{{ scheduling algorithm
+# {{{ scheduler state
 
 class SchedulerState(ImmutableRecord):
     """
@@ -654,6 +654,8 @@ class SchedulerState(ImmutableRecord):
         else:
             return None
 
+# }}}
+
 
 def get_insns_in_topologically_sorted_order(kernel):
     from pytools.graph import compute_topological_order
@@ -667,6 +669,8 @@ def get_insns_in_topologically_sorted_order(kernel):
     return [kernel.id_to_insn[insn_id] for insn_id in ids]
 
 
+# {{{ schedule_as_many_run_insns_as_possible
+
 def schedule_as_many_run_insns_as_possible(sched_state):
     """
     Returns an instance of :class:`loopy.schedule.SchedulerState`, by appending
@@ -675,7 +679,7 @@ def schedule_as_many_run_insns_as_possible(sched_state):
 
     next_preschedule_item = (
         sched_state.preschedule[0]
-        if len(sched_state.preschedule) > 0
+        if sched_state.preschedule
         else None)
 
     if isinstance(next_preschedule_item, (CallKernel, ReturnFromKernel, Barrier)):
@@ -701,7 +705,7 @@ def schedule_as_many_run_insns_as_possible(sched_state):
     for insn in toposorted_insns:
         if insn.id in sched_state.scheduled_insn_ids:
             continue
-        if not insn.within_inames >= have_inames:
+        if insn.within_inames < have_inames:
             ignored_unscheduled_insn_ids.add(insn.id)
             continue
         if isinstance(insn, MultiAssignmentBase):
@@ -741,6 +745,10 @@ def schedule_as_many_run_insns_as_possible(sched_state):
 
     return updated_sched_state
 
+# }}}
+
+
+# {{{ scheduling algorithm
 
 def generate_loop_schedules_internal(
         sched_state, debug=None):
@@ -757,7 +765,7 @@ def generate_loop_schedules_internal(
 
     next_preschedule_item = (
         sched_state.preschedule[0]
-        if len(sched_state.preschedule) > 0
+        if sched_state.preschedule
         else None)
 
     # {{{ decide about debug mode
