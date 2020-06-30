@@ -186,7 +186,6 @@ def _convert_constraint_set_to_map(constraint_set, mv_count, src_position=None):
 def create_dependency_constraint(
         statement_dep_set,
         loop_priorities,
-        insn_id_to_int,
         statement_var_name,
         statement_var_pose=0,
         dom_inames_ordered_before=None,
@@ -205,10 +204,6 @@ def create_dependency_constraint(
     :arg loop_priorities: A list of tuples from the ``loop_priority``
         attribute of :class:`loopy.LoopKernel` specifying the loop nest
         ordering rules.
-
-    :arg insn_id_to_int: A :class:`dict` mapping insn_id to int_id, where
-       'insn_id' and 'int_id' refer to the 'insn_id' and 'int_id' attributes
-        of :class:`loopy.schedule.checker.schedule.StatementRef`.
 
     :arg statement_var_name: A :class:`str` specifying the name of the
         isl variable used to represent the unique :class:`int` statement id.
@@ -359,9 +354,14 @@ def create_dependency_constraint(
                 constraint_set = create_elementwise_comparison_conjunction_set(
                         inames_prime, inames_list, islvars, op="lt")
 
+        # get ints representing statements in PairwiseSchedule
+        s_before_int = 0
+        s_after_int = 0 if (
+            statement_dep_set.statement_before.insn_id ==
+            statement_dep_set.statement_after.insn_id
+            ) else 1
+
         # set statement_var_name == statement #
-        s_before_int = insn_id_to_int[statement_dep_set.statement_before.insn_id]
-        s_after_int = insn_id_to_int[statement_dep_set.statement_after.insn_id]
         constraint_set = constraint_set & islvars[statement_var_name_prime].eq_set(
             islvars[0]+s_before_int)
         constraint_set = constraint_set & islvars[statement_var_name].eq_set(

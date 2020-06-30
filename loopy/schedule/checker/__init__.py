@@ -235,8 +235,6 @@ def check_linearization_validity(
             s_after.insn_id,
             )
 
-        lp_insn_id_to_lex_sched_id = sched_builder.loopy_insn_id_to_lex_sched_id()
-
         # Get two isl maps from the PairwiseScheduleBuilder,
         # one for each linearization item involved in the dependency;
         isl_sched_map_before, isl_sched_map_after = sched_builder.build_maps(
@@ -259,11 +257,8 @@ def check_linearization_validity(
         constraint_map = create_dependency_constraint(
             statement_pair_dep_set,
             knl.loop_priority,
-            lp_insn_id_to_lex_sched_id,
             sched_builder.statement_var_name,
             )
-        # TODO figure out how to keep a consistent lp_insn_id_to_lex_sched_id map
-        # when dependency creation is separate from linearization checking
 
         # reorder variables/params in constraint map space to match SIO so we can
         # check to see whether the constraint map is a subset of the SIO
@@ -304,8 +299,6 @@ def check_linearization_validity(
             print(prettier_map_string(sio.gist(aligned_constraint_map)))
             print("Loop priority known:")
             print(preprocessed_knl.loop_priority)
-            print("{insn id -> sched sid int} dict:")
-            print(lp_insn_id_to_lex_sched_id)
             print("===========================================================")
 
     return linearization_is_valid
