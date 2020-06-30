@@ -484,43 +484,6 @@ def get_orderings_of_length_n(
     return orderings
 
 
-# only used for example purposes:
-
-
-def create_explicit_map_from_tuples(tuple_pairs, space):
-    """Return a :class:`islpy.Map` in :class:`islpy.Space` space
-        mapping tup_in->tup_out for each `(tup_in, tup_out)` pair
-        in `tuple_pairs`, where `tup_in` and `tup_out` are
-        tuples of :class:`int` values to be assigned to the
-        corresponding dimension variables in `space`.
-
-    """
-
-    dim_type = isl.dim_type
-    individual_maps = []
-
-    for tup_in, tup_out in tuple_pairs:
-        constraints = []
-        for i, val_in in enumerate(tup_in):
-            constraints.append(
-                isl.Constraint.equality_alloc(space)
-                .set_coefficient_val(dim_type.in_, i, 1)
-                .set_constant_val(-1*val_in))
-        for i, val_out in enumerate(tup_out):
-            constraints.append(
-                isl.Constraint.equality_alloc(space)
-                .set_coefficient_val(dim_type.out, i, 1)
-                .set_constant_val(-1*val_out))
-        individual_maps.append(
-            isl.Map.universe(space).add_constraints(constraints))
-
-    union_map = individual_maps[0]
-    for m in individual_maps[1:]:
-        union_map = union_map.union(m)
-
-    return union_map
-
-
 def get_EnterLoop_inames(linearization_items, knl):
     from loopy.schedule import EnterLoop
     loop_inames = set()
