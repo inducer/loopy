@@ -484,14 +484,6 @@ def get_orderings_of_length_n(
     return orderings
 
 
-def create_graph_from_pairs(before_after_pairs):
-    # create key for every before
-    graph = dict([(before, set()) for before, _ in before_after_pairs])
-    for before, after in before_after_pairs:
-        graph[before] = graph[before] | set([after, ])
-    return graph
-
-
 # only used for example purposes:
 
 
