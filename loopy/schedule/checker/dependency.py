@@ -233,7 +233,7 @@ def create_dependency_constraint(
         append_apostrophes,
         add_dims_to_isl_set,
         insert_missing_dims_and_reorder_by_name,
-        create_new_isl_set_with_primes,
+        append_marker_to_isl_map_var_names,
         list_var_names_in_isl_sets,
     )
     # This function uses the dependency given to create the following constraint:
@@ -383,8 +383,9 @@ def create_dependency_constraint(
     range_to_intersect = add_dims_to_isl_set(
         statement_dep_set.dom_after, isl.dim_type.out,
         [statement_var_name], statement_var_pose)
-    domain_constraint_set = create_new_isl_set_with_primes(
-        statement_dep_set.dom_before)
+    domain_constraint_set = append_marker_to_isl_map_var_names(
+        statement_dep_set.dom_before, isl.dim_type.set, marker="'")
+
     domain_to_intersect = add_dims_to_isl_set(
         domain_constraint_set, isl.dim_type.out,
         [statement_var_name_prime], statement_var_pose)

@@ -132,26 +132,6 @@ def ensure_dim_names_match_and_align(obj_map, tgt_map):
     return aligned_obj_map
 
 
-def create_new_isl_set_with_primes(old_isl_set, marker="'"):
-    """Return an isl_set with apostrophes appended to
-        dim_type.set dimension names.
-
-    :arg old_isl_set: A :class:`islpy.Set`.
-
-    :returns: A :class:`islpy.Set` matching `old_isl_set` with
-        apostrophes appended to dim_type.set dimension names.
-
-    """
-    # TODO this is just a special case of append_marker_to_isl_map_var_names
-
-    new_set = old_isl_set.copy()
-    for i in range(old_isl_set.n_dim()):
-        new_set = new_set.set_dim_name(
-            isl.dim_type.set, i, old_isl_set.get_dim_name(
-                isl.dim_type.set, i)+marker)
-    return new_set
-
-
 def append_marker_to_isl_map_var_names(old_isl_map, dim_type, marker="'"):
     """Return an isl_map with marker appended to
         dim_type dimension names.
