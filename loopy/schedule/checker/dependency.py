@@ -385,7 +385,6 @@ def create_dependency_constraint(
         [statement_var_name], statement_var_pose)
     domain_constraint_set = append_marker_to_isl_map_var_names(
         statement_dep_set.dom_before, isl.dim_type.set, marker="'")
-
     domain_to_intersect = add_dims_to_isl_set(
         domain_constraint_set, isl.dim_type.out,
         [statement_var_name_prime], statement_var_pose)

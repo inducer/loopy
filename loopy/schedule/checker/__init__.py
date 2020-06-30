@@ -198,7 +198,6 @@ def check_linearization_validity(
         knl,
         statement_pair_dep_sets,
         linearization_items,
-        verbose=False,
         ):
     # TODO document
 
@@ -217,24 +216,6 @@ def check_linearization_validity(
     from loopy import preprocess_kernel
     preprocessed_knl = preprocess_kernel(knl)
 
-    if verbose:
-        print("="*80)
-        print("Kernel: %s" % (preprocessed_knl.name))
-        print("="*80)
-        print("Dependencies w/domains:")
-        for dep_set in statement_pair_dep_sets:
-            print(dep_set)
-            print(dep_set.dom_before)
-            print(dep_set.dom_after)
-
-        # Print kernel info ------------------------------------------------------
-        print("="*80)
-        print("Schedule items:")
-        for linearization_item in linearization_items:
-            print(linearization_item)
-        print("="*80)
-        print("Looping through dep pairs...")
-
     # For each dependency, create+test linearization containing pair of insns------
     linearization_is_valid = True
     for statement_pair_dep_set in statement_pair_dep_sets:
@@ -244,11 +225,6 @@ def check_linearization_validity(
         # build_maps()
         # reconsider the content of statement_pair_dep_set, which
         # currently contains doms(do we still want them there?)
-
-        if verbose:
-            print("="*80)
-            print("Dependency set:")
-            print(statement_pair_dep_set)
 
         # Create PairwiseScheduleBuilder: mapping of {statement instance: lex point}
         # include only instructions involved in this dependency
@@ -261,23 +237,10 @@ def check_linearization_validity(
 
         lp_insn_id_to_lex_sched_id = sched_builder.loopy_insn_id_to_lex_sched_id()
 
-        if verbose:
-            print("-"*80)
-            print("PairwiseScheduleBuilder:")
-            print(sched_builder)
-            print("dict{lp insn id : sched sid int}:")
-            print(lp_insn_id_to_lex_sched_id)
-
         # Get two isl maps from the PairwiseScheduleBuilder,
         # one for each linearization item involved in the dependency;
         isl_sched_map_before, isl_sched_map_after = sched_builder.build_maps(
             preprocessed_knl)
-
-        if verbose:
-            print("-"*80)
-            print("ISL maps representing schedules for {before, after} statement:")
-            print(prettier_map_string(isl_sched_map_before))
-            print(prettier_map_string(isl_sched_map_after))
 
         # get map representing lexicographic ordering
         sched_lex_order_map = sched_builder.get_lex_order_map_for_sched_space()
@@ -289,14 +252,6 @@ def check_linearization_validity(
             isl_sched_map_after,
             sched_lex_order_map,
             )
-
-        if verbose:
-            print("-"*80)
-            print("Statement instance ordering:")
-            print(prettier_map_string(sio))
-            print("-"*80)
-            print("SIO space (statement instances -> statement instances):")
-            print(sio.space)
 
         # create a map representing constraints from the dependency,
         # which maps statement instance to all stmt instances that must occur later
@@ -318,22 +273,8 @@ def check_linearization_validity(
             ensure_dim_names_match_and_align,
         )
 
-        if verbose:
-            print("-"*80)
-            print("Constraint map space (before aligning with SIO):")
-            print(constraint_map.space)
-            print("Constraint map:")
-            print(prettier_map_string(constraint_map))
-
         aligned_constraint_map = ensure_dim_names_match_and_align(
             constraint_map, sio)
-
-        if verbose:
-            print("-"*80)
-            print("Constraint map space (after aligning with SIO):")
-            print(aligned_constraint_map.space)
-            print("Constraint map:")
-            print(prettier_map_string(aligned_constraint_map))
 
         import islpy as isl
         assert aligned_constraint_map.space == sio.space
@@ -351,21 +292,20 @@ def check_linearization_validity(
 
             linearization_is_valid = False
 
-            if verbose:
-                print("================ constraint check failure =================")
-                print("Constraint map not subset of SIO")
-                print("Dependencies:")
-                print(statement_pair_dep_set)
-                print("Statement instance ordering:")
-                print(prettier_map_string(sio))
-                print("constraint_map.gist(sio):")
-                print(prettier_map_string(aligned_constraint_map.gist(sio)))
-                print("sio.gist(constraint_map)")
-                print(prettier_map_string(sio.gist(aligned_constraint_map)))
-                print("Loop priority known:")
-                print(preprocessed_knl.loop_priority)
-                print("{insn id -> sched sid int} dict:")
-                print(lp_insn_id_to_lex_sched_id)
-                print("===========================================================")
+            print("================ constraint check failure =================")
+            print("Constraint map not subset of SIO")
+            print("Dependencies:")
+            print(statement_pair_dep_set)
+            print("Statement instance ordering:")
+            print(prettier_map_string(sio))
+            print("constraint_map.gist(sio):")
+            print(prettier_map_string(aligned_constraint_map.gist(sio)))
+            print("sio.gist(constraint_map)")
+            print(prettier_map_string(sio.gist(aligned_constraint_map)))
+            print("Loop priority known:")
+            print(preprocessed_knl.loop_priority)
+            print("{insn id -> sched sid int} dict:")
+            print(lp_insn_id_to_lex_sched_id)
+            print("===========================================================")
 
     return linearization_is_valid
