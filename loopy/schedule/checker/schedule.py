@@ -167,6 +167,13 @@ class PairwiseScheduleBuilder(object):
         # PairwiseScheduleBuilder statements
         self.stmt_instance_before = None
         self.stmt_instance_after = None
+
+        # Determine integer IDs that will represent each statement in mapping
+        # (dependency map creation assumes sid_before=0 and sid_after=1, unless
+        # before and after refer to same stmt, in which case sid_before=sid_after=0)
+        int_sid_before = 0
+        int_sid_after = 0 if before_insn_id == after_insn_id else 1
+
         # TODO when/after dependencies are added, consider the possibility
         # of removing the two-statements-per-PairwiseScheduleBuilder limitation
 
@@ -178,7 +185,6 @@ class PairwiseScheduleBuilder(object):
         # ordering, initially this as a 1-d point with value 0
         next_insn_lex_tuple = [0]
         stmt_added_since_prev_block_at_tier = [False]
-        next_sid = 0
         for linearization_item in linearization_items_ordered:
             if isinstance(linearization_item, EnterLoop):
                 iname = linearization_item.iname
@@ -241,7 +247,7 @@ class PairwiseScheduleBuilder(object):
                     self.stmt_instance_before = StatementInstanceSet(
                             StatementRef(
                                 insn_id=lp_insn_id,
-                                int_id=next_sid,  # int representing insn
+                                int_id=int_sid_before,  # int representing insn
                                 ),
                             next_insn_lex_tuple[:])
                     stmt_added = True
@@ -251,7 +257,7 @@ class PairwiseScheduleBuilder(object):
                     self.stmt_instance_after = StatementInstanceSet(
                             StatementRef(
                                 insn_id=lp_insn_id,
-                                int_id=next_sid,  # int representing insn
+                                int_id=int_sid_after,  # int representing insn
                                 ),
                             next_insn_lex_tuple[:])
                     stmt_added = True
@@ -262,7 +268,6 @@ class PairwiseScheduleBuilder(object):
                 if stmt_added:
                     # increment lex dim val enumerating items in current code block
                     next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1] + 1
-                    next_sid += 1
 
                     # all current (nested) blocks now contain a statement
                     stmt_added_since_prev_block_at_tier = [True]*len(
