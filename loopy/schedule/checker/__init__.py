@@ -148,3 +148,224 @@ def get_schedule_for_statement_pair(
     # }}}
 
 # }}}
+
+
+def statement_pair_dep_sets_from_legacy_knl(knl):
+    """Return a list of
+    :class:`loopy.schedule.checker.dependency.StatementPairDependencySet`
+    instances created for a :class:`loopy.LoopKernel` containing legacy
+    depencencies.
+
+    Create the new dependencies according to the following rules:
+
+    (1) If a dependency exists between ``insn0`` and ``insn1``, create the
+    dependnecy ``SAME(SNC)`` where ``SNC`` is the set of non-concurrent inames
+    used by both ``insn0`` and ``insn1``, and ``SAME`` is the relationship
+    specified by the ``SAME`` attribute of
+    :class:`loopy.schedule.checker.dependency.DependencyType`.
+
+    (2) For each subset of non-concurrent inames used by any instruction,
+
+        (a), find the set of all instructions using those inames,
+
+        (b), create a directed graph with these instructions as nodes and
+        edges representing a 'happens before' relationship specfied by
+        each dependency,
+
+        (c), find the sources and sinks within this graph, and
+
+        (d), connect each sink to each source (sink happens before source)
+        with a ``PRIOR(SNC)`` dependency, where ``PRIOR`` is the
+        relationship specified by the ``PRIOR`` attribute of
+        :class:`loopy.schedule.checker.dependency.DependencyType`.
+
+    """
+    # TODO maybe just eliminate this function since it doesn't do much
+
+    # Preprocess if not already preprocessed
+    # note: kernels must always be preprocessed before scheduling
+    from loopy import preprocess_kernel
+    preprocessed_knl = preprocess_kernel(knl)
+
+    # Create StatementPairDependencySet(s) from kernel dependencies
+    from loopy.schedule.checker.dependency import (
+        create_dependencies_from_legacy_knl,
+    )
+    return create_dependencies_from_legacy_knl(preprocessed_knl)
+
+
+def check_linearization_validity(
+        knl,
+        statement_pair_dep_sets,
+        linearization_items,
+        verbose=False,
+        ):
+    # TODO document
+
+    from loopy.schedule.checker.dependency import (
+        create_dependency_constraint,
+    )
+    from loopy.schedule.checker.lexicographic_order_map import (
+        get_statement_ordering_map,
+    )
+    from loopy.schedule.checker.utils import (
+        prettier_map_string,
+    )
+
+    # Preprocess if not already preprocessed
+    # note: kernels must always be preprocessed before scheduling
+    from loopy import preprocess_kernel
+    preprocessed_knl = preprocess_kernel(knl)
+
+    if verbose:
+        print("="*80)
+        print("Kernel: %s" % (preprocessed_knl.name))
+        print("="*80)
+        print("Dependencies w/domains:")
+        for dep_set in statement_pair_dep_sets:
+            print(dep_set)
+            print(dep_set.dom_before)
+            print(dep_set.dom_after)
+
+        # Print kernel info ------------------------------------------------------
+        print("="*80)
+        print("Schedule items:")
+        for linearization_item in linearization_items:
+            print(linearization_item)
+        print("="*80)
+        print("Looping through dep pairs...")
+
+    # For each dependency, create+test linearization containing pair of insns------
+    linearization_is_valid = True
+    for statement_pair_dep_set in statement_pair_dep_sets:
+        s_before = statement_pair_dep_set.statement_before
+        s_after = statement_pair_dep_set.statement_after
+        # TODO, since we now get the doms inside
+        # build_maps()
+        # reconsider the content of statement_pair_dep_set, which
+        # currently contains doms(do we still want them there?)
+
+        if verbose:
+            print("="*80)
+            print("Dependency set:")
+            print(statement_pair_dep_set)
+
+        # Create PairwiseScheduleBuilder: mapping of {statement instance: lex point}
+        # include only instructions involved in this dependency
+        sched_builder = get_schedule_for_statement_pair(
+            preprocessed_knl,
+            linearization_items,
+            s_before.insn_id,
+            s_after.insn_id,
+            )
+
+        lp_insn_id_to_lex_sched_id = sched_builder.loopy_insn_id_to_lex_sched_id()
+
+        if verbose:
+            print("-"*80)
+            print("PairwiseScheduleBuilder:")
+            print(sched_builder)
+            print("dict{lp insn id : sched sid int}:")
+            print(lp_insn_id_to_lex_sched_id)
+
+        # Get two isl maps from the PairwiseScheduleBuilder,
+        # one for each linearization item involved in the dependency;
+        isl_sched_map_before, isl_sched_map_after = sched_builder.build_maps(
+            preprocessed_knl)
+
+        if verbose:
+            print("-"*80)
+            print("ISL maps representing schedules for {before, after} statement:")
+            print(prettier_map_string(isl_sched_map_before))
+            print(prettier_map_string(isl_sched_map_after))
+
+        # get map representing lexicographic ordering
+        sched_lex_order_map = sched_builder.get_lex_order_map_for_sched_space()
+
+        # create statement instance ordering,
+        # maps each statement instance to all statement instances occuring later
+        sio = get_statement_ordering_map(
+            isl_sched_map_before,
+            isl_sched_map_after,
+            sched_lex_order_map,
+            )
+
+        if verbose:
+            print("-"*80)
+            print("Statement instance ordering:")
+            print(prettier_map_string(sio))
+            print("-"*80)
+            print("SIO space (statement instances -> statement instances):")
+            print(sio.space)
+
+        # create a map representing constraints from the dependency,
+        # which maps statement instance to all stmt instances that must occur later
+        # and is acquired from the non-preprocessed kernel
+        constraint_map = create_dependency_constraint(
+            statement_pair_dep_set,
+            knl.loop_priority,
+            lp_insn_id_to_lex_sched_id,
+            sched_builder.statement_var_name,
+            )
+        # TODO figure out how to keep a consistent lp_insn_id_to_lex_sched_id map
+        # when dependency creation is separate from linearization checking
+
+        # reorder variables/params in constraint map space to match SIO so we can
+        # check to see whether the constraint map is a subset of the SIO
+        # (spaces must be aligned so that the variables in the constraint map
+        # correspond to the same variables in the SIO)
+        from loopy.schedule.checker.utils import (
+            ensure_dim_names_match_and_align,
+        )
+
+        if verbose:
+            print("-"*80)
+            print("Constraint map space (before aligning with SIO):")
+            print(constraint_map.space)
+            print("Constraint map:")
+            print(prettier_map_string(constraint_map))
+
+        aligned_constraint_map = ensure_dim_names_match_and_align(
+            constraint_map, sio)
+
+        if verbose:
+            print("-"*80)
+            print("Constraint map space (after aligning with SIO):")
+            print(aligned_constraint_map.space)
+            print("Constraint map:")
+            print(prettier_map_string(aligned_constraint_map))
+
+        import islpy as isl
+        assert aligned_constraint_map.space == sio.space
+        assert (
+            aligned_constraint_map.space.get_var_names(isl.dim_type.in_)
+            == sio.space.get_var_names(isl.dim_type.in_))
+        assert (
+            aligned_constraint_map.space.get_var_names(isl.dim_type.out)
+            == sio.space.get_var_names(isl.dim_type.out))
+        assert (
+            aligned_constraint_map.space.get_var_names(isl.dim_type.param)
+            == sio.space.get_var_names(isl.dim_type.param))
+
+        if not aligned_constraint_map.is_subset(sio):
+
+            linearization_is_valid = False
+
+            if verbose:
+                print("================ constraint check failure =================")
+                print("Constraint map not subset of SIO")
+                print("Dependencies:")
+                print(statement_pair_dep_set)
+                print("Statement instance ordering:")
+                print(prettier_map_string(sio))
+                print("constraint_map.gist(sio):")
+                print(prettier_map_string(aligned_constraint_map.gist(sio)))
+                print("sio.gist(constraint_map)")
+                print(prettier_map_string(sio.gist(aligned_constraint_map)))
+                print("Loop priority known:")
+                print(preprocessed_knl.loop_priority)
+                print("{insn id -> sched sid int} dict:")
+                print(lp_insn_id_to_lex_sched_id)
+                print("===========================================================")
+
+    return linearization_is_valid

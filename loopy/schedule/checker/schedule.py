@@ -278,6 +278,18 @@ class PairwiseScheduleBuilder(object):
         # be zero, so add them.
         self.pad_lex_tuples_with_zeros()
 
+    def loopy_insn_id_to_lex_sched_id(self):
+        """Return a dictionary mapping insn_id to int_id, where ``insn_id`` and
+            ``int_id`` refer to the ``insn_id`` and ``int_id`` attributes of
+            :class:`StatementRef`.
+        """
+        return {
+            self.stmt_instance_before.stmt_ref.insn_id:
+                self.stmt_instance_before.stmt_ref.int_id,
+            self.stmt_instance_after.stmt_ref.insn_id:
+                self.stmt_instance_after.stmt_ref.int_id,
+            }
+
     def max_lex_dims(self):
         return max([
             len(self.stmt_instance_before.lex_points),

@@ -31,6 +31,7 @@ from pyopencl.tools import (  # noqa
     as pytest_generate_tests)
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 import logging
+from loopy.kernel import KernelState
 from loopy import (
     preprocess_kernel,
     get_one_linearized_kernel,
@@ -605,6 +606,447 @@ def test_statement_instance_ordering_creation():
         "insn_c", "insn_d", expected_lex_order_map, expected_sio)
 
 # }}}
+
+
+def test_linearization_checker_with_loop_prioritization():
+    knl = lp.make_kernel(
+        [
+            "{[i]: 0<=i<pi}",
+            "{[k]: 0<=k<pk}",
+            "{[j]: 0<=j<pj}",
+            "{[t]: 0<=t<pt}",
+        ],
+        """
+        for i
+            for k
+                <>temp = b[i,k]  {id=insn_a}
+            end
+            for j
+                a[i,j] = temp + 1  {id=insn_b,dep=insn_a}
+                c[i,j] = d[i,j]  {id=insn_c}
+            end
+        end
+        for t
+            e[t] = f[t]  {id=insn_d}
+        end
+        """,
+        name="example",
+        assumptions="pi,pj,pk,pt >= 1",
+        lang_version=(2018, 2)
+        )
+    knl = lp.add_and_infer_dtypes(
+            knl,
+            {"b": np.float32, "d": np.float32, "f": np.float32})
+    knl = lp.prioritize_loops(knl, "i,k")
+    knl = lp.prioritize_loops(knl, "i,j")
+
+    unprocessed_knl = knl.copy()
+
+    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
+        unprocessed_knl)
+    if hasattr(lp, "add_dependencies_v2"):
+        knl = lp.add_dependencies_v2(  # pylint:disable=no-member
+            knl, statement_pair_dep_sets)
+
+    # get a linearization to check
+    if knl.state < KernelState.PREPROCESSED:
+        knl = preprocess_kernel(knl)
+    knl = get_one_linearized_kernel(knl)
+    linearization_items = knl.linearization
+
+    linearization_is_valid = lp.check_linearization_validity(
+        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+    assert linearization_is_valid
+
+
+def test_linearization_checker_with_matmul():
+    bsize = 16
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<ell}",
+            [
+                "c[i, j] = sum(k, a[i, k]*b[k, j])"
+            ],
+            name="matmul",
+            assumptions="n,m,ell >= 1",
+            lang_version=(2018, 2),
+            )
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
+    knl = lp.split_iname(knl, "i", bsize, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_iname(knl, "j", bsize, outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_iname(knl, "k", bsize)
+    knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"], default_tag="l.auto")
+    knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"], default_tag="l.auto")
+    knl = lp.prioritize_loops(knl, "k_outer,k_inner")
+
+    unprocessed_knl = knl.copy()
+
+    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
+        unprocessed_knl)
+    if hasattr(lp, "add_dependencies_v2"):
+        knl = lp.add_dependencies_v2(  # pylint:disable=no-member
+            knl, statement_pair_dep_sets)
+
+    # get a linearization to check
+    if knl.state < KernelState.PREPROCESSED:
+        knl = preprocess_kernel(knl)
+    knl = get_one_linearized_kernel(knl)
+    linearization_items = knl.linearization
+
+    linearization_is_valid = lp.check_linearization_validity(
+        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+    assert linearization_is_valid
+
+
+def test_linearization_checker_with_scan():
+    stride = 1
+    n_scan = 16
+    knl = lp.make_kernel(
+        "[n] -> {[i,j]: 0<=i<n and 0<=j<=%d*i}" % stride,
+        """
+        a[i] = sum(j, j**2)
+        """,
+        name="scan",
+        lang_version=(2018, 2),
+        )
+
+    knl = lp.fix_parameters(knl, n=n_scan)
+    knl = lp.realize_reduction(knl, force_scan=True)
+
+
+def test_linearization_checker_with_dependent_domain():
+    knl = lp.make_kernel(
+        [
+            "[n] -> {[i]: 0<=i<n}",
+            "{[j]: 0<=j<=2*i}"
+        ],
+        """
+        a[i] = sum(j, j**2) {id=scan}
+        """,
+        name="dependent_domain",
+        lang_version=(2018, 2),
+        )
+    # TODO current check for unused inames is incorrectly
+    # causing linearizing to fail when realize_reduction is used
+    #knl = lp.realize_reduction(knl, force_scan=True)
+
+    unprocessed_knl = knl.copy()
+
+    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
+        unprocessed_knl)
+    if hasattr(lp, "add_dependencies_v2"):
+        knl = lp.add_dependencies_v2(  # pylint:disable=no-member
+            knl, statement_pair_dep_sets)
+
+    # get a linearization to check
+    if knl.state < KernelState.PREPROCESSED:
+        knl = preprocess_kernel(knl)
+    knl = get_one_linearized_kernel(knl)
+    linearization_items = knl.linearization
+
+    linearization_is_valid = lp.check_linearization_validity(
+        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+    assert linearization_is_valid
+
+
+def test_linearization_checker_with_stroud_bernstein():
+    knl = lp.make_kernel(
+            "{[el, i2, alpha1,alpha2]: \
+                    0 <= el < nels and \
+                    0 <= i2 < nqp1d and \
+                    0 <= alpha1 <= deg and 0 <= alpha2 <= deg-alpha1 }",
+            """
+            for el,i2
+                <> xi = qpts[1, i2]
+                <> s = 1-xi
+                <> r = xi/s
+                <> aind = 0 {id=aind_init}
+                for alpha1
+                    <> w = s**(deg-alpha1) {id=init_w}
+                    for alpha2
+                        tmp[el,alpha1,i2] = tmp[el,alpha1,i2] + w * coeffs[aind] \
+                                {id=write_tmp,dep=init_w:aind_init}
+                        w = w * r * ( deg - alpha1 - alpha2 ) / (1 + alpha2) \
+                                {id=update_w,dep=init_w:write_tmp}
+                        aind = aind + 1 \
+                                {id=aind_incr,dep=aind_init:write_tmp:update_w}
+                    end
+                end
+            end
+            """,
+            [lp.GlobalArg("coeffs", None, shape=None), "..."],
+            name="stroud_bernstein_orig", assumptions="deg>=0 and nels>=1")
+    knl = lp.add_and_infer_dtypes(knl,
+        dict(coeffs=np.float32, qpts=np.int32))
+    knl = lp.fix_parameters(knl, nqp1d=7, deg=4)
+    knl = lp.split_iname(knl, "el", 16, inner_tag="l.0")
+    knl = lp.split_iname(knl, "el_outer", 2, outer_tag="g.0",
+        inner_tag="ilp", slabs=(0, 1))
+    knl = lp.tag_inames(knl, dict(i2="l.1", alpha1="unr", alpha2="unr"))
+
+    unprocessed_knl = knl.copy()
+
+    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
+        unprocessed_knl)
+    if hasattr(lp, "add_dependencies_v2"):
+        knl = lp.add_dependencies_v2(  # pylint:disable=no-member
+            knl, statement_pair_dep_sets)
+
+    # get a linearization to check
+    if knl.state < KernelState.PREPROCESSED:
+        knl = preprocess_kernel(knl)
+    knl = get_one_linearized_kernel(knl)
+    linearization_items = knl.linearization
+
+    linearization_is_valid = lp.check_linearization_validity(
+        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+    assert linearization_is_valid
+
+
+def test_linearization_checker_with_nop():
+    knl = lp.make_kernel(
+        [
+            "{[b]: b_start<=b<b_end}",
+            "{[c]: c_start<=c<c_end}",
+        ],
+        """
+         for b
+          <> c_end = 2
+          for c
+           ... nop
+          end
+         end
+        """,
+        "...",
+        seq_dependencies=True)
+    knl = lp.fix_parameters(knl, dim=3)
+
+    unprocessed_knl = knl.copy()
+
+    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
+        unprocessed_knl)
+    if hasattr(lp, "add_dependencies_v2"):
+        knl = lp.add_dependencies_v2(  # pylint:disable=no-member
+            knl, statement_pair_dep_sets)
+
+    # get a linearization to check
+    if knl.state < KernelState.PREPROCESSED:
+        knl = preprocess_kernel(knl)
+    knl = get_one_linearized_kernel(knl)
+    linearization_items = knl.linearization
+
+    linearization_is_valid = lp.check_linearization_validity(
+        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+    assert linearization_is_valid
+
+
+def test_linearization_checker_with_multi_domain():
+    knl = lp.make_kernel(
+        [
+            "{[i]: 0<=i<ni}",
+            "{[j]: 0<=j<nj}",
+            "{[k]: 0<=k<nk}",
+            "{[x,xx]: 0<=x,xx<nx}",
+        ],
+        """
+        for x,xx
+          for i
+            <>acc = 0 {id=insn0}
+            for j
+              for k
+                acc = acc + j + k {id=insn1,dep=insn0}
+              end
+            end
+          end
+        end
+        """,
+        name="nest_multi_dom",
+        assumptions="ni,nj,nk,nx >= 1",
+        lang_version=(2018, 2)
+        )
+    knl = lp.prioritize_loops(knl, "x,xx,i")
+    knl = lp.prioritize_loops(knl, "i,j")
+    knl = lp.prioritize_loops(knl, "j,k")
+
+    unprocessed_knl = knl.copy()
+
+    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
+        unprocessed_knl)
+    if hasattr(lp, "add_dependencies_v2"):
+        knl = lp.add_dependencies_v2(  # pylint:disable=no-member
+            knl, statement_pair_dep_sets)
+
+    # get a linearization to check
+    if knl.state < KernelState.PREPROCESSED:
+        knl = preprocess_kernel(knl)
+    knl = get_one_linearized_kernel(knl)
+    linearization_items = knl.linearization
+
+    linearization_is_valid = lp.check_linearization_validity(
+        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+    assert linearization_is_valid
+
+
+def test_linearization_checker_with_loop_carried_deps():
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        """
+        <>acc0 = 0 {id=insn0}
+        for i
+          acc0 = acc0 + i {id=insn1,dep=insn0}
+          <>acc2 = acc0 + i {id=insn2,dep=insn1}
+          <>acc3 = acc2 + i {id=insn3,dep=insn2}
+          <>acc4 = acc0 + i {id=insn4,dep=insn1}
+        end
+        """,
+        name="loop_carried_deps",
+        assumptions="n >= 1",
+        lang_version=(2018, 2)
+        )
+
+    unprocessed_knl = knl.copy()
+
+    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
+        unprocessed_knl)
+    if hasattr(lp, "add_dependencies_v2"):
+        knl = lp.add_dependencies_v2(  # pylint:disable=no-member
+            knl, statement_pair_dep_sets)
+
+    # get a linearization to check
+    if knl.state < KernelState.PREPROCESSED:
+        knl = preprocess_kernel(knl)
+    knl = get_one_linearized_kernel(knl)
+    linearization_items = knl.linearization
+
+    linearization_is_valid = lp.check_linearization_validity(
+        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+    assert linearization_is_valid
+
+
+def test_linearization_checker_and_invalid_prioritiy_detection():
+    ref_knl = lp.make_kernel(
+        [
+            "{[h]: 0<=h<nh}",
+            "{[i]: 0<=i<ni}",
+            "{[j]: 0<=j<nj}",
+            "{[k]: 0<=k<nk}",
+        ],
+        """
+        <> acc = 0
+        for h,i,j,k
+              acc = acc + h + i + j + k
+        end
+        """,
+        name="priorities",
+        assumptions="ni,nj,nk,nh >= 1",
+        lang_version=(2018, 2)
+        )
+
+    # no error:
+    knl0 = lp.prioritize_loops(ref_knl, "h,i")
+    knl0 = lp.prioritize_loops(ref_knl, "i,j")
+    knl0 = lp.prioritize_loops(knl0, "j,k")
+
+    unprocessed_knl = knl0.copy()
+
+    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
+        unprocessed_knl)
+    if hasattr(lp, "add_dependencies_v2"):
+        knl0 = lp.add_dependencies_v2(  # pylint:disable=no-member
+            knl0, statement_pair_dep_sets)
+
+    # get a linearization to check
+    if knl0.state < KernelState.PREPROCESSED:
+        knl0 = preprocess_kernel(knl0)
+    knl0 = get_one_linearized_kernel(knl0)
+    linearization_items = knl0.linearization
+
+    linearization_is_valid = lp.check_linearization_validity(
+        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+    assert linearization_is_valid
+
+    # no error:
+    knl1 = lp.prioritize_loops(ref_knl, "h,i,k")
+    knl1 = lp.prioritize_loops(knl1, "h,j,k")
+
+    unprocessed_knl = knl1.copy()
+
+    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
+        unprocessed_knl)
+    if hasattr(lp, "add_dependencies_v2"):
+        knl1 = lp.add_dependencies_v2(  # pylint:disable=no-member
+            knl1, statement_pair_dep_sets)
+
+    # get a linearization to check
+    if knl1.state < KernelState.PREPROCESSED:
+        knl1 = preprocess_kernel(knl1)
+    knl1 = get_one_linearized_kernel(knl1)
+    linearization_items = knl1.linearization
+
+    linearization_is_valid = lp.check_linearization_validity(
+        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+    assert linearization_is_valid
+
+    # error (cycle):
+    knl2 = lp.prioritize_loops(ref_knl, "h,i,j")
+    knl2 = lp.prioritize_loops(knl2, "j,k")
+    try:
+        if hasattr(lp, "constrain_loop_nesting"):
+            knl2 = lp.constrain_loop_nesting(knl2, "k,i")  # pylint:disable=no-member
+        else:
+            knl2 = lp.prioritize_loops(knl2, "k,i")
+
+            unprocessed_knl = knl2.copy()
+
+            statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
+                unprocessed_knl)
+
+            # get a linearization to check
+            if knl2.state < KernelState.PREPROCESSED:
+                knl2 = preprocess_kernel(knl2)
+            knl2 = get_one_linearized_kernel(knl2)
+            linearization_items = knl2.linearization
+
+            linearization_is_valid = lp.check_linearization_validity(
+                unprocessed_knl, statement_pair_dep_sets, linearization_items)
+        # should raise error
+        assert False
+    except ValueError as e:
+        if hasattr(lp, "constrain_loop_nesting"):
+            assert "cycle detected" in str(e)
+        else:
+            assert "invalid priorities" in str(e)
+
+    # error (inconsistent priorities):
+    knl3 = lp.prioritize_loops(ref_knl, "h,i,j,k")
+    try:
+        if hasattr(lp, "constrain_loop_nesting"):
+            knl3 = lp.constrain_loop_nesting(  # pylint:disable=no-member
+                knl3, "h,j,i,k")
+        else:
+            knl3 = lp.prioritize_loops(knl3, "h,j,i,k")
+
+            unprocessed_knl = knl3.copy()
+
+            statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
+                unprocessed_knl)
+
+            # get a linearization to check
+            if knl3.state < KernelState.PREPROCESSED:
+                knl3 = preprocess_kernel(knl3)
+            knl3 = get_one_linearized_kernel(knl3)
+            linearization_items = knl3.linearization
+
+            linearization_is_valid = lp.check_linearization_validity(
+                unprocessed_knl, statement_pair_dep_sets, linearization_items)
+        # should raise error
+        assert False
+    except ValueError as e:
+        if hasattr(lp, "constrain_loop_nesting"):
+            assert "cycle detected" in str(e)
+        else:
+            assert "invalid priorities" in str(e)
+
+# TODO create more kernels with invalid linearizations to test linearization checker
 
 
 if __name__ == "__main__":
