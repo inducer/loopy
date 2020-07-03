@@ -87,6 +87,31 @@ def c99_preamble_generator(preamble_info):
         yield("10_complex", "#include <complex.h>")
 
 
+def cvec_preamble_generator(preamble_info):
+    vec_typedef = []
+    twoword_typedef = []
+    batch_size = preamble_info.kernel.target.length
+    type_register = preamble_info.kernel.target.get_dtype_registry()
+    bbytes = "BYTES"
+    for dtype in preamble_info.seen_dtypes:
+        shortform = type_register.dtype_to_ctype(dtype)
+        base = type_register.dtype_to_ctype_base(dtype)
+        # two worded typed need to be merged to one word
+        # so that vector type can be defined afterwards
+        # the new one worded type is defined here
+        if len(base.split()) > 1:
+            twoword_typedef += ["typedef " + base + " " + shortform + ";"]
+        bytes = dtype.dtype.alignment
+        if batch_size > 1:
+            st1 = "#define {0}{2} ({1}*{2})".format(bbytes, batch_size, bytes)
+            vec_typedef += [st1]
+            st2 = "typedef {0} {0}{1} __attribute__ ((vector_size ({2}{3})));"
+            vec_typedef += [st2.format(shortform, batch_size, bbytes, bytes)]
+    preamble_tw = "\n" + "\n".join(twoword_typedef)
+    preamble_vec = "\n" + "\n".join(vec_typedef)
+    yield("vec_types", preamble_tw + preamble_vec)
+
+
 def _preamble_generator(preamble_info):
     integer_type_names = ["int8", "int16", "int32", "int64"]
 
@@ -1135,20 +1160,34 @@ class ExecutableCTarget(CTarget):
 
 # {{{ c target with vector extension
 
+
 class DTypeRegistryWrapperVec(DTypeRegistryWrapper):
     def __init__(self, wrapped_registry):
         super(DTypeRegistryWrapperVec, self).__init__(wrapped_registry)
 
     def dtype_to_ctype(self, dtype):
+        base = self.dtype_to_ctype_base(dtype)
+        # two worded typed need to be merged to one word
+        # so that vector type can be defined afterwards
+        if len(base.split()) > 1:
+            base = "".join([word[0] for word in base.split()])
         if dtype.dtype.shape:
             shape, = dtype.dtype.shape
-            base = super(DTypeRegistryWrapperVec, self).dtype_to_ctype(
-                NumpyType(dtype.dtype.base))
             return base + str(shape)
-        return super(DTypeRegistryWrapperVec, self).dtype_to_ctype(dtype)
+        return base
+    
+    def dtype_to_ctype_base(self, dtype):
+        return super(DTypeRegistryWrapperVec, self).dtype_to_ctype(
+                NumpyType(dtype.dtype.base))
 
 
 class CVecASTBuilder(CASTBuilder):
+
+    def preamble_generators(self):
+        obj = [
+                cvec_preamble_generator,
+              ] + super(CVecASTBuilder, self).preamble_generators()
+        return (obj)
 
     def get_expression_to_c_expression_mapper(self, codegen_state):
         from loopy.target.c.codegen.expression import ExpressionToCVecExpressionMapper  # noqa
@@ -1181,8 +1220,9 @@ class CVecTarget(CTarget):
     """Foo
     """
 
-    def __init__(self):
+    def __init__(self, length):
         super(CVecTarget, self).__init__()
+        self.length = length
 
     @memoize_method
     def get_dtype_registry(self):
