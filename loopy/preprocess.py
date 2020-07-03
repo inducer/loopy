@@ -2643,14 +2643,24 @@ def realize_c_vec(kernel):
     if not isinstance(kernel.target, CVecTarget):
         return kernel
 
+    # append one vectorised zero variable per type
+    # needed for constant assignments
+    def update_kernel_with_zerovecs(name_zero_vec, kernel):
+        tmps = kernel.temporary_variables.copy()
+        types = list(set([tv.dtype for tv in tmps.values()]))
+        for type in types:
+            name = name_zero_vec+"_"+type.dtype.name
+            tmps[name] = TemporaryVariable(
+                            name,
+                            shape=auto, dtype=type, read_only=True,
+                            initializer=numpy.array(0, dtype=type.dtype),
+                            address_space=AddressSpace.LOCAL,
+                            zero_size=kernel.target.length)
+        kernel = kernel.copy(temporary_variables=tmps)
+        return kernel
+
     name_zero_vec = "zero_vec"
-    zeros = TemporaryVariable(name_zero_vec, shape=auto, dtype=auto, read_only=True,
-                                    initializer=numpy.array(0.0),
-                                    address_space=AddressSpace.LOCAL,
-                                    zero_size=kernel.target.length)
-    tmps = kernel.temporary_variables.copy()
-    tmps[name_zero_vec] = zeros
-    kernel = kernel.copy(temporary_variables=tmps)
+    kernel = update_kernel_with_zerovecs(name_zero_vec, kernel)
 
     # any variable not in subscript?
     class OutsideVariableFinder(IdentityMapper):
@@ -2840,7 +2850,9 @@ def realize_c_vec(kernel):
                 avf(inst.expression)
                 if not avf.result:
                     import pymbolic.primitives as p
-                    rhs = inst.expression + p.Variable("_zeros")
+                    tv = kernel.temporary_variables[inst.assignee.aggregate.name]
+                    type = tv.dtype.dtype.name
+                    rhs = inst.expression + p.Variable(name_zero_vec+"_"+type)
                     inst = inst.copy(expression=rhs)
 
             if can_vectorize:

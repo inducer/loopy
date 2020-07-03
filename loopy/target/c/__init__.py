@@ -211,8 +211,6 @@ class POD(Declarator):
         self.ctype = ast_builder.target.dtype_to_typename(dtype)
         self.dtype = dtype
         self.name = name
-        if vec_size:
-            assert name == "_zeros"
         self.vec_size = vec_size
 
     def get_decl_pair(self):
@@ -1214,6 +1212,24 @@ class CVecASTBuilder(CASTBuilder):
 
         return super(CVecASTBuilder, self).emit_sequential_loop(
             codegen_state, iname, iname_dtype, lbound, ubound, inner)
+
+    def get_temporary_decl(self, codegen_state, schedule_index, temp_var, decl_info):
+        if hasattr(temp_var, "zero_size"):
+            if temp_var.zero_size > 1:
+                temp_var_decl = POD(self, decl_info.dtype, decl_info.name,
+                                    temp_var.zero_size)
+
+                from cgen import Const
+                temp_var_decl = Const(temp_var_decl)
+
+                if temp_var.alignment:
+                    from cgen import AlignedAttribute
+                    temp_var_decl = AlignedAttribute(temp_var.alignment, temp_var_decl)
+
+                return temp_var_decl
+
+        return super(CVecASTBuilder, self).get_temporary_decl(
+            codegen_state, schedule_index, temp_var, decl_info)
 
 
 class CVecTarget(CTarget):
