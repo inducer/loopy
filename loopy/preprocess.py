@@ -2101,6 +2101,21 @@ def realize_c_vec(kernel):
     from loopy.symbolic import IdentityMapper, SubstitutionMapper
     from pymbolic.mapper.substitutor import make_subst_func
     from pymbolic.primitives import Variable
+    import numpy
+    from loopy import auto, AddressSpace, TemporaryVariable
+    from loopy import CVecTarget
+
+    if not isinstance(kernel.target, CVecTarget):
+        return kernel
+
+    name_zero_vec = "zero_vec"
+    zeros = TemporaryVariable(name_zero_vec, shape=auto, dtype=auto, read_only=True,
+                                    initializer=numpy.array(0.0),
+                                    address_space=AddressSpace.LOCAL,
+                                    zero_size=kernel.target.length)
+    tmps = kernel.temporary_variables.copy()
+    tmps[name_zero_vec] = zeros
+    kernel = kernel.copy(temporary_variables=tmps)
 
     # any variable not in subscript?
     class OutsideVariableFinder(IdentityMapper):
