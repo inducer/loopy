@@ -492,11 +492,21 @@ def _get_address_space(kernel, var):
 
 
 def _get_topological_order(kernel):
+    """
+    Returns a :class:`list` of insn ids of *kernel* in a topological sort
+    order.
+
+    If there is a dependency cycle within the instructions of *kernel* raises a
+    :class:`loopy.diagnostic.DependencyCycleFound` exception.
+    """
     from pytools.graph import compute_sccs
     from loopy.diagnostic import DependencyCycleFound
 
     dep_map = {insn.id: insn.depends_on for insn in kernel.instructions}
 
+    # pytools.graph.compute_sccs serves 2 purposes:
+    #   1. computes topological sort order of instructions.
+    #   2. provides info. about any cycles in the graph.
     sccs = compute_sccs(dep_map)
     order = []
 
