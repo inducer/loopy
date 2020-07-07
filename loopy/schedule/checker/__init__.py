@@ -189,9 +189,9 @@ def statement_pair_dep_sets_from_legacy_knl(knl):
 
     # Create StatementPairDependencySet(s) from kernel dependencies
     from loopy.schedule.checker.dependency import (
-        create_dependencies_from_legacy_knl,
+        _create_dependencies_from_legacy_knl_old,
     )
-    return create_dependencies_from_legacy_knl(preprocessed_knl)
+    return _create_dependencies_from_legacy_knl_old(preprocessed_knl)
 
 
 def check_linearization_validity(

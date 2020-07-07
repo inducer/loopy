@@ -389,7 +389,7 @@ def create_dependency_constraint(
     return map_with_loop_domain_constraints
 
 
-def create_dependencies_from_legacy_knl(knl):
+def _create_dependencies_from_legacy_knl_old(knl):
     """Return a list of :class:`StatementPairDependencySet` instances created
     for a :class:`loopy.LoopKernel` containing legacy depencencies.
 
