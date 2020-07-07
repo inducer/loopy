@@ -182,10 +182,10 @@ def create_dependencies_from_legacy_knl(knl):
     """
 
     from loopy.schedule.checker.dependency import (
-        create_dependency_constraint,
+        create_legacy_dependency_constraint,
         get_dependency_sources_and_sinks,
         StatementPairDependencySet,
-        DependencyType as dt,
+        DependencyType,
     )
     from loopy.schedule.checker.utils import (
         get_concurrent_inames,
@@ -217,7 +217,7 @@ def create_dependencies_from_legacy_knl(knl):
                 StatementPairDependencySet(
                     StatementRef(insn_id=insn_before.id),
                     StatementRef(insn_id=insn_after.id),
-                    {dt.SAME: shared_non_conc_inames},
+                    {DependencyType.SAME: shared_non_conc_inames},
                     preprocessed_knl.get_inames_domain(insn_before_inames),
                     preprocessed_knl.get_inames_domain(insn_after_inames),
                     ))
@@ -245,7 +245,8 @@ def create_dependencies_from_legacy_knl(knl):
         for source_id in sources:
             for sink_id in sinks:
                 sink_insn_inames = preprocessed_knl.id_to_insn[sink_id].within_inames
-                source_insn_inames = preprocessed_knl.id_to_insn[source_id].within_inames
+                source_insn_inames = preprocessed_knl.id_to_insn[
+                    source_id].within_inames
                 shared_inames = sink_insn_inames & source_insn_inames
                 shared_non_conc_inames = shared_inames & non_conc_inames
 
@@ -253,7 +254,7 @@ def create_dependencies_from_legacy_knl(knl):
                     StatementPairDependencySet(
                         StatementRef(insn_id=sink_id),
                         StatementRef(insn_id=source_id),
-                        {dt.PRIOR: shared_non_conc_inames},
+                        {DependencyType.PRIOR: shared_non_conc_inames},
                         preprocessed_knl.get_inames_domain(sink_insn_inames),
                         preprocessed_knl.get_inames_domain(source_insn_inames),
                         ))
@@ -263,7 +264,7 @@ def create_dependencies_from_legacy_knl(knl):
         # create a map representing constraints from the dependency,
         # which maps statement instance to all stmt instances that must occur later
         # and is acquired from the non-preprocessed kernel
-        constraint_map = create_dependency_constraint(
+        constraint_map = create_legacy_dependency_constraint(
             statement_pair_dep_set,
             knl.loop_priority,
             )
@@ -285,9 +286,6 @@ def check_linearization_validity(
         ):
     # TODO document
 
-    from loopy.schedule.checker.dependency import (
-        create_dependency_constraint,
-    )
     from loopy.schedule.checker.lexicographic_order_map import (
         get_statement_ordering_map,
     )

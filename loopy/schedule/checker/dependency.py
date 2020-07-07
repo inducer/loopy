@@ -183,7 +183,7 @@ def _convert_constraint_set_to_map(constraint_set, mv_count, src_position=None):
             dim_type.out, 0, dim_type.in_, mv_count, mv_count)
 
 
-def create_dependency_constraint(
+def create_legacy_dependency_constraint(
         statement_dep_set,
         loop_priorities,
         ):
