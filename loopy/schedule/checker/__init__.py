@@ -197,7 +197,6 @@ def create_dependencies_from_legacy_knl(knl):
     from loopy import preprocess_kernel
     preprocessed_knl = preprocess_kernel(knl)
 
-
     # TODO instead of keeping these in a set, attach each one to depender insn
 
     # Create constraint maps from kernel dependencies
