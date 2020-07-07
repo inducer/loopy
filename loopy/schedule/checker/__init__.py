@@ -183,7 +183,16 @@ def create_dependencies_from_legacy_knl(knl):
 
     from loopy.schedule.checker.dependency import (
         create_dependency_constraint,
+        get_dependency_sources_and_sinks,
+        StatementPairDependencySet,
+        DependencyType as dt,
     )
+    from loopy.schedule.checker.utils import (
+        get_concurrent_inames,
+        get_all_nonconcurrent_insn_iname_subsets,
+        get_linearization_item_ids_within_inames,
+    )
+    from loopy.schedule.checker.schedule import StatementRef
 
     # Preprocess if not already preprocessed
     # note: kernels must always be preprocessed before scheduling
@@ -191,10 +200,63 @@ def create_dependencies_from_legacy_knl(knl):
     preprocessed_knl = preprocess_kernel(knl)
 
     # Create StatementPairDependencySet(s) from kernel dependencies
-    from loopy.schedule.checker.dependency import (
-        _create_dependencies_from_legacy_knl_old,
-    )
-    spds = _create_dependencies_from_legacy_knl_old(preprocessed_knl)
+    spds = set()
+
+    # Introduce SAME dep for set of shared, non-concurrent inames
+
+    conc_inames, non_conc_inames = get_concurrent_inames(preprocessed_knl)
+    for insn_after in preprocessed_knl.instructions:
+        for insn_before_id in insn_after.depends_on:
+            insn_before = preprocessed_knl.id_to_insn[insn_before_id]
+            insn_before_inames = insn_before.within_inames
+            insn_after_inames = insn_after.within_inames
+            shared_inames = insn_before_inames & insn_after_inames
+            shared_non_conc_inames = shared_inames & non_conc_inames
+
+            spds.add(
+                StatementPairDependencySet(
+                    StatementRef(insn_id=insn_before.id),
+                    StatementRef(insn_id=insn_after.id),
+                    {dt.SAME: shared_non_conc_inames},
+                    preprocessed_knl.get_inames_domain(insn_before_inames),
+                    preprocessed_knl.get_inames_domain(insn_after_inames),
+                    ))
+
+    # loop-carried deps ------------------------------------------
+
+    # Go through insns and get all unique insn.depends_on iname sets
+    non_conc_iname_subsets = get_all_nonconcurrent_insn_iname_subsets(
+        preprocessed_knl, exclude_empty=True, non_conc_inames=non_conc_inames)
+
+    # For each set of insns within a given iname set, find sources and sinks.
+    # Then make PRIOR dep from all sinks to all sources at previous iterations
+    for iname_subset in non_conc_iname_subsets:
+        # find items within this iname set
+        linearization_item_ids = get_linearization_item_ids_within_inames(
+            preprocessed_knl, iname_subset)
+
+        # find sources and sinks
+        sources, sinks = get_dependency_sources_and_sinks(
+            preprocessed_knl, linearization_item_ids)
+
+        # create prior deps
+
+        # in future, consider inserting single no-op source and sink
+        for source_id in sources:
+            for sink_id in sinks:
+                sink_insn_inames = preprocessed_knl.id_to_insn[sink_id].within_inames
+                source_insn_inames = preprocessed_knl.id_to_insn[source_id].within_inames
+                shared_inames = sink_insn_inames & source_insn_inames
+                shared_non_conc_inames = shared_inames & non_conc_inames
+
+                spds.add(
+                    StatementPairDependencySet(
+                        StatementRef(insn_id=sink_id),
+                        StatementRef(insn_id=source_id),
+                        {dt.PRIOR: shared_non_conc_inames},
+                        preprocessed_knl.get_inames_domain(sink_insn_inames),
+                        preprocessed_knl.get_inames_domain(source_insn_inames),
+                        ))
 
     dep_maps = set()
     for statement_pair_dep_set in spds:
