@@ -311,8 +311,6 @@ class PairwiseScheduleBuilder(object):
     def build_maps(
             self,
             knl,
-            dom_inames_ordered_before=None,
-            dom_inames_ordered_after=None,
             ):
         r"""Create a pair of :class:`islpy.Map`\ s representing a pairwise schedule
             as two mappings from statement instances to lexicographic time,
@@ -322,18 +320,6 @@ class PairwiseScheduleBuilder(object):
             linearization items that are described by the schedule. This
             kernel will be used to get the domains associated with the inames
             used in the statements.
-
-        :arg dom_inames_ordered_before: A list of :class:`str`
-            representing the union of inames used in
-            ``stmt_instance_before``. ``statement_var_name`` and
-            ``dom_inames_ordered_before`` are the names of the dims of
-            the space of the ISL map domain.
-
-        :arg dom_inames_ordered_after: A list of :class:`str`
-            representing the union of inames used in
-            ``stmt_instance_after``. ``statement_var_name`` and
-            ``dom_inames_ordered_after`` are the names of the dims of
-            the space of the ISL map domain.
 
         :returns: A two-tuple containing two :class:`islpy.Map`s
             representing the a pairwise schedule as two mappings
@@ -352,7 +338,7 @@ class PairwiseScheduleBuilder(object):
         params_sched = []
         out_names_sched = self.get_lex_var_names()
 
-        def _get_map_for_stmt_inst(stmt_inst, dom_inames_ordered):
+        def _get_map_for_stmt_inst(stmt_inst):
 
             # Get inames domain for statement instance (a BasicSet)
             dom = knl.get_inames_domain(
@@ -361,8 +347,7 @@ class PairwiseScheduleBuilder(object):
             # create space (an isl space in current implementation)
             # {('statement', <inames> used in statement domain>) ->
             #  (lexicographic ordering dims)}
-            if dom_inames_ordered is None:
-                dom_inames_ordered = list_var_names_in_isl_sets([dom])
+            dom_inames_ordered = list_var_names_in_isl_sets([dom])
 
             in_names_sched = [
                 self.statement_var_name] + dom_inames_ordered[:]
@@ -390,12 +375,8 @@ class PairwiseScheduleBuilder(object):
                 space=sched_space,
                 )
 
-        map_before = _get_map_for_stmt_inst(
-            self.stmt_instance_before,
-            dom_inames_ordered_before)
-        map_after = _get_map_for_stmt_inst(
-            self.stmt_instance_after,
-            dom_inames_ordered_after)
+        map_before = _get_map_for_stmt_inst(self.stmt_instance_before)
+        map_after = _get_map_for_stmt_inst(self.stmt_instance_after)
 
         return (map_before, map_after)
 
