@@ -151,7 +151,7 @@ def get_schedule_for_statement_pair(
 
 
 def create_dependencies_from_legacy_knl(knl):
-    """Return a list of
+    """Return a set of
     :class:`loopy.schedule.checker.dependency.TBD`
     instances created for a :class:`loopy.LoopKernel` containing legacy
     depencencies.
@@ -196,6 +196,9 @@ def create_dependencies_from_legacy_knl(knl):
     # note: kernels must always be preprocessed before scheduling
     from loopy import preprocess_kernel
     preprocessed_knl = preprocess_kernel(knl)
+
+
+    # TODO instead of keeping these in a set, attach each one to depender insn
 
     # Create constraint maps from kernel dependencies
     dep_maps = set()
@@ -299,10 +302,6 @@ def check_linearization_validity(
     # For each dependency, create+test linearization containing pair of insns------
     linearization_is_valid = True
     for insn_id_before, insn_id_after, constraint_map in dep_maps:
-        # TODO, since we now get the doms inside
-        # build_maps()
-        # reconsider the content of statement_pair_dep_set, which
-        # currently contains doms(do we still want them there?)
 
         # Create PairwiseScheduleBuilder: mapping of {statement instance: lex point}
         # include only instructions involved in this dependency
