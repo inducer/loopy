@@ -257,7 +257,6 @@ def check_linearization_validity(
         constraint_map = create_dependency_constraint(
             statement_pair_dep_set,
             knl.loop_priority,
-            sched_builder.statement_var_name,
             )
 
         # reorder variables/params in constraint map space to match SIO so we can

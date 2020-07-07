@@ -186,7 +186,6 @@ def _convert_constraint_set_to_map(constraint_set, mv_count, src_position=None):
 def create_dependency_constraint(
         statement_dep_set,
         loop_priorities,
-        statement_var_name,
         statement_var_pose=0,
         ):
     """Create a statement dependency constraint represented as a map from
@@ -202,9 +201,6 @@ def create_dependency_constraint(
     :arg loop_priorities: A list of tuples from the ``loop_priority``
         attribute of :class:`loopy.LoopKernel` specifying the loop nest
         ordering rules.
-
-    :arg statement_var_name: A :class:`str` specifying the name of the
-        isl variable used to represent the unique :class:`int` statement id.
 
     :arg statement_var_pose: A :class:`int` specifying which position in the
         statement instance tuples holds the dimension representing the
@@ -223,6 +219,7 @@ def create_dependency_constraint(
         append_marker_to_isl_map_var_names,
         list_var_names_in_isl_sets,
     )
+    from loopy.schedule.checker.schedule import STATEMENT_VAR_NAME
     # This function uses the dependency given to create the following constraint:
     # Statement [s,i,j] comes before statement [s',i',j'] iff <constraint>
 
@@ -233,11 +230,11 @@ def create_dependency_constraint(
 
     # create some (ordered) isl vars to use, e.g., {s, i, j, s', i', j'}
     islvars = make_islvars_with_marker(
-        var_names_needing_marker=[statement_var_name]+dom_inames_ordered_before,
-        other_var_names=[statement_var_name]+dom_inames_ordered_after,
+        var_names_needing_marker=[STATEMENT_VAR_NAME]+dom_inames_ordered_before,
+        other_var_names=[STATEMENT_VAR_NAME]+dom_inames_ordered_after,
         marker="'",
         )
-    statement_var_name_prime = statement_var_name+"'"
+    statement_var_name_prime = STATEMENT_VAR_NAME+"'"
 
     # initialize constraints to False
     # this will disappear as soon as we add a constraint
@@ -354,7 +351,7 @@ def create_dependency_constraint(
         # set statement_var_name == statement #
         constraint_set = constraint_set & islvars[statement_var_name_prime].eq_set(
             islvars[0]+s_before_int)
-        constraint_set = constraint_set & islvars[statement_var_name].eq_set(
+        constraint_set = constraint_set & islvars[STATEMENT_VAR_NAME].eq_set(
             islvars[0]+s_after_int)
 
         # union this constraint_set with all_constraints_set
@@ -372,7 +369,7 @@ def create_dependency_constraint(
     # add statement variable to doms to enable intersection
     range_to_intersect = add_dims_to_isl_set(
         statement_dep_set.dom_after, isl.dim_type.out,
-        [statement_var_name], statement_var_pose)
+        [STATEMENT_VAR_NAME], statement_var_pose)
     domain_constraint_set = append_marker_to_isl_map_var_names(
         statement_dep_set.dom_before, isl.dim_type.set, marker="'")
     domain_to_intersect = add_dims_to_isl_set(
@@ -382,11 +379,11 @@ def create_dependency_constraint(
     # insert inames missing from doms to enable intersection
     domain_to_intersect = insert_missing_dims_and_reorder_by_name(
         domain_to_intersect, isl.dim_type.out,
-        append_apostrophes([statement_var_name] + dom_inames_ordered_before))
+        append_apostrophes([STATEMENT_VAR_NAME] + dom_inames_ordered_before))
     range_to_intersect = insert_missing_dims_and_reorder_by_name(
         range_to_intersect,
         isl.dim_type.out,
-        [statement_var_name] + dom_inames_ordered_after)
+        [STATEMENT_VAR_NAME] + dom_inames_ordered_after)
 
     # intersect doms
     map_with_loop_domain_constraints = all_constraints_map.intersect_domain(
