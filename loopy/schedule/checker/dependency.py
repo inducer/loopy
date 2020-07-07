@@ -186,7 +186,6 @@ def _convert_constraint_set_to_map(constraint_set, mv_count, src_position=None):
 def create_dependency_constraint(
         statement_dep_set,
         loop_priorities,
-        statement_var_pose=0,
         ):
     """Create a statement dependency constraint represented as a map from
         each statement instance to statement instances that must occur later,
@@ -201,10 +200,6 @@ def create_dependency_constraint(
     :arg loop_priorities: A list of tuples from the ``loop_priority``
         attribute of :class:`loopy.LoopKernel` specifying the loop nest
         ordering rules.
-
-    :arg statement_var_pose: A :class:`int` specifying which position in the
-        statement instance tuples holds the dimension representing the
-        statement id. Defaults to ``0``.
 
     :returns: An :class:`islpy.Map` mapping each statement instance to all
         statement instances that must occur later according to the constraints.
@@ -365,16 +360,18 @@ def create_dependency_constraint(
         )
 
     # now apply domain sets to constraint variables
+    statement_var_idx = 0  # index of statement_var dimension in map
+    # (anything other than 0 risks being out of bounds)
 
     # add statement variable to doms to enable intersection
     range_to_intersect = add_dims_to_isl_set(
         statement_dep_set.dom_after, isl.dim_type.out,
-        [STATEMENT_VAR_NAME], statement_var_pose)
+        [STATEMENT_VAR_NAME], statement_var_idx)
     domain_constraint_set = append_marker_to_isl_map_var_names(
         statement_dep_set.dom_before, isl.dim_type.set, marker="'")
     domain_to_intersect = add_dims_to_isl_set(
         domain_constraint_set, isl.dim_type.out,
-        [statement_var_name_prime], statement_var_pose)
+        [statement_var_name_prime], statement_var_idx)
 
     # insert inames missing from doms to enable intersection
     domain_to_intersect = insert_missing_dims_and_reorder_by_name(
