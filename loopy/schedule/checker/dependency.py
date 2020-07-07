@@ -184,8 +184,10 @@ def _convert_constraint_set_to_map(constraint_set, mv_count, src_position=None):
 
 
 def create_legacy_dependency_constraint(
-        statement_dep_set,
-        loop_priorities,
+        knl,
+        insn_id_before,
+        insn_id_after,
+        deps,
         ):
     """Create a statement dependency constraint represented as a map from
         each statement instance to statement instances that must occur later,
@@ -194,12 +196,18 @@ def create_legacy_dependency_constraint(
         specified condition on inames ``i',j',i,j`` is met. ``i'`` and ``j'``
         are the values of inames ``i`` and ``j`` in first statement instance.
 
-    :arg statement_dep_set: A :class:`StatementPairDependencySet` describing
-        the dependency relationship between the two statements.
+    :arg knl: A :class:`loopy.kernel.LoopKernel` containing the
+        depender and dependee instructions.
 
-    :arg loop_priorities: A list of tuples from the ``loop_priority``
-        attribute of :class:`loopy.LoopKernel` specifying the loop nest
-        ordering rules.
+    :arg insn_id_before: A :class:`str` specifying the :mod:`loopy`
+        instruction id for the dependee statement.
+
+    :arg insn_id_after: A :class:`str` specifying the :mod:`loopy`
+        instruction id for the depender statement.
+
+    :arg deps: A :class:`dict` mapping instances of :class:`DependencyType`
+        to the :mod:`loopy` kernel inames involved in that particular
+        dependency relationship.
 
     :returns: An :class:`islpy.Map` mapping each statement instance to all
         statement instances that must occur later according to the constraints.
@@ -218,10 +226,12 @@ def create_legacy_dependency_constraint(
     # This function uses the dependency given to create the following constraint:
     # Statement [s,i,j] comes before statement [s',i',j'] iff <constraint>
 
-    dom_inames_ordered_before = list_var_names_in_isl_sets(
-        [statement_dep_set.dom_before])
-    dom_inames_ordered_after = list_var_names_in_isl_sets(
-        [statement_dep_set.dom_after])
+    # TODO we're now computing these doms multiple times
+    # could be more efficient...
+    dom_before = knl.get_inames_domain(knl.id_to_insn[insn_id_before].within_inames)
+    dom_after = knl.get_inames_domain(knl.id_to_insn[insn_id_after].within_inames)
+    dom_inames_ordered_before = list_var_names_in_isl_sets([dom_before])
+    dom_inames_ordered_after = list_var_names_in_isl_sets([dom_after])
 
     # create some (ordered) isl vars to use, e.g., {s, i, j, s', i', j'}
     islvars = make_islvars_with_marker(
@@ -238,7 +248,7 @@ def create_legacy_dependency_constraint(
     # for each (dep_type, inames) pair, create 'happens before' constraint,
     # all_constraints_set will be the union of all these constraints
     dt = DependencyType
-    for dep_type, inames in statement_dep_set.deps.items():
+    for dep_type, inames in deps.items():
         # need to put inames in a list so that order of inames and inames'
         # matches when calling create_elementwise_comparison_conj...
         if not isinstance(inames, list):
@@ -254,7 +264,7 @@ def create_legacy_dependency_constraint(
 
             priority_known = False
             # if nesting info is provided:
-            if loop_priorities:
+            if knl.loop_priority:
                 # assumes all loop_priority tuples are consistent
 
                 # with multiple priority tuples, determine whether the combined
@@ -265,7 +275,7 @@ def create_legacy_dependency_constraint(
                 # remove irrelevant inames from priority tuples (because we're
                 # about to perform a costly operation on remaining tuples)
                 relevant_priorities = set()
-                for p_tuple in loop_priorities:
+                for p_tuple in knl.loop_priority:
                     new_tuple = [iname for iname in p_tuple if iname in inames_list]
                     # empty tuples and single tuples don't help us define
                     # a nesting, so ignore them (if we're dealing with a single
@@ -301,7 +311,7 @@ def create_legacy_dependency_constraint(
                         raise ValueError(
                             "create_dependency_constriant encountered invalid "
                             "priorities %s"
-                            % (loop_priorities))
+                            % (knl.loop_priority))
                     priority_known = True
                     priority_tuple = orders.pop()
 
@@ -338,10 +348,7 @@ def create_legacy_dependency_constraint(
 
         # get ints representing statements in PairwiseSchedule
         s_before_int = 0
-        s_after_int = 0 if (
-            statement_dep_set.statement_before.insn_id ==
-            statement_dep_set.statement_after.insn_id
-            ) else 1
+        s_after_int = 0 if insn_id_before == insn_id_after else 1
 
         # set statement_var_name == statement #
         constraint_set = constraint_set & islvars[statement_var_name_prime].eq_set(
@@ -365,10 +372,10 @@ def create_legacy_dependency_constraint(
 
     # add statement variable to doms to enable intersection
     range_to_intersect = add_dims_to_isl_set(
-        statement_dep_set.dom_after, isl.dim_type.out,
+        dom_after, isl.dim_type.out,
         [STATEMENT_VAR_NAME], statement_var_idx)
     domain_constraint_set = append_marker_to_isl_map_var_names(
-        statement_dep_set.dom_before, isl.dim_type.set, marker="'")
+        dom_before, isl.dim_type.set, marker="'")
     domain_to_intersect = add_dims_to_isl_set(
         domain_constraint_set, isl.dim_type.out,
         [statement_var_name_prime], statement_var_idx)

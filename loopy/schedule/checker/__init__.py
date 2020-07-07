@@ -265,8 +265,10 @@ def create_dependencies_from_legacy_knl(knl):
         # which maps statement instance to all stmt instances that must occur later
         # and is acquired from the non-preprocessed kernel
         constraint_map = create_legacy_dependency_constraint(
-            statement_pair_dep_set,
-            knl.loop_priority,
+            preprocessed_knl,
+            statement_pair_dep_set.statement_before.insn_id,
+            statement_pair_dep_set.statement_after.insn_id,
+            statement_pair_dep_set.deps,
             )
 
         dep_maps.add((
