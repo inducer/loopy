@@ -150,9 +150,9 @@ def get_schedule_for_statement_pair(
 # }}}
 
 
-def statement_pair_dep_sets_from_legacy_knl(knl):
+def create_dependencies_from_legacy_knl(knl):
     """Return a list of
-    :class:`loopy.schedule.checker.dependency.StatementPairDependencySet`
+    :class:`loopy.schedule.checker.dependency.TBD`
     instances created for a :class:`loopy.LoopKernel` containing legacy
     depencencies.
 
@@ -180,7 +180,10 @@ def statement_pair_dep_sets_from_legacy_knl(knl):
         :class:`loopy.schedule.checker.dependency.DependencyType`.
 
     """
-    # TODO maybe just eliminate this function since it doesn't do much
+
+    from loopy.schedule.checker.dependency import (
+        create_dependency_constraint,
+    )
 
     # Preprocess if not already preprocessed
     # note: kernels must always be preprocessed before scheduling
@@ -191,16 +194,7 @@ def statement_pair_dep_sets_from_legacy_knl(knl):
     from loopy.schedule.checker.dependency import (
         _create_dependencies_from_legacy_knl_old,
     )
-    return _create_dependencies_from_legacy_knl_old(preprocessed_knl)
-
-
-def create_dependencies_from_legacy_knl(knl):
-
-    from loopy.schedule.checker.dependency import (
-        create_dependency_constraint,
-    )
-
-    spds = statement_pair_dep_sets_from_legacy_knl(knl)
+    spds = _create_dependencies_from_legacy_knl_old(preprocessed_knl)
 
     dep_maps = set()
     for statement_pair_dep_set in spds:
