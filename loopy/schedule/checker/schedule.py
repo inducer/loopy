@@ -23,6 +23,34 @@ THE SOFTWARE.
 import islpy as isl
 
 
+STATEMENT_VAR_NAME = "_lp_linchk_statement"
+
+
+def set_statement_var_name(name):
+    """Set the :class:`str` specifying the name of the variable used
+        to represent the unique :class:`int` statement id in a
+        pairwise schedule.
+    """
+    global STATEMENT_VAR_NAME
+    STATEMENT_VAR_NAME = name
+
+
+LEX_VAR_PREFIX = "_lp_linchk_l"
+
+
+def set_lex_var_prefix(name):
+    """Set the :class:`str` specifying the prefix to be used for the variables
+    representing the dimensions in the lexicographic ordering used in a
+    pairwise schedule.
+
+    E.g., a prefix of "_lp_linchk_lex" might yield lexicographic dimension
+    variables "_lp_linchk_lex0", "_lp_linchk_lex1", "_lp_linchk_lex2". Cf.
+    :ref:`reserved-identifiers`.
+    """
+    global LEX_VAR_PREFIX
+    LEX_VAR_PREFIX = name
+
+
 class StatementRef(object):
     """A reference to a :mod:`loopy` statement.
 
@@ -128,22 +156,7 @@ class PairwiseScheduleBuilder(object):
         in a single lexicographic ordering. Points in lexicographic ordering
         are represented as a list of :class:`int` or as :class:`str`
         :mod:`loopy` inames.
-
-    .. attribute:: statement_var_name
-
-        A :class:`str` specifying the name of the variable used
-        to represent the unique :class:`int` statement id.
-
-    .. attribute:: lex_var_prefix
-
-        A :class:`str` specifying the prefix to be used for the variables
-        representing the dimensions in the lexicographic ordering. E.g.,
-        a prefix of "_lp_linchk_lex" might yield variables "_lp_linchk_lex0",
-        "_lp_linchk_lex1", "_lp_linchk_lex2". Cf. :ref:`reserved-identifiers`.
     """
-
-    statement_var_name = "_lp_linchk_statement"
-    lex_var_prefix = "_lp_linchk_l"
 
     def __init__(
             self,
@@ -349,8 +362,7 @@ class PairwiseScheduleBuilder(object):
             #  (lexicographic ordering dims)}
             dom_inames_ordered = list_var_names_in_isl_sets([dom])
 
-            in_names_sched = [
-                self.statement_var_name] + dom_inames_ordered[:]
+            in_names_sched = [STATEMENT_VAR_NAME] + dom_inames_ordered[:]
             sched_space = get_isl_space(
                 params_sched, in_names_sched, out_names_sched)
 
@@ -358,7 +370,7 @@ class PairwiseScheduleBuilder(object):
             # for intersection with sched map later
             dom_to_intersect = [
                 add_dims_to_isl_set(
-                    dom, isl.dim_type.set, [self.statement_var_name], 0), ]
+                    dom, isl.dim_type.set, [STATEMENT_VAR_NAME], 0), ]
 
             # Each map representing the schedule will map
             # statement instances -> lex time.
@@ -381,14 +393,13 @@ class PairwiseScheduleBuilder(object):
         return (map_before, map_after)
 
     def get_lex_var_names(self):
-        return [self.lex_var_prefix+str(i)
-                for i in range(self.max_lex_dims())]
+        return [LEX_VAR_PREFIX+str(i) for i in range(self.max_lex_dims())]
 
     def __str__(self):
 
         def stringify_sched_stmt_instance(stmt_inst):
             return "{\n[%s=%s,<inames>] -> %s;\n}" % (
-                self.statement_var_name,
+                STATEMENT_VAR_NAME,
                 stmt_inst.stmt_ref.int_id,
                 stmt_inst.lex_points)
 
