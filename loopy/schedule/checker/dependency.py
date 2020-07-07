@@ -23,7 +23,7 @@ THE SOFTWARE.
 import islpy as isl
 
 
-class DependencyType:
+class LegacyDependencyType:
     """Strings specifying a particular type of dependency relationship.
 
     .. attribute:: SAME
@@ -75,7 +75,7 @@ class StatementPairDependencySet(object):
 
     .. attribute:: deps
 
-       A :class:`dict` mapping instances of :class:`DependencyType` to
+       A :class:`dict` mapping instances of :class:`LegacyDependencyType` to
        the :mod:`loopy` kernel inames involved in that particular
        dependency relationship.
 
@@ -205,7 +205,7 @@ def create_legacy_dependency_constraint(
     :arg insn_id_after: A :class:`str` specifying the :mod:`loopy`
         instruction id for the depender statement.
 
-    :arg deps: A :class:`dict` mapping instances of :class:`DependencyType`
+    :arg deps: A :class:`dict` mapping instances of :class:`LegacyDependencyType`
         to the :mod:`loopy` kernel inames involved in that particular
         dependency relationship.
 
@@ -247,7 +247,7 @@ def create_legacy_dependency_constraint(
 
     # for each (dep_type, inames) pair, create 'happens before' constraint,
     # all_constraints_set will be the union of all these constraints
-    dt = DependencyType
+    ldt = LegacyDependencyType
     for dep_type, inames in deps.items():
         # need to put inames in a list so that order of inames and inames'
         # matches when calling create_elementwise_comparison_conj...
@@ -257,10 +257,10 @@ def create_legacy_dependency_constraint(
             inames_list = inames[:]
         inames_prime = append_apostrophes(inames_list)  # e.g., [j', k']
 
-        if dep_type == dt.SAME:
+        if dep_type == ldt.SAME:
             constraint_set = create_elementwise_comparison_conjunction_set(
                     inames_prime, inames_list, islvars, op="eq")
-        elif dep_type == dt.PRIOR:
+        elif dep_type == ldt.PRIOR:
 
             priority_known = False
             # if nesting info is provided:

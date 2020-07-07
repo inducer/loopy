@@ -162,7 +162,7 @@ def create_dependencies_from_legacy_knl(knl):
     dependnecy ``SAME(SNC)`` where ``SNC`` is the set of non-concurrent inames
     used by both ``insn0`` and ``insn1``, and ``SAME`` is the relationship
     specified by the ``SAME`` attribute of
-    :class:`loopy.schedule.checker.dependency.DependencyType`.
+    :class:`loopy.schedule.checker.dependency.LegacyDependencyType`.
 
     (2) For each subset of non-concurrent inames used by any instruction,
 
@@ -177,7 +177,7 @@ def create_dependencies_from_legacy_knl(knl):
         (d), connect each sink to each source (sink happens before source)
         with a ``PRIOR(SNC)`` dependency, where ``PRIOR`` is the
         relationship specified by the ``PRIOR`` attribute of
-        :class:`loopy.schedule.checker.dependency.DependencyType`.
+        :class:`loopy.schedule.checker.dependency.LegacyDependencyType`.
 
     """
 
@@ -185,7 +185,7 @@ def create_dependencies_from_legacy_knl(knl):
         create_legacy_dependency_constraint,
         get_dependency_sources_and_sinks,
         StatementPairDependencySet,
-        DependencyType,
+        LegacyDependencyType,
     )
     from loopy.schedule.checker.utils import (
         get_concurrent_inames,
@@ -217,7 +217,7 @@ def create_dependencies_from_legacy_knl(knl):
                 StatementPairDependencySet(
                     StatementRef(insn_id=insn_before.id),
                     StatementRef(insn_id=insn_after.id),
-                    {DependencyType.SAME: shared_non_conc_inames},
+                    {LegacyDependencyType.SAME: shared_non_conc_inames},
                     preprocessed_knl.get_inames_domain(insn_before_inames),
                     preprocessed_knl.get_inames_domain(insn_after_inames),
                     ))
@@ -254,7 +254,7 @@ def create_dependencies_from_legacy_knl(knl):
                     StatementPairDependencySet(
                         StatementRef(insn_id=sink_id),
                         StatementRef(insn_id=source_id),
-                        {DependencyType.PRIOR: shared_non_conc_inames},
+                        {LegacyDependencyType.PRIOR: shared_non_conc_inames},
                         preprocessed_knl.get_inames_domain(sink_insn_inames),
                         preprocessed_knl.get_inames_domain(source_insn_inames),
                         ))
