@@ -184,7 +184,6 @@ def create_dependencies_from_legacy_knl(knl):
     from loopy.schedule.checker.dependency import (
         create_legacy_dependency_constraint,
         get_dependency_sources_and_sinks,
-        StatementPairDependencySet,
         LegacyDependencyType,
     )
     from loopy.schedule.checker.utils import (
@@ -192,15 +191,14 @@ def create_dependencies_from_legacy_knl(knl):
         get_all_nonconcurrent_insn_iname_subsets,
         get_linearization_item_ids_within_inames,
     )
-    from loopy.schedule.checker.schedule import StatementRef
 
     # Preprocess if not already preprocessed
     # note: kernels must always be preprocessed before scheduling
     from loopy import preprocess_kernel
     preprocessed_knl = preprocess_kernel(knl)
 
-    # Create StatementPairDependencySet(s) from kernel dependencies
-    spds = set()
+    # Create constraint maps from kernel dependencies
+    dep_maps = set()
 
     # Introduce SAME dep for set of shared, non-concurrent inames
 
@@ -210,17 +208,26 @@ def create_dependencies_from_legacy_knl(knl):
             insn_before = preprocessed_knl.id_to_insn[insn_before_id]
             insn_before_inames = insn_before.within_inames
             insn_after_inames = insn_after.within_inames
-            shared_inames = insn_before_inames & insn_after_inames
-            shared_non_conc_inames = shared_inames & non_conc_inames
+            shared_non_conc_inames = (
+                insn_before_inames & insn_after_inames & non_conc_inames)
 
-            spds.add(
-                StatementPairDependencySet(
-                    StatementRef(insn_id=insn_before.id),
-                    StatementRef(insn_id=insn_after.id),
-                    {LegacyDependencyType.SAME: shared_non_conc_inames},
-                    preprocessed_knl.get_inames_domain(insn_before_inames),
-                    preprocessed_knl.get_inames_domain(insn_after_inames),
-                    ))
+            # TODO what to do if there is already a dep from insn_before->insn_after?
+
+            # create a map representing constraints from the dependency,
+            # which maps statement instance to all stmt instances that must occur
+            # later and is acquired from the non-preprocessed kernel
+            constraint_map = create_legacy_dependency_constraint(
+                preprocessed_knl,
+                insn_before_id,
+                insn_after.id,
+                {LegacyDependencyType.SAME: shared_non_conc_inames},
+                )
+
+            dep_maps.add((
+                insn_before_id,
+                insn_after.id,
+                constraint_map,
+                ))
 
     # loop-carried deps ------------------------------------------
 
@@ -247,42 +254,31 @@ def create_dependencies_from_legacy_knl(knl):
                 sink_insn_inames = preprocessed_knl.id_to_insn[sink_id].within_inames
                 source_insn_inames = preprocessed_knl.id_to_insn[
                     source_id].within_inames
-                shared_inames = sink_insn_inames & source_insn_inames
-                shared_non_conc_inames = shared_inames & non_conc_inames
+                shared_non_conc_inames = (
+                    sink_insn_inames & source_insn_inames & non_conc_inames)
 
-                spds.add(
-                    StatementPairDependencySet(
-                        StatementRef(insn_id=sink_id),
-                        StatementRef(insn_id=source_id),
-                        {LegacyDependencyType.PRIOR: shared_non_conc_inames},
-                        preprocessed_knl.get_inames_domain(sink_insn_inames),
-                        preprocessed_knl.get_inames_domain(source_insn_inames),
-                        ))
+                # create a map representing constraints from the dependency,
+                # which maps statement instance to all stmt instances that must occur
+                # later and is acquired from the non-preprocessed kernel
+                constraint_map = create_legacy_dependency_constraint(
+                    preprocessed_knl,
+                    sink_id,
+                    source_id,
+                    {LegacyDependencyType.PRIOR: shared_non_conc_inames},
+                    )
 
-    dep_maps = set()
-    for statement_pair_dep_set in spds:
-        # create a map representing constraints from the dependency,
-        # which maps statement instance to all stmt instances that must occur later
-        # and is acquired from the non-preprocessed kernel
-        constraint_map = create_legacy_dependency_constraint(
-            preprocessed_knl,
-            statement_pair_dep_set.statement_before.insn_id,
-            statement_pair_dep_set.statement_after.insn_id,
-            statement_pair_dep_set.deps,
-            )
-
-        dep_maps.add((
-            statement_pair_dep_set.statement_before.insn_id,
-            statement_pair_dep_set.statement_after.insn_id,
-            constraint_map,
-            ))
+                # TODO what to do if there is already a dep from sink->source?
+                dep_maps.add((
+                    sink_id,
+                    source_id,
+                    constraint_map,
+                    ))
 
     return dep_maps
 
 
 def check_linearization_validity(
         knl,
-        #statement_pair_dep_sets,
         dep_maps,
         linearization_items,
         ):
@@ -302,7 +298,6 @@ def check_linearization_validity(
 
     # For each dependency, create+test linearization containing pair of insns------
     linearization_is_valid = True
-    #for statement_pair_dep_set in statement_pair_dep_sets:
     for insn_id_before, insn_id_after, constraint_map in dep_maps:
         # TODO, since we now get the doms inside
         # build_maps()
