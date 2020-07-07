@@ -194,9 +194,37 @@ def statement_pair_dep_sets_from_legacy_knl(knl):
     return _create_dependencies_from_legacy_knl_old(preprocessed_knl)
 
 
+def create_dependencies_from_legacy_knl(knl):
+
+    from loopy.schedule.checker.dependency import (
+        create_dependency_constraint,
+    )
+
+    spds = statement_pair_dep_sets_from_legacy_knl(knl)
+
+    dep_maps = set()
+    for statement_pair_dep_set in spds:
+        # create a map representing constraints from the dependency,
+        # which maps statement instance to all stmt instances that must occur later
+        # and is acquired from the non-preprocessed kernel
+        constraint_map = create_dependency_constraint(
+            statement_pair_dep_set,
+            knl.loop_priority,
+            )
+
+        dep_maps.add((
+            statement_pair_dep_set.statement_before.insn_id,
+            statement_pair_dep_set.statement_after.insn_id,
+            constraint_map,
+            ))
+
+    return dep_maps
+
+
 def check_linearization_validity(
         knl,
-        statement_pair_dep_sets,
+        #statement_pair_dep_sets,
+        dep_maps,
         linearization_items,
         ):
     # TODO document
@@ -218,9 +246,8 @@ def check_linearization_validity(
 
     # For each dependency, create+test linearization containing pair of insns------
     linearization_is_valid = True
-    for statement_pair_dep_set in statement_pair_dep_sets:
-        s_before = statement_pair_dep_set.statement_before
-        s_after = statement_pair_dep_set.statement_after
+    #for statement_pair_dep_set in statement_pair_dep_sets:
+    for insn_id_before, insn_id_after, constraint_map in dep_maps:
         # TODO, since we now get the doms inside
         # build_maps()
         # reconsider the content of statement_pair_dep_set, which
@@ -231,8 +258,8 @@ def check_linearization_validity(
         sched_builder = get_schedule_for_statement_pair(
             preprocessed_knl,
             linearization_items,
-            s_before.insn_id,
-            s_after.insn_id,
+            insn_id_before,
+            insn_id_after,
             )
 
         # Get two isl maps from the PairwiseScheduleBuilder,
@@ -249,14 +276,6 @@ def check_linearization_validity(
             isl_sched_map_before,
             isl_sched_map_after,
             sched_lex_order_map,
-            )
-
-        # create a map representing constraints from the dependency,
-        # which maps statement instance to all stmt instances that must occur later
-        # and is acquired from the non-preprocessed kernel
-        constraint_map = create_dependency_constraint(
-            statement_pair_dep_set,
-            knl.loop_priority,
             )
 
         # reorder variables/params in constraint map space to match SIO so we can
@@ -289,7 +308,8 @@ def check_linearization_validity(
             print("================ constraint check failure =================")
             print("Constraint map not subset of SIO")
             print("Dependencies:")
-            print(statement_pair_dep_set)
+            print(insn_id_before+"->"+insn_id_after)
+            print(prettier_map_string(constraint_map))
             print("Statement instance ordering:")
             print(prettier_map_string(sio))
             print("constraint_map.gist(sio):")

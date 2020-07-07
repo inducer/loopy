@@ -663,11 +663,11 @@ def test_linearization_checker_with_loop_prioritization():
 
     unprocessed_knl = knl.copy()
 
-    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
-        unprocessed_knl)
+    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
     if hasattr(lp, "add_dependencies_v2"):
+        # TODO update this after dep refactoring
         knl = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl, statement_pair_dep_sets)
+            knl, deps)
 
     # get a linearization to check
     if knl.state < KernelState.PREPROCESSED:
@@ -676,7 +676,7 @@ def test_linearization_checker_with_loop_prioritization():
     linearization_items = knl.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+        unprocessed_knl, deps, linearization_items)
     assert linearization_is_valid
 
 
@@ -701,11 +701,11 @@ def test_linearization_checker_with_matmul():
 
     unprocessed_knl = knl.copy()
 
-    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
-        unprocessed_knl)
+    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
     if hasattr(lp, "add_dependencies_v2"):
+        # TODO update this after dep refactoring
         knl = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl, statement_pair_dep_sets)
+            knl, deps)
 
     # get a linearization to check
     if knl.state < KernelState.PREPROCESSED:
@@ -714,7 +714,7 @@ def test_linearization_checker_with_matmul():
     linearization_items = knl.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+        unprocessed_knl, deps, linearization_items)
     assert linearization_is_valid
 
 
@@ -752,11 +752,11 @@ def test_linearization_checker_with_dependent_domain():
 
     unprocessed_knl = knl.copy()
 
-    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
-        unprocessed_knl)
+    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
     if hasattr(lp, "add_dependencies_v2"):
+        # TODO update this after dep refactoring
         knl = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl, statement_pair_dep_sets)
+            knl, deps)
 
     # get a linearization to check
     if knl.state < KernelState.PREPROCESSED:
@@ -765,7 +765,7 @@ def test_linearization_checker_with_dependent_domain():
     linearization_items = knl.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+        unprocessed_knl, deps, linearization_items)
     assert linearization_is_valid
 
 
@@ -806,11 +806,11 @@ def test_linearization_checker_with_stroud_bernstein():
 
     unprocessed_knl = knl.copy()
 
-    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
-        unprocessed_knl)
+    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
     if hasattr(lp, "add_dependencies_v2"):
+        # TODO update this after dep refactoring
         knl = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl, statement_pair_dep_sets)
+            knl, deps)
 
     # get a linearization to check
     if knl.state < KernelState.PREPROCESSED:
@@ -819,7 +819,7 @@ def test_linearization_checker_with_stroud_bernstein():
     linearization_items = knl.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+        unprocessed_knl, deps, linearization_items)
     assert linearization_is_valid
 
 
@@ -843,11 +843,11 @@ def test_linearization_checker_with_nop():
 
     unprocessed_knl = knl.copy()
 
-    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
-        unprocessed_knl)
+    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
     if hasattr(lp, "add_dependencies_v2"):
+        # TODO update this after dep refactoring
         knl = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl, statement_pair_dep_sets)
+            knl, deps)
 
     # get a linearization to check
     if knl.state < KernelState.PREPROCESSED:
@@ -856,7 +856,7 @@ def test_linearization_checker_with_nop():
     linearization_items = knl.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+        unprocessed_knl, deps, linearization_items)
     assert linearization_is_valid
 
 
@@ -890,11 +890,11 @@ def test_linearization_checker_with_multi_domain():
 
     unprocessed_knl = knl.copy()
 
-    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
-        unprocessed_knl)
+    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
     if hasattr(lp, "add_dependencies_v2"):
+        # TODO update this after dep refactoring
         knl = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl, statement_pair_dep_sets)
+            knl, deps)
 
     # get a linearization to check
     if knl.state < KernelState.PREPROCESSED:
@@ -903,7 +903,7 @@ def test_linearization_checker_with_multi_domain():
     linearization_items = knl.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+        unprocessed_knl, deps, linearization_items)
     assert linearization_is_valid
 
 
@@ -926,11 +926,11 @@ def test_linearization_checker_with_loop_carried_deps():
 
     unprocessed_knl = knl.copy()
 
-    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
-        unprocessed_knl)
+    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
     if hasattr(lp, "add_dependencies_v2"):
+        # TODO update this after dep refactoring
         knl = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl, statement_pair_dep_sets)
+            knl, deps)
 
     # get a linearization to check
     if knl.state < KernelState.PREPROCESSED:
@@ -939,7 +939,7 @@ def test_linearization_checker_with_loop_carried_deps():
     linearization_items = knl.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+        unprocessed_knl, deps, linearization_items)
     assert linearization_is_valid
 
 
@@ -969,11 +969,11 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
 
     unprocessed_knl = knl0.copy()
 
-    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
-        unprocessed_knl)
+    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
     if hasattr(lp, "add_dependencies_v2"):
+        # TODO update this after dep refactoring
         knl0 = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl0, statement_pair_dep_sets)
+            knl0, deps)
 
     # get a linearization to check
     if knl0.state < KernelState.PREPROCESSED:
@@ -982,7 +982,7 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
     linearization_items = knl0.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+        unprocessed_knl, deps, linearization_items)
     assert linearization_is_valid
 
     # no error:
@@ -991,11 +991,11 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
 
     unprocessed_knl = knl1.copy()
 
-    statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
-        unprocessed_knl)
+    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
     if hasattr(lp, "add_dependencies_v2"):
+        # TODO update this after dep refactoring
         knl1 = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl1, statement_pair_dep_sets)
+            knl1, deps)
 
     # get a linearization to check
     if knl1.state < KernelState.PREPROCESSED:
@@ -1004,22 +1004,35 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
     linearization_items = knl1.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, statement_pair_dep_sets, linearization_items)
+        unprocessed_knl, deps, linearization_items)
     assert linearization_is_valid
 
     # error (cycle):
     knl2 = lp.prioritize_loops(ref_knl, "h,i,j")
     knl2 = lp.prioritize_loops(knl2, "j,k")
+    # TODO think about when legacy deps should be updated based on prio changes
+
     try:
         if hasattr(lp, "constrain_loop_nesting"):
             knl2 = lp.constrain_loop_nesting(knl2, "k,i")  # pylint:disable=no-member
+
+            # legacy deps depend on priorities, so update deps using new knl
+            deps = lp.create_dependencies_from_legacy_knl(knl2)
+            if hasattr(lp, "add_dependencies_v2"):
+                # TODO update this after dep refactoring
+                knl2 = lp.add_dependencies_v2(  # pylint:disable=no-member
+                    knl2, deps)
         else:
             knl2 = lp.prioritize_loops(knl2, "k,i")
 
-            unprocessed_knl = knl2.copy()
+            # legacy deps depend on priorities, so update deps using new knl
+            deps = lp.create_dependencies_from_legacy_knl(knl2)
+            if hasattr(lp, "add_dependencies_v2"):
+                # TODO update this after dep refactoring
+                knl2 = lp.add_dependencies_v2(  # pylint:disable=no-member
+                    knl2, deps)
 
-            statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
-                unprocessed_knl)
+            unprocessed_knl = knl2.copy()
 
             # get a linearization to check
             if knl2.state < KernelState.PREPROCESSED:
@@ -1028,7 +1041,7 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
             linearization_items = knl2.linearization
 
             linearization_is_valid = lp.check_linearization_validity(
-                unprocessed_knl, statement_pair_dep_sets, linearization_items)
+                unprocessed_knl, deps, linearization_items)
         # should raise error
         assert False
     except ValueError as e:
@@ -1039,17 +1052,29 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
 
     # error (inconsistent priorities):
     knl3 = lp.prioritize_loops(ref_knl, "h,i,j,k")
+    # TODO think about when legacy deps should be updated based on prio changes
     try:
         if hasattr(lp, "constrain_loop_nesting"):
             knl3 = lp.constrain_loop_nesting(  # pylint:disable=no-member
                 knl3, "h,j,i,k")
+
+            # legacy deps depend on priorities, so update deps using new knl
+            deps = lp.create_dependencies_from_legacy_knl(knl3)
+            if hasattr(lp, "add_dependencies_v2"):
+                # TODO update this after dep refactoring
+                knl3 = lp.add_dependencies_v2(  # pylint:disable=no-member
+                    knl3, deps)
         else:
             knl3 = lp.prioritize_loops(knl3, "h,j,i,k")
 
-            unprocessed_knl = knl3.copy()
+            # legacy deps depend on priorities, so update deps using new knl
+            deps = lp.create_dependencies_from_legacy_knl(knl3)
+            if hasattr(lp, "add_dependencies_v2"):
+                # TODO update this after dep refactoring
+                knl3 = lp.add_dependencies_v2(  # pylint:disable=no-member
+                    knl3, deps)
 
-            statement_pair_dep_sets = lp.statement_pair_dep_sets_from_legacy_knl(
-                unprocessed_knl)
+            unprocessed_knl = knl3.copy()
 
             # get a linearization to check
             if knl3.state < KernelState.PREPROCESSED:
@@ -1058,7 +1083,7 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
             linearization_items = knl3.linearization
 
             linearization_is_valid = lp.check_linearization_validity(
-                unprocessed_knl, statement_pair_dep_sets, linearization_items)
+                unprocessed_knl, deps, linearization_items)
         # should raise error
         assert False
     except ValueError as e:
