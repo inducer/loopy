@@ -188,8 +188,6 @@ def create_dependency_constraint(
         loop_priorities,
         statement_var_name,
         statement_var_pose=0,
-        dom_inames_ordered_before=None,
-        dom_inames_ordered_after=None,
         ):
     """Create a statement dependency constraint represented as a map from
         each statement instance to statement instances that must occur later,
@@ -212,12 +210,6 @@ def create_dependency_constraint(
         statement instance tuples holds the dimension representing the
         statement id. Defaults to ``0``.
 
-    :arg all_dom_inames_ordered_before: A :class:`list` of :class:`str`
-        specifying an order for the dimensions representing dependee inames.
-
-    :arg all_dom_inames_ordered_after: A :class:`list` of :class:`str`
-        specifying an order for the dimensions representing depender inames.
-
     :returns: An :class:`islpy.Map` mapping each statement instance to all
         statement instances that must occur later according to the constraints.
 
@@ -234,12 +226,10 @@ def create_dependency_constraint(
     # This function uses the dependency given to create the following constraint:
     # Statement [s,i,j] comes before statement [s',i',j'] iff <constraint>
 
-    if dom_inames_ordered_before is None:
-        dom_inames_ordered_before = list_var_names_in_isl_sets(
-            [statement_dep_set.dom_before])
-    if dom_inames_ordered_after is None:
-        dom_inames_ordered_after = list_var_names_in_isl_sets(
-            [statement_dep_set.dom_after])
+    dom_inames_ordered_before = list_var_names_in_isl_sets(
+        [statement_dep_set.dom_before])
+    dom_inames_ordered_after = list_var_names_in_isl_sets(
+        [statement_dep_set.dom_after])
 
     # create some (ordered) isl vars to use, e.g., {s, i, j, s', i', j'}
     islvars = make_islvars_with_marker(
