@@ -350,7 +350,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         kernel_info = self.kernel_info(self.arg_to_dtype_set(kwargs))
 
-        return kernel_info.invoker(
+        return kernel_info.invoker.get_picklable_function()(
                 kernel_info.cl_kernels, queue, allocator, wait_for,
                 out_host, **kwargs)
 

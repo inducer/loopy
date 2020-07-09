@@ -451,5 +451,5 @@ class CKernelExecutor(KernelExecutorBase):
 
         kernel_info = self.kernel_info(self.arg_to_dtype_set(kwargs))
 
-        return kernel_info.invoker(
+        return kernel_info.invoker.get_picklable_function()(
                 kernel_info.c_kernels, *args, **kwargs)
