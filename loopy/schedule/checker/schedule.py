@@ -22,33 +22,29 @@ THE SOFTWARE.
 
 import islpy as isl
 
+__doc__ = """
 
-STATEMENT_VAR_NAME = "_lp_linchk_statement"
+.. data:: LIN_CHECK_IDENTIFIER_PREFIX
 
+    The prefix for identifiers involved in linearization checking.
 
-def set_statement_var_name(name):
-    """Set the :class:`str` specifying the name of the variable used
-        to represent the unique :class:`int` statement id in a
-        pairwise schedule.
-    """
-    global STATEMENT_VAR_NAME
-    STATEMENT_VAR_NAME = name
-
-
-LEX_VAR_PREFIX = "_lp_linchk_l"
-
-
-def set_lex_var_prefix(name):
-    """Set the :class:`str` specifying the prefix to be used for the variables
-    representing the dimensions in the lexicographic ordering used in a
-    pairwise schedule.
+.. data:: LEX_VAR_PREFIX
 
     E.g., a prefix of "_lp_linchk_lex" might yield lexicographic dimension
     variables "_lp_linchk_lex0", "_lp_linchk_lex1", "_lp_linchk_lex2". Cf.
     :ref:`reserved-identifiers`.
-    """
-    global LEX_VAR_PREFIX
-    LEX_VAR_PREFIX = name
+
+.. data:: STATEMENT_VAR_NAME
+
+    Set the :class:`str` specifying the prefix to be used for the variables
+    representing the dimensions in the lexicographic ordering used in a
+    pairwise schedule.
+
+"""
+
+LIN_CHECK_IDENTIFIER_PREFIX = "_lp_linchk_"
+LEX_VAR_PREFIX = "%sl" % (LIN_CHECK_IDENTIFIER_PREFIX)
+STATEMENT_VAR_NAME = "%sstatement" % (LIN_CHECK_IDENTIFIER_PREFIX)
 
 
 class StatementRef(object):
