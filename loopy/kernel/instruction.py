@@ -171,8 +171,7 @@ class InstructionBase(ImmutableRecord):
             no_sync_with,
             within_inames_is_final, within_inames,
             priority,
-            predicates, tags,
-            forced_iname_deps=None, forced_iname_deps_is_final=None):
+            predicates, tags):
 
         if predicates is None:
             predicates = frozenset()
@@ -829,8 +828,7 @@ class Assignment(MultiAssignmentBase):
             within_inames=None,
             tags=None,
             temp_var_type=Optional(), atomicity=(),
-            priority=0, predicates=frozenset(),
-            forced_iname_deps=None, forced_iname_deps_is_final=None):
+            priority=0, predicates=frozenset()):
 
         super(Assignment, self).__init__(
                 id=id,
@@ -843,9 +841,7 @@ class Assignment(MultiAssignmentBase):
                 within_inames=within_inames,
                 priority=priority,
                 predicates=predicates,
-                tags=tags,
-                forced_iname_deps=forced_iname_deps,
-                forced_iname_deps_is_final=forced_iname_deps_is_final)
+                tags=tags)
 
         from loopy.symbolic import parse
         if isinstance(assignee, str):
@@ -963,9 +959,7 @@ class CallInstruction(MultiAssignmentBase):
             within_inames=None,
             tags=None,
             temp_var_types=None,
-            priority=0, predicates=frozenset(),
-            forced_iname_deps=None,
-            forced_iname_deps_is_final=None):
+            priority=0, predicates=frozenset()):
 
         super(CallInstruction, self).__init__(
                 id=id,
@@ -978,9 +972,7 @@ class CallInstruction(MultiAssignmentBase):
                 within_inames=within_inames,
                 priority=priority,
                 predicates=predicates,
-                tags=tags,
-                forced_iname_deps=forced_iname_deps,
-                forced_iname_deps_is_final=forced_iname_deps_is_final)
+                tags=tags)
 
         from pymbolic.primitives import Call
         from loopy.symbolic import Reduction
