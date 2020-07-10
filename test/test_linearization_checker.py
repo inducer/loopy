@@ -35,6 +35,10 @@ from loopy import (
     preprocess_kernel,
     get_one_linearized_kernel,
 )
+from loopy.schedule.checker.schedule import (
+    LEX_VAR_PREFIX,
+    STATEMENT_VAR_NAME,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +145,13 @@ def test_pairwise_schedule_and_map_creation():
         if isinstance(item, RunInstruction):
             linearized_insn_ord.append(item.insn_id)
 
+    def _lex_space_string(dim_vals):
+        # Return a string describing lex space dimension assignments
+        # (used to create maps below)
+        return ", ".join(
+            ["%s%d=%s" % (LEX_VAR_PREFIX, idx, str(val))
+            for idx, val in enumerate(dim_vals)])
+
     # Relationship between insn_a and insn_b ---------------------------------------
 
     assert sched_ab.stmt_instance_before.lex_points == [0, 'i', 0, 'k', 0]
@@ -153,21 +164,21 @@ def test_pairwise_schedule_and_map_creation():
     # Create expected maps, align, compare
 
     sched_map_before_expected = isl.Map(
-        "[pi, pk] -> { "
-        "[_lp_linchk_statement=0, i, k] -> "
-        "[_lp_linchk_l0=0, _lp_linchk_l1=i, _lp_linchk_l2=0, _lp_linchk_l3=k, "
-        "_lp_linchk_l4=0] : "
-        "0 <= i < pi and 0 <= k < pk }"
+        "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_space_string(["0", "i", "0", "k", "0"]),
+            )
         )
     sched_map_before_expected = ensure_dim_names_match_and_align(
         sched_map_before_expected, sched_map_before)
 
     sched_map_after_expected = isl.Map(
-        "[pi, pj] -> { "
-        "[_lp_linchk_statement=1, i, j] -> "
-        "[_lp_linchk_l0=0, _lp_linchk_l1=i, _lp_linchk_l2=1, _lp_linchk_l3=j, "
-        "_lp_linchk_l4=0] : "
-        "0 <= i < pi and 0 <= j < pj }"
+        "[pi, pj] -> { [%s=1, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_space_string(["0", "i", "1", "j", "0"]),
+            )
         )
     sched_map_after_expected = ensure_dim_names_match_and_align(
         sched_map_after_expected, sched_map_after)
@@ -188,21 +199,21 @@ def test_pairwise_schedule_and_map_creation():
     # Create expected maps, align, compare
 
     sched_map_before_expected = isl.Map(
-        "[pi, pk] -> { "
-        "[_lp_linchk_statement=0, i, k] -> "
-        "[_lp_linchk_l0=0, _lp_linchk_l1=i, _lp_linchk_l2=0, _lp_linchk_l3=k, "
-        "_lp_linchk_l4=0] : "
-        "0 <= i < pi and 0 <= k < pk }"
+        "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_space_string(["0", "i", "0", "k", "0"]),
+            )
         )
     sched_map_before_expected = ensure_dim_names_match_and_align(
         sched_map_before_expected, sched_map_before)
 
     sched_map_after_expected = isl.Map(
-        "[pi, pj] -> { "
-        "[_lp_linchk_statement=1, i, j] -> "
-        "[_lp_linchk_l0=0, _lp_linchk_l1=i, _lp_linchk_l2=1, _lp_linchk_l3=j, "
-        "_lp_linchk_l4=0] : "
-        "0 <= i < pi and 0 <= j < pj }"
+        "[pi, pj] -> { [%s=1, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_space_string(["0", "i", "1", "j", "0"]),
+            )
         )
     sched_map_after_expected = ensure_dim_names_match_and_align(
         sched_map_after_expected, sched_map_after)
@@ -227,23 +238,21 @@ def test_pairwise_schedule_and_map_creation():
         # Create expected maps, align, compare
 
         sched_map_before_expected = isl.Map(
-            "[pi, pk] -> { "
-            "[_lp_linchk_statement=0, i, k] -> "
-            "[_lp_linchk_l0=%d, _lp_linchk_l1=i, _lp_linchk_l2=0, _lp_linchk_l3=k, "
-            "_lp_linchk_l4=0] : "
-            "0 <= i < pi and 0 <= k < pk }"
-            % (a_lex_idx)
+            "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
+            % (
+                STATEMENT_VAR_NAME,
+                _lex_space_string([a_lex_idx, "i", "0", "k", "0"]),
+                )
             )
         sched_map_before_expected = ensure_dim_names_match_and_align(
             sched_map_before_expected, sched_map_before)
 
         sched_map_after_expected = isl.Map(
-            "[pt] -> { "
-            "[_lp_linchk_statement=1, t] -> "
-            "[_lp_linchk_l0=%d, _lp_linchk_l1=t, _lp_linchk_l2=0, _lp_linchk_l3=0, "
-            "_lp_linchk_l4=0] : "
-            "0 <= t < pt }"
-            % (d_lex_idx)
+            "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
+            % (
+                STATEMENT_VAR_NAME,
+                _lex_space_string([d_lex_idx, "t", "0", "0", "0"]),
+                )
             )
         sched_map_after_expected = ensure_dim_names_match_and_align(
             sched_map_after_expected, sched_map_after)
@@ -275,23 +284,21 @@ def test_pairwise_schedule_and_map_creation():
         # Create expected maps, align, compare
 
         sched_map_before_expected = isl.Map(
-            "[pi, pj] -> { "
-            "[_lp_linchk_statement=0, i, j] -> "
-            "[_lp_linchk_l0=0, _lp_linchk_l1=i, _lp_linchk_l2=0, _lp_linchk_l3=j, "
-            "_lp_linchk_l4=%d] : "
-            "0 <= i < pi and 0 <= j < pj }"
-            % (b_lex_idx)
+            "[pi, pj] -> { [%s=0, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
+            % (
+                STATEMENT_VAR_NAME,
+                _lex_space_string(["0", "i", "0", "j", b_lex_idx]),
+                )
             )
         sched_map_before_expected = ensure_dim_names_match_and_align(
             sched_map_before_expected, sched_map_before)
 
         sched_map_after_expected = isl.Map(
-            "[pi, pj] -> { "
-            "[_lp_linchk_statement=1, i, j] -> "
-            "[_lp_linchk_l0=0, _lp_linchk_l1=i, _lp_linchk_l2=0, _lp_linchk_l3=j, "
-            "_lp_linchk_l4=%d] : "
-            "0 <= i < pi and 0 <= j < pj }"
-            % (c_lex_idx)
+            "[pi, pj] -> { [%s=1, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
+            % (
+                STATEMENT_VAR_NAME,
+                _lex_space_string(["0", "i", "0", "j", c_lex_idx]),
+                )
             )
         sched_map_after_expected = ensure_dim_names_match_and_align(
             sched_map_after_expected, sched_map_after)
@@ -323,23 +330,21 @@ def test_pairwise_schedule_and_map_creation():
         # Create expected maps, align, compare
 
         sched_map_before_expected = isl.Map(
-            "[pi, pj] -> { "
-            "[_lp_linchk_statement=0, i, j] -> "
-            "[_lp_linchk_l0=%d, _lp_linchk_l1=i, _lp_linchk_l2=0, _lp_linchk_l3=j, "
-            "_lp_linchk_l4=0] : "
-            "0 <= i < pi and 0 <= j < pj }"
-            % (b_lex_idx)
+            "[pi, pj] -> { [%s=0, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
+            % (
+                STATEMENT_VAR_NAME,
+                _lex_space_string([b_lex_idx, "i", "0", "j", "0"]),
+                )
             )
         sched_map_before_expected = ensure_dim_names_match_and_align(
             sched_map_before_expected, sched_map_before)
 
         sched_map_after_expected = isl.Map(
-            "[pt] -> { "
-            "[_lp_linchk_statement=1, t] -> "
-            "[_lp_linchk_l0=%d, _lp_linchk_l1=t, _lp_linchk_l2=0, _lp_linchk_l3=0, "
-            "_lp_linchk_l4=0] : "
-            "0 <= t < pt }"
-            % (d_lex_idx)
+            "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
+            % (
+                STATEMENT_VAR_NAME,
+                _lex_space_string([d_lex_idx, "t", "0", "0", "0"]),
+                )
             )
         sched_map_after_expected = ensure_dim_names_match_and_align(
             sched_map_after_expected, sched_map_after)
@@ -371,23 +376,21 @@ def test_pairwise_schedule_and_map_creation():
         # Create expected maps, align, compare
 
         sched_map_before_expected = isl.Map(
-            "[pi, pj] -> { "
-            "[_lp_linchk_statement=0, i, j] -> "
-            "[_lp_linchk_l0=%d, _lp_linchk_l1=i, _lp_linchk_l2=0, _lp_linchk_l3=j, "
-            "_lp_linchk_l4=0] : "
-            "0 <= i < pi and 0 <= j < pj }"
-            % (c_lex_idx)
+            "[pi, pj] -> { [%s=0, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
+            % (
+                STATEMENT_VAR_NAME,
+                _lex_space_string([c_lex_idx, "i", "0", "j", "0"]),
+                )
             )
         sched_map_before_expected = ensure_dim_names_match_and_align(
             sched_map_before_expected, sched_map_before)
 
         sched_map_after_expected = isl.Map(
-            "[pt] -> { "
-            "[_lp_linchk_statement=1, t] -> "
-            "[_lp_linchk_l0=%d, _lp_linchk_l1=t, _lp_linchk_l2=0, _lp_linchk_l3=0, "
-            "_lp_linchk_l4=0] : "
-            "0 <= t < pt }"
-            % (d_lex_idx)
+            "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
+            % (
+                STATEMENT_VAR_NAME,
+                _lex_space_string([d_lex_idx, "t", "0", "0", "0"]),
+                )
             )
         sched_map_after_expected = ensure_dim_names_match_and_align(
             sched_map_after_expected, sched_map_after)
