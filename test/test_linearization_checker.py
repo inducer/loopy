@@ -494,35 +494,21 @@ def test_statement_instance_ordering_creation():
 
         assert sio_aligned == expected_sio
 
-    expected_lex_order_map = isl.Map("{ "
-        "[_lp_linchk_l0', _lp_linchk_l1', _lp_linchk_l2', _lp_linchk_l3', "
-        "_lp_linchk_l4']"
-        " -> "
-        "[_lp_linchk_l0, _lp_linchk_l1, _lp_linchk_l2, _lp_linchk_l3, "
-        "_lp_linchk_l4]"
-        ":"
+    expected_lex_order_map = isl.Map(
+        "{{ "
+        "[{0}0', {0}1', {0}2', {0}3', {0}4'] -> [{0}0, {0}1, {0}2, {0}3, {0}4] :"
         "("
-        "_lp_linchk_l0' < _lp_linchk_l0 "
+        "{0}0' < {0}0 "
         ") or ("
-        "_lp_linchk_l0'= _lp_linchk_l0 and "
-        "_lp_linchk_l1' < _lp_linchk_l1 "
+        "{0}0'={0}0 and {0}1' < {0}1 "
         ") or ("
-        "_lp_linchk_l0'= _lp_linchk_l0 and "
-        "_lp_linchk_l1'= _lp_linchk_l1 and "
-        "_lp_linchk_l2' < _lp_linchk_l2 "
+        "{0}0'={0}0 and {0}1'={0}1 and {0}2' < {0}2 "
         ") or ("
-        "_lp_linchk_l0'= _lp_linchk_l0 and "
-        "_lp_linchk_l1'= _lp_linchk_l1 and "
-        "_lp_linchk_l2'= _lp_linchk_l2 and "
-        "_lp_linchk_l3' < _lp_linchk_l3 "
+        "{0}0'={0}0 and {0}1'={0}1 and {0}2'={0}2 and {0}3' < {0}3 "
         ") or ("
-        "_lp_linchk_l0'= _lp_linchk_l0 and "
-        "_lp_linchk_l1'= _lp_linchk_l1 and "
-        "_lp_linchk_l2'= _lp_linchk_l2 and "
-        "_lp_linchk_l3'= _lp_linchk_l3 and "
-        "_lp_linchk_l4' < _lp_linchk_l4"
+        "{0}0'={0}0 and {0}1'={0}1 and {0}2'={0}2 and {0}3'={0}3 and {0}4' < {0}4"
         ")"
-        "}")
+        "}}".format(LEX_VAR_PREFIX))
 
     # Isl ignores these apostrophes, but test would still pass since it ignores
     # variable names when checking for equality. Even so, explicitly add apostrophes
@@ -533,12 +519,12 @@ def test_statement_instance_ordering_creation():
     # Relationship between insn_a and insn_b ---------------------------------------
 
     expected_sio = isl.Map(
-        "[pi, pj, pk] -> { "
-        "[_lp_linchk_statement'=0, i', k'] -> [_lp_linchk_statement=1, i, j]:"
+        "[pi, pj, pk] -> {{ "
+        "[{0}'=0, i', k'] -> [{0}=1, i, j] : "
         "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj and 0 <= i < pi and i > i'; "
-        "[_lp_linchk_statement'=0, i', k'] -> [_lp_linchk_statement=1, i=i', j]:"
+        "[{0}'=0, i', k'] -> [{0}=1, i=i', j] : "
         "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj "
-        "}"
+        "}}".format(STATEMENT_VAR_NAME)
         )
     # isl ignores these apostrophes, so explicitly add them
     expected_sio = append_marker_to_isl_map_var_names(
@@ -550,12 +536,12 @@ def test_statement_instance_ordering_creation():
     # Relationship between insn_a and insn_c ---------------------------------------
 
     expected_sio = isl.Map(
-        "[pi, pj, pk] -> { "
-        "[_lp_linchk_statement'=0, i', k'] -> [_lp_linchk_statement=1, i, j]:"
+        "[pi, pj, pk] -> {{ "
+        "[{0}'=0, i', k'] -> [{0}=1, i, j] : "
         "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj and 0 <= i < pi and i > i'; "
-        "[_lp_linchk_statement'=0, i', k'] -> [_lp_linchk_statement=1, i=i', j]:"
+        "[{0}'=0, i', k'] -> [{0}=1, i=i', j] : "
         "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj "
-        "}"
+        "}}".format(STATEMENT_VAR_NAME)
         )
     # isl ignores these apostrophes, so explicitly add them
     expected_sio = append_marker_to_isl_map_var_names(
@@ -567,10 +553,10 @@ def test_statement_instance_ordering_creation():
     # Relationship between insn_a and insn_d ---------------------------------------
 
     expected_sio = isl.Map(
-        "[pt, pi, pk] -> { "
-        "[_lp_linchk_statement'=0, i', k'] -> [_lp_linchk_statement=1, t]:"
+        "[pt, pi, pk] -> {{ "
+        "[{0}'=0, i', k'] -> [{0}=1, t] : "
         "0 <= i' < pi and 0 <= k' < pk and 0 <= t < pt "
-        "}"
+        "}}".format(STATEMENT_VAR_NAME)
         )
     # isl ignores these apostrophes, so explicitly add them
     expected_sio = append_marker_to_isl_map_var_names(
@@ -582,14 +568,14 @@ def test_statement_instance_ordering_creation():
     # Relationship between insn_b and insn_c ---------------------------------------
 
     expected_sio = isl.Map(
-        "[pi, pj] -> { "
-        "[_lp_linchk_statement'=0, i', j'] -> [_lp_linchk_statement=1, i, j]:"
+        "[pi, pj] -> {{ "
+        "[{0}'=0, i', j'] -> [{0}=1, i, j] : "
         "0 <= i' < pi and 0 <= j' < pj and i > i' and 0 <= i < pi and 0 <= j < pj; "
-        "[_lp_linchk_statement'=0, i', j'] -> [_lp_linchk_statement=1, i=i', j]:"
+        "[{0}'=0, i', j'] -> [{0}=1, i=i', j] : "
         "0 <= i' < pi and 0 <= j' < pj and j > j' and 0 <= j < pj; "
-        "[_lp_linchk_statement'=0, i', j'] -> [_lp_linchk_statement=1, i=i', j=j']:"
+        "[{0}'=0, i', j'] -> [{0}=1, i=i', j=j'] : "
         "0 <= i' < pi and 0 <= j' < pj "
-        "}"
+        "}}".format(STATEMENT_VAR_NAME)
         )
     # isl ignores these apostrophes, so explicitly add them
     expected_sio = append_marker_to_isl_map_var_names(
@@ -601,10 +587,10 @@ def test_statement_instance_ordering_creation():
     # Relationship between insn_b and insn_d ---------------------------------------
 
     expected_sio = isl.Map(
-        "[pt, pi, pj] -> { "
-        "[_lp_linchk_statement'=0, i', j'] -> [_lp_linchk_statement=1, t]:"
+        "[pt, pi, pj] -> {{ "
+        "[{0}'=0, i', j'] -> [{0}=1, t] : "
         "0 <= i' < pi and 0 <= j' < pj and 0 <= t < pt "
-        "}"
+        "}}".format(STATEMENT_VAR_NAME)
         )
     # isl ignores these apostrophes, so explicitly add them
     expected_sio = append_marker_to_isl_map_var_names(
@@ -616,10 +602,10 @@ def test_statement_instance_ordering_creation():
     # Relationship between insn_c and insn_d ---------------------------------------
 
     expected_sio = isl.Map(
-        "[pt, pi, pj] -> { "
-        "[_lp_linchk_statement'=0, i', j'] -> [_lp_linchk_statement=1, t]:"
+        "[pt, pi, pj] -> {{ "
+        "[{0}'=0, i', j'] -> [{0}=1, t] : "
         "0 <= i' < pi and 0 <= j' < pj and 0 <= t < pt "
-        "}"
+        "}}".format(STATEMENT_VAR_NAME)
         )
     # isl ignores these apostrophes, so explicitly add them
     expected_sio = append_marker_to_isl_map_var_names(
