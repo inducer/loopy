@@ -242,8 +242,8 @@ def create_legacy_dependency_constraint(
                 priority_known = True
 
             if priority_known:
-                # PRIOR requires statement_before complete previous iterations
-                # of loops before statement_after completes current iteration
+                # PRIOR requires statement before complete previous iterations
+                # of loops before statement after completes current iteration
                 # according to loop nest order
                 inames_list_nest_ordered = [
                     iname for iname in priority_tuple
