@@ -47,55 +47,6 @@ LEX_VAR_PREFIX = "%sl" % (LIN_CHECK_IDENTIFIER_PREFIX)
 STATEMENT_VAR_NAME = "%sstatement" % (LIN_CHECK_IDENTIFIER_PREFIX)
 
 
-class StatementRef(object):
-    """A reference to a :mod:`loopy` statement.
-
-    .. attribute:: insn_id
-
-        A :class:`str` specifying the :mod:`loopy` instruction id
-        for this statement.
-
-    .. attribute:: int_id
-
-        A :class:`int` uniquely identifying the statement within a
-        :class:`PairwiseScheduleBuilder`. A :class:`PairwiseScheduleBuilder`
-        builds a mapping from points in a space of statement instances to
-        points in a lexicographic ordering. The `statement` dimension of a
-        point in the statement instance space representing an instance of
-        this statement is assigned this value.
-
-    """
-
-    def __init__(
-            self,
-            insn_id,
-            int_id=None,
-            ):
-        self.insn_id = insn_id
-        self.int_id = int_id
-
-    def __eq__(self, other):
-        return (
-            self.insn_id == other.insn_id
-            and self.int_id == other.int_id
-            )
-
-    def update_persistent_hash(self, key_hash, key_builder):
-        """Custom hash computation function for use with
-        :class:`pytools.persistent_dict.PersistentDict`.
-        """
-
-        key_builder.rec(key_hash, self.insn_id)
-        key_builder.rec(key_hash, self.int_id)
-
-    def __str__(self):
-        if self.int_id is not None:
-            int_id = ":%d" % (self.int_id)
-        else:
-            int_id = ""
-        return "%s(%s%s)" % (self.__class__.__name__, self.insn_id, int_id)
-
-
 class StatementInstanceSet(object):
     """A representation of a set of (non-concurrent) instances of a
     statement being executed. The ordering of the instances is described
@@ -103,9 +54,10 @@ class StatementInstanceSet(object):
     lexicographic ordering of statements. Each field in the list
     corresponds to a dimension in the lexicographic ordering.
 
-    .. attribute:: stmt_ref
+    .. attribute:: insn_id
 
-        A :class:`StatementRef`.
+        A :class:`str` instruction identifier that is unique within
+        a :class:`loopy.kernel.LoopKernel`.
 
     .. attribute:: lex_points
 
@@ -116,15 +68,15 @@ class StatementInstanceSet(object):
 
     def __init__(
             self,
-            stmt_ref,
+            insn_id,
             lex_points,
             ):
-        self.stmt_ref = stmt_ref
+        self.insn_id = insn_id
         self.lex_points = lex_points
 
     def __repr__(self):
         return "%s(%s, %s)" % (
-            self.__class__.__name__, self.stmt_ref, self.lex_points)
+            self.__class__.__name__, self.insn_id, self.lex_points)
 
 
 class PairwiseScheduleBuilder(object):
@@ -135,19 +87,19 @@ class PairwiseScheduleBuilder(object):
     :func:`loopy.schedule.checker.get_schedule_for_statement_pair` is the
     preferred method of creating a PairwiseScheduleBuilder.
 
-    .. attribute:: stmt_instance_before
+    .. attribute:: stmt_instance_set_before
 
         A :class:`StatementInstanceSet` whose ordering relative
-        to `stmt_instance_after is described by PairwiseScheduleBuilder. This
+        to `stmt_instance_set_after is described by PairwiseScheduleBuilder. This
         is achieved by mapping the statement instances in both sets to points
         in a single lexicographic ordering. Points in lexicographic ordering
         are represented as a list of :class:`int` or as :class:`str`
         :mod:`loopy` inames.
 
-    .. attribute:: stmt_instance_after
+    .. attribute:: stmt_instance_set_after
 
         A :class:`StatementInstanceSet` whose ordering relative
-        to `stmt_instance_before is described by PairwiseScheduleBuilder. This
+        to `stmt_instance_set_before is described by PairwiseScheduleBuilder. This
         is achieved by mapping the statement instances in both sets to points
         in a single lexicographic ordering. Points in lexicographic ordering
         are represented as a list of :class:`int` or as :class:`str`
@@ -166,7 +118,7 @@ class PairwiseScheduleBuilder(object):
             order will be described by this :class:`PairwiseScheduleBuilder`.
 
         :arg before_insn_id: A :class:`str` instruction id specifying
-            stmt_instance_before in this pair of instructions.
+            stmt_instance_set_before in this pair of instructions.
 
         :arg after_insn_id: A :class:`str` instruction id specifying
             stmt_instancce_after in this pair of instructions.
@@ -174,14 +126,8 @@ class PairwiseScheduleBuilder(object):
         """
 
         # PairwiseScheduleBuilder statements
-        self.stmt_instance_before = None
-        self.stmt_instance_after = None
-
-        # Determine integer IDs that will represent each statement in mapping
-        # (dependency map creation assumes sid_before=0 and sid_after=1, unless
-        # before and after refer to same stmt, in which case sid_before=sid_after=0)
-        int_sid_before = 0
-        int_sid_after = 0 if before_insn_id == after_insn_id else 1
+        self.stmt_instance_set_before = None
+        self.stmt_instance_set_after = None
 
         # TODO when/after dependencies are added, consider the possibility
         # of removing the two-statements-per-PairwiseScheduleBuilder limitation
@@ -253,21 +199,15 @@ class PairwiseScheduleBuilder(object):
 
                 if lp_insn_id == before_insn_id:
                     # add before sched item
-                    self.stmt_instance_before = StatementInstanceSet(
-                            StatementRef(
-                                insn_id=lp_insn_id,
-                                int_id=int_sid_before,  # int representing insn
-                                ),
+                    self.stmt_instance_set_before = StatementInstanceSet(
+                            lp_insn_id,
                             next_insn_lex_tuple[:])
                     stmt_added = True
 
                 if lp_insn_id == after_insn_id:
                     # add after sched item
-                    self.stmt_instance_after = StatementInstanceSet(
-                            StatementRef(
-                                insn_id=lp_insn_id,
-                                int_id=int_sid_after,  # int representing insn
-                                ),
+                    self.stmt_instance_set_after = StatementInstanceSet(
+                            lp_insn_id,
                             next_insn_lex_tuple[:])
                     stmt_added = True
 
@@ -284,7 +224,7 @@ class PairwiseScheduleBuilder(object):
             else:
                 pass
             # to save time, stop when we've created both statements
-            if self.stmt_instance_before and self.stmt_instance_after:
+            if self.stmt_instance_set_before and self.stmt_instance_set_after:
                 break
 
         # At this point, pairwise sub-schedule may contain lex point tuples
@@ -294,28 +234,28 @@ class PairwiseScheduleBuilder(object):
 
     def max_lex_dims(self):
         return max([
-            len(self.stmt_instance_before.lex_points),
-            len(self.stmt_instance_after.lex_points)])
+            len(self.stmt_instance_set_before.lex_points),
+            len(self.stmt_instance_set_after.lex_points)])
 
     def pad_lex_tuples_with_zeros(self):
         """Find the maximum number of lexicographic dimensions represented
             in the lexicographic ordering, and if any
-            :class:`StatementRef` maps to a lex point tuple with
+            :class:`StatementInstanceSet` maps to a lex point tuple with
             fewer dimensions, add a zero for each of the missing dimensions.
         """
 
         def _pad_lex_tuple_with_zeros(stmt_inst, length):
             return StatementInstanceSet(
-                stmt_inst.stmt_ref,
+                stmt_inst.insn_id,
                 stmt_inst.lex_points[:] + [0]*(length-len(stmt_inst.lex_points)),
                 )
 
         max_lex_dim = self.max_lex_dims()
 
-        self.stmt_instance_before = _pad_lex_tuple_with_zeros(
-            self.stmt_instance_before, max_lex_dim)
-        self.stmt_instance_after = _pad_lex_tuple_with_zeros(
-            self.stmt_instance_after, max_lex_dim)
+        self.stmt_instance_set_before = _pad_lex_tuple_with_zeros(
+            self.stmt_instance_set_before, max_lex_dim)
+        self.stmt_instance_set_after = _pad_lex_tuple_with_zeros(
+            self.stmt_instance_set_after, max_lex_dim)
 
     def build_maps(
             self,
@@ -323,7 +263,8 @@ class PairwiseScheduleBuilder(object):
             ):
         r"""Create a pair of :class:`islpy.Map`\ s representing a pairwise schedule
             as two mappings from statement instances to lexicographic time,
-            one for ``stmt_instance_before`` and one for ``stmt_instance_after``.
+            one for ``stmt_instance_set_before`` and one for
+            ``stmt_instance_set_after``.
 
         :arg knl: A :class:`loopy.kernel.LoopKernel` containing the
             linearization items that are described by the schedule. This
@@ -347,11 +288,11 @@ class PairwiseScheduleBuilder(object):
         params_sched = []
         out_names_sched = self.get_lex_var_names()
 
-        def _get_map_for_stmt_inst(stmt_inst):
+        def _get_map_for_stmt_inst(stmt_inst, int_sid):
 
             # Get inames domain for statement instance (a BasicSet)
             dom = knl.get_inames_domain(
-                knl.id_to_insn[stmt_inst.stmt_ref.insn_id].within_inames)
+                knl.id_to_insn[stmt_inst.insn_id].within_inames)
 
             # create space (an isl space in current implementation)
             # {('statement', <inames> used in statement domain>) ->
@@ -373,7 +314,7 @@ class PairwiseScheduleBuilder(object):
             # Right now, statement instance tuples consist of single int.
             # Add all inames from domains to each map domain tuple.
             tuple_pair = [(
-                (stmt_inst.stmt_ref.int_id, ) + tuple(dom_inames_ordered),
+                (int_sid, ) + tuple(dom_inames_ordered),
                 stmt_inst.lex_points
                 )]
 
@@ -383,8 +324,19 @@ class PairwiseScheduleBuilder(object):
                 space=sched_space,
                 )
 
-        map_before = _get_map_for_stmt_inst(self.stmt_instance_before)
-        map_after = _get_map_for_stmt_inst(self.stmt_instance_after)
+        # Determine integer IDs that will represent each statement in mapping
+        # (dependency map creation assumes sid_before=0 and sid_after=1, unless
+        # before and after refer to same stmt, in which case sid_before=sid_after=0)
+        int_sid_before = 0
+        int_sid_after = 0 if (
+            self.stmt_instance_set_before.insn_id ==
+            self.stmt_instance_set_after.insn_id
+            ) else 1
+
+        map_before = _get_map_for_stmt_inst(
+            self.stmt_instance_set_before, int_sid_before)
+        map_after = _get_map_for_stmt_inst(
+            self.stmt_instance_set_after, int_sid_after)
 
         return (map_before, map_after)
 
@@ -406,13 +358,22 @@ class PairwiseScheduleBuilder(object):
 
     def __str__(self):
 
-        def stringify_sched_stmt_instance(stmt_inst):
+        def stringify_sched_stmt_instance(stmt_inst, int_sid):
             return "{\n[%s=%s,<inames>] -> %s;\n}" % (
                 STATEMENT_VAR_NAME,
-                stmt_inst.stmt_ref.int_id,
+                int_sid,
                 stmt_inst.lex_points)
+
+        # TODO once we change class -> funcs, this repetition of logic will disappear
+        int_sid_before = 0
+        int_sid_after = 0 if (
+            self.stmt_instance_set_before.insn_id ==
+            self.stmt_instance_set_after.insn_id
+            ) else 1
 
         return "%s(\nBefore: %s\nAfter: %s\n)" % (
             self.__class__.__name__,
-            stringify_sched_stmt_instance(self.stmt_instance_before),
-            stringify_sched_stmt_instance(self.stmt_instance_after))
+            stringify_sched_stmt_instance(
+                self.stmt_instance_set_before, int_sid_before),
+            stringify_sched_stmt_instance(
+                self.stmt_instance_set_after, int_sid_after))

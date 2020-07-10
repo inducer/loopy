@@ -155,8 +155,8 @@ def test_pairwise_schedule_and_map_creation():
 
     # Relationship between insn_a and insn_b ---------------------------------------
 
-    assert sched_ab.stmt_instance_before.lex_points == [0, 'i', 0, 'k', 0]
-    assert sched_ab.stmt_instance_after.lex_points == [0, 'i', 1, 'j', 0]
+    assert sched_ab.stmt_instance_set_before.lex_points == [0, 'i', 0, 'k', 0]
+    assert sched_ab.stmt_instance_set_after.lex_points == [0, 'i', 1, 'j', 0]
 
     # Get two maps from the PairwiseScheduleBuilder
 
@@ -190,8 +190,8 @@ def test_pairwise_schedule_and_map_creation():
     # ------------------------------------------------------------------------------
     # Relationship between insn_a and insn_c ---------------------------------------
 
-    assert sched_ac.stmt_instance_before.lex_points == [0, 'i', 0, 'k', 0]
-    assert sched_ac.stmt_instance_after.lex_points == [0, 'i', 1, 'j', 0]
+    assert sched_ac.stmt_instance_set_before.lex_points == [0, 'i', 0, 'k', 0]
+    assert sched_ac.stmt_instance_set_after.lex_points == [0, 'i', 1, 'j', 0]
 
     # Get two maps from the PairwiseScheduleBuilder
 
@@ -228,9 +228,10 @@ def test_pairwise_schedule_and_map_creation():
     # insn_a and insn_d could have been linearized in either order
     # (i loop could be before or after t loop)
     def perform_insn_ad_checks_with(a_lex_idx, d_lex_idx):
-        assert sched_ad.stmt_instance_before.lex_points == [
+        assert sched_ad.stmt_instance_set_before.lex_points == [
             a_lex_idx, 'i', 0, 'k', 0]
-        assert sched_ad.stmt_instance_after.lex_points == [d_lex_idx, 't', 0, 0, 0]
+        assert sched_ad.stmt_instance_set_after.lex_points == [
+            d_lex_idx, 't', 0, 0, 0]
 
         # Get two maps from the PairwiseScheduleBuilder
 
@@ -274,9 +275,10 @@ def test_pairwise_schedule_and_map_creation():
     # insn_b and insn_c could have been linearized in either order
     # (i loop could be before or after t loop)
     def perform_insn_bc_checks_with(b_lex_idx, c_lex_idx):
-        assert sched_bc.stmt_instance_before.lex_points == [
+        assert sched_bc.stmt_instance_set_before.lex_points == [
             0, 'i', 0, 'j', b_lex_idx]
-        assert sched_bc.stmt_instance_after.lex_points == [0, 'i', 0, 'j', c_lex_idx]
+        assert sched_bc.stmt_instance_set_after.lex_points == [
+            0, 'i', 0, 'j', c_lex_idx]
 
         # Get two maps from the PairwiseScheduleBuilder
 
@@ -320,9 +322,10 @@ def test_pairwise_schedule_and_map_creation():
     # insn_b and insn_d could have been linearized in either order
     # (i loop could be before or after t loop)
     def perform_insn_bd_checks_with(b_lex_idx, d_lex_idx):
-        assert sched_bd.stmt_instance_before.lex_points == [
+        assert sched_bd.stmt_instance_set_before.lex_points == [
             b_lex_idx, 'i', 0, 'j', 0]
-        assert sched_bd.stmt_instance_after.lex_points == [d_lex_idx, 't', 0, 0, 0]
+        assert sched_bd.stmt_instance_set_after.lex_points == [
+            d_lex_idx, 't', 0, 0, 0]
 
         # Get two maps from the PairwiseScheduleBuilder
 
@@ -366,9 +369,10 @@ def test_pairwise_schedule_and_map_creation():
     # insn_c and insn_d could have been linearized in either order
     # (i loop could be before or after t loop)
     def perform_insn_cd_checks_with(c_lex_idx, d_lex_idx):
-        assert sched_cd.stmt_instance_before.lex_points == [
+        assert sched_cd.stmt_instance_set_before.lex_points == [
             c_lex_idx, 'i', 0, 'j', 0]
-        assert sched_cd.stmt_instance_after.lex_points == [d_lex_idx, 't', 0, 0, 0]
+        assert sched_cd.stmt_instance_set_after.lex_points == [
+            d_lex_idx, 't', 0, 0, 0]
 
         # Get two maps from the PairwiseScheduleBuilder
 
