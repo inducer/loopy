@@ -87,19 +87,19 @@ class PairwiseScheduleBuilder(object):
     :func:`loopy.schedule.checker.get_schedule_for_statement_pair` is the
     preferred method of creating a PairwiseScheduleBuilder.
 
-    .. attribute:: stmt_instance_before
+    .. attribute:: stmt_instance_set_before
 
         A :class:`StatementInstanceSet` whose ordering relative
-        to `stmt_instance_after is described by PairwiseScheduleBuilder. This
+        to `stmt_instance_set_after is described by PairwiseScheduleBuilder. This
         is achieved by mapping the statement instances in both sets to points
         in a single lexicographic ordering. Points in lexicographic ordering
         are represented as a list of :class:`int` or as :class:`str`
         :mod:`loopy` inames.
 
-    .. attribute:: stmt_instance_after
+    .. attribute:: stmt_instance_set_after
 
         A :class:`StatementInstanceSet` whose ordering relative
-        to `stmt_instance_before is described by PairwiseScheduleBuilder. This
+        to `stmt_instance_set_before is described by PairwiseScheduleBuilder. This
         is achieved by mapping the statement instances in both sets to points
         in a single lexicographic ordering. Points in lexicographic ordering
         are represented as a list of :class:`int` or as :class:`str`
@@ -118,7 +118,7 @@ class PairwiseScheduleBuilder(object):
             order will be described by this :class:`PairwiseScheduleBuilder`.
 
         :arg before_insn_id: A :class:`str` instruction id specifying
-            stmt_instance_before in this pair of instructions.
+            stmt_instance_set_before in this pair of instructions.
 
         :arg after_insn_id: A :class:`str` instruction id specifying
             stmt_instancce_after in this pair of instructions.
@@ -126,8 +126,8 @@ class PairwiseScheduleBuilder(object):
         """
 
         # PairwiseScheduleBuilder statements
-        self.stmt_instance_before = None
-        self.stmt_instance_after = None
+        self.stmt_instance_set_before = None
+        self.stmt_instance_set_after = None
 
         # TODO when/after dependencies are added, consider the possibility
         # of removing the two-statements-per-PairwiseScheduleBuilder limitation
@@ -199,14 +199,14 @@ class PairwiseScheduleBuilder(object):
 
                 if lp_insn_id == before_insn_id:
                     # add before sched item
-                    self.stmt_instance_before = StatementInstanceSet(
+                    self.stmt_instance_set_before = StatementInstanceSet(
                             lp_insn_id,
                             next_insn_lex_tuple[:])
                     stmt_added = True
 
                 if lp_insn_id == after_insn_id:
                     # add after sched item
-                    self.stmt_instance_after = StatementInstanceSet(
+                    self.stmt_instance_set_after = StatementInstanceSet(
                             lp_insn_id,
                             next_insn_lex_tuple[:])
                     stmt_added = True
@@ -224,7 +224,7 @@ class PairwiseScheduleBuilder(object):
             else:
                 pass
             # to save time, stop when we've created both statements
-            if self.stmt_instance_before and self.stmt_instance_after:
+            if self.stmt_instance_set_before and self.stmt_instance_set_after:
                 break
 
         # At this point, pairwise sub-schedule may contain lex point tuples
@@ -234,8 +234,8 @@ class PairwiseScheduleBuilder(object):
 
     def max_lex_dims(self):
         return max([
-            len(self.stmt_instance_before.lex_points),
-            len(self.stmt_instance_after.lex_points)])
+            len(self.stmt_instance_set_before.lex_points),
+            len(self.stmt_instance_set_after.lex_points)])
 
     def pad_lex_tuples_with_zeros(self):
         """Find the maximum number of lexicographic dimensions represented
@@ -252,10 +252,10 @@ class PairwiseScheduleBuilder(object):
 
         max_lex_dim = self.max_lex_dims()
 
-        self.stmt_instance_before = _pad_lex_tuple_with_zeros(
-            self.stmt_instance_before, max_lex_dim)
-        self.stmt_instance_after = _pad_lex_tuple_with_zeros(
-            self.stmt_instance_after, max_lex_dim)
+        self.stmt_instance_set_before = _pad_lex_tuple_with_zeros(
+            self.stmt_instance_set_before, max_lex_dim)
+        self.stmt_instance_set_after = _pad_lex_tuple_with_zeros(
+            self.stmt_instance_set_after, max_lex_dim)
 
     def build_maps(
             self,
@@ -263,7 +263,8 @@ class PairwiseScheduleBuilder(object):
             ):
         r"""Create a pair of :class:`islpy.Map`\ s representing a pairwise schedule
             as two mappings from statement instances to lexicographic time,
-            one for ``stmt_instance_before`` and one for ``stmt_instance_after``.
+            one for ``stmt_instance_set_before`` and one for
+            ``stmt_instance_set_after``.
 
         :arg knl: A :class:`loopy.kernel.LoopKernel` containing the
             linearization items that are described by the schedule. This
@@ -328,13 +329,14 @@ class PairwiseScheduleBuilder(object):
         # before and after refer to same stmt, in which case sid_before=sid_after=0)
         int_sid_before = 0
         int_sid_after = 0 if (
-            self.stmt_instance_before.insn_id == self.stmt_instance_after.insn_id
+            self.stmt_instance_set_before.insn_id ==
+            self.stmt_instance_set_after.insn_id
             ) else 1
 
         map_before = _get_map_for_stmt_inst(
-            self.stmt_instance_before, int_sid_before)
+            self.stmt_instance_set_before, int_sid_before)
         map_after = _get_map_for_stmt_inst(
-            self.stmt_instance_after, int_sid_after)
+            self.stmt_instance_set_after, int_sid_after)
 
         return (map_before, map_after)
 
@@ -352,12 +354,13 @@ class PairwiseScheduleBuilder(object):
         # TODO once we change class -> funcs, this repetition of logic will disappear
         int_sid_before = 0
         int_sid_after = 0 if (
-            self.stmt_instance_before.insn_id == self.stmt_instance_after.insn_id
+            self.stmt_instance_set_before.insn_id ==
+            self.stmt_instance_set_after.insn_id
             ) else 1
 
         return "%s(\nBefore: %s\nAfter: %s\n)" % (
             self.__class__.__name__,
             stringify_sched_stmt_instance(
-                self.stmt_instance_before, int_sid_before),
+                self.stmt_instance_set_before, int_sid_before),
             stringify_sched_stmt_instance(
-                self.stmt_instance_after, int_sid_after))
+                self.stmt_instance_set_after, int_sid_after))
