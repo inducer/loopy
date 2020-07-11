@@ -481,45 +481,9 @@ def check_has_schedulable_iname_nesting(kernel):
 
 # {{{ check_variable_access_ordered
 
-class IndirectDependencyEdgeFinder(object):
-    def __init__(self, kernel):
-        self.kernel = kernel
-        self.dep_edge_cache = {}
-
-    def __call__(self, depender_id, dependee_id):
-        cache_key = (depender_id, dependee_id)
-
-        try:
-            result = self.dep_edge_cache[cache_key]
-        except KeyError:
-            pass
-        else:
-            if result is None:
-                from loopy.diagnostic import DependencyCycleFound
-                raise DependencyCycleFound("when "
-                        "checking for dependency edge between "
-                        "depender '%s' and dependee '%s'"
-                        % (depender_id, dependee_id))
-            else:
-                return result
-
-        depender = self.kernel.id_to_insn[depender_id]
-
-        if dependee_id in depender.depends_on:
-            self.dep_edge_cache[cache_key] = True
-            return True
-
-        self.dep_edge_cache[cache_key] = None
-        for dep in depender.depends_on:
-            if self(dep, dependee_id):
-                self.dep_edge_cache[cache_key] = True
-                return True
-
-        self.dep_edge_cache[cache_key] = False
-        return False
-
-
 def declares_nosync_with(kernel, var_address_space, dep_a, dep_b):
+    dep_a = kernel.id_to_insn[dep_a]
+    dep_b = kernel.id_to_insn[dep_b]
     from loopy.kernel.data import AddressSpace
     if var_address_space == AddressSpace.GLOBAL:
         search_scopes = ["global", "any"]
@@ -542,125 +506,213 @@ def declares_nosync_with(kernel, var_address_space, dep_a, dep_b):
     return ab_nosync and ba_nosync
 
 
-def _check_variable_access_ordered_inner(kernel):
-    logger.debug("%s: check_variable_access_ordered: start" % kernel.name)
+def _get_address_space(kernel, var):
+    from loopy.kernel.data import ValueArg, AddressSpace, ArrayArg
+    if var in kernel.temporary_variables:
+        address_space = kernel.temporary_variables[var].address_space
+    else:
+        arg = kernel.arg_dict[var]
+        if isinstance(arg, ArrayArg):
+            address_space = arg.address_space
+        elif isinstance(arg, ValueArg):
+            address_space = AddressSpace.PRIVATE
+        else:
+            # No need to consider ConstantArg and ImageArg (for now)
+            # because those won't be written.
+            raise ValueError("could not determine address_space of '%s'" % var)
+    return address_space
 
-    checked_variables = kernel.get_written_variables() & (
-            set(kernel.temporary_variables) | set(arg for arg in kernel.arg_dict))
+
+def _get_topological_order(kernel):
+    """
+    Returns a :class:`list` of insn ids of *kernel* in a topological sort
+    order.
+
+    If there is a dependency cycle within the instructions of *kernel* raises a
+    :class:`loopy.diagnostic.DependencyCycleFound` exception.
+    """
+    from pytools.graph import compute_sccs
+    from loopy.diagnostic import DependencyCycleFound
+
+    dep_map = {insn.id: insn.depends_on for insn in kernel.instructions}
+
+    # pytools.graph.compute_sccs serves 2 purposes:
+    #   1. computes topological sort order of instructions.
+    #   2. provides info. about any cycles in the graph.
+    sccs = compute_sccs(dep_map)
+    order = []
+
+    for scc in sccs:
+        if len(scc) != 1:
+            raise DependencyCycleFound(', '.join(scc))
+        order.append(scc[0])
+
+    return order
+
+
+def _check_variable_access_ordered_inner(kernel):
+    from loopy.kernel.tools import find_aliasing_equivalence_classes
+    from loopy.symbolic import AccessRangeOverlapChecker
+    overlap_checker = AccessRangeOverlapChecker(kernel)
+    aliasing_equiv_classes = find_aliasing_equivalence_classes(kernel)
+
+    # dep_reqs_to_vars: A mapping (writer_id, dep_req_id) -> set of variable names,
+    # where the tuple denotes a pair of instructions IDs, and the variable
+    # names are the ones that necessitate a dependency.
+    #
+    # Note: This can be worst-case O(n^2) in the number of instructions.
+    dep_reqs_to_vars = {}
 
     wmap = kernel.writer_map()
     rmap = kernel.reader_map()
 
-    from loopy.kernel.data import ValueArg, AddressSpace, ArrayArg
-    from loopy.kernel.tools import find_aliasing_equivalence_classes
+    # {{{ populate 'dep_reqs_to_vars'
 
-    depfind = IndirectDependencyEdgeFinder(kernel)
-    aliasing_equiv_classes = find_aliasing_equivalence_classes(kernel)
-
-    for name in checked_variables:
-        # This is a tad redundant in that this could probably be restructured
-        # to iterate only over equivalence classes and not individual variables.
-        # But then the access-range overlap check below would have to be smarter.
-        eq_class = aliasing_equiv_classes[name]
+    for var in kernel.get_written_variables():
+        address_space = _get_address_space(kernel, var)
+        eq_class = aliasing_equiv_classes[var]
 
         readers = set.union(
                 *[rmap.get(eq_name, set()) for eq_name in eq_class])
         writers = set.union(
                 *[wmap.get(eq_name, set()) for eq_name in eq_class])
-        unaliased_readers = rmap.get(name, set())
-        unaliased_writers = wmap.get(name, set())
 
-        if not writers:
-            continue
+        for writer in writers:
+            required_deps = (readers | writers) - set([writer])
+            required_deps = set([req_dep
+                for req_dep in required_deps
+                if not declares_nosync_with(kernel, address_space, writer,
+                    req_dep)])
 
-        if name in kernel.temporary_variables:
-            address_space = kernel.temporary_variables[name].address_space
-        else:
-            arg = kernel.arg_dict[name]
-            if isinstance(arg, ArrayArg):
-                address_space = arg.address_space
-            elif isinstance(arg, ValueArg):
-                address_space = AddressSpace.PRIVATE
-            else:
-                # No need to consider ConstantArg and ImageArg (for now)
-                # because those won't be written.
-                raise ValueError("could not determine address_space of '%s'" % name)
+            for req_dep in required_deps:
+                dep_reqs_to_vars.setdefault((writer, req_dep), set()).add(var)
 
-        # Check even for PRIVATE address space, to ensure intentional program order.
+    # }}}
 
-        from loopy.symbolic import AccessRangeOverlapChecker
-        overlap_checker = AccessRangeOverlapChecker(kernel)
+    # depends_on: mapping from insn_ids to their dependencies
+    depends_on = dict((insn.id, set()) for insn in
+            kernel.instructions)
+    # rev_depends: mapping from insn_ids to their reverse deps.
+    rev_depends = dict((insn.id, set()) for insn in
+            kernel.instructions)
 
-        for writer_id in writers:
-            for other_id in readers | writers:
-                if writer_id == other_id:
-                    continue
+    # {{{ populate rev_depends, depends_on
 
-                writer = kernel.id_to_insn[writer_id]
-                other = kernel.id_to_insn[other_id]
+    for insn in kernel.instructions:
+        depends_on[insn.id].update(insn.depends_on)
+        for dep in insn.depends_on:
+            rev_depends[dep].add(insn.id)
 
-                has_dependency_relationship = (
-                        declares_nosync_with(kernel, address_space, other, writer)
-                        or
-                        depfind(writer_id, other_id)
-                        or
-                        depfind(other_id, writer_id)
-                        )
+    # }}}
 
-                if has_dependency_relationship:
-                    continue
+    # {{{ remove pairs from dep_reqs_to_vars for which dependencies exist
 
-                is_relationship_by_aliasing = not (
-                        writer_id in unaliased_writers
-                        and (other_id in unaliased_writers
-                            or other_id in unaliased_readers))
+    topological_order = _get_topological_order(kernel)
 
-                # Do not enforce ordering for disjoint access ranges
-                if (not is_relationship_by_aliasing and not
-                    overlap_checker.do_access_ranges_overlap_conservative(
-                            writer_id, "w", other_id, "any", name)):
-                    continue
+    def discard_dep_reqs_in_order(dep_reqs_to_vars, edges, order):
+        """
+        Subtracts dependency requirements of insn_ids by all direct/indirect
+        predecessors of a directed graph of insn_ids as nodes and *edges* as
+        the connectivity.
 
-                # Do not enforce ordering for aliasing-based relationships
-                # in different groups.
-                if (is_relationship_by_aliasing and (
-                        bool(writer.groups & other.conflicts_with_groups)
-                        or
-                        bool(other.groups & writer.conflicts_with_groups))):
-                    continue
+        :arg order: An instance of :class:`list` of instruction ids in which the
+            *edges* graph is to be traversed.
+        """
+        # predecessors: mapping from insn_id to its direct/indirect
+        # predecessors
+        predecessors = {}
 
-                msg = ("No dependency relationship found between "
-                        "'{writer_id}' which writes {var} and "
-                        "'{other_id}' which also accesses {var}. "
-                        "Either add a (possibly indirect) dependency "
-                        "between the two, or add them to each others' nosync "
-                        "set to indicate that no ordering is intended, or "
-                        "turn off this check by setting the "
-                        "'enforce_variable_access_ordered' option "
-                        "(more issues of this type may exist--only reporting "
-                        "the first one)"
-                        .format(
-                            writer_id=writer_id,
-                            other_id=other_id,
-                            var=(
-                                "the variable '%s'" % name
-                                if len(eq_class) == 1
-                                else (
-                                    "the aliasing equivalence class '%s'"
-                                    % ", ".join(eq_class))
-                                )))
+        for insn_id in order:
+            # insn_predecessors:insn_id's direct+indirect predecessors
 
-                from loopy.diagnostic import VariableAccessNotOrdered
-                raise VariableAccessNotOrdered(msg)
+            # This set of predecessors is complete because we're
+            # traversing in topological order: No predecessor
+            # can occur after the instruction itself.
+            insn_predecessors = predecessors.pop(insn_id, set())
 
-    logger.debug("%s: check_variable_access_ordered: done" % kernel.name)
+            for pred in insn_predecessors:
+                dep_reqs_to_vars.pop(
+                    (insn_id, pred),
+                    # don't fail if pair doesn't exist
+                    None)
+
+            for successor in edges[insn_id]:
+                predecessors.setdefault(successor, set()).update(
+                        insn_predecessors | set([insn_id]))
+
+    # forward dep. graph traversal in reverse topological sort order
+    # (proceeds "end of program" -> "beginning of program")
+    discard_dep_reqs_in_order(dep_reqs_to_vars, depends_on,
+            topological_order[::-1])
+
+    # reverse dep. graph traversal in topological sort order
+    # (proceeds "beginning of program" -> "end of program")
+    discard_dep_reqs_in_order(dep_reqs_to_vars, rev_depends, topological_order)
+
+    # }}}
+
+    # {{{ handle dependency requirements that weren't satisfied
+
+    for (writer_id, other_id), variables in six.iteritems(dep_reqs_to_vars):
+        writer = kernel.id_to_insn[writer_id]
+        other = kernel.id_to_insn[other_id]
+
+        for var in variables:
+            eq_class = aliasing_equiv_classes[var]
+            unaliased_readers = rmap.get(var, set())
+            unaliased_writers = wmap.get(var, set())
+
+            is_relationship_by_aliasing = not (
+                writer_id in unaliased_writers
+                and (writer_id in unaliased_writers
+                    or other_id in unaliased_readers))
+
+            # Do not enforce ordering for disjoint access ranges
+            if (not is_relationship_by_aliasing and not
+                overlap_checker.do_access_ranges_overlap_conservative(
+                        writer_id, "w", other_id, "any", var)):
+                continue
+
+            # Do not enforce ordering for aliasing-based relationships
+            # in different groups.
+            if (is_relationship_by_aliasing and (
+                    bool(writer.groups & other.conflicts_with_groups)
+                    or
+                    bool(other.groups & writer.conflicts_with_groups))):
+                continue
+
+            msg = ("No dependency relationship found between "
+                    "'{writer_id}' which writes {var} and "
+                    "'{other_id}' which also accesses {var}. "
+                    "Either add a (possibly indirect) dependency "
+                    "between the two, or add them to each others' nosync "
+                    "set to indicate that no ordering is intended, or "
+                    "turn off this check by setting the "
+                    "'enforce_variable_access_ordered' option "
+                    "(more issues of this type may exist--only reporting "
+                    "the first one)"
+                    .format(
+                        writer_id=writer_id,
+                        other_id=other_id,
+                        var=(
+                            "the variable '%s'" % var
+                            if len(eq_class) == 1
+                            else (
+                                "the aliasing equivalence class '%s'"
+                                % ", ".join(eq_class))
+                            )))
+
+            from loopy.diagnostic import VariableAccessNotOrdered
+            raise VariableAccessNotOrdered(msg)
+
+    # }}}
 
 
 def check_variable_access_ordered(kernel):
     """Checks that between each write to a variable and all other accesses to
     the variable there is either:
 
-    * an (at least indirect) depdendency edge, or
+    * a direct/indirect depdendency edge, or
     * an explicit statement that no ordering is necessary (expressed
       through a bi-directional :attr:`loopy.Instruction.no_sync_with`)
     """
@@ -676,15 +728,17 @@ def check_variable_access_ordered(kernel):
     if kernel.options.enforce_variable_access_ordered == "no_check":
         return
 
-    if kernel.options.enforce_variable_access_ordered:
-        _check_variable_access_ordered_inner(kernel)
-    else:
-        from loopy.diagnostic import VariableAccessNotOrdered
-        try:
+    from pytools import ProcessLogger
+    with ProcessLogger(logger, "%s: check variable access ordered" % kernel.name):
+        if kernel.options.enforce_variable_access_ordered:
             _check_variable_access_ordered_inner(kernel)
-        except VariableAccessNotOrdered as e:
-            from loopy.diagnostic import warn_with_kernel
-            warn_with_kernel(kernel, "variable_access_ordered", str(e))
+        else:
+            from loopy.diagnostic import VariableAccessNotOrdered
+            try:
+                _check_variable_access_ordered_inner(kernel)
+            except VariableAccessNotOrdered as e:
+                from loopy.diagnostic import warn_with_kernel
+                warn_with_kernel(kernel, "variable_access_ordered", str(e))
 
 # }}}
 

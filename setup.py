@@ -85,6 +85,7 @@ setup(name="loo.py",
           'Topic :: Utilities',
           ],
 
+      python_requires="~=3.6",
       install_requires=[
           "pytools>=2020.2",
           "pymbolic>=2019.2",
