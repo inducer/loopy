@@ -1416,6 +1416,9 @@ class ConditionalMapper(EvaluationMapperBase, IdentityMapperMixin):
 
     map_logical_or = map_logical_and
 
+    def map_constant(self, expr):
+        return self.pw_map(expr)
+
     def map_comparison(self, expr):
         left = self.rec(expr.left)
         right = self.rec(expr.right)
