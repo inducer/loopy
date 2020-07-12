@@ -1909,7 +1909,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         breaking language changes *will* apply to your kernel without asking,
         likely breaking your code.)
 
-        If not given, this value defaults to version **(2017, 2, 1)** and
+        If not given, this value defaults to version **(2018, 2)** and
         a warning will be issued.
 
         To set the kernel version for all :mod:`loopy` kernels in a (Python) source
@@ -2017,8 +2017,6 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     if lang_version not in version_to_symbol:
         raise LoopyError("Language version '%s' is not known." % (lang_version,))
-    if lang_version >= (2018, 1):
-        options = options.copy(enforce_variable_access_ordered=True)
 
     # }}}
 

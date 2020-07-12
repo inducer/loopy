@@ -221,7 +221,7 @@ class Options(ImmutableRecord):
                 check_dep_resolution=kwargs.get("check_dep_resolution", True),
 
                 enforce_variable_access_ordered=kwargs.get(
-                    "enforce_variable_access_ordered", False),
+                    "enforce_variable_access_ordered", True),
                 )
 
     # {{{ legacy compatibility
