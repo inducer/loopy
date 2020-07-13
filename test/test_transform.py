@@ -374,8 +374,7 @@ def test_precompute_confusing_subst_arguments(ctx_factory):
 
     from loopy.symbolic import get_dependencies
     assert "i_inner" not in get_dependencies(knl.substitutions["D"].expression)
-    knl = lp.precompute(knl, "D", sweep_inames='j',
-            precompute_outer_inames='j, i_inner, i_outer')
+    knl = lp.precompute(knl, "D")
 
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl,

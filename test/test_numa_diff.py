@@ -90,8 +90,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     if opt_level == 0:
         tap_hsv = hsv
 
-    hsv = lp.add_prefetch(hsv, "D[:,:]", fetch_outer_inames="e",
-            default_tag="l.auto")
+    hsv = lp.add_prefetch(hsv, "D[:,:]", default_tag="l.auto")
 
     if opt_level == 1:
         tap_hsv = hsv

@@ -562,7 +562,9 @@ class TemporarySaver(object):
                 self.subkernel_to_surrounding_inames[subkernel]
                 | frozenset(hw_inames + dim_inames)),
             within_inames_is_final=True,
-            depends_on=depends_on)
+            depends_on=depends_on,
+            boostable=False,
+            boostable_into=frozenset())
 
         if mode == "save":
             self.temporary_to_save_ids[temporary].add(save_or_load_insn_id)
