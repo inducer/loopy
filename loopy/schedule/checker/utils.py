@@ -132,13 +132,6 @@ def ensure_dim_names_match_and_align(obj_map, tgt_map):
     return aligned_obj_map
 
 
-def _get_union(list_items):
-    union = list_items[0]
-    for s in list_items[1:]:
-        union = union.union(s)
-    return union
-
-
 def list_var_names_in_isl_sets(
         isl_sets,
         set_dim=isl.dim_type.set):
@@ -186,9 +179,6 @@ def create_symbolic_map_from_tuples(
     islvars = get_islvars_from_space(space)
 
     # loop through pairs and create a set that will later be converted to a map
-
-    # TODO remove after testing:
-    all_maps = []
 
     # initialize union to empty
     union_of_maps = isl.Map.from_domain(
@@ -240,13 +230,6 @@ def create_symbolic_map_from_tuples(
         # intersect domain with this map
         union_of_maps = union_of_maps.union(
             map_from_set.intersect_domain(dom_with_all_inames))
-
-        # TODO remove after testing:
-        all_maps.append(
-            map_from_set.intersect_domain(dom_with_all_inames))
-
-    # TODO remove after testing:
-    assert union_of_maps == _get_union(all_maps)
 
     return union_of_maps
 
