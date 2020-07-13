@@ -230,19 +230,6 @@ class PairwiseScheduleBuilder(object):
         # At this point, pairwise sub-schedule may contain lex point tuples
         # missing dimensions; the values in these missing dims should
         # be zero, so add them.
-        self.pad_lex_tuples_with_zeros()
-
-    def max_lex_dims(self):
-        return max([
-            len(self.stmt_instance_set_before.lex_points),
-            len(self.stmt_instance_set_after.lex_points)])
-
-    def pad_lex_tuples_with_zeros(self):
-        """Find the maximum number of lexicographic dimensions represented
-            in the lexicographic ordering, and if any
-            :class:`StatementInstanceSet` maps to a lex point tuple with
-            fewer dimensions, add a zero for each of the missing dimensions.
-        """
 
         def _pad_lex_tuple_with_zeros(stmt_inst, length):
             return StatementInstanceSet(
@@ -256,6 +243,11 @@ class PairwiseScheduleBuilder(object):
             self.stmt_instance_set_before, max_lex_dim)
         self.stmt_instance_set_after = _pad_lex_tuple_with_zeros(
             self.stmt_instance_set_after, max_lex_dim)
+
+    def max_lex_dims(self):
+        return max([
+            len(self.stmt_instance_set_before.lex_points),
+            len(self.stmt_instance_set_after.lex_points)])
 
     def build_maps(
             self,
