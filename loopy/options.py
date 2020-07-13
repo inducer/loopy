@@ -89,6 +89,12 @@ class Options(ImmutableRecord):
         Like :attr:`trace_assignments`, but also trace the
         assigned values.
 
+    .. attribute:: ignore_boostable_into
+
+        Ignore the boostable_into field of the kernel, when
+        determining whether an iname duplication is necessary
+        for the kernel to be schedulable.
+
     .. attribute:: check_dep_resolution
 
         Whether loopy should issue an error if a dependency
@@ -205,6 +211,7 @@ class Options(ImmutableRecord):
                 annotate_inames=kwargs.get("annotate_inames", False),
                 trace_assignments=kwargs.get("trace_assignments", False),
                 trace_assignment_values=kwargs.get("trace_assignment_values", False),
+                ignore_boostable_into=kwargs.get("ignore_boostable_into", False),
 
                 skip_arg_checks=kwargs.get("skip_arg_checks", False),
                 no_numpy=kwargs.get("no_numpy", False),
@@ -221,7 +228,7 @@ class Options(ImmutableRecord):
                 check_dep_resolution=kwargs.get("check_dep_resolution", True),
 
                 enforce_variable_access_ordered=kwargs.get(
-                    "enforce_variable_access_ordered", True),
+                    "enforce_variable_access_ordered", False),
                 )
 
     # {{{ legacy compatibility

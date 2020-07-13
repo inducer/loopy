@@ -317,7 +317,7 @@ def test_equality_constraints(ctx_factory):
             ],
             [
                 "a[i,j] = 5 {id=set_all}",
-                "b[i,k] = 22 {id=set_b, dep=set_all}",
+                "b[i,k] = 22 {dep=set_all}",
                 ],
             [
                 lp.GlobalArg("a,b", dtype, shape="n, n", order=order),
@@ -329,9 +329,6 @@ def test_equality_constraints(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.0")
     knl = lp.split_iname(knl, "j", 16, outer_tag="g.1", inner_tag="l.1")
-
-    knl = lp.add_inames_to_insn(knl, 'j_inner, j_outer', 'id:set_b')
-
     #print(knl)
     #print(knl.domains[0].detect_equalities())
 

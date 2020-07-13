@@ -101,11 +101,8 @@ def test_convolution(ctx_factory):
         knl = lp.split_iname(knl, "im_x", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.split_iname(knl, "im_y", 16, outer_tag="g.1", inner_tag="l.1")
         knl = lp.tag_inames(knl, dict(ifeat="g.2"))
-        knl = lp.add_prefetch(knl, "f[ifeat,:,:,:]",
-                fetch_outer_inames='im_x_outer, im_y_outer, ifeat',
-                default_tag="l.auto")
+        knl = lp.add_prefetch(knl, "f[ifeat,:,:,:]", default_tag="l.auto")
         knl = lp.add_prefetch(knl, "img", "im_x_inner, im_y_inner, f_x, f_y",
-                fetch_outer_inames='iimg, im_x_outer, im_y_outer, ifeat, icolor',
                 default_tag="l.auto")
         return knl
 

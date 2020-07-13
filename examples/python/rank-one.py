@@ -33,10 +33,8 @@ evt, (c,) = knl(queue, a=a, b=b)
 split_knl = knl
 
 # PREFETCH1BEGIN
-knl = lp.add_prefetch(knl, "a",
-        fetch_outer_inames='i_outer, i_inner, j_outer, j_inner')
-knl = lp.add_prefetch(knl, "b",
-        fetch_outer_inames='i_outer, i_inner, j_outer, j_inner')
+knl = lp.add_prefetch(knl, "a")
+knl = lp.add_prefetch(knl, "b")
 # PREFETCH1END
 
 knl = lp.set_options(knl, write_code=True)
@@ -45,14 +43,8 @@ evt, (c,) = knl(queue, a=a, b=b)
 knl = split_knl
 
 # PREFETCH2BEGIN
-knl = lp.add_prefetch(knl, "a", ["i_inner"],
-        fetch_outer_inames='i_outer, j_outer, j_inner',
-        temporary_address_space=lp.AddressSpace.LOCAL,
-        default_tag="l.0")
-knl = lp.add_prefetch(knl, "b", ["j_inner"],
-        fetch_outer_inames='i_outer, j_outer, j_inner',
-        temporary_address_space=lp.AddressSpace.LOCAL,
-        default_tag="l.0")
+knl = lp.add_prefetch(knl, "a", ["i_inner"], default_tag="l.0")
+knl = lp.add_prefetch(knl, "b", ["j_inner"], default_tag="l.0")
 # PREFETCH2END
 
 knl = lp.set_options(knl, write_code=True)
@@ -66,10 +58,8 @@ knl = lp.split_iname(knl, "i", 256,
 knl = lp.split_iname(knl, "j", 256,
         outer_tag="g.1", slabs=(0, 1))
 
-knl = lp.add_prefetch(knl, "a", ["i_inner"],
-        fetch_outer_inames='i_outer, j_outer', default_tag=None)
-knl = lp.add_prefetch(knl, "b", ["j_inner"],
-        fetch_outer_inames='i_outer, j_outer', default_tag=None)
+knl = lp.add_prefetch(knl, "a", ["i_inner"], default_tag=None)
+knl = lp.add_prefetch(knl, "b", ["j_inner"], default_tag=None)
 
 knl = lp.split_iname(knl, "i_inner", 16,
         inner_tag="l.0")
