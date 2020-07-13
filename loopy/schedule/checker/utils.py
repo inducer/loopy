@@ -29,10 +29,15 @@ def prettier_map_string(map_obj):
 
 
 def get_islvars_from_space(space):
+    #pu.db
     param_names = space.get_var_names(isl.dim_type.param)
     in_names = space.get_var_names(isl.dim_type.in_)
     out_names = space.get_var_names(isl.dim_type.out)
     return isl.make_zero_and_vars(in_names+out_names, param_names)
+    #old = isl.make_zero_and_vars(in_names+out_names, param_names)
+    #new = isl.affs_from_space(space)
+    #assert old == new
+    #return new
 
 
 def add_dims_to_isl_set(isl_set, dim_type, names, new_idx_start):
