@@ -272,7 +272,6 @@ class PairwiseScheduleBuilder(object):
 
         from loopy.schedule.checker.utils import (
             list_var_names_in_isl_sets,
-            get_isl_space,
             create_symbolic_map_from_tuples,
             add_dims_to_isl_set,
         )
@@ -292,8 +291,9 @@ class PairwiseScheduleBuilder(object):
             dom_inames_ordered = list_var_names_in_isl_sets([dom])
 
             in_names_sched = [STATEMENT_VAR_NAME] + dom_inames_ordered[:]
-            sched_space = get_isl_space(
-                params_sched, in_names_sched, out_names_sched)
+            sched_space = isl.Space.create_from_names(
+                isl.DEFAULT_CONTEXT,
+                in_=in_names_sched, out=out_names_sched, params=params_sched)
 
             # Insert 'statement' dim into domain so that its space allows
             # for intersection with sched map later
