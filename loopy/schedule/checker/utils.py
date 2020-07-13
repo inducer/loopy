@@ -187,7 +187,14 @@ def create_symbolic_map_from_tuples(
 
     # loop through pairs and create a set that will later be converted to a map
 
+    # TODO remove after testing:
     all_maps = []
+
+    # initialize union to empty
+    union_of_maps = isl.Map.from_domain(
+        islvars[0].eq_set(islvars[0]+1)  # 0 == 1 (false)
+        ).move_dims(
+            dim_type.out, 0, dim_type.in_, len(space_in_names), len(space_out_names))
     for (tup_in, tup_out), dom in tuple_pairs_with_domains:
 
         # initialize constraint with true
@@ -231,10 +238,17 @@ def create_symbolic_map_from_tuples(
             )
 
         # intersect domain with this map
+        union_of_maps = union_of_maps.union(
+            map_from_set.intersect_domain(dom_with_all_inames))
+
+        # TODO remove after testing:
         all_maps.append(
             map_from_set.intersect_domain(dom_with_all_inames))
 
-    return _get_union(all_maps)
+    # TODO remove after testing:
+    assert union_of_maps == _get_union(all_maps)
+
+    return union_of_maps
 
 
 def get_concurrent_inames(knl):
