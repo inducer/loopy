@@ -793,9 +793,6 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
             insn = kernel.id_to_insn[sched_item.insn_id]
             i += 1
 
-            if insn.boostable:
-                continue
-
             group_axes_used = set()
             local_axes_used = set()
 
