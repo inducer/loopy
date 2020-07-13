@@ -214,6 +214,7 @@ def create_dependencies_from_legacy_knl(knl):
                 insn_before_inames & insn_after_inames & non_conc_inames)
 
             # TODO what to do if there is already a dep from insn_before->insn_after?
+            # (currently just add a new one)
 
             # create a map representing constraints from the dependency,
             # which maps statement instance to all stmt instances that must occur
@@ -269,7 +270,7 @@ def create_dependencies_from_legacy_knl(knl):
                     {LegacyDependencyType.PRIOR: shared_non_conc_inames},
                     )
 
-                # TODO what to do if there is already a dep from sink->source?
+                # TODO what if there is already a different dep from sink->source?
                 dep_maps.add((
                     sink_id,
                     source_id,
