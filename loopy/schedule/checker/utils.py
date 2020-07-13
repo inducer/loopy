@@ -237,48 +237,6 @@ def create_symbolic_map_from_tuples(
     return _get_union(all_maps)
 
 
-def set_all_isl_space_names(
-        isl_space, param_names=None, in_names=None, out_names=None):
-    """Return a copy of `isl_space` with the specified dimension names.
-        If no names are provided, use `p0, p1, ...` for parameters,
-        `i0, i1, ...`, for in_ dimensions, and `o0, o1, ...` for out
-        dimensions.
-
-    """
-
-    new_space = isl_space.copy()
-    dim_type = isl.dim_type
-    if param_names:
-        for i, p in enumerate(param_names):
-            new_space = new_space.set_dim_name(dim_type.param, i, p)
-    else:
-        for i in range(len(isl_space.get_var_names(dim_type.param))):
-            new_space = new_space.set_dim_name(dim_type.param, i, "p%d" % (i))
-    if in_names:
-        for i, p in enumerate(in_names):
-            new_space = new_space.set_dim_name(dim_type.in_, i, p)
-    else:
-        for i in range(len(isl_space.get_var_names(dim_type.in_))):
-            new_space = new_space.set_dim_name(dim_type.in_, i, "i%d" % (i))
-    if out_names:
-        for i, p in enumerate(out_names):
-            new_space = new_space.set_dim_name(dim_type.out, i, p)
-    else:
-        for i in range(len(isl_space.get_var_names(dim_type.out))):
-            new_space = new_space.set_dim_name(dim_type.out, i, "o%d" % (i))
-    return new_space
-
-
-def get_isl_space(param_names, in_names, out_names):
-    """Return an :class:`islpy.Space` with the specified dimension names.
-    """
-
-    space = isl.Space.alloc(
-        isl.DEFAULT_CONTEXT, len(param_names), len(in_names), len(out_names))
-    return set_all_isl_space_names(
-        space, param_names=param_names, in_names=in_names, out_names=out_names)
-
-
 def get_concurrent_inames(knl):
     from loopy.kernel.data import ConcurrentTag
     conc_inames = set()
