@@ -986,7 +986,7 @@ def _get_iname_duplication_options(insn_iname_sets, old_common_inames=frozenset(
     # If partitioning was empty, we have recursed successfully and yield nothing
 
 
-def get_iname_duplication_options(knl, use_boostable_into=False):
+def get_iname_duplication_options(knl, use_boostable_into=None):
     """List options for duplication of inames, if necessary for schedulability
 
     :returns: a generator listing all options to duplicate inames, if duplication
@@ -1016,6 +1016,15 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
     Use :func:`has_schedulable_iname_nesting` to decide whether an iname needs to be
     duplicated in a given kernel.
     """
+    if use_boostable_into:
+        raise LoopyError("'use_boostable_into=True' is no longer supported.")
+
+    if use_boostable_into is False:
+        from warnings import warn
+        warn("passing 'use_boostable_into=False' to 'get_iname_duplication_options'"
+                " is deprecated. This will be the default in 2021.x.",
+                DeprecationWarning, stacklevel=2)
+
     from loopy.kernel.data import ConcurrentTag
 
     concurrent_inames = set(
@@ -1024,23 +1033,12 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
             if knl.iname_tags_of_type(iname, ConcurrentTag))
 
     # First we extract the minimal necessary information from the kernel
-    if use_boostable_into:
-        insn_iname_sets = (
-            frozenset(
-                (insn.within_inames
-                    | insn.boostable_into if insn.boostable_into is not None
-                    else frozenset([]))
-                - concurrent_inames
-                for insn in knl.instructions)
-            -
-            frozenset([frozenset([])]))
-    else:
-        insn_iname_sets = (
-            frozenset(
-                insn.within_inames - concurrent_inames
-                for insn in knl.instructions)
-            -
-            frozenset([frozenset([])]))
+    insn_iname_sets = (
+        frozenset(
+            insn.within_inames - concurrent_inames
+            for insn in knl.instructions)
+        -
+        frozenset([frozenset([])]))
 
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_iname_sets):
@@ -1049,23 +1047,6 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
                 and knl.iname_tags_of_type(iname, ConcurrentTag)):
             continue
 
-        # If we find a duplication option and to not use boostable_into
-        # information, we restart this generator with use_boostable_into=True
-        if not use_boostable_into and not knl.options.ignore_boostable_into:
-            for option in get_iname_duplication_options(knl, True):
-                yield option
-
-            # Emit a warning that we needed boostable_into
-            from warnings import warn
-            from loopy.diagnostic import LoopyWarning
-            warn("Kernel '%s' required the deprecated 'boostable_into' "
-                 "instruction attribute in order to be schedulable!" % knl.name,
-                 LoopyWarning)
-
-            # Return to avoid yielding the duplication
-            # options without boostable_into
-            return
-
         # Reconstruct an object that may be passed to the within parameter of
         # loopy.duplicate_inames
         from loopy.match import Id, Or
@@ -1073,9 +1054,7 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
             Id(insn.id) for insn in knl.instructions
             if insn.within_inames in insns))
 
-        # Only yield the result if an instruction matched. With
-        # use_boostable_into=True this is not always true.
-
+        # Only yield the result if an instruction matched.
         if within.children:
             yield iname, within
 
