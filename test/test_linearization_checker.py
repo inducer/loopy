@@ -50,7 +50,7 @@ else:
     faulthandler.enable()
 
 
-def test_lexschedule_and_map_creation():
+def test_lexschedule_creation():
     import islpy as isl
     from loopy.schedule.checker import (
         get_schedule_for_statement_pair,
