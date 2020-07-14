@@ -85,6 +85,7 @@ setup(name="loo.py",
           'Topic :: Utilities',
           ],
 
+      python_requires="~=3.6",
       install_requires=[
           "pytools>=2020.2",
           "pymbolic>=2019.2",
@@ -99,7 +100,7 @@ setup(name="loo.py",
 
       extras_require={
           "pyopencl":  [
-              "pyopencl>=2015.2",
+              "pyopencl>=2020.2",
               ],
           "fortran":  [
               # Note that this is *not* regular 'f2py2e', this is

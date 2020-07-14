@@ -551,8 +551,10 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
             from loopy.kernel.data import TemporaryVariable, AddressSpace
             ecm = codegen_state.expression_to_code_mapper.with_assignments(
                     {
-                        old_val_var: TemporaryVariable(old_val_var, lhs_dtype),
-                        new_val_var: TemporaryVariable(new_val_var, lhs_dtype),
+                        old_val_var: TemporaryVariable(old_val_var, lhs_dtype,
+                            shape=()),
+                        new_val_var: TemporaryVariable(new_val_var, lhs_dtype,
+                            shape=()),
                         })
 
             lhs_expr_code = ecm(lhs_expr, prec=PREC_NONE, type_context=None)
