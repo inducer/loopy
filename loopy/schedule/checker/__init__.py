@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 
-# {{{ create PairwiseScheduleBuilder for statement pair
+# {{{ create a pairwise schedule for statement pair
 
 def get_schedule_for_statement_pair(
         knl,
@@ -29,9 +29,11 @@ def get_schedule_for_statement_pair(
         insn_id_before,
         insn_id_after,
         ):
-    """Create a :class:`loopy.schedule.checker.schedule.PairwiseScheduleBuilder`
-    representing the order of two statements as a mapping from
-    :class:`loopy.schedule.checker.StatementInstanceSet`
+    r"""Given a pair of statements in a linearized kernel, determine
+    the (relative) order in which the instances are executed,
+    by creating a mapping from statement instances to points in a single
+    lexicographic ordering. Create a pair of :class:`islpy.Map`\ s
+    representing a pairwise schedule as two mappings from statement instances
     to lexicographic time.
 
     :arg knl: A :class:`loopy.kernel.LoopKernel` containing the
@@ -50,10 +52,10 @@ def get_schedule_for_statement_pair(
     :arg insn_id_after: An instruction identifier that is unique within
         a :class:`loopy.kernel.LoopKernel`.
 
-    :returns: A :class:`loopy.schedule.checker.schedule.PairwiseScheduleBuilder`
-        representing the order of two statements as a mapping from
-        :class:`loopy.schedule.checker.StatementInstanceSet`
-        to lexicographic time.
+    :returns: A two-tuple containing two :class:`islpy.Map`s
+        representing the a pairwise schedule as two mappings
+        from statement instances to lexicographic time, one for
+        each of the two statements.
 
     Example usage::
 
@@ -76,16 +78,15 @@ def get_schedule_for_statement_pair(
         from loopy.schedule.checker import (
             get_schedule_for_statement_pair,
         )
-        sched_builder_ab = get_schedule_for_statement_pair(
+
+        # Get two maps -----------------------------------------------------------
+
+        sched_a, sched_b = get_schedule_for_statement_pair(
             knl,
             knl.linearization,
             "insn_a",
             "insn_b",
             )
-
-        # Get two maps from the PairwiseScheduleBuilder --------------------------
-
-        sched_a, sched_b = sched_builder_ab.build_maps(knl)
 
         print(sched_a)
         print(sched_b)
@@ -112,12 +113,11 @@ def get_schedule_for_statement_pair(
 
     # }}}
 
-    # {{{ find any EnterLoop inames that are tagged as concurrent
-
-    # so that PairwiseScheduleBuilder knows to ignore them
+    # {{{ Find any EnterLoop inames that are tagged as concurrent
+    # so that generate_pairwise_schedule() knows to ignore them
     # (In the future, this shouldn't be necessary because there
-    #  won't be any inames with ConcurrentTags in EnterLoop linearization items.
-    #  Test which exercises this: test_linearization_checker_with_stroud_bernstein())
+    # won't be any inames with ConcurrentTags in EnterLoop linearization items.
+    # Test which exercises this: test_linearization_checker_with_stroud_bernstein())
     from loopy.schedule.checker.utils import (
         get_concurrent_inames,
         get_EnterLoop_inames,
@@ -134,11 +134,12 @@ def get_schedule_for_statement_pair(
 
     # }}}
 
-    # {{{ Create PairwiseScheduleBuilder: mapping of {statement instance: lex point}
+    # {{{ Create two mappings from {statement instance: lex point}
 
     # include only instructions involved in this dependency
-    from loopy.schedule.checker.schedule import PairwiseScheduleBuilder
-    return PairwiseScheduleBuilder(
+    from loopy.schedule.checker.schedule import generate_pairwise_schedule
+    return generate_pairwise_schedule(
+        preproc_knl,
         linearization_items,
         insn_id_before,
         insn_id_after,
