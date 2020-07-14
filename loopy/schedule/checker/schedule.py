@@ -200,7 +200,8 @@ def generate_pairwise_schedule(
     def _pad_lex_tuple_with_zeros(stmt_inst, length):
         return ImmutableRecord(
             insn_id=stmt_inst.insn_id,
-            lex_points=stmt_inst.lex_points[:] + [0]*(length-len(stmt_inst.lex_points))
+            lex_points=stmt_inst.lex_points[:] + [0]*(
+                length-len(stmt_inst.lex_points))
             )
 
     stmt_instance_set_before = _pad_lex_tuple_with_zeros(
