@@ -525,7 +525,7 @@ class TemporaryVariable(ArrayBase):
             "_base_storage_access_may_be_aliasing",
             ]
 
-    def __init__(self, name, dtype=None, shape=(), address_space=None,
+    def __init__(self, name, dtype=None, shape=auto, address_space=None,
             dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
             base_indices=None, storage_shape=None,
             base_storage=None, initializer=None, read_only=False,
@@ -579,7 +579,10 @@ class TemporaryVariable(ArrayBase):
 
             if shape is auto:
                 shape = initializer.shape
-
+            else:
+                if shape != initializer.shape:
+                    raise LoopyError("Shape of '{}' does not match that of the"
+                            " initializer.".format(name))
         else:
             raise LoopyError(
                     "temporary variable '%s': "
@@ -589,7 +592,7 @@ class TemporaryVariable(ArrayBase):
         if order is None:
             order = "C"
 
-        if base_indices is None:
+        if base_indices is None and shape is not auto:
             base_indices = (0,) * len(shape)
 
         if not read_only and initializer is not None:

@@ -251,8 +251,7 @@ def generate_linearized_array(array, value):
 
     assert array.offset == 0
 
-    from pytools import indices_in_shape
-    for ituple in indices_in_shape(value.shape):
+    for ituple in np.ndindex(value.shape):
         i = sum(i_ax * strd_ax for i_ax, strd_ax in zip(ituple, strides))
         data[i] = value[ituple]
 

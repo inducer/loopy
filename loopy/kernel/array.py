@@ -934,7 +934,8 @@ class ArrayBase(ImmutableRecord):
         return len(target_axes)
 
     def num_user_axes(self, require_answer=True):
-        if self.shape is not None:
+        from loopy import auto
+        if self.shape not in (None, auto):
             return len(self.shape)
         if self.dim_tags is not None:
             return len(self.dim_tags)
@@ -1193,11 +1194,10 @@ class ArrayBase(ImmutableRecord):
             else:
                 return idx
 
-        from pytools import indices_in_shape
         return [
                 (unwrap_1d_indices(i),
                     self.name + "".join("_s%d" % sub_i for sub_i in i))
-                for i in indices_in_shape(sep_shape)]
+                for i in np.ndindex(sep_shape)]
 
 # }}}
 
