@@ -68,8 +68,8 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
             out[ii] = 2*out[ii]+cnst[ii]{id=second}
             """,
             [lp.TemporaryVariable(
-                'cnst', shape=('n'), initializer=cnst,
-                address_space=lp.AddressSpace.GLOBAL,
+                'cnst', initializer=cnst,
+                scope=lp.AddressSpace.GLOBAL,
                 read_only=True), '...'])
     knl = lp.fix_parameters(knl, n=16)
     knl = lp.add_barrier(knl, "id:first", "id:second")
@@ -1705,8 +1705,8 @@ def test_global_barrier(ctx_factory):
                     ... gbarrier {id=top}
                     <> z[i] = z[i+1] + z[i]  {id=wr_z,dep=top}
                     <> v[i] = 11  {id=wr_v,dep=top}
-                    ... gbarrier {dep=wr_z:wr_v,id=yoink}
-                    z[i] = z[i] - z[i+1] + v[i] {id=iupd, dep=wr_z}
+                    ... gbarrier {id=yoink,dep=wr_z:wr_v}
+                    z[i] = z[i] - z[i+1] + v[i] {id=iupd, dep=yoink}
                 end
                 ... gbarrier {dep=iupd,id=postloop}
                 z[i] = z[i] - z[i+1] + v[i]  {dep=postloop}
@@ -2857,6 +2857,33 @@ def test_non_integral_array_idx_raises():
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
         print(lp.generate_code_v2(knl).device_code())
+
+
+@pytest.mark.parametrize("tag", ["for", "l.0", "g.0", "fixed"])
+def test_empty_domain(ctx_factory, tag):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    prg = lp.make_kernel(
+            "{[i,j]: 0 <= i < n}",
+            """
+            for i
+                c = 1
+            end
+            """)
+
+    if tag == "fixed":
+        prg = lp.fix_parameters(prg, n=0)
+        kwargs = {}
+    else:
+        prg = lp.tag_inames(prg, {"i": tag})
+        kwargs = {"n": 0}
+
+    prg = lp.set_options(prg, write_code=True)
+    c = cl.array.zeros(queue, (), dtype=np.int32)
+    prg(queue, c=c, **kwargs)
+
+    assert (c.get() == 0).all()
 
 
 if __name__ == "__main__":

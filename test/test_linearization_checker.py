@@ -50,9 +50,9 @@ else:
     faulthandler.enable()
 
 
-# {{{ test pairwise schedule map creation
+# {{{ test pairwise schedule creation
 
-def test_pairwise_schedule_and_map_creation():
+def test_pairwise_schedule_creation():
     import islpy as isl
     from loopy.schedule.checker import (
         get_schedule_for_statement_pair,
