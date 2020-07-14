@@ -36,15 +36,15 @@ Python 3 Intel:
 
 
 Python 3 POCL Twice With Cache:
-  script:
-  - export PY_EXE=python3
-  - export PYOPENCL_TEST=portable:pthread
-  - export EXTRA_INSTALL="pybind11 numpy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
-  - "cd .."
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
+  script: |
+    export PY_EXE=python3
+    export PYOPENCL_TEST=portable:pthread
+    export EXTRA_INSTALL="pybind11 numpy mako"
+    curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+    . ./ci-support.sh
+    build_py_project_in_venv
+    ( test_py_project )
+    ( test_py_project )
   tags:
   - python3
   - pocl
