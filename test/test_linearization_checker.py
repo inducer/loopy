@@ -50,7 +50,7 @@ else:
     faulthandler.enable()
 
 
-# {{{ test PairwiseScheduleBuilder and map creation
+# {{{ test pairwise schedule map creation
 
 def test_pairwise_schedule_and_map_creation():
     import islpy as isl
@@ -379,6 +379,9 @@ def test_statement_instance_ordering_creation():
     from loopy.schedule.checker import (
         get_schedule_for_statement_pair,
     )
+    from loopy.schedule.checker.schedule import (
+        get_lex_order_map_for_sched_space,
+    )
     from loopy.schedule.checker.utils import (
         ensure_dim_names_match_and_align,
         append_marker_to_isl_map_var_names,
@@ -431,18 +434,16 @@ def test_statement_instance_ordering_creation():
             expected_sio,
             ):
 
-        sched_builder = get_schedule_for_statement_pair(
+        # Get pairwise schedule
+        sched_map_before, sched_map_after = get_schedule_for_statement_pair(
             knl,
             linearization_items,
             insn_id_before,
             insn_id_after,
             )
 
-        # Get two isl maps from the PairwiseScheduleBuilder
-        sched_map_before, sched_map_after = sched_builder.build_maps(knl)
-
         # get map representing lexicographic ordering
-        sched_lex_order_map = sched_builder.get_lex_order_map_for_sched_space()
+        sched_lex_order_map = get_lex_order_map_for_sched_space(sched_map_before)
 
         assert sched_lex_order_map == expected_lex_order_map
 
