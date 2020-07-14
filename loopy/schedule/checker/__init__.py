@@ -294,6 +294,9 @@ def check_linearization_validity(
     from loopy.schedule.checker.utils import (
         prettier_map_string,
     )
+    from loopy.schedule.checker.schedule import (
+        get_lex_order_map_for_sched_space,
+    )
 
     # Preprocess if not already preprocessed
     # note: kernels must always be preprocessed before scheduling
@@ -304,22 +307,17 @@ def check_linearization_validity(
     linearization_is_valid = True
     for insn_id_before, insn_id_after, constraint_map in dep_maps:
 
-        # Create PairwiseScheduleBuilder: mapping of {statement instance: lex point}
-        # include only instructions involved in this dependency
-        sched_builder = get_schedule_for_statement_pair(
+        # Get two isl maps from {statement instance: lex point},
+        # one for each linearization item involved in the dependency
+        isl_sched_map_before, isl_sched_map_after = get_schedule_for_statement_pair(
             preprocessed_knl,
             linearization_items,
             insn_id_before,
             insn_id_after,
             )
 
-        # Get two isl maps from the PairwiseScheduleBuilder,
-        # one for each linearization item involved in the dependency;
-        isl_sched_map_before, isl_sched_map_after = sched_builder.build_maps(
-            preprocessed_knl)
-
         # get map representing lexicographic ordering
-        sched_lex_order_map = sched_builder.get_lex_order_map_for_sched_space()
+        sched_lex_order_map = get_lex_order_map_for_sched_space(isl_sched_map_before)
 
         # create statement instance ordering,
         # maps each statement instance to all statement instances occuring later

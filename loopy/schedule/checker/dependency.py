@@ -267,7 +267,7 @@ def create_legacy_dependency_constraint(
                 constraint_set = create_elementwise_comparison_conjunction_set(
                         inames_prime, inames_list, islvars, op="lt")
 
-        # get ints representing statements in PairwiseSchedule
+        # get ints representing statements in pairwise schedule
         s_before_int = 0
         s_after_int = 0 if insn_id_before == insn_id_after else 1
 
