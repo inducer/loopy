@@ -47,38 +47,6 @@ LEX_VAR_PREFIX = "%sl" % (LIN_CHECK_IDENTIFIER_PREFIX)
 STATEMENT_VAR_NAME = "%sstatement" % (LIN_CHECK_IDENTIFIER_PREFIX)
 
 
-class StatementInstanceSet(object):
-    """A representation of a set of (non-concurrent) instances of a
-    statement being executed. The ordering of the instances is described
-    by the `lex_points` attribute, a list representing points in a
-    lexicographic ordering of statements. Each field in the list
-    corresponds to a dimension in the lexicographic ordering.
-
-    .. attribute:: insn_id
-
-        A :class:`str` instruction identifier that is unique within
-        a :class:`loopy.kernel.LoopKernel`.
-
-    .. attribute:: lex_points
-
-        A list containing one value for each dimension in a lexicographic
-        ordering. These values describe the ordering of the statements,
-        and may be :class:`str` :mod:`loopy` inames or :class:`int`.
-    """
-
-    def __init__(
-            self,
-            insn_id,
-            lex_points,
-            ):
-        self.insn_id = insn_id
-        self.lex_points = lex_points
-
-    def __repr__(self):
-        return "%s(%s, %s)" % (
-            self.__class__.__name__, self.insn_id, self.lex_points)
-
-
 def generate_pairwise_schedule(
         knl,
         linearization_items_ordered,
@@ -116,33 +84,15 @@ def generate_pairwise_schedule(
         each of the two statements.
     """
 
-    # Two StatementInstanceSets, one for each statement:
-
-    """
-    stmt_instance_set_before
-
-    A :class:`StatementInstanceSet` whose ordering relative
-    to `stmt_instance_set_after is described by the schedule blueprint. This
-    is achieved by mapping the statement instances in both sets to points
-    in a single lexicographic ordering. Points in lexicographic ordering
-    are represented as a list of :class:`int` or as :class:`str`
-    :mod:`loopy` inames.
-    """
+    # For each statement, create a :class:`ImmutableRecord` describing the set of
+    # statement instances. Contains the insn_id and a list representing points
+    # in the lexicographic ordering containing items of :class:`int` or
+    # :class:`str` :mod:`loopy` inames.
     stmt_instance_set_before = None
-
-    """
-    stmt_instance_set_after
-
-    A :class:`StatementInstanceSet` whose ordering relative
-    to `stmt_instance_set_before is described by the schedule blueprint. This
-    is achieved by mapping the statement instances in both sets to points
-    in a single lexicographic ordering. Points in lexicographic ordering
-    are represented as a list of :class:`int` or as :class:`str`
-    :mod:`loopy` inames.
-    """
     stmt_instance_set_after = None
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
+    from pytools import ImmutableRecord
 
     # go through linearization_items_ordered and generate pairwise sub-schedule
 
@@ -210,16 +160,16 @@ def generate_pairwise_schedule(
 
             if lp_insn_id == before_insn_id:
                 # add before sched item
-                stmt_instance_set_before = StatementInstanceSet(
-                        lp_insn_id,
-                        next_insn_lex_tuple[:])
+                stmt_instance_set_before = ImmutableRecord(
+                        insn_id=lp_insn_id,
+                        lex_points=next_insn_lex_tuple[:])
                 stmt_added = True
 
             if lp_insn_id == after_insn_id:
                 # add after sched item
-                stmt_instance_set_after = StatementInstanceSet(
-                        lp_insn_id,
-                        next_insn_lex_tuple[:])
+                stmt_instance_set_after = ImmutableRecord(
+                        insn_id=lp_insn_id,
+                        lex_points=next_insn_lex_tuple[:])
                 stmt_added = True
 
             # Note: before/after may refer to same stmt, in which case
@@ -248,9 +198,9 @@ def generate_pairwise_schedule(
     # be zero, so add them.
 
     def _pad_lex_tuple_with_zeros(stmt_inst, length):
-        return StatementInstanceSet(
-            stmt_inst.insn_id,
-            stmt_inst.lex_points[:] + [0]*(length-len(stmt_inst.lex_points)),
+        return ImmutableRecord(
+            insn_id=stmt_inst.insn_id,
+            lex_points=stmt_inst.lex_points[:] + [0]*(length-len(stmt_inst.lex_points))
             )
 
     stmt_instance_set_before = _pad_lex_tuple_with_zeros(
