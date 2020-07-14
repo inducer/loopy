@@ -128,7 +128,7 @@ def get_lex_order_constraint(before_names, after_names, islvars=None):
 
 
 def create_lex_order_map(
-        n_dims,
+        n_dims=None,
         before_names=None,
         after_names=None,
         ):
@@ -166,6 +166,8 @@ def create_lex_order_map(
             append_marker_to_strings,
         )
         before_names = append_marker_to_strings(after_names, marker="'")
+    if n_dims is None:
+        n_dims = len(after_names)
 
     assert len(before_names) == len(after_names) == n_dims
     dim_type = isl.dim_type

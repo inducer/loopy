@@ -341,5 +341,4 @@ def get_lex_order_map_for_sched_space(schedule):
     )
 
     lex_dim_names = schedule.space.get_var_names(isl.dim_type.out)
-    return create_lex_order_map(
-        len(lex_dim_names), after_names=lex_dim_names)
+    return create_lex_order_map(after_names=lex_dim_names)
