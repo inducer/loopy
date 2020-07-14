@@ -1,7 +1,7 @@
 git+https://github.com/inducer/pytools.git#egg=pytools
-git+https://github.com/inducer/islpy.gitt#egg=islpy
-git+https://github.com/inducer/cgen.gitt#egg=cgen
-git+https://github.com/inducer/pyopencl.gitt#egg=pyopencl
+git+https://github.com/inducer/islpy.git#egg=islpy
+git+https://github.com/inducer/cgen.git#egg=cgen
+git+https://github.com/inducer/pyopencl.git#egg=pyopencl
 git+https://github.com/inducer/pymbolic.git#egg=pymbolic
 git+https://github.com/inducer/genpy.git#egg=genpy
 git+https://github.com/inducer/codepy.git#egg=codepy
