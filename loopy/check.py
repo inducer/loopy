@@ -72,7 +72,13 @@ VALID_NOSYNC_SCOPES = frozenset(["local", "global", "any"])
 class SubscriptIndicesIsIntChecker(TypeInferenceMapper):
     def map_subscript(self, expr):
         for idx in expr.index_tuple:
-            if not self.rec(idx)[0].is_integral():
+            type_inf_result = self.rec(idx)
+            if not type_inf_result:
+                raise LoopyError(
+                        "When checking that subscript indices are integral: "
+                        "Type inference did not find type of '%s'"
+                        % idx)
+            if not type_inf_result[0].is_integral():
                 raise LoopyError("Non-integral array indices obtained in"
                         " {}.".format(expr))
 
