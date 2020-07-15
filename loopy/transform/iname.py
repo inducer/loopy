@@ -1793,8 +1793,11 @@ def add_inames_to_insn(knl, inames, insn_match):
 
 def add_inames_for_unused_hw_axes(kernel, within=None):
     """
-    Returns a kernel with added inames corresponding to the unused hw axes for
-    each instruction.
+    Returns a kernel with inames added to each instruction
+    corresponding to any hardware-parallel iname tags
+    (:class:`loopy.kernel.data.GroupIndexTag`,
+    :class:`loopy.kernel.data.LocalIndexTag`) unused
+    in the instruction but used elsewhere in the kernel.
 
     Current limitations:
 
