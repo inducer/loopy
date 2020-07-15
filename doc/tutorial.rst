@@ -246,6 +246,14 @@ inspect that code, too, using :attr:`loopy.Options.write_wrapper`:
         # }}}
     ...
 
+You can also pass options to the OpenCL implementation
+by passing :attr:`loopy.Options.cl_build_options`.
+
+.. doctest::
+
+    >>> knl = lp.set_options(knl, cl_build_options=["-cl-mad-enable"])
+
+
 Generating code
 ~~~~~~~~~~~~~~~
 
