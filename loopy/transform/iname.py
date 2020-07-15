@@ -72,7 +72,7 @@ __doc__ = """
 
 .. autofunction:: add_inames_to_insn
 
-.. autofunction:: broadcast_along_unused_hw_axes
+.. autofunction:: add_inames_for_unused_hw_axes
 
 """
 
@@ -1791,12 +1791,14 @@ def add_inames_to_insn(knl, inames, insn_match):
 # }}}
 
 
-def broadcast_along_unused_hw_axes(kernel, within=None):
+def add_inames_for_unused_hw_axes(kernel, within=None):
     """
-    Returns a kernel with instructions that have unused hw axes broadcasted
-    along them. The implementation does not support:
+    Returns a kernel with added inames corresponding to the unused hw axes for
+    each instruction.
 
-    * More than one iname tagged with one of the unused hw axes.
+    Current limitations:
+
+    * Only one iname in the kernel may be tagged with each of the unused hw axes.
     * Occurence of an ``l.auto`` tag when an instruction is missing one of the
       local hw axes.
 
@@ -1826,14 +1828,14 @@ def broadcast_along_unused_hw_axes(kernel, within=None):
         raise LoopyError("Kernels containing l.auto tags are invalid"
                 " arguments.")
 
+    # {{{ fill axes_to_inames
+
     # local_axes_to_inames: ith entry contains the iname tagged with l.i or None
     # if multiple inames are tagged with l.i
     local_axes_to_inames = []
     # group_axes_to_inames: ith entry contains the iname tagged with g.i or None
     # if multiple inames are tagged with g.i
     group_axes_to_inames = []
-
-    # {{{ fil axes_to_inames
 
     for i in range(n_local_axes):
         ith_local_axes_tag = LocalIndexTag(i)
@@ -1883,7 +1885,7 @@ def broadcast_along_unused_hw_axes(kernel, within=None):
 
             for axis in missing_group_axes:
                 iname = group_axes_to_inames[axis]
-                if iname:
+                if iname is not None:
                     insn = insn.copy(within_inames=insn.within_inames |
                             frozenset([iname]))
                 else:

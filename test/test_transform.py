@@ -618,12 +618,11 @@ def test_prefetch_local_into_private():
             knl, "s_mat", "j", temporary_name="p_mat", default_tag="for")
 
 
-def test_broadcast_along_unused_hw_axes(ctx_factory):
+def test_add_inames_for_unused_hw_axes(ctx_factory):
     ctx = ctx_factory()
     dtype = np.float32
     order = "F"
 
-    #n = int(get_suitable_size(ctx)**(2.7/2))
     n = 16**3
 
     knl = lp.make_kernel(
@@ -658,7 +657,7 @@ def test_broadcast_along_unused_hw_axes(ctx_factory):
     knl = lp.add_prefetch(knl, "a")
     knl = lp.add_prefetch(knl, "b")
 
-    knl = lp.broadcast_along_unused_hw_axes(knl)
+    knl = lp.add_inames_for_unused_hw_axes(knl)
 
     assert knl.id_to_insn['init_alpha'].within_inames == frozenset(['i_inner',
         'i_outer', 'j_outer', 'j_inner'])
