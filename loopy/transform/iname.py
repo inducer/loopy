@@ -72,6 +72,8 @@ __doc__ = """
 
 .. autofunction:: add_inames_to_insn
 
+.. autofunction:: add_inames_for_unused_hw_axes
+
 """
 
 
@@ -1788,5 +1790,114 @@ def add_inames_to_insn(knl, inames, insn_match):
 
 # }}}
 
+
+def add_inames_for_unused_hw_axes(kernel, within=None):
+    """
+    Returns a kernel with inames added to each instruction
+    corresponding to any hardware-parallel iname tags
+    (:class:`loopy.kernel.data.GroupIndexTag`,
+    :class:`loopy.kernel.data.LocalIndexTag`) unused
+    in the instruction but used elsewhere in the kernel.
+
+    Current limitations:
+
+    * Only one iname in the kernel may be tagged with each of the unused hw axes.
+    * Occurence of an ``l.auto`` tag when an instruction is missing one of the
+      local hw axes.
+
+    :arg within: An instruction match as understood by
+        :func:`loopy.match.parse_match`.
+    """
+    from loopy.kernel.data import (LocalIndexTag, GroupIndexTag,
+            AutoFitLocalIndexTag)
+
+    n_local_axes = max([tag.axis
+        for tags in kernel.iname_to_tags.values()
+        for tag in tags
+        if isinstance(tag, LocalIndexTag)],
+        default=-1) + 1
+
+    n_group_axes = max([tag.axis
+        for tags in kernel.iname_to_tags.values()
+        for tag in tags
+        if isinstance(tag, GroupIndexTag)],
+        default=-1) + 1
+
+    contains_auto_local_tag = any([isinstance(tag, AutoFitLocalIndexTag)
+        for tags in kernel.iname_to_tags
+        for tag in tags])
+
+    if contains_auto_local_tag:
+        raise LoopyError("Kernels containing l.auto tags are invalid"
+                " arguments.")
+
+    # {{{ fill axes_to_inames
+
+    # local_axes_to_inames: ith entry contains the iname tagged with l.i or None
+    # if multiple inames are tagged with l.i
+    local_axes_to_inames = []
+    # group_axes_to_inames: ith entry contains the iname tagged with g.i or None
+    # if multiple inames are tagged with g.i
+    group_axes_to_inames = []
+
+    for i in range(n_local_axes):
+        ith_local_axes_tag = LocalIndexTag(i)
+        inames = [iname
+                for iname, tags in kernel.iname_to_tags.items()
+                if ith_local_axes_tag in tags]
+        if not inames:
+            raise LoopyError("Unused local hw axes {}.".format(i))
+
+        local_axes_to_inames.append(inames[0] if len(inames) == 1 else None)
+
+    for i in range(n_group_axes):
+        ith_group_axes_tag = GroupIndexTag(i)
+        inames = [iname
+                for iname, tags in kernel.iname_to_tags.items()
+                if ith_group_axes_tag in tags]
+        if not inames:
+            raise LoopyError("Unused group hw axes {}.".format(i))
+
+        group_axes_to_inames.append(inames[0] if len(inames) == 1 else None)
+
+    # }}}
+
+    from loopy.match import parse_match
+    within = parse_match(within)
+
+    new_insns = []
+
+    for insn in kernel.instructions:
+        if within(kernel, insn):
+            within_tags = frozenset().union(*(kernel.iname_to_tags.get(iname,
+                frozenset()) for iname in insn.within_inames))
+            missing_local_axes = [i for i in range(n_local_axes)
+                    if LocalIndexTag(i) not in within_tags]
+            missing_group_axes = [i for i in range(n_group_axes)
+                    if GroupIndexTag(i) not in within_tags]
+
+            for axis in missing_local_axes:
+                iname = local_axes_to_inames[axis]
+                if iname:
+                    insn = insn.copy(within_inames=insn.within_inames |
+                            frozenset([iname]))
+                else:
+                    raise LoopyError("Multiple inames tagged with l.%d while"
+                            " adding unused local hw axes to instruction '%s'."
+                            % (axis, insn.id))
+
+            for axis in missing_group_axes:
+                iname = group_axes_to_inames[axis]
+                if iname is not None:
+                    insn = insn.copy(within_inames=insn.within_inames |
+                            frozenset([iname]))
+                else:
+                    raise LoopyError("Multiple inames tagged with g.%d while"
+                            " adding unused group hw axes to instruction '%s'."
+                            % (axis, insn.id))
+
+        new_insns.append(insn)
+
+    return kernel.copy(instructions=new_insns)
 
 # vim: foldmethod=marker
