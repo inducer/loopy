@@ -38,7 +38,7 @@ jobs:
                 . ./prepare-and-run-pylint.sh loopy test/test_*.py
 
     pytest3:
-        name: Conda Pytest Py3
+        name: Conda Pytest
         runs-on: ubuntu-latest
         steps:
         -   uses: actions/checkout@v2
@@ -49,7 +49,7 @@ jobs:
                 . ./build-and-test-py-project-within-miniconda.sh
 
     pytest_twice:
-        name: Pytest twice (for cache behavior) on Py${{ matrix.python-version }}
+        name: Conda Pytest Twice (for cache behavior)
         runs-on: ubuntu-latest
         steps:
         -   uses: actions/checkout@v2
