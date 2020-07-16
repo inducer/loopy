@@ -758,7 +758,11 @@ def pre_schedule_checks(kernel):
 
 # {{{ find boostable insn ids
 
-def find_boostable_insn_ids(kernel):
+def _find_boostable_insn_ids(kernel):
+    """There used to exist a broken heuristic called "boostability" that allowed
+    instructions to be pushed into hardware-parallel loops. This function survives
+    of that, for now, to provide a thin veneer of compatibility.
+    """
     logger.debug("%s: idempotence" % kernel.name)
 
     writer_map = kernel.writer_map()
@@ -817,7 +821,7 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
             Barrier, EnterLoop, LeaveLoop, ReturnFromKernel,
             get_insn_ids_for_block_at, gather_schedule_block)
 
-    boostable_insn_ids = find_boostable_insn_ids(kernel)
+    boostable_insn_ids = _find_boostable_insn_ids(kernel)
 
     if sched_index is None:
         group_axes = set()
