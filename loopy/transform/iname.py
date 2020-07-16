@@ -1024,7 +1024,7 @@ def get_iname_duplication_options(knl, use_boostable_into=None):
     if use_boostable_into is False:
         from warnings import warn
         warn("passing 'use_boostable_into=False' to 'get_iname_duplication_options'"
-                " is deprecated. This will be the default in 2021.x.",
+                " is deprecated. The argument will go away in 2021.",
                 DeprecationWarning, stacklevel=2)
 
     from loopy.kernel.data import ConcurrentTag
