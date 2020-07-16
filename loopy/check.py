@@ -806,6 +806,7 @@ def _find_boostable_insn_ids(kernel):
     # {{{ remove boostability from isns that access non-idempotently updated vars
 
     for insn_id in boostable_insn_ids.copy():
+        insn = kernel.id_to_insn[insn_id]
         if bool(non_idempotently_updated_vars & insn.dependency_names()):
             boostable_insn_ids.remove(insn_id)
 
