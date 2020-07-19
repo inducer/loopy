@@ -49,7 +49,7 @@ STATEMENT_VAR_NAME = "%sstatement" % (LIN_CHECK_IDENTIFIER_PREFIX)
 
 def generate_pairwise_schedule(
         knl,
-        linearization_items_ordered,
+        linearization_items,
         before_insn_id,
         after_insn_id,
         loops_to_ignore=set(),
@@ -66,8 +66,8 @@ def generate_pairwise_schedule(
         kernel will be used to get the domains associated with the inames
         used in the statements.
 
-    :arg linearization_items_ordered: A list of :class:`loopy.schedule.ScheduleItem`
-        (to be renamed to `loopy.schedule.LinearizationItem`) containing the
+    :arg linearization_items: A list of :class:`loopy.schedule.ScheduleItem`
+        (to be renamed to `loopy.schedule.LinearizationItem`) including the
         two linearization items whose relative order will be described by the
         schedule. This list may be a *partial* linearization for a kernel since
         this function may be used during the linearization process.
@@ -94,14 +94,14 @@ def generate_pairwise_schedule(
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
     from pytools import ImmutableRecord
 
-    # go through linearization_items_ordered and generate pairwise sub-schedule
+    # go through linearization_items and generate pairwise sub-schedule
 
     # keep track of the next tuple of points in our lexicographic
     # ordering, initially this as a 1-d point with value 0
     next_insn_lex_tuple = [0]
     stmt_added_since_prev_block_at_tier = [False]
     max_lex_dim = 0
-    for linearization_item in linearization_items_ordered:
+    for linearization_item in linearization_items:
         if isinstance(linearization_item, EnterLoop):
             iname = linearization_item.iname
             if iname in loops_to_ignore:
