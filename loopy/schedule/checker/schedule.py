@@ -162,14 +162,14 @@ def generate_pairwise_schedule(
                 # add before sched item
                 stmt_instance_set_before = ImmutableRecord(
                         insn_id=lp_insn_id,
-                        lex_points=next_insn_lex_tuple[:])
+                        lex_points=tuple(next_insn_lex_tuple[:]))
                 stmt_added = True
 
             if lp_insn_id == after_insn_id:
                 # add after sched item
                 stmt_instance_set_after = ImmutableRecord(
                         insn_id=lp_insn_id,
-                        lex_points=next_insn_lex_tuple[:])
+                        lex_points=tuple(next_insn_lex_tuple[:]))
                 stmt_added = True
 
             # Note: before/after may refer to same stmt, in which case
@@ -200,8 +200,8 @@ def generate_pairwise_schedule(
     def _pad_lex_tuple_with_zeros(stmt_inst, length):
         return ImmutableRecord(
             insn_id=stmt_inst.insn_id,
-            lex_points=stmt_inst.lex_points[:] + [0]*(
-                length-len(stmt_inst.lex_points))
+            lex_points=stmt_inst.lex_points[:] + tuple(
+                [0]*(length-len(stmt_inst.lex_points)))
             )
 
     stmt_instance_set_before = _pad_lex_tuple_with_zeros(
