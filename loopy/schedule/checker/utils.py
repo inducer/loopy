@@ -153,8 +153,8 @@ def create_symbolic_map_from_tuples(
         space,
         ):
     """Return an :class:`islpy.Map` constructed using the provided space,
-        mapping input->output tuples provided in `tuple_pairs_with_domains`,
-        with each set of tuple variables constrained by the domains provided.
+    mapping input->output tuples provided in `tuple_pairs_with_domains`,
+    with each set of tuple variables constrained by the domains provided.
 
     :arg tuple_pairs_with_domains: A :class:`list` with each element being
         a tuple of the form `((tup_in, tup_out), domain)`.
