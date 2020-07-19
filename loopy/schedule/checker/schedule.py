@@ -78,7 +78,7 @@ def generate_pairwise_schedule(
     :arg after_insn_id: A :class:`str` instruction id specifying
         stmt_instance_set_after in this pair of instructions.
 
-    :returns: A two-tuple containing two :class:`islpy.Map`s
+    :returns: A two-tuple containing two :class:`islpy.Map`\ s
         representing the a pairwise schedule as two mappings
         from statement instances to lexicographic time, one for
         each of the two statements.
