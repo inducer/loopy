@@ -148,11 +148,17 @@ def generate_pairwise_schedule(
                 get_insn_id_from_linearization_item,
             )
             lp_insn_id = get_insn_id_from_linearization_item(linearization_item)
+
             if lp_insn_id is None:
-                # TODO make sure it's okay to ignore barriers without id
-                # (because they'll never be part of a dependency?)
-                # matmul example has barrier that fails this assertion...
-                # assert linearization_item.originating_insn_id is not None
+                assert isinstance(linearization_item, Barrier)
+
+                # Barriers without insn ids were inserted as a result of a
+                # dependency. They don't themselves have dependencies. Ignore them.
+
+                # FIXME: It's possible that we could record metadata about them
+                # (e.g. what dependency produced them) and verify that they're
+                # adequately protecting all statement instance pairs.
+
                 continue
 
             # only process before/after insns, otherwise ignore
