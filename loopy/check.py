@@ -27,8 +27,11 @@ from six.moves import range
 
 from islpy import dim_type
 import islpy as isl
-from loopy.symbolic import WalkMapper
-from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_kernel
+from loopy.program import CallablesTable
+from loopy.symbolic import WalkMapper, CombineMapper, ResolvedFunction
+from loopy.diagnostic import (LoopyError, WriteRaceConditionWarning,
+                              DataDependentParallelBoundsWarning,
+                              warn_with_kernel)
 from loopy.type_inference import TypeInferenceMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
@@ -307,10 +310,12 @@ def check_for_data_dependent_parallel_bounds(kernel):
         parameters = set(dom.get_var_names(dim_type.param))
         for par in parameters:
             if par in kernel.temporary_variables:
-                raise LoopyError("Domain number %d has a data-dependent "
-                        "parameter '%s' and contains parallel "
-                        "inames '%s'. This is not allowed (for now)."
-                        % (i, par, ", ".join(par_inames)))
+                warn_with_kernel(kernel, "data_dep_par_bound('%s')" % par,
+                                "Domain number %d has a data-dependent "
+                                "parameter '%s' and contains parallel "
+                                "inames '%s'. This is not allowed (for now)."
+                                % (i, par, ", ".join(par_inames)),
+                                DataDependentParallelBoundsWarning)
 
 
 # {{{ check access bounds
@@ -734,7 +739,7 @@ def pre_schedule_checks(kernel):
         check_for_inactive_iname_access(kernel)
         check_for_unused_inames(kernel)
         check_for_write_races(kernel)
-        # check_for_data_dependent_parallel_bounds(kernel)
+        check_for_data_dependent_parallel_bounds(kernel)
         check_bounds(kernel)
         check_write_destinations(kernel)
         check_has_schedulable_iname_nesting(kernel)
