@@ -36,7 +36,7 @@ def get_schedule_for_statement_pair(
     representing a pairwise schedule as two mappings from statement instances
     to lexicographic time.
 
-    :arg knl: A :class:`loopy.kernel.LoopKernel` containing the
+    :arg knl: A preprocessed :class:`loopy.kernel.LoopKernel` containing the
         linearization items that will be used to create a schedule.
 
     :arg linearization_items: A list of :class:`loopy.schedule.ScheduleItem`
@@ -106,10 +106,12 @@ def get_schedule_for_statement_pair(
 
     """
 
-    # {{{ preprocess if not already preprocessed
+    # {{{ make sure kernel has been preprocessed
 
-    from loopy import preprocess_kernel
-    preproc_knl = preprocess_kernel(knl)
+    from loopy.kernel import KernelState
+    assert knl.state in [
+            KernelState.PREPROCESSED,
+            KernelState.LINEARIZED]
 
     # }}}
 
@@ -122,15 +124,15 @@ def get_schedule_for_statement_pair(
         get_concurrent_inames,
         get_EnterLoop_inames,
     )
-    conc_inames, _ = get_concurrent_inames(preproc_knl)
-    enterloop_inames = get_EnterLoop_inames(linearization_items, preproc_knl)
+    conc_inames, _ = get_concurrent_inames(knl)
+    enterloop_inames = get_EnterLoop_inames(linearization_items, knl)
     conc_loop_inames = conc_inames & enterloop_inames
     if conc_loop_inames:
         from warnings import warn
         warn(
             "get_schedule_for_statement_pair encountered EnterLoop for inames %s "
             "with ConcurrentTag(s) in linearization for kernel %s. "
-            "Ignoring these loops." % (conc_loop_inames, preproc_knl.name))
+            "Ignoring these loops." % (conc_loop_inames, knl.name))
 
     # }}}
 
@@ -139,7 +141,7 @@ def get_schedule_for_statement_pair(
     # include only instructions involved in this dependency
     from loopy.schedule.checker.schedule import generate_pairwise_schedule
     return generate_pairwise_schedule(
-        preproc_knl,
+        knl,
         linearization_items,
         insn_id_before,
         insn_id_after,

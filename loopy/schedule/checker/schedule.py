@@ -49,7 +49,7 @@ STATEMENT_VAR_NAME = "%sstatement" % (LIN_CHECK_IDENTIFIER_PREFIX)
 
 def generate_pairwise_schedule(
         knl,
-        linearization_items_ordered,
+        linearization_items,
         before_insn_id,
         after_insn_id,
         loops_to_ignore=set(),
@@ -66,8 +66,8 @@ def generate_pairwise_schedule(
         kernel will be used to get the domains associated with the inames
         used in the statements.
 
-    :arg linearization_items_ordered: A list of :class:`loopy.schedule.ScheduleItem`
-        (to be renamed to `loopy.schedule.LinearizationItem`) containing the
+    :arg linearization_items: A list of :class:`loopy.schedule.ScheduleItem`
+        (to be renamed to `loopy.schedule.LinearizationItem`) including the
         two linearization items whose relative order will be described by the
         schedule. This list may be a *partial* linearization for a kernel since
         this function may be used during the linearization process.
@@ -78,7 +78,7 @@ def generate_pairwise_schedule(
     :arg after_insn_id: A :class:`str` instruction id specifying
         stmt_instance_set_after in this pair of instructions.
 
-    :returns: A two-tuple containing two :class:`islpy.Map`s
+    :returns: A two-tuple containing two :class:`islpy.Map`\ s
         representing the a pairwise schedule as two mappings
         from statement instances to lexicographic time, one for
         each of the two statements.
@@ -94,14 +94,14 @@ def generate_pairwise_schedule(
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
     from pytools import ImmutableRecord
 
-    # go through linearization_items_ordered and generate pairwise sub-schedule
+    # go through linearization_items and generate pairwise sub-schedule
 
     # keep track of the next tuple of points in our lexicographic
     # ordering, initially this as a 1-d point with value 0
     next_insn_lex_tuple = [0]
     stmt_added_since_prev_block_at_tier = [False]
     max_lex_dim = 0
-    for linearization_item in linearization_items_ordered:
+    for linearization_item in linearization_items:
         if isinstance(linearization_item, EnterLoop):
             iname = linearization_item.iname
             if iname in loops_to_ignore:
@@ -148,11 +148,17 @@ def generate_pairwise_schedule(
                 get_insn_id_from_linearization_item,
             )
             lp_insn_id = get_insn_id_from_linearization_item(linearization_item)
+
             if lp_insn_id is None:
-                # TODO make sure it's okay to ignore barriers without id
-                # (because they'll never be part of a dependency?)
-                # matmul example has barrier that fails this assertion...
-                # assert linearization_item.originating_insn_id is not None
+                assert isinstance(linearization_item, Barrier)
+
+                # Barriers without insn ids were inserted as a result of a
+                # dependency. They don't themselves have dependencies. Ignore them.
+
+                # FIXME: It's possible that we could record metadata about them
+                # (e.g. what dependency produced them) and verify that they're
+                # adequately protecting all statement instance pairs.
+
                 continue
 
             # only process before/after insns, otherwise ignore
@@ -162,14 +168,14 @@ def generate_pairwise_schedule(
                 # add before sched item
                 stmt_instance_set_before = ImmutableRecord(
                         insn_id=lp_insn_id,
-                        lex_points=next_insn_lex_tuple[:])
+                        lex_points=tuple(next_insn_lex_tuple[:]))
                 stmt_added = True
 
             if lp_insn_id == after_insn_id:
                 # add after sched item
                 stmt_instance_set_after = ImmutableRecord(
                         insn_id=lp_insn_id,
-                        lex_points=next_insn_lex_tuple[:])
+                        lex_points=tuple(next_insn_lex_tuple[:]))
                 stmt_added = True
 
             # Note: before/after may refer to same stmt, in which case
@@ -188,6 +194,10 @@ def generate_pairwise_schedule(
                 stmt_added_since_prev_block_at_tier = [True]*len(
                     stmt_added_since_prev_block_at_tier)
         else:
+            from loopy.schedule import (CallKernel, ReturnFromKernel)
+            # no action needed for these types of linearization item
+            assert isinstance(
+                linearization_item, (CallKernel, ReturnFromKernel))
             pass
         # to save time, stop when we've created both statements
         if stmt_instance_set_before and stmt_instance_set_after:
@@ -200,7 +210,8 @@ def generate_pairwise_schedule(
     def _pad_lex_tuple_with_zeros(stmt_inst, length):
         return ImmutableRecord(
             insn_id=stmt_inst.insn_id,
-            lex_points=stmt_inst.lex_points[:] + [0]*(length-len(stmt_inst.lex_points))
+            lex_points=stmt_inst.lex_points[:] + tuple(
+                [0]*(length-len(stmt_inst.lex_points)))
             )
 
     stmt_instance_set_before = _pad_lex_tuple_with_zeros(
