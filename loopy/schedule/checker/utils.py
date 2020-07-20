@@ -237,7 +237,7 @@ def create_symbolic_map_from_tuples(
     return union_of_maps
 
 
-def get_concurrent_inames(knl):
+def partition_inames_by_concurrency(knl):
     from loopy.kernel.data import ConcurrentTag
     conc_inames = set()
     non_conc_inames = set()

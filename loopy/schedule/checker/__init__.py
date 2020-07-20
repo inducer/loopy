@@ -121,10 +121,10 @@ def get_schedule_for_statement_pair(
     # won't be any inames with ConcurrentTags in EnterLoop linearization items.
     # Test which exercises this: test_linearization_checker_with_stroud_bernstein())
     from loopy.schedule.checker.utils import (
-        get_concurrent_inames,
+        partition_inames_by_concurrency,
         get_EnterLoop_inames,
     )
-    conc_inames, _ = get_concurrent_inames(knl)
+    conc_inames, _ = partition_inames_by_concurrency(knl)
     enterloop_inames = get_EnterLoop_inames(linearization_items, knl)
     conc_loop_inames = conc_inames & enterloop_inames
     if conc_loop_inames:
