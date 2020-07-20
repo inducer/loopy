@@ -140,12 +140,11 @@ def ensure_dim_names_match_and_align(obj_map, tgt_map):
 def list_var_names_in_isl_sets(
         isl_sets,
         set_dim=isl.dim_type.set):
-    inames = set()
-    for isl_set in isl_sets:
-        inames.update(isl_set.get_var_names(set_dim))
+
+    inames = set().union(*[isl_set.get_var_names(set_dim) for isl_set in isl_sets])
 
     # sorting is not necessary, but keeps results consistent between runs
-    return sorted(list(inames))
+    return sorted(inames)
 
 
 def create_symbolic_map_from_tuples(
