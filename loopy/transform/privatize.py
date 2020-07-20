@@ -154,7 +154,7 @@ def privatize_temporaries_with_inames(
 
     # {{{ find ilp iname lengths
 
-    from loopy.isl_helpers import static_max_of_pw_aff
+    from loopy.isl_helpers import static_max_of_pw_aff, static_min_of_pw_aff
     from loopy.symbolic import pw_aff_to_expr
 
     priv_axis_iname_to_length = {}
@@ -165,9 +165,10 @@ def privatize_temporaries_with_inames(
             bounds = kernel.get_iname_bounds(iname, constants_only=False)
             priv_axis_iname_to_length[iname] = pw_aff_to_expr(
                         static_max_of_pw_aff(bounds.size, constants_only=False))
-
-            # assert static_max_of_pw_aff(
-            #         bounds.lower_bound_pw_aff, constants_only=True).plain_is_zero()
+            assert (static_max_of_pw_aff(
+                    bounds.lower_bound_pw_aff, constants_only=False).plain_is_zero() or
+                    static_min_of_pw_aff(
+                    bounds.lower_bound_pw_aff, constants_only=False).plain_is_zero())
 
     # }}}
 
