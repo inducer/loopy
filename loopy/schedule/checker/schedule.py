@@ -222,7 +222,7 @@ def generate_pairwise_schedule(
     # Now generate maps from the blueprint ---------------------------------------
 
     from loopy.schedule.checker.utils import (
-        list_var_names_in_isl_sets,
+        sorted_union_of_names_in_isl_sets,
         create_symbolic_map_from_tuples,
         add_dims_to_isl_set,
     )
@@ -239,7 +239,7 @@ def generate_pairwise_schedule(
         # create space (an isl space in current implementation)
         # {('statement', <inames> used in statement domain>) ->
         #  (lexicographic ordering dims)}
-        dom_inames_ordered = list_var_names_in_isl_sets([dom])
+        dom_inames_ordered = sorted_union_of_names_in_isl_sets([dom])
 
         in_names_sched = [STATEMENT_VAR_NAME] + dom_inames_ordered[:]
         sched_space = isl.Space.create_from_names(
