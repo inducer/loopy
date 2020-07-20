@@ -172,7 +172,7 @@ def create_symbolic_map_from_tuples(
         `tuple_pairs_with_domains`, map
         `(tup_in)->(tup_out) : domain`, where `tup_in` and `tup_out` are
         numeric or symbolic values assigned to the input and output
-        dimension variables in `space`, and `domain` specifies constraints
+        dimension variables in `space`, and `domain` specifies conditions
         on these values.
 
     """
@@ -194,31 +194,31 @@ def create_symbolic_map_from_tuples(
             dim_type.out, 0, dim_type.in_, len(space_in_names), len(space_out_names))
     for (tup_in, tup_out), dom in tuple_pairs_with_domains:
 
-        # initialize constraint with true
-        constraint = islvars[0].eq_set(islvars[0])
+        # initialize condition with true
+        condition = islvars[0].eq_set(islvars[0])
 
         # set values for 'in' dimension using tuple vals
         assert len(tup_in) == len(space_in_names)
         for dim_name, val_in in zip(space_in_names, tup_in):
             if isinstance(val_in, int):
-                constraint = constraint \
+                condition = condition \
                     & islvars[dim_name].eq_set(islvars[0]+val_in)
             else:
-                constraint = constraint \
+                condition = condition \
                     & islvars[dim_name].eq_set(islvars[val_in])
 
         # set values for 'out' dimension using tuple vals
         assert len(tup_out) == len(space_out_names)
         for dim_name, val_out in zip(space_out_names, tup_out):
             if isinstance(val_out, int):
-                constraint = constraint \
+                condition = condition \
                     & islvars[dim_name].eq_set(islvars[0]+val_out)
             else:
-                constraint = constraint \
+                condition = condition \
                     & islvars[dim_name].eq_set(islvars[val_out])
 
         # convert set to map by moving dimensions around
-        map_from_set = isl.Map.from_domain(constraint)
+        map_from_set = isl.Map.from_domain(condition)
         map_from_set = map_from_set.move_dims(
             dim_type.out, 0, dim_type.in_,
             len(space_in_names), len(space_out_names))
