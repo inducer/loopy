@@ -194,6 +194,10 @@ def generate_pairwise_schedule(
                 stmt_added_since_prev_block_at_tier = [True]*len(
                     stmt_added_since_prev_block_at_tier)
         else:
+            from loopy.schedule import (CallKernel, ReturnFromKernel)
+            # no action needed for these types of linearization item
+            assert isinstance(
+                linearization_item, (CallKernel, ReturnFromKernel))
             pass
         # to save time, stop when we've created both statements
         if stmt_instance_set_before and stmt_instance_set_after:
