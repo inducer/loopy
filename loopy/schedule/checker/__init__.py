@@ -21,13 +21,12 @@ THE SOFTWARE.
 """
 
 
-# {{{ create a pairwise schedule for statement pair
+# {{{ create a pairwise schedules for statement pairs
 
-def get_schedule_for_statement_pair(
+def get_schedules_for_statement_pairs(
         knl,
         linearization_items,
-        insn_id_before,
-        insn_id_after,
+        insn_id_pairs,
         ):
     r"""Given a pair of statements in a linearized kernel, determine
     the (relative) order in which the instances are executed,
@@ -139,12 +138,11 @@ def get_schedule_for_statement_pair(
     # {{{ Create two mappings from {statement instance: lex point}
 
     # include only instructions involved in this dependency
-    from loopy.schedule.checker.schedule import generate_pairwise_schedule
-    return generate_pairwise_schedule(
+    from loopy.schedule.checker.schedule import generate_pairwise_schedules
+    return generate_pairwise_schedules(
         knl,
         linearization_items,
-        insn_id_before,
-        insn_id_after,
+        insn_id_pairs,
         loops_to_ignore=conc_loop_inames,
         )
 

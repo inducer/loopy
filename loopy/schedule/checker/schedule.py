@@ -47,11 +47,10 @@ LEX_VAR_PREFIX = "%sl" % (LIN_CHECK_IDENTIFIER_PREFIX)
 STATEMENT_VAR_NAME = "%sstatement" % (LIN_CHECK_IDENTIFIER_PREFIX)
 
 
-def generate_pairwise_schedule(
+def generate_pairwise_schedules(
         knl,
         linearization_items,
-        before_insn_id,
-        after_insn_id,
+        insn_id_pairs,
         loops_to_ignore=set(),
         ):
     r"""Given a pair of statements in a linearized kernel, determine
@@ -79,17 +78,21 @@ def generate_pairwise_schedule(
         stmt_instance_set_after in this pair of instructions.
 
     :returns: A two-tuple containing two :class:`islpy.Map`\ s
-        representing the a pairwise schedule as two mappings
+        representing a pairwise schedule as two mappings
         from statement instances to lexicographic time, one for
         each of the two statements.
     """
+
+    # TODO
+    # update documentation
+
+    all_insn_ids = set().union(*insn_id_pairs)
 
     # For each statement, create a :class:`ImmutableRecord` describing the set of
     # statement instances. Contains the insn_id and a list representing points
     # in the lexicographic ordering containing items of :class:`int` or
     # :class:`str` :mod:`loopy` inames.
-    stmt_instance_set_before = None
-    stmt_instance_set_after = None
+    stmt_instances = {}
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
     from pytools import ImmutableRecord
@@ -161,31 +164,10 @@ def generate_pairwise_schedule(
 
                 continue
 
-            # only process before/after insns, otherwise ignore
-            stmt_added = False
-
-            if lp_insn_id == before_insn_id:
-                # add before sched item
-                stmt_instance_set_before = ImmutableRecord(
-                        insn_id=lp_insn_id,
-                        lex_points=tuple(next_insn_lex_tuple[:]))
-                stmt_added = True
-
-            if lp_insn_id == after_insn_id:
-                # add after sched item
-                stmt_instance_set_after = ImmutableRecord(
-                        insn_id=lp_insn_id,
-                        lex_points=tuple(next_insn_lex_tuple[:]))
-                stmt_added = True
-
-            # Note: before/after may refer to same stmt, in which case
-            # both of the above conditionals execute
-
-            if stmt_added:
-
-                # track the max number of lex dims used
-                if len(next_insn_lex_tuple) > max_lex_dim:
-                    max_lex_dim = len(next_insn_lex_tuple)
+            # only process listed insns, otherwise ignore
+            if lp_insn_id in all_insn_ids:
+                # add item
+                stmt_instances[lp_insn_id] = tuple(next_insn_lex_tuple[:])
 
                 # increment lex dim val enumerating items in current code block
                 next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1] + 1
@@ -199,27 +181,10 @@ def generate_pairwise_schedule(
             assert isinstance(
                 linearization_item, (CallKernel, ReturnFromKernel))
             pass
-        # to save time, stop when we've created both statements
-        if stmt_instance_set_before and stmt_instance_set_after:
+
+        # to save time, stop when we've created all statements
+        if len(stmt_instances.keys()) == all_insn_ids:
             break
-
-    # At this point, pairwise sub-schedule may contain lex point tuples
-    # missing dimensions; the values in these missing dims should
-    # be zero, so add them.
-
-    def _pad_lex_tuple_with_zeros(stmt_inst, length):
-        return ImmutableRecord(
-            insn_id=stmt_inst.insn_id,
-            lex_points=stmt_inst.lex_points[:] + tuple(
-                [0]*(length-len(stmt_inst.lex_points)))
-            )
-
-    stmt_instance_set_before = _pad_lex_tuple_with_zeros(
-        stmt_instance_set_before, max_lex_dim)
-    stmt_instance_set_after = _pad_lex_tuple_with_zeros(
-        stmt_instance_set_after, max_lex_dim)
-
-    # Now generate maps from the blueprint ---------------------------------------
 
     from loopy.schedule.checker.utils import (
         sorted_union_of_names_in_isl_sets,
@@ -227,14 +192,28 @@ def generate_pairwise_schedule(
         add_dims_to_isl_set,
     )
 
-    params_sched = []
-    out_names_sched = [LEX_VAR_PREFIX+str(i) for i in range(max_lex_dim)]
+    def _pad_tuple_with_zeros(tup, length):
+        return tup[:] + tuple([0]*(length-len(tup)))
 
-    def _get_map_for_stmt_inst(stmt_inst, int_sid):
+    def _remove_matching_integer_dims(tup0, tup1):
+        new_tup0 = []
+        new_tup1 = []
+        for d0, d1 in zip(tup0, tup1):
+            if not (
+                isinstance(d0, int) and
+                isinstance(d1, int) and
+                d0 == d1):
+                # keep this dim
+                new_tup0.append(d0)
+                new_tup1.append(d1)
+        # TODO? also change all ints to 0 or 1
+        return tuple(new_tup0), tuple(new_tup1)
+
+    def _get_map_for_stmt_inst(insn_id, lex_points, int_sid, out_names_sched):
 
         # Get inames domain for statement instance (a BasicSet)
         dom = knl.get_inames_domain(
-            knl.id_to_insn[stmt_inst.insn_id].within_inames)
+            knl.id_to_insn[insn_id].within_inames)
 
         # create space (an isl space in current implementation)
         # {('statement', <inames> used in statement domain>) ->
@@ -244,7 +223,7 @@ def generate_pairwise_schedule(
         in_names_sched = [STATEMENT_VAR_NAME] + dom_inames_ordered[:]
         sched_space = isl.Space.create_from_names(
             isl.DEFAULT_CONTEXT,
-            in_=in_names_sched, out=out_names_sched, params=params_sched)
+            in_=in_names_sched, out=out_names_sched, params=[])
 
         # Insert 'statement' dim into domain so that its space allows
         # for intersection with sched map later
@@ -258,7 +237,7 @@ def generate_pairwise_schedule(
         # Add all inames from domains to each map domain tuple.
         tuple_pair = [(
             (int_sid, ) + tuple(dom_inames_ordered),
-            stmt_inst.lex_points
+            lex_points
             )]
 
         # create map
@@ -267,15 +246,38 @@ def generate_pairwise_schedule(
             space=sched_space,
             )
 
-    # Determine integer IDs that will represent each statement in mapping
-    # (dependency map creation assumes sid_before=0 and sid_after=1, unless
-    # before and after refer to same stmt, in which case sid_before=sid_after=0)
-    int_sid_before = 0
-    int_sid_after = 0 if (
-        stmt_instance_set_before.insn_id == stmt_instance_set_after.insn_id
-        ) else 1
+    pairwise_schedules = []
+    for insn_id_before, insn_id_after in insn_id_pairs:
+        lex_tup_before = stmt_instances[insn_id_before]
+        lex_tup_after = stmt_instances[insn_id_after]
 
-    map_before = _get_map_for_stmt_inst(stmt_instance_set_before, int_sid_before)
-    map_after = _get_map_for_stmt_inst(stmt_instance_set_after, int_sid_after)
+        # simplify tuples to the extent possible -------------------------------------
 
-    return (map_before, map_after)
+        # At this point, pairwise sub-schedule may contain lex point tuples
+        # missing dimensions; the values in these missing dims should
+        # be zero, so add them.
+        max_lex_dims = max(len(lex_tup_before), len(lex_tup_after))
+        lex_tup_before = _pad_tuple_with_zeros(lex_tup_before, max_lex_dims)
+        lex_tup_after = _pad_tuple_with_zeros(lex_tup_after, max_lex_dims)
+
+        lex_tup_before, lex_tup_after = _remove_matching_integer_dims(
+            lex_tup_before, lex_tup_after)
+
+        # Now generate maps from the blueprint ---------------------------------------
+
+        out_names_sched = [LEX_VAR_PREFIX+str(i) for i in range(len(lex_tup_before))]
+
+        # Determine integer IDs that will represent each statement in mapping
+        # (dependency map creation assumes sid_before=0 and sid_after=1, unless
+        # before and after refer to same stmt, in which case sid_before=sid_after=0)
+        int_sid_before = 0
+        int_sid_after = 0 if insn_id_before == insn_id_after else 1
+
+        map_before = _get_map_for_stmt_inst(
+            insn_id_before, lex_tup_before, int_sid_before, out_names_sched)
+        map_after = _get_map_for_stmt_inst(
+            insn_id_after, lex_tup_after, int_sid_after, out_names_sched)
+
+        pairwise_schedules.append((map_before, map_after))
+
+    return pairwise_schedules

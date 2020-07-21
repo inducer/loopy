@@ -53,7 +53,7 @@ else:
 def test_lexschedule_creation():
     import islpy as isl
     from loopy.schedule.checker import (
-        get_schedule_for_statement_pair,
+        get_schedules_for_statement_pairs,
     )
     from loopy.schedule.checker.utils import (
         ensure_dim_names_match_and_align,
@@ -115,12 +115,11 @@ def test_lexschedule_creation():
     # Relationship between insn_a and insn_b ---------------------------------------
 
     # Get two maps
-    sched_map_before, sched_map_after = get_schedule_for_statement_pair(
+    sched_map_before, sched_map_after = get_schedules_for_statement_pairs(
         knl,
         linearization_items,
-        "insn_a",
-        "insn_b",
-        )
+        [("insn_a", "insn_b")],
+        )[0]
 
     # Create expected maps, align, compare
 
@@ -128,7 +127,7 @@ def test_lexschedule_creation():
         "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
         % (
             STATEMENT_VAR_NAME,
-            _lex_space_string(["0", "i", "0", "k", "0"]),
+            _lex_space_string(["i", "0", "k"]),
             )
         )
     sched_map_before_expected = ensure_dim_names_match_and_align(
@@ -138,7 +137,7 @@ def test_lexschedule_creation():
         "[pi, pj] -> { [%s=1, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
-            _lex_space_string(["0", "i", "1", "j", "0"]),
+            _lex_space_string(["i", "1", "j"]),
             )
         )
     sched_map_after_expected = ensure_dim_names_match_and_align(
@@ -151,12 +150,11 @@ def test_lexschedule_creation():
     # Relationship between insn_a and insn_c ---------------------------------------
 
     # Get two maps
-    sched_map_before, sched_map_after = get_schedule_for_statement_pair(
+    sched_map_before, sched_map_after = get_schedules_for_statement_pairs(
         knl,
         linearization_items,
-        "insn_a",
-        "insn_c",
-        )
+        [("insn_a", "insn_c")],
+        )[0]
 
     # Create expected maps, align, compare
 
@@ -164,7 +162,7 @@ def test_lexschedule_creation():
         "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
         % (
             STATEMENT_VAR_NAME,
-            _lex_space_string(["0", "i", "0", "k", "0"]),
+            _lex_space_string(["i", "0", "k"]),
             )
         )
     sched_map_before_expected = ensure_dim_names_match_and_align(
@@ -174,7 +172,7 @@ def test_lexschedule_creation():
         "[pi, pj] -> { [%s=1, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
-            _lex_space_string(["0", "i", "1", "j", "0"]),
+            _lex_space_string(["i", "1", "j"]),
             )
         )
     sched_map_after_expected = ensure_dim_names_match_and_align(
@@ -190,12 +188,11 @@ def test_lexschedule_creation():
     # (i loop could be before or after t loop)
     def perform_insn_ad_checks_with(a_lex_idx, d_lex_idx):
         # Get two maps
-        sched_map_before, sched_map_after = get_schedule_for_statement_pair(
+        sched_map_before, sched_map_after = get_schedules_for_statement_pairs(
             knl,
             linearization_items,
-            "insn_a",
-            "insn_d",
-            )
+            [("insn_a", "insn_d")],
+            )[0]
 
         # Create expected maps, align, compare
 
@@ -203,7 +200,7 @@ def test_lexschedule_creation():
             "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
             % (
                 STATEMENT_VAR_NAME,
-                _lex_space_string([a_lex_idx, "i", "0", "k", "0"]),
+                _lex_space_string([a_lex_idx, "i", "k"]),
                 )
             )
         sched_map_before_expected = ensure_dim_names_match_and_align(
@@ -213,7 +210,7 @@ def test_lexschedule_creation():
             "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
             % (
                 STATEMENT_VAR_NAME,
-                _lex_space_string([d_lex_idx, "t", "0", "0", "0"]),
+                _lex_space_string([d_lex_idx, "t", "0"]),
                 )
             )
         sched_map_after_expected = ensure_dim_names_match_and_align(
@@ -236,12 +233,11 @@ def test_lexschedule_creation():
     # (i loop could be before or after t loop)
     def perform_insn_bc_checks_with(b_lex_idx, c_lex_idx):
         # Get two maps
-        sched_map_before, sched_map_after = get_schedule_for_statement_pair(
+        sched_map_before, sched_map_after = get_schedules_for_statement_pairs(
             knl,
             linearization_items,
-            "insn_b",
-            "insn_c",
-            )
+            [("insn_b", "insn_c")],
+            )[0]
 
         # Create expected maps, align, compare
 
@@ -249,7 +245,7 @@ def test_lexschedule_creation():
             "[pi, pj] -> { [%s=0, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
             % (
                 STATEMENT_VAR_NAME,
-                _lex_space_string(["0", "i", "0", "j", b_lex_idx]),
+                _lex_space_string(["i", "j", b_lex_idx]),
                 )
             )
         sched_map_before_expected = ensure_dim_names_match_and_align(
@@ -259,7 +255,7 @@ def test_lexschedule_creation():
             "[pi, pj] -> { [%s=1, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
             % (
                 STATEMENT_VAR_NAME,
-                _lex_space_string(["0", "i", "0", "j", c_lex_idx]),
+                _lex_space_string(["i", "j", c_lex_idx]),
                 )
             )
         sched_map_after_expected = ensure_dim_names_match_and_align(
@@ -282,12 +278,11 @@ def test_lexschedule_creation():
     # (i loop could be before or after t loop)
     def perform_insn_bd_checks_with(b_lex_idx, d_lex_idx):
         # Get two maps
-        sched_map_before, sched_map_after = get_schedule_for_statement_pair(
+        sched_map_before, sched_map_after = get_schedules_for_statement_pairs(
             knl,
             linearization_items,
-            "insn_b",
-            "insn_d",
-            )
+            [("insn_b", "insn_d")],
+            )[0]
 
         # Create expected maps, align, compare
 
@@ -295,7 +290,7 @@ def test_lexschedule_creation():
             "[pi, pj] -> { [%s=0, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
             % (
                 STATEMENT_VAR_NAME,
-                _lex_space_string([b_lex_idx, "i", "0", "j", "0"]),
+                _lex_space_string([b_lex_idx, "i", "j"]),
                 )
             )
         sched_map_before_expected = ensure_dim_names_match_and_align(
@@ -305,7 +300,7 @@ def test_lexschedule_creation():
             "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
             % (
                 STATEMENT_VAR_NAME,
-                _lex_space_string([d_lex_idx, "t", "0", "0", "0"]),
+                _lex_space_string([d_lex_idx, "t", "0"]),
                 )
             )
         sched_map_after_expected = ensure_dim_names_match_and_align(
@@ -328,12 +323,11 @@ def test_lexschedule_creation():
     # (i loop could be before or after t loop)
     def perform_insn_cd_checks_with(c_lex_idx, d_lex_idx):
         # Get two maps
-        sched_map_before, sched_map_after = get_schedule_for_statement_pair(
+        sched_map_before, sched_map_after = get_schedules_for_statement_pairs(
             knl,
             linearization_items,
-            "insn_c",
-            "insn_d",
-            )
+            [("insn_c", "insn_d")],
+            )[0]
 
         # Create expected maps, align, compare
 
@@ -341,7 +335,7 @@ def test_lexschedule_creation():
             "[pi, pj] -> { [%s=0, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
             % (
                 STATEMENT_VAR_NAME,
-                _lex_space_string([c_lex_idx, "i", "0", "j", "0"]),
+                _lex_space_string([c_lex_idx, "i", "j"]),
                 )
             )
         sched_map_before_expected = ensure_dim_names_match_and_align(
@@ -351,7 +345,7 @@ def test_lexschedule_creation():
             "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
             % (
                 STATEMENT_VAR_NAME,
-                _lex_space_string([d_lex_idx, "t", "0", "0", "0"]),
+                _lex_space_string([d_lex_idx, "t", "0"]),
                 )
             )
         sched_map_after_expected = ensure_dim_names_match_and_align(
