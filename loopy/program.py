@@ -398,6 +398,12 @@ class Program(ImmutableRecord):
     def __str__(self):
         return self.root_kernel.__str__()
 
+
+    def __setstate__(self, state_obj):
+        super(Program, self).__setstate__(state_obj)
+
+        self._program_executor_cache = {}
+
 # }}}
 
 
