@@ -476,6 +476,33 @@ def test_empty_sub_array_refs(ctx_factory, inline):
     assert np.allclose(out, x-y)
 
 
+def test_nested_callable_inline():
+    callee1 = lp.make_function(
+            "{[i]: 0<=i<1}",
+            """
+            y[i] = 2*x[i]
+            """, name='callee1')
+    callee2 = lp.make_kernel(
+            "{[i]: 0<=i<1}",
+            """
+            []:y[i] = callee1([]: x[i])
+            """, name='callee2')
+
+    caller = lp.make_kernel("{[i]: 0<=i<10}",
+                            """
+                            []:z[i] = callee2([]:x[i])
+                            """,
+                            [lp.GlobalArg('x', dtype=float, shape=lp.auto),
+                                '...'])
+
+    callee2 = lp.register_callable_kernel(callee2, callee1)
+    callee2 = lp.inline_callable_kernel(callee2, callee1.name)
+    callee2 = callee2.root_kernel
+    caller = lp.register_callable_kernel(caller, callee2)
+    caller = lp.inline_callable_kernel(caller, callee2.name)
+    print(caller)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

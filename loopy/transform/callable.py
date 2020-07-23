@@ -456,15 +456,16 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
         if insn.id in heads:
             depends_on = depends_on | set([noop_start.id])
 
-        new_atomicity = tuple(
-                type(atomicity)(var_map[p.Variable(atomicity.var_name)].name)
-                for atomicity in insn.atomicity)
-
         if isinstance(insn, Assignment):
+            new_atomicity = tuple(
+                    type(atomicity)(var_map[p.Variable(atomicity.var_name)].name)
+                    for atomicity in insn.atomicity)
+
             insn = insn.copy(
                 id=insn_id[insn.id],
                 within_inames=within_inames,
-                # TODO: probaby need to keep priority in callee kernel
+                # TODO: probably need to keep priority in callee kernel
+                predicates=instruction.predicates | insn.predicates,
                 priority=instruction.priority,
                 depends_on=depends_on,
                 tags=insn.tags | instruction.tags,
@@ -474,7 +475,8 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
             insn = insn.copy(
                 id=insn_id[insn.id],
                 within_inames=within_inames,
-                # TODO: probaby need to keep priority in callee kernel
+                # TODO: probably need to keep priority in callee kernel
+                predicates=instruction.predicates | insn.predicates,
                 priority=instruction.priority,
                 depends_on=depends_on,
                 tags=insn.tags | instruction.tags,
@@ -681,7 +683,7 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
 
             elif isinstance(callee_insn, (CInstruction,
                     _DataObliviousInstruction)):
-                pass
+                new_callee_insns.append(callee_insn)
             else:
                 raise NotImplementedError("Unknown instruction %s." %
                         type(insn))

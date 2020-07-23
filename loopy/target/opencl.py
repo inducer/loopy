@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 import numpy as np
 
-from loopy.target.c import CTarget, CASTBuilder
+from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from pytools import memoize_method
 from loopy.diagnostic import LoopyError
@@ -369,6 +369,173 @@ def opencl_preamble_generator(preamble_info):
 # {{{ expression mapper
 
 class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
+    def __init__(self, codegen_state, fortran_abi=False, type_inf_mapper=None):
+        super().__init__(codegen_state, fortran_abi=False, type_inf_mapper=None)
+
+        self.allow_complex = codegen_state.allow_complex
+        
+    complex_types = {np.complex64: "cfloat",
+                     np.complex128: "cdouble"}
+
+    def wrap_in_typecast(self, actual_type, needed_dtype, s):
+        if (actual_type.is_complex() and needed_dtype.is_complex()
+                and actual_type != needed_dtype):
+            return var("%s_cast" % self.complex_type_name(needed_dtype))(s)
+        elif not actual_type.is_complex() and needed_dtype.is_complex():
+            return var("%s_fromreal" % self.complex_type_name(needed_dtype))(s)
+        else:
+            return s
+
+    def map_sum(self, expr, type_context):
+        def base_impl(expr, type_context):
+            return super(ExpressionToCExpressionMapper, self).map_sum(
+                    expr, type_context)
+
+        # I've added 'type_context == "i"' because of the following
+        # idiotic corner case: Code generation for subscripts comes
+        # through here, and it may involve variables that we know
+        # nothing about (offsets and such). If we fall into the allow_complex
+        # branch, we'll try to do type inference on these variables,
+        # and stuff breaks. This band-aid works around that. -AK
+        if not self.allow_complex or type_context == "i":
+            return base_impl(expr, type_context)
+
+        tgt_dtype = self.infer_type(expr)
+        is_complex = tgt_dtype.is_complex()
+
+        if not is_complex:
+            return base_impl(expr, type_context)
+        else:
+            tgt_name = self.complex_type_name(tgt_dtype)
+
+            reals = []
+            complexes = []
+            for child in expr.children:
+                if self.infer_type(child).is_complex():
+                    complexes.append(child)
+                else:
+                    reals.append(child)
+
+            real_sum = p.flattened_sum([self.rec(r, type_context) for r in reals])
+
+            c_applied = [self.rec(c, type_context, tgt_dtype) for c in complexes]
+
+            def binary_tree_add(start, end):
+                if start + 1 == end:
+                    return c_applied[start]
+                mid = (start + end)//2
+                lsum = binary_tree_add(start, mid)
+                rsum = binary_tree_add(mid, end)
+                return var("%s_add" % tgt_name)(lsum, rsum)
+
+            complex_sum = binary_tree_add(0, len(c_applied))
+
+            if real_sum:
+                return var("%s_radd" % tgt_name)(real_sum, complex_sum)
+            else:
+                return complex_sum
+
+    def map_product(self, expr, type_context):
+        def base_impl(expr, type_context):
+            return super(ExpressionToCExpressionMapper, self).map_product(
+                    expr, type_context)
+
+        # I've added 'type_context == "i"' because of the following
+        # idiotic corner case: Code generation for subscripts comes
+        # through here, and it may involve variables that we know
+        # nothing about (offsets and such). If we fall into the allow_complex
+        # branch, we'll try to do type inference on these variables,
+        # and stuff breaks. This band-aid works around that. -AK
+        if not self.allow_complex or type_context == "i":
+            return base_impl(expr, type_context)
+
+        tgt_dtype = self.infer_type(expr)
+        is_complex = tgt_dtype.is_complex()
+
+        if not is_complex:
+            return base_impl(expr, type_context)
+        else:
+            tgt_name = self.complex_type_name(tgt_dtype)
+
+            reals = []
+            complexes = []
+            for child in expr.children:
+                if self.infer_type(child).is_complex():
+                    complexes.append(child)
+                else:
+                    reals.append(child)
+
+            real_prd = p.flattened_product(
+                    [self.rec(r, type_context) for r in reals])
+
+            c_applied = [self.rec(c, type_context, tgt_dtype) for c in complexes]
+
+            def binary_tree_mul(start, end):
+                if start + 1 == end:
+                    return c_applied[start]
+                mid = (start + end)//2
+                lsum = binary_tree_mul(start, mid)
+                rsum = binary_tree_mul(mid, end)
+                return var("%s_mul" % tgt_name)(lsum, rsum)
+
+            complex_prd = binary_tree_mul(0, len(complexes))
+
+            if real_prd:
+                return var("%s_rmul" % tgt_name)(real_prd, complex_prd)
+            else:
+                return complex_prd
+
+    def map_quotient(self, expr, type_context):
+
+        n_complex = 'c' == n_dtype.kind
+        d_complex = 'c' == d_dtype.kind
+
+        if not (self.allow_complex and (n_complex or d_complex)):
+            return super().map_quotent(expr, type_context)
+
+        n_dtype = self.infer_type(expr.numerator).numpy_dtype
+        d_dtype = self.infer_type(expr.denominator).numpy_dtype
+        tgt_dtype = self.infer_type(expr)
+
+        if n_complex and not d_complex:
+            return var("%s_divider" % self.complex_type_name(tgt_dtype))(
+                self.rec(expr.numerator, type_context, tgt_dtype),
+                self.rec(expr.denominator, type_context))
+        elif not n_complex and d_complex:
+            return var("%s_rdivide" % self.complex_type_name(tgt_dtype))(
+                self.rec(expr.numerator, type_context),
+                self.rec(expr.denominator, type_context, tgt_dtype))
+        else:
+            return var("%s_divide" % self.complex_type_name(tgt_dtype))(
+                self.rec(expr.numerator, type_context, tgt_dtype),
+                self.rec(expr.denominator, type_context, tgt_dtype))
+
+    def map_power(self, expr, type_context):
+        if not self.allow_complex:
+            return super().map_power(expr, type_context)
+
+        tgt_dtype = self.infer_type(expr)
+        if tgt_dtype.is_complex():
+            if expr.exponent in [2, 3, 4]:
+                value = expr.base
+                for i in range(expr.exponent-1):
+                    value = value * expr.base
+                return self.rec(value, type_context)
+            else:
+                b_complex = self.infer_type(expr.base).is_complex()
+                e_complex = self.infer_type(expr.exponent).is_complex()
+
+                if b_complex and not e_complex:
+                    return var("%s_powr" % self.complex_type_name(tgt_dtype))(
+                            self.rec(expr.base, type_context, tgt_dtype),
+                            self.rec(expr.exponent, type_context))
+                else:
+                    return var("%s_pow" % self.complex_type_name(tgt_dtype))(
+                            self.rec(expr.base, type_context, tgt_dtype),
+                            self.rec(expr.exponent, type_context, tgt_dtype))
+
+        return base_impl(expr, type_context)
+
     def map_group_hw_index(self, expr, type_context):
         return var("gid")(expr.axis)
 
@@ -380,7 +547,7 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
 
 # {{{ target
 
-class OpenCLTarget(CTarget):
+class OpenCLTarget(CFamilyTarget):
     """A target for the OpenCL C heterogeneous compute programming language.
     """
 
@@ -438,7 +605,7 @@ class OpenCLTarget(CTarget):
 
 # {{{ ast builder
 
-class OpenCLCASTBuilder(CASTBuilder):
+class OpenCLCASTBuilder(CFamilyASTBuilder):
     # {{{ library
 
     def function_id_in_knl_callable_mapper(self):

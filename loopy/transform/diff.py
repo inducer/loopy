@@ -38,7 +38,7 @@ from loopy.kernel import LoopKernel
 
 # {{{ diff mapper
 
-def func_map(i, func, args):
+def func_map(i, func, args, allowed_nonsmoothness):
     if func.name == "exp":
         return var("exp")(*args)
     elif func.name == "log":
@@ -63,8 +63,17 @@ def func_map(i, func, args):
 
 
 class LoopyDiffMapper(DifferentiationMapper, RuleAwareIdentityMapper):
-    def __init__(self, rule_mapping_context, diff_context, diff_inames):
+    def __init__(self, rule_mapping_context, diff_context, diff_inames,
+            allowed_nonsmoothness=None):
         RuleAwareIdentityMapper.__init__(self, rule_mapping_context)
+        DifferentiationMapper.__init__(
+                self,
+
+                # This is actually ignored because we
+                # override map_variable below.
+                variable=None,
+
+                allowed_nonsmoothness=None)
         self.diff_context = diff_context
         self.diff_inames = diff_inames
         self.diff_iname_exprs = tuple(var(diname) for diname in diff_inames)

@@ -619,7 +619,7 @@ class ArrayBase(ImmutableRecord):
 
         If an integer N is given, the array would be declared
         with ``__attribute__((aligned(N)))`` in code generation for
-        :class:`loopy.CTarget`.
+        :class:`loopy.CFamilyTarget`.
 
         .. versionadded:: 2018.1
 
@@ -1194,11 +1194,10 @@ class ArrayBase(ImmutableRecord):
             else:
                 return idx
 
-        from pytools import indices_in_shape
         return [
                 (unwrap_1d_indices(i),
                     self.name + "".join("_s%d" % sub_i for sub_i in i))
-                for i in indices_in_shape(sep_shape)]
+                for i in np.ndindex(sep_shape)]
 
 # }}}
 

@@ -797,7 +797,7 @@ def dump_as_python(kernel, filename=None):
                 % endif
                 ),
             % endfor
-            ], lang_version=${lp.VERSION})'''
+            ], lang_version=${lp.MOST_RECENT_LANGUAGE_VERSION})'''
 
     python_code = Template(python_code).render(insn_x_opts=insn_x_options,
             domains=kernel.domains, args=kernel.args,

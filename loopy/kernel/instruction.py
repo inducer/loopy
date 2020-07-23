@@ -1457,7 +1457,7 @@ class _DataObliviousInstruction(InstructionBase):
     def with_transformed_expressions(self, f, *args):
         return self.copy(
                 predicates=frozenset(
-                    f(pred) for pred in self.predicates))
+                    f(pred, *args) for pred in self.predicates))
 
     # }}}
 

@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 
 import numpy as np  # noqa
-from loopy.target.c import CTarget, CASTBuilder
+from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.diagnostic import LoopyError
 from loopy.symbolic import Literal
@@ -154,7 +154,7 @@ def fill_registry_with_ispc_types(reg, respect_windows, include_bool=True):
 # }}}
 
 
-class ISPCTarget(CTarget):
+class ISPCTarget(CFamilyTarget):
     """A code generation target for Intel's `ISPC <https://ispc.github.io/>`_
     SPMD programming language, to target Intel's Knight's hardware and modern
     Intel CPUs with wide vector units.
@@ -201,7 +201,7 @@ class ISPCTarget(CTarget):
     # }}}
 
 
-class ISPCASTBuilder(CASTBuilder):
+class ISPCASTBuilder(CFamilyASTBuilder):
     def _arg_names_and_decls(self, codegen_state):
         implemented_data_info = codegen_state.implemented_data_info
         arg_names = [iai.name for iai in implemented_data_info]
