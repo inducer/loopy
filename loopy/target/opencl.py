@@ -487,14 +487,15 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
 
     def map_quotient(self, expr, type_context):
 
+        n_dtype = self.infer_type(expr.numerator).numpy_dtype
+        d_dtype = self.infer_type(expr.denominator).numpy_dtype
+
         n_complex = 'c' == n_dtype.kind
         d_complex = 'c' == d_dtype.kind
 
         if not (self.allow_complex and (n_complex or d_complex)):
-            return super().map_quotent(expr, type_context)
+            return super().map_quotient(expr, type_context)
 
-        n_dtype = self.infer_type(expr.numerator).numpy_dtype
-        d_dtype = self.infer_type(expr.denominator).numpy_dtype
         tgt_dtype = self.infer_type(expr)
 
         if n_complex and not d_complex:
