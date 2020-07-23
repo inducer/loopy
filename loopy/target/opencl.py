@@ -494,7 +494,7 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
         d_complex = 'c' == d_dtype.kind
 
         if not (self.allow_complex and (n_complex or d_complex)):
-            return super().map_quotent(expr, type_context)
+            return super().map_quotient(expr, type_context)
 
         tgt_dtype = self.infer_type(expr)
 
