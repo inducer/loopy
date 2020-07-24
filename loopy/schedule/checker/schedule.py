@@ -142,6 +142,7 @@ def generate_pairwise_schedules(
             # statements since last opened/closed loop), but if we have not
             # added any statements within the previous section yet, we
             # don't have to (effectively ignoring that section of code).
+            # TODO since we're getting rid of unnecessary dims later, maybe don't need this?
             stmt_added_since_prev_block_at_tier.pop()
             if stmt_added_since_prev_block_at_tier[-1]:
                 next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1]+1
