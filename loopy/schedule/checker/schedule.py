@@ -88,14 +88,12 @@ def generate_pairwise_schedules(
 
     all_insn_ids = set().union(*insn_id_pairs)
 
-    # For each statement, create a :class:`ImmutableRecord` describing the set of
-    # statement instances. Contains the insn_id and a list representing points
+    # For each statement, map the insn_id to a tuple representing points
     # in the lexicographic ordering containing items of :class:`int` or
     # :class:`str` :mod:`loopy` inames.
     stmt_instances = {}
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
-    from pytools import ImmutableRecord
 
     # go through linearization_items and generate pairwise sub-schedule
 
@@ -103,7 +101,6 @@ def generate_pairwise_schedules(
     # ordering, initially this as a 1-d point with value 0
     next_insn_lex_tuple = [0]
     stmt_added_since_prev_block_at_tier = [False]
-    max_lex_dim = 0
     for linearization_item in linearization_items:
         if isinstance(linearization_item, EnterLoop):
             iname = linearization_item.iname
@@ -196,18 +193,41 @@ def generate_pairwise_schedules(
     def _pad_tuple_with_zeros(tup, length):
         return tup[:] + tuple([0]*(length-len(tup)))
 
-    def _remove_matching_integer_dims(tup0, tup1):
+    def _simplify_dims(tup0, tup1):
         new_tup0 = []
         new_tup1 = []
+        # loop over dims
         for d0, d1 in zip(tup0, tup1):
-            if not (
-                isinstance(d0, int) and
-                isinstance(d1, int) and
-                d0 == d1):
+            if isinstance(d0, int) and isinstance(d1, int):
+                # Both vals are ints for this dim
+
+                # If the ints match, this dim doesn't provide info about the
+                # relative ordering of these two statements,
+                # so skip (remove) this dim.
+
+                # Otherwise, the ints inform us about the relative ordering of
+                # two statements. While their values may be larger than 1 in
+                # the lexicographic ordering describing a larger set of
+                # statements, in a pairwise schedule, only ints 0 and 1 are
+                # necessary to specify relative order. To keep the pairwise
+                # schedules as simple and comprehensible as possible, use only
+                # integers 0 and 1 to specify relative orderings in integer lex
+                # dims.
+                # (doesn't take much extra time since we are already going
+                # through these to remove unnecessary map dims)
+
+                if d0 == d1:
+                    continue
+                elif d0 > d1:
+                    new_tup0.append(1)
+                    new_tup1.append(0)
+                else:  # d1 > d0
+                    new_tup0.append(0)
+                    new_tup1.append(1)
+            else:
                 # keep this dim
                 new_tup0.append(d0)
                 new_tup1.append(d1)
-        # TODO? also change all ints to 0 or 1
         return tuple(new_tup0), tuple(new_tup1)
 
     def _get_map_for_stmt_inst(insn_id, lex_points, int_sid, out_names_sched):
@@ -252,7 +272,7 @@ def generate_pairwise_schedules(
         lex_tup_before = stmt_instances[insn_id_before]
         lex_tup_after = stmt_instances[insn_id_after]
 
-        # simplify tuples to the extent possible -------------------------------------
+        # simplify tuples to the extent possible ------------------------------------
 
         # At this point, pairwise sub-schedule may contain lex point tuples
         # missing dimensions; the values in these missing dims should
@@ -261,10 +281,9 @@ def generate_pairwise_schedules(
         lex_tup_before = _pad_tuple_with_zeros(lex_tup_before, max_lex_dims)
         lex_tup_after = _pad_tuple_with_zeros(lex_tup_after, max_lex_dims)
 
-        lex_tup_before, lex_tup_after = _remove_matching_integer_dims(
-            lex_tup_before, lex_tup_after)
+        lex_tup_before, lex_tup_after = _simplify_dims(lex_tup_before, lex_tup_after)
 
-        # Now generate maps from the blueprint ---------------------------------------
+        # Now generate maps from the blueprint --------------------------------------
 
         out_names_sched = [LEX_VAR_PREFIX+str(i) for i in range(len(lex_tup_before))]
 
