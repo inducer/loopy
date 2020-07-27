@@ -355,6 +355,67 @@ def test_pairwise_schedule_creation():
 # }}}
 
 
+# {{{ test lex order map creation
+
+def test_lex_order_map_creation():
+    import islpy as isl
+    from loopy.schedule.checker.lexicographic_order_map import (
+        create_lex_order_map,
+    )
+    from loopy.schedule.checker.utils import (
+        append_marker_to_isl_map_var_names,
+    )
+
+    def _check_lex_map(expected_lex_order_map, n_dims):
+        # Isl ignores the apostrophes, so explicitly add them
+        expected_lex_order_map = append_marker_to_isl_map_var_names(
+            expected_lex_order_map, isl.dim_type.in_, "'")
+
+        lex_order_map = create_lex_order_map(
+            n_dims=n_dims,
+            before_names=["%s%d'" % (LEX_VAR_PREFIX, i) for i in range(n_dims)],
+            after_names=["%s%d" % (LEX_VAR_PREFIX, i) for i in range(n_dims)],
+            )
+
+        assert lex_order_map == expected_lex_order_map
+        assert (
+            lex_order_map.get_var_names(isl.dim_type.in_) ==
+            expected_lex_order_map.get_var_names(isl.dim_type.in_))
+        assert (
+            lex_order_map.get_var_names(isl.dim_type.out) ==
+            expected_lex_order_map.get_var_names(isl.dim_type.out))
+
+    expected_lex_order_map = isl.Map(
+        "{{ "
+        "[{0}0', {0}1', {0}2', {0}3', {0}4'] -> [{0}0, {0}1, {0}2, {0}3, {0}4] :"
+        "("
+        "{0}0' < {0}0 "
+        ") or ("
+        "{0}0'={0}0 and {0}1' < {0}1 "
+        ") or ("
+        "{0}0'={0}0 and {0}1'={0}1 and {0}2' < {0}2 "
+        ") or ("
+        "{0}0'={0}0 and {0}1'={0}1 and {0}2'={0}2 and {0}3' < {0}3 "
+        ") or ("
+        "{0}0'={0}0 and {0}1'={0}1 and {0}2'={0}2 and {0}3'={0}3 and {0}4' < {0}4"
+        ")"
+        "}}".format(LEX_VAR_PREFIX))
+
+    _check_lex_map(expected_lex_order_map, 5)
+
+    expected_lex_order_map = isl.Map(
+        "{{ "
+        "[{0}0'] -> [{0}0] :"
+        "("
+        "{0}0' < {0}0 "
+        ")"
+        "}}".format(LEX_VAR_PREFIX))
+
+    _check_lex_map(expected_lex_order_map, 1)
+
+# }}}
+
+
 # {{{ test statement instance ordering creation
 
 def test_statement_instance_ordering_creation():
