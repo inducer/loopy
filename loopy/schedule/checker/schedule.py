@@ -100,33 +100,29 @@ def generate_pairwise_schedules(
     # keep track of the next tuple of points in our lexicographic
     # ordering, initially this as a 1-d point with value 0
     next_insn_lex_tuple = [0]
-    stmt_added_since_prev_block_at_tier = [False]
     for linearization_item in linearization_items:
         if isinstance(linearization_item, EnterLoop):
             iname = linearization_item.iname
             if iname in loops_to_ignore:
                 continue
 
-            # We could always increment next_insn_lex_tuple[-1] here since
-            # this new section of code comes after the previous section
-            # (statements since last opened/closed loop), but if we have
-            # not added any statements within the previous section yet, we
-            # don't have to (effectively ignoring that section of code).
-            if stmt_added_since_prev_block_at_tier[-1]:
-                next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1]+1
-                stmt_added_since_prev_block_at_tier[-1] = False
+            # Increment next_insn_lex_tuple[-1] for statements in the section
+            # of code after this EnterLoop.
+            # (not technically necessary if no statement was added in the
+            # previous section; gratuitious incrementing is counteracted
+            # in the simplification step below)
+            next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1]+1
 
             # upon entering a loop, we enter a new (deeper) tier,
             # add one lex dimension for the loop variable,
-            # add second lex dim to enumerate code blocks within new loop, and
-            # append a dim to stmt_added_since_prev_block_at_tier to represent
-            # new tier
+            # add second lex dim to enumerate code blocks within new loop
             next_insn_lex_tuple.append(iname)
             next_insn_lex_tuple.append(0)
-            stmt_added_since_prev_block_at_tier.append(False)
+
         elif isinstance(linearization_item, LeaveLoop):
             if linearization_item.iname in loops_to_ignore:
                 continue
+
             # upon leaving a loop,
             # pop lex dimension for enumerating code blocks within this loop, and
             # pop lex dimension for the loop variable, and
@@ -134,16 +130,13 @@ def generate_pairwise_schedules(
             next_insn_lex_tuple.pop()
             next_insn_lex_tuple.pop()
 
-            # We could always increment next_insn_lex_tuple[-1] here since
-            # this new block of code comes after the previous block (all
-            # statements since last opened/closed loop), but if we have not
-            # added any statements within the previous section yet, we
-            # don't have to (effectively ignoring that section of code).
-            # TODO since we're getting rid of unnecessary dims later, maybe don't need this?
-            stmt_added_since_prev_block_at_tier.pop()
-            if stmt_added_since_prev_block_at_tier[-1]:
-                next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1]+1
-                stmt_added_since_prev_block_at_tier[-1] = False
+            # Increment next_insn_lex_tuple[-1] for statements in the section
+            # of code after this LeaveLoop.
+            # (not technically necessary if no statement was added in the
+            # previous section; gratuitious incrementing is counteracted
+            # in the simplification step below)
+            next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1]+1
+
         elif isinstance(linearization_item, (RunInstruction, Barrier)):
             from loopy.schedule.checker.utils import (
                 get_insn_id_from_linearization_item,
@@ -170,9 +163,6 @@ def generate_pairwise_schedules(
                 # increment lex dim val enumerating items in current code block
                 next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1] + 1
 
-                # all current (nested) blocks now contain a statement
-                stmt_added_since_prev_block_at_tier = [True]*len(
-                    stmt_added_since_prev_block_at_tier)
         else:
             from loopy.schedule import (CallKernel, ReturnFromKernel)
             # no action needed for these types of linearization item
@@ -193,37 +183,44 @@ def generate_pairwise_schedules(
     def _pad_tuple_with_zeros(tup, length):
         return tup[:] + tuple([0]*(length-len(tup)))
 
-    def _simplify_dims(tup0, tup1):
+    def _simplify_lex_dims(tup0, tup1):
+        """Simplify pair of lex tuples in order to reduce the complexity of
+        resulting maps. Remove lex tuple dimensions with matching integer values
+        since these do not provide information on relative ordering. For the same
+        reason, once a dimension is found where both tuples have non-matching integer
+        values, remove any faster-updating lex dimensions where both tuples have
+        integer values, even if the integers don't match.
+        """
+        # TODO actually, once we find non-matching integer dims, we don't
+        # need *any* more lex dims to specify relative ordering.
+
         new_tup0 = []
         new_tup1 = []
+        non_matching_int_dims_found = False
         # loop over dims
         for d0, d1 in zip(tup0, tup1):
             if isinstance(d0, int) and isinstance(d1, int):
                 # Both vals are ints for this dim
 
-                # If the ints match, this dim doesn't provide info about the
-                # relative ordering of these two statements,
-                # so skip (remove) this dim.
-
-                # Otherwise, the ints inform us about the relative ordering of
-                # two statements. While their values may be larger than 1 in
-                # the lexicographic ordering describing a larger set of
-                # statements, in a pairwise schedule, only ints 0 and 1 are
-                # necessary to specify relative order. To keep the pairwise
-                # schedules as simple and comprehensible as possible, use only
-                # integers 0 and 1 to specify relative orderings in integer lex
-                # dims.
-                # (doesn't take much extra time since we are already going
-                # through these to remove unnecessary map dims)
-
-                if d0 == d1:
+                if non_matching_int_dims_found or d0 == d1:
                     continue
                 elif d0 > d1:
+                    # These ints inform us about the relative ordering of
+                    # two statements. While their values may be larger than 1 in
+                    # the lexicographic ordering describing a larger set of
+                    # statements, in a pairwise schedule, only ints 0 and 1 are
+                    # necessary to specify relative order. To keep the pairwise
+                    # schedules as simple and comprehensible as possible, use only
+                    # integers 0 and 1 to specify this relative ordering.
+                    # (doesn't take much extra time since we are already going
+                    # through these to remove unnecessary lex tuple dims)
                     new_tup0.append(1)
                     new_tup1.append(0)
+                    non_matching_int_dims_found = True
                 else:  # d1 > d0
                     new_tup0.append(0)
                     new_tup1.append(1)
+                    non_matching_int_dims_found = True
             else:
                 # keep this dim
                 new_tup0.append(d0)
@@ -281,7 +278,8 @@ def generate_pairwise_schedules(
         lex_tup_before = _pad_tuple_with_zeros(lex_tup_before, max_lex_dims)
         lex_tup_after = _pad_tuple_with_zeros(lex_tup_after, max_lex_dims)
 
-        lex_tup_before, lex_tup_after = _simplify_dims(lex_tup_before, lex_tup_after)
+        lex_tup_before, lex_tup_after = _simplify_lex_dims(
+            lex_tup_before, lex_tup_after)
 
         # Now generate maps from the blueprint --------------------------------------
 
