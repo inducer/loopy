@@ -360,7 +360,7 @@ def test_pairwise_schedule_creation():
 def test_statement_instance_ordering_creation():
     import islpy as isl
     from loopy.schedule.checker import (
-        get_schedule_for_statement_pair,
+        get_schedules_for_statement_pairs,
     )
     from loopy.schedule.checker.schedule import (
         get_lex_order_map_for_sched_space,
@@ -371,6 +371,7 @@ def test_statement_instance_ordering_creation():
     )
     from loopy.schedule.checker.lexicographic_order_map import (
         get_statement_ordering_map,
+        create_lex_order_map,
     )
 
     # example kernel (add deps to fix loop order)
@@ -410,23 +411,43 @@ def test_statement_instance_ordering_creation():
     knl = get_one_linearized_kernel(knl)
     linearization_items = knl.linearization
 
+    # Get pairwise schedules
+    insn_id_pairs = [
+        ("insn_a", "insn_b"),
+        ("insn_a", "insn_c"),
+        ("insn_a", "insn_d"),
+        ("insn_b", "insn_c"),
+        ("insn_b", "insn_d"),
+        ("insn_c", "insn_d"),
+        ]
+    sched_maps = get_schedules_for_statement_pairs(
+        knl,
+        linearization_items,
+        insn_id_pairs,
+        )
+
     def check_sio_for_insn_pair(
             insn_id_before,
             insn_id_after,
-            expected_lex_order_map,
+            expected_lex_dims,
             expected_sio,
             ):
 
         # Get pairwise schedule
-        sched_map_before, sched_map_after = get_schedule_for_statement_pair(
-            knl,
-            linearization_items,
-            insn_id_before,
-            insn_id_after,
-            )
+        sched_map_before, sched_map_after = sched_maps[
+            (insn_id_before, insn_id_after)]
 
-        # get map representing lexicographic ordering
+        # Get map representing lexicographic ordering
         sched_lex_order_map = get_lex_order_map_for_sched_space(sched_map_before)
+
+        # Get expected lex order map
+        expected_lex_order_map = create_lex_order_map(
+            n_dims=expected_lex_dims,
+            before_names=["%s%d'" % (LEX_VAR_PREFIX, i)
+                for i in range(expected_lex_dims)],
+            after_names=["%s%d" % (LEX_VAR_PREFIX, i)
+                for i in range(expected_lex_dims)],
+            )
 
         assert sched_lex_order_map == expected_lex_order_map
 
@@ -442,28 +463,6 @@ def test_statement_instance_ordering_creation():
 
         assert sio_aligned == expected_sio
 
-    expected_lex_order_map = isl.Map(
-        "{{ "
-        "[{0}0', {0}1', {0}2', {0}3', {0}4'] -> [{0}0, {0}1, {0}2, {0}3, {0}4] :"
-        "("
-        "{0}0' < {0}0 "
-        ") or ("
-        "{0}0'={0}0 and {0}1' < {0}1 "
-        ") or ("
-        "{0}0'={0}0 and {0}1'={0}1 and {0}2' < {0}2 "
-        ") or ("
-        "{0}0'={0}0 and {0}1'={0}1 and {0}2'={0}2 and {0}3' < {0}3 "
-        ") or ("
-        "{0}0'={0}0 and {0}1'={0}1 and {0}2'={0}2 and {0}3'={0}3 and {0}4' < {0}4"
-        ")"
-        "}}".format(LEX_VAR_PREFIX))
-
-    # Isl ignores these apostrophes, but test would still pass since it ignores
-    # variable names when checking for equality. Even so, explicitly add apostrophes
-    # for sanity.
-    expected_lex_order_map = append_marker_to_isl_map_var_names(
-        expected_lex_order_map, isl.dim_type.in_, "'")
-
     # Relationship between insn_a and insn_b ---------------------------------------
 
     expected_sio = isl.Map(
@@ -478,8 +477,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    check_sio_for_insn_pair(
-        "insn_a", "insn_b", expected_lex_order_map, expected_sio)
+    check_sio_for_insn_pair("insn_a", "insn_b", 3, expected_sio)
 
     # Relationship between insn_a and insn_c ---------------------------------------
 
@@ -495,8 +493,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    check_sio_for_insn_pair(
-        "insn_a", "insn_c", expected_lex_order_map, expected_sio)
+    check_sio_for_insn_pair("insn_a", "insn_c", 3, expected_sio)
 
     # Relationship between insn_a and insn_d ---------------------------------------
 
@@ -510,8 +507,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    check_sio_for_insn_pair(
-        "insn_a", "insn_d", expected_lex_order_map, expected_sio)
+    check_sio_for_insn_pair("insn_a", "insn_d", 3, expected_sio)
 
     # Relationship between insn_b and insn_c ---------------------------------------
 
@@ -529,8 +525,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    check_sio_for_insn_pair(
-        "insn_b", "insn_c", expected_lex_order_map, expected_sio)
+    check_sio_for_insn_pair("insn_b", "insn_c", 3, expected_sio)
 
     # Relationship between insn_b and insn_d ---------------------------------------
 
@@ -544,8 +539,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    check_sio_for_insn_pair(
-        "insn_b", "insn_d", expected_lex_order_map, expected_sio)
+    check_sio_for_insn_pair("insn_b", "insn_d", 3, expected_sio)
 
     # Relationship between insn_c and insn_d ---------------------------------------
 
@@ -559,8 +553,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    check_sio_for_insn_pair(
-        "insn_c", "insn_d", expected_lex_order_map, expected_sio)
+    check_sio_for_insn_pair("insn_c", "insn_d", 3, expected_sio)
 
 # }}}
 
