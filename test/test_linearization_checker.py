@@ -112,14 +112,24 @@ def test_lexschedule_creation():
             ["%s%d=%s" % (LEX_VAR_PREFIX, idx, str(val))
             for idx, val in enumerate(dim_vals)])
 
+    insn_id_pairs = [
+        ("insn_a", "insn_b"),
+        ("insn_a", "insn_c"),
+        ("insn_a", "insn_d"),
+        ("insn_b", "insn_c"),
+        ("insn_b", "insn_d"),
+        ("insn_c", "insn_d"),
+        ]
+    sched_maps = get_schedules_for_statement_pairs(
+        knl,
+        linearization_items,
+        insn_id_pairs,
+        )
+
     # Relationship between insn_a and insn_b ---------------------------------------
 
     # Get two maps
-    sched_map_before, sched_map_after = get_schedules_for_statement_pairs(
-        knl,
-        linearization_items,
-        [("insn_a", "insn_b")],
-        )[0]
+    sched_map_before, sched_map_after = sched_maps[("insn_a", "insn_b")]
 
     # Create expected maps, align, compare
 
@@ -150,11 +160,7 @@ def test_lexschedule_creation():
     # Relationship between insn_a and insn_c ---------------------------------------
 
     # Get two maps
-    sched_map_before, sched_map_after = get_schedules_for_statement_pairs(
-        knl,
-        linearization_items,
-        [("insn_a", "insn_c")],
-        )[0]
+    sched_map_before, sched_map_after = sched_maps[("insn_a", "insn_c")]
 
     # Create expected maps, align, compare
 
@@ -188,11 +194,7 @@ def test_lexschedule_creation():
     # (i loop could be before or after t loop)
     def perform_insn_ad_checks_with(a_lex_idx, d_lex_idx):
         # Get two maps
-        sched_map_before, sched_map_after = get_schedules_for_statement_pairs(
-            knl,
-            linearization_items,
-            [("insn_a", "insn_d")],
-            )[0]
+        sched_map_before, sched_map_after = sched_maps[("insn_a", "insn_d")]
 
         # Create expected maps, align, compare
 
@@ -230,14 +232,9 @@ def test_lexschedule_creation():
     # Relationship between insn_b and insn_c ---------------------------------------
 
     # insn_b and insn_c could have been linearized in either order
-    # (i loop could be before or after t loop)
     def perform_insn_bc_checks_with(b_lex_idx, c_lex_idx):
         # Get two maps
-        sched_map_before, sched_map_after = get_schedules_for_statement_pairs(
-            knl,
-            linearization_items,
-            [("insn_b", "insn_c")],
-            )[0]
+        sched_map_before, sched_map_after = sched_maps[("insn_b", "insn_c")]
 
         # Create expected maps, align, compare
 
@@ -278,11 +275,7 @@ def test_lexschedule_creation():
     # (i loop could be before or after t loop)
     def perform_insn_bd_checks_with(b_lex_idx, d_lex_idx):
         # Get two maps
-        sched_map_before, sched_map_after = get_schedules_for_statement_pairs(
-            knl,
-            linearization_items,
-            [("insn_b", "insn_d")],
-            )[0]
+        sched_map_before, sched_map_after = sched_maps[("insn_b", "insn_d")]
 
         # Create expected maps, align, compare
 
@@ -323,11 +316,7 @@ def test_lexschedule_creation():
     # (i loop could be before or after t loop)
     def perform_insn_cd_checks_with(c_lex_idx, d_lex_idx):
         # Get two maps
-        sched_map_before, sched_map_after = get_schedules_for_statement_pairs(
-            knl,
-            linearization_items,
-            [("insn_c", "insn_d")],
-            )[0]
+        sched_map_before, sched_map_after = sched_maps[("insn_c", "insn_d")]
 
         # Create expected maps, align, compare
 

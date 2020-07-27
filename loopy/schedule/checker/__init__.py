@@ -105,6 +105,8 @@ def get_schedules_for_statement_pairs(
 
     """
 
+    # TODO update documentation
+
     # {{{ make sure kernel has been preprocessed
 
     from loopy.kernel import KernelState

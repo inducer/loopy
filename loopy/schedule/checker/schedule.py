@@ -264,7 +264,7 @@ def generate_pairwise_schedules(
             space=sched_space,
             )
 
-    pairwise_schedules = []
+    pairwise_schedules = {}
     for insn_id_before, insn_id_after in insn_id_pairs:
         lex_tup_before = stmt_instances[insn_id_before]
         lex_tup_after = stmt_instances[insn_id_after]
@@ -296,6 +296,6 @@ def generate_pairwise_schedules(
         map_after = _get_map_for_stmt_inst(
             insn_id_after, lex_tup_after, int_sid_after, out_names_sched)
 
-        pairwise_schedules.append((map_before, map_after))
+        pairwise_schedules[(insn_id_before, insn_id_after)] = (map_before, map_after)
 
     return pairwise_schedules
