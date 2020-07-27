@@ -165,15 +165,17 @@ def append_marker_to_strings(strings, marker="'"):
         return [s+marker for s in strings]
 
 
-def list_var_names_in_isl_sets(
+def sorted_union_of_names_in_isl_sets(
         isl_sets,
         set_dim=isl.dim_type.set):
-    inames = set()
-    for isl_set in isl_sets:
-        inames.update(isl_set.get_var_names(set_dim))
+    """Return a sorted list of the union of all variable names found in
+    the provided :class:`islpy.Set`\ s.
+    """
+
+    inames = set().union(*[isl_set.get_var_names(set_dim) for isl_set in isl_sets])
 
     # sorting is not necessary, but keeps results consistent between runs
-    return sorted(list(inames))
+    return sorted(inames)
 
 
 def create_symbolic_map_from_tuples(
@@ -198,7 +200,7 @@ def create_symbolic_map_from_tuples(
         `tuple_pairs_with_domains`, map
         `(tup_in)->(tup_out) : domain`, where `tup_in` and `tup_out` are
         numeric or symbolic values assigned to the input and output
-        dimension variables in `space`, and `domain` specifies constraints
+        dimension variables in `space`, and `domain` specifies conditions
         on these values.
 
     """
@@ -213,6 +215,17 @@ def create_symbolic_map_from_tuples(
 
     # loop through pairs and create a set that will later be converted to a map
 
+    def _conjunction_of_dim_eq_conditions(dim_names, values, islvars):
+        condition = islvars[0].eq_set(islvars[0])
+        for dim_name, val in zip(dim_names, values):
+            if isinstance(val, int):
+                condition = condition \
+                    & islvars[dim_name].eq_set(islvars[0]+val)
+            else:
+                condition = condition \
+                    & islvars[dim_name].eq_set(islvars[val])
+        return condition
+
     # initialize union to empty
     union_of_maps = isl.Map.from_domain(
         islvars[0].eq_set(islvars[0]+1)  # 0 == 1 (false)
@@ -220,31 +233,16 @@ def create_symbolic_map_from_tuples(
             dim_type.out, 0, dim_type.in_, len(space_in_names), len(space_out_names))
     for (tup_in, tup_out), dom in tuple_pairs_with_domains:
 
-        # initialize constraint with true
-        constraint = islvars[0].eq_set(islvars[0])
-
         # set values for 'in' dimension using tuple vals
-        assert len(tup_in) == len(space_in_names)
-        for dim_name, val_in in zip(space_in_names, tup_in):
-            if isinstance(val_in, int):
-                constraint = constraint \
-                    & islvars[dim_name].eq_set(islvars[0]+val_in)
-            else:
-                constraint = constraint \
-                    & islvars[dim_name].eq_set(islvars[val_in])
+        condition = _conjunction_of_dim_eq_conditions(
+            space_in_names, tup_in, islvars)
 
         # set values for 'out' dimension using tuple vals
-        assert len(tup_out) == len(space_out_names)
-        for dim_name, val_out in zip(space_out_names, tup_out):
-            if isinstance(val_out, int):
-                constraint = constraint \
-                    & islvars[dim_name].eq_set(islvars[0]+val_out)
-            else:
-                constraint = constraint \
-                    & islvars[dim_name].eq_set(islvars[val_out])
+        condition = condition & _conjunction_of_dim_eq_conditions(
+            space_out_names, tup_out, islvars)
 
         # convert set to map by moving dimensions around
-        map_from_set = isl.Map.from_domain(constraint)
+        map_from_set = isl.Map.from_domain(condition)
         map_from_set = map_from_set.move_dims(
             dim_type.out, 0, dim_type.in_,
             len(space_in_names), len(space_out_names))
@@ -267,7 +265,7 @@ def create_symbolic_map_from_tuples(
     return union_of_maps
 
 
-def get_concurrent_inames(knl):
+def partition_inames_by_concurrency(knl):
     from loopy.kernel.data import ConcurrentTag
     conc_inames = set()
     non_conc_inames = set()

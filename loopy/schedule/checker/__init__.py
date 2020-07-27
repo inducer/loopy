@@ -21,13 +21,12 @@ THE SOFTWARE.
 """
 
 
-# {{{ create a pairwise schedule for statement pair
+# {{{ create a pairwise schedules for statement pairs
 
-def get_schedule_for_statement_pair(
+def get_schedules_for_statement_pairs(
         knl,
         linearization_items,
-        insn_id_before,
-        insn_id_after,
+        insn_id_pairs,
         ):
     r"""Given a pair of statements in a linearized kernel, determine
     the (relative) order in which the instances are executed,
@@ -106,6 +105,8 @@ def get_schedule_for_statement_pair(
 
     """
 
+    # TODO update documentation
+
     # {{{ make sure kernel has been preprocessed
 
     from loopy.kernel import KernelState
@@ -121,10 +122,10 @@ def get_schedule_for_statement_pair(
     # won't be any inames with ConcurrentTags in EnterLoop linearization items.
     # Test which exercises this: test_linearization_checker_with_stroud_bernstein())
     from loopy.schedule.checker.utils import (
-        get_concurrent_inames,
+        partition_inames_by_concurrency,
         get_EnterLoop_inames,
     )
-    conc_inames, _ = get_concurrent_inames(knl)
+    conc_inames, _ = partition_inames_by_concurrency(knl)
     enterloop_inames = get_EnterLoop_inames(linearization_items, knl)
     conc_loop_inames = conc_inames & enterloop_inames
     if conc_loop_inames:
@@ -139,12 +140,11 @@ def get_schedule_for_statement_pair(
     # {{{ Create two mappings from {statement instance: lex point}
 
     # include only instructions involved in this dependency
-    from loopy.schedule.checker.schedule import generate_pairwise_schedule
-    return generate_pairwise_schedule(
+    from loopy.schedule.checker.schedule import generate_pairwise_schedules
+    return generate_pairwise_schedules(
         knl,
         linearization_items,
-        insn_id_before,
-        insn_id_after,
+        insn_id_pairs,
         loops_to_ignore=conc_loop_inames,
         )
 
