@@ -1405,10 +1405,6 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
 
     """
 
-    if not knl.options.ignore_boostable_into:
-        raise LoopyError("Kernel '%s': Using operation counting requires the option "
-                "ignore_boostable_into to be set." % knl.name)
-
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
@@ -1597,10 +1593,6 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
 
     """
 
-    if not knl.options.ignore_boostable_into:
-        raise LoopyError("Kernel '%s': Using operation counting requires the option "
-                "ignore_boostable_into to be set." % knl.name)
-
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
@@ -1712,10 +1704,6 @@ def get_synchronization_map(knl, subgroup_size=None):
         # (now use this count to, e.g., predict performance)
 
     """
-
-    if not knl.options.ignore_boostable_into:
-        raise LoopyError("Kernel '%s': Using operation counting requires the option "
-                "ignore_boostable_into to be set." % knl.name)
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier,

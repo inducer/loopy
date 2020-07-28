@@ -72,6 +72,8 @@ __doc__ = """
 
 .. autofunction:: add_inames_to_insn
 
+.. autofunction:: add_inames_for_unused_hw_axes
+
 """
 
 
@@ -986,7 +988,7 @@ def _get_iname_duplication_options(insn_iname_sets, old_common_inames=frozenset(
     # If partitioning was empty, we have recursed successfully and yield nothing
 
 
-def get_iname_duplication_options(knl, use_boostable_into=False):
+def get_iname_duplication_options(knl, use_boostable_into=None):
     """List options for duplication of inames, if necessary for schedulability
 
     :returns: a generator listing all options to duplicate inames, if duplication
@@ -1016,6 +1018,15 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
     Use :func:`has_schedulable_iname_nesting` to decide whether an iname needs to be
     duplicated in a given kernel.
     """
+    if use_boostable_into:
+        raise LoopyError("'use_boostable_into=True' is no longer supported.")
+
+    if use_boostable_into is False:
+        from warnings import warn
+        warn("passing 'use_boostable_into=False' to 'get_iname_duplication_options'"
+                " is deprecated. The argument will go away in 2021.",
+                DeprecationWarning, stacklevel=2)
+
     from loopy.kernel.data import ConcurrentTag
 
     concurrent_inames = set(
@@ -1024,23 +1035,12 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
             if knl.iname_tags_of_type(iname, ConcurrentTag))
 
     # First we extract the minimal necessary information from the kernel
-    if use_boostable_into:
-        insn_iname_sets = (
-            frozenset(
-                (insn.within_inames
-                    | insn.boostable_into if insn.boostable_into is not None
-                    else frozenset([]))
-                - concurrent_inames
-                for insn in knl.instructions)
-            -
-            frozenset([frozenset([])]))
-    else:
-        insn_iname_sets = (
-            frozenset(
-                insn.within_inames - concurrent_inames
-                for insn in knl.instructions)
-            -
-            frozenset([frozenset([])]))
+    insn_iname_sets = (
+        frozenset(
+            insn.within_inames - concurrent_inames
+            for insn in knl.instructions)
+        -
+        frozenset([frozenset([])]))
 
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_iname_sets):
@@ -1049,23 +1049,6 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
                 and knl.iname_tags_of_type(iname, ConcurrentTag)):
             continue
 
-        # If we find a duplication option and to not use boostable_into
-        # information, we restart this generator with use_boostable_into=True
-        if not use_boostable_into and not knl.options.ignore_boostable_into:
-            for option in get_iname_duplication_options(knl, True):
-                yield option
-
-            # Emit a warning that we needed boostable_into
-            from warnings import warn
-            from loopy.diagnostic import LoopyWarning
-            warn("Kernel '%s' required the deprecated 'boostable_into' "
-                 "instruction attribute in order to be schedulable!" % knl.name,
-                 LoopyWarning)
-
-            # Return to avoid yielding the duplication
-            # options without boostable_into
-            return
-
         # Reconstruct an object that may be passed to the within parameter of
         # loopy.duplicate_inames
         from loopy.match import Id, Or
@@ -1073,9 +1056,7 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
             Id(insn.id) for insn in knl.instructions
             if insn.within_inames in insns))
 
-        # Only yield the result if an instruction matched. With
-        # use_boostable_into=True this is not always true.
-
+        # Only yield the result if an instruction matched.
         if within.children:
             yield iname, within
 
@@ -1788,5 +1769,114 @@ def add_inames_to_insn(knl, inames, insn_match):
 
 # }}}
 
+
+def add_inames_for_unused_hw_axes(kernel, within=None):
+    """
+    Returns a kernel with inames added to each instruction
+    corresponding to any hardware-parallel iname tags
+    (:class:`loopy.kernel.data.GroupIndexTag`,
+    :class:`loopy.kernel.data.LocalIndexTag`) unused
+    in the instruction but used elsewhere in the kernel.
+
+    Current limitations:
+
+    * Only one iname in the kernel may be tagged with each of the unused hw axes.
+    * Occurence of an ``l.auto`` tag when an instruction is missing one of the
+      local hw axes.
+
+    :arg within: An instruction match as understood by
+        :func:`loopy.match.parse_match`.
+    """
+    from loopy.kernel.data import (LocalIndexTag, GroupIndexTag,
+            AutoFitLocalIndexTag)
+
+    n_local_axes = max([tag.axis
+        for tags in kernel.iname_to_tags.values()
+        for tag in tags
+        if isinstance(tag, LocalIndexTag)],
+        default=-1) + 1
+
+    n_group_axes = max([tag.axis
+        for tags in kernel.iname_to_tags.values()
+        for tag in tags
+        if isinstance(tag, GroupIndexTag)],
+        default=-1) + 1
+
+    contains_auto_local_tag = any([isinstance(tag, AutoFitLocalIndexTag)
+        for tags in kernel.iname_to_tags
+        for tag in tags])
+
+    if contains_auto_local_tag:
+        raise LoopyError("Kernels containing l.auto tags are invalid"
+                " arguments.")
+
+    # {{{ fill axes_to_inames
+
+    # local_axes_to_inames: ith entry contains the iname tagged with l.i or None
+    # if multiple inames are tagged with l.i
+    local_axes_to_inames = []
+    # group_axes_to_inames: ith entry contains the iname tagged with g.i or None
+    # if multiple inames are tagged with g.i
+    group_axes_to_inames = []
+
+    for i in range(n_local_axes):
+        ith_local_axes_tag = LocalIndexTag(i)
+        inames = [iname
+                for iname, tags in kernel.iname_to_tags.items()
+                if ith_local_axes_tag in tags]
+        if not inames:
+            raise LoopyError("Unused local hw axes {}.".format(i))
+
+        local_axes_to_inames.append(inames[0] if len(inames) == 1 else None)
+
+    for i in range(n_group_axes):
+        ith_group_axes_tag = GroupIndexTag(i)
+        inames = [iname
+                for iname, tags in kernel.iname_to_tags.items()
+                if ith_group_axes_tag in tags]
+        if not inames:
+            raise LoopyError("Unused group hw axes {}.".format(i))
+
+        group_axes_to_inames.append(inames[0] if len(inames) == 1 else None)
+
+    # }}}
+
+    from loopy.match import parse_match
+    within = parse_match(within)
+
+    new_insns = []
+
+    for insn in kernel.instructions:
+        if within(kernel, insn):
+            within_tags = frozenset().union(*(kernel.iname_to_tags.get(iname,
+                frozenset()) for iname in insn.within_inames))
+            missing_local_axes = [i for i in range(n_local_axes)
+                    if LocalIndexTag(i) not in within_tags]
+            missing_group_axes = [i for i in range(n_group_axes)
+                    if GroupIndexTag(i) not in within_tags]
+
+            for axis in missing_local_axes:
+                iname = local_axes_to_inames[axis]
+                if iname:
+                    insn = insn.copy(within_inames=insn.within_inames |
+                            frozenset([iname]))
+                else:
+                    raise LoopyError("Multiple inames tagged with l.%d while"
+                            " adding unused local hw axes to instruction '%s'."
+                            % (axis, insn.id))
+
+            for axis in missing_group_axes:
+                iname = group_axes_to_inames[axis]
+                if iname is not None:
+                    insn = insn.copy(within_inames=insn.within_inames |
+                            frozenset([iname]))
+                else:
+                    raise LoopyError("Multiple inames tagged with g.%d while"
+                            " adding unused group hw axes to instruction '%s'."
+                            % (axis, insn.id))
+
+        new_insns.append(insn)
+
+    return kernel.copy(instructions=new_insns)
 
 # vim: foldmethod=marker
