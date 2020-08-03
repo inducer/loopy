@@ -538,7 +538,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    check_sio_for_insn_pair("insn_a", "insn_b", 3, expected_sio)
+    check_sio_for_insn_pair("insn_a", "insn_b", 2, expected_sio)
 
     # Relationship between insn_a and insn_c ---------------------------------------
 
@@ -554,7 +554,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    check_sio_for_insn_pair("insn_a", "insn_c", 3, expected_sio)
+    check_sio_for_insn_pair("insn_a", "insn_c", 2, expected_sio)
 
     # Relationship between insn_a and insn_d ---------------------------------------
 
@@ -568,7 +568,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    check_sio_for_insn_pair("insn_a", "insn_d", 3, expected_sio)
+    check_sio_for_insn_pair("insn_a", "insn_d", 1, expected_sio)
 
     # Relationship between insn_b and insn_c ---------------------------------------
 
@@ -600,7 +600,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    check_sio_for_insn_pair("insn_b", "insn_d", 3, expected_sio)
+    check_sio_for_insn_pair("insn_b", "insn_d", 1, expected_sio)
 
     # Relationship between insn_c and insn_d ---------------------------------------
 
@@ -614,7 +614,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    check_sio_for_insn_pair("insn_c", "insn_d", 3, expected_sio)
+    check_sio_for_insn_pair("insn_c", "insn_d", 1, expected_sio)
 
 # }}}
 
