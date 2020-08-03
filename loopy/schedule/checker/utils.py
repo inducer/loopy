@@ -140,7 +140,7 @@ def ensure_dim_names_match_and_align(obj_map, tgt_map):
 def sorted_union_of_names_in_isl_sets(
         isl_sets,
         set_dim=isl.dim_type.set):
-    """Return a sorted list of the union of all variable names found in
+    r"""Return a sorted list of the union of all variable names found in
     the provided :class:`islpy.Set`\ s.
     """
 
