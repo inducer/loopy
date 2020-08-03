@@ -678,7 +678,7 @@ class ExecutionWrapperGeneratorBase(object):
                 with open(options.write_wrapper, "w") as outf:
                     outf.write(output)
 
-        return gen
+        return gen.get_picklable_function()
 
 # }}}
 
