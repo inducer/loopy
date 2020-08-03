@@ -428,11 +428,11 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         if isinstance(writer_insn, lp.Assignment):
             result = type_inf_mapper(expr, return_dtype_set=True)
         elif isinstance(writer_insn, lp.CallInstruction):
-            return_dtype_set = type_inf_mapper(expr, return_tuple=True,
+            return_dtype_sets = type_inf_mapper(expr, return_tuple=True,
                     return_dtype_set=True)
 
             result = []
-            for return_dtype_set in return_dtype_set:
+            for return_dtype_set in return_dtype_sets:
                 result_i = None
                 found = False
                 for assignee, comp_dtype_set in zip(

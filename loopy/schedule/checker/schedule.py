@@ -113,8 +113,7 @@ def generate_pairwise_schedules(
             # in the simplification step below)
             next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1]+1
 
-            # upon entering a loop, we enter a new (deeper) tier,
-            # add one lex dimension for the loop variable,
+            # Upon entering a loop, add one lex dimension for the loop variable,
             # add second lex dim to enumerate code blocks within new loop
             next_insn_lex_tuple.append(iname)
             next_insn_lex_tuple.append(0)
@@ -184,25 +183,24 @@ def generate_pairwise_schedules(
         return tup[:] + tuple([0]*(length-len(tup)))
 
     def _simplify_lex_dims(tup0, tup1):
-        """Simplify pair of lex tuples in order to reduce the complexity of
+        """Simplify a pair of lex tuples in order to reduce the complexity of
         resulting maps. Remove lex tuple dimensions with matching integer values
-        since these do not provide information on relative ordering. For the same
-        reason, once a dimension is found where both tuples have non-matching integer
-        values, remove any faster-updating lex dimensions where both tuples have
-        integer values, even if the integers don't match.
+        since these do not provide information on relative ordering. Once a
+        dimension is found where both tuples have non-matching integer values,
+        remove any faster-updating lex dimensions since they are not necessary
+        to speficy relative ordering.
         """
-        # TODO actually, once we find non-matching integer dims, we don't
-        # need *any* more lex dims to specify relative ordering.
 
         new_tup0 = []
         new_tup1 = []
-        non_matching_int_dims_found = False
+
         # loop over dims
         for d0, d1 in zip(tup0, tup1):
             if isinstance(d0, int) and isinstance(d1, int):
-                # Both vals are ints for this dim
 
-                if non_matching_int_dims_found or d0 == d1:
+                # Both vals are ints for this dim
+                if d0 == d1:
+                    # Do not keep this dim
                     continue
                 elif d0 > d1:
                     # These ints inform us about the relative ordering of
@@ -216,15 +214,20 @@ def generate_pairwise_schedules(
                     # through these to remove unnecessary lex tuple dims)
                     new_tup0.append(1)
                     new_tup1.append(0)
-                    non_matching_int_dims_found = True
+
+                    # No further dims needed to fully specify ordering
+                    break
                 else:  # d1 > d0
                     new_tup0.append(0)
                     new_tup1.append(1)
-                    non_matching_int_dims_found = True
+
+                    # No further dims needed to fully specify ordering
+                    break
             else:
-                # keep this dim
+                # Keep this dim without modifying
                 new_tup0.append(d0)
                 new_tup1.append(d1)
+
         return tuple(new_tup0), tuple(new_tup1)
 
     def _get_map_for_stmt_inst(insn_id, lex_points, int_sid, out_names_sched):
@@ -265,38 +268,38 @@ def generate_pairwise_schedules(
             )
 
     pairwise_schedules = {}
-    for insn_id_before, insn_id_after in insn_id_pairs:
-        lex_tup_before = stmt_instances[insn_id_before]
-        lex_tup_after = stmt_instances[insn_id_after]
+    for insn_ids in insn_id_pairs:
+        lex_tuples = [stmt_instances[insn_id] for insn_id in insn_ids]
 
         # simplify tuples to the extent possible ------------------------------------
 
         # At this point, pairwise sub-schedule may contain lex point tuples
         # missing dimensions; the values in these missing dims should
         # be zero, so add them.
-        max_lex_dims = max(len(lex_tup_before), len(lex_tup_after))
-        lex_tup_before = _pad_tuple_with_zeros(lex_tup_before, max_lex_dims)
-        lex_tup_after = _pad_tuple_with_zeros(lex_tup_after, max_lex_dims)
+        max_lex_dims = max([len(lex_tuple) for lex_tuple in lex_tuples])
+        lex_tuples_padded = [
+            _pad_tuple_with_zeros(lex_tuple, max_lex_dims)
+            for lex_tuple in lex_tuples]
 
-        lex_tup_before, lex_tup_after = _simplify_lex_dims(
-            lex_tup_before, lex_tup_after)
+        lex_tuples_simplified = _simplify_lex_dims(*lex_tuples_padded)
 
         # Now generate maps from the blueprint --------------------------------------
 
-        out_names_sched = [LEX_VAR_PREFIX+str(i) for i in range(len(lex_tup_before))]
+        out_names_sched = [
+            LEX_VAR_PREFIX+str(i) for i in range(len(lex_tuples_simplified[0]))]
 
         # Determine integer IDs that will represent each statement in mapping
         # (dependency map creation assumes sid_before=0 and sid_after=1, unless
         # before and after refer to same stmt, in which case sid_before=sid_after=0)
-        int_sid_before = 0
-        int_sid_after = 0 if insn_id_before == insn_id_after else 1
+        int_sids = [0, 0] if insn_ids[0] == insn_ids[1] else [0, 1]
 
-        map_before = _get_map_for_stmt_inst(
-            insn_id_before, lex_tup_before, int_sid_before, out_names_sched)
-        map_after = _get_map_for_stmt_inst(
-            insn_id_after, lex_tup_after, int_sid_after, out_names_sched)
+        sched_maps = [
+            _get_map_for_stmt_inst(insn_id, lex_tuple, int_sid, out_names_sched)
+            for insn_id, lex_tuple, int_sid
+            in zip(insn_ids, lex_tuples_simplified, int_sids)
+            ]
 
-        pairwise_schedules[(insn_id_before, insn_id_after)] = (map_before, map_after)
+        pairwise_schedules[tuple(insn_ids)] = tuple(sched_maps)
 
     return pairwise_schedules
 

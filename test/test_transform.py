@@ -374,7 +374,8 @@ def test_precompute_confusing_subst_arguments(ctx_factory):
 
     from loopy.symbolic import get_dependencies
     assert "i_inner" not in get_dependencies(knl.substitutions["D"].expression)
-    knl = lp.precompute(knl, "D")
+    knl = lp.precompute(knl, "D", sweep_inames='j',
+            precompute_outer_inames='j, i_inner, i_outer')
 
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl,
@@ -616,6 +617,59 @@ def test_prefetch_local_into_private():
             knl, "mat", "i, j", temporary_name="s_mat", default_tag="for")
     knl = lp.add_prefetch(
             knl, "s_mat", "j", temporary_name="p_mat", default_tag="for")
+
+
+def test_add_inames_for_unused_hw_axes(ctx_factory):
+    ctx = ctx_factory()
+    dtype = np.float32
+    order = "F"
+
+    n = 16**3
+
+    knl = lp.make_kernel(
+            "[n] -> {[i,j]: 0<=i,j<n}",
+            [
+                """
+                <> alpha = 2.0 {id=init_alpha}
+                for i
+                  for j
+                    c[i, j] = alpha*a[i]*b[j] {id=outerproduct}
+                  end
+                end
+                """
+                ],
+            [
+                lp.GlobalArg("a", dtype, shape=("n",), order=order),
+                lp.GlobalArg("b", dtype, shape=("n",), order=order),
+                lp.GlobalArg("c", dtype, shape=("n, n"), order=order),
+                lp.ValueArg("n", np.int32, approximately=n),
+                ],
+            name="rank_one",
+            assumptions="n >= 16",
+            lang_version=(2018, 2))
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "i", 16,
+            outer_tag="g.0", inner_tag="l.0")
+    knl = lp.split_iname(knl, "j", 16,
+            outer_tag="g.1", inner_tag="l.1")
+
+    knl = lp.add_prefetch(knl, "a")
+    knl = lp.add_prefetch(knl, "b")
+
+    knl = lp.add_inames_for_unused_hw_axes(knl)
+
+    assert knl.id_to_insn['init_alpha'].within_inames == frozenset(['i_inner',
+        'i_outer', 'j_outer', 'j_inner'])
+    assert knl.id_to_insn['a_fetch_rule'].within_inames == frozenset(['i_inner',
+        'i_outer', 'j_outer', 'j_inner'])
+    assert knl.id_to_insn['b_fetch_rule'].within_inames == frozenset(['i_inner',
+        'i_outer', 'j_outer', 'j_inner'])
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl,
+            op_count=[np.dtype(dtype).itemsize*n**2/1e9], op_label=["GBytes"],
+            parameters={"n": n})
 
 
 if __name__ == "__main__":
