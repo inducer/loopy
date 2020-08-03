@@ -268,37 +268,37 @@ def generate_pairwise_schedules(
             )
 
     pairwise_schedules = {}
-    for insn_id_before, insn_id_after in insn_id_pairs:
-        lex_tup_before = stmt_instances[insn_id_before]
-        lex_tup_after = stmt_instances[insn_id_after]
+    for insn_ids in insn_id_pairs:
+        lex_tuples = [stmt_instances[insn_id] for insn_id in insn_ids]
 
         # simplify tuples to the extent possible ------------------------------------
 
         # At this point, pairwise sub-schedule may contain lex point tuples
         # missing dimensions; the values in these missing dims should
         # be zero, so add them.
-        max_lex_dims = max(len(lex_tup_before), len(lex_tup_after))
-        lex_tup_before = _pad_tuple_with_zeros(lex_tup_before, max_lex_dims)
-        lex_tup_after = _pad_tuple_with_zeros(lex_tup_after, max_lex_dims)
+        max_lex_dims = max([len(lex_tuple) for lex_tuple in lex_tuples])
+        lex_tuples_padded = [
+            _pad_tuple_with_zeros(lex_tuple, max_lex_dims)
+            for lex_tuple in lex_tuples]
 
-        lex_tup_before, lex_tup_after = _simplify_lex_dims(
-            lex_tup_before, lex_tup_after)
+        lex_tuples_simplified = _simplify_lex_dims(*lex_tuples_padded)
 
         # Now generate maps from the blueprint --------------------------------------
 
-        out_names_sched = [LEX_VAR_PREFIX+str(i) for i in range(len(lex_tup_before))]
+        out_names_sched = [
+            LEX_VAR_PREFIX+str(i) for i in range(len(lex_tuples_simplified[0]))]
 
         # Determine integer IDs that will represent each statement in mapping
         # (dependency map creation assumes sid_before=0 and sid_after=1, unless
         # before and after refer to same stmt, in which case sid_before=sid_after=0)
-        int_sid_before = 0
-        int_sid_after = 0 if insn_id_before == insn_id_after else 1
+        int_sids = [0, 0] if insn_ids[0] == insn_ids[1] else [0, 1]
 
-        map_before = _get_map_for_stmt_inst(
-            insn_id_before, lex_tup_before, int_sid_before, out_names_sched)
-        map_after = _get_map_for_stmt_inst(
-            insn_id_after, lex_tup_after, int_sid_after, out_names_sched)
+        sched_maps = [
+            _get_map_for_stmt_inst(insn_id, lex_tuple, int_sid, out_names_sched)
+            for insn_id, lex_tuple, int_sid
+            in zip(insn_ids, lex_tuples_simplified, int_sids)
+            ]
 
-        pairwise_schedules[(insn_id_before, insn_id_after)] = (map_before, map_after)
+        pairwise_schedules[tuple(insn_ids)] = tuple(sched_maps)
 
     return pairwise_schedules
