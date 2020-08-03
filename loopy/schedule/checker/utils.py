@@ -28,18 +28,6 @@ def prettier_map_string(map_obj):
                ).replace("{ ", "{\n").replace(" }", "\n}").replace("; ", ";\n")
 
 
-def get_islvars_from_space(space):
-    #pu.db
-    param_names = space.get_var_names(isl.dim_type.param)
-    in_names = space.get_var_names(isl.dim_type.in_)
-    out_names = space.get_var_names(isl.dim_type.out)
-    return isl.make_zero_and_vars(in_names+out_names, param_names)
-    #old = isl.make_zero_and_vars(in_names+out_names, param_names)
-    #new = isl.affs_from_space(space)
-    #assert old == new
-    #return new
-
-
 def add_dims_to_isl_set(isl_set, dim_type, names, new_idx_start):
     new_set = isl_set.insert_dims(
         dim_type, new_idx_start, len(names)
@@ -183,7 +171,14 @@ def create_symbolic_map_from_tuples(
     space_out_names = space.get_var_names(dim_type.out)
     space_in_names = space.get_var_names(isl.dim_type.in_)
 
-    islvars = get_islvars_from_space(space)
+    # get islvars from space
+    islvars = isl.affs_from_space(
+        space.move_dims(
+            isl.dim_type.out, 0,
+            isl.dim_type.in_, 0,
+            len(space_in_names),
+            ).range()
+        )
 
     # loop through pairs and create a set that will later be converted to a map
 
