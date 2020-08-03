@@ -137,7 +137,7 @@ def test_lexschedule_creation():
         "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
         % (
             STATEMENT_VAR_NAME,
-            _lex_space_string(["i", "0", "k"]),
+            _lex_space_string(["i", "0"]),
             )
         )
     sched_map_before_expected = ensure_dim_names_match_and_align(
@@ -147,7 +147,7 @@ def test_lexschedule_creation():
         "[pi, pj] -> { [%s=1, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
-            _lex_space_string(["i", "1", "j"]),
+            _lex_space_string(["i", "1"]),
             )
         )
     sched_map_after_expected = ensure_dim_names_match_and_align(
@@ -168,7 +168,7 @@ def test_lexschedule_creation():
         "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
         % (
             STATEMENT_VAR_NAME,
-            _lex_space_string(["i", "0", "k"]),
+            _lex_space_string(["i", "0"]),
             )
         )
     sched_map_before_expected = ensure_dim_names_match_and_align(
@@ -178,7 +178,7 @@ def test_lexschedule_creation():
         "[pi, pj] -> { [%s=1, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
-            _lex_space_string(["i", "1", "j"]),
+            _lex_space_string(["i", "1"]),
             )
         )
     sched_map_after_expected = ensure_dim_names_match_and_align(
@@ -202,7 +202,7 @@ def test_lexschedule_creation():
             "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
             % (
                 STATEMENT_VAR_NAME,
-                _lex_space_string([a_lex_idx, "i", "k"]),
+                _lex_space_string([a_lex_idx, ]),
                 )
             )
         sched_map_before_expected = ensure_dim_names_match_and_align(
@@ -212,7 +212,7 @@ def test_lexschedule_creation():
             "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
             % (
                 STATEMENT_VAR_NAME,
-                _lex_space_string([d_lex_idx, "t", "0"]),
+                _lex_space_string([d_lex_idx, ]),
                 )
             )
         sched_map_after_expected = ensure_dim_names_match_and_align(
@@ -283,7 +283,7 @@ def test_lexschedule_creation():
             "[pi, pj] -> { [%s=0, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
             % (
                 STATEMENT_VAR_NAME,
-                _lex_space_string([b_lex_idx, "i", "j"]),
+                _lex_space_string([b_lex_idx, ]),
                 )
             )
         sched_map_before_expected = ensure_dim_names_match_and_align(
@@ -293,7 +293,7 @@ def test_lexschedule_creation():
             "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
             % (
                 STATEMENT_VAR_NAME,
-                _lex_space_string([d_lex_idx, "t", "0"]),
+                _lex_space_string([d_lex_idx, ]),
                 )
             )
         sched_map_after_expected = ensure_dim_names_match_and_align(
@@ -324,7 +324,7 @@ def test_lexschedule_creation():
             "[pi, pj] -> { [%s=0, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
             % (
                 STATEMENT_VAR_NAME,
-                _lex_space_string([c_lex_idx, "i", "j"]),
+                _lex_space_string([c_lex_idx, ]),
                 )
             )
         sched_map_before_expected = ensure_dim_names_match_and_align(
@@ -334,7 +334,7 @@ def test_lexschedule_creation():
             "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
             % (
                 STATEMENT_VAR_NAME,
-                _lex_space_string([d_lex_idx, "t", "0"]),
+                _lex_space_string([d_lex_idx, ]),
                 )
             )
         sched_map_after_expected = ensure_dim_names_match_and_align(

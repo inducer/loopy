@@ -183,25 +183,24 @@ def generate_pairwise_schedules(
         return tup[:] + tuple([0]*(length-len(tup)))
 
     def _simplify_lex_dims(tup0, tup1):
-        """Simplify pair of lex tuples in order to reduce the complexity of
+        """Simplify a pair of lex tuples in order to reduce the complexity of
         resulting maps. Remove lex tuple dimensions with matching integer values
-        since these do not provide information on relative ordering. For the same
-        reason, once a dimension is found where both tuples have non-matching integer
-        values, remove any faster-updating lex dimensions where both tuples have
-        integer values, even if the integers don't match.
+        since these do not provide information on relative ordering. Once a
+        dimension is found where both tuples have non-matching integer values,
+        remove any faster-updating lex dimensions since they are not necessary
+        to speficy relative ordering.
         """
-        # TODO actually, once we find non-matching integer dims, we don't
-        # need *any* more lex dims to specify relative ordering.
 
         new_tup0 = []
         new_tup1 = []
-        non_matching_int_dims_found = False
+
         # loop over dims
         for d0, d1 in zip(tup0, tup1):
             if isinstance(d0, int) and isinstance(d1, int):
-                # Both vals are ints for this dim
 
-                if non_matching_int_dims_found or d0 == d1:
+                # Both vals are ints for this dim
+                if d0 == d1:
+                    # Do not keep this dim
                     continue
                 elif d0 > d1:
                     # These ints inform us about the relative ordering of
@@ -215,15 +214,20 @@ def generate_pairwise_schedules(
                     # through these to remove unnecessary lex tuple dims)
                     new_tup0.append(1)
                     new_tup1.append(0)
-                    non_matching_int_dims_found = True
+
+                    # No further dims needed to fully specify ordering
+                    break
                 else:  # d1 > d0
                     new_tup0.append(0)
                     new_tup1.append(1)
-                    non_matching_int_dims_found = True
+
+                    # No further dims needed to fully specify ordering
+                    break
             else:
-                # keep this dim
+                # Keep this dim without modifying
                 new_tup0.append(d0)
                 new_tup1.append(d1)
+
         return tuple(new_tup0), tuple(new_tup1)
 
     def _get_map_for_stmt_inst(insn_id, lex_points, int_sid, out_names_sched):
