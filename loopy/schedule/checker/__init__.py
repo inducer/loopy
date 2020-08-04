@@ -104,7 +104,7 @@ def get_schedules_for_statement_pairs(
         get_EnterLoop_inames,
     )
     conc_inames, _ = partition_inames_by_concurrency(knl)
-    enterloop_inames = get_EnterLoop_inames(linearization_items, knl)
+    enterloop_inames = get_EnterLoop_inames(linearization_items)
     conc_loop_inames = conc_inames & enterloop_inames
     if conc_loop_inames:
         from warnings import warn

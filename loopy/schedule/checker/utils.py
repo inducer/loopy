@@ -254,7 +254,7 @@ def get_insn_id_from_linearization_item(linearization_item):
         return linearization_item.insn_id
 
 
-def get_EnterLoop_inames(linearization_items, knl):
+def get_EnterLoop_inames(linearization_items):
     from loopy.schedule import EnterLoop
     loop_inames = set()
     for linearization_item in linearization_items:
