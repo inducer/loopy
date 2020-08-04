@@ -231,7 +231,12 @@ def generate_pairwise_schedules(
                 new_tup0.append(d0)
                 new_tup1.append(d1)
 
-        return tuple(new_tup0), tuple(new_tup1)
+        if len(new_tup0) == 0:
+            # Statements map to the exact same point(s) in the lex ordering,
+            # which is okay, but to represent this, our lex tuple cannot be empty.
+            return (0, ), (0, )
+        else:
+            return tuple(new_tup0), tuple(new_tup1)
 
     def _get_map_for_stmt_inst(insn_id, lex_points, int_sid, out_names_sched):
 
