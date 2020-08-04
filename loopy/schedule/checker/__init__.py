@@ -56,52 +56,33 @@ def get_schedules_for_statement_pairs(
         from statement instances to lexicographic time, one for
         each of the two statements.
 
-    Example usage::
+    .. doctest:
 
-        # Make kernel ------------------------------------------------------------
-        knl = lp.make_kernel(
-            "{[i,j,k]: 0<=i<pi and 0<=j<pj and 0<=k<pk}",
-            [
-                "a[i,j] = j  {id=insn_a}",
-                "b[i,k] = k+a[i,0]  {id=insn_b,dep=insn_a}",
-            ])
-        knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
-        knl = lp.prioritize_loops(knl, "i,j")
-        knl = lp.prioritize_loops(knl, "i,k")
-
-        # Get a linearization
-        knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-
-        # Get a pairwise schedule ------------------------------------------------
-
-        from loopy.schedule.checker import (
-            get_schedule_for_statement_pair,
-        )
-
-        # Get two maps -----------------------------------------------------------
-
-        sched_a, sched_b = get_schedule_for_statement_pair(
-            knl,
-            knl.linearization,
-            "insn_a",
-            "insn_b",
-            )
-
-        print(sched_a)
-        print(sched_b)
-
-    Example Output::
-
-        [pi, pj, pk] -> {
-        [_lp_linchk_statement = 0, i, j, k] ->
-        [_lp_linchk_l0 = 0, _lp_linchk_l1 = i, _lp_linchk_l2 = 0,
-        _lp_linchk_l3 = j, _lp_linchk_l4 = 0] :
-        0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
-        [pi, pj, pk] -> {
-        [_lp_linchk_statement = 1, i, j, k] ->
-        [_lp_linchk_l0 = 0, _lp_linchk_l1 = i, _lp_linchk_l2 = 1,
-        _lp_linchk_l3 = k, _lp_linchk_l4 = 0] :
-        0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
+        >>> import loopy as lp
+        >>> import numpy as np
+        >>> # Make kernel -----------------------------------------------------------
+        >>> knl = lp.make_kernel(
+        ...     "{[i,j,k]: 0<=i<pi and 0<=j<pj and 0<=k<pk}",
+        ...     [
+        ...         "a[i,j] = j  {id=insn_a}",
+        ...         "b[i,k] = k+a[i,0]  {id=insn_b,dep=insn_a}",
+        ...     ])
+        >>> knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
+        >>> knl = lp.prioritize_loops(knl, "i,j")
+        >>> knl = lp.prioritize_loops(knl, "i,k")
+        >>> # Get a linearization
+        >>> knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+        >>> # Get a pairwise schedule -----------------------------------------------
+        >>> from loopy.schedule.checker import get_schedules_for_statement_pairs
+        >>> # Get two maps ----------------------------------------------------------
+        >>> schedules = get_schedules_for_statement_pairs(
+        ...     knl,
+        ...     knl.linearization,
+        ...     [("insn_a", "insn_b")],
+        ...     )
+        >>> print(*schedules[("insn_a", "insn_b")], sep="\n")
+        [pi, pj, pk] -> { [_lp_linchk_statement = 0, i, j, k] -> [_lp_linchk_l0 = i, _lp_linchk_l1 = 0] : 0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
+        [pi, pj, pk] -> { [_lp_linchk_statement = 1, i, j, k] -> [_lp_linchk_l0 = i, _lp_linchk_l1 = 1] : 0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
 
     """
 
