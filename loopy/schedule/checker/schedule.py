@@ -53,53 +53,56 @@ def generate_pairwise_schedules(
         insn_id_pairs,
         loops_to_ignore=set(),
         ):
-    r"""Given a pair of statements in a linearized kernel, determine
-    the (relative) order in which the instances are executed,
-    by creating a mapping from statement instances to points in a single
-    lexicographic ordering. Create a pair of :class:`islpy.Map`\ s
-    representing a pairwise schedule as two mappings from statement instances
-    to lexicographic time.
+    r"""For each statement pair in a subset of all statement pairs found in a
+    linearized kernel, determine the (relative) order in which the statement
+    instances are executed. For each pair, describe this relative ordering with
+    a pair of mappings from statement instances to points in a single
+    lexicographic ordering (a ``pairwise schedule'').
 
-    :arg knl: A :class:`loopy.kernel.LoopKernel` containing the
-        linearization items that will be described by the schedule. This
+    :arg knl: A preprocessed :class:`loopy.kernel.LoopKernel` containing the
+        linearization items that will be used to create a schedule. This
         kernel will be used to get the domains associated with the inames
         used in the statements.
 
     :arg linearization_items: A list of :class:`loopy.schedule.ScheduleItem`
-        (to be renamed to `loopy.schedule.LinearizationItem`) including the
-        two linearization items whose relative order will be described by the
-        schedule. This list may be a *partial* linearization for a kernel since
-        this function may be used during the linearization process.
+        (to be renamed to `loopy.schedule.LinearizationItem`) containing
+        all linearization items for which pairwise schedules will be
+        created. This list may be a *partial* linearization for a
+        kernel since this function may be used during the linearization
+        process.
 
-    :arg before_insn_id: A :class:`str` instruction id specifying
-        stmt_instance_set_before in this pair of instructions.
+    :arg insn_id_pairs: A list of two-tuples containing pairs of instruction
+        identifiers, each of which is unique within a
+        :class:`loopy.kernel.LoopKernel`.
 
-    :arg after_insn_id: A :class:`str` instruction id specifying
-        stmt_instance_set_after in this pair of instructions.
+    :arg loops_to_ignore: A set of inames that will be ignored when
+        determining the relative ordering of statements. This will typically
+        contain concurrent inames.
 
-    :returns: A two-tuple containing two :class:`islpy.Map`\ s
-        representing a pairwise schedule as two mappings
-        from statement instances to lexicographic time, one for
+    :returns: A dictionary mapping each two-tuple of instruction identifiers
+        provided in `insn_id_pairs` to a corresponding two-tuple containing two
+        :class:`islpy.Map`\ s representing a pairwise schedule as two
+        mappings from statement instances to lexicographic time, one for
         each of the two statements.
     """
 
-    # TODO
-    # update documentation
+    from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
 
     all_insn_ids = set().union(*insn_id_pairs)
+
+    # First, use one pass through linearization_items to generate a lexicographic
+    # ordering describing the relative order of *all* statements represented by
+    # all_insn_ids
 
     # For each statement, map the insn_id to a tuple representing points
     # in the lexicographic ordering containing items of :class:`int` or
     # :class:`str` :mod:`loopy` inames.
     stmt_instances = {}
 
-    from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
-
-    # go through linearization_items and generate pairwise sub-schedule
-
-    # keep track of the next tuple of points in our lexicographic
+    # Keep track of the next tuple of points in our lexicographic
     # ordering, initially this as a 1-d point with value 0
     next_insn_lex_tuple = [0]
+
     for linearization_item in linearization_items:
         if isinstance(linearization_item, EnterLoop):
             iname = linearization_item.iname
@@ -109,12 +112,12 @@ def generate_pairwise_schedules(
             # Increment next_insn_lex_tuple[-1] for statements in the section
             # of code after this EnterLoop.
             # (not technically necessary if no statement was added in the
-            # previous section; gratuitious incrementing is counteracted
+            # previous section; gratuitous incrementing is counteracted
             # in the simplification step below)
             next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1]+1
 
             # Upon entering a loop, add one lex dimension for the loop variable,
-            # add second lex dim to enumerate code blocks within new loop
+            # add second lex dim to enumerate sections of code within new loop
             next_insn_lex_tuple.append(iname)
             next_insn_lex_tuple.append(0)
 
@@ -122,17 +125,17 @@ def generate_pairwise_schedules(
             if linearization_item.iname in loops_to_ignore:
                 continue
 
-            # upon leaving a loop,
-            # pop lex dimension for enumerating code blocks within this loop, and
+            # Upon leaving a loop,
+            # pop lex dimension for enumerating code sections within this loop, and
             # pop lex dimension for the loop variable, and
-            # increment lex dim val enumerating items in current code block
+            # increment lex dim val enumerating items in current section of code
             next_insn_lex_tuple.pop()
             next_insn_lex_tuple.pop()
 
             # Increment next_insn_lex_tuple[-1] for statements in the section
             # of code after this LeaveLoop.
             # (not technically necessary if no statement was added in the
-            # previous section; gratuitious incrementing is counteracted
+            # previous section; gratuitous incrementing is counteracted
             # in the simplification step below)
             next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1]+1
 
@@ -154,23 +157,23 @@ def generate_pairwise_schedules(
 
                 continue
 
-            # only process listed insns, otherwise ignore
+            # Only process listed insns, otherwise ignore
             if lp_insn_id in all_insn_ids:
-                # add item
+                # Add item to stmt_instances
                 stmt_instances[lp_insn_id] = tuple(next_insn_lex_tuple[:])
 
-                # increment lex dim val enumerating items in current code block
+                # Increment lex dim val enumerating items in current section of code
                 next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1] + 1
 
         else:
             from loopy.schedule import (CallKernel, ReturnFromKernel)
-            # no action needed for these types of linearization item
+            # No action needed for these types of linearization item
             assert isinstance(
                 linearization_item, (CallKernel, ReturnFromKernel))
             pass
 
-        # to save time, stop when we've created all statements
-        if len(stmt_instances.keys()) == all_insn_ids:
+        # To save time, stop when we've found all statements
+        if len(stmt_instances.keys()) == len(all_insn_ids):
             break
 
     from loopy.schedule.checker.utils import (
@@ -179,8 +182,8 @@ def generate_pairwise_schedules(
         add_dims_to_isl_set,
     )
 
-    def _pad_tuple_with_zeros(tup, length):
-        return tup[:] + tuple([0]*(length-len(tup)))
+    def _pad_tuple_with_zeros(tup, desired_length):
+        return tup[:] + tuple([0]*(desired_length-len(tup)))
 
     def _simplify_lex_dims(tup0, tup1):
         """Simplify a pair of lex tuples in order to reduce the complexity of
@@ -188,13 +191,13 @@ def generate_pairwise_schedules(
         since these do not provide information on relative ordering. Once a
         dimension is found where both tuples have non-matching integer values,
         remove any faster-updating lex dimensions since they are not necessary
-        to speficy relative ordering.
+        to specify a relative ordering.
         """
 
         new_tup0 = []
         new_tup1 = []
 
-        # loop over dims
+        # Loop over dims from slowest updating to fastest
         for d0, d1 in zip(tup0, tup1):
             if isinstance(d0, int) and isinstance(d1, int):
 
@@ -236,8 +239,8 @@ def generate_pairwise_schedules(
         dom = knl.get_inames_domain(
             knl.id_to_insn[insn_id].within_inames)
 
-        # create space (an isl space in current implementation)
-        # {('statement', <inames> used in statement domain>) ->
+        # Create map space (an isl space in current implementation)
+        # {('statement', <inames used in statement domain>) ->
         #  (lexicographic ordering dims)}
         dom_inames_ordered = sorted_union_of_names_in_isl_sets([dom])
 
@@ -252,8 +255,7 @@ def generate_pairwise_schedules(
             add_dims_to_isl_set(
                 dom, isl.dim_type.set, [STATEMENT_VAR_NAME], 0), ]
 
-        # Each map representing the schedule will map
-        # statement instances -> lex time.
+        # Each map will map statement instances -> lex time.
         # Right now, statement instance tuples consist of single int.
         # Add all inames from domains to each map domain tuple.
         tuple_pair = [(
@@ -261,21 +263,23 @@ def generate_pairwise_schedules(
             lex_points
             )]
 
-        # create map
+        # Create map
         return create_symbolic_map_from_tuples(
             tuple_pairs_with_domains=zip(tuple_pair, dom_to_intersect),
             space=sched_space,
             )
 
+    # Second, create pairwise schedules for each individual pair of insns
+
     pairwise_schedules = {}
     for insn_ids in insn_id_pairs:
         lex_tuples = [stmt_instances[insn_id] for insn_id in insn_ids]
 
-        # simplify tuples to the extent possible ------------------------------------
+        # Simplify tuples to the extent possible ------------------------------------
 
-        # At this point, pairwise sub-schedule may contain lex point tuples
-        # missing dimensions; the values in these missing dims should
-        # be zero, so add them.
+        # At this point, one of the lex tuples may have more dimensions than another;
+        # the missing dims are the fastest-updating dims, and their values should
+        # be zero. Add them.
         max_lex_dims = max([len(lex_tuple) for lex_tuple in lex_tuples])
         lex_tuples_padded = [
             _pad_tuple_with_zeros(lex_tuple, max_lex_dims)
@@ -285,6 +289,7 @@ def generate_pairwise_schedules(
 
         # Now generate maps from the blueprint --------------------------------------
 
+        # Create names for the output dimensions
         out_names_sched = [
             LEX_VAR_PREFIX+str(i) for i in range(len(lex_tuples_simplified[0]))]
 
