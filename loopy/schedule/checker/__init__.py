@@ -28,32 +28,31 @@ def get_schedules_for_statement_pairs(
         linearization_items,
         insn_id_pairs,
         ):
-    r"""Given a pair of statements in a linearized kernel, determine
-    the (relative) order in which the instances are executed,
-    by creating a mapping from statement instances to points in a single
-    lexicographic ordering. Create a pair of :class:`islpy.Map`\ s
-    representing a pairwise schedule as two mappings from statement instances
-    to lexicographic time.
+    r"""For each statement pair in a subset of all statement pairs found in a
+    linearized kernel, determine the (relative) order in which the statement
+    instances are executed. For each pair, describe this relative ordering with
+    a pair of mappings from statement instances to points in a single
+    lexicographic ordering (a ``pairwise schedule''). When determining the
+    relative ordering, ignore concurrent inames.
 
     :arg knl: A preprocessed :class:`loopy.kernel.LoopKernel` containing the
         linearization items that will be used to create a schedule.
 
     :arg linearization_items: A list of :class:`loopy.schedule.ScheduleItem`
         (to be renamed to `loopy.schedule.LinearizationItem`) containing
-        the two linearization items for which a schedule will be
+        all linearization items for which pairwise schedules will be
         created. This list may be a *partial* linearization for a
         kernel since this function may be used during the linearization
         process.
 
-    :arg insn_id_before: An instruction identifier that is unique within
-        a :class:`loopy.kernel.LoopKernel`.
+    :arg insn_id_pairs: A list of two-tuples containing pairs of instruction
+        identifiers, each of which is unique within a
+        :class:`loopy.kernel.LoopKernel`.
 
-    :arg insn_id_after: An instruction identifier that is unique within
-        a :class:`loopy.kernel.LoopKernel`.
-
-    :returns: A two-tuple containing two :class:`islpy.Map`s
-        representing the a pairwise schedule as two mappings
-        from statement instances to lexicographic time, one for
+    :returns: A dictionary mapping each two-tuple of instruction identifiers
+        provided in `insn_id_pairs` to a corresponding two-tuple containing two
+        :class:`islpy.Map`\ s representing a pairwise schedule as two
+        mappings from statement instances to lexicographic time, one for
         each of the two statements.
 
     .. doctest:
@@ -85,8 +84,6 @@ def get_schedules_for_statement_pairs(
         [pi, pj, pk] -> { [_lp_linchk_statement = 1, i, j, k] -> [_lp_linchk_l0 = i, _lp_linchk_l1 = 1] : 0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
 
     """
-
-    # TODO update documentation
 
     # {{{ make sure kernel has been preprocessed
 
