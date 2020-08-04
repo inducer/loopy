@@ -61,12 +61,12 @@ def map_names_match_check(
                 % (obj_map_names, dim_type, desired_names))
 
 
-def insert_missing_dims_and_reorder_by_name(
+def reorder_dims_by_name(
         isl_set, dim_type, desired_dims_ordered):
     """Return an isl_set with the dimensions in the specified order.
 
     :arg isl_set: A :class:`islpy.Set` whose dimensions are
-        to be reordered and, if necessary, augmented with missing dimensions.
+        to be reordered.
 
     :arg dim_type: A :class:`islpy.dim_type`, i.e., an :class:`int`,
         specifying the dimension to be reordered.
@@ -75,9 +75,7 @@ def insert_missing_dims_and_reorder_by_name(
         representing the desired dimensions in order by dimension name.
 
     :returns: An :class:`islpy.Set` matching `isl_set` with the
-        dimension order matching `desired_dims_ordered`,
-        including additional dimensions present in `desred_dims_ordered`
-        that are not present in `isl_set`.
+        dimension order matching `desired_dims_ordered`.
 
     """
 
@@ -92,22 +90,16 @@ def insert_missing_dims_and_reorder_by_name(
 
     new_set = isl_set.copy()
     for desired_idx, name in enumerate(desired_dims_ordered):
-        # If iname doesn't exist in set, add dim
-        if name not in new_set.get_var_names(dim_type):
-            assert False
-            # Insert missing dim in correct location
-            new_set = new_set.insert_dims(
-                dim_type, desired_idx, 1
-                ).set_dim_name(dim_type, desired_idx, name)
-        else:  # Iname exists in set
-            current_idx = new_set.find_dim_by_name(dim_type, name)
-            if current_idx != desired_idx:
-                # First move to other dim because isl is stupid
-                new_set = new_set.move_dims(
-                    other_dim_type, other_dim_len, dim_type, current_idx, 1)
-                # Now move it where we actually want it
-                new_set = new_set.move_dims(
-                    dim_type, desired_idx, other_dim_type, other_dim_len, 1)
+        assert name in new_set.get_var_names(dim_type)
+
+        current_idx = new_set.find_dim_by_name(dim_type, name)
+        if current_idx != desired_idx:
+            # First move to other dim because isl is stupid
+            new_set = new_set.move_dims(
+                other_dim_type, other_dim_len, dim_type, current_idx, 1)
+            # Now move it where we actually want it
+            new_set = new_set.move_dims(
+                dim_type, desired_idx, other_dim_type, other_dim_len, 1)
 
     return new_set
 
@@ -281,20 +273,16 @@ def create_symbolic_map_from_tuples(
             dim_type.out, 0, dim_type.in_,
             len(space_in_names), len(space_out_names))
 
-        assert space_in_names == map_from_set.get_var_names(
-            isl.dim_type.in_)
-
-        # If there are any dimensions in dom that are missing from
-        # map_from_set, we have a problem I think?
-        # (assertion checks this in add_missing...)
-        dom_with_all_inames = insert_missing_dims_and_reorder_by_name(
+        # Align the *out* dims of dom with the space *in_* dims
+        # in preparation for intersection
+        dom_with_set_dim_aligned = reorder_dims_by_name(
             dom, isl.dim_type.set,
             space_in_names,
             )
 
         # Intersect domain with this map
         union_of_maps = union_of_maps.union(
-            map_from_set.intersect_domain(dom_with_all_inames))
+            map_from_set.intersect_domain(dom_with_set_dim_aligned))
 
     return union_of_maps
 
