@@ -141,7 +141,7 @@ def create_legacy_dependency_constraint(
         add_dims_to_isl_set,
         insert_missing_dims_and_reorder_by_name,
         append_marker_to_isl_map_var_names,
-        list_var_names_in_isl_sets,
+        sorted_union_of_names_in_isl_sets,
     )
     from loopy.schedule.checker.schedule import STATEMENT_VAR_NAME
     # This function uses the dependency given to create the following constraint:
@@ -151,8 +151,8 @@ def create_legacy_dependency_constraint(
     # could be more efficient...
     dom_before = knl.get_inames_domain(knl.id_to_insn[insn_id_before].within_inames)
     dom_after = knl.get_inames_domain(knl.id_to_insn[insn_id_after].within_inames)
-    dom_inames_ordered_before = list_var_names_in_isl_sets([dom_before])
-    dom_inames_ordered_after = list_var_names_in_isl_sets([dom_after])
+    dom_inames_ordered_before = sorted_union_of_names_in_isl_sets([dom_before])
+    dom_inames_ordered_after = sorted_union_of_names_in_isl_sets([dom_after])
 
     # create some (ordered) isl vars to use, e.g., {s, i, j, s', i', j'}
     islvars = make_islvars_with_marker(
@@ -302,6 +302,13 @@ def create_legacy_dependency_constraint(
         [statement_var_name_prime], statement_var_idx)
 
     # insert inames missing from doms to enable intersection
+    # TODO nothing should be missing now
+    assert set(
+        append_apostrophes([STATEMENT_VAR_NAME] + dom_inames_ordered_before)
+        ) == set(domain_to_intersect.get_var_names(isl.dim_type.out))
+    assert set(
+        [STATEMENT_VAR_NAME] + dom_inames_ordered_after
+        ) == set(range_to_intersect.get_var_names(isl.dim_type.out))
     domain_to_intersect = insert_missing_dims_and_reorder_by_name(
         domain_to_intersect, isl.dim_type.out,
         append_apostrophes([STATEMENT_VAR_NAME] + dom_inames_ordered_before))

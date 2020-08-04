@@ -28,18 +28,6 @@ def prettier_map_string(map_obj):
                ).replace("{ ", "{\n").replace(" }", "\n}").replace("; ", ";\n")
 
 
-def get_islvars_from_space(space):
-    #pu.db
-    param_names = space.get_var_names(isl.dim_type.param)
-    in_names = space.get_var_names(isl.dim_type.in_)
-    out_names = space.get_var_names(isl.dim_type.out)
-    return isl.make_zero_and_vars(in_names+out_names, param_names)
-    #old = isl.make_zero_and_vars(in_names+out_names, param_names)
-    #new = isl.affs_from_space(space)
-    #assert old == new
-    #return new
-
-
 def add_dims_to_isl_set(isl_set, dim_type, names, new_idx_start):
     new_set = isl_set.insert_dims(
         dim_type, new_idx_start, len(names)
@@ -56,6 +44,9 @@ def map_names_match_check(
         assert_subset=True,
         assert_permutation=True,
         ):
+    """Raise an error if names of the specified map dimension do not match
+    the desired names
+    """
 
     obj_map_names = obj_map.space.get_var_names(dim_type)
     if assert_permutation:
@@ -101,23 +92,20 @@ def insert_missing_dims_and_reorder_by_name(
 
     new_set = isl_set.copy()
     for desired_idx, name in enumerate(desired_dims_ordered):
-        # if iname doesn't exist in set, add dim:
+        # If iname doesn't exist in set, add dim
         if name not in new_set.get_var_names(dim_type):
-            # insert missing dim in correct location
+            assert False
+            # Insert missing dim in correct location
             new_set = new_set.insert_dims(
                 dim_type, desired_idx, 1
-                ).set_dim_name(
-                dim_type, desired_idx, name)
-        else:  # iname exists in set
+                ).set_dim_name(dim_type, desired_idx, name)
+        else:  # Iname exists in set
             current_idx = new_set.find_dim_by_name(dim_type, name)
             if current_idx != desired_idx:
-                # move_dims(dst_type, dst_idx, src_type, src_idx, n)
-
-                # first move to other dim because isl is stupid
+                # First move to other dim because isl is stupid
                 new_set = new_set.move_dims(
                     other_dim_type, other_dim_len, dim_type, current_idx, 1)
-
-                # now move it where we actually want it
+                # Now move it where we actually want it
                 new_set = new_set.move_dims(
                     dim_type, desired_idx, other_dim_type, other_dim_len, 1)
 
@@ -203,15 +191,17 @@ def append_apostrophes(strings):
     return append_marker_to_strings(strings, marker="'")
 
 
-def list_var_names_in_isl_sets(
+def sorted_union_of_names_in_isl_sets(
         isl_sets,
         set_dim=isl.dim_type.set):
-    inames = set()
-    for isl_set in isl_sets:
-        inames.update(isl_set.get_var_names(set_dim))
+    r"""Return a sorted list of the union of all variable names found in
+    the provided :class:`islpy.Set`\ s.
+    """
 
-    # sorting is not necessary, but keeps results consistent between runs
-    return sorted(list(inames))
+    inames = set().union(*[isl_set.get_var_names(set_dim) for isl_set in isl_sets])
+
+    # Sorting is not necessary, but keeps results consistent between runs
+    return sorted(inames)
 
 
 def create_symbolic_map_from_tuples(
@@ -219,8 +209,8 @@ def create_symbolic_map_from_tuples(
         space,
         ):
     """Return an :class:`islpy.Map` constructed using the provided space,
-        mapping input->output tuples provided in `tuple_pairs_with_domains`,
-        with each set of tuple variables constrained by the domains provided.
+    mapping input->output tuples provided in `tuple_pairs_with_domains`,
+    with each set of tuple variables constrained by the domains provided.
 
     :arg tuple_pairs_with_domains: A :class:`list` with each element being
         a tuple of the form `((tup_in, tup_out), domain)`.
@@ -236,7 +226,7 @@ def create_symbolic_map_from_tuples(
         `tuple_pairs_with_domains`, map
         `(tup_in)->(tup_out) : domain`, where `tup_in` and `tup_out` are
         numeric or symbolic values assigned to the input and output
-        dimension variables in `space`, and `domain` specifies constraints
+        dimension variables in `space`, and `domain` specifies conditions
         on these values.
 
     """
@@ -248,42 +238,45 @@ def create_symbolic_map_from_tuples(
     space_out_names = space.get_var_names(dim_type.out)
     space_in_names = space.get_var_names(isl.dim_type.in_)
 
-    islvars = get_islvars_from_space(space)
+    # Get islvars from space
+    islvars = isl.affs_from_space(
+        space.move_dims(
+            isl.dim_type.out, 0,
+            isl.dim_type.in_, 0,
+            len(space_in_names),
+            ).range()
+        )
 
-    # loop through pairs and create a set that will later be converted to a map
+    def _conjunction_of_dim_eq_conditions(dim_names, values, islvars):
+        condition = islvars[0].eq_set(islvars[0])
+        for dim_name, val in zip(dim_names, values):
+            if isinstance(val, int):
+                condition = condition \
+                    & islvars[dim_name].eq_set(islvars[0]+val)
+            else:
+                condition = condition \
+                    & islvars[dim_name].eq_set(islvars[val])
+        return condition
 
-    # initialize union to empty
+    # Initialize union of maps to empty
     union_of_maps = isl.Map.from_domain(
         islvars[0].eq_set(islvars[0]+1)  # 0 == 1 (false)
         ).move_dims(
             dim_type.out, 0, dim_type.in_, len(space_in_names), len(space_out_names))
+
+    # Loop through tuple pairs
     for (tup_in, tup_out), dom in tuple_pairs_with_domains:
 
-        # initialize constraint with true
-        constraint = islvars[0].eq_set(islvars[0])
+        # Set values for 'in' dimension using tuple vals
+        condition = _conjunction_of_dim_eq_conditions(
+            space_in_names, tup_in, islvars)
 
-        # set values for 'in' dimension using tuple vals
-        assert len(tup_in) == len(space_in_names)
-        for dim_name, val_in in zip(space_in_names, tup_in):
-            if isinstance(val_in, int):
-                constraint = constraint \
-                    & islvars[dim_name].eq_set(islvars[0]+val_in)
-            else:
-                constraint = constraint \
-                    & islvars[dim_name].eq_set(islvars[val_in])
+        # Set values for 'out' dimension using tuple vals
+        condition = condition & _conjunction_of_dim_eq_conditions(
+            space_out_names, tup_out, islvars)
 
-        # set values for 'out' dimension using tuple vals
-        assert len(tup_out) == len(space_out_names)
-        for dim_name, val_out in zip(space_out_names, tup_out):
-            if isinstance(val_out, int):
-                constraint = constraint \
-                    & islvars[dim_name].eq_set(islvars[0]+val_out)
-            else:
-                constraint = constraint \
-                    & islvars[dim_name].eq_set(islvars[val_out])
-
-        # convert set to map by moving dimensions around
-        map_from_set = isl.Map.from_domain(constraint)
+        # Convert set to map by moving dimensions around
+        map_from_set = isl.Map.from_domain(condition)
         map_from_set = map_from_set.move_dims(
             dim_type.out, 0, dim_type.in_,
             len(space_in_names), len(space_out_names))
@@ -291,22 +284,22 @@ def create_symbolic_map_from_tuples(
         assert space_in_names == map_from_set.get_var_names(
             isl.dim_type.in_)
 
-        # if there are any dimensions in dom that are missing from
+        # If there are any dimensions in dom that are missing from
         # map_from_set, we have a problem I think?
-        # (assertion checks this in add_missing...
+        # (assertion checks this in add_missing...)
         dom_with_all_inames = insert_missing_dims_and_reorder_by_name(
             dom, isl.dim_type.set,
             space_in_names,
             )
 
-        # intersect domain with this map
+        # Intersect domain with this map
         union_of_maps = union_of_maps.union(
             map_from_set.intersect_domain(dom_with_all_inames))
 
     return union_of_maps
 
 
-def get_concurrent_inames(knl):
+def partition_inames_by_concurrency(knl):
     from loopy.kernel.data import ConcurrentTag
     conc_inames = set()
     non_conc_inames = set()
@@ -350,7 +343,7 @@ def get_all_nonconcurrent_insn_iname_subsets(
     """
 
     if non_conc_inames is None:
-        _, non_conc_inames = get_concurrent_inames(knl)
+        _, non_conc_inames = partition_inames_by_concurrency(knl)
 
     iname_subsets = set()
     for insn in knl.instructions:
@@ -444,10 +437,11 @@ def get_orderings_of_length_n(
     return orderings
 
 
-def get_EnterLoop_inames(linearization_items, knl):
+def get_EnterLoop_inames(linearization_items):
     from loopy.schedule import EnterLoop
-    loop_inames = set()
-    for linearization_item in linearization_items:
-        if isinstance(linearization_item, EnterLoop):
-            loop_inames.add(linearization_item.iname)
-    return loop_inames
+
+    # Note: each iname must live in len-1 list to avoid char separation
+    return set().union(*[
+        [item.iname, ] for item in linearization_items
+        if isinstance(item, EnterLoop)
+        ])
