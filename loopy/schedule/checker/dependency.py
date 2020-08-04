@@ -139,7 +139,7 @@ def create_legacy_dependency_constraint(
         make_islvars_with_marker,
         append_apostrophes,
         add_dims_to_isl_set,
-        insert_missing_dims_and_reorder_by_name,
+        reorder_dims_by_name,
         append_marker_to_isl_map_var_names,
         sorted_union_of_names_in_isl_sets,
     )
@@ -302,17 +302,17 @@ def create_legacy_dependency_constraint(
         [statement_var_name_prime], statement_var_idx)
 
     # insert inames missing from doms to enable intersection
-    # TODO nothing should be missing now
+    # TODO nothing should be missing now, just reorder
     assert set(
         append_apostrophes([STATEMENT_VAR_NAME] + dom_inames_ordered_before)
         ) == set(domain_to_intersect.get_var_names(isl.dim_type.out))
     assert set(
         [STATEMENT_VAR_NAME] + dom_inames_ordered_after
         ) == set(range_to_intersect.get_var_names(isl.dim_type.out))
-    domain_to_intersect = insert_missing_dims_and_reorder_by_name(
+    domain_to_intersect = reorder_dims_by_name(
         domain_to_intersect, isl.dim_type.out,
         append_apostrophes([STATEMENT_VAR_NAME] + dom_inames_ordered_before))
-    range_to_intersect = insert_missing_dims_and_reorder_by_name(
+    range_to_intersect = reorder_dims_by_name(
         range_to_intersect,
         isl.dim_type.out,
         [STATEMENT_VAR_NAME] + dom_inames_ordered_after)
