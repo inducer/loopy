@@ -94,6 +94,7 @@ def insert_missing_dims_and_reorder_by_name(
     for desired_idx, name in enumerate(desired_dims_ordered):
         # If iname doesn't exist in set, add dim
         if name not in new_set.get_var_names(dim_type):
+            assert False
             # Insert missing dim in correct location
             new_set = new_set.insert_dims(
                 dim_type, desired_idx, 1
