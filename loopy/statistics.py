@@ -904,8 +904,9 @@ def _get_lid_and_gid_strides(knl, array, index):
             for idx, axis_tag in zip(index, dim_tags):
                 # collect index coefficients
                 try:
-                    coeffs = _IndexStrideCoefficientCollector()(
-                              simplify_using_aff(knl, idx))
+                    coeffs = _IndexStrideCoefficientCollector(
+                            [tag_to_iname_dict[tag]])(
+                                    simplify_using_aff(knl, idx))
                 except ExpressionNotAffineError:
                     total_iname_stride = None
                     break
