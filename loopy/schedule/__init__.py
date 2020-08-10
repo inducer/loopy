@@ -658,8 +658,6 @@ class SchedulerState(ImmutableRecord):
 
 
 def get_insns_in_topologically_sorted_order(kernel):
-    # FIXME: Take into account the priority of the instructions and use the
-    # insn ids to get a deterministic order always
     from pytools.graph import compute_topological_order
 
     rev_dep_map = {insn.id: set() for insn in kernel.instructions}
@@ -667,16 +665,28 @@ def get_insns_in_topologically_sorted_order(kernel):
         for dep in insn.depends_on:
             rev_dep_map[dep].add(insn.id)
 
-    ids = compute_topological_order(rev_dep_map)
+    def key(insn_id):
+        # negative of insn.priority because
+        # pytools.graph.compute_topological_order schedules the nodes with
+        # lower 'key' in case of a tie.
+        return (-kernel.id_to_insn[insn_id].priority, insn.id)
+
+    ids = compute_topological_order(rev_dep_map, key=key)
     return [kernel.id_to_insn[insn_id] for insn_id in ids]
 
 
 # {{{ schedule_as_many_run_insns_as_possible
 
-def schedule_as_many_run_insns_as_possible(sched_state):
+def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
     """
     Returns an instance of :class:`loopy.schedule.SchedulerState`, by appending
-    all available instructions in the current loop nesting to the schedule.
+    all reachable instructions that are similar to *template_insn*. We define
+    two instructions to be similar if:
+
+    * Both have the same type.
+    * Both are within the same set of non-parallel inames.
+    * Both belong to the same groups.
+    * Both conflict with the same groups.
     """
 
     # {{{ bail when implementation is unsupported
@@ -689,12 +699,6 @@ def schedule_as_many_run_insns_as_possible(sched_state):
     if isinstance(next_preschedule_item, (CallKernel, ReturnFromKernel, Barrier)):
         return sched_state
 
-    if sched_state.group_insn_counts != {}:
-        # group conflicts induce another level of dependency between the
-        # instructions and it maybe necessary to explore several valid
-        # schedules in the current loop nest.
-        return sched_state
-
     if not sched_state.within_subkernel:
         # cannot schedule RunInstructions when not in subkernel
         return sched_state
@@ -702,41 +706,52 @@ def schedule_as_many_run_insns_as_possible(sched_state):
     # }}}
 
     preschedule = sched_state.preschedule[:]
+    have_inames = template_insn.within_inames - sched_state.parallel_inames
+    toposorted_insns = sched_state.insns_in_topologically_sorted_order
+
+    # {{{ helpers
 
     def next_preschedule_insn_id():
         return (next(iter(sched_item_to_insn_id(preschedule[0])), None)
                 if sched_state.preschedule
                 else None)
 
-    have_inames = frozenset(sched_state.active_inames) | sched_state.parallel_inames
+    def is_similar_to_template(insn):
+        if type(insn) != type(template_insn):
+            return False
+        if ((insn.within_inames - sched_state.parallel_inames)
+                != have_inames):
+            return False
+        if insn.groups != template_insn.groups:
+            return False
+        if insn.conflicts_with_groups != template_insn.conflicts_with_groups:
+            return False
 
-    toposorted_insns = sched_state.insns_in_topologically_sorted_order
+        return True
+
+    # }}}
 
     # select the top instructions in toposorted_insns only which have active
     # inames corresponding to those of sched_state
-    from loopy.kernel.instruction import MultiAssignmentBase
-
     newly_scheduled_insn_ids = []
     ignored_unscheduled_insn_ids = set()
 
     for insn in toposorted_insns:
         if insn.id in sched_state.scheduled_insn_ids:
             continue
-        if insn.within_inames < have_inames:
-            ignored_unscheduled_insn_ids.add(insn.id)
-            continue
-        if isinstance(insn, MultiAssignmentBase):
-            if (insn.within_inames - sched_state.parallel_inames) == frozenset(
-                    sched_state.active_inames) and not (insn.depends_on &
-                            ignored_unscheduled_insn_ids):
+        if is_similar_to_template(insn):
+            # check reachability
+            if not (insn.depends_on & ignored_unscheduled_insn_ids):
                 if insn.id in sched_state.prescheduled_insn_ids:
-                    if next_preschedule_insn_id() != insn.id:
-                        break
-                    preschedule.pop(0)
+                    if next_preschedule_insn_id() == insn.id:
+                        preschedule.pop(0)
+                        newly_scheduled_insn_ids.append(insn.id)
+                        continue
+                else:
+                    newly_scheduled_insn_ids.append(insn.id)
+                    continue
 
-                newly_scheduled_insn_ids.append(insn.id)
-                continue
-        break
+        ignored_unscheduled_insn_ids.add(insn.id)
 
     sched_items = tuple(RunInstruction(insn_id=insn_id) for insn_id in
             newly_scheduled_insn_ids)
@@ -1019,7 +1034,8 @@ def generate_loop_schedules_internal(
                     active_group_counts=new_active_group_counts,
                     )
 
-            new_sched_state = schedule_as_many_run_insns_as_possible(new_sched_state)
+            new_sched_state = schedule_as_many_run_insns_as_possible(new_sched_state,
+                    insn)
 
             # Don't be eager about entering/leaving loops--if progress has been
             # made, revert to top of scheduler and see if more progress can be
