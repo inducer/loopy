@@ -378,6 +378,38 @@ def test_cuda_short_vector():
     print(lp.generate_code_v2(knl).device_code())
 
 
+def test_pyopencl_execution_numpy_handling(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    # test numpy input for x is written to and returned
+    knl = lp.make_kernel('{:}', ['x[0] = y[0] + x[0]'])
+
+    y = np.array([3.])
+    x = np.array([4.])
+    evt, out = knl(queue, y=y, x=x)
+    assert out[0] is x
+    assert x[0] == 7.
+
+    # test numpy input for x is written to and returned, even when a pyopencl array
+    # is passed for y
+    import pyopencl.array as cla
+    y = cla.zeros(queue, shape=(1), dtype='float64') + 3.
+    x = np.array([4.])
+    evt, out = knl(queue, y=y, x=x)
+    assert out[0] is x
+    assert x[0] == 7.
+
+    # test numpy input for x is written to and returned, even when output-only
+    knl = lp.make_kernel('{:}', ['x[0] = y[0] + 2'])
+
+    y = np.array([3.])
+    x = np.array([4.])
+    evt, out = knl(queue, y=y, x=x)
+    assert out[0] is x
+    assert x[0] == 5.
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
