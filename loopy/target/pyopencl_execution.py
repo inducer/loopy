@@ -239,7 +239,6 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # }}}
 
-
     def generate_host_code(self, gen, codegen_result):
         gen.add_to_preamble(codegen_result.host_code())
 
