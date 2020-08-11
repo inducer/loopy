@@ -765,12 +765,22 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
     new_insn_ids_to_try = (None if newly_scheduled_insn_ids
             else sched_state.insn_ids_to_try)
 
+    new_active_group_counts = sched_state.active_group_counts.copy()
+    if newly_scheduled_insn_ids:
+        # all the newly scheduled insns belong to the same groups as
+        # template_insn
+        for grp in template_insn.groups:
+            new_active_group_counts[grp] -= len(newly_scheduled_insn_ids)
+            if new_active_group_counts[grp] == 0:
+                del new_active_group_counts[grp]
+
     return sched_state.copy(
             schedule=updated_schedule,
             scheduled_insn_ids=updated_scheduled_insn_ids,
             unscheduled_insn_ids=updated_unscheduled_insn_ids,
             preschedule=preschedule,
-            insn_ids_to_try=new_insn_ids_to_try
+            insn_ids_to_try=new_insn_ids_to_try,
+            active_group_counts=new_active_group_counts
             )
 
 # }}}
