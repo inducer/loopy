@@ -63,7 +63,8 @@ def map_names_match_check(
 
 def reorder_dims_by_name(
         isl_set, dim_type, desired_dims_ordered):
-    """Return an isl_set with the dimensions in the specified order.
+    """Return an isl_set with the dimensions of the specified dim_type
+    in the specified order.
 
     :arg isl_set: A :class:`islpy.Set` whose dimensions are
         to be reordered.
