@@ -569,11 +569,6 @@ class SchedulerState(ImmutableRecord):
 
     .. attribute:: loop_nest_around_map
 
-    .. attribute:: loop_priority
-
-        #FIXME: incorrect docs.
-        See :func:`loop_nest_around_map`.
-
     .. attribute:: breakable_inames
 
     .. attribute:: ilp_inames
@@ -589,7 +584,8 @@ class SchedulerState(ImmutableRecord):
 
     .. attribute:: insn_ids_to_try
 
-        #FIXME: docs?
+        :class:`list` of unscheduled instruction ids in a decreasing priority
+        order.
 
     .. attribute:: active_inames
 
@@ -696,7 +692,8 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
         if sched_state.preschedule
         else None)
 
-    if isinstance(next_preschedule_item, (CallKernel, ReturnFromKernel, Barrier)):
+    if isinstance(next_preschedule_item, (CallKernel, ReturnFromKernel,
+            Barrier, EnterLoop, LeaveLoop)):
         return sched_state
 
     if not sched_state.within_subkernel:
@@ -736,6 +733,9 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
     newly_scheduled_insn_ids = []
     ignored_unscheduled_insn_ids = set()
 
+    # new_toposorted_insns: unscheduled insns in a topologically sorted order
+    new_toposorted_insns = []
+
     for insn in toposorted_insns:
         if insn.id in sched_state.scheduled_insn_ids:
             continue
@@ -751,6 +751,7 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
                     newly_scheduled_insn_ids.append(insn.id)
                     continue
 
+        new_toposorted_insns.append(insn)
         ignored_unscheduled_insn_ids.add(insn.id)
 
     sched_items = tuple(RunInstruction(insn_id=insn_id) for insn_id in
@@ -772,7 +773,7 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
         for grp in template_insn.groups:
             new_active_group_counts[grp] -= len(newly_scheduled_insn_ids)
             if new_active_group_counts[grp] == 0:
-                del new_active_group_counts[grp]
+                new_active_group_counts.pop(grp)
 
     return sched_state.copy(
             schedule=updated_schedule,
@@ -780,7 +781,8 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
             unscheduled_insn_ids=updated_unscheduled_insn_ids,
             preschedule=preschedule,
             insn_ids_to_try=new_insn_ids_to_try,
-            active_group_counts=new_active_group_counts
+            active_group_counts=new_active_group_counts,
+            toposorted_insns=new_toposorted_insns
             )
 
 # }}}
