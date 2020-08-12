@@ -1954,114 +1954,6 @@ def realize_ilp(kernel):
 # }}}
 
 
-# {{{ find idempotence ("boostability") of instructions
-
-def find_idempotence(kernel):
-    logger.debug("%s: idempotence" % kernel.name)
-
-    writer_map = kernel.writer_map()
-
-    arg_names = set(arg.name for arg in kernel.args)
-
-    var_names = arg_names | set(six.iterkeys(kernel.temporary_variables))
-
-    reads_map = dict(
-            (insn.id, insn.read_dependency_names() & var_names)
-            for insn in kernel.instructions)
-
-    from collections import defaultdict
-    dep_graph = defaultdict(set)
-
-    for insn in kernel.instructions:
-        dep_graph[insn.id] = set(writer_id
-                for var in reads_map[insn.id]
-                for writer_id in writer_map.get(var, set()))
-
-    # Find SCCs of dep_graph. These are used for checking if the instruction is
-    # in a dependency cycle.
-    from pytools.graph import compute_sccs
-
-    sccs = dict((item, scc)
-            for scc in compute_sccs(dep_graph)
-            for item in scc)
-
-    non_idempotently_updated_vars = set()
-
-    new_insns = []
-    for insn in kernel.instructions:
-        boostable = len(sccs[insn.id]) == 1 and insn.id not in dep_graph[insn.id]
-
-        if not boostable:
-            non_idempotently_updated_vars.update(
-                    insn.assignee_var_names())
-
-        new_insns.append(insn.copy(boostable=boostable))
-
-    # {{{ remove boostability from isns that access non-idempotently updated vars
-
-    new2_insns = []
-    for insn in new_insns:
-        if insn.boostable and bool(
-                non_idempotently_updated_vars & insn.dependency_names()):
-            new2_insns.append(insn.copy(boostable=False))
-        else:
-            new2_insns.append(insn)
-
-    # }}}
-
-    return kernel.copy(instructions=new2_insns)
-
-# }}}
-
-
-# {{{ limit boostability
-
-def limit_boostability(kernel):
-    """Finds out which other inames an instruction's inames occur with
-    and then limits boostability to just those inames.
-    """
-
-    logger.debug("%s: limit boostability" % kernel.name)
-
-    iname_occurs_with = {}
-    for insn in kernel.instructions:
-        insn_inames = kernel.insn_inames(insn)
-        for iname in insn_inames:
-            iname_occurs_with.setdefault(iname, set()).update(insn_inames)
-
-    iname_use_counts = {}
-    for insn in kernel.instructions:
-        for iname in kernel.insn_inames(insn):
-            iname_use_counts[iname] = iname_use_counts.get(iname, 0) + 1
-
-    single_use_inames = set(iname for iname, uc in six.iteritems(iname_use_counts)
-            if uc == 1)
-
-    new_insns = []
-    for insn in kernel.instructions:
-        if insn.boostable is None:
-            raise LoopyError("insn '%s' has undetermined boostability" % insn.id)
-        elif insn.boostable:
-            boostable_into = set()
-            for iname in kernel.insn_inames(insn):
-                boostable_into.update(iname_occurs_with[iname])
-
-            boostable_into -= kernel.insn_inames(insn) | single_use_inames
-
-            # Even if boostable_into is empty, leave boostable flag on--it is used
-            # for boosting into unused hw axes.
-
-            insn = insn.copy(boostable_into=boostable_into)
-        else:
-            insn = insn.copy(boostable_into=set())
-
-        new_insns.append(insn)
-
-    return kernel.copy(instructions=new_insns)
-
-# }}}
-
-
 # {{{ check for loads of atomic variables
 
 def check_atomic_loads(kernel):
@@ -2184,10 +2076,6 @@ def preprocess_kernel(kernel, device=None):
     kernel = realize_ilp(kernel)
 
     kernel = find_temporary_address_space(kernel)
-
-    # boostability should be removed in 2017.x.
-    kernel = find_idempotence(kernel)
-    kernel = limit_boostability(kernel)
 
     # check for atomic loads, much easier to do here now that the dependencies
     # have been established

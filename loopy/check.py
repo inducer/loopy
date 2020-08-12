@@ -32,6 +32,7 @@ from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_ke
 from loopy.type_inference import TypeInferenceMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
+from warnings import warn
 
 import logging
 logger = logging.getLogger(__name__)
@@ -72,7 +73,13 @@ VALID_NOSYNC_SCOPES = frozenset(["local", "global", "any"])
 class SubscriptIndicesIsIntChecker(TypeInferenceMapper):
     def map_subscript(self, expr):
         for idx in expr.index_tuple:
-            if not self.rec(idx)[0].is_integral():
+            type_inf_result = self.rec(idx)
+            if not type_inf_result:
+                raise LoopyError(
+                        "When checking that subscript indices are integral: "
+                        "Type inference did not find type of '%s'"
+                        % idx)
+            if not type_inf_result[0].is_integral():
                 raise LoopyError("Non-integral array indices obtained in"
                         " {}.".format(expr))
 
@@ -781,10 +788,73 @@ def pre_schedule_checks(kernel):
 
 # {{{ check for unused hw axes
 
+# {{{ find boostable insn ids
+
+def _find_boostable_insn_ids(kernel):
+    """There used to exist a broken heuristic called "boostability" that allowed
+    instructions to be pushed into hardware-parallel loops. This function survives
+    of that, for now, to provide a thin veneer of compatibility.
+    """
+    logger.debug("%s: idempotence" % kernel.name)
+
+    writer_map = kernel.writer_map()
+
+    arg_names = set(arg.name for arg in kernel.args)
+
+    var_names = arg_names | set(six.iterkeys(kernel.temporary_variables))
+
+    reads_map = dict(
+            (insn.id, insn.read_dependency_names() & var_names)
+            for insn in kernel.instructions)
+
+    from collections import defaultdict
+    dep_graph = defaultdict(set)
+
+    for insn in kernel.instructions:
+        dep_graph[insn.id] = set(writer_id
+                for var in reads_map[insn.id]
+                for writer_id in writer_map.get(var, set()))
+
+    # Find SCCs of dep_graph. These are used for checking if the instruction is
+    # in a dependency cycle.
+    from pytools.graph import compute_sccs
+
+    sccs = dict((item, scc)
+            for scc in compute_sccs(dep_graph)
+            for item in scc)
+
+    non_idempotently_updated_vars = set()
+    boostable_insn_ids = set()
+
+    for insn in kernel.instructions:
+        boostable = len(sccs[insn.id]) == 1 and insn.id not in dep_graph[insn.id]
+
+        if boostable:
+            boostable_insn_ids.add(insn.id)
+        else:
+            non_idempotently_updated_vars.update(
+                    insn.assignee_var_names())
+
+    # {{{ remove boostability from isns that access non-idempotently updated vars
+
+    for insn_id in boostable_insn_ids.copy():
+        insn = kernel.id_to_insn[insn_id]
+        if bool(non_idempotently_updated_vars & insn.dependency_names()):
+            boostable_insn_ids.remove(insn_id)
+
+    # }}}
+
+    return boostable_insn_ids
+
+# }}}
+
+
 def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
     from loopy.schedule import (CallKernel, RunInstruction,
             Barrier, EnterLoop, LeaveLoop, ReturnFromKernel,
             get_insn_ids_for_block_at, gather_schedule_block)
+
+    boostable_insn_ids = _find_boostable_insn_ids(kernel)
 
     if sched_index is None:
         group_axes = set()
@@ -819,9 +889,6 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
             insn = kernel.id_to_insn[sched_item.insn_id]
             i += 1
 
-            if insn.boostable:
-                continue
-
             group_axes_used = set()
             local_axes_used = set()
 
@@ -841,17 +908,44 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
                     raise LoopyError("auto local tag encountered")
 
             if group_axes != group_axes_used:
-                raise LoopyError("instruction '%s' does not use all group hw axes "
-                        "(available: %s used:%s)"
-                        % (insn.id,
-                            ",".join(str(i) for i in group_axes),
-                            ",".join(str(i) for i in group_axes_used)))
+                if insn.id in boostable_insn_ids:
+                    warn("instruction '%s' does not use all group hw axes"
+                            " (available: %s used:%s). Loopy will generate code"
+                            " with the instruction executed along all the"
+                            " missing hw axes. This will result in an"
+                            " error from 2021.x onwards, calling"
+                            " loopy.add_inames_for_unused_hw_axes(...)"
+                            " might help in the transition."
+                            % (insn.id,
+                                ",".join(str(i) for i in group_axes),
+                                ",".join(str(i) for i in group_axes_used)),
+                            DeprecationWarning, stacklevel=2)
+                else:
+                    raise LoopyError("instruction '%s' does not use all group"
+                            " hw axes (available: %s used:%s)"
+                            % (insn.id,
+                                ",".join(str(i) for i in group_axes),
+                                ",".join(str(i) for i in group_axes_used)))
+
             if local_axes != local_axes_used:
-                raise LoopyError("instruction '%s' does not use all local hw axes "
-                        "(available: %s used:%s)"
-                        % (insn.id,
-                            ",".join(str(i) for i in local_axes),
-                            ",".join(str(i) for i in local_axes_used)))
+                if insn.id in boostable_insn_ids:
+                    warn("instruction '%s' does not use all local hw axes"
+                            " (available: %s used:%s). Loopy will generate code"
+                            " with the instruction executed along all the"
+                            " missing hw axes. This will result in an"
+                            " error from 2021.x onwards, calling"
+                            " loopy.add_inames_for_unused_hw_axes(...)"
+                            " might help in the transition."
+                            % (insn.id,
+                                ",".join(str(i) for i in local_axes),
+                                ",".join(str(i) for i in local_axes_used)),
+                            DeprecationWarning, stacklevel=2)
+                else:
+                    raise LoopyError("instruction '%s' does not use all local"
+                            " hw axes (available: %s used:%s)"
+                            % (insn.id,
+                                ",".join(str(i) for i in local_axes),
+                                ",".join(str(i) for i in local_axes_used)))
 
         elif isinstance(sched_item, (Barrier, EnterLoop, LeaveLoop)):
             i += 1

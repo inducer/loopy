@@ -82,7 +82,8 @@ def test_tim2d(ctx_factory):
     def variant_orig(knl):
         knl = lp.tag_inames(knl, dict(i="l.0", j="l.1", e="g.0"))
 
-        knl = lp.add_prefetch(knl, "D[:,:]", default_tag="l.auto")
+        knl = lp.add_prefetch(knl, "D[:,:]", fetch_outer_inames='e',
+                default_tag="l.auto")
         knl = lp.add_prefetch(knl, "u[e, :, :]", default_tag="l.auto")
 
         knl = lp.precompute(knl, "ur(m,j)", ["m", "j"], default_tag="l.auto")

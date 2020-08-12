@@ -65,6 +65,8 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
     def handle_non_numpy_arg(self, gen, arg):
         gen("if isinstance(%s, _lpy_np.ndarray):" % arg.name)
         with Indentation(gen):
+            gen("# retain originally passed array")
+            gen("_lpy_%s_np_input = %s" % (arg.name, arg.name))
             gen("# synchronous, nothing to worry about")
             gen("%s = _lpy_cl_array.to_device("
                     "queue, %s, allocator=allocator)"
@@ -73,16 +75,20 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         gen("elif %s is not None:" % arg.name)
         with Indentation(gen):
             gen("_lpy_encountered_dev = True")
+            gen("_lpy_%s_np_input = None" % arg.name)
+        gen("else:")
+        with Indentation(gen):
+            gen("_lpy_%s_np_input = None" % arg.name)
 
         gen("")
 
     # }}}
 
-    # {{{ handle allocation of unspecified arguements
+    # {{{ handle allocation of unspecified arguments
 
     def handle_alloc(self, gen, arg, kernel_arg, strify, skip_arg_checks):
         """
-        Handle allocation of non-specified arguements for pyopencl execution
+        Handle allocation of non-specified arguments for pyopencl execution
         """
         from pymbolic import var
 
@@ -142,7 +148,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def initialize_system_args(self, gen):
         """
-        Initializes possibly empty system arguements
+        Initializes possibly empty system arguments
         """
         gen("if allocator is None:")
         with Indentation(gen):
@@ -200,16 +206,17 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             with Indentation(gen):
                 gen("out_host = True")
 
-            gen("if out_host:")
-            with Indentation(gen):
-                gen("pass")  # if no outputs (?!)
-                for arg in implemented_data_info:
-                    if not issubclass(arg.arg_class, KernelArgument):
-                        continue
+            for arg in implemented_data_info:
+                if not issubclass(arg.arg_class, KernelArgument):
+                    continue
 
-                    is_written = arg.base_name in kernel.get_written_variables()
-                    if is_written:
-                        gen("%s = %s.get(queue=queue)" % (arg.name, arg.name))
+                is_written = arg.base_name in kernel.get_written_variables()
+                if is_written:
+                    np_name = "_lpy_%s_np_input" % arg.name
+                    gen("if out_host or %s is not None:" % np_name)
+                    with Indentation(gen):
+                        gen("%s = %s.get(queue=queue, ary=%s)"
+                            % (arg.name, arg.name, np_name))
 
             gen("")
 

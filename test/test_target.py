@@ -281,7 +281,9 @@ def test_numba_cuda_target():
     knl = lp.assume(knl, "M>0")
     knl = lp.split_iname(knl, "i", 16, outer_tag='g.0')
     knl = lp.split_iname(knl, "j", 128, inner_tag='l.0', slabs=(0, 1))
-    knl = lp.add_prefetch(knl, "X[i,:]", default_tag="l.auto")
+    knl = lp.add_prefetch(knl, "X[i,:]",
+            fetch_outer_inames='i_inner, i_outer, j_inner',
+            default_tag="l.auto")
     knl = lp.fix_parameters(knl, N=3)
     knl = lp.prioritize_loops(knl, "i_inner,j_outer")
     knl = lp.tag_inames(knl, "k:unr")
@@ -374,6 +376,38 @@ def test_cuda_short_vector():
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
 
     print(lp.generate_code_v2(knl).device_code())
+
+
+def test_pyopencl_execution_numpy_handling(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    # test numpy input for x is written to and returned
+    knl = lp.make_kernel('{:}', ['x[0] = y[0] + x[0]'])
+
+    y = np.array([3.])
+    x = np.array([4.])
+    evt, out = knl(queue, y=y, x=x)
+    assert out[0] is x
+    assert x[0] == 7.
+
+    # test numpy input for x is written to and returned, even when a pyopencl array
+    # is passed for y
+    import pyopencl.array as cla
+    y = cla.zeros(queue, shape=(1), dtype='float64') + 3.
+    x = np.array([4.])
+    evt, out = knl(queue, y=y, x=x)
+    assert out[0] is x
+    assert x[0] == 7.
+
+    # test numpy input for x is written to and returned, even when output-only
+    knl = lp.make_kernel('{:}', ['x[0] = y[0] + 2'])
+
+    y = np.array([3.])
+    x = np.array([4.])
+    evt, out = knl(queue, y=y, x=x)
+    assert out[0] is x
+    assert x[0] == 5.
 
 
 if __name__ == "__main__":

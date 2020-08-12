@@ -891,14 +891,22 @@ def _get_lid_and_gid_strides(knl, array, index):
 
     def get_iname_strides(tag_to_iname_dict):
         tag_to_stride_dict = {}
+
+        if array.dim_tags is None:
+            assert len(index) <= 1
+            dim_tags = (None,) * len(index)
+        else:
+            dim_tags = array.dim_tags
+
         for tag, iname in six.iteritems(tag_to_iname_dict):
             total_iname_stride = 0
             # find total stride of this iname for each axis
-            for idx, axis_tag in zip(index, array.dim_tags):
+            for idx, axis_tag in zip(index, dim_tags):
                 # collect index coefficients
                 try:
-                    coeffs = _IndexStrideCoefficientCollector()(
-                              simplify_using_aff(knl, idx))
+                    coeffs = _IndexStrideCoefficientCollector(
+                            [tag_to_iname_dict[tag]])(
+                                    simplify_using_aff(knl, idx))
                 except ExpressionNotAffineError:
                     total_iname_stride = None
                     break
@@ -914,6 +922,14 @@ def _get_lid_and_gid_strides(knl, array, index):
                 # now determine stride
                 if isinstance(axis_tag, FixedStrideArrayDimTag):
                     axis_tag_stride = axis_tag.stride
+
+                    if axis_tag_stride is lp.auto:
+                        total_iname_stride = None
+                        break
+
+                elif axis_tag is None:
+                    axis_tag_stride = 1
+
                 else:
                     continue
 
@@ -1405,10 +1421,6 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
 
     """
 
-    if not knl.options.ignore_boostable_into:
-        raise LoopyError("Kernel '%s': Using operation counting requires the option "
-                "ignore_boostable_into to be set." % knl.name)
-
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
@@ -1597,10 +1609,6 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
 
     """
 
-    if not knl.options.ignore_boostable_into:
-        raise LoopyError("Kernel '%s': Using operation counting requires the option "
-                "ignore_boostable_into to be set." % knl.name)
-
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
@@ -1712,10 +1720,6 @@ def get_synchronization_map(knl, subgroup_size=None):
         # (now use this count to, e.g., predict performance)
 
     """
-
-    if not knl.options.ignore_boostable_into:
-        raise LoopyError("Kernel '%s': Using operation counting requires the option "
-                "ignore_boostable_into to be set." % knl.name)
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier,
