@@ -27,8 +27,7 @@ from six.moves import range
 
 from islpy import dim_type
 import islpy as isl
-from loopy.program import CallablesTable
-from loopy.symbolic import WalkMapper, CombineMapper, ResolvedFunction
+from loopy.symbolic import WalkMapper
 from loopy.diagnostic import (LoopyError, WriteRaceConditionWarning,
                               DataDependentParallelBoundsWarning,
                               warn_with_kernel)

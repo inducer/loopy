@@ -642,7 +642,6 @@ def untag_inames(kernel, iname_to_untag, tag_type):
 
 # {{{ tag inames
 
-@iterate_over_kernels_if_given_program
 def tag_inames(kernel, iname_to_tag, retag=False,
         ignore_nonexistent=False):
     """Tag an iname

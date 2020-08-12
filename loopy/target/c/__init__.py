@@ -1040,7 +1040,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
     def emit_comment(self, s):
         from cgen import Comment
-        # Attaching empty comment wrapping in block needed 
+        # Attaching empty comment wrapping in block needed
         # otw compiler error due to empty block
         return Block([Comment(s), Comment(" ")])
 
@@ -1173,7 +1173,7 @@ class DTypeRegistryWrapperVec(DTypeRegistryWrapper):
             shape, = dtype.dtype.shape
             return base + str(shape)
         return base
-    
+
     def dtype_to_ctype_base(self, dtype):
         return super(DTypeRegistryWrapperVec, self).dtype_to_ctype(
                 NumpyType(dtype.dtype.base))
@@ -1224,7 +1224,8 @@ class CVecASTBuilder(CASTBuilder):
 
                 if temp_var.alignment:
                     from cgen import AlignedAttribute
-                    temp_var_decl = AlignedAttribute(temp_var.alignment, temp_var_decl)
+                    temp_var_decl = AlignedAttribute(
+                            temp_var.alignment, temp_var_decl)
 
                 return temp_var_decl
 

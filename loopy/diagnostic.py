@@ -47,6 +47,7 @@ class ParameterFinderWarning(LoopyWarning):
 class WriteRaceConditionWarning(LoopyWarning):
     pass
 
+
 class DataDependentParallelBoundsWarning(LoopyWarning):
     pass
 

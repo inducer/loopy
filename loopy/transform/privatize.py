@@ -166,8 +166,8 @@ def privatize_temporaries_with_inames(
             priv_axis_iname_to_length[iname] = pw_aff_to_expr(
                         static_max_of_pw_aff(bounds.size, constants_only=False))
             assert (static_max_of_pw_aff(
-                    bounds.lower_bound_pw_aff, constants_only=False).plain_is_zero() or
-                    static_min_of_pw_aff(
+                bounds.lower_bound_pw_aff, constants_only=False).plain_is_zero() or
+                static_min_of_pw_aff(
                     bounds.lower_bound_pw_aff, constants_only=False).plain_is_zero())
 
     # }}}

@@ -1951,6 +1951,7 @@ def realize_ilp(kernel):
     from loopy.transform.privatize import privatize_temporaries_with_inames
     return privatize_temporaries_with_inames(kernel, privatizing_inames)
 
+
 # {{{ realize C vector extension
 
 def realize_c_vec(kernel):
@@ -2193,8 +2194,9 @@ def realize_c_vec(kernel):
             elif should_simd:
                 lhs = subst_mapper_simd(inst.assignee)
                 rhs = subst_mapper_simd(inst.expression)
-                within_inames = frozenset(iname_map_simd[i] if i in iname_map_simd else i
-                                          for i in inst.within_inames)
+                within_inames = frozenset(
+                        iname_map_simd[i] if i in iname_map_simd else i
+                        for i in inst.within_inames)
                 inst = inst.copy(assignee=lhs, expression=rhs,
                                  within_inames=within_inames)
 
