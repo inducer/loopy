@@ -945,7 +945,7 @@ class ArrayBase(ImmutableRecord):
     def num_target_axes(self):
         target_axes = set()
         for dim_tag in self.dim_tags:
-            if isinstance(dim_tag, (_StrideArrayDimTagBase, VectorArrayDimTag)):
+            if isinstance(dim_tag, (_StrideArrayDimTagBase)):
                 target_axes.add(dim_tag.target_axis)
 
         return len(target_axes)
