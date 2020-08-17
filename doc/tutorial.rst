@@ -802,8 +802,14 @@ enabling some cost savings:
     >>> knl = lp.prioritize_loops(knl, "i_outer,i_inner")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
-    ...
-      /* bulk slab for 'i_outer' */
+    #define gid(N) ((int) get_group_id(N))
+    <BLANKLINE>
+    __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float *__restrict__ a, int const n)
+    {
+      {
+        /* bulk slab for 'i_outer' */
+        /*   */
+      }
       for (int i_outer = 0; i_outer <= -2 + (3 + n) / 4; ++i_outer)
       {
         a[4 * i_outer] = 0.0f;
@@ -811,7 +817,10 @@ enabling some cost savings:
         a[2 + 4 * i_outer] = 0.0f;
         a[3 + 4 * i_outer] = 0.0f;
       }
-      /* final slab for 'i_outer' */
+      {
+        /* final slab for 'i_outer' */
+        /*   */
+      }
       {
         int const i_outer = -1 + n + -1 * ((3 * n) / 4);
     <BLANKLINE>
@@ -826,7 +835,7 @@ enabling some cost savings:
             a[3 + 4 * i_outer] = 0.0f;
         }
       }
-    ...
+    }
 
 .. }}}
 
