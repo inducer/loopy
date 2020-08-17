@@ -501,7 +501,8 @@ class TypeCast(LoopyExpressionBase):
         from loopy.types import to_loopy_type, NumpyType
         type = to_loopy_type(type)
 
-        if (not isinstance(type, NumpyType)):
+        if (not isinstance(type, NumpyType)
+                or not issubclass(type.dtype.type, np.number)):
             from loopy.diagnostic import LoopyError
             raise LoopyError("TypeCast only supports numerical numpy types, "
                     "not '%s'" % type)
