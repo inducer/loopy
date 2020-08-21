@@ -841,24 +841,27 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         tag_key_uses = defaultdict(list)
 
         from loopy.kernel.data import HardwareConcurrentTag
+        from loopy.target.c import CVecTarget
 
-        for iname in cond_inames:
-            tags = self.iname_tags_of_type(iname, HardwareConcurrentTag, max_num=1)
-            if tags:
-                tag, = tags
-                tag_key_uses[tag.key].append(iname)
+        if not isinstance(self.target, CVecTarget):
+            for iname in cond_inames:
+                tags = self.iname_tags_of_type(iname, HardwareConcurrentTag, max_num=1)
+                if tags:
+                    tag, = tags
+                    tag_key_uses[tag.key].append(iname)
 
         multi_use_keys = set(
                 key for key, user_inames in six.iteritems(tag_key_uses)
                 if len(user_inames) > 1)
 
         multi_use_inames = set()
-        for iname in cond_inames:
-            tags = self.iname_tags_of_type(iname, HardwareConcurrentTag)
-            if tags:
-                tag, = filter_iname_tags_by_type(tags, HardwareConcurrentTag, 1)
-                if tag.key in multi_use_keys:
-                    multi_use_inames.add(iname)
+        if not isinstance(self.target, CVecTarget):
+            for iname in cond_inames:
+                tags = self.iname_tags_of_type(iname, HardwareConcurrentTag)
+                if tags:
+                    tag, = filter_iname_tags_by_type(tags, HardwareConcurrentTag, 1)
+                    if tag.key in multi_use_keys:
+                        multi_use_inames.add(iname)
 
         return frozenset(cond_inames - multi_use_inames)
 
