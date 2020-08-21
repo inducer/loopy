@@ -184,11 +184,6 @@ class LoopedIlpTag(IlpBaseTag):
         return "ilp.seq"
 
 
-class CVectorizeTag(IlpBaseTag):
-    def __str__(self):
-        return "c_vec"
-
-
 class OpenMPSIMDTag(IlpBaseTag):
     def __str__(self):
         return "omp_simd"
@@ -238,8 +233,6 @@ def parse_tag(tag):
         return UnrolledIlpTag()
     elif tag == "ilp.seq":
         return LoopedIlpTag()
-    elif tag == "c_vec":
-        return CVectorizeTag()
     elif tag == "omp_simd":
         return OpenMPSIMDTag()
     elif tag.startswith("g."):

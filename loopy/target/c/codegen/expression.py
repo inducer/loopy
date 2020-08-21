@@ -962,7 +962,7 @@ class ExpressionToCVecExpressionMapper(ExpressionToCExpressionMapper):
     def map_subscript(self, expr, type_context):
         ary = self.find_array(expr)
         from loopy.kernel.array import VectorArrayDimTag
-        from loopy.kernel.data import CVectorizeTag
+        from loopy.kernel.data import VectorizeTag
         from pymbolic.primitives import Variable
 
         if isinstance(ary.dim_tags[-1], VectorArrayDimTag):
@@ -983,7 +983,7 @@ class ExpressionToCVecExpressionMapper(ExpressionToCExpressionMapper):
             throw_away = False
             if (isinstance(last_idx, Variable) and
                     self.codegen_state.kernel.iname_tags_of_type(
-                        last_idx.name, CVectorizeTag)):
+                        last_idx.name, VectorizeTag)):
                 throw_away = True
 
             if len(access_info.subscripts) == 1:

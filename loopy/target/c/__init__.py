@@ -1198,9 +1198,9 @@ class CVecASTBuilder(CASTBuilder):
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
             lbound, ubound, inner):
 
-        from loopy.kernel.data import CVectorizeTag, OpenMPSIMDTag
+        from loopy.kernel.data import VectorizeTag, OpenMPSIMDTag
 
-        if codegen_state.kernel.iname_tags_of_type(iname, CVectorizeTag):
+        if codegen_state.kernel.iname_tags_of_type(iname, VectorizeTag):
             return inner
 
         if codegen_state.kernel.iname_tags_of_type(iname, OpenMPSIMDTag):

@@ -207,8 +207,6 @@ def _parse_array_dim_tag(tag, default_target_axis, nesting_levels):
         return False, is_optional, SeparateArrayArrayDimTag()
     elif tag == "vec":
         return False, is_optional, VectorArrayDimTag()
-    elif tag == "c_vec":
-        return False, is_optional, VectorArrayDimTag()
 
     nesting_level_match = NESTING_LEVEL_RE.match(tag)
 
