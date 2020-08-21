@@ -961,11 +961,11 @@ class ExpressionToCVecExpressionMapper(ExpressionToCExpressionMapper):
 
     def map_subscript(self, expr, type_context):
         ary = self.find_array(expr)
-        from loopy.kernel.array import CVectorArrayDimTag
+        from loopy.kernel.array import VectorArrayDimTag
         from loopy.kernel.data import CVectorizeTag
         from pymbolic.primitives import Variable
 
-        if isinstance(ary.dim_tags[-1], CVectorArrayDimTag):
+        if isinstance(ary.dim_tags[-1], VectorArrayDimTag):
             # throw away c_vec index when appropriate
 
             from loopy.kernel.array import get_access_info

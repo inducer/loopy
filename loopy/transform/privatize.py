@@ -190,7 +190,7 @@ def privatize_temporaries_with_inames(
             if kernel.iname_tags_of_type(iname, VectorizeTag):
                 dim_tags[len(shape) + i] = "vec"
             elif kernel.iname_tags_of_type(iname, CVectorizeTag):
-                dim_tags[len(shape) + i] = "c_vec"
+                dim_tags[len(shape) + i] = "vec"
 
         new_temp_vars[tv.name] = tv.copy(shape=shape + extra_shape,
                 # Forget what you knew about data layout,

@@ -1957,7 +1957,7 @@ def realize_ilp(kernel):
 def realize_c_vec(kernel):
 
     from loopy.kernel.data import CVectorizeTag, ArrayArg
-    from loopy.kernel.array import CVectorArrayDimTag
+    from loopy.kernel.array import VectorArrayDimTag
     from loopy.kernel.tools import DomainChanger
     from loopy.isl_helpers import duplicate_axes
     from loopy.transform.iname import tag_inames
@@ -2148,7 +2148,7 @@ def realize_c_vec(kernel):
                     if len(ary.dim_tags) < 1:
                         continue
 
-                    if not isinstance(ary.dim_tags[-1], CVectorArrayDimTag):
+                    if not isinstance(ary.dim_tags[-1], VectorArrayDimTag):
                         sf = SubscriptFinder(ary.name, set(cvec_inames))
                         sf(inst.assignee)
                         sf(inst.expression)
