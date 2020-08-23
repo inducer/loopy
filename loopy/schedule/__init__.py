@@ -248,7 +248,7 @@ def find_loop_nest_around_map(kernel):
             if inner_iname == outer_iname:
                 continue
 
-            if (kernel.iname_tags_of_type(outer_iname, IlpBaseTag) or 
+            if (kernel.iname_tags_of_type(outer_iname, IlpBaseTag) or
                (kernel.iname_tags_of_type(outer_iname, VectorizeTag)
                and isinstance(kernel.target, CVecTarget))):
                 # ILP tags are special because they are parallel tags

@@ -845,7 +845,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         if not isinstance(self.target, CVecTarget):
             for iname in cond_inames:
-                tags = self.iname_tags_of_type(iname, HardwareConcurrentTag, max_num=1)
+                tags = self.iname_tags_of_type(iname,
+                                               HardwareConcurrentTag,
+                                               max_num=1)
                 if tags:
                     tag, = tags
                     tag_key_uses[tag.key].append(iname)
