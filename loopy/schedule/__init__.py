@@ -640,7 +640,8 @@ class SchedulerState(ImmutableRecord):
 
     .. attribute:: insns_in_topologically_sorted_order
 
-        A list of loopy :class:`Instruction` objects in topologically sorted order
+        A list of loopy :class:`Instruction` objects in topologically sorted
+        order with instruction priorities as tie breaker.
     """
 
     @property
@@ -664,7 +665,7 @@ def get_insns_in_topologically_sorted_order(kernel):
     def key(insn_id):
         # negative of insn.priority because
         # pytools.graph.compute_topological_order schedules the nodes with
-        # lower 'key' in case of a tie.
+        # lower 'key' first in case of a tie.
         return (-kernel.id_to_insn[insn_id].priority, insn.id)
 
     ids = compute_topological_order(rev_dep_map, key=key)
@@ -718,6 +719,8 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
             return False
         if ((insn.within_inames - sched_state.parallel_inames)
                 != have_inames):
+            # ignoring parallel inames as parallel inames do not enforce
+            # dependency on the kernel's schedule
             return False
         if insn.groups != template_insn.groups:
             return False
@@ -733,8 +736,8 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
     newly_scheduled_insn_ids = []
     ignored_unscheduled_insn_ids = set()
 
-    # new_toposorted_insns: unscheduled insns in a topologically sorted order
-    new_toposorted_insns = []
+    # left_over_toposorted_insns: unscheduled insns in a topologically sorted order
+    left_over_toposorted_insns = []
 
     for insn in toposorted_insns:
         if insn.id in sched_state.scheduled_insn_ids:
@@ -751,7 +754,7 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
                     newly_scheduled_insn_ids.append(insn.id)
                     continue
 
-        new_toposorted_insns.append(insn)
+        left_over_toposorted_insns.append(insn)
         ignored_unscheduled_insn_ids.add(insn.id)
 
     sched_items = tuple(RunInstruction(insn_id=insn_id) for insn_id in
@@ -782,7 +785,7 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
             preschedule=preschedule,
             insn_ids_to_try=new_insn_ids_to_try,
             active_group_counts=new_active_group_counts,
-            toposorted_insns=new_toposorted_insns
+            toposorted_insns=left_over_toposorted_insns
             )
 
 # }}}
