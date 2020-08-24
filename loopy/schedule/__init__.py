@@ -737,8 +737,8 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
     left_over_toposorted_insns = []
 
     for i, insn in enumerate(toposorted_insns):
-        if insn.id in sched_state.scheduled_insn_ids:
-            continue
+        assert insn.id not in sched_state.scheduled_insn_ids
+
         if is_similar_to_template(insn):
             # check reachability
             if not (insn.depends_on & ignored_unscheduled_insn_ids):
@@ -795,7 +795,7 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
             preschedule=preschedule,
             insn_ids_to_try=new_insn_ids_to_try,
             active_group_counts=new_active_group_counts,
-            toposorted_insns=left_over_toposorted_insns
+            insns_in_topologically_sorted_order=left_over_toposorted_insns
             )
 
 # }}}
@@ -1034,7 +1034,7 @@ def generate_loop_schedules_internal(
 
             # }}}
 
-            # {{{ update instruction_ids_to_try
+            # {{{ update instruction_ids_to_try/toposorted_insns
 
             new_insn_ids_to_try = list(insn_ids_to_try)
             new_insn_ids_to_try.remove(insn.id)
@@ -1043,6 +1043,9 @@ def generate_loop_schedules_internal(
             if set(new_active_group_counts.keys()) != set(
                     sched_state.active_group_counts.keys()):
                 new_insn_ids_to_try = None
+
+            new_toposorted_insns = sched_state.insns_in_topologically_sorted_order[:]
+            new_toposorted_insns.remove(insn)
 
             # }}}
 
@@ -1057,6 +1060,7 @@ def generate_loop_schedules_internal(
                         if insn_id not in sched_state.prescheduled_insn_ids
                         else sched_state.preschedule[1:]),
                     active_group_counts=new_active_group_counts,
+                    insns_in_topologically_sorted_order=new_toposorted_insns,
                     )
 
             new_sched_state = schedule_as_many_run_insns_as_possible(new_sched_state,
