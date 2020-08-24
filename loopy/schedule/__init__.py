@@ -680,7 +680,6 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
     all reachable instructions that are similar to *template_insn*. We define
     two instructions to be similar if:
 
-    * Both have the same type.
     * Both are within the same set of non-parallel inames.
     * Both belong to the same groups.
     * Both conflict with the same groups.
@@ -715,8 +714,6 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
                 else None)
 
     def is_similar_to_template(insn):
-        if type(insn) != type(template_insn):
-            return False
         if ((insn.within_inames - sched_state.parallel_inames)
                 != have_inames):
             # ignoring parallel inames as parallel inames do not enforce
