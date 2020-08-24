@@ -736,7 +736,7 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
     # left_over_toposorted_insns: unscheduled insns in a topologically sorted order
     left_over_toposorted_insns = []
 
-    for insn in toposorted_insns:
+    for i, insn in enumerate(toposorted_insns):
         if insn.id in sched_state.scheduled_insn_ids:
             continue
         if is_similar_to_template(insn):
@@ -753,6 +753,19 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
 
         left_over_toposorted_insns.append(insn)
         ignored_unscheduled_insn_ids.add(insn.id)
+
+        # HEURISTIC: To avoid quadratic operation complexity we bail adding new
+        # instructions by restricting the number of ignore unscheduled insns
+        # ids to 5.
+        # TODO: Find a stronger solution which would answer in O(1) time and
+        # O(N) space complexity when "no further instructions can be
+        # scheduled" i.e. when either:
+        # - No similar instructions are present in toposorted_insns.
+        # - No instruction in toposorted_insns is reachable due to instructions
+        #   that were ignored.
+        if len(ignored_unscheduled_insn_ids) > 5:
+            left_over_toposorted_insns.extend(toposorted_insns[i+1:])
+            break
 
     sched_items = tuple(RunInstruction(insn_id=insn_id) for insn_id in
             newly_scheduled_insn_ids)
