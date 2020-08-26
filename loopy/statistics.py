@@ -493,7 +493,7 @@ class Op(Record):
 
     .. attribute:: dtype
 
-       A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
+       A :class:`loopy.types.LoopyType` or :class:`numpy.dtype` that specifies the
        data type operated on.
 
     .. attribute:: name

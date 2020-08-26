@@ -256,7 +256,7 @@ This list is always growing, but here are a few pointers:
 * Precompute subexpressions:
 
   Use a :ref:`substitution-rule` to assign a name to a subexpression,
-  using may be :func:`loopy.assignment_to_subst` or :func:`extract_subst`.
+  using may be :func:`loopy.assignment_to_subst` or :func:`loopy.extract_subst`.
   Then use :func:`loopy.precompute` to create an (array or scalar)
   temporary with precomputed values.
 
@@ -295,12 +295,12 @@ This list is always growing, but here are a few pointers:
   Use :func:`loopy.tag_inames` with the ``"vec"`` iname tag.
   Note that the corresponding axis of an array must
   also be tagged using the ``"vec"`` array axis tag
-  (using :func:`tag_array_axes`) in order for vector code to be
+  (using :func:`loopy.tag_array_axes`) in order for vector code to be
   generated.
 
   Vectorized loops (and array axes) must have a fixed size. (See either
-  :func:`split_iname` or :func:`fix_parameters` along with
-  :func:`split_array_axis`.)
+  :func:`loopy.split_iname` or :func:`loopy.fix_parameters` along with
+  :func:`loopy.split_array_axis`.)
 
 * Reuse of Temporary Storage
 
@@ -309,7 +309,7 @@ This list is always growing, but here are a few pointers:
 
 * SoA $\leftrightarrow$ AoS
 
-  Use :func:`tag_array_axes` with the ``"sep"`` array axis tag
+  Use :func:`loopy.tag_array_axes` with the ``"sep"`` array axis tag
   to generate separate arrays for each entry of a short, fixed-length
   array axis.
 
@@ -320,7 +320,7 @@ This list is always growing, but here are a few pointers:
 
   Use :func:`loopy.tag_inames` with the ``"ilp"`` tag.
   ILP loops must have a fixed size. (See either
-  :func:`split_iname` or :func:`fix_parameters`.)
+  :func:`loopy.split_iname` or :func:`loopy.fix_parameters`.)
 
 * Type inference
 

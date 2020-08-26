@@ -282,7 +282,7 @@ class _deprecated_temp_var_scope_class_method(object):  # noqa
 
 
 class temp_var_scope(object):  # noqa
-    """Deprecated. Use :class:`AddressSpace` instead.
+    """Deprecated. Use :class:`loopy.AddressSpace` instead.
     """
 
     @_deprecated_temp_var_scope_class_method

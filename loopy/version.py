@@ -125,7 +125,7 @@ History of Language Versions
 
 .. data:: LOOPY_USE_LANGUAGE_VERSION_2018_2
 
-    :attr:`loopy.Options.ignore_boostable_into` is turned on by default.
+    ``loopy.Options.ignore_boostable_into`` is turned on by default.
 
 .. data:: LOOPY_USE_LANGUAGE_VERSION_2018_1
 

@@ -1580,7 +1580,7 @@ specified in the key (in terms of the :class:`loopy.LoopKernel`
 - name: A :class:`str` that specifies the kind of arithmetic operation as
   *add*, *sub*, *mul*, *div*, *pow*, *shift*, *bw* (bitwise), etc.
 
-One way to evaluate these polynomials is with :func:`islpy.eval_with_dict`:
+One way to evaluate these polynomials is with :meth:`islpy.PwQPolynomial.eval_with_dict`:
 
 .. doctest::
 
@@ -1687,7 +1687,7 @@ Each line of output will look roughly like::
 - variable: A :class:`str` that specifies the variable name of the data
   accessed.
 
-We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
+We can evaluate these polynomials using :meth:`islpy.PwQPolynomial.eval_with_dict`:
 
 .. doctest::
 
@@ -1856,7 +1856,7 @@ kernel from the previous example:
     kernel_launch : { 1 }
     <BLANKLINE>
 
-We can evaluate this polynomial using :func:`islpy.eval_with_dict`:
+We can evaluate this polynomial using :meth:`islpy.PwQPolynomial.eval_with_dict`:
 
 .. doctest::
 
@@ -1921,7 +1921,7 @@ Based on the kernel code printed above, we would expect each work-item to
 encounter 50x10x2 barriers, which matches the result from
 :func:`loopy.get_synchronization_map`. In this case, the number of barriers
 does not depend on any inames, so we can pass an empty dictionary to
-:func:`islpy.eval_with_dict`.
+:meth:`islpy.PwQPolynomial.eval_with_dict`.
 
 .. }}}
 
