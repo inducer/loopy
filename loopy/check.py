@@ -38,6 +38,35 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+__doc__ = """
+.. currentmodule:: loopy.check
+
+.. autofunction:: check_for_integer_subscript_indices
+
+.. autofunction:: check_for_duplicate_insn_ids
+
+.. autofunction:: check_for_double_use_of_hw_axes
+
+.. autofunction:: check_insn_attributes
+
+.. autofunction:: check_loop_priority_inames_known
+
+.. autofunction:: check_multiple_tags_allowed
+
+.. autofunction:: check_for_inactive_iname_access
+
+.. autofunction:: check_for_unused_inames
+
+.. autofunction:: check_for_write_races
+
+.. autofunction:: check_for_data_dependent_parallel_bounds
+
+.. autofunction:: check_bounds
+
+.. autofunction:: check_variable_access_ordered
+"""
+
+
 # {{{ sanity checks run before preprocessing
 
 def check_identifiers_in_subst_rules(knl):
@@ -87,6 +116,9 @@ class SubscriptIndicesIsIntChecker(TypeInferenceMapper):
 
 
 def check_for_integer_subscript_indices(kernel):
+    """
+    Checks is every array access is of type :class:`int`.
+    """
     from pymbolic.primitives import Subscript
     idx_int_checker = SubscriptIndicesIsIntChecker(kernel)
     for insn in kernel.instructions:
@@ -103,6 +135,9 @@ def check_for_integer_subscript_indices(kernel):
 
 
 def check_insn_attributes(kernel):
+    """
+    Check for legality of attributes of every instruction in *kernel*.
+    """
     all_insn_ids = set(insn.id for insn in kernel.instructions)
 
     for insn in kernel.instructions:
@@ -133,6 +168,10 @@ def check_insn_attributes(kernel):
 
 
 def check_for_duplicate_insn_ids(knl):
+    """
+    Check if multiple instructions of *knl* have the same
+    :attr:`loopy.InstructionBase.id`.
+    """
     insn_ids = set()
 
     for insn in knl.instructions:
@@ -144,6 +183,10 @@ def check_for_duplicate_insn_ids(knl):
 
 
 def check_loop_priority_inames_known(kernel):
+    """
+    Checks if the inames in :attr:`loopy.LoopKernel.loop_priority` are part of
+    the *kernel*'s domain.
+    """
     for prio in kernel.loop_priority:
         for iname in prio:
             if iname not in kernel.all_inames():
@@ -151,6 +194,9 @@ def check_loop_priority_inames_known(kernel):
 
 
 def check_multiple_tags_allowed(kernel):
+    """
+    Checks if a multiple tags of an iname are compatible.
+    """
     from loopy.kernel.data import (GroupIndexTag, LocalIndexTag, VectorizeTag,
                 UnrollTag, ForceSequentialTag, IlpBaseTag, filter_iname_tags_by_type)
     illegal_combinations = [
@@ -165,6 +211,10 @@ def check_multiple_tags_allowed(kernel):
 
 
 def check_for_double_use_of_hw_axes(kernel):
+    """
+    Check if any instruction of *kernel* is within multiple inames tagged with
+    the same hw axis tag.
+    """
     from loopy.kernel.data import UniqueTag
 
     for insn in kernel.instructions:
@@ -180,6 +230,9 @@ def check_for_double_use_of_hw_axes(kernel):
 
 
 def check_for_inactive_iname_access(kernel):
+    """
+    Check if any instruction accesses an iname but is not within it.
+    """
     for insn in kernel.instructions:
         expression_inames = insn.read_dependency_names() & kernel.all_inames()
 
@@ -192,6 +245,9 @@ def check_for_inactive_iname_access(kernel):
 
 
 def check_for_unused_inames(kernel):
+    """
+    Check if there are any unused inames in the kernel.
+    """
     # Warn if kernel has unused inames
     from loopy.transform.iname import get_used_inames
     unused_inames = kernel.all_inames() - get_used_inames(kernel)
@@ -231,6 +287,9 @@ def _is_racing_iname_tag(tv, tag):
 
 
 def check_for_write_races(kernel):
+    """
+    Check if any memory accesses lead to write races.
+    """
     from loopy.kernel.data import ConcurrentTag
 
     for insn in kernel.instructions:
@@ -293,6 +352,10 @@ def check_for_orphaned_user_hardware_axes(kernel):
 
 
 def check_for_data_dependent_parallel_bounds(kernel):
+    """
+    Check that inames tagged as hw axes have bounds that are known at kernel
+    launch.
+    """
     from loopy.kernel.data import ConcurrentTag
 
     for i, dom in enumerate(kernel.domains):
@@ -388,6 +451,9 @@ class _AccessCheckMapper(WalkMapper):
 
 
 def check_bounds(kernel):
+    """
+    Performs out-of-bound check for every array access.
+    """
     temp_var_names = set(kernel.temporary_variables)
     for insn in kernel.instructions:
         domain = kernel.get_inames_domain(kernel.insn_inames(insn))
@@ -689,7 +755,7 @@ def check_variable_access_ordered(kernel):
 
     * a direct/indirect depdendency edge, or
     * an explicit statement that no ordering is necessary (expressed
-      through a bi-directional :attr:`loopy.Instruction.no_sync_with`)
+      through a bi-directional :attr:`loopy.InstructionBase.no_sync_with`)
     """
 
     if kernel.options.enforce_variable_access_ordered not in [
