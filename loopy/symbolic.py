@@ -65,6 +65,32 @@ from islpy import dim_type
 import re
 import numpy as np
 
+__doc__ = """
+.. currentmodule:: loopy.symbolic
+
+.. autoclass:: Literal
+
+.. autoclass:: ArrayLiteral
+
+.. autoclass:: FunctionIdentifier
+
+.. autoclass:: TypedCSE
+
+.. autoclass:: TypeCast
+
+.. autoclass:: TaggedVariable
+
+.. autoclass:: Reduction
+
+.. autoclass:: LinearSubscript
+
+.. autoclass:: RuleArgument
+
+.. autoclass:: ExpansionState
+
+.. autoclass:: RuleAwareIdentityMapper
+"""
+
 
 # {{{ mappers with support for loopy-specific primitives
 
@@ -546,7 +572,8 @@ class TaggedVariable(LoopyExpressionBase, p.Variable):
 
 
 class Reduction(LoopyExpressionBase):
-    """Represents a reduction operation on :attr:`exprs`
+    """
+    Represents a reduction operation on :attr:`exprs`
     across :attr:`inames`.
 
     .. attribute:: operation
@@ -562,9 +589,9 @@ class Reduction(LoopyExpressionBase):
 
         An expression which may have tuple type. If the expression has tuple
         type, it must be one of the following:
-         * a :class:`tuple` of :class:`pymbolic.primitives.Expression`, or
-         * a :class:`loopy.symbolic.Reduction`, or
-         * a function call or substitution rule invocation.
+        * a :class:`tuple` of :class:`pymbolic.primitives.Expression`, or
+        * a :class:`loopy.symbolic.Reduction`, or
+        * a function call or substitution rule invocation.
 
     .. attribute:: allow_simultaneous
 

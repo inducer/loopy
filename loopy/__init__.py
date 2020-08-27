@@ -39,7 +39,7 @@ from loopy.library.function import (
 from loopy.kernel.instruction import (
         MemoryOrdering, memory_ordering,
         MemoryScope, memory_scope,
-        VarAtomicity, AtomicInit, AtomicUpdate,
+        VarAtomicity, OrderedAtomic, AtomicInit, AtomicUpdate,
         InstructionBase,
         MultiAssignmentBase, Assignment, ExpressionInstruction,
         CallInstruction, CInstruction, NoOpInstruction, BarrierInstruction)
@@ -164,7 +164,7 @@ __all__ = [
         "MemoryScope", "memory_scope",  # lower case is deprecated
 
         "VarAtomicity",
-        "AtomicInit", "AtomicUpdate",
+        "OrderedAtomic", "AtomicInit", "AtomicUpdate",
         "InstructionBase",
         "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
         "CallInstruction", "CInstruction", "NoOpInstruction",

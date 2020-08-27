@@ -1574,7 +1574,7 @@ number of operations matching the characteristics of the :class:`loopy.Op`
 specified in the key (in terms of the :class:`loopy.LoopKernel`
 *inames*). :class:`loopy.Op` attributes include:
 
-- dtype: A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
+- dtype: A :class:`loopy.types.LoopyType` or :class:`numpy.dtype` that specifies the
   data type operated on.
 
 - name: A :class:`str` that specifies the kind of arithmetic operation as
@@ -1665,7 +1665,7 @@ Each line of output will look roughly like::
 - mtype: A :class:`str` that specifies the memory type accessed as **global**
   or **local**
 
-- dtype: A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
+- dtype: A :class:`loopy.types.LoopyType` or :class:`numpy.dtype` that specifies the
   data type accessed.
 
 - lid_strides: A :class:`dict` of **{** :class:`int` **:**

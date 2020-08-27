@@ -27,8 +27,24 @@ import numpy as np
 
 from loopy.diagnostic import LoopyError
 
+__doc__ = """
+.. currentmodule:: loopy.types
+
+.. autoclass:: LoopyType
+
+.. autoclass:: NumpyType
+
+.. autoclass:: AtomicType
+
+.. autoclass:: AtomicNumpyType
+"""
+
 
 class LoopyType(object):
+    """
+    Abstract class for dtypes of variables encountered in a
+    :class:`loopy.LoopKernel`.
+    """
     def with_target(self, target):
         return self
 
@@ -55,7 +71,10 @@ class LoopyType(object):
 
 
 class AtomicType(LoopyType):
-    pass
+    """
+    Abstract class for dtypes of variables encountered in a :class:`loopy.LoopKernel`
+    on which atomic operations are performed .
+    """
 
 
 # {{{ numpy-based dtype

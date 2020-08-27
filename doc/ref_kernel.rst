@@ -360,6 +360,8 @@ These are usually key-value pairs. The following attributes are recognized:
 Expressions
 ^^^^^^^^^^^
 
+.. automodule:: loopy.symbolic
+
 Loopy's expressions are a slight superset of the expressions supported by
 :mod:`pymbolic`.
 
@@ -394,6 +396,7 @@ TODO: Reductions
 Function Call Instructions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. automodule:: loopy
 .. autoclass:: CallInstruction
 
 C Block Instructions
@@ -409,6 +412,8 @@ Atomic Operations
 .. autoclass:: MemoryScope
 
 .. autoclass:: VarAtomicity
+
+.. autoclass:: OrderedAtomic
 
 .. autoclass:: AtomicInit
 
@@ -633,8 +638,11 @@ Do not create :class:`LoopKernel` objects directly. Instead, refer to
     :members:
     :undoc-members:
 
-Implementation Detail: The Base Array
--------------------------------------
+Implementation Details
+----------------------
+
+The Base Array
+^^^^^^^^^^^^^^
 
 All array-like data in :mod:`loopy` (such as :class:`ArrayArg` and
 :class:`TemporaryVariable`) derive from single, shared base array type,
@@ -643,5 +651,16 @@ described next.
 .. currentmodule:: loopy.kernel.array
 
 .. autoclass:: ArrayBase
+
+
+Types and pickling
+^^^^^^^^^^^^^^^^^^
+
+DTypes of variables in a :class:`loopy.LoopKernel` must be picklable, so in
+the codegen pipeline user-provided types are converted to
+:class:`loopy.types.LoopyTypes`.
+
+.. automodule:: loopy.types
+
 
 .. vim: tw=75:spell:fdm=marker

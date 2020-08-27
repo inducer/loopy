@@ -1,5 +1,5 @@
-.. module:: loopy
 .. moduleauthor:: Andreas Kloeckner <inform@tiker.net>
+.. module:: loopy
 
 .. _creating-kernels:
 
@@ -31,5 +31,11 @@ To Copy between Data Formats
 .. autofunction:: make_copy_kernel
 
 .. automodule:: loopy.version
+
+Checks
+------
+Before code generation phase starts a series of checks are performed.
+
+.. automodule:: loopy.check
 
 .. vim: tw=75:spell:fdm=marker

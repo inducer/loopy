@@ -681,26 +681,26 @@ class AtomicInit(OrderedAtomic):
 
     .. attribute:: ordering
 
-        One of the values from :class:`loopy.kernel.instruction.MemoryOrdering`
+        One of the values from :class:`MemoryOrdering`
 
     .. attribute:: scope
 
-        One of the values from :class:`loopy.kernel.instruction.MemoryScope`
+        One of the values from :class:`MemoryScope`
     """
     op_name = 'init'
 
 
 class AtomicUpdate(OrderedAtomic):
     """Properties of an atomic update. A subclass of
-    :class:`loopy.kernel.instruction.OrderedAtomic`.
+    :class:`OrderedAtomic`.
 
     .. attribute:: ordering
 
-        One of the values from :class:`loopy.kernel.instruction.MemoryOrdering`
+        One of the values from :class:`MemoryOrdering`
 
     .. attribute:: scope
 
-        One of the values from :class:`loopy.kernel.instruction.MemoryScope`
+        One of the values from :class:`MemoryScope`
     """
     op_name = 'update'
 
@@ -710,11 +710,11 @@ class AtomicLoad(OrderedAtomic):
 
     .. attribute:: ordering
 
-        One of the values from :class:`loopy.kernel.instruction.MemoryOrdering`
+        One of the values from :class:`MemoryOrdering`
 
     .. attribute:: scope
 
-        One of the values from :class:`loopy.kernel.instruction.MemoryScope`
+        One of the values from :class:`MemoryScope`
     """
     op_name = 'load'
 
