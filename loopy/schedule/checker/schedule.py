@@ -44,7 +44,7 @@ __doc__ = """
 
 LIN_CHECK_IDENTIFIER_PREFIX = "_lp_linchk_"
 LEX_VAR_PREFIX = "%sl" % (LIN_CHECK_IDENTIFIER_PREFIX)
-STATEMENT_VAR_NAME = "%sstatement" % (LIN_CHECK_IDENTIFIER_PREFIX)
+STATEMENT_VAR_NAME = "%sstmt" % (LIN_CHECK_IDENTIFIER_PREFIX)
 
 
 def generate_pairwise_schedules(
