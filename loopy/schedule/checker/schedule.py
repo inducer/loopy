@@ -47,6 +47,64 @@ LEX_VAR_PREFIX = "%sl" % (LIN_CHECK_IDENTIFIER_PREFIX)
 STATEMENT_VAR_NAME = "%sstmt" % (LIN_CHECK_IDENTIFIER_PREFIX)
 
 
+def _pad_tuple_with_zeros(tup, desired_length):
+    return tup[:] + tuple([0]*(desired_length-len(tup)))
+
+
+def _simplify_lex_dims(tup0, tup1):
+    """Simplify a pair of lex tuples in order to reduce the complexity of
+    resulting maps. Remove lex tuple dimensions with matching integer values
+    since these do not provide information on relative ordering. Once a
+    dimension is found where both tuples have non-matching integer values,
+    remove any faster-updating lex dimensions since they are not necessary
+    to specify a relative ordering.
+    """
+
+    new_tup0 = []
+    new_tup1 = []
+
+    # Loop over dims from slowest updating to fastest
+    for d0, d1 in zip(tup0, tup1):
+        if isinstance(d0, int) and isinstance(d1, int):
+
+            # Both vals are ints for this dim
+            if d0 == d1:
+                # Do not keep this dim
+                continue
+            elif d0 > d1:
+                # These ints inform us about the relative ordering of
+                # two statements. While their values may be larger than 1 in
+                # the lexicographic ordering describing a larger set of
+                # statements, in a pairwise schedule, only ints 0 and 1 are
+                # necessary to specify relative order. To keep the pairwise
+                # schedules as simple and comprehensible as possible, use only
+                # integers 0 and 1 to specify this relative ordering.
+                # (doesn't take much extra time since we are already going
+                # through these to remove unnecessary lex tuple dims)
+                new_tup0.append(1)
+                new_tup1.append(0)
+
+                # No further dims needed to fully specify ordering
+                break
+            else:  # d1 > d0
+                new_tup0.append(0)
+                new_tup1.append(1)
+
+                # No further dims needed to fully specify ordering
+                break
+        else:
+            # Keep this dim without modifying
+            new_tup0.append(d0)
+            new_tup1.append(d1)
+
+    if len(new_tup0) == 0:
+        # Statements map to the exact same point(s) in the lex ordering,
+        # which is okay, but to represent this, our lex tuple cannot be empty.
+        return (0, ), (0, )
+    else:
+        return tuple(new_tup0), tuple(new_tup1)
+
+
 def generate_pairwise_schedules(
         knl,
         linearization_items,
@@ -180,62 +238,6 @@ def generate_pairwise_schedules(
         create_symbolic_map_from_tuples,
         add_dims_to_isl_set,
     )
-
-    def _pad_tuple_with_zeros(tup, desired_length):
-        return tup[:] + tuple([0]*(desired_length-len(tup)))
-
-    def _simplify_lex_dims(tup0, tup1):
-        """Simplify a pair of lex tuples in order to reduce the complexity of
-        resulting maps. Remove lex tuple dimensions with matching integer values
-        since these do not provide information on relative ordering. Once a
-        dimension is found where both tuples have non-matching integer values,
-        remove any faster-updating lex dimensions since they are not necessary
-        to specify a relative ordering.
-        """
-
-        new_tup0 = []
-        new_tup1 = []
-
-        # Loop over dims from slowest updating to fastest
-        for d0, d1 in zip(tup0, tup1):
-            if isinstance(d0, int) and isinstance(d1, int):
-
-                # Both vals are ints for this dim
-                if d0 == d1:
-                    # Do not keep this dim
-                    continue
-                elif d0 > d1:
-                    # These ints inform us about the relative ordering of
-                    # two statements. While their values may be larger than 1 in
-                    # the lexicographic ordering describing a larger set of
-                    # statements, in a pairwise schedule, only ints 0 and 1 are
-                    # necessary to specify relative order. To keep the pairwise
-                    # schedules as simple and comprehensible as possible, use only
-                    # integers 0 and 1 to specify this relative ordering.
-                    # (doesn't take much extra time since we are already going
-                    # through these to remove unnecessary lex tuple dims)
-                    new_tup0.append(1)
-                    new_tup1.append(0)
-
-                    # No further dims needed to fully specify ordering
-                    break
-                else:  # d1 > d0
-                    new_tup0.append(0)
-                    new_tup1.append(1)
-
-                    # No further dims needed to fully specify ordering
-                    break
-            else:
-                # Keep this dim without modifying
-                new_tup0.append(d0)
-                new_tup1.append(d1)
-
-        if len(new_tup0) == 0:
-            # Statements map to the exact same point(s) in the lex ordering,
-            # which is okay, but to represent this, our lex tuple cannot be empty.
-            return (0, ), (0, )
-        else:
-            return tuple(new_tup0), tuple(new_tup1)
 
     def _get_map_for_stmt_inst(insn_id, lex_points, int_sid, out_names_sched):
 
