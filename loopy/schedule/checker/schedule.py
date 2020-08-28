@@ -71,9 +71,7 @@ def generate_pairwise_schedules(
         truncated (i.e. partial) linearization may be passed through this
         argument.
 
-    :arg insn_id_pairs: A list of two-tuples containing pairs of instruction
-        identifiers, each of which is unique within a
-        :class:`loopy.kernel.LoopKernel`.
+    :arg insn_id_pairs: A list containing pairs of instruction identifiers.
 
     :arg loops_to_ignore: A set of inames that will be ignored when
         determining the relative ordering of statements. This will typically
