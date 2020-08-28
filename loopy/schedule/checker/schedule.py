@@ -30,8 +30,8 @@ __doc__ = """
 
 .. data:: LEX_VAR_PREFIX
 
-    E.g., a prefix of "_lp_linchk_lex" might yield lexicographic dimension
-    variables "_lp_linchk_lex0", "_lp_linchk_lex1", "_lp_linchk_lex2". Cf.
+    E.g., a prefix of ``_lp_linchk_lex`` might yield lexicographic dimension
+    variables ``_lp_linchk_lex0``, ``_lp_linchk_lex1``, ``_lp_linchk_lex2``. Cf.
     :ref:`reserved-identifiers`.
 
 .. data:: STATEMENT_VAR_NAME
