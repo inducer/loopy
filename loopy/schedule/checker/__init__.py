@@ -84,10 +84,10 @@ def get_schedules_for_statement_pairs(
         ...     for m in schedules[("insn_a", "insn_b")]
         ...     ))
         [pi, pj, pk] -> {
-        [_lp_linchk_statement = 0, i, j, k] -> [_lp_linchk_l0 = i, _lp_linchk_l1 = 0]
+        [_lp_linchk_stmt = 0, i, j, k] -> [_lp_linchk_l0 = i, _lp_linchk_l1 = 0]
         : 0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
         [pi, pj, pk] -> {
-        [_lp_linchk_statement = 1, i, j, k] -> [_lp_linchk_l0 = i, _lp_linchk_l1 = 1]
+        [_lp_linchk_stmt = 1, i, j, k] -> [_lp_linchk_l0 = i, _lp_linchk_l1 = 1]
         : 0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
 
     """
