@@ -76,7 +76,6 @@ def test_lexschedule_creation():
         """,
         name="example",
         assumptions="pi,pj,pk,pt >= 1",
-        lang_version=(2018, 2)
         )
     knl = lp.add_and_infer_dtypes(
             knl,
