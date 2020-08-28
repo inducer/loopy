@@ -281,6 +281,9 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
         generator = PyOpenCLExecutionWrapperGenerator()
         return generator(kernel, codegen_result)
 
+    def get_wrapper_generator(self):
+        return PyOpenCLExecutionWrapperGenerator()
+
     @memoize_method
     def kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
         kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype_set)
