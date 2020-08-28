@@ -67,9 +67,9 @@ def generate_pairwise_schedules(
     :arg linearization_items: A list of :class:`loopy.schedule.ScheduleItem`
         (to be renamed to `loopy.schedule.LinearizationItem`) containing
         all linearization items for which pairwise schedules will be
-        created. This list may be a *partial* linearization for a
-        kernel since this function may be used during the linearization
-        process.
+        created. To allow usage of this routine during linearization, a
+        truncated (i.e. partial) linearization may be passed through this
+        argument.
 
     :arg insn_id_pairs: A list of two-tuples containing pairs of instruction
         identifiers, each of which is unique within a
