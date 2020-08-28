@@ -45,7 +45,7 @@ def get_schedules_for_statement_pairs(
         kernel since this function may be used during the linearization
         process.
 
-    :arg insn_id_pairs: A list of two-tuples containing pairs of instruction
+    :arg insn_id_pairs: A list containing pairs of instruction
         identifiers.
 
     :returns: A dictionary mapping each two-tuple of instruction identifiers
