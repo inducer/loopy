@@ -160,7 +160,7 @@ def generate_pairwise_schedules(
             # Only process listed insns, otherwise ignore
             if lp_insn_id in all_insn_ids:
                 # Add item to stmt_instances
-                stmt_instances[lp_insn_id] = tuple(next_insn_lex_tuple[:])
+                stmt_instances[lp_insn_id] = tuple(next_insn_lex_tuple)
 
                 # Increment lex dim val enumerating items in current section of code
                 next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1] + 1
