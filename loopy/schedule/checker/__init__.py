@@ -46,8 +46,7 @@ def get_schedules_for_statement_pairs(
         process.
 
     :arg insn_id_pairs: A list of two-tuples containing pairs of instruction
-        identifiers, each of which is unique within a
-        :class:`loopy.kernel.LoopKernel`.
+        identifiers.
 
     :returns: A dictionary mapping each two-tuple of instruction identifiers
         provided in `insn_id_pairs` to a corresponding two-tuple containing two
