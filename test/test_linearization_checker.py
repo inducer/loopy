@@ -42,13 +42,6 @@ from loopy.schedule.checker.schedule import (
 
 logger = logging.getLogger(__name__)
 
-try:
-    import faulthandler
-except ImportError:
-    pass
-else:
-    faulthandler.enable()
-
 
 def test_lexschedule_creation():
     import islpy as isl
