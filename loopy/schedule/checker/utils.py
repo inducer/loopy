@@ -37,7 +37,7 @@ def add_dims_to_isl_set(isl_set, dim_type, names, new_idx_start):
     return new_set
 
 
-def map_names_match_check(
+def check_that_map_names_match(
         obj_map,
         desired_names,
         dim_type,
