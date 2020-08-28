@@ -137,7 +137,7 @@ def generate_pairwise_schedules(
             # (not technically necessary if no statement was added in the
             # previous section; gratuitous incrementing is counteracted
             # in the simplification step below)
-            next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1]+1
+            next_insn_lex_tuple[-1] += 1
 
         elif isinstance(linearization_item, (RunInstruction, Barrier)):
             from loopy.schedule.checker.utils import (
