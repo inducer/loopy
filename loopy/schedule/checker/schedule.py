@@ -163,7 +163,7 @@ def generate_pairwise_schedules(
                 stmt_instances[lp_insn_id] = tuple(next_insn_lex_tuple)
 
                 # Increment lex dim val enumerating items in current section of code
-                next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1] + 1
+                next_insn_lex_tuple[-1] += 1
 
         else:
             from loopy.schedule import (CallKernel, ReturnFromKernel)
