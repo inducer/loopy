@@ -114,7 +114,7 @@ def generate_pairwise_schedules(
             # (not technically necessary if no statement was added in the
             # previous section; gratuitous incrementing is counteracted
             # in the simplification step below)
-            next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1]+1
+            next_insn_lex_tuple[-1] += 1
 
             # Upon entering a loop, add one lex dimension for the loop variable,
             # add second lex dim to enumerate sections of code within new loop
