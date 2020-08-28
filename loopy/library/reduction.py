@@ -30,6 +30,22 @@ from loopy.symbolic import FunctionIdentifier
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 
+__doc__ = """
+.. currentmodule:: loopy.library.reduction
+
+.. autoclass:: ReductionOperation
+
+.. autoclass:: ScalarReductionOperation
+
+.. autoclass:: SumReductionOperation
+
+.. autoclass:: ProductReductionOperation
+
+.. autoclass:: MaxReductionOperation
+
+.. autoclass:: MinReductionOperation
+"""
+
 
 class ReductionOperation(object):
     """Subclasses of this type have to be hashable, picklable, and
@@ -414,7 +430,7 @@ _REDUCTION_OP_PARSERS = [
 
 
 def register_reduction_parser(parser):
-    """Register a new :class:`ReductionOperation`.
+    """Register a new :class:`loopy.library.reduction.ReductionOperation`.
 
     :arg parser: A function that receives a string and returns
         a subclass of ReductionOperation.

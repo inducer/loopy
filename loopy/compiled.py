@@ -30,6 +30,9 @@ from loopy.target.pyopencl_execution import (  # noqa
 # {{{ compatibility
 
 class CompiledKernel(PyOpenCLKernelExecutor):
+    """
+    .. automethod:: __call__
+    """
     def __init__(self, context, kernel):
         from warnings import warn
         warn("CompiledKernel is deprecated. Use LoopKernel.__call__ directly.",

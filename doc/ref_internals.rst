@@ -1,7 +1,6 @@
 Reference: Documentation for Internal API
 =========================================
 
-
 Targets
 -------
 
@@ -9,15 +8,12 @@ See also :ref:`targets`.
 
 .. automodule:: loopy.target.c
 
-
 Symbolic
 --------
 
 See also :ref:`expression-syntax`.
 
-
 .. automodule:: loopy.symbolic
-
 
 Types
 -----
@@ -28,30 +24,30 @@ the codegen pipeline user-provided types are converted to
 
 .. automodule:: loopy.types
 
-
 Codegen
 -------
 
 .. automodule:: loopy.codegen
-
 
 Reduction Operation
 -------------------
 
 .. automodule:: loopy.library.reduction
 
-
 Iname Tags
 ----------
 
 .. automodule:: loopy.kernel.data
-
 
 Array
 -----
 
 .. automodule:: loopy.kernel.array
 
+Checks
+------
+
+.. automodule:: loopy.check
 
 Schedule
 --------

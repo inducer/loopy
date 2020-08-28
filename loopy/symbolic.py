@@ -404,7 +404,7 @@ class Literal(LoopyExpressionBase):
     .. note::
 
         Only used in the output of
-        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
+        :mod:`loopy.target.c.codegen.expression.ExpressionToCExpressionMapper` (and
         similar mappers). Not for use in Loopy source representation.
     """
 
@@ -425,7 +425,7 @@ class ArrayLiteral(LoopyExpressionBase):
     .. note::
 
         Only used in the output of
-        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
+        :mod:`loopy.target.c.codegen.expression.ExpressionToCExpressionMapper` (and
         similar mappers). Not for use in Loopy source representation.
     """
 
@@ -573,8 +573,7 @@ class TaggedVariable(LoopyExpressionBase, p.Variable):
 
 class Reduction(LoopyExpressionBase):
     """
-    Represents a reduction operation on :attr:`exprs`
-    across :attr:`inames`.
+    Represents a reduction operation on :attr:`expr` across :attr:`inames`.
 
     .. attribute:: operation
 

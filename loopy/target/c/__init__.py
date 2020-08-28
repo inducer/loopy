@@ -39,6 +39,16 @@ import pymbolic.primitives as p
 
 from pytools import memoize_method
 
+__doc__ = """
+.. currentmodule loopy.target.c
+
+.. autoclass:: POD
+
+.. autoclass:: ScopingBlock
+
+.. automodule:: loopy.target.c.codegen.expression
+"""
+
 
 # {{{ dtype registry wrapper
 
@@ -207,7 +217,7 @@ class POD(Declarator):
 
 class ScopingBlock(Block):
     """A block that is mandatory for scoping and may not be simplified away
-    by :func:`loopy.codegen.results.merge_codegen_results`.
+    by :func:`loopy.codegen.result.merge_codegen_results`.
     """
 
 
@@ -1046,7 +1056,7 @@ def generate_header(kernel, codegen_result=None):
     """
     :arg kernel: a :class:`loopy.LoopKernel`
     :arg codegen_result: an instance of :class:`loopy.CodeGenerationResult`
-    :returns: a list of AST nodes (which may have :func:`str`
+    :returns: a list of AST nodes (which may have :class:`str`
         called on them to produce a string) representing
         function declarations for the generated device
         functions.

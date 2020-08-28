@@ -551,7 +551,7 @@ class MemAccess(Record):
 
     .. attribute:: dtype
 
-       A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
+       A :class:`loopy.types.LoopyType` or :class:`numpy.dtype` that specifies the
        data type accessed.
 
     .. attribute:: lid_strides
@@ -585,7 +585,7 @@ class MemAccess(Record):
     .. attribute:: variable_tag
 
        A :class:`str` that specifies the variable tag of a
-       :class:`pymbolic.primitives.TaggedVariable`.
+       :class:`loopy.symbolic.TaggedVariable`.
 
     .. attribute:: count_granularity
 
@@ -1369,7 +1369,7 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
 
     :arg numpy_types: A :class:`bool` specifying whether the types in the
         returned mapping should be numpy types instead of
-        :class:`loopy.LoopyType`.
+        :class:`loopy.types.LoopyType`.
 
     :arg count_redundant_work: Based on usage of hardware axes or other
         specifics, a kernel may perform work redundantly. This :class:`bool`
@@ -1531,7 +1531,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
 
     :arg numpy_types: A :class:`bool` specifying whether the types in the
         returned mapping should be numpy types instead of
-        :class:`loopy.LoopyType`.
+        :class:`loopy.types.LoopyType`.
 
     :arg count_redundant_work: Based on usage of hardware axes or other
         specifics, a kernel may perform work redundantly. This :class:`bool`

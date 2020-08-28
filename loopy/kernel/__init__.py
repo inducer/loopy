@@ -238,6 +238,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     .. attribute:: target
 
         A subclass of :class:`loopy.TargetBase`.
+
+    .. automethod:: __call__
+    .. automethod:: copy
     """
 
     # {{{ constructor
@@ -1439,6 +1442,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     # {{{ direct execution
 
     def __call__(self, *args, **kwargs):
+        """
+        Execute the :class:`LoopKernel`.
+        """
         key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
         try:
             kex = self._kernel_executor_cache[key]

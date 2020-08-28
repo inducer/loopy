@@ -385,7 +385,7 @@ def split_array_axis(kernel, array_names, axis_nr, count, order="C"):
     .. versionchanged:: 2016.2
 
         There was a more complicated, dumber function called
-        :func:`loopy.split_array_dim` that had the role of this function in
+        ``loopy.split_array_dim`` that had the role of this function in
         versions prior to 2016.2.
     """
 

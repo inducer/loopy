@@ -45,6 +45,28 @@ from loopy.kernel.instruction import (  # noqa
         CInstruction)
 from warnings import warn
 
+__doc__ = """
+.. currentmodule:: loopy.kernel.data
+
+.. autofunction:: filter_iname_tags_by_type
+
+.. autoclass:: IndexTag
+
+.. autoclass:: ConcurrentTag
+
+.. autoclass:: UniqueTag
+
+.. autoclass:: AxisTag
+
+.. autoclass:: LocalIndexTag
+
+.. autoclass:: GroupIndexTag
+
+.. autoclass:: VectorizeTag
+
+.. autoclass:: UnrollTag
+"""
+
 
 class auto(object):  # noqa
     """A generic placeholder object for something that should be automatically
@@ -787,12 +809,12 @@ class CallMangleInfo(ImmutableRecord):
 
     .. attribute:: result_dtypes
 
-        A tuple of :class:`LoopyType` instances indicating what
+        A tuple of :class:`loopy.types.LoopyType` instances indicating what
         types of values the function returns.
 
     .. attribute:: arg_dtypes
 
-        A tuple of :class:`LoopyType` instances indicating what
+        A tuple of :class:`loopy.types.LoopyType` instances indicating what
         types of arguments the function actually receives.
     """
 

@@ -35,6 +35,22 @@ from loopy.version import DATA_MODEL_VERSION
 import logging
 logger = logging.getLogger(__name__)
 
+__doc__ = """
+.. currentmodule:: loopy.codegen
+
+.. autoclass:: ImplementedDataInfo
+
+.. autoclass:: PreambleInfo
+
+.. autoclass:: VectorizationInfo
+
+.. autoclass:: SeenFunction
+
+.. autoclass:: CodeGenerationState
+
+.. automodule:: loopy.codegen.result
+"""
+
 
 # {{{ implemented data info
 

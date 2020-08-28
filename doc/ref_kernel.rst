@@ -360,8 +360,6 @@ These are usually key-value pairs. The following attributes are recognized:
 Expressions
 ^^^^^^^^^^^
 
-.. automodule:: loopy.symbolic
-
 Loopy's expressions are a slight superset of the expressions supported by
 :mod:`pymbolic`.
 
@@ -472,7 +470,7 @@ Temporary Variables
 Temporary variables model OpenCL's ``private`` and ``local`` address spaces. Both
 have the lifetime of a kernel invocation.
 
-.. autoclass:: temp_var_scope
+.. autoclass:: AddressSpace
 
 .. autoclass:: TemporaryVariable
     :members:
@@ -638,11 +636,8 @@ Do not create :class:`LoopKernel` objects directly. Instead, refer to
     :members:
     :undoc-members:
 
-Implementation Details
-----------------------
-
-The Base Array
-^^^^^^^^^^^^^^
+Implementation Details: The Base Array
+--------------------------------------
 
 All array-like data in :mod:`loopy` (such as :class:`ArrayArg` and
 :class:`TemporaryVariable`) derive from single, shared base array type,
@@ -651,16 +646,6 @@ described next.
 .. currentmodule:: loopy.kernel.array
 
 .. autoclass:: ArrayBase
-
-
-Types and pickling
-^^^^^^^^^^^^^^^^^^
-
-DTypes of variables in a :class:`loopy.LoopKernel` must be picklable, so in
-the codegen pipeline user-provided types are converted to
-:class:`loopy.types.LoopyTypes`.
-
-.. automodule:: loopy.types
 
 
 .. vim: tw=75:spell:fdm=marker
