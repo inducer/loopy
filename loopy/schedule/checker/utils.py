@@ -80,7 +80,7 @@ def reorder_dims_by_name(
 
     """
 
-    map_names_match_check(
+    check_that_map_names_match(
         isl_set, desired_dims_ordered, dim_type,
         assert_subset=True, assert_permutation=False)
 
@@ -109,7 +109,7 @@ def ensure_dim_names_match_and_align(obj_map, tgt_map):
 
     # first make sure names match
     for dt in [isl.dim_type.in_, isl.dim_type.out, isl.dim_type.param]:
-        map_names_match_check(
+        check_that_map_names_match(
             obj_map, tgt_map.get_var_names(dt), dt,
             assert_permutation=True)
 
