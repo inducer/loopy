@@ -77,7 +77,8 @@ def generate_pairwise_schedules(
 
     :arg loops_to_ignore: A set of inames that will be ignored when
         determining the relative ordering of statements. This will typically
-        contain concurrent inames.
+        contain concurrent inames tagged with the ``vec`` or ``ilp`` array
+        access tags.
 
     :returns: A dictionary mapping each two-tuple of instruction identifiers
         provided in `insn_id_pairs` to a corresponding two-tuple containing two

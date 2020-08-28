@@ -113,12 +113,13 @@ def get_schedules_for_statement_pairs(
     conc_inames, _ = partition_inames_by_concurrency(knl)
     enterloop_inames = get_EnterLoop_inames(linearization_items)
     conc_loop_inames = conc_inames & enterloop_inames
-    if conc_loop_inames:
-        from warnings import warn
-        warn(
-            "get_schedule_for_statement_pair encountered EnterLoop for inames %s "
-            "with ConcurrentTag(s) in linearization for kernel %s. "
-            "Ignoring these loops." % (conc_loop_inames, knl.name))
+
+    # The only concurrent EnterLoop inames should be Vec and ILP
+    from loopy.kernel.data import (VectorizeTag, IlpBaseTag)
+    for conc_iname in conc_loop_inames:
+        assert any(
+            isinstance(tag, (VectorizeTag, IlpBaseTag))
+            for tag in knl.iname_to_tags[conc_iname])
 
     # }}}
 
