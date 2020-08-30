@@ -30,7 +30,6 @@ __doc__ = """
 
 .. autoclass:: TargetBase
 .. autoclass:: ASTBuilderBase
-
 .. autoclass:: CFamilyTarget
 .. autoclass:: CTarget
 .. autoclass:: ExecutableCTarget

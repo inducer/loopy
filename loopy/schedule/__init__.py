@@ -39,6 +39,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+__doc__ = """
+.. currentmodule:: loopy.schedule
+
+.. autoclass:: ScheduleItem
+
+.. autoclass:: MinRecursionLimitForScheduling
+"""
+
+
 # {{{ schedule items
 
 class ScheduleItem(ImmutableRecord):
@@ -1775,8 +1784,8 @@ def generate_loop_schedules(kernel, debug_args={}):
     .. warning::
 
         This function needs to be called inside (another layer) of a
-        :class:`MinRecursionLimitForScheduling` context manager, and the
-        context manager needs to end *after* the last reference to the
+        :class:`loopy.schedule.MinRecursionLimitForScheduling` context manager,
+        and the context manager needs to end *after* the last reference to the
         generators has gone out of scope. Otherwise, the high-recursion-limit
         generator chain may not be successfully garbage-collected and cause an
         internal error in the Python runtime.

@@ -389,7 +389,7 @@ def tag_array_axes(knl, ary_names, dim_tags):
     """
     :arg dim_tags: a tuple of
         :class:`loopy.kernel.array.ArrayDimImplementationTag` or a string that
-        parses to one. See :func:`loopy.kernel.array.parse_dim_tags` for a
+        parses to one. See :func:`loopy.kernel.array.parse_array_dim_tags` for a
         description of the allowed string format.
 
         For example, *dim_tags* could be ``"N2,N0,N1"`` to determine
@@ -398,7 +398,7 @@ def tag_array_axes(knl, ary_names, dim_tags):
 
     .. versionchanged:: 2016.2
 
-        This function was called :func:`tag_data_axes` before version 2016.2.
+        This function was called ``tag_data_axes`` before version 2016.2.
     """
 
     from loopy.kernel.tools import ArrayChanger
@@ -434,7 +434,7 @@ def set_array_axis_names(kernel, ary_names, dim_names):
     """
     .. versionchanged:: 2016.2
 
-        This function was called :func:`set_array_dim_names` before version 2016.2.
+        This function was called ``set_array_dim_names`` before version 2016.2.
     """
     from loopy.kernel.tools import ArrayChanger
     if isinstance(ary_names, str):
@@ -669,7 +669,7 @@ def set_temporary_scope(kernel, temp_var_names, scope):
     :arg temp_var_names: a container with membership checking,
         or a comma-separated string of variables for which the
         scope is to be set.
-    :arg scope: One of the values from :class:`AddressSpace`, or one
+    :arg scope: One of the values from :class:`loopy.AddressSpace`, or one
         of the strings ``"private"``, ``"local"``, or ``"global"``.
     """
 

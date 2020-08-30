@@ -328,7 +328,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
     def __call__(self, queue, **kwargs):
         """
         :arg allocator: a callable passed a byte count and returning
-            a :class:`pyopencl.Buffer`. A :class:`pyopencl` allocator
+            a :class:`pyopencl.Buffer`. A :mod:`pyopencl` allocator
             maybe.
         :arg wait_for: A list of :class:`pyopencl.Event` instances
             for which to wait.

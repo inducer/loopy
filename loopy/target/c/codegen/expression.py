@@ -47,9 +47,20 @@ from loopy.types import LoopyType
 from loopy.target.c import CExpression
 
 
+__doc__ = """
+.. currentmodule:: loopy.target.c.codegen.expression
+
+.. autoclass:: ExpressionToCExpressionMapper
+"""
+
+
 # {{{ Loopy expression to C expression mapper
 
 class ExpressionToCExpressionMapper(IdentityMapper):
+    """
+    Mapper that converts a loopy-semantic expression to a C-semantic expression
+    with typecasts, appropriate arithmetic semantic mapping, etc.
+    """
     def __init__(self, codegen_state, fortran_abi=False, type_inf_mapper=None):
         self.kernel = codegen_state.kernel
         self.codegen_state = codegen_state

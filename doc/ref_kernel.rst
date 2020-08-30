@@ -178,7 +178,7 @@ be the prefix of an existing prefix.
 ======================= ==================================
 Reserved Prefix         Usage (module or purpose)
 ======================= ==================================
-``_lp_linchk_``         :mod:`loopy.linearization.checker`
+``_lp_linchk_``         ``loopy.linearization.checker``
 ======================= ==================================
 
 .. note::
@@ -394,6 +394,7 @@ TODO: Reductions
 Function Call Instructions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. automodule:: loopy
 .. autoclass:: CallInstruction
 
 C Block Instructions
@@ -409,6 +410,8 @@ Atomic Operations
 .. autoclass:: MemoryScope
 
 .. autoclass:: VarAtomicity
+
+.. autoclass:: OrderedAtomic
 
 .. autoclass:: AtomicInit
 
@@ -467,7 +470,7 @@ Temporary Variables
 Temporary variables model OpenCL's ``private`` and ``local`` address spaces. Both
 have the lifetime of a kernel invocation.
 
-.. autoclass:: temp_var_scope
+.. autoclass:: AddressSpace
 
 .. autoclass:: TemporaryVariable
     :members:
@@ -633,8 +636,8 @@ Do not create :class:`LoopKernel` objects directly. Instead, refer to
     :members:
     :undoc-members:
 
-Implementation Detail: The Base Array
--------------------------------------
+Implementation Details: The Base Array
+--------------------------------------
 
 All array-like data in :mod:`loopy` (such as :class:`ArrayArg` and
 :class:`TemporaryVariable`) derive from single, shared base array type,
@@ -643,5 +646,6 @@ described next.
 .. currentmodule:: loopy.kernel.array
 
 .. autoclass:: ArrayBase
+
 
 .. vim: tw=75:spell:fdm=marker
