@@ -80,15 +80,14 @@ def reorder_dims_by_name(
 
     """
 
-    assert set(isl_set.get_var_names(dim_type)).issubset(desired_dims_ordered)
     assert dim_type != isl.dim_type.param
+    assert set(isl_set.get_var_names(dim_type)) == set(desired_dims_ordered)
 
     other_dim_type = isl.dim_type.param
     other_dim_len = len(isl_set.get_var_names(other_dim_type))
 
     new_set = isl_set.copy()
     for desired_idx, name in enumerate(desired_dims_ordered):
-        assert name in new_set.get_var_names(dim_type)
 
         current_idx = new_set.find_dim_by_name(dim_type, name)
         if current_idx != desired_idx:
