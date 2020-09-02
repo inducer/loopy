@@ -37,30 +37,6 @@ def add_dims_to_isl_set(isl_set, dim_type, names, new_idx_start):
     return new_set
 
 
-def check_that_map_names_match(
-        obj_map,
-        desired_names,
-        dim_type,
-        assert_subset=True,
-        assert_permutation=True,
-        ):
-    """Raise an error if names of the specified map dimension do not match
-    the desired names
-    """
-
-    obj_map_names = obj_map.space.get_var_names(dim_type)
-    if assert_permutation:
-        if not set(obj_map_names) == set(desired_names):
-            raise ValueError(
-                "Set of map names %s for dim %s does not match target set %s"
-                % (obj_map_names, dim_type, desired_names))
-    elif assert_subset:
-        if not set(obj_map_names).issubset(desired_names):
-            raise ValueError(
-                "Map names %s for dim %s are not a subset of target names %s"
-                % (obj_map_names, dim_type, desired_names))
-
-
 def reorder_dims_by_name(
         isl_set, dim_type, desired_dims_ordered):
     """Return an isl_set with the dimensions of the specified dim_type
@@ -104,14 +80,11 @@ def reorder_dims_by_name(
 def ensure_dim_names_match_and_align(obj_map, tgt_map):
 
     # first make sure names match
-    for dt in [isl.dim_type.in_, isl.dim_type.out, isl.dim_type.param]:
-        check_that_map_names_match(
-            obj_map, tgt_map.get_var_names(dt), dt,
-            assert_permutation=True)
+    assert all(
+        set(obj_map.get_var_names(dt)) == set(tgt_map.get_var_names(dt))
+        for dt in [isl.dim_type.in_, isl.dim_type.out, isl.dim_type.param])
 
-    aligned_obj_map = isl.align_spaces(obj_map, tgt_map)
-
-    return aligned_obj_map
+    return isl.align_spaces(obj_map, tgt_map)
 
 
 def sorted_union_of_names_in_isl_sets(
