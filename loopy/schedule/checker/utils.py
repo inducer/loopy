@@ -80,10 +80,7 @@ def reorder_dims_by_name(
 
     """
 
-    check_that_map_names_match(
-        isl_set, desired_dims_ordered, dim_type,
-        assert_subset=True, assert_permutation=False)
-
+    assert set(isl_set.get_var_names(dim_type)).issubset(desired_dims_ordered)
     assert dim_type != isl.dim_type.param
 
     other_dim_type = isl.dim_type.param
