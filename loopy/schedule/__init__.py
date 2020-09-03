@@ -570,17 +570,13 @@ class ScheduleDebugInput(Exception):
 # }}}
 
 
-# {{{ scheduling algorithm
+# {{{ scheduler state
 
 class SchedulerState(ImmutableRecord):
     """
     .. attribute:: kernel
 
     .. attribute:: loop_nest_around_map
-
-    .. attribute:: loop_priority
-
-        See :func:`loop_nest_around_map`.
 
     .. attribute:: breakable_inames
 
@@ -594,6 +590,11 @@ class SchedulerState(ImmutableRecord):
         scheduler.  See :attr:`ilp_inames`, :attr:`vec_inames`.
 
     .. rubric:: Time-varying scheduler state
+
+    .. attribute:: insn_ids_to_try
+
+        :class:`list` of unscheduled instruction ids in a decreasing priority
+        order.
 
     .. attribute:: active_inames
 
@@ -645,6 +646,11 @@ class SchedulerState(ImmutableRecord):
         A mapping from instruction group names to the number of instructions
         in them that are left to schedule. If a group name occurs in this
         mapping, that group is considered active.
+
+    .. attribute:: insns_in_topologically_sorted_order
+
+        A list of loopy :class:`Instruction` objects in topologically sorted
+        order with instruction priorities as tie breaker.
     """
 
     @property
@@ -654,6 +660,158 @@ class SchedulerState(ImmutableRecord):
         else:
             return None
 
+# }}}
+
+
+def get_insns_in_topologically_sorted_order(kernel):
+    from pytools.graph import compute_topological_order
+
+    rev_dep_map = {insn.id: set() for insn in kernel.instructions}
+    for insn in kernel.instructions:
+        for dep in insn.depends_on:
+            rev_dep_map[dep].add(insn.id)
+
+    def key(insn_id):
+        # negative of insn.priority because
+        # pytools.graph.compute_topological_order schedules the nodes with
+        # lower 'key' first in case of a tie.
+        return (-kernel.id_to_insn[insn_id].priority, insn.id)
+
+    ids = compute_topological_order(rev_dep_map, key=key)
+    return [kernel.id_to_insn[insn_id] for insn_id in ids]
+
+
+# {{{ schedule_as_many_run_insns_as_possible
+
+def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
+    """
+    Returns an instance of :class:`loopy.schedule.SchedulerState`, by appending
+    all reachable instructions that are similar to *template_insn*. We define
+    two instructions to be similar if:
+
+    * Both are within the same set of non-parallel inames.
+    * Both belong to the same groups.
+    * Both conflict with the same groups.
+    """
+
+    # {{{ bail when implementation is unsupported
+
+    next_preschedule_item = (
+        sched_state.preschedule[0]
+        if sched_state.preschedule
+        else None)
+
+    if isinstance(next_preschedule_item, (CallKernel, ReturnFromKernel,
+            Barrier, EnterLoop, LeaveLoop)):
+        return sched_state
+
+    if not sched_state.within_subkernel:
+        # cannot schedule RunInstructions when not in subkernel
+        return sched_state
+
+    # }}}
+
+    preschedule = sched_state.preschedule[:]
+    have_inames = template_insn.within_inames - sched_state.parallel_inames
+    toposorted_insns = sched_state.insns_in_topologically_sorted_order
+
+    # {{{ helpers
+
+    def next_preschedule_insn_id():
+        return (next(iter(sched_item_to_insn_id(preschedule[0])), None)
+                if sched_state.preschedule
+                else None)
+
+    def is_similar_to_template(insn):
+        if ((insn.within_inames - sched_state.parallel_inames)
+                != have_inames):
+            # sched_state.parallel_inames contains inames for which no
+            # EnterLoop/LeaveLoop nodes occur.
+            # FIXME: Should really rename that
+            return False
+        if insn.groups != template_insn.groups:
+            return False
+        if insn.conflicts_with_groups != template_insn.conflicts_with_groups:
+            return False
+
+        return True
+
+    # }}}
+
+    # select the top instructions in toposorted_insns only which have active
+    # inames corresponding to those of sched_state
+    newly_scheduled_insn_ids = []
+    ignored_unscheduled_insn_ids = set()
+
+    # left_over_toposorted_insns: unscheduled insns in a topologically sorted order
+    left_over_toposorted_insns = []
+
+    for i, insn in enumerate(toposorted_insns):
+        assert insn.id not in sched_state.scheduled_insn_ids
+
+        if is_similar_to_template(insn):
+            # check reachability
+            if not (insn.depends_on & ignored_unscheduled_insn_ids):
+                if insn.id in sched_state.prescheduled_insn_ids:
+                    if next_preschedule_insn_id() == insn.id:
+                        preschedule.pop(0)
+                        newly_scheduled_insn_ids.append(insn.id)
+                        continue
+                else:
+                    newly_scheduled_insn_ids.append(insn.id)
+                    continue
+
+        left_over_toposorted_insns.append(insn)
+        ignored_unscheduled_insn_ids.add(insn.id)
+
+        # HEURISTIC: To avoid quadratic operation complexity we bail out of
+        # adding new instructions by restricting the number of ignore
+        # unscheduled insns ids to 5.
+        # TODO: Find a stronger solution which would answer in O(1) time and
+        # O(N) space complexity when "no further instructions can be
+        # scheduled" i.e. when either:
+        # - No similar instructions are present in toposorted_insns.
+        # - No instruction in toposorted_insns is reachable due to instructions
+        #   that were ignored.
+        if len(ignored_unscheduled_insn_ids) > 5:
+            left_over_toposorted_insns.extend(toposorted_insns[i+1:])
+            break
+
+    sched_items = tuple(RunInstruction(insn_id=insn_id) for insn_id in
+            newly_scheduled_insn_ids)
+
+    updated_schedule = sched_state.schedule + sched_items
+    updated_scheduled_insn_ids = (sched_state.scheduled_insn_ids
+            | frozenset(newly_scheduled_insn_ids))
+    updated_unscheduled_insn_ids = (
+            sched_state.unscheduled_insn_ids
+            - frozenset(newly_scheduled_insn_ids))
+    new_insn_ids_to_try = (None if newly_scheduled_insn_ids
+            else sched_state.insn_ids_to_try)
+
+    new_active_group_counts = sched_state.active_group_counts.copy()
+    if newly_scheduled_insn_ids:
+        # all the newly scheduled insns belong to the same groups as
+        # template_insn
+        for grp in template_insn.groups:
+            new_active_group_counts[grp] -= len(newly_scheduled_insn_ids)
+            if new_active_group_counts[grp] == 0:
+                new_active_group_counts.pop(grp)
+
+    return sched_state.copy(
+            schedule=updated_schedule,
+            scheduled_insn_ids=updated_scheduled_insn_ids,
+            unscheduled_insn_ids=updated_unscheduled_insn_ids,
+            preschedule=preschedule,
+            insn_ids_to_try=new_insn_ids_to_try,
+            active_group_counts=new_active_group_counts,
+            insns_in_topologically_sorted_order=left_over_toposorted_insns
+            )
+
+# }}}
+
+
+# {{{ scheduling algorithm
 
 def generate_loop_schedules_internal(
         sched_state, debug=None):
@@ -667,7 +825,7 @@ def generate_loop_schedules_internal(
 
     next_preschedule_item = (
         sched_state.preschedule[0]
-        if len(sched_state.preschedule) > 0
+        if sched_state.preschedule
         else None)
 
     # {{{ decide about debug mode
@@ -788,14 +946,6 @@ def generate_loop_schedules_internal(
         is_ready = insn.depends_on <= sched_state.scheduled_insn_ids
 
         if not is_ready:
-            if debug_mode:
-                # These are not that interesting when understanding scheduler
-                # failures.
-
-                # print("instruction '%s' is missing insn depedencies '%s'" % (
-                #         format_insn(kernel, insn.id), ",".join(
-                #             insn.depends_on - sched_state.scheduled_insn_ids)))
-                pass
             continue
 
         want = kernel.insn_inames(insn) - sched_state.parallel_inames
@@ -894,7 +1044,7 @@ def generate_loop_schedules_internal(
 
             # }}}
 
-            # {{{ update instruction_ids_to_try
+            # {{{ update instruction_ids_to_try/toposorted_insns
 
             new_insn_ids_to_try = list(insn_ids_to_try)
             new_insn_ids_to_try.remove(insn.id)
@@ -903,6 +1053,9 @@ def generate_loop_schedules_internal(
             if set(new_active_group_counts.keys()) != set(
                     sched_state.active_group_counts.keys()):
                 new_insn_ids_to_try = None
+
+            new_toposorted_insns = sched_state.insns_in_topologically_sorted_order[:]
+            new_toposorted_insns.remove(insn)
 
             # }}}
 
@@ -917,7 +1070,11 @@ def generate_loop_schedules_internal(
                         if insn_id not in sched_state.prescheduled_insn_ids
                         else sched_state.preschedule[1:]),
                     active_group_counts=new_active_group_counts,
+                    insns_in_topologically_sorted_order=new_toposorted_insns,
                     )
+
+            new_sched_state = schedule_as_many_run_insns_as_possible(new_sched_state,
+                    insn)
 
             # Don't be eager about entering/leaving loops--if progress has been
             # made, revert to top of scheduler and see if more progress can be
@@ -1023,6 +1180,7 @@ def generate_loop_schedules_internal(
                                 sched_state.schedule
                                 + (LeaveLoop(iname=last_entered_loop),)),
                             active_inames=sched_state.active_inames[:-1],
+                            insn_ids_to_try=insn_ids_to_try,
                             preschedule=(
                                 sched_state.preschedule
                                 if last_entered_loop
@@ -1239,6 +1397,7 @@ def generate_loop_schedules_internal(
                                 entered_inames=(
                                     sched_state.entered_inames
                                     | frozenset((iname,))),
+                                insn_ids_to_try=insn_ids_to_try,
                                 preschedule=(
                                     sched_state.preschedule
                                     if iname not in sched_state.prescheduled_inames
@@ -1871,7 +2030,11 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             parallel_inames=parallel_inames - ilp_inames - vec_inames,
 
             group_insn_counts=group_insn_counts(kernel),
-            active_group_counts={})
+            active_group_counts={},
+
+            insns_in_topologically_sorted_order=(
+                get_insns_in_topologically_sorted_order(kernel)),
+    )
 
     schedule_gen_kwargs = {}
 

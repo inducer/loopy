@@ -349,6 +349,9 @@ class DependencyMapper(DependencyMapperBase):
     def map_type_cast(self, expr, *args, **kwargs):
         return self.rec(expr.child, *args, **kwargs)
 
+    def map_literal(self, expr):
+        return set()
+
 
 class SubstitutionRuleExpander(IdentityMapper):
     def __init__(self, rules):
@@ -1405,6 +1408,10 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
         denom = denom_aff.get_constant_val()
 
         return num.mod_val(denom)
+
+    def map_literal(self, expr):
+        raise TypeError("literal '%s' not supported "
+                        "for as-pwaff evaluation" % expr)
 
 
 def aff_from_expr(space, expr, vars_to_zero=None):
