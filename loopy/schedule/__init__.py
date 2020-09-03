@@ -716,8 +716,9 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
     def is_similar_to_template(insn):
         if ((insn.within_inames - sched_state.parallel_inames)
                 != have_inames):
-            # ignoring parallel inames as parallel inames do not enforce
-            # dependency on the kernel's schedule
+            # sched_state.parallel_inames contains inames for which no
+            # EnterLoop/LeaveLoop nodes occur.
+            # FIXME: Should really rename that
             return False
         if insn.groups != template_insn.groups:
             return False
@@ -754,7 +755,7 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
         left_over_toposorted_insns.append(insn)
         ignored_unscheduled_insn_ids.add(insn.id)
 
-        # HEURISTIC: To avoid quadratic operation complexity we bail adding new
+        # HEURISTIC: To avoid quadratic operation complexity we bail out of adding new
         # instructions by restricting the number of ignore unscheduled insns
         # ids to 5.
         # TODO: Find a stronger solution which would answer in O(1) time and
