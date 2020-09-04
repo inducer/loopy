@@ -117,6 +117,8 @@ def get_schedules_for_statement_pairs(
     # The only concurrent EnterLoop inames should be Vec and ILP
     from loopy.kernel.data import (VectorizeTag, IlpBaseTag)
     for conc_iname in conc_loop_inames:
+        # Assert that there exists an ilp or vectorize tag (out of the
+        # potentially multiple other tags on this concurrent iname).
         assert any(
             isinstance(tag, (VectorizeTag, IlpBaseTag))
             for tag in knl.iname_to_tags[conc_iname])
