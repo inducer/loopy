@@ -501,10 +501,12 @@ def generate_code_v2(kernel):
 
     # {{{ handle preambles
 
-    for arg in kernel.args:
-        seen_dtypes.add(arg.dtype)
-    for tv in six.itervalues(kernel.temporary_variables):
-        seen_dtypes.add(tv.dtype)
+    for idi in codegen_state.implemented_data_info:
+        seen_dtypes.add(idi.dtype)
+
+    for tv in kernel.temporary_variables.values():
+        for idi in tv.decl_info(kernel.target, index_dtype=kernel.index_dtype):
+            seen_dtypes.add(idi.dtype)
 
     preambles = kernel.preambles[:]
 
