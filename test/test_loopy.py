@@ -2886,6 +2886,39 @@ def test_empty_domain(ctx_factory, tag):
     assert (c.get() == 0).all()
 
 
+def test_if_empty_domain(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    prg = lp.make_kernel(
+            "{[i, j, k]: 0 <= i < n and 0 <= j < m and 0 <= k < p}",
+            """
+            result[i, index_set_0[j]] = 1   {id=insn_0, nosync=insn_1}
+            result[i, index_set_1[k]] = 2   {id=insn_1, nosync=insn_0}
+            """, [
+                lp.GlobalArg("result", None, shape=("n", "ncolumns")),
+                lp.ValueArg("ncolumns", np.int32),
+                "..."
+            ])
+    prg = lp.set_options(prg, write_code=True)
+    print(prg)
+
+    n = 3
+    m = 10
+
+    result = cl.array.zeros(queue, (n, m), dtype=np.int32)
+    index_set_0 = cl.array.to_device(queue, np.arange(0, n))
+    index_set_1 = cl.array.zeros(queue, (0,), dtype=np.int32)
+
+    prg(queue, result=result,
+            index_set_0=index_set_0,
+            index_set_1=index_set_1,
+            p=0)
+
+    print(result.get())
+    assert (result.get() == 1).all()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
