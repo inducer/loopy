@@ -416,7 +416,7 @@ def parse_array_dim_tags(dim_tags, n_axes=None, use_increasing_target_axes=False
 
 
 def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
-        shape, dim_tags):
+        shape, dim_tags, target):
 
     # Just to clarify:
     #
@@ -436,11 +436,15 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
 
     for i, dim_tag in enumerate(dim_tags):
         if isinstance(dim_tag, VectorArrayDimTag):
-            if vector_dim is not None:
-                raise LoopyError("arg '%s' may only have one vector-tagged "
-                        "argument dimension" % name)
+            from loopy.target.c import CVecTarget
+            if isinstance(target, CVecTarget):
+                pass
+            else:
+                if vector_dim is not None:
+                    raise LoopyError("arg '%s' may only have one vector-tagged "
+                            "argument dimension" % name)
 
-            vector_dim = i
+                vector_dim = i
 
         elif isinstance(dim_tag, _StrideArrayDimTagBase):
             if dim_tag.layout_nesting_level is None:
@@ -819,7 +823,7 @@ class ArrayBase(ImmutableRecord):
 
             new_dim_tags = convert_computed_to_fixed_dim_tags(
                     name, num_user_axes, num_target_axes,
-                    shape, dim_tags)
+                    shape, dim_tags, target)
 
             if new_dim_tags is not None:
                 # successfully normalized
@@ -946,7 +950,7 @@ class ArrayBase(ImmutableRecord):
     def num_target_axes(self):
         target_axes = set()
         for dim_tag in self.dim_tags:
-            if isinstance(dim_tag, _StrideArrayDimTagBase):
+            if isinstance(dim_tag, (_StrideArrayDimTagBase)):
                 target_axes.add(dim_tag.target_axis)
 
         return len(target_axes)
@@ -999,15 +1003,17 @@ class ArrayBase(ImmutableRecord):
 
         for i, dim_tag in enumerate(self.dim_tags):
             if isinstance(dim_tag, VectorArrayDimTag):
-                shape_i = self.shape[i]
-                if not is_integer(shape_i):
-                    raise LoopyError("shape of '%s' has non-constant-integer "
-                            "length for vector axis %d (0-based)" % (
-                                self.name, i))
+                from loopy.target.c import CVecTarget
+                if not isinstance(target, CVecTarget):
+                    shape_i = self.shape[i]
+                    if not is_integer(shape_i):
+                        raise LoopyError("shape of '%s' has non-constant-integer "
+                                "length for vector axis %d (0-based)" % (
+                                    self.name, i))
 
-                vec_dtype = target.vector_dtype(self.dtype, shape_i)
+                    vec_dtype = target.vector_dtype(self.dtype, shape_i)
 
-                return int(vec_dtype.itemsize) // int(self.dtype.itemsize)
+                    return int(vec_dtype.itemsize) // int(self.dtype.itemsize)
 
         return 1
 
@@ -1335,19 +1341,23 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
             pass
 
         elif isinstance(dim_tag, VectorArrayDimTag):
-            from pymbolic.primitives import Variable
-            if (vectorization_info is not None
-                    and isinstance(index[i], Variable)
-                    and index[i].name == vectorization_info.iname):
-                # We'll do absolutely nothing here, which will result
-                # in the vector being returned.
-                pass
-
+            from loopy.target.c import CVecTarget
+            if isinstance(target, CVecTarget):
+                subscripts.append(idx)
             else:
-                idx = eval_expr_assert_integer_constant(i, idx)
+                from pymbolic.primitives import Variable
+                if (vectorization_info is not None
+                        and isinstance(index[i], Variable)
+                        and index[i].name == vectorization_info.iname):
+                    # We'll do absolutely nothing here, which will result
+                    # in the vector being returned.
+                    pass
 
-                assert vector_index is None
-                vector_index = idx
+                else:
+                    idx = eval_expr_assert_integer_constant(i, idx)
+
+                    assert vector_index is None
+                    vector_index = idx
 
         else:
             raise LoopyError("unsupported array dim implementation tag '%s' "

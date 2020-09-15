@@ -205,6 +205,11 @@ class LoopedIlpTag(IlpBaseTag):
     def __str__(self):
         return "ilp.seq"
 
+
+class OpenMPSIMDTag(IlpBaseTag):
+    def __str__(self):
+        return "omp_simd"
+
 # }}}
 
 
@@ -250,6 +255,8 @@ def parse_tag(tag):
         return UnrolledIlpTag()
     elif tag == "ilp.seq":
         return LoopedIlpTag()
+    elif tag == "omp_simd":
+        return OpenMPSIMDTag()
     elif tag.startswith("g."):
         return GroupIndexTag(int(tag[2:]))
     elif tag.startswith("l."):
@@ -545,6 +552,7 @@ class TemporaryVariable(ArrayBase):
             "initializer",
             "read_only",
             "_base_storage_access_may_be_aliasing",
+            "zero_size",
             ]
 
     def __init__(self, name, dtype=None, shape=auto, address_space=None,

@@ -1150,12 +1150,15 @@ def get_visual_iname_order_embedding(kernel):
     values, such that `embedding[iname1] < embedding[iname2]` when `iname2`
     is nested inside `iname1`.
     """
-    from loopy.kernel.data import IlpBaseTag
+    from loopy.kernel.data import IlpBaseTag, VectorizeTag
+    from loopy.target.c import CVecTarget
     # Ignore ILP tagged inames, since they do not have to form a strict loop
     # nest.
     ilp_inames = frozenset(iname
         for iname in kernel.iname_to_tags
-        if kernel.iname_tags_of_type(iname, IlpBaseTag))
+        if (kernel.iname_tags_of_type(iname, IlpBaseTag)
+        or (kernel.iname_tags_of_type(iname, VectorizeTag)
+            and isinstance(kernel.target, CVecTarget))))
 
     iname_trie = SetTrie()
 

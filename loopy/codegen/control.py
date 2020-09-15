@@ -113,13 +113,19 @@ def generate_code_for_sched_index(codegen_state, sched_index):
 
         from loopy.kernel.data import (UnrolledIlpTag, UnrollTag,
                 ForceSequentialTag, LoopedIlpTag, VectorizeTag,
-                InOrderSequentialSequentialTag, filter_iname_tags_by_type)
+                InOrderSequentialSequentialTag, OpenMPSIMDTag,
+                filter_iname_tags_by_type)
         if filter_iname_tags_by_type(tags, (UnrollTag, UnrolledIlpTag)):
             func = generate_unroll_loop
         elif filter_iname_tags_by_type(tags, VectorizeTag):
-            func = generate_vectorize_loop
+            from loopy.target.c import CVecTarget
+            if isinstance(kernel.target, CVecTarget):
+                func = generate_sequential_loop_dim_code
+            else:
+                func = generate_vectorize_loop
         elif not tags or filter_iname_tags_by_type(tags, (LoopedIlpTag,
-                    ForceSequentialTag, InOrderSequentialSequentialTag)):
+                    ForceSequentialTag, InOrderSequentialSequentialTag,
+                    OpenMPSIMDTag)):
             func = generate_sequential_loop_dim_code
         else:
             raise RuntimeError("encountered (invalid) EnterLoop "

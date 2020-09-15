@@ -249,14 +249,17 @@ def find_loop_nest_around_map(kernel):
     iname_to_insns = kernel.iname_to_insns()
 
     # examine pairs of all inames--O(n**2), I know.
-    from loopy.kernel.data import IlpBaseTag
+    from loopy.kernel.data import IlpBaseTag, VectorizeTag
+    from loopy.target.c import CVecTarget
     for inner_iname in all_inames:
         result[inner_iname] = set()
         for outer_iname in all_inames:
             if inner_iname == outer_iname:
                 continue
 
-            if kernel.iname_tags_of_type(outer_iname, IlpBaseTag):
+            if (kernel.iname_tags_of_type(outer_iname, IlpBaseTag) or
+               (kernel.iname_tags_of_type(outer_iname, VectorizeTag)
+               and isinstance(kernel.target, CVecTarget))):
                 # ILP tags are special because they are parallel tags
                 # and therefore 'in principle' nest around everything.
                 # But they're realized by the scheduler as a loop
@@ -1982,14 +1985,18 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
     from loopy.kernel.data import (IlpBaseTag, ConcurrentTag, VectorizeTag,
                                    filter_iname_tags_by_type)
+    from loopy.target.c import CVecTarget
     ilp_inames = set(
             iname
             for iname, tags in six.iteritems(kernel.iname_to_tags)
-            if filter_iname_tags_by_type(tags, IlpBaseTag))
+            if filter_iname_tags_by_type(tags, IlpBaseTag)
+            or (filter_iname_tags_by_type(tags, VectorizeTag)
+                and isinstance(kernel.target, CVecTarget)))
     vec_inames = set(
             iname
             for iname, tags in six.iteritems(kernel.iname_to_tags)
-            if filter_iname_tags_by_type(tags, VectorizeTag))
+            if (filter_iname_tags_by_type(tags, VectorizeTag)
+                and not isinstance(kernel.target, CVecTarget)))
     parallel_inames = set(
             iname
             for iname, tags in six.iteritems(kernel.iname_to_tags)

@@ -642,7 +642,8 @@ def untag_inames(kernel, iname_to_untag, tag_type):
 
 # {{{ tag inames
 
-def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
+def tag_inames(kernel, iname_to_tag, retag=False,
+        ignore_nonexistent=False):
     """Tag an iname
 
     :arg iname_to_tag: a list of tuples ``(iname, new_tag)``. *new_tag* is given
@@ -749,6 +750,10 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
             continue
 
         old_tags = kernel.iname_tags(iname)
+        if retag:
+            old_tags = frozenset()
+        else:
+            old_tags = kernel.iname_tags(iname)
 
         if iname not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % iname)
