@@ -1475,7 +1475,7 @@ def _find_subgroup_size_for_knl(knl):
         subgroup_size_guess = get_simd_group_size(knl.target.device, None)
         warn_with_kernel(knl, "getting_subgroup_size_from_device",
                          "Device: %s. Using sub-group size given by "
-                         "pyopencl.characterize.get_simd_group_size(): %d"
+                         "pyopencl.characterize.get_simd_group_size(): %s"
                          % (knl.target.device, subgroup_size_guess))
         return subgroup_size_guess
     else:
