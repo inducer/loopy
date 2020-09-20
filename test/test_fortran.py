@@ -42,7 +42,7 @@ __all__ = [
         ]
 
 
-pytestmark = pytest.mark.importorskip("fparser")
+pytest.importorskip("fparser")
 
 
 def test_fill(ctx_factory):

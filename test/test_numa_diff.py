@@ -30,8 +30,6 @@ import pyopencl as cl
 import sys
 import os
 
-pytestmark = pytest.mark.importorskip("fparser")
-
 import logging
 logger = logging.getLogger(__name__)
 
@@ -51,6 +49,7 @@ from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 @pytest.mark.parametrize("Nq", [7])
 @pytest.mark.parametrize("opt_level", [11])
 def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
+    pytest.importorskip("fparser")
     ctx = ctx_factory()
 
     filename = os.path.join(os.path.dirname(__file__), "strongVolumeKernels.f90")
