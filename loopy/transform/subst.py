@@ -492,7 +492,7 @@ def expand_subst(kernel, within=None):
 
 # {{{ find substitution rules by glob patterns
 
-def find_rules_matching(knl, pattern):
+def find_rules_matching(kernel, pattern):
     """
     :pattern: A shell-style glob pattern.
     """
@@ -500,11 +500,11 @@ def find_rules_matching(knl, pattern):
     from loopy.match import re_from_glob
     pattern = re_from_glob(pattern)
 
-    return [r for r in knl.substitutions if pattern.match(r)]
+    return [r for r in kernel.substitutions if pattern.match(r)]
 
 
-def find_one_rule_matching(knl, pattern):
-    rules = find_rules_matching(knl, pattern)
+def find_one_rule_matching(kernel, pattern):
+    rules = find_rules_matching(kernel, pattern)
 
     if len(rules) > 1:
         raise ValueError("more than one substitution rule matched '%s'"

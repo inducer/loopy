@@ -42,36 +42,36 @@ logger = logging.getLogger(__name__)
 
 # {{{ add and infer argument dtypes
 
-def add_dtypes(knl, dtype_dict):
+def add_dtypes(kernel, dtype_dict):
     """Specify remaining unspecified argument/temporary variable types.
 
     :arg dtype_dict: a mapping from variable names to :class:`numpy.dtype`
         instances
     """
-    dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(knl, dtype_dict)
+    dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(kernel, dtype_dict)
 
     if dtype_dict_remainder:
         raise RuntimeError("unused argument dtypes: %s"
                 % ", ".join(dtype_dict_remainder))
 
-    return knl.copy(args=new_args, temporary_variables=new_temp_vars)
+    return kernel.copy(args=new_args, temporary_variables=new_temp_vars)
 
 
-def _add_dtypes_overdetermined(knl, dtype_dict):
-    dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(knl, dtype_dict)
+def _add_dtypes_overdetermined(kernel, dtype_dict):
+    dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(kernel, dtype_dict)
     # do not throw error for unused args
-    return knl.copy(args=new_args, temporary_variables=new_temp_vars)
+    return kernel.copy(args=new_args, temporary_variables=new_temp_vars)
 
 
-def _add_dtypes(knl, dtype_dict):
+def _add_dtypes(kernel, dtype_dict):
     dtype_dict = dtype_dict.copy()
     new_args = []
 
     from loopy.types import to_loopy_type
-    for arg in knl.args:
+    for arg in kernel.args:
         new_dtype = dtype_dict.pop(arg.name, None)
         if new_dtype is not None:
-            new_dtype = to_loopy_type(new_dtype, target=knl.target)
+            new_dtype = to_loopy_type(new_dtype, target=kernel.target)
             if arg.dtype is not None and arg.dtype != new_dtype:
                 raise RuntimeError(
                         "argument '%s' already has a different dtype "
@@ -81,10 +81,10 @@ def _add_dtypes(knl, dtype_dict):
 
         new_args.append(arg)
 
-    new_temp_vars = knl.temporary_variables.copy()
+    new_temp_vars = kernel.temporary_variables.copy()
 
     import loopy as lp
-    for tv_name in knl.temporary_variables:
+    for tv_name in kernel.temporary_variables:
         new_dtype = dtype_dict.pop(tv_name, None)
         if new_dtype is not None:
             new_dtype = np.dtype(new_dtype)
@@ -101,12 +101,12 @@ def _add_dtypes(knl, dtype_dict):
     return dtype_dict, new_args, new_temp_vars
 
 
-def get_arguments_with_incomplete_dtype(knl):
-    return [arg.name for arg in knl.args
+def get_arguments_with_incomplete_dtype(kernel):
+    return [arg.name for arg in kernel.args
             if arg.dtype is None]
 
 
-def add_and_infer_dtypes(knl, dtype_dict, expect_completion=False):
+def add_and_infer_dtypes(kernel, dtype_dict, expect_completion=False):
     processed_dtype_dict = {}
 
     for k, v in six.iteritems(dtype_dict):
@@ -115,17 +115,17 @@ def add_and_infer_dtypes(knl, dtype_dict, expect_completion=False):
             if subkey:
                 processed_dtype_dict[subkey] = v
 
-    knl = add_dtypes(knl, processed_dtype_dict)
+    kernel = add_dtypes(kernel, processed_dtype_dict)
 
     from loopy.type_inference import infer_unknown_types
-    return infer_unknown_types(knl, expect_completion=expect_completion)
+    return infer_unknown_types(kernel, expect_completion=expect_completion)
 
 
-def _add_and_infer_dtypes_overdetermined(knl, dtype_dict):
-    knl = _add_dtypes_overdetermined(knl, dtype_dict)
+def _add_and_infer_dtypes_overdetermined(kernel, dtype_dict):
+    kernel = _add_dtypes_overdetermined(kernel, dtype_dict)
 
     from loopy.type_inference import infer_unknown_types
-    return infer_unknown_types(knl, expect_completion=True)
+    return infer_unknown_types(kernel, expect_completion=True)
 
 # }}}
 
