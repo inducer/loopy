@@ -36,7 +36,7 @@ __doc__ = """
 
 # {{{ add_barrier
 
-def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
+def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
                 tags=None, synchronization_kind="global", mem_kind=None):
     """Takes in a kernel that needs to be added a barrier and returns a kernel
     which has a barrier inserted into it. It takes input of 2 instructions and
@@ -59,13 +59,13 @@ def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
         mem_kind = synchronization_kind
 
     if id_based_on is None:
-        id = knl.make_unique_instruction_id(
+        id = kernel.make_unique_instruction_id(
             based_on=synchronization_kind[0]+"_barrier")
     else:
-        id = knl.make_unique_instruction_id(based_on=id_based_on)
+        id = kernel.make_unique_instruction_id(based_on=id_based_on)
 
     match = parse_match(insn_before)
-    insn_before_list = [insn.id for insn in knl.instructions if match(knl,
+    insn_before_list = [insn.id for insn in kernel.instructions if match(kernel,
                         insn)]
 
     barrier_to_add = BarrierInstruction(depends_on=frozenset(insn_before_list),
@@ -75,12 +75,12 @@ def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
                                         synchronization_kind=synchronization_kind,
                                         mem_kind=mem_kind)
 
-    new_knl = knl.copy(instructions=knl.instructions + [barrier_to_add])
-    new_knl = add_dependency(kernel=new_knl,
+    new_kernel = kernel.copy(instructions=kernel.instructions + [barrier_to_add])
+    new_kernel = add_dependency(kernel=new_kernel,
                              insn_match=insn_after,
                              depends_on="id:"+id)
 
-    return new_knl
+    return new_kernel
 
 # }}}
 

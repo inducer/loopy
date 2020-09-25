@@ -720,7 +720,7 @@ class TemporarySaver(object):
 
 # {{{ auto save and reload across kernel calls
 
-def save_and_reload_temporaries(knl):
+def save_and_reload_temporaries(kernel):
     """
     Add instructions to save and reload temporary variables that are live
     across kernel calls.
@@ -743,13 +743,13 @@ def save_and_reload_temporaries(knl):
 
     :returns: The resulting kernel
     """
-    liveness = LivenessAnalysis(knl)
-    saver = TemporarySaver(knl)
+    liveness = LivenessAnalysis(kernel)
+    saver = TemporarySaver(kernel)
 
     from loopy.schedule.tools import (
         temporaries_read_in_subkernel, temporaries_written_in_subkernel)
 
-    for sched_idx, sched_item in enumerate(knl.schedule):
+    for sched_idx, sched_item in enumerate(kernel.schedule):
 
         if isinstance(sched_item, CallKernel):
             # Any written temporary that is live-out needs to be read into
@@ -760,8 +760,8 @@ def save_and_reload_temporaries(knl):
             else:
                 subkernel = sched_item.kernel_name
                 interesting_temporaries = (
-                    temporaries_read_in_subkernel(knl, subkernel)
-                    | temporaries_written_in_subkernel(knl, subkernel))
+                    temporaries_read_in_subkernel(kernel, subkernel)
+                    | temporaries_written_in_subkernel(kernel, subkernel))
 
             for temporary in liveness[sched_idx].live_out & interesting_temporaries:
                 logger.info("reloading {0} at entry of {1}"
@@ -769,13 +769,13 @@ def save_and_reload_temporaries(knl):
                 saver.reload(temporary, sched_item.kernel_name)
 
         elif isinstance(sched_item, ReturnFromKernel):
-            if sched_idx == len(knl.schedule) - 1:
+            if sched_idx == len(kernel.schedule) - 1:
                 # Kernel exit: nothing live
                 interesting_temporaries = set()
             else:
                 subkernel = sched_item.kernel_name
                 interesting_temporaries = (
-                    temporaries_written_in_subkernel(knl, subkernel))
+                    temporaries_written_in_subkernel(kernel, subkernel))
 
             for temporary in liveness[sched_idx].live_in & interesting_temporaries:
                 logger.info("saving {0} before return of {1}"
