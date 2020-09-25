@@ -38,6 +38,25 @@ from loopy.diagnostic import LoopyError
 from loopy.tools import is_integer
 
 
+__doc__ = """
+.. currentmodule:: loopy.kernel.array
+
+.. autoclass:: ArrayDimImplementationTag
+
+.. autoclass:: _StrideArrayDimTagBase
+
+.. autoclass:: FixedStrideArrayDimTag
+
+.. autoclass:: ComputedStrideArrayDimTag
+
+.. autoclass:: SeparateArrayArrayDimTag
+
+.. autoclass:: VectorArrayDimTag
+
+.. autofunction:: parse_array_dim_tags
+"""
+
+
 # {{{ array dimension tags
 
 class ArrayDimImplementationTag(ImmutableRecord):
@@ -69,9 +88,8 @@ class _StrideArrayDimTagBase(ArrayDimImplementationTag):
         The lowest nesting level varies fastest when viewed
         in linear memory.
 
-        May be None on :class:`FixedStrideArrayDimTag`, in which
-        case no :class:`ComputedStrideArrayDimTag` instances may
-        occur.
+        May be None on :class:`FixedStrideArrayDimTag`, in which case no
+        :class:`ComputedStrideArrayDimTag` instances may occur.
     """
 
 
@@ -132,8 +150,8 @@ class ComputedStrideArrayDimTag(_StrideArrayDimTagBase):
 
         :attr:`ArrayBase.dtype` granularity to which to pad this dimension
 
-    This type of stride arg dim gets converted to :class:`FixedStrideArrayDimTag`
-    on input to :class:`ArrayBase` subclasses.
+    This type of stride arg dim gets converted to
+    :class:`FixedStrideArrayDimTag` on input to :class:`ArrayBase` subclasses.
     """
 
     def __init__(self, layout_nesting_level, pad_to=None, target_axis=0, ):
@@ -653,7 +671,7 @@ class ArrayBase(ImmutableRecord):
             or a string which can be parsed into the previous form.
 
         :arg dim_tags: A comma-separated list of tags as understood by
-            :func:`parse_array_dim_tag`.
+            :func:`loopy.kernel.array.parse_array_dim_tags`.
 
         :arg strides: May be one of the following:
 

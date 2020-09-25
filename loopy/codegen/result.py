@@ -43,6 +43,19 @@ def process_preambles(preambles):
             for lines in dedup_preambles]
 
 
+__doc__ = """
+.. currentmodule:: loopy.codegen.result
+
+.. autoclass:: GeneratedProgram
+
+.. autoclass:: CodeGenerationResult
+
+.. autofunction:: merge_codegen_results
+
+.. autofunction:: generate_host_or_device_program
+"""
+
+
 # {{{ code generation result
 
 class GeneratedProgram(ImmutableRecord):

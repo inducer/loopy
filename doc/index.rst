@@ -47,6 +47,7 @@ Please check :ref:`installation` to get started.
     ref_transform
     ref_other
     misc
+    ref_internals
 
 Indices and tables
 ==================

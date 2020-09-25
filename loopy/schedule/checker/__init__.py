@@ -41,13 +41,12 @@ def get_schedules_for_statement_pairs(
     :arg linearization_items: A list of :class:`loopy.schedule.ScheduleItem`
         (to be renamed to `loopy.schedule.LinearizationItem`) containing
         all linearization items for which pairwise schedules will be
-        created. This list may be a *partial* linearization for a
-        kernel since this function may be used during the linearization
-        process.
+        created. To allow usage of this routine during linearization, a
+        truncated (i.e. partial) linearization may be passed through this
+        argument.
 
-    :arg insn_id_pairs: A list of two-tuples containing pairs of instruction
-        identifiers, each of which is unique within a
-        :class:`loopy.kernel.LoopKernel`.
+    :arg insn_id_pairs: A list containing pairs of instruction
+        identifiers.
 
     :returns: A dictionary mapping each two-tuple of instruction identifiers
         provided in `insn_id_pairs` to a corresponding two-tuple containing two
@@ -85,10 +84,10 @@ def get_schedules_for_statement_pairs(
         ...     for m in schedules[("insn_a", "insn_b")]
         ...     ))
         [pi, pj, pk] -> {
-        [_lp_linchk_statement = 0, i, j, k] -> [_lp_linchk_l0 = i, _lp_linchk_l1 = 0]
+        [_lp_linchk_stmt = 0, i, j, k] -> [_lp_linchk_l0 = i, _lp_linchk_l1 = 0]
         : 0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
         [pi, pj, pk] -> {
-        [_lp_linchk_statement = 1, i, j, k] -> [_lp_linchk_l0 = i, _lp_linchk_l1 = 1]
+        [_lp_linchk_stmt = 1, i, j, k] -> [_lp_linchk_l0 = i, _lp_linchk_l1 = 1]
         : 0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
 
     """
@@ -114,12 +113,15 @@ def get_schedules_for_statement_pairs(
     conc_inames, _ = partition_inames_by_concurrency(knl)
     enterloop_inames = get_EnterLoop_inames(linearization_items)
     conc_loop_inames = conc_inames & enterloop_inames
-    if conc_loop_inames:
-        from warnings import warn
-        warn(
-            "get_schedule_for_statement_pair encountered EnterLoop for inames %s "
-            "with ConcurrentTag(s) in linearization for kernel %s. "
-            "Ignoring these loops." % (conc_loop_inames, knl.name))
+
+    # The only concurrent EnterLoop inames should be Vec and ILP
+    from loopy.kernel.data import (VectorizeTag, IlpBaseTag)
+    for conc_iname in conc_loop_inames:
+        # Assert that there exists an ilp or vectorize tag (out of the
+        # potentially multiple other tags on this concurrent iname).
+        assert any(
+            isinstance(tag, (VectorizeTag, IlpBaseTag))
+            for tag in knl.iname_to_tags[conc_iname])
 
     # }}}
 

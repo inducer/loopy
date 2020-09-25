@@ -38,14 +38,14 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: id
 
         An (otherwise meaningless) identifier that is unique within
-        a :class:`loopy.kernel.LoopKernel`.
+        a :class:`loopy.LoopKernel`.
 
     .. rubric:: Instruction ordering
 
     .. attribute:: depends_on
 
-        a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances
-        that *must* be executed before this one. Note that
+        a :class:`frozenset` of :attr:`id` values of :class:`InstructionBase`
+        instances that *must* be executed before this one. Note that
         :func:`loopy.preprocess_kernel` (usually invoked automatically)
         augments this by adding dependencies on any writes to temporaries read
         by this instruction.
@@ -81,7 +81,7 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: conflicts_with_groups
 
         A :class:`frozenset` of strings indicating which instruction groups
-        (see :class:`InstructionBase.groups`) may not be active when this
+        (see :attr:`groups`) may not be active when this
         instruction is scheduled.
 
     .. attribute:: priority
@@ -94,7 +94,7 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: no_sync_with
 
         a :class:`frozenset` of tuples of the form ``(insn_id, scope)``, where
-        `insn_id` refers to :attr:`id` of :class:`Instruction` instances
+        ``insn_id`` refers to :attr:`id` of :class:`InstructionBase` instances
         and `scope` is one of the following strings:
 
            - `"local"`
@@ -113,7 +113,7 @@ class InstructionBase(ImmutableRecord):
         and match expression, just like :attr:`depends_on`.
 
         This data is used specifically by barrier insertion and
-        :func:`loopy.check.enforce_variable_access_ordered`.
+        :func:`loopy.check.check_variable_access_ordered`.
 
     .. rubric:: Conditionals
 
@@ -691,7 +691,8 @@ class AtomicInit(OrderedAtomic):
 
 
 class AtomicUpdate(OrderedAtomic):
-    """Properties of an atomic update. A subclass of :class:`OrderedAtomic`.
+    """Properties of an atomic update. A subclass of
+    :class:`OrderedAtomic`.
 
     .. attribute:: ordering
 

@@ -111,7 +111,7 @@ class Options(ImmutableRecord):
     .. attribute:: cl_exec_manage_array_events
 
         Within the PyOpenCL executor, respect and udpate
-        :attr:`pyopencl.array.Array.event`.
+        :attr:`pyopencl.array.Array.events`.
 
         Defaults to *True*.
 
@@ -140,7 +140,7 @@ class Options(ImmutableRecord):
     .. attribute:: edit_code
 
         Invoke an editor (given by the environment variable
-        :envvar:`EDITOR`) on the generated kernel code,
+        ``EDITOR``) on the generated kernel code,
         allowing for tweaks before the code is passed on to
         the target for compilation.
 

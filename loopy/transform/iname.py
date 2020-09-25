@@ -1572,9 +1572,9 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
         :func:`loopy.match.parse_match`.
     :arg kind: may be "l" or "g", or the corresponding tag class name
 
-    :returns: an :class:`GroupIndexTag` or :class:`LocalIndexTag`
-        that is not being used within the instructions matched by
-        *insn_match*.
+    :returns: an :class:`loopy.kernel.data.GroupIndexTag` or
+        :class:`loopy.kernel.data.LocalIndexTag` that is not being used within
+        the instructions matched by *insn_match*.
     """
     used_axes = set()
 
@@ -1740,9 +1740,9 @@ def add_inames_to_insn(knl, inames, insn_match):
     :arg insn_match: An instruction match as understood by
         :func:`loopy.match.parse_match`.
 
-    :returns: an :class:`GroupIndexTag` or :class:`LocalIndexTag`
-        that is not being used within the instructions matched by
-        *insn_match*.
+    :returns: an :class:`loopy.kernel.data.GroupIndexTag` or
+        :class:`loopy.kernel.data.LocalIndexTag` that is not being used within
+        the instructions matched by *insn_match*.
 
     .. versionadded:: 2016.3
     """

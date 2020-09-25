@@ -840,6 +840,9 @@ class KernelExecutorBase(object):
     def get_invoker_uncached(self, kernel, *args):
         raise NotImplementedError()
 
+    def get_wrapper_generator(self):
+        raise NotImplementedError()
+
     def get_invoker(self, kernel, *args):
         from loopy import CACHING_ENABLED
 

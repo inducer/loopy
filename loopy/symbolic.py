@@ -65,6 +65,32 @@ from islpy import dim_type
 import re
 import numpy as np
 
+__doc__ = """
+.. currentmodule:: loopy.symbolic
+
+.. autoclass:: Literal
+
+.. autoclass:: ArrayLiteral
+
+.. autoclass:: FunctionIdentifier
+
+.. autoclass:: TypedCSE
+
+.. autoclass:: TypeCast
+
+.. autoclass:: TaggedVariable
+
+.. autoclass:: Reduction
+
+.. autoclass:: LinearSubscript
+
+.. autoclass:: RuleArgument
+
+.. autoclass:: ExpansionState
+
+.. autoclass:: RuleAwareIdentityMapper
+"""
+
 
 # {{{ mappers with support for loopy-specific primitives
 
@@ -323,6 +349,9 @@ class DependencyMapper(DependencyMapperBase):
     def map_type_cast(self, expr, *args, **kwargs):
         return self.rec(expr.child, *args, **kwargs)
 
+    def map_literal(self, expr):
+        return set()
+
 
 class SubstitutionRuleExpander(IdentityMapper):
     def __init__(self, rules):
@@ -378,7 +407,7 @@ class Literal(LoopyExpressionBase):
     .. note::
 
         Only used in the output of
-        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
+        :mod:`loopy.target.c.codegen.expression.ExpressionToCExpressionMapper` (and
         similar mappers). Not for use in Loopy source representation.
     """
 
@@ -399,7 +428,7 @@ class ArrayLiteral(LoopyExpressionBase):
     .. note::
 
         Only used in the output of
-        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
+        :mod:`loopy.target.c.codegen.expression.ExpressionToCExpressionMapper` (and
         similar mappers). Not for use in Loopy source representation.
     """
 
@@ -546,8 +575,8 @@ class TaggedVariable(LoopyExpressionBase, p.Variable):
 
 
 class Reduction(LoopyExpressionBase):
-    """Represents a reduction operation on :attr:`exprs`
-    across :attr:`inames`.
+    """
+    Represents a reduction operation on :attr:`expr` across :attr:`inames`.
 
     .. attribute:: operation
 
@@ -562,9 +591,9 @@ class Reduction(LoopyExpressionBase):
 
         An expression which may have tuple type. If the expression has tuple
         type, it must be one of the following:
-         * a :class:`tuple` of :class:`pymbolic.primitives.Expression`, or
-         * a :class:`loopy.symbolic.Reduction`, or
-         * a function call or substitution rule invocation.
+        * a :class:`tuple` of :class:`pymbolic.primitives.Expression`, or
+        * a :class:`loopy.symbolic.Reduction`, or
+        * a function call or substitution rule invocation.
 
     .. attribute:: allow_simultaneous
 
@@ -1379,6 +1408,10 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
         denom = denom_aff.get_constant_val()
 
         return num.mod_val(denom)
+
+    def map_literal(self, expr):
+        raise TypeError("literal '%s' not supported "
+                        "for as-pwaff evaluation" % expr)
 
 
 def aff_from_expr(space, expr, vars_to_zero=None):

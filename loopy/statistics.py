@@ -493,7 +493,7 @@ class Op(Record):
 
     .. attribute:: dtype
 
-       A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
+       A :class:`loopy.types.LoopyType` or :class:`numpy.dtype` that specifies the
        data type operated on.
 
     .. attribute:: name
@@ -551,7 +551,7 @@ class MemAccess(Record):
 
     .. attribute:: dtype
 
-       A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
+       A :class:`loopy.types.LoopyType` or :class:`numpy.dtype` that specifies the
        data type accessed.
 
     .. attribute:: lid_strides
@@ -585,7 +585,7 @@ class MemAccess(Record):
     .. attribute:: variable_tag
 
        A :class:`str` that specifies the variable tag of a
-       :class:`pymbolic.primitives.TaggedVariable`.
+       :class:`loopy.symbolic.TaggedVariable`.
 
     .. attribute:: count_granularity
 
@@ -891,14 +891,22 @@ def _get_lid_and_gid_strides(knl, array, index):
 
     def get_iname_strides(tag_to_iname_dict):
         tag_to_stride_dict = {}
+
+        if array.dim_tags is None:
+            assert len(index) <= 1
+            dim_tags = (None,) * len(index)
+        else:
+            dim_tags = array.dim_tags
+
         for tag, iname in six.iteritems(tag_to_iname_dict):
             total_iname_stride = 0
             # find total stride of this iname for each axis
-            for idx, axis_tag in zip(index, array.dim_tags):
+            for idx, axis_tag in zip(index, dim_tags):
                 # collect index coefficients
                 try:
-                    coeffs = _IndexStrideCoefficientCollector()(
-                              simplify_using_aff(knl, idx))
+                    coeffs = _IndexStrideCoefficientCollector(
+                            [tag_to_iname_dict[tag]])(
+                                    simplify_using_aff(knl, idx))
                 except ExpressionNotAffineError:
                     total_iname_stride = None
                     break
@@ -914,6 +922,14 @@ def _get_lid_and_gid_strides(knl, array, index):
                 # now determine stride
                 if isinstance(axis_tag, FixedStrideArrayDimTag):
                     axis_tag_stride = axis_tag.stride
+
+                    if axis_tag_stride is lp.auto:
+                        total_iname_stride = None
+                        break
+
+                elif axis_tag is None:
+                    axis_tag_stride = 1
+
                 else:
                     continue
 
@@ -1353,7 +1369,7 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
 
     :arg numpy_types: A :class:`bool` specifying whether the types in the
         returned mapping should be numpy types instead of
-        :class:`loopy.LoopyType`.
+        :class:`loopy.types.LoopyType`.
 
     :arg count_redundant_work: Based on usage of hardware axes or other
         specifics, a kernel may perform work redundantly. This :class:`bool`
@@ -1459,7 +1475,7 @@ def _find_subgroup_size_for_knl(knl):
         subgroup_size_guess = get_simd_group_size(knl.target.device, None)
         warn_with_kernel(knl, "getting_subgroup_size_from_device",
                          "Device: %s. Using sub-group size given by "
-                         "pyopencl.characterize.get_simd_group_size(): %d"
+                         "pyopencl.characterize.get_simd_group_size(): %s"
                          % (knl.target.device, subgroup_size_guess))
         return subgroup_size_guess
     else:
@@ -1515,7 +1531,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
 
     :arg numpy_types: A :class:`bool` specifying whether the types in the
         returned mapping should be numpy types instead of
-        :class:`loopy.LoopyType`.
+        :class:`loopy.types.LoopyType`.
 
     :arg count_redundant_work: Based on usage of hardware axes or other
         specifics, a kernel may perform work redundantly. This :class:`bool`

@@ -25,7 +25,7 @@ function run_py_examples()
 }
 function run_ipynb_examples()
 {
-  run_examples "*.ipynb" "${PY_EXE} -m nbconvert --execute"
+  run_examples "*.ipynb" "${PY_EXE} -m nbconvert --to html --execute"
 }
 function run_floopy_examples()
 {
