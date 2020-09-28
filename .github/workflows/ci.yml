@@ -77,6 +77,8 @@ jobs:
                 curl -L "https://ci.appveyor.com/api/projects/ispc/ispc/artifacts/build%2Fispc-trunk-linux.tar.gz?job=Environment%3A%20APPVEYOR_BUILD_WORKER_IMAGE%3DUbuntu1604%2C%20LLVM_VERSION%3Dlatest" | tar xfz -
                 export PATH="$(pwd)/ispc-trunk-linux/bin:$PATH"
 
+                export PYOPENCL_TEST=portable:pthread
+
                 . ./build-py-project-and-run-examples.sh
                 run_py_examples
                 run_ipynb_examples
