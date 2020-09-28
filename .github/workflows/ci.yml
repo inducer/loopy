@@ -37,7 +37,7 @@ jobs:
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-pylint.sh
                 . ./prepare-and-run-pylint.sh "$(basename $GITHUB_REPOSITORY)" test/test_*.py
 
-    pytest3:
+    pytest:
         name: Conda Pytest
         runs-on: ubuntu-latest
         steps:
@@ -61,6 +61,19 @@ jobs:
                 build_py_project_in_conda_env
                 ( test_py_project )
                 ( test_py_project )
+
+    examples:
+        name: Conda Pytest
+        runs-on: ubuntu-latest
+        steps:
+        -   uses: actions/checkout@v2
+        -   name: "Main Script"
+            run: |
+                CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+                . ./ci-support.sh
+                build_py_project_in_conda_env
+                run_examples
 
     docs:
         name: Documentation
