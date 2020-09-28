@@ -57,7 +57,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         if dtype.isbuiltin:
             return "_lpy_np."+dtype.name
         else:
-            return ("_lpy_cl_tools.get_or_register_dtype(\"%s\")"
+            return ('_lpy_cl_tools.get_or_register_dtype("%s")'
                     % cl_tools.dtype_to_ctype(dtype))
 
     # {{{ handle non-numpy args
@@ -222,7 +222,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         if options.return_dict:
             gen("return _lpy_evt, {%s}"
-                    % ", ".join("\"%s\": %s" % (arg.name, arg.name)
+                    % ", ".join('"%s": %s' % (arg.name, arg.name)
                         for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
                         if arg.base_name in kernel.get_written_variables()))

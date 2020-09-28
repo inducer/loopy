@@ -178,7 +178,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
     def map_subscript(self, expr, type_context):
         def base_impl(expr, type_context):
-            return self.rec(expr.aggregate, type_context)[self.rec(expr.index, 'i')]
+            return self.rec(expr.aggregate, type_context)[self.rec(expr.index, "i")]
 
         def make_var(name):
             from loopy import TaggedVariable
@@ -226,7 +226,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             base_access = var("read_imagef")(
                     var(ary.name),
                     var("loopy_sampler"),
-                    var("(%s)" % idx_vec_type)(*self.rec(idx_tuple, 'i')))
+                    var("(%s)" % idx_vec_type)(*self.rec(idx_tuple, "i")))
 
             if ary.dtype.numpy_dtype == np.float32:
                 return base_access.attr("x")
@@ -260,7 +260,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         ary,
                         make_var(access_info.array_name),
                         simplify_using_aff(
-                            self.kernel, self.rec(subscript, 'i')))
+                            self.kernel, self.rec(subscript, "i")))
 
             if access_info.vector_index is not None:
                 return self.codegen_state.ast_builder.add_vector_access(
@@ -295,7 +295,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 return self.make_subscript(
                         arg,
                         var(expr.aggregate.name),
-                        self.rec(offset + expr.index, 'i'))
+                        self.rec(offset + expr.index, "i"))
 
         elif expr.aggregate.name in self.kernel.temporary_variables:
             raise RuntimeError("linear indexing is not supported on temporaries: %s"
@@ -339,13 +339,13 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             else:
                 seen_func("%s_pos_b" % base_func_name)
                 return var("%s_pos_b_%s" % (base_func_name, suffix))(
-                        self.rec(expr.numerator, 'i'),
-                        self.rec(expr.denominator, 'i'))
+                        self.rec(expr.numerator, "i"),
+                        self.rec(expr.denominator, "i"))
         else:
             seen_func(base_func_name)
             return var("%s_%s" % (base_func_name, suffix))(
-                    self.rec(expr.numerator, 'i'),
-                    self.rec(expr.denominator, 'i'))
+                    self.rec(expr.numerator, "i"),
+                    self.rec(expr.denominator, "i"))
 
     def map_floor_div(self, expr, type_context):
         import operator
@@ -684,8 +684,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         if not self.allow_complex:
             return base_impl(expr, type_context)
 
-        n_complex = 'c' == n_dtype.kind
-        d_complex = 'c' == d_dtype.kind
+        n_complex = "c" == n_dtype.kind
+        d_complex = "c" == d_dtype.kind
 
         tgt_dtype = self.infer_type(expr)
 

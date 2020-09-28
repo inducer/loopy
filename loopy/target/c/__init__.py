@@ -1064,7 +1064,7 @@ def generate_header(kernel, codegen_result=None):
 
     if not isinstance(kernel.target, CFamilyTarget):
         raise LoopyError(
-                'Header generation for non C-based languages are not implemented')
+                "Header generation for non C-based languages are not implemented")
 
     if codegen_result is None:
         from loopy.codegen import generate_code_v2

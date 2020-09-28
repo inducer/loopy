@@ -198,7 +198,7 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
             raise ValueError(
                 "unknown scope for nosync option: '%s' "
                 "(allowable scopes are %s)" %
-                (scope, ', '.join("'%s'" % s for s in allowable_scopes)))
+                (scope, ", ".join("'%s'" % s for s in allowable_scopes)))
         return _NosyncParseResult(expr, scope)
 
     for option in options_str.split(","):
@@ -361,7 +361,7 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
 
         elif opt_key == "mem_kind":
             opt_value = opt_value.lower().strip()
-            if opt_value not in ['local', 'global']:
+            if opt_value not in ["local", "global"]:
                 raise LoopyError("Unknown memory synchronization type %s specified"
                     " expected, 'local' or 'global'."
                     % opt_value)
@@ -437,13 +437,13 @@ SUBST_RE = re.compile(
 
 def check_illegal_options(insn_options, insn_type):
     illegal_options = []
-    if insn_type not in ['gbarrier', 'lbarrier']:
-        illegal_options.append('mem_kind')
+    if insn_type not in ["gbarrier", "lbarrier"]:
+        illegal_options.append("mem_kind")
 
     bad_options = [x for x in illegal_options if x in insn_options]
     if bad_options:
         raise LoopyError("Cannot supply option(s) '%s' to instruction type '%s'" %
-                         ', '.join(bad_options), insn_type)
+                         ", ".join(bad_options), insn_type)
 
 
 def parse_insn(groups, insn_options):
@@ -516,7 +516,7 @@ def parse_insn(groups, insn_options):
             assignee_names=assignee_names)
 
     # check for bad options
-    check_illegal_options(insn_options, 'assignment')
+    check_illegal_options(insn_options, "assignment")
 
     insn_id = insn_options.pop("insn_id", None)
     inames_to_dup = insn_options.pop("inames_to_dup", [])
@@ -757,8 +757,8 @@ def parse_instructions(instructions, defines):
 
     insn_options_stack = [get_default_insn_options_dict()]
     if_predicates_stack = [
-            {'predicates': frozenset(),
-                'insn_predicates': frozenset()}]
+            {"predicates": frozenset(),
+                "insn_predicates": frozenset()}]
 
     for insn in instructions:
         if isinstance(insn, InstructionBase):
@@ -819,7 +819,7 @@ def parse_instructions(instructions, defines):
                         insn_options_stack[-1],
                         with_options_match.group("options")))
             # check for bad options
-            check_illegal_options(insn_options_stack[-1], 'with-block')
+            check_illegal_options(insn_options_stack[-1], "with-block")
             continue
 
         for_match = FOR_RE.match(insn)
@@ -859,7 +859,7 @@ def parse_instructions(instructions, defines):
 
             #add to the if_stack
             if_options = options.copy()
-            if_options['insn_predicates'] = options["predicates"]
+            if_options["insn_predicates"] = options["predicates"]
             if_predicates_stack.append(if_options)
             del options
             del predicate
@@ -923,9 +923,9 @@ def parse_instructions(instructions, defines):
         if insn == "end":
             obj = insn_options_stack.pop()
             #if this object is the end of an if statement
-            if obj['predicates'] == if_predicates_stack[-1]["insn_predicates"] and\
+            if obj["predicates"] == if_predicates_stack[-1]["insn_predicates"] and\
                     if_predicates_stack[-1]["insn_predicates"] and\
-                    obj['within_inames'] == if_predicates_stack[-1]['within_inames']:
+                    obj["within_inames"] == if_predicates_stack[-1]["within_inames"]:
                 if_predicates_stack.pop()
             continue
 

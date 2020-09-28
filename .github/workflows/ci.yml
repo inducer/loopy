@@ -22,7 +22,7 @@ jobs:
         -   name: "Main Script"
             run: |
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
-                . ./prepare-and-run-flake8.sh ./loopy ./test
+                . ./prepare-and-run-flake8.sh "$(basename $GITHUB_REPOSITORY)" ./test examples
 
     pylint:
         name: Pylint
@@ -35,7 +35,7 @@ jobs:
                 CONDA_ENVIRONMENT=.test-conda-env.yml
                 USE_CONDA_BUILD=1
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-pylint.sh
-                . ./prepare-and-run-pylint.sh loopy test/test_*.py
+                . ./prepare-and-run-pylint.sh "$(basename $GITHUB_REPOSITORY)" test/test_*.py
 
     pytest3:
         name: Conda Pytest
