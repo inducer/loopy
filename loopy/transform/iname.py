@@ -723,7 +723,7 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
     from loopy.match import re_from_glob
     new_iname_to_tag = {}
     for iname, new_tag in iname_to_tag:
-        if '*' in iname or '?' in iname:
+        if "*" in iname or "?" in iname:
             match_re = re_from_glob(iname)
             for sub_iname in all_inames:
                 if match_re.match(sub_iname):

@@ -51,7 +51,7 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl \
 
 __all__ = [
         "pytest_generate_tests",
-        "cl"  # 'cl.create_some_context'
+        "cl"  # "cl.create_some_context"
         ]
 
 
@@ -381,8 +381,8 @@ def test_sci_notation_literal(ctx_factory):
     queue = cl.CommandQueue(ctx)
 
     set_kernel = lp.make_kernel(
-         ''' { [i]: 0<=i<12 } ''',
-         ''' out[i] = 1e-12''')
+         """ { [i]: 0<=i<12 } """,
+         """ out[i] = 1e-12""")
 
     set_kernel = lp.set_options(set_kernel, write_cl=True)
 
@@ -396,8 +396,8 @@ def test_indexof(ctx_factory):
     queue = cl.CommandQueue(ctx)
 
     knl = lp.make_kernel(
-         ''' { [i,j]: 0<=i,j<5 } ''',
-         ''' out[i,j] = indexof(out[i,j])''')
+         """ { [i,j]: 0<=i,j<5 } """,
+         """ out[i,j] = indexof(out[i,j])""")
 
     knl = lp.set_options(knl, write_cl=True)
 
@@ -420,8 +420,8 @@ def test_indexof_vec(ctx_factory):
         pytest.skip("target ICD miscompiles vector code")
 
     knl = lp.make_kernel(
-         ''' { [i,j,k]: 0<=i,j,k<4 } ''',
-         ''' out[i,j,k] = indexof_vec(out[i,j,k])''')
+         """ { [i,j,k]: 0<=i,j,k<4 } """,
+         """ out[i,j,k] = indexof_vec(out[i,j,k])""")
 
     knl = lp.tag_inames(knl, {"i": "vec"})
     knl = lp.tag_data_axes(knl, "out", "vec,c,c")
@@ -479,7 +479,7 @@ def test_divide_precedence(ctx_factory):
             x[0] = c*(a/b)
             y[0] = c*(a%b)
             """,
-            [lp.ValueArg('a, b, c', np.int32), lp.GlobalArg('x, y', np.int32)])
+            [lp.ValueArg("a, b, c", np.int32), lp.GlobalArg("x, y", np.int32)])
     print(lp.generate_code_v2(knl).device_code())
 
     evt, (x_out, y_out) = knl(queue, c=2, b=2, a=5)

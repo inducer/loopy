@@ -164,11 +164,11 @@ def get_le_neutral(dtype):
     elif dtype.numpy_dtype.kind == "i":
         # OpenCL 1.1, section 6.11.3
         if dtype.numpy_dtype.itemsize == 4:
-            #32 bit integer
+            # 32 bit integer
             return var("INT_MAX")
         elif dtype.numpy_dtype.itemsize == 8:
-            #64 bit integer
-            return var('LONG_MAX')
+            # 64 bit integer
+            return var("LONG_MAX")
     else:
         raise NotImplementedError("less")
 
@@ -182,11 +182,11 @@ def get_ge_neutral(dtype):
     elif dtype.numpy_dtype.kind == "i":
         # OpenCL 1.1, section 6.11.3
         if dtype.numpy_dtype.itemsize == 4:
-            #32 bit integer
+            # 32 bit integer
             return var("INT_MIN")
         elif dtype.numpy_dtype.itemsize == 8:
-            #64 bit integer
-            return var('LONG_MIN')
+            # 64 bit integer
+            return var("LONG_MIN")
     else:
         raise NotImplementedError("less")
 

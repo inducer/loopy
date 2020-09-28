@@ -81,16 +81,16 @@ def _create_vector_types():
     counts = [2, 3, 4, 8, 16]
 
     for base_name, base_type in [
-            ('char', np.int8),
-            ('uchar', np.uint8),
-            ('short', np.int16),
-            ('ushort', np.uint16),
-            ('int', np.int32),
-            ('uint', np.uint32),
-            ('long', np.int64),
-            ('ulong', np.uint64),
-            ('float', np.float32),
-            ('double', np.float64),
+            ("char", np.int8),
+            ("uchar", np.uint8),
+            ("short", np.int16),
+            ("ushort", np.uint16),
+            ("int", np.int32),
+            ("uint", np.uint32),
+            ("long", np.int64),
+            ("ulong", np.uint64),
+            ("float", np.float32),
+            ("double", np.float64),
             ]:
         for count in counts:
             name = "%s%d" % (base_name, count)
@@ -151,16 +151,16 @@ _CL_SIMPLE_MULTI_ARG_FUNCTIONS = {
 VECTOR_LITERAL_FUNCS = dict(
         ("make_%s%d" % (name, count), (name, dtype, count))
         for name, dtype in [
-            ('char', np.int8),
-            ('uchar', np.uint8),
-            ('short', np.int16),
-            ('ushort', np.uint16),
-            ('int', np.int32),
-            ('uint', np.uint32),
-            ('long', np.int64),
-            ('ulong', np.uint64),
-            ('float', np.float32),
-            ('double', np.float64),
+            ("char", np.int8),
+            ("uchar", np.uint8),
+            ("short", np.int16),
+            ("ushort", np.uint16),
+            ("int", np.int32),
+            ("uint", np.uint32),
+            ("long", np.int64),
+            ("ulong", np.uint64),
+            ("float", np.float32),
+            ("double", np.float64),
             ]
         for count in [2, 3, 4, 8, 16]
         )

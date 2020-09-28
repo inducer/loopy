@@ -481,7 +481,7 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
 
     for insn in kernel.instructions:
         if isinstance(insn, MultiAssignmentBase):
-            lhs = ', '.join(str(assignee) for assignee in insn.assignees)
+            lhs = ", ".join(str(assignee) for assignee in insn.assignees)
             op = "%s <- %s" % (lhs, insn.expression)
             if len(op) > 200:
                 op = op[:200] + "..."
@@ -498,7 +498,7 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
             insn_label = op
             tooltip = insn.id
 
-        lines.append("\"%s\" [label=\"%s\",shape=\"box\",tooltip=\"%s\"];"
+        lines.append('"%s" [label="%s",shape="box",tooltip="%s"];'
                 % (
                     insn.id,
                     repr(insn_label)[1:-1],
@@ -542,7 +542,7 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
 
         for sched_item in kernel.schedule:
             if isinstance(sched_item, EnterLoop):
-                lines.append("subgraph cluster_%s { label=\"%s\""
+                lines.append('subgraph cluster_%s { label="%s"'
                         % (sched_item.iname, sched_item.iname))
             elif isinstance(sched_item, LeaveLoop):
                 lines.append("}")
@@ -1546,8 +1546,8 @@ def stringify_instruction_list(kernel):
             options.append("no_sync_with=%s" % ":".join(
                 "%s@%s" % entry for entry in sorted(insn.no_sync_with)))
         if isinstance(insn, lp.BarrierInstruction) and \
-                insn.synchronization_kind == 'local':
-            options.append('mem_kind=%s' % insn.mem_kind)
+                insn.synchronization_kind == "local":
+            options.append("mem_kind=%s" % insn.mem_kind)
 
         if lhs:
             core = "%s = %s" % (

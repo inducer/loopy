@@ -687,7 +687,7 @@ class AtomicInit(OrderedAtomic):
 
         One of the values from :class:`MemoryScope`
     """
-    op_name = 'init'
+    op_name = "init"
 
 
 class AtomicUpdate(OrderedAtomic):
@@ -702,7 +702,7 @@ class AtomicUpdate(OrderedAtomic):
 
         One of the values from :class:`MemoryScope`
     """
-    op_name = 'update'
+    op_name = "update"
 
 
 class AtomicLoad(OrderedAtomic):
@@ -716,7 +716,7 @@ class AtomicLoad(OrderedAtomic):
 
         One of the values from :class:`MemoryScope`
     """
-    op_name = 'load'
+    op_name = "load"
 
 # }}}
 
@@ -1380,7 +1380,7 @@ class BarrierInstruction(_DataObliviousInstruction):
         options = self.get_str_options()
         if self.synchronization_kind == "local":
             # add the memory kind
-            options += ['mem_kind={}'.format(self.mem_kind)]
+            options += ["mem_kind={}".format(self.mem_kind)]
         if options:
             first_line += " {%s}" % (": ".join(options))
 

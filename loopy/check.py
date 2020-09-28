@@ -585,7 +585,7 @@ def _get_topological_order(kernel):
 
     for scc in sccs:
         if len(scc) != 1:
-            raise DependencyCycleFound(', '.join(scc))
+            raise DependencyCycleFound(", ".join(scc))
         order.append(scc[0])
 
     return order
@@ -1095,7 +1095,7 @@ def check_that_all_insns_are_scheduled(kernel):
         from loopy.diagnostic import UnscheduledInstructionError
         raise UnscheduledInstructionError(
             "unscheduled instructions: '%s'"
-            % ', '.join(all_schedulable_insns - scheduled_insns))
+            % ", ".join(all_schedulable_insns - scheduled_insns))
 
 # }}}
 

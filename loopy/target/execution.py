@@ -234,7 +234,7 @@ class ExecutionWrapperGeneratorBase(object):
                     gen("else:")
                     with Indentation(gen):
                         if not options.no_numpy:
-                            gen("_lpy_offset = getattr(%s, \"offset\", 0)"
+                            gen('_lpy_offset = getattr(%s, "offset", 0)'
                                     % impl_array_name)
                         else:
                             gen("_lpy_offset = %s.offset" % impl_array_name)
@@ -246,7 +246,7 @@ class ExecutionWrapperGeneratorBase(object):
                                     % (arg.name, base_arg.dtype.itemsize))
 
                             gen("assert _lpy_remdr == 0, \"Offset of array '%s' is "
-                                    "not divisible by its dtype itemsize\""
+                                    'not divisible by its dtype itemsize"'
                                     % impl_array_name)
                             gen("del _lpy_remdr")
                         else:
@@ -281,7 +281,7 @@ class ExecutionWrapperGeneratorBase(object):
                         with Indentation(gen):
                             gen("raise RuntimeError(\"required stride '%s' for "
                                     "argument '%s' not given or deducible from "
-                                    "passed array\")"
+                                    'passed array")'
                                     % (arg.name, impl_array_name))
 
                         base_arg = kernel.impl_arg_to_arg[impl_array_name]
@@ -292,7 +292,7 @@ class ExecutionWrapperGeneratorBase(object):
                                         base_arg.dtype.dtype.itemsize))
 
                             gen("assert _lpy_remdr == 0, \"Stride %d of array '%s' "
-                                    " is not divisible by its dtype itemsize\""
+                                    ' is not divisible by its dtype itemsize"'
                                     % (stride_impl_axis, impl_array_name))
                             gen("del _lpy_remdr")
                         else:
@@ -324,7 +324,7 @@ class ExecutionWrapperGeneratorBase(object):
             with Indentation(gen):
                 gen("raise TypeError(\"value argument '%s' "
                         "was not given and could not be automatically "
-                        "determined\")" % arg.name)
+                        'determined")' % arg.name)
 
         gen("# }}}")
         gen("")
@@ -409,7 +409,7 @@ class ExecutionWrapperGeneratorBase(object):
                 gen("if %s is None:" % arg.name)
                 with Indentation(gen):
                     gen("raise RuntimeError(\"input argument '%s' must "
-                            "be supplied\")" % arg.name)
+                            'be supplied")' % arg.name)
                     gen("")
 
             if (is_written
@@ -418,14 +418,14 @@ class ExecutionWrapperGeneratorBase(object):
                 gen("if %s is None:" % arg.name)
                 with Indentation(gen):
                     gen("raise RuntimeError(\"written image '%s' must "
-                            "be supplied\")" % arg.name)
+                            'be supplied")' % arg.name)
                     gen("")
 
             if is_written and arg.shape is None and not options.skip_arg_checks:
                 gen("if %s is None:" % arg.name)
                 with Indentation(gen):
                     gen("raise RuntimeError(\"written argument '%s' has "
-                            "unknown shape and must be supplied\")" % arg.name)
+                            'unknown shape and must be supplied")' % arg.name)
                     gen("")
 
             possibly_made_by_loopy = False
@@ -468,7 +468,7 @@ class ExecutionWrapperGeneratorBase(object):
                                 kernel_arg.dtype.numpy_dtype)))
                     with Indentation(gen):
                         gen("raise TypeError(\"dtype mismatch on argument '%s' "
-                                "(got: %%s, expected: %s)\" %% %s.dtype)"
+                                '(got: %%s, expected: %s)" %% %s.dtype)'
                                 % (arg.name, arg.dtype, arg.name))
 
                     # {{{ generate shape checking code
@@ -489,7 +489,7 @@ class ExecutionWrapperGeneratorBase(object):
 
                     shape_mismatch_msg = (
                             "raise TypeError(\"shape mismatch on argument '%s' "
-                            "(got: %%s, expected: %%s)\" "
+                            '(got: %%s, expected: %%s)" '
                             "%% (%s.shape, %s))"
                             % (arg.name, arg.name, strify_tuple(arg.unvec_shape)))
 
@@ -545,10 +545,10 @@ class ExecutionWrapperGeneratorBase(object):
                                     "if dim > 1)"
                                     % (arg.name, strify_tuple(sym_strides)))
 
-                            gen("raise TypeError(\"strides mismatch on "
+                            gen('raise TypeError("strides mismatch on '
                                     "argument '%s' "
                                     "(after removing unit length dims, "
-                                    "got: %%s, expected: %%s)\" "
+                                    'got: %%s, expected: %%s)" '
                                     "%% (_lpy_got, _lpy_expected))"
                                     % arg.name)
 
@@ -559,7 +559,7 @@ class ExecutionWrapperGeneratorBase(object):
                             gen("raise ValueError(\"Argument '%s' does not "
                                     "allow arrays with offsets. Try passing "
                                     "default_offset=loopy.auto to make_kernel()."
-                                    "\")" % arg.name)
+                                    '")' % arg.name)
                             gen("")
 
             # }}}
