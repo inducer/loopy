@@ -317,17 +317,17 @@ def generate_pairwise_schedules(
 
 def get_lex_order_map_for_sched_space(schedule):
     """Return an :class:`islpy.BasicMap` that maps each point in a
-        lexicographic ordering to every point that is
-        lexocigraphically greater.
+        lexicographic ordering to every point that occurs later.
 
     :arg schedule: A :class:`islpy.Map` representing the ordering of
         statement instances as a mapping from statement instances to
         lexicographic time.
 
-    :returns: An :class:`islpy.BasicMap` that maps each point in a
-        lexicographic ordering to every point that is
-        lexocigraphically greater with the dimension number and names
-        matching the output dimension of `schedule`.
+    :returns: An :class:`islpy.BasicMap` representing a lexicographic
+        ordering as a mapping from each point in lexicographic time
+        to every point that occurs later in lexicographic time, with
+        the dimension count and names matching the output dimension
+        of `schedule`.
 
     """
 

@@ -88,16 +88,19 @@ def ensure_dim_names_match_and_align(obj_map, tgt_map):
 
 
 def append_marker_to_isl_map_var_names(old_isl_map, dim_type, marker="'"):
-    """Return an isl_map with marker appended to
-        dim_type dimension names.
+    """Return an :class:`islpy.Map` with a marker appended to the specified
+    dimension names.
 
-    :arg old_isl_map: A :class:`islpy.Map`.
+    :arg old_isl_map: An :class:`islpy.Map`.
 
-    :arg dim_type: A :class:`islpy.dim_type`, i.e., an :class:`int`,
+    :arg dim_type: An :class:`islpy.dim_type`, i.e., an :class:`int`,
         specifying the dimension to be marked.
 
-    :returns: A :class:`islpy.Map` matching `old_isl_map` with
-        apostrophes appended to dim_type dimension names.
+    :arg marker: A :class:`str` to be appended to the specified dimension
+        names. If not provided, `marker` defaults to an apostrophe.
+
+    :returns: An :class:`islpy.Map` matching `old_isl_map` with
+        `marker` appended to the `dim_type` dimension names.
 
     """
 
@@ -109,10 +112,8 @@ def append_marker_to_isl_map_var_names(old_isl_map, dim_type, marker="'"):
 
 
 def append_marker_to_strings(strings, marker="'"):
-    if not isinstance(strings, list):
-        raise ValueError("append_marker_to_strings did not receive a list")
-    else:
-        return [s+marker for s in strings]
+    assert isinstance(strings, list)
+    return [s+marker for s in strings]
 
 
 def sorted_union_of_names_in_isl_sets(
