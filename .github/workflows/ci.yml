@@ -63,7 +63,7 @@ jobs:
                 ( test_py_project )
 
     examples:
-        name: Conda Pytest
+        name: Conda Examples
         runs-on: ubuntu-latest
         steps:
         -   uses: actions/checkout@v2
