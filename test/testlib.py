@@ -57,15 +57,15 @@ class SeparateTemporariesPreambleTestMangler(
 
         # check types
         if len(arg_dtypes) != len(arg_dtypes):
-            raise Exception('Unexpected number of arguments provided to mangler '
-                            '{}, expected {}, got {}'.format(
+            raise Exception("Unexpected number of arguments provided to mangler "
+                            "{}, expected {}, got {}".format(
                                 self.func_name, len(self.func_arg_dtypes),
                                 len(arg_dtypes)))
 
         for i, (d1, d2) in enumerate(zip(self.func_arg_dtypes, arg_dtypes)):
             if not __compare(d1, d2):
-                raise Exception('Argument at index {} for mangler {} does not '
-                                'match expected dtype.  Expected {}, got {}'.
+                raise Exception("Argument at index {} for mangler {} does not "
+                                "match expected dtype.  Expected {}, got {}".
                                 format(i, self.func_name, str(d1), str(d2)))
 
         # get target for creation
@@ -85,7 +85,7 @@ class SeparateTemporariesPreambleTestPreambleGenerator(
         func_match = next(
             (x for x in preamble_info.seen_functions
              if x.name == self.func_name), None)
-        desc = 'custom_funcs_indirect'
+        desc = "custom_funcs_indirect"
         if func_match is not None:
             from loopy.types import to_loopy_type
             # check types
@@ -93,7 +93,7 @@ class SeparateTemporariesPreambleTestPreambleGenerator(
                     func_match.arg_dtypes:
                 # if match, create our temporary
                 var = lp.TemporaryVariable(
-                    'lookup', initializer=self.arr, dtype=self.arr.dtype,
+                    "lookup", initializer=self.arr, dtype=self.arr.dtype,
                     shape=self.arr.shape,
                     address_space=lp.AddressSpace.GLOBAL, read_only=True)
                 # and code
@@ -127,7 +127,7 @@ class SeparateTemporariesPreambleTestPreambleGenerator(
             decl = Initializer(decl, generate_array_literal(
                 codegen_state, var, var.initializer))
         # return generated code
-        yield (desc, '\n'.join([str(decl), code]))
+        yield (desc, "\n".join([str(decl), code]))
 
 # }}}
 

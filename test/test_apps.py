@@ -47,7 +47,7 @@ from loopy.diagnostic import LoopyError
 
 __all__ = [
         "pytest_generate_tests",
-        "cl"  # 'cl.create_some_context'
+        "cl"  # "cl.create_some_context"
         ]
 
 
@@ -102,10 +102,10 @@ def test_convolution(ctx_factory):
         knl = lp.split_iname(knl, "im_y", 16, outer_tag="g.1", inner_tag="l.1")
         knl = lp.tag_inames(knl, dict(ifeat="g.2"))
         knl = lp.add_prefetch(knl, "f[ifeat,:,:,:]",
-                fetch_outer_inames='im_x_outer, im_y_outer, ifeat',
+                fetch_outer_inames="im_x_outer, im_y_outer, ifeat",
                 default_tag="l.auto")
         knl = lp.add_prefetch(knl, "img", "im_x_inner, im_y_inner, f_x, f_y",
-                fetch_outer_inames='iimg, im_x_outer, im_y_outer, ifeat, icolor',
+                fetch_outer_inames="iimg, im_x_outer, im_y_outer, ifeat, icolor",
                 default_tag="l.auto")
         return knl
 
@@ -592,12 +592,12 @@ def test_poisson_fem(ctx_factory):
     knl = lp.prioritize_loops(knl, ["c", "j", "i", "k"])
 
     def variant_1(knl):
-        knl = lp.precompute(knl, "dpsi", "i,k,ell", default_tag='for')
+        knl = lp.precompute(knl, "dpsi", "i,k,ell", default_tag="for")
         knl = lp.prioritize_loops(knl, "c,i,j")
         return knl
 
     def variant_2(knl):
-        knl = lp.precompute(knl, "dpsi", "i,ell", default_tag='for')
+        knl = lp.precompute(knl, "dpsi", "i,ell", default_tag="for")
         knl = lp.prioritize_loops(knl, "c,i,j")
         return knl
 
@@ -633,10 +633,10 @@ def test_domain_tree_nesting():
 
     TV = lp.TemporaryVariable  # noqa
 
-    knl = lp.make_kernel(['{[i]: 0 <= i < 12}',
-                    '{[j]: 0 <= j < 100}',
-                    '{[a_count]: 0 <= a_count < a_end}',
-                    '{[b_count]: 0 <= b_count < b_end}'],
+    knl = lp.make_kernel(["{[i]: 0 <= i < 12}",
+                    "{[j]: 0 <= j < 100}",
+                    "{[a_count]: 0 <= a_count < a_end}",
+                    "{[b_count]: 0 <= b_count < b_end}"],
     """
     for j
         for i
@@ -655,15 +655,15 @@ def test_domain_tree_nesting():
     end
     """,
     [
-        TV('out_map', initializer=out_map, read_only=True, address_space=AS.PRIVATE),
-        TV('if_val', initializer=if_val, read_only=True, address_space=AS.PRIVATE),
-        TV('vals', initializer=vals, read_only=True, address_space=AS.PRIVATE),
-        TV('num_vals', initializer=num_vals, read_only=True,
+        TV("out_map", initializer=out_map, read_only=True, address_space=AS.PRIVATE),
+        TV("if_val", initializer=if_val, read_only=True, address_space=AS.PRIVATE),
+        TV("vals", initializer=vals, read_only=True, address_space=AS.PRIVATE),
+        TV("num_vals", initializer=num_vals, read_only=True,
            address_space=AS.PRIVATE),
-        TV('num_vals_offset', initializer=num_vals_offset, read_only=True,
+        TV("num_vals_offset", initializer=num_vals_offset, read_only=True,
            address_space=AS.PRIVATE),
-        lp.GlobalArg('B', shape=(100, 31), dtype=np.float64),
-        lp.GlobalArg('out', shape=(100, 12), dtype=np.float64)])
+        lp.GlobalArg("B", shape=(100, 31), dtype=np.float64),
+        lp.GlobalArg("out", shape=(100, 12), dtype=np.float64)])
 
     parents_per_domain = knl.parents_per_domain()
 

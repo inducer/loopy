@@ -102,7 +102,7 @@ def _add_unique_dim_name(name, dim_names):
     return (ng(name),) + tuple(dim_names)
 
 
-def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
+def to_batched(kernel, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
         sequential=False):
     """Takes in a kernel that carries out an operation and returns a kernel
     that carries out a batch of these operations.
@@ -123,7 +123,7 @@ def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
 
     from pymbolic import var
 
-    vng = knl.get_var_name_generator()
+    vng = kernel.get_var_name_generator()
     batch_iname = vng(batch_iname_prefix)
     batch_iname_expr = var(batch_iname)
 
@@ -136,16 +136,16 @@ def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
 
     if not isinstance(nbatches, int):
         batch_dom_str = "[%s] -> " % nbatches + batch_dom_str
-        new_args.append(ValueArg(nbatches, dtype=knl.index_dtype))
+        new_args.append(ValueArg(nbatches, dtype=kernel.index_dtype))
 
         nbatches_expr = var(nbatches)
     else:
         nbatches_expr = nbatches
 
     batch_domain = isl.BasicSet(batch_dom_str)
-    new_domains = [batch_domain] + knl.domains
+    new_domains = [batch_domain] + kernel.domains
 
-    for arg in knl.args:
+    for arg in kernel.args:
         if arg.name in batch_varying_args:
             if isinstance(arg, ValueArg):
                 arg = ArrayArg(arg.name, arg.dtype, shape=(nbatches_expr,),
@@ -158,14 +158,14 @@ def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
 
         new_args.append(arg)
 
-    knl = knl.copy(
+    kernel = kernel.copy(
             domains=new_domains,
             args=new_args)
 
     if not sequential:
         new_temps = {}
 
-        for temp in six.itervalues(knl.temporary_variables):
+        for temp in six.itervalues(kernel.temporary_variables):
             if temp_needs_batching_if_not_sequential(temp, batch_varying_args):
                 new_temps[temp.name] = temp.copy(
                         shape=(nbatches_expr,) + temp.shape,
@@ -174,19 +174,19 @@ def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
             else:
                 new_temps[temp.name] = temp
 
-        knl = knl.copy(temporary_variables=new_temps)
+        kernel = kernel.copy(temporary_variables=new_temps)
     else:
         import loopy as lp
         from loopy.kernel.data import ForceSequentialTag
-        knl = lp.tag_inames(knl, [(batch_iname, ForceSequentialTag())])
+        kernel = lp.tag_inames(kernel, [(batch_iname, ForceSequentialTag())])
 
     rule_mapping_context = SubstitutionRuleMappingContext(
-            knl.substitutions, vng)
+            kernel.substitutions, vng)
     bvc = _BatchVariableChanger(rule_mapping_context,
-            knl, batch_varying_args, batch_iname_expr,
+            kernel, batch_varying_args, batch_iname_expr,
             sequential=sequential)
     kernel = rule_mapping_context.finish_kernel(
-            bvc.map_kernel(knl))
+            bvc.map_kernel(kernel))
 
     batch_iname_set = frozenset([batch_iname])
     kernel = kernel.copy(

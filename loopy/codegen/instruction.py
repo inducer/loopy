@@ -208,7 +208,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
         else:
             printf_args_str = ""
 
-        printf_insn = S("printf(\"%s\\n\"%s)" % (
+        printf_insn = S('printf("%s\\n"%s)' % (
                     printf_format, printf_args_str))
 
         from cgen import Block

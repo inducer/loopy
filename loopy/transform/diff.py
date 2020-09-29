@@ -368,7 +368,7 @@ class DifferentiationContext(object):
 
 # {{{ entrypoint
 
-def diff_kernel(knl, diff_outputs, by, diff_iname_prefix="diff_i",
+def diff_kernel(kernel, diff_outputs, by, diff_iname_prefix="diff_i",
         batch_axes_in_by=frozenset(), copy_outputs=set()):
     """
 
@@ -380,22 +380,22 @@ def diff_kernel(knl, diff_outputs, by, diff_iname_prefix="diff_i",
     """
 
     from loopy.kernel.creation import apply_single_writer_depencency_heuristic
-    knl = apply_single_writer_depencency_heuristic(knl, warn_if_used=True)
+    kernel = apply_single_writer_depencency_heuristic(kernel, warn_if_used=True)
 
     if isinstance(diff_outputs, str):
         diff_outputs = [
                 dout.strip() for dout in diff_outputs.split(",")
                 if dout.strip()]
 
-    by_arg = knl.arg_dict[by]
+    by_arg = kernel.arg_dict[by]
     additional_shape = by_arg.shape
 
-    var_name_gen = knl.get_var_name_generator()
+    var_name_gen = kernel.get_var_name_generator()
 
     # {{{ differentiate instructions
 
     diff_context = DifferentiationContext(
-            knl, var_name_gen, by, diff_iname_prefix=diff_iname_prefix,
+            kernel, var_name_gen, by, diff_iname_prefix=diff_iname_prefix,
             additional_shape=additional_shape)
 
     result = {}

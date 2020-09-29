@@ -117,7 +117,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
 
                 subscript, = access_info.subscripts
                 result = var(access_info.array_name)[
-                        var("programIndex") + self.rec(lsize*subscript, 'i')]
+                        var("programIndex") + self.rec(lsize*subscript, "i")]
 
                 if access_info.vector_index is not None:
                     return self.kernel.target.add_vector_access(
@@ -475,7 +475,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                     "streaming_store(%s + %s, %s)"
                     % (
                         access_info.array_name,
-                        ecm(flattened_sum(new_terms), PREC_NONE, 'i'),
+                        ecm(flattened_sum(new_terms), PREC_NONE, "i"),
                         rhs_code))
 
         # }}}

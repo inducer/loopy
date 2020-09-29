@@ -38,7 +38,7 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl \
 
 __all__ = [
         "pytest_generate_tests",
-        "cl"  # 'cl.create_some_context'
+        "cl"  # "cl.create_some_context"
         ]
 
 
@@ -317,10 +317,10 @@ def test_matmul(ctx_factory, buffer_inames):
     knl = lp.extract_subst(knl, "a_acc", "a[i1,i2]", parameters="i1, i2")
     knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")
     knl = lp.precompute(knl, "a_acc", "k_inner,i_inner",
-            precompute_outer_inames='i_outer, j_outer, k_outer',
+            precompute_outer_inames="i_outer, j_outer, k_outer",
             default_tag="l.auto")
     knl = lp.precompute(knl, "b_acc", "j_inner,k_inner",
-            precompute_outer_inames='i_outer, j_outer, k_outer',
+            precompute_outer_inames="i_outer, j_outer, k_outer",
             default_tag="l.auto")
 
     knl = lp.buffer_array(knl, "c", buffer_inames=buffer_inames,
