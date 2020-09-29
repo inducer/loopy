@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2015 James Stevens"
 
 __license__ = """
@@ -21,8 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six
 
 import loopy as lp
 from islpy import dim_type
@@ -62,7 +58,7 @@ __doc__ = """
 
 # {{{ GuardedPwQPolynomial
 
-class GuardedPwQPolynomial(object):
+class GuardedPwQPolynomial:
     def __init__(self, pwqpolynomial, valid_domain):
         self.pwqpolynomial = pwqpolynomial
         self.valid_domain = valid_domain
@@ -122,7 +118,7 @@ class GuardedPwQPolynomial(object):
 
 # {{{ ToCountMap
 
-class ToCountMap(object):
+class ToCountMap:
     """Maps any type of key to an arithmetic type.
 
     .. automethod:: filter_by
@@ -142,26 +138,26 @@ class ToCountMap(object):
 
     def __add__(self, other):
         result = self.count_map.copy()
-        for k, v in six.iteritems(other.count_map):
+        for k, v in other.count_map.items():
             result[k] = self.count_map.get(k, 0) + v
         return ToCountMap(result, self.val_type)
 
     def __radd__(self, other):
         if other != 0:
             raise ValueError("ToCountMap: Attempted to add ToCountMap "
-                                "to {0} {1}. ToCountMap may only be added to "
+                                "to {} {}. ToCountMap may only be added to "
                                 "0 and other ToCountMap objects."
                                 .format(type(other), other))
         return self
 
     def __mul__(self, other):
         if isinstance(other, GuardedPwQPolynomial):
-            return ToCountMap(dict(
-                (index, self.count_map[index]*other)
-                for index in self.keys()))
+            return ToCountMap({
+                index: self.count_map[index]*other
+                for index in self.keys()})
         else:
             raise ValueError("ToCountMap: Attempted to multiply "
-                                "ToCountMap by {0} {1}."
+                                "ToCountMap by {} {}."
                                 .format(type(other), other))
 
     __rmul__ = __mul__
@@ -201,9 +197,9 @@ class ToCountMap(object):
         return ToCountMap(dict(self.count_map), self.val_type)
 
     def with_set_attributes(self, **kwargs):
-        return ToCountMap(dict(
-            (key.copy(**kwargs), val)
-            for key, val in six.iteritems(self.count_map)),
+        return ToCountMap({
+            key.copy(**kwargs): val
+            for key, val in self.count_map.items()},
             self.val_type)
 
     def filter_by(self, **kwargs):
@@ -455,7 +451,7 @@ class ToCountMap(object):
 def stringify_stats_mapping(m):
     result = ""
     for key in sorted(m.keys(), key=lambda k: str(k)):
-        result += ("%s : %s\n" % (key, m[key]))
+        result += ("{} : {}\n".format(key, m[key]))
     return result
 
 
@@ -534,7 +530,7 @@ class Op(Record):
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
-        return "Op(%s, %s, %s)" % (self.dtype, self.name, self.count_granularity)
+        return f"Op({self.dtype}, {self.name}, {self.count_granularity})"
 
 # }}}
 
@@ -631,13 +627,13 @@ class MemAccess(Record):
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
-        return "MemAccess(%s, %s, %s, %s, %s, %s, %s, %s)" % (
+        return "MemAccess({}, {}, {}, {}, {}, {}, {}, {})".format(
             self.mtype,
             self.dtype,
             None if self.lid_strides is None else dict(
-                sorted(six.iteritems(self.lid_strides))),
+                sorted(self.lid_strides.items())),
             None if self.gid_strides is None else dict(
-                sorted(six.iteritems(self.gid_strides))),
+                sorted(self.gid_strides.items())),
             self.direction,
             self.variable,
             self.variable_tag,
@@ -898,7 +894,7 @@ def _get_lid_and_gid_strides(knl, array, index):
         else:
             dim_tags = array.dim_tags
 
-        for tag, iname in six.iteritems(tag_to_iname_dict):
+        for tag, iname in tag_to_iname_dict.items():
             total_iname_stride = 0
             # find total stride of this iname for each axis
             for idx, axis_tag in zip(index, dim_tags):
@@ -977,8 +973,8 @@ class LocalMemAccessCounter(MemAccessCounter):
                 sub_map[MemAccess(
                         mtype="local",
                         dtype=dtype,
-                        lid_strides=dict(sorted(six.iteritems(lid_strides))),
-                        gid_strides=dict(sorted(six.iteritems(gid_strides))),
+                        lid_strides=dict(sorted(lid_strides.items())),
+                        gid_strides=dict(sorted(gid_strides.items())),
                         variable=name,
                         count_granularity=CountGranularity.SUBGROUP)] = 1
 
@@ -1052,8 +1048,8 @@ class GlobalMemAccessCounter(MemAccessCounter):
         return ToCountMap({MemAccess(
                             mtype="global",
                             dtype=self.type_inf(expr),
-                            lid_strides=dict(sorted(six.iteritems(lid_strides))),
-                            gid_strides=dict(sorted(six.iteritems(gid_strides))),
+                            lid_strides=dict(sorted(lid_strides.items())),
+                            gid_strides=dict(sorted(gid_strides.items())),
                             variable=name,
                             variable_tag=var_tag,
                             count_granularity=count_granularity
@@ -1078,7 +1074,7 @@ class AccessFootprintGatherer(CombineMapper):
         def merge_dicts(a, b):
             result = a.copy()
 
-            for var_name, footprint in six.iteritems(b):
+            for var_name, footprint in b.items():
                 if var_name in result:
                     result[var_name] = result[var_name] | footprint
                 else:
@@ -1437,7 +1433,7 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
     for insn in knl.instructions:
         if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
             ops = op_counter(insn.assignee) + op_counter(insn.expression)
-            for key, val in six.iteritems(ops.count_map):
+            for key, val in ops.count_map.items():
                 op_map = (
                         op_map
                         + ToCountMap({key: val})
@@ -1453,13 +1449,13 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
 
     if numpy_types:
         return ToCountMap(
-                    init_dict=dict(
-                        (Op(
+                    init_dict={
+                        Op(
                             dtype=op.dtype.numpy_dtype,
                             name=op.name,
-                            count_granularity=op.count_granularity),
-                        ct)
-                        for op, ct in six.iteritems(op_map.count_map)),
+                            count_granularity=op.count_granularity):
+                        ct
+                        for op, ct in op_map.count_map.items()},
                     val_type=op_map.val_type
                     )
     else:
@@ -1635,7 +1631,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                     + access_counter_l(insn.assignee)
                     ).with_set_attributes(direction="store")
 
-            for key, val in six.iteritems(access_expr.count_map):
+            for key, val in access_expr.count_map.items():
 
                 access_map = (
                         access_map
@@ -1644,7 +1640,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                                           count_redundant_work,
                                           key.count_granularity))
 
-            for key, val in six.iteritems(access_assignee.count_map):
+            for key, val in access_assignee.count_map.items():
 
                 access_map = (
                         access_map
@@ -1661,8 +1657,8 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
 
     if numpy_types:
         return ToCountMap(
-                    init_dict=dict(
-                        (MemAccess(
+                    init_dict={
+                        MemAccess(
                             mtype=mem_access.mtype,
                             dtype=mem_access.dtype.numpy_dtype,
                             lid_strides=mem_access.lid_strides,
@@ -1670,9 +1666,9 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                             direction=mem_access.direction,
                             variable=mem_access.variable,
                             variable_tag=mem_access.variable_tag,
-                            count_granularity=mem_access.count_granularity),
-                        ct)
-                        for mem_access, ct in six.iteritems(access_map.count_map)),
+                            count_granularity=mem_access.count_granularity):
+                        ct
+                        for mem_access, ct in access_map.count_map.items()},
                     val_type=access_map.val_type
                     )
     else:
@@ -1820,10 +1816,10 @@ def gather_access_footprints(kernel, ignore_uncountable=False):
 
     result = {}
 
-    for vname, footprint in six.iteritems(write_footprints):
+    for vname, footprint in write_footprints.items():
         result[(vname, "write")] = footprint
 
-    for vname, footprint in six.iteritems(read_footprints):
+    for vname, footprint in read_footprints.items():
         result[(vname, "read")] = footprint
 
     return result

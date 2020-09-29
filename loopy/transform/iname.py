@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,9 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-import six
-from six.moves import zip
 
 import islpy as isl
 from islpy import dim_type
@@ -124,7 +119,7 @@ def prioritize_loops(kernel, loop_priority):
 class _InameSplitter(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, within,
             split_iname, outer_iname, inner_iname, replacement_index):
-        super(_InameSplitter, self).__init__(rule_mapping_context)
+        super().__init__(rule_mapping_context)
 
         self.within = within
 
@@ -149,7 +144,7 @@ class _InameSplitter(RuleAwareIdentityMapper):
                         self.rec(expr.expr, expn_state),
                         expr.allow_simultaneous)
         else:
-            return super(_InameSplitter, self).map_reduction(expr, expn_state)
+            return super().map_reduction(expr, expn_state)
 
     def map_variable(self, expr, expn_state):
         if (expr.name == self.split_iname
@@ -159,7 +154,7 @@ class _InameSplitter(RuleAwareIdentityMapper):
                     expn_state.instruction)):
             return self.replacement_index
         else:
-            return super(_InameSplitter, self).map_variable(expr, expn_state)
+            return super().map_variable(expr, expn_state)
 
 
 def _split_iname_backend(kernel, split_iname,
@@ -464,7 +459,7 @@ def chunk_iname(kernel, split_iname, num_chunks,
 class _InameJoiner(RuleAwareSubstitutionMapper):
     def __init__(self, rule_mapping_context, within, subst_func,
             joined_inames, new_iname):
-        super(_InameJoiner, self).__init__(rule_mapping_context,
+        super().__init__(rule_mapping_context,
                 subst_func, within)
 
         self.joined_inames = set(joined_inames)
@@ -495,7 +490,7 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
                         self.rec(expr.expr, expn_state),
                         expr.allow_simultaneous)
         else:
-            return super(_InameJoiner, self).map_reduction(expr, expn_state)
+            return super().map_reduction(expr, expn_state)
 
 
 def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
@@ -628,7 +623,7 @@ def untag_inames(kernel, iname_to_untag, tag_type):
 
     knl_iname_to_tags = kernel.iname_to_tags.copy()
     old_tags = knl_iname_to_tags.get(iname_to_untag, frozenset())
-    old_tags = set(tag for tag in old_tags if not isinstance(tag, tag_type))
+    old_tags = {tag for tag in old_tags if not isinstance(tag, tag_type)}
 
     if old_tags:
         knl_iname_to_tags[iname_to_untag] = old_tags
@@ -674,7 +669,7 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
     # convert dict to list of tuples
     if isinstance(iname_to_tag, dict):
-        iname_to_tag = list(six.iteritems(iname_to_tag))
+        iname_to_tag = list(iname_to_tag.items())
 
     # flatten iterables of tags for each iname
 
@@ -744,7 +739,7 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
     # }}}
 
     knl_iname_to_tags = kernel.iname_to_tags.copy()
-    for iname, new_tag in six.iteritems(iname_to_tag):
+    for iname, new_tag in iname_to_tag.items():
         if not new_tag:
             continue
 
@@ -777,10 +772,10 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 class _InameDuplicator(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context,
             old_to_new, within):
-        super(_InameDuplicator, self).__init__(rule_mapping_context)
+        super().__init__(rule_mapping_context)
 
         self.old_to_new = old_to_new
-        self.old_inames_set = set(six.iterkeys(old_to_new))
+        self.old_inames_set = set(old_to_new.keys())
         self.within = within
 
     def map_reduction(self, expr, expn_state):
@@ -800,7 +795,7 @@ class _InameDuplicator(RuleAwareIdentityMapper):
                         self.rec(expr.expr, expn_state),
                         expr.allow_simultaneous)
         else:
-            return super(_InameDuplicator, self).map_reduction(expr, expn_state)
+            return super().map_reduction(expr, expn_state)
 
     def map_variable(self, expr, expn_state):
         new_name = self.old_to_new.get(expr.name)
@@ -811,7 +806,7 @@ class _InameDuplicator(RuleAwareIdentityMapper):
                     expn_state.kernel,
                     expn_state.instruction,
                     expn_state.stack)):
-            return super(_InameDuplicator, self).map_variable(expr, expn_state)
+            return super().map_variable(expr, expn_state)
         else:
             from pymbolic import var
             return var(new_name)
@@ -932,8 +927,7 @@ def _get_iname_duplication_options(insn_iname_sets, old_common_inames=frozenset(
         common = common.union(old_common_inames)
 
         # Go into recursion
-        for option in _get_iname_duplication_options(insn_iname_sets, common):
-            yield option
+        yield from _get_iname_duplication_options(insn_iname_sets, common)
         # Do not yield anything beyond here!
         return
 
@@ -960,9 +954,8 @@ def _get_iname_duplication_options(insn_iname_sets, old_common_inames=frozenset(
     if len(partitioning) > 1:
         for part in partitioning:
             working_set = frozenset(s for s in insn_iname_sets if s <= part)
-            for option in _get_iname_duplication_options(working_set,
-                                                         old_common_inames):
-                yield option
+            yield from _get_iname_duplication_options(working_set,
+                                                         old_common_inames)
     # If exactly one set was found, an iname duplication is necessary
     elif len(partitioning) == 1:
         inames, = partitioning
@@ -1029,10 +1022,10 @@ def get_iname_duplication_options(kernel, use_boostable_into=None):
 
     from loopy.kernel.data import ConcurrentTag
 
-    concurrent_inames = set(
+    concurrent_inames = {
             iname
             for iname in kernel.all_inames()
-            if kernel.iname_tags_of_type(iname, ConcurrentTag))
+            if kernel.iname_tags_of_type(iname, ConcurrentTag)}
 
     # First we extract the minimal necessary information from the kernel
     insn_iname_sets = (
@@ -1253,7 +1246,7 @@ def remove_any_newly_unused_inames(transformation_func):
 
 class _ReductionSplitter(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, within, inames, direction):
-        super(_ReductionSplitter, self).__init__(
+        super().__init__(
                 rule_mapping_context)
 
         self.within = within
@@ -1288,7 +1281,7 @@ class _ReductionSplitter(RuleAwareIdentityMapper):
             else:
                 assert False
         else:
-            return super(_ReductionSplitter, self).map_reduction(expr, expn_state)
+            return super().map_reduction(expr, expn_state)
 
 
 def _split_reduction(kernel, inames, direction, within=None):
@@ -1426,9 +1419,9 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
     from pymbolic.algorithm import solve_affine_equations_for
     old_inames_to_expr = solve_affine_equations_for(old_inames, equations)
 
-    subst_dict = dict(
-            (v.name, expr)
-            for v, expr in old_inames_to_expr.items())
+    subst_dict = {
+            v.name: expr
+            for v, expr in old_inames_to_expr.items()}
 
     var_name_gen = kernel.get_var_name_generator()
 
@@ -1484,9 +1477,9 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
                 if dom_old_inames:
                     dom_equations.append((lhs, rhs))
 
-                this_eqn_old_iname_dim_types = set(
+                this_eqn_old_iname_dim_types = {
                         dom_var_dict[old_iname][0]
-                        for old_iname in eqn_deps & old_inames_set)
+                        for old_iname in eqn_deps & old_inames_set}
 
                 if this_eqn_old_iname_dim_types:
                     if len(this_eqn_old_iname_dim_types) > 1:
@@ -1630,7 +1623,7 @@ def separate_loop_head_tail_slab(kernel, iname, head_it_count, tail_it_count):
 
 class _ReductionInameUniquifier(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, inames, within):
-        super(_ReductionInameUniquifier, self).__init__(rule_mapping_context)
+        super().__init__(rule_mapping_context)
 
         self.inames = inames
         self.old_to_new = []
@@ -1682,7 +1675,7 @@ class _ReductionInameUniquifier(RuleAwareIdentityMapper):
                         expn_state),
                     expr.allow_simultaneous)
         else:
-            return super(_ReductionInameUniquifier, self).map_reduction(
+            return super().map_reduction(
                     expr, expn_state)
 
 
@@ -1825,7 +1818,7 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
                 for iname, tags in kernel.iname_to_tags.items()
                 if ith_local_axes_tag in tags]
         if not inames:
-            raise LoopyError("Unused local hw axes {}.".format(i))
+            raise LoopyError(f"Unused local hw axes {i}.")
 
         local_axes_to_inames.append(inames[0] if len(inames) == 1 else None)
 
@@ -1835,7 +1828,7 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
                 for iname, tags in kernel.iname_to_tags.items()
                 if ith_group_axes_tag in tags]
         if not inames:
-            raise LoopyError("Unused group hw axes {}.".format(i))
+            raise LoopyError(f"Unused group hw axes {i}.")
 
         group_axes_to_inames.append(inames[0] if len(inames) == 1 else None)
 

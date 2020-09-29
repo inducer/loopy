@@ -1,6 +1,5 @@
 """Library integration with Random123."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"
 
@@ -62,12 +61,12 @@ RNG_VARIANTS = [
         _threefry_base_info.copy(width=4, bits=64),
         ]
 
-FUNC_NAMES_TO_RNG = dict(
-        (v.full_name + suffix, v)
+FUNC_NAMES_TO_RNG = {
+        v.full_name + suffix: v
         for v in RNG_VARIANTS
         for suffix in [
             "", "_f32", "_f64",
-            ])
+            ]}
 
 # }}}
 

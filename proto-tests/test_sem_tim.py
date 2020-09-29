@@ -1,5 +1,3 @@
-from __future__ import division
-
 import numpy as np
 import pyopencl as cl
 import loopy as lp

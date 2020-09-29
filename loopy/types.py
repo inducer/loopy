@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six  # noqa
 import numpy as np
 
 from loopy.diagnostic import LoopyError
@@ -40,7 +37,7 @@ __doc__ = """
 """
 
 
-class LoopyType(object):
+class LoopyType:
     """
     Abstract class for dtypes of variables encountered in a
     :class:`loopy.LoopKernel`.
@@ -156,7 +153,7 @@ class NumpyType(LoopyType):
             else:
                 return any(
                         dtype_involves_complex(f[0])
-                        for f in six.itervalues(dtype.fields))
+                        for f in dtype.fields.values())
 
         return dtype_involves_complex(self.dtype)
 

@@ -1,6 +1,5 @@
 """OpenCL target independent of PyOpenCL."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -48,7 +47,7 @@ class DTypeRegistryWrapperWithAtomics(DTypeRegistryWrapper):
                 return super(self.wrapped_registry.get_or_register_dtype(
                         names, NumpyType(dtype.dtype)))
 
-        return super(DTypeRegistryWrapperWithAtomics, self).get_or_register_dtype(
+        return super().get_or_register_dtype(
                 names, dtype)
 
 
@@ -59,7 +58,7 @@ class DTypeRegistryWrapperWithCL1Atomics(DTypeRegistryWrapperWithAtomics):
         if isinstance(dtype, AtomicNumpyType):
             return "volatile " + self.wrapped_registry.dtype_to_ctype(dtype)
         else:
-            return super(DTypeRegistryWrapperWithCL1Atomics, self).dtype_to_ctype(
+            return super().dtype_to_ctype(
                     dtype)
 
 # }}}
@@ -148,8 +147,8 @@ _CL_SIMPLE_MULTI_ARG_FUNCTIONS = {
         }
 
 
-VECTOR_LITERAL_FUNCS = dict(
-        ("make_%s%d" % (name, count), (name, dtype, count))
+VECTOR_LITERAL_FUNCS = {
+        "make_%s%d" % (name, count): (name, dtype, count)
         for name, dtype in [
             ("char", np.int8),
             ("uchar", np.uint8),
@@ -163,7 +162,7 @@ VECTOR_LITERAL_FUNCS = dict(
             ("double", np.float64),
             ]
         for count in [2, 3, 4, 8, 16]
-        )
+        }
 
 
 def opencl_function_mangler(kernel, name, arg_dtypes):
@@ -315,7 +314,7 @@ class OpenCLTarget(CFamilyTarget):
             for floating point), ``"cl1-exch"`` (OpenCL 1.1 atomics, using
             double-exchange for floating point--not yet supported).
         """
-        super(OpenCLTarget, self).__init__()
+        super().__init__()
 
         if atomics_flavor is None:
             atomics_flavor = "cl1"
@@ -371,11 +370,11 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                     opencl_function_mangler,
                     partial(c_math_mangler, modify_name=False)
                 ] +
-                super(OpenCLCASTBuilder, self).function_manglers())
+                super().function_manglers())
 
     def symbol_manglers(self):
         return (
-                super(OpenCLCASTBuilder, self).symbol_manglers() + [
+                super().symbol_manglers() + [
                     opencl_symbol_mangler
                     ])
 
@@ -383,7 +382,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         from loopy.library.reduction import reduction_preamble_generator
 
         return (
-                super(OpenCLCASTBuilder, self).preamble_generators() + [
+                super().preamble_generators() + [
                     opencl_preamble_generator,
                     reduction_preamble_generator,
                     ])
@@ -394,7 +393,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     def get_function_declaration(self, codegen_state, codegen_result,
             schedule_index):
-        fdecl = super(OpenCLCASTBuilder, self).get_function_declaration(
+        fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
         from loopy.target.c import FunctionDeclarationWrapper
@@ -453,7 +452,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
             mem_kind = mem_kind.upper()
 
             from cgen import Statement
-            return Statement("barrier(CLK_%s_MEM_FENCE)%s" % (mem_kind, comment))
+            return Statement(f"barrier(CLK_{mem_kind}_MEM_FENCE){comment}")
         elif synchronization_kind == "global":
             raise LoopyError("OpenCL does not have global barriers")
         else:
@@ -478,13 +477,13 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         from loopy.kernel.data import AddressSpace
 
         if mem_address_space == AddressSpace.LOCAL:
-            return CLLocal(super(OpenCLCASTBuilder, self).get_array_arg_decl(
+            return CLLocal(super().get_array_arg_decl(
                 name, mem_address_space, shape, dtype, is_written))
         elif mem_address_space == AddressSpace.PRIVATE:
-            return super(OpenCLCASTBuilder, self).get_array_arg_decl(
+            return super().get_array_arg_decl(
                 name, mem_address_space, shape, dtype, is_written)
         elif mem_address_space == AddressSpace.GLOBAL:
-            return CLGlobal(super(OpenCLCASTBuilder, self).get_array_arg_decl(
+            return CLGlobal(super().get_array_arg_decl(
                 name, mem_address_space, shape, dtype, is_written))
         else:
             raise ValueError("unexpected array argument scope: %s"
@@ -614,7 +613,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
                 old_val = "*(%s *) &" % ctype + old_val
                 new_val = "*(%s *) &" % ctype + new_val
-                cast_str = "(%s %s *) " % (var_kind, ctype)
+                cast_str = f"({var_kind} {ctype} *) "
 
             return Block([
                 POD(self, NumpyType(lhs_dtype.dtype, target=self.target),

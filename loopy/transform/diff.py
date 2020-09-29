@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
 __license__ = """
@@ -166,7 +164,7 @@ class LoopyDiffMapper(DifferentiationMapper, RuleAwareIdentityMapper):
 
 # {{{ diff context
 
-class DifferentiationContext(object):
+class DifferentiationContext:
     def __init__(self, kernel, var_name_gen, by_name, diff_iname_prefix,
             additional_shape):
         self.kernel = kernel

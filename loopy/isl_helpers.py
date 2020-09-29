@@ -1,6 +1,5 @@
 """isl helpers"""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -24,8 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-from six.moves import range, zip
 
 from loopy.diagnostic import StaticValueFindingError
 
@@ -529,7 +526,7 @@ def _find_noninteracting_dims(obj, dt, idx, other_dt, stop_at=6):
             if len(conn) > 1:
                 connections.append(conn)
 
-    interacting = set([(dt, idx)])
+    interacting = {(dt, idx)}
 
     while True:
         changed_something = False
@@ -552,9 +549,9 @@ def _find_noninteracting_dims(obj, dt, idx, other_dt, stop_at=6):
         if not changed_something:
             break
 
-    return set(range(obj.dim(other_dt))) - set(
+    return set(range(obj.dim(other_dt))) - {
             idx for dt, idx in interacting
-            if dt == other_dt)
+            if dt == other_dt}
 
 
 def _eliminate_noninteracting(obj, dt, idx, other_dt):
