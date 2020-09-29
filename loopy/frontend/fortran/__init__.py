@@ -1,5 +1,3 @@
-from __future__ import division, with_statement
-
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """

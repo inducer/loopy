@@ -1,6 +1,5 @@
 """Loop nest build top-level control/hoisting."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -471,7 +470,7 @@ def build_loop_nest(codegen_state, schedule_index):
                             sched_index_info_entries[0:group_length],
                             inner_codegen_state,
                             done_group_lengths=(
-                                done_group_lengths | set([group_length])))
+                                done_group_lengths | {group_length}))
 
             # gen_code returns a list
 

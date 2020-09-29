@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,9 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-import six
-from six.moves import range, zip
 
 from loopy.symbolic import (
         TaggedVariable, Reduction, LinearSubscript, TypeCast)
@@ -314,7 +309,7 @@ def set_options(kernel, *args, **kwargs):
         from loopy.options import _apply_legacy_map, Options
         kwargs = _apply_legacy_map(Options._legacy_options_map, kwargs)
 
-        for key, val in six.iteritems(kwargs):
+        for key, val in kwargs.items():
             if not hasattr(new_opt, key):
                 raise ValueError("unknown option '%s'" % key)
 
@@ -417,7 +412,7 @@ def set_caching_enabled(flag):
     CACHING_ENABLED = flag
 
 
-class CacheMode(object):
+class CacheMode:
     """A context manager for setting whether :mod:`loopy` is allowed to use
     disk caches.
     """
@@ -464,10 +459,10 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
     shape = ["n%d" % i for i in range(rank)]
     commad_indices = ", ".join(indices)
     bounds = " and ".join(
-            "0<=%s<%s" % (ind, shape_i)
+            f"0<={ind}<{shape_i}"
             for ind, shape_i in zip(indices, shape))
 
-    set_str = "{[%s]: %s}" % (
+    set_str = "{{[{}]: {}}}".format(
                 commad_indices,
                 bounds
                 )

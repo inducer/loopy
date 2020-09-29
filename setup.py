@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 import os
 from setuptools import setup, find_packages
@@ -34,9 +33,7 @@ def find_git_revision(tree_root):
               cwd=tree_root)
     (git_rev, _) = p.communicate()
 
-    import sys
-    if sys.version_info >= (3,):
-        git_rev = git_rev.decode()
+    git_rev = git_rev.decode()
 
     git_rev = git_rev.rstrip()
 
@@ -67,7 +64,7 @@ write_git_revision("loopy")
 setup(name="loo.py",
       version=ver_dic["VERSION_TEXT"],
       description="A code generator for array-based code on CPUs and GPUs",
-      long_description=open("README.rst", "rt").read(),
+      long_description=open("README.rst").read(),
       classifiers=[
           "Development Status :: 4 - Beta",
           "Intended Audience :: Developers",
@@ -92,7 +89,6 @@ setup(name="loo.py",
           "genpy>=2016.1.2",
           "cgen>=2016.1",
           "islpy>=2019.1",
-          "six>=1.8.0",
           "codepy>=2017.1",
           "colorama",
           "Mako",

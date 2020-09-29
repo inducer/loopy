@@ -1,6 +1,5 @@
 """gNUMA differentiation kernel, wrapped up as a test."""
 
-from __future__ import division
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner, Lucas Wilcox"
 
@@ -53,7 +52,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     ctx = ctx_factory()
 
     filename = os.path.join(os.path.dirname(__file__), "strongVolumeKernels.f90")
-    with open(filename, "r") as sourcef:
+    with open(filename) as sourcef:
         source = sourcef.read()
 
     source = source.replace("datafloat", "real*4")

@@ -60,7 +60,7 @@ except ImportError:
 else:
     _cgen_version = cgen.version.VERSION_TEXT
 
-DATA_MODEL_VERSION = "%s-islpy%s-cgen%s-%s-v1" % (
+DATA_MODEL_VERSION = "{}-islpy{}-cgen{}-{}-v1".format(
         VERSION_TEXT, _islpy_version, _cgen_version, _git_rev)
 
 

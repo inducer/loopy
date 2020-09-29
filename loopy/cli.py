@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 import sys
 
 import loopy as lp
@@ -48,7 +46,7 @@ def defines_to_python_code(defines_str):
             raise RuntimeError("#define not understood: '%s'" % line)
 
         result.append(
-                "%s = %s" % (match.group(1), to_python_literal(match.group(2))))
+                "{} = {}".format(match.group(1), to_python_literal(match.group(2))))
 
     return "\n".join(result)
 
@@ -112,7 +110,7 @@ def main():
                 ".f": "fortran",
                 ".f77": "fortran",
                 }.get(ext)
-        with open(args.infile, "r") as infile_fd:
+        with open(args.infile) as infile_fd:
             infile_content = infile_fd.read()
 
     if args.lang is not None:
@@ -143,15 +141,15 @@ def main():
         data_dic["np"] = np
 
         if args.occa_defines:
-            with open(args.occa_defines, "r") as defines_fd:
+            with open(args.occa_defines) as defines_fd:
                 occa_define_code = defines_to_python_code(defines_fd.read())
             exec(compile(occa_define_code, args.occa_defines, "exec"), data_dic)
 
-        with open(args.infile, "r") as infile_fd:
+        with open(args.infile) as infile_fd:
             exec(compile(infile_content, args.infile, "exec"), data_dic)
 
         if args.transform:
-            with open(args.transform, "r") as xform_fd:
+            with open(args.transform) as xform_fd:
                 exec(compile(xform_fd.read(),
                     args.transform, "exec"), data_dic)
 
@@ -169,14 +167,14 @@ def main():
     elif lang in ["fortran", "floopy", "fpp"]:
         pre_transform_code = None
         if args.transform:
-            with open(args.transform, "r") as xform_fd:
+            with open(args.transform) as xform_fd:
                 pre_transform_code = xform_fd.read()
 
         if args.occa_defines:
             if pre_transform_code is None:
                 pre_transform_code = ""
 
-            with open(args.occa_defines, "r") as defines_fd:
+            with open(args.occa_defines) as defines_fd:
                 pre_transform_code = (
                         defines_to_python_code(defines_fd.read())
                         + pre_transform_code)

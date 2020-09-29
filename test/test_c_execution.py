@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2017 Nick Curtis"
 
 __license__ = """
@@ -25,7 +23,6 @@ THE SOFTWARE.
 import numpy as np
 import loopy as lp
 import sys
-import six
 import pytest
 from loopy import CACHING_ENABLED
 
@@ -203,13 +200,14 @@ def test_c_caching():
     # ensure that codepy is correctly caching the code
     from loopy.target.c import ExecutableCTarget
 
-    class TestingLogger(object):
+    class TestingLogger:
         def start_capture(self, loglevel=logging.DEBUG):
             """ Start capturing log output to a string buffer.
                 @param newLogLevel: Optionally change the global logging level, e.g.
                 logging.DEBUG
             """
-            self.buffer = six.StringIO()
+            from io import StringIO
+            self.buffer = StringIO()
             self.buffer.write("Log output")
 
             logger = logging.getLogger()

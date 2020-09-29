@@ -1,5 +1,3 @@
-from __future__ import division, with_statement, absolute_import
-
 __copyright__ = "Copyright (C) 2017 Nick Curtis"
 
 __license__ = """
@@ -32,7 +30,6 @@ from pytools.py_codegen import (Indentation)
 from pytools.prefork import ExecError
 from codepy.toolchain import guess_toolchain, ToolchainGuessError, GCCToolchain
 from codepy.jit import compile_from_string
-import six
 import ctypes
 
 import numpy as np
@@ -49,12 +46,12 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def __init__(self):
         system_args = ["_lpy_c_kernels"]
-        super(CExecutionWrapperGenerator, self).__init__(system_args)
+        super().__init__(system_args)
 
     def python_dtype_str(self, dtype):
         if np.dtype(str(dtype)).isbuiltin:
             return "_lpy_np."+dtype.name
-        raise Exception("dtype: {0} not recognized".format(dtype))
+        raise Exception(f"dtype: {dtype} not recognized")
 
     # {{{ handle non numpy arguements
 
@@ -110,7 +107,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                 var("_lpy_expected_strides_%s" % i)
                 for i in range(num_axes))
 
-        gen("%s = %s.strides" % (strify(expected_strides), arg.name))
+        gen("{} = {}.strides".format(strify(expected_strides), arg.name))
 
         #check strides
         if not skip_arg_checks:
@@ -163,7 +160,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         if options.return_dict:
             gen("return None, {%s}"
-                    % ", ".join('"%s": %s' % (arg.name, arg.name)
+                    % ", ".join(f'"{arg.name}": {arg.name}'
                         for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
                         if arg.base_name in kernel.get_written_variables()))
@@ -190,7 +187,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         return arg.name
 
 
-class CCompiler(object):
+class CCompiler:
     """
     The compiler module handles invocation of compilers to generate a shared lib
     using codepy, which can subsequently be loaded via ctypes.
@@ -252,9 +249,9 @@ class CCompiler(object):
                     "library_dirs": library_dirs,
                     "defines": defines}
             # filter empty and those equal to toolchain defaults
-            diff = dict((k, v) for k, v in six.iteritems(diff)
+            diff = {k: v for k, v in diff.items()
                     if v and (not hasattr(self.toolchain, k) or
-                              getattr(self.toolchain, k) != v))
+                              getattr(self.toolchain, k) != v)}
             self.toolchain = self.toolchain.copy(**diff)
         self.tempdir = tempfile.mkdtemp(prefix="tmp_loopy")
         self.source_suffix = source_suffix
@@ -276,9 +273,9 @@ class CCompiler(object):
                                 debug_recompile, False)
 
         if recompiled:
-            logger.debug("Kernel {0} compiled from source".format(name))
+            logger.debug(f"Kernel {name} compiled from source")
         else:
-            logger.debug("Kernel {0} retrieved from cache".format(name))
+            logger.debug(f"Kernel {name} retrieved from cache")
 
         # and return compiled
         return ctypes.CDLL(ext_file)
@@ -293,13 +290,13 @@ class CPlusPlusCompiler(CCompiler):
                  include_dirs=[], library_dirs=[], defines=[],
                  source_suffix="cpp"):
 
-        super(CPlusPlusCompiler, self).__init__(
+        super().__init__(
             toolchain=toolchain, cc=cc, cflags=cflags, ldflags=ldflags,
             libraries=libraries, include_dirs=include_dirs,
             library_dirs=library_dirs, defines=defines, source_suffix=source_suffix)
 
 
-class IDIToCDLL(object):
+class IDIToCDLL:
     """
     A utility class that extracts arguement and return type info from a
     :class:`ImplementedDataInfo` in order to create a :class:`ctype.CDLL`
@@ -329,7 +326,7 @@ class IDIToCDLL(object):
         return basetype
 
 
-class CompiledCKernel(object):
+class CompiledCKernel:
     """
     A CompiledCKernel wraps a loopy kernel, compiling it and loading the
     result as a shared library, and provides access to the kernel as a
@@ -388,7 +385,7 @@ class CKernelExecutor(KernelExecutorBase):
         """
 
         self.compiler = compiler if compiler else CCompiler()
-        super(CKernelExecutor, self).__init__(kernel)
+        super().__init__(kernel)
 
     def get_invoker_uncached(self, kernel, codegen_result):
         generator = CExecutionWrapperGenerator()

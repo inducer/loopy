@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,8 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six  # noqa
 
 from loopy.diagnostic import LoopyError
 from islpy import dim_type
@@ -293,7 +289,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     for i in range(var_descr.num_user_axes()):
         based_on = "%s_dim_%d" % (c_name, i)
         if var_descr.dim_names is not None:
-            based_on = "%s_dim_%s" % (c_name, var_descr.dim_names[i])
+            based_on = "{}_dim_{}".format(c_name, var_descr.dim_names[i])
         if dim_arg_names is not None and i < len(dim_arg_names):
             based_on = dim_arg_names[i]
 
@@ -480,7 +476,7 @@ def remove_unused_arguments(kernel):
             return set()
         return get_dependencies(expr)
 
-    for ary in chain(kernel.args, six.itervalues(kernel.temporary_variables)):
+    for ary in chain(kernel.args, kernel.temporary_variables.values()):
         if isinstance(ary, ArrayBase):
             refd_vars.update(
                     tolerant_get_deps(ary.shape)
@@ -565,7 +561,7 @@ def alias_temporaries(kernel, names, base_name_prefix=None,
         new_insns = kernel.instructions
 
     new_temporary_variables = {}
-    for tv in six.itervalues(kernel.temporary_variables):
+    for tv in kernel.temporary_variables.values():
         if tv.name in names_set:
             if tv.base_storage is not None:
                 raise LoopyError("temporary variable '{tv}' already has "

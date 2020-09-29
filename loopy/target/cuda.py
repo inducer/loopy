@@ -1,6 +1,5 @@
 """CUDA target independent of PyCUDA."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -155,12 +154,12 @@ class ExpressionToCudaCExpressionMapper(ExpressionToCExpressionMapper):
             raise LoopyError("unexpected index type")
 
     def map_group_hw_index(self, expr, type_context):
-        return var("((%s) blockIdx.%s)" % (
+        return var("(({}) blockIdx.{})".format(
             self._get_index_ctype(self.kernel),
             self._GRID_AXES[expr.axis]))
 
     def map_local_hw_index(self, expr, type_context):
-        return var("((%s) threadIdx.%s)" % (
+        return var("(({}) threadIdx.{})".format(
             self._get_index_ctype(self.kernel),
             self._GRID_AXES[expr.axis]))
 
@@ -179,7 +178,7 @@ class CudaTarget(CFamilyTarget):
         """
         self.extern_c = extern_c
 
-        super(CudaTarget, self).__init__()
+        super().__init__()
 
     def get_device_ast_builder(self):
         return CUDACASTBuilder(self)
@@ -221,7 +220,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
     def function_manglers(self):
         return (
-                super(CUDACASTBuilder, self).function_manglers() + [
+                super().function_manglers() + [
                     cuda_function_mangler
                     ])
 
@@ -231,7 +230,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
     def get_function_declaration(self, codegen_state, codegen_result,
             schedule_index):
-        fdecl = super(CUDACASTBuilder, self).get_function_declaration(
+        fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
         from loopy.target.c import FunctionDeclarationWrapper

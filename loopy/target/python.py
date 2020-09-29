@@ -1,6 +1,5 @@
 """Python host AST builder for integration with PyOpenCL."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"
 
@@ -24,7 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
 import numpy as np
 
 from pymbolic.mapper import Mapper
@@ -51,7 +49,7 @@ class ExpressionToPythonMapper(StringifyMapper):
         return Mapper.handle_unsupported_expression(self, victim, enclosing_prec)
 
     def rec(self, expr, prec, type_context=None, needed_dtype=None):
-        return super(ExpressionToPythonMapper, self).rec(expr, prec)
+        return super().rec(expr, prec)
 
     __call__ = rec
 
@@ -66,19 +64,19 @@ class ExpressionToPythonMapper(StringifyMapper):
                 enclosing_prec))
 
         if expr.name in self.kernel.all_inames():
-            return super(ExpressionToPythonMapper, self).map_variable(
+            return super().map_variable(
                     expr, enclosing_prec)
 
         var_descr = self.kernel.get_var_descriptor(expr.name)
         if isinstance(var_descr, ValueArg):
-            return super(ExpressionToPythonMapper, self).map_variable(
+            return super().map_variable(
                     expr, enclosing_prec)
 
-        return super(ExpressionToPythonMapper, self).map_variable(
+        return super().map_variable(
                 expr, enclosing_prec)
 
     def map_subscript(self, expr, enclosing_prec):
-        return super(ExpressionToPythonMapper, self).map_subscript(
+        return super().map_subscript(
                 expr, enclosing_prec)
 
     def map_call(self, expr, enclosing_prec):
@@ -122,7 +120,7 @@ class ExpressionToPythonMapper(StringifyMapper):
                     mangle_result.target_name,
                     mangle_result.arg_dtypes or par_dtypes))
 
-        return "%s(%s)" % (mangle_result.target_name, ", ".join(str_parameters))
+        return "{}({})".format(mangle_result.target_name, ", ".join(str_parameters))
 
     def map_group_hw_index(self, expr, enclosing_prec):
         raise LoopyError("plain Python does not have group hw axes")
@@ -153,8 +151,7 @@ class ExpressionToPythonMapper(StringifyMapper):
 class Collection(Suite):
     def generate(self):
         for item in self.contents:
-            for item_line in item.generate():
-                yield item_line
+            yield from item.generate()
 
 # }}}
 
@@ -191,13 +188,13 @@ class PythonASTBuilderBase(ASTBuilderBase):
 
     def function_manglers(self):
         return (
-                super(PythonASTBuilderBase, self).function_manglers() + [
+                super().function_manglers() + [
                     _numpy_single_arg_function_mangler,
                     ])
 
     def preamble_generators(self):
         return (
-                super(PythonASTBuilderBase, self).preamble_generators() + [
+                super().preamble_generators() + [
                     _base_python_preamble_generator
                     ])
 
@@ -227,7 +224,7 @@ class PythonASTBuilderBase(ASTBuilderBase):
         from genpy import Assign
 
         for tv in sorted(
-                six.itervalues(kernel.temporary_variables),
+                kernel.temporary_variables.values(),
                 key=lambda tv: tv.name):
             if tv.shape:
                 result.append(
