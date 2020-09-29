@@ -257,9 +257,9 @@ def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
     import logging
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
+    formatter = logging.Formatter("%(name)-12s: %(levelname)-8s %(message)s")
     console.setFormatter(formatter)
-    logging.getLogger('fparser').addHandler(console)
+    logging.getLogger("fparser").addHandler(console)
 
     from fparser import api
     tree = api.parse(source, isfree=free_form, isstrict=strict,

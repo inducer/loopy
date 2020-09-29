@@ -447,9 +447,9 @@ def format_insn(kernel, insn_id):
             Fore.MAGENTA, str(insn.expression), Style.RESET_ALL,
             format_insn_id(kernel, insn_id))
     elif isinstance(insn, BarrierInstruction):
-        mem_kind = ''
-        if insn.synchronization_kind == 'local':
-            mem_kind = '{mem_kind=%s}' % insn.mem_kind
+        mem_kind = ""
+        if insn.synchronization_kind == "local":
+            mem_kind = "{mem_kind=%s}" % insn.mem_kind
 
         return "[%s] %s... %sbarrier%s%s" % (
                 format_insn_id(kernel, insn_id),

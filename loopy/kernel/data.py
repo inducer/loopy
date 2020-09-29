@@ -340,8 +340,8 @@ class KernelArgument(ImmutableRecord):
 
         dtype = kwargs.pop("dtype", None)
 
-        if 'for_atomic' in kwargs:
-            for_atomic = kwargs['for_atomic']
+        if "for_atomic" in kwargs:
+            for_atomic = kwargs["for_atomic"]
         else:
             for_atomic = False
 

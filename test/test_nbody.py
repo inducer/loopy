@@ -78,7 +78,7 @@ def test_nbody(ctx_factory):
         knl = lp.split_iname(knl, "j", 256)
         knl = lp.add_prefetch(knl, "x[j,k]", ["j_inner", "k"],
                 ["x_fetch_j", "x_fetch_k"],
-                fetch_outer_inames='i_outer, j_outer', default_tag=None)
+                fetch_outer_inames="i_outer, j_outer", default_tag=None)
         knl = lp.tag_inames(knl, dict(x_fetch_k="unr", x_fetch_j="l.0"))
         knl = lp.add_prefetch(knl, "x[i,k]", ["k"], default_tag=None)
         knl = lp.prioritize_loops(knl, ["j_outer", "j_inner"])

@@ -45,7 +45,7 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl \
 
 __all__ = [
         "pytest_generate_tests",
-        "cl"  # 'cl.create_some_context'
+        "cl"  # "cl.create_some_context"
         ]
 
 
@@ -98,8 +98,8 @@ def test_to_batched(ctx_factory):
     queue = cl.CommandQueue(ctx)
 
     knl = lp.make_kernel(
-         ''' { [i,j]: 0<=i,j<n } ''',
-         ''' out[i] = sum(j, a[i,j]*x[j])''')
+         """ { [i,j]: 0<=i,j<n } """,
+         """ out[i] = sum(j, a[i,j]*x[j])""")
     knl = lp.add_and_infer_dtypes(knl, dict(out=np.float32,
                                             x=np.float32,
                                             a=np.float32))
@@ -107,8 +107,8 @@ def test_to_batched(ctx_factory):
     bknl = lp.to_batched(knl, "nbatches", "out,x")
 
     ref_knl = lp.make_kernel(
-         ''' { [i,j,k]: 0<=i,j<n and 0<=k<nbatches} ''',
-         '''out[k, i] = sum(j, a[i,j]*x[k, j])''')
+         """ { [i,j,k]: 0<=i,j<n and 0<=k<nbatches} """,
+         """out[k, i] = sum(j, a[i,j]*x[k, j])""")
     ref_knl = lp.add_and_infer_dtypes(ref_knl, dict(out=np.float32,
                                                     x=np.float32,
                                                     a=np.float32))
@@ -128,20 +128,20 @@ def test_to_batched_temp(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-         ''' { [i,j]: 0<=i,j<n } ''',
-         ''' cnst = 2.0
-         out[i] = sum(j, cnst*a[i,j]*x[j])''',
+         """ { [i,j]: 0<=i,j<n } """,
+         """ cnst = 2.0
+         out[i] = sum(j, cnst*a[i,j]*x[j])""",
          [lp.TemporaryVariable(
              "cnst",
              dtype=np.float32,
              shape=(),
-             address_space=lp.AddressSpace.PRIVATE), '...'])
+             address_space=lp.AddressSpace.PRIVATE), "..."])
     knl = lp.add_and_infer_dtypes(knl, dict(out=np.float32,
                                             x=np.float32,
                                             a=np.float32))
     ref_knl = lp.make_kernel(
-         ''' { [i,j]: 0<=i,j<n } ''',
-         '''out[i] = sum(j, 2.0*a[i,j]*x[j])''')
+         """ { [i,j]: 0<=i,j<n } """,
+         """out[i] = sum(j, 2.0*a[i,j]*x[j])""")
     ref_knl = lp.add_and_infer_dtypes(ref_knl, dict(out=np.float32,
                                                     x=np.float32,
                                                     a=np.float32))
@@ -150,7 +150,7 @@ def test_to_batched_temp(ctx_factory):
     bref_knl = lp.to_batched(ref_knl, "nbatches", "out,x")
 
     # checking that cnst is not being bathced
-    assert bknl.temporary_variables['cnst'].shape == ()
+    assert bknl.temporary_variables["cnst"].shape == ()
 
     a = np.random.randn(5, 5)
     x = np.random.randn(7, 5)
@@ -187,8 +187,8 @@ def test_rename_argument(ctx_factory):
     queue = cl.CommandQueue(ctx)
 
     kernel = lp.make_kernel(
-         '''{ [i]: 0<=i<n }''',
-         '''out[i] = a + 2''')
+         """{ [i]: 0<=i<n }""",
+         """out[i] = a + 2""")
 
     kernel = lp.rename_argument(kernel, "a", "b")
 
@@ -199,14 +199,14 @@ def test_rename_argument(ctx_factory):
 
 def test_fusion():
     exp_kernel = lp.make_kernel(
-         ''' { [i]: 0<=i<n } ''',
-         ''' exp[i] = pow(E, z[i])''',
+         """ { [i]: 0<=i<n } """,
+         """ exp[i] = pow(E, z[i])""",
          assumptions="n>0")
 
     sum_kernel = lp.make_kernel(
-        '{ [j]: 0<=j<n }',
-        'out2 = sum(j, exp[j])',
-        assumptions='n>0')
+        "{ [j]: 0<=j<n }",
+        "out2 = sum(j, exp[j])",
+        assumptions="n>0")
 
     knl = lp.fuse_kernels([exp_kernel, sum_kernel])
 
@@ -374,8 +374,8 @@ def test_precompute_confusing_subst_arguments(ctx_factory):
 
     from loopy.symbolic import get_dependencies
     assert "i_inner" not in get_dependencies(knl.substitutions["D"].expression)
-    knl = lp.precompute(knl, "D", sweep_inames='j',
-            precompute_outer_inames='j, i_inner, i_outer')
+    knl = lp.precompute(knl, "D", sweep_inames="j",
+            precompute_outer_inames="j, i_inner, i_outer")
 
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl,
@@ -541,13 +541,13 @@ def test_split_iname_only_if_in_within():
             a[i] = 2*b[i] {id=not_to_split}
             """)
 
-    knl = lp.split_iname(knl, "i", 4, within='id:to_split')
+    knl = lp.split_iname(knl, "i", 4, within="id:to_split")
 
     for insn in knl.instructions:
-        if insn.id == 'to_split':
-            assert insn.within_inames == frozenset({'i_outer', 'i_inner'})
-        if insn.id == 'not_to_split':
-            assert insn.within_inames == frozenset({'i'})
+        if insn.id == "to_split":
+            assert insn.within_inames == frozenset({"i_outer", "i_inner"})
+        if insn.id == "not_to_split":
+            assert insn.within_inames == frozenset({"i"})
 
 
 def test_nested_substs_in_insns(ctx_factory):
@@ -576,11 +576,11 @@ def test_extract_subst_with_iname_deps_in_templ(ctx_factory):
             """
             y[i, j, k] = x[i, j, k]
             """,
-            [lp.GlobalArg('x,y', shape=lp.auto, dtype=float)],
+            [lp.GlobalArg("x,y", shape=lp.auto, dtype=float)],
             lang_version=(2018, 2))
 
-    knl = lp.extract_subst(knl, 'rule1', 'x[i, arg1, arg2]',
-            parameters=('arg1', 'arg2'))
+    knl = lp.extract_subst(knl, "rule1", "x[i, arg1, arg2]",
+            parameters=("arg1", "arg2"))
 
     lp.auto_test_vs_ref(knl, ctx_factory(), knl)
 
@@ -660,12 +660,12 @@ def test_add_inames_for_unused_hw_axes(ctx_factory):
 
     knl = lp.add_inames_for_unused_hw_axes(knl)
 
-    assert knl.id_to_insn['init_alpha'].within_inames == frozenset(['i_inner',
-        'i_outer', 'j_outer', 'j_inner'])
-    assert knl.id_to_insn['a_fetch_rule'].within_inames == frozenset(['i_inner',
-        'i_outer', 'j_outer', 'j_inner'])
-    assert knl.id_to_insn['b_fetch_rule'].within_inames == frozenset(['i_inner',
-        'i_outer', 'j_outer', 'j_inner'])
+    assert knl.id_to_insn["init_alpha"].within_inames == frozenset(["i_inner",
+        "i_outer", "j_outer", "j_inner"])
+    assert knl.id_to_insn["a_fetch_rule"].within_inames == frozenset(["i_inner",
+        "i_outer", "j_outer", "j_inner"])
+    assert knl.id_to_insn["b_fetch_rule"].within_inames == frozenset(["i_inner",
+        "i_outer", "j_outer", "j_inner"])
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
             op_count=[np.dtype(dtype).itemsize*n**2/1e9], op_label=["GBytes"],

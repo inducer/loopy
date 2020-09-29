@@ -40,12 +40,8 @@ import six  # noqa
 from six.moves import intern
 
 
-if six.PY2:
-    def is_integer(obj):
-        return isinstance(obj, (int, long, np.integer))  # noqa pylint:disable=undefined-variable
-else:
-    def is_integer(obj):
-        return isinstance(obj, (int, np.integer))
+def is_integer(obj):
+    return isinstance(obj, (int, np.integer))
 
 
 # {{{ custom KeyBuilder subclass
@@ -317,8 +313,8 @@ def cptr_from_numpy(obj):
 
 
 # https://github.com/hgomersall/pyFFTW/blob/master/pyfftw/utils.pxi#L172
-def empty_aligned(shape, dtype, order='C', n=64):
-    '''empty_aligned(shape, dtype='float64', order='C', n=None)
+def empty_aligned(shape, dtype, order="C", n=64):
+    """empty_aligned(shape, dtype='float64', order="C", n=None)
     Function that returns an empty numpy array that is n-byte aligned,
     where ``n`` is determined by inspecting the CPU if it is not
     provided.
@@ -326,7 +322,7 @@ def empty_aligned(shape, dtype, order='C', n=64):
     ``n`` is not provided then this function will inspect the CPU to
     determine alignment. The rest of the arguments are as per
     :func:`numpy.empty`.
-    '''
+    """
     itemsize = np.dtype(dtype).itemsize
 
     # Apparently there is an issue with numpy.prod wrapping around on 32-bits

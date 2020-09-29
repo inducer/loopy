@@ -60,7 +60,7 @@ def main():
 
     parser.add_argument("infile", metavar="INPUT_FILE")
     parser.add_argument("outfile", default="-", metavar="OUTPUT_FILE",
-            help="Defaults to stdout ('-').", nargs='?')
+            help="Defaults to stdout ('-').", nargs="?")
     parser.add_argument("--lang", metavar="LANGUAGE", help="loopy|fortran")
     parser.add_argument("--target", choices=(
         "opencl", "ispc", "ispc-occa", "c", "c-fortran", "cuda"),
