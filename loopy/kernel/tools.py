@@ -309,22 +309,19 @@ def _get_dim_min(set_, idx):
 
 class SetOperationCacheManager:
     def __init__(self):
-        # mapping: set hash -> [(set, op, args, result)]
+        # mapping: set hash -> [(set, result)]
         self.cache = {}
 
     def op(self, set_, op_name, op, args):
-        hashval = hash(set_)
+        hashval = hash((set_, op_name, args))
         bucket = self.cache.setdefault(hashval, [])
 
-        for bkt_set, bkt_op, bkt_args, result in bucket:
-            if (set_.plain_is_equal(bkt_set)
-                    and op_name == bkt_op
-                    and args == bkt_args):
+        for bkt_set, result in bucket:
+            if set_.plain_is_equal(bkt_set):
                 return result
 
-        #print op, set.get_dim_name(dim_type.set, args[0])
         result = op(set_, *args)
-        bucket.append((set_, op_name, args, result))
+        bucket.append((set_, result))
         return result
 
     def dim_min(self, set_, *args):
