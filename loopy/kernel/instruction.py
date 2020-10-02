@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"
 
 __license__ = """
@@ -22,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from six.moves import intern
+from sys import intern
 from pytools import ImmutableRecord, memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.tools import Optional
@@ -164,7 +162,7 @@ class InstructionBase(ImmutableRecord):
     pymbolic_fields = set("")
 
     # Names of fields that are sets of pymbolic expressions. Needed for key building
-    pymbolic_set_fields = set(["predicates"])
+    pymbolic_set_fields = {"predicates"}
 
     def __init__(self, id, depends_on, depends_on_is_final,
             groups, conflicts_with_groups,
@@ -398,7 +396,7 @@ class InstructionBase(ImmutableRecord):
     # }}}
 
     def __setstate__(self, val):
-        super(InstructionBase, self).__setstate__(val)
+        super().__setstate__(val)
 
         from loopy.tools import intern_frozenset_of_ids
 
@@ -488,7 +486,7 @@ class MemoryOrdering:  # noqa
 
 # {{{ memory_ordering, MemoryOrdering compatibility
 
-class _deprecated_memory_ordering_class_method(object):  # noqa
+class _deprecated_memory_ordering_class_method:  # noqa
     def __init__(self, f):
         self.f = f
 
@@ -498,7 +496,7 @@ class _deprecated_memory_ordering_class_method(object):  # noqa
         return self.f()
 
 
-class memory_ordering(object):  # noqa
+class memory_ordering:  # noqa
     """Deprecated. Use :class:`MemoryOrdering` instead.
     """
 
@@ -565,7 +563,7 @@ class MemoryScope:  # noqa
 
 # {{{ memory_scope, MemoryScope compatiability
 
-class _deprecated_memory_scope_class_method(object):  # noqa
+class _deprecated_memory_scope_class_method:  # noqa
     def __init__(self, f):
         self.f = f
 
@@ -575,7 +573,7 @@ class _deprecated_memory_scope_class_method(object):  # noqa
         return self.f()
 
 
-class memory_scope(object):  # noqa
+class memory_scope:  # noqa
     """Deprecated. Use :class:`MemoryScope` instead.
     """
 
@@ -608,7 +606,7 @@ class memory_scope(object):  # noqa
 # }}}
 
 
-class VarAtomicity(object):
+class VarAtomicity:
     """A base class for the description of how atomic access to :attr:`var_name`
     shall proceed.
 
@@ -653,13 +651,13 @@ class OrderedAtomic(VarAtomicity):
         :class:`pytools.persistent_dict.PersistentDict`.
         """
 
-        super(OrderedAtomic, self).update_persistent_hash(key_hash, key_builder)
+        super().update_persistent_hash(key_hash, key_builder)
         key_builder.rec(key_hash, str(self.__class__.__name__))
         key_builder.rec(key_hash, self.ordering)
         key_builder.rec(key_hash, self.scope)
 
     def __eq__(self, other):
-        return (super(OrderedAtomic, self).__eq__(other)
+        return (super().__eq__(other)
                 and self.ordering == other.ordering
                 and self.scope == other.scope)
 
@@ -668,7 +666,7 @@ class OrderedAtomic(VarAtomicity):
         raise NotImplementedError
 
     def __str__(self):
-        return "%s[%s]%s/%s" % (
+        return "{}[{}]{}/{}".format(
                 self.op_name,
                 self.var_name,
                 MemoryOrdering.to_string(self.ordering),
@@ -687,7 +685,7 @@ class AtomicInit(OrderedAtomic):
 
         One of the values from :class:`MemoryScope`
     """
-    op_name = 'init'
+    op_name = "init"
 
 
 class AtomicUpdate(OrderedAtomic):
@@ -702,7 +700,7 @@ class AtomicUpdate(OrderedAtomic):
 
         One of the values from :class:`MemoryScope`
     """
-    op_name = 'update'
+    op_name = "update"
 
 
 class AtomicLoad(OrderedAtomic):
@@ -716,7 +714,7 @@ class AtomicLoad(OrderedAtomic):
 
         One of the values from :class:`MemoryScope`
     """
-    op_name = 'load'
+    op_name = "load"
 
 # }}}
 
@@ -726,14 +724,14 @@ class AtomicLoad(OrderedAtomic):
 class MultiAssignmentBase(InstructionBase):
     """An assignment instruction with an expression as a right-hand side."""
 
-    fields = InstructionBase.fields | set(["expression"])
-    pymbolic_fields = InstructionBase.pymbolic_fields | set(["expression"])
+    fields = InstructionBase.fields | {"expression"}
+    pymbolic_fields = InstructionBase.pymbolic_fields | {"expression"}
 
     @memoize_method
     def read_dependency_names(self):
         from loopy.symbolic import get_dependencies
         result = (
-                super(MultiAssignmentBase, self).read_dependency_names()
+                super().read_dependency_names()
                 | get_dependencies(self.expression))
 
         for subscript_deps in self.assignee_subscript_deps():
@@ -815,7 +813,7 @@ class Assignment(MultiAssignmentBase):
 
     fields = MultiAssignmentBase.fields | \
             set("assignee temp_var_type atomicity".split())
-    pymbolic_fields = MultiAssignmentBase.pymbolic_fields | set(["assignee"])
+    pymbolic_fields = MultiAssignmentBase.pymbolic_fields | {"assignee"}
 
     def __init__(self,
             assignee, expression,
@@ -831,7 +829,7 @@ class Assignment(MultiAssignmentBase):
             temp_var_type=Optional(), atomicity=(),
             priority=0, predicates=frozenset()):
 
-        super(Assignment, self).__init__(
+        super().__init__(
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
@@ -883,7 +881,7 @@ class Assignment(MultiAssignmentBase):
     # }}}
 
     def __str__(self):
-        result = "%s <- %s" % (self.assignee, self.expression)
+        result = f"{self.assignee} <- {self.expression}"
 
         if self.id is not None:
             result = "%s: " % self.id + result
@@ -915,7 +913,7 @@ class ExpressionInstruction(Assignment):
         warn("ExpressionInstruction is deprecated. Use Assignment instead",
                 DeprecationWarning, stacklevel=2)
 
-        super(ExpressionInstruction, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
 # }}}
 
@@ -946,7 +944,7 @@ class CallInstruction(MultiAssignmentBase):
 
     fields = MultiAssignmentBase.fields | \
             set("assignees temp_var_types".split())
-    pymbolic_fields = MultiAssignmentBase.pymbolic_fields | set(["assignees"])
+    pymbolic_fields = MultiAssignmentBase.pymbolic_fields | {"assignees"}
 
     def __init__(self,
             assignees, expression,
@@ -962,7 +960,7 @@ class CallInstruction(MultiAssignmentBase):
             temp_var_types=None,
             priority=0, predicates=frozenset()):
 
-        super(CallInstruction, self).__init__(
+        super().__init__(
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
@@ -1032,7 +1030,7 @@ class CallInstruction(MultiAssignmentBase):
     # }}}
 
     def __str__(self):
-        result = "%s: %s <- %s" % (self.id,
+        result = "{}: {} <- {}".format(self.id,
                 ", ".join(str(a) for a in self.assignees),
                 self.expression)
 
@@ -1195,7 +1193,7 @@ class CInstruction(InstructionBase):
 
     def read_dependency_names(self):
         result = (
-                super(CInstruction, self).read_dependency_names()
+                super().read_dependency_names()
                 | frozenset(self.read_variables))
 
         from loopy.symbolic import get_dependencies
@@ -1233,10 +1231,10 @@ class CInstruction(InstructionBase):
     # }}}
 
     def __str__(self):
-        first_line = "%s: %s <- CODE(%s|%s)" % (self.id,
+        first_line = "{}: {} <- CODE({}|{})".format(self.id,
                 ", ".join(str(a) for a in self.assignees),
                 ", ".join(str(x) for x in self.read_variables),
-                ", ".join("%s=%s" % (name, expr)
+                ", ".join(f"{name}={expr}"
                     for name, expr in self.iname_exprs))
 
         options = self.get_str_options()
@@ -1293,7 +1291,7 @@ class NoOpInstruction(_DataObliviousInstruction):
             within_inames_is_final=None, within_inames=None,
             priority=None,
             predicates=None, tags=None):
-        super(NoOpInstruction, self).__init__(
+        super().__init__(
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
@@ -1343,8 +1341,8 @@ class BarrierInstruction(_DataObliviousInstruction):
         ... lbarrier {mem_kind=global}
     """
 
-    fields = _DataObliviousInstruction.fields | set(["synchronization_kind",
-                                                     "mem_kind"])
+    fields = _DataObliviousInstruction.fields | {"synchronization_kind",
+                                                     "mem_kind"}
 
     def __init__(self, id, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
@@ -1357,7 +1355,7 @@ class BarrierInstruction(_DataObliviousInstruction):
         if predicates:
             raise LoopyError("conditional barriers are not supported")
 
-        super(BarrierInstruction, self).__init__(
+        super().__init__(
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
@@ -1375,12 +1373,13 @@ class BarrierInstruction(_DataObliviousInstruction):
         self.mem_kind = mem_kind
 
     def __str__(self):
-        first_line = "%s: ... %sbarrier" % (self.id, self.synchronization_kind[0])
+        first_line = \
+                "{}: ... {}barrier".format(self.id, self.synchronization_kind[0])
 
         options = self.get_str_options()
         if self.synchronization_kind == "local":
             # add the memory kind
-            options += ['mem_kind={}'.format(self.mem_kind)]
+            options += [f"mem_kind={self.mem_kind}"]
         if options:
             first_line += " {%s}" % (": ".join(options))
 

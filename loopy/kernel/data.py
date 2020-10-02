@@ -1,6 +1,5 @@
 """Data used by the kernel object."""
 
-from __future__ import division
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -25,7 +24,7 @@ THE SOFTWARE.
 """
 
 
-from six.moves import intern
+from sys import intern
 import numpy as np  # noqa
 from pytools import ImmutableRecord
 from loopy.kernel.array import ArrayBase
@@ -68,7 +67,7 @@ __doc__ = """
 """
 
 
-class auto(object):  # noqa
+class auto:  # noqa
     """A generic placeholder object for something that should be automatically
     determined.  See, for example, the *shape* or *strides* argument of
     :class:`ArrayArg`.
@@ -89,7 +88,7 @@ def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
     :arg min_num: the minimum number of tags expected to be found.
     """
 
-    result = set(tag for tag in tags if isinstance(tag, tag_type))
+    result = {tag for tag in tags if isinstance(tag, tag_type)}
 
     def strify_tag_type():
         if isinstance(tag_type, tuple):
@@ -99,12 +98,12 @@ def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
 
     if max_num is not None:
         if len(result) > max_num:
-            raise LoopyError("cannot have more than {0} tags "
-                    "of type(s): {1}".format(max_num, strify_tag_type()))
+            raise LoopyError("cannot have more than {} tags "
+                    "of type(s): {}".format(max_num, strify_tag_type()))
     if min_num is not None:
         if len(result) < min_num:
-            raise LoopyError("must have more than {0} tags "
-                    "of type(s): {1}".format(max_num, strify_tag_type()))
+            raise LoopyError("must have more than {} tags "
+                    "of type(s): {}".format(max_num, strify_tag_type()))
     return result
 
 
@@ -266,7 +265,7 @@ def parse_tag(tag):
 
 # {{{ memory address space
 
-class AddressSpace(object):
+class AddressSpace:
     """Storage location of a variable.
 
     .. attribute:: PRIVATE
@@ -293,7 +292,7 @@ class AddressSpace(object):
             raise ValueError("unexpected value of AddressSpace")
 
 
-class _deprecated_temp_var_scope_class_method(object):  # noqa
+class _deprecated_temp_var_scope_class_method:  # noqa
     def __init__(self, f):
         self.f = f
 
@@ -303,7 +302,7 @@ class _deprecated_temp_var_scope_class_method(object):  # noqa
         return self.f()
 
 
-class temp_var_scope(object):  # noqa
+class temp_var_scope:  # noqa
     """Deprecated. Use :class:`loopy.AddressSpace` instead.
     """
 
@@ -340,8 +339,8 @@ class KernelArgument(ImmutableRecord):
 
         dtype = kwargs.pop("dtype", None)
 
-        if 'for_atomic' in kwargs:
-            for_atomic = kwargs['for_atomic']
+        if "for_atomic" in kwargs:
+            for_atomic = kwargs["for_atomic"]
         else:
             for_atomic = False
 
@@ -387,7 +386,7 @@ class ArrayArg(ArrayBase, KernelArgument):
             raise TypeError("'address_space' must be specified")
         kwargs["is_output_only"] = kwargs.pop("is_output_only", False)
 
-        super(ArrayArg, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     min_target_axes = 0
     max_target_axes = 1
@@ -411,7 +410,7 @@ class ArrayArg(ArrayBase, KernelArgument):
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.
         """
-        super(ArrayArg, self).update_persistent_hash(key_hash, key_builder)
+        super().update_persistent_hash(key_hash, key_builder)
         key_builder.rec(key_hash, self.address_space)
         key_builder.rec(key_hash, self.is_output_only)
 
@@ -471,7 +470,7 @@ class ValueArg(KernelArgument):
         else:
             type_str = str(self.dtype)
 
-        return "%s: ValueArg, type: %s" % (self.name, type_str)
+        return f"{self.name}: ValueArg, type: {type_str}"
 
     def __repr__(self):
         return "<%s>" % self.__str__()
@@ -680,7 +679,7 @@ class TemporaryVariable(ArrayBase):
         if address_space is not None:
             kwargs["address_space"] = address_space
 
-        return super(TemporaryVariable, self).copy(**kwargs)
+        return super().copy(**kwargs)
 
     @property
     def nbytes(self):
@@ -692,7 +691,7 @@ class TemporaryVariable(ArrayBase):
         return product(si for si in shape)*self.dtype.itemsize
 
     def decl_info(self, target, index_dtype):
-        return super(TemporaryVariable, self).decl_info(
+        return super().decl_info(
                 target, is_written=True, index_dtype=index_dtype,
                 shape_override=self.storage_shape)
 
@@ -717,7 +716,7 @@ class TemporaryVariable(ArrayBase):
 
     def __eq__(self, other):
         return (
-                super(TemporaryVariable, self).__eq__(other)
+                super().__eq__(other)
                 and self.storage_shape == other.storage_shape
                 and self.base_indices == other.base_indices
                 and self.address_space == other.address_space
@@ -735,7 +734,7 @@ class TemporaryVariable(ArrayBase):
         :class:`pytools.persistent_dict.PersistentDict`.
         """
 
-        super(TemporaryVariable, self).update_persistent_hash(key_hash, key_builder)
+        super().update_persistent_hash(key_hash, key_builder)
         self.update_persistent_hash_for_shape(key_hash, key_builder,
                 self.storage_shape)
         key_builder.rec(key_hash, self.base_indices)
@@ -783,7 +782,7 @@ class SubstitutionRule(ImmutableRecord):
                 name=name, arguments=arguments, expression=expression)
 
     def __str__(self):
-        return "%s(%s) := %s" % (
+        return "{}({}) := {}".format(
                 self.name, ", ".join(self.arguments), self.expression)
 
     def update_persistent_hash(self, key_hash, key_builder):
@@ -821,7 +820,7 @@ class CallMangleInfo(ImmutableRecord):
     def __init__(self, target_name, result_dtypes, arg_dtypes):
         assert isinstance(result_dtypes, tuple)
 
-        super(CallMangleInfo, self).__init__(
+        super().__init__(
                 target_name=target_name,
                 result_dtypes=result_dtypes,
                 arg_dtypes=arg_dtypes)

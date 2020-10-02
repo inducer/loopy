@@ -1,5 +1,3 @@
-from __future__ import division, with_statement, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from six.moves import range, zip
 
 from pytools import memoize_method
 from pytools.py_codegen import Indentation
@@ -50,14 +47,14 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             # ignored if options.no_numpy
             "out_host=None"
             ]
-        super(PyOpenCLExecutionWrapperGenerator, self).__init__(system_args)
+        super().__init__(system_args)
 
     def python_dtype_str(self, dtype):
         import pyopencl.tools as cl_tools
         if dtype.isbuiltin:
             return "_lpy_np."+dtype.name
         else:
-            return ("_lpy_cl_tools.get_or_register_dtype(\"%s\")"
+            return ('_lpy_cl_tools.get_or_register_dtype("%s")'
                     % cl_tools.dtype_to_ctype(dtype))
 
     # {{{ handle non-numpy args
@@ -66,7 +63,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         gen("if isinstance(%s, _lpy_np.ndarray):" % arg.name)
         with Indentation(gen):
             gen("# retain originally passed array")
-            gen("_lpy_%s_np_input = %s" % (arg.name, arg.name))
+            gen(f"_lpy_{arg.name}_np_input = {arg.name}")
             gen("# synchronous, nothing to worry about")
             gen("%s = _lpy_cl_array.to_device("
                     "queue, %s, allocator=allocator)"
@@ -189,7 +186,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             for arg in implemented_data_info:
                 if (issubclass(arg.arg_class, ArrayArg)
                         and arg.base_name in kernel.get_written_variables()):
-                    gen("{arg_name}.add_event(_lpy_evt)".format(arg_name=arg.name))
+                    gen(f"{arg.name}.add_event(_lpy_evt)")
 
     # }}}
 
@@ -222,7 +219,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         if options.return_dict:
             gen("return _lpy_evt, {%s}"
-                    % ", ".join("\"%s\": %s" % (arg.name, arg.name)
+                    % ", ".join(f'"{arg.name}": {arg.name}'
                         for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
                         if arg.base_name in kernel.get_written_variables()))
@@ -268,7 +265,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
             specific arguments.
         """
 
-        super(PyOpenCLKernelExecutor, self).__init__(kernel)
+        super().__init__(kernel)
 
         self.context = context
 

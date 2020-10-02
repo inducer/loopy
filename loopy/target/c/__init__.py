@@ -1,6 +1,5 @@
 """Plain C target and base for other C-family languages."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -23,8 +22,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six
 
 import numpy as np  # noqa
 from loopy.kernel.data import CallMangleInfo
@@ -52,7 +49,7 @@ __doc__ = """
 
 # {{{ dtype registry wrapper
 
-class DTypeRegistryWrapper(object):
+class DTypeRegistryWrapper:
     def __init__(self, wrapped_registry):
         self.wrapped_registry = wrapped_registry
 
@@ -166,9 +163,9 @@ def _preamble_generator(preamble_info):
             """,
             }
 
-    c_funcs = set(func.c_name for func in preamble_info.seen_functions)
+    c_funcs = {func.c_name for func in preamble_info.seen_functions}
 
-    for func_name, func_body in six.iteritems(function_defs):
+    for func_name, func_body in function_defs.items():
         if any((func_name + "_" + tpname) in c_funcs
                 for tpname in integer_type_names):
             yield def_integer_types_macro
@@ -322,7 +319,7 @@ class ASTSubscriptCollector(CASTIdentityMapper):
 
 # {{{ lazy expression generation
 
-class CExpression(object):
+class CExpression:
     def __init__(self, to_code_mapper, expr):
         self.to_code_mapper = to_code_mapper
         self.expr = expr
@@ -344,7 +341,7 @@ class CFamilyTarget(TargetBase):
 
     def __init__(self, fortran_abi=False):
         self.fortran_abi = fortran_abi
-        super(CFamilyTarget, self).__init__()
+        super().__init__()
 
     def split_kernel_at_global_barriers(self):
         return False
@@ -442,7 +439,7 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
             elif dtype == np.float128:  # pylint:disable=no-member
                 name = name + "l"  # fabsl
             else:
-                raise LoopyTypeError("%s does not support type %s" % (name, dtype))
+                raise LoopyTypeError(f"{name} does not support type {dtype}")
 
         return CallMangleInfo(
                 target_name=name,
@@ -487,19 +484,19 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
     def function_manglers(self):
         return (
-                super(CFamilyASTBuilder, self).function_manglers() + [
+                super().function_manglers() + [
                     c_math_mangler
                     ])
 
     def symbol_manglers(self):
         return (
-                super(CFamilyASTBuilder, self).symbol_manglers() + [
+                super().symbol_manglers() + [
                     c_symbol_mangler
                     ])
 
     def preamble_generators(self):
         return (
-                super(CFamilyASTBuilder, self).preamble_generators() + [
+                super().preamble_generators() + [
                     _preamble_generator,
                     ])
 
@@ -534,7 +531,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
                 break
         if is_first_dev_prog:
             for tv in sorted(
-                    six.itervalues(kernel.temporary_variables),
+                    kernel.temporary_variables.values(),
                     key=lambda tv: tv.name):
 
                 if tv.address_space == AddressSpace.GLOBAL and (
@@ -624,7 +621,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
                 temporaries_written_in_subkernel(kernel, subkernel))
 
         for tv in sorted(
-                six.itervalues(kernel.temporary_variables),
+                kernel.temporary_variables.values(),
                 key=lambda tv: tv.name):
             decl_info = tv.decl_info(self.target, index_dtype=kernel.index_dtype)
 
@@ -687,7 +684,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
                     cast_tp, cast_d = cast_decl.get_decl_pair()
                     temp_var_decl = Initializer(
                             temp_var_decl,
-                            "(%s %s) (%s + %s)" % (
+                            "({} {}) ({} + {})".format(
                                 " ".join(cast_tp), cast_d,
                                 tv.base_storage,
                                 offset))
@@ -701,7 +698,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
-        for bs_name, bs_sizes in sorted(six.iteritems(base_storage_sizes)):
+        for bs_name, bs_sizes in sorted(base_storage_sizes.items()):
             bs_var_decl = Value("char", bs_name)
             from pytools import single_valued
             bs_var_decl = self.wrap_temporary_decl(
@@ -1048,7 +1045,7 @@ class CFunctionDeclExtractor(CASTIdentityMapper):
 
     def map_function_decl_wrapper(self, node):
         self.decls.append(node.subdecl)
-        return super(CFunctionDeclExtractor, self)\
+        return super()\
                 .map_function_decl_wrapper(node)
 
 
@@ -1064,7 +1061,7 @@ def generate_header(kernel, codegen_result=None):
 
     if not isinstance(kernel.target, CFamilyTarget):
         raise LoopyError(
-                'Header generation for non C-based languages are not implemented')
+                "Header generation for non C-based languages are not implemented")
 
     if codegen_result is None:
         from loopy.codegen import generate_code_v2
@@ -1104,7 +1101,7 @@ class CTarget(CFamilyTarget):
 class CASTBuilder(CFamilyASTBuilder):
     def preamble_generators(self):
         return (
-                super(CASTBuilder, self).preamble_generators() + [
+                super().preamble_generators() + [
                     c99_preamble_generator,
                     ])
 
@@ -1119,7 +1116,7 @@ class ExecutableCTarget(CTarget):
     """
 
     def __init__(self, compiler=None, fortran_abi=False):
-        super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
+        super().__init__(fortran_abi=fortran_abi)
         from loopy.target.c.c_execution import CCompiler
         self.compiler = compiler or CCompiler()
 

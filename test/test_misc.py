@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2016 Matt Wala"
 
 __license__ = """
@@ -22,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six  # noqa
 import pytest
 
 import sys
@@ -38,19 +35,19 @@ def test_SetTrie():
     from loopy.kernel.tools import SetTrie
 
     s = SetTrie()
-    s.add_or_update(set([1, 2, 3]))
-    s.add_or_update(set([4, 2, 1]))
-    s.add_or_update(set([1, 5]))
+    s.add_or_update({1, 2, 3})
+    s.add_or_update({4, 2, 1})
+    s.add_or_update({1, 5})
 
     result = []
     s.descend(lambda prefix: result.extend(prefix))
     assert result == [1, 2, 3, 4, 5]
 
     with pytest.raises(ValueError):
-        s.add_or_update(set([1, 4]))
+        s.add_or_update({1, 4})
 
 
-class PickleDetector(object):
+class PickleDetector:
     """Contains a class attribute which flags if any instance was unpickled.
     """
 

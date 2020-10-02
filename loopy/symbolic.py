@@ -1,6 +1,5 @@
 """Pymbolic mappers for loopy."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -25,8 +24,8 @@ THE SOFTWARE.
 """
 
 
-import six
-from six.moves import range, zip, reduce, intern
+from functools import reduce
+from sys import intern
 
 from pytools import memoize, memoize_method, ImmutableRecord
 import pytools.lex
@@ -94,7 +93,7 @@ __doc__ = """
 
 # {{{ mappers with support for loopy-specific primitives
 
-class IdentityMapperMixin(object):
+class IdentityMapperMixin:
     def map_literal(self, expr, *args, **kwargs):
         return expr
 
@@ -232,13 +231,13 @@ class StringifyMapper(StringifyMapperBase):
     def map_reduction(self, expr, prec):
         from pymbolic.mapper.stringifier import PREC_NONE
 
-        return "%sreduce(%s, [%s], %s)" % (
+        return "{}reduce({}, [{}], {})".format(
                 "simul_" if expr.allow_simultaneous else "",
                 expr.operation, ", ".join(expr.inames),
                 self.rec(expr.expr, PREC_NONE))
 
     def map_tagged_variable(self, expr, prec):
-        return "%s$%s" % (expr.name, expr.tag)
+        return f"{expr.name}${expr.tag}"
 
     def map_linear_subscript(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_CALL, PREC_NONE
@@ -249,7 +248,7 @@ class StringifyMapper(StringifyMapperBase):
                 enclosing_prec, PREC_CALL)
 
     def map_loopy_function_identifier(self, expr, enclosing_prec):
-        return "%s<%s>" % (
+        return "{}<{}>".format(
                 type(expr).__name__,
                 ", ".join(str(a) for a in expr.__getinitargs__()))
 
@@ -258,7 +257,8 @@ class StringifyMapper(StringifyMapperBase):
 
     def map_type_cast(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_NONE
-        return "cast(%s, %s)" % (repr(expr.type), self.rec(expr.child, PREC_NONE))
+        return "cast({}, {})".format(
+                repr(expr.type), self.rec(expr.child, PREC_NONE))
 
 
 class EqualityPreservingStringifyMapper(StringifyMapperBase):
@@ -273,7 +273,7 @@ class EqualityPreservingStringifyMapper(StringifyMapperBase):
     """
 
     def __init__(self):
-        super(EqualityPreservingStringifyMapper, self).__init__()
+        super().__init__()
 
     def map_constant(self, expr, enclosing_prec):
         if isinstance(expr, np.generic):
@@ -281,7 +281,7 @@ class EqualityPreservingStringifyMapper(StringifyMapperBase):
 
             # FIXME: This syntax cannot currently be parsed.
 
-            return "%s(%s)" % (type(expr).__name__, repr(expr))
+            return "{}({})".format(type(expr).__name__, repr(expr))
         else:
             result = repr(expr)
 
@@ -336,10 +336,10 @@ class DependencyMapper(DependencyMapperBase):
 
     def map_reduction(self, expr, *args, **kwargs):
         deps = self.rec(expr.expr, *args, **kwargs)
-        return deps - set(p.Variable(iname) for iname in expr.inames)
+        return deps - {p.Variable(iname) for iname in expr.inames}
 
     def map_tagged_variable(self, expr, *args, **kwargs):
-        return set([expr])
+        return {expr}
 
     def map_loopy_function_identifier(self, expr, *args, **kwargs):
         return set()
@@ -361,7 +361,7 @@ class SubstitutionRuleExpander(IdentityMapper):
         if expr.name in self.rules:
             return self.map_substitution(expr.name, self.rules[expr.name], ())
         else:
-            return super(SubstitutionRuleExpander, self).map_variable(expr)
+            return super().map_variable(expr)
 
     def map_call(self, expr):
         if expr.function.name in self.rules:
@@ -370,7 +370,7 @@ class SubstitutionRuleExpander(IdentityMapper):
                     self.rules[expr.function.name],
                     expr.parameters)
         else:
-            return super(SubstitutionRuleExpander, self).map_call(expr)
+            return super().map_call(expr)
 
     def map_substitution(self, name, rule, arguments):
         if len(rule.arguments) != len(arguments):
@@ -489,7 +489,7 @@ class TypedCSE(LoopyExpressionBase, p.CommonSubexpression):
     """
 
     def __init__(self, child, prefix=None, dtype=None):
-        super(TypedCSE, self).__init__(child, prefix)
+        super().__init__(child, prefix)
         self.dtype = dtype
 
     def __getinitargs__(self):
@@ -505,7 +505,7 @@ class TypeAnnotation(LoopyExpressionBase):
     """
 
     def __init__(self, type, child):
-        super(TypeAnnotation, self).__init__()
+        super().__init__()
         self.type = type
         self.child = child
 
@@ -525,7 +525,7 @@ class TypeCast(LoopyExpressionBase):
     """
 
     def __init__(self, type, child):
-        super(TypeCast, self).__init__()
+        super().__init__()
 
         from loopy.types import to_loopy_type, NumpyType
         type = to_loopy_type(type)
@@ -565,7 +565,7 @@ class TaggedVariable(LoopyExpressionBase, p.Variable):
     init_arg_names = ("name", "tag")
 
     def __init__(self, name, tag):
-        super(TaggedVariable, self).__init__(name)
+        super().__init__(name)
         self.tag = tag
 
     def __getinitargs__(self):
@@ -793,11 +793,11 @@ def rename_subst_rules_in_instructions(insns, renames):
             for insn in insns]
 
 
-class SubstitutionRuleMappingContext(object):
+class SubstitutionRuleMappingContext:
     def _get_subst_rule_key(self, args, body):
-        subst_dict = dict(
-                (arg, RuleArgument(i))
-                for i, arg in enumerate(args))
+        subst_dict = {
+                arg: RuleArgument(i)
+                for i, arg in enumerate(args)}
 
         from pymbolic.mapper.substitutor import make_subst_func
         arg_subst_map = SubstitutionMapper(make_subst_func(subst_dict))
@@ -809,10 +809,10 @@ class SubstitutionRuleMappingContext(object):
         self.make_unique_var_name = make_unique_var_name
 
         # maps subst rule (args, bodies) to (names, original_name)
-        self.subst_rule_registry = dict(
-                (self._get_subst_rule_key(rule.arguments, rule.expression),
-                    (name, rule.arguments, rule.expression))
-                for name, rule in six.iteritems(old_subst_rules))
+        self.subst_rule_registry = {
+                self._get_subst_rule_key(rule.arguments, rule.expression):
+                (name, rule.arguments, rule.expression)
+                for name, rule in old_subst_rules.items()}
 
         # maps subst rule (args, bodies) to a list of old names,
         # which doubles as (a) a histogram of uses and (b) a way
@@ -861,8 +861,7 @@ class SubstitutionRuleMappingContext(object):
 
         used_names = set()
 
-        for key, (name, args, body) in six.iteritems(
-                self.subst_rule_registry):
+        for key, (name, args, body) in self.subst_rule_registry.items():
             orig_names = self.subst_rule_old_names.get(key, [])
 
             # If no orig_names are found, then this particular
@@ -889,7 +888,7 @@ class SubstitutionRuleMappingContext(object):
         subst_renamer = SubstitutionRuleRenamer(renames)
 
         renamed_result = {}
-        for name, rule in six.iteritems(result):
+        for name, rule in result.items():
             renamed_result[name] = rule.copy(
                     expression=subst_renamer(rule.expression))
 
@@ -932,7 +931,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
         name, tag = parse_tagged_name(expr.function)
 
         if name not in self.rule_mapping_context.old_subst_rules:
-            return super(RuleAwareIdentityMapper, self).map_call(expr, expn_state)
+            return super().map_call(expr, expn_state)
         else:
             return self.map_substitution(name, tag, self.rec(
                 expr.parameters, expn_state), expn_state)
@@ -945,9 +944,9 @@ class RuleAwareIdentityMapper(IdentityMapper):
 
         from pymbolic.mapper.substitutor import make_subst_func
         arg_subst_map = SubstitutionMapper(make_subst_func(arg_context))
-        return dict(
-                (formal_arg_name, arg_subst_map(arg_value))
-                for formal_arg_name, arg_value in zip(arg_names, arguments))
+        return {
+                formal_arg_name: arg_subst_map(arg_value)
+                for formal_arg_name, arg_value in zip(arg_names, arguments)}
 
     def map_substitution(self, name, tag, arguments, expn_state):
         rule = self.rule_mapping_context.old_subst_rules[name]
@@ -1008,7 +1007,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
 
 class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, subst_func, within):
-        super(RuleAwareSubstitutionMapper, self).__init__(rule_mapping_context)
+        super().__init__(rule_mapping_context)
 
         self.subst_func = subst_func
         self.within = within
@@ -1017,20 +1016,20 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper):
         if (expr.name in expn_state.arg_context
                 or not self.within(
                     expn_state.kernel, expn_state.instruction, expn_state.stack)):
-            return super(RuleAwareSubstitutionMapper, self).map_variable(
+            return super().map_variable(
                     expr, expn_state)
 
         result = self.subst_func(expr)
         if result is not None:
             return result
         else:
-            return super(RuleAwareSubstitutionMapper, self).map_variable(
+            return super().map_variable(
                     expr, expn_state)
 
 
 class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, rules, within):
-        super(RuleAwareSubstitutionRuleExpander, self).__init__(rule_mapping_context)
+        super().__init__(rule_mapping_context)
 
         self.rules = rules
         self.within = within
@@ -1063,7 +1062,7 @@ class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper):
 
         else:
             # do not expand
-            return super(RuleAwareSubstitutionRuleExpander, self).map_substitution(
+            return super().map_substitution(
                     name, tag, arguments, expn_state)
 
 # }}}
@@ -1218,7 +1217,7 @@ class LoopyParser(ParserBase):
                     typename,
                     self.parse_expression(pstate, _PREC_UNARY))
         else:
-            return super(LoopyParser, self).parse_prefix(pstate)
+            return super().parse_prefix(pstate)
 
     def parse_postfix(self, pstate, min_precedence, left_exp):
         from pymbolic.parser import _PREC_CALL, _closebracket
@@ -1278,7 +1277,7 @@ class ArrayAccessFinder(CombineMapper):
 
         if self.tgt_vector_name is None \
                 or expr.aggregate.name == self.tgt_vector_name:
-            return set([expr]) | self.rec(expr.index)
+            return {expr} | self.rec(expr.index)
         else:
             return CombineMapper.map_subscript(self, expr)
 
@@ -1356,7 +1355,7 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
         self.zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(space))
 
         context = {}
-        for name, (dt, pos) in six.iteritems(space.get_var_dict()):
+        for name, (dt, pos) in space.get_var_dict().items():
             if dt == dim_type.set:
                 dt = dim_type.in_
 
@@ -1368,7 +1367,7 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
 
         self.pw_zero = isl.PwAff.from_aff(self.zero)
 
-        super(PwAffEvaluationMapper, self).__init__(context)
+        super().__init__(context)
 
     def map_constant(self, expr):
         if isinstance(expr, np.integer):
@@ -1677,9 +1676,9 @@ def get_access_range(domain, subscript, assumptions, shape=None,
         access_map = isl.Set.from_basic_set(access_map)
 
     if allowed_constant_names is not None:
-        allowed_constant_names = set(allowed_constant_names) - set(
+        allowed_constant_names = set(allowed_constant_names) - {
                 access_map.get_dim_name(dim_type.param, i)
-                for i in range(access_map.dim(dim_type.param)))
+                for i in range(access_map.dim(dim_type.param))}
 
         par_base = access_map.dim(dim_type.param)
         access_map = access_map.insert_dims(dim_type.param, par_base,
@@ -1814,7 +1813,7 @@ class BatchedAccessRangeMapper(WalkMapper):
         return self.rec(expr.child, inames)
 
 
-class AccessRangeMapper(object):
+class AccessRangeMapper:
     """**IMPORTANT**
 
     Using this class *will likely* lead to performance bottlenecks.
@@ -1849,7 +1848,7 @@ class AccessRangeMapper(object):
 
 # {{{ check if access ranges overlap
 
-class AccessRangeOverlapChecker(object):
+class AccessRangeOverlapChecker:
     """Used for checking for overlap between access ranges of instructions."""
 
     def __init__(self, kernel):
@@ -1873,7 +1872,7 @@ class AccessRangeOverlapChecker(object):
         for expr in exprs:
             arm(expr, self.kernel.insn_inames(insn))
 
-        for name, arange in six.iteritems(arm.access_ranges):
+        for name, arange in arm.access_ranges.items():
             if arm.bad_subscripts[name]:
                 aranges[name] = True
                 continue

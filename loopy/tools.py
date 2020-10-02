@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,13 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
-
-try:
-    import collections.abc as abc
-except ImportError:
-    # Python 2
-    import collections as abc
+import collections.abc as abc
 
 import numpy as np
 from pytools import memoize_method
@@ -36,16 +28,11 @@ from pytools.persistent_dict import KeyBuilder as KeyBuilderBase
 from loopy.symbolic import WalkMapper as LoopyWalkMapper
 from pymbolic.mapper.persistent_hash import (
         PersistentHashWalkMapper as PersistentHashWalkMapperBase)
-import six  # noqa
-from six.moves import intern
+from sys import intern
 
 
-if six.PY2:
-    def is_integer(obj):
-        return isinstance(obj, (int, long, np.integer))  # noqa pylint:disable=undefined-variable
-else:
-    def is_integer(obj):
-        return isinstance(obj, (int, np.integer))
+def is_integer(obj):
+    return isinstance(obj, (int, np.integer))
 
 
 # {{{ custom KeyBuilder subclass
@@ -78,7 +65,7 @@ class LoopyKeyBuilder(KeyBuilderBase):
 
     def update_for_dict(self, key_hash, key):
         # Order matters for the hash--insert in sorted order.
-        for dict_key in sorted(six.iterkeys(key)):
+        for dict_key in sorted(key.keys()):
             self.rec(key_hash, (dict_key, key[dict_key]))
 
     update_for_defaultdict = update_for_dict
@@ -102,7 +89,7 @@ class LoopyKeyBuilder(KeyBuilderBase):
                 % type(key))
 
     def update_for_type_auto(self, key_hash, key):
-        key_hash.update("auto".encode("utf8"))
+        key_hash.update(b"auto")
 
     def update_for_pymbolic_expression(self, key_hash, key):
         if key is None:
@@ -111,7 +98,7 @@ class LoopyKeyBuilder(KeyBuilderBase):
             PersistentHashWalkMapper(key_hash)(key)
 
 
-class PymbolicExpressionHashWrapper(object):
+class PymbolicExpressionHashWrapper:
     def __init__(self, expression):
         self.expression = expression
 
@@ -130,7 +117,7 @@ class PymbolicExpressionHashWrapper(object):
 
 # {{{ eq key builder
 
-class LoopyEqKeyBuilder(object):
+class LoopyEqKeyBuilder:
     """Unlike :class:`loopy.tools.LoopyKeyBuilder`, this builds keys for use in
     equality comparison, such that `key(a) == key(b)` if and only if `a == b`.
     The types of objects being compared should satisfy structural equality.
@@ -317,8 +304,8 @@ def cptr_from_numpy(obj):
 
 
 # https://github.com/hgomersall/pyFFTW/blob/master/pyfftw/utils.pxi#L172
-def empty_aligned(shape, dtype, order='C', n=64):
-    '''empty_aligned(shape, dtype='float64', order='C', n=None)
+def empty_aligned(shape, dtype, order="C", n=64):
+    """empty_aligned(shape, dtype='float64', order="C", n=None)
     Function that returns an empty numpy array that is n-byte aligned,
     where ``n`` is determined by inspecting the CPU if it is not
     provided.
@@ -326,7 +313,7 @@ def empty_aligned(shape, dtype, order='C', n=64):
     ``n`` is not provided then this function will inspect the CPU to
     determine alignment. The rest of the arguments are as per
     :func:`numpy.empty`.
-    '''
+    """
     itemsize = np.dtype(dtype).itemsize
 
     # Apparently there is an issue with numpy.prod wrapping around on 32-bits
@@ -357,7 +344,7 @@ def empty_aligned(shape, dtype, order='C', n=64):
 
 # {{{ pickled container value
 
-class _PickledObject(object):
+class _PickledObject:
     """A class meant to wrap a pickled value (for :class:`LazilyUnpicklingDict` and
     :class:`LazilyUnpicklingList`).
     """
@@ -430,9 +417,9 @@ class LazilyUnpicklingDict(abc.MutableMapping):
         return iter(self._map)
 
     def __getstate__(self):
-        return {"_map": dict(
-            (key, _PickledObject(val))
-            for key, val in six.iteritems(self._map))}
+        return {"_map": {
+            key: _PickledObject(val)
+            for key, val in self._map.items()}}
 
 # }}}
 
@@ -532,11 +519,11 @@ class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList):
 
 # {{{ optional object
 
-class _no_value(object):  # noqa
+class _no_value:  # noqa
     pass
 
 
-class Optional(object):
+class Optional:
     """A wrapper for an optionally present object.
 
     .. attribute:: has_value
@@ -603,7 +590,7 @@ class Optional(object):
 
 
 def unpickles_equally(obj):
-    from six.moves.cPickle import loads, dumps
+    from pickle import loads, dumps
     return loads(dumps(obj)) == obj
 
 

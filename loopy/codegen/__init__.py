@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,8 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six
 
 from loopy.diagnostic import LoopyError, warn
 from pytools import ImmutableRecord
@@ -130,7 +126,7 @@ class Unvectorizable(Exception):
     pass
 
 
-class VectorizationInfo(object):
+class VectorizationInfo:
     """
     .. attribute:: iname
     .. attribute:: length
@@ -159,7 +155,7 @@ class SeenFunction(ImmutableRecord):
                 arg_dtypes=arg_dtypes)
 
 
-class CodeGenerationState(object):
+class CodeGenerationState:
     """
     .. attribute:: kernel
     .. attribute:: implemented_data_info
@@ -459,7 +455,7 @@ def generate_code_v2(kernel):
             raise ValueError("argument type not understood: '%s'" % type(arg))
 
     allow_complex = False
-    for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):
+    for var in kernel.args + list(kernel.temporary_variables.values()):
         if var.dtype.involves_complex():
             allow_complex = True
 

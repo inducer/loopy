@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 import os
 from setuptools import setup, find_packages
@@ -12,7 +11,7 @@ finally:
     version_file.close()
 
 os.environ["AKPYTHON_EXEC_IMPORT_UNAVAILABLE"] = "1"
-exec(compile(version_file_contents, "loopy/version.py", 'exec'), ver_dic)
+exec(compile(version_file_contents, "loopy/version.py", "exec"), ver_dic)
 
 
 # {{{ capture git revision at install time
@@ -34,9 +33,7 @@ def find_git_revision(tree_root):
               cwd=tree_root)
     (git_rev, _) = p.communicate()
 
-    import sys
-    if sys.version_info >= (3,):
-        git_rev = git_rev.decode()
+    git_rev = git_rev.decode()
 
     git_rev = git_rev.rstrip()
 
@@ -56,7 +53,7 @@ def write_git_revision(package_name):
     git_rev = find_git_revision(dn)
 
     with open(join(dn, package_name, "_git_rev.py"), "w") as outf:
-        outf.write("GIT_REVISION = %s\n" % repr(git_rev))
+        outf.write('GIT_REVISION = "%s"\n' % git_rev)
 
 
 write_git_revision("loopy")
@@ -67,22 +64,22 @@ write_git_revision("loopy")
 setup(name="loo.py",
       version=ver_dic["VERSION_TEXT"],
       description="A code generator for array-based code on CPUs and GPUs",
-      long_description=open("README.rst", "rt").read(),
+      long_description=open("README.rst").read(),
       classifiers=[
-          'Development Status :: 4 - Beta',
-          'Intended Audience :: Developers',
-          'Intended Audience :: Other Audience',
-          'Intended Audience :: Science/Research',
-          'License :: OSI Approved :: MIT License',
-          'Natural Language :: English',
-          'Programming Language :: Python',
-          'Programming Language :: Python :: 3',
-          'Topic :: Scientific/Engineering',
-          'Topic :: Scientific/Engineering :: Information Analysis',
-          'Topic :: Scientific/Engineering :: Mathematics',
-          'Topic :: Scientific/Engineering :: Visualization',
-          'Topic :: Software Development :: Libraries',
-          'Topic :: Utilities',
+          "Development Status :: 4 - Beta",
+          "Intended Audience :: Developers",
+          "Intended Audience :: Other Audience",
+          "Intended Audience :: Science/Research",
+          "License :: OSI Approved :: MIT License",
+          "Natural Language :: English",
+          "Programming Language :: Python",
+          "Programming Language :: Python :: 3",
+          "Topic :: Scientific/Engineering",
+          "Topic :: Scientific/Engineering :: Information Analysis",
+          "Topic :: Scientific/Engineering :: Mathematics",
+          "Topic :: Scientific/Engineering :: Visualization",
+          "Topic :: Software Development :: Libraries",
+          "Topic :: Utilities",
           ],
 
       python_requires="~=3.6",
@@ -92,7 +89,6 @@ setup(name="loo.py",
           "genpy>=2016.1.2",
           "cgen>=2016.1",
           "islpy>=2019.1",
-          "six>=1.8.0",
           "codepy>=2017.1",
           "colorama",
           "Mako",
