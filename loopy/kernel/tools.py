@@ -295,6 +295,14 @@ def find_all_insn_inames(kernel):
 
 # {{{ set operation cache
 
+def _get_dim_max(set_, idx):
+    return set_.dim_max(idx)
+
+
+def _get_dim_min(set_, idx):
+    return set_.dim_min(idx)
+
+
 class SetOperationCacheManager:
     def __init__(self):
         # mapping: set hash -> [(set, op, args, result)]
@@ -317,15 +325,13 @@ class SetOperationCacheManager:
         if set.plain_is_empty():
             raise LoopyError("domain '%s' is empty" % set)
 
-        from loopy.isl_helpers import dim_min_with_elimination
-        return self.op(set, "dim_min", dim_min_with_elimination, args)
+        return self.op(set, "dim_min", _get_dim_min, args)
 
     def dim_max(self, set, *args):
         if set.plain_is_empty():
             raise LoopyError("domain '%s' is empty" % set)
 
-        from loopy.isl_helpers import dim_max_with_elimination
-        return self.op(set, "dim_max", dim_max_with_elimination, args)
+        return self.op(set, "dim_max", _get_dim_max, args)
 
     def base_index_and_length(self, set, iname, context=None,
             n_allowed_params_in_length=None):
