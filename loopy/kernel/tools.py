@@ -298,6 +298,10 @@ def find_all_insn_inames(kernel):
 
 # {{{ set operation cache
 
+def _eliminate_except(set_, except_inames, dts):
+    return set_.eliminate_except(except_inames, dts)
+
+
 class SetOperationCacheManager:
     def __init__(self):
         # mapping: set hash -> [(set, op, args, result)]
@@ -331,6 +335,9 @@ class SetOperationCacheManager:
 
         from loopy.isl_helpers import dim_max_with_elimination
         return self.op(set, "dim_max", dim_max_with_elimination, args)
+
+    def eliminate_except(self, set_, *args):
+        return self.op(set_, "eliminate_except", _eliminate_except, args)
 
     def base_index_and_length(self, set, iname, context=None,
             n_allowed_params_in_length=None):

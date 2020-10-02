@@ -39,7 +39,8 @@ def to_codegen_result(
 
     chk_domain = isl.Set.from_basic_set(domain)
     chk_domain = chk_domain.remove_redundancies()
-    chk_domain = chk_domain.eliminate_except(check_inames, [dim_type.set])
+    chk_domain = codegen_state.kernel.cache_manager.eliminate_except(chk_domain,
+            check_inames, [dim_type.set])
 
     chk_domain, implemented_domain = isl.align_two(
             chk_domain, codegen_state.implemented_domain)
