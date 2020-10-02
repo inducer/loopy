@@ -32,7 +32,8 @@ def get_approximate_convex_bounds_checks(domain, check_inames,
     if isinstance(domain, isl.BasicSet):
         domain = isl.Set.from_basic_set(domain)
     domain = domain.remove_redundancies()
-    result = op_cache_manager.eliminate_except(domain, check_inames, [dim_type.set])
+    result = op_cache_manager.eliminate_except(domain, check_inames,
+            (dim_type.set,))
 
     # This is ok, because we're really looking for the
     # projection, with no remaining constraints from
