@@ -298,7 +298,7 @@ def find_all_insn_inames(kernel):
 def _eliminate_except(set_, except_inames, dts):
     return set_.eliminate_except(except_inames, dts)
 
-  
+
 def _get_dim_max(set_, idx):
     return set_.dim_max(idx)
 
@@ -312,51 +312,51 @@ class SetOperationCacheManager:
         # mapping: set hash -> [(set, op, args, result)]
         self.cache = {}
 
-    def op(self, set, op_name, op, args):
-        hashval = hash(set)
+    def op(self, set_, op_name, op, args):
+        hashval = hash(set_)
         bucket = self.cache.setdefault(hashval, [])
 
         for bkt_set, bkt_op, bkt_args, result in bucket:
-            if (set.plain_is_equal(bkt_set)
+            if (set_.plain_is_equal(bkt_set)
                     and op_name == bkt_op
                     and args == bkt_args):
                 return result
 
         #print op, set.get_dim_name(dim_type.set, args[0])
-        result = op(set, *args)
-        bucket.append((set, op_name, args, result))
+        result = op(set_, *args)
+        bucket.append((set_, op_name, args, result))
         return result
 
-    def dim_min(self, set, *args):
-        if set.plain_is_empty():
-            raise LoopyError("domain '%s' is empty" % set)
+    def dim_min(self, set_, *args):
+        if set_.plain_is_empty():
+            raise LoopyError("domain '%s' is empty" % set_)
 
-        return self.op(set, "dim_min", _get_dim_min, args)
+        return self.op(set_, "dim_min", _get_dim_min, args)
 
-    def dim_max(self, set, *args):
-        if set.plain_is_empty():
-            raise LoopyError("domain '%s' is empty" % set)
+    def dim_max(self, set_, *args):
+        if set_.plain_is_empty():
+            raise LoopyError("domain '%s' is empty" % set_)
 
-        return self.op(set, "dim_max", _get_dim_max, args)
+        return self.op(set_, "dim_max", _get_dim_max, args)
 
     def eliminate_except(self, set_, *args):
         return self.op(set_, "eliminate_except", _eliminate_except, args)
 
-    def base_index_and_length(self, set, iname, context=None,
+    def base_index_and_length(self, set_, iname, context=None,
             n_allowed_params_in_length=None):
         """
         :arg n_allowed_params_in_length: Simplifies the 'length'
             argument so that only the first that many params
-            (in the domain of *set*) occur.
+            (in the domain of *set_*) occur.
         """
         if not isinstance(iname, int):
-            iname_to_dim = set.space.get_var_dict()
+            iname_to_dim = set_.space.get_var_dict()
             idx = iname_to_dim[iname][1]
         else:
             idx = iname
 
-        lower_bound_pw_aff = self.dim_min(set, idx)
-        upper_bound_pw_aff = self.dim_max(set, idx)
+        lower_bound_pw_aff = self.dim_min(set_, idx)
+        upper_bound_pw_aff = self.dim_max(set_, idx)
 
         from loopy.diagnostic import StaticValueFindingError
         from loopy.isl_helpers import (
