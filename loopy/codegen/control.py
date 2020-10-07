@@ -324,7 +324,7 @@ def build_loop_nest(codegen_state, schedule_index):
             # Each instruction individually gets its bounds checks,
             # so we can safely overapproximate here.
             return get_approximate_convex_bounds_checks(domain,
-                    check_inames, self.impl_domain)
+                    check_inames, self.impl_domain, self.kernel.cache_manager)
 
     def build_insn_group(sched_index_info_entries, codegen_state,
             done_group_lengths=set()):
