@@ -297,9 +297,9 @@ class InstructionBase(ImmutableRecord):
         :arg f_kwargs: An instance of :class:`dict` of keyword arguments to be
             appended to *f*. Defaults to ``{}``.
         :arg assignee_f_args: An instance of :class:`tuple` of arguments to be
-            appended to *f*. Defaults to *f_args*.
+            appended to *assignee_f*. Defaults to ``()``.
         :arg assignee_f_kwargs: An instance of :class:`dict` of keyword
-        arguments to be appended to *f*. Defaults to *f_args*.
+            arguments to be appended to *assignee_f*. Defaults to ``{}``.
         """
         raise NotImplementedError
 
@@ -884,6 +884,11 @@ class Assignment(MultiAssignmentBase):
             assignee_f = f
             assignee_f_args = f_args
             assignee_f_kwargs = f_kwargs
+        else:
+            if assignee_f_args is None:
+                assignee_f_args = ()
+            if assignee_f_kwargs is None:
+                assignee_f_kwargs = {}
 
         return self.copy(
                 assignee=assignee_f(self.assignee, *assignee_f_args,
@@ -1038,6 +1043,11 @@ class CallInstruction(MultiAssignmentBase):
             assignee_f = f
             assignee_f_args = f_args
             assignee_f_kwargs = f_kwargs
+        else:
+            if assignee_f_args is None:
+                assignee_f_args = ()
+            if assignee_f_kwargs is None:
+                assignee_f_kwargs = {}
 
         return self.copy(
                 assignees=assignee_f(self.assignees, *assignee_f_args,
@@ -1242,6 +1252,11 @@ class CInstruction(InstructionBase):
             assignee_f = f
             assignee_f_args = f_args
             assignee_f_kwargs = f_kwargs
+        else:
+            if assignee_f_args is None:
+                assignee_f_args = ()
+            if assignee_f_kwargs is None:
+                assignee_f_kwargs = {}
 
         return self.copy(
                 iname_exprs=[
