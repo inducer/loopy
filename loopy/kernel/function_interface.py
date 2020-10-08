@@ -176,7 +176,11 @@ def get_arg_descriptor_for_expression(kernel, expr):
                 tuple(iname.name for iname in expr.swept_inames)
                 )(linearized_index)
         sub_dim_tags = tuple(
-                DimTag(strides_as_dict[iname]) for iname in expr.swept_inames)
+                # Not all swept inames necessarily occur in the expression.
+                # Also, some may have been simplified away by simplify_using_aff.
+                DimTag(strides_as_dict.get(iname, 0))
+
+                for iname in expr.swept_inames)
         sub_shape = tuple(
                 pw_aff_to_expr(
                     kernel.get_iname_bounds(iname.name).upper_bound_pw_aff
