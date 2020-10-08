@@ -256,15 +256,11 @@ def find_temporary_address_space(kernel):
             desired_aspace_per_insn.append(desired_aspace)
 
         if not desired_aspace_per_insn:
-            if temp_var.initializer is None:
-                warn_with_kernel(kernel, "temp_to_write(%s)" % temp_var.name,
-                        "temporary variable '%s' never written, eliminating"
-                        % temp_var.name, LoopyAdvisory)
-            else:
-                raise LoopyError("temporary variable '%s': never written, "
-                        "cannot automatically determine address space"
-                        % temp_var.name)
+            warn_with_kernel(kernel, "temp_to_write(%s)" % temp_var.name,
+                    "cannot automatically determine address space of '%s'"
+                    % temp_var.name, LoopyAdvisory)
 
+            new_temp_vars[temp_var.name] = temp_var
             continue
 
         overall_aspace = max(desired_aspace_per_insn)
