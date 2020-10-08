@@ -1991,7 +1991,7 @@ class SliceToInameReplacer(IdentityMapper):
 
             space = space.add_dims(dim_type.param, len(args_as_params_for_domains))
             for i, arg in enumerate(args_as_params_for_domains):
-                space = space.set_dim_id(dim_type.param, i, isl.Id(arg.name))
+                space = space.set_dim_name(dim_type.param, i, arg.name)
 
             iname_set = isl.BasicSet.universe(space)
 
