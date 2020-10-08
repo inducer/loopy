@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 
 from six.moves import zip
+import islpy as isl
 
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
@@ -696,7 +697,7 @@ class CallableKernel(InKernelCallable):
         # perspective
 
         domain_dependent_vars = frozenset().union(
-                *(frozenset(dom.get_var_names(1)) for dom in
+                *(frozenset(dom.get_var_names(isl.dim_type.param)) for dom in
                     self.subkernel.domains))
 
         # FIXME: This is ill-formed, because par can be an expression, e.g.
