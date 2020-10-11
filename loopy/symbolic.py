@@ -1553,9 +1553,8 @@ def _term_to_expr(space, term):
                 result = result*Variable(space.get_dim_name(dt, i))**exp
 
     for i in range(term.dim(dim_type.div)):
-        raise NotImplementedError("divs in terms")
-        # FIXME print the qpoly, match the semantics
-        result += aff_to_expr(term.get_div(i))
+        exp = term.get_exp(dim_type.div, i)
+        result *= (aff_to_expr(term.get_div(i))**exp)
 
     return result
 

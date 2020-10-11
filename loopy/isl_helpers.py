@@ -648,6 +648,7 @@ def subst_into_pwqpolynomial(new_space, poly, subst_dict):
         dims of *new_space*.
     """
     if not poly.get_pieces():
+        # pw poly is univserally zero
         result = isl.PwQPolynomial.zero(new_space.insert_dims(dim_type.out, 0, 1))
         assert result.dim(dim_type.out) == 1
         return result
