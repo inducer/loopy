@@ -1,5 +1,3 @@
-from __future__ import division, with_statement
-
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -24,8 +22,7 @@ THE SOFTWARE.
 
 import re
 
-import six
-from six.moves import intern
+from sys import intern
 
 import loopy as lp
 import numpy as np
@@ -125,7 +122,7 @@ class SubscriptIndexAdjuster(IdentityMapper):
 
 # {{{ scope
 
-class Scope(object):
+class Scope:
     def __init__(self, subprogram_name, arg_names=set()):
         self.subprogram_name = subprogram_name
 
@@ -163,8 +160,8 @@ class Scope(object):
 
     def known_names(self):
         return (self.used_names
-                | set(six.iterkeys(self.dim_map))
-                | set(six.iterkeys(self.type_map)))
+                | set(self.dim_map.keys())
+                | set(self.type_map.keys()))
 
     def is_known(self, name):
         return (name in self.used_names

@@ -54,7 +54,7 @@ else:
 
 
 def main():
-    with open("tasksys.cpp", "r") as ts_file:
+    with open("tasksys.cpp") as ts_file:
         tasksys_source = ts_file.read()
 
     def make_knl(name, insn, vars):

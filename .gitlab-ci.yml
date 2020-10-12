@@ -1,26 +1,7 @@
-Python 2.7 POCL:
-  script:
-  - export PY_EXE=python2.7
-  - export PYOPENCL_TEST=portable
-  - export EXTRA_INSTALL="pybind11 numpy mako"
-  - export LOOPY_NO_CACHE=1
-  - export NO_DOCTESTS=1
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
-  tags:
-  - python2.7
-  - pocl
-  except:
-  - tags
-  artifacts:
-    reports:
-      junit: test/pytest.xml
-
-
 Python 3 POCL:
   script:
   - export PY_EXE=python3
-  - export PYOPENCL_TEST=portable
+  - export PYOPENCL_TEST=portable:pthread
   - export EXTRA_INSTALL="pybind11 numpy mako"
   - export LOOPY_NO_CACHE=1
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
@@ -55,15 +36,15 @@ Python 3 Intel:
 
 
 Python 3 POCL Twice With Cache:
-  script:
-  - export PY_EXE=python3
-  - export PYOPENCL_TEST=portable
-  - export EXTRA_INSTALL="pybind11 numpy mako"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
-  - "cd .."
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-  - ". ./build-and-test-py-project.sh"
+  script: |
+    export PY_EXE=python3
+    export PYOPENCL_TEST=portable:pthread
+    export EXTRA_INSTALL="pybind11 numpy mako"
+    curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+    . ./ci-support.sh
+    build_py_project_in_venv
+    ( test_py_project )
+    ( test_py_project )
   tags:
   - python3
   - pocl
@@ -77,7 +58,7 @@ Python 3 POCL Twice With Cache:
 # PyPy POCL:
 #   script:
 #   - export PY_EXE=pypy
-#   - export PYOPENCL_TEST=portable
+#   - export PYOPENCL_TEST=portable:pthread
 #   - export EXTRA_INSTALL="pybind11 numpy mako"
 #   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
 #   - ". ./build-and-test-py-project.sh"
@@ -88,16 +69,26 @@ Python 3 POCL Twice With Cache:
 #   - tags
 
 Python 3 POCL Examples:
-  script:
-  - export PY_EXE=python3
-  - export PYOPENCL_TEST=portable
-  - export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipykernel nbconvert"
-  - ". ./build-py-project-and-run-examples.sh"
+  script: |
+    export PY_EXE=python3
+    export PYOPENCL_TEST=portable:pthread
+    export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipykernel nbconvert"
+
+    curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+    . ./ci-support.sh
+    build_py_project_in_venv
+
+    curl -L "https://ci.appveyor.com/api/projects/ispc/ispc/artifacts/build%2Fispc-trunk-linux.tar.gz?job=Environment%3A%20APPVEYOR_BUILD_WORKER_IMAGE%3DUbuntu1604%2C%20LLVM_VERSION%3Dlatest" | tar xfz -
+    export PATH="$(pwd)/ispc-trunk-linux/bin:$PATH"
+
+    . ./build-py-project-and-run-examples.sh
+    run_py_examples
+    run_ipynb_examples
+    run_floopy_examples
   tags:
   - python3
   - pocl
   - large-node
-  - ispc
   except:
   - tags
 
@@ -108,25 +99,11 @@ Pylint:
   - export PY_EXE=python3
   - EXTRA_INSTALL="pybind11 numpy mako matplotlib ipykernel ply fparser"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-pylint.sh
-  - ". ./prepare-and-run-pylint.sh loopy test/test_*.py"
+  - . ./prepare-and-run-pylint.sh "$CI_PROJECT_NAME" test/test_*.py
   tags:
   - python3
   except:
   - tags
-
-CentOS binary:
-  script:
-  - (cd build-helpers; ./make-linux-build-docker.sh --nodate)
-  - (cd ./build-helpers; ./loopy-centos6 ../examples/fortran/sparse.floopy)
-  artifacts:
-    expire_in: 4 weeks
-    paths:
-    - build-helpers/loopy-centos6
-  tags:
-  - docker
-  only:
-  - master
-  retry: 2
 
 Documentation:
   script:
@@ -135,13 +112,11 @@ Documentation:
   - ". ./build-docs.sh"
   tags:
   - python3
-  only:
-  - master
 
 Flake8:
   script:
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
-  - ". ./prepare-and-run-flake8.sh loopy test"
+  - . ./prepare-and-run-flake8.sh "$CI_PROJECT_NAME" test examples
   tags:
   - python3
   except:

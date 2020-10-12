@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2016 Matt Wala"
 
 __license__ = """
@@ -25,7 +23,6 @@ THE SOFTWARE.
 
 from loopy.diagnostic import LoopyError
 import loopy as lp
-import six
 
 from loopy.kernel.data import auto, AddressSpace
 from pytools import memoize_method, Record
@@ -60,7 +57,7 @@ class LivenessResult(dict):
                    for idx in range(nscheditems))
 
 
-class LivenessAnalysis(object):
+class LivenessAnalysis:
 
     def __init__(self, kernel):
         self.kernel = kernel
@@ -82,10 +79,10 @@ class LivenessAnalysis(object):
             elif isinstance(next_item, EnterLoop):
                 # Account for empty loop
                 loop_end = block_bounds[sched_idx + 1]
-                after = successors[loop_end] | set([sched_idx + 1])
+                after = successors[loop_end] | {sched_idx + 1}
             elif isinstance(next_item, (LeaveLoop, RunInstruction,
                     CallKernel, ReturnFromKernel, Barrier)):
-                after = set([sched_idx + 1])
+                after = {sched_idx + 1}
             else:
                 raise LoopyError("unexpected type of schedule item: {ty}"
                     .format(ty=type(next_item).__name__))
@@ -94,7 +91,7 @@ class LivenessAnalysis(object):
             if isinstance(item, LeaveLoop):
                 # Account for loop
                 loop_begin = block_bounds[sched_idx]
-                after |= set([loop_begin])
+                after |= {loop_begin}
             elif not isinstance(item, (EnterLoop, RunInstruction,
                     CallKernel, ReturnFromKernel, Barrier)):
                 raise LoopyError("unexpected type of schedule item: {ty}"
@@ -105,8 +102,8 @@ class LivenessAnalysis(object):
         return successors
 
     def get_gen_and_kill_sets(self):
-        gen = dict((idx, set()) for idx in range(len(self.schedule)))
-        kill = dict((idx, set()) for idx in range(len(self.schedule)))
+        gen = {idx: set() for idx in range(len(self.schedule))}
+        kill = {idx: set() for idx in range(len(self.schedule))}
 
         for sched_idx, sched_item in enumerate(self.schedule):
             if not isinstance(sched_item, RunInstruction):
@@ -186,7 +183,7 @@ class LivenessAnalysis(object):
 
 # {{{ save and reload implementation
 
-class TemporarySaver(object):
+class TemporarySaver:
 
     class PromotedTemporary(Record):
         """
@@ -265,15 +262,15 @@ class TemporarySaver(object):
                     isl.Space.create_from_names(
                         isl.DEFAULT_CONTEXT,
                         set=[],
-                        params=set(
+                        params={
                             arg.name for arg in kernel.args
-                            if isinstance(arg, ValueArg)))))
+                            if isinstance(arg, ValueArg)})))
 
     def find_accessing_instructions_in_subkernel(self, temporary, subkernel):
         # Find all accessing instructions in the subkernel. If base_storage is
         # present, this includes instructions that access aliasing memory.
 
-        aliasing_names = set([temporary])
+        aliasing_names = {temporary}
         base_storage = self.kernel.temporary_variables[temporary].base_storage
 
         if base_storage is not None:
@@ -305,7 +302,7 @@ class TemporarySaver(object):
 
         result = defaultdict(set)
 
-        for temporary in six.itervalues(self.kernel.temporary_variables):
+        for temporary in self.kernel.temporary_variables.values():
             if temporary.base_storage is None:
                 continue
             result[temporary.base_storage].add(temporary.name)
@@ -512,7 +509,7 @@ class TemporarySaver(object):
         self.new_subdomain = new_subdomain
 
         save_or_load_insn_id = self.insn_name_gen(
-            "{name}.{mode}".format(name=temporary, mode=mode))
+            f"{temporary}.{mode}")
 
         def add_subscript_if_subscript_nonempty(agg, subscript=()):
             from pymbolic.primitives import Subscript, Variable
@@ -550,10 +547,10 @@ class TemporarySaver(object):
         pre_barrier, post_barrier = self.get_enclosing_global_barrier_pair(subkernel)
 
         if pre_barrier is not None:
-            depends_on |= set([pre_barrier])
+            depends_on |= {pre_barrier}
 
         if post_barrier is not None:
-            update_deps |= set([post_barrier])
+            update_deps |= {post_barrier}
 
         # Create the load / store instruction.
         from loopy.kernel.data import Assignment
@@ -564,9 +561,7 @@ class TemporarySaver(object):
                 self.subkernel_to_surrounding_inames[subkernel]
                 | frozenset(hw_inames + dim_inames)),
             within_inames_is_final=True,
-            depends_on=depends_on,
-            boostable=False,
-            boostable_into=frozenset())
+            depends_on=depends_on)
 
         if mode == "save":
             self.temporary_to_save_ids[temporary].add(save_or_load_insn_id)
@@ -591,7 +586,7 @@ class TemporarySaver(object):
     def finish(self):
         new_instructions = []
 
-        insns_to_insert = dict((insn.id, insn) for insn in self.insns_to_insert)
+        insns_to_insert = {insn.id: insn for insn in self.insns_to_insert}
 
         for orig_insn in self.kernel.instructions:
             if orig_insn.id in self.insns_to_update:
@@ -764,7 +759,7 @@ def save_and_reload_temporaries(program):
     from loopy.schedule.tools import (
         temporaries_read_in_subkernel, temporaries_written_in_subkernel)
 
-    for sched_idx, sched_item in enumerate(knl.schedule):
+    for sched_idx, sched_item in enumerate(program.root_kernel.schedule):
 
         if isinstance(sched_item, CallKernel):
             # Any written temporary that is live-out needs to be read into
@@ -775,25 +770,26 @@ def save_and_reload_temporaries(program):
             else:
                 subkernel = sched_item.kernel_name
                 interesting_temporaries = (
-                    temporaries_read_in_subkernel(knl, subkernel)
-                    | temporaries_written_in_subkernel(knl, subkernel))
+                    temporaries_read_in_subkernel(program.root_kernel, subkernel)
+                    | temporaries_written_in_subkernel(program.root_kernel,
+                                                       subkernel))
 
             for temporary in liveness[sched_idx].live_out & interesting_temporaries:
-                logger.info("reloading {0} at entry of {1}"
+                logger.info("reloading {} at entry of {}"
                         .format(temporary, sched_item.kernel_name))
                 saver.reload(temporary, sched_item.kernel_name)
 
         elif isinstance(sched_item, ReturnFromKernel):
-            if sched_idx == len(knl.schedule) - 1:
+            if sched_idx == len(program.root_kernel.schedule) - 1:
                 # Kernel exit: nothing live
                 interesting_temporaries = set()
             else:
                 subkernel = sched_item.kernel_name
                 interesting_temporaries = (
-                    temporaries_written_in_subkernel(knl, subkernel))
+                    temporaries_written_in_subkernel(program.root_kernel, subkernel))
 
             for temporary in liveness[sched_idx].live_in & interesting_temporaries:
-                logger.info("saving {0} before return of {1}"
+                logger.info("saving {} before return of {}"
                         .format(temporary, sched_item.kernel_name))
                 saver.save(temporary, sched_item.kernel_name)
 

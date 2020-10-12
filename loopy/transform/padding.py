@@ -1,7 +1,3 @@
-from __future__ import division
-from __future__ import absolute_import
-import six
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -34,7 +30,7 @@ from loopy.kernel import LoopKernel
 
 class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, arg_names, handler):
-        super(ArrayAxisSplitHelper, self).__init__(rule_mapping_context)
+        super().__init__(rule_mapping_context)
         self.arg_names = arg_names
         self.handler = handler
 
@@ -42,7 +38,7 @@ class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
         if expr.aggregate.name in self.arg_names:
             return self.handler(expr)
         else:
-            return super(ArrayAxisSplitHelper, self).map_subscript(expr, expn_state)
+            return super().map_subscript(expr, expn_state)
 
 
 # {{{ split_array_dim (deprecated since June 2016)
@@ -93,8 +89,8 @@ def split_array_dim(kernel, arrays_and_axes, count,
     if isinstance(arrays_and_axes, tuple):
         arrays_and_axes = [arrays_and_axes]
 
-    array_to_rest = dict(
-            (tup[0], normalize_rest(tup[1:])) for tup in arrays_and_axes)
+    array_to_rest = {
+            tup[0]: normalize_rest(tup[1:]) for tup in arrays_and_axes}
 
     if len(arrays_and_axes) != len(array_to_rest):
         raise RuntimeError("cannot split multiple axes of the same variable")
@@ -107,7 +103,7 @@ def split_array_dim(kernel, arrays_and_axes, count,
 
     from loopy.kernel.tools import ArrayChanger
 
-    for array_name, (axis, order) in six.iteritems(array_to_rest):
+    for array_name, (axis, order) in array_to_rest.items():
         achng = ArrayChanger(kernel, array_name)
         ary = achng.get()
 
@@ -238,12 +234,12 @@ def split_array_dim(kernel, arrays_and_axes, count,
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
     aash = ArrayAxisSplitHelper(rule_mapping_context,
-            set(six.iterkeys(array_to_rest)), split_access_axis)
+            set(array_to_rest.keys()), split_access_axis)
     kernel = rule_mapping_context.finish_kernel(aash.map_kernel(kernel))
 
     if auto_split_inames:
-        from loopy.transform.iname import split_iname
-        for iname, (outer_iname, inner_iname) in six.iteritems(split_vars):
+        from loopy import split_iname
+        for iname, (outer_iname, inner_iname) in split_vars.items():
             kernel = split_iname(kernel, iname, count,
                     outer_iname=outer_iname, inner_iname=inner_iname,
                     **split_kwargs)
@@ -369,7 +365,7 @@ def _split_array_axis_inner(kernel, array_name, axis_nr, count, order="C"):
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
     aash = ArrayAxisSplitHelper(rule_mapping_context,
-            set([array_name]), split_access_axis)
+            {array_name}, split_access_axis)
     kernel = rule_mapping_context.finish_kernel(aash.map_kernel(kernel))
 
     return kernel
@@ -391,8 +387,9 @@ def split_array_axis(kernel, array_names, axis_nr, count,
 
     .. versionchanged:: 2016.2
 
-        There was a more complicated, dumber function called :func:`split_array_dim`
-        that had the role of this function in versions prior to 2016.2.
+        There was a more complicated, dumber function called
+        ``loopy.split_array_dim`` that had the role of this function in
+        versions prior to 2016.2.
     """
     assert isinstance(kernel, LoopKernel)
 
@@ -449,7 +446,7 @@ def find_padding_multiple(kernel, variable, axis, align_bytes, allowed_waste=0.1
 
 @iterate_over_kernels_if_given_program
 def add_padding(kernel, variable, axis, align_bytes):
-    arg_to_idx = dict((arg.name, i) for i, arg in enumerate(kernel.args))
+    arg_to_idx = {arg.name: i for i, arg in enumerate(kernel.args)}
     arg_idx = arg_to_idx[variable]
 
     new_args = kernel.args[:]

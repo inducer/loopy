@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # loopy documentation build configuration file, created by
 # sphinx-quickstart on Tue Aug  9 13:40:49 2011.
@@ -46,8 +45,8 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = u'loopy'
-copyright = u'2016, Andreas Klöckner'
+project = 'loopy'
+copyright = '2016, Andreas Klöckner'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -148,7 +147,7 @@ html_sidebars = {
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+# html_static_path = ['_static']
 
 # If not '', a 'Last updated on:' timestamp is inserted at every page bottom,
 # using the given strftime format.
@@ -206,8 +205,8 @@ htmlhelp_basename = 'loopydoc'
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto/manual]).
 latex_documents = [
-        ('index', 'loopy.tex', u'loopy Documentation',
-            u'Andreas Kloeckner', 'manual'),
+        ('index', 'loopy.tex', 'loopy Documentation',
+            'Andreas Kloeckner', 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -239,8 +238,8 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    ('index', 'loopy', u'loopy Documentation',
-     [u'Andreas Kloeckner'], 1)
+    ('index', 'loopy', 'loopy Documentation',
+     ['Andreas Kloeckner'], 1)
 ]
 
 
@@ -251,6 +250,8 @@ intersphinx_mapping = {
     'https://documen.tician.de/pyopencl': None,
     'https://documen.tician.de/cgen': None,
     'https://docs.scipy.org/doc/numpy/': None,
+    'https://documen.tician.de/pymbolic': None,
+    'https://documen.tician.de/pytools': None,
     }
 
 autoclass_content = "class"

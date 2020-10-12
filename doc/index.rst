@@ -20,29 +20,6 @@ When you run this script, the following kernel is generated, compiled, and execu
 
 .. _static-binary:
 
-Want to try out loopy?
-----------------------
-
-There's no need to go through :ref:`installation` if you'd just like to get a
-feel for what loopy is.  Instead, you may
-`download a self-contained Linux binary <https://gitlab.tiker.net/inducer/loopy/-/jobs/66778/artifacts/browse/build-helpers/>`_.
-This is purposefully built on an ancient Linux distribution, so it should work
-on most versions of Linux that are currently out there.
-
-Once you have the binary, do the following::
-
-    chmod +x ./loopy-centos6
-    ./loopy-centos6 --target=opencl hello-loopy.loopy
-    ./loopy-centos6 --target=cuda hello-loopy.loopy
-    ./loopy-centos6 --target=ispc hello-loopy.loopy
-
-Grab the example here: :download:`examples/python/hello-loopy.loopy <../examples/python/hello-loopy.loopy>`.
-
-You may also donwload the most recent version by going to the `list of builds
-<https://gitlab.tiker.net/inducer/loopy/builds>`_, clicking on the newest one
-of type "CentOS binary", clicking on "Browse" under "Build Artifacts", then
-navigating to "build-helpers", and downloading the binary from there.
-
 Places on the web related to Loopy
 ----------------------------------
 
@@ -71,6 +48,7 @@ Please check :ref:`installation` to get started.
     ref_call
     ref_other
     misc
+    ref_internals
 
 Indices and tables
 ==================

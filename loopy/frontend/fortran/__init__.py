@@ -1,5 +1,3 @@
-from __future__ import division, with_statement
-
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -90,17 +88,17 @@ def _extract_loopy_lines(source):
     loopy_lines = []
 
     in_loopy_code = False
-    for l in lines:
-        comment_match = comment_re.match(l)
+    for line in lines:
+        comment_match = comment_re.match(line)
 
         if comment_match is None:
             if in_loopy_code:
                 raise LoopyError("non-comment source line in loopy block")
 
-            remaining_lines.append(l)
+            remaining_lines.append(line)
 
             # Preserves line numbers in loopy code, for debuggability
-            loopy_lines.append("# "+l)
+            loopy_lines.append("# "+line)
             continue
 
         cmt = comment_match.group(1)
@@ -112,7 +110,7 @@ def _extract_loopy_lines(source):
             in_loopy_code = True
 
             # Preserves line numbers in loopy code, for debuggability
-            loopy_lines.append("# "+l)
+            loopy_lines.append("# "+line)
 
         elif cmt_stripped == "$loopy end":
             if not in_loopy_code:
@@ -120,16 +118,16 @@ def _extract_loopy_lines(source):
             in_loopy_code = False
 
             # Preserves line numbers in loopy code, for debuggability
-            loopy_lines.append("# "+l)
+            loopy_lines.append("# "+line)
 
         elif in_loopy_code:
             loopy_lines.append(cmt)
 
         else:
-            remaining_lines.append(l)
+            remaining_lines.append(line)
 
             # Preserves line numbers in loopy code, for debuggability
-            loopy_lines.append("# "+l)
+            loopy_lines.append("# "+line)
 
     return "\n".join(remaining_lines), "\n".join(loopy_lines)
 
@@ -268,9 +266,9 @@ def parse_fortran(source, filename="<floopy code>", free_form=None, strict=None,
     import logging
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
+    formatter = logging.Formatter("%(name)-12s: %(levelname)-8s %(message)s")
     console.setFormatter(formatter)
-    logging.getLogger('fparser').addHandler(console)
+    logging.getLogger("fparser").addHandler(console)
 
     from fparser import api
     tree = api.parse(source, isfree=free_form, isstrict=strict,

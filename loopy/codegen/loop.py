@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from six.moves import range
 
 from loopy.diagnostic import warn, LoopyError
 from loopy.codegen.result import merge_codegen_results
@@ -80,11 +77,16 @@ def get_slab_decomposition(kernel, iname):
 
         if upper_incr:
             assert upper_incr > 0
-            upper_slab = ("final", isl.BasicSet.universe(space)
-                    .add_constraint(
-                        isl.Constraint.inequality_from_aff(
-                            iname_rel_aff(space,
-                                iname, ">", upper_bound_aff-upper_incr))))
+            upper_bset = isl.BasicSet.universe(space).add_constraint(
+                isl.Constraint.inequality_from_aff(
+                    iname_rel_aff(space,
+                        iname, ">", upper_bound_aff-upper_incr)))
+            if lower_incr:
+                # Ensure that this slab is actually distinct from the
+                # lower one, if it exists.
+                _, lower_bset = lower_slab
+                upper_bset, = upper_bset.subtract(lower_bset).get_basic_sets()
+            upper_slab = ("final", upper_bset)
             upper_bulk_bound = (
                     isl.Constraint.inequality_from_aff(
                         iname_rel_aff(space,
@@ -320,7 +322,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
         if len(slabs) > 1:
             result.append(
                     codegen_state.ast_builder.emit_comment(
-                        "%s slab for '%s'" % (slab_name, iname)))
+                        f"{slab_name} slab for '{iname}'"))
 
         # Have the conditional infrastructure generate the
         # slabbing conditionals.
@@ -359,7 +361,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
     result = []
 
     for slab_name, slab in slabs:
-        cmt = "%s slab for '%s'" % (slab_name, loop_iname)
+        cmt = f"{slab_name} slab for '{loop_iname}'"
         if len(slabs) == 1:
             cmt = None
 
