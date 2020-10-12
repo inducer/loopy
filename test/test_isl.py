@@ -65,7 +65,10 @@ def test_subst_into_pwqpolynomial():
 
     from loopy.isl_helpers import subst_into_pwqpolynomial
     result = subst_into_pwqpolynomial(space, poly, arg_dict)
-    assert "(768 * nx + 2304 * nx * ny)" in str(result)
+    expected_pwqpoly = isl.PwQPolynomial("[nx, ny, nz] -> {"
+            "(768 * nx + 2304 * nx * ny) : nx > 0 and ny > 0;"
+            "768 * nx : nx > 0 and ny <= 0 }")
+    assert (result - expected_pwqpoly).is_zero()
 
 
 if __name__ == "__main__":
