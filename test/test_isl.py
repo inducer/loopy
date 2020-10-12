@@ -54,11 +54,11 @@ def test_pw_aff_to_conditional_expr():
 def test_subst_into_pwqpolynomial():
     from pymbolic.primitives import Variable
     arg_dict = {
-            'm': 3*Variable("nx"),
-            'n': 3*Variable("ny"),
-            'nx': Variable('nx'),
-            'ny': Variable('ny'),
-            'nz': Variable('nz')}
+            "m": 3*Variable("nx"),
+            "n": 3*Variable("ny"),
+            "nx": Variable("nx"),
+            "ny": Variable("ny"),
+            "nz": Variable("nz")}
     space = isl.Set("[nx, ny, nz] -> { []: }").space
     poly = isl.PwQPolynomial("[m, n] -> { (256 * m + 256 * m * n) : "
         "m > 0 and n > 0; 256 * m : m > 0 and n <= 0 }")
