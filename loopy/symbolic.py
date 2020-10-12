@@ -1470,6 +1470,56 @@ def guarded_pwaff_from_expr(space, expr, vars_to_zero=None):
 # }}}
 
 
+# {{{ (pw_)?qpoly_from_expr
+
+class PwQPolyEvaluationMapper(EvaluationMapperBase):
+    def __init__(self, space, vars_to_zero):
+        zero_qpoly = isl.QPolynomial.zero_on_domain(space)
+
+        context = {}
+        for name, (dt, pos) in space.get_var_dict().items():
+            if dt == dim_type.set:
+                dt = dim_type.in_
+
+            context[name] = isl.PwQPolynomial.from_qpolynomial(
+                    isl.QPolynomial.var_on_domain(space, dt, pos))
+
+        for v in vars_to_zero:
+            context[v] = zero_qpoly
+
+        self.pw_zero = isl.PwQPolynomial.from_qpolynomial(zero_qpoly)
+
+        super().__init__(context)
+
+    def map_constant(self, expr):
+        if isinstance(expr, np.integer):
+            expr = int(expr)
+
+        return self.pw_zero + expr
+
+    def map_quotient(self, expr):
+        raise TypeError("true division in '%s' not supported "
+                "for as-pwqpoly evaluation" % expr)
+
+
+def pw_qpolynomial_from_expr(space, expr, vars_to_zero=frozenset()):
+    return PwQPolyEvaluationMapper(space, vars_to_zero)(expr)
+
+
+def qpolynomial_from_expr(space, expr):
+    pw_qpoly = pw_qpolynomial_from_expr(space, expr).coalesce()
+
+    pieces = pw_qpoly.get_pieces()
+    if len(pieces) == 1:
+        (s, qpoly), = pieces
+        return qpoly
+    else:
+        raise RuntimeError("expression '%s' could not be converted to a "
+                "non-piecewise quasi-polynomial expression" % expr)
+
+# }}}
+
+
 # {{{ simplify using aff
 
 def simplify_using_aff(kernel, expr):
@@ -1490,15 +1540,33 @@ def simplify_using_aff(kernel, expr):
 # }}}
 
 
+# {{{ qpolynomial_to_expr
+
+def _term_to_expr(space, term):
+    from pymbolic.primitives import Variable
+
+    result = term.get_coefficient_val().to_python()
+    for dt in isl._CHECK_DIM_TYPES:
+        for i in range(term.dim(dt)):
+            exp = term.get_exp(dt, i)
+            if exp:
+                result = result*Variable(space.get_dim_name(dt, i))**exp
+
+    for i in range(term.dim(dim_type.div)):
+        exp = term.get_exp(dim_type.div, i)
+        result *= (aff_to_expr(term.get_div(i))**exp)
+
+    return result
+
+
+def qpolynomial_to_expr(qpoly):
+    space = qpoly.space
+    return sum(_term_to_expr(space, t) for t in qpoly.get_terms())
+
+# }}}
+
+
 # {{{ expression/set <-> constraint conversion
-
-def eq_constraint_from_expr(space, expr):
-    return isl.Constraint.equality_from_aff(aff_from_expr(space, expr))
-
-
-def ineq_constraint_from_expr(space, expr):
-    return isl.Constraint.inequality_from_aff(aff_from_expr(space, expr))
-
 
 def constraint_to_cond_expr(cns):
     # Looks like this is ok after all--get_aff() performs some magic.
