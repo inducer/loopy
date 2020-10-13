@@ -1033,7 +1033,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return (
                 {
                     arg.name for arg in self.args
-                    if isinstance(arg, ArrayArg)}
+                    if (isinstance(arg, ArrayArg)
+                        and arg.address_space == AddressSpace.GLOBAL)}
                 | {
                     tv.name
                     for tv in self.temporary_variables.values()

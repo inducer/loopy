@@ -24,13 +24,6 @@ THE SOFTWARE.
 """
 
 
-import six
-import numpy as np
-from six.moves import range, zip
-
-from pymbolic.mapper.evaluator import \
-        EvaluationMapper as EvaluationMapperBase
-
 from loopy.diagnostic import StaticValueFindingError, LoopyError
 
 import islpy as isl
@@ -593,7 +586,7 @@ def get_simple_strides(bset, key_by="name"):
 # }}}
 
 
-# {{{{ find_max_of_pwaff_with_params
+# {{{ find_max_of_pwaff_with_params
 
 def find_max_of_pwaff_with_params(pw_aff, n_allowed_params):
     if n_allowed_params is None:
@@ -617,30 +610,6 @@ def find_max_of_pwaff_with_params(pw_aff, n_allowed_params):
 
 
 # {{{ subst_into_pwqpolynomial
-
-class QPolynomialEvaluationMapper(EvaluationMapperBase):
-    def __init__(self, space):
-        self.zero = isl.QPolynomial.zero_on_domain(space)
-
-        context = {}
-        for name, (dt, pos) in six.iteritems(space.get_var_dict()):
-            if dt == dim_type.set:
-                dt = dim_type.in_
-
-            context[name] = isl.QPolynomial.var_on_domain(space, dt, pos)
-
-        super(QPolynomialEvaluationMapper, self).__init__(context)
-
-    def map_constant(self, expr):
-        if isinstance(expr, np.integer):
-            expr = int(expr)
-
-        return self.zero + expr
-
-    def map_quotient(self, expr):
-        raise TypeError("true division in '%s' not supported "
-                "for as-pwaff evaluation" % expr)
-
 
 def get_param_subst_domain(new_space, base_obj, subst_dict):
     """Modify the :mod:`islpy` object *base_obj* to incorporate parameters for
@@ -703,8 +672,18 @@ def get_param_subst_domain(new_space, base_obj, subst_dict):
 
 
 def subst_into_pwqpolynomial(new_space, poly, subst_dict):
+    """
+    Returns an instance of :class:`islpy.PwQPolynomial` with substitutions from
+    *subst_dict* substituted into *poly*.
+
+    :arg poly: an instance of :class:`islpy.PwQPolynomial`
+    :arg subst_dict: a mapping from parameters of *poly* to
+        :class:`pymbolic.primitives.Expression` made up of terms comprising the
+        parameters of *new_space*. The expression must be affine in the param
+        dims of *new_space*.
+    """
     if not poly.get_pieces():
-        assert new_space.is_params()
+        # pw poly is univserally zero
         result = isl.PwQPolynomial.zero(new_space.insert_dims(dim_type.out, 0, 1))
         assert result.dim(dim_type.out) == 1
         return result
@@ -714,7 +693,7 @@ def subst_into_pwqpolynomial(new_space, poly, subst_dict):
     poly, subst_domain, subst_dict = get_param_subst_domain(
             new_space, poly, subst_dict)
 
-    from loopy.symbolic import qpolynomial_to_expr
+    from loopy.symbolic import qpolynomial_to_expr, qpolynomial_from_expr
     new_pieces = []
     for valid_set, qpoly in poly.get_pieces():
         valid_set = valid_set & subst_domain
@@ -726,7 +705,7 @@ def subst_into_pwqpolynomial(new_space, poly, subst_dict):
                 SubstitutionMapper, make_subst_func)
         sub_mapper = SubstitutionMapper(make_subst_func(subst_dict))
         expr = sub_mapper(qpolynomial_to_expr(qpoly))
-        qpoly = QPolynomialEvaluationMapper(valid_set.space)(expr)
+        qpoly = qpolynomial_from_expr(valid_set.space, expr)
 
         new_pieces.append((valid_set, qpoly))
 
