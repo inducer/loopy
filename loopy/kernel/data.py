@@ -339,7 +339,7 @@ class KernelArgument(ImmutableRecord):
 
         dtype = kwargs.pop("dtype", None)
 
-        tags = kwargs.pop("tags", None) # noqa: F841
+        tags = kwargs.pop("tags", None)  # noqa: F841
 
         if "for_atomic" in kwargs:
             for_atomic = kwargs["for_atomic"]
