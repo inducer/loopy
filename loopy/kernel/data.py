@@ -263,7 +263,7 @@ def parse_tag(tag):
 # }}}
 
 
-# {{{ memory address space
+# {{{ memory address space 
 
 class AddressSpace:
     """Storage location of a variable.
@@ -338,6 +338,8 @@ class KernelArgument(ImmutableRecord):
         target = kwargs.pop("target", None)
 
         dtype = kwargs.pop("dtype", None)
+
+ 	    tags = kwargs.pop("tags", None)
 
         if "for_atomic" in kwargs:
             for_atomic = kwargs["for_atomic"]
