@@ -688,8 +688,9 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 
     new_domains = []
     for dom in kernel.domains:
-        if old_name in dom.get_var_dict():
-            dt, pos = dom.get_var_dict()[old_name]
+        dom_var_dict = dom.get_var_dict()
+        if old_name in dom_var_dict:
+            dt, pos = dom_var_dict[old_name]
             dom = dom.set_dim_name(dt, pos, new_name)
 
         new_domains.append(dom)
