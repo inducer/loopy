@@ -635,12 +635,15 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
         raise LoopyError("argument name '%s' conflicts with an existing identifier"
                 "--cannot rename" % new_name)
 
+    # {{{ instructions
+
     from pymbolic import var
     subst_dict = {old_name: var(new_name)}
 
     from loopy.symbolic import (
             RuleAwareSubstitutionMapper,
-            SubstitutionRuleMappingContext)
+            SubstitutionRuleMappingContext,
+            SubstitutionMapper)
     from pymbolic.mapper.substitutor import make_subst_func
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
@@ -650,14 +653,45 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 
     kernel = smap.map_kernel(kernel)
 
+    # }}}
+
+    # {{{ args, temporary_variables
+
+    from loopy.kernel.array import ArrayBase
+    subst_mapper = SubstitutionMapper(make_subst_func(subst_dict))
+
     new_args = []
     for arg in kernel.args:
         if arg.name == old_name:
             arg = arg.copy(name=new_name)
+        if isinstance(arg, ArrayBase) and arg.shape:
+            arg = arg.copy(shape=subst_mapper(arg.shape))
 
         new_args.append(arg)
 
-    return kernel.copy(args=new_args)
+    new_tvs = {}
+    for tv_name, tv in kernel.temporary_variables.items():
+        if tv.shape:
+            tv = tv.copy(shape=subst_mapper(tv.shape))
+
+        new_tvs[tv_name] = tv
+
+    # }}}
+
+    # {{{ domain
+
+    new_domains = []
+    for dom in kernel.domains:
+        if old_name in dom.get_var_dict():
+            dt, pos = dom.get_var_dict()[old_name]
+            dom = dom.set_dim_name(dt, pos, new_name)
+
+        new_domains.append(dom)
+
+    # }}}
+
+    return kernel.copy(domains=new_domains, args=new_args,
+            temporary_variables=new_tvs)
 
 # }}}
 
