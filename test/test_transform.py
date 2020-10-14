@@ -674,12 +674,13 @@ def test_add_inames_for_unused_hw_axes(ctx_factory):
 
 def test_rename_argument_of_domain_params():
     knl = lp.make_kernel(
-            "{[i]: 0<=i<n}",
+            "{[i, j]: 0<=i<n and 0<=j<m}",
             """
-            y[i] = 2.0f
+            y[i, j] = 2.0f
             """)
 
     knl = lp.rename_argument(knl, "n", "N")
+    knl = lp.rename_argument(knl, "m", "M")
 
     print(lp.generate_code_v2(knl).device_code())
 
