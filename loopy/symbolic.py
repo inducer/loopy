@@ -980,6 +980,10 @@ class RuleAwareIdentityMapper(IdentityMapper):
             return sym
 
     def __call__(self, expr, kernel, insn):
+        """
+        :arg insn: A :class:`~loopy.kernel.InstructionBase` of which *expr* is
+            a part of, or *None* if *expr*'s source is not an instruction.
+        """
         from loopy.kernel.data import InstructionBase
         assert insn is None or isinstance(insn, InstructionBase)
 
@@ -1003,7 +1007,32 @@ class RuleAwareIdentityMapper(IdentityMapper):
                         lambda expr: self(expr, kernel, insn)))
                 for insn in kernel.instructions]
 
-        return kernel.copy(instructions=new_insns)
+        from loopy.kernel.array import ArrayBase
+        from functools import partial
+        non_insn_self = partial(self, kernel=kernel, insn=None)
+
+        new_args = []
+        for arg in kernel.args:
+            if isinstance(arg, ArrayBase) and arg.shape:
+                arg = arg.copy(
+                        shape=non_insn_self(arg.shape),
+                        dim_tags=[dim_tag.map_expr(non_insn_self)
+                                  for dim_tag in arg.dim_tags])
+
+            new_args.append(arg)
+
+        new_tvs = {}
+        for tv_name, tv in kernel.temporary_variables.items():
+            if tv.shape:
+                tv = tv.copy(
+                        shape=non_insn_self(tv.shape),
+                        dim_tags=[dim_tag.map_expr(non_insn_self)
+                                  for dim_tag in tv.dim_tags])
+
+            new_tvs[tv_name] = tv
+
+        return kernel.copy(instructions=new_insns, args=new_args,
+                           temporary_variables=new_tvs)
 
 
 class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper):
@@ -1014,11 +1043,12 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper):
         self.within = within
 
     def map_variable(self, expr, expn_state):
-        if (expr.name in expn_state.arg_context
-                or not self.within(
-                    expn_state.kernel, expn_state.instruction, expn_state.stack)):
-            return super(RuleAwareSubstitutionMapper, self).map_variable(
-                    expr, expn_state)
+        if expn_state.instruction is not None:
+            if (expr.name in expn_state.arg_context
+                    or not self.within(expn_state.kernel, expn_state.instruction,
+                                       expn_state.stack)):
+                return super(RuleAwareSubstitutionMapper, self).map_variable(
+                        expr, expn_state)
 
         result = self.subst_func(expr)
         if result is not None:

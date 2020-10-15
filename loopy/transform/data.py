@@ -642,8 +642,7 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 
     from loopy.symbolic import (
             RuleAwareSubstitutionMapper,
-            SubstitutionRuleMappingContext,
-            SubstitutionMapper)
+            SubstitutionRuleMappingContext)
     from pymbolic.mapper.substitutor import make_subst_func
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
@@ -655,32 +654,14 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 
     # }}}
 
-    # {{{ args, temporary_variables
-
-    from loopy.kernel.array import ArrayBase
-    subst_mapper = SubstitutionMapper(make_subst_func(subst_dict))
+    # {{{ args
 
     new_args = []
     for arg in kernel.args:
         if arg.name == old_name:
             arg = arg.copy(name=new_name)
-        if isinstance(arg, ArrayBase) and arg.shape:
-            arg = arg.copy(
-                    shape=subst_mapper(arg.shape),
-                    dim_tags=[dim_tag.map_expr(subst_mapper)
-                              for dim_tag in arg.dim_tags])
 
         new_args.append(arg)
-
-    new_tvs = {}
-    for tv_name, tv in kernel.temporary_variables.items():
-        if tv.shape:
-            tv = tv.copy(
-                    shape=subst_mapper(tv.shape),
-                    dim_tags=[dim_tag.map_expr(subst_mapper)
-                              for dim_tag in tv.dim_tags])
-
-        new_tvs[tv_name] = tv
 
     # }}}
 
@@ -697,8 +678,7 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 
     # }}}
 
-    return kernel.copy(domains=new_domains, args=new_args,
-            temporary_variables=new_tvs)
+    return kernel.copy(domains=new_domains, args=new_args)
 
 # }}}
 
