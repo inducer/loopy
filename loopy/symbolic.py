@@ -1008,27 +1008,21 @@ class RuleAwareIdentityMapper(IdentityMapper):
 
         from loopy.kernel.array import ArrayBase
         from functools import partial
+
         non_insn_self = partial(self, kernel=kernel, insn=None)
 
         new_args = []
         for arg in kernel.args:
-            if isinstance(arg, ArrayBase) and arg.shape:
-                arg = arg.copy(
-                        shape=non_insn_self(arg.shape),
-                        dim_tags=[dim_tag.map_expr(non_insn_self)
-                                  for dim_tag in arg.dim_tags])
+            if isinstance(arg, ArrayBase):
+                arg = arg.map_exprs(non_insn_self)
 
             new_args.append(arg)
 
         new_tvs = {}
         for tv_name, tv in kernel.temporary_variables.items():
-            if tv.shape:
-                tv = tv.copy(
-                        shape=non_insn_self(tv.shape),
-                        dim_tags=[dim_tag.map_expr(non_insn_self)
-                                  for dim_tag in tv.dim_tags])
+            new_tvs[tv_name] = tv.map_exprs(non_insn_self)
 
-            new_tvs[tv_name] = tv
+        # variables names, domain dim names not expressions => do not map
 
         return kernel.copy(instructions=new_insns, args=new_args,
                            temporary_variables=new_tvs)
