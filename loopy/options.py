@@ -1,5 +1,3 @@
-from __future__ import division, with_statement
-
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -23,7 +21,6 @@ THE SOFTWARE.
 """
 
 
-import six
 from pytools import ImmutableRecord
 import re
 
@@ -31,7 +28,7 @@ import re
 ALLOW_TERMINAL_COLORS = True
 
 
-class _ColoramaStub(object):
+class _ColoramaStub:
     def __getattribute__(self, name):
         return ""
 
@@ -39,7 +36,7 @@ class _ColoramaStub(object):
 def _apply_legacy_map(lmap, kwargs):
     result = {}
 
-    for name, val in six.iteritems(kwargs):
+    for name, val in kwargs.items():
         try:
             lmap_value = lmap[name]
         except KeyError:

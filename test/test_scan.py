@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = """
 Copyright (C) 2012 Andreas Kloeckner
 Copyright (C) 2016, 2017 Matt Wala
@@ -366,7 +364,7 @@ def test_argmax(ctx_factory, i_tag):
 
 
 def check_segmented_scan_output(arr, segment_boundaries_indices, out):
-    class SegmentGrouper(object):
+    class SegmentGrouper:
 
         def __init__(self):
             self.seg_idx = 0

@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,8 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-from six.moves import range
 
 import numpy as np
 
@@ -137,7 +133,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         if expr.name in self.codegen_state.var_subst_map:
             if self.kernel.options.annotate_inames:
                 return var(
-                        "/* %s */ %s" % (
+                        "/* {} */ {}".format(
                             expr.name,
                             self.rec(self.codegen_state.var_subst_map[expr.name],
                                 type_context)))
@@ -178,7 +174,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
     def map_subscript(self, expr, type_context):
         def base_impl(expr, type_context):
-            return self.rec(expr.aggregate, type_context)[self.rec(expr.index, 'i')]
+            return self.rec(expr.aggregate, type_context)[self.rec(expr.index, "i")]
 
         def make_var(name):
             from loopy import TaggedVariable
@@ -226,7 +222,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             base_access = var("read_imagef")(
                     var(ary.name),
                     var("loopy_sampler"),
-                    var("(%s)" % idx_vec_type)(*self.rec(idx_tuple, 'i')))
+                    var("(%s)" % idx_vec_type)(*self.rec(idx_tuple, "i")))
 
             if ary.dtype.numpy_dtype == np.float32:
                 return base_access.attr("x")
@@ -241,8 +237,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         elif isinstance(ary, (ArrayArg, TemporaryVariable, ConstantArg)):
             if len(access_info.subscripts) == 0:
                 if (
-                        (isinstance(ary, (ConstantArg, ArrayArg)) or
-                         (isinstance(ary, TemporaryVariable) and ary.base_storage))):
+                        isinstance(ary, (ConstantArg, ArrayArg)) or
+                        (isinstance(ary, TemporaryVariable) and ary.base_storage)):
                     # unsubscripted global args are pointers
                     result = self.make_subscript(
                             ary,
@@ -260,7 +256,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         ary,
                         make_var(access_info.array_name),
                         simplify_using_aff(
-                            self.kernel, self.rec(subscript, 'i')))
+                            self.kernel, self.rec(subscript, "i")))
 
             if access_info.vector_index is not None:
                 return self.codegen_state.ast_builder.add_vector_access(
@@ -295,7 +291,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 return self.make_subscript(
                         arg,
                         var(expr.aggregate.name),
-                        self.rec(offset + expr.index, 'i'))
+                        self.rec(offset + expr.index, "i"))
 
         elif expr.aggregate.name in self.kernel.temporary_variables:
             raise RuntimeError("linear indexing is not supported on temporaries: %s"
@@ -328,7 +324,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             from loopy.codegen import SeenFunction
             self.codegen_state.seen_functions.add(
                     SeenFunction(
-                        name, "%s_%s" % (name, suffix),
+                        name, f"{name}_{suffix}",
                         (result_dtype, result_dtype)))
 
         if den_nonneg:
@@ -338,14 +334,14 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         self.rec(expr.denominator, type_context))
             else:
                 seen_func("%s_pos_b" % base_func_name)
-                return var("%s_pos_b_%s" % (base_func_name, suffix))(
-                        self.rec(expr.numerator, 'i'),
-                        self.rec(expr.denominator, 'i'))
+                return var(f"{base_func_name}_pos_b_{suffix}")(
+                        self.rec(expr.numerator, "i"),
+                        self.rec(expr.denominator, "i"))
         else:
             seen_func(base_func_name)
-            return var("%s_%s" % (base_func_name, suffix))(
-                    self.rec(expr.numerator, 'i'),
-                    self.rec(expr.denominator, 'i'))
+            return var(f"{base_func_name}_{suffix}")(
+                    self.rec(expr.numerator, "i"),
+                    self.rec(expr.denominator, "i"))
 
     def map_floor_div(self, expr, type_context):
         import operator
@@ -684,8 +680,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         if not self.allow_complex:
             return base_impl(expr, type_context)
 
-        n_complex = 'c' == n_dtype.kind
-        d_complex = 'c' == d_dtype.kind
+        n_complex = "c" == n_dtype.kind
+        d_complex = "c" == d_dtype.kind
 
         tgt_dtype = self.infer_type(expr)
 
@@ -800,7 +796,7 @@ class CExpressionToCodeMapper(RecursiveMapper):
             func = self.rec(expr.function, PREC_CALL+1)
 
         return self.parenthesize_if_needed(
-                "%s(%s)" % (
+                "{}({})".format(
                     func,
                     self.join_rec(", ", expr.parameters, PREC_NONE)),
                 enclosing_prec, PREC_CALL)
@@ -816,13 +812,13 @@ class CExpressionToCodeMapper(RecursiveMapper):
 
     def map_lookup(self, expr, enclosing_prec):
         return self.parenthesize_if_needed(
-                "%s.%s" % (
+                "{}.{}".format(
                     self.rec(expr.aggregate, PREC_CALL), expr.name),
                 enclosing_prec, PREC_CALL)
 
     def map_subscript(self, expr, enclosing_prec):
         return self.parenthesize_if_needed(
-                "%s[%s]" % (
+                "{}[{}]".format(
                     self.rec(expr.aggregate, PREC_CALL+1),
                     self.rec(expr.index, PREC_NONE)),
                 enclosing_prec, PREC_CALL)
@@ -834,7 +830,7 @@ class CExpressionToCodeMapper(RecursiveMapper):
 
         result = self.rec(children.pop(), PREC_NONE)
         while children:
-            result = "%s(%s, %s)" % (what,
+            result = "{}({}, {})".format(what,
                         self.rec(children.pop(), PREC_NONE),
                         result)
 
@@ -844,7 +840,7 @@ class CExpressionToCodeMapper(RecursiveMapper):
 
     def map_if(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_NONE
-        return "(%s ? %s : %s)" % (
+        return "({} ? {} : {})".format(
                 self.rec(expr.condition, PREC_NONE),
                 self.rec(expr.then, PREC_NONE),
                 self.rec(expr.else_, PREC_NONE),
@@ -854,7 +850,7 @@ class CExpressionToCodeMapper(RecursiveMapper):
         from pymbolic.mapper.stringifier import PREC_COMPARISON
 
         return self.parenthesize_if_needed(
-                "%s %s %s" % (
+                "{} {} {}".format(
                     self.rec(expr.left, PREC_COMPARISON),
                     expr.operator,
                     self.rec(expr.right, PREC_COMPARISON)),
@@ -939,7 +935,7 @@ class CExpressionToCodeMapper(RecursiveMapper):
                 force_parens_around=self.multiplicative_primitives)
 
         return self.parenthesize_if_needed(
-                "%s %s %s" % (
+                "{} {} {}".format(
                     # Space is necessary--otherwise '/*'
                     # (i.e. divide-dererference) becomes
                     # start-of-comment in C.
@@ -958,7 +954,7 @@ class CExpressionToCodeMapper(RecursiveMapper):
         return self._map_division_operator("%", expr, enclosing_prec)
 
     def map_power(self, expr, enclosing_prec):
-        return "pow(%s, %s)" % (
+        return "pow({}, {})".format(
                 self.rec(expr.base, PREC_NONE),
                 self.rec(expr.exponent, PREC_NONE))
 

@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2015 James Stevens"
 
 __license__ = """
@@ -21,8 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six
 
 import loopy as lp
 from islpy import dim_type
@@ -62,7 +58,7 @@ __doc__ = """
 
 # {{{ GuardedPwQPolynomial
 
-class GuardedPwQPolynomial(object):
+class GuardedPwQPolynomial:
     def __init__(self, pwqpolynomial, valid_domain):
         self.pwqpolynomial = pwqpolynomial
         self.valid_domain = valid_domain
@@ -108,7 +104,7 @@ class GuardedPwQPolynomial(object):
 
     @staticmethod
     def zero():
-        p = isl.PwQPolynomial('{ 0 }')
+        p = isl.PwQPolynomial("{ 0 }")
         return GuardedPwQPolynomial(p, isl.Set.universe(p.domain().space))
 
     def __str__(self):
@@ -122,7 +118,7 @@ class GuardedPwQPolynomial(object):
 
 # {{{ ToCountMap
 
-class ToCountMap(object):
+class ToCountMap:
     """Maps any type of key to an arithmetic type.
 
     .. automethod:: filter_by
@@ -142,26 +138,26 @@ class ToCountMap(object):
 
     def __add__(self, other):
         result = self.count_map.copy()
-        for k, v in six.iteritems(other.count_map):
+        for k, v in other.count_map.items():
             result[k] = self.count_map.get(k, 0) + v
         return ToCountMap(result, self.val_type)
 
     def __radd__(self, other):
         if other != 0:
             raise ValueError("ToCountMap: Attempted to add ToCountMap "
-                                "to {0} {1}. ToCountMap may only be added to "
+                                "to {} {}. ToCountMap may only be added to "
                                 "0 and other ToCountMap objects."
                                 .format(type(other), other))
         return self
 
     def __mul__(self, other):
         if isinstance(other, GuardedPwQPolynomial):
-            return ToCountMap(dict(
-                (index, self.count_map[index]*other)
-                for index in self.keys()))
+            return ToCountMap({
+                index: self.count_map[index]*other
+                for index in self.keys()})
         else:
             raise ValueError("ToCountMap: Attempted to multiply "
-                                "ToCountMap by {0} {1}."
+                                "ToCountMap by {} {}."
                                 .format(type(other), other))
 
     __rmul__ = __mul__
@@ -201,9 +197,9 @@ class ToCountMap(object):
         return ToCountMap(dict(self.count_map), self.val_type)
 
     def with_set_attributes(self, **kwargs):
-        return ToCountMap(dict(
-            (key.copy(**kwargs), val)
-            for key, val in six.iteritems(self.count_map)),
+        return ToCountMap({
+            key.copy(**kwargs): val
+            for key, val in self.count_map.items()},
             self.val_type)
 
     def filter_by(self, **kwargs):
@@ -221,10 +217,10 @@ class ToCountMap(object):
 
             # (first create loopy kernel and specify array data types)
 
-            params = {'n': 512, 'm': 256, 'l': 128}
+            params = {"n": 512, "m": 256, "l": 128}
             mem_map = lp.get_mem_access_map(knl)
-            filtered_map = mem_map.filter_by(direction=['load'],
-                                             variable=['a','g'])
+            filtered_map = mem_map.filter_by(direction=["load"],
+                                             variable=["a","g"])
             tot_loads_a_g = filtered_map.eval_and_sum(params)
 
             # (now use these counts to, e.g., predict performance)
@@ -234,8 +230,8 @@ class ToCountMap(object):
         result_map = ToCountMap(val_type=self.val_type)
 
         from loopy.types import to_loopy_type
-        if 'dtype' in kwargs.keys():
-            kwargs['dtype'] = [to_loopy_type(d) for d in kwargs['dtype']]
+        if "dtype" in kwargs.keys():
+            kwargs["dtype"] = [to_loopy_type(d) for d in kwargs["dtype"]]
 
         # for each item in self.count_map
         for self_key, self_val in self.items():
@@ -267,7 +263,7 @@ class ToCountMap(object):
 
             # (first create loopy kernel and specify array data types)
 
-            params = {'n': 512, 'm': 256, 'l': 128}
+            params = {"n": 512, "m": 256, "l": 128}
             mem_map = lp.get_mem_access_map(knl)
             def filter_func(key):
                 return key.lid_strides[0] > 1 and key.lid_strides[0] <= 4:
@@ -302,29 +298,29 @@ class ToCountMap(object):
 
             # (first create loopy kernel and specify array data types)
 
-            params = {'n': 512, 'm': 256, 'l': 128}
+            params = {"n": 512, "m": 256, "l": 128}
             mem_map = get_mem_access_map(knl)
-            grouped_map = mem_map.group_by('mtype', 'dtype', 'direction')
+            grouped_map = mem_map.group_by("mtype", "dtype", "direction")
 
-            f32_global_ld = grouped_map[MemAccess(mtype='global',
+            f32_global_ld = grouped_map[MemAccess(mtype="global",
                                                   dtype=np.float32,
-                                                  direction='load')
+                                                  direction="load")
                                        ].eval_with_dict(params)
-            f32_global_st = grouped_map[MemAccess(mtype='global',
+            f32_global_st = grouped_map[MemAccess(mtype="global",
                                                   dtype=np.float32,
-                                                  direction='store')
+                                                  direction="store")
                                        ].eval_with_dict(params)
-            f32_local_ld = grouped_map[MemAccess(mtype='local',
+            f32_local_ld = grouped_map[MemAccess(mtype="local",
                                                  dtype=np.float32,
-                                                 direction='load')
+                                                 direction="load")
                                       ].eval_with_dict(params)
-            f32_local_st = grouped_map[MemAccess(mtype='local',
+            f32_local_st = grouped_map[MemAccess(mtype="local",
                                                  dtype=np.float32,
-                                                 direction='store')
+                                                 direction="store")
                                       ].eval_with_dict(params)
 
             op_map = get_op_map(knl)
-            ops_dtype = op_map.group_by('dtype')
+            ops_dtype = op_map.group_by("dtype")
 
             f32ops = ops_dtype[Op(dtype=np.float32)].eval_with_dict(params)
             f64ops = ops_dtype[Op(dtype=np.float64)].eval_with_dict(params)
@@ -372,20 +368,20 @@ class ToCountMap(object):
             # (first create loopy kernel and specify array data types)
 
             bytes_map = get_mem_access_map(knl).to_bytes()
-            params = {'n': 512, 'm': 256, 'l': 128}
+            params = {"n": 512, "m": 256, "l": 128}
 
             s1_g_ld_byt = bytes_map.filter_by(
-                                mtype=['global'], lid_strides={0: 1},
-                                direction=['load']).eval_and_sum(params)
+                                mtype=["global"], lid_strides={0: 1},
+                                direction=["load"]).eval_and_sum(params)
             s2_g_ld_byt = bytes_map.filter_by(
-                                mtype=['global'], lid_strides={0: 2},
-                                direction=['load']).eval_and_sum(params)
+                                mtype=["global"], lid_strides={0: 2},
+                                direction=["load"]).eval_and_sum(params)
             s1_g_st_byt = bytes_map.filter_by(
-                                mtype=['global'], lid_strides={0: 1},
-                                direction=['store']).eval_and_sum(params)
+                                mtype=["global"], lid_strides={0: 1},
+                                direction=["store"]).eval_and_sum(params)
             s2_g_st_byt = bytes_map.filter_by(
-                                mtype=['global'], lid_strides={0: 2},
-                                direction=['store']).eval_and_sum(params)
+                                mtype=["global"], lid_strides={0: 2},
+                                direction=["store"]).eval_and_sum(params)
 
             # (now use these counts to, e.g., predict performance)
 
@@ -438,10 +434,10 @@ class ToCountMap(object):
 
             # (first create loopy kernel and specify array data types)
 
-            params = {'n': 512, 'm': 256, 'l': 128}
+            params = {"n": 512, "m": 256, "l": 128}
             mem_map = lp.get_mem_access_map(knl)
-            filtered_map = mem_map.filter_by(direction=['load'],
-                                             variable=['a', 'g'])
+            filtered_map = mem_map.filter_by(direction=["load"],
+                                             variable=["a", "g"])
             tot_loads_a_g = filtered_map.eval_and_sum(params)
 
             # (now use these counts to, e.g., predict performance)
@@ -455,7 +451,7 @@ class ToCountMap(object):
 def stringify_stats_mapping(m):
     result = ""
     for key in sorted(m.keys(), key=lambda k: str(k)):
-        result += ("%s : %s\n" % (key, m[key]))
+        result += ("{} : {}\n".format(key, m[key]))
     return result
 
 
@@ -507,7 +503,7 @@ class Op(Record):
        once per *work-item*, *sub-group*, or *work-group*. The granularities
        allowed can be found in :class:`CountGranularity`, and may be accessed,
        e.g., as ``CountGranularity.WORKITEM``. A work-item is a single instance
-       of computation executing on a single processor (think 'thread'), a
+       of computation executing on a single processor (think "thread"), a
        collection of which may be grouped together into a work-group. Each
        work-group executes on a single compute unit with all work-items within
        the work-group sharing local memory. A sub-group is an
@@ -534,7 +530,7 @@ class Op(Record):
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
-        return "Op(%s, %s, %s)" % (self.dtype, self.name, self.count_granularity)
+        return f"Op({self.dtype}, {self.name}, {self.count_granularity})"
 
 # }}}
 
@@ -593,7 +589,7 @@ class MemAccess(Record):
        once per *work-item*, *sub-group*, or *work-group*. The granularities
        allowed can be found in :class:`CountGranularity`, and may be accessed,
        e.g., as ``CountGranularity.WORKITEM``. A work-item is a single instance
-       of computation executing on a single processor (think 'thread'), a
+       of computation executing on a single processor (think "thread"), a
        collection of which may be grouped together into a work-group. Each
        work-group executes on a single compute unit with all work-items within
        the work-group sharing local memory. A sub-group is an
@@ -631,13 +627,13 @@ class MemAccess(Record):
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
-        return "MemAccess(%s, %s, %s, %s, %s, %s, %s, %s)" % (
+        return "MemAccess({}, {}, {}, {}, {}, {}, {}, {})".format(
             self.mtype,
             self.dtype,
             None if self.lid_strides is None else dict(
-                sorted(six.iteritems(self.lid_strides))),
+                sorted(self.lid_strides.items())),
             None if self.gid_strides is None else dict(
-                sorted(six.iteritems(self.gid_strides))),
+                sorted(self.gid_strides.items())),
             self.direction,
             self.variable,
             self.variable_tag,
@@ -725,7 +721,7 @@ class ExpressionOpCounter(CounterBase):
     def map_call(self, expr):
         return ToCountMap(
                     {Op(dtype=self.type_inf(expr),
-                        name='func:'+str(expr.function),
+                        name="func:"+str(expr.function),
                         count_granularity=CountGranularity.SUBGROUP): 1}
                     ) + self.rec(expr.parameters)
 
@@ -739,7 +735,7 @@ class ExpressionOpCounter(CounterBase):
         assert expr.children
         return ToCountMap(
                     {Op(dtype=self.type_inf(expr),
-                        name='add',
+                        name="add",
                         count_granularity=CountGranularity.SUBGROUP):
                      len(expr.children)-1}
                     ) + sum(self.rec(child) for child in expr.children)
@@ -748,18 +744,18 @@ class ExpressionOpCounter(CounterBase):
         from pymbolic.primitives import is_zero
         assert expr.children
         return sum(ToCountMap({Op(dtype=self.type_inf(expr),
-                                  name='mul',
+                                  name="mul",
                                   count_granularity=CountGranularity.SUBGROUP): 1})
                    + self.rec(child)
                    for child in expr.children
                    if not is_zero(child + 1)) + \
                    ToCountMap({Op(dtype=self.type_inf(expr),
-                                  name='mul',
+                                  name="mul",
                                   count_granularity=CountGranularity.SUBGROUP): -1})
 
     def map_quotient(self, expr, *args):
         return ToCountMap({Op(dtype=self.type_inf(expr),
-                              name='div',
+                              name="div",
                               count_granularity=CountGranularity.SUBGROUP): 1}) \
                                 + self.rec(expr.numerator) \
                                 + self.rec(expr.denominator)
@@ -769,14 +765,14 @@ class ExpressionOpCounter(CounterBase):
 
     def map_power(self, expr):
         return ToCountMap({Op(dtype=self.type_inf(expr),
-                              name='pow',
+                              name="pow",
                               count_granularity=CountGranularity.SUBGROUP): 1}) \
                                 + self.rec(expr.base) \
                                 + self.rec(expr.exponent)
 
     def map_left_shift(self, expr):
         return ToCountMap({Op(dtype=self.type_inf(expr),
-                              name='shift',
+                              name="shift",
                               count_granularity=CountGranularity.SUBGROUP): 1}) \
                                 + self.rec(expr.shiftee) \
                                 + self.rec(expr.shift)
@@ -785,13 +781,13 @@ class ExpressionOpCounter(CounterBase):
 
     def map_bitwise_not(self, expr):
         return ToCountMap({Op(dtype=self.type_inf(expr),
-                              name='bw',
+                              name="bw",
                               count_granularity=CountGranularity.SUBGROUP): 1}) \
                                 + self.rec(expr.child)
 
     def map_bitwise_or(self, expr):
         return ToCountMap({Op(dtype=self.type_inf(expr),
-                              name='bw',
+                              name="bw",
                               count_granularity=CountGranularity.SUBGROUP):
                            len(expr.children)-1}) \
                                 + sum(self.rec(child) for child in expr.children)
@@ -815,7 +811,7 @@ class ExpressionOpCounter(CounterBase):
 
     def map_min(self, expr):
         return ToCountMap({Op(dtype=self.type_inf(expr),
-                              name='maxmin',
+                              name="maxmin",
                               count_granularity=CountGranularity.SUBGROUP):
                            len(expr.children)-1}) \
                + sum(self.rec(child) for child in expr.children)
@@ -898,7 +894,7 @@ def _get_lid_and_gid_strides(knl, array, index):
         else:
             dim_tags = array.dim_tags
 
-        for tag, iname in six.iteritems(tag_to_iname_dict):
+        for tag, iname in tag_to_iname_dict.items():
             total_iname_stride = 0
             # find total stride of this iname for each axis
             for idx, axis_tag in zip(index, dim_tags):
@@ -958,7 +954,7 @@ class LocalMemAccessCounter(MemAccessCounter):
                 if index is None:
                     # no subscript
                     sub_map[MemAccess(
-                                mtype='local',
+                                mtype="local",
                                 dtype=dtype,
                                 count_granularity=CountGranularity.SUBGROUP)
                             ] = 1
@@ -975,10 +971,10 @@ class LocalMemAccessCounter(MemAccessCounter):
                                                 self.knl, array, index_tuple)
 
                 sub_map[MemAccess(
-                        mtype='local',
+                        mtype="local",
                         dtype=dtype,
-                        lid_strides=dict(sorted(six.iteritems(lid_strides))),
-                        gid_strides=dict(sorted(six.iteritems(gid_strides))),
+                        lid_strides=dict(sorted(lid_strides.items())),
+                        gid_strides=dict(sorted(gid_strides.items())),
                         variable=name,
                         count_granularity=CountGranularity.SUBGROUP)] = 1
 
@@ -1015,7 +1011,7 @@ class GlobalMemAccessCounter(MemAccessCounter):
             # this array is not in global memory
             return ToCountMap()
 
-        return ToCountMap({MemAccess(mtype='global',
+        return ToCountMap({MemAccess(mtype="global",
                                      dtype=self.type_inf(expr), lid_strides={},
                                      gid_strides={}, variable=name,
                                      count_granularity=CountGranularity.WORKITEM): 1}
@@ -1050,10 +1046,10 @@ class GlobalMemAccessCounter(MemAccessCounter):
                                 ) else CountGranularity.SUBGROUP
 
         return ToCountMap({MemAccess(
-                            mtype='global',
+                            mtype="global",
                             dtype=self.type_inf(expr),
-                            lid_strides=dict(sorted(six.iteritems(lid_strides))),
-                            gid_strides=dict(sorted(six.iteritems(gid_strides))),
+                            lid_strides=dict(sorted(lid_strides.items())),
+                            gid_strides=dict(sorted(gid_strides.items())),
                             variable=name,
                             variable_tag=var_tag,
                             count_granularity=count_granularity
@@ -1078,7 +1074,7 @@ class AccessFootprintGatherer(CombineMapper):
         def merge_dicts(a, b):
             result = a.copy()
 
-            for var_name, footprint in six.iteritems(b):
+            for var_name, footprint in b.items():
                 if var_name in result:
                     result[var_name] = result[var_name] | footprint
                 else:
@@ -1381,14 +1377,14 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
         count operations inside array indices.
 
     :arg subgroup_size: (currently unused) An :class:`int`, :class:`str`
-        ``'guess'``, or *None* that specifies the sub-group size. An OpenCL
+        ``"guess"``, or *None* that specifies the sub-group size. An OpenCL
         sub-group is an implementation-dependent grouping of work-items within
         a work-group, analagous to an NVIDIA CUDA warp. subgroup_size is used,
         e.g., when counting a :class:`MemAccess` whose count_granularity
         specifies that it should only be counted once per sub-group. If set to
         *None* an attempt to find the sub-group size using the device will be
         made, if this fails an error will be raised. If a :class:`str`
-        ``'guess'`` is passed as the subgroup_size, get_mem_access_map will
+        ``"guess"`` is passed as the subgroup_size, get_mem_access_map will
         attempt to find the sub-group size using the device and, if
         unsuccessful, will make a wild guess.
 
@@ -1407,13 +1403,13 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
         # (first create loopy kernel and specify array data types)
 
         op_map = get_op_map(knl)
-        params = {'n': 512, 'm': 256, 'l': 128}
+        params = {"n": 512, "m": 256, "l": 128}
         f32add = op_map[Op(np.float32,
-                           'add',
+                           "add",
                            count_granularity=CountGranularity.WORKITEM)
                        ].eval_with_dict(params)
         f32mul = op_map[Op(np.float32,
-                           'mul',
+                           "mul",
                            count_granularity=CountGranularity.WORKITEM)
                        ].eval_with_dict(params)
 
@@ -1437,7 +1433,7 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
     for insn in knl.instructions:
         if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
             ops = op_counter(insn.assignee) + op_counter(insn.expression)
-            for key, val in six.iteritems(ops.count_map):
+            for key, val in ops.count_map.items():
                 op_map = (
                         op_map
                         + ToCountMap({key: val})
@@ -1453,13 +1449,13 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
 
     if numpy_types:
         return ToCountMap(
-                    init_dict=dict(
-                        (Op(
+                    init_dict={
+                        Op(
                             dtype=op.dtype.numpy_dtype,
                             name=op.name,
-                            count_granularity=op.count_granularity),
-                        ct)
-                        for op, ct in six.iteritems(op_map.count_map)),
+                            count_granularity=op.count_granularity):
+                        ct
+                        for op, ct in op_map.count_map.items()},
                     val_type=op_map.val_type
                     )
     else:
@@ -1493,7 +1489,7 @@ def _process_subgroup_size(knl, subgroup_size_requested):
 
         if subgroup_size_requested is None:
             if subgroup_size_guess is None:
-                # 'guess' was not passed and either no target device found
+                # "guess" was not passed and either no target device found
                 # or get_simd_group_size returned None
                 raise ValueError("No sub-group size passed, no target device found. "
                                  "Either (1) pass integer value for subgroup_size, "
@@ -1503,7 +1499,7 @@ def _process_subgroup_size(knl, subgroup_size_requested):
             else:
                 return subgroup_size_guess
 
-        elif subgroup_size_requested == 'guess':
+        elif subgroup_size_requested == "guess":
             if subgroup_size_guess is None:
                 # unable to get subgroup_size from device, so guess
                 subgroup_size_guess = 32
@@ -1539,14 +1535,14 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         (Likely desirable for performance modeling, but undesirable for
         code optimization.)
 
-    :arg subgroup_size: An :class:`int`, :class:`str` ``'guess'``, or
+    :arg subgroup_size: An :class:`int`, :class:`str` ``"guess"``, or
         *None* that specifies the sub-group size. An OpenCL sub-group is an
         implementation-dependent grouping of work-items within a work-group,
         analagous to an NVIDIA CUDA warp. subgroup_size is used, e.g., when
         counting a :class:`MemAccess` whose count_granularity specifies that it
         should only be counted once per sub-group. If set to *None* an attempt
         to find the sub-group size using the device will be made, if this fails
-        an error will be raised. If a :class:`str` ``'guess'`` is passed as
+        an error will be raised. If a :class:`str` ``"guess"`` is passed as
         the subgroup_size, get_mem_access_map will attempt to find the
         sub-group size using the device and, if unsuccessful, will make a wild
         guess.
@@ -1565,43 +1561,43 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
 
         # (first create loopy kernel and specify array data types)
 
-        params = {'n': 512, 'm': 256, 'l': 128}
+        params = {"n": 512, "m": 256, "l": 128}
         mem_map = get_mem_access_map(knl)
 
         f32_s1_g_ld_a = mem_map[MemAccess(
-                                    mtype='global',
+                                    mtype="global",
                                     dtype=np.float32,
                                     lid_strides={0: 1},
                                     gid_strides={0: 256},
-                                    direction='load',
-                                    variable='a',
+                                    direction="load",
+                                    variable="a",
                                     count_granularity=CountGranularity.WORKITEM)
                                ].eval_with_dict(params)
         f32_s1_g_st_a = mem_map[MemAccess(
-                                    mtype='global',
+                                    mtype="global",
                                     dtype=np.float32,
                                     lid_strides={0: 1},
                                     gid_strides={0: 256},
-                                    direction='store',
-                                    variable='a',
+                                    direction="store",
+                                    variable="a",
                                     count_granularity=CountGranularity.WORKITEM)
                                ].eval_with_dict(params)
         f32_s1_l_ld_x = mem_map[MemAccess(
-                                    mtype='local',
+                                    mtype="local",
                                     dtype=np.float32,
                                     lid_strides={0: 1},
                                     gid_strides={0: 256},
-                                    direction='load',
-                                    variable='x',
+                                    direction="load",
+                                    variable="x",
                                     count_granularity=CountGranularity.WORKITEM)
                                ].eval_with_dict(params)
         f32_s1_l_st_x = mem_map[MemAccess(
-                                    mtype='local',
+                                    mtype="local",
                                     dtype=np.float32,
                                     lid_strides={0: 1},
                                     gid_strides={0: 256},
-                                    direction='store',
-                                    variable='x',
+                                    direction="store",
+                                    variable="x",
                                     count_granularity=CountGranularity.WORKITEM)
                                ].eval_with_dict(params)
 
@@ -1635,7 +1631,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                     + access_counter_l(insn.assignee)
                     ).with_set_attributes(direction="store")
 
-            for key, val in six.iteritems(access_expr.count_map):
+            for key, val in access_expr.count_map.items():
 
                 access_map = (
                         access_map
@@ -1644,7 +1640,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                                           count_redundant_work,
                                           key.count_granularity))
 
-            for key, val in six.iteritems(access_assignee.count_map):
+            for key, val in access_assignee.count_map.items():
 
                 access_map = (
                         access_map
@@ -1661,8 +1657,8 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
 
     if numpy_types:
         return ToCountMap(
-                    init_dict=dict(
-                        (MemAccess(
+                    init_dict={
+                        MemAccess(
                             mtype=mem_access.mtype,
                             dtype=mem_access.dtype.numpy_dtype,
                             lid_strides=mem_access.lid_strides,
@@ -1670,9 +1666,9 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                             direction=mem_access.direction,
                             variable=mem_access.variable,
                             variable_tag=mem_access.variable_tag,
-                            count_granularity=mem_access.count_granularity),
-                        ct)
-                        for mem_access, ct in six.iteritems(access_map.count_map)),
+                            count_granularity=mem_access.count_granularity):
+                        ct
+                        for mem_access, ct in access_map.count_map.items()},
                     val_type=access_map.val_type
                     )
     else:
@@ -1691,14 +1687,14 @@ def get_synchronization_map(knl, subgroup_size=None):
     :arg knl: A :class:`loopy.LoopKernel` whose barriers are to be counted.
 
     :arg subgroup_size: (currently unused) An :class:`int`, :class:`str`
-        ``'guess'``, or *None* that specifies the sub-group size. An OpenCL
+        ``"guess"``, or *None* that specifies the sub-group size. An OpenCL
         sub-group is an implementation-dependent grouping of work-items within
         a work-group, analagous to an NVIDIA CUDA warp. subgroup_size is used,
         e.g., when counting a :class:`MemAccess` whose count_granularity
         specifies that it should only be counted once per sub-group. If set to
         *None* an attempt to find the sub-group size using the device will be
         made, if this fails an error will be raised. If a :class:`str`
-        ``'guess'`` is passed as the subgroup_size, get_mem_access_map will
+        ``"guess"`` is passed as the subgroup_size, get_mem_access_map will
         attempt to find the sub-group size using the device and, if
         unsuccessful, will make a wild guess.
 
@@ -1714,8 +1710,8 @@ def get_synchronization_map(knl, subgroup_size=None):
         # (first create loopy kernel and specify array data types)
 
         sync_map = get_synchronization_map(knl)
-        params = {'n': 512, 'm': 256, 'l': 128}
-        barrier_ct = sync_map['barrier_local'].eval_with_dict(params)
+        params = {"n": 512, "m": 256, "l": 128}
+        barrier_ct = sync_map["barrier_local"].eval_with_dict(params)
 
         # (now use this count to, e.g., predict performance)
 
@@ -1732,7 +1728,7 @@ def get_synchronization_map(knl, subgroup_size=None):
 
     result = ToCountMap()
 
-    one = isl.PwQPolynomial('{ 1 }')
+    one = isl.PwQPolynomial("{ 1 }")
 
     def get_count_poly(iname_list):
         if iname_list:  # (if iname_list is not empty)
@@ -1820,10 +1816,10 @@ def gather_access_footprints(kernel, ignore_uncountable=False):
 
     result = {}
 
-    for vname, footprint in six.iteritems(write_footprints):
+    for vname, footprint in write_footprints.items():
         result[(vname, "write")] = footprint
 
-    for vname, footprint in six.iteritems(read_footprints):
+    for vname, footprint in read_footprints.items():
         result[(vname, "read")] = footprint
 
     return result
