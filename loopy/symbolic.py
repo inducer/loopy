@@ -1635,14 +1635,18 @@ class AffineConditionToBasicSet(IdentityMapper):
         return self._map_logical_reduce(expr, operator.and_)
 
     def map_logical_not(self, expr):
-        raise NotImplementedError()
+        set_ = self.rec(expr.child)
+        if not isinstance(set_, (isl.BasicSet, isl.Set)):
+            raise LoopyError(f"'{expr.child}' is not a condition")
+
+        return set_.complement()
 
 
 def isl_set_from_expr(space, expr):
     mapper = AffineConditionToBasicSet(space)
     set_ = mapper(expr)
     if not isinstance(set_, (isl.BasicSet, isl.Set)):
-        raise LoopyError(f"'{expr}' not a condition.")
+        raise LoopyError(f"'{expr}' is not a condition.")
 
     return set_
 
