@@ -2881,6 +2881,42 @@ def test_empty_domain(ctx_factory, tag):
     assert (c.get() == 0).all()
 
 
+def test_access_check_with_conditionals():
+    legal_knl = lp.make_kernel(
+            "{[i]: 0<=i<20}",
+            """
+            z[i] = x[i] if i < 10 else y[i-10]
+            """,
+            [lp.GlobalArg("x,y", shape=(10,), dtype=float),
+             ...])
+    lp.generate_code_v2(legal_knl)
+
+    illegal_knl = lp.make_kernel(
+            "{[i]: 0<=i<20}",
+            """
+            z[i] = x[i] if i < 10 else y[i]
+            """,
+            [lp.GlobalArg("x,y", shape=(10,), dtype=float),
+             ...])
+
+    from loopy.diagnostic import LoopyError
+    with pytest.raises(LoopyError):
+        lp.generate_code_v2(illegal_knl)
+
+    # current limitation: cannot handle non-affine conditions
+    legal_but_nonaffine_condition_knl = lp.make_kernel(
+            "{[i]: 0<=i<20}",
+            """
+            z[i] = x[i] if i*i < 100 else y[i-10]
+            """,
+            [lp.GlobalArg("x,y", shape=(10,), dtype=float),
+             ...])
+
+    from loopy.diagnostic import LoopyError
+    with pytest.raises(LoopyError):
+        lp.generate_code_v2(legal_but_nonaffine_condition_knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
