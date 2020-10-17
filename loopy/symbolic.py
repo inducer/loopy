@@ -1589,7 +1589,7 @@ def constraint_to_cond_expr(cns):
 
 # {{{ isl_set_from_expr
 
-class AffineConditionToBasicSet(IdentityMapper):
+class AffineConditionToISLSet(IdentityMapper):
 
     def __init__(self, space):
         self.space = space
@@ -1643,7 +1643,7 @@ class AffineConditionToBasicSet(IdentityMapper):
 
 
 def isl_set_from_expr(space, expr):
-    mapper = AffineConditionToBasicSet(space)
+    mapper = AffineConditionToISLSet(space)
     set_ = mapper(expr)
     if not isinstance(set_, (isl.BasicSet, isl.Set)):
         raise LoopyError(f"'{expr}' is not a condition.")
