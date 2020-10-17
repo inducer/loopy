@@ -24,7 +24,8 @@ THE SOFTWARE.
 from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper
-from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_kernel
+from loopy.diagnostic import (LoopyError, WriteRaceConditionWarning,
+        warn_with_kernel, ExpressionToAffineConversionError)
 from loopy.type_inference import TypeInferenceMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
@@ -380,7 +381,11 @@ class _AccessCheckMapper(WalkMapper):
         self.domain = domain
         self.insn_id = insn_id
 
-    def map_subscript(self, expr):
+    @property
+    def space(self):
+        return self.domain.space
+
+    def map_subscript(self, expr, context):
         WalkMapper.map_subscript(self, expr)
 
         from pymbolic.primitives import Variable
@@ -421,8 +426,10 @@ class _AccessCheckMapper(WalkMapper):
                             len(subscript), len(shape)))
 
             try:
+                context, assumptions = isl.align_two(context,
+                                                     self.kernel.assumptions)
                 access_range = get_access_range(self.domain, subscript,
-                        self.kernel.assumptions)
+                        assumptions & context)
             except UnableToDetermineAccessRange:
                 # Likely: index was non-affine, nothing we can do.
                 return
@@ -445,6 +452,17 @@ class _AccessCheckMapper(WalkMapper):
                         " establish '%s' is a subset of '%s')."
                         % (expr, self.insn_id, access_range, shape_domain))
 
+    def map_if(self, expr, context):
+        try:
+            from loopy.symbolic import isl_set_from_expr
+            then_set = isl_set_from_expr(self.space, expr.condition)
+            else_set = then_set.complement()
+        except ExpressionToAffineConversionError:
+            then_set = else_set = isl.BasicSet.universe(self.space)
+
+        self.rec(expr.then, context & then_set)
+        self.rec(expr.else_, context & else_set)
+
 
 def check_bounds(kernel):
     """
@@ -459,9 +477,10 @@ def check_bounds(kernel):
             continue
 
         acm = _AccessCheckMapper(kernel, domain, insn.id)
+        universe = isl.BasicSet.universe(domain.space)
 
         def run_acm(expr):
-            acm(expr)
+            acm(expr, universe)
             return expr
 
         insn.with_transformed_expressions(run_acm)
