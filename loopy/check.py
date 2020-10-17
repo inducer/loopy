@@ -386,7 +386,7 @@ class _AccessCheckMapper(WalkMapper):
         return self.domain.space
 
     def map_subscript(self, expr, context):
-        WalkMapper.map_subscript(self, expr)
+        WalkMapper.map_subscript(self, expr, context)
 
         from pymbolic.primitives import Variable
         assert isinstance(expr.aggregate, Variable)

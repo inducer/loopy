@@ -1596,6 +1596,9 @@ class AffineConditionToISLSet(IdentityMapper):
         super().__init__()
 
     def map_comparison(self, expr):
+        if expr.operator == "!=":
+            return self.rec(p.LogicalNot(p.Comparison(expr.left, "==", expr.right)))
+
         left_aff = guarded_aff_from_expr(self.space, expr.left)
         right_aff = guarded_aff_from_expr(self.space, expr.right)
 
