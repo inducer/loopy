@@ -56,7 +56,7 @@ from pymbolic.mapper.constant_folder import \
 
 from pymbolic.parser import Parser as ParserBase
 
-from loopy.diagnostic import ExpressionToAffineConversionError
+from loopy.diagnostic import LoopyError, ExpressionToAffineConversionError
 
 import islpy as isl
 from islpy import dim_type
@@ -1583,6 +1583,68 @@ def constraint_to_cond_expr(cns):
         return Comparison(expr, "==", 0)
     else:
         return Comparison(expr, ">=", 0)
+
+# }}}
+
+
+# {{{ isl_set_from_expr
+
+class AffineConditionToBasicSet(IdentityMapper):
+
+    def __init__(self, space):
+        self.space = space
+        super().__init__()
+
+    def map_comparison(self, expr):
+        left_aff = guarded_aff_from_expr(self.space, expr.left)
+        right_aff = guarded_aff_from_expr(self.space, expr.right)
+
+        if expr.operator == "==":
+            cnst = isl.Constraint.equality_from_aff(left_aff-right_aff)
+        elif expr.operator == ">=":
+            cnst = isl.Constraint.inequality_from_aff(left_aff-right_aff)
+        elif expr.operator == ">":
+            cnst = isl.Constraint.inequality_from_aff(left_aff-right_aff-1)
+        elif expr.operator == "<=":
+            cnst = isl.Constraint.inequality_from_aff(right_aff-left_aff)
+        elif expr.operator == "<":
+            cnst = isl.Constraint.inequality_from_aff(right_aff-left_aff-1)
+        else:
+            assert False
+
+        return isl.BasicSet.universe(self.space).add_constraint(cnst)
+
+    def _map_logical_reduce(self, expr, f):
+        """
+        :arg f: Reduction callable.
+        """
+        sets = [self.rec(child) for child in expr.children]
+
+        if not all(isinstance(set_, (isl.BasicSet, isl.Set)) for set_ in sets):
+            raise LoopyError(f"'{expr}' doesn't have all its children as"
+                    " conditions")
+
+        return reduce(f, sets)
+
+    def map_logical_or(self, expr):
+        import operator
+        return self._map_logical_reduce(expr, operator.or_)
+
+    def map_logical_and(self, expr):
+        import operator
+        return self._map_logical_reduce(expr, operator.and_)
+
+    def map_logical_not(self, expr):
+        raise NotImplementedError()
+
+
+def isl_set_from_expr(space, expr):
+    mapper = AffineConditionToBasicSet(space)
+    set_ = mapper(expr)
+    if not isinstance(set_, (isl.BasicSet, isl.Set)):
+        raise LoopyError(f"'{expr}' not a condition.")
+
+    return set_
 
 # }}}
 
