@@ -453,11 +453,17 @@ class _AccessCheckMapper(WalkMapper):
                         % (expr, self.insn_id, access_range, shape_domain))
 
     def map_if(self, expr, context):
-        try:
-            from loopy.symbolic import isl_set_from_expr
-            then_set = isl_set_from_expr(self.space, expr.condition)
-            else_set = then_set.complement()
-        except ExpressionToAffineConversionError:
+        from loopy.symbolic import get_dependencies
+        if get_dependencies(expr.condition) <= frozenset(self.space.get_var_dict()):
+            try:
+                from loopy.symbolic import isl_set_from_expr
+                then_set = isl_set_from_expr(self.space, expr.condition)
+                else_set = then_set.complement()
+            except ExpressionToAffineConversionError:
+                # non-affine condition: can't do much
+                then_set = else_set = isl.BasicSet.universe(self.space)
+        else:
+            # data-dependent condition: can't do much
             then_set = else_set = isl.BasicSet.universe(self.space)
 
         self.rec(expr.then, context & then_set)
