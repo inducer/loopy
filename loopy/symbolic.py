@@ -1786,9 +1786,11 @@ class UnableToDetermineAccessRange(Exception):
     pass
 
 
-def get_access_range(domain, subscript, assumptions, shape=None,
+def get_access_range(domain, subscript, assumptions=None, shape=None,
         allowed_constant_names=None):
     """
+    :arg assumptions: An instance of :class:`islpy.BasicSet` or *None*. *None*
+        is equivalent to the universal set over *domain*'s space.
     :arg shape: if not *None*, indicates that it is desired to return an
         overestimate of the access range based on the shape if a precise range
         cannot be determined.
@@ -1796,10 +1798,11 @@ def get_access_range(domain, subscript, assumptions, shape=None,
         permitted in the access range expressions. Names that are already
         parameters of *domain* may be repeated without ill effects.
     """
-    domain, assumptions = isl.align_two(domain,
-            assumptions)
-    domain = domain & assumptions
-    del assumptions
+    if assumptions is not None:
+        domain, assumptions = isl.align_two(domain,
+                assumptions)
+        domain = domain & assumptions
+        del assumptions
 
     dims = len(subscript)
 
