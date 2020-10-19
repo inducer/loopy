@@ -1589,7 +1589,11 @@ def constraint_to_cond_expr(cns):
 
 # {{{ isl_set_from_expr
 
-class AffineConditionToISLSet(IdentityMapper):
+class AffineConditionToISLSetMapper(IdentityMapper):
+    """
+    Mapper to convert a condition :class:`~pymbolic.primitives.Expression` to a
+    :class:`~islpy.Set`.
+    """
 
     def __init__(self, space):
         self.space = space
@@ -1615,7 +1619,7 @@ class AffineConditionToISLSet(IdentityMapper):
         else:
             assert False
 
-        return isl.BasicSet.universe(self.space).add_constraint(cnst)
+        return isl.Set.universe(self.space).add_constraint(cnst)
 
     def _map_logical_reduce(self, expr, f):
         """
@@ -1623,7 +1627,7 @@ class AffineConditionToISLSet(IdentityMapper):
         """
         sets = [self.rec(child) for child in expr.children]
 
-        if not all(isinstance(set_, (isl.BasicSet, isl.Set)) for set_ in sets):
+        if not all(isinstance(set_, isl.Set) for set_ in sets):
             raise LoopyError(f"'{expr}' doesn't have all its children as"
                     " conditions")
 
@@ -1639,16 +1643,16 @@ class AffineConditionToISLSet(IdentityMapper):
 
     def map_logical_not(self, expr):
         set_ = self.rec(expr.child)
-        if not isinstance(set_, (isl.BasicSet, isl.Set)):
+        if not isinstance(set_, isl.Set):
             raise LoopyError(f"'{expr.child}' is not a condition")
 
         return set_.complement()
 
 
 def isl_set_from_expr(space, expr):
-    mapper = AffineConditionToISLSet(space)
+    mapper = AffineConditionToISLSetMapper(space)
     set_ = mapper(expr)
-    if not isinstance(set_, (isl.BasicSet, isl.Set)):
+    if not isinstance(set_, isl.Set):
         raise LoopyError(f"'{expr}' is not a condition.")
 
     return set_
