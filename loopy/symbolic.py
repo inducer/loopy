@@ -1589,6 +1589,32 @@ def constraint_to_cond_expr(cns):
 
 # {{{ isl_set_from_expr
 
+class ConditionExpressionToBooleanOpsExpression(IdentityMapper):
+    """
+    Mapper to convert expressions into composition of boolean operation nodes
+    according to C-semantics.
+
+    For ex.:
+        - ``i`` becomes ``i != 0``
+        - ``i>10 and j`` becomes ``i>10 and j!=0``
+    """
+
+    def map_comparison(self, expr):
+        return expr
+
+    def _get_expr_neq_0(self, expr):
+        return p.Comparison(expr, "!=", 0)
+
+    map_variable = _get_expr_neq_0
+    map_subscript = _get_expr_neq_0
+    map_sum = _get_expr_neq_0
+    map_product = _get_expr_neq_0
+    map_constant = _get_expr_neq_0
+    map_call = _get_expr_neq_0
+    map_power = _get_expr_neq_0
+    map_power = _get_expr_neq_0
+
+
 class AffineConditionToISLSetMapper(IdentityMapper):
     """
     Mapper to convert a condition :class:`~pymbolic.primitives.Expression` to a
@@ -1626,11 +1652,6 @@ class AffineConditionToISLSetMapper(IdentityMapper):
         :arg f: Reduction callable.
         """
         sets = [self.rec(child) for child in expr.children]
-
-        if not all(isinstance(set_, isl.Set) for set_ in sets):
-            raise LoopyError(f"'{expr}' doesn't have all its children as"
-                    " conditions")
-
         return reduce(f, sets)
 
     def map_logical_or(self, expr):
@@ -1643,17 +1664,18 @@ class AffineConditionToISLSetMapper(IdentityMapper):
 
     def map_logical_not(self, expr):
         set_ = self.rec(expr.child)
-        if not isinstance(set_, isl.Set):
-            raise LoopyError(f"'{expr.child}' is not a condition")
-
         return set_.complement()
 
 
 def isl_set_from_expr(space, expr):
+    """
+    :arg expr: An instance of :class:`pymbolic.primitives.Expression` whose
+        boolean value is evaluated according to C-semantics.
+    """
     mapper = AffineConditionToISLSetMapper(space)
+    expr = ConditionExpressionToBooleanOpsExpression()(expr)
     set_ = mapper(expr)
-    if not isinstance(set_, isl.Set):
-        raise LoopyError(f"'{expr}' is not a condition.")
+    assert isinstance(set_, isl.Set)
 
     return set_
 
