@@ -2886,9 +2886,12 @@ def test_access_check_with_conditionals():
             "{[i]: 0<=i<20}",
             """
             z[i] = x[i] if i < 10 else y[i-10]
+            z[i] = x[i] if 0 else 2.0f
+            z[i] = in[i-1] if i else 3.14f
             """,
             [lp.GlobalArg("x,y", shape=(10,), dtype=float),
-             ...])
+             lp.GlobalArg("in", shape=(19,), dtype=float),
+             ...], seq_dependencies=True)
     lp.generate_code_v2(legal_knl)
 
     illegal_knl = lp.make_kernel(
