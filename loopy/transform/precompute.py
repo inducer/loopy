@@ -1228,7 +1228,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     new_temporary_variables[temporary_name] = temp_var
 
     if stream_iname is not None:
-        temp_name = temporary_name+'_temp'
+        temp_name = temporary_name+"_temp"
         temp_fetch_variable = lp.TemporaryVariable(
             name=temp_name,
             dtype=dtype,

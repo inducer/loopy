@@ -1906,7 +1906,7 @@ def test_header_extract():
     #test CUDA
     cuknl = knl.copy(target=lp.CudaTarget())
     assert str(lp.generate_header(cuknl)[0]) == (
-            "extern "C" __global__ void __launch_bounds__(1) "
+            'extern "C" __global__ void __launch_bounds__(1) '
             "loopy_kernel(float *__restrict__ T);")
 
     #test OpenCL
@@ -2872,7 +2872,7 @@ def test_dump_binary(ctx_factory):
                 "2019.8.7.0",
                 "2019.8.8.0",
                 ]):
-    pytest.skip("Intel CL doesn't implement Kernel.program")
+        pytest.skip("Intel CL doesn't implement Kernel.program")
 
     knl = lp.make_kernel(
             "{ [i]: 0<=i<n }",
