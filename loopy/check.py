@@ -422,17 +422,17 @@ class _AccessCheckMapper(WalkMapper):
                             len(subscript), len(shape)))
 
             # apply predicates
-            access_range = self.domain
+            access_range = domain
             insn = self.kernel.id_to_insn[self.insn_id]
             possible_warns = []
             if insn.predicates:
                 from loopy.symbolic import constraints_from_expr
                 for pred in insn.predicates:
                     if insn.within_inames & get_dependencies(pred):
-                        with isl.SuppressedWarnings(self.domain.get_ctx()):
+                        with isl.SuppressedWarnings(domain.get_ctx()):
                             try:
                                 constraints = constraints_from_expr(
-                                    self.domain.space, pred)
+                                    domain.space, pred)
                                 for constraint in constraints:
                                     access_range = access_range.add_constraint(
                                         constraint)
