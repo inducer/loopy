@@ -1906,7 +1906,7 @@ def test_header_extract():
     #test CUDA
     cuknl = knl.copy(target=lp.CudaTarget())
     assert str(lp.generate_header(cuknl)[0]) == (
-            'extern "C" __global__ void __launch_bounds__(1) '
+            "extern "C" __global__ void __launch_bounds__(1) "
             "loopy_kernel(float *__restrict__ T);")
 
     #test OpenCL
@@ -2742,24 +2742,24 @@ def test_dep_cycle_printing_and_error():
         print(lp.generate_code(knl)[0])
 
 
-@pytest.mark.parametrize("op", ['>', '>=', '<', '<=', '==', '!='])
+@pytest.mark.parametrize("op", [">", ">=", "<", "<=", "==", "!="])
 def test_conditional_access_range(ctx_factory, op):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
     def get_condition():
-        if op == '>':
-            return 'not (i > 7)'
-        elif op == '>=':
-            return 'not (i >= 8)'
-        elif op == '<':
-            return 'i < 8'
-        elif op == '<=':
-            return 'i <=7'
-        elif op == '==':
-            return ' or '.join(['i == {}'.format(i) for i in range(8)])
-        elif op == '!=':
-            return ' and '.join(['i != {}'.format(i) for i in range(8, 10)])
+        if op == ">":
+            return "not (i > 7)"
+        elif op == ">=":
+            return "not (i >= 8)"
+        elif op == "<":
+            return "i < 8"
+        elif op == "<=":
+            return "i <=7"
+        elif op == "==":
+            return " or ".join(["i == {}".format(i) for i in range(8)])
+        elif op == "!=":
+            return " and ".join(["i != {}".format(i) for i in range(8, 10)])
 
     condition = get_condition()
     knl = lp.make_kernel(
@@ -2769,7 +2769,7 @@ def test_conditional_access_range(ctx_factory, op):
                 tmp[i] = tmp[i] + 1
             end
            """.format(condition=condition),
-            [lp.GlobalArg('tmp', shape=(8,), dtype=np.int64)])
+            [lp.GlobalArg("tmp", shape=(8,), dtype=np.int64)])
 
     assert np.array_equal(knl(queue, tmp=np.arange(8))[1][0], np.arange(1, 9))
 
@@ -2788,8 +2788,8 @@ def test_conditional_access_range_with_parameters(ctx_factory):
                 tmp[j, i] = tmp[j, i] + 1
             end
            """,
-            [lp.GlobalArg('tmp', shape=('problem_size', 8,), dtype=np.int64),
-             lp.ValueArg('problem_size', dtype=np.int64)])
+            [lp.GlobalArg("tmp", shape=("problem_size", 8,), dtype=np.int64),
+             lp.ValueArg("problem_size", dtype=np.int64)])
 
     assert np.array_equal(knl(queue, tmp=np.arange(80).reshape((10, 8)),
                               problem_size=10)[1][0], np.arange(1, 81).reshape(
@@ -2805,9 +2805,9 @@ def test_conditional_access_range_with_parameters(ctx_factory):
                 tmp[j, i] = tmp[j, i] + 1
             end
            """,
-            [lp.GlobalArg('tmp', shape=('problem_size', 8,), dtype=np.int64),
-             lp.ValueArg('problem_size', dtype=np.int64),
-             lp.ValueArg('offset', dtype=np.int64)])
+            [lp.GlobalArg("tmp", shape=("problem_size", 8,), dtype=np.int64),
+             lp.ValueArg("problem_size", dtype=np.int64),
+             lp.ValueArg("offset", dtype=np.int64)])
 
     assert np.array_equal(knl(queue, tmp=np.arange(80).reshape((10, 8)),
                               problem_size=10,
@@ -2823,7 +2823,7 @@ def test_conditional_access_range_failure(ctx_factory):
             if j < 8
                 tmp[i] = tmp[i]
             end
-           """, [lp.GlobalArg('tmp', shape=(8,), dtype=np.int32)])
+           """, [lp.GlobalArg("tmp", shape=(8,), dtype=np.int32)])
 
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
@@ -2836,7 +2836,7 @@ def test_conditional_access_range_failure(ctx_factory):
             if (i+3)*i < 15
                 tmp[i] = tmp[i]
             end
-           """, [lp.GlobalArg('tmp', shape=(2,), dtype=np.int32)])
+           """, [lp.GlobalArg("tmp", shape=(2,), dtype=np.int32)])
 
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
@@ -2872,7 +2872,7 @@ def test_dump_binary(ctx_factory):
                 "2019.8.7.0",
                 "2019.8.8.0",
                 ]):
-        pytest.skip("Intel CL doesn't implement Kernel.program")
+    pytest.skip("Intel CL doesn't implement Kernel.program")
 
     knl = lp.make_kernel(
             "{ [i]: 0<=i<n }",

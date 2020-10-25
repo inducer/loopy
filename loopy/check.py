@@ -471,7 +471,7 @@ class _AccessCheckMapper(WalkMapper):
                     logger.info("Predicates: ({}) are are expressed in a "
                         "non-affine manner, and were not considered "
                         "for out-of-bounds array checking.".format(
-                            ', '.join(str(x) for x in possible_warns)))
+                            ", ".join(str(x) for x in possible_warns)))
                 raise LoopyError("'%s' in instruction '%s' "
                         "accesses out-of-bounds array element (could not"
                         " establish '%s' is a subset of '%s')."

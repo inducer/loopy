@@ -117,7 +117,7 @@ def test_convolution(ctx_factory):
                             default_tag=None,
                             fetch_outer_inames="im_x_outer,im_y_outer,iimg,ifeat")
         knl = lp.tag_inames(knl, dict(img_dim_1="l.0", img_dim_2="l.1"))
-        knl.silenced_warnings = ['single_writer_after_creation']
+        knl.silenced_warnings = ["single_writer_after_creation"]
         return knl
 
     for variant in [
@@ -376,7 +376,7 @@ def test_stencil(ctx_factory):
     # streaming, block covers output footprint
     # default_tag="l.auto" gets ride of iname a_dim_1
     def variant_3(knl):
-        knl.silenced_warnings = ['single_writer_after_creation']
+        knl.silenced_warnings = ["single_writer_after_creation"]
         knl = lp.split_iname(knl, "i", 4, outer_tag=None, inner_tag=None)
         knl = lp.split_iname(knl, "j", 64, outer_tag="g.0", inner_tag="l.0")
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
@@ -387,7 +387,7 @@ def test_stencil(ctx_factory):
 
     # streaming, block covers input footprint (i.e., includes halos)
     def variant_4(knl):
-        knl.silenced_warnings = ['single_writer_after_creation']
+        knl.silenced_warnings = ["single_writer_after_creation"]
         knl = lp.split_iname(knl, "i", 4, inner_tag=None)
         knl = lp.split_iname(knl, "j", 64, inner_tag="l.0")
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
