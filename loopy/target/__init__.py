@@ -1,6 +1,5 @@
 """Base target interface."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -30,7 +29,6 @@ __doc__ = """
 
 .. autoclass:: TargetBase
 .. autoclass:: ASTBuilderBase
-
 .. autoclass:: CFamilyTarget
 .. autoclass:: CTarget
 .. autoclass:: ExecutableCTarget
@@ -44,7 +42,7 @@ __doc__ = """
 """
 
 
-class TargetBase(object):
+class TargetBase:
     """Base class for all targets, i.e. different combinations of code that
     loopy can generate.
 
@@ -142,7 +140,7 @@ class TargetBase(object):
         raise NotImplementedError()
 
 
-class ASTBuilderBase(object):
+class ASTBuilderBase:
     """An interface for generating (host or device) ASTs.
     """
 
@@ -244,14 +242,14 @@ class ASTBuilderBase(object):
 
 # {{{ dummy host ast builder
 
-class _DummyExpressionToCodeMapper(object):
+class _DummyExpressionToCodeMapper:
     def rec(self, expr, prec, type_context=None, needed_dtype=None):
         return ""
 
     __call__ = rec
 
 
-class _DummyASTBlock(object):
+class _DummyASTBlock:
     def __init__(self, arg):
         self.contents = []
 

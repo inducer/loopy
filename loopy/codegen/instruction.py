@@ -1,6 +1,5 @@
 """Code generation for Instruction objects."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -25,7 +24,6 @@ THE SOFTWARE.
 """
 
 
-from six.moves import range
 import islpy as isl
 dim_type = isl.dim_type
 from loopy.codegen import Unvectorizable
@@ -39,7 +37,8 @@ def to_codegen_result(
 
     chk_domain = isl.Set.from_basic_set(domain)
     chk_domain = chk_domain.remove_redundancies()
-    chk_domain = chk_domain.eliminate_except(check_inames, [dim_type.set])
+    chk_domain = codegen_state.kernel.cache_manager.eliminate_except(chk_domain,
+            check_inames, (dim_type.set,))
 
     chk_domain, implemented_domain = isl.align_two(
             chk_domain, codegen_state.implemented_domain)
@@ -171,7 +170,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
 
         gs, ls = kernel.get_grid_size_upper_bounds()
 
-        printf_format = "%s.%s[%s][%s]: %s" % (
+        printf_format = "{}.{}[{}][{}]: {}".format(
                 kernel.name,
                 insn.id,
                 ", ".join("gid%d=%%d" % i for i in range(len(gs))),
@@ -208,7 +207,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
         else:
             printf_args_str = ""
 
-        printf_insn = S("printf(\"%s\\n\"%s)" % (
+        printf_insn = S('printf("{}\\n"{})'.format(
                     printf_format, printf_args_str))
 
         from cgen import Block

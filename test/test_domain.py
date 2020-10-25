@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,9 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six  # noqa
-from six.moves import range  # noqa
 
 import sys
 import numpy as np
@@ -330,7 +325,7 @@ def test_equality_constraints(ctx_factory):
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.0")
     knl = lp.split_iname(knl, "j", 16, outer_tag="g.1", inner_tag="l.1")
 
-    knl = lp.add_inames_to_insn(knl, 'j_inner, j_outer', 'id:set_b')
+    knl = lp.add_inames_to_insn(knl, "j_inner, j_outer", "id:set_b")
 
     #print(knl)
     #print(knl.domains[0].detect_equalities())

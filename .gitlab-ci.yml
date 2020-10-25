@@ -69,16 +69,26 @@ Python 3 POCL Twice With Cache:
 #   - tags
 
 Python 3 POCL Examples:
-  script:
-  - export PY_EXE=python3
-  - export PYOPENCL_TEST=portable:pthread
-  - export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipykernel nbconvert"
-  - ". ./build-py-project-and-run-examples.sh"
+  script: |
+    export PY_EXE=python3
+    export PYOPENCL_TEST=portable:pthread
+    export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipykernel nbconvert"
+
+    curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+    . ./ci-support.sh
+    build_py_project_in_venv
+
+    curl -L "https://ci.appveyor.com/api/projects/ispc/ispc/artifacts/build%2Fispc-trunk-linux.tar.gz?job=Environment%3A%20APPVEYOR_BUILD_WORKER_IMAGE%3DUbuntu1604%2C%20LLVM_VERSION%3Dlatest" | tar xfz -
+    export PATH="$(pwd)/ispc-trunk-linux/bin:$PATH"
+
+    . ./build-py-project-and-run-examples.sh
+    run_py_examples
+    run_ipynb_examples
+    run_floopy_examples
   tags:
   - python3
   - pocl
   - large-node
-  - ispc
   except:
   - tags
 
@@ -89,7 +99,7 @@ Pylint:
   - export PY_EXE=python3
   - EXTRA_INSTALL="pybind11 numpy mako matplotlib ipykernel ply fparser"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-pylint.sh
-  - ". ./prepare-and-run-pylint.sh loopy test/test_*.py"
+  - . ./prepare-and-run-pylint.sh "$CI_PROJECT_NAME" test/test_*.py
   tags:
   - python3
   except:
@@ -102,13 +112,11 @@ Documentation:
   - ". ./build-docs.sh"
   tags:
   - python3
-  only:
-  - master
 
 Flake8:
   script:
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
-  - ". ./prepare-and-run-flake8.sh loopy test"
+  - . ./prepare-and-run-flake8.sh "$CI_PROJECT_NAME" test examples
   tags:
   - python3
   except:

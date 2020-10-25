@@ -1,5 +1,3 @@
-from __future__ import division
-
 from IPython.core.magic import (magics_class, Magics, cell_magic)
 
 import loopy as lp

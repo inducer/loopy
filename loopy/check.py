@@ -1,5 +1,3 @@
-from __future__ import absolute_import, division, print_function
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,13 +20,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
-from six.moves import range
 
 from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper
-from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_kernel
+from loopy.diagnostic import (LoopyError, WriteRaceConditionWarning,
+        warn_with_kernel, ExpressionToAffineConversionError)
 from loopy.type_inference import TypeInferenceMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
@@ -36,6 +33,35 @@ from warnings import warn
 
 import logging
 logger = logging.getLogger(__name__)
+
+
+__doc__ = """
+.. currentmodule:: loopy.check
+
+.. autofunction:: check_for_integer_subscript_indices
+
+.. autofunction:: check_for_duplicate_insn_ids
+
+.. autofunction:: check_for_double_use_of_hw_axes
+
+.. autofunction:: check_insn_attributes
+
+.. autofunction:: check_loop_priority_inames_known
+
+.. autofunction:: check_multiple_tags_allowed
+
+.. autofunction:: check_for_inactive_iname_access
+
+.. autofunction:: check_for_unused_inames
+
+.. autofunction:: check_for_write_races
+
+.. autofunction:: check_for_data_dependent_parallel_bounds
+
+.. autofunction:: check_bounds
+
+.. autofunction:: check_variable_access_ordered
+"""
 
 
 # {{{ sanity checks run before preprocessing
@@ -49,7 +75,7 @@ def check_identifiers_in_subst_rules(knl):
 
     allowed_identifiers = knl.all_variable_names()
 
-    for rule in six.itervalues(knl.substitutions):
+    for rule in knl.substitutions.values():
         deps = get_dependencies(rule.expression)
         rule_allowed_identifiers = allowed_identifiers | frozenset(rule.arguments)
 
@@ -87,6 +113,9 @@ class SubscriptIndicesIsIntChecker(TypeInferenceMapper):
 
 
 def check_for_integer_subscript_indices(kernel):
+    """
+    Checks is every array access is of type :class:`int`.
+    """
     from pymbolic.primitives import Subscript
     idx_int_checker = SubscriptIndicesIsIntChecker(kernel)
     for insn in kernel.instructions:
@@ -103,7 +132,10 @@ def check_for_integer_subscript_indices(kernel):
 
 
 def check_insn_attributes(kernel):
-    all_insn_ids = set(insn.id for insn in kernel.instructions)
+    """
+    Check for legality of attributes of every instruction in *kernel*.
+    """
+    all_insn_ids = {insn.id for insn in kernel.instructions}
 
     for insn in kernel.instructions:
         if not insn.within_inames <= kernel.all_inames():
@@ -118,14 +150,14 @@ def check_insn_attributes(kernel):
                     % (insn.id, ", ".join(
                         insn.depends_on - all_insn_ids)))
 
-        no_sync_with_insn_ids = set(id for id, scope in insn.no_sync_with)
+        no_sync_with_insn_ids = {id for id, scope in insn.no_sync_with}
         if not no_sync_with_insn_ids <= all_insn_ids:
             raise LoopyError("insn '%s' has nosync directive with unknown "
                     "instruction ids: %s"
                     % (insn.id,
                        ", ".join(no_sync_with_insn_ids - all_insn_ids)))
 
-        no_sync_with_scopes = set(scope for id, scope in insn.no_sync_with)
+        no_sync_with_scopes = {scope for id, scope in insn.no_sync_with}
         if not no_sync_with_scopes <= VALID_NOSYNC_SCOPES:
             raise LoopyError("insn '%s' has invalid nosync scopes: %s"
                     % (insn.id,
@@ -133,6 +165,10 @@ def check_insn_attributes(kernel):
 
 
 def check_for_duplicate_insn_ids(knl):
+    """
+    Check if multiple instructions of *knl* have the same
+    :attr:`loopy.InstructionBase.id`.
+    """
     insn_ids = set()
 
     for insn in knl.instructions:
@@ -144,6 +180,10 @@ def check_for_duplicate_insn_ids(knl):
 
 
 def check_loop_priority_inames_known(kernel):
+    """
+    Checks if the inames in :attr:`loopy.LoopKernel.loop_priority` are part of
+    the *kernel*'s domain.
+    """
     for prio in kernel.loop_priority:
         for iname in prio:
             if iname not in kernel.all_inames():
@@ -151,20 +191,27 @@ def check_loop_priority_inames_known(kernel):
 
 
 def check_multiple_tags_allowed(kernel):
+    """
+    Checks if a multiple tags of an iname are compatible.
+    """
     from loopy.kernel.data import (GroupIndexTag, LocalIndexTag, VectorizeTag,
                 UnrollTag, ForceSequentialTag, IlpBaseTag, filter_iname_tags_by_type)
     illegal_combinations = [
         (GroupIndexTag, LocalIndexTag, VectorizeTag, UnrollTag, ForceSequentialTag),
         (IlpBaseTag, ForceSequentialTag)
     ]
-    for iname, tags in six.iteritems(kernel.iname_to_tags):
+    for iname, tags in kernel.iname_to_tags.items():
         for comb in illegal_combinations:
             if len(filter_iname_tags_by_type(tags, comb)) > 1:
-                raise LoopyError("iname {0} has illegal combination of "
-                                 "tags: {1}".format(iname, tags))
+                raise LoopyError("iname {} has illegal combination of "
+                                 "tags: {}".format(iname, tags))
 
 
 def check_for_double_use_of_hw_axes(kernel):
+    """
+    Check if any instruction of *kernel* is within multiple inames tagged with
+    the same hw axis tag.
+    """
     from loopy.kernel.data import UniqueTag
 
     for insn in kernel.instructions:
@@ -180,6 +227,9 @@ def check_for_double_use_of_hw_axes(kernel):
 
 
 def check_for_inactive_iname_access(kernel):
+    """
+    Check if any instruction accesses an iname but is not within it.
+    """
     for insn in kernel.instructions:
         expression_inames = insn.read_dependency_names() & kernel.all_inames()
 
@@ -192,6 +242,9 @@ def check_for_inactive_iname_access(kernel):
 
 
 def check_for_unused_inames(kernel):
+    """
+    Check if there are any unused inames in the kernel.
+    """
     # Warn if kernel has unused inames
     from loopy.transform.iname import get_used_inames
     unused_inames = kernel.all_inames() - get_used_inames(kernel)
@@ -231,6 +284,9 @@ def _is_racing_iname_tag(tv, tag):
 
 
 def check_for_write_races(kernel):
+    """
+    Check if any memory accesses lead to write races.
+    """
     from loopy.kernel.data import ConcurrentTag
 
     for insn in kernel.instructions:
@@ -248,16 +304,16 @@ def check_for_write_races(kernel):
                 # Any concurrent tags that are not depended upon by the assignee
                 # will cause write races.
 
-                raceable_parallel_insn_inames = set(
+                raceable_parallel_insn_inames = {
                     iname for iname in kernel.insn_inames(insn)
-                    if kernel.iname_tags_of_type(iname, ConcurrentTag))
+                    if kernel.iname_tags_of_type(iname, ConcurrentTag)}
 
             elif assignee_name in kernel.temporary_variables:
                 temp_var = kernel.temporary_variables[assignee_name]
-                raceable_parallel_insn_inames = set(
+                raceable_parallel_insn_inames = {
                         iname for iname in kernel.insn_inames(insn)
                         if any(_is_racing_iname_tag(temp_var, tag)
-                            for tag in kernel.iname_tags(iname)))
+                            for tag in kernel.iname_tags(iname))}
 
             else:
                 raise LoopyError("invalid assignee name in instruction '%s'"
@@ -279,7 +335,7 @@ def check_for_orphaned_user_hardware_axes(kernel):
     from loopy.kernel.data import LocalIndexTag
     for axis in kernel.local_sizes:
         found = False
-        for tags in six.itervalues(kernel.iname_to_tags):
+        for tags in kernel.iname_to_tags.values():
             for tag in tags:
                 if isinstance(tag, LocalIndexTag) and tag.axis == axis:
                     found = True
@@ -293,13 +349,17 @@ def check_for_orphaned_user_hardware_axes(kernel):
 
 
 def check_for_data_dependent_parallel_bounds(kernel):
+    """
+    Check that inames tagged as hw axes have bounds that are known at kernel
+    launch.
+    """
     from loopy.kernel.data import ConcurrentTag
 
     for i, dom in enumerate(kernel.domains):
         dom_inames = set(dom.get_var_names(dim_type.set))
-        par_inames = set(
+        par_inames = {
                 iname for iname in dom_inames
-                if kernel.iname_tags_of_type(iname, ConcurrentTag))
+                if kernel.iname_tags_of_type(iname, ConcurrentTag)}
 
         if not par_inames:
             continue
@@ -316,13 +376,12 @@ def check_for_data_dependent_parallel_bounds(kernel):
 # {{{ check access bounds
 
 class _AccessCheckMapper(WalkMapper):
-    def __init__(self, kernel, domain, insn_id):
+    def __init__(self, kernel, insn_id):
         self.kernel = kernel
-        self.domain = domain
         self.insn_id = insn_id
 
-    def map_subscript(self, expr):
-        WalkMapper.map_subscript(self, expr)
+    def map_subscript(self, expr, domain):
+        WalkMapper.map_subscript(self, expr, domain)
 
         from pymbolic.primitives import Variable
         from pymbolic.mapper.evaluator import UnknownVariableError
@@ -346,7 +405,7 @@ class _AccessCheckMapper(WalkMapper):
             from loopy.symbolic import (get_dependencies, get_access_range,
                     UnableToDetermineAccessRange)
 
-            available_vars = set(self.domain.get_var_dict())
+            available_vars = set(domain.get_var_dict())
             shape_deps = set()
             for shape_axis in shape:
                 if shape_axis is not None:
@@ -418,8 +477,29 @@ class _AccessCheckMapper(WalkMapper):
                         " establish '%s' is a subset of '%s')."
                         % (expr, self.insn_id, access_range, shape_domain))
 
+    def map_if(self, expr, domain):
+        from loopy.symbolic import get_dependencies
+        if get_dependencies(expr.condition) <= frozenset(
+                domain.space.get_var_dict()):
+            try:
+                from loopy.symbolic import isl_set_from_expr
+                then_set = isl_set_from_expr(domain.space, expr.condition)
+                else_set = then_set.complement()
+            except ExpressionToAffineConversionError:
+                # non-affine condition: can't do much
+                then_set = else_set = isl.BasicSet.universe(domain.space)
+        else:
+            # data-dependent condition: can't do much
+            then_set = else_set = isl.BasicSet.universe(domain.space)
+
+        self.rec(expr.then, domain & then_set)
+        self.rec(expr.else_, domain & else_set)
+
 
 def check_bounds(kernel):
+    """
+    Performs out-of-bound check for every array access.
+    """
     temp_var_names = set(kernel.temporary_variables)
     for insn in kernel.instructions:
         domain = kernel.get_inames_domain(kernel.insn_inames(insn))
@@ -428,10 +508,12 @@ def check_bounds(kernel):
         if set(domain.get_var_names(dim_type.param)) & temp_var_names:
             continue
 
-        acm = _AccessCheckMapper(kernel, domain, insn.id)
+        acm = _AccessCheckMapper(kernel, insn.id)
+        domain, assumptions = isl.align_two(domain, kernel.assumptions)
+        domain_with_assumptions = domain & assumptions
 
         def run_acm(expr):
-            acm(expr)
+            acm(expr, domain_with_assumptions)
             return expr
 
         insn.with_transformed_expressions(run_acm)
@@ -474,7 +556,7 @@ def check_has_schedulable_iname_nesting(kernel):
     if not has_schedulable_iname_nesting(kernel):
         import itertools as it
         opt = get_iname_duplication_options(kernel)
-        opt_str = "\n".join("* Duplicate %s within instructions %s" % (i, w)
+        opt_str = "\n".join(f"* Duplicate {i} within instructions {w}"
                             for i, w in it.islice(opt, 3))
         raise LoopyError("Kernel does not have a schedulable iname nesting. "
                 "In order for there to exist a feasible loop nesting, you "
@@ -551,7 +633,7 @@ def _get_topological_order(kernel):
 
     for scc in sccs:
         if len(scc) != 1:
-            raise DependencyCycleFound(', '.join(scc))
+            raise DependencyCycleFound(", ".join(scc))
         order.append(scc[0])
 
     return order
@@ -585,11 +667,11 @@ def _check_variable_access_ordered_inner(kernel):
                 *[wmap.get(eq_name, set()) for eq_name in eq_class])
 
         for writer in writers:
-            required_deps = (readers | writers) - set([writer])
-            required_deps = set([req_dep
+            required_deps = (readers | writers) - {writer}
+            required_deps = {req_dep
                 for req_dep in required_deps
                 if not declares_nosync_with(kernel, address_space, writer,
-                    req_dep)])
+                    req_dep)}
 
             for req_dep in required_deps:
                 dep_reqs_to_vars.setdefault((writer, req_dep), set()).add(var)
@@ -597,11 +679,11 @@ def _check_variable_access_ordered_inner(kernel):
     # }}}
 
     # depends_on: mapping from insn_ids to their dependencies
-    depends_on = dict((insn.id, set()) for insn in
-            kernel.instructions)
+    depends_on = {insn.id: set() for insn in
+            kernel.instructions}
     # rev_depends: mapping from insn_ids to their reverse deps.
-    rev_depends = dict((insn.id, set()) for insn in
-            kernel.instructions)
+    rev_depends = {insn.id: set() for insn in
+            kernel.instructions}
 
     # {{{ populate rev_depends, depends_on
 
@@ -645,7 +727,7 @@ def _check_variable_access_ordered_inner(kernel):
 
             for successor in edges[insn_id]:
                 predecessors.setdefault(successor, set()).update(
-                        insn_predecessors | set([insn_id]))
+                        insn_predecessors | {insn_id})
 
     # forward dep. graph traversal in reverse topological sort order
     # (proceeds "end of program" -> "beginning of program")
@@ -660,7 +742,7 @@ def _check_variable_access_ordered_inner(kernel):
 
     # {{{ handle dependency requirements that weren't satisfied
 
-    for (writer_id, other_id), variables in six.iteritems(dep_reqs_to_vars):
+    for (writer_id, other_id), variables in dep_reqs_to_vars.items():
         writer = kernel.id_to_insn[writer_id]
         other = kernel.id_to_insn[other_id]
 
@@ -721,7 +803,7 @@ def check_variable_access_ordered(kernel):
 
     * a direct/indirect depdendency edge, or
     * an explicit statement that no ordering is necessary (expressed
-      through a bi-directional :attr:`loopy.Instruction.no_sync_with`)
+      through a bi-directional :attr:`loopy.InstructionBase.no_sync_with`)
     """
 
     if kernel.options.enforce_variable_access_ordered not in [
@@ -799,29 +881,29 @@ def _find_boostable_insn_ids(kernel):
 
     writer_map = kernel.writer_map()
 
-    arg_names = set(arg.name for arg in kernel.args)
+    arg_names = {arg.name for arg in kernel.args}
 
-    var_names = arg_names | set(six.iterkeys(kernel.temporary_variables))
+    var_names = arg_names | set(kernel.temporary_variables.keys())
 
-    reads_map = dict(
-            (insn.id, insn.read_dependency_names() & var_names)
-            for insn in kernel.instructions)
+    reads_map = {
+            insn.id: insn.read_dependency_names() & var_names
+            for insn in kernel.instructions}
 
     from collections import defaultdict
     dep_graph = defaultdict(set)
 
     for insn in kernel.instructions:
-        dep_graph[insn.id] = set(writer_id
+        dep_graph[insn.id] = {writer_id
                 for var in reads_map[insn.id]
-                for writer_id in writer_map.get(var, set()))
+                for writer_id in writer_map.get(var, set())}
 
     # Find SCCs of dep_graph. These are used for checking if the instruction is
     # in a dependency cycle.
     from pytools.graph import compute_sccs
 
-    sccs = dict((item, scc)
+    sccs = {item: scc
             for scc in compute_sccs(dep_graph)
-            for item in scc)
+            for item in scc}
 
     non_idempotently_updated_vars = set()
     boostable_insn_ids = set()
@@ -868,8 +950,8 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
         group_size, local_size = kernel.get_grid_sizes_for_insn_ids_as_exprs(
                 get_insn_ids_for_block_at(kernel.schedule, sched_index))
 
-        group_axes = set(ax for ax, length in enumerate(group_size))
-        local_axes = set(ax for ax, length in enumerate(local_size))
+        group_axes = {ax for ax, length in enumerate(group_size)}
+        local_axes = {ax for ax, length in enumerate(local_size)}
 
         i = sched_index + 1
         assert isinstance(kernel.schedule[past_end_i - 1], ReturnFromKernel)
@@ -971,18 +1053,18 @@ def check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel):
     from loopy.kernel.data import ArrayBase, Assignment
     from loopy.types import AtomicType
     atomicity_candidates = (
-            set(v.name for v in six.itervalues(kernel.temporary_variables)
-                if isinstance(v.dtype, AtomicType))
+            {v.name for v in kernel.temporary_variables.values()
+                if isinstance(v.dtype, AtomicType)}
             |
-            set(v.name for v in kernel.args
+            {v.name for v in kernel.args
                 if isinstance(v, ArrayBase)
-                and isinstance(v.dtype, AtomicType)))
+                and isinstance(v.dtype, AtomicType)})
 
     for insn in kernel.instructions:
         if not isinstance(insn, Assignment):
             continue
 
-        atomic_accesses = set(a.var_name for a in insn.atomicity)
+        atomic_accesses = {a.var_name for a in insn.atomicity}
         if not atomic_accesses <= atomicity_candidates:
             raise LoopyError("atomic access in instruction '%s' to "
                     "non-atomic variable(s) '%s'"
@@ -1048,12 +1130,12 @@ def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
 
 def check_that_all_insns_are_scheduled(kernel):
 
-    all_schedulable_insns = set(insn.id for insn in kernel.instructions)
+    all_schedulable_insns = {insn.id for insn in kernel.instructions}
     from loopy.schedule import sched_item_to_insn_id
-    scheduled_insns = set(
+    scheduled_insns = {
         insn_id
         for sched_item in kernel.schedule
-        for insn_id in sched_item_to_insn_id(sched_item))
+        for insn_id in sched_item_to_insn_id(sched_item)}
 
     assert scheduled_insns <= all_schedulable_insns
 
@@ -1061,7 +1143,7 @@ def check_that_all_insns_are_scheduled(kernel):
         from loopy.diagnostic import UnscheduledInstructionError
         raise UnscheduledInstructionError(
             "unscheduled instructions: '%s'"
-            % ', '.join(all_schedulable_insns - scheduled_insns))
+            % ", ".join(all_schedulable_insns - scheduled_insns))
 
 # }}}
 
@@ -1074,11 +1156,11 @@ def check_that_shapes_and_strides_are_arguments(kernel):
     from loopy.symbolic import get_dependencies
     import loopy as lp
 
-    integer_arg_names = set(
+    integer_arg_names = {
             arg.name
             for arg in kernel.args
             if isinstance(arg, ValueArg)
-            and arg.dtype.is_integral())
+            and arg.dtype.is_integral()}
 
     for arg in kernel.args:
         if isinstance(arg, ArrayBase):
@@ -1143,7 +1225,7 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
     last_idomains = None
     last_insn_inames = None
 
-    for insn_id, idomains in six.iteritems(implemented_domains):
+    for insn_id, idomains in implemented_domains.items():
         insn = kernel.id_to_insn[insn_id]
 
         assert idomains
@@ -1201,9 +1283,9 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
             i_minus_d = insn_impl_domain - desired_domain
             d_minus_i = desired_domain - insn_impl_domain
 
-            parameter_inames = set(
+            parameter_inames = {
                     insn_domain.get_dim_name(dim_type.param, i)
-                    for i in range(insn_impl_domain.dim(dim_type.param)))
+                    for i in range(insn_impl_domain.dim(dim_type.param))}
 
             lines = []
             for bigger, smaller, diff_set, gist_domain in [
@@ -1231,10 +1313,10 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                         iname, pt.get_coordinate_val(tp, dim).to_python()))
 
                 lines.append(
-                        "sample point in %s but not %s: %s" % (
+                        "sample point in {} but not {}: {}".format(
                             bigger, smaller, ", ".join(point_axes)))
                 lines.append(
-                        "gist of constraints in %s but not %s: %s" % (
+                        "gist of constraints in {} but not {}: {}".format(
                             smaller, bigger, gist_domain))
 
             if code is not None:
