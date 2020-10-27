@@ -670,6 +670,30 @@ def test_add_inames_for_unused_hw_axes(ctx_factory):
             parameters={"n": n})
 
 
+def test_split_inames():
+    knl = lp.make_kernel(
+            "{[iel1, iel2, idof1, idof2]: 0<=iel1, iel2<1000 and 0<=idof1, idof2<3}",
+            """
+            for iel1
+              dofsums[iel1] = sum(idof1, u[iel1, idof1])
+            end
+            for iel2
+              dofmaxs[iel2] = max(idof2, u[iel2, idof2])
+            end
+            """)
+
+    knl = lp.tag_inames(knl, {"iel1": "semantic.ielement",
+                              "iel2": "semantic.ielement"})
+
+    knl = lp.split_inames(knl, "tag:ielement", 32, inner_tag="l.0", outer_tag="g.0")
+
+    from loopy.kernel.data import GroupIndexTag, LocalIndexTag
+    assert frozenset([GroupIndexTag(axis=0)]) == knl.iname_tags("iel1_outer")
+    assert frozenset([LocalIndexTag(axis=0)]) == knl.iname_tags("iel1_inner")
+    assert frozenset([GroupIndexTag(axis=0)]) == knl.iname_tags("iel2_outer")
+    assert frozenset([LocalIndexTag(axis=0)]) == knl.iname_tags("iel2_inner")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
