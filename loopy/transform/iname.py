@@ -453,6 +453,33 @@ def chunk_iname(kernel, split_iname, num_chunks,
 
 # }}}
 
+
+# {{{ split_inames
+
+def split_inames(kernel, inames, inner_length,
+        outer_iname=None, inner_iname=None,
+        outer_tag=None, inner_tag=None,
+        slabs=(0, 0), do_tagged_check=True,
+        within=None):
+    """
+    Calls :func:`split_iname` on every iname in *inames*.
+
+    :arg inames: An :class:`str` as understood by
+        :func:`loopy.match.parse_iname_match`.
+    """
+    from loopy.match import parse_iname_match
+    does_match = parse_iname_match(inames)
+
+    for iname in kernel.all_inames():
+        if does_match(kernel, iname):
+            kernel = split_iname(kernel, iname, inner_length, outer_iname,
+                    inner_iname, outer_tag, inner_tag, slabs, do_tagged_check,
+                    within=None)
+
+    return kernel
+
+# }}}
+
 # }}}
 
 
