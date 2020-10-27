@@ -186,8 +186,10 @@ def _split_iname_backend(kernel, split_iname,
 
     # }}}
 
-    existing_tags = kernel.iname_tags(split_iname)
-    from loopy.kernel.data import ForceSequentialTag, filter_iname_tags_by_type
+    from loopy.kernel.data import (ForceSequentialTag,
+            filter_iname_tags_by_type, CodegenInameTag)
+    existing_tags = filter_iname_tags_by_type(kernel.iname_tags(split_iname),
+                                              CodegenInameTag)
     if (do_tagged_check and existing_tags
             and not filter_iname_tags_by_type(existing_tags, ForceSequentialTag)):
         raise LoopyError("cannot split already tagged iname '%s'" % split_iname)

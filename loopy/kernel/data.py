@@ -133,6 +133,23 @@ class IndexTag(ImmutableRecord):
         return type(self).__name__
 
 
+class CodegenInameTag(IndexTag):
+    """
+    Records codegen-specific metadata associated with the iname.
+    """
+
+
+class SemanticsInameTag(IndexTag):
+    """
+    Records metadata encoded either by the kernel creation frontend or by
+    transformations.
+    """
+    __slots__ = ["name"]
+
+    def __init__(self, name):
+        ImmutableRecord.__init__(self, name=name)
+
+
 class ConcurrentTag(IndexTag):
     pass
 
@@ -146,7 +163,7 @@ ParallelTag = ConcurrentTag
 HardwareParallelTag = HardwareConcurrentTag
 
 
-class UniqueTag(IndexTag):
+class UniqueTag(CodegenInameTag):
     pass
 
 
@@ -212,17 +229,17 @@ class VectorizeTag(UniqueTag, HardwareConcurrentTag):
         return "vec"
 
 
-class UnrollTag(IndexTag):
+class UnrollTag(CodegenInameTag):
     def __str__(self):
         return "unr"
 
 
-class ForceSequentialTag(IndexTag):
+class ForceSequentialTag(CodegenInameTag):
     def __str__(self):
         return "forceseq"
 
 
-class InOrderSequentialSequentialTag(IndexTag):
+class InOrderSequentialSequentialTag(CodegenInameTag):
     def __str__(self):
         return "ord"
 
@@ -257,6 +274,8 @@ def parse_tag(tag):
             return AutoFitLocalIndexTag()
         else:
             return LocalIndexTag(int(axis))
+    elif tag.startswith("semantic."):
+        return SemanticsInameTag(tag[9:])
     else:
         raise ValueError("cannot parse tag: %s" % tag)
 
