@@ -534,4 +534,63 @@ def parse_stack_match(smatch):
 # }}}
 
 
+# {{{ parse_iname_match
+
+class InameMatchable:
+    def __init__(self, id, tags):
+        self.id = id
+        self.tags = tags
+
+    def write_dependency_names(self):
+        raise TypeError("writes: query may not be applied to inames.")
+
+    def read_dependency_names(self):
+        raise TypeError("reads: query may not be applied to inames.")
+
+    def inames(self, kernel):
+        raise TypeError("inames: query may not be applied to inames.")
+
+
+class InameMatch:
+    def __init__(self, match_expression):
+        self.match_expression = match_expression
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, self.match_expression)
+
+    def __eq__(self, other):
+        return (
+                type(self) == type(other)
+                and
+                self.match_expression == other.match_expression)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __call__(self, kernel, iname):
+        """
+        :arg rule_stack: a tuple of (name, tags) rule invocation, outermost first
+        """
+        from loopy.kernel.data import SemanticsInameTag, filter_iname_tags_by_type
+        tags = {tag.name
+                for tag in filter_iname_tags_by_type(kernel.iname_tags(iname),
+                                                     SemanticsInameTag)}
+        return self.match_expression(kernel, InameMatchable(iname, tags))
+
+
+def parse_iname_match(inamematch):
+    """
+    Returns an instance of :class:`InameMatch`.
+    """
+
+    if isinstance(inamematch, InameMatch):
+        return inamematch
+    if isinstance(inamematch, MatchExpressionBase):
+        return InameMatch(inamematch)
+
+    return InameMatch(parse_match(inamematch))
+
+# }}}
+
+
 # vim: foldmethod=marker
