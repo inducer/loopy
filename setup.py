@@ -64,7 +64,7 @@ write_git_revision("loopy")
 # }}}
 
 
-setup(name="loo.py",
+setup(name="loopy",
       version=ver_dic["VERSION_TEXT"],
       description="A code generator for array-based code on CPUs and GPUs",
       long_description=open("README.rst", "rt").read(),
