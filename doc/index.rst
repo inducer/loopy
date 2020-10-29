@@ -23,17 +23,15 @@ When you run this script, the following kernel is generated, compiled, and execu
 Places on the web related to Loopy
 ----------------------------------
 
-
-* `Github <http://github.com/inducer/loopy>`_ (get latest source code, file bugs)
-* `Wiki <http://wiki.tiker.net/Loopy>`_ (read installation tips, get examples, read FAQ)
-* `Homepage <http://mathema.tician.de/software/loopy>`_
 * `Python package index <https://pypi.org/project/loopy>`_ (download releases)
+* `Github <https://github.com/inducer/loopy>`_ (get latest source code, file bugs)
+* `Homepage <https://mathema.tician.de/software/loopy>`_
 
 Table of Contents
 -----------------
 
 If you're only just learning about loopy, consider the following `paper
-<http://arxiv.org/abs/1405.7470>`_ on loo.py that may serve as a good
+<https://arxiv.org/abs/1405.7470>`_ on loopy that may serve as a good
 introduction.
 
 Please check :ref:`installation` to get started.

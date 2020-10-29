@@ -27,14 +27,13 @@ run this beforehand::
     python get-pip.py
 
 For a more manual installation, `download the source
-<http://pypi.python.org/pypi/loo.py>`_, unpack it, and say::
+<https://pypi.org/project/loopy>`_, unpack it, and say::
 
     python setup.py install
 
 You may also clone its git repository::
 
-    git clone --recursive git://github.com/inducer/loopy
-    git clone --recursive http://git.tiker.net/trees/loopy.git
+    git clone --recursive https://github.com/inducer/loopy.git
 
 Option 2: From Conda Forge, with PyOpenCL integration
 -----------------------------------------------------
@@ -443,7 +442,7 @@ If you use loopy for your work and find its approach helpful, please
 consider citing the following article.
 
     A. Klöckner. `Loo.py: transformation-based code generation for GPUs and
-    CPUs <http://arxiv.org/abs/1405.7470>`_. Proceedings of ARRAY '14: ACM
+    CPUs <https://arxiv.org/abs/1405.7470>`_. Proceedings of ARRAY '14: ACM
     SIGPLAN Workshop on Libraries, Languages, and Compilers for Array
     Programming. Edinburgh, Scotland.
 

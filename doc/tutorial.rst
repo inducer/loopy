@@ -363,7 +363,7 @@ loopy can also show an instruction dependency graph, using
 
 Dependencies are shown as arrows from prerequisite to dependent in the
 graph.  This functionality requires the open-source `graphviz
-<http://graphviz.org>`_ graph drawing tools to be installed. The generated
+<https://graphviz.org>`_ graph drawing tools to be installed. The generated
 graph will open in a browser window.
 
 Since manually notating lots of dependencies is cumbersome, loopy has
