@@ -2030,7 +2030,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
     def print_longest_dead_end():
         if debug.interactive:
-            print("Loo.py will now show you the scheduler state at the point")
+            print("Loopy will now show you the scheduler state at the point")
             print("where the longest (dead-end) schedule was generated, in the")
             print("the hope that some of this makes sense and helps you find")
             print("the issue.")
@@ -2106,7 +2106,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
     debug.done_scheduling()
     if not schedule_count:
         print(75*"-")
-        print("ERROR: Sorry--loo.py did not find a schedule for your kernel.")
+        print("ERROR: Sorry--loopy did not find a schedule for your kernel.")
         print(75*"-")
         print_longest_dead_end()
         raise RuntimeError("no valid schedules found")

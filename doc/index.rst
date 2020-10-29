@@ -23,11 +23,11 @@ When you run this script, the following kernel is generated, compiled, and execu
 Places on the web related to Loopy
 ----------------------------------
 
-* `Python package index <http://pypi.python.org/pypi/loo.py>`_ (download releases) Note the extra '.' in the PyPI identifier!
 
 * `Github <http://github.com/inducer/loopy>`_ (get latest source code, file bugs)
 * `Wiki <http://wiki.tiker.net/Loopy>`_ (read installation tips, get examples, read FAQ)
 * `Homepage <http://mathema.tician.de/software/loopy>`_
+* `Python package index <https://pypi.org/project/loopy>`_ (download releases)
 
 Table of Contents
 -----------------
