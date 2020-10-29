@@ -114,7 +114,7 @@ setup(name="loopy",
       scripts=["bin/loopy"],
 
       author="Andreas Kloeckner",
-      url="http://mathema.tician.de/software/loopy",
+      url="https://mathema.tician.de/software/loopy",
       author_email="inform@tiker.net",
       license="MIT",
       packages=find_packages(),
