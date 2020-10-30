@@ -481,10 +481,28 @@ def check_bounds(kernel):
     temp_var_names = set(kernel.temporary_variables)
     for insn in kernel.instructions:
         domain = kernel.get_inames_domain(kernel.insn_inames(insn))
+        domain_param_names = set(domain.get_var_names(dim_type.param))
 
         # data-dependent bounds? can't do much
-        if set(domain.get_var_names(dim_type.param)) & temp_var_names:
+        if domain_param_names & temp_var_names:
             continue
+
+        # {{{ add read-only ValueArgs to domain
+
+        from loopy.kernel.data import ValueArg
+
+        valueargs_to_add = ({arg.name for arg in kernel.args
+                             if isinstance(arg, ValueArg)
+                             and arg.name not in kernel.get_written_variables()}
+                            - domain_param_names) & insn.read_dependency_names()
+
+        while valueargs_to_add:
+            arg_to_add = valueargs_to_add.pop()
+            idim = domain.dim(isl.dim_type.param)
+            domain = domain.add_dims(isl.dim_type.param, 1)
+            domain = domain.set_dim_name(isl.dim_type.param, idim, arg_to_add)
+
+        # }}}
 
         acm = _AccessCheckMapper(kernel, insn.id)
         domain, assumptions = isl.align_two(domain, kernel.assumptions)
