@@ -2920,6 +2920,18 @@ def test_access_check_with_conditionals():
         lp.generate_code_v2(legal_but_nonaffine_condition_knl)
 
 
+def test_access_check_with_insn_predicates():
+    knl = lp.make_kernel(
+            "{[i]: 0<i<10}",
+            """
+            if i < 4
+              y[i] = 2*x[i]
+            end
+            """, [lp.GlobalArg("x", dtype=float, shape=(4,)), ...])
+
+    print(lp.generate_code_v2(knl).device_code())
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

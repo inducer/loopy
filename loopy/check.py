@@ -375,6 +375,25 @@ def check_for_data_dependent_parallel_bounds(kernel):
 
 # {{{ check access bounds
 
+def _condition_to_set(space, expr):
+    """
+    Returns an instance of :class:`islpy.Set` is *expr* can be expressed as an
+    ISL-set on *space*, if not then returns *None*.
+    """
+    from loopy.symbolic import get_dependencies
+    if get_dependencies(expr) <= frozenset(
+            space.get_var_dict()):
+        try:
+            from loopy.symbolic import isl_set_from_expr
+            return isl_set_from_expr(space, expr)
+        except ExpressionToAffineConversionError:
+            # non-affine condition: can't do much
+            return None
+    else:
+        # data-dependent condition: can't do much
+        return None
+
+
 class _AccessCheckMapper(WalkMapper):
     def __init__(self, kernel, insn_id):
         self.kernel = kernel
@@ -445,19 +464,11 @@ class _AccessCheckMapper(WalkMapper):
                         % (expr, self.insn_id, access_range, shape_domain))
 
     def map_if(self, expr, domain):
-        from loopy.symbolic import get_dependencies
-        if get_dependencies(expr.condition) <= frozenset(
-                domain.space.get_var_dict()):
-            try:
-                from loopy.symbolic import isl_set_from_expr
-                then_set = isl_set_from_expr(domain.space, expr.condition)
-                else_set = then_set.complement()
-            except ExpressionToAffineConversionError:
-                # non-affine condition: can't do much
-                then_set = else_set = isl.BasicSet.universe(domain.space)
-        else:
-            # data-dependent condition: can't do much
+        then_set = _condition_to_set(domain.space, expr.condition)
+        if then_set is None:
             then_set = else_set = isl.BasicSet.universe(domain.space)
+        else:
+            else_set = then_set.complement()
 
         self.rec(expr.then, domain & then_set)
         self.rec(expr.else_, domain & else_set)
@@ -479,8 +490,21 @@ def check_bounds(kernel):
         domain, assumptions = isl.align_two(domain, kernel.assumptions)
         domain_with_assumptions = domain & assumptions
 
+        # {{{ handle insns predicates
+
+        insn_preds_set = isl.BasicSet.universe(domain.space)
+
+        for predicate in insn.predicates:
+            predicate_as_isl_set = _condition_to_set(domain.space, predicate)
+            if predicate_as_isl_set is not None:
+                insn_preds_set = insn_preds_set & predicate_as_isl_set
+
+        # }}}
+
+        domain_with_assumptions_with_pred = domain_with_assumptions & insn_preds_set
+
         def run_acm(expr):
-            acm(expr, domain_with_assumptions)
+            acm(expr, domain_with_assumptions_with_pred)
             return expr
 
         insn.with_transformed_expressions(run_acm)
