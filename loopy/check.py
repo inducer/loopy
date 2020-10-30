@@ -377,7 +377,7 @@ def check_for_data_dependent_parallel_bounds(kernel):
 
 def _condition_to_set(space, expr):
     """
-    Returns an instance of :class:`islpy.Set` is *expr* can be expressed as an
+    Returns an instance of :class:`islpy.Set` if *expr* can be expressed as an
     ISL-set on *space*, if not then returns *None*.
     """
     from loopy.symbolic import get_dependencies
