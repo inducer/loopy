@@ -1038,8 +1038,8 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper):
             return SubstitutionMapper.map_variable(self, expr)
 
         if (expr.name in expn_state.arg_context
-                or not self.within(expn_state.kernel, expn_state.instruction,
-                                   expn_state.stack)):
+                or not self.within(
+                    expn_state.kernel, expn_state.instruction, expn_state.stack)):
             return super().map_variable(
                     expr, expn_state)
 
