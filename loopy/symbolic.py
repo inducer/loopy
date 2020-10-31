@@ -1011,16 +1011,13 @@ class RuleAwareIdentityMapper(IdentityMapper):
 
         non_insn_self = partial(self, kernel=kernel, insn=None)
 
-        new_args = []
-        for arg in kernel.args:
-            if isinstance(arg, ArrayBase):
-                arg = arg.map_exprs(non_insn_self)
+        new_args = [
+                arg.map_exprs(non_insn_self) if isinstance(arg, ArrayBase) else arg
+                for arg in kernel.args]
 
-            new_args.append(arg)
-
-        new_tvs = {}
-        for tv_name, tv in kernel.temporary_variables.items():
-            new_tvs[tv_name] = tv.map_exprs(non_insn_self)
+        new_tvs = {
+                tv_name: tv.map_exprs(non_insn_self)
+                for tv_name, tv in kernel.temporary_variables.items()}
 
         # variables names, domain dim names not expressions => do not map
 
