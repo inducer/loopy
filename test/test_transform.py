@@ -670,7 +670,7 @@ def test_add_inames_for_unused_hw_axes(ctx_factory):
             parameters={"n": n})
 
 
-def test_rename_argument_of_domain_params():
+def test_rename_argument_of_domain_params(ctx_factory):
     knl = lp.make_kernel(
             "{[i, j]: 0<=i<n and 0<=j<m}",
             """
@@ -680,7 +680,14 @@ def test_rename_argument_of_domain_params():
     knl = lp.rename_argument(knl, "n", "N")
     knl = lp.rename_argument(knl, "m", "M")
 
-    print(lp.generate_code_v2(knl).device_code())
+    # renamed variables should not appear in the code
+    code_str = lp.generate_code_v2(knl).device_code()
+    assert code_str.find("int const n") == -1
+    assert code_str.find("int const m") == -1
+    assert code_str.find("int const N") != -1
+    assert code_str.find("int const M") != -1
+
+    lp.auto_test_vs_ref(knl, ctx_factory(), knl, parameters={"M": 10, "N": 4})
 
 
 if __name__ == "__main__":
