@@ -637,6 +637,7 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
     subst_dict = {old_name: var(new_name)}
 
     from loopy.symbolic import (
+            SubstitutionMapper,
             RuleAwareSubstitutionMapper,
             SubstitutionRuleMappingContext)
     from pymbolic.mapper.substitutor import make_subst_func
@@ -646,18 +647,33 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
                     make_subst_func(subst_dict),
                     within=lambda kernel, insn, stack: True)
 
-    kernel = smap.map_kernel(kernel)
+    kernel = rule_mapping_context.finish_kernel(smap.map_kernel(kernel))
 
     # }}}
 
+    subst_mapper = SubstitutionMapper(make_subst_func(subst_dict))
+
     # {{{ args
+
+    from loopy.kernel.array import ArrayBase
 
     new_args = []
     for arg in kernel.args:
         if arg.name == old_name:
             arg = arg.copy(name=new_name)
 
+        if isinstance(arg, ArrayBase):
+            arg = arg.map_exprs(subst_mapper)
+
         new_args.append(arg)
+
+    # }}}
+
+    # {{{ tvs
+
+    new_tvs = {
+            tv_name: tv.map_exprs(subst_mapper)
+            for tv_name, tv in kernel.temporary_variables.items()}
 
     # }}}
 
@@ -674,7 +690,8 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 
     # }}}
 
-    return kernel.copy(domains=new_domains, args=new_args)
+    return kernel.copy(domains=new_domains, args=new_args,
+            temporary_variables=new_tvs)
 
 # }}}
 

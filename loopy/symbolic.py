@@ -979,10 +979,6 @@ class RuleAwareIdentityMapper(IdentityMapper):
             return sym
 
     def __call__(self, expr, kernel, insn):
-        """
-        :arg insn: A :class:`~loopy.kernel.InstructionBase` of which *expr* is
-            a part of, or *None* if *expr*'s source is not an instruction.
-        """
         from loopy.kernel.data import InstructionBase
         assert insn is None or isinstance(insn, InstructionBase)
 
@@ -1006,23 +1002,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
                         lambda expr: self(expr, kernel, insn)))
                 for insn in kernel.instructions]
 
-        from loopy.kernel.array import ArrayBase
-        from functools import partial
-
-        non_insn_self = partial(self, kernel=kernel, insn=None)
-
-        new_args = [
-                arg.map_exprs(non_insn_self) if isinstance(arg, ArrayBase) else arg
-                for arg in kernel.args]
-
-        new_tvs = {
-                tv_name: tv.map_exprs(non_insn_self)
-                for tv_name, tv in kernel.temporary_variables.items()}
-
-        # variables names, domain dim names not expressions => do not map
-
-        return kernel.copy(instructions=new_insns, args=new_args,
-                           temporary_variables=new_tvs)
+        return kernel.copy(instructions=new_insns)
 
 
 class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper):
@@ -1033,13 +1013,10 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper):
         self.within = within
 
     def map_variable(self, expr, expn_state):
-        if expn_state.instruction is None:
-            # expr not a part of instruction => mimic SubstitutionMapper
-            return SubstitutionMapper.map_variable(self, expr)
-
         if (expr.name in expn_state.arg_context
                 or not self.within(
                     expn_state.kernel, expn_state.instruction, expn_state.stack)):
+            # expr not in within => do nothing (call IdentityMapper)
             return super().map_variable(
                     expr, expn_state)
 
