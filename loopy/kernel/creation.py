@@ -2375,12 +2375,12 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
 
 def make_function(*args, **kwargs):
-    lang_version = kwargs.pop('lang_version', None)
+    lang_version = kwargs.pop("lang_version", None)
     if lang_version:
         raise LoopyError("lang_version should be set for program, not "
                 "functions.")
 
-    kwargs['is_callee_kernel'] = True
+    kwargs["is_callee_kernel"] = True
     return make_kernel(*args, **kwargs)
 
 # }}}

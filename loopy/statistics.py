@@ -164,7 +164,7 @@ class GuardedPwQPolynomial:
 
 # {{{ ToCountMap
 
-class ToCountMap(object):
+class ToCountMap:
     """A map from work descriptors like :class:`Op` and :class:`MemAccess`
     to any arithmetic type.
 
@@ -215,9 +215,9 @@ class ToCountMap(object):
 
     def __mul__(self, other):
         if isinstance(other, GuardedPwQPolynomial):
-            return self.copy(dict(
-                (index, value*other)
-                for index, value in self.count_map.items()))
+            return self.copy({
+                index: value*other
+                for index, value in self.count_map.items()})
         else:
             raise ValueError("ToCountMap: Attempted to multiply "
                                 "ToCountMap by {} {}."
@@ -233,7 +233,7 @@ class ToCountMap(object):
 
     def __str__(self):
         return "\n".join(
-                "%s: %s" % (k, v)
+                f"{k}: {v}"
                 for k, v in sorted(self.count_map.items(),
                     key=lambda k: str(k)))
 
@@ -400,9 +400,9 @@ class ToCountMap(object):
 
         for self_key, self_val in self.count_map.items():
             new_key = key_type(
-                    **dict(
-                        (field, getattr(self_key, field))
-                        for field in args))
+                    **{
+                        field: getattr(self_key, field)
+                        for field in args})
 
             new_count_map[new_key] = new_count_map.get(new_key, 0) + self_val
 
@@ -487,7 +487,7 @@ class ToCountPolynomialMap(ToCountMap):
 
             assert _get_param_tuple(val.space) == space_param_tuple
 
-        super(ToCountPolynomialMap, self).__init__(count_map)
+        super().__init__(count_map)
 
     def _zero(self):
         space = self.space.insert_dims(dim_type.out, 0, 1)
@@ -584,7 +584,7 @@ def stringify_stats_mapping(m):
 
 # {{{ CountGranularity
 
-class CountGranularity(object):
+class CountGranularity:
     """Strings specifying whether an operation should be counted once per
     *work-item*, *sub-group*, or *work-group*.
 
@@ -658,7 +658,7 @@ class Op(ImmutableRecord):
             from loopy.types import to_loopy_type
             dtype = to_loopy_type(dtype)
 
-        super(Op, self).__init__(dtype=dtype, name=name,
+        super().__init__(dtype=dtype, name=name,
                         count_granularity=count_granularity,
                         kernel_name=kernel_name)
 
@@ -752,7 +752,7 @@ class MemAccess(ImmutableRecord):
             from loopy.types import to_loopy_type
             dtype = to_loopy_type(dtype)
 
-        super(MemAccess, self).__init__(mtype=mtype, dtype=dtype,
+        super().__init__(mtype=mtype, dtype=dtype,
                         lid_strides=lid_strides, gid_strides=gid_strides,
                         direction=direction, variable=variable,
                         variable_tag=variable_tag,
@@ -797,11 +797,11 @@ class Sync(ImmutableRecord):
     """
 
     def __init__(self, kind=None, kernel_name=None):
-        super(Sync, self).__init__(kind=kind, kernel_name=kernel_name)
+        super().__init__(kind=kind, kernel_name=kernel_name)
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
-        return "Sync(%s, %s)" % (self.kind, self.kernel_name)
+        return f"Sync({self.kind}, {self.kernel_name})"
 
 # }}}
 
@@ -846,12 +846,12 @@ class CounterBase(CombineMapper):
         if isinstance(clbl, CallableKernel):
             sub_result = self.kernel_rec(clbl.subkernel)
 
-            arg_dict = dict(
-                    (arg.name, value)
+            arg_dict = {
+                    arg.name: value
                     for arg, value in zip(
                         clbl.subkernel.args,
                         expr.parameters)
-                    if isinstance(arg, ValueArg))
+                    if isinstance(arg, ValueArg)}
 
             return subst_into_to_count_map(
                     self.param_space,
@@ -911,7 +911,7 @@ class CounterBase(CombineMapper):
 class ExpressionOpCounter(CounterBase):
     def __init__(self, knl, callables_table, kernel_rec,
             count_within_subscripts=True):
-        super(ExpressionOpCounter, self).__init__(
+        super().__init__(
                 knl, callables_table, kernel_rec)
         self.count_within_subscripts = count_within_subscripts
 
@@ -940,7 +940,7 @@ class ExpressionOpCounter(CounterBase):
                             kernel_name=self.knl.name): self.one}
                         ) + self.rec(expr.parameters)
         else:
-            return super(ExpressionOpCounter, self).map_call(expr)
+            return super().map_call(expr)
 
     def map_subscript(self, expr):
         if self.count_within_subscripts:
@@ -1190,7 +1190,7 @@ class MemAccessCounterBase(CounterBase):
         if not isinstance(clbl, CallableKernel):
             return self.rec(expr.parameters)
         else:
-            return super(MemAccessCounterBase, self).map_call(expr)
+            return super().map_call(expr)
 
 # }}}
 

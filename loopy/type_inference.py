@@ -54,8 +54,8 @@ def get_return_types_as_tuple(arg_id_to_dtype):
     :arg arg_id_to_dtype: An instance of :class:`dict` which denotes a
                             mapping from the arguments to their inferred types.
     """
-    return_arg_id_to_dtype = dict((id, dtype) for id, dtype in
-            arg_id_to_dtype.items() if (isinstance(id, int) and id < 0))
+    return_arg_id_to_dtype = {id: dtype for id, dtype in
+            arg_id_to_dtype.items() if (isinstance(id, int) and id < 0)}
     return_arg_pos = sorted(return_arg_id_to_dtype.keys(), reverse=True)
 
     return tuple(return_arg_id_to_dtype[id] for id in return_arg_pos)
@@ -71,7 +71,7 @@ class FunctionNameChanger(RuleAwareIdentityMapper):
 
     def __init__(self, rule_mapping_context, calls_to_new_names,
             subst_expander):
-        super(FunctionNameChanger, self).__init__(rule_mapping_context)
+        super().__init__(rule_mapping_context)
         self.calls_to_new_names = calls_to_new_names
         self.subst_expander = subst_expander
 
@@ -94,7 +94,7 @@ class FunctionNameChanger(RuleAwareIdentityMapper):
                         tuple(self.rec(child, expn_state)
                             for child in expanded_expr.parameters))
             else:
-                return super(FunctionNameChanger, self).map_call(
+                return super().map_call(
                         expr, expn_state)
         else:
             return self.map_substitution(name, tag, expr.parameters, expn_state)
@@ -106,12 +106,12 @@ class FunctionNameChanger(RuleAwareIdentityMapper):
                 ResolvedFunction(self.calls_to_new_names[expr]),
                 tuple(self.rec(child, expn_state)
                     for child in expr.parameters),
-                dict(
-                    (key, self.rec(val, expn_state))
-                    for key, val in six.iteritems(expr.kw_parameters))
+                {
+                    key: self.rec(val, expn_state)
+                    for key, val in expr.kw_parameters.items()}
                     )
         else:
-            return super(FunctionNameChanger, self).map_call_with_kwargs(
+            return super().map_call_with_kwargs(
                     expr, expn_state)
 
 
@@ -422,8 +422,8 @@ class TypeInferenceMapper(CombineMapper):
             else:
                 return None
 
-        arg_id_to_dtype = dict((i, none_if_empty(self.rec(par))) for (i, par) in
-                tuple(enumerate(expr.parameters)) + tuple(kw_parameters.items()))
+        arg_id_to_dtype = {i: none_if_empty(self.rec(par)) for (i, par) in
+                tuple(enumerate(expr.parameters)) + tuple(kw_parameters.items())}
 
         # specializing the known function wrt type
         if isinstance(expr.function, ResolvedFunction):
@@ -521,11 +521,11 @@ class TypeInferenceMapper(CombineMapper):
                         ValueArgDescriptor)
 
                 # creating arg_id_to_dtype, arg_id_to_descr from arg_dtypes
-                arg_id_to_dtype = dict((i, dt.with_target(self.kernel.target))
-                        for i, dt in enumerate(mangle_result.arg_dtypes))
-                arg_id_to_dtype.update(dict((-i-1,
-                    dtype.with_target(self.kernel.target)) for i, dtype in enumerate(
-                        mangle_result.result_dtypes)))
+                arg_id_to_dtype = {i: dt.with_target(self.kernel.target)
+                        for i, dt in enumerate(mangle_result.arg_dtypes)}
+                arg_id_to_dtype.update({-i-1:
+                    dtype.with_target(self.kernel.target) for i, dtype in enumerate(
+                        mangle_result.result_dtypes)})
                 arg_descrs = tuple((i, ValueArgDescriptor()) for i, _ in
                         enumerate(mangle_result.arg_dtypes))
                 res_descrs = tuple((-i-1, ValueArgDescriptor()) for i, _ in

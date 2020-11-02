@@ -289,7 +289,7 @@ class StringifyMapper(StringifyMapperBase):
 
     def map_sub_array_ref(self, expr, prec):
         return "[{inames}]: {subscr}".format(
-                inames=','.join(self.rec(iname, prec) for iname in
+                inames=",".join(self.rec(iname, prec) for iname in
                     expr.swept_inames),
                 subscr=self.rec(expr.subscript, prec))
 
@@ -386,7 +386,7 @@ class DependencyMapper(DependencyMapperBase):
 
     def map_sub_array_ref(self, expr, *args):
         deps = self.rec(expr.subscript, *args)
-        return deps - set(iname for iname in expr.swept_inames)
+        return deps - {iname for iname in expr.swept_inames}
 
     map_linear_subscript = DependencyMapperBase.map_subscript
 
@@ -838,7 +838,7 @@ class SweptInameStrideCollector(CoefficientCollectorBase):
                 or expr.aggregate.name not in self.target_names):
             return {1: expr}
 
-        return super(SweptInameStrideCollector, self).map_algebraic_leaf(expr)
+        return super().map_algebraic_leaf(expr)
 
 
 class SubArrayRef(p.Expression):
@@ -888,8 +888,8 @@ class SubArrayRef(p.Expression):
         subscript would be ``a[0, j, 0, l]``
         """
         # TODO: Set the zero to the minimum value of the iname.
-        swept_inames_to_zeros = dict(
-                (swept_iname.name, 0) for swept_iname in self.swept_inames)
+        swept_inames_to_zeros = {
+                swept_iname.name: 0 for swept_iname in self.swept_inames}
 
         return EvaluatorWithDeficientContext(swept_inames_to_zeros)(
                 self.subscript)
@@ -2215,7 +2215,7 @@ class BatchedAccessRangeMapper(WalkMapper):
         return self.rec(expr.child, inames)
 
     def map_sub_array_ref(self, expr, inames):
-        total_inames = inames | set([iname.name for iname in expr.swept_inames])
+        total_inames = inames | {iname.name for iname in expr.swept_inames}
         return self.rec(expr.subscript, total_inames)
 
 

@@ -186,9 +186,9 @@ class OpenCLCallable(ScalarCallable):
                     [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
                         if (id >= 0 and dtype is not None)])
 
-            if dtype.kind in ['u', 'i', 'f']:
-                if dtype.kind == 'f':
-                    name = 'f'+name
+            if dtype.kind in ["u", "i", "f"]:
+                if dtype.kind == "f":
+                    name = "f"+name
                 dtype = NumpyType(dtype)
                 return (
                         self.copy(name_in_target=name,
@@ -242,8 +242,8 @@ class OpenCLCallable(ScalarCallable):
                 raise LoopyError("%s does not support complex numbers"
                         % name)
 
-            updated_arg_id_to_dtype = dict((id, NumpyType(dtype)) for id in range(-1,
-                num_args))
+            updated_arg_id_to_dtype = {id: NumpyType(dtype) for id in range(-1,
+                num_args)}
 
             return (
                     self.copy(name_in_target=name,
@@ -266,8 +266,8 @@ class OpenCLCallable(ScalarCallable):
                             self.copy(arg_id_to_dtype=arg_id_to_dtype),
                             callables_table)
 
-            updated_arg_id_to_dtype = dict((id, NumpyType(dtype)) for id in
-                    range(count))
+            updated_arg_id_to_dtype = {id: NumpyType(dtype) for id in
+                    range(count)}
             updated_arg_id_to_dtype[-1] = OpenCLTarget().vector_dtype(
                         NumpyType(dtype), count)
 
@@ -288,7 +288,7 @@ def scope_opencl_functions(target, identifier):
     Returns an instance of :class:`InKernelCallable` if the function defined by
     *identifier* is known in OpenCL.
     """
-    opencl_function_ids = set(["max", "min", "dot"]) | set(
+    opencl_function_ids = {"max", "min", "dot"} | set(
             _CL_SIMPLE_MULTI_ARG_FUNCTIONS) | set(VECTOR_LITERAL_FUNCS)
 
     if identifier in opencl_function_ids:

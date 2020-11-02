@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2018 Kaushik Kulkarni"
 
 __license__ = """
@@ -22,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
 import re
 
 from pytools import ImmutableRecord, memoize_method
@@ -76,7 +73,7 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
     """
     def __init__(self, rule_mapping_context, kernel, callables_table,
             function_id_to_in_knl_callable_mappers):
-        super(ResolvedFunctionMarker, self).__init__(rule_mapping_context)
+        super().__init__(rule_mapping_context)
         self.kernel = kernel
         self.callables_table = callables_table
         self.function_id_to_in_knl_callable_mappers = (
@@ -131,13 +128,13 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
                         ResolvedFunction(new_func_id),
                         tuple(self.rec(child, expn_state)
                             for child in expr.parameters),
-                        dict(
-                            (key, self.rec(val, expn_state))
-                            for key, val in six.iteritems(expr.kw_parameters))
+                        {
+                            key: self.rec(val, expn_state)
+                            for key, val in expr.kw_parameters.items()}
                             )
 
         # this is an unknown function as of yet, do not modify it
-        return super(ResolvedFunctionMarker, self).map_call_with_kwargs(expr,
+        return super().map_call_with_kwargs(expr,
                 expn_state)
 
     def map_reduction(self, expr, expn_state):
@@ -148,7 +145,7 @@ class ResolvedFunctionMarker(RuleAwareIdentityMapper):
             self.callables_table, _ = (
                     self.callables_table.with_added_callable(func_id,
                         in_knl_callable))
-        return super(ResolvedFunctionMarker, self).map_reduction(expr, expn_state)
+        return super().map_reduction(expr, expn_state)
 
 
 def _default_func_id_to_kernel_callable_mappers(target):
@@ -243,7 +240,7 @@ class Program(ImmutableRecord):
 
         assert name in callables_table
 
-        super(Program, self).__init__(
+        super().__init__(
                 name=name,
                 callables_table=callables_table,
                 target=target,
@@ -260,10 +257,10 @@ class Program(ImmutableRecord):
     update_persistent_hash = update_persistent_hash
 
     def copy(self, **kwargs):
-        if 'target' in kwargs:
+        if "target" in kwargs:
             # target attribute of all the callable kernels should be updated.
-            target = kwargs['target']
-            new_self = super(Program, self).copy(**kwargs)
+            target = kwargs["target"]
+            new_self = super().copy(**kwargs)
             new_resolved_functions = {}
             for func_id, in_knl_callable in (
                     new_self.callables_table.items()):
@@ -280,7 +277,7 @@ class Program(ImmutableRecord):
             return super(Program, new_self).copy(
                     callables_table=callables_table)
         else:
-            return super(Program, self).copy(**kwargs)
+            return super().copy(**kwargs)
 
     def get_grid_size_upper_bounds(self, ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
@@ -371,7 +368,7 @@ class Program(ImmutableRecord):
                     resolved_functions=new_resolved_functions))
 
     def __iter__(self):
-        return six.iterkeys(self.callables_table.resolved_functions)
+        return self.callables_table.resolved_functions.keys()
 
     def __getitem__(self, name):
         result = self.callables_table[name]
@@ -427,13 +424,13 @@ def next_indexed_function_identifier(function_id):
     match = func_name.match(function_id)
 
     if match is None:
-        if function_id[-1] == '_':
-            return "{old_name}0".format(old_name=function_id)
+        if function_id[-1] == "_":
+            return f"{function_id}0"
         else:
-            return "{old_name}_0".format(old_name=function_id)
+            return f"{function_id}_0"
 
-    return "{alpha}_{num}".format(alpha=match.group('alpha'),
-            num=int(match.group('num'))+1)
+    return "{alpha}_{num}".format(alpha=match.group("alpha"),
+            num=int(match.group("num"))+1)
 
 
 class ResolvedFunctionRenamer(RuleAwareIdentityMapper):
@@ -442,7 +439,7 @@ class ResolvedFunctionRenamer(RuleAwareIdentityMapper):
     *renaming_dict*.
     """
     def __init__(self, rule_mapping_context, renaming_dict):
-        super(ResolvedFunctionRenamer, self).__init__(
+        super().__init__(
                 rule_mapping_context)
         self.renaming_dict = renaming_dict
 
@@ -450,7 +447,7 @@ class ResolvedFunctionRenamer(RuleAwareIdentityMapper):
         if expr.name in self.renaming_dict:
             return ResolvedFunction(self.renaming_dict[expr.name])
         else:
-            return super(ResolvedFunctionRenamer, self).map_resolved_function(
+            return super().map_resolved_function(
                     expr, expn_state)
 
 
@@ -499,8 +496,8 @@ class CallablesCountingMapper(CombineMapper):
             in_knl_callable = self.callables_table[expr.function.name]
             if isinstance(in_knl_callable, ScalarCallable):
                 return (Counter([expr.function.name]) +
-                        self.combine((self.rec(child) for child in expr.parameters
-                            + tuple(kw_parameters.values()))))
+                        self.combine(self.rec(child) for child in expr.parameters
+                            + tuple(kw_parameters.values())))
 
             elif isinstance(in_knl_callable, CallableKernel):
 
@@ -511,22 +508,22 @@ class CallablesCountingMapper(CombineMapper):
                             self.callables_table))
 
                 return (Counter([expr.function.name]) +
-                        self.combine((self.rec(child) for child in expr.parameters
-                            + tuple(kw_parameters.values())))) + (
+                        self.combine(self.rec(child) for child in expr.parameters
+                            + tuple(kw_parameters.values()))) + (
                                     callables_count_in_subkernel)
             else:
                 raise NotImplementedError("Unknown callable type %s." % (
                     type))
         else:
             return (
-                    self.combine((self.rec(child) for child in expr.parameters
-                        + tuple(kw_parameters.values()))))
+                    self.combine(self.rec(child) for child in expr.parameters
+                        + tuple(kw_parameters.values())))
 
     map_call_with_kwargs = map_call
 
     def map_reduction(self, expr):
         return Counter(expr.operation.get_scalar_callables()) + (
-                super(CallablesCountingMapper, self).map_reduction(expr))
+                super().map_reduction(expr))
 
     def map_constant(self, expr):
         return Counter()
@@ -604,10 +601,10 @@ class CallablesTable(ImmutableRecord):
             history=None, is_being_edited=False):
 
         if history is None:
-            history = dict((func_id, frozenset([func_id])) for func_id in
-                    resolved_functions)
+            history = {func_id: frozenset([func_id]) for func_id in
+                    resolved_functions}
 
-        super(CallablesTable, self).__init__(
+        super().__init__(
                 resolved_functions=resolved_functions,
                 history=history,
                 is_being_edited=is_being_edited)
@@ -619,8 +616,8 @@ class CallablesTable(ImmutableRecord):
 
     def __hash__(self):
         return hash((
-            frozenset(six.iteritems(self.resolved_functions)),
-            frozenset(six.iteritems(self.history)),
+            frozenset(self.resolved_functions.items()),
+            frozenset(self.history.items()),
             self.is_being_edited
             ))
 
@@ -780,8 +777,8 @@ class CallablesTable(ImmutableRecord):
                 # equal to the old version of the callable.
                 return self, function
             else:
-                print('Old: ', self.resolved_functions[function.name])
-                print('New: ', in_kernel_callable)
+                print("Old: ", self.resolved_functions[function.name])
+                print("New: ", in_kernel_callable)
                 raise LoopyError("Use 'with_enter_edit_callables_mode' first.")
 
         # }}}
@@ -869,7 +866,7 @@ class CallablesTable(ImmutableRecord):
             # this implies that all the function instances having the name
             # "func_id" have been renamed to something else.
             for new_func_id in (
-                    six.viewkeys(new_callables_count)-six.viewkeys(renames_needed)):
+                    new_callables_count.keys()-renames_needed.keys()):
                 if old_func_id in self.history[new_func_id]:
                     renames_needed[new_func_id] = old_func_id
                     break
@@ -926,13 +923,13 @@ class CallablesTable(ImmutableRecord):
         return item in self.resolved_functions
 
     def items(self):
-        return six.iteritems(self.resolved_functions)
+        return self.resolved_functions.items()
 
     def values(self):
-        return six.itervalues(self.resolved_functions)
+        return self.resolved_functions.values()
 
     def keys(self):
-        return six.iterkeys(self.resolved_functions)
+        return self.resolved_functions.keys()
 
     # }}}
 

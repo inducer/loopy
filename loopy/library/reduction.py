@@ -486,28 +486,28 @@ class ReductionCallable(ScalarCallable):
             prefix = op.prefix(scalar_dtype, index_dtype)
 
             yield (prefix, """
-            inline %(scalar_t)s %(prefix)s_op(
-                %(scalar_t)s op1, %(index_t)s index1,
-                %(scalar_t)s op2, %(index_t)s index2,
-                %(index_t)s *index_out)
-            {
-                if (op2 %(comp)s op1)
-                {
+            inline {scalar_t} {prefix}_op(
+                {scalar_t} op1, {index_t} index1,
+                {scalar_t} op2, {index_t} index2,
+                {index_t} *index_out)
+            {{
+                if (op2 {comp} op1)
+                {{
                     *index_out = index2;
                     return op2;
-                }
+                }}
                 else
-                {
+                {{
                     *index_out = index1;
                     return op1;
-                }
-            }
-            """ % {
-                   "scalar_t": target.dtype_to_typename(scalar_dtype),
-                   "prefix": prefix,
-                   "index_t": target.dtype_to_typename(index_dtype),
-                   "comp": op.update_comparison,
-                   })
+                }}
+            }}
+            """.format(
+                   scalar_t=target.dtype_to_typename(scalar_dtype),
+                   prefix=prefix,
+                   index_t=target.dtype_to_typename(index_dtype),
+                   comp=op.update_comparison,
+                   ))
         elif isinstance(self.name, SegmentedOp):
             op = self.name.reduction_op
             scalar_dtype = self.arg_id_to_dtype[-1]
@@ -515,20 +515,20 @@ class ReductionCallable(ScalarCallable):
             prefix = op.prefix(scalar_dtype, segment_flag_dtype)
 
             yield (prefix, """
-            inline %(scalar_t)s %(prefix)s_op(
-                %(scalar_t)s op1, %(segment_flag_t)s segment_flag1,
-                %(scalar_t)s op2, %(segment_flag_t)s segment_flag2,
-                %(segment_flag_t)s *segment_flag_out)
-            {
+            inline {scalar_t} {prefix}_op(
+                {scalar_t} op1, {segment_flag_t} segment_flag1,
+                {scalar_t} op2, {segment_flag_t} segment_flag2,
+                {segment_flag_t} *segment_flag_out)
+            {{
                 *segment_flag_out = segment_flag1 | segment_flag2;
-                return segment_flag2 ? op2 : %(combined)s;
-            }
-            """ % {
-                   "scalar_t": target.dtype_to_typename(scalar_dtype),
-                   "prefix": prefix,
-                   "segment_flag_t": target.dtype_to_typename(segment_flag_dtype),
-                   "combined": op.op % ("op1", "op2"),
-                   })
+                return segment_flag2 ? op2 : {combined};
+            }}
+            """.format(
+                   scalar_t=target.dtype_to_typename(scalar_dtype),
+                   prefix=prefix,
+                   segment_flag_t=target.dtype_to_typename(segment_flag_dtype),
+                   combined=op.op % ("op1", "op2"),
+                   ))
 
         return
 

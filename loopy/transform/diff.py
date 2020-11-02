@@ -378,7 +378,7 @@ def diff_kernel(kernel, diff_outputs, by, diff_iname_prefix="diff_i",
         *diff_context.by_name*, or *None* if no dependency exists.
     """
 
-    assert isinstance(knl, LoopKernel)
+    assert isinstance(kernel, LoopKernel)
 
     from loopy.kernel.creation import apply_single_writer_depencency_heuristic
     kernel = apply_single_writer_depencency_heuristic(kernel, warn_if_used=True)

@@ -111,7 +111,8 @@ class ExpressionToPythonMapper(StringifyMapper):
 
         str_parameters = [self.rec(par, PREC_NONE) for par in expr.parameters]
 
-        return "%s(%s)" % (in_knl_callable.name_in_target, ", ".join(str_parameters))
+        return "{}({})".format(in_knl_callable.name_in_target,
+                               ", ".join(str_parameters))
 
     def map_group_hw_index(self, expr, enclosing_prec):
         raise LoopyError("plain Python does not have group hw axes")

@@ -641,7 +641,7 @@ def auto_test_vs_ref(
 
     rates = ""
     for cnt, lbl in zip(op_count, op_label):
-        rates += " %g %s/s" % (cnt/elapsed_wall, lbl)
+        rates += " {:g} {}/s".format(cnt/elapsed_wall, lbl)
 
     if not quiet:
         def format_float_or_none(v):

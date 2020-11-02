@@ -68,8 +68,8 @@ class BLASCallable(lp.ScalarCallable):
                     par_dtype).expr
                 for par, par_dtype in zip(
                     parameters, par_dtypes)]
-        c_parameters.insert(0, var('CblasRowMajor'))
-        c_parameters.insert(1, var('CblasNoTrans'))
+        c_parameters.insert(0, var("CblasRowMajor"))
+        c_parameters.insert(1, var("CblasNoTrans"))
         c_parameters.insert(2, mat_descr.shape[0])
         c_parameters.insert(3, mat_descr.shape[1])
         c_parameters.insert(4, 1)
@@ -85,8 +85,8 @@ class BLASCallable(lp.ScalarCallable):
 
 
 def blas_fn_lookup(target, identifier):
-    if identifier == 'gemv':
-        return BLASCallable(name='gemv')
+    if identifier == "gemv":
+        return BLASCallable(name="gemv")
     return None
 
 # }}}
@@ -99,9 +99,9 @@ knl = lp.make_kernel(
         """
         y[:] = gemv(A[:, :], x[:])
         """, [
-            lp.GlobalArg('A', dtype=np.float64, shape=(n, n)),
-            lp.GlobalArg('x', dtype=np.float64, shape=(n, )),
-            lp.GlobalArg('y', shape=(n, )), ...],
+            lp.GlobalArg("A", dtype=np.float64, shape=(n, n)),
+            lp.GlobalArg("x", dtype=np.float64, shape=(n, )),
+            lp.GlobalArg("y", shape=(n, )), ...],
         target=CTarget(),
         lang_version=(2018, 2))
 

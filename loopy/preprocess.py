@@ -2049,7 +2049,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
 
     def __init__(self, rule_mapping_context, caller_kernel,
             callables_table):
-        super(ArgDescrInferenceMapper, self).__init__(
+        super().__init__(
                 rule_mapping_context)
         self.caller_kernel = caller_kernel
         self.callables_table = callables_table
@@ -2060,15 +2060,15 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
 
         if not isinstance(expr.function, ResolvedFunction):
             # ignore if the call is not to a ResolvedFunction
-            return super(ArgDescrInferenceMapper, self).map_call(expr, expn_state)
+            return super().map_call(expr, expn_state)
 
         arg_id_to_val = dict(enumerate(expr.parameters))
         if isinstance(expr, CallWithKwargs):
             arg_id_to_val.update(expr.kw_parameters)
 
-        if 'assignees' in kwargs:
+        if "assignees" in kwargs:
             # If supplied with assignees then this is a CallInstruction
-            assignees = kwargs['assignees']
+            assignees = kwargs["assignees"]
             for i, arg in enumerate(assignees):
                 arg_id_to_val[-i-1] = arg
 

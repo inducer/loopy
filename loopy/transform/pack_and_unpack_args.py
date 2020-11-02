@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2018 Tianjiao Sun, Kaushik Kulkarni"
 
 __license__ = """
@@ -121,9 +119,9 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
         from pymbolic import var
 
         dim_type = isl.dim_type.set
-        ilp_inames = set(iname for iname in insn.within_inames
+        ilp_inames = {iname for iname in insn.within_inames
                          if all(isinstance(tag, (IlpBaseTag, VectorizeTag))
-                                for tag in kernel.iname_to_tags.get(iname, [])))
+                                for tag in kernel.iname_to_tags.get(iname, []))}
         new_ilp_inames = set()
         ilp_inames_map = {}
         for iname in ilp_inames:
@@ -156,10 +154,10 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
                 new_pack_inames = ilp_inames_map.copy()  # packing-specific inames
                 new_unpack_inames = ilp_inames_map.copy()  # unpacking-specific iname
 
-                new_pack_inames = dict((iname, var(vng(iname.name +
-                    "_pack"))) for iname in p.swept_inames)
-                new_unpack_inames = dict((iname, var(vng(iname.name +
-                    "_unpack"))) for iname in p.swept_inames)
+                new_pack_inames = {iname: var(vng(iname.name +
+                    "_pack")) for iname in p.swept_inames}
+                new_unpack_inames = {iname: var(vng(iname.name +
+                    "_unpack")) for iname in p.swept_inames}
 
                 # Updating the domains corresponding to the new inames.
                 for iname in p.swept_inames:
@@ -228,8 +226,8 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
                 packing_insns.append(Assignment(
                     assignee=pack_lhs_assignee,
                     expression=pack_subst_mapper.map_subscript(p.subscript),
-                    within_inames=insn.within_inames - ilp_inames | set(
-                        new_pack_inames[i].name for i in p.swept_inames) | (
+                    within_inames=insn.within_inames - ilp_inames | {
+                        new_pack_inames[i].name for i in p.swept_inames} | (
                             new_ilp_inames),
                     depends_on=insn.depends_on,
                     id=ing(insn.id+"_pack"),
@@ -240,8 +238,8 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
                     unpacking_insns.append(Assignment(
                         expression=unpack_rhs,
                         assignee=unpack_subst_mapper.map_subscript(p.subscript),
-                        within_inames=insn.within_inames - ilp_inames | set(
-                            new_unpack_inames[i].name for i in p.swept_inames) | (
+                        within_inames=insn.within_inames - ilp_inames | {
+                            new_unpack_inames[i].name for i in p.swept_inames} | (
                                 new_ilp_inames),
                         id=ing(insn.id+"_unpack"),
                         depends_on=frozenset([insn.id]),
@@ -282,8 +280,8 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
             new_assignees = tuple(subst_mapper(new_id_to_parameters[-i-1])
                     for i, _ in enumerate(insn.assignees))
             new_call_insn = new_call_insn.copy(
-                    depends_on=new_call_insn.depends_on | set(
-                        pack.id for pack in packing_insns),
+                    depends_on=new_call_insn.depends_on | {
+                        pack.id for pack in packing_insns},
                     within_inames=new_call_insn.within_inames - ilp_inames | (
                         new_ilp_inames),
                     expression=new_call_insn.expression.function(*new_params),

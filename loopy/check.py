@@ -111,11 +111,11 @@ class UnscopedCallCollector(CombineMapper):
     def map_call_with_kwargs(self, expr):
         if not isinstance(expr.function, ResolvedFunction):
             return (frozenset([expr.function.name]) |
-                    self.combine((self.rec(child) for child in expr.parameters
-                        + tuple(expr.kw_parameters.values()))))
+                    self.combine(self.rec(child) for child in expr.parameters
+                        + tuple(expr.kw_parameters.values())))
         else:
-            return self.combine((self.rec(child) for child in
-                expr.parameters+tuple(expr.kw_parameters.values())))
+            return self.combine(self.rec(child) for child in
+                expr.parameters+tuple(expr.kw_parameters.values()))
 
     def map_constant(self, expr):
         return frozenset()
@@ -262,9 +262,9 @@ def _get_all_unique_iname_tags(kernel):
     from itertools import chain
     iname_tags = list(chain(*(kernel.iname_to_tags.get(iname, []) for iname in
                               kernel.all_inames())))
-    return set(
+    return {
             tag for tag in iname_tags if
-            isinstance(tag, UniqueTag))
+            isinstance(tag, UniqueTag)}
 
 
 def check_multiple_tags_allowed(kernel):

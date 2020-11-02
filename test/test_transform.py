@@ -588,7 +588,7 @@ def test_nested_substs_in_insns(ctx_factory):
     prg = lp.expand_subst(ref_prg)
     assert not any(
             cknl.subkernel.substitutions
-            for cknl in six.itervalues(prg.callables_table.resolved_functions))
+            for cknl in prg.callables_table.resolved_functions.values())
 
     lp.auto_test_vs_ref(ref_prg, ctx, prg)
 

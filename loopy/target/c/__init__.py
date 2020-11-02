@@ -464,7 +464,7 @@ class CMathCallable(ScalarCallable):
                 elif dtype == np.float128:  # pylint:disable=no-member
                     name = name + "l"  # fabsl
                 else:
-                    raise LoopyTypeError("%s does not support type %s" % (name,
+                    raise LoopyTypeError("{} does not support type {}".format(name,
                         dtype))
 
             return (
@@ -553,8 +553,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
     def function_id_in_knl_callable_mapper(self):
         return (
-                super(CFamilyASTBuilder,
-                    self).function_id_in_knl_callable_mapper() + [
+                super().function_id_in_knl_callable_mapper() + [
                         scope_c_math_functions])
 
     # }}}

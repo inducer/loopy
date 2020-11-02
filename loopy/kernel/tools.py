@@ -1956,8 +1956,8 @@ class CallCollector(CombineMapper):
 
     def map_call_with_kwargs(self, expr):
         return (frozenset([expr.function.name]) |
-                self.combine((self.rec(child) for child in expr.parameters
-                    + tuple(expr.kw_parameters.values()))))
+                self.combine(self.rec(child) for child in expr.parameters
+                    + tuple(expr.kw_parameters.values())))
 
     def map_constant(self, expr):
         return frozenset()

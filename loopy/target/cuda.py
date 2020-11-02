@@ -170,8 +170,8 @@ class CudaCallable(ScalarCallable):
                 raise LoopyError("%s does not support complex numbers"
                         % name)
 
-            updated_arg_id_to_dtype = dict((id, NumpyType(dtype)) for id in range(-1,
-                num_args))
+            updated_arg_id_to_dtype = {id: NumpyType(dtype) for id in range(-1,
+                num_args)}
 
             return (
                     self.copy(name_in_target=name,
@@ -184,7 +184,7 @@ class CudaCallable(ScalarCallable):
 
 
 def scope_cuda_functions(target, identifier):
-    if identifier in set(["dot"]) | set(
+    if identifier in {"dot"} | set(
             _CUDA_SPECIFIC_FUNCTIONS):
         return CudaCallable(name=identifier)
 
@@ -355,7 +355,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     def preamble_generators(self):
 
         return (
-                super(CUDACASTBuilder, self).preamble_generators() + [
+                super().preamble_generators() + [
                     cuda_preamble_generator])
 
     # }}}
@@ -455,7 +455,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                 lhs_expr_code = ecm(lhs_expr)
                 rhs_expr_code = ecm(new_rhs_expr)
 
-                return Statement("atomicAdd(&{0}, {1})".format(
+                return Statement("atomicAdd(&{}, {})".format(
                     lhs_expr_code, rhs_expr_code))
             else:
                 from cgen import Block, DoWhile, Assign
