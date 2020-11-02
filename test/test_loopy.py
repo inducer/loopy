@@ -1722,7 +1722,7 @@ def test_missing_global_barrier():
 
     knl = lp.set_temporary_scope(knl, "z", "global")
     knl = lp.split_iname(knl, "i", 256, outer_tag="g.0")
-    knl = lp.add_dtypes(knl, {'z': np.float32, 'v': np.float32})
+    knl = lp.add_dtypes(knl, {"z": np.float32, "v": np.float32})
     knl = lp.preprocess_kernel(knl)
 
     from loopy.diagnostic import MissingBarrierError
@@ -2848,13 +2848,13 @@ def test_type_inference_walks_fn_in_comparison():
                                             ) {dep=insn_2}
         """, [
             lp.GlobalArg(
-                name='A', dtype=np.float64,
+                name="A", dtype=np.float64,
                 shape=(3)),
             lp.GlobalArg(
-                name='w_0', dtype=np.float64,
+                name="w_0", dtype=np.float64,
                 shape=(6),),
             lp.TemporaryVariable(
-                name='t0', dtype=np.float64,
+                name="t0", dtype=np.float64,
                 shape=(3, 3),
                 read_only=True,
                 address_space=lp.AddressSpace.LOCAL,
@@ -2862,10 +2862,10 @@ def test_type_inference_walks_fn_in_comparison():
                     [0., 1., 0.],
                     [0., 0., 1.]]),),
             lp.TemporaryVariable(
-                name='t1', dtype=np.float64,
+                name="t1", dtype=np.float64,
                 shape=()),
             lp.TemporaryVariable(
-                name='t2', dtype=np.float64,
+                name="t2", dtype=np.float64,
                 shape=()),
             ],
         target=lp.CTarget())

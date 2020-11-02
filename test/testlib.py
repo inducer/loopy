@@ -149,7 +149,7 @@ class Log2Callable(lp.ScalarCallable):
 
         dtype = arg_id_to_dtype[0].numpy_dtype
 
-        if dtype.kind in ('u', 'i'):
+        if dtype.kind in ("u", "i"):
             # ints and unsigned casted to float32
             dtype = np.float32
 
@@ -171,8 +171,8 @@ class Log2Callable(lp.ScalarCallable):
 
 
 def register_log2_lookup(target, identifier):
-    if identifier == 'log2':
-        return Log2Callable(name='log2')
+    if identifier == "log2":
+        return Log2Callable(name="log2")
     return None
 
 # }}}
