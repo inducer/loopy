@@ -21,7 +21,6 @@ THE SOFTWARE.
 """
 
 import sys
-import six
 import numpy as np
 import loopy as lp
 import pyopencl as cl
@@ -158,18 +157,6 @@ def test_to_batched_temp(ctx_factory):
     lp.auto_test_vs_ref(
             bref_prog, ctx, bprog,
             parameters=dict(a=a, x=x, n=5, nbatches=7))
-
-
-def test_save_temporaries_in_loop(ctx_factory):
-
-    prog = lp.make_kernel(
-            "{[i, j]: 0 <= i, j < 4}",
-            """
-            <> a[j] = j {inames=i:j}
-            """)
-
-    prog = lp.save_temporaries_in_loop(prog, 'i', ['a'])
-    assert prog.root_kernel.temporary_variables['a'].shape == (4, 4)
 
 
 def test_add_barrier(ctx_factory):

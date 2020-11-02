@@ -70,13 +70,13 @@ def test_register_knl(ctx_factory, inline):
             "{[i, j]:0<= i, j< 4}",
             """
             c[i, j] = 2*a[i, j] + 3*b[i, j]
-            """, name='linear_combo1')
+            """, name="linear_combo1")
 
     child_knl = lp.make_function(
             "{[i, j]:0<=i, j < 4}",
             """
             [i, j]: g[i, j] = linear_combo1([i, j]: e[i, j], [i, j]: f[i, j])
-            """, name='linear_combo2')
+            """, name="linear_combo2")
 
     parent_knl = lp.make_kernel(
             "{[i, j, k, l, m]: 0<=i, j, k, l, m<4}",
@@ -86,10 +86,10 @@ def test_register_knl(ctx_factory, inline):
             """,
             kernel_data=[
                 lp.GlobalArg(
-                    name='x, y',
+                    name="x, y",
                     dtype=np.float64,
                     shape=(n, n, n, n, n)),
-                '...']
+                ...]
             )
 
     knl = lp.register_callable_kernel(
@@ -97,8 +97,8 @@ def test_register_knl(ctx_factory, inline):
     knl = lp.register_callable_kernel(
             knl, grandchild_knl)
     if inline:
-        knl = lp.inline_callable_kernel(knl, 'linear_combo2')
-        knl = lp.inline_callable_kernel(knl, 'linear_combo1')
+        knl = lp.inline_callable_kernel(knl, "linear_combo2")
+        knl = lp.inline_callable_kernel(knl, "linear_combo1")
 
     evt, (out, ) = knl(queue, x=x, y=y)
 
@@ -129,16 +129,16 @@ def test_slices_with_negative_step(ctx_factory, inline):
             """,
             kernel_data=[
                 lp.GlobalArg(
-                    name='x, y, z',
+                    name="x, y, z",
                     dtype=np.float64,
                     shape=(n, n, n, n, n)),
-                '...']
+                ...]
             )
 
     knl = lp.register_callable_kernel(
             parent_knl, child_knl)
     if inline:
-        knl = lp.inline_callable_kernel(knl, 'linear_combo')
+        knl = lp.inline_callable_kernel(knl, "linear_combo")
 
     evt, (out, ) = knl(queue, x=x, y=y)
 
@@ -165,8 +165,8 @@ def test_register_knl_with_call_with_kwargs(ctx_factory, inline):
             p[i, j] = 7 * e[i, j] + 4*f1[i, j] + 2*g[i, j]
             """,
             [
-                lp.GlobalArg('f, e, h, g'), '...'],
-            name='linear_combo')
+                lp.GlobalArg("f, e, h, g"), ...],
+            name="linear_combo")
 
     caller_knl = lp.make_kernel(
             "{[i, j, k, l, m]: 0<=i, j, k, l, m<%d}" % n,
@@ -181,7 +181,7 @@ def test_register_knl_with_call_with_kwargs(ctx_factory, inline):
     knl = lp.register_callable_kernel(
             caller_knl, callee_knl)
     if inline:
-        knl = lp.inline_callable_kernel(knl, 'linear_combo')
+        knl = lp.inline_callable_kernel(knl, "linear_combo")
 
     evt, (out1, out2, ) = knl(queue, a=a_dev, b=b_dev, c=c_dev)
 
@@ -212,7 +212,7 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
             "{[i, j]:0<=i, j < 4}",
             """
             g[i, j] = 2*e[i, j] + 3*f[i, j]
-            """, name='linear_combo')
+            """, name="linear_combo")
 
     callee_knl = lp.split_iname(callee_knl, "i", 1, inner_tag="l.0", outer_tag="g.0")
 
@@ -228,12 +228,12 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
     knl = lp.register_callable_kernel(
             caller_knl, callee_knl)
 
-    knl = lp.set_options(knl, 'return_dict')
+    knl = lp.set_options(knl, "return_dict")
 
     gsize, lsize = knl.get_grid_size_upper_bounds_as_exprs()
 
     if inline:
-        knl = lp.inline_callable_kernel(knl, 'linear_combo')
+        knl = lp.inline_callable_kernel(knl, "linear_combo")
 
     evt, out = knl(queue, x=x_dev, y=y_dev)
 
@@ -242,7 +242,7 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
 
     assert gsize == (4, 1)
     assert lsize == (1, 4)
-    assert np.linalg.norm(2*x_host+3*y_host-out['z'].get())/np.linalg.norm(
+    assert np.linalg.norm(2*x_host+3*y_host-out["z"].get())/np.linalg.norm(
             2*x_host+3*y_host) < 1e-15
 
 
@@ -286,17 +286,17 @@ def test_shape_translation_through_sub_array_ref(ctx_factory, inline):
     knl = lp.register_callable_kernel(knl, callee3)
 
     if inline:
-        knl = lp.inline_callable_kernel(knl, 'callee_fn1')
-        knl = lp.inline_callable_kernel(knl, 'callee_fn2')
-        knl = lp.inline_callable_kernel(knl, 'callee_fn3')
+        knl = lp.inline_callable_kernel(knl, "callee_fn1")
+        knl = lp.inline_callable_kernel(knl, "callee_fn2")
+        knl = lp.inline_callable_kernel(knl, "callee_fn3")
 
     knl = lp.set_options(knl, "write_cl")
     knl = lp.set_options(knl, "return_dict")
     evt, out_dict = knl(queue, x1=x1, x2=x2, x3=x3)
 
-    y1 = out_dict['y1'].get()
-    y2 = out_dict['y2'].get()
-    y3 = out_dict['y3'].get()
+    y1 = out_dict["y1"].get()
+    y2 = out_dict["y2"].get()
+    y3 = out_dict["y3"].get()
 
     assert (np.linalg.norm(y1-2*x1.get())) < 1e-15
     assert (np.linalg.norm(y2-3*x2.get())) < 1e-15
@@ -326,9 +326,9 @@ def test_multi_arg_array_call(ctx_factory):
                     expression=p.Variable("min")(acc_i, a_i),
                     depends_on="init1,init2")],
             [
-                lp.GlobalArg('a'),
-                lp.GlobalArg('acc_i, index', is_input=False, is_output=True),
-                "..."],
+                lp.GlobalArg("a"),
+                lp.GlobalArg("acc_i, index", is_input=False, is_output=True),
+                ...],
             name="custom_argmin")
 
     argmin_kernel = lp.fix_parameters(argmin_kernel, n=n)
@@ -347,8 +347,8 @@ def test_multi_arg_array_call(ctx_factory):
     evt, out_dict = knl(queue, b=b)
     tol = 1e-15
     from numpy.linalg import norm
-    assert(norm(out_dict['min_val'][0] - np.min(b)) < tol)
-    assert(norm(out_dict['min_index'][0] - np.argmin(b)) < tol)
+    assert(norm(out_dict["min_val"][0] - np.min(b)) < tol)
+    assert(norm(out_dict["min_index"][0] - np.argmin(b)) < tol)
 
 
 @pytest.mark.parametrize("inline", [False, True])
@@ -381,19 +381,19 @@ def test_packing_unpacking(ctx_factory, inline):
     knl = lp.register_callable_kernel(knl, callee1)
     knl = lp.register_callable_kernel(knl, callee2)
 
-    knl = lp.pack_and_unpack_args_for_call(knl, 'callee_fn1')
-    knl = lp.pack_and_unpack_args_for_call(knl, 'callee_fn2')
+    knl = lp.pack_and_unpack_args_for_call(knl, "callee_fn1")
+    knl = lp.pack_and_unpack_args_for_call(knl, "callee_fn2")
 
     if inline:
-        knl = lp.inline_callable_kernel(knl, 'callee_fn1')
-        knl = lp.inline_callable_kernel(knl, 'callee_fn2')
+        knl = lp.inline_callable_kernel(knl, "callee_fn1")
+        knl = lp.inline_callable_kernel(knl, "callee_fn2")
 
     knl = lp.set_options(knl, "write_cl")
     knl = lp.set_options(knl, "return_dict")
     evt, out_dict = knl(queue, x1=x1, x2=x2)
 
-    y1 = out_dict['y1'].get()
-    y2 = out_dict['y2'].get()
+    y1 = out_dict["y1"].get()
+    y2 = out_dict["y2"].get()
 
     assert np.linalg.norm(2*x1.get()-y1)/np.linalg.norm(
             2*x1.get()) < 1e-15
@@ -420,7 +420,7 @@ def test_non_sub_array_refs_arguments(ctx_factory):
 
     caller3 = lp.make_kernel("{[j] : 0 <= j < 2}", "a[:]=callee(a[:], kappa)",
             [lp.GlobalArg("a", dtype="double", shape=(6, ),
-                is_output=False), '...'],
+                is_output=False), ...],
             name="caller", target=lp.CTarget())
 
     registered = lp.register_callable_kernel(caller1, callee)
@@ -455,13 +455,13 @@ def test_empty_sub_array_refs(ctx_factory, inline):
             "{[d]:0<=d<1}",
             """
             c[d] = a[d] - b[d]
-            """, name='wence_function')
+            """, name="wence_function")
 
     caller = lp.make_kernel("{[i]: 0<=i<10}",
             """
             []:z[i] = wence_function([]:x[i], []:y[i])
             """,
-            [lp.GlobalArg('x, y', dtype=np.float64, shape=(10, )), '...'])
+            [lp.GlobalArg("x, y", dtype=np.float64, shape=(10, )), ...])
 
     caller = lp.register_callable_kernel(caller, callee)
 
@@ -494,16 +494,16 @@ def test_array_inputs_to_callee_kernels(ctx_factory, inline):
             """,
             kernel_data=[
                 lp.GlobalArg(
-                    name='x, y, z',
+                    name="x, y, z",
                     dtype=np.float64,
                     shape=(n, n)),
-                '...']
+                ...]
             )
 
     knl = lp.register_callable_kernel(
             parent_knl, child_knl)
     if inline:
-        knl = lp.inline_callable_kernel(knl, 'linear_combo')
+        knl = lp.inline_callable_kernel(knl, "linear_combo")
 
     evt, (out, ) = knl(queue, x=x, y=y)
 
@@ -516,16 +516,16 @@ def test_stride_depending_on_args():
             "{[i, j]: 0<=i, j < n}",
             """
             b[i, j] = 2*a[i, j]
-            """, [lp.ValueArg('n'), lp.GlobalArg('a'), lp.GlobalArg('b')],
-            name='twice')
+            """, [lp.ValueArg("n"), lp.GlobalArg("a"), lp.GlobalArg("b")],
+            name="twice")
 
     thrice = lp.make_function(
             "{[i, j]: 0<=i, j < n}",
             """
             b[i, j] = 3*a[i, j]
-            """, [lp.ValueArg('n'), lp.GlobalArg('a', shape=lp.auto),
-                lp.GlobalArg('b', shape=lp.auto)],
-            name='thrice')
+            """, [lp.ValueArg("n"), lp.GlobalArg("a", shape=lp.auto),
+                lp.GlobalArg("b", shape=lp.auto)],
+            name="thrice")
 
     prog = lp.make_kernel(
             "{[i0,i1,i2,i3,i4,i5,i6,i7]: 0<=i0, i1, i2, i3, i4, i5, i6, i7< N}",
@@ -533,8 +533,8 @@ def test_stride_depending_on_args():
             [i0, i1]: y[i0, i1] = twice(N, [i2, i3]: x[2*i2, i3])
             [i4, i5]: z[i4, i5] = thrice(N, [i6, i7]: x[2*i6+1, i7])
             """, [
-                lp.ValueArg('N', dtype=np.int32), lp.GlobalArg('x',
-                    shape=lp.auto, dtype=np.float64), '...'])
+                lp.ValueArg("N", dtype=np.int32), lp.GlobalArg("x",
+                    shape=lp.auto, dtype=np.float64), ...])
 
     prog = lp.register_callable_kernel(prog, twice)
     prog = lp.register_callable_kernel(prog, thrice)
@@ -548,17 +548,17 @@ def test_unknown_stride_to_callee():
             "{[i, j]: 0<=i, j < n}",
             """
             b[i, j] = 2*a[i, j]
-            """, [lp.ValueArg('n'), lp.GlobalArg('a'), lp.GlobalArg('b')],
-            name='twice')
+            """, [lp.ValueArg("n"), lp.GlobalArg("a"), lp.GlobalArg("b")],
+            name="twice")
 
     prog = lp.make_kernel(
             "{[i,i0,i1,i2,i3]: 0<=i0, i1, i2, i3< N and 0<=i<Nvar}",
             """
             [i0, i1]: y[i0, i1, i] = twice(N, [i2, i3]: x[2*i2, i3, i])
             """, [
-                lp.ValueArg('N', dtype=np.int32), lp.ValueArg('Nvar',
-                    dtype=np.int32), lp.GlobalArg('x', shape=lp.auto,
-                        dtype=np.float64), '...'])
+                lp.ValueArg("N", dtype=np.int32), lp.ValueArg("Nvar",
+                    dtype=np.int32), lp.GlobalArg("x", shape=lp.auto,
+                        dtype=np.float64), ...])
 
     prog = lp.register_callable_kernel(prog, twice)
 
@@ -573,13 +573,13 @@ def test_argument_matching_for_inplace_update(ctx_factory):
             "{[i]: 0<=i<10}",
             """
             x[i] = 2*x[i]
-            """, name='twice')
+            """, name="twice")
 
     knl = lp.make_kernel(
             "{:}",
             """
             x[:] = twice(x[:])
-            """, [lp.GlobalArg('x', shape=(10,), dtype=np.float64)])
+            """, [lp.GlobalArg("x", shape=(10,), dtype=np.float64)])
 
     knl = lp.register_callable_kernel(knl, twice)
 
@@ -596,13 +596,13 @@ def test_non_zero_start_in_subarray_ref(ctx_factory):
             "{[i]: 0<=i<10}",
             """
             b[i] = 2*a[i]
-            """, name='twice')
+            """, name="twice")
 
     knl = lp.make_kernel(
             "{[i, j]: -5<=i<5 and 0<=j<10}",
             """
             [i]:y[i+5] = twice([j]: x[j])
-            """, [lp.GlobalArg('x, y', shape=(10,), dtype=np.float64)])
+            """, [lp.GlobalArg("x, y", shape=(10,), dtype=np.float64)])
 
     knl = lp.register_callable_kernel(knl, twice)
 
