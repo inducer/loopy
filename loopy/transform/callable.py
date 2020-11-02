@@ -183,7 +183,7 @@ def _check_correctness_of_args_and_assignees(insn, callee_kernel):
 
         callee_args_to_insn_params[i].append(param)
 
-    for kw, param in six.iteritems(expr.kw_parameters):
+    for kw, param in expr.kw_parameters.items():
         pos = kw_to_pos[kw]
         if pos < 0:
             raise LoopyError("Keyword argument '{}' meant for output obtained as an"

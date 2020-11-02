@@ -856,9 +856,9 @@ def get_start_subscript_from_sar(sar, kernel):
         pwaff = kernel.get_iname_bounds(iname).lower_bound_pw_aff
         return int(pw_aff_to_expr(pwaff))
 
-    swept_inames_to_zeros = dict(
-            (swept_iname.name, _get_lower_bound(swept_iname.name)) for
-            swept_iname in sar.swept_inames)
+    swept_inames_to_zeros = {
+            swept_iname.name: _get_lower_bound(swept_iname.name) for
+            swept_iname in sar.swept_inames}
 
     return EvaluatorWithDeficientContext(swept_inames_to_zeros)(
             sar.subscript)

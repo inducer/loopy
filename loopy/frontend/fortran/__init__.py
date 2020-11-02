@@ -253,7 +253,7 @@ def _add_assignees_to_calls(knl, all_kernels):
         may be called by *kernel*.
     """
     new_insns = []
-    subroutine_dict = dict((kernel.name, kernel) for kernel in all_kernels)
+    subroutine_dict = {kernel.name: kernel for kernel in all_kernels}
     from loopy.kernel.instruction import (Assignment, CallInstruction,
             CInstruction, _DataObliviousInstruction,
             modify_assignee_for_array_call)

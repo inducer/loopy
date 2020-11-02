@@ -401,7 +401,7 @@ class Program(ImmutableRecord):
                 for name, clbl in self.callables_table.items())
 
     def __setstate__(self, state_obj):
-        super(Program, self).__setstate__(state_obj)
+        super().__setstate__(state_obj)
 
         self._program_executor_cache = {}
 
