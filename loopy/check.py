@@ -24,7 +24,8 @@ THE SOFTWARE.
 from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper, CombineMapper, ResolvedFunction
-from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_kernel
+from loopy.diagnostic import (LoopyError, WriteRaceConditionWarning,
+        warn_with_kernel, ExpressionToAffineConversionError)
 from loopy.type_inference import TypeInferenceMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
@@ -471,13 +472,12 @@ def check_for_data_dependent_parallel_bounds(kernel):
 # {{{ check access bounds
 
 class _AccessCheckMapper(WalkMapper):
-    def __init__(self, kernel, domain, insn_id):
+    def __init__(self, kernel, insn_id):
         self.kernel = kernel
-        self.domain = domain
         self.insn_id = insn_id
 
-    def map_subscript(self, expr):
-        WalkMapper.map_subscript(self, expr)
+    def map_subscript(self, expr, domain):
+        WalkMapper.map_subscript(self, expr, domain)
 
         from pymbolic.primitives import Variable
         assert isinstance(expr.aggregate, Variable)
@@ -500,7 +500,7 @@ class _AccessCheckMapper(WalkMapper):
             from loopy.symbolic import (get_dependencies, get_access_range,
                     UnableToDetermineAccessRange)
 
-            available_vars = set(self.domain.get_var_dict())
+            available_vars = set(domain.get_var_dict())
             shape_deps = set()
             for shape_axis in shape:
                 if shape_axis is not None:
@@ -517,8 +517,7 @@ class _AccessCheckMapper(WalkMapper):
                             len(subscript), len(shape)))
 
             try:
-                access_range = get_access_range(self.domain, subscript,
-                        self.kernel.assumptions)
+                access_range = get_access_range(domain, subscript)
             except UnableToDetermineAccessRange:
                 # Likely: index was non-affine, nothing we can do.
                 return
@@ -541,6 +540,24 @@ class _AccessCheckMapper(WalkMapper):
                         " establish '%s' is a subset of '%s')."
                         % (expr, self.insn_id, access_range, shape_domain))
 
+    def map_if(self, expr, domain):
+        from loopy.symbolic import get_dependencies
+        if get_dependencies(expr.condition) <= frozenset(
+                domain.space.get_var_dict()):
+            try:
+                from loopy.symbolic import isl_set_from_expr
+                then_set = isl_set_from_expr(domain.space, expr.condition)
+                else_set = then_set.complement()
+            except ExpressionToAffineConversionError:
+                # non-affine condition: can't do much
+                then_set = else_set = isl.BasicSet.universe(domain.space)
+        else:
+            # data-dependent condition: can't do much
+            then_set = else_set = isl.BasicSet.universe(domain.space)
+
+        self.rec(expr.then, domain & then_set)
+        self.rec(expr.else_, domain & else_set)
+
 
 def check_bounds(kernel):
     """
@@ -554,10 +571,12 @@ def check_bounds(kernel):
         if set(domain.get_var_names(dim_type.param)) & temp_var_names:
             continue
 
-        acm = _AccessCheckMapper(kernel, domain, insn.id)
+        acm = _AccessCheckMapper(kernel, insn.id)
+        domain, assumptions = isl.align_two(domain, kernel.assumptions)
+        domain_with_assumptions = domain & assumptions
 
         def run_acm(expr):
-            acm(expr)
+            acm(expr, domain_with_assumptions)
             return expr
 
         insn.with_transformed_expressions(run_acm)

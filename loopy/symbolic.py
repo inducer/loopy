@@ -1823,6 +1823,101 @@ def constraint_to_cond_expr(cns):
 # }}}
 
 
+# {{{ isl_set_from_expr
+
+class ConditionExpressionToBooleanOpsExpression(IdentityMapper):
+    """
+    Mapper to convert expressions into composition of boolean operation nodes
+    according to C-semantics.
+
+    For ex.:
+        - ``i`` becomes ``i != 0``
+        - ``i>10 and j`` becomes ``i>10 and j!=0``
+    """
+
+    def map_comparison(self, expr):
+        return expr
+
+    def _get_expr_neq_0(self, expr):
+        return p.Comparison(expr, "!=", 0)
+
+    map_variable = _get_expr_neq_0
+    map_subscript = _get_expr_neq_0
+    map_sum = _get_expr_neq_0
+    map_product = _get_expr_neq_0
+    map_constant = _get_expr_neq_0
+    map_call = _get_expr_neq_0
+    map_power = _get_expr_neq_0
+    map_power = _get_expr_neq_0
+
+
+class AffineConditionToISLSetMapper(IdentityMapper):
+    """
+    Mapper to convert a condition :class:`~pymbolic.primitives.Expression` to a
+    :class:`~islpy.Set`.
+    """
+
+    def __init__(self, space):
+        self.space = space
+        super().__init__()
+
+    def map_comparison(self, expr):
+        if expr.operator == "!=":
+            return self.rec(p.LogicalNot(p.Comparison(expr.left, "==", expr.right)))
+
+        left_aff = guarded_aff_from_expr(self.space, expr.left)
+        right_aff = guarded_aff_from_expr(self.space, expr.right)
+
+        if expr.operator == "==":
+            cnst = isl.Constraint.equality_from_aff(left_aff-right_aff)
+        elif expr.operator == ">=":
+            cnst = isl.Constraint.inequality_from_aff(left_aff-right_aff)
+        elif expr.operator == ">":
+            cnst = isl.Constraint.inequality_from_aff(left_aff-right_aff-1)
+        elif expr.operator == "<=":
+            cnst = isl.Constraint.inequality_from_aff(right_aff-left_aff)
+        elif expr.operator == "<":
+            cnst = isl.Constraint.inequality_from_aff(right_aff-left_aff-1)
+        else:
+            assert False
+
+        return isl.Set.universe(self.space).add_constraint(cnst)
+
+    def _map_logical_reduce(self, expr, f):
+        """
+        :arg f: Reduction callable.
+        """
+        sets = [self.rec(child) for child in expr.children]
+        return reduce(f, sets)
+
+    def map_logical_or(self, expr):
+        import operator
+        return self._map_logical_reduce(expr, operator.or_)
+
+    def map_logical_and(self, expr):
+        import operator
+        return self._map_logical_reduce(expr, operator.and_)
+
+    def map_logical_not(self, expr):
+        set_ = self.rec(expr.child)
+        return set_.complement()
+
+
+def isl_set_from_expr(space, expr):
+    """
+    :arg expr: An instance of :class:`pymbolic.primitives.Expression` whose
+        boolean value is evaluated according to C-semantics.
+    """
+    mapper = AffineConditionToISLSetMapper(space)
+    expr = ConditionExpressionToBooleanOpsExpression()(expr)
+    set_ = mapper(expr)
+    assert isinstance(set_, isl.Set)
+
+    return set_
+
+# }}}
+
+
 # {{{ set_to_cond_expr
 
 def basic_set_to_cond_expr(isl_basicset):
@@ -1953,9 +2048,11 @@ class UnableToDetermineAccessRange(Exception):
     pass
 
 
-def get_access_range(domain, subscript, assumptions, shape=None,
+def get_access_range(domain, subscript, assumptions=None, shape=None,
         allowed_constant_names=None):
     """
+    :arg assumptions: An instance of :class:`islpy.BasicSet` or *None*. *None*
+        is equivalent to the universal set over *domain*'s space.
     :arg shape: if not *None*, indicates that it is desired to return an
         overestimate of the access range based on the shape if a precise range
         cannot be determined.
@@ -1963,10 +2060,11 @@ def get_access_range(domain, subscript, assumptions, shape=None,
         permitted in the access range expressions. Names that are already
         parameters of *domain* may be repeated without ill effects.
     """
-    domain, assumptions = isl.align_two(domain,
-            assumptions)
-    domain = domain & assumptions
-    del assumptions
+    if assumptions is not None:
+        domain, assumptions = isl.align_two(domain,
+                assumptions)
+        domain = domain & assumptions
+        del assumptions
 
     dims = len(subscript)
 

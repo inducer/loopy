@@ -477,7 +477,7 @@ class DomainChanger:
 @iterate_over_kernels_if_given_program
 def get_dot_dependency_graph(kernel, callables_table, iname_cluster=True,
         use_insn_id=False):
-    """Return a string in the `dot <http://graphviz.org/>`_ language depicting
+    """Return a string in the `dot <https://graphviz.org/>`_ language depicting
     dependencies among kernel instructions.
     """
 
