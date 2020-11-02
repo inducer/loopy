@@ -965,7 +965,15 @@ def iterate_over_kernels_if_given_program(transform_for_single_kernel):
     ``transform`` being implemented on all of the callable kernels in a
     :class:`loopy.Program`.
     """
-    def _collective_transform(program_or_kernel, *args, **kwargs):
+    def _collective_transform(*args, **kwargs):
+        if "program" in kwargs:
+            program_or_kernel = kwargs.pop("program")
+        elif "kernel" in kwargs:
+            program_or_kernel = kwargs.pop("kernel")
+        else:
+            program_or_kernel = args[0]
+            args = args[1:]
+
         if isinstance(program_or_kernel, Program):
             program = program_or_kernel
             new_resolved_functions = {}
