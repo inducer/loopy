@@ -44,6 +44,7 @@ from loopy.program import Program, iterate_over_kernels_if_given_program
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 from pytools import ProcessLogger
+from functools import partial
 
 
 # {{{ prepare for caching
@@ -2050,7 +2051,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         self.caller_kernel = caller_kernel
         self.callables_table = callables_table
 
-    def map_call(self, expr, expn_state, **kwargs):
+    def map_call(self, expr, expn_state, assignees=None):
         from pymbolic.primitives import Call, CallWithKwargs
         from loopy.symbolic import ResolvedFunction
 
@@ -2062,9 +2063,8 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         if isinstance(expr, CallWithKwargs):
             arg_id_to_val.update(expr.kw_parameters)
 
-        if "assignees" in kwargs:
+        if assignees is not None:
             # If supplied with assignees then this is a CallInstruction
-            assignees = kwargs["assignees"]
             for i, arg in enumerate(assignees):
                 arg_id_to_val[-i-1] = arg
 
@@ -2113,11 +2113,12 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
             if isinstance(insn, CallInstruction):
                 # In call instructions the assignees play an important in
                 # determining the arg_id_to_descr
-                new_insns.append(insn.with_transformed_expressions(
-                    self, kernel, insn, assignees=insn.assignees))
+                mapper = partial(self, kernel=kernel, insn=insn,
+                        assignees=insn.assignees)
+                new_insns.append(insn.with_transformed_expressions(mapper))
             elif isinstance(insn, MultiAssignmentBase):
-                new_insns.append(insn.with_transformed_expressions(
-                    self, kernel, insn))
+                mapper = partial(self, kernel=kernel, insn=insn)
+                new_insns.append(insn.with_transformed_expressions(mapper))
             elif isinstance(insn, (_DataObliviousInstruction, CInstruction)):
                 new_insns.append(insn)
             else:
