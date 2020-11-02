@@ -368,32 +368,6 @@ def test_cuda_short_vector():
     print(lp.generate_code_v2(knl).device_code())
 
 
-def test_nvidia_pyopencl_target(ctx_factory):
-    ctx = ctx_factory()
-    if ctx.devices[0].vendor != "NVIDIA Corporation":
-        # do not test for non-Nvidia devices
-        return
-
-    queue = cl.CommandQueue(ctx)
-    a = np.random.randn(16)
-
-    knl = lp.make_kernel(
-            "{[i]: 0<=i<16}",
-            """
-            res[0] = res[0] + a[i] {id=update, atomic}
-            """,
-            [
-                lp.GlobalArg("res", for_atomic=True),
-                lp.GlobalArg("a", for_atomic=True, dtype=np.float64),
-                "..."])
-
-    knl = lp.split_iname(knl, "i", 4, inner_tag="l.0", outer_tag="g.0")
-    knl = knl.copy(target=lp.NvidiaPyOpenCLTarget(ctx.devices[0]))
-
-    evt, (out, ) = knl(queue, a=a)
-    assert np.isclose(out, a.sum())
-
-
 def test_pyopencl_execution_numpy_handling(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
