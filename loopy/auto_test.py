@@ -525,7 +525,7 @@ def auto_test_vs_ref(
 
     from loopy.kernel import KernelState
     from loopy.target.pyopencl import PyOpenCLTarget
-    if test_prog.state not in [
+    if test_prog.root_kernel.state not in [
             KernelState.PREPROCESSED,
             KernelState.LINEARIZED]:
         if isinstance(test_prog.target, PyOpenCLTarget):
