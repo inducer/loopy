@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2019 Andreas Kloeckner"
 
 __license__ = """
@@ -21,9 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six
-from six.moves import range
 
 import sys
 import numpy as np
@@ -51,7 +46,7 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl \
 
 __all__ = [
         "pytest_generate_tests",
-        "cl"  # 'cl.create_some_context'
+        "cl"  # "cl.create_some_context"
         ]
 
 
@@ -66,12 +61,12 @@ class BoundsCheckError(ValueError):
 
 class BoundsCheckingEvaluationMapper(EvaluationMapper):
     def __init__(self, context, lbound, ubound):
-        super(BoundsCheckingEvaluationMapper, self).__init__(context)
+        super().__init__(context)
         self.lbound = lbound
         self.ubound = ubound
 
     def rec(self, expr):
-        result = super(BoundsCheckingEvaluationMapper, self).rec(expr)
+        result = super().rec(expr)
 
         if result > self.ubound:
             raise BoundsCheckError()
@@ -326,11 +321,11 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
             shape=()))
         data.extend([
             lp.TemporaryVariable(name, get_numpy_type(val))
-            for name, val in six.iteritems(var_values)
+            for name, val in var_values.items()
             ])
         instructions.extend([
             lp.Assignment(name, get_numpy_type(val)(val))
-            for name, val in six.iteritems(var_values)
+            for name, val in var_values.items()
             ])
         instructions.append(lp.Assignment(var_name, expr))
 
@@ -350,7 +345,7 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
     print(knl)
     evt, lp_values = knl(queue, out_host=True)
 
-    for name, ref_value in six.iteritems(ref_values):
+    for name, ref_value in ref_values.items():
         lp_value = lp_values[name]
         if expr_type in ["real", "complex"]:
             err = abs(ref_value-lp_value)/abs(ref_value)
@@ -365,7 +360,7 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
             print(80*"-")
             print(lp.generate_code_v2(knl).device_code())
             print(80*"-")
-            print("WRONG: %s rel error=%g" % (name, err))
+            print(f"WRONG: {name} rel error={err:g}")
             print("reference=%r" % ref_value)
             print("loopy=%r" % lp_value)
             print(80*"-")
@@ -381,8 +376,8 @@ def test_sci_notation_literal(ctx_factory):
     queue = cl.CommandQueue(ctx)
 
     set_kernel = lp.make_kernel(
-         ''' { [i]: 0<=i<12 } ''',
-         ''' out[i] = 1e-12''')
+         """ { [i]: 0<=i<12 } """,
+         """ out[i] = 1e-12""")
 
     set_kernel = lp.set_options(set_kernel, write_cl=True)
 
@@ -396,8 +391,8 @@ def test_indexof(ctx_factory):
     queue = cl.CommandQueue(ctx)
 
     knl = lp.make_kernel(
-         ''' { [i,j]: 0<=i,j<5 } ''',
-         ''' out[i,j] = indexof(out[i,j])''')
+         """ { [i,j]: 0<=i,j<5 } """,
+         """ out[i,j] = indexof(out[i,j])""")
 
     knl = lp.set_options(knl, write_cl=True)
 
@@ -420,8 +415,8 @@ def test_indexof_vec(ctx_factory):
         pytest.skip("target ICD miscompiles vector code")
 
     knl = lp.make_kernel(
-         ''' { [i,j,k]: 0<=i,j,k<4 } ''',
-         ''' out[i,j,k] = indexof_vec(out[i,j,k])''')
+         """ { [i,j,k]: 0<=i,j,k<4 } """,
+         """ out[i,j,k] = indexof_vec(out[i,j,k])""")
 
     knl = lp.tag_inames(knl, {"i": "vec"})
     knl = lp.tag_data_axes(knl, "out", "vec,c,c")
@@ -479,7 +474,7 @@ def test_divide_precedence(ctx_factory):
             x[0] = c*(a/b)
             y[0] = c*(a%b)
             """,
-            [lp.ValueArg('a, b, c', np.int32), lp.GlobalArg('x, y', np.int32)])
+            [lp.ValueArg("a, b, c", np.int32), lp.GlobalArg("x, y", np.int32)])
     print(lp.generate_code_v2(knl).device_code())
 
     evt, (x_out, y_out) = knl(queue, c=2, b=2, a=5)

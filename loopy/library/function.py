@@ -1,5 +1,3 @@
-from __future__ import division
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -38,8 +36,8 @@ class MakeTupleCallable(ScalarCallable):
 
     def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table, expr):
         from loopy.kernel.function_interface import ValueArgDescriptor
-        new_arg_id_to_descr = dict(((id, ValueArgDescriptor()),
-            (-id-1, ValueArgDescriptor())) for id in arg_id_to_descr.keys())
+        new_arg_id_to_descr = {(id, ValueArgDescriptor()):
+            (-id-1, ValueArgDescriptor()) for id in arg_id_to_descr.keys()}
 
         return (
                 self.copy(arg_id_to_descr=new_arg_id_to_descr),
@@ -48,8 +46,8 @@ class MakeTupleCallable(ScalarCallable):
 
 class IndexOfCallable(ScalarCallable):
     def with_types(self, arg_id_to_dtype, kernel, callables_table):
-        new_arg_id_to_dtype = dict((i, dtype) for i, dtype in
-                arg_id_to_dtype.items() if dtype is not None)
+        new_arg_id_to_dtype = {i: dtype for i, dtype in
+                arg_id_to_dtype.items() if dtype is not None}
         new_arg_id_to_dtype[-1] = kernel.index_dtype
 
         return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype),

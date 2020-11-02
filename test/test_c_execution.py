@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2017 Nick Curtis"
 
 __license__ = """
@@ -25,7 +23,6 @@ THE SOFTWARE.
 import numpy as np
 import loopy as lp
 import sys
-import six
 import pytest
 from loopy import CACHING_ENABLED
 
@@ -63,30 +60,29 @@ def test_c_target():
 def test_c_target_strides():
     from loopy.target.c import ExecutableCTarget
 
-    def __get_kernel(order='C'):
+    def __get_kernel(order="C"):
         return lp.make_kernel(
                 "{ [i,j]: 0<=i,j<n }",
                 "out[i, j] = 2*a[i, j]",
                 [
-                    lp.GlobalArg("out", np.float32, shape=('n', 'n'), order=order),
-                    lp.GlobalArg("a", np.float32, shape=('n', 'n'), order=order),
+                    lp.GlobalArg("out", np.float32, shape=("n", "n"), order=order),
+                    lp.GlobalArg("a", np.float32, shape=("n", "n"), order=order),
                     "..."
                     ],
                 target=ExecutableCTarget())
 
     # test with C-order
-    knl = __get_kernel('C')
-    lp.generate_code_v2(knl)
+    knl = __get_kernel("C")
     a_np = np.reshape(np.arange(16 * 16, dtype=np.float32), (16, -1),
-                      order='C')
+                      order="C")
 
     assert np.allclose(knl(a=a_np)[1],
                 2 * a_np)
 
     # test with F-order
-    knl = __get_kernel('F')
+    knl = __get_kernel("F")
     a_np = np.reshape(np.arange(16 * 16, dtype=np.float32), (16, -1),
-                      order='F')
+                      order="F")
 
     assert np.allclose(knl(a=a_np)[1],
                 2 * a_np)
@@ -95,18 +91,18 @@ def test_c_target_strides():
 def test_c_target_strides_nonsquare():
     from loopy.target.c import ExecutableCTarget
 
-    def __get_kernel(order='C'):
-        indicies = ['i', 'j', 'k']
+    def __get_kernel(order="C"):
+        indicies = ["i", "j", "k"]
         sizes = tuple(np.random.randint(1, 11, size=len(indicies)))
         # create domain strings
-        domain_template = '{{ [{iname}]: 0 <= {iname} < {size} }}'
+        domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []
         for idx, size in zip(indicies, sizes):
             domains.append(domain_template.format(
                 iname=idx,
                 size=size))
-        statement = 'out[{indexed}] = 2 * a[{indexed}]'.format(
-            indexed=', '.join(indicies))
+        statement = "out[{indexed}] = 2 * a[{indexed}]".format(
+            indexed=", ".join(indicies))
         return lp.make_kernel(
                 domains,
                 statement,
@@ -118,21 +114,21 @@ def test_c_target_strides_nonsquare():
                 target=ExecutableCTarget())
 
     # test with C-order
-    knl = __get_kernel('C')
-    a_lp = next(x for x in knl.args if x.name == 'a')
+    knl = __get_kernel("C")
+    a_lp = next(x for x in knl.args if x.name == "a")
     a_np = np.reshape(np.arange(np.product(a_lp.shape), dtype=np.float32),
                       a_lp.shape,
-                      order='C')
+                      order="C")
 
     assert np.allclose(knl(a=a_np)[1],
                 2 * a_np)
 
     # test with F-order
-    knl = __get_kernel('F')
-    a_lp = next(x for x in knl.args if x.name == 'a')
+    knl = __get_kernel("F")
+    a_lp = next(x for x in knl.args if x.name == "a")
     a_np = np.reshape(np.arange(np.product(a_lp.shape), dtype=np.float32),
                       a_lp.shape,
-                      order='F')
+                      order="F")
 
     assert np.allclose(knl(a=a_np)[1],
                 2 * a_np)
@@ -141,18 +137,18 @@ def test_c_target_strides_nonsquare():
 def test_c_optimizations():
     from loopy.target.c import ExecutableCTarget
 
-    def __get_kernel(order='C'):
-        indicies = ['i', 'j', 'k']
+    def __get_kernel(order="C"):
+        indicies = ["i", "j", "k"]
         sizes = tuple(np.random.randint(1, 11, size=len(indicies)))
         # create domain strings
-        domain_template = '{{ [{iname}]: 0 <= {iname} < {size} }}'
+        domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []
         for idx, size in zip(indicies, sizes):
             domains.append(domain_template.format(
                 iname=idx,
                 size=size))
-        statement = 'out[{indexed}] = 2 * a[{indexed}]'.format(
-            indexed=', '.join(indicies))
+        statement = "out[{indexed}] = 2 * a[{indexed}]".format(
+            indexed=", ".join(indicies))
         return lp.make_kernel(
                 domains,
                 statement,
@@ -164,20 +160,20 @@ def test_c_optimizations():
                 target=ExecutableCTarget()), sizes
 
     # test with ILP
-    knl, sizes = __get_kernel('C')
-    knl = lp.split_iname(knl, 'i', 4, inner_tag='ilp')
+    knl, sizes = __get_kernel("C")
+    knl = lp.split_iname(knl, "i", 4, inner_tag="ilp")
     a_np = np.reshape(np.arange(np.product(sizes), dtype=np.float32),
                       sizes,
-                      order='C')
+                      order="C")
 
     assert np.allclose(knl(a=a_np)[1], 2 * a_np)
 
     # test with unrolling
-    knl, sizes = __get_kernel('C')
-    knl = lp.split_iname(knl, 'i', 4, inner_tag='unr')
+    knl, sizes = __get_kernel("C")
+    knl = lp.split_iname(knl, "i", 4, inner_tag="unr")
     a_np = np.reshape(np.arange(np.product(sizes), dtype=np.float32),
                       sizes,
-                      order='C')
+                      order="C")
 
     assert np.allclose(knl(a=a_np)[1], 2 * a_np)
 
@@ -187,13 +183,13 @@ def test_function_decl_extractor():
     # in execution
     from loopy.target.c import ExecutableCTarget
 
-    knl = lp.make_kernel('{[i]: 0 <= i < 10}',
+    knl = lp.make_kernel("{[i]: 0 <= i < 10}",
         """
             a[i] = b[i] + v
         """,
-        [lp.GlobalArg('a', shape=(10,), dtype=np.int32),
-         lp.ConstantArg('b', shape=(10)),
-         lp.ValueArg('v', dtype=np.int32)],
+        [lp.GlobalArg("a", shape=(10,), dtype=np.int32),
+         lp.ConstantArg("b", shape=(10)),
+         lp.ValueArg("v", dtype=np.int32)],
         target=ExecutableCTarget())
 
     assert np.allclose(knl(b=np.arange(10), v=-1)[1], np.arange(10) - 1)
@@ -204,13 +200,14 @@ def test_c_caching():
     # ensure that codepy is correctly caching the code
     from loopy.target.c import ExecutableCTarget
 
-    class TestingLogger(object):
+    class TestingLogger:
         def start_capture(self, loglevel=logging.DEBUG):
             """ Start capturing log output to a string buffer.
                 @param newLogLevel: Optionally change the global logging level, e.g.
                 logging.DEBUG
             """
-            self.buffer = six.StringIO()
+            from io import StringIO
+            self.buffer = StringIO()
             self.buffer.write("Log output")
 
             logger = logging.getLogger()
@@ -246,14 +243,14 @@ def test_c_caching():
             return self.buffer.getvalue()
 
     def __get_knl():
-        return lp.make_kernel('{[i]: 0 <= i < 10}',
+        return lp.make_kernel("{[i]: 0 <= i < 10}",
         """
             a[i] = b[i]
         """,
-        [lp.GlobalArg('a', shape=(10,), dtype=np.int32),
-         lp.ConstantArg('b', shape=(10))],
+        [lp.GlobalArg("a", shape=(10,), dtype=np.int32),
+         lp.ConstantArg("b", shape=(10))],
                              target=ExecutableCTarget(),
-                             name='cache_test')
+                             name="cache_test")
 
     knl = __get_knl()
     # compile
@@ -268,7 +265,7 @@ def test_c_caching():
     # and get logs
     logs = tl.stop_capture()
     # check that we didn't recompile
-    assert 'Kernel cache_test retrieved from cache' in logs
+    assert "Kernel cache_test retrieved from cache" in logs
 
 
 def test_c_execution_with_global_temporaries():
@@ -279,12 +276,12 @@ def test_c_execution_with_global_temporaries():
     AS = lp.AddressSpace        # noqa
     n = 10
 
-    knl = lp.make_kernel('{[i]: 0 <= i < n}',
+    knl = lp.make_kernel("{[i]: 0 <= i < n}",
         """
             a[i] = b[i]
         """,
-        [lp.GlobalArg('a', shape=(n,), dtype=np.int32),
-         lp.TemporaryVariable('b', shape=(n,),
+        [lp.GlobalArg("a", shape=(n,), dtype=np.int32),
+         lp.TemporaryVariable("b", shape=(n,),
                               initializer=np.arange(n, dtype=np.int32),
                               dtype=np.int32,
                               read_only=True,
@@ -292,7 +289,7 @@ def test_c_execution_with_global_temporaries():
         target=ExecutableCTarget())
 
     knl = lp.fix_parameters(knl, n=n)
-    assert ('int b[%d]' % n) not in lp.generate_code_v2(knl).host_code()
+    assert ("int b[%d]" % n) not in lp.generate_code_v2(knl).host_code()
     assert np.allclose(knl(a=np.zeros(10, dtype=np.int32))[1], np.arange(10))
 
 
@@ -304,12 +301,12 @@ def test_missing_compilers():
     def __test(evalfunc, target, **targetargs):
         n = 10
 
-        knl = lp.make_kernel('{[i]: 0 <= i < n}',
+        knl = lp.make_kernel("{[i]: 0 <= i < n}",
             """
                 a[i] = b[i]
             """,
-            [lp.GlobalArg('a', shape=(n,), dtype=np.int32),
-             lp.GlobalArg('b', shape=(n,), dtype=np.int32)],
+            [lp.GlobalArg("a", shape=(n,), dtype=np.int32),
+             lp.GlobalArg("b", shape=(n,), dtype=np.int32)],
             target=target(**targetargs))
 
         knl = lp.fix_parameters(knl, n=n)
@@ -328,7 +325,7 @@ def test_missing_compilers():
     try:
         # test with path wiped out such that we can't find gcc
         with pytest.raises(ExecError):
-            os.environ["PATH"] = ''
+            os.environ["PATH"] = ""
             ccomp = CCompiler()
             __test(eval_tester, ExecutableCTarget, compiler=ccomp)
     finally:
@@ -344,9 +341,9 @@ def test_missing_compilers():
         __test(eval_tester, ExecutableCTarget, compiler=ccomp)
 
     # next test that some made up compiler can be specified
-    ccomp = CCompiler(cc='foo')
+    ccomp = CCompiler(cc="foo")
     assert isinstance(ccomp.toolchain, GCCToolchain)
-    assert ccomp.toolchain.cc == 'foo'
+    assert ccomp.toolchain.cc == "foo"
 
     # and that said made up compiler errors out
 

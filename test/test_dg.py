@@ -1,5 +1,3 @@
-from __future__ import division
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -100,6 +98,7 @@ def test_dg_volume(ctx_factory):
         knl = lp.tag_inames(knl, dict(n="l.0"))
         knl = lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="l.1")
         knl = lp.add_prefetch(knl, "DrDsDt[:,:]",
+                fetch_outer_inames="k_outer",
                 default_tag="l.auto")
         return knl
 

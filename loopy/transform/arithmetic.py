@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -23,8 +21,6 @@ THE SOFTWARE.
 """
 
 
-import six
-
 from loopy.diagnostic import LoopyError
 
 from loopy.program import iterate_over_kernels_if_given_program
@@ -42,10 +38,10 @@ def fold_constants(kernel):
             insn.with_transformed_expressions(cfm)
             for insn in kernel.instructions]
 
-    new_substs = dict(
-            (sub.name,
-                sub.copy(expression=cfm(sub.expression)))
-            for sub in six.itervalues(kernel.substitutions))
+    new_substs = {
+            sub.name:
+            sub.copy(expression=cfm(sub.expression))
+            for sub in kernel.substitutions.values()}
 
     return kernel.copy(
             instructions=new_insns,
@@ -80,9 +76,9 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
     from loopy.kernel.array import ArrayBase
     if isinstance(var_descr, ArrayBase):
         if var_descr.dim_names is not None:
-            name_to_index = dict(
-                    (name, idx)
-                    for idx, name in enumerate(var_descr.dim_names))
+            name_to_index = {
+                    name: idx
+                    for idx, name in enumerate(var_descr.dim_names)}
         else:
             name_to_index = {}
 
@@ -146,8 +142,7 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
 
     def iterate_as(cls, expr):
         if isinstance(expr, cls):
-            for ch in expr.children:
-                yield ch
+            yield from expr.children
         else:
             yield expr
 
@@ -222,9 +217,9 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
 
                 product_parts = set(iterate_as(Product, term))
 
-                my_common_factors = set(
+                my_common_factors = {
                         cf for cf in my_common_factors
-                        if unif_subst_map(cf) in product_parts)
+                        if unif_subst_map(cf) in product_parts}
 
             common_factors[cf_index] = (index_key, my_common_factors)
 
@@ -269,9 +264,9 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
         unif_subst_map = SubstitutionMapper(
                 make_subst_func(unif_result.lmap))
 
-        mapped_my_common_factors = set(
+        mapped_my_common_factors = {
                 unif_subst_map(cf)
-                for cf in my_common_factors)
+                for cf in my_common_factors}
 
         new_sum_terms = []
 

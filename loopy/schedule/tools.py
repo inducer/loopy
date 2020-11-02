@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2016 Matt Wala"
 
 __license__ = """
@@ -88,7 +86,7 @@ def add_extra_args_to_schedule(kernel):
                     temporaries_read_in_subkernel(kernel, subkernel)
                     | temporaries_written_in_subkernel(kernel, subkernel))
 
-            more_args = set(tv
+            more_args = {tv
                     for tv in used_temporaries
                     if
                     kernel.temporary_variables[tv].address_space
@@ -96,7 +94,7 @@ def add_extra_args_to_schedule(kernel):
                     and
                     kernel.temporary_variables[tv].initializer is None
                     and
-                    tv not in sched_item.extra_args)
+                    tv not in sched_item.extra_args}
 
             new_schedule.append(sched_item.copy(
                     extra_args=sched_item.extra_args + sorted(more_args)))

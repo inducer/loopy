@@ -1,6 +1,5 @@
 """UI for kernel creation."""
 
-from __future__ import division, absolute_import, print_function
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -43,8 +42,7 @@ import islpy as isl
 from islpy import dim_type
 from pytools import ProcessLogger
 
-import six
-from six.moves import range, zip, intern
+from sys import intern
 import loopy.version
 
 import re
@@ -202,7 +200,7 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
             raise ValueError(
                 "unknown scope for nosync option: '%s' "
                 "(allowable scopes are %s)" %
-                (scope, ', '.join("'%s'" % s for s in allowable_scopes)))
+                (scope, ", ".join("'%s'" % s for s in allowable_scopes)))
         return _NosyncParseResult(expr, scope)
 
     for option in options_str.split(","):
@@ -363,7 +361,7 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
 
         elif opt_key == "mem_kind":
             opt_value = opt_value.lower().strip()
-            if opt_value not in ['local', 'global']:
+            if opt_value not in ["local", "global"]:
                 raise LoopyError("Unknown memory synchronization type %s specified"
                     " expected, 'local' or 'global'."
                     % opt_value)
@@ -439,13 +437,13 @@ SUBST_RE = re.compile(
 
 def check_illegal_options(insn_options, insn_type):
     illegal_options = []
-    if insn_type not in ['gbarrier', 'lbarrier']:
-        illegal_options.append('mem_kind')
+    if insn_type not in ["gbarrier", "lbarrier"]:
+        illegal_options.append("mem_kind")
 
     bad_options = [x for x in illegal_options if x in insn_options]
     if bad_options:
         raise LoopyError("Cannot supply option(s) '%s' to instruction type '%s'" %
-                         ', '.join(bad_options), insn_type)
+                         ", ".join(bad_options), insn_type)
 
 
 def parse_insn(groups, insn_options):
@@ -520,7 +518,7 @@ def parse_insn(groups, insn_options):
             assignee_names=assignee_names)
 
     # check for bad options
-    check_illegal_options(insn_options, 'assignment')
+    check_illegal_options(insn_options, "assignment")
 
     insn_id = insn_options.pop("insn_id", None)
     inames_to_dup = insn_options.pop("inames_to_dup", [])
@@ -761,8 +759,8 @@ def parse_instructions(instructions, defines):
 
     insn_options_stack = [get_default_insn_options_dict()]
     if_predicates_stack = [
-            {'predicates': frozenset(),
-                'insn_predicates': frozenset()}]
+            {"predicates": frozenset(),
+                "insn_predicates": frozenset()}]
 
     for insn in instructions:
         if isinstance(insn, InstructionBase):
@@ -823,7 +821,7 @@ def parse_instructions(instructions, defines):
                         insn_options_stack[-1],
                         with_options_match.group("options")))
             # check for bad options
-            check_illegal_options(insn_options_stack[-1], 'with-block')
+            check_illegal_options(insn_options_stack[-1], "with-block")
             continue
 
         for_match = FOR_RE.match(insn)
@@ -863,7 +861,7 @@ def parse_instructions(instructions, defines):
 
             #add to the if_stack
             if_options = options.copy()
-            if_options['insn_predicates'] = options["predicates"]
+            if_options["insn_predicates"] = options["predicates"]
             if_predicates_stack.append(if_options)
             del options
             del predicate
@@ -927,9 +925,9 @@ def parse_instructions(instructions, defines):
         if insn == "end":
             obj = insn_options_stack.pop()
             #if this object is the end of an if statement
-            if obj['predicates'] == if_predicates_stack[-1]["insn_predicates"] and\
+            if obj["predicates"] == if_predicates_stack[-1]["insn_predicates"] and\
                     if_predicates_stack[-1]["insn_predicates"] and\
-                    obj['within_inames'] == if_predicates_stack[-1]['within_inames']:
+                    obj["within_inames"] == if_predicates_stack[-1]["within_inames"]:
                 if_predicates_stack.pop()
             continue
 
@@ -991,8 +989,8 @@ def _find_inames_in_set(dom_str):
     if match is None:
         raise RuntimeError("invalid syntax for domain '%s'" % dom_str)
 
-    result = set(iname.strip() for iname in match.group(1).split(",")
-            if iname.strip())
+    result = {iname.strip() for iname in match.group(1).split(",")
+            if iname.strip()}
 
     return result
 
@@ -1001,7 +999,7 @@ EX_QUANT_RE = re.compile(r"\bexists\s+([a-zA-Z0-9])\s*\:")
 
 
 def _find_existentially_quantified_inames(dom_str):
-    return set(ex_quant.group(1) for ex_quant in EX_QUANT_RE.finditer(dom_str))
+    return {ex_quant.group(1) for ex_quant in EX_QUANT_RE.finditer(dom_str)}
 
 
 def parse_domains(domains, defines):
@@ -1020,7 +1018,7 @@ def parse_domains(domains, defines):
                 parameters = (_gather_isl_identifiers(dom)
                         - _find_inames_in_set(dom)
                         - _find_existentially_quantified_inames(dom))
-                dom = "[%s] -> %s" % (",".join(sorted(parameters)), dom)
+                dom = "[{}] -> {}".format(",".join(sorted(parameters)), dom)
 
             try:
                 dom = isl.BasicSet.read_from_str(isl.DEFAULT_CONTEXT, dom)
@@ -1182,7 +1180,7 @@ class ArgumentGuesser:
 
         # {{{ find names that are *not* arguments
 
-        temp_var_names = set(six.iterkeys(self.temporary_variables))
+        temp_var_names = set(self.temporary_variables.keys())
 
         for insn in self.instructions:
             if isinstance(insn, MultiAssignmentBase):
@@ -1276,8 +1274,8 @@ def check_for_multiple_writes_to_loop_bounds(knl):
 
 def check_written_variable_names(knl):
     admissible_vars = (
-            set(arg.name for arg in knl.args)
-            | set(six.iterkeys(knl.temporary_variables)))
+            {arg.name for arg in knl.args}
+            | set(knl.temporary_variables.keys()))
 
     for insn in knl.instructions:
         for var_name in insn.assignee_var_names():
@@ -1298,7 +1296,7 @@ class CSEToAssignmentMapper(IdentityMapper):
     def map_reduction(self, expr, additional_inames):
         additional_inames = additional_inames | frozenset(expr.inames)
 
-        return super(CSEToAssignmentMapper, self).map_reduction(
+        return super().map_reduction(
                 expr, additional_inames)
 
     def map_common_subexpression(self, expr, additional_inames):
@@ -1521,7 +1519,7 @@ def determine_shapes_of_temporaries(knl):
 
     vars_needing_shape_inference = set()
 
-    for tv in six.itervalues(knl.temporary_variables):
+    for tv in knl.temporary_variables.values():
         if tv.shape is lp.auto or tv.base_indices is lp.auto:
             vars_needing_shape_inference.add(tv.name)
 
@@ -1539,8 +1537,7 @@ def determine_shapes_of_temporaries(knl):
     if len(var_to_error) > 0:
         vars_needing_shape_inference = set(var_to_error.keys())
 
-        from six import iteritems
-        for varname, err in iteritems(var_to_error):
+        for varname, err in var_to_error.items():
             warn_with_kernel(knl, "temp_shape_fallback",
                              "Had to fall back to legacy method of determining "
                              "shape of temporary '%s' because: %s"
@@ -1558,7 +1555,7 @@ def determine_shapes_of_temporaries(knl):
         if len(var_to_error) > 0:
             # No way around errors: propagate an exception upward.
             formatted_errors = (
-                "\n\n".join("'%s': %s" % (varname, var_to_error[varname])
+                "\n\n".join("'{}': {}".format(varname, var_to_error[varname])
                 for varname in sorted(var_to_error.keys())))
 
             raise LoopyError("got the following exception(s) trying to find the "
@@ -1571,7 +1568,7 @@ def determine_shapes_of_temporaries(knl):
 
     new_temp_vars = {}
 
-    for tv in six.itervalues(knl.temporary_variables):
+    for tv in knl.temporary_variables.values():
         if tv.base_indices is lp.auto:
             tv = tv.copy(base_indices=var_to_base_indices[tv.name])
         if tv.shape is lp.auto:
@@ -1600,7 +1597,7 @@ def expand_defines_in_shapes(kernel, defines):
         processed_args.append(arg)
 
     processed_temp_vars = {}
-    for tv in six.itervalues(kernel.temporary_variables):
+    for tv in kernel.temporary_variables.values():
         processed_temp_vars[tv.name] = tv.map_exprs(expr_map)
 
     return kernel.copy(
@@ -1763,13 +1760,13 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
 
     writer_map = kernel.writer_map()
 
-    arg_names = set(arg.name for arg in kernel.args)
+    arg_names = {arg.name for arg in kernel.args}
 
-    var_names = arg_names | set(six.iterkeys(kernel.temporary_variables))
+    var_names = arg_names | set(kernel.temporary_variables.keys())
 
-    dep_map = dict(
-            (insn.id, insn.read_dependency_names() & var_names)
-            for insn in expanded_kernel.instructions)
+    dep_map = {
+            insn.id: insn.read_dependency_names() & var_names
+            for insn in expanded_kernel.instructions}
 
     new_insns = []
     for insn in kernel.instructions:
@@ -1793,7 +1790,7 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
                 if len(var_writers) == 1:
                     auto_deps.update(
                             var_writers
-                            - set([insn.id]))
+                            - {insn.id})
 
             # }}}
 
@@ -2128,7 +2125,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         breaking language changes *will* apply to your kernel without asking,
         likely breaking your code.)
 
-        If not given, this value defaults to version **(2017, 2, 1)** and
+        If not given, this value defaults to version **(2018, 2)** and
         a warning will be issued.
 
         To set the kernel version for all :mod:`loopy` kernels in a (Python) source
@@ -2194,9 +2191,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     from loopy.version import LANGUAGE_VERSION_SYMBOLS
 
-    version_to_symbol = dict(
-            (getattr(loopy.version, lvs), lvs)
-            for lvs in LANGUAGE_VERSION_SYMBOLS)
+    version_to_symbol = {
+            getattr(loopy.version, lvs): lvs
+            for lvs in LANGUAGE_VERSION_SYMBOLS}
 
     lang_version = kwargs.pop("lang_version", None)
     if lang_version is None:
@@ -2236,11 +2233,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             lang_version = FALLBACK_LANGUAGE_VERSION
 
     if lang_version not in version_to_symbol:
-        raise LoopyError("Language version '%s' is not known." % (lang_version,))
-    if lang_version >= (2018, 1):
-        options = options.copy(enforce_variable_access_ordered=True)
-    if lang_version >= (2018, 2):
-        options = options.copy(ignore_boostable_into=True)
+        raise LoopyError(f"Language version '{lang_version}' is not known.")
 
     # }}}
 
@@ -2398,7 +2391,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
 
 def make_function(*args, **kwargs):
-    kwargs['is_callee_kernel'] = True
+    kwargs["is_callee_kernel"] = True
     return make_kernel(*args, **kwargs)
 
 # }}}

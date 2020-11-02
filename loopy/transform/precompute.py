@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -23,8 +21,6 @@ THE SOFTWARE.
 """
 
 
-import six
-from six.moves import range, zip
 import islpy as isl
 from loopy.symbolic import (get_dependencies,
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
@@ -66,7 +62,7 @@ def storage_axis_exprs(storage_axis_sources, args):
 
 class RuleInvocationGatherer(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, kernel, subst_name, subst_tag, within):
-        super(RuleInvocationGatherer, self).__init__(rule_mapping_context)
+        super().__init__(rule_mapping_context)
 
         from loopy.symbolic import SubstitutionRuleExpander
         self.subst_expander = SubstitutionRuleExpander(
@@ -91,7 +87,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
                 expn_state.stack)
 
         if not process_me:
-            return super(RuleInvocationGatherer, self).map_substitution(
+            return super().map_substitution(
                     name, tag, arguments, expn_state)
 
         rule = self.rule_mapping_context.old_subst_rules[name]
@@ -99,7 +95,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
                     name, rule.arguments, arguments, expn_state.arg_context)
 
         arg_deps = set()
-        for arg_val in six.itervalues(arg_context):
+        for arg_val in arg_context.values():
             arg_deps = (arg_deps
                     | get_dependencies(self.subst_expander(arg_val)))
 
@@ -116,7 +112,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
                         ", ".join(arg_deps - self.kernel.all_inames()),
                         ))
 
-            return super(RuleInvocationGatherer, self).map_substitution(
+            return super().map_substitution(
                     name, tag, arguments, expn_state)
 
         args = [arg_context[arg_name] for arg_name in rule.arguments]
@@ -141,7 +137,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
             non1_storage_axis_names,
             temporary_name, compute_insn_id, compute_dep_id,
             compute_read_variables):
-        super(RuleInvocationReplacer, self).__init__(rule_mapping_context)
+        super().__init__(rule_mapping_context)
 
         self.subst_name = subst_name
         self.subst_tag = subst_tag
@@ -169,7 +165,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                     expn_state.instruction,
                     expn_state.stack)
                 and (self.subst_tag is None or self.subst_tag == tag)):
-            return super(RuleInvocationReplacer, self).map_substitution(
+            return super().map_substitution(
                     name, tag, arguments, expn_state)
 
         # {{{ check if in footprint
@@ -184,7 +180,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                     self.storage_axis_sources, args))
 
         if not self.array_base_map.is_access_descriptor_in_footprint(accdesc):
-            return super(RuleInvocationReplacer, self).map_substitution(
+            return super().map_substitution(
                     name, tag, arguments, expn_state)
 
         # }}}
@@ -227,12 +223,13 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
     def map_kernel(self, kernel):
         new_insns = []
 
-        excluded_insn_ids = set([self.compute_insn_id, self.compute_dep_id])
+        excluded_insn_ids = {self.compute_insn_id, self.compute_dep_id}
 
         for insn in kernel.instructions:
             self.replaced_something = False
 
-            insn = insn.with_transformed_expressions(self, kernel, insn)
+            insn = insn.with_transformed_expressions(
+                    lambda expr: self(expr, kernel, insn))
 
             if self.replaced_something:
                 insn = insn.copy(
@@ -257,7 +254,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 # }}}
 
 
-class _not_provided(object):  # noqa: N801
+class _not_provided:  # noqa: N801
     pass
 
 
@@ -618,7 +615,7 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
             name = old_name = subst.arguments[saxis]
         else:
             old_name = saxis
-            name = "%s_%s" % (c_subst_name, old_name)
+            name = f"{c_subst_name}_{old_name}"
 
         if (precompute_inames is not None
                 and i < len(precompute_inames)

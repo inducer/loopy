@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -48,7 +46,7 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl \
 
 __all__ = [
         "pytest_generate_tests",
-        "cl"  # 'cl.create_some_context'
+        "cl"  # "cl.create_some_context"
         ]
 
 
@@ -225,8 +223,9 @@ def test_tuple(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
+    import islpy as isl
     knl = lp.make_kernel(
-            "{ [i]: 0 = i }",
+            [isl.BasicSet("[] -> {[]: }")],
             """
             a, b = make_tuple(1, 2.)
             """)
@@ -272,9 +271,11 @@ def test_numba_cuda_target():
         target=lp.NumbaCudaTarget())
 
     knl = lp.assume(knl, "M>0")
-    knl = lp.split_iname(knl, "i", 16, outer_tag='g.0')
-    knl = lp.split_iname(knl, "j", 128, inner_tag='l.0', slabs=(0, 1))
-    knl = lp.add_prefetch(knl, "X[i,:]", default_tag="l.auto")
+    knl = lp.split_iname(knl, "i", 16, outer_tag="g.0")
+    knl = lp.split_iname(knl, "j", 128, inner_tag="l.0", slabs=(0, 1))
+    knl = lp.add_prefetch(knl, "X[i,:]",
+            fetch_outer_inames="i_inner, i_outer, j_inner",
+            default_tag="l.auto")
     knl = lp.fix_parameters(knl, N=3)
     knl = lp.prioritize_loops(knl, "i_inner,j_outer")
     knl = lp.tag_inames(knl, "k:unr")
@@ -318,7 +319,7 @@ def test_child_invalid_type_cast():
 
 
 def test_target_invalid_type_cast():
-    dtype = np.dtype([('', '<u4'), ('', '<i4')])
+    dtype = np.dtype([("", "<u4"), ("", "<i4")])
     with pytest.raises(lp.LoopyError):
         lp.TypeCast(dtype, 1)
 
@@ -369,7 +370,7 @@ def test_cuda_short_vector():
 
 def test_nvidia_pyopencl_target(ctx_factory):
     ctx = ctx_factory()
-    if ctx.devices[0].vendor != 'NVIDIA Corporation':
+    if ctx.devices[0].vendor != "NVIDIA Corporation":
         # do not test for non-Nvidia devices
         return
 
@@ -382,15 +383,47 @@ def test_nvidia_pyopencl_target(ctx_factory):
             res[0] = res[0] + a[i] {id=update, atomic}
             """,
             [
-                lp.GlobalArg('res', for_atomic=True),
-                lp.GlobalArg('a', for_atomic=True, dtype=np.float64),
-                '...'])
+                lp.GlobalArg("res", for_atomic=True),
+                lp.GlobalArg("a", for_atomic=True, dtype=np.float64),
+                "..."])
 
     knl = lp.split_iname(knl, "i", 4, inner_tag="l.0", outer_tag="g.0")
     knl = knl.copy(target=lp.NvidiaPyOpenCLTarget(ctx.devices[0]))
 
     evt, (out, ) = knl(queue, a=a)
     assert np.isclose(out, a.sum())
+
+
+def test_pyopencl_execution_numpy_handling(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    # test numpy input for x is written to and returned
+    knl = lp.make_kernel("{:}", ["x[0] = y[0] + x[0]"])
+
+    y = np.array([3.])
+    x = np.array([4.])
+    evt, out = knl(queue, y=y, x=x)
+    assert out[0] is x
+    assert x[0] == 7.
+
+    # test numpy input for x is written to and returned, even when a pyopencl array
+    # is passed for y
+    import pyopencl.array as cla
+    y = cla.zeros(queue, shape=(1), dtype="float64") + 3.
+    x = np.array([4.])
+    evt, out = knl(queue, y=y, x=x)
+    assert out[0] is x
+    assert x[0] == 7.
+
+    # test numpy input for x is written to and returned, even when output-only
+    knl = lp.make_kernel("{:}", ["x[0] = y[0] + 2"])
+
+    y = np.array([3.])
+    x = np.array([4.])
+    evt, out = knl(queue, y=y, x=x)
+    assert out[0] is x
+    assert x[0] == 5.
 
 
 if __name__ == "__main__":

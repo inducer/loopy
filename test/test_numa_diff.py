@@ -1,6 +1,5 @@
 """gNUMA differentiation kernel, wrapped up as a test."""
 
-from __future__ import division
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner, Lucas Wilcox"
 
@@ -30,8 +29,6 @@ import pyopencl as cl
 import sys
 import os
 
-pytestmark = pytest.mark.importorskip("fparser")
-
 import logging
 logger = logging.getLogger(__name__)
 
@@ -51,10 +48,11 @@ from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 @pytest.mark.parametrize("Nq", [7])
 @pytest.mark.parametrize("opt_level", [11])
 def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
+    pytest.importorskip("fparser")
     ctx = ctx_factory()
 
     filename = os.path.join(os.path.dirname(__file__), "strongVolumeKernels.f90")
-    with open(filename, "r") as sourcef:
+    with open(filename) as sourcef:
         source = sourcef.read()
 
     source = source.replace("datafloat", "real*4")
@@ -91,7 +89,8 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     if opt_level == 0:
         tap_hsv = hsv
 
-    hsv = lp.add_prefetch(hsv, "D[:,:]", default_tag="l.auto")
+    hsv = lp.add_prefetch(hsv, "D[:,:]", fetch_outer_inames="e",
+            default_tag="l.auto")
 
     if opt_level == 1:
         tap_hsv = hsv

@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from six.moves import range, zip
 import os
 from warnings import warn
 
@@ -452,7 +449,7 @@ def auto_test_vs_ref(
 
         ref_implemented_data_info = ref_codegen_result.implemented_data_info
 
-        logger.info("%s (ref): trying %s for the reference calculation" % (
+        logger.info("{} (ref): trying {} for the reference calculation".format(
             ref_prog.name, dev))
 
         if not quiet and print_ref_code:
@@ -490,7 +487,7 @@ def auto_test_vs_ref(
 
         ref_queue.finish()
 
-        logger.info("%s (ref): using %s for the reference calculation" % (
+        logger.info("{} (ref): using {} for the reference calculation".format(
             ref_prog.name, dev))
         logger.info("%s (ref): run" % ref_prog.name)
 
@@ -525,6 +522,16 @@ def auto_test_vs_ref(
 
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
+
+    from loopy.kernel import KernelState
+    from loopy.target.pyopencl import PyOpenCLTarget
+    if test_prog.state not in [
+            KernelState.PREPROCESSED,
+            KernelState.LINEARIZED]:
+        if isinstance(test_prog.target, PyOpenCLTarget):
+            test_prog = test_prog.copy(target=PyOpenCLTarget(ctx.devices[0]))
+
+        test_prog = lp.preprocess_kernel(test_prog)
 
     from loopy.type_inference import infer_unknown_types
 
@@ -634,7 +641,7 @@ def auto_test_vs_ref(
 
     rates = ""
     for cnt, lbl in zip(op_count, op_label):
-        rates += " %g %s/s" % (cnt/elapsed_wall, lbl)
+        rates += " {:g} {}/s".format(cnt/elapsed_wall, lbl)
 
     if not quiet:
         def format_float_or_none(v):
@@ -652,10 +659,28 @@ def auto_test_vs_ref(
     if do_check:
         ref_rates = ""
         for cnt, lbl in zip(op_count, op_label):
-            ref_rates += " %g %s/s" % (cnt/ref_elapsed_event, lbl)
+            rates += " {:g} {}/s".format(cnt/elapsed_wall, lbl)
+
         if not quiet:
-            print("ref: elapsed: %g s event, %g s wall%s" % (
-                    ref_elapsed_event, ref_elapsed_wall, ref_rates))
+            def format_float_or_none(v):
+                if v is None:
+                    return "<unavailable>"
+                else:
+                    return "%g" % v
+
+            print("elapsed: %s s event, %s s marker-event %s s wall "
+                    "(%d rounds)%s" % (
+                        format_float_or_none(elapsed_event),
+                        format_float_or_none(elapsed_event_marker),
+                        format_float_or_none(elapsed_wall), timing_rounds, rates))
+
+        if do_check:
+            ref_rates = ""
+            for cnt, lbl in zip(op_count, op_label):
+                ref_rates += " {:g} {}/s".format(cnt/ref_elapsed_event, lbl)
+            if not quiet:
+                print("ref: elapsed: {:g} s event, {:g} s wall{}".format(
+                        ref_elapsed_event, ref_elapsed_wall, ref_rates))
 
     # }}}
 

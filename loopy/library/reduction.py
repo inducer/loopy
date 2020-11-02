@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -33,8 +31,24 @@ from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 from loopy.tools import update_persistent_hash
 
+__doc__ = """
+.. currentmodule:: loopy.library.reduction
 
-class ReductionOperation(object):
+.. autoclass:: ReductionOperation
+
+.. autoclass:: ScalarReductionOperation
+
+.. autoclass:: SumReductionOperation
+
+.. autoclass:: ProductReductionOperation
+
+.. autoclass:: MaxReductionOperation
+
+.. autoclass:: MinReductionOperation
+"""
+
+
+class ReductionOperation:
     """Subclasses of this type have to be hashable, picklable, and
     equality-comparable.
     """
@@ -122,7 +136,7 @@ class ScalarReductionOperation(ReductionOperation):
         result = type(self).__name__.replace("ReductionOperation", "").lower()
 
         if self.forced_result_type is not None:
-            result = "%s<%s>" % (result, str(self.forced_result_type))
+            result = "{}<{}>".format(result, str(self.forced_result_type))
 
         return result
 
@@ -154,11 +168,11 @@ def get_le_neutral(dtype):
     elif dtype.numpy_dtype.kind == "i":
         # OpenCL 1.1, section 6.11.3
         if dtype.numpy_dtype.itemsize == 4:
-            #32 bit integer
+            # 32 bit integer
             return var("INT_MAX")
         elif dtype.numpy_dtype.itemsize == 8:
-            #64 bit integer
-            return var('LONG_MAX')
+            # 64 bit integer
+            return var("LONG_MAX")
     else:
         raise NotImplementedError("less")
 
@@ -172,11 +186,11 @@ def get_ge_neutral(dtype):
     elif dtype.numpy_dtype.kind == "i":
         # OpenCL 1.1, section 6.11.3
         if dtype.numpy_dtype.itemsize == 4:
-            #32 bit integer
+            # 32 bit integer
             return var("INT_MIN")
         elif dtype.numpy_dtype.itemsize == 8:
-            #64 bit integer
-            return var('LONG_MIN')
+            # 64 bit integer
+            return var("LONG_MIN")
     else:
         raise NotImplementedError("less")
 
@@ -255,7 +269,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         return 2
 
     def prefix(self, scalar_dtype, segment_flag_dtype):
-        return "loopy_segmented_%s_%s_%s" % (self.which,
+        return "loopy_segmented_{}_{}_{}".format(self.which,
                 scalar_dtype.numpy_dtype.type.__name__,
                 segment_flag_dtype.numpy_dtype.type.__name__)
 
@@ -328,7 +342,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         raise NotImplementedError
 
     def prefix(self, scalar_dtype, index_dtype):
-        return "loopy_arg%s_%s_%s" % (self.which,
+        return "loopy_arg{}_{}_{}".format(self.which,
                 scalar_dtype.numpy_dtype.type.__name__,
                 index_dtype.numpy_dtype.type.__name__)
 
@@ -406,7 +420,7 @@ _REDUCTION_OP_PARSERS = [
 
 
 def register_reduction_parser(parser):
-    """Register a new :class:`ReductionOperation`.
+    """Register a new :class:`loopy.library.reduction.ReductionOperation`.
 
     :arg parser: A function that receives a string and returns
         a subclass of ReductionOperation.
@@ -472,28 +486,28 @@ class ReductionCallable(ScalarCallable):
             prefix = op.prefix(scalar_dtype, index_dtype)
 
             yield (prefix, """
-            inline %(scalar_t)s %(prefix)s_op(
-                %(scalar_t)s op1, %(index_t)s index1,
-                %(scalar_t)s op2, %(index_t)s index2,
-                %(index_t)s *index_out)
-            {
-                if (op2 %(comp)s op1)
-                {
+            inline {scalar_t} {prefix}_op(
+                {scalar_t} op1, {index_t} index1,
+                {scalar_t} op2, {index_t} index2,
+                {index_t} *index_out)
+            {{
+                if (op2 {comp} op1)
+                {{
                     *index_out = index2;
                     return op2;
-                }
+                }}
                 else
-                {
+                {{
                     *index_out = index1;
                     return op1;
-                }
-            }
-            """ % dict(
-                    scalar_t=target.dtype_to_typename(scalar_dtype),
-                    prefix=prefix,
-                    index_t=target.dtype_to_typename(index_dtype),
-                    comp=op.update_comparison,
-                    ))
+                }}
+            }}
+            """.format(
+                   scalar_t=target.dtype_to_typename(scalar_dtype),
+                   prefix=prefix,
+                   index_t=target.dtype_to_typename(index_dtype),
+                   comp=op.update_comparison,
+                   ))
         elif isinstance(self.name, SegmentedOp):
             op = self.name.reduction_op
             scalar_dtype = self.arg_id_to_dtype[-1]
@@ -501,20 +515,20 @@ class ReductionCallable(ScalarCallable):
             prefix = op.prefix(scalar_dtype, segment_flag_dtype)
 
             yield (prefix, """
-            inline %(scalar_t)s %(prefix)s_op(
-                %(scalar_t)s op1, %(segment_flag_t)s segment_flag1,
-                %(scalar_t)s op2, %(segment_flag_t)s segment_flag2,
-                %(segment_flag_t)s *segment_flag_out)
-            {
+            inline {scalar_t} {prefix}_op(
+                {scalar_t} op1, {segment_flag_t} segment_flag1,
+                {scalar_t} op2, {segment_flag_t} segment_flag2,
+                {segment_flag_t} *segment_flag_out)
+            {{
                 *segment_flag_out = segment_flag1 | segment_flag2;
-                return segment_flag2 ? op2 : %(combined)s;
-            }
-            """ % dict(
-                    scalar_t=target.dtype_to_typename(scalar_dtype),
-                    prefix=prefix,
-                    segment_flag_t=target.dtype_to_typename(segment_flag_dtype),
-                    combined=op.op % ("op1", "op2"),
-                    ))
+                return segment_flag2 ? op2 : {combined};
+            }}
+            """.format(
+                   scalar_t=target.dtype_to_typename(scalar_dtype),
+                   prefix=prefix,
+                   segment_flag_t=target.dtype_to_typename(segment_flag_dtype),
+                   combined=op.op % ("op1", "op2"),
+                   ))
 
         return
 

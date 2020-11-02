@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,13 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
-
-try:
-    import collections.abc as abc
-except ImportError:
-    # Python 2
-    import collections as abc
+import collections.abc as abc
 
 import numpy as np
 from pytools import memoize_method
@@ -36,18 +28,11 @@ from pytools.persistent_dict import KeyBuilder as KeyBuilderBase
 from loopy.symbolic import WalkMapper as LoopyWalkMapper
 from pymbolic.mapper.persistent_hash import (
         PersistentHashWalkMapper as PersistentHashWalkMapperBase)
-import six  # noqa
-from six.moves import intern
-import re
-from mako.template import Template
-import loopy as lp
+from sys import intern
 
-if six.PY2:
-    def is_integer(obj):
-        return isinstance(obj, (int, long, np.integer))  # noqa pylint:disable=undefined-variable
-else:
-    def is_integer(obj):
-        return isinstance(obj, (int, np.integer))
+
+def is_integer(obj):
+    return isinstance(obj, (int, np.integer))
 
 
 def update_persistent_hash(obj, key_hash, key_builder):
@@ -91,7 +76,7 @@ class LoopyKeyBuilder(KeyBuilderBase):
 
     def update_for_dict(self, key_hash, key):
         # Order matters for the hash--insert in sorted order.
-        for dict_key in sorted(six.iterkeys(key), key=lambda obj:
+        for dict_key in sorted(key.keys(), key=lambda obj:
                 type(obj).__name__ + str(obj)):
             self.rec(key_hash, (dict_key, key[dict_key]))
 
@@ -121,7 +106,7 @@ class LoopyKeyBuilder(KeyBuilderBase):
                 % type(key))
 
     def update_for_type_auto(self, key_hash, key):
-        key_hash.update("auto".encode("utf8"))
+        key_hash.update(b"auto")
 
     def update_for_pymbolic_expression(self, key_hash, key):
         if key is None:
@@ -130,7 +115,7 @@ class LoopyKeyBuilder(KeyBuilderBase):
             PersistentHashWalkMapper(key_hash)(key)
 
 
-class PymbolicExpressionHashWrapper(object):
+class PymbolicExpressionHashWrapper:
     def __init__(self, expression):
         self.expression = expression
 
@@ -149,7 +134,7 @@ class PymbolicExpressionHashWrapper(object):
 
 # {{{ eq key builder
 
-class LoopyEqKeyBuilder(object):
+class LoopyEqKeyBuilder:
     """Unlike :class:`loopy.tools.LoopyKeyBuilder`, this builds keys for use in
     equality comparison, such that `key(a) == key(b)` if and only if `a == b`.
     The types of objects being compared should satisfy structural equality.
@@ -229,11 +214,11 @@ def remove_common_indentation(code, require_leading_newline=True,
 
     test_line = None
     if ignore_lines_starting_with:
-        for l in lines:
-            strip_l = l.lstrip()
+        for line in lines:
+            strip_l = line.lstrip()
             if (strip_l
                     and not strip_l.startswith(ignore_lines_starting_with)):
-                test_line = l
+                test_line = line
                 break
 
     else:
@@ -336,8 +321,8 @@ def cptr_from_numpy(obj):
 
 
 # https://github.com/hgomersall/pyFFTW/blob/master/pyfftw/utils.pxi#L172
-def empty_aligned(shape, dtype, order='C', n=64):
-    '''empty_aligned(shape, dtype='float64', order='C', n=None)
+def empty_aligned(shape, dtype, order="C", n=64):
+    """empty_aligned(shape, dtype='float64', order="C", n=None)
     Function that returns an empty numpy array that is n-byte aligned,
     where ``n`` is determined by inspecting the CPU if it is not
     provided.
@@ -345,7 +330,7 @@ def empty_aligned(shape, dtype, order='C', n=64):
     ``n`` is not provided then this function will inspect the CPU to
     determine alignment. The rest of the arguments are as per
     :func:`numpy.empty`.
-    '''
+    """
     itemsize = np.dtype(dtype).itemsize
 
     # Apparently there is an issue with numpy.prod wrapping around on 32-bits
@@ -374,68 +359,9 @@ def empty_aligned(shape, dtype, order='C', n=64):
 # }}}
 
 
-# {{{ compute SCCs with Tarjan's algorithm
-
-def compute_sccs(graph):
-    to_search = set(graph.keys())
-    visit_order = {}
-    scc_root = {}
-    sccs = []
-
-    while to_search:
-        top = next(iter(to_search))
-        call_stack = [(top, iter(graph[top]), None)]
-        visit_stack = []
-        visiting = set()
-
-        scc = []
-
-        while call_stack:
-            top, children, last_popped_child = call_stack.pop()
-
-            if top not in visiting:
-                # Unvisited: mark as visited, initialize SCC root.
-                count = len(visit_order)
-                visit_stack.append(top)
-                visit_order[top] = count
-                scc_root[top] = count
-                visiting.add(top)
-                to_search.discard(top)
-
-            # Returned from a recursion, update SCC.
-            if last_popped_child is not None:
-                scc_root[top] = min(
-                    scc_root[top],
-                    scc_root[last_popped_child])
-
-            for child in children:
-                if child not in visit_order:
-                    # Recurse.
-                    call_stack.append((top, children, child))
-                    call_stack.append((child, iter(graph[child]), None))
-                    break
-                if child in visiting:
-                    scc_root[top] = min(
-                        scc_root[top],
-                        visit_order[child])
-            else:
-                if scc_root[top] == visit_order[top]:
-                    scc = []
-                    while visit_stack[-1] != top:
-                        scc.append(visit_stack.pop())
-                    scc.append(visit_stack.pop())
-                    for item in scc:
-                        visiting.remove(item)
-                    sccs.append(scc)
-
-    return sccs
-
-# }}}
-
-
 # {{{ pickled container value
 
-class _PickledObject(object):
+class _PickledObject:
     """A class meant to wrap a pickled value (for :class:`LazilyUnpicklingDict` and
     :class:`LazilyUnpicklingList`).
     """
@@ -508,9 +434,9 @@ class LazilyUnpicklingDict(abc.MutableMapping):
         return iter(self._map)
 
     def __getstate__(self):
-        return {"_map": dict(
-            (key, _PickledObject(val))
-            for key, val in six.iteritems(self._map))}
+        return {"_map": {
+            key: _PickledObject(val)
+            for key, val in self._map.items()}}
 
 # }}}
 
@@ -610,11 +536,11 @@ class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList):
 
 # {{{ optional object
 
-class _no_value(object):  # noqa
+class _no_value:  # noqa
     pass
 
 
-class Optional(object):
+class Optional:
     """A wrapper for an optionally present object.
 
     .. attribute:: has_value
@@ -681,7 +607,7 @@ class Optional(object):
 
 
 def unpickles_equally(obj):
-    from six.moves.cPickle import loads, dumps
+    from pickle import loads, dumps
     return loads(dumps(obj)) == obj
 
 
@@ -691,124 +617,5 @@ def is_interned(s):
 
 def intern_frozenset_of_ids(fs):
     return frozenset(intern(s) for s in fs)
-
-
-def natorder(key):
-    # Return natural ordering for strings, as opposed to dictionary order.
-    # E.g. will result in
-    #  'abc1' < 'abc9' < 'abc10'
-    # rather than
-    #  'abc1' < 'abc10' < 'abc9'
-    # Based on
-    # http://code.activestate.com/recipes/285264-natural-string-sorting/#c7
-    import re
-    return [int(n) if n else s for n, s in re.findall(r'(\d+)|(\D+)', key)]
-
-
-def natsorted(seq, key=lambda x: x):
-    return sorted(seq, key=lambda y: natorder(key(y)))
-
-
-def dump_as_python(kernel, filename=None):
-    """
-    Generates a python code for generating *kernel* for sharing kernels.
-
-    :arg kernel: An instance of :class:`loopy.LoopKernel`
-    :arg filename: An instance of :class:`str`. If *None*, then prints the
-        python file to *stdout*.
-    """
-
-    options = []
-
-    printed_insn_ids = set()
-    printed_insn_order = []
-
-    def insert_insn_into_order(insn):
-        if insn.id in printed_insn_ids:
-            return
-        printed_insn_ids.add(insn.id)
-
-        for dep_id in natsorted(insn.depends_on):
-            insert_insn_into_order(kernel.id_to_insn[dep_id])
-
-        printed_insn_order.append(insn)
-
-    for insn in kernel.instructions:
-        insert_insn_into_order(insn)
-
-    for insn in printed_insn_order:
-        option = 'id=%s, ' % insn.id
-        if insn.depends_on:
-            option += ("dep="+":".join(insn.depends_on)+", ")
-        if insn.tags:
-            option += ("tags="+":".join(insn.tags)+", ")
-        if insn.within_inames:
-            option += ("inames="+":".join(insn.within_inames)+", ")
-        if isinstance(insn, lp.MultiAssignmentBase):
-            if insn.atomicity:
-                option += "atomic, "
-        elif isinstance(insn, lp.BarrierInstruction):
-            option += ("mem_kind=%s, " % insn.mem_kind)
-        options.append(option[:-2])
-
-    insn_x_options = zip(printed_insn_order, options)
-
-    python_code = r'''<%! import loopy as lp %>import loopy as lp
-    import numpy as np
-    <%! tv_scope = {0: 'lp.AddressSpace.PRIVATE', 1: 'lp.AddressSpace.LOCAL',
-    2: 'lp.AddressSpace.GLOBAL', lp.auto: 'lp.auto' } %>
-    knl = lp.make_kernel(
-        [
-        % for dom in domains:
-        "${str(dom)}",
-        % endfor
-        ],
-        """
-        % for insn, opts in insn_x_opts:
-        % if isinstance(insn, lp.Assignment):
-        ${insn.assignee} = ${insn.expression} {${opts}}
-        % elif isinstance(insn, lp.BarrierInstruction):
-        ... ${insn.synchronization_kind[0]}barrier{${opts}}
-        % elif isinstance(insn, lp.NoOpInstruction):
-        ... nop {${opts}}
-        % else:
-        **Not implemented for ${type(insn)}**
-        % endif
-        %endfor
-        """, [
-            % for arg in args:
-            % if isinstance(arg, lp.ValueArg):
-            lp.ValueArg(
-                name='${arg.name}', dtype=np.${arg.dtype.numpy_dtype.name}),
-            % else:
-            lp.GlobalArg(
-                name='${arg.name}', dtype=np.${arg.dtype.numpy_dtype.name},
-                shape=${arg.shape}, for_atomic=${arg.for_atomic}),
-            % endif
-            % endfor
-            % for tv in temp_vars:
-            lp.TemporaryVariable(
-                name='${tv.name}', dtype=np.${tv.dtype.numpy_dtype.name},
-                shape=${tv.shape}, for_atomic=${tv.for_atomic},
-                address_space=${tv_scope[tv.address_space]},
-                read_only=${tv.read_only},
-                % if tv.initializer is not None:
-                initializer=${"np."+str((tv.initializer).__repr__())},
-                % endif
-                ),
-            % endfor
-            ], lang_version=${lp.VERSION})'''
-
-    python_code = Template(python_code).render(insn_x_opts=insn_x_options,
-            domains=kernel.domains, args=kernel.args,
-            temp_vars=[k for k in kernel.temporary_variables.values()])
-
-    python_code = re.sub("\\n    ", "\n", python_code)
-    if filename:
-        with open(filename, 'w') as f:
-            f.write(python_code)
-    else:
-        print(python_code)
-
 
 # vim: foldmethod=marker

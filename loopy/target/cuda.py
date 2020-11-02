@@ -1,6 +1,5 @@
 """CUDA target independent of PyCUDA."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -59,18 +58,18 @@ def _create_vector_types():
     vec.type_to_scalar_and_count = {}
 
     for base_name, base_type, counts in [
-            ('char', np.int8, [1, 2, 3, 4]),
-            ('uchar', np.uint8, [1, 2, 3, 4]),
-            ('short', np.int16, [1, 2, 3, 4]),
-            ('ushort', np.uint16, [1, 2, 3, 4]),
-            ('int', np.int32, [1, 2, 3, 4]),
-            ('uint', np.uint32, [1, 2, 3, 4]),
-            ('long', long_dtype, [1, 2, 3, 4]),
-            ('ulong', ulong_dtype, [1, 2, 3, 4]),
-            ('longlong', np.int64, [1, 2]),
-            ('ulonglong', np.uint64, [1, 2]),
-            ('float', np.float32, [1, 2, 3, 4]),
-            ('double', np.float64, [1, 2]),
+            ("char", np.int8, [1, 2, 3, 4]),
+            ("uchar", np.uint8, [1, 2, 3, 4]),
+            ("short", np.int16, [1, 2, 3, 4]),
+            ("ushort", np.uint16, [1, 2, 3, 4]),
+            ("int", np.int32, [1, 2, 3, 4]),
+            ("uint", np.uint32, [1, 2, 3, 4]),
+            ("long", long_dtype, [1, 2, 3, 4]),
+            ("ulong", ulong_dtype, [1, 2, 3, 4]),
+            ("longlong", np.int64, [1, 2]),
+            ("ulonglong", np.uint64, [1, 2]),
+            ("float", np.float32, [1, 2, 3, 4]),
+            ("double", np.float64, [1, 2]),
             ]:
         for count in counts:
             name = "%s%d" % (base_name, count)
@@ -171,8 +170,8 @@ class CudaCallable(ScalarCallable):
                 raise LoopyError("%s does not support complex numbers"
                         % name)
 
-            updated_arg_id_to_dtype = dict((id, NumpyType(dtype)) for id in range(-1,
-                num_args))
+            updated_arg_id_to_dtype = {id: NumpyType(dtype) for id in range(-1,
+                num_args)}
 
             return (
                     self.copy(name_in_target=name,
@@ -185,7 +184,7 @@ class CudaCallable(ScalarCallable):
 
 
 def scope_cuda_functions(target, identifier):
-    if identifier in set(["dot"]) | set(
+    if identifier in {"dot"} | set(
             _CUDA_SPECIFIC_FUNCTIONS):
         return CudaCallable(name=identifier)
 
@@ -209,12 +208,12 @@ class ExpressionToCudaCExpressionMapper(ExpressionToCExpressionMapper):
             raise LoopyError("unexpected index type")
 
     def map_group_hw_index(self, expr, type_context):
-        return var("((%s) blockIdx.%s)" % (
+        return var("(({}) blockIdx.{})".format(
             self._get_index_ctype(self.kernel),
             self._GRID_AXES[expr.axis]))
 
     def map_local_hw_index(self, expr, type_context):
-        return var("((%s) threadIdx.%s)" % (
+        return var("(({}) threadIdx.{})".format(
             self._get_index_ctype(self.kernel),
             self._GRID_AXES[expr.axis]))
 
@@ -233,7 +232,7 @@ class CudaTarget(CFamilyTarget):
         """
         self.extern_c = extern_c
 
-        super(CudaTarget, self).__init__()
+        super().__init__()
 
     def split_kernel_at_global_barriers(self):
         return True
@@ -313,7 +312,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
     def function_id_in_knl_callable_mapper(self):
         return [scope_cuda_functions] + (
-                super(CUDACASTBuilder, self).function_id_in_knl_callable_mapper())
+                super().function_id_in_knl_callable_mapper())
 
     # }}}
 
@@ -321,7 +320,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
     def get_function_declaration(self, codegen_state, codegen_result,
             schedule_index):
-        fdecl = super(CUDACASTBuilder, self).get_function_declaration(
+        fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
         from loopy.target.c import FunctionDeclarationWrapper
@@ -356,7 +355,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     def preamble_generators(self):
 
         return (
-                super(CUDACASTBuilder, self).preamble_generators() + [
+                super().preamble_generators() + [
                     cuda_preamble_generator])
 
     # }}}
@@ -456,7 +455,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                 lhs_expr_code = ecm(lhs_expr)
                 rhs_expr_code = ecm(new_rhs_expr)
 
-                return Statement("atomicAdd(&{0}, {1})".format(
+                return Statement("atomicAdd(&{}, {})".format(
                     lhs_expr_code, rhs_expr_code))
             else:
                 from cgen import Block, DoWhile, Assign

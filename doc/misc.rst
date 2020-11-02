@@ -17,9 +17,7 @@ Option 1: From Source, no PyOpenCL integration
 
 This command should install :mod:`loopy`::
 
-    pip install loo.py
-
-(Note the extra "."!)
+    pip install loopy
 
 You may need to run this with :command:`sudo`.
 If you don't already have `pip <https://pypi.python.org/pypi/pip>`_,
@@ -29,14 +27,13 @@ run this beforehand::
     python get-pip.py
 
 For a more manual installation, `download the source
-<http://pypi.python.org/pypi/loo.py>`_, unpack it, and say::
+<https://pypi.org/project/loopy>`_, unpack it, and say::
 
     python setup.py install
 
 You may also clone its git repository::
 
-    git clone --recursive git://github.com/inducer/loopy
-    git clone --recursive http://git.tiker.net/trees/loopy.git
+    git clone --recursive https://github.com/inducer/loopy.git
 
 Option 2: From Conda Forge, with PyOpenCL integration
 -----------------------------------------------------
@@ -256,7 +253,7 @@ This list is always growing, but here are a few pointers:
 * Precompute subexpressions:
 
   Use a :ref:`substitution-rule` to assign a name to a subexpression,
-  using may be :func:`loopy.assignment_to_subst` or :func:`extract_subst`.
+  using may be :func:`loopy.assignment_to_subst` or :func:`loopy.extract_subst`.
   Then use :func:`loopy.precompute` to create an (array or scalar)
   temporary with precomputed values.
 
@@ -295,12 +292,12 @@ This list is always growing, but here are a few pointers:
   Use :func:`loopy.tag_inames` with the ``"vec"`` iname tag.
   Note that the corresponding axis of an array must
   also be tagged using the ``"vec"`` array axis tag
-  (using :func:`tag_array_axes`) in order for vector code to be
+  (using :func:`loopy.tag_array_axes`) in order for vector code to be
   generated.
 
   Vectorized loops (and array axes) must have a fixed size. (See either
-  :func:`split_iname` or :func:`fix_parameters` along with
-  :func:`split_array_axis`.)
+  :func:`loopy.split_iname` or :func:`loopy.fix_parameters` along with
+  :func:`loopy.split_array_axis`.)
 
 * Reuse of Temporary Storage
 
@@ -309,7 +306,7 @@ This list is always growing, but here are a few pointers:
 
 * SoA $\leftrightarrow$ AoS
 
-  Use :func:`tag_array_axes` with the ``"sep"`` array axis tag
+  Use :func:`loopy.tag_array_axes` with the ``"sep"`` array axis tag
   to generate separate arrays for each entry of a short, fixed-length
   array axis.
 
@@ -320,7 +317,7 @@ This list is always growing, but here are a few pointers:
 
   Use :func:`loopy.tag_inames` with the ``"ilp"`` tag.
   ILP loops must have a fixed size. (See either
-  :func:`split_iname` or :func:`fix_parameters`.)
+  :func:`loopy.split_iname` or :func:`loopy.fix_parameters`.)
 
 * Type inference
 
@@ -445,7 +442,7 @@ If you use loopy for your work and find its approach helpful, please
 consider citing the following article.
 
     A. Klöckner. `Loo.py: transformation-based code generation for GPUs and
-    CPUs <http://arxiv.org/abs/1405.7470>`_. Proceedings of ARRAY '14: ACM
+    CPUs <https://arxiv.org/abs/1405.7470>`_. Proceedings of ARRAY '14: ACM
     SIGPLAN Workshop on Libraries, Languages, and Compilers for Array
     Programming. Edinburgh, Scotland.
 
@@ -478,3 +475,16 @@ Andreas Klöckner's work on :mod:`loopy` was supported in part by
 AK also gratefully acknowledges a hardware gift from Nvidia Corporation.  The
 views and opinions expressed herein do not necessarily reflect those of the
 funding agencies.
+
+Cross-References to Other Documentation
+=======================================
+
+.. currentmodule:: numpy
+
+.. class:: int16
+
+    See :class:`numpy.generic`.
+
+.. class:: complex128
+
+    See :class:`numpy.generic`.

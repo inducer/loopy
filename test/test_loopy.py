@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,9 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six  # noqa: F401
-from six.moves import range
 
 import sys
 import numpy as np
@@ -48,7 +43,7 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl \
 
 __all__ = [
         "pytest_generate_tests",
-        "cl"  # 'cl.create_some_context'
+        "cl"  # "cl.create_some_context"
         ]
 
 
@@ -68,16 +63,16 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
             out[ii] = 2*out[ii]+cnst[ii]{id=second}
             """,
             [lp.TemporaryVariable(
-                'cnst', shape=('n'), initializer=cnst,
-                address_space=lp.AddressSpace.GLOBAL,
-                read_only=True), '...'])
+                "cnst", initializer=cnst,
+                scope=lp.AddressSpace.GLOBAL,
+                read_only=True), "..."])
     knl = lp.fix_parameters(knl, n=16)
     knl = lp.add_barrier(knl, "id:first", "id:second")
 
     knl = lp.split_iname(knl, "i", 2, outer_tag="g.0", inner_tag="l.0")
     knl = lp.split_iname(knl, "ii", 2, outer_tag="g.0", inner_tag="l.0")
     evt, (out,) = knl(queue, a=a)
-    assert np.linalg.norm(out-((2*(a+cnst)+cnst))) <= 1e-15
+    assert np.linalg.norm(out-(2*(a+cnst)+cnst)) <= 1e-15
 
 
 def test_complicated_subst(ctx_factory):
@@ -182,7 +177,7 @@ def test_simple_side_effect(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-            "{[i,j]: 0<=i,j<100}",
+            "{[i]: 0<=i<100}",
             """
                 a[i] = a[i] + 1
                 """,
@@ -458,7 +453,7 @@ def test_nonlinear_index(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-            "{[i,j]: 0<=i,j<n }",
+            "{[i]: 0<=i<n }",
             """
                 a[i*i] = 17
                 """,
@@ -565,7 +560,7 @@ def test_dependent_domain_insn_iname_finding(ctx_factory):
 
     prog = lp.make_kernel([
             "{[isrc_box]: 0<=isrc_box<nsrc_boxes}",
-            "{[isrc,idim]: isrc_start<=isrc<isrc_end and 0<=idim<dim}",
+            "{[isrc]: isrc_start<=isrc<isrc_end}",
             ],
             """
                 <> src_ibox = source_boxes[isrc_box]
@@ -769,7 +764,7 @@ def test_multiple_writes_to_local_temporary():
     # writes are OK.
 
     knl = lp.make_kernel(
-        "{[i,e]: 0<=i<5 and 0<=e<nelements}",
+        "{[i]: 0<=i<5}",
         """
         <> temp[i, 0] = 17
         temp[i, 1] = 15
@@ -845,8 +840,8 @@ def test_auto_test_zero_warmup_rounds(ctx_factory):
 
 def test_variable_size_temporary():
     knl = lp.make_kernel(
-         ''' { [i,j]: 0<=i,j<n } ''',
-         ''' out[i] = sum(j, a[i,j])''')
+         """{ [i,j]: 0<=i,j<n }""",
+         """out[i] = sum(j, a[i,j])""")
 
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
 
@@ -930,7 +925,7 @@ def test_atomic_load(ctx_factory, dtype):
                 lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
                 lp.GlobalArg("a", dtype, shape=lp.auto),
                 lp.GlobalArg("b", dtype, shape=lp.auto),
-                lp.TemporaryVariable('temp', dtype, for_atomic=True,
+                lp.TemporaryVariable("temp", dtype, for_atomic=True,
                                      address_space=AddressSpace.LOCAL),
                 "..."
                 ],
@@ -946,7 +941,7 @@ def test_atomic_init(dtype):
     vec_width = 4
 
     knl = lp.make_kernel(
-            "{ [i,j]: 0<=i<100 }",
+            "{ [i]: 0<=i<100 }",
             """
             out[i%4] = 0 {id=init, atomic=init}
             """,
@@ -955,7 +950,7 @@ def test_atomic_init(dtype):
                 "..."
                 ],
             silenced_warnings=["write_race(init)"])
-    knl = lp.split_iname(knl, 'i', vec_width, inner_tag='l.0')
+    knl = lp.split_iname(knl, "i", vec_width, inner_tag="l.0")
     print(knl)
     print(lp.generate_code_v2(knl).device_code())
 
@@ -991,7 +986,7 @@ def test_within_inames_and_reduction():
 
     prog = lp.preprocess_kernel(prog)
 
-    assert 'i' not in prog.root_kernel.insn_inames("insn_0_j_update")
+    assert "i" not in prog.root_kernel.insn_inames("insn_0_j_update")
     print(prog.root_kernel.stringify(with_dependencies=True))
 
 
@@ -1015,9 +1010,9 @@ def test_literal_local_barrier(ctx_factory):
 
 def test_local_barrier_mem_kind():
     def _test_type(mtype, expected):
-        insn = '... lbarrier'
+        insn = "... lbarrier"
         if mtype:
-            insn += '{mem_kind=%s}' % mtype
+            insn += "{mem_kind=%s}" % mtype
         knl = lp.make_kernel(
                 "{ [i]: 0<=i<n }",
                 """
@@ -1028,11 +1023,11 @@ def test_local_barrier_mem_kind():
                 target=lp.PyOpenCLTarget())
 
         cgr = lp.generate_code_v2(knl)
-        assert 'barrier(%s)' % expected in cgr.device_code()
+        assert "barrier(%s)" % expected in cgr.device_code()
 
-    _test_type('', 'CLK_LOCAL_MEM_FENCE')
-    _test_type('global', 'CLK_GLOBAL_MEM_FENCE')
-    _test_type('local', 'CLK_LOCAL_MEM_FENCE')
+    _test_type("", "CLK_LOCAL_MEM_FENCE")
+    _test_type("global", "CLK_GLOBAL_MEM_FENCE")
+    _test_type("local", "CLK_LOCAL_MEM_FENCE")
 
 
 def test_kernel_splitting(ctx_factory):
@@ -1180,7 +1175,7 @@ def test_save_of_private_array_in_hw_loop(ctx_factory, debug=False):
     knl = lp.set_temporary_scope(knl, "t", "private")
 
     save_and_reload_temporaries_test(
-        queue, knl, np.vstack((8 * (np.arange(8),))), debug)
+        queue, knl, np.vstack(8 * (np.arange(8),)), debug)
 
 
 def test_save_of_private_multidim_array(ctx_factory, debug=False):
@@ -1203,7 +1198,7 @@ def test_save_of_private_multidim_array(ctx_factory, debug=False):
 
     knl = lp.set_temporary_scope(knl, "t", "private")
 
-    result = np.array([np.vstack((8 * (np.arange(8),))) for i in range(8)])
+    result = np.array([np.vstack(8 * (np.arange(8),)) for i in range(8)])
     save_and_reload_temporaries_test(queue, knl, result, debug)
 
 
@@ -1228,7 +1223,7 @@ def test_save_of_private_multidim_array_in_hw_loop(ctx_factory, debug=False):
     knl = lp.set_temporary_scope(knl, "t", "private")
     knl = lp.tag_inames(knl, dict(i="g.0"))
 
-    result = np.array([np.vstack((8 * (np.arange(8),))) for i in range(8)])
+    result = np.array([np.vstack(8 * (np.arange(8),)) for i in range(8)])
     save_and_reload_temporaries_test(queue, knl, result, debug)
 
 
@@ -1527,7 +1522,7 @@ def test_finite_difference_expr_subst(ctx_factory):
             gpu_knl, "f_subst", "inew_inner", fetch_bounding_box=True,
             default_tag="l.auto")
 
-    precomp_knl = lp.tag_inames(precomp_knl, {"j_0_outer": "unr"})
+    precomp_knl = lp.tag_inames(precomp_knl, {"j_outer": "unr"})
     precomp_knl = lp.set_options(precomp_knl, return_dict=True)
     evt, _ = precomp_knl(queue, u=u, h=h)
 
@@ -1680,8 +1675,8 @@ def test_global_barrier(ctx_factory):
                     ... gbarrier {id=top}
                     <> z[i] = z[i+1] + z[i]  {id=wr_z,dep=top}
                     <> v[i] = 11  {id=wr_v,dep=top}
-                    ... gbarrier {dep=wr_z:wr_v,id=yoink}
-                    z[i] = z[i] - z[i+1] + v[i] {id=iupd, dep=wr_z}
+                    ... gbarrier {id=yoink,dep=wr_z:wr_v}
+                    z[i] = z[i] - z[i+1] + v[i] {id=iupd, dep=yoink}
                 end
                 ... gbarrier {dep=iupd,id=postloop}
                 z[i] = z[i] - z[i+1] + v[i]  {dep=postloop}
@@ -1754,7 +1749,7 @@ def test_index_cse(ctx_factory):
 def test_ilp_and_conditionals(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel('{[k]: 0<=k<n}}',
+    knl = lp.make_kernel("{[k]: 0<=k<n}}",
          """
          for k
              <> Tcond = T[k] < 0.5
@@ -1769,7 +1764,7 @@ def test_ilp_and_conditionals(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.split_iname(knl, 'k', 2, inner_tag='ilp')
+    knl = lp.split_iname(knl, "k", 2, inner_tag="ilp")
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
@@ -1777,7 +1772,7 @@ def test_ilp_and_conditionals(ctx_factory):
 def test_unr_and_conditionals(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel('{[k]: 0<=k<n}}',
+    knl = lp.make_kernel("{[k]: 0<=k<n}}",
          """
          for k
              <> Tcond[k] = T[k] < 0.5
@@ -1792,7 +1787,7 @@ def test_unr_and_conditionals(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.split_iname(knl, 'k', 2, inner_tag='unr')
+    knl = lp.split_iname(knl, "k", 2, inner_tag="unr")
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
@@ -1800,7 +1795,7 @@ def test_unr_and_conditionals(ctx_factory):
 def test_constant_array_args(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel('{[k]: 0<=k<n}}',
+    knl = lp.make_kernel("{[k]: 0<=k<n}}",
          """
          for k
              <> Tcond[k] = T[k] < 0.5
@@ -1809,8 +1804,8 @@ def test_constant_array_args(ctx_factory):
              end
          end
          """,
-         [lp.ConstantArg('T', shape=(200,), dtype=np.float32),
-         '...'])
+         [lp.ConstantArg("T", shape=(200,), dtype=np.float32),
+         "..."])
 
     knl = lp.fix_parameters(knl, n=200)
 
@@ -1871,33 +1866,33 @@ def test_const_temp_with_initializer_not_saved():
 
 
 def test_header_extract():
-    knl = lp.make_kernel('{[k]: 0<=k<n}}',
+    knl = lp.make_kernel("{[k]: 0<=k<n}}",
          """
          for k
              T[k] = k**2
          end
          """,
-         [lp.GlobalArg('T', shape=(200,), dtype=np.float32),
-         '...'])
+         [lp.GlobalArg("T", shape=(200,), dtype=np.float32),
+         "..."])
 
     knl = lp.fix_parameters(knl, n=200)
 
     #test C
     cknl = knl.copy(target=lp.CTarget())
     assert str(lp.generate_header(cknl)[0]) == (
-            'void loopy_kernel(float *__restrict__ T);')
+            "void loopy_kernel(float *__restrict__ T);")
 
     #test CUDA
     cuknl = knl.copy(target=lp.CudaTarget())
     assert str(lp.generate_header(cuknl)[0]) == (
             'extern "C" __global__ void __launch_bounds__(1) '
-            'loopy_kernel(float *__restrict__ T);')
+            "loopy_kernel(float *__restrict__ T);")
 
     #test OpenCL
     oclknl = knl.copy(target=lp.PyOpenCLTarget())
     assert str(lp.generate_header(oclknl)[0]) == (
-            '__kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) '
-            'loopy_kernel(__global float *__restrict__ T);')
+            "__kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) "
+            "loopy_kernel(__global float *__restrict__ T);")
 
 
 def test_scalars_with_base_storage(ctx_factory):
@@ -1905,8 +1900,9 @@ def test_scalars_with_base_storage(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
+    import islpy as isl
     knl = lp.make_kernel(
-            "{ [i]: 0<=i<1}",
+            [isl.BasicSet("[] -> {[]: }")],  # empty (domain w/unused inames errors)
             "a = 1",
             [lp.TemporaryVariable("a", dtype=np.float64,
                                   shape=(), base_storage="base")])
@@ -2090,38 +2086,37 @@ def test_integer_reduction(ctx_factory):
     n = 200
     for vtype in [np.int32, np.int64]:
         var_int = np.random.randint(1000, size=n).astype(vtype)
-        var_lp = lp.TemporaryVariable('var', initializer=var_int,
+        var_lp = lp.TemporaryVariable("var", initializer=var_int,
                                    read_only=True,
                                    address_space=lp.AddressSpace.PRIVATE,
                                    dtype=to_loopy_type(vtype),
                                    shape=lp.auto)
 
         from collections import namedtuple
-        ReductionTest = namedtuple('ReductionTest', 'kind, check, args')
+        ReductionTest = namedtuple("ReductionTest", "kind, check, args")
 
         reductions = [
-            ReductionTest('max', lambda x: x == np.max(var_int), args='var[k]'),
-            ReductionTest('min', lambda x: x == np.min(var_int), args='var[k]'),
-            ReductionTest('sum', lambda x: x == np.sum(var_int), args='var[k]'),
-            ReductionTest('product', lambda x: x == np.prod(var_int), args='var[k]'),
-            ReductionTest('argmax',
+            ReductionTest("max", lambda x: x == np.max(var_int), args="var[k]"),
+            ReductionTest("min", lambda x: x == np.min(var_int), args="var[k]"),
+            ReductionTest("sum", lambda x: x == np.sum(var_int), args="var[k]"),
+            ReductionTest("product", lambda x: x == np.prod(var_int), args="var[k]"),
+            ReductionTest("argmax",
                 lambda x: (
                     x[0] == np.max(var_int) and var_int[out[1]] == np.max(var_int)),
-                args='var[k], k'),
-            ReductionTest('argmin',
+                args="var[k], k"),
+            ReductionTest("argmin",
                 lambda x: (
                     x[0] == np.min(var_int) and var_int[out[1]] == np.min(var_int)),
-                args='var[k], k')
+                args="var[k], k")
         ]
 
         for reduction, function, args in reductions:
-            kstr = ("out" if 'arg' not in reduction
+            kstr = ("out" if "arg" not in reduction
                         else "out[0], out[1]")
-            kstr += ' = {0}(k, {1})'.format(reduction, args)
-            knl = lp.make_kernel('{[k]: 0<=k<n}',
+            kstr += f" = {reduction}(k, {args})"
+            knl = lp.make_kernel("{[k]: 0<=k<n}",
                                 kstr,
-                                [var_lp, '...'])
-            knl = lp.set_options(knl, "write_cl")
+                                [var_lp, "..."])
 
             knl = lp.fix_parameters(knl, n=200)
 
@@ -2277,7 +2272,7 @@ def test_barrier_insertion_near_bottom_of_loop():
 
 def test_barrier_in_overridden_get_grid_size_expanded_kernel():
     # make simple barrier'd kernel
-    prog = lp.make_kernel('{[i]: 0 <= i < 10}',
+    prog = lp.make_kernel("{[i]: 0 <= i < 10}",
                    """
               for i
                     a[i] = i {id=a}
@@ -2285,14 +2280,14 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
                     b[i + 1] = a[i] {nosync=a}
               end
                    """,
-                   [lp.TemporaryVariable("a", np.float32, shape=(10,), order='C',
+                   [lp.TemporaryVariable("a", np.float32, shape=(10,), order="C",
                                          address_space=lp.AddressSpace.LOCAL),
-                    lp.GlobalArg("b", np.float32, shape=(11,), order='C')],
+                    lp.GlobalArg("b", np.float32, shape=(11,), order="C")],
                seq_dependencies=True)
 
     # split into kernel w/ vesize larger than iname domain
     vecsize = 16
-    prog = lp.split_iname(prog, 'i', vecsize, inner_tag='l.0')
+    prog = lp.split_iname(prog, "i", vecsize, inner_tag="l.0")
 
     from testlib import GridOverride
 
@@ -2398,7 +2393,7 @@ def test_struct_assignment(ctx_factory):
 
     bbhit, bbhit_c_decl = cl.tools.match_dtype_to_c_struct(
             ctx.devices[0], "bbhit", bbhit)
-    bbhit = cl.tools.get_or_register_dtype('bbhit', bbhit)
+    bbhit = cl.tools.get_or_register_dtype("bbhit", bbhit)
 
     preamble = bbhit_c_decl
 
@@ -2475,7 +2470,7 @@ def test_fixed_parameters(ctx_factory):
 
 def test_parameter_inference():
     knl = lp.make_kernel("{[i]: 0 <= i < n and i mod 2 = 0}", "")
-    assert knl.root_kernel.all_params() == set(["n"])
+    assert knl.root_kernel.all_params() == {"n"}
 
 
 def test_execution_backend_can_cache_dtypes(ctx_factory):
@@ -2505,17 +2500,14 @@ def test_wildcard_dep_matching():
             """,
             "...")
 
-    all_insns = set("insn%d" % i for i in range(1, 6))
+    all_insns = {"insn%d" % i for i in range(1, 6)}
 
     assert prog.root_kernel.id_to_insn["insn1"].depends_on == set()
-    assert (prog.root_kernel.id_to_insn["insn2"].depends_on == all_insns -
-            set(["insn2"]))
-    assert (prog.root_kernel.id_to_insn["insn3"].depends_on == all_insns -
-            set(["insn3"]))
-    assert (prog.root_kernel.id_to_insn["insn4"].depends_on == set(["insn1",
-        "insn2"]))
-    assert (prog.root_kernel.id_to_insn["insn5"].depends_on == all_insns -
-            set(["insn1", "insn5"]))
+    assert prog.root_kernel.id_to_insn["insn2"].depends_on == all_insns - {"insn2"}
+    assert prog.root_kernel.id_to_insn["insn3"].depends_on == all_insns - {"insn3"}
+    assert prog.root_kernel.id_to_insn["insn4"].depends_on == {"insn1", "insn2"}
+    assert prog.root_kernel.id_to_insn["insn5"].depends_on == (all_insns
+                                                               - {"insn1", "insn5"})
 
 
 def test_preamble_with_separate_temporaries(ctx_factory):
@@ -2536,19 +2528,19 @@ def test_preamble_with_separate_temporaries(ctx_factory):
     data = np.random.rand(np.product(num_data))
 
     # make kernel
-    kernel = lp.make_kernel('{[i]: 0 <= i < n}',
+    kernel = lp.make_kernel("{[i]: 0 <= i < n}",
     """
     for i
         <>ind = indirect(offsets[i], offsets[i + 1], 1)
         out[i] = data[ind]
     end
     """,
-    [lp.GlobalArg('out', shape=('n',)),
+    [lp.GlobalArg("out", shape=("n",)),
      lp.TemporaryVariable(
-        'offsets', shape=(offsets.size,), initializer=offsets,
+        "offsets", shape=(offsets.size,), initializer=offsets,
         address_space=lp.AddressSpace.GLOBAL,
         read_only=True),
-     lp.GlobalArg('data', shape=(data.size,), dtype=np.float64)],
+     lp.GlobalArg("data", shape=(data.size,), dtype=np.float64)],
     )
 
     # fixt params, and add manglers / preamble
@@ -2557,13 +2549,13 @@ def test_preamble_with_separate_temporaries(ctx_factory):
             SeparateTemporariesPreambleTestPreambleGenerator,
             )
     func_info = dict(
-            func_name='indirect',
+            func_name="indirect",
             func_arg_dtypes=(np.int32, np.int32, np.int32),
             func_result_dtypes=(np.int32,),
             arr=lookup
             )
 
-    kernel = lp.fix_parameters(kernel, **{'n': n})
+    kernel = lp.fix_parameters(kernel, **{"n": n})
     kernel = lp.register_preamble_generators(
             kernel, [SeparateTemporariesPreambleTestPreambleGenerator(**func_info)])
     kernel = lp.register_function_manglers(
@@ -2575,7 +2567,7 @@ def test_preamble_with_separate_temporaries(ctx_factory):
     queue = cl.CommandQueue(ctx)
     # check that it actually performs the lookup correctly
     assert np.allclose(kernel(
-        queue, data=data.flatten('C'))[1][0], data[offsets[:-1] + 1])
+        queue, data=data.flatten("C"))[1][0], data[offsets[:-1] + 1])
 
 
 def test_arg_inference_for_predicates():
@@ -2705,7 +2697,7 @@ def test_dep_cycle_printing_and_error():
     # https://gitlab.tiker.net/inducer/loopy/issues/140
     # This kernel has two dep cycles.
 
-    knl = lp.make_kernel('{[i,j,k]: 0 <= i,j,k < 12}',
+    knl = lp.make_kernel("{[i,j,k]: 0 <= i,j,k < 12}",
     """
         for j
             for i
@@ -2725,11 +2717,11 @@ def test_dep_cycle_printing_and_error():
             end
         end
     """,
-    [lp.GlobalArg('a', shape=(12, 12), dtype=np.int32)])
+    [lp.GlobalArg("a", shape=(12, 12), dtype=np.int32)])
 
-    knl = lp.split_iname(knl, 'j', 4, inner_tag='vec')
-    knl = lp.split_array_axis(knl, 'a', 1, 4)
-    knl = lp.tag_array_axes(knl, 'a', 'N1,N0,vec')
+    knl = lp.split_iname(knl, "j", 4, inner_tag="vec")
+    knl = lp.split_array_axis(knl, "a", 1, 4)
+    knl = lp.tag_array_axes(knl, "a", "N1,N0,vec")
     knl = lp.preprocess_kernel(knl)
 
     from loopy.diagnostic import DependencyCycleFound
@@ -2748,7 +2740,7 @@ def test_backwards_dep_printing_and_error():
             d[i] = 7*a[i ]                                     {id=insn5, dep=insn4}
             a[i] = a[i] + d[i]                                 {id=insn6, dep=insn5}
             """, [
-                lp.GlobalArg('a, b', dtype=np.float64),
+                lp.GlobalArg("a, b", dtype=np.float64),
                 "..."
             ])
 
@@ -2829,9 +2821,9 @@ def test_shape_mismatch_check(ctx_factory):
 def test_array_arg_extra_kwargs_persis_hash():
     from loopy.tools import LoopyKeyBuilder
 
-    a = lp.ArrayArg('a', shape=(10, ), dtype=np.float64,
+    a = lp.ArrayArg("a", shape=(10, ), dtype=np.float64,
             address_space=lp.AddressSpace.LOCAL)
-    not_a = lp.ArrayArg('a', shape=(10, ), dtype=np.float64,
+    not_a = lp.ArrayArg("a", shape=(10, ), dtype=np.float64,
             address_space=lp.AddressSpace.PRIVATE)
 
     key_builder = LoopyKeyBuilder()
@@ -2887,11 +2879,77 @@ def test_non_integral_array_idx_raises():
             """
             out[j] = 0 {id=init}
             out[i] = a[1.94**i-1] {dep=init}
-            """, [lp.GlobalArg('a', np.float64), '...'])
+            """, [lp.GlobalArg("a", np.float64), "..."])
 
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
         print(lp.generate_code_v2(knl).device_code())
+
+
+@pytest.mark.parametrize("tag", ["for", "l.0", "g.0", "fixed"])
+def test_empty_domain(ctx_factory, tag):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    prg = lp.make_kernel(
+            "{[i,j]: 0 <= i < n}",
+            """
+            for i
+                c = 1
+            end
+            """)
+
+    if tag == "fixed":
+        prg = lp.fix_parameters(prg, n=0)
+        kwargs = {}
+    else:
+        prg = lp.tag_inames(prg, {"i": tag})
+        kwargs = {"n": 0}
+
+    prg = lp.set_options(prg, write_code=True)
+    c = cl.array.zeros(queue, (), dtype=np.int32)
+    prg(queue, c=c, **kwargs)
+
+    assert (c.get() == 0).all()
+
+
+def test_access_check_with_conditionals():
+    legal_knl = lp.make_kernel(
+            "{[i]: 0<=i<20}",
+            """
+            z[i] = x[i] if i < 10 else y[i-10]
+            z[i] = x[i] if 0 else 2.0f
+            z[i] = in[i-1] if i else 3.14f
+            """,
+            [lp.GlobalArg("x,y", shape=(10,), dtype=float),
+             lp.GlobalArg("in", shape=(19,), dtype=float),
+             ...], seq_dependencies=True)
+    lp.generate_code_v2(legal_knl)
+
+    illegal_knl = lp.make_kernel(
+            "{[i]: 0<=i<20}",
+            """
+            z[i] = x[i] if i < 10 else y[i]
+            """,
+            [lp.GlobalArg("x,y", shape=(10,), dtype=float),
+             ...])
+
+    from loopy.diagnostic import LoopyError
+    with pytest.raises(LoopyError):
+        lp.generate_code_v2(illegal_knl)
+
+    # current limitation: cannot handle non-affine conditions
+    legal_but_nonaffine_condition_knl = lp.make_kernel(
+            "{[i]: 0<=i<20}",
+            """
+            z[i] = x[i] if i*i < 100 else y[i-10]
+            """,
+            [lp.GlobalArg("x,y", shape=(10,), dtype=float),
+             ...])
+
+    from loopy.diagnostic import LoopyError
+    with pytest.raises(LoopyError):
+        lp.generate_code_v2(legal_but_nonaffine_condition_knl)
 
 
 if __name__ == "__main__":

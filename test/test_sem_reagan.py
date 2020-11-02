@@ -1,5 +1,3 @@
-from __future__ import division
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -48,7 +46,7 @@ def test_tim2d(ctx_factory):
 
     # K - run-time symbolic
     knl = lp.make_kernel(
-            "{[i,j,e,m,o,o2,gi]: 0<=i,j,m,o,o2<n and 0<=e<K and 0<=gi<3}",
+            "{[i,j,e,m,o,o2]: 0<=i,j,m,o,o2<n and 0<=e<K}",
             [
                 "ur(a,b) := simul_reduce(sum, o, D[a,o]*u[e,o,b])",
                 "us(a,b) := simul_reduce(sum, o2, D[b,o2]*u[e,a,o2])",
@@ -74,19 +72,21 @@ def test_tim2d(ctx_factory):
             name="semlap2D", assumptions="K>=1")
 
     knl = lp.fix_parameters(knl, n=n)
-    knl = lp.duplicate_inames(knl, "o", within="id:ur")
-    knl = lp.duplicate_inames(knl, "o", within="id:us")
+    # knl = lp.duplicate_inames(knl, "o", within="id:ur")
+    # knl = lp.duplicate_inames(knl, "o", within="id:us")
 
     seq_knl = knl
 
     def variant_orig(knl):
         knl = lp.tag_inames(knl, dict(i="l.0", j="l.1", e="g.0"))
 
-        knl = lp.add_prefetch(knl, "D[:,:]", default_tag="l.auto")
+        knl = lp.add_prefetch(knl, "D[:,:]", fetch_outer_inames="e",
+                default_tag="l.auto")
         knl = lp.add_prefetch(knl, "u[e, :, :]", default_tag="l.auto")
 
         knl = lp.precompute(knl, "ur(m,j)", ["m", "j"], default_tag="l.auto")
         knl = lp.precompute(knl, "us(i,m)", ["i", "m"], default_tag="l.auto")
+        # TODO this adds `a` and `b` to domains, which leads to unused inames
 
         knl = lp.precompute(knl, "Gux(m,j)", ["m", "j"], default_tag="l.auto")
         knl = lp.precompute(knl, "Guy(i,m)", ["i", "m"], default_tag="l.auto")

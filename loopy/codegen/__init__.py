@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -25,8 +23,6 @@ THE SOFTWARE.
 import logging
 logger = logging.getLogger(__name__)
 
-import six
-
 from loopy.diagnostic import LoopyError, warn
 from pytools import ImmutableRecord
 import islpy as isl
@@ -43,6 +39,22 @@ from loopy.kernel.function_interface import CallableKernel
 from cgen import Collection
 
 from pytools import ProcessLogger
+
+__doc__ = """
+.. currentmodule:: loopy.codegen
+
+.. autoclass:: ImplementedDataInfo
+
+.. autoclass:: PreambleInfo
+
+.. autoclass:: VectorizationInfo
+
+.. autoclass:: SeenFunction
+
+.. autoclass:: CodeGenerationState
+
+.. automodule:: loopy.codegen.result
+"""
 
 
 # {{{ implemented data info
@@ -123,7 +135,7 @@ class Unvectorizable(Exception):
     pass
 
 
-class VectorizationInfo(object):
+class VectorizationInfo:
     """
     .. attribute:: iname
     .. attribute:: length
@@ -152,7 +164,7 @@ class SeenFunction(ImmutableRecord):
                 arg_dtypes=arg_dtypes)
 
 
-class CodeGenerationState(object):
+class CodeGenerationState:
     """
     .. attribute:: kernel
     .. attribute:: target
@@ -436,7 +448,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target):
         from loopy.schedule import get_one_scheduled_kernel
         kernel = get_one_scheduled_kernel(kernel, callables_table)
 
-    if kernel.state != KernelState.SCHEDULED:
+    if kernel.state != KernelState.LINEARIZED:
         raise LoopyError("cannot generate code for a kernel that has not been "
                 "scheduled")
 
@@ -488,9 +500,8 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target):
             raise ValueError("argument type not understood: '%s'" % type(arg))
 
     allow_complex = False
-    for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):
-        dtype = var.dtype
-        if dtype.involves_complex():
+    for var in kernel.args + list(kernel.temporary_variables.values()):
+        if var.dtype.involves_complex():
             allow_complex = True
 
     # }}}
@@ -534,10 +545,12 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target):
 
     # {{{ handle preambles
 
-    for arg in kernel.args:
-        seen_dtypes.add(arg.dtype)
-    for tv in six.itervalues(kernel.temporary_variables):
-        seen_dtypes.add(tv.dtype)
+    for idi in codegen_state.implemented_data_info:
+        seen_dtypes.add(idi.dtype)
+
+    for tv in kernel.temporary_variables.values():
+        for idi in tv.decl_info(kernel.target, index_dtype=kernel.index_dtype):
+            seen_dtypes.add(idi.dtype)
 
     preambles = kernel.preambles[:]
 
