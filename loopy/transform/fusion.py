@@ -331,15 +331,22 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
 
         *data_flow* was added in version 2016.2
     """
+    # FIXME: This should take in inputs as (prog1, knlname1) and (prog2,
+    # knlname2). if prog1 == prog2 then the callable names belong to the same
+    # namespace, otherwise the kernel names should be uniquified.
+    # We should also somehow be able to know that callables like "sin"/"cos"
+    # belong to the global namespace and need not be uniquified.
     if all(isinstance(kernel, Program) for kernel in kernels):
         new_kernels = []
         for knl in kernels:
             kernel_names = [i for i, clbl in
                     knl.callables_table.items() if isinstance(clbl,
                         CallableKernel)]
-        if len(kernel_names) != 1:
-            raise LoopyError()
-        new_kernels.append(knl[kernel_names[0]])
+            if len(kernel_names) != 1:
+                raise NotImplementedError("Kernel containing more than one"
+                        " callable kernel, not allowed for now.")
+            new_kernels.append(knl[kernel_names[0]])
+
         kernels = new_kernels[:]
 
     assert all(isinstance(knl, LoopKernel) for knl in kernels)
