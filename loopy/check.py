@@ -24,8 +24,7 @@ THE SOFTWARE.
 from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper
-from loopy.diagnostic import (LoopyError, WriteRaceConditionWarning,
-        warn_with_kernel, ExpressionToAffineConversionError)
+from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_kernel
 from loopy.type_inference import TypeInferenceMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
@@ -375,25 +374,6 @@ def check_for_data_dependent_parallel_bounds(kernel):
 
 # {{{ check access bounds
 
-def _condition_to_set(space, expr):
-    """
-    Returns an instance of :class:`islpy.Set` if *expr* can be expressed as an
-    ISL-set on *space*, if not then returns *None*.
-    """
-    from loopy.symbolic import get_dependencies
-    if get_dependencies(expr) <= frozenset(
-            space.get_var_dict()):
-        try:
-            from loopy.symbolic import isl_set_from_expr
-            return isl_set_from_expr(space, expr)
-        except ExpressionToAffineConversionError:
-            # non-affine condition: can't do much
-            return None
-    else:
-        # data-dependent condition: can't do much
-        return None
-
-
 class _AccessCheckMapper(WalkMapper):
     def __init__(self, kernel, insn_id):
         self.kernel = kernel
@@ -464,7 +444,8 @@ class _AccessCheckMapper(WalkMapper):
                         % (expr, self.insn_id, access_range, shape_domain))
 
     def map_if(self, expr, domain):
-        then_set = _condition_to_set(domain.space, expr.condition)
+        from loopy.symbolic import condition_to_set
+        then_set = condition_to_set(domain.space, expr.condition)
         if then_set is None:
             then_set = else_set = isl.BasicSet.universe(domain.space)
         else:
@@ -513,7 +494,8 @@ def check_bounds(kernel):
         insn_preds_set = isl.BasicSet.universe(domain.space)
 
         for predicate in insn.predicates:
-            predicate_as_isl_set = _condition_to_set(domain.space, predicate)
+            from loopy.symbolic import condition_to_set
+            predicate_as_isl_set = condition_to_set(domain.space, predicate)
             if predicate_as_isl_set is not None:
                 insn_preds_set = insn_preds_set & predicate_as_isl_set
 

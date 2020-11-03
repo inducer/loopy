@@ -1679,6 +1679,25 @@ def isl_set_from_expr(space, expr):
 
     return set_
 
+
+def condition_to_set(space, expr):
+    """
+    Returns an instance of :class:`islpy.Set` if *expr* can be expressed as an
+    ISL-set on *space*, if not then returns *None*.
+    """
+    from loopy.symbolic import get_dependencies
+    if get_dependencies(expr) <= frozenset(
+            space.get_var_dict()):
+        try:
+            from loopy.symbolic import isl_set_from_expr
+            return isl_set_from_expr(space, expr)
+        except ExpressionToAffineConversionError:
+            # non-affine condition: can't do much
+            return None
+    else:
+        # data-dependent condition: can't do much
+        return None
+
 # }}}
 
 
