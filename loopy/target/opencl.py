@@ -24,7 +24,6 @@ THE SOFTWARE.
 """
 
 import numpy as np
-import six
 
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper

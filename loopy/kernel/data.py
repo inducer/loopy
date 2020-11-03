@@ -451,7 +451,7 @@ class ConstantArg(ArrayBase, KernelArgument):
     __doc__ = ArrayBase.__doc__
 
     def __init__(self, *args, **kwargs):
-        if kwargs.pop('address_space', AddressSpace.GLOBAL) != AddressSpace.GLOBAL:
+        if kwargs.pop("address_space", AddressSpace.GLOBAL) != AddressSpace.GLOBAL:
             raise LoopyError("'address_space' for ConstantArg must be GLOBAL.")
         super().__init__(*args, **kwargs)
 

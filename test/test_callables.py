@@ -49,7 +49,7 @@ def test_register_function_lookup(ctx_factory):
             """
             y[i] = log2(x[i])
             """)
-    prog = lp.register_callable(prog, 'log2', Log2Callable('log2'))
+    prog = lp.register_callable(prog, "log2", Log2Callable("log2"))
 
     evt, (out, ) = prog(queue, x=x)
 
@@ -216,14 +216,14 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
             """
             [j, l]: z[i, j, k, l, m] = linear_combo([j, l]: x[i, j, k, l, m],
                                                      [j, l]: y[i, j, k, l, m])
-            """, name='caller')
+            """, name="caller")
     caller_knl = lp.split_iname(caller_knl, "i", 4, inner_tag="l.1", outer_tag="g.1")
 
     knl = lp.merge([caller_knl, callee_knl])
 
     knl = lp.set_options(knl, "return_dict")
 
-    gsize, lsize = knl['caller'].get_grid_size_upper_bounds_as_exprs(
+    gsize, lsize = knl["caller"].get_grid_size_upper_bounds_as_exprs(
             knl.callables_table)
 
     if inline:
@@ -419,20 +419,20 @@ def test_non_sub_array_refs_arguments(ctx_factory):
             name="caller", target=lp.CTarget())
 
     registered = lp.merge([caller1, callee])
-    inlined = _match_caller_callee_argument_dimension_(registered, 'callee')
-    inlined = lp.inline_callable_kernel(inlined, 'callee')
+    inlined = _match_caller_callee_argument_dimension_(registered, "callee")
+    inlined = lp.inline_callable_kernel(inlined, "callee")
 
     print(inlined)
 
     registered = lp.merge([caller2, callee])
-    inlined = _match_caller_callee_argument_dimension_(registered, 'callee')
-    inlined = lp.inline_callable_kernel(inlined, 'callee')
+    inlined = _match_caller_callee_argument_dimension_(registered, "callee")
+    inlined = lp.inline_callable_kernel(inlined, "callee")
 
     print(inlined)
 
     registered = lp.merge([caller3, callee])
-    inlined = _match_caller_callee_argument_dimension_(registered, 'callee')
-    inlined = lp.inline_callable_kernel(inlined, 'callee')
+    inlined = _match_caller_callee_argument_dimension_(registered, "callee")
+    inlined = lp.inline_callable_kernel(inlined, "callee")
 
     print(inlined)
 
@@ -461,7 +461,7 @@ def test_empty_sub_array_refs(ctx_factory, inline):
     caller = lp.merge([caller, callee])
 
     if inline:
-        caller = lp.inline_callable_kernel(caller, 'wence_function')
+        caller = lp.inline_callable_kernel(caller, "wence_function")
 
     evt, (out, ) = caller(queue, x=x, y=y)
     assert np.allclose(out, x-y)

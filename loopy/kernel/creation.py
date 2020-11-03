@@ -2436,7 +2436,7 @@ def make_kernel(*args, **kwargs):
 
             lang_version = FALLBACK_LANGUAGE_VERSION
 
-    kwargs['lang_version'] = lang_version
+    kwargs["lang_version"] = lang_version
 
     # }}}
 
