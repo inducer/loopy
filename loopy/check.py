@@ -447,6 +447,8 @@ class _AccessCheckMapper(WalkMapper):
         from loopy.symbolic import condition_to_set
         then_set = condition_to_set(domain.space, expr.condition)
         if then_set is None:
+            # condition cannot be inferred as ISL expression => ignore
+            # for domain contributions enforced by it
             then_set = else_set = isl.BasicSet.universe(domain.space)
         else:
             else_set = then_set.complement()
