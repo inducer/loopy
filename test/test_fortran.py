@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
 __license__ = """
@@ -38,11 +36,11 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl \
 
 __all__ = [
         "pytest_generate_tests",
-        "cl"  # 'cl.create_some_context'
+        "cl"  # "cl.create_some_context"
         ]
 
 
-pytestmark = pytest.mark.importorskip("fparser")
+pytest.importorskip("fparser")
 
 
 def test_fp_prec_comparison():
@@ -291,9 +289,9 @@ def test_assignment_to_subst_indices(ctx_factory):
 
     ref_knl = knl
 
-    assert "a" in knl['fill'].temporary_variables
+    assert "a" in knl["fill"].temporary_variables
     knl = lp.assignment_to_subst(knl, "a")
-    assert "a" not in knl['fill'].temporary_variables
+    assert "a" not in knl["fill"].temporary_variables
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
@@ -366,6 +364,12 @@ def test_tagged(ctx_factory):
     "i_inner,j_inner",
     ])
 def test_matmul(ctx_factory, buffer_inames):
+    ctx = ctx_factory()
+
+    if (buffer_inames and
+            ctx.devices[0].platform.name == "Portable Computing Language"):
+        pytest.skip("crashes on pocl")
+
     logging.basicConfig(level=logging.INFO)
 
     fortran_src = """
@@ -386,7 +390,7 @@ def test_matmul(ctx_factory, buffer_inames):
 
     prog = lp.parse_fortran(fortran_src)
 
-    assert len(prog['dgemm'].domains) == 1
+    assert len(prog["dgemm"].domains) == 1
 
     ref_prog = prog
 
@@ -401,13 +405,16 @@ def test_matmul(ctx_factory, buffer_inames):
 
     prog = lp.extract_subst(prog, "a_acc", "a[i1,i2]", parameters="i1, i2")
     prog = lp.extract_subst(prog, "b_acc", "b[i1,i2]", parameters="i1, i2")
-    prog = lp.precompute(prog, "a_acc", "k_inner,i_inner", default_tag="l.auto")
-    prog = lp.precompute(prog, "b_acc", "j_inner,k_inner", default_tag="l.auto")
+    prog = lp.precompute(prog, "a_acc", "k_inner,i_inner",
+            precompute_outer_inames="i_outer, j_outer, k_outer",
+            default_tag="l.auto")
+    prog = lp.precompute(prog, "b_acc", "j_inner,k_inner",
+            precompute_outer_inames="i_outer, j_outer, k_outer",
+            default_tag="l.auto")
 
     prog = lp.buffer_array(prog, "c", buffer_inames=buffer_inames,
             init_expression="0", store_expression="base+buffer")
 
-    ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_prog, ctx, prog, parameters=dict(n=128, m=128, ell=128))
 
 
@@ -566,7 +573,7 @@ def test_precompute_some_exist(ctx_factory):
 
     knl = lp.parse_fortran(fortran_src)
 
-    assert len(knl['dgemm'].domains) == 1
+    assert len(knl["dgemm"].domains) == 1
 
     knl = lp.split_iname(knl, "i", 8,
             outer_tag="g.0", inner_tag="l.1")
@@ -581,9 +588,11 @@ def test_precompute_some_exist(ctx_factory):
     knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")
     knl = lp.precompute(knl, "a_acc", "k_inner,i_inner",
             precompute_inames="ktemp,itemp",
+            precompute_outer_inames="i_outer, j_outer, k_outer",
             default_tag="l.auto")
     knl = lp.precompute(knl, "b_acc", "j_inner,k_inner",
             precompute_inames="itemp,k2temp",
+            precompute_outer_inames="i_outer, j_outer, k_outer",
             default_tag="l.auto")
 
     ref_knl = knl

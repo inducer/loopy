@@ -1,6 +1,3 @@
-from __future__ import division, absolute_import
-from six.moves import range
-
 __copyright__ = "Copyright (C) 2012-2015 Andreas Kloeckner"
 
 __license__ = """
@@ -50,7 +47,7 @@ logger = logging.getLogger(__name__)
 class ArrayAccessReplacer(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context,
             var_name, within, array_base_map, buf_var):
-        super(ArrayAccessReplacer, self).__init__(rule_mapping_context)
+        super().__init__(rule_mapping_context)
 
         self.within = within
 
@@ -70,7 +67,7 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
             result = self.map_array_access((), expn_state)
 
         if result is None:
-            return super(ArrayAccessReplacer, self).map_variable(expr, expn_state)
+            return super().map_variable(expr, expn_state)
         else:
             self.modified_insn_ids.add(expn_state.insn_id)
             return result
@@ -84,7 +81,7 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
             result = self.map_array_access(expr.index_tuple, expn_state)
 
         if result is None:
-            return super(ArrayAccessReplacer, self).map_subscript(expr, expn_state)
+            return super().map_subscript(expr, expn_state)
         else:
             self.modified_insn_ids.add(expn_state.insn_id)
             return result
@@ -323,8 +320,8 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
         if isinstance(var_descr, ArrayBase) and var_descr.dim_names is not None:
             dim_name = var_descr.dim_names[i]
 
-        init_iname = var_name_gen("%s_init_%s" % (var_name, dim_name))
-        store_iname = var_name_gen("%s_store_%s" % (var_name, dim_name))
+        init_iname = var_name_gen(f"{var_name}_init_{dim_name}")
+        store_iname = var_name_gen(f"{var_name}_store_{dim_name}")
 
         new_iname_to_tag[init_iname] = default_tag
         new_iname_to_tag[store_iname] = default_tag
@@ -398,7 +395,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
             dtype=var_descr.dtype,
             base_indices=(0,)*len(abm.non1_storage_shape),
             shape=tuple(abm.non1_storage_shape),
-            scope=temporary_scope)
+            address_space=temporary_scope)
 
     new_temporary_variables[buf_var_name] = temp_var
 

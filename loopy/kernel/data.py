@@ -1,6 +1,5 @@
 """Data used by the kernel object."""
 
-from __future__ import division
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -25,7 +24,7 @@ THE SOFTWARE.
 """
 
 
-from six.moves import intern
+from sys import intern
 import numpy as np  # noqa
 from pytools import ImmutableRecord
 from loopy.kernel.array import ArrayBase
@@ -45,8 +44,30 @@ from loopy.kernel.instruction import (  # noqa
         CInstruction)
 from warnings import warn
 
+__doc__ = """
+.. currentmodule:: loopy.kernel.data
 
-class auto(object):  # noqa
+.. autofunction:: filter_iname_tags_by_type
+
+.. autoclass:: IndexTag
+
+.. autoclass:: ConcurrentTag
+
+.. autoclass:: UniqueTag
+
+.. autoclass:: AxisTag
+
+.. autoclass:: LocalIndexTag
+
+.. autoclass:: GroupIndexTag
+
+.. autoclass:: VectorizeTag
+
+.. autoclass:: UnrollTag
+"""
+
+
+class auto:  # noqa
     """A generic placeholder object for something that should be automatically
     determined.  See, for example, the *shape* or *strides* argument of
     :class:`ArrayArg`.
@@ -67,7 +88,7 @@ def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
     :arg min_num: the minimum number of tags expected to be found.
     """
 
-    result = set(tag for tag in tags if isinstance(tag, tag_type))
+    result = {tag for tag in tags if isinstance(tag, tag_type)}
 
     def strify_tag_type():
         if isinstance(tag_type, tuple):
@@ -77,12 +98,12 @@ def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
 
     if max_num is not None:
         if len(result) > max_num:
-            raise LoopyError("cannot have more than {0} tags "
-                    "of type(s): {1}".format(max_num, strify_tag_type()))
+            raise LoopyError("cannot have more than {} tags "
+                    "of type(s): {}".format(max_num, strify_tag_type()))
     if min_num is not None:
         if len(result) < min_num:
-            raise LoopyError("must have more than {0} tags "
-                    "of type(s): {1}".format(max_num, strify_tag_type()))
+            raise LoopyError("must have more than {} tags "
+                    "of type(s): {}".format(max_num, strify_tag_type()))
     return result
 
 
@@ -186,7 +207,7 @@ class LoopedIlpTag(IlpBaseTag):
 # }}}
 
 
-class VectorizeTag(UniqueTag):
+class VectorizeTag(UniqueTag, HardwareConcurrentTag):
     def __str__(self):
         return "vec"
 
@@ -244,7 +265,7 @@ def parse_tag(tag):
 
 # {{{ memory address space
 
-class AddressSpace(object):
+class AddressSpace:
     """Storage location of a variable.
 
     .. attribute:: PRIVATE
@@ -271,7 +292,7 @@ class AddressSpace(object):
             raise ValueError("unexpected value of AddressSpace")
 
 
-class _deprecated_temp_var_scope_class_method(object):  # noqa
+class _deprecated_temp_var_scope_class_method:  # noqa
     def __init__(self, f):
         self.f = f
 
@@ -281,8 +302,8 @@ class _deprecated_temp_var_scope_class_method(object):  # noqa
         return self.f()
 
 
-class temp_var_scope(object):  # noqa
-    """Deprecated. Use :class:`AddressSpace` instead.
+class temp_var_scope:  # noqa
+    """Deprecated. Use :class:`loopy.AddressSpace` instead.
     """
 
     @_deprecated_temp_var_scope_class_method
@@ -318,8 +339,8 @@ class KernelArgument(ImmutableRecord):
 
         dtype = kwargs.pop("dtype", None)
 
-        if 'for_atomic' in kwargs:
-            for_atomic = kwargs['for_atomic']
+        if "for_atomic" in kwargs:
+            for_atomic = kwargs["for_atomic"]
         else:
             for_atomic = False
 
@@ -355,12 +376,14 @@ class ArrayArg(ArrayBase, KernelArgument):
         .. attribute:: is_output
 
             An instance of :class:`bool`. If set to *True*, the argument is used
-            to return information to the caller
+            to return information to the caller. If set to *False*, then the
+            callee should not write the array during execution.
 
         .. attribute:: is_input
 
             An instance of :class:`bool`. If set to *True*, expected to be
-            provided by the caller.
+            provided by the caller. If *False* then the callee should not depend
+            on the state of the array on entry to a function.
         """)
 
     allowed_extra_kwargs = [
@@ -371,10 +394,18 @@ class ArrayArg(ArrayBase, KernelArgument):
     def __init__(self, *args, **kwargs):
         if "address_space" not in kwargs:
             raise TypeError("'address_space' must be specified")
-        kwargs["is_output"] = kwargs.pop("is_output", None)
-        kwargs["is_input"] = kwargs.pop("is_input", None)
 
-        super(ArrayArg, self).__init__(*args, **kwargs)
+        is_output_only = kwargs.pop("is_output_only", None)
+        if is_output_only is not None:
+            warn("'is_output_only' is deprecated. Use 'is_output', 'is_input'"
+                    " instead.", DeprecationWarning, stacklevel=2)
+            kwargs["is_output"] = is_output_only
+            kwargs["is_input"] = not is_output_only
+        else:
+            kwargs["is_output"] = kwargs.pop("is_output", None)
+            kwargs["is_input"] = kwargs.pop("is_input", None)
+
+        super().__init__(*args, **kwargs)
 
     min_target_axes = 0
     max_target_axes = 1
@@ -398,7 +429,7 @@ class ArrayArg(ArrayBase, KernelArgument):
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.
         """
-        super(ArrayArg, self).update_persistent_hash(key_hash, key_builder)
+        super().update_persistent_hash(key_hash, key_builder)
         key_builder.rec(key_hash, self.address_space)
         key_builder.rec(key_hash, self.is_output)
         key_builder.rec(key_hash, self.is_input)
@@ -471,7 +502,7 @@ class ValueArg(KernelArgument):
         else:
             type_str = str(self.dtype)
 
-        return "%s: ValueArg, type: %s" % (self.name, type_str)
+        return f"{self.name}: ValueArg, type: {type_str}"
 
     def __repr__(self):
         return "<%s>" % self.__str__()
@@ -547,7 +578,7 @@ class TemporaryVariable(ArrayBase):
             "_base_storage_access_may_be_aliasing",
             ]
 
-    def __init__(self, name, dtype=None, shape=(), address_space=None,
+    def __init__(self, name, dtype=None, shape=auto, address_space=None,
             dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
             base_indices=None, storage_shape=None,
             base_storage=None, initializer=None, read_only=False,
@@ -601,7 +632,10 @@ class TemporaryVariable(ArrayBase):
 
             if shape is auto:
                 shape = initializer.shape
-
+            else:
+                if shape != initializer.shape:
+                    raise LoopyError("Shape of '{}' does not match that of the"
+                            " initializer.".format(name))
         else:
             raise LoopyError(
                     "temporary variable '%s': "
@@ -611,7 +645,7 @@ class TemporaryVariable(ArrayBase):
         if order is None:
             order = "C"
 
-        if base_indices is None:
+        if base_indices is None and shape is not auto:
             base_indices = (0,) * len(shape)
 
         if not read_only and initializer is not None:
@@ -677,7 +711,7 @@ class TemporaryVariable(ArrayBase):
         if address_space is not None:
             kwargs["address_space"] = address_space
 
-        return super(TemporaryVariable, self).copy(**kwargs)
+        return super().copy(**kwargs)
 
     @property
     def nbytes(self):
@@ -689,7 +723,7 @@ class TemporaryVariable(ArrayBase):
         return product(si for si in shape)*self.dtype.itemsize
 
     def decl_info(self, target, index_dtype):
-        return super(TemporaryVariable, self).decl_info(
+        return super().decl_info(
                 target, is_written=True, index_dtype=index_dtype,
                 shape_override=self.storage_shape)
 
@@ -714,7 +748,7 @@ class TemporaryVariable(ArrayBase):
 
     def __eq__(self, other):
         return (
-                super(TemporaryVariable, self).__eq__(other)
+                super().__eq__(other)
                 and self.storage_shape == other.storage_shape
                 and self.base_indices == other.base_indices
                 and self.address_space == other.address_space
@@ -732,7 +766,7 @@ class TemporaryVariable(ArrayBase):
         :class:`pytools.persistent_dict.PersistentDict`.
         """
 
-        super(TemporaryVariable, self).update_persistent_hash(key_hash, key_builder)
+        super().update_persistent_hash(key_hash, key_builder)
         self.update_persistent_hash_for_shape(key_hash, key_builder,
                 self.storage_shape)
         key_builder.rec(key_hash, self.base_indices)
@@ -780,7 +814,7 @@ class SubstitutionRule(ImmutableRecord):
                 name=name, arguments=arguments, expression=expression)
 
     def __str__(self):
-        return "%s(%s) := %s" % (
+        return "{}({}) := {}".format(
                 self.name, ", ".join(self.arguments), self.expression)
 
     def update_persistent_hash(self, key_hash, key_builder):
@@ -806,19 +840,19 @@ class CallMangleInfo(ImmutableRecord):
 
     .. attribute:: result_dtypes
 
-        A tuple of :class:`LoopyType` instances indicating what
+        A tuple of :class:`loopy.types.LoopyType` instances indicating what
         types of values the function returns.
 
     .. attribute:: arg_dtypes
 
-        A tuple of :class:`LoopyType` instances indicating what
+        A tuple of :class:`loopy.types.LoopyType` instances indicating what
         types of arguments the function actually receives.
     """
 
     def __init__(self, target_name, result_dtypes, arg_dtypes):
         assert isinstance(result_dtypes, tuple)
 
-        super(CallMangleInfo, self).__init__(
+        super().__init__(
                 target_name=target_name,
                 result_dtypes=result_dtypes,
                 arg_dtypes=arg_dtypes)

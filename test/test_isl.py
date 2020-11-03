@@ -54,18 +54,21 @@ def test_pw_aff_to_conditional_expr():
 def test_subst_into_pwqpolynomial():
     from pymbolic.primitives import Variable
     arg_dict = {
-            'm': 3*Variable("nx"),
-            'n': 3*Variable("ny"),
-            'nx': Variable('nx'),
-            'ny': Variable('ny'),
-            'nz': Variable('nz')}
+            "m": 3*Variable("nx"),
+            "n": 3*Variable("ny"),
+            "nx": Variable("nx"),
+            "ny": Variable("ny"),
+            "nz": Variable("nz")}
     space = isl.Set("[nx, ny, nz] -> { []: }").space
     poly = isl.PwQPolynomial("[m, n] -> { (256 * m + 256 * m * n) : "
         "m > 0 and n > 0; 256 * m : m > 0 and n <= 0 }")
 
     from loopy.isl_helpers import subst_into_pwqpolynomial
     result = subst_into_pwqpolynomial(space, poly, arg_dict)
-    assert "(768 * nx + 2304 * nx * ny)" in str(result)
+    expected_pwqpoly = isl.PwQPolynomial("[nx, ny, nz] -> {"
+            "(768 * nx + 2304 * nx * ny) : nx > 0 and ny > 0;"
+            "768 * nx : nx > 0 and ny <= 0 }")
+    assert (result - expected_pwqpoly).is_zero()
 
 
 if __name__ == "__main__":

@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"
 
 __license__ = """
@@ -22,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
 from pytools import ImmutableRecord
 from collections import OrderedDict
 
@@ -42,6 +39,19 @@ def process_preambles(preambles):
     return [
             remove_common_indentation(lines) + "\n"
             for lines in dedup_preambles]
+
+
+__doc__ = """
+.. currentmodule:: loopy.codegen.result
+
+.. autoclass:: GeneratedProgram
+
+.. autoclass:: CodeGenerationResult
+
+.. autofunction:: merge_codegen_results
+
+.. autofunction:: generate_host_or_device_program
+"""
 
 
 # {{{ code generation result
@@ -239,7 +249,7 @@ def merge_codegen_results(codegen_state, elements, collapse=True):
                         el.current_program(codegen_state).name
                         == codegen_result.current_program(codegen_state).name)
 
-            for insn_id, idoms in six.iteritems(el.implemented_domains):
+            for insn_id, idoms in el.implemented_domains.items():
                 implemented_domains.setdefault(insn_id, []).extend(idoms)
 
             if not codegen_state.is_generating_device_code:

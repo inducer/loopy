@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012-16 Andreas Kloeckner"
 
 __license__ = """
@@ -21,8 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six
 
 from pymbolic.mapper import CombineMapper
 import numpy as np
@@ -49,7 +45,7 @@ logger = logging.getLogger(__name__)
 def _debug(kernel, s, *args):
     if logger.isEnabledFor(logging.DEBUG):
         logstr = s % args
-        logger.debug("%s: %s" % (kernel.name, logstr))
+        logger.debug(f"{kernel.name}: {logstr}")
 
 
 def get_return_types_as_tuple(arg_id_to_dtype):
@@ -58,8 +54,8 @@ def get_return_types_as_tuple(arg_id_to_dtype):
     :arg arg_id_to_dtype: An instance of :class:`dict` which denotes a
                             mapping from the arguments to their inferred types.
     """
-    return_arg_id_to_dtype = dict((id, dtype) for id, dtype in
-            arg_id_to_dtype.items() if (isinstance(id, int) and id < 0))
+    return_arg_id_to_dtype = {id: dtype for id, dtype in
+            arg_id_to_dtype.items() if (isinstance(id, int) and id < 0)}
     return_arg_pos = sorted(return_arg_id_to_dtype.keys(), reverse=True)
 
     return tuple(return_arg_id_to_dtype[id] for id in return_arg_pos)
@@ -75,7 +71,7 @@ class FunctionNameChanger(RuleAwareIdentityMapper):
 
     def __init__(self, rule_mapping_context, calls_to_new_names,
             subst_expander):
-        super(FunctionNameChanger, self).__init__(rule_mapping_context)
+        super().__init__(rule_mapping_context)
         self.calls_to_new_names = calls_to_new_names
         self.subst_expander = subst_expander
 
@@ -98,7 +94,7 @@ class FunctionNameChanger(RuleAwareIdentityMapper):
                         tuple(self.rec(child, expn_state)
                             for child in expanded_expr.parameters))
             else:
-                return super(FunctionNameChanger, self).map_call(
+                return super().map_call(
                         expr, expn_state)
         else:
             return self.map_substitution(name, tag, expr.parameters, expn_state)
@@ -110,12 +106,12 @@ class FunctionNameChanger(RuleAwareIdentityMapper):
                 ResolvedFunction(self.calls_to_new_names[expr]),
                 tuple(self.rec(child, expn_state)
                     for child in expr.parameters),
-                dict(
-                    (key, self.rec(val, expn_state))
-                    for key, val in six.iteritems(expr.kw_parameters))
+                {
+                    key: self.rec(val, expn_state)
+                    for key, val in expr.kw_parameters.items()}
                     )
         else:
-            return super(FunctionNameChanger, self).map_call_with_kwargs(
+            return super().map_call_with_kwargs(
                     expr, expn_state)
 
 
@@ -219,7 +215,7 @@ class TypeInferenceMapper(CombineMapper):
         if return_tuple:
             kwargs["return_tuple"] = True
 
-        result = super(TypeInferenceMapper, self).__call__(
+        result = super().__call__(
                 expr, **kwargs)
 
         assert isinstance(result, list)
@@ -396,7 +392,7 @@ class TypeInferenceMapper(CombineMapper):
     def map_type_cast(self, expr):
         subtype, = self.rec(expr.child)
         if not issubclass(subtype.dtype.type, np.number):
-            raise LoopyError("Can't cast a '%s' to '%s'" % (subtype, expr.type))
+            raise LoopyError(f"Can't cast a '{subtype}' to '{expr.type}'")
         return [expr.type]
 
     def map_subscript(self, expr):
@@ -426,8 +422,8 @@ class TypeInferenceMapper(CombineMapper):
             else:
                 return None
 
-        arg_id_to_dtype = dict((i, none_if_empty(self.rec(par))) for (i, par) in
-                tuple(enumerate(expr.parameters)) + tuple(kw_parameters.items()))
+        arg_id_to_dtype = {i: none_if_empty(self.rec(par)) for (i, par) in
+                tuple(enumerate(expr.parameters)) + tuple(kw_parameters.items())}
 
         # specializing the known function wrt type
         if isinstance(expr.function, ResolvedFunction):
@@ -524,12 +520,12 @@ class TypeInferenceMapper(CombineMapper):
             if mangle_result is not None:
                 from loopy.kernel.function_interface import ManglerCallable
 
-                # creating arg_id_to_dtype, arg_id_to_descr from arg_dtypes
-                arg_id_to_dtype = dict((i, dt.with_target(self.kernel.target))
-                        for i, dt in enumerate(mangle_result.arg_dtypes))
-                arg_id_to_dtype.update(dict((-i-1,
-                    dtype.with_target(self.kernel.target)) for i, dtype in enumerate(
-                        mangle_result.result_dtypes)))
+                # creating arg_id_to_dtype from arg_dtypes
+                arg_id_to_dtype = {i: dt.with_target(self.kernel.target)
+                        for i, dt in enumerate(mangle_result.arg_dtypes)}
+                arg_id_to_dtype.update({-i-1:
+                    dtype.with_target(self.kernel.target) for i, dtype in enumerate(
+                        mangle_result.result_dtypes)})
 
                 # creating the ManglerCallable object corresponding to the
                 # function.
@@ -809,11 +805,11 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         if isinstance(writer_insn, lp.Assignment):
             result = type_inf_mapper(expr, return_dtype_set=True)
         elif isinstance(writer_insn, lp.CallInstruction):
-            return_dtype_set = type_inf_mapper(expr, return_tuple=True,
+            return_dtype_sets = type_inf_mapper(expr, return_tuple=True,
                     return_dtype_set=True)
 
             result = []
-            for return_dtype_set in return_dtype_set:
+            for return_dtype_set in return_dtype_sets:
                 result_i = None
                 found = False
                 for assignee, comp_dtype_set in zip(
@@ -893,7 +889,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx,
     names_for_type_inference = []
 
     import loopy as lp
-    for tv in six.itervalues(kernel.temporary_variables):
+    for tv in kernel.temporary_variables.values():
         assert tv.dtype is not lp.auto
         if tv.dtype is None:
             names_for_type_inference.append(tv.name)
@@ -910,15 +906,15 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx,
 
     writer_map = kernel.writer_map()
 
-    dep_graph = dict(
-            (written_var, set(
+    dep_graph = {
+            written_var: {
                 read_var
                 for insn_id in writer_map.get(written_var, [])
                 for read_var in kernel.id_to_insn[insn_id].read_dependency_names()
-                if read_var in names_for_type_inference))
-            for written_var in names_for_type_inference)
+                if read_var in names_for_type_inference}
+            for written_var in names_for_type_inference}
 
-    from loopy.tools import compute_sccs
+    from pytools.graph import compute_sccs
 
     # To speed up processing, we sort the variables by computing the SCCs of the
     # type dependency graph. Each SCC represents a set of variables whose types

@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -25,7 +23,6 @@ THE SOFTWARE.
 import logging
 logger = logging.getLogger(__name__)
 
-import six
 import islpy as isl
 
 from collections import OrderedDict
@@ -43,6 +40,22 @@ from functools import reduce
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 from pytools import ProcessLogger, memoize_method
+
+__doc__ = """
+.. currentmodule:: loopy.codegen
+
+.. autoclass:: ImplementedDataInfo
+
+.. autoclass:: PreambleInfo
+
+.. autoclass:: VectorizationInfo
+
+.. autoclass:: SeenFunction
+
+.. autoclass:: CodeGenerationState
+
+.. automodule:: loopy.codegen.result
+"""
 
 
 # {{{ implemented data info
@@ -123,7 +136,7 @@ class Unvectorizable(Exception):
     pass
 
 
-class VectorizationInfo(object):
+class VectorizationInfo:
     """
     .. attribute:: iname
     .. attribute:: length
@@ -152,7 +165,7 @@ class SeenFunction(ImmutableRecord):
                 arg_dtypes=arg_dtypes)
 
 
-class CodeGenerationState(object):
+class CodeGenerationState:
     """
     .. attribute:: kernel
     .. attribute:: target
@@ -496,9 +509,8 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
             raise ValueError("argument type not understood: '%s'" % type(arg))
 
     allow_complex = False
-    for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):
-        dtype = var.dtype
-        if dtype.involves_complex():
+    for var in kernel.args + list(kernel.temporary_variables.values()):
+        if var.dtype.involves_complex():
             allow_complex = True
 
     # }}}
@@ -543,10 +555,12 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
 
     # {{{ handle preambles
 
-    for arg in kernel.args:
-        seen_dtypes.add(arg.dtype)
-    for tv in six.itervalues(kernel.temporary_variables):
-        seen_dtypes.add(tv.dtype)
+    for idi in codegen_state.implemented_data_info:
+        seen_dtypes.add(idi.dtype)
+
+    for tv in kernel.temporary_variables.values():
+        for idi in tv.decl_info(kernel.target, index_dtype=kernel.index_dtype):
+            seen_dtypes.add(idi.dtype)
 
     preambles = kernel.preambles[:]
 
@@ -591,12 +605,12 @@ def diverge_callee_entrypoints(program):
     new_callables = {}
     renames = {}
 
-    vng = UniqueNameGenerator(set(six.iterkeys(program.callables_table)))
+    vng = UniqueNameGenerator(set(program.callables_table.keys()))
 
     for clbl_id in callable_ids & program.entrypoints:
         renames[clbl_id] = vng(based_on=clbl_id)
 
-    for name, clbl in six.iteritems(program.callables_table):
+    for name, clbl in program.callables_table.items():
         if isinstance(clbl, CallableKernel):
             from loopy.program import (
                     rename_resolved_functions_in_a_single_kernel)
@@ -644,7 +658,7 @@ def generate_code_v2(program):
 
     new_callables = {}
 
-    for name, clbl in six.iteritems(program.callables_table):
+    for name, clbl in program.callables_table.items():
         if isinstance(clbl, CallableKernel):
             from loopy.schedule import get_one_scheduled_kernel
             knl = clbl.subkernel
@@ -667,7 +681,7 @@ def generate_code_v2(program):
     callee_fdecls = []
     implemented_data_infos = OrderedDict()
 
-    for func_id, in_knl_callable in six.iteritems(program.callables_table):
+    for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             #FIXME:
             # 1. Diverge the kernels which are both entrypoint and callees at this

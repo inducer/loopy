@@ -1,6 +1,5 @@
 """OpenCL target independent of PyOpenCL."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -27,7 +26,7 @@ THE SOFTWARE.
 import numpy as np
 import six
 
-from loopy.target.c import CTarget, CASTBuilder
+from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from pytools import memoize_method
 from loopy.diagnostic import LoopyError
@@ -49,7 +48,7 @@ class DTypeRegistryWrapperWithAtomics(DTypeRegistryWrapper):
                 return super(self.wrapped_registry.get_or_register_dtype(
                         names, NumpyType(dtype.dtype)))
 
-        return super(DTypeRegistryWrapperWithAtomics, self).get_or_register_dtype(
+        return super().get_or_register_dtype(
                 names, dtype)
 
 
@@ -60,7 +59,7 @@ class DTypeRegistryWrapperWithCL1Atomics(DTypeRegistryWrapperWithAtomics):
         if isinstance(dtype, AtomicNumpyType):
             return "volatile " + self.wrapped_registry.dtype_to_ctype(dtype)
         else:
-            return super(DTypeRegistryWrapperWithCL1Atomics, self).dtype_to_ctype(
+            return super().dtype_to_ctype(
                     dtype)
 
 # }}}
@@ -82,16 +81,16 @@ def _create_vector_types():
     counts = [2, 3, 4, 8, 16]
 
     for base_name, base_type in [
-            ('char', np.int8),
-            ('uchar', np.uint8),
-            ('short', np.int16),
-            ('ushort', np.uint16),
-            ('int', np.int32),
-            ('uint', np.uint32),
-            ('long', np.int64),
-            ('ulong', np.uint64),
-            ('float', np.float32),
-            ('double', np.float64),
+            ("char", np.int8),
+            ("uchar", np.uint8),
+            ("short", np.int16),
+            ("ushort", np.uint16),
+            ("int", np.int32),
+            ("uint", np.uint32),
+            ("long", np.int64),
+            ("ulong", np.uint64),
+            ("float", np.float32),
+            ("double", np.float64),
             ]:
         for count in counts:
             name = "%s%d" % (base_name, count)
@@ -149,22 +148,22 @@ _CL_SIMPLE_MULTI_ARG_FUNCTIONS = {
         }
 
 
-VECTOR_LITERAL_FUNCS = dict(
-        ("make_%s%d" % (name, count), (name, dtype, count))
+VECTOR_LITERAL_FUNCS = {
+        "make_%s%d" % (name, count): (name, dtype, count)
         for name, dtype in [
-            ('char', np.int8),
-            ('uchar', np.uint8),
-            ('short', np.int16),
-            ('ushort', np.uint16),
-            ('int', np.int32),
-            ('uint', np.uint32),
-            ('long', np.int64),
-            ('ulong', np.uint64),
-            ('float', np.float32),
-            ('double', np.float64),
+            ("char", np.int8),
+            ("uchar", np.uint8),
+            ("short", np.int16),
+            ("ushort", np.uint16),
+            ("int", np.int32),
+            ("uint", np.uint32),
+            ("long", np.int64),
+            ("ulong", np.uint64),
+            ("float", np.float32),
+            ("double", np.float64),
             ]
         for count in [2, 3, 4, 8, 16]
-        )
+        }
 
 
 class OpenCLCallable(ScalarCallable):
@@ -188,9 +187,9 @@ class OpenCLCallable(ScalarCallable):
                     [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
                         if (id >= 0 and dtype is not None)])
 
-            if common_dtype.kind in ['u', 'i', 'f']:
-                if common_dtype.kind == 'f':
-                    name = 'f'+name
+            if common_dtype.kind in ["u", "i", "f"]:
+                if common_dtype.kind == "f":
+                    name = "f"+name
 
                 target = [dtype.target for dtype in six.itervalues(arg_id_to_dtype)
                         if (id >= 0 and dtype is not None)][0]
@@ -247,8 +246,8 @@ class OpenCLCallable(ScalarCallable):
                 raise LoopyError("%s does not support complex numbers"
                         % name)
 
-            updated_arg_id_to_dtype = dict((id, NumpyType(dtype)) for id in range(-1,
-                num_args))
+            updated_arg_id_to_dtype = {id: NumpyType(dtype) for id in range(-1,
+                num_args)}
 
             return (
                     self.copy(name_in_target=name,
@@ -271,8 +270,8 @@ class OpenCLCallable(ScalarCallable):
                             self.copy(arg_id_to_dtype=arg_id_to_dtype),
                             callables_table)
 
-            updated_arg_id_to_dtype = dict((id, NumpyType(dtype)) for id in
-                    range(count))
+            updated_arg_id_to_dtype = {id: NumpyType(dtype) for id in
+                    range(count)}
             updated_arg_id_to_dtype[-1] = OpenCLTarget().vector_dtype(
                         NumpyType(dtype), count)
 
@@ -293,7 +292,7 @@ def get_opencl_callables():
     Returns an instance of :class:`InKernelCallable` if the function defined by
     *identifier* is known in OpenCL.
     """
-    opencl_function_ids = set(["max", "min", "dot"]) | set(
+    opencl_function_ids = {"max", "min", "dot"} | set(
             _CL_SIMPLE_MULTI_ARG_FUNCTIONS) | set(VECTOR_LITERAL_FUNCS)
 
     return dict((id_, OpenCLCallable(name=id_)) for id_ in
@@ -384,7 +383,7 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
 
 # {{{ target
 
-class OpenCLTarget(CTarget):
+class OpenCLTarget(CFamilyTarget):
     """A target for the OpenCL C heterogeneous compute programming language.
     """
 
@@ -395,7 +394,7 @@ class OpenCLTarget(CTarget):
             for floating point), ``"cl1-exch"`` (OpenCL 1.1 atomics, using
             double-exchange for floating point--not yet supported).
         """
-        super(OpenCLTarget, self).__init__()
+        super().__init__()
 
         if atomics_flavor is None:
             atomics_flavor = "cl1"
@@ -442,25 +441,25 @@ class OpenCLTarget(CTarget):
 
 # {{{ ast builder
 
-class OpenCLCASTBuilder(CASTBuilder):
+class OpenCLCASTBuilder(CFamilyASTBuilder):
     # {{{ library
 
     @property
     def known_callables(self):
-        callables = super(OpenCLCASTBuilder, self).known_callables
+        callables = super().known_callables
         callables.update(get_opencl_callables())
         return callables
 
     def symbol_manglers(self):
         return (
-                super(OpenCLCASTBuilder, self).symbol_manglers() + [
+                super().symbol_manglers() + [
                     opencl_symbol_mangler
                     ])
 
     def preamble_generators(self):
 
         return (
-                super(OpenCLCASTBuilder, self).preamble_generators() + [
+                super().preamble_generators() + [
                     opencl_preamble_generator])
 
     # }}}
@@ -469,7 +468,7 @@ class OpenCLCASTBuilder(CASTBuilder):
 
     def get_function_declaration(self, codegen_state, codegen_result,
             schedule_index):
-        fdecl = super(OpenCLCASTBuilder, self).get_function_declaration(
+        fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
         from loopy.target.c import FunctionDeclarationWrapper
@@ -534,7 +533,7 @@ class OpenCLCASTBuilder(CASTBuilder):
             mem_kind = mem_kind.upper()
 
             from cgen import Statement
-            return Statement("barrier(CLK_%s_MEM_FENCE)%s" % (mem_kind, comment))
+            return Statement(f"barrier(CLK_{mem_kind}_MEM_FENCE){comment}")
         elif synchronization_kind == "global":
             raise LoopyError("OpenCL does not have global barriers")
         else:
@@ -559,13 +558,13 @@ class OpenCLCASTBuilder(CASTBuilder):
         from loopy.kernel.data import AddressSpace
 
         if mem_address_space == AddressSpace.LOCAL:
-            return CLLocal(super(OpenCLCASTBuilder, self).get_array_arg_decl(
+            return CLLocal(super().get_array_arg_decl(
                 name, mem_address_space, shape, dtype, is_written))
         elif mem_address_space == AddressSpace.PRIVATE:
-            return super(OpenCLCASTBuilder, self).get_array_arg_decl(
+            return super().get_array_arg_decl(
                 name, mem_address_space, shape, dtype, is_written)
         elif mem_address_space == AddressSpace.GLOBAL:
-            return CLGlobal(super(OpenCLCASTBuilder, self).get_array_arg_decl(
+            return CLGlobal(super().get_array_arg_decl(
                 name, mem_address_space, shape, dtype, is_written))
         else:
             raise ValueError("unexpected array argument scope: %s"
@@ -632,8 +631,10 @@ class OpenCLCASTBuilder(CASTBuilder):
             from loopy.kernel.data import TemporaryVariable, AddressSpace
             ecm = codegen_state.expression_to_code_mapper.with_assignments(
                     {
-                        old_val_var: TemporaryVariable(old_val_var, lhs_dtype),
-                        new_val_var: TemporaryVariable(new_val_var, lhs_dtype),
+                        old_val_var: TemporaryVariable(old_val_var, lhs_dtype,
+                            shape=()),
+                        new_val_var: TemporaryVariable(new_val_var, lhs_dtype,
+                            shape=()),
                         })
 
             lhs_expr_code = ecm(lhs_expr, prec=PREC_NONE, type_context=None)
@@ -693,7 +694,7 @@ class OpenCLCASTBuilder(CASTBuilder):
 
                 old_val = "*(%s *) &" % ctype + old_val
                 new_val = "*(%s *) &" % ctype + new_val
-                cast_str = "(%s %s *) " % (var_kind, ctype)
+                cast_str = f"({var_kind} {ctype} *) "
 
             return Block([
                 POD(self, NumpyType(lhs_dtype.dtype, target=self.target),

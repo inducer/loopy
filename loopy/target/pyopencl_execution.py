@@ -1,5 +1,3 @@
-from __future__ import division, with_statement, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from six.moves import range, zip
 
 from pytools import memoize_method
 from pytools.py_codegen import Indentation
@@ -50,14 +47,14 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             # ignored if options.no_numpy
             "out_host=None"
             ]
-        super(PyOpenCLExecutionWrapperGenerator, self).__init__(system_args)
+        super().__init__(system_args)
 
     def python_dtype_str(self, dtype):
         import pyopencl.tools as cl_tools
         if dtype.isbuiltin:
             return "_lpy_np."+dtype.name
         else:
-            return ("_lpy_cl_tools.get_or_register_dtype(\"%s\")"
+            return ('_lpy_cl_tools.get_or_register_dtype("%s")'
                     % cl_tools.dtype_to_ctype(dtype))
 
     # {{{ handle non-numpy args
@@ -65,6 +62,8 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
     def handle_non_numpy_arg(self, gen, arg):
         gen("if isinstance(%s, _lpy_np.ndarray):" % arg.name)
         with Indentation(gen):
+            gen("# retain originally passed array")
+            gen(f"_lpy_{arg.name}_np_input = {arg.name}")
             gen("# synchronous, nothing to worry about")
             gen("%s = _lpy_cl_array.to_device("
                     "queue, %s, allocator=allocator)"
@@ -73,16 +72,20 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         gen("elif %s is not None:" % arg.name)
         with Indentation(gen):
             gen("_lpy_encountered_dev = True")
+            gen("_lpy_%s_np_input = None" % arg.name)
+        gen("else:")
+        with Indentation(gen):
+            gen("_lpy_%s_np_input = None" % arg.name)
 
         gen("")
 
     # }}}
 
-    # {{{ handle allocation of unspecified arguements
+    # {{{ handle allocation of unspecified arguments
 
     def handle_alloc(self, gen, arg, kernel_arg, strify, skip_arg_checks):
         """
-        Handle allocation of non-specified arguements for pyopencl execution
+        Handle allocation of non-specified arguments for pyopencl execution
         """
         from pymbolic import var
 
@@ -142,7 +145,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def initialize_system_args(self, gen):
         """
-        Initializes possibly empty system arguements
+        Initializes possibly empty system arguments
         """
         gen("if allocator is None:")
         with Indentation(gen):
@@ -151,7 +154,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # {{{ generate invocation
 
-    def generate_invocation(self, gen, program_name, args,
+    def generate_invocation(self, gen, kernel_name, args,
             kernel, implemented_data_info):
         if kernel.options.cl_exec_manage_array_events:
             gen("""
@@ -169,9 +172,9 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
             gen("")
 
-        gen("_lpy_evt = {program_name}({args})"
+        gen("_lpy_evt = {kernel_name}({args})"
         .format(
-            program_name=program_name,
+            kernel_name=kernel_name,
             args=", ".join(
                 ["_lpy_cl_kernels", "queue"]
                 + args
@@ -182,9 +185,8 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             from loopy.kernel.data import ArrayArg
             for arg in implemented_data_info:
                 if (issubclass(arg.arg_class, ArrayArg)
-                        and arg.base_name in (
-                            kernel.get_written_variables())):
-                    gen("{arg_name}.add_event(_lpy_evt)".format(arg_name=arg.name))
+                        and arg.base_name in kernel.get_written_variables()):
+                    gen(f"{arg.name}.add_event(_lpy_evt)")
 
     # }}}
 
@@ -201,27 +203,26 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             with Indentation(gen):
                 gen("out_host = True")
 
-            gen("if out_host:")
-            with Indentation(gen):
-                gen("pass")  # if no outputs (?!)
-                for arg in implemented_data_info:
-                    if not issubclass(arg.arg_class, KernelArgument):
-                        continue
+            for arg in implemented_data_info:
+                if not issubclass(arg.arg_class, KernelArgument):
+                    continue
 
-                    is_written = arg.base_name in (
-                            kernel.get_written_variables())
-                    if is_written:
-                        gen("%s = %s.get(queue=queue)" % (arg.name, arg.name))
+                is_written = arg.base_name in kernel.get_written_variables()
+                if is_written:
+                    np_name = "_lpy_%s_np_input" % arg.name
+                    gen("if out_host or %s is not None:" % np_name)
+                    with Indentation(gen):
+                        gen("%s = %s.get(queue=queue, ary=%s)"
+                            % (arg.name, arg.name, np_name))
 
             gen("")
 
         if options.return_dict:
             gen("return _lpy_evt, {%s}"
-                    % ", ".join("\"%s\": %s" % (arg.name, arg.name)
+                    % ", ".join(f'"{arg.name}": {arg.name}'
                         for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
-                        if arg.base_name in
-                        kernel.get_written_variables()))
+                        if arg.base_name in kernel.get_written_variables()))
         else:
             out_args = [arg
                     for arg in implemented_data_info
@@ -264,7 +265,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
             specific arguments.
         """
 
-        super(PyOpenCLKernelExecutor, self).__init__(program, entrypoint)
+        super().__init__(program, entrypoint)
 
         self.context = context
 
@@ -276,6 +277,9 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
     def get_invoker_uncached(self, program, entrypoint, codegen_result):
         generator = PyOpenCLExecutionWrapperGenerator()
         return generator(program, entrypoint, codegen_result)
+
+    def get_wrapper_generator(self):
+        return PyOpenCLExecutionWrapperGenerator()
 
     @memoize_method
     def program_info(self, entrypoint, arg_to_dtype_set=frozenset(),
@@ -315,7 +319,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
                 .build(options=program[entrypoint].options.cl_build_options))
 
         cl_kernels = _Kernels()
-        for dp in cl_program.kernel_names.split(';'):
+        for dp in cl_program.kernel_names.split(";"):
             setattr(cl_kernels, dp, getattr(cl_program, dp))
 
         return _KernelInfo(
@@ -328,7 +332,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
     def __call__(self, queue, **kwargs):
         """
         :arg allocator: a callable passed a byte count and returning
-            a :class:`pyopencl.Buffer`. A :class:`pyopencl` allocator
+            a :class:`pyopencl.Buffer`. A :mod:`pyopencl` allocator
             maybe.
         :arg wait_for: A list of :class:`pyopencl.Event` instances
             for which to wait.
@@ -358,9 +362,9 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         kwargs = self.packing_controller.unpack(kwargs)
 
-        program_info = self.program_info(kwargs['entrypoint'],
+        program_info = self.program_info(kwargs["entrypoint"],
                 self.arg_to_dtype_set(kwargs))
-        kwargs.pop('entrypoint')
+        kwargs.pop("entrypoint")
 
         return program_info.invoker(
                 program_info.cl_kernels, queue, allocator, wait_for,

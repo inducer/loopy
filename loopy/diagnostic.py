@@ -1,5 +1,3 @@
-from __future__ import division
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -60,7 +58,7 @@ def warn_with_kernel(kernel, id, text, type=LoopyWarning):
             % id)
 
     from warnings import warn
-    warn("in kernel %s: %s" % (kernel.name, text), type, stacklevel=2)
+    warn(f"in kernel {kernel.name}: {text}", type, stacklevel=2)
 
 
 warn = MovedFunctionDeprecationWrapper(warn_with_kernel)

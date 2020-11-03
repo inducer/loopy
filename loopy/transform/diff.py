@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
 __license__ = """
@@ -64,7 +62,7 @@ def func_map(i, func, args, allowed_nonsmoothness):
 
 class LoopyDiffMapper(DifferentiationMapper, RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, diff_context, diff_inames,
-            allow_nonsmoothness=None):
+            allowed_nonsmoothness=None):
         RuleAwareIdentityMapper.__init__(self, rule_mapping_context)
         DifferentiationMapper.__init__(
                 self,
@@ -167,7 +165,7 @@ class LoopyDiffMapper(DifferentiationMapper, RuleAwareIdentityMapper):
 
 # {{{ diff context
 
-class DifferentiationContext(object):
+class DifferentiationContext:
     def __init__(self, kernel, var_name_gen, by_name, diff_iname_prefix,
             additional_shape):
         self.kernel = kernel
@@ -371,7 +369,7 @@ class DifferentiationContext(object):
 
 # {{{ entrypoint
 
-def diff_kernel(knl, diff_outputs, by, diff_iname_prefix="diff_i",
+def diff_kernel(kernel, diff_outputs, by, diff_iname_prefix="diff_i",
         batch_axes_in_by=frozenset(), copy_outputs=set()):
     """
 
@@ -382,25 +380,25 @@ def diff_kernel(knl, diff_outputs, by, diff_iname_prefix="diff_i",
         *diff_context.by_name*, or *None* if no dependency exists.
     """
 
-    assert isinstance(knl, LoopKernel)
+    assert isinstance(kernel, LoopKernel)
 
     from loopy.kernel.creation import apply_single_writer_depencency_heuristic
-    knl = apply_single_writer_depencency_heuristic(knl, warn_if_used=True)
+    kernel = apply_single_writer_depencency_heuristic(kernel, warn_if_used=True)
 
     if isinstance(diff_outputs, str):
         diff_outputs = [
                 dout.strip() for dout in diff_outputs.split(",")
                 if dout.strip()]
 
-    by_arg = knl.arg_dict[by]
+    by_arg = kernel.arg_dict[by]
     additional_shape = by_arg.shape
 
-    var_name_gen = knl.get_var_name_generator()
+    var_name_gen = kernel.get_var_name_generator()
 
     # {{{ differentiate instructions
 
     diff_context = DifferentiationContext(
-            knl, var_name_gen, by, diff_iname_prefix=diff_iname_prefix,
+            kernel, var_name_gen, by, diff_iname_prefix=diff_iname_prefix,
             additional_shape=additional_shape)
 
     result = {}

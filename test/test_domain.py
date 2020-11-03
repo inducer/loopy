@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,9 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six  # noqa
-from six.moves import range  # noqa
 
 import sys
 import numpy as np
@@ -104,7 +99,7 @@ def test_eq_constraint(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-            "{[i,j]: 0<= i,j < 32}",
+            "{[i]: 0<= i < 32}",
             [
                 "a[i] = b[i]"
                 ],
@@ -300,7 +295,7 @@ def test_equality_constraints(ctx_factory):
             ],
             [
                 "a[i,j] = 5 {id=set_all}",
-                "b[i,k] = 22 {dep=set_all}",
+                "b[i,k] = 22 {id=set_b, dep=set_all}",
                 ],
             [
                 lp.GlobalArg("a,b", dtype, shape="n, n", order=order),
@@ -312,6 +307,9 @@ def test_equality_constraints(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.0")
     knl = lp.split_iname(knl, "j", 16, outer_tag="g.1", inner_tag="l.1")
+
+    knl = lp.add_inames_to_insn(knl, "j_inner, j_outer", "id:set_b")
+
     #print(knl)
     #print(knl.domains[0].detect_equalities())
 

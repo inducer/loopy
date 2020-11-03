@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,8 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six  # noqa
 
 from loopy.diagnostic import LoopyError
 from islpy import dim_type
@@ -290,15 +286,15 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
     if temporary_name is None:
         temporary_name = var_name_gen("%s_fetch" % c_name)
 
-    arg = kernel.arg_dict[var_name]
+    var_descr = kernel.get_var_descriptor(var_name)
 
     # {{{ make parameter names and unification template
 
     parameters = []
-    for i in range(arg.num_user_axes()):
+    for i in range(var_descr.num_user_axes()):
         based_on = "%s_dim_%d" % (c_name, i)
-        if arg.dim_names is not None:
-            based_on = "%s_dim_%s" % (c_name, arg.dim_names[i])
+        if var_descr.dim_names is not None:
+            based_on = "{}_dim_{}".format(c_name, var_descr.dim_names[i])
         if dim_arg_names is not None and i < len(dim_arg_names):
             based_on = dim_arg_names[i]
 
@@ -327,7 +323,7 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
     kernel, subst_use, sweep_inames, inames_to_be_removed = \
             _process_footprint_subscripts(
                     kernel,  rule_name, sweep_inames,
-                    footprint_subscripts, arg)
+                    footprint_subscripts, var_descr)
 
     # Our _not_provided is actually a different object from the one in the
     # precompute module, but precompute acutally uses that to adjust its
@@ -336,7 +332,7 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
     from loopy.transform.precompute import precompute_for_single_kernel
     new_kernel = precompute_for_single_kernel(kernel, callables_table,
             subst_use, sweep_inames, precompute_inames=dim_arg_names,
-            default_tag=default_tag, dtype=arg.dtype,
+            default_tag=default_tag, dtype=var_descr.dtype,
             fetch_bounding_box=fetch_bounding_box,
             temporary_name=temporary_name,
             temporary_address_space=temporary_address_space,
@@ -396,9 +392,9 @@ def add_prefetch(program, *args, **kwargs):
 
 # {{{ change variable kinds
 
-def change_arg_to_image(knl, name):
+def change_arg_to_image(kernel, name):
     new_args = []
-    for arg in knl.args:
+    for arg in kernel.args:
         if arg.name == name:
             assert arg.offset == 0
             assert arg.shape is not None
@@ -406,7 +402,7 @@ def change_arg_to_image(knl, name):
         else:
             new_args.append(arg)
 
-    return knl.copy(args=new_args)
+    return kernel.copy(args=new_args)
 
 # }}}
 
@@ -414,11 +410,11 @@ def change_arg_to_image(knl, name):
 # {{{ tag array axes
 
 @iterate_over_kernels_if_given_program
-def tag_array_axes(knl, ary_names, dim_tags):
+def tag_array_axes(kernel, ary_names, dim_tags):
     """
     :arg dim_tags: a tuple of
         :class:`loopy.kernel.array.ArrayDimImplementationTag` or a string that
-        parses to one. See :func:`loopy.kernel.array.parse_dim_tags` for a
+        parses to one. See :func:`loopy.kernel.array.parse_array_dim_tags` for a
         description of the allowed string format.
 
         For example, *dim_tags* could be ``"N2,N0,N1"`` to determine
@@ -427,7 +423,7 @@ def tag_array_axes(knl, ary_names, dim_tags):
 
     .. versionchanged:: 2016.2
 
-        This function was called :func:`tag_data_axes` before version 2016.2.
+        This function was called ``tag_data_axes`` before version 2016.2.
     """
 
     from loopy.kernel.tools import ArrayChanger
@@ -436,7 +432,7 @@ def tag_array_axes(knl, ary_names, dim_tags):
         ary_names = [ary_name.strip() for ary_name in ary_names.split(",")]
 
     for ary_name in ary_names:
-        achng = ArrayChanger(knl, ary_name)
+        achng = ArrayChanger(kernel, ary_name)
         ary = achng.get()
 
         from loopy.kernel.array import parse_array_dim_tags
@@ -447,9 +443,9 @@ def tag_array_axes(knl, ary_names, dim_tags):
 
         ary = ary.copy(dim_tags=tuple(new_dim_tags))
 
-        knl = achng.with_changed_array(ary)
+        kernel = achng.with_changed_array(ary)
 
-    return knl
+    return kernel
 
 
 tag_data_axes = (
@@ -465,7 +461,7 @@ def set_array_axis_names(kernel, ary_names, dim_names):
     """
     .. versionchanged:: 2016.2
 
-        This function was called :func:`set_array_dim_names` before version 2016.2.
+        This function was called ``set_array_dim_names`` before version 2016.2.
     """
     from loopy.kernel.tools import ArrayChanger
     if isinstance(ary_names, str):
@@ -494,14 +490,14 @@ set_array_dim_names = (MovedFunctionDeprecationWrapper(
 # {{{ remove_unused_arguments
 
 @iterate_over_kernels_if_given_program
-def remove_unused_arguments(knl):
+def remove_unused_arguments(kernel):
     new_args = []
 
     import loopy as lp
-    exp_knl = lp.expand_subst(knl)
+    exp_kernel = lp.expand_subst(kernel)
 
-    refd_vars = set(knl.all_params())
-    for insn in exp_knl.instructions:
+    refd_vars = set(kernel.all_params())
+    for insn in exp_kernel.instructions:
         refd_vars.update(insn.dependency_names())
 
     from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
@@ -513,7 +509,7 @@ def remove_unused_arguments(knl):
             return set()
         return get_dependencies(expr)
 
-    for ary in chain(knl.args, six.itervalues(knl.temporary_variables)):
+    for ary in chain(kernel.args, kernel.temporary_variables.values()):
         if isinstance(ary, ArrayBase):
             refd_vars.update(
                     tolerant_get_deps(ary.shape)
@@ -524,11 +520,11 @@ def remove_unused_arguments(knl):
                     refd_vars.update(
                             tolerant_get_deps(dim_tag.stride))
 
-    for arg in knl.args:
+    for arg in kernel.args:
         if arg.name in refd_vars:
             new_args.append(arg)
 
-    return knl.copy(args=new_args)
+    return kernel.copy(args=new_args)
 
 # }}}
 
@@ -536,7 +532,7 @@ def remove_unused_arguments(knl):
 # {{{ alias_temporaries
 
 @iterate_over_kernels_if_given_program
-def alias_temporaries(knl, names, base_name_prefix=None,
+def alias_temporaries(kernel, names, base_name_prefix=None,
         synchronize_for_exclusive_use=True):
     """Sets all temporaries given by *names* to be backed by a single piece of
     storage.
@@ -556,20 +552,20 @@ def alias_temporaries(knl, names, base_name_prefix=None,
         ``synchronize_for_exclusive_use=True`` was the previous default
         behavior.
     """
-    gng = knl.get_group_name_generator()
+    gng = kernel.get_group_name_generator()
     group_names = [gng("tmpgrp_"+name) for name in names]
 
     if base_name_prefix is None:
         base_name_prefix = "temp_storage"
 
-    vng = knl.get_var_name_generator()
+    vng = kernel.get_var_name_generator()
     base_name = vng(base_name_prefix)
 
     names_set = set(names)
 
     if synchronize_for_exclusive_use:
         new_insns = []
-        for insn in knl.instructions:
+        for insn in kernel.instructions:
             temp_deps = insn.dependency_names() & names_set
 
             if not temp_deps:
@@ -596,10 +592,10 @@ def alias_temporaries(knl, names, base_name_prefix=None,
                         conflicts_with_groups=(
                             insn.conflicts_with_groups | other_group_names)))
     else:
-        new_insns = knl.instructions
+        new_insns = kernel.instructions
 
     new_temporary_variables = {}
-    for tv in six.itervalues(knl.temporary_variables):
+    for tv in kernel.temporary_variables.values():
         if tv.name in names_set:
             if tv.base_storage is not None:
                 raise LoopyError("temporary variable '{tv}' already has "
@@ -611,7 +607,7 @@ def alias_temporaries(knl, names, base_name_prefix=None,
         else:
             new_temporary_variables[tv.name] = tv
 
-    return knl.copy(
+    return kernel.copy(
             instructions=new_insns,
             temporary_variables=new_temporary_variables)
 
@@ -684,7 +680,7 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
             kernel.substitutions, var_name_gen)
     smap = RuleAwareSubstitutionMapper(rule_mapping_context,
                     make_subst_func(subst_dict),
-                    within=lambda knl, insn, stack: True)
+                    within=lambda kernel, insn, stack: True)
 
     kernel = smap.map_kernel(kernel)
 
@@ -708,7 +704,7 @@ def set_temporary_scope(kernel, temp_var_names, scope):
     :arg temp_var_names: a container with membership checking,
         or a comma-separated string of variables for which the
         scope is to be set.
-    :arg scope: One of the values from :class:`AddressSpace`, or one
+    :arg scope: One of the values from :class:`loopy.AddressSpace`, or one
         of the strings ``"private"``, ``"local"``, or ``"global"``.
     """
 
@@ -745,15 +741,16 @@ def set_temporary_scope(kernel, temp_var_names, scope):
 # {{{ reduction_arg_to_subst_rule
 
 @iterate_over_kernels_if_given_program
-def reduction_arg_to_subst_rule(knl, inames, insn_match=None, subst_rule_name=None):
+def reduction_arg_to_subst_rule(
+        kernel, inames, insn_match=None, subst_rule_name=None):
     if isinstance(inames, str):
         inames = [s.strip() for s in inames.split(",")]
 
     inames_set = frozenset(inames)
 
-    substs = knl.substitutions.copy()
+    substs = kernel.substitutions.copy()
 
-    var_name_gen = knl.get_var_name_generator()
+    var_name_gen = kernel.get_var_name_generator()
 
     def map_reduction(expr, rec, nresults=1):
         if frozenset(expr.inames) != inames_set:
@@ -794,13 +791,13 @@ def reduction_arg_to_subst_rule(knl, inames, insn_match=None, subst_rule_name=No
     from loopy.kernel.data import MultiAssignmentBase
 
     new_insns = []
-    for insn in knl.instructions:
+    for insn in kernel.instructions:
         if not isinstance(insn, MultiAssignmentBase):
             new_insns.append(insn)
         else:
             new_insns.append(insn.copy(expression=cb_mapper(insn.expression)))
 
-    return knl.copy(
+    return kernel.copy(
             instructions=new_insns,
             substitutions=substs)
 

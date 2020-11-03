@@ -1,6 +1,5 @@
 """Loop nest build top-level control/hoisting."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -24,7 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
 from collections import OrderedDict
 from loopy.codegen.result import merge_codegen_results, wrap_in_if
 import islpy as isl
@@ -32,30 +30,6 @@ from loopy.schedule import (
         EnterLoop, LeaveLoop, RunInstruction, Barrier, CallKernel,
         gather_schedule_block, generate_sub_sched_items)
 from loopy.diagnostic import LoopyError
-
-
-def get_admissible_conditional_inames_for(codegen_state, sched_index):
-    """This function disallows conditionals on local-idx tagged
-    inames if there is a barrier nested somewhere within.
-    """
-
-    kernel = codegen_state.kernel
-
-    from loopy.kernel.data import (LocalIndexTag, HardwareConcurrentTag,
-                                   filter_iname_tags_by_type)
-
-    from loopy.schedule import find_active_inames_at, has_barrier_within
-    result = find_active_inames_at(kernel, sched_index)
-
-    has_barrier = has_barrier_within(kernel, sched_index)
-
-    for iname, tags in six.iteritems(kernel.iname_to_tags):
-        if (filter_iname_tags_by_type(tags, HardwareConcurrentTag)
-                and codegen_state.is_generating_device_code):
-            if not has_barrier or not filter_iname_tags_by_type(tags, LocalIndexTag):
-                result.add(iname)
-
-    return frozenset(result)
 
 
 def synthesize_idis_for_extra_args(kernel, schedule_index):
@@ -227,14 +201,14 @@ def get_required_predicates(kernel, sched_index):
     return result
 
 
-def group_by(l, key, merge):
-    if not l:
-        return l
+def group_by(entry, key, merge):
+    if not entry:
+        return entry
 
     result = []
-    previous = l[0]
+    previous = entry[0]
 
-    for item in l[1:]:
+    for item in entry[1:]:
         if key(previous) == key(item):
             previous = merge(previous, item)
 
@@ -307,11 +281,13 @@ def build_loop_nest(codegen_state, schedule_index):
         """
 
     from loopy.schedule import find_used_inames_within
+    from loopy.codegen.bounds import get_usable_inames_for_conditional
+
     sched_index_info_entries = [
             ScheduleIndexInfo(
                 schedule_indices=[i],
                 admissible_cond_inames=(
-                    get_admissible_conditional_inames_for(codegen_state, i)),
+                    get_usable_inames_for_conditional(kernel, i)),
                 required_predicates=get_required_predicates(kernel, i),
                 used_inames_within=find_used_inames_within(kernel, i)
                 )
@@ -353,7 +329,7 @@ def build_loop_nest(codegen_state, schedule_index):
             # Each instruction individually gets its bounds checks,
             # so we can safely overapproximate here.
             return get_approximate_convex_bounds_checks(domain,
-                    check_inames, self.impl_domain)
+                    check_inames, self.impl_domain, self.kernel.cache_manager)
 
     def build_insn_group(sched_index_info_entries, codegen_state,
             done_group_lengths=set()):
@@ -499,7 +475,7 @@ def build_loop_nest(codegen_state, schedule_index):
                             sched_index_info_entries[0:group_length],
                             inner_codegen_state,
                             done_group_lengths=(
-                                done_group_lengths | set([group_length])))
+                                done_group_lengths | {group_length}))
 
             # gen_code returns a list
 

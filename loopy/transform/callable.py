@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2018 Kaushik Kulkarni"
 
 __license__ = """
@@ -21,8 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six
 
 import islpy as isl
 
@@ -117,7 +113,7 @@ class KernelInliner(SubstitutionMapper):
     """
 
     def __init__(self, subst_func, caller, arg_map, arg_dict):
-        super(KernelInliner, self).__init__(subst_func)
+        super().__init__(subst_func)
         self.caller = caller
         self.arg_map = arg_map
         self.arg_dict = arg_dict
@@ -141,11 +137,12 @@ class KernelInliner(SubstitutionMapper):
             from numbers import Integral
             if not all(isinstance(d, Integral) for d in callee_arg.shape):
                 raise LoopyError(
-                    "Argument: {0} in callee kernel does not have "
+                    "Argument: {} in callee kernel does not have "
                     "constant shape.".format(callee_arg))
 
             flatten_index = 0
-            for i, idx in enumerate(sar.get_begin_subscript(
+            from loopy.symbolic import get_start_subscript_from_sar
+            for i, idx in enumerate(get_start_subscript_from_sar(sar,
                     self.caller).index_tuple):
                 flatten_index += idx*caller_arg.dim_tags[i].stride
 
@@ -166,7 +163,7 @@ class KernelInliner(SubstitutionMapper):
 
             return aggregate.index(tuple(new_indices))
         else:
-            return super(KernelInliner, self).map_subscript(expr)
+            return super().map_subscript(expr)
 
 # }}}
 
@@ -215,7 +212,7 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
 
     temp_map = {}
     new_temps = kernel.temporary_variables.copy()
-    for name, temp in six.iteritems(callee_knl.temporary_variables):
+    for name, temp in callee_knl.temporary_variables.items():
         new_name = vng(callee_label+name)
         temp_map[name] = new_name
         new_temps[new_name] = temp.copy(name=new_name)
@@ -241,7 +238,7 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
     else:
         kw_parameters = {}
 
-    for kw, par in six.iteritems(kw_parameters):
+    for kw, par in kw_parameters.items():
         arg_map[kw] = par
 
     for i, par in enumerate(parameters):
@@ -259,11 +256,11 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
     import pymbolic.primitives as p
     from pymbolic.mapper.substitutor import make_subst_func
 
-    var_map = dict((p.Variable(k), p.Variable(v))
-                   for k, v in six.iteritems(iname_map))
-    var_map.update(dict((p.Variable(k), p.Variable(v))
-                        for k, v in six.iteritems(temp_map)))
-    for k, v in six.iteritems(arg_map):
+    var_map = {p.Variable(k): p.Variable(v)
+                   for k, v in iname_map.items()}
+    var_map.update({p.Variable(k): p.Variable(v)
+                        for k, v in temp_map.items()})
+    for k, v in arg_map.items():
         if isinstance(v, SubArrayRef):
             var_map[p.Variable(k)] = v.subscript.aggregate
         else:
@@ -280,10 +277,10 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
 
     dep_map = callee_knl.recursive_insn_dep_map()
     # roots depend on nothing
-    heads = set(insn for insn, deps in six.iteritems(dep_map) if not deps)
+    heads = {insn for insn, deps in dep_map.items() if not deps}
     # leaves have nothing that depends on them
     tails = set(dep_map.keys())
-    for insn, deps in six.iteritems(dep_map):
+    for insn, deps in dep_map.items():
         tails = tails - deps
 
     # }}}
@@ -313,7 +310,7 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
         depends_on = frozenset(map(insn_id.get, insn.depends_on)) | (
                 instruction.depends_on)
         if insn.id in heads:
-            depends_on = depends_on | set([noop_start.id])
+            depends_on = depends_on | {noop_start.id}
 
         new_atomicity = tuple(
                 type(atomicity)(var_map[p.Variable(atomicity.var_name)].name)
@@ -394,7 +391,7 @@ def inline_callable_kernel(program, function_name):
     new_callables = {}
     callee = program[function_name]
 
-    for func_id, in_knl_callable in six.iteritems(callables_table):
+    for func_id, in_knl_callable in callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             caller = in_knl_callable.subkernel
             in_knl_callable = in_knl_callable.copy(
@@ -437,7 +434,7 @@ class DimChanger(IdentityMapper):
 
     def map_subscript(self, expr):
         if expr.aggregate.name not in self.callee_arg_dict:
-            return super(DimChanger, self).map_subscript(expr)
+            return super().map_subscript(expr)
         callee_arg_dim_tags = self.callee_arg_dict[expr.aggregate.name].dim_tags
         flattened_index = sum(dim_tag.stride*idx for dim_tag, idx in
                 zip(callee_arg_dim_tags, expr.index_tuple))
@@ -484,7 +481,7 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
                 get_kw_pos_association)
         _, pos_to_kw = get_kw_pos_association(callee_knl)
         arg_id_to_shape = {}
-        for arg_id, arg in six.iteritems(insn.arg_id_to_val()):
+        for arg_id, arg in insn.arg_id_to_val().items():
             arg_id = pos_to_kw[arg_id]
 
             arg_descr = get_arg_descriptor_for_expression(caller_knl, arg)

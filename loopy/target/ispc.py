@@ -1,6 +1,5 @@
 """Target for Intel ISPC."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -26,7 +25,7 @@ THE SOFTWARE.
 
 
 import numpy as np  # noqa
-from loopy.target.c import CTarget, CASTBuilder
+from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.diagnostic import LoopyError
 from loopy.symbolic import Literal
@@ -93,7 +92,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
                 return expr
 
         else:
-            return super(ExprToISPCExprMapper, self).map_variable(
+            return super().map_variable(
                     expr, type_context)
 
     def map_subscript(self, expr, type_context):
@@ -117,7 +116,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
 
                 subscript, = access_info.subscripts
                 result = var(access_info.array_name)[
-                        var("programIndex") + self.rec(lsize*subscript, 'i')]
+                        var("programIndex") + self.rec(lsize*subscript, "i")]
 
                 if access_info.vector_index is not None:
                     return self.kernel.target.add_vector_access(
@@ -125,7 +124,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
                 else:
                     return result
 
-        return super(ExprToISPCExprMapper, self).map_subscript(
+        return super().map_subscript(
                 expr, type_context)
 
 # }}}
@@ -154,7 +153,7 @@ def fill_registry_with_ispc_types(reg, respect_windows, include_bool=True):
 # }}}
 
 
-class ISPCTarget(CTarget):
+class ISPCTarget(CFamilyTarget):
     """A code generation target for Intel's `ISPC <https://ispc.github.io/>`_
     SPMD programming language, to target Intel's Knight's hardware and modern
     Intel CPUs with wide vector units.
@@ -167,7 +166,7 @@ class ISPCTarget(CTarget):
         """
         self.occa_mode = occa_mode
 
-        super(ISPCTarget, self).__init__()
+        super().__init__()
 
     host_program_name_suffix = ""
     device_program_name_suffix = "_inner"
@@ -201,7 +200,7 @@ class ISPCTarget(CTarget):
     # }}}
 
 
-class ISPCASTBuilder(CASTBuilder):
+class ISPCASTBuilder(CFamilyASTBuilder):
     def _arg_names_and_decls(self, codegen_state):
         implemented_data_info = codegen_state.implemented_data_info
         arg_names = [iai.name for iai in implemented_data_info]
@@ -274,7 +273,7 @@ class ISPCASTBuilder(CASTBuilder):
         result.append(
                 ISPCLaunch(
                     tuple(ecm(gs_i, PREC_NONE) for gs_i in gsize),
-                    "%s(%s)" % (
+                    "{}({})".format(
                         name,
                         ", ".join(arg_names)
                         )))
@@ -352,7 +351,7 @@ class ISPCASTBuilder(CASTBuilder):
                 dtype, is_written)
 
     def get_value_arg_decl(self, name, shape, dtype, is_written):
-        result = super(ISPCASTBuilder, self).get_value_arg_decl(
+        result = super().get_value_arg_decl(
                 name, shape, dtype, is_written)
 
         from cgen import Reference, Const
@@ -476,7 +475,7 @@ class ISPCASTBuilder(CASTBuilder):
                     "streaming_store(%s + %s, %s)"
                     % (
                         access_info.array_name,
-                        ecm(flattened_sum(new_terms), PREC_NONE, 'i'),
+                        ecm(flattened_sum(new_terms), PREC_NONE, "i"),
                         rhs_code))
 
         # }}}

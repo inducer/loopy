@@ -1,9 +1,5 @@
 """OpenCL target integrated with PyOpenCL."""
 
-from __future__ import division, absolute_import
-
-import sys
-
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
 __license__ = """
@@ -25,9 +21,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six
-from six.moves import range
 
 import numpy as np
 
@@ -55,7 +48,7 @@ def adjust_local_temp_var_storage(kernel, device):
     from loopy.kernel.data import AddressSpace
 
     lmem_size = cl_char.usable_local_mem_size(device)
-    for temp_var in six.itervalues(kernel.temporary_variables):
+    for temp_var in kernel.temporary_variables.values():
         if temp_var.address_space != AddressSpace.LOCAL:
             new_temp_vars[temp_var.name] = \
                     temp_var.copy(storage_shape=temp_var.shape)
@@ -68,7 +61,7 @@ def adjust_local_temp_var_storage(kernel, device):
 
         other_loctemp_nbytes = [
                 tv.nbytes
-                for tv in six.itervalues(kernel.temporary_variables)
+                for tv in kernel.temporary_variables.values()
                 if tv.address_space == AddressSpace.LOCAL
                 and tv.name != temp_var.name]
 
@@ -236,7 +229,7 @@ class PyOpenCLCallable(ScalarCallable):
                     raise LoopyTypeError("unexpected complex type '%s'" % dtype)
 
                 return (
-                        self.copy(name_in_target="%s_%s" % (tpname, name),
+                        self.copy(name_in_target=f"{tpname}_{name}",
                             arg_id_to_dtype={0: dtype, -1: NumpyType(
                                 np.dtype(dtype.numpy_dtype.type(0).real))}),
                         callables_table)
@@ -255,16 +248,16 @@ class PyOpenCLCallable(ScalarCallable):
                     raise LoopyTypeError("unexpected complex type '%s'" % dtype)
 
                 return (
-                        self.copy(name_in_target="%s_%s" % (tpname, name),
+                        self.copy(name_in_target=f"{tpname}_{name}",
                             arg_id_to_dtype={0: dtype, -1: dtype}),
                         callables_table)
             else:
                 # function calls for floating parameters.
                 numpy_dtype = dtype.numpy_dtype
-                if numpy_dtype.kind in ('u', 'i'):
+                if numpy_dtype.kind in ("u", "i"):
                     dtype = dtype.copy(numpy_dtype=np.float32)
-                if name == 'abs':
-                    name = 'fabs'
+                if name == "abs":
+                    name = "fabs"
                 return (
                         self.copy(name_in_target=name,
                             arg_id_to_dtype={0: dtype, -1: dtype}),
@@ -314,7 +307,7 @@ def pyopencl_preamble_generator(preamble_info):
 
 # {{{ pyopencl tools
 
-class _LegacyTypeRegistryStub(object):
+class _LegacyTypeRegistryStub:
     """Adapts legacy PyOpenCL type registry to be usable with PyOpenCLTarget."""
 
     def get_or_register_dtype(self, names, dtype=None):
@@ -336,6 +329,9 @@ class PyOpenCLTarget(OpenCLTarget):
     warnings) and support for complex numbers.
     """
 
+    # FIXME make prefixes conform to naming rules
+    # (see Reference: Loopy’s Model of a Kernel)
+
     host_program_name_prefix = "_lpy_host_"
     host_program_name_suffix = ""
 
@@ -344,22 +340,42 @@ class PyOpenCLTarget(OpenCLTarget):
         # This ensures the dtype registry is populated.
         import pyopencl.tools  # noqa
 
-        super(PyOpenCLTarget, self).__init__(
+        super().__init__(
                 atomics_flavor=atomics_flavor)
 
         self.device = device
         self.pyopencl_module_name = pyopencl_module_name
 
-    comparison_fields = ["device"]
+    # NB: Not including 'device', as that is handled specially here.
+    hash_fields = OpenCLTarget.hash_fields + (
+            "pyopencl_module_name",)
+    comparison_fields = OpenCLTarget.comparison_fields + (
+            "pyopencl_module_name",)
+
+    def __eq__(self, other):
+        if not super().__eq__(other):
+            return False
+
+        if (self.device is None) != (other.device is None):
+            return False
+
+        if self.device is not None:
+            assert other.device is not None
+            return (self.device.hashable_model_and_version_identifier
+                    == other.device.hashable_model_and_version_identifier)
+        else:
+            assert other.device is None
+            return True
 
     def update_persistent_hash(self, key_hash, key_builder):
-        super(PyOpenCLTarget, self).update_persistent_hash(key_hash, key_builder)
-        key_builder.rec(key_hash, getattr(self.device, "persistent_unique_id", None))
+        super().update_persistent_hash(key_hash, key_builder)
+        key_builder.rec(key_hash, getattr(
+            self.device, "hashable_model_and_version_identifier", None))
 
     def __getstate__(self):
         dev_id = None
         if self.device is not None:
-            dev_id = self.device.persistent_unique_id
+            dev_id = self.device.hashable_model_and_version_identifier
 
         return {
                 "device_id": dev_id,
@@ -382,7 +398,7 @@ class PyOpenCLTarget(OpenCLTarget):
                 dev
                 for plat in cl.get_platforms()
                 for dev in plat.get_devices()
-                if dev.persistent_unique_id == dev_id]
+                if dev.hashable_model_and_version_identifier == dev_id]
 
             if matches:
                 self.device = matches[0]
@@ -461,7 +477,7 @@ class PyOpenCLTarget(OpenCLTarget):
     def get_kernel_executor(self, program, queue, **kwargs):
         from loopy.target.pyopencl_execution import PyOpenCLKernelExecutor
         return PyOpenCLKernelExecutor(queue.context, program,
-                entrypoint=kwargs.pop('entrypoint'))
+                entrypoint=kwargs.pop("entrypoint"))
 
     def with_device(self, device):
         return type(self)(device)
@@ -548,12 +564,9 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
         if idi.dtype.is_integral():
             gen(Comment("cast to Python int to avoid trouble "
                 "with struct packing or Boost.Python"))
-            if sys.version_info < (3,):
-                py_type = "long"
-            else:
-                py_type = "int"
+            py_type = "int"
 
-            gen(Assign(idi.name, "%s(%s)" % (py_type, idi.name)))
+            gen(Assign(idi.name, f"{py_type}({idi.name})"))
             gen(Line())
 
         if idi.dtype.is_composite():
@@ -672,7 +685,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                 + ["wait_for=None", "allocator=None"])
 
         from genpy import (For, Function, Suite, Import, ImportAs, Return,
-                FromImport, If, Assign, Line, Statement as S)
+                FromImport, Line, Statement as S)
         return Function(
                 codegen_result.current_program(codegen_state).name,
                 args,
@@ -680,11 +693,6 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     FromImport("struct", ["pack as _lpy_pack"]),
                     ImportAs("pyopencl", "_lpy_cl"),
                     Import("pyopencl.tools"),
-                    Line(),
-                    If("allocator is None",
-                        Assign(
-                            "allocator",
-                            "_lpy_cl_tools.DeferredAllocator(queue.context)")),
                     Line(),
                     ] + [
                     Line(),
@@ -708,14 +716,14 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         from genpy import Assign, Comment, Line
 
         def alloc_nbytes(tv):
-            from six.moves import reduce
+            from functools import reduce
             from operator import mul
             return tv.dtype.numpy_dtype.itemsize * reduce(mul, tv.shape, 1)
 
         from loopy.kernel.data import AddressSpace
 
         global_temporaries = sorted(
-            (tv for tv in six.itervalues(codegen_state.kernel.temporary_variables)
+            (tv for tv in codegen_state.kernel.temporary_variables.values()
             if tv.address_space == AddressSpace.GLOBAL),
             key=lambda tv: tv.name)
 
@@ -760,6 +768,13 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         from genpy import Suite, Assign, Assert, Line, Comment
         from pymbolic.mapper.stringifier import PREC_NONE
 
+        import pyopencl.version as cl_ver
+        if cl_ver.VERSION < (2020, 2):
+            from warnings import warn
+            warn("Your kernel invocation will likely fail because your "
+                    "version of PyOpenCL does not support allow_empty_ndrange. "
+                    "Please upgrade to version 2020.2 or newer.")
+
         # TODO: Generate finer-grained dependency structure
         return Suite([
             Comment("{{{ enqueue %s" % name),
@@ -771,7 +786,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             arry_arg_code,
             Assign("_lpy_evt", "%(pyopencl_module_name)s.enqueue_nd_range_kernel("
                 "queue, _lpy_knl, "
-                "%(gsize)s, %(lsize)s,  wait_for=wait_for, g_times_l=True)"
+                "%(gsize)s, %(lsize)s,  wait_for=wait_for, "
+                "g_times_l=True, allow_empty_ndrange=True)"
                 % dict(
                     pyopencl_module_name=self.target.pyopencl_module_name,
                     gsize=ecm(gsize, prec=PREC_NONE, type_context="i"),
@@ -798,7 +814,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     @property
     def known_callables(self):
         from loopy.library.random123 import get_random123_callables
-        callables = super(PyOpenCLCASTBuilder, self).known_callables
+        callables = super().known_callables
         callables.update(get_pyopencl_callables())
         callables.update(get_random123_callables())
         return callables
@@ -806,75 +822,11 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     def preamble_generators(self):
         return ([
             pyopencl_preamble_generator,
-            ] + super(PyOpenCLCASTBuilder, self).preamble_generators())
+            ] + super().preamble_generators())
 
     # }}}
 
 # }}}
-
-
-class NvidiaPyOpenCLTarget(PyOpenCLTarget):
-    def __init__(self, device, pyopencl_module_name="_lpy_cl",
-            atomics_flavor=None):
-        import pyopencl as cl
-        assert isinstance(device, cl.Device)
-        assert device.vendor == 'NVIDIA Corporation'
-
-        super(NvidiaPyOpenCLTarget, self).__init__(device,
-                pyopencl_module_name, atomics_flavor)
-
-    def preprocess(self, kernel):
-        from loopy import set_options
-        if self.device.compute_capability_major_nv >= 6:
-            build_options = ['-cl-nv-arch', 'sm_60'] + (
-                    kernel.options.cl_build_options)
-            kernel = set_options(kernel, cl_build_options=build_options)
-        return super(NvidiaPyOpenCLTarget, self).preprocess(kernel)
-
-    def get_device_ast_builder(self):
-        # here we should have an if else condition
-        if self.device.compute_capability_major_nv >= 6:
-            return NvidiaPyOpenCLCASTBuilder(self)
-        else:
-            return super(NvidiaPyOpenCLTarget, self).get_device_ast_builder()
-
-
-class NvidiaPyOpenCLCASTBuilder(PyOpenCLCASTBuilder):
-    def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
-            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
-
-        from pymbolic.primitives import Sum
-        from cgen import Statement, Block, Assign
-        from loopy.target.c import POD
-
-        if isinstance(lhs_dtype, NumpyType) and lhs_dtype.numpy_dtype == np.float64:
-            # atomicAdd
-            if isinstance(rhs_expr, Sum):
-
-                old_val_var = codegen_state.var_name_generator("loopy_old_val")
-
-                from loopy.kernel.data import TemporaryVariable
-                ecm = codegen_state.expression_to_code_mapper.with_assignments(
-                        {
-                            old_val_var: TemporaryVariable(old_val_var, lhs_dtype),
-                            })
-
-                new_rhs_expr = Sum(tuple(c for c in rhs_expr.children
-                                         if c != lhs_expr))
-                lhs_expr_code = ecm(lhs_expr)
-                rhs_expr_code = ecm(new_rhs_expr)
-
-                return Block([
-                    POD(self, NumpyType(lhs_dtype.dtype, target=self.target),
-                        old_val_var),
-                    Assign(old_val_var, lhs_expr_code),
-                    Statement('asm volatile("atom.global.add.f64 %0, [%1], %2;" :'
-                        '"=d"({0}) : "l"(&{1}) , "d"({2}))'.format(
-                            old_val_var, lhs_expr_code, rhs_expr_code))])
-
-        return super(NvidiaPyOpenCLCASTBuilder,
-                self).emit_atomic_update(codegen_state, lhs_atomicity, lhs_var,
-                        lhs_expr, rhs_expr, lhs_dtype, rhs_type_context)
 
 
 # {{{ volatile mem acccess target

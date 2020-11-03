@@ -1,6 +1,5 @@
 """Plain C target and base for other C-family languages."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -24,8 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
-
 import numpy as np  # noqa
 from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
 from loopy.diagnostic import LoopyError, LoopyTypeError
@@ -39,10 +36,20 @@ import pymbolic.primitives as p
 
 from pytools import memoize_method
 
+__doc__ = """
+.. currentmodule loopy.target.c
+
+.. autoclass:: POD
+
+.. autoclass:: ScopingBlock
+
+.. automodule:: loopy.target.c.codegen.expression
+"""
+
 
 # {{{ dtype registry wrapper
 
-class DTypeRegistryWrapper(object):
+class DTypeRegistryWrapper:
     def __init__(self, wrapped_registry):
         self.wrapped_registry = wrapped_registry
 
@@ -78,6 +85,16 @@ class DTypeRegistryWrapper(object):
 
 
 # {{{ preamble generator
+
+def c99_preamble_generator(preamble_info):
+    if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
+        yield("10_stdint", "#include <stdint.h>")
+    if any(dtype.numpy_dtype == np.dtype("bool")
+           for dtype in preamble_info.seen_dtypes):
+        yield("10_stdbool", "#include <stdbool.h>")
+    if any(dtype.is_complex() for dtype in preamble_info.seen_dtypes):
+        yield("10_complex", "#include <complex.h>")
+
 
 def _preamble_generator(preamble_info):
     integer_type_names = ["int8", "int16", "int32", "int64"]
@@ -148,9 +165,9 @@ def _preamble_generator(preamble_info):
             """,
             }
 
-    c_funcs = set(func.c_name for func in preamble_info.seen_functions)
+    c_funcs = {func.c_name for func in preamble_info.seen_functions}
 
-    for func_name, func_body in six.iteritems(function_defs):
+    for func_name, func_body in function_defs.items():
         if any((func_name + "_" + tpname) in c_funcs
                 for tpname in integer_type_names):
             yield def_integer_types_macro
@@ -199,7 +216,7 @@ class POD(Declarator):
 
 class ScopingBlock(Block):
     """A block that is mandatory for scoping and may not be simplified away
-    by :func:`loopy.codegen.results.merge_codegen_results`.
+    by :func:`loopy.codegen.result.merge_codegen_results`.
     """
 
 
@@ -243,8 +260,7 @@ def generate_linearized_array(array, value):
 
     assert array.offset == 0
 
-    from pytools import indices_in_shape
-    for ituple in indices_in_shape(value.shape):
+    for ituple in np.ndindex(value.shape):
         i = sum(i_ax * strd_ax for i_ax, strd_ax in zip(ituple, strides))
         data[i] = value[ituple]
 
@@ -305,7 +321,7 @@ class ASTSubscriptCollector(CASTIdentityMapper):
 
 # {{{ lazy expression generation
 
-class CExpression(object):
+class CExpression:
     def __init__(self, to_code_mapper, expr):
         self.to_code_mapper = to_code_mapper
         self.expr = expr
@@ -316,8 +332,10 @@ class CExpression(object):
 # }}}
 
 
-class CTarget(TargetBase):
-    """A target for plain "C", without any parallel extensions.
+class CFamilyTarget(TargetBase):
+    """A target for "least-common denominator C", without any parallel
+    extensions, and without use of any C99 specifics. Intended to be
+    usable as a common base for C99, C++, OpenCL, CUDA, and the like.
     """
 
     hash_fields = TargetBase.hash_fields + ("fortran_abi",)
@@ -325,7 +343,7 @@ class CTarget(TargetBase):
 
     def __init__(self, fortran_abi=False):
         self.fortran_abi = fortran_abi
-        super(CTarget, self).__init__()
+        super().__init__()
 
     def split_kernel_at_global_barriers(self):
         return False
@@ -334,7 +352,7 @@ class CTarget(TargetBase):
         return DummyHostASTBuilder(self)
 
     def get_device_ast_builder(self):
-        return CASTBuilder(self)
+        return CFamilyASTBuilder(self)
 
     # {{{ types
 
@@ -368,30 +386,6 @@ class CTarget(TargetBase):
         raise NotImplementedError()
 
     # }}}
-
-
-# {{{ executable c target
-
-class ExecutableCTarget(CTarget):
-    """
-    An executable CTarget that uses (by default) JIT compilation of C-code
-    """
-
-    def __init__(self, compiler=None, fortran_abi=False):
-        super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
-        from loopy.target.c.c_execution import CCompiler
-        self.compiler = compiler or CCompiler()
-
-    def get_kernel_executor(self, knl, *args, **kwargs):
-        from loopy.target.c.c_execution import CKernelExecutor
-        return CKernelExecutor(knl, entrypoint=kwargs.pop('entrypoint'),
-                compiler=self.compiler)
-
-    def get_host_ast_builder(self):
-        # enable host code generation
-        return CASTBuilder(self)
-
-# }}}
 
 
 class _ConstRestrictPointer(Pointer):
@@ -442,7 +436,7 @@ class CMathCallable(ScalarCallable):
 
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 0:
-                    raise LoopyError("%s can take only one argument." % name)
+                    raise LoopyError(f"'{name}' can take only one argument.")
 
             if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
                 # the types provided aren't mature enough to specialize the
@@ -454,11 +448,11 @@ class CMathCallable(ScalarCallable):
             dtype = arg_id_to_dtype[0]
             dtype = dtype.numpy_dtype
 
-            if dtype.kind in ('u', 'i'):
+            if dtype.kind in ("u", "i"):
                 # ints and unsigned casted to float32
                 dtype = np.float32
-            elif dtype.kind == 'c':
-                raise LoopyTypeError("%s does not support type %s" % (name, dtype))
+            elif dtype.kind == "c":
+                raise LoopyTypeError(f"{name} does not support type {dtype}")
 
             from loopy.target.opencl import OpenCLTarget
             if not isinstance(caller_kernel.target, OpenCLTarget):
@@ -470,7 +464,7 @@ class CMathCallable(ScalarCallable):
                 elif dtype == np.float128:  # pylint:disable=no-member
                     name = name + "l"  # fabsl
                 else:
-                    raise LoopyTypeError("%s does not support type %s" % (name,
+                    raise LoopyTypeError("{} does not support type {}".format(name,
                         dtype))
 
             return (
@@ -480,10 +474,13 @@ class CMathCallable(ScalarCallable):
                     callables_table)
 
         # binary functions
-        if name in ["fmax", "fmin", "pow", "atan2"]:
+        elif name in ["fmax", "fmin", "pow", "atan2", "copysign"]:
 
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 1:
+                    #FIXME: Do we need to raise here?:
+                    #   The pattern we generally follow is that if we don't find
+                    #   a function, then we just return None
                     raise LoopyError("%s can take only two arguments." % name)
 
             if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
@@ -539,24 +536,24 @@ def get_c_callables():
 # }}}
 
 
-class CASTBuilder(ASTBuilderBase):
+class CFamilyASTBuilder(ASTBuilderBase):
     # {{{ library
 
     def symbol_manglers(self):
         return (
-                super(CASTBuilder, self).symbol_manglers() + [
+                super().symbol_manglers() + [
                     c_symbol_mangler
                     ])
 
     def preamble_generators(self):
         return (
-                super(CASTBuilder, self).preamble_generators() + [
+                super().preamble_generators() + [
                     _preamble_generator,
                     ])
 
     @property
     def known_callables(self):
-        callables = super(CASTBuilder, self).known_callables
+        callables = super().known_callables
         callables.update(get_c_callables())
         return callables
 
@@ -591,7 +588,7 @@ class CASTBuilder(ASTBuilderBase):
                 break
         if is_first_dev_prog:
             for tv in sorted(
-                    six.itervalues(kernel.temporary_variables),
+                    kernel.temporary_variables.values(),
                     key=lambda tv: tv.name):
 
                 if tv.address_space == AddressSpace.GLOBAL and (
@@ -685,7 +682,7 @@ class CASTBuilder(ASTBuilderBase):
                 | temporaries_written_in_subkernel(kernel, subkernel))
 
         for tv in sorted(
-                six.itervalues(kernel.temporary_variables),
+                kernel.temporary_variables.values(),
                 key=lambda tv: tv.name):
             decl_info = tv.decl_info(self.target, index_dtype=kernel.index_dtype)
 
@@ -748,7 +745,7 @@ class CASTBuilder(ASTBuilderBase):
                     cast_tp, cast_d = cast_decl.get_decl_pair()
                     temp_var_decl = Initializer(
                             temp_var_decl,
-                            "(%s %s) (%s + %s)" % (
+                            "({} {}) ({} + {})".format(
                                 " ".join(cast_tp), cast_d,
                                 tv.base_storage,
                                 offset))
@@ -762,7 +759,7 @@ class CASTBuilder(ASTBuilderBase):
 
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
-        for bs_name, bs_sizes in sorted(six.iteritems(base_storage_sizes)):
+        for bs_name, bs_sizes in sorted(base_storage_sizes.items()):
             bs_var_decl = Value("char", bs_name)
             from pytools import single_valued
             bs_var_decl = self.wrap_temporary_decl(
@@ -976,7 +973,7 @@ class CASTBuilder(ASTBuilderBase):
         in_knl_callable = codegen_state.callables_table[func_id]
 
         if isinstance(in_knl_callable, ScalarCallable) and (
-                in_knl_callable.name_in_target == 'loopy_make_tuple'):
+                in_knl_callable.name_in_target == "loopy_make_tuple"):
             return self.emit_tuple_assignment(codegen_state, insn)
 
         # takes "is_returned" to infer whether insn.assignees[0] is a part of
@@ -1065,7 +1062,7 @@ class CFunctionDeclExtractor(CASTIdentityMapper):
 
     def map_function_decl_wrapper(self, node):
         self.decls.append(node.subdecl)
-        return super(CFunctionDeclExtractor, self)\
+        return super()\
                 .map_function_decl_wrapper(node)
 
 
@@ -1073,15 +1070,15 @@ def generate_header(kernel, codegen_result=None):
     """
     :arg kernel: a :class:`loopy.LoopKernel`
     :arg codegen_result: an instance of :class:`loopy.CodeGenerationResult`
-    :returns: a list of AST nodes (which may have :func:`str`
+    :returns: a list of AST nodes (which may have :class:`str`
         called on them to produce a string) representing
         function declarations for the generated device
         functions.
     """
 
-    if not isinstance(kernel.target, CTarget):
+    if not isinstance(kernel.target, CFamilyTarget):
         raise LoopyError(
-                'Header generation for non C-based languages are not implemented')
+                "Header generation for non C-based languages are not implemented")
 
     if codegen_result is None:
         from loopy.codegen import generate_code_v2
@@ -1092,6 +1089,61 @@ def generate_header(kernel, codegen_result=None):
         fde(dev_prg.ast)
 
     return fde.decls
+
+# }}}
+
+
+# {{{ C99 target
+
+class CTarget(CFamilyTarget):
+    """This target may emit code using all features of C99.
+    For a target base supporting "least-common-denominator" C,
+    see :class:`CFamilyTarget`.
+    """
+
+    def get_device_ast_builder(self):
+        return CASTBuilder(self)
+
+    @memoize_method
+    def get_dtype_registry(self):
+        from loopy.target.c.compyte.dtypes import (
+                DTypeRegistry, fill_registry_with_c99_stdint_types,
+                fill_registry_with_c99_complex_types)
+        result = DTypeRegistry()
+        fill_registry_with_c99_stdint_types(result)
+        fill_registry_with_c99_complex_types(result)
+        return DTypeRegistryWrapper(result)
+
+
+class CASTBuilder(CFamilyASTBuilder):
+    def preamble_generators(self):
+        return (
+                super().preamble_generators() + [
+                    c99_preamble_generator,
+                    ])
+
+# }}}
+
+
+# {{{ executable c target
+
+class ExecutableCTarget(CTarget):
+    """
+    An executable CFamilyTarget that uses (by default) JIT compilation of C-code
+    """
+    def __init__(self, compiler=None, fortran_abi=False):
+        super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
+        from loopy.target.c.c_execution import CCompiler
+        self.compiler = compiler or CCompiler()
+
+    def get_kernel_executor(self, knl, *args, **kwargs):
+        from loopy.target.c.c_execution import CKernelExecutor
+        return CKernelExecutor(knl, entrypoint=kwargs.pop("entrypoint"),
+                compiler=self.compiler)
+
+    def get_host_ast_builder(self):
+        # enable host code generation
+        return CFamilyASTBuilder(self)
 
 # }}}
 

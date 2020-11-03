@@ -1,6 +1,5 @@
 """isl helpers"""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -24,13 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-import six
-import numpy as np
-from six.moves import range, zip
-
-from pymbolic.mapper.evaluator import \
-        EvaluationMapper as EvaluationMapperBase
 
 from loopy.diagnostic import StaticValueFindingError, LoopyError
 
@@ -499,130 +491,6 @@ def obj_involves_variable(obj, var_name):
     return False
 
 
-# {{{ performance tweak for dim_{min,max}: project first
-
-def _runs_in_integer_set(s, max_int=None):
-    if not s:
-        return
-
-    if max_int is None:
-        max_int = max(s)
-
-    i = 0
-    while i < max_int:
-        if i in s:
-            start = i
-
-            i += 1
-            while i < max_int and i in s:
-                i += 1
-
-            end = i
-
-            yield (start, end-start)
-
-        else:
-            i += 1
-
-
-class TooManyInteractingDims(Exception):
-    pass
-
-
-def _find_aff_dims(aff, dim_types_and_gen_dim_types):
-    result = []
-
-    for dt, gen_dt in dim_types_and_gen_dim_types:
-        for i in range(aff.dim(dt)):
-            if not aff.get_coefficient_val(dt, i).is_zero():
-                result.append((gen_dt, i))
-
-    result = set(result)
-
-    for i in range(aff.dim(dim_type.div)):
-        if not aff.get_coefficient_val(dim_type.div, i).is_zero():
-            result.update(_find_aff_dims(
-                aff.get_div(i),
-                dim_types_and_gen_dim_types))
-
-    return result
-
-
-def _transitive_closure(graph_dict):
-    pass
-
-
-def _find_noninteracting_dims(obj, dt, idx, other_dt, stop_at=6):
-    if isinstance(obj, isl.BasicSet):
-        basics = [obj]
-    elif isinstance(obj, isl.Set):
-        basics = obj.get_basic_sets()
-    else:
-        raise TypeError("unsupported arg type '%s'" % type(obj))
-
-    connections = []
-    for bs in basics:
-        for c in bs.get_constraints():
-            conn = _find_aff_dims(
-                    c.get_aff(),
-                    [(dim_type.param, dim_type.param), (dim_type.in_, dim_type.set)])
-            if len(conn) > 1:
-                connections.append(conn)
-
-    interacting = set([(dt, idx)])
-
-    while True:
-        changed_something = False
-
-        # Compute the connected component near (dt, idx) by fixed point iteration
-
-        for conn in connections:
-            prev_len = len(interacting)
-
-            overlap = interacting & conn
-            if overlap:
-                interacting.update(conn)
-
-            if len(interacting) != prev_len:
-                changed_something = True
-
-            if len(interacting) >= stop_at:
-                raise TooManyInteractingDims()
-
-        if not changed_something:
-            break
-
-    return set(range(obj.dim(other_dt))) - set(
-            idx for dt, idx in interacting
-            if dt == other_dt)
-
-
-def _eliminate_noninteracting(obj, dt, idx, other_dt):
-    obj = obj.compute_divs()
-    try:
-        nonint = _find_noninteracting_dims(obj, dt, idx, other_dt)
-
-    except TooManyInteractingDims:
-        return obj
-
-    for first, n in _runs_in_integer_set(nonint):
-        obj = obj.eliminate(other_dt, first, n)
-
-    return obj
-
-
-def dim_min_with_elimination(obj, idx):
-    obj_elim = _eliminate_noninteracting(obj, dim_type.out, idx, dim_type.param)
-    return obj_elim.dim_min(idx)
-
-
-def dim_max_with_elimination(obj, idx):
-    obj_elim = _eliminate_noninteracting(obj, dim_type.out, idx, dim_type.param)
-    return obj_elim.dim_max(idx)
-
-# }}}
-
-
 # {{{ get_simple_strides
 
 def get_simple_strides(bset, key_by="name"):
@@ -718,7 +586,7 @@ def get_simple_strides(bset, key_by="name"):
 # }}}
 
 
-# {{{{ find_max_of_pwaff_with_params
+# {{{ find_max_of_pwaff_with_params
 
 def find_max_of_pwaff_with_params(pw_aff, n_allowed_params):
     if n_allowed_params is None:
@@ -742,30 +610,6 @@ def find_max_of_pwaff_with_params(pw_aff, n_allowed_params):
 
 
 # {{{ subst_into_pwqpolynomial
-
-class QPolynomialEvaluationMapper(EvaluationMapperBase):
-    def __init__(self, space):
-        self.zero = isl.QPolynomial.zero_on_domain(space)
-
-        context = {}
-        for name, (dt, pos) in six.iteritems(space.get_var_dict()):
-            if dt == dim_type.set:
-                dt = dim_type.in_
-
-            context[name] = isl.QPolynomial.var_on_domain(space, dt, pos)
-
-        super(QPolynomialEvaluationMapper, self).__init__(context)
-
-    def map_constant(self, expr):
-        if isinstance(expr, np.integer):
-            expr = int(expr)
-
-        return self.zero + expr
-
-    def map_quotient(self, expr):
-        raise TypeError("true division in '%s' not supported "
-                "for as-pwaff evaluation" % expr)
-
 
 def get_param_subst_domain(new_space, base_obj, subst_dict):
     """Modify the :mod:`islpy` object *base_obj* to incorporate parameters for
@@ -828,8 +672,18 @@ def get_param_subst_domain(new_space, base_obj, subst_dict):
 
 
 def subst_into_pwqpolynomial(new_space, poly, subst_dict):
+    """
+    Returns an instance of :class:`islpy.PwQPolynomial` with substitutions from
+    *subst_dict* substituted into *poly*.
+
+    :arg poly: an instance of :class:`islpy.PwQPolynomial`
+    :arg subst_dict: a mapping from parameters of *poly* to
+        :class:`pymbolic.primitives.Expression` made up of terms comprising the
+        parameters of *new_space*. The expression must be affine in the param
+        dims of *new_space*.
+    """
     if not poly.get_pieces():
-        assert new_space.is_params()
+        # pw poly is univserally zero
         result = isl.PwQPolynomial.zero(new_space.insert_dims(dim_type.out, 0, 1))
         assert result.dim(dim_type.out) == 1
         return result
@@ -839,7 +693,7 @@ def subst_into_pwqpolynomial(new_space, poly, subst_dict):
     poly, subst_domain, subst_dict = get_param_subst_domain(
             new_space, poly, subst_dict)
 
-    from loopy.symbolic import qpolynomial_to_expr
+    from loopy.symbolic import qpolynomial_to_expr, qpolynomial_from_expr
     new_pieces = []
     for valid_set, qpoly in poly.get_pieces():
         valid_set = valid_set & subst_domain
@@ -851,7 +705,7 @@ def subst_into_pwqpolynomial(new_space, poly, subst_dict):
                 SubstitutionMapper, make_subst_func)
         sub_mapper = SubstitutionMapper(make_subst_func(subst_dict))
         expr = sub_mapper(qpolynomial_to_expr(qpoly))
-        qpoly = QPolynomialEvaluationMapper(valid_set.space)(expr)
+        qpoly = qpolynomial_from_expr(valid_set.space, expr)
 
         new_pieces.append((valid_set, qpoly))
 

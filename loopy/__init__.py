@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -23,9 +21,6 @@ THE SOFTWARE.
 """
 
 
-import six
-from six.moves import range, zip
-
 from loopy.symbolic import (
         TaggedVariable, Reduction, LinearSubscript, TypeCast)
 from loopy.diagnostic import LoopyError, LoopyWarning
@@ -36,7 +31,7 @@ from loopy.program import iterate_over_kernels_if_given_program
 from loopy.kernel.instruction import (
         MemoryOrdering, memory_ordering,
         MemoryScope, memory_scope,
-        VarAtomicity, AtomicInit, AtomicUpdate,
+        VarAtomicity, OrderedAtomic, AtomicInit, AtomicUpdate,
         InstructionBase,
         MultiAssignmentBase, Assignment, ExpressionInstruction,
         CallInstruction, CInstruction, NoOpInstruction, BarrierInstruction)
@@ -79,7 +74,7 @@ from loopy.transform.iname import (
         affine_map_inames, find_unused_axis_tag,
         make_reduction_inames_unique,
         has_schedulable_iname_nesting, get_iname_duplication_options,
-        add_inames_to_insn)
+        add_inames_to_insn, add_inames_for_unused_hw_axes)
 
 from loopy.transform.instruction import (
         find_instructions, map_instructions,
@@ -116,7 +111,7 @@ from loopy.transform.padding import (
         add_padding)
 
 from loopy.transform.privatize import privatize_temporaries_with_inames
-from loopy.transform.batch import to_batched, save_temporaries_in_loop
+from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.add_barrier import add_barrier
@@ -129,11 +124,12 @@ from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
 from loopy.type_inference import infer_unknown_types
 from loopy.preprocess import (preprocess_kernel, realize_reduction,
         preprocess_program)
-from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
-from loopy.statistics import (ToCountMap, ToCountPolynomialMap,
-        CountGranularity, stringify_stats_mapping, Op, MemAccess, get_op_map,
-        get_mem_access_map, get_synchronization_map,
-        gather_access_footprints, gather_access_footprint_bytes, Sync)
+from loopy.schedule import (
+    generate_loop_schedules, get_one_scheduled_kernel, get_one_linearized_kernel)
+from loopy.statistics import (ToCountMap, ToCountPolynomialMap, CountGranularity,
+        stringify_stats_mapping, Op, MemAccess, get_op_map, get_mem_access_map,
+        get_synchronization_map, gather_access_footprints,
+        gather_access_footprint_bytes, Sync)
 from loopy.codegen import (
         PreambleInfo,
         generate_code, generate_code_v2, generate_body)
@@ -147,15 +143,14 @@ from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
         parse_fortran)
 
 from loopy.target import TargetBase, ASTBuilderBase
-from loopy.target.c import CTarget, ExecutableCTarget, generate_header
+from loopy.target.c import CFamilyTarget, CTarget, ExecutableCTarget, generate_header
 from loopy.target.cuda import CudaTarget
 from loopy.target.opencl import OpenCLTarget
-from loopy.target.pyopencl import PyOpenCLTarget, NvidiaPyOpenCLTarget
+from loopy.target.pyopencl import PyOpenCLTarget
 from loopy.target.ispc import ISPCTarget
 from loopy.target.numba import NumbaTarget, NumbaCudaTarget
 
 from loopy.tools import Optional
-from loopy.tools import dump_as_python
 
 
 __all__ = [
@@ -170,7 +165,7 @@ __all__ = [
         "MemoryScope", "memory_scope",  # lower case is deprecated
 
         "VarAtomicity",
-        "AtomicInit", "AtomicUpdate",
+        "OrderedAtomic", "AtomicInit", "AtomicUpdate",
         "InstructionBase",
         "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
         "CallInstruction", "CInstruction", "NoOpInstruction",
@@ -203,7 +198,7 @@ __all__ = [
         "affine_map_inames", "find_unused_axis_tag",
         "make_reduction_inames_unique",
         "has_schedulable_iname_nesting", "get_iname_duplication_options",
-        "add_inames_to_insn",
+        "add_inames_to_insn", "add_inames_for_unused_hw_axes",
 
         "add_prefetch", "change_arg_to_image",
         "tag_array_axes", "tag_data_axes",
@@ -232,7 +227,7 @@ __all__ = [
 
         "privatize_temporaries_with_inames",
 
-        "to_batched", "save_temporaries_in_loop",
+        "to_batched",
 
         "assume", "fix_parameters",
 
@@ -240,10 +235,9 @@ __all__ = [
 
         "add_barrier",
 
-        "dump_as_python",
-
         "register_callable",
         "merge",
+
         "inline_callable_kernel",
 
         "pack_and_unpack_args_for_call",
@@ -264,7 +258,8 @@ __all__ = [
         "infer_unknown_types",
 
         "preprocess_kernel", "realize_reduction", "preprocess_program",
-        "generate_loop_schedules", "get_one_scheduled_kernel",
+        "generate_loop_schedules",
+        "get_one_scheduled_kernel", "get_one_linearized_kernel",
         "GeneratedProgram", "CodeGenerationResult",
         "PreambleInfo",
         "generate_code", "generate_code_v2", "generate_body",
@@ -287,7 +282,7 @@ __all__ = [
         "LoopyError", "LoopyWarning",
 
         "TargetBase",
-        "CTarget", "ExecutableCTarget", "generate_header",
+        "CFamilyTarget", "CTarget", "ExecutableCTarget", "generate_header",
         "CudaTarget", "OpenCLTarget",
         "PyOpenCLTarget", "NvidiaPyOpenCLTarget", "ISPCTarget",
         "NumbaTarget", "NumbaCudaTarget",
@@ -332,7 +327,7 @@ def set_options(kernel, *args, **kwargs):
         from loopy.options import _apply_legacy_map, Options
         kwargs = _apply_legacy_map(Options._legacy_options_map, kwargs)
 
-        for key, val in six.iteritems(kwargs):
+        for key, val in kwargs.items():
             if not hasattr(new_opt, key):
                 raise ValueError("unknown option '%s'" % key)
 
@@ -438,7 +433,7 @@ def set_caching_enabled(flag):
     CACHING_ENABLED = flag
 
 
-class CacheMode(object):
+class CacheMode:
     """A context manager for setting whether :mod:`loopy` is allowed to use
     disk caches.
     """
@@ -485,16 +480,17 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
     shape = ["n%d" % i for i in range(rank)]
     commad_indices = ", ".join(indices)
     bounds = " and ".join(
-            "0<=%s<%s" % (ind, shape_i)
+            f"0<={ind}<{shape_i}"
             for ind, shape_i in zip(indices, shape))
 
-    set_str = "{[%s]: %s}" % (
+    set_str = "{{[{}]: {}}}".format(
                 commad_indices,
                 bounds
                 )
     result = make_kernel(set_str,
             "output[%s] = input[%s]"
-            % (commad_indices, commad_indices))
+            % (commad_indices, commad_indices),
+            lang_version=MOST_RECENT_LANGUAGE_VERSION)
 
     result = tag_array_axes(result, "input", old_dim_tags)
     result = tag_array_axes(result, "output", new_dim_tags)

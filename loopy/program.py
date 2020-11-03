@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2018 Kaushik Kulkarni"
 
 __license__ = """
@@ -22,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
 import re
 
 from pytools import ImmutableRecord
@@ -94,7 +91,7 @@ class CallableResolver(RuleAwareIdentityMapper):
         the function identifiers to look for while scoping functions.
     """
     def __init__(self, rule_mapping_context, known_callables):
-        super(CallableResolver, self).__init__(rule_mapping_context)
+        super().__init__(rule_mapping_context)
         self.resolved_functions = {}
         self.known_callables = known_callables
 
@@ -126,9 +123,9 @@ class CallableResolver(RuleAwareIdentityMapper):
                         ResolvedFunction(expr.function.name),
                         tuple(self.rec(child, expn_state)
                             for child in expr.parameters),
-                        dict(
-                            (key, self.rec(val, expn_state))
-                            for key, val in six.iteritems(expr.kw_parameters))
+                        {
+                            key: self.rec(val, expn_state)
+                            for key, val in expr.kw_parameters.items()}
                             )
             else:
                 # FIXME: Once function mangler is completely deprecated raise here.
@@ -138,7 +135,7 @@ class CallableResolver(RuleAwareIdentityMapper):
             self.resolved_functions[expr.function.name] = (
                     self.known_callables[expr.function.name])
 
-        return super(CallableResolver, self).map_call_with_kwargs(expr,
+        return super().map_call_with_kwargs(expr,
                 expn_state)
 
 
@@ -194,7 +191,7 @@ class Program(ImmutableRecord):
 
         # }}}
 
-        super(Program, self).__init__(
+        super().__init__(
                 entrypoints=entrypoints,
                 callables_table=callables_table,
                 target=target,
@@ -211,19 +208,19 @@ class Program(ImmutableRecord):
     update_persistent_hash = update_persistent_hash
 
     def copy(self, **kwargs):
-        target = kwargs.pop('target', None)
+        target = kwargs.pop("target", None)
         program = super(Program, self).copy(**kwargs)
         if target:
             from loopy.kernel import KernelState
             if max(callable_knl.subkernel.state for callable_knl in
-                    six.itervalues(self.callables_table) if
+                    self.callables_table.values() if
                     isinstance(callable_knl, CallableKernel)) > (
                             KernelState.INITIAL):
                 if not isinstance(target, type(self.target)):
                     raise LoopyError("One of the kenels in the program has been "
                             "preprocessed, cannot modify target now.")
             callables = {}
-            for func_id, clbl in six.iteritems(program.callables_table):
+            for func_id, clbl in program.callables_table.items():
                 if isinstance(clbl, CallableKernel):
                     knl = clbl.subkernel
                     knl = knl.copy(target=target)
@@ -234,7 +231,7 @@ class Program(ImmutableRecord):
                     raise NotImplementedError()
                 callables[func_id] = clbl
 
-            program = super(Program, program).copy(
+            program = super().copy(
                 callables_table=callables, target=target)
 
         return program
@@ -246,7 +243,7 @@ class Program(ImmutableRecord):
         """
         if isinstance(entrypoints, str):
             entrypoints = frozenset([e.strip() for e in
-                entrypoints.split(',')])
+                entrypoints.split(",")])
 
         assert isinstance(entrypoints, frozenset)
 
@@ -256,7 +253,7 @@ class Program(ImmutableRecord):
     def state(self):
         """ Returns an instance of :class:`loopy.kernel.KernelState`. """
         return min(callable_knl.subkernel.state for callable_knl in
-                six.itervalues(self.callables_table) if
+                self.callables_table.values() if
                 isinstance(callable_knl, CallableKernel))
 
     def with_kernel(self, kernel):
@@ -301,7 +298,7 @@ class Program(ImmutableRecord):
             knl = knl.copy(state=KernelState.CALLS_RESOLVED)
             callables_table[top] = callables_table[top].copy(subkernel=knl)
 
-            for func, clbl in six.iteritems(callables_collector.resolved_functions):
+            for func, clbl in callables_collector.resolved_functions.items():
                 if func not in callables_table:
                     if isinstance(clbl, CallableKernel):
                         queue.append(func)
@@ -327,7 +324,7 @@ class Program(ImmutableRecord):
         return super(Program, self).__getattr__(attr)
 
     def __call__(self, *args, **kwargs):
-        entrypoint = kwargs.get('entrypoint', None)
+        entrypoint = kwargs.get("entrypoint", None)
 
         if entrypoint is None:
             # did not receive an entrypoint for the program to execute
@@ -342,7 +339,7 @@ class Program(ImmutableRecord):
                     " the program. Maybe you want to invoke 'with_entrypoints'"
                     " before calling the program.".format(entrypoint))
 
-        kwargs['entrypoint'] = entrypoint
+        kwargs["entrypoint"] = entrypoint
 
         key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
         try:
@@ -364,7 +361,12 @@ class Program(ImmutableRecord):
 
         return "\n".join(
                 strify_callable(clbl)
-                for name, clbl in six.iteritems(self.callables_table))
+                for name, clbl in self.callables_table).items()
+
+    def __setstate__(self, state_obj):
+        super().__setstate__(state_obj)
+
+        self._program_executor_cache = {}
 
 # }}}
 
@@ -390,13 +392,13 @@ def next_indexed_function_identifier(function_id):
     match = func_name.match(function_id)
 
     if match is None:
-        if function_id[-1] == '_':
-            return "{old_name}0".format(old_name=function_id)
+        if function_id[-1] == "_":
+            return f"{function_id}0"
         else:
-            return "{old_name}_0".format(old_name=function_id)
+            return f"{function_id}_0"
 
-    return "{alpha}_{num}".format(alpha=match.group('alpha'),
-            num=int(match.group('num'))+1)
+    return "{alpha}_{num}".format(alpha=match.group("alpha"),
+            num=int(match.group("num"))+1)
 
 
 class ResolvedFunctionRenamer(RuleAwareIdentityMapper):
@@ -405,7 +407,7 @@ class ResolvedFunctionRenamer(RuleAwareIdentityMapper):
     *renaming_dict*.
     """
     def __init__(self, rule_mapping_context, renaming_dict):
-        super(ResolvedFunctionRenamer, self).__init__(
+        super().__init__(
                 rule_mapping_context)
         self.renaming_dict = renaming_dict
 
@@ -413,7 +415,7 @@ class ResolvedFunctionRenamer(RuleAwareIdentityMapper):
         if expr.name in self.renaming_dict:
             return ResolvedFunction(self.renaming_dict[expr.name])
         else:
-            return super(ResolvedFunctionRenamer, self).map_resolved_function(
+            return super().map_resolved_function(
                     expr, expn_state)
 
 
@@ -461,7 +463,7 @@ class CallablesIDCollector(CombineMapper):
             else:
                 raise NotImplementedError(type(insn).__name__)
 
-        for rule in six.itervalues(kernel.substitutions):
+        for rule in kernel.substitutions.values():
             callables_in_insn = callables_in_insn | (
                     self(rule.expression))
 
@@ -530,7 +532,7 @@ class CallablesInferenceContext(ImmutableRecord):
         if in_kernel_callable in self.callables.values():
             # the callable already exists, hence return the function
             # identifier corresponding to that callable.
-            for func_id, in_knl_callable in six.iteritems(self.callables):
+            for func_id, in_knl_callable in self.callables.items():
                 if in_knl_callable == in_kernel_callable:
                     history[func_id] = function.name
                     if isinstance(func_id, str):
@@ -628,8 +630,8 @@ class CallablesInferenceContext(ImmutableRecord):
                 program.entrypoints):
             # at this point we should not rename anything to the names of
             # entrypoints
-            for new_func_id in (new_callable_ids-six.viewkeys(renames)) & set(
-                    six.iterkeys(self.history)):
+            for new_func_id in (new_callable_ids-renames.keys()) & set(
+                    self.history.keys()):
                 if old_func_id == self.history[new_func_id]:
                     renames[new_func_id] = old_func_id
                     break
@@ -708,11 +710,19 @@ def iterate_over_kernels_if_given_program(transform_for_single_kernel):
     ``transform`` being implemented on all of the callable kernels in a
     :class:`loopy.Program`.
     """
-    def _collective_transform(program_or_kernel, *args, **kwargs):
+    def _collective_transform(*args, **kwargs):
+        if "program" in kwargs:
+            program_or_kernel = kwargs.pop("program")
+        elif "kernel" in kwargs:
+            program_or_kernel = kwargs.pop("kernel")
+        else:
+            program_or_kernel = args[0]
+            args = args[1:]
+
         if isinstance(program_or_kernel, Program):
             program = program_or_kernel
             new_callables = {}
-            for func_id, in_knl_callable in six.iteritems(program.callables_table):
+            for func_id, in_knl_callable in program.callables_table.items():
                 if isinstance(in_knl_callable, CallableKernel):
                     new_subkernel = transform_for_single_kernel(
                             in_knl_callable.subkernel, *args, **kwargs)
@@ -739,7 +749,7 @@ def update_table(callables_table, clbl_id, clbl):
     from loopy.kernel.function_interface import InKernelCallable
     assert isinstance(clbl, InKernelCallable)
 
-    for i, c in six.iteritems(callables_table):
+    for i, c in callables_table.items():
         if c == clbl:
             return i, callables_table
 

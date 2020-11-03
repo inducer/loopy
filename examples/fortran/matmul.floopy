@@ -22,7 +22,11 @@ end subroutine
 !
 ! dgemm = lp.extract_subst(dgemm, "a_acc", "a[i1,i2]", parameters="i1, i2")
 ! dgemm = lp.extract_subst(dgemm, "b_acc", "b[i1,i2]", parameters="i1, i2")
-! dgemm = lp.precompute(dgemm, "a_acc", "k_inner,i_inner", default_tag="l.auto")
-! dgemm = lp.precompute(dgemm, "b_acc", "j_inner,k_inner", default_tag="l.auto")
+! dgemm = lp.precompute(dgemm, "a_acc", "k_inner,i_inner",
+!         precompute_outer_inames="i_outer, j_outer, k_outer",
+!         default_tag="l.auto")
+! dgemm = lp.precompute(dgemm, "b_acc", "j_inner,k_inner",
+!         precompute_outer_inames="i_outer, j_outer, k_outer",
+!         default_tag="l.auto")
 ! RESULT = dgemm
 !$loopy end

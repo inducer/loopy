@@ -1,6 +1,4 @@
-from __future__ import division, absolute_import
-
-__copyright__ = "Copyright (C) 2018 Andreas Klöckner, Kaushik Kulkarni"
+__copyright__ = "Copyright (C) 2018 Andreas Kloeckner, Kaushik Kulkarni"
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -22,9 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
-from six.moves import zip
-
+import islpy as isl
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 
@@ -83,7 +79,7 @@ class ArrayArgDescriptor(ImmutableRecord):
         :class:`loopy.kernel.array.ArrayDimImplementationTag`
     """
 
-    fields = set(['shape', 'address_space', 'dim_tags'])
+    fields = {"shape", "address_space", "dim_tags"}
 
     def __init__(self, shape, address_space, dim_tags):
 
@@ -100,7 +96,7 @@ class ArrayArgDescriptor(ImmutableRecord):
 
         # }}}
 
-        super(ArrayArgDescriptor, self).__init__(
+        super().__init__(
                 shape=shape,
                 address_space=address_space,
                 dim_tags=dim_tags)
@@ -182,7 +178,11 @@ def get_arg_descriptor_for_expression(kernel, expr):
                 tuple(iname.name for iname in expr.swept_inames)
                 )(linearized_index)
         sub_dim_tags = tuple(
-                DimTag(strides_as_dict[iname]) for iname in expr.swept_inames)
+                # Not all swept inames necessarily occur in the expression.
+                # Also, some may have been simplified away by simplify_using_aff.
+                DimTag(strides_as_dict.get(iname, 0))
+
+                for iname in expr.swept_inames)
         sub_shape = tuple(
                 pw_aff_to_expr(
                     kernel.get_iname_bounds(iname.name).upper_bound_pw_aff
@@ -238,8 +238,8 @@ def get_kw_pos_association(kernel):
             pos_to_kw[write_count] = arg.name
             write_count -= 1
         if arg.is_input:
-            # if an argument is both input and output then the input is given
-            # more significance in kw_to_pos
+            # if an argument is both input and output then kw_to_pos is
+            # overwritten with its expected position in the parameters
             kw_to_pos[arg.name] = read_count
             pos_to_kw[read_count] = arg.name
             read_count += 1
@@ -268,7 +268,7 @@ class GridOverrideForCalleeKernel(ImmutableRecord):
         This class acts as a pseudo-callable and its significance lies in
         solving picklability issues.
     """
-    fields = set(["local_size", "global_size"])
+    fields = {"local_size", "global_size"}
 
     def __init__(self, global_size, local_size):
         self.global_size = global_size
@@ -321,12 +321,12 @@ class InKernelCallable(ImmutableRecord):
     .. automethod:: is_ready_for_codegen
     """
 
-    fields = set(["arg_id_to_dtype", "arg_id_to_descr"])
+    fields = {"arg_id_to_dtype", "arg_id_to_descr"}
     init_arg_names = ("arg_id_to_dtype", "arg_id_to_descr")
 
     def __init__(self, arg_id_to_dtype=None, arg_id_to_descr=None):
 
-        super(InKernelCallable, self).__init__(
+        super().__init__(
                 arg_id_to_dtype=arg_id_to_dtype,
                 arg_id_to_descr=arg_id_to_descr)
 
@@ -398,8 +398,8 @@ class InKernelCallable(ImmutableRecord):
 
         new_arg_id_to_dtype = None
         if self.arg_id_to_dtype is not None:
-            new_arg_id_to_dtype = dict((id, with_target_if_not_None(dtype)) for id,
-                    dtype in six.iteritems(self.arg_id_to_dtype))
+            new_arg_id_to_dtype = {id: with_target_if_not_None(dtype)
+                                   for id, dtype in self.arg_id_to_dtype.items()}
 
         return self.copy(arg_id_to_dtype=new_arg_id_to_dtype)
 
@@ -465,7 +465,7 @@ class ScalarCallable(InKernelCallable):
         derived subclasses.
     """
 
-    fields = set(["name", "arg_id_to_dtype", "arg_id_to_descr", "name_in_target"])
+    fields = {"name", "arg_id_to_dtype", "arg_id_to_descr", "name_in_target"}
     init_arg_names = ("name", "arg_id_to_dtype", "arg_id_to_descr",
             "name_in_target")
     hash_fields = fields
@@ -473,7 +473,7 @@ class ScalarCallable(InKernelCallable):
     def __init__(self, name, arg_id_to_dtype=None,
             arg_id_to_descr=None, name_in_target=None):
 
-        super(ScalarCallable, self).__init__(
+        super().__init__(
                 arg_id_to_dtype=arg_id_to_dtype,
                 arg_id_to_descr=arg_id_to_descr)
 
@@ -631,7 +631,7 @@ class CallableKernel(InKernelCallable):
     sizes for the :attr:`subkernel` of the callable.
     """
 
-    fields = set(["subkernel", "arg_id_to_dtype", "arg_id_to_descr"])
+    fields = {"subkernel", "arg_id_to_dtype", "arg_id_to_descr"}
     init_arg_names = ("subkernel", "arg_id_to_dtype", "arg_id_to_descr")
     hash_fields = fields
 
@@ -639,7 +639,7 @@ class CallableKernel(InKernelCallable):
             arg_id_to_descr=None):
         assert isinstance(subkernel, LoopKernel)
 
-        super(CallableKernel, self).__init__(
+        super().__init__(
                 arg_id_to_dtype=arg_id_to_dtype,
                 arg_id_to_descr=arg_id_to_descr)
 
@@ -685,7 +685,7 @@ class CallableKernel(InKernelCallable):
                     callables_table))
 
         new_arg_id_to_dtype = {}
-        for pos, kw in six.iteritems(pos_to_kw):
+        for pos, kw in pos_to_kw.items():
             new_arg_id_to_dtype[kw] = specialized_kernel.arg_dict[kw].dtype
             new_arg_id_to_dtype[pos] = specialized_kernel.arg_dict[kw].dtype
 
@@ -703,7 +703,7 @@ class CallableKernel(InKernelCallable):
         # perspective
 
         domain_dependent_vars = frozenset().union(
-                *(frozenset(dom.get_var_names(1)) for dom in
+                *(frozenset(dom.get_var_names(isl.dim_type.param)) for dom in
                     self.subkernel.domains))
 
         # FIXME: This is ill-formed, because par can be an expression, e.g.
@@ -735,8 +735,8 @@ class CallableKernel(InKernelCallable):
 
             subst_mapper = SubstitutionMapper(subst_func)
 
-            arg_id_to_descr = dict((arg_id, descr.map_expr(subst_mapper)) for
-                    arg_id, descr in six.iteritems(arg_id_to_descr))
+            arg_id_to_descr = {arg_id: descr.map_expr(subst_mapper)
+                               for arg_id, descr in arg_id_to_descr.items()}
 
         # }}}
 
@@ -752,7 +752,7 @@ class CallableKernel(InKernelCallable):
         new_args = self.subkernel.args[:]
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
-        for arg_id, descr in six.iteritems(arg_id_to_descr):
+        for arg_id, descr in arg_id_to_descr.items():
             if isinstance(arg_id, int):
                 arg_id = pos_to_kw[arg_id]
             assert isinstance(arg_id, str)
@@ -803,9 +803,9 @@ class CallableKernel(InKernelCallable):
                     callables_table))
 
         if assumptions:
-            args_added_knl = assume(args_added_knl, ' and '.join([
-                '{0}={1}'.format(key, val) for key, val in
-                six.iteritems(assumptions)]))
+            assumption_str = " and ".join([f"{key}={val}"
+                                           for key, val in assumptions.items()])
+            args_added_knl = assume(args_added_knl, assumption_str)
 
         return (
                 self.copy(
@@ -819,7 +819,7 @@ class CallableKernel(InKernelCallable):
 
         arg_id_to_descr = {}
 
-        for pos, kw in six.iteritems(pos_to_kw):
+        for pos, kw in pos_to_kw.items():
             arg = self.subkernel.arg_dict[kw]
             arg_id_to_descr[pos] = ArrayArgDescriptor(
                     shape=arg.shape,
@@ -913,19 +913,19 @@ class ManglerCallable(ScalarCallable):
         A function of signature ``(kernel, name , arg_dtypes)`` and returns an
         instance of ``loopy.CallMangleInfo``.
     """
-    fields = set(["name", "function_mangler", "arg_id_to_dtype", "arg_id_to_descr",
-        "name_in_target"])
+    fields = {"name", "function_mangler", "arg_id_to_dtype", "arg_id_to_descr",
+        "name_in_target"}
     init_arg_names = ("name", "function_mangler", "arg_id_to_dtype",
             "arg_id_to_descr", "name_in_target")
-    hash_fields = set(["name", "arg_id_to_dtype", "arg_id_to_descr",
-        "name_in_target"])
+    hash_fields = {"name", "arg_id_to_dtype", "arg_id_to_descr",
+        "name_in_target"}
 
     def __init__(self, name, function_mangler, arg_id_to_dtype=None,
             arg_id_to_descr=None, name_in_target=None):
 
         self.function_mangler = function_mangler
 
-        super(ManglerCallable, self).__init__(
+        super().__init__(
                 name=name,
                 arg_id_to_dtype=arg_id_to_dtype,
                 arg_id_to_descr=arg_id_to_descr,
@@ -938,7 +938,7 @@ class ManglerCallable(ScalarCallable):
     def with_types(self, arg_id_to_dtype, kernel, callables_table):
         if self.arg_id_to_dtype is not None:
             # specializing an already specialized function.
-            for arg_id, dtype in six.iteritems(arg_id_to_dtype):
+            for arg_id, dtype in arg_id_to_dtype.items():
                 # only checking for the ones which have been provided
                 # if does not match, returns an error.
                 if self.arg_id_to_dtype[arg_id] != arg_id_to_dtype[arg_id]:
@@ -954,8 +954,8 @@ class ManglerCallable(ScalarCallable):
                 arg_dtypes)
         if mangle_result:
             new_arg_id_to_dtype = dict(enumerate(mangle_result.arg_dtypes))
-            new_arg_id_to_dtype.update(dict((-i-1, dtype) for i, dtype in
-                enumerate(mangle_result.result_dtypes)))
+            new_arg_id_to_dtype.update({-i-1: dtype for i, dtype in
+                enumerate(mangle_result.result_dtypes)})
             return (
                     self.copy(name_in_target=mangle_result.target_name,
                         arg_id_to_dtype=new_arg_id_to_dtype),

@@ -1,12 +1,12 @@
 name: test-conda-env
 channels:
 - conda-forge
-- defaults
+- nodefaults
 
 dependencies:
 - python=3
 - git
-- conda-forge::numpy
+- numpy
 - pocl
 - mako
 - pyopencl
@@ -16,13 +16,3 @@ dependencies:
 - matplotlib
 - ipykernel
 - ply
-
-- pip
-
-- pip:
-    - git+https://github.com/inducer/pytools.git
-    - git+https://github.com/inducer/cgen.git
-    - git+https://github.com/inducer/pymbolic.git
-    - git+https://github.com/inducer/genpy.git
-    - git+https://github.com/inducer/codepy.git
-    - git+https://github.com/inducer/f2py

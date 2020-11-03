@@ -1,5 +1,3 @@
-from __future__ import division, with_statement
-
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -22,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
 import logging
 logger = logging.getLogger(__name__)
 
@@ -91,17 +88,17 @@ def _extract_loopy_lines(source):
     loopy_lines = []
 
     in_loopy_code = False
-    for l in lines:
-        comment_match = comment_re.match(l)
+    for line in lines:
+        comment_match = comment_re.match(line)
 
         if comment_match is None:
             if in_loopy_code:
                 raise LoopyError("non-comment source line in loopy block")
 
-            remaining_lines.append(l)
+            remaining_lines.append(line)
 
             # Preserves line numbers in loopy code, for debuggability
-            loopy_lines.append("# "+l)
+            loopy_lines.append("# "+line)
             continue
 
         cmt = comment_match.group(1)
@@ -113,7 +110,7 @@ def _extract_loopy_lines(source):
             in_loopy_code = True
 
             # Preserves line numbers in loopy code, for debuggability
-            loopy_lines.append("# "+l)
+            loopy_lines.append("# "+line)
 
         elif cmt_stripped == "$loopy end":
             if not in_loopy_code:
@@ -121,16 +118,16 @@ def _extract_loopy_lines(source):
             in_loopy_code = False
 
             # Preserves line numbers in loopy code, for debuggability
-            loopy_lines.append("# "+l)
+            loopy_lines.append("# "+line)
 
         elif in_loopy_code:
             loopy_lines.append(cmt)
 
         else:
-            remaining_lines.append(l)
+            remaining_lines.append(line)
 
             # Preserves line numbers in loopy code, for debuggability
-            loopy_lines.append("# "+l)
+            loopy_lines.append("# "+line)
 
     return "\n".join(remaining_lines), "\n".join(loopy_lines)
 
@@ -256,7 +253,7 @@ def _add_assignees_to_calls(knl, all_kernels):
         may be called by *kernel*.
     """
     new_insns = []
-    subroutine_dict = dict((kernel.name, kernel) for kernel in all_kernels)
+    subroutine_dict = {kernel.name: kernel for kernel in all_kernels}
     from loopy.kernel.instruction import (Assignment, CallInstruction,
             CInstruction, _DataObliviousInstruction,
             modify_assignee_for_array_call)
@@ -320,9 +317,9 @@ def parse_fortran(source, filename="<floopy code>", free_form=None, strict=None,
     import logging
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
+    formatter = logging.Formatter("%(name)-12s: %(levelname)-8s %(message)s")
     console.setFormatter(formatter)
-    logging.getLogger('fparser').addHandler(console)
+    logging.getLogger("fparser").addHandler(console)
 
     from fparser import api
     tree = api.parse(source, isfree=free_form, isstrict=strict,
@@ -340,8 +337,8 @@ def parse_fortran(source, filename="<floopy code>", free_form=None, strict=None,
 
     from loopy.transform.callable import merge
     prog = merge(kernels)
-    all_kernels = [clbl.subkernel for clbl in
-            six.itervalues(prog.callables_table)]
+    all_kernels = [clbl.subkernel
+                   for clbl in prog.callables_table.items()]
 
     for knl in all_kernels:
         prog.with_kernel(_add_assignees_to_calls(knl, all_kernels))

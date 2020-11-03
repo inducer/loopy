@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -238,7 +236,7 @@ def test_global_parallel_reduction(ctx_factory, size):
     knl = reduction_arg_to_subst_rule(knl, "i_outer")
 
     knl = lp.precompute(knl, "red_i_outer_arg", "i_outer",
-            temporary_scope=lp.temp_var_scope.GLOBAL,
+            temporary_address_space=lp.AddressSpace.GLOBAL,
             default_tag="l.auto")
     knl = lp.realize_reduction(knl)
     knl = lp.tag_inames(knl, "i_outer_0:g.0")
@@ -284,7 +282,7 @@ def test_global_mc_parallel_reduction(ctx_factory, size):
     from loopy.transform.data import reduction_arg_to_subst_rule
     knl = reduction_arg_to_subst_rule(knl, "i_outer")
     knl = lp.precompute(knl, "red_i_outer_arg", "i_outer",
-            temporary_scope=lp.temp_var_scope.GLOBAL,
+            temporary_address_space=lp.AddressSpace.GLOBAL,
             default_tag="l.auto")
     knl = lp.preprocess_kernel(knl)
     knl = lp.add_dependency(

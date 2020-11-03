@@ -29,7 +29,7 @@ if os.environ.get("AKPYTHON_EXEC_IMPORT_UNAVAILABLE") is not None:
     _git_rev = None
 
 else:
-    import loopy._git_rev as _git_rev_mod
+    import loopy._git_rev as _git_rev_mod  # pylint: disable=no-name-in-module,import-error  # noqa: E501
     _git_rev = _git_rev_mod.GIT_REVISION
 
     # If we're running from a dev tree, the last install (and hence the most
@@ -42,7 +42,7 @@ else:
 # }}}
 
 
-VERSION = (2019, 1)
+VERSION = (2020, 2, 1)
 VERSION_STATUS = ""
 VERSION_TEXT = ".".join(str(x) for x in VERSION) + VERSION_STATUS
 
@@ -60,21 +60,17 @@ except ImportError:
 else:
     _cgen_version = cgen.version.VERSION_TEXT
 
-DATA_MODEL_VERSION = "%s-islpy%s-cgen%s-%s-v0" % (
+DATA_MODEL_VERSION = "{}-islpy{}-cgen{}-{}-v1".format(
         VERSION_TEXT, _islpy_version, _cgen_version, _git_rev)
 
 
-FALLBACK_LANGUAGE_VERSION = (2017, 2, 1)
+FALLBACK_LANGUAGE_VERSION = (2018, 2)
 MOST_RECENT_LANGUAGE_VERSION = (2018, 2)
 
 LOOPY_USE_LANGUAGE_VERSION_2018_2 = (2018, 2)
-LOOPY_USE_LANGUAGE_VERSION_2018_1 = (2018, 1)
-LOOPY_USE_LANGUAGE_VERSION_2017_2_1 = (2017, 2, 1)
 
 LANGUAGE_VERSION_SYMBOLS = [
         "LOOPY_USE_LANGUAGE_VERSION_2018_2",
-        "LOOPY_USE_LANGUAGE_VERSION_2018_1",
-        "LOOPY_USE_LANGUAGE_VERSION_2017_2_1",
         ]
 
 __doc__ = """
@@ -102,7 +98,7 @@ language version to let them take advantage of this check.
 
 As a result, :mod:`loopy` will now issue a warning when a call to
 :func:`loopy.make_kernel` does not declare a language version. Such kernels
-will (indefinitely) default to language version 2017.2.1.  If passing a
+will (indefinitely) default to language version 2018.2.  If passing a
 language version to :func:`make_kernel` is impractical, you may also import
 one of the ``LOOPY_USE_LANGUAGE_VERSION_...`` symbols given below using::
 
@@ -129,14 +125,16 @@ History of Language Versions
 
 .. data:: LOOPY_USE_LANGUAGE_VERSION_2018_2
 
-    :attr:`loopy.Options.ignore_boostable_into` is turned on by default.
+    ``loopy.Options.ignore_boostable_into`` is turned on by default.
 
 .. data:: LOOPY_USE_LANGUAGE_VERSION_2018_1
 
-    :attr:`loopy.Options.enforce_variable_access_ordered`
-    is turned on by default.
+    :attr:`loopy.Options.enforce_variable_access_ordered` is turned on by
+    default. Unsupported from :mod:`loopy` version 2020.2 onwards.
 
 .. data:: LOOPY_USE_LANGUAGE_VERSION_2017_2_1
 
-    Initial legacy language version.
+    Initial legacy language version. Unsupported from :mod:`loopy` version
+    2020.2 onwards.
+
 """
