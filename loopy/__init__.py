@@ -282,7 +282,7 @@ __all__ = [
         "TargetBase",
         "CFamilyTarget", "CTarget", "ExecutableCTarget", "generate_header",
         "CudaTarget", "OpenCLTarget",
-        "PyOpenCLTarget", "NvidiaPyOpenCLTarget", "ISPCTarget",
+        "PyOpenCLTarget", "ISPCTarget",
         "NumbaTarget", "NumbaCudaTarget",
         "ASTBuilderBase",
 
