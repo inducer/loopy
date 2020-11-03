@@ -191,7 +191,7 @@ class OpenCLCallable(ScalarCallable):
                 if common_dtype.kind == "f":
                     name = "f"+name
 
-                target = [dtype.target for dtype in six.itervalues(arg_id_to_dtype)
+                target = [dtype.target for dtype in arg_id_to_dtype.values()
                         if (id >= 0 and dtype is not None)][0]
                 dtype = NumpyType(common_dtype, target)
                 return (
@@ -295,8 +295,8 @@ def get_opencl_callables():
     opencl_function_ids = {"max", "min", "dot"} | set(
             _CL_SIMPLE_MULTI_ARG_FUNCTIONS) | set(VECTOR_LITERAL_FUNCS)
 
-    return dict((id_, OpenCLCallable(name=id_)) for id_ in
-        opencl_function_ids)
+    return {id_: OpenCLCallable(name=id_) for id_ in
+        opencl_function_ids}
 
 # }}}
 

@@ -55,7 +55,7 @@ def extract_subst(kernel, subst_name, template, parameters=()):
 
     if isinstance(kernel, Program):
         kernel_names = [i for i, clbl in
-                six.iteritems(kernel.callables_table) if isinstance(clbl,
+                kernel.callables_table.items() if isinstance(clbl,
                     CallableKernel)]
         if len(kernel_names) != 1:
             raise LoopyError()

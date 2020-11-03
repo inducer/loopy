@@ -209,7 +209,7 @@ class Program(ImmutableRecord):
 
     def copy(self, **kwargs):
         target = kwargs.pop("target", None)
-        program = super(Program, self).copy(**kwargs)
+        program = super().copy(**kwargs)
         if target:
             from loopy.kernel import KernelState
             if max(callable_knl.subkernel.state for callable_knl in
@@ -276,8 +276,8 @@ class Program(ImmutableRecord):
         known_callables.update(self.target.get_device_ast_builder().known_callables)
         known_callables.update(get_loopy_callables())
         # update the known callables from the target.
-        callables_table = dict((e, self.callables_table[e]) for e in
-                self.entrypoints)
+        callables_table = {e: self.callables_table[e] for e in
+                self.entrypoints}
 
         # start a traversal to collect all the callables
         queue = list(self.entrypoints)
@@ -321,7 +321,7 @@ class Program(ImmutableRecord):
                 return lambda *args, **kwargs: self(*args, entrypoint=attr,
                         **kwargs)
 
-        return super(Program, self).__getattr__(attr)
+        return super().__getattr__(attr)
 
     def __call__(self, *args, **kwargs):
         entrypoint = kwargs.get("entrypoint", None)
@@ -500,7 +500,7 @@ class CallablesInferenceContext(ImmutableRecord):
     def __init__(self, callables, old_callable_ids, history={}):
         assert isinstance(callables, dict)
 
-        super(CallablesInferenceContext, self).__init__(
+        super().__init__(
                 callables=callables,
                 old_callable_ids=old_callable_ids,
                 history=history)

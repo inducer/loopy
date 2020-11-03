@@ -136,7 +136,7 @@ class CodeGenerationResult(ImmutableRecord):
                 "".join(preamble_codes)
                 + "\n"
                 + "\n\n".join(str(hp.ast) for hp in
-                    six.itervalues(self.host_programs)))
+                    self.host_programs.values()))
 
     def device_code(self):
         preamble_codes = process_preambles(getattr(self, "device_preambles", []))
@@ -159,7 +159,7 @@ class CodeGenerationResult(ImmutableRecord):
                 + "\n\n".join(str(dp.ast) for dp in self.device_programs)
                 + "\n\n"
                 + "\n\n".join(str(hp.ast) for hp in
-                    six.itervalues(self.host_programs)))
+                    self.host_programs.values()))
 
     def current_program(self, codegen_state):
         if codegen_state.is_generating_device_code:

@@ -453,7 +453,7 @@ class ConstantArg(ArrayBase, KernelArgument):
     def __init__(self, *args, **kwargs):
         if kwargs.pop('address_space', AddressSpace.GLOBAL) != AddressSpace.GLOBAL:
             raise LoopyError("'address_space' for ConstantArg must be GLOBAL.")
-        super(ConstantArg, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     # Constant Arg cannot be an output
     is_output = False

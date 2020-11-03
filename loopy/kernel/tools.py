@@ -53,7 +53,7 @@ def add_dtypes(prog_or_kernel, dtype_dict):
     """
     if isinstance(prog_or_kernel, Program):
         kernel_names = [clbl.subkernel.name for clbl in
-                six.itervalues(prog_or_kernel.callables_table) if isinstance(clbl,
+                prog_or_kernel.callables_table.values() if isinstance(clbl,
                     CallableKernel)]
         if len(kernel_names) != 1:
             raise LoopyError("add_dtypes may not take a Program with more than"
@@ -131,7 +131,7 @@ def add_and_infer_dtypes(prog, dtype_dict, expect_completion=False,
     assert isinstance(prog, Program)
     if kernel_name is None:
         kernel_names = [clbl.subkernel.name for clbl in
-                six.itervalues(prog.callables_table) if isinstance(clbl,
+                prog.callables_table.values() if isinstance(clbl,
                     CallableKernel)]
         if len(kernel_names) != 1:
             raise LoopyError("Provide 'kernel_name' argument.")

@@ -356,7 +356,7 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
     """
     if isinstance(kernel, Program):
         kernel_names = [i for i, clbl in
-                six.iteritems(kernel.callables_table) if isinstance(clbl,
+                kernel.callables_table.items() if isinstance(clbl,
                     CallableKernel)]
         if len(kernel_names) != 1:
             raise LoopyError()
@@ -1060,7 +1060,7 @@ def precompute(program, *args, **kwargs):
     assert isinstance(program, Program)
     new_callables = {}
 
-    for func_id, clbl in six.iteritems(program.callables_table):
+    for func_id, clbl in program.callables_table.items():
         if isinstance(clbl, CallableKernel):
             knl = precompute_for_single_kernel(clbl.subkernel,
                     program.callables_table, *args, **kwargs)

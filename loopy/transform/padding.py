@@ -410,7 +410,7 @@ def split_array_axis(kernel, array_names, axis_nr, count,
 
 def find_padding_multiple(kernel, variable, axis, align_bytes, allowed_waste=0.1):
     if isinstance(kernel, Program):
-        kernel_names = [i for i, clbl in six.iteritems(kernel.callables_table)
+        kernel_names = [i for i, clbl in kernel.callables_table.items()
                 if isinstance(clbl, CallableKernel)]
         if len(kernel_names) > 1:
             raise LoopyError()

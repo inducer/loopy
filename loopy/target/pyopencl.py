@@ -271,7 +271,7 @@ class PyOpenCLCallable(ScalarCallable):
 def get_pyopencl_callables():
     pyopencl_ids = ["sqrt", "exp", "log", "sin", "cos", "tan", "sinh", "cosh",
             "tanh", "conj", "real", "imag", "abs"]
-    return dict((id_, PyOpenCLCallable(name=id_)) for id_ in pyopencl_ids)
+    return {id_: PyOpenCLCallable(name=id_) for id_ in pyopencl_ids}
 
 # }}}
 

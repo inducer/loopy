@@ -231,6 +231,6 @@ class Random123Callable(ScalarCallable):
 
 
 def get_random123_callables():
-    return dict((id_, Random123Callable(id_)) for id_ in FUNC_NAMES_TO_RNG)
+    return {id_: Random123Callable(id_) for id_ in FUNC_NAMES_TO_RNG}
 
 # vim: foldmethod=marker

@@ -531,7 +531,7 @@ def get_c_callables():
                       "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
                       "fabs", "tan", "erf", "erfc"]
 
-    return dict((id_, CMathCallable(id_)) for id_ in cmath_ids)
+    return {id_: CMathCallable(id_) for id_ in cmath_ids}
 
 # }}}
 
@@ -1132,7 +1132,7 @@ class ExecutableCTarget(CTarget):
     An executable CFamilyTarget that uses (by default) JIT compilation of C-code
     """
     def __init__(self, compiler=None, fortran_abi=False):
-        super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
+        super().__init__(fortran_abi=fortran_abi)
         from loopy.target.c.c_execution import CCompiler
         self.compiler = compiler or CCompiler()
 

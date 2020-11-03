@@ -185,7 +185,7 @@ class CudaCallable(ScalarCallable):
 
 def get_cuda_callables():
     cuda_func_ids = {"dot"} | set(_CUDA_SPECIFIC_FUNCTIONS)
-    return dict((id_, CudaCallable(name=id_)) for id_ in cuda_func_ids)
+    return {id_: CudaCallable(name=id_) for id_ in cuda_func_ids}
 
 # }}}
 

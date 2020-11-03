@@ -173,7 +173,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
 
     if isinstance(kernel, Program):
         kernel_names = [i for i, clbl in
-                six.iteritems(kernel.callables_table) if isinstance(clbl,
+                kernel.callables_table.items() if isinstance(clbl,
                     CallableKernel)]
         if len(kernel_names) != 1:
             raise LoopyError()
@@ -560,7 +560,7 @@ def buffer_array(program, *args, **kwargs):
 
     new_callables = {}
 
-    for func_id, clbl in six.iteritems(program.callables_table):
+    for func_id, clbl in program.callables_table.items():
         if isinstance(clbl, CallableKernel):
             clbl = clbl.copy(
                     subkernel=buffer_array_for_single_kernel(clbl.subkernel,
