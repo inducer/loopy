@@ -479,8 +479,7 @@ def check_bounds(kernel):
                              and arg.name not in kernel.get_written_variables()}
                             - domain_param_names) & insn.read_dependency_names()
 
-        while valueargs_to_add:
-            arg_to_add = valueargs_to_add.pop()
+        for arg_to_add in valueargs_to_add:
             idim = domain.dim(isl.dim_type.param)
             domain = domain.add_dims(isl.dim_type.param, 1)
             domain = domain.set_dim_name(isl.dim_type.param, idim, arg_to_add)
