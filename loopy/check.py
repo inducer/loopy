@@ -463,49 +463,18 @@ def check_bounds(kernel):
     """
     temp_var_names = set(kernel.temporary_variables)
     for insn in kernel.instructions:
-        domain = kernel.get_inames_domain(kernel.insn_inames(insn))
-        domain_param_names = set(domain.get_var_names(dim_type.param))
+        domain = insn.get_domain(kernel)
 
         # data-dependent bounds? can't do much
-        if domain_param_names & temp_var_names:
+        if set(domain.get_var_names(dim_type.param)) & temp_var_names:
             continue
-
-        # {{{ add read-only ValueArgs to domain
-
-        from loopy.kernel.data import ValueArg
-
-        valueargs_to_add = ({arg.name for arg in kernel.args
-                             if isinstance(arg, ValueArg)
-                             and arg.name not in kernel.get_written_variables()}
-                            - domain_param_names) & insn.read_dependency_names()
-
-        for arg_to_add in valueargs_to_add:
-            idim = domain.dim(isl.dim_type.param)
-            domain = domain.add_dims(isl.dim_type.param, 1)
-            domain = domain.set_dim_name(isl.dim_type.param, idim, arg_to_add)
-
-        # }}}
 
         acm = _AccessCheckMapper(kernel, insn.id)
         domain, assumptions = isl.align_two(domain, kernel.assumptions)
         domain_with_assumptions = domain & assumptions
 
-        # {{{ handle insns predicates
-
-        insn_preds_set = isl.BasicSet.universe(domain.space)
-
-        for predicate in insn.predicates:
-            from loopy.symbolic import condition_to_set
-            predicate_as_isl_set = condition_to_set(domain.space, predicate)
-            if predicate_as_isl_set is not None:
-                insn_preds_set = insn_preds_set & predicate_as_isl_set
-
-        # }}}
-
-        domain_with_assumptions_with_pred = domain_with_assumptions & insn_preds_set
-
         def run_acm(expr):
-            acm(expr, domain_with_assumptions_with_pred)
+            acm(expr, domain_with_assumptions)
             return expr
 
         insn.with_transformed_expressions(run_acm)
