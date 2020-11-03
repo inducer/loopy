@@ -763,7 +763,7 @@ def save_and_reload_temporaries(program, entrypoint=None):
     from loopy.schedule.tools import (
         temporaries_read_in_subkernel, temporaries_written_in_subkernel)
 
-    for sched_idx, sched_item in enumerate(program.root_kernel.schedule):
+    for sched_idx, sched_item in enumerate(knl.schedule):
 
         if isinstance(sched_item, CallKernel):
             # Any written temporary that is live-out needs to be read into
@@ -774,8 +774,8 @@ def save_and_reload_temporaries(program, entrypoint=None):
             else:
                 subkernel = sched_item.kernel_name
                 interesting_temporaries = (
-                    temporaries_read_in_subkernel(program.root_kernel, subkernel)
-                    | temporaries_written_in_subkernel(program.root_kernel,
+                    temporaries_read_in_subkernel(knl, subkernel)
+                    | temporaries_written_in_subkernel(knl,
                                                        subkernel))
 
             for temporary in liveness[sched_idx].live_out & interesting_temporaries:
@@ -784,13 +784,13 @@ def save_and_reload_temporaries(program, entrypoint=None):
                 saver.reload(temporary, sched_item.kernel_name)
 
         elif isinstance(sched_item, ReturnFromKernel):
-            if sched_idx == len(program.root_kernel.schedule) - 1:
+            if sched_idx == len(knl.schedule) - 1:
                 # Kernel exit: nothing live
                 interesting_temporaries = set()
             else:
                 subkernel = sched_item.kernel_name
                 interesting_temporaries = (
-                    temporaries_written_in_subkernel(program.root_kernel, subkernel))
+                    temporaries_written_in_subkernel(knl, subkernel))
 
             for temporary in liveness[sched_idx].live_in & interesting_temporaries:
                 logger.info("saving {} before return of {}"

@@ -449,7 +449,8 @@ def auto_test_vs_ref(
     ref_errors = []
 
     from loopy.kernel.data import ImageArg
-    need_ref_image_support = any(isinstance(arg, ImageArg) for arg in ref_prog.args)
+    need_ref_image_support = any(isinstance(arg, ImageArg)
+                                 for arg in ref_prog[ref_entrypoint].args)
 
     for dev in _enumerate_cl_devices_for_ref_test(
             blacklist_ref_vendors, need_ref_image_support):
@@ -538,7 +539,7 @@ def auto_test_vs_ref(
 
     from loopy.kernel import KernelState
     from loopy.target.pyopencl import PyOpenCLTarget
-    if test_prog.root_kernel.state not in [
+    if test_prog[test_entrypoint].state not in [
             KernelState.PREPROCESSED,
             KernelState.LINEARIZED]:
         if isinstance(test_prog.target, PyOpenCLTarget):

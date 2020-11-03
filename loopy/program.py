@@ -361,7 +361,7 @@ class Program(ImmutableRecord):
 
         return "\n".join(
                 strify_callable(clbl)
-                for name, clbl in self.callables_table).items()
+                for name, clbl in self.callables_table.items())
 
     def __setstate__(self, state_obj):
         super().__setstate__(state_obj)

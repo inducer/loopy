@@ -36,7 +36,7 @@ from loopy.kernel.data import make_assignment, filter_iname_tags_by_type
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
 from loopy.symbolic import RuleAwareIdentityMapper, ReductionCallbackMapper
-from loopy.transform.iname import remove_any_newly_unused_inames
+# from loopy.transform.iname import remove_any_newly_unused_inames
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
@@ -901,7 +901,7 @@ class RealizeReductionCallbackMapper(ReductionCallbackMapper):
         return result
 
 
-@remove_any_newly_unused_inames
+# @remove_any_newly_unused_inames
 def realize_reduction_for_single_kernel(kernel, callables_table,
         insn_id_filter=None, unknown_types_ok=True, automagic_scans_ok=False,
         force_scan=False, force_outer_iname_for_scan=None):
