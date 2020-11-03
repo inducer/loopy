@@ -1636,10 +1636,6 @@ def _get_op_map_for_single_kernel(knl, callables_table,
         count_redundant_work,
         count_within_subscripts, subgroup_size):
 
-    if not knl.options.ignore_boostable_into:
-        raise LoopyError("Kernel '%s': Using operation counting requires the option "
-                "ignore_boostable_into to be set." % knl.name)
-
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
     kernel_rec = partial(_get_op_map_for_single_kernel,
@@ -1815,10 +1811,6 @@ def _process_subgroup_size(knl, subgroup_size_requested):
 
 def _get_mem_access_map_for_single_kernel(knl, callables_table,
         count_redundant_work, subgroup_size):
-
-    if not knl.options.ignore_boostable_into:
-        raise LoopyError("Kernel '%s': Using operation counting requires the option "
-                "ignore_boostable_into to be set." % knl.name)
 
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
