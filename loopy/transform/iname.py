@@ -165,13 +165,25 @@ def _split_iname_in_set(s, iname_to_split, inner_iname, outer_iname, fixed_lengt
         return s
 
     orig_dim_type, _ = var_dict[iname_to_split]
+    assert orig_dim_type == dim_type.set
+    del orig_dim_type
 
-    outer_var_nr = s.dim(orig_dim_type)
-    inner_var_nr = s.dim(orig_dim_type)+1
+    # NB: dup_iname_to_split is not a globally valid identifier: only uniqure
+    # wrt the set s.
+    from pytools import generate_unique_names
+    for dup_iname_to_split in generate_unique_names(f"dup_{iname_to_split}"):
+        if dup_iname_to_split not in var_dict:
+            break
 
-    s = s.add_dims(orig_dim_type, 2)
-    s = s.set_dim_name(orig_dim_type, outer_var_nr, outer_iname)
-    s = s.set_dim_name(orig_dim_type, inner_var_nr, inner_iname)
+    from loopy.isl_helpers import duplicate_axes
+    s = duplicate_axes(s, (iname_to_split,), (dup_iname_to_split,))
+
+    outer_var_nr = s.dim(dim_type.set)
+    inner_var_nr = s.dim(dim_type.set)+1
+
+    s = s.add_dims(dim_type.set, 2)
+    s = s.set_dim_name(dim_type.set, outer_var_nr, outer_iname)
+    s = s.set_dim_name(dim_type.set, inner_var_nr, inner_iname)
 
     from loopy.isl_helpers import make_slab
 
@@ -181,21 +193,22 @@ def _split_iname_in_set(s, iname_to_split, inner_iname, outer_iname, fixed_lengt
         fixed_iname, var_length_iname = outer_iname, inner_iname
 
     space = s.get_space()
-    fixed_constraint_set = (
+    s = s & (
             make_slab(space, fixed_iname, 0, fixed_length)
             # name = fixed_iname + fixed_length*var_length_iname
             .add_constraint(isl.Constraint.eq_from_names(
                 space, {
-                    iname_to_split: 1,
+                    dup_iname_to_split: 1,
                     fixed_iname: -1,
                     var_length_iname: -fixed_length})))
 
-    name_dim_type, name_idx = space.get_var_dict()[iname_to_split]
-    s = s.intersect(fixed_constraint_set)
+    _, dup_name_idx = space.get_var_dict()[dup_iname_to_split]
+    s = s.project_out(dim_type.set, dup_name_idx, 1)
 
     if split_iname_should_remain:
         return s
     else:
+        name_dim_type, name_idx = space.get_var_dict()[iname_to_split]
         return s.project_out(name_dim_type, name_idx, 1)
 
 
