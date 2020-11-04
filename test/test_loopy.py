@@ -2924,9 +2924,6 @@ def test_split_iname_within(ctx_factory):
     # https://github.com/inducer/loopy/issues/163
     ctx = ctx_factory()
 
-    # Two bugs:
-    # - simplify_using_aff introduces variables that have no business being there
-    # - independent copies of i/j should remain
     knl = lp.make_kernel(
         "{ [i, j]: 0<=i<n and 0<=j<n }",
         """
