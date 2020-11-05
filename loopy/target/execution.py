@@ -139,8 +139,8 @@ class ExecutionWrapperGeneratorBase:
 
     # {{{ integer arg finding from shapes
 
-    def generate_integer_arg_finding_from_shapes(
-            self, gen, kernel, implemented_data_info):
+    def solve_integer_args_from_shapes(
+            self, kernel, implemented_data_info):
         # a mapping from integer argument names to a list of tuples
         # (arg_name, expression), where expression is a
         # unary function of kernel.arg_dict[arg_name]
@@ -148,7 +148,7 @@ class ExecutionWrapperGeneratorBase:
         iarg_to_sources = {}
 
         from loopy.kernel.data import ArrayArg
-        from loopy.symbolic import DependencyMapper, StringifyMapper
+        from loopy.symbolic import DependencyMapper
         from loopy.diagnostic import ParameterFinderWarning
         dep_map = DependencyMapper()
 
@@ -187,8 +187,17 @@ class ExecutionWrapperGeneratorBase:
                                 iarg_to_sources.setdefault(integer_arg_var.name, [])\
                                         .append((arg.name, iarg_expr))
 
+        return iarg_to_sources
+
+    def generate_integer_arg_finding_from_shapes(
+            self, gen, kernel, implemented_data_info):
+        iarg_to_sources = self.solve_integer_args_from_shapes(
+            kernel, implemented_data_info)
+
         gen("# {{{ find integer arguments from shapes")
         gen("")
+
+        from loopy.symbolic import StringifyMapper
 
         for iarg_name, sources in iarg_to_sources.items():
             gen("if %s is None:" % iarg_name)
@@ -678,6 +687,54 @@ class ExecutionWrapperGeneratorBase:
 
         return gen.get_picklable_function()
 
+    def generate_iarg_finder(self, kernel, codegen_result):
+        from loopy.kernel.data import KernelArgument
+        gen = PythonFunctionGenerator(
+                "infer_iargs_%s_loopy_kernel" % kernel.name,
+                [
+                    "%s=None" % idi.name
+                    for idi in codegen_result.implemented_data_info
+                    if issubclass(idi.arg_class, KernelArgument)
+                ])
+
+        gen.add_to_preamble("from __future__ import division")
+        gen.add_to_preamble("")
+        self.target_specific_preamble(gen)
+        gen.add_to_preamble("")
+
+        iarg_to_sources = self.solve_integer_args_from_shapes(
+            kernel, codegen_result.implemented_data_info)
+
+        gen("# {{{ find integer arguments from shapes")
+        gen("")
+        gen("iargs_solved = {}")
+
+        from loopy.symbolic import StringifyMapper
+
+        for iarg_name, sources in iarg_to_sources.items():
+            gen("if %s is None:" % iarg_name)
+            with Indentation(gen):
+                if_stmt = "if"
+                for arg_name, value_expr in sources:
+                    gen(f"{if_stmt} {arg_name} is not None:")
+                    with Indentation(gen):
+                        gen("iargs_solved['%s'] = %s"
+                                % (iarg_name, StringifyMapper()(value_expr)))
+
+                    if_stmt = "elif"
+
+            gen("")
+
+        gen("return iargs_solved")
+
+        gen("# }}}")
+        gen("")
+
+        output = gen.get()
+        output = get_highlighted_python_code(output)
+
+        return gen.get_picklable_function()
+
 # }}}
 
 # }}}
@@ -838,6 +895,9 @@ class KernelExecutorBase:
     def get_invoker_uncached(self, kernel, *args):
         raise NotImplementedError()
 
+    def get_iarg_finder_uncached(self, kernel, *args):
+        raise NotImplementedError()
+
     def get_wrapper_generator(self):
         raise NotImplementedError()
 
@@ -855,6 +915,26 @@ class KernelExecutorBase:
         logger.debug("%s: invoker cache miss" % kernel.name)
 
         invoker = self.get_invoker_uncached(kernel, *args)
+
+        if CACHING_ENABLED:
+            invoker_cache.store_if_not_present(cache_key, invoker)
+
+        return invoker
+
+    def get_iarg_finder(self, kernel, *args):
+        from loopy import CACHING_ENABLED
+
+        cache_key = (self.__class__.__name__, kernel)
+
+        if CACHING_ENABLED:
+            try:
+                return invoker_cache[cache_key]
+            except KeyError:
+                pass
+
+        logger.debug("%s: invoker cache miss" % kernel.name)
+
+        invoker = self.get_iarg_finder_uncached(kernel, *args)
 
         if CACHING_ENABLED:
             invoker_cache.store_if_not_present(cache_key, invoker)

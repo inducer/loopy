@@ -278,6 +278,10 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
         generator = PyOpenCLExecutionWrapperGenerator()
         return generator(kernel, codegen_result)
 
+    def get_iarg_finder_uncached(self, kernel, codegen_result):
+        generator = PyOpenCLExecutionWrapperGenerator()
+        return generator.generate_iarg_finder(kernel, codegen_result)
+
     def get_wrapper_generator(self):
         return PyOpenCLExecutionWrapperGenerator()
 
@@ -320,7 +324,8 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
                 kernel=kernel,
                 cl_kernels=cl_kernels,
                 implemented_data_info=codegen_result.implemented_data_info,
-                invoker=self.get_invoker(kernel, codegen_result))
+                invoker=self.get_invoker(kernel, codegen_result),
+                iarg_finder=self.get_iarg_finder(kernel, codegen_result))
 
     def __call__(self, queue, **kwargs):
         """
@@ -357,9 +362,11 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         kernel_info = self.kernel_info(self.arg_to_dtype_set(kwargs))
 
+        inferred_iargs = kernel_info.iarg_finder(**kwargs)
+
         return kernel_info.invoker(
                 kernel_info.cl_kernels, queue, allocator, wait_for,
-                out_host, **kwargs)
+                out_host, **kwargs, **inferred_iargs)
 
 # }}}
 
