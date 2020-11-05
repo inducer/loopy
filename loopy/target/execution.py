@@ -758,6 +758,11 @@ invoker_cache = WriteOncePersistentDict(
         key_builder=LoopyKeyBuilder())
 
 
+iarg_finder_cache = WriteOncePersistentDict(
+        "loopy-iarg-finder-cache-v1-"+DATA_MODEL_VERSION,
+        key_builder=LoopyKeyBuilder())
+
+
 # {{{ kernel executor
 
 class KernelExecutorBase:
@@ -928,7 +933,7 @@ class KernelExecutorBase:
 
         if CACHING_ENABLED:
             try:
-                return invoker_cache[cache_key]
+                return iarg_finder_cache[cache_key]
             except KeyError:
                 pass
 
@@ -937,7 +942,7 @@ class KernelExecutorBase:
         invoker = self.get_iarg_finder_uncached(kernel, *args)
 
         if CACHING_ENABLED:
-            invoker_cache.store_if_not_present(cache_key, invoker)
+            iarg_finder_cache.store_if_not_present(cache_key, invoker)
 
         return invoker
 
