@@ -316,16 +316,11 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
         for dp in codegen_result.device_programs:
             setattr(cl_kernels, dp.name, getattr(cl_program, dp.name))
 
-        from loopy.target.execution import IntegerArgumentFinder
-        integer_arg_finder = IntegerArgumentFinder(
-            kernel, codegen_result.implemented_data_info)
-
         return _KernelInfo(
                 kernel=kernel,
                 cl_kernels=cl_kernels,
                 implemented_data_info=codegen_result.implemented_data_info,
-                invoker=self.get_invoker(kernel, codegen_result),
-                integer_arg_finder=integer_arg_finder)
+                invoker=self.get_invoker(kernel, codegen_result))
 
     def __call__(self, queue, **kwargs):
         """
@@ -362,11 +357,9 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         kernel_info = self.kernel_info(self.arg_to_dtype_set(kwargs))
 
-        inferred_integer_args = kernel_info.integer_arg_finder(kwargs)
-
         return kernel_info.invoker(
                 kernel_info.cl_kernels, queue, allocator, wait_for,
-                out_host, **kwargs, **inferred_integer_args)
+                out_host, **kwargs)
 
 # }}}
 
