@@ -169,7 +169,7 @@ def _split_iname_in_set(s, iname_to_split, inner_iname, outer_iname, fixed_lengt
     # used as a parameter in a subdomain).
     del orig_dim_type
 
-    # NB: dup_iname_to_split is not a globally valid identifier: only uniqure
+    # NB: dup_iname_to_split is not a globally valid identifier: only unique
     # wrt the set s.
     from pytools import generate_unique_names
     for dup_iname_to_split in generate_unique_names(f"dup_{iname_to_split}"):

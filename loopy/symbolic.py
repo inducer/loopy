@@ -1527,7 +1527,7 @@ def simplify_using_aff(kernel, expr):
 
     # FIXME: Ideally, we should find out what inames are usable and allow
     # the simplification to use all of those. For now, fall back to making
-    # sure that the sipmlification only uses inames that were already there.
+    # sure that the simplification only uses inames that were already there.
     domain = (
             kernel
             .get_inames_domain(inames)
