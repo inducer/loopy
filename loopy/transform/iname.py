@@ -167,7 +167,6 @@ def _split_iname_in_set(s, iname_to_split, inner_iname, outer_iname, fixed_lengt
     orig_dim_type, _ = var_dict[iname_to_split]
     # orig_dim_type may be set or param (the latter if the iname is
     # used as a parameter in a subdomain).
-    del orig_dim_type
 
     # NB: dup_iname_to_split is not a globally valid identifier: only unique
     # wrt the set s.
