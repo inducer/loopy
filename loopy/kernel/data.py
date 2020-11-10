@@ -452,13 +452,13 @@ class ImageArg(ArrayBase, KernelArgument):
 
 class ValueArg(KernelArgument):
     def __init__(self, name, dtype=None, approximately=1000, target=None,
-            is_output_only=False,tags=None):
+            is_output_only=False, tags=None):
 
         KernelArgument.__init__(self, name=name,
                 dtype=dtype,
                 approximately=approximately,
                 target=target,
-                is_output_only=is_output_only,tags=tags)
+                is_output_only=is_output_only, tags=tags)
 
     def __str__(self):
         import loopy as lp
