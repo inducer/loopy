@@ -1,5 +1,3 @@
-from __future__ import division, with_statement
-
 __copyright__ = "Copyright (C) 2009 Andreas Kloeckner"
 
 __license__ = """
@@ -27,7 +25,7 @@ import re
 from loopy.diagnostic import LoopyError
 
 
-class FTreeWalkerBase(object):
+class FTreeWalkerBase:
     def __init__(self, filename):
         from loopy.frontend.fortran.expression import FortranExpressionParser
         self.expr_parser = FortranExpressionParser(self)

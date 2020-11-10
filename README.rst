@@ -7,9 +7,9 @@ Loopy: Transformation-Based Generation of High-Performance CPU/GPU Code
 .. image:: https://github.com/inducer/loopy/workflows/CI/badge.svg?branch=master&event=push
     :alt: Github Build Status
     :target: https://github.com/inducer/loopy/actions?query=branch%3Amaster+workflow%3ACI+event%3Apush
-.. image:: https://badge.fury.io/py/loo.py.png
+.. image:: https://badge.fury.io/py/loopy.png
     :alt: Python Package Index Release Page
-    :target: https://pypi.org/project/loo.py/
+    :target: https://pypi.org/project/loopy/
 
 Loopy lets you easily generate the tedious, complicated code that is necessary
 to get good performance out of GPUs and multi-core CPUs.
@@ -38,23 +38,21 @@ Loopy targets array-type computations, such as the following:
 It is not (and does not want to be) a general-purpose programming language.
 
 Loopy is licensed under the liberal `MIT license
-<http://en.wikipedia.org/wiki/MIT_License>`_ and free for commercial, academic,
+<https://en.wikipedia.org/wiki/MIT_License>`_ and free for commercial, academic,
 and private use. All of Loopy's dependencies can be automatically installed from
 the package index after using::
 
-    pip install loo.py
+    pip install loopy
 
 In addition, Loopy is compatible with and enhances
-`pyopencl <http://mathema.tician.de/software/pyopencl>`_.
+`pyopencl <https://mathema.tician.de/software/pyopencl>`_.
 
 ---
 
 Places on the web related to Loopy:
 
-* `Python package index <http://pypi.python.org/pypi/loo.py>`_ (download releases) Note the extra '.' in the PyPI identifier!
-
-* `Documentation <http://documen.tician.de/loopy>`_ (read how things work)
-* `Github <http://github.com/inducer/loopy>`_ (get latest source code, file bugs)
-* `Wiki <http://wiki.tiker.net/Loopy>`_ (read installation tips, get examples, read FAQ)
-* `Homepage <http://mathema.tician.de/software/loopy>`_
+* `Python package index <https://pypi.org/project/loopy>`_ (download releases)
+* `Documentation <https://documen.tician.de/loopy>`_ (read how things work)
+* `Github <https://github.com/inducer/loopy>`_ (get latest source code, file bugs)
+* `Homepage <https://mathema.tician.de/software/loopy>`_
 

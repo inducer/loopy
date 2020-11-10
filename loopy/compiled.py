@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"
 
 __license__ = """
@@ -38,6 +36,6 @@ class CompiledKernel(PyOpenCLKernelExecutor):
         warn("CompiledKernel is deprecated. Use LoopKernel.__call__ directly.",
                 DeprecationWarning, stacklevel=2)
 
-        super(CompiledKernel, self).__init__(context, kernel)
+        super().__init__(context, kernel)
 
 # }}}

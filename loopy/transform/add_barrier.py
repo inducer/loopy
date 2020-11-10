@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2017 Kaushik Kulkarni"
 
 __license__ = """

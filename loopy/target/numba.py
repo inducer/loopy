@@ -1,6 +1,5 @@
 """Python host AST builder for integration with PyOpenCL."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"
 
@@ -44,7 +43,7 @@ def _base_numba_preamble_generator(preamble_info):
 class NumbaBaseASTBuilder(PythonASTBuilderBase):
     def preamble_generators(self):
         return (
-                super(NumbaBaseASTBuilder, self).preamble_generators() + [
+                super().preamble_generators() + [
                     _base_numba_preamble_generator
                     ])
 
@@ -72,7 +71,7 @@ class NumbaBaseASTBuilder(PythonASTBuilderBase):
         implemented_data_info = codegen_state.implemented_data_info
 
         return Statement(
-            "%s[%s, %s](%s)" % (
+            "{}[{}, {}]({})".format(
                 name,
                 ecm(gsize, PREC_NONE),
                 ecm(lsize, PREC_NONE),
@@ -155,7 +154,7 @@ def _cuda_numba_preamble_generator(preamble_info):
 class NumbaCudaASTBuilder(NumbaBaseASTBuilder):
     def preamble_generators(self):
         return (
-                super(NumbaCudaASTBuilder, self).preamble_generators() + [
+                super().preamble_generators() + [
                     _cuda_numba_preamble_generator
                     ])
 
