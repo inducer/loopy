@@ -652,7 +652,7 @@ class ArrayBase(ImmutableRecord):
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
             dim_names=None, strides=None, order=None, for_atomic=False,
-            target=None, alignment=None,
+            target=None, alignment=None, tags=None,
             **kwargs):
         """
         All of the following (except *name*) are optional.
@@ -848,6 +848,7 @@ class ArrayBase(ImmutableRecord):
                 order=order,
                 alignment=alignment,
                 for_atomic=for_atomic,
+                tags=tags,
                 **kwargs)
 
     def __eq__(self, other):
