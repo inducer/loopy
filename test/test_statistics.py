@@ -1,5 +1,3 @@
-from __future__ import division, print_function
-
 __copyright__ = "Copyright (C) 2015 James Stevens"
 
 __license__ = """
@@ -22,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
 import sys
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
@@ -1175,7 +1172,7 @@ def test_gather_access_footprint():
     from loopy.statistics import gather_access_footprints, count
     fp = gather_access_footprints(knl)
 
-    for key, footprint in six.iteritems(fp):
+    for key, footprint in fp.items():
         print(key, count(knl, footprint))
 
 
@@ -1190,7 +1187,7 @@ def test_gather_access_footprint_2():
     fp = gather_access_footprints(knl)
 
     params = {"n": 200}
-    for key, footprint in six.iteritems(fp):
+    for key, footprint in fp.items():
         assert count(knl, footprint).eval_with_dict(params) == 200
         print(key, count(knl, footprint))
 

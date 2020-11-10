@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -527,7 +525,7 @@ def test_uniquify_instruction_ids():
     from loopy.transform.instruction import uniquify_instruction_ids
     knl = uniquify_instruction_ids(knl)
 
-    insn_ids = set(insn.id for insn in knl.instructions)
+    insn_ids = {insn.id for insn in knl.instructions}
 
     assert len(insn_ids) == 4
     assert all(isinstance(id, str) for id in insn_ids)

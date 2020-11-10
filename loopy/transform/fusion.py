@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,8 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-import six
 
 import islpy as isl
 from islpy import dim_type
@@ -53,7 +49,7 @@ def _rename_temporaries(kernel, suffix, all_identifiers):
     vng = kernel.get_var_name_generator()
 
     new_temporaries = {}
-    for tv in six.itervalues(kernel.temporary_variables):
+    for tv in kernel.temporary_variables.values():
         if tv.name in all_identifiers:
             new_tv_name = vng(tv.name+suffix)
         else:
@@ -105,7 +101,7 @@ def _ordered_merge_lists(list_a, list_b):
 def _merge_dicts(item_name, dict_a, dict_b):
     result = dict_a.copy()
 
-    for k, v in six.iteritems(dict_b):
+    for k, v in dict_b.items():
         if k in result:
             if v != result[k]:
                 raise LoopyError("inconsistent %ss for key '%s' in merge: %s and %s"
@@ -193,7 +189,7 @@ def _fuse_two_kernels(kernela, kernelb):
     # {{{ fuse temporaries
 
     new_temporaries = kernela.temporary_variables.copy()
-    for b_name, b_tv in six.iteritems(kernelb.temporary_variables):
+    for b_name, b_tv in kernelb.temporary_variables.items():
         assert b_name == b_tv.name
 
         new_tv_name = vng(b_name)
@@ -240,7 +236,7 @@ def _fuse_two_kernels(kernela, kernelb):
             domains=new_domains,
             instructions=new_instructions,
             args=new_args,
-            name="%s_and_%s" % (kernela.name, kernelb.name),
+            name=f"{kernela.name}_and_{kernelb.name}",
             preambles=_ordered_merge_lists(kernela.preambles, kernelb.preambles),
             preamble_generators=_ordered_merge_lists(
                 kernela.preamble_generators, kernelb.preamble_generators),

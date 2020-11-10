@@ -1,5 +1,3 @@
-from __future__ import division
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -29,11 +27,13 @@ from islpy import dim_type
 
 # {{{ approximate, convex bounds check generator
 
-def get_approximate_convex_bounds_checks(domain, check_inames, implemented_domain):
+def get_approximate_convex_bounds_checks(domain, check_inames,
+        implemented_domain, op_cache_manager):
     if isinstance(domain, isl.BasicSet):
         domain = isl.Set.from_basic_set(domain)
     domain = domain.remove_redundancies()
-    result = domain.eliminate_except(check_inames, [dim_type.set])
+    result = op_cache_manager.eliminate_except(domain, check_inames,
+            (dim_type.set,))
 
     # This is ok, because we're really looking for the
     # projection, with no remaining constraints from

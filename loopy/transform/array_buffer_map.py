@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012-2015 Andreas Kloeckner"
 
 __license__ = """
@@ -22,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from six.moves import range, zip
 
 import islpy as isl
 from islpy import dim_type
@@ -195,7 +192,7 @@ def compute_bounds(kernel, domain, stor2sweep,
 
 # {{{ array-to-buffer map
 
-class ArrayToBufferMap(object):
+class ArrayToBufferMap:
     def __init__(self, kernel, domain, sweep_inames, access_descriptors,
             storage_axis_count):
         self.kernel = kernel
@@ -218,8 +215,8 @@ class ArrayToBufferMap(object):
                 self.primed_sweep_inames)
 
         self.prime_sweep_inames = SubstitutionMapper(make_subst_func(
-            dict((sin, var(psin))
-                for sin, psin in zip(sweep_inames, self.primed_sweep_inames))))
+            {sin: var(psin)
+                for sin, psin in zip(sweep_inames, self.primed_sweep_inames)}))
 
         # # }}}
 
@@ -403,7 +400,7 @@ class ArrayToBufferMap(object):
                 aligned_g_s2s_parm_dom)
 
 
-class NoOpArrayToBufferMap(object):
+class NoOpArrayToBufferMap:
     non1_storage_axis_names = ()
     storage_base_indices = ()
     non1_storage_shape = ()

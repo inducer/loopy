@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -23,7 +21,6 @@ THE SOFTWARE.
 """
 
 
-import six
 from pytools import ImmutableRecord
 import sys
 import islpy as isl
@@ -223,17 +220,17 @@ def find_loop_nest_with_map(kernel):
 
     from loopy.kernel.data import ConcurrentTag, IlpBaseTag
 
-    all_nonpar_inames = set(
+    all_nonpar_inames = {
             iname for iname in kernel.all_inames()
             if not kernel.iname_tags_of_type(iname,
-                    (ConcurrentTag, IlpBaseTag)))
+                    (ConcurrentTag, IlpBaseTag))}
 
     iname_to_insns = kernel.iname_to_insns()
 
     for iname in all_nonpar_inames:
-        result[iname] = set(other_iname
+        result[iname] = {other_iname
             for insn in iname_to_insns[iname]
-            for other_iname in kernel.insn_inames(insn) & all_nonpar_inames)
+            for other_iname in kernel.insn_inames(insn) & all_nonpar_inames}
 
     return result
 
@@ -367,8 +364,7 @@ def gen_dependencies_except(kernel, insn_id, except_insn_ids):
 
         yield dep_id
 
-        for sub_dep_id in gen_dependencies_except(kernel, dep_id, except_insn_ids):
-            yield sub_dep_id
+        yield from gen_dependencies_except(kernel, dep_id, except_insn_ids)
 
 
 def get_priority_tiers(wanted, priorities):
@@ -410,8 +406,7 @@ def get_priority_tiers(wanted, priorities):
     wanted = wanted - candidates
 
     # Yield recursively
-    for tier in get_priority_tiers(wanted, priorities):
-        yield tier
+    yield from get_priority_tiers(wanted, priorities)
 
 
 def sched_item_to_insn_id(sched_item):
@@ -442,7 +437,7 @@ def format_insn(kernel, insn_id):
     from loopy.kernel.instruction import (
             MultiAssignmentBase, NoOpInstruction, BarrierInstruction)
     if isinstance(insn, MultiAssignmentBase):
-        return "%s%s%s = %s%s%s  {id=%s}" % (
+        return "{}{}{} = {}{}{}  {{id={}}}".format(
             Fore.CYAN, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
             Fore.MAGENTA, str(insn.expression), Style.RESET_ALL,
             format_insn_id(kernel, insn_id))
@@ -451,16 +446,16 @@ def format_insn(kernel, insn_id):
         if insn.synchronization_kind == "local":
             mem_kind = "{mem_kind=%s}" % insn.mem_kind
 
-        return "[%s] %s... %sbarrier%s%s" % (
+        return "[{}] {}... {}barrier{}{}".format(
                 format_insn_id(kernel, insn_id),
                 Fore.MAGENTA, insn.synchronization_kind[0], mem_kind,
                 Style.RESET_ALL)
     elif isinstance(insn, NoOpInstruction):
-        return "[%s] %s... nop%s" % (
+        return "[{}] {}... nop{}".format(
                 format_insn_id(kernel, insn_id),
                 Fore.MAGENTA, Style.RESET_ALL)
     else:
-        return "[%s] %s%s%s" % (
+        return "[{}] {}{}{}".format(
                 format_insn_id(kernel, insn_id),
                 Fore.CYAN, str(insn), Style.RESET_ALL)
 
@@ -479,7 +474,7 @@ def dump_schedule(kernel, schedule):
             lines.append(indent + "end %s" % sched_item.iname)
         elif isinstance(sched_item, CallKernel):
             lines.append(indent +
-                         "CALL KERNEL %s(extra_args=%s, extra_inames=%s)" % (
+                         "CALL KERNEL {}(extra_args={}, extra_inames={})".format(
                              sched_item.kernel_name,
                              sched_item.extra_args,
                              sched_item.extra_inames))
@@ -852,8 +847,8 @@ def generate_loop_schedules_internal(
             print(dump_schedule(sched_state.kernel, sched_state.preschedule))
         print(75*"=")
         print("LOOP NEST MAP (inner: outer):")
-        for iname, val in six.iteritems(sched_state.loop_nest_around_map):
-            print("%s : %s" % (iname, ", ".join(val)))
+        for iname, val in sched_state.loop_nest_around_map.items():
+            print("{} : {}".format(iname, ", ".join(val)))
         print(75*"=")
 
         if debug.debug_length == len(debug.longest_rejected_schedule):
@@ -868,28 +863,26 @@ def generate_loop_schedules_internal(
 
     if isinstance(next_preschedule_item, CallKernel):
         assert sched_state.within_subkernel is False
-        for result in generate_loop_schedules_internal(
+        yield from generate_loop_schedules_internal(
                 sched_state.copy(
                     schedule=sched_state.schedule + (next_preschedule_item,),
                     preschedule=sched_state.preschedule[1:],
                     within_subkernel=True,
                     may_schedule_global_barriers=False,
                     enclosing_subkernel_inames=sched_state.active_inames),
-                debug=debug):
-            yield result
+                debug=debug)
 
     if isinstance(next_preschedule_item, ReturnFromKernel):
         assert sched_state.within_subkernel is True
         # Make sure all subkernel inames have finished.
         if sched_state.active_inames == sched_state.enclosing_subkernel_inames:
-            for result in generate_loop_schedules_internal(
+            yield from generate_loop_schedules_internal(
                     sched_state.copy(
                         schedule=sched_state.schedule + (next_preschedule_item,),
                         preschedule=sched_state.preschedule[1:],
                         within_subkernel=False,
                         may_schedule_global_barriers=True),
-                    debug=debug):
-                yield result
+                    debug=debug)
 
     # }}}
 
@@ -902,12 +895,11 @@ def generate_loop_schedules_internal(
     if (
             isinstance(next_preschedule_item, Barrier)
             and next_preschedule_item.originating_insn_id is None):
-        for result in generate_loop_schedules_internal(
+        yield from generate_loop_schedules_internal(
                     sched_state.copy(
                         schedule=sched_state.schedule + (next_preschedule_item,),
                         preschedule=sched_state.preschedule[1:]),
-                    debug=debug):
-            yield result
+                    debug=debug)
 
     # }}}
 
@@ -1216,7 +1208,7 @@ def generate_loop_schedules_internal(
         print("reachable insns:", ",".join(reachable_insn_ids))
         print("active groups (with insn counts):", ",".join(
             "%s: %d" % (grp, c)
-            for grp, c in six.iteritems(sched_state.active_group_counts)))
+            for grp, c in sched_state.active_group_counts.items()))
         print(75*"-")
 
     if needed_inames:
@@ -1298,7 +1290,7 @@ def generate_loop_schedules_internal(
 
             usefulness = None  # highest insn priority enabled by iname
 
-            hypothetically_active_loops = active_inames_set | set([iname])
+            hypothetically_active_loops = active_inames_set | {iname}
             for insn_id in reachable_insn_ids:
                 insn = kernel.id_to_insn[insn_id]
 
@@ -1326,7 +1318,7 @@ def generate_loop_schedules_internal(
         loop_priority_set = set().union(*[set(prio)
                                           for prio in
                                           sched_state.kernel.loop_priority])
-        useful_loops_set = set(six.iterkeys(iname_to_usefulness))
+        useful_loops_set = set(iname_to_usefulness.keys())
         useful_and_desired = useful_loops_set & loop_priority_set
 
         if useful_and_desired:
@@ -1414,7 +1406,7 @@ def generate_loop_schedules_internal(
 
     if debug_mode:
         print(75*"=")
-        inp = six.moves.input("Hit Enter for next schedule, "
+        inp = input("Hit Enter for next schedule, "
                 "or enter a number to examine schedules of a "
                 "different length:")
         if inp:
@@ -1495,7 +1487,7 @@ class DependencyRecord(ImmutableRecord):
                 var_kind=var_kind)
 
 
-class DependencyTracker(object):
+class DependencyTracker:
     """
     A utility to help track dependencies between originating from a set
     of sources (as defined by :meth:`add_source`. For each target,
@@ -1603,9 +1595,8 @@ class DependencyTracker(object):
                 ("w", "any", self.base_access_map),
                 ]:
 
-            for dep in self.get_conflicting_accesses(
-                    target, tgt_dir, src_dir, src_base_var_to_accessor_map):
-                yield dep
+            yield from self.get_conflicting_accesses(
+                    target, tgt_dir, src_dir, src_base_var_to_accessor_map)
 
     def get_conflicting_accesses(self, target, tgt_dir, src_dir,
             src_base_var_to_accessor_map):
@@ -1619,11 +1610,11 @@ class DependencyTracker(object):
         dir_to_getter = {"w": get_written_names, "any": get_accessed_names}
 
         def filter_var_set_for_base_storage(var_name_set, base_storage_name):
-            return set(
+            return {
                     name
                     for name in var_name_set
                     if (self.temp_to_base_storage.get(name, name)
-                        == base_storage_name))
+                        == base_storage_name)}
 
         tgt_accessed_vars = dir_to_getter[tgt_dir](target)
         tgt_accessed_vars_base = self.map_to_base_storage(tgt_accessed_vars)
@@ -1753,8 +1744,8 @@ def _insn_ids_reaching_end(schedule, kind, reverse):
                     sched_item.synchronization_kind, kind):
                 insn_ids_alive_at_scope[-1].clear()
         else:
-            insn_ids_alive_at_scope[-1] |= set(
-                    insn_id for insn_id in sched_item_to_insn_id(sched_item))
+            insn_ids_alive_at_scope[-1] |= {
+                    insn_id for insn_id in sched_item_to_insn_id(sched_item)}
 
     assert len(insn_ids_alive_at_scope) == 1
     return insn_ids_alive_at_scope[-1]
@@ -1775,7 +1766,7 @@ def append_barrier_or_raise_error(schedule, dep, verify_only):
                     dep.variable,
                     dep.var_kind))
     else:
-        comment = "for %s (%s)" % (
+        comment = "for {} ({})".format(
                 dep.variable, dep.dep_descr.format(
                     tgt=dep.target.id, src=dep.source.id))
         schedule.append(Barrier(
@@ -1951,8 +1942,7 @@ def generate_loop_schedules(kernel, debug_args={}):
     """
 
     with MinRecursionLimitForScheduling(kernel):
-        for sched in generate_loop_schedules_inner(kernel, debug_args=debug_args):
-            yield sched
+        yield from generate_loop_schedules_inner(kernel, debug_args=debug_args)
 
 
 def generate_loop_schedules_inner(kernel, debug_args={}):
@@ -1970,30 +1960,30 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
     preschedule = kernel.schedule if kernel.state == KernelState.LINEARIZED else ()
 
-    prescheduled_inames = set(
+    prescheduled_inames = {
             insn.iname
             for insn in preschedule
-            if isinstance(insn, EnterLoop))
+            if isinstance(insn, EnterLoop)}
 
-    prescheduled_insn_ids = set(
+    prescheduled_insn_ids = {
         insn_id
         for item in preschedule
-        for insn_id in sched_item_to_insn_id(item))
+        for insn_id in sched_item_to_insn_id(item)}
 
     from loopy.kernel.data import (IlpBaseTag, ConcurrentTag, VectorizeTag,
                                    filter_iname_tags_by_type)
-    ilp_inames = set(
+    ilp_inames = {
             iname
-            for iname, tags in six.iteritems(kernel.iname_to_tags)
-            if filter_iname_tags_by_type(tags, IlpBaseTag))
-    vec_inames = set(
+            for iname, tags in kernel.iname_to_tags.items()
+            if filter_iname_tags_by_type(tags, IlpBaseTag)}
+    vec_inames = {
             iname
-            for iname, tags in six.iteritems(kernel.iname_to_tags)
-            if filter_iname_tags_by_type(tags, VectorizeTag))
-    parallel_inames = set(
+            for iname, tags in kernel.iname_to_tags.items()
+            if filter_iname_tags_by_type(tags, VectorizeTag)}
+    parallel_inames = {
             iname
-            for iname, tags in six.iteritems(kernel.iname_to_tags)
-            if filter_iname_tags_by_type(tags, ConcurrentTag))
+            for iname, tags in kernel.iname_to_tags.items()
+            if filter_iname_tags_by_type(tags, ConcurrentTag)}
 
     loop_nest_with_map = find_loop_nest_with_map(kernel)
     loop_nest_around_map = find_loop_nest_around_map(kernel)
@@ -2018,7 +2008,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
             schedule=(),
 
-            unscheduled_insn_ids=set(insn.id for insn in kernel.instructions),
+            unscheduled_insn_ids={insn.id for insn in kernel.instructions},
             scheduled_insn_ids=frozenset(),
             within_subkernel=kernel.state != KernelState.LINEARIZED,
             may_schedule_global_barriers=True,
@@ -2040,7 +2030,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
     def print_longest_dead_end():
         if debug.interactive:
-            print("Loo.py will now show you the scheduler state at the point")
+            print("Loopy will now show you the scheduler state at the point")
             print("where the longest (dead-end) schedule was generated, in the")
             print("the hope that some of this makes sense and helps you find")
             print("the issue.")
@@ -2049,7 +2039,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             print("  debug_args=dict(interactive=False)")
             print("to generate_loop_schedules().")
             print(75*"-")
-            six.moves.input("Enter:")
+            input("Enter:")
             print()
             print()
 
@@ -2116,7 +2106,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
     debug.done_scheduling()
     if not schedule_count:
         print(75*"-")
-        print("ERROR: Sorry--loo.py did not find a schedule for your kernel.")
+        print("ERROR: Sorry--loopy did not find a schedule for your kernel.")
         print(75*"-")
         print_longest_dead_end()
         raise RuntimeError("no valid schedules found")

@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,9 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six  # noqa: F401
-from six.moves import range
 
 import sys
 import numpy as np
@@ -77,7 +72,7 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
     knl = lp.split_iname(knl, "i", 2, outer_tag="g.0", inner_tag="l.0")
     knl = lp.split_iname(knl, "ii", 2, outer_tag="g.0", inner_tag="l.0")
     evt, (out,) = knl(queue, a=a)
-    assert np.linalg.norm(out-((2*(a+cnst)+cnst))) <= 1e-15
+    assert np.linalg.norm(out-(2*(a+cnst)+cnst)) <= 1e-15
 
 
 def test_complicated_subst(ctx_factory):
@@ -1205,7 +1200,7 @@ def test_save_of_private_array_in_hw_loop(ctx_factory, debug=False):
     knl = lp.set_temporary_scope(knl, "t", "private")
 
     save_and_reload_temporaries_test(
-        queue, knl, np.vstack((8 * (np.arange(8),))), debug)
+        queue, knl, np.vstack(8 * (np.arange(8),)), debug)
 
 
 def test_save_of_private_multidim_array(ctx_factory, debug=False):
@@ -1228,7 +1223,7 @@ def test_save_of_private_multidim_array(ctx_factory, debug=False):
 
     knl = lp.set_temporary_scope(knl, "t", "private")
 
-    result = np.array([np.vstack((8 * (np.arange(8),))) for i in range(8)])
+    result = np.array([np.vstack(8 * (np.arange(8),)) for i in range(8)])
     save_and_reload_temporaries_test(queue, knl, result, debug)
 
 
@@ -1253,7 +1248,7 @@ def test_save_of_private_multidim_array_in_hw_loop(ctx_factory, debug=False):
     knl = lp.set_temporary_scope(knl, "t", "private")
     knl = lp.tag_inames(knl, dict(i="g.0"))
 
-    result = np.array([np.vstack((8 * (np.arange(8),))) for i in range(8)])
+    result = np.array([np.vstack(8 * (np.arange(8),)) for i in range(8)])
     save_and_reload_temporaries_test(queue, knl, result, debug)
 
 
@@ -2135,7 +2130,7 @@ def test_integer_reduction(ctx_factory):
         for reduction, function, args in reductions:
             kstr = ("out" if "arg" not in reduction
                         else "out[0], out[1]")
-            kstr += " = {0}(k, {1})".format(reduction, args)
+            kstr += f" = {reduction}(k, {args})"
             knl = lp.make_kernel("{[k]: 0<=k<n}",
                                 kstr,
                                 [var_lp, "..."])
@@ -2486,7 +2481,7 @@ def test_fixed_parameters(ctx_factory):
 
 def test_parameter_inference():
     knl = lp.make_kernel("{[i]: 0 <= i < n and i mod 2 = 0}", "")
-    assert knl.all_params() == set(["n"])
+    assert knl.all_params() == {"n"}
 
 
 def test_execution_backend_can_cache_dtypes(ctx_factory):
@@ -2516,13 +2511,13 @@ def test_wildcard_dep_matching():
             """,
             "...")
 
-    all_insns = set("insn%d" % i for i in range(1, 6))
+    all_insns = {"insn%d" % i for i in range(1, 6)}
 
     assert knl.id_to_insn["insn1"].depends_on == set()
-    assert knl.id_to_insn["insn2"].depends_on == all_insns - set(["insn2"])
-    assert knl.id_to_insn["insn3"].depends_on == all_insns - set(["insn3"])
-    assert knl.id_to_insn["insn4"].depends_on == set(["insn1", "insn2"])
-    assert knl.id_to_insn["insn5"].depends_on == all_insns - set(["insn1", "insn5"])
+    assert knl.id_to_insn["insn2"].depends_on == all_insns - {"insn2"}
+    assert knl.id_to_insn["insn3"].depends_on == all_insns - {"insn3"}
+    assert knl.id_to_insn["insn4"].depends_on == {"insn1", "insn2"}
+    assert knl.id_to_insn["insn5"].depends_on == all_insns - {"insn1", "insn5"}
 
 
 def test_preamble_with_separate_temporaries(ctx_factory):
@@ -2884,6 +2879,45 @@ def test_empty_domain(ctx_factory, tag):
     prg(queue, c=c, **kwargs)
 
     assert (c.get() == 0).all()
+
+
+def test_access_check_with_conditionals():
+    legal_knl = lp.make_kernel(
+            "{[i]: 0<=i<20}",
+            """
+            z[i] = x[i] if i < 10 else y[i-10]
+            z[i] = x[i] if 0 else 2.0f
+            z[i] = in[i-1] if i else 3.14f
+            """,
+            [lp.GlobalArg("x,y", shape=(10,), dtype=float),
+             lp.GlobalArg("in", shape=(19,), dtype=float),
+             ...], seq_dependencies=True)
+    lp.generate_code_v2(legal_knl)
+
+    illegal_knl = lp.make_kernel(
+            "{[i]: 0<=i<20}",
+            """
+            z[i] = x[i] if i < 10 else y[i]
+            """,
+            [lp.GlobalArg("x,y", shape=(10,), dtype=float),
+             ...])
+
+    from loopy.diagnostic import LoopyError
+    with pytest.raises(LoopyError):
+        lp.generate_code_v2(illegal_knl)
+
+    # current limitation: cannot handle non-affine conditions
+    legal_but_nonaffine_condition_knl = lp.make_kernel(
+            "{[i]: 0<=i<20}",
+            """
+            z[i] = x[i] if i*i < 100 else y[i-10]
+            """,
+            [lp.GlobalArg("x,y", shape=(10,), dtype=float),
+             ...])
+
+    from loopy.diagnostic import LoopyError
+    with pytest.raises(LoopyError):
+        lp.generate_code_v2(legal_but_nonaffine_condition_knl)
 
 
 if __name__ == "__main__":

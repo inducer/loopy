@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2019 Andreas Kloeckner"
 
 __license__ = """
@@ -21,9 +19,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six
-from six.moves import range
 
 import sys
 import numpy as np
@@ -66,12 +61,12 @@ class BoundsCheckError(ValueError):
 
 class BoundsCheckingEvaluationMapper(EvaluationMapper):
     def __init__(self, context, lbound, ubound):
-        super(BoundsCheckingEvaluationMapper, self).__init__(context)
+        super().__init__(context)
         self.lbound = lbound
         self.ubound = ubound
 
     def rec(self, expr):
-        result = super(BoundsCheckingEvaluationMapper, self).rec(expr)
+        result = super().rec(expr)
 
         if result > self.ubound:
             raise BoundsCheckError()
@@ -326,11 +321,11 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
             shape=()))
         data.extend([
             lp.TemporaryVariable(name, get_numpy_type(val))
-            for name, val in six.iteritems(var_values)
+            for name, val in var_values.items()
             ])
         instructions.extend([
             lp.Assignment(name, get_numpy_type(val)(val))
-            for name, val in six.iteritems(var_values)
+            for name, val in var_values.items()
             ])
         instructions.append(lp.Assignment(var_name, expr))
 
@@ -350,7 +345,7 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
     print(knl)
     evt, lp_values = knl(queue, out_host=True)
 
-    for name, ref_value in six.iteritems(ref_values):
+    for name, ref_value in ref_values.items():
         lp_value = lp_values[name]
         if expr_type in ["real", "complex"]:
             err = abs(ref_value-lp_value)/abs(ref_value)
@@ -365,7 +360,7 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
             print(80*"-")
             print(lp.generate_code_v2(knl).device_code())
             print(80*"-")
-            print("WRONG: %s rel error=%g" % (name, err))
+            print(f"WRONG: {name} rel error={err:g}")
             print("reference=%r" % ref_value)
             print("loopy=%r" % lp_value)
             print(80*"-")

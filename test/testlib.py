@@ -3,7 +3,7 @@ import loopy as lp
 
 # {{{ test_barrier_in_overridden_get_grid_size_expanded_kernel
 
-class GridOverride(object):
+class GridOverride:
     def __init__(self, clean, vecsize):
         self.clean = clean
         self.vecsize = vecsize

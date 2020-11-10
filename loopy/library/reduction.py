@@ -1,5 +1,3 @@
-from __future__ import division
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -47,7 +45,7 @@ __doc__ = """
 """
 
 
-class ReductionOperation(object):
+class ReductionOperation:
     """Subclasses of this type have to be hashable, picklable, and
     equality-comparable.
     """
@@ -132,7 +130,7 @@ class ScalarReductionOperation(ReductionOperation):
         result = type(self).__name__.replace("ReductionOperation", "").lower()
 
         if self.forced_result_type is not None:
-            result = "%s<%s>" % (result, str(self.forced_result_type))
+            result = "{}<{}>".format(result, str(self.forced_result_type))
 
         return result
 
@@ -255,7 +253,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         return 2
 
     def prefix(self, scalar_dtype, segment_flag_dtype):
-        return "loopy_segmented_%s_%s_%s" % (self.which,
+        return "loopy_segmented_{}_{}_{}".format(self.which,
                 scalar_dtype.numpy_dtype.type.__name__,
                 segment_flag_dtype.numpy_dtype.type.__name__)
 
@@ -335,7 +333,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         raise NotImplementedError
 
     def prefix(self, scalar_dtype, index_dtype):
-        return "loopy_arg%s_%s_%s" % (self.which,
+        return "loopy_arg{}_{}_{}".format(self.which,
                 scalar_dtype.numpy_dtype.type.__name__,
                 index_dtype.numpy_dtype.type.__name__)
 
