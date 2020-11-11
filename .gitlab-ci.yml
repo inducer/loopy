@@ -89,6 +89,8 @@ Python 3 POCL Examples:
   - python3
   - pocl
   - large-node
+  # For examples/python/ispc-stream-harness.py
+  - avx2
   except:
   - tags
 
