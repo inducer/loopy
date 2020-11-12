@@ -1002,7 +1002,33 @@ class RuleAwareIdentityMapper(IdentityMapper):
                         lambda expr: self(expr, kernel, insn)))
                 for insn in kernel.instructions]
 
-        return kernel.copy(instructions=new_insns)
+        from functools import partial
+
+        non_insn_self = partial(self, kernel=kernel, insn=None)
+
+        from loopy.kernel.array import ArrayBase
+
+        # {{{ args
+
+        new_args = [
+                arg.map_exprs(non_insn_self) if isinstance(arg, ArrayBase) else arg
+                for arg in kernel.args]
+
+        # }}}
+
+        # {{{ tvs
+
+        new_tvs = {
+                tv_name: tv.map_exprs(non_insn_self)
+                for tv_name, tv in kernel.temporary_variables.items()}
+
+        # }}}
+
+        # domains, var names: not exprs => do not map
+
+        return kernel.copy(instructions=new_insns,
+                           args=new_args,
+                           temporary_variables=new_tvs)
 
 
 class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper):
