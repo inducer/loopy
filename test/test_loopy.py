@@ -2920,6 +2920,30 @@ def test_access_check_with_conditionals():
         lp.generate_code_v2(legal_but_nonaffine_condition_knl)
 
 
+def test_split_iname_within(ctx_factory):
+    # https://github.com/inducer/loopy/issues/163
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{ [i, j]: 0<=i<n and 0<=j<n }",
+        """
+        x[i, j] = 3 {id=a}
+        y[i, j] = 2 * y[i, j] {id=b}
+        """,
+        options=dict(write_code=True))
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "j", 4,
+                         outer_tag="g.0", inner_tag="l.0",
+                         within="id:a")
+    knl = lp.split_iname(knl, "i", 4,
+                         outer_tag="g.0", inner_tag="l.0",
+                         within="id:b")
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

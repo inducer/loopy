@@ -1525,7 +1525,13 @@ def qpolynomial_from_expr(space, expr):
 def simplify_using_aff(kernel, expr):
     inames = get_dependencies(expr) & kernel.all_inames()
 
-    domain = kernel.get_inames_domain(inames)
+    # FIXME: Ideally, we should find out what inames are usable and allow
+    # the simplification to use all of those. For now, fall back to making
+    # sure that the simplification only uses inames that were already there.
+    domain = (
+            kernel
+            .get_inames_domain(inames)
+            .project_out_except(inames, [dim_type.set]))
 
     try:
         aff = guarded_aff_from_expr(domain.space, expr)
