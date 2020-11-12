@@ -158,7 +158,7 @@ class _InameSplitter(RuleAwareIdentityMapper):
 
 
 def _split_iname_in_set(s, iname_to_split, inner_iname, outer_iname, fixed_length,
-        fixed_length_is_inner, split_iname_should_remain):
+        fixed_length_is_inner):
     var_dict = s.get_var_dict()
 
     if iname_to_split not in var_dict:
@@ -205,11 +205,7 @@ def _split_iname_in_set(s, iname_to_split, inner_iname, outer_iname, fixed_lengt
     dup_iname_dim_type, dup_name_idx = space.get_var_dict()[dup_iname_to_split]
     s = s.project_out(dup_iname_dim_type, dup_name_idx, 1)
 
-    if split_iname_should_remain:
-        return s
-    else:
-        name_dim_type, name_idx = s.space.get_var_dict()[iname_to_split]
-        return s.project_out(name_dim_type, name_idx, 1)
+    return s
 
 
 def _split_iname_backend(kernel, iname_to_split,
@@ -260,17 +256,9 @@ def _split_iname_backend(kernel, iname_to_split,
     if inner_iname is None:
         inner_iname = vng(iname_to_split+"_inner")
 
-    all_insns_using_iname_in_within = all(
-            # "does not use iname or is targeted by the within"
-            # <=>
-            # "'uses iname' implies within"
-            iname_to_split not in insn.within_inames or within(kernel, insn)
-            for insn in kernel.instructions)
-
     new_domains = [
             _split_iname_in_set(dom, iname_to_split, inner_iname, outer_iname,
-                fixed_length, fixed_length_is_inner,
-                split_iname_should_remain=not all_insns_using_iname_in_within)
+                fixed_length, fixed_length_is_inner)
             for dom in kernel.domains]
 
     from pymbolic import var
@@ -333,7 +321,10 @@ def _split_iname_backend(kernel, iname_to_split,
         kernel = tag_inames(kernel,
                 {outer_iname: existing_tag, inner_iname: existing_tag})
 
-    return tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
+    kernel = tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
+    kernel = remove_unused_inames(kernel, [iname_to_split])
+
+    return kernel
 
 # }}}
 
