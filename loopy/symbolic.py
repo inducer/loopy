@@ -1006,11 +1006,41 @@ class RuleAwareIdentityMapper(IdentityMapper):
 
 
 class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper):
+    """
+    Mapper to substitute expressions and record any divergence of substitution
+    rule expressions of :class:`loopy.LoopKernel`.
+
+    .. attribute:: rule_mapping_context
+
+        An instance of :class:`SubstitutionRuleMappingContext` to record
+        divergence of substitution rules.
+
+    .. attribute:: within
+
+        An instance of :class:`loopy.match.StackMatchComponent`.
+        :class:`RuleAwareSubstitutionMapper` would perform
+        substitutions in the expression if the stack match is ``True`` or
+        if the expression does not arise from an :class:`~loopy.InstructionBase`.
+
+    .. note::
+
+        The mapped kernel should be passed through
+        :meth:`SubstitutionRuleMappingContext.finish_kernel` to perform any
+        renaming mandated by the rule expression divergences.
+    """
     def __init__(self, rule_mapping_context, subst_func, within):
         super().__init__(rule_mapping_context)
 
         self.subst_func = subst_func
-        self.within = within
+        self._within = within
+
+    def within(self, kernel, instruction, stack):
+        if instruction is None:
+            # always perform substitutions on expressions not coming from
+            # instructions.
+            return True
+        else:
+            return self._within(kernel, instruction, stack)
 
     def map_variable(self, expr, expn_state):
         if (expr.name in expn_state.arg_context
