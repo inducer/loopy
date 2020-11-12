@@ -202,13 +202,13 @@ def _split_iname_in_set(s, iname_to_split, inner_iname, outer_iname, fixed_lengt
                     fixed_iname: -1,
                     var_length_iname: -fixed_length})))
 
-    _, dup_name_idx = space.get_var_dict()[dup_iname_to_split]
-    s = s.project_out(orig_dim_type, dup_name_idx, 1)
+    dup_iname_dim_type, dup_name_idx = space.get_var_dict()[dup_iname_to_split]
+    s = s.project_out(dup_iname_dim_type, dup_name_idx, 1)
 
     if split_iname_should_remain:
         return s
     else:
-        name_dim_type, name_idx = space.get_var_dict()[iname_to_split]
+        name_dim_type, name_idx = s.space.get_var_dict()[iname_to_split]
         return s.project_out(name_dim_type, name_idx, 1)
 
 
