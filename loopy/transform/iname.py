@@ -1220,16 +1220,22 @@ def remove_unused_inames(kernel, inames=None):
 
     # {{{ remove them
 
-    from loopy.kernel.tools import DomainChanger
-
+    domains = kernel.domains
     for iname in unused_inames:
-        domch = DomainChanger(kernel, (iname,))
+        new_domains = []
 
-        dom = domch.domain
-        dt, idx = dom.get_var_dict()[iname]
-        dom = dom.project_out(dt, idx, 1)
+        for dom in domains:
+            try:
+                dt, idx = dom.get_var_dict()[iname]
+            except KeyError:
+                pass
+            else:
+                dom = dom.project_out(dt, idx, 1)
+            new_domains.append(dom)
 
-        kernel = kernel.copy(domains=domch.get_domains_with(dom))
+        domains = new_domains
+
+    kernel = kernel.copy(domains=domains)
 
     # }}}
 
