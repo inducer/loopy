@@ -453,6 +453,11 @@ class ImageArg(ArrayBase, KernelArgument):
 class ValueArg(KernelArgument):
     def __init__(self, name, dtype=None, approximately=1000, target=None,
             is_output_only=False, tags=None):
+        """
+        :arg tags: A metadata tag or list of metadata tags intended for
+            consumption by an application. These could be strings or instances
+            of :class:`pytools.tag` for example.
+        """
 
         KernelArgument.__init__(self, name=name,
                 dtype=dtype,
