@@ -61,7 +61,7 @@ write_git_revision("loopy")
 # }}}
 
 
-setup(name="loo.py",
+setup(name="loopy",
       version=ver_dic["VERSION_TEXT"],
       description="A code generator for array-based code on CPUs and GPUs",
       long_description=open("README.rst").read(),
@@ -114,7 +114,7 @@ setup(name="loo.py",
       scripts=["bin/loopy"],
 
       author="Andreas Kloeckner",
-      url="http://mathema.tician.de/software/loopy",
+      url="https://mathema.tician.de/software/loopy",
       author_email="inform@tiker.net",
       license="MIT",
       packages=find_packages(),
