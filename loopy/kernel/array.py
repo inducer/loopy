@@ -136,6 +136,12 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
         return self.stringify(True)
 
     def map_expr(self, mapper):
+        from loopy.kernel.data import auto
+
+        if self.stride is auto:
+            # lp.auto not an expr => do not map
+            return self
+
         return self.copy(stride=mapper(self.stride))
 
 
