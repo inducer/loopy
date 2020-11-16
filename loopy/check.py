@@ -461,9 +461,10 @@ def check_bounds(kernel):
     """
     Performs out-of-bound check for every array access.
     """
+    from loopy.kernel.instruction import get_insn_domain
     temp_var_names = set(kernel.temporary_variables)
     for insn in kernel.instructions:
-        domain = insn.get_domain(kernel)
+        domain = get_insn_domain(insn, kernel)
 
         # data-dependent bounds? can't do much
         if set(domain.get_var_names(dim_type.param)) & temp_var_names:

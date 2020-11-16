@@ -147,7 +147,6 @@ class InstructionBase(ImmutableRecord):
     .. automethod:: with_transformed_expressions
     .. automethod:: write_dependency_names
     .. automethod:: dependency_names
-    .. automethod:: get_domain
     .. automethod:: copy
     """
 
@@ -410,50 +409,6 @@ class InstructionBase(ImmutableRecord):
                 intern_frozenset_of_ids(self.conflicts_with_groups))
         self.within_inames = (
                 intern_frozenset_of_ids(self.within_inames))
-
-    def get_domain(self, kernel):
-        """
-        Returns an instance of :class:`islpy.Set` for the instruction's domain.
-
-        .. note::
-
-            Does not take into account additional hints available through
-            :attr:`loopy.LoopKernel.assumptions`.
-        """
-        domain = kernel.get_inames_domain(self.within_inames)
-
-        # {{{ add read-only ValueArgs to domain
-
-        from loopy.kernel.data import ValueArg
-
-        valueargs_to_add = ({arg.name for arg in kernel.args
-                             if isinstance(arg, ValueArg)
-                             and arg.name not in kernel.get_written_variables()}
-                            - set(domain.get_var_names(isl.dim_type.param)))
-
-        # only consider valueargs relevant to *self*
-        valueargs_to_add = valueargs_to_add & self.read_dependency_names()
-
-        for arg_to_add in valueargs_to_add:
-            idim = domain.dim(isl.dim_type.param)
-            domain = domain.add_dims(isl.dim_type.param, 1)
-            domain = domain.set_dim_name(isl.dim_type.param, idim, arg_to_add)
-
-        # }}}
-
-        # {{{ enforce restriction from predicates
-
-        insn_preds_set = isl.BasicSet.universe(domain.space)
-
-        for predicate in self.predicates:
-            from loopy.symbolic import condition_to_set
-            predicate_as_isl_set = condition_to_set(domain.space, predicate)
-            if predicate_as_isl_set is not None:
-                insn_preds_set = insn_preds_set & predicate_as_isl_set
-
-        # }}}
-
-        return domain & insn_preds_set
 
 # }}}
 
@@ -1482,6 +1437,51 @@ def _check_and_fix_temp_var_type(temp_var_type, stacklevel=2):
     return temp_var_type
 
 # }}}
+
+
+def get_insn_domain(insn, kernel):
+    """
+    Returns an instance of :class:`islpy.Set` for the *insn*'s domain.
+
+    .. note::
+
+        Does not take into account additional hints available through
+        :attr:`loopy.LoopKernel.assumptions`.
+    """
+    domain = kernel.get_inames_domain(insn.within_inames)
+
+    # {{{ add read-only ValueArgs to domain
+
+    from loopy.kernel.data import ValueArg
+
+    valueargs_to_add = ({arg.name for arg in kernel.args
+                         if isinstance(arg, ValueArg)
+                         and arg.name not in kernel.get_written_variables()}
+                        - set(domain.get_var_names(isl.dim_type.param)))
+
+    # only consider valueargs relevant to *insn*
+    valueargs_to_add = valueargs_to_add & insn.read_dependency_names()
+
+    for arg_to_add in valueargs_to_add:
+        idim = domain.dim(isl.dim_type.param)
+        domain = domain.add_dims(isl.dim_type.param, 1)
+        domain = domain.set_dim_name(isl.dim_type.param, idim, arg_to_add)
+
+    # }}}
+
+    # {{{ enforce restriction from predicates
+
+    insn_preds_set = isl.BasicSet.universe(domain.space)
+
+    for predicate in insn.predicates:
+        from loopy.symbolic import condition_to_set
+        predicate_as_isl_set = condition_to_set(domain.space, predicate)
+        if predicate_as_isl_set is not None:
+            insn_preds_set = insn_preds_set & predicate_as_isl_set
+
+    # }}}
+
+    return domain & insn_preds_set
 
 
 # vim: foldmethod=marker
