@@ -692,8 +692,8 @@ class ArrayBase(ImmutableRecord):
         :arg offset: (See :attr:`offset`)
         :arg alignment: memory alignment in bytes
         :arg tags: A metadata tag or list of metadata tags intended for
-            consumption by an application. These could be strings or instances
-            of :class:`pytools.tag.Tag` for example.
+            consumption by an application. It is intended these tags be
+            instances of :class:`pytools.tag.Tag.
         """
 
         for kwarg_name in kwargs:

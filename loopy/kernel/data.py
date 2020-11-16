@@ -455,8 +455,8 @@ class ValueArg(KernelArgument):
             is_output_only=False, tags=None):
         """
         :arg tags: A metadata tag or list of metadata tags intended for
-            consumption by an application. These could be strings or instances
-            of :class:`pytools.tag.Tag` for example.
+            consumption by an application. It is intended these tags be
+            instances of :class:`pytools.tag.Tag`.
         """
 
         KernelArgument.__init__(self, name=name,
