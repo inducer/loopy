@@ -24,8 +24,7 @@ THE SOFTWARE.
 from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper
-from loopy.diagnostic import (LoopyError, WriteRaceConditionWarning,
-        warn_with_kernel, ExpressionToAffineConversionError)
+from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_kernel
 from loopy.type_inference import TypeInferenceMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
@@ -445,19 +444,14 @@ class _AccessCheckMapper(WalkMapper):
                         % (expr, self.insn_id, access_range, shape_domain))
 
     def map_if(self, expr, domain):
-        from loopy.symbolic import get_dependencies
-        if get_dependencies(expr.condition) <= frozenset(
-                domain.space.get_var_dict()):
-            try:
-                from loopy.symbolic import isl_set_from_expr
-                then_set = isl_set_from_expr(domain.space, expr.condition)
-                else_set = then_set.complement()
-            except ExpressionToAffineConversionError:
-                # non-affine condition: can't do much
-                then_set = else_set = isl.BasicSet.universe(domain.space)
-        else:
-            # data-dependent condition: can't do much
+        from loopy.symbolic import condition_to_set
+        then_set = condition_to_set(domain.space, expr.condition)
+        if then_set is None:
+            # condition cannot be inferred as ISL expression => ignore
+            # for domain contributions enforced by it
             then_set = else_set = isl.BasicSet.universe(domain.space)
+        else:
+            else_set = then_set.complement()
 
         self.rec(expr.then, domain & then_set)
         self.rec(expr.else_, domain & else_set)
@@ -467,9 +461,10 @@ def check_bounds(kernel):
     """
     Performs out-of-bound check for every array access.
     """
+    from loopy.kernel.instruction import get_insn_domain
     temp_var_names = set(kernel.temporary_variables)
     for insn in kernel.instructions:
-        domain = kernel.get_inames_domain(kernel.insn_inames(insn))
+        domain = get_insn_domain(insn, kernel)
 
         # data-dependent bounds? can't do much
         if set(domain.get_var_names(dim_type.param)) & temp_var_names:
