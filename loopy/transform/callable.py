@@ -56,7 +56,8 @@ def register_callable(translation_unit, function_identifier, callable_,
     assert isinstance(callable_, InKernelCallable)
 
     if (function_identifier in translation_unit.callables_table) and (
-            redefining_not_ok):
+            translation_unit.callables_table[function_identifier] != callable_
+            and redefining_not_ok):
         raise LoopyError("Redifining function identifier not allowed. Set the"
                 " option 'redefining_not_ok=False' to bypass this error.")
 
