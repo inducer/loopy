@@ -256,8 +256,6 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
     for i, assignee in enumerate(assignees):
         arg_map[pos_to_kw[-i-1]] = assignee
 
-    print(arg_map)
-
     # }}}
 
     # {{{ rewrite instructions

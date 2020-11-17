@@ -2261,7 +2261,6 @@ def inline_kernels_with_gbarriers(program):
                              and has_gbarrier(knl_clbl.subkernel))]
 
     for callee_to_inline in callees_to_inline:
-        print(f"inlining {callee_to_inline}")
         program = inline_callable_kernel(program, callee_to_inline)
 
     return program
