@@ -318,6 +318,9 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
         within_inames = within_inames | instruction.within_inames
         depends_on = frozenset(map(insn_id.get, insn.depends_on)) | (
                 instruction.depends_on)
+        no_sync_with = frozenset((insn_id[id], scope)
+                                 for id, scope in insn.no_sync_with)
+
         if insn.id in heads:
             depends_on = depends_on | {noop_start.id}
 
@@ -332,7 +335,8 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
                 priority=instruction.priority,
                 depends_on=depends_on,
                 tags=insn.tags | instruction.tags,
-                atomicity=new_atomicity
+                atomicity=new_atomicity,
+                no_sync_with=no_sync_with
             )
         else:
             insn = insn.copy(
@@ -342,6 +346,7 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
                 priority=instruction.priority,
                 depends_on=depends_on,
                 tags=insn.tags | instruction.tags,
+                no_sync_with=no_sync_with
             )
         inner_insns.append(insn)
 
