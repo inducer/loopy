@@ -257,13 +257,27 @@ class Program(ImmutableRecord):
                 isinstance(callable_knl, CallableKernel))
 
     def with_kernel(self, kernel):
-        # FIXME: Currently only replaces kernel. Should also work for adding.
-        # FIXME: Document
-        new_in_knl_callable = self.callables_table[kernel.name].copy(
-                subkernel=kernel)
-        new_callables = self.callables_table.copy()
-        new_callables[kernel.name] = new_in_knl_callable
-        return self.copy(callables_table=new_callables)
+        """
+        If *self* contains a callable kernel with *kernel*'s name, replaces its
+        subkernel and returns a copy of *self*. Else records a new callable
+        kernel with *kernel* as its subkernel.
+
+        :arg kernel: An instance of :class:`loopy.kernel.LoopKernel`.
+        :returns: Copy of *self* with updated callable kernels.
+        """
+        if kernel.name in self.callables_table:
+            # update the callable kernel
+            new_in_knl_callable = self.callables_table[kernel.name].copy(
+                    subkernel=kernel)
+            new_callables = self.callables_table.copy()
+            new_callables[kernel.name] = new_in_knl_callable
+            return self.copy(callables_table=new_callables)
+        else:
+            # add a new callable kernel
+            clbl = CallableKernel(kernel)
+            new_callables = self.callables_table.copy()
+            new_callables[kernel.name] = clbl
+            return self.copy(callables_table=new_callables)
 
     def with_resolved_callables(self):
         from loopy.library.function import get_loopy_callables
