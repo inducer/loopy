@@ -357,7 +357,6 @@ class KernelArgument(ImmutableRecord):
                     DeprecationWarning, stacklevel=2)
 
             dtype = None
-
         kwargs["dtype"] = dtype
 
         ImmutableRecord.__init__(self, **kwargs)
@@ -379,13 +378,13 @@ class ArrayArg(ArrayBase, KernelArgument):
 
     allowed_extra_kwargs = [
             "address_space",
-            "is_output_only"]
+            "is_output_only",
+            "tags"]
 
     def __init__(self, *args, **kwargs):
         if "address_space" not in kwargs:
             raise TypeError("'address_space' must be specified")
         kwargs["is_output_only"] = kwargs.pop("is_output_only", False)
-
         super().__init__(*args, **kwargs)
 
     min_target_axes = 0
@@ -453,13 +452,18 @@ class ImageArg(ArrayBase, KernelArgument):
 
 class ValueArg(KernelArgument):
     def __init__(self, name, dtype=None, approximately=1000, target=None,
-            is_output_only=False):
+            is_output_only=False, tags=None):
+        """
+        :arg tags: A metadata tag or list of metadata tags intended for
+            consumption by an application. It is intended these tags be
+            instances of :class:`pytools.tag.Tag`.
+        """
 
         KernelArgument.__init__(self, name=name,
                 dtype=dtype,
                 approximately=approximately,
                 target=target,
-                is_output_only=is_output_only)
+                is_output_only=is_output_only, tags=tags)
 
     def __str__(self):
         import loopy as lp
