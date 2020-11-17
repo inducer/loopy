@@ -127,12 +127,9 @@ class UnscopedCallCollector(CombineMapper):
 
 
 def check_functions_are_resolved(kernel):
-    """ Checks if all the calls in the instruction expression have been scoped,
-    otherwise indicates to what all calls we await signature. Refer
-    :class:`loopy.symbolic.ResolvedFunction` for a detailed explanation of a
-    scoped function.
+    """ Checks if all call nodes in the *kernel* expression have been
+    resolved.
     """
-
     from loopy.symbolic import SubstitutionRuleExpander
     subst_expander = SubstitutionRuleExpander(kernel.substitutions)
 
@@ -141,9 +138,9 @@ def check_functions_are_resolved(kernel):
             unscoped_calls = UnscopedCallCollector()(subst_expander(
                 insn.expression))
             if unscoped_calls:
-                raise LoopyError("Unknown function '%s' obtained -- register a "
-                        "function or a kernel corresponding to it." %
-                        set(unscoped_calls).pop())
+                raise LoopyError("Unknown function '%s' -- register a "
+                                 "callable corresponding to it." %
+                                 set(unscoped_calls).pop())
         elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
             pass
         else:
@@ -907,6 +904,8 @@ def pre_schedule_checks(kernel, callables_table):
                     kernel.temporary_variables.values())):
             # only check if all types are known
             check_for_integer_subscript_indices(kernel, callables_table)
+
+        check_functions_are_resolved(kernel)
         check_for_duplicate_insn_ids(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel, callables_table)

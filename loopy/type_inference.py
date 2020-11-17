@@ -1101,15 +1101,6 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx,
     type_specialized_kernel = change_names_of_pymbolic_calls(
             pre_type_specialized_knl, old_calls_to_new_calls)
 
-    # the check is unnecessary as we would first get TypeInfereceFailure before
-    # encountering this. Move this at the start once ManglerCallable is
-    # deprecated.
-    if expect_completion:
-        # if completion is expected, then it is important that all the
-        # callables are scoped.
-        from loopy.check import check_functions_are_resolved
-        check_functions_are_resolved(type_specialized_kernel)
-
     return type_specialized_kernel, clbl_inf_ctx
 
 
