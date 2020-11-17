@@ -126,25 +126,25 @@ def prioritize_loops(kernel, loop_priority):
 
 class _InameSplitter(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, within,
-            split_iname, outer_iname, inner_iname, replacement_index):
+            iname_to_split, outer_iname, inner_iname, replacement_index):
         super().__init__(rule_mapping_context)
 
         self.within = within
 
-        self.split_iname = split_iname
+        self.iname_to_split = iname_to_split
         self.outer_iname = outer_iname
         self.inner_iname = inner_iname
 
         self.replacement_index = replacement_index
 
     def map_reduction(self, expr, expn_state):
-        if (self.split_iname in expr.inames
-                and self.split_iname not in expn_state.arg_context
+        if (self.iname_to_split in expr.inames
+                and self.iname_to_split not in expn_state.arg_context
                 and self.within(
                     expn_state.kernel,
                     expn_state.instruction)):
             new_inames = list(expr.inames)
-            new_inames.remove(self.split_iname)
+            new_inames.remove(self.iname_to_split)
             new_inames.extend([self.outer_iname, self.inner_iname])
 
             from loopy.symbolic import Reduction
@@ -155,8 +155,8 @@ class _InameSplitter(RuleAwareIdentityMapper):
             return super().map_reduction(expr, expn_state)
 
     def map_variable(self, expr, expn_state):
-        if (expr.name == self.split_iname
-                and self.split_iname not in expn_state.arg_context
+        if (expr.name == self.iname_to_split
+                and self.iname_to_split not in expn_state.arg_context
                 and self.within(
                     expn_state.kernel,
                     expn_state.instruction)):
@@ -165,7 +165,58 @@ class _InameSplitter(RuleAwareIdentityMapper):
             return super().map_variable(expr, expn_state)
 
 
-def _split_iname_backend(kernel, split_iname,
+def _split_iname_in_set(s, iname_to_split, inner_iname, outer_iname, fixed_length,
+        fixed_length_is_inner):
+    var_dict = s.get_var_dict()
+
+    if iname_to_split not in var_dict:
+        return s
+
+    orig_dim_type, _ = var_dict[iname_to_split]
+    # orig_dim_type may be set or param (the latter if the iname is
+    # used as a parameter in a subdomain).
+
+    # NB: dup_iname_to_split is not a globally valid identifier: only unique
+    # wrt the set s.
+    from pytools import generate_unique_names
+    for dup_iname_to_split in generate_unique_names(f"dup_{iname_to_split}"):
+        if dup_iname_to_split not in var_dict:
+            break
+
+    from loopy.isl_helpers import duplicate_axes
+    s = duplicate_axes(s, (iname_to_split,), (dup_iname_to_split,))
+
+    outer_var_nr = s.dim(orig_dim_type)
+    inner_var_nr = s.dim(orig_dim_type)+1
+
+    s = s.add_dims(orig_dim_type, 2)
+    s = s.set_dim_name(orig_dim_type, outer_var_nr, outer_iname)
+    s = s.set_dim_name(orig_dim_type, inner_var_nr, inner_iname)
+
+    from loopy.isl_helpers import make_slab
+
+    if fixed_length_is_inner:
+        fixed_iname, var_length_iname = inner_iname, outer_iname
+    else:
+        fixed_iname, var_length_iname = outer_iname, inner_iname
+
+    space = s.get_space()
+    s = s & (
+            make_slab(space, fixed_iname, 0, fixed_length)
+            # name = fixed_iname + fixed_length*var_length_iname
+            .add_constraint(isl.Constraint.eq_from_names(
+                space, {
+                    dup_iname_to_split: 1,
+                    fixed_iname: -1,
+                    var_length_iname: -fixed_length})))
+
+    dup_iname_dim_type, dup_name_idx = space.get_var_dict()[dup_iname_to_split]
+    s = s.project_out(dup_iname_dim_type, dup_name_idx, 1)
+
+    return s
+
+
+def _split_iname_backend(kernel, iname_to_split,
         fixed_length, fixed_length_is_inner,
         make_new_loop_index,
         outer_iname=None, inner_iname=None,
@@ -194,88 +245,47 @@ def _split_iname_backend(kernel, split_iname,
 
     # }}}
 
-    existing_tags = kernel.iname_tags(split_iname)
+    existing_tags = kernel.iname_tags(iname_to_split)
     from loopy.kernel.data import ForceSequentialTag, filter_iname_tags_by_type
     if (do_tagged_check and existing_tags
             and not filter_iname_tags_by_type(existing_tags, ForceSequentialTag)):
-        raise LoopyError("cannot split already tagged iname '%s'" % split_iname)
+        raise LoopyError(f"cannot split already tagged iname '{iname_to_split}'")
 
-    if split_iname not in kernel.all_inames():
-        raise ValueError("cannot split loop for unknown variable '%s'" % split_iname)
+    if iname_to_split not in kernel.all_inames():
+        raise ValueError(
+                f"cannot split loop for unknown variable '{iname_to_split}'")
 
     applied_iname_rewrites = kernel.applied_iname_rewrites[:]
 
     vng = kernel.get_var_name_generator()
 
     if outer_iname is None:
-        outer_iname = vng(split_iname+"_outer")
+        outer_iname = vng(iname_to_split+"_outer")
     if inner_iname is None:
-        inner_iname = vng(split_iname+"_inner")
+        inner_iname = vng(iname_to_split+"_inner")
 
-    def process_set(s):
-        var_dict = s.get_var_dict()
-
-        if split_iname not in var_dict:
-            return s
-
-        orig_dim_type, _ = var_dict[split_iname]
-
-        outer_var_nr = s.dim(orig_dim_type)
-        inner_var_nr = s.dim(orig_dim_type)+1
-
-        s = s.add_dims(orig_dim_type, 2)
-        s = s.set_dim_name(orig_dim_type, outer_var_nr, outer_iname)
-        s = s.set_dim_name(orig_dim_type, inner_var_nr, inner_iname)
-
-        from loopy.isl_helpers import make_slab
-
-        if fixed_length_is_inner:
-            fixed_iname, var_length_iname = inner_iname, outer_iname
-        else:
-            fixed_iname, var_length_iname = outer_iname, inner_iname
-
-        space = s.get_space()
-        fixed_constraint_set = (
-                make_slab(space, fixed_iname, 0, fixed_length)
-                # name = fixed_iname + fixed_length*var_length_iname
-                .add_constraint(isl.Constraint.eq_from_names(
-                    space, {
-                        split_iname: 1,
-                        fixed_iname: -1,
-                        var_length_iname: -fixed_length})))
-
-        name_dim_type, name_idx = space.get_var_dict()[split_iname]
-        s = s.intersect(fixed_constraint_set)
-
-        def _project_out_only_if_all_instructions_in_within():
-            for insn in kernel.instructions:
-                if split_iname in insn.within_inames and (
-                        not within(kernel, insn)):
-                    return s
-
-            return s.project_out(name_dim_type, name_idx, 1)
-
-        return _project_out_only_if_all_instructions_in_within()
-
-    new_domains = [process_set(dom) for dom in kernel.domains]
+    new_domains = [
+            _split_iname_in_set(dom, iname_to_split, inner_iname, outer_iname,
+                fixed_length, fixed_length_is_inner)
+            for dom in kernel.domains]
 
     from pymbolic import var
     inner = var(inner_iname)
     outer = var(outer_iname)
     new_loop_index = make_new_loop_index(inner, outer)
 
-    subst_map = {var(split_iname): new_loop_index}
+    subst_map = {var(iname_to_split): new_loop_index}
     applied_iname_rewrites.append(subst_map)
 
     # {{{ update within_inames
 
     new_insns = []
     for insn in kernel.instructions:
-        if split_iname in insn.within_inames and (
+        if iname_to_split in insn.within_inames and (
                 within(kernel, insn)):
             new_within_inames = (
                     (insn.within_inames.copy()
-                    - frozenset([split_iname]))
+                    - frozenset([iname_to_split]))
                     | frozenset([outer_iname, inner_iname]))
         else:
             new_within_inames = insn.within_inames
@@ -294,7 +304,7 @@ def _split_iname_backend(kernel, split_iname,
     for prio in kernel.loop_priority:
         new_prio = ()
         for prio_iname in prio:
-            if prio_iname == split_iname:
+            if prio_iname == iname_to_split:
                 new_prio = new_prio + (outer_iname, inner_iname)
             else:
                 new_prio = new_prio + (prio_iname,)
@@ -310,7 +320,7 @@ def _split_iname_backend(kernel, split_iname,
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
     ins = _InameSplitter(rule_mapping_context, within,
-            split_iname, outer_iname, inner_iname, new_loop_index)
+            iname_to_split, outer_iname, inner_iname, new_loop_index)
 
     kernel = ins.map_kernel(kernel)
     kernel = rule_mapping_context.finish_kernel(kernel)
@@ -319,8 +329,10 @@ def _split_iname_backend(kernel, split_iname,
         kernel = tag_inames(kernel,
                 {outer_iname: existing_tag, inner_iname: existing_tag})
 
-    return tag_inames(kernel, {outer_iname: outer_tag,
-        inner_iname: inner_tag})
+    kernel = tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
+    kernel = remove_unused_inames(kernel, [iname_to_split])
+
+    return kernel
 
 # }}}
 
@@ -329,6 +341,7 @@ def _split_iname_backend(kernel, split_iname,
 
 @iterate_over_kernels_if_given_program
 def split_iname(kernel, split_iname, inner_length,
+        *,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
         slabs=(0, 0), do_tagged_check=True,
@@ -1242,16 +1255,22 @@ def remove_unused_inames(kernel, inames=None):
 
     # {{{ remove them
 
-    from loopy.kernel.tools import DomainChanger
-
+    domains = kernel.domains
     for iname in unused_inames:
-        domch = DomainChanger(kernel, (iname,))
+        new_domains = []
 
-        dom = domch.domain
-        dt, idx = dom.get_var_dict()[iname]
-        dom = dom.project_out(dt, idx, 1)
+        for dom in domains:
+            try:
+                dt, idx = dom.get_var_dict()[iname]
+            except KeyError:
+                pass
+            else:
+                dom = dom.project_out(dt, idx, 1)
+            new_domains.append(dom)
 
-        kernel = kernel.copy(domains=domch.get_domains_with(dom))
+        domains = new_domains
+
+    kernel = kernel.copy(domains=domains)
 
     # }}}
 
