@@ -136,6 +136,12 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
         return self.stringify(True)
 
     def map_expr(self, mapper):
+        from loopy.kernel.data import auto
+
+        if self.stride is auto:
+            # lp.auto not an expr => do not map
+            return self
+
         return self.copy(stride=mapper(self.stride))
 
 
@@ -600,7 +606,8 @@ class ArrayBase(ImmutableRecord):
     .. attribute:: offset
 
         Offset from the beginning of the buffer to the point from
-            which the strides are counted. May be one of
+        which the strides are counted, in units of the :attr:`dtype`.
+        May be one of
 
             * 0 or None
             * a string (that is interpreted as an argument name).
@@ -652,7 +659,7 @@ class ArrayBase(ImmutableRecord):
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
             dim_names=None, strides=None, order=None, for_atomic=False,
-            target=None, alignment=None,
+            target=None, alignment=None, tags=None,
             **kwargs):
         """
         All of the following (except *name*) are optional.
@@ -691,7 +698,9 @@ class ArrayBase(ImmutableRecord):
             using atomic-capable data types.
         :arg offset: (See :attr:`offset`)
         :arg alignment: memory alignment in bytes
-
+        :arg tags: A metadata tag or list of metadata tags intended for
+            consumption by an application. It is intended these tags be
+            instances of :class:`pytools.tag.Tag`.
         """
 
         for kwarg_name in kwargs:
@@ -848,6 +857,7 @@ class ArrayBase(ImmutableRecord):
                 order=order,
                 alignment=alignment,
                 for_atomic=for_atomic,
+                tags=tags,
                 **kwargs)
 
     def __eq__(self, other):

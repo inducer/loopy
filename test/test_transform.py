@@ -670,6 +670,49 @@ def test_add_inames_for_unused_hw_axes(ctx_factory):
             parameters={"n": n})
 
 
+def test_rename_argument_of_domain_params(ctx_factory):
+    knl = lp.make_kernel(
+            "{[i, j]: 0<=i<n and 0<=j<m}",
+            """
+            y[i, j] = 2.0f
+            """)
+
+    knl = lp.rename_argument(knl, "n", "N")
+    knl = lp.rename_argument(knl, "m", "M")
+
+    # renamed variables should not appear in the code
+    code_str = lp.generate_code_v2(knl).device_code()
+    assert code_str.find("int const n") == -1
+    assert code_str.find("int const m") == -1
+    assert code_str.find("int const N") != -1
+    assert code_str.find("int const M") != -1
+
+    lp.auto_test_vs_ref(knl, ctx_factory(), knl, parameters={"M": 10, "N": 4})
+
+
+def test_rename_argument_with_auto_stride(ctx_factory):
+    from loopy.kernel.array import FixedStrideArrayDimTag
+
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<10}",
+            """
+            y[i] = x[i]
+            """, [lp.GlobalArg("x", dtype=float,
+                               shape=lp.auto,
+                               dim_tags=[FixedStrideArrayDimTag(lp.auto)]), ...])
+
+    knl = lp.rename_argument(knl, "x", "x_new")
+
+    code_str = lp.generate_code_v2(knl).device_code()
+    assert code_str.find("double const *__restrict__ x_new,") != -1
+    assert code_str.find("double const *__restrict__ x,") == -1
+
+    evt, (out, ) = knl(queue, x_new=np.random.rand(10))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
