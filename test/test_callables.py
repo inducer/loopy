@@ -606,6 +606,31 @@ def test_non_zero_start_in_subarray_ref(ctx_factory):
     assert np.allclose(2*x, out)
 
 
+def test_incomplete_entrypoint_raises_type_inf_failure():
+    from loopy.diagnostic import LoopyError
+
+    twice = lp.make_kernel(
+            "{[i]: 0<=i<10}",
+            """
+            y[i] = 2*x[i]
+            """, name="dosify")
+
+    quadr = lp.make_kernel(
+            "{:}",
+            """
+            y[:] = dosify(x[:])
+            y[:] = dosify(y[:])
+            """, [lp.GlobalArg("x,y", shape=(10,))], name="cuatroify",
+            seq_dependencies=True)
+
+    prog = lp.merge([quadr, twice])
+
+    with pytest.raises(LoopyError):
+        # 'twice' is also registered as an entrypoint but provided args aren't
+        # enough to infer the types
+        lp.generate_code_v2(prog)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
