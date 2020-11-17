@@ -971,6 +971,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         result = set()
         for insn in self.instructions:
             result.update(insn.read_dependency_names())
+
+        for domain in self.domains:
+            result.update(domain.get_var_names(dim_type.param))
+
         return result
 
     @memoize_method

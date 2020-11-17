@@ -49,20 +49,17 @@ MacOS support computers:
     Everywhere else, just making sure you have the ``g++`` package should be
     enough.
 
-#.  Install `miniconda <https://conda.io/miniconda.html>`_.
-    (Both Python 2 and 3 should work. In the absence of other constraints, prefer Python 3.)
+#.  Install `miniforge <https://github.com/conda-forge/miniforge>`_.
 
-#.  ``export CONDA=/WHERE/YOU/INSTALLED/miniconda3``
+#.  ``export CONDA=/WHERE/YOU/INSTALLED/miniforge3``
 
     If you accepted the default location, this should work:
 
-    ``export CONDA=$HOME/miniconda3``
+    ``export CONDA=$HOME/miniforge3``
 
 #.  ``$CONDA/bin/conda create -n dev``
 
 #.  ``source $CONDA/bin/activate dev``
-
-#.  ``conda config --add channels conda-forge``
 
 #.  ``conda install git pip pocl islpy pyopencl`` (Linux)
 
@@ -76,7 +73,7 @@ MacOS support computers:
 
 Next time you want to use :mod:`loopy`, just run the following command::
 
-    source /WHERE/YOU/INSTALLED/miniconda3/bin/activate dev
+    source /WHERE/YOU/INSTALLED/miniforge3/bin/activate dev
 
 You may also like to add this to a startup file (like :file:`$HOME/.bashrc`) or create an alias for it.
 

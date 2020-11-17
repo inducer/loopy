@@ -671,6 +671,8 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
         raise LoopyError("argument name '%s' conflicts with an existing identifier"
                 "--cannot rename" % new_name)
 
+    # {{{ instructions
+
     from pymbolic import var
     subst_dict = {old_name: var(new_name)}
 
@@ -684,7 +686,11 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
                     make_subst_func(subst_dict),
                     within=lambda kernel, insn, stack: True)
 
-    kernel = smap.map_kernel(kernel)
+    kernel = rule_mapping_context.finish_kernel(smap.map_kernel(kernel))
+
+    # }}}
+
+    # {{{ args
 
     new_args = []
     for arg in kernel.args:
@@ -693,7 +699,22 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 
         new_args.append(arg)
 
-    return kernel.copy(args=new_args)
+    # }}}
+
+    # {{{ domain
+
+    new_domains = []
+    for dom in kernel.domains:
+        dom_var_dict = dom.get_var_dict()
+        if old_name in dom_var_dict:
+            dt, pos = dom_var_dict[old_name]
+            dom = dom.set_dim_name(dt, pos, new_name)
+
+        new_domains.append(dom)
+
+    # }}}
+
+    return kernel.copy(domains=new_domains, args=new_args)
 
 # }}}
 
