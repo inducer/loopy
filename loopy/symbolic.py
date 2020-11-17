@@ -287,7 +287,8 @@ class StringifyMapper(StringifyMapperBase):
                 repr(expr.type), self.rec(expr.child, PREC_NONE))
 
     def map_resolved_function(self, expr, prec):
-        return "Resolved(%s)" % expr.name
+        # underlining a resolved call
+        return "\u0332".join(expr.name)
 
     def map_sub_array_ref(self, expr, prec):
         return "[{inames}]: {subscr}".format(
