@@ -68,10 +68,9 @@ def register_callable(translation_unit, function_identifier, callable_,
             callables_table=callables)
 
 
-def merge(translation_units, collision_not_ok=True):
+def merge(translation_units):
     """
     :param translation_units: A list of :class:`loopy.Program`.
-    :param collision_not_ok: An instance of :class:`bool`.
 
     :returns: An instance of :class:`loopy.Program` which contains all the
         callables from each of the *translation_units.
@@ -79,21 +78,28 @@ def merge(translation_units, collision_not_ok=True):
 
     for i in range(1, len(translation_units)):
         if translation_units[i].target != translation_units[i-1].target:
-            raise LoopyError("merge() should have"
-                    " translation_units to be of the same target to be able to"
-                    " fuse.")
+            raise LoopyError("translation units to be merged should have the"
+                             " same target.")
+
+    # {{{ check for callable collision
+
+    for i, prg_i in enumerate(translation_units):
+        for prg_j in translation_units[i+1:]:
+            for clbl_name in (set(prg_i.callables_table)
+                              & set(prg_j.callables_table)):
+                if (prg_i.callables_table[clbl_name]
+                        != prg_j.callables_table[clbl_name]):
+                    # FIXME: generate unique names + rename for the colliding
+                    # callables
+                    raise NotImplementedError("Translation units to be merged"
+                                              " must have different callable names"
+                                              " for now.")
+
+    # }}}
+
     callables_table = {}
     for trans_unit in translation_units:
         callables_table.update(trans_unit.callables_table.copy())
-
-    # {{{
-
-    if len(callables_table) != sum(len(trans_unit.callables_table) for trans_unit in
-            translation_units) and collision_not_ok:
-        raise LoopyError("translation units in merge() cannot"
-                " not contain callables with same names.")
-
-    # }}}
 
     return Program(
             entrypoints=frozenset().union(*(
