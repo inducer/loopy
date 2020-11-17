@@ -160,13 +160,12 @@ class Program(ImmutableRecord):
           immutable, any modifications should be done through :method:`copy`.
 
     .. automethod:: __init__
-    .. automethod:: with_root_kernel
-    .. method:: __getitem__(name)
+    .. method:: __getitem__
 
         Look up the resolved callable with identifier *name*.
     """
     def __init__(self,
-            entrypoints=None,
+            entrypoints=frozenset(),
             callables_table={},
             target=None,
             func_id_to_in_knl_callable_mappers=[]):
@@ -174,6 +173,7 @@ class Program(ImmutableRecord):
         # {{{ sanity checks
 
         assert isinstance(callables_table, dict)
+        assert isinstance(entrypoints, frozenset)
 
         # }}}
 
@@ -282,9 +282,6 @@ class Program(ImmutableRecord):
 
     def __call__(self, *args, **kwargs):
         entrypoint = kwargs.get("entrypoint", None)
-
-        if self.entrypoints is None:
-            raise LoopyError("Cannot execute program with no entrypoints.")
 
         if entrypoint is None:
             # did not receive an entrypoint for the program to execute
@@ -767,7 +764,6 @@ def resolve_callables(program):
         elif isinstance(clbl, ScalarCallable):
             # nothing to resolve within a scalar callable
             callables_table[clbl_name] = clbl
-            pass
         else:
             raise NotImplementedError(f"{type(clbl)}")
 
