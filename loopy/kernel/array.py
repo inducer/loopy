@@ -659,7 +659,7 @@ class ArrayBase(ImmutableRecord):
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
             dim_names=None, strides=None, order=None, for_atomic=False,
-            target=None, alignment=None, tags=None,
+            target=None, alignment=None,
             **kwargs):
         """
         All of the following (except *name*) are optional.
@@ -698,9 +698,7 @@ class ArrayBase(ImmutableRecord):
             using atomic-capable data types.
         :arg offset: (See :attr:`offset`)
         :arg alignment: memory alignment in bytes
-        :arg tags: A metadata tag or list of metadata tags intended for
-            consumption by an application. It is intended these tags be
-            instances of :class:`pytools.tag.Tag`.
+
         """
 
         for kwarg_name in kwargs:
@@ -857,7 +855,6 @@ class ArrayBase(ImmutableRecord):
                 order=order,
                 alignment=alignment,
                 for_atomic=for_atomic,
-                tags=tags,
                 **kwargs)
 
     def __eq__(self, other):
