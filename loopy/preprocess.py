@@ -2244,6 +2244,32 @@ def infer_arg_descr(program):
 # }}}
 
 
+# {{{  inline_kernels_with_gbarriers
+
+
+def inline_kernels_with_gbarriers(program):
+    from loopy.kernel.instruction import BarrierInstruction
+    from loopy.transform.callable import inline_callable_kernel
+
+    def has_gbarrier(knl):
+        return any((isinstance(insn, BarrierInstruction)
+                    and insn.synchronization_kind == "global")
+                   for insn in knl.instructions)
+
+    callees_to_inline = [name for name, knl_clbl in program.callables_table.items()
+                         if (isinstance(knl_clbl, CallableKernel)
+                             and has_gbarrier(knl_clbl.subkernel))]
+
+    for callee_to_inline in callees_to_inline:
+        print(f"inlining {callee_to_inline}")
+        program = inline_callable_kernel(program, callee_to_inline)
+
+    return program
+
+
+# }}}
+
+
 preprocess_cache = WriteOncePersistentDict(
         "loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
@@ -2402,6 +2428,11 @@ def preprocess_program(program, device=None):
 
     # infer arg descrs of the callables
     program = infer_arg_descr(program)
+
+    # Ordering restriction:
+    # callees with gbarrier in them must be inlined after inferrring arg_descr.
+    # inline_kernels_with_gbarriers does not recursively inline the callees.
+    program = inline_kernels_with_gbarriers(program)
 
     return program
 

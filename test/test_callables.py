@@ -631,6 +631,33 @@ def test_incomplete_entrypoint_raises_type_inf_failure():
         lp.generate_code_v2(prog)
 
 
+def test_callees_with_gbarriers_are_inlined(ctx_factory):
+    queue = cl.CommandQueue(ctx_factory())
+
+    ones_and_zeros = lp.make_function(
+            "{[i, j]: 0<=i<6 and 0<=j<3}",
+            """
+            x[i] = 0.0f
+            ...gbarrier
+            x[j] = 1.0f
+            """,
+            seq_dependencies=True,
+            name="ones_and_zeros")
+
+    prg = lp.make_kernel(
+            "{ : }",
+            """
+            y[:] = ones_and_zeros()
+            """, [lp.GlobalArg("y", shape=6, dtype=lp.auto)])
+
+    prg = lp.merge([prg, ones_and_zeros])
+    evt, (out,) = prg(queue)
+
+    expected_out = np.array([1, 1, 1, 0, 0, 0]).astype(np.float32)
+
+    assert (expected_out == out.get()).all()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
