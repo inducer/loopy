@@ -1195,7 +1195,11 @@ class RuleAwareIdentityMapper(IdentityMapper):
         else:
             return sym
 
-    def __call__(self, expr, kernel, insn, *args, **kwargs):
+    def __call__(self, expr, kernel, insn):
+        """
+        :arg insn: A :class:`~loopy.kernel.InstructionBase` of which *expr* is
+            a part of, or *None* if *expr*'s source is not an instruction.
+        """
         from loopy.kernel.data import InstructionBase
         assert insn is None or isinstance(insn, InstructionBase)
 
@@ -1204,7 +1208,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
                     kernel=kernel,
                     instruction=insn,
                     stack=(),
-                    arg_context={}), *args, **kwargs)
+                    arg_context={}))
 
     def map_instruction(self, kernel, insn):
         return insn
