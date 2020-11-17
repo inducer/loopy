@@ -606,7 +606,8 @@ class ArrayBase(ImmutableRecord):
     .. attribute:: offset
 
         Offset from the beginning of the buffer to the point from
-            which the strides are counted. May be one of
+        which the strides are counted, in units of the :attr:`dtype`.
+        May be one of
 
             * 0 or None
             * a string (that is interpreted as an argument name).
