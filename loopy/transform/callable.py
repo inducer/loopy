@@ -22,6 +22,8 @@ THE SOFTWARE.
 
 import islpy as isl
 
+from pytools import UniqueNameGenerator
+
 from loopy.kernel import LoopKernel
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
@@ -591,6 +593,61 @@ def _match_caller_callee_argument_dimension_(program, callee_function_name):
     return program.with_kernel(new_callee_kernel)
 
 # }}}
+
+
+def rename_callable(program, old_name, new_name=None, existing_ok=False):
+    """
+    :arg program: An instance of :class:`loopy.Program`
+    :arg old_name: The callable to be renamed
+    :arg new_name: New name for the callable to be renamed
+    :arg existing_ok: An instance of :class:`bool`
+    """
+    from loopy.symbolic import (
+            RuleAwareSubstitutionMapper,
+            SubstitutionRuleMappingContext)
+    from pymbolic import var
+
+    assert isinstance(program, Program)
+    assert isinstance(old_name, str)
+
+    if (new_name in program.callables_table) and not existing_ok:
+        raise LoopyError(f"callables named '{new_name}' already exists")
+
+    if new_name is None:
+        namegen = UniqueNameGenerator(program.callables_table.keys())
+        new_name = namegen(old_name)
+
+    assert isinstance(new_name, str)
+
+    new_callables_table = {}
+
+    for name, clbl in program.callables_table.items():
+        if name == old_name:
+            name = new_name
+
+        if isinstance(clbl, CallableKernel):
+            knl = clbl.subkernel
+            rule_mapping_context = SubstitutionRuleMappingContext(
+                    knl.substitutions, knl.get_var_name_generator())
+            smap = RuleAwareSubstitutionMapper(rule_mapping_context,
+                                               {var(old_name): var(new_name)}.get,
+                                               within=lambda *args: True)
+            knl = rule_mapping_context.finish_kernel(smap.map_kernel(knl))
+            clbl = clbl.copy(subkernel=knl.copy(name=name))
+        elif isinstance(clbl, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError(f"{type(clbl)}")
+
+        new_callables_table[name] = clbl
+
+    new_entrypoints = program.entrypoints.copy()
+    if old_name in new_entrypoints:
+        new_entrypoints = ((new_entrypoints | frozenset([new_name]))
+                           - frozenset([old_name]))
+
+    return program.copy(callables_table=new_callables_table,
+                        entrypoints=new_entrypoints)
 
 
 # vim: foldmethod=marker

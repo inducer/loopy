@@ -116,7 +116,7 @@ from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.add_barrier import add_barrier
 from loopy.transform.callable import (register_callable,
-        merge, inline_callable_kernel)
+        merge, inline_callable_kernel, rename_callable)
 from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
 
 # }}}
@@ -238,7 +238,7 @@ __all__ = [
         "register_callable",
         "merge",
 
-        "inline_callable_kernel",
+        "inline_callable_kernel", "rename_callable",
 
         "pack_and_unpack_args_for_call",
 
