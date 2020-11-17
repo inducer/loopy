@@ -321,11 +321,10 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
         if insn.id in heads:
             depends_on = depends_on | {noop_start.id}
 
-        new_atomicity = tuple(
-                type(atomicity)(var_map[p.Variable(atomicity.var_name)].name)
-                for atomicity in insn.atomicity)
-
         if isinstance(insn, Assignment):
+            new_atomicity = tuple(
+                    type(atomicity)(var_map[p.Variable(atomicity.var_name)].name)
+                    for atomicity in insn.atomicity)
             insn = insn.copy(
                 id=insn_id[insn.id],
                 within_inames=within_inames,
