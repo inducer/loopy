@@ -1116,8 +1116,9 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx,
 def infer_unknown_types(program, expect_completion=False):
     """Infer types on temporaries and arguments."""
     from loopy.kernel.data import auto
+    from loopy.program import resolve_callables
 
-    program = program.with_resolved_callables()
+    program = resolve_callables(program)
 
     clbl_inf_ctx = make_clbl_inf_ctx(program.callables_table,
             program.entrypoints)

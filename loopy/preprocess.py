@@ -2343,7 +2343,8 @@ def preprocess_program(program, device=None):
     if not program.entrypoints:
         raise LoopyError("Translation unit did not receive any entrypoints")
 
-    program = program.with_resolved_callables()
+    from loopy.program import resolve_callables
+    program = resolve_callables(program)
 
     if device is not None:
         # FIXME: Time to remove this? (Git blame shows 5 years ago)

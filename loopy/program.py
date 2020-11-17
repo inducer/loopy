@@ -72,71 +72,57 @@ def find_in_knl_callable_from_identifier(
 
 
 class CallableResolver(RuleAwareIdentityMapper):
-    #FIXME: Recheck this!
     """
-    Mapper to convert the  ``function`` attribute of a
-    :class:`pymbolic.primitives.Call` known in the kernel as instances of
-    :class:`loopy.symbolic.ResolvedFunction`. A function is known in the
-    *kernel*, :func:`loopy.kernel.LoopKernel.find_scoped_function_identifier`
-    returns an instance of
-    :class:`loopy.kernel.function_interface.InKernelCallable`.
+    Resolves callables in expressions and records the names of the calls
+    resolved.
 
-    **Example:** If given an expression of the form ``sin(x) + unknown_function(y) +
-    log(z)``, then the mapper would return ``ResolvedFunction('sin')(x) +
-    unknown_function(y) + ResolvedFunction('log')(z)``.
+    .. attribute:: known_callables
 
-    :arg rule_mapping_context: An instance of
-        :class:`loopy.symbolic.RuleMappingContext`.
-    :arg function_ids: A container with instances of :class:`str` indicating
-        the function identifiers to look for while scoping functions.
+        An instance of :class:`frozenset` of the call names to be resolved.
+
+    .. attribute:: rule_mapping_context
+
+        An instance of :class:`loopy.symbolic.RuleMappingContext`.
     """
     def __init__(self, rule_mapping_context, known_callables):
+        assert isinstance(known_callables, frozenset)
+
         super().__init__(rule_mapping_context)
-        self.resolved_functions = {}
+
         self.known_callables = known_callables
+
+        # a record of the call names that were resolved
+        self.calls_resolved = set()
 
     def map_call(self, expr, expn_state):
         from loopy.symbolic import parse_tagged_name
-
         name, tag = parse_tagged_name(expr.function)
-        if name not in self.rule_mapping_context.old_subst_rules:
-            new_call_with_kwargs = self.rec(CallWithKwargs(
-                function=expr.function, parameters=expr.parameters,
-                kw_parameters={}), expn_state)
-            return Call(new_call_with_kwargs.function,
-                    new_call_with_kwargs.parameters)
-        else:
-            return self.map_substitution(name, tag, expr.parameters, expn_state)
+
+        if name in self.known_callables:
+            params = tuple(self.rec(par, expn_state) for par in expr.parameters)
+
+            # record that we resolved a call
+            self.calls_resolved.add(name)
+
+            return Call(ResolvedFunction(expr.function), params)
+
+        return super().map_call(expr, expn_state)
 
     def map_call_with_kwargs(self, expr, expn_state):
+        from loopy.symbolic import parse_tagged_name
+        name, tag = parse_tagged_name(expr.function)
 
-        if not isinstance(expr.function, ResolvedFunction):
-            # FIXME: Do we need to care about ReductionOpFunctions over here?
-            in_knl_callable = self.known_callables.get(expr.function.name)
+        if name in self.known_callables:
+            params = tuple(self.rec(par, expn_state) for par in expr.parameters)
+            kw_params = {kw: self.rec(par, expn_state)
+                         for kw, par in expr.kw_parameters.items()}
 
-            if in_knl_callable:
-                if expr.function.name in self.resolved_functions:
-                    assert self.resolved_functions[expr.function.name] == (
-                            in_knl_callable)
-                self.resolved_functions[expr.function.name] = in_knl_callable
-                return type(expr)(
-                        ResolvedFunction(expr.function.name),
-                        tuple(self.rec(child, expn_state)
-                            for child in expr.parameters),
-                        {
-                            key: self.rec(val, expn_state)
-                            for key, val in expr.kw_parameters.items()}
-                            )
-            else:
-                # FIXME: Once function mangler is completely deprecated raise here.
-                # Oh function mangler I loathe you so much!
-                pass
-        else:
-            self.resolved_functions[expr.function.name] = (
-                    self.known_callables[expr.function.name])
+            # record that we resolved a call
+            self.calls_resolved.add(name)
 
-        return super().map_call_with_kwargs(expr,
-                expn_state)
+            return CallWithKwargs(ResolvedFunction(expr.function), params, kw_params)
+
+        return super().map_call_with_kwargs(expr, expn_state)
 
 
 # {{{ program
@@ -278,49 +264,6 @@ class Program(ImmutableRecord):
             new_callables = self.callables_table.copy()
             new_callables[kernel.name] = clbl
             return self.copy(callables_table=new_callables)
-
-    def with_resolved_callables(self):
-        from loopy.library.function import get_loopy_callables
-        from loopy.kernel import KernelState
-
-        if self.state >= KernelState.CALLS_RESOLVED:
-            return self
-
-        known_callables = self.callables_table
-        known_callables.update(self.target.get_device_ast_builder().known_callables)
-        known_callables.update(get_loopy_callables())
-        # update the known callables from the target.
-        callables_table = {e: self.callables_table[e] for e in
-                self.entrypoints}
-
-        # start a traversal to collect all the callables
-        queue = list(self.entrypoints)
-
-        while queue:
-            top = queue[0]
-            assert top in callables_table
-            queue = queue[1:]
-
-            knl = callables_table[top].subkernel
-            rule_mapping_context = SubstitutionRuleMappingContext(
-                    knl.substitutions, knl.get_var_name_generator())
-            callables_collector = CallableResolver(
-                    rule_mapping_context,
-                    known_callables)
-            knl = rule_mapping_context.finish_kernel(
-                    callables_collector.map_kernel(knl))
-            knl = knl.copy(state=KernelState.CALLS_RESOLVED)
-            callables_table[top] = callables_table[top].copy(subkernel=knl)
-
-            for func, clbl in callables_collector.resolved_functions.items():
-                if func not in callables_table:
-                    if isinstance(clbl, CallableKernel):
-                        queue.append(func)
-                    callables_table[func] = clbl
-                else:
-                    assert callables_table[func] == clbl
-
-        return self.copy(callables_table=callables_table)
 
     def __getitem__(self, name):
         result = self.callables_table[name]
@@ -776,6 +719,59 @@ def update_table(callables_table, clbl_id, clbl):
     return clbl_id, callables_table
 
 # }}}
+
+
+def resolve_callables(program):
+    """
+    Returns a :class:`Program` with known :class:`pymbolic.primitives.Call`
+    expression nodes converted to :class:`loopy.symbolic.ResolvedFunction`.
+    """
+    from loopy.library.function import get_loopy_callables
+    from loopy.kernel import KernelState
+
+    if program.state >= KernelState.CALLS_RESOLVED:
+        # program's callables have been resolved
+        return program
+
+    # get registered callables
+    known_callables = program.callables_table.copy()
+    # get target specific callables
+    known_callables.update(program.target.get_device_ast_builder().known_callables)
+    # get loopy specific callables
+    known_callables.update(get_loopy_callables())
+
+    callables_table = {}
+
+    # callables: name of the calls seen in the program
+    callables = set(program.entrypoints)
+
+    while callables:
+        clbl_name = callables.pop()
+        clbl = known_callables[clbl_name]
+
+        if isinstance(clbl, CallableKernel):
+            knl = clbl.subkernel
+
+            rule_mapping_context = SubstitutionRuleMappingContext(
+                    knl.substitutions, knl.get_var_name_generator())
+            clbl_resolver = CallableResolver(rule_mapping_context,
+                                             frozenset(known_callables))
+            knl = rule_mapping_context.finish_kernel(clbl_resolver.map_kernel(knl))
+            knl = knl.copy(state=KernelState.CALLS_RESOLVED)
+
+            # add the updated callable kernel to the table
+            callables_table[clbl_name] = clbl.copy(subkernel=knl)
+
+            # note the resolved callable for traversal
+            callables.update(clbl_resolver.calls_resolved - set(callables_table))
+        elif isinstance(clbl, ScalarCallable):
+            # nothing to resolve within a scalar callable
+            callables_table[clbl_name] = clbl
+            pass
+        else:
+            raise NotImplementedError(f"{type(clbl)}")
+
+    return program.copy(callables_table=callables_table)
 
 
 # vim: foldmethod=marker

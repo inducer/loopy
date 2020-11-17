@@ -386,7 +386,8 @@ def inline_callable_kernel(program, function_name):
     (scoped) name *function_name* inlined.
     """
     from loopy.preprocess import infer_arg_descr
-    program = program.with_resolved_callables()
+    from loopy.program import resolve_callables
+    program = resolve_callables(program)
     program = infer_arg_descr(program)
     callables_table = program.callables_table
     new_callables = {}
