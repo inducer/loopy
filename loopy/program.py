@@ -340,6 +340,9 @@ class Program(ImmutableRecord):
     def __call__(self, *args, **kwargs):
         entrypoint = kwargs.get("entrypoint", None)
 
+        if self.entrypoints is None:
+            raise LoopyError("Cannot execute program with no entrypoints.")
+
         if entrypoint is None:
             # did not receive an entrypoint for the program to execute
             if len(self.entrypoints) == 1:
@@ -368,14 +371,12 @@ class Program(ImmutableRecord):
         # FIXME: do a topological sort by the call graph
 
         def strify_callable(clbl):
-            if isinstance(clbl, CallableKernel):
-                return str(clbl.subkernel)
-            else:
-                return str(clbl)
+            return str(clbl.subkernel)
 
         return "\n".join(
                 strify_callable(clbl)
-                for name, clbl in self.callables_table.items())
+                for name, clbl in self.callables_table.items()
+                if isinstance(clbl, CallableKernel))
 
     def __setstate__(self, state_obj):
         super().__setstate__(state_obj)
