@@ -658,6 +658,37 @@ def test_callees_with_gbarriers_are_inlined(ctx_factory):
     assert (expected_out == out.get()).all()
 
 
+def test_inlining_with_indirections(ctx_factory):
+    queue = cl.CommandQueue(ctx_factory())
+
+    ones_and_zeros = lp.make_function(
+            "{[i, j]: 0<=i<6 and 0<=j<3}",
+            """
+            x[i] = 0.0f
+            ...gbarrier
+            x[map[j]] = 1.0f
+            """,
+            seq_dependencies=True,
+            name="ones_and_zeros")
+
+    prg = lp.make_kernel(
+            "{ : }",
+            """
+            y[:] = ones_and_zeros(map[:])
+            """, [lp.GlobalArg("y", shape=6, dtype=lp.auto),
+                  lp.GlobalArg("map", dtype=np.int32, shape=3)])
+
+    prg = lp.merge([prg, ones_and_zeros])
+    prg = lp.inline_callable_kernel(prg, "ones_and_zeros")
+
+    map_in = np.arange(3).astype(np.int32)
+
+    evt, (out, ) = prg(queue, map=map_in)
+
+    expected_out = np.array([1, 1, 1, 0, 0, 0]).astype(np.float32)
+    assert (expected_out == out).all()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

@@ -462,11 +462,16 @@ def boxify(cache_manager, domain, box_inames, context):
 
 
 def simplify_via_aff(expr):
-    from loopy.symbolic import aff_from_expr, aff_to_expr, get_dependencies
+    from loopy.symbolic import aff_to_expr, guarded_aff_from_expr, get_dependencies
+    from loopy.diagnostic import ExpressionToAffineConversionError
+
     deps = get_dependencies(expr)
-    return aff_to_expr(aff_from_expr(
-        isl.Space.create_from_names(isl.DEFAULT_CONTEXT, list(deps)),
-        expr))
+    try:
+        return aff_to_expr(guarded_aff_from_expr(
+            isl.Space.create_from_names(isl.DEFAULT_CONTEXT, list(deps)),
+            expr))
+    except ExpressionToAffineConversionError:
+        return expr
 
 
 def project_out(set, inames):
