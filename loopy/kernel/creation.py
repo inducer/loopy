@@ -2391,55 +2391,6 @@ def make_function(domains, instructions, kernel_data=["..."], **kwargs):
 
 
 def make_kernel(*args, **kwargs):
-    # {{{ handle kernel language version
-
-    from loopy.version import LANGUAGE_VERSION_SYMBOLS
-
-    version_to_symbol = {
-            getattr(loopy.version, lvs): lvs
-            for lvs in LANGUAGE_VERSION_SYMBOLS}
-
-    lang_version = kwargs.get("lang_version", None)
-    if lang_version is None:
-        # {{{ peek into caller's module to look for LOOPY_KERNEL_LANGUAGE_VERSION
-
-        # This *is* gross. But it seems like the right thing interface-wise.
-        import inspect
-        caller_globals = inspect.currentframe().f_back.f_globals
-
-        for ver_sym in LANGUAGE_VERSION_SYMBOLS:
-            try:
-                lang_version = caller_globals[ver_sym]
-                break
-            except KeyError:
-                pass
-
-        # }}}
-
-        if lang_version is None:
-            from warnings import warn
-            from loopy.diagnostic import LoopyWarning
-            from loopy.version import (
-                    MOST_RECENT_LANGUAGE_VERSION,
-                    FALLBACK_LANGUAGE_VERSION)
-            warn("'lang_version' was not passed to make_kernel(). "
-                    "To avoid this warning, pass "
-                    "lang_version={ver} in this invocation. "
-                    "(Or say 'from loopy.version import "
-                    "{sym_ver}' in "
-                    "the global scope of the calling frame.)"
-                    .format(
-                        ver=MOST_RECENT_LANGUAGE_VERSION,
-                        sym_ver=version_to_symbol[MOST_RECENT_LANGUAGE_VERSION]
-                        ),
-                    LoopyWarning, stacklevel=2)
-
-            lang_version = FALLBACK_LANGUAGE_VERSION
-
-    kwargs["lang_version"] = lang_version
-
-    # }}}
-
     tunit = make_function(*args, **kwargs)
     name, = [name for name in tunit.callables_table]
     return tunit.with_entrypoints(name)
