@@ -400,6 +400,46 @@ def test_triangle_domain(ctx_factory):
     print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
 
 
+def test_bounds_check_supplied_arg(ctx_factory):
+    # https://github.com/inducer/meshmode/issues/81
+    knl = lp.make_kernel([
+        "{[iel]: 0 <= iel < nelements}",
+        "{[idof]: 0 <= idof < n_to_nodes}"
+        ],
+        """
+            result[iel, idof] = result[iel, idof] + \
+                    coefficients[iel, ibasis] * basis[idof]
+        """,
+        [
+            lp.GlobalArg("coefficients", None,
+                shape=("nelements", "n_to_nodes")),
+            lp.ValueArg("ibasis", np.int32),
+            "..."
+            ],
+        name="conn_evaluate_knl")
+
+    # FIXME: Fails: cannot currently encode assumptions on ValueArgs
+    knl = lp.assume(knl, "0 <= ibasis < nelements")
+    knl = lp.add_and_infer_dtypes(knl, {"basis,coefficients,result": np.float64})
+    # FIXME: Has no way of knowing ibasis is in bounds, dies in bounds checking
+    lp.generate_code_v2(knl)
+
+
+def test_bounds_check_constant_subscript_var_size(ctx_factory):
+    # https://gitlab.tiker.net/inducer/loopy/-/issues/173
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        """
+        a[1] = 2
+        a[0] = 3
+        """,
+        [lp.GlobalArg("a", dtype=int, shape=("n", )), ...])
+    from loopy.diagnostic import BoundsCheckError
+
+    with pytest.raises(BoundsCheckError):
+        lp.generate_code_v2(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
