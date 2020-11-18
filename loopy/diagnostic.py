@@ -125,6 +125,10 @@ class VariableAccessNotOrdered(LoopyError):
 class DependencyCycleFound(LoopyError):
     pass
 
+
+class BoundsCheckError(LoopyError):
+    pass
+
 # }}}
 
 
