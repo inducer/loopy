@@ -27,6 +27,7 @@ THE SOFTWARE.
 from sys import intern
 import numpy as np  # noqa
 from pytools import ImmutableRecord
+from pytools.tag import Taggable
 from loopy.kernel.array import ArrayBase
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (  # noqa
@@ -449,14 +450,20 @@ class ImageArg(ArrayBase, KernelArgument):
         return ast_builder.get_image_arg_decl(self.name + name_suffix, shape,
                 self.num_target_axes(), dtype, is_written)
 
-
-class ValueArg(KernelArgument):
+"""
+    :attribute tags: A (possibly empty) frozenset of instances of
+        :class:`pytools.tag.Tag` intended for consumption by an
+        application.
+        
+        ..versionadded: 2020.2.2
+"""
+class ValueArg(KernelArgument, Taggable):
     def __init__(self, name, dtype=None, approximately=1000, target=None,
-            is_output_only=False, tags=None):
+            is_output_only=False, tags=frozenset()):
         """
-        :arg tags: A metadata tag or list of metadata tags intended for
-            consumption by an application. It is intended these tags be
-            instances of :class:`pytools.tag.Tag`.
+        :arg tags: A an instance of or Iterable of instances of 
+            :class:`pytools.tag.Tag` intended for consumption by an
+            application.
         """
 
         KernelArgument.__init__(self, name=name,
