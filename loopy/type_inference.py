@@ -863,8 +863,7 @@ class _DictUnionView:
 
 # {{{ infer_unknown_types
 
-def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx,
-        expect_completion=False):
+def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
     """Infer types on temporaries and arguments."""
 
     logger.debug("%s: infer types" % kernel.name)
@@ -1000,14 +999,10 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx,
                                 " (need type of '%s'--check for missing arguments)"
                                 % ", ".join(symbols_with_unavailable_types))
 
-                    if expect_completion:
-                        raise LoopyError(
-                                "could not determine type of '%s'%s"
-                                % (item.name, advice))
-
-                    else:
-                        # We're done here.
-                        break
+                    debug("could not determine type of '%s'%s"
+                           % (item.name, advice))
+                    # We're done here
+                    break
 
                 # remember that this item failed
                 failed_names.add(item.name)
@@ -1015,7 +1010,6 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx,
                 if set(queue) == failed_names:
                     # We did what we could...
                     print(queue, failed_names, item.name)
-                    assert not expect_completion
                     break
 
                 # can't infer type yet, put back into queue
@@ -1129,12 +1123,14 @@ def infer_unknown_types(program, expect_completion=False):
 
         if expect_completion:
             from loopy.types import LoopyType
+            new_knl = new_callable.subkernel
+
             args_not_inferred = {arg.name
-                                 for arg in program[e].args
+                                 for arg in new_knl.args
                                  if not isinstance(arg.dtype, LoopyType)}
 
             tvs_not_inferred = {tv.name
-                                for tv in program[e].temporary_variables.values()
+                                for tv in new_knl.temporary_variables.values()
                                 if not isinstance(tv.dtype, LoopyType)}
 
             vars_not_inferred = tvs_not_inferred | args_not_inferred
