@@ -1119,12 +1119,30 @@ def infer_unknown_types(program, expect_completion=False):
     for e in program.entrypoints:
         # FIXME: Need to add docs which say that we need not add the current
         # callable to the clbl_inf_ctx while writing the "with_types"
+        logger.debug(f"Entering entrypoint: {e}")
         arg_id_to_dtype = {arg.name: arg.dtype for arg in
                 program[e].args if arg.dtype not in (None, auto)}
         new_callable, clbl_inf_ctx = program.callables_table[e].with_types(
                 arg_id_to_dtype, None, clbl_inf_ctx)
         clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable)
         renamed_entrypoints.add(new_name.name)
+
+        if expect_completion:
+            from loopy.types import LoopyType
+            args_not_inferred = {arg.name
+                                 for arg in program[e].args
+                                 if not isinstance(arg.dtype, LoopyType)}
+
+            tvs_not_inferred = {tv.name
+                                for tv in program[e].temporary_variables.values()
+                                if not isinstance(tv.dtype, LoopyType)}
+
+            vars_not_inferred = tvs_not_inferred | args_not_inferred
+
+            if vars_not_inferred:
+                if expect_completion:
+                    raise LoopyError("could not determine type of"
+                            f" '{vars_not_inferred.pop()}' of kernel '{e}'.")
 
     return clbl_inf_ctx.finish_program(program, renamed_entrypoints)
 
