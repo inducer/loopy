@@ -462,7 +462,7 @@ class ImageArg(ArrayBase, KernelArgument):
 
 class ValueArg(KernelArgument, Taggable):
     def __init__(self, name, dtype=None, approximately=1000, target=None,
-            is_output_only=False, tags=frozenset()):
+            is_output_only=False, tags=None):
         """
         :arg tags: A an instance of or Iterable of instances of
             :class:`pytools.tag.Tag` intended for consumption by an

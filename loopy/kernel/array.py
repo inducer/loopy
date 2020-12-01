@@ -668,8 +668,7 @@ class ArrayBase(ImmutableRecord, Taggable):
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
             dim_names=None, strides=None, order=None, for_atomic=False,
-            target=None, alignment=None, tags=frozenset(),
-            **kwargs):
+            target=None, alignment=None, tags=None, **kwargs):
         """
         All of the following (except *name*) are optional.
         Specify either strides or shape.
