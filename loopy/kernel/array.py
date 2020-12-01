@@ -650,7 +650,7 @@ class ArrayBase(ImmutableRecord, Taggable):
         :class:`pytools.tag.Tag` intended for
         consumption by an application.
 
-        ..versionadded:: 2020.2.2
+        .. versionadded:: 2020.2.2
 
     .. automethod:: __init__
     .. automethod:: __eq__
@@ -708,7 +708,7 @@ class ArrayBase(ImmutableRecord, Taggable):
         :arg offset: (See :attr:`offset`)
         :arg alignment: memory alignment in bytes
         :arg tags: An instance of or an Iterable of instances of
-        :class:`pytools.tag.Tag`.
+            :class:`pytools.tag.Tag`.
         """
 
         for kwarg_name in kwargs:
