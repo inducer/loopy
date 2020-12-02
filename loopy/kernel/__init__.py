@@ -824,7 +824,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         result = {
                 iname: set() for iname in self.all_inames()}
         for insn in self.instructions:
-            for iname in self.insn_inames(insn):
+            for iname in insn.within_inames:
                 result[iname].add(insn.id)
 
         return result
