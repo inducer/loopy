@@ -277,15 +277,13 @@ def build_loop_nest(codegen_state, schedule_index):
 
     from loopy.schedule import find_used_inames_within
     from loopy.codegen.bounds import get_usable_inames_for_conditional
-    from loopy.codegen.tools import CodegenOperationCacheManager
-
-    cgen_cachemanager = CodegenOperationCacheManager(kernel)
 
     sched_index_info_entries = [
             ScheduleIndexInfo(
                 schedule_indices=[i],
                 admissible_cond_inames=(
-                    get_usable_inames_for_conditional(kernel, i, cgen_cachemanager)),
+                    get_usable_inames_for_conditional(kernel, i,
+                        codegen_state.cgen_cachemanager)),
                 required_predicates=get_required_predicates(kernel, i),
                 used_inames_within=find_used_inames_within(kernel, i)
                 )

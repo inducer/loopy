@@ -56,7 +56,6 @@ def get_approximate_convex_bounds_checks(domain, check_inames,
 # {{{ on which inames may a conditional depend?
 
 def get_usable_inames_for_conditional(kernel, sched_index, op_cache_manager):
-
     result = op_cache_manager.find_active_inames_at(sched_index)
     crosses_barrier = op_cache_manager.has_barrier_within(sched_index)
 

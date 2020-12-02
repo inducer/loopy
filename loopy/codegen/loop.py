@@ -355,10 +355,8 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
     from loopy.codegen.bounds import get_usable_inames_for_conditional
 
     # Note: this does not include loop_iname itself!
-    from loopy.codegen.tools import CodegenOperationCacheManager
-
     usable_inames = get_usable_inames_for_conditional(kernel, sched_index,
-            CodegenOperationCacheManager(kernel))
+            codegen_state.cgen_cachemanager)
     domain = kernel.get_inames_domain(loop_iname)
 
     result = []
