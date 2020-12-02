@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 from loopy.diagnostic import LoopyError, warn
-from pytools import ImmutableRecord
+from pytools import ImmutableRecord, ProcessLogger
 import islpy as isl
 
 from pytools.persistent_dict import WriteOncePersistentDict
@@ -443,7 +443,7 @@ def generate_code_v2(kernel):
     from loopy.check import pre_codegen_checks
     pre_codegen_checks(kernel)
 
-    logger.info("%s: generate code: start" % kernel.name)
+    codegen_plog = ProcessLogger(logger, f"{kernel.name}: generate code")
 
     # {{{ examine arg list
 
@@ -553,7 +553,7 @@ def generate_code_v2(kernel):
             implemented_domains=LazilyUnpicklingDict(
                     codegen_result.implemented_domains))
 
-    logger.info("%s: generate code: done" % kernel.name)
+    codegen_plog.done()
 
     if CACHING_ENABLED:
         code_gen_cache.store_if_not_present(input_kernel, codegen_result)
