@@ -237,10 +237,10 @@ man_pages = [
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
     "https://docs.python.org/3": None,
+    "https://numpy.org/doc/stable/": None,
     "https://documen.tician.de/islpy": None,
     "https://documen.tician.de/pyopencl": None,
     "https://documen.tician.de/cgen": None,
-    "https://docs.scipy.org/doc/numpy/": None,
     "https://documen.tician.de/pymbolic": None,
     "https://documen.tician.de/pytools": None,
     }
