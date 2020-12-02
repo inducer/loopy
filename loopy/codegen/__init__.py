@@ -45,6 +45,8 @@ __doc__ = """
 .. autoclass:: CodeGenerationState
 
 .. automodule:: loopy.codegen.result
+
+.. automodule:: loopy.codegen.tools
 """
 
 

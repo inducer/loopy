@@ -26,7 +26,17 @@ from loopy.schedule import (EnterLoop, LeaveLoop, CallKernel, ReturnFromKernel,
                             Barrier, BeginBlockItem, gather_schedule_block)
 
 
+__doc__ = """
+.. currentmodule:: loopy.codegen.tools
+
+.. autoclass:: CodegenOperationCacheManager
+"""
+
+
 class CodegenOperationCacheManager(ImmutableRecord):
+    """
+    Caches operations arising during the codegen pipeline.
+    """
     def __init__(self, kernel):
         super().__init__()
         super().__setattr__("kernel", kernel)
@@ -43,7 +53,8 @@ class CodegenOperationCacheManager(ImmutableRecord):
     @memoize_method
     def find_active_inames_at(self, sched_index):
         """
-        Return a :class:`frozenset` of active inames just before *sched_index*.
+        Returns a :class:`frozenset` of active inames at the point just before
+        *sched_index*.
         """
         if sched_index == 0:
             return frozenset()
@@ -62,8 +73,8 @@ class CodegenOperationCacheManager(ImmutableRecord):
     @memoize_method
     def has_barrier_within(self, sched_index):
         """
-        Checks if the kernel schedule block form sched_index to the end of the
-        schedule block has a barrier item.
+        Checks if the kernel's schedule block from *sched_index* contains a
+        barrier.
         """
         sched_item = self.kernel.schedule[sched_index]
 
@@ -110,7 +121,7 @@ class CodegenOperationCacheManager(ImmutableRecord):
                                                        crosses_barrier):
         """
         Returns a :class:`frozenset` of parallel inames are defined within a
-        subkernel, but not:
+        subkernel, BUT:
 
         - local indices may not be used in conditionals that cross barriers.
 
