@@ -1004,7 +1004,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
     def map_reduction_seq(expr, rec, nresults, arg_dtypes,
             reduction_dtypes):
-        outer_insn_inames = temp_kernel.insn_inames(insn)
+        outer_insn_inames = insn.within_inames
 
         from loopy.kernel.data import AddressSpace
         acc_var_names = make_temporaries(
@@ -1041,7 +1041,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         update_id = insn_id_gen(
                 based_on="{}_{}_update".format(insn.id, "_".join(expr.inames)))
 
-        update_insn_iname_deps = temp_kernel.insn_inames(insn) | set(expr.inames)
+        update_insn_iname_deps = insn.within_inames | set(expr.inames)
         if insn.within_inames_is_final:
             update_insn_iname_deps = insn.within_inames | set(expr.inames)
 
@@ -1126,7 +1126,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         size = _get_int_iname_size(red_iname)
 
-        outer_insn_inames = temp_kernel.insn_inames(insn)
+        outer_insn_inames = insn.within_inames
 
         from loopy.kernel.data import LocalIndexTagBase
         outer_local_inames = tuple(oiname for oiname in outer_insn_inames
@@ -1363,7 +1363,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
     def map_scan_seq(expr, rec, nresults, arg_dtypes,
             reduction_dtypes, sweep_iname, scan_iname, sweep_min_value,
             scan_min_value, stride):
-        outer_insn_inames = temp_kernel.insn_inames(insn)
+        outer_insn_inames = insn.within_inames
         inames_to_remove.add(scan_iname)
 
         track_iname = var_name_gen(
@@ -1417,7 +1417,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         update_id = insn_id_gen(
                 based_on="{}_{}_update".format(insn.id, "_".join(expr.inames)))
 
-        update_insn_iname_deps = temp_kernel.insn_inames(insn) | {track_iname}
+        update_insn_iname_deps = insn.within_inames | {track_iname}
         if insn.within_inames_is_final:
             update_insn_iname_deps = insn.within_inames | {track_iname}
 
@@ -1461,7 +1461,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             return map_reduction_seq(
                     expr, rec, nresults, arg_dtypes, reduction_dtypes)
 
-        outer_insn_inames = temp_kernel.insn_inames(insn)
+        outer_insn_inames = insn.within_inames
 
         from loopy.kernel.data import LocalIndexTagBase
         outer_local_inames = tuple(oiname for oiname in outer_insn_inames
@@ -1668,7 +1668,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 infer_arg_and_reduction_dtypes_for_reduction_expression(
                         temp_kernel, expr, unknown_types_ok))
 
-        outer_insn_inames = temp_kernel.insn_inames(insn)
+        outer_insn_inames = insn.within_inames
         bad_inames = frozenset(expr.inames) & outer_insn_inames
         if bad_inames:
             raise LoopyError("reduction used within loop(s) that it was "
@@ -1854,7 +1854,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     no_sync_with=insn.no_sync_with
                     | frozenset(new_insn_add_no_sync_with),
                     within_inames=(
-                        temp_kernel.insn_inames(insn)
+                        insn.within_inames
                         | new_insn_add_within_inames))
 
             kwargs.pop("id")
