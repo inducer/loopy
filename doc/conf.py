@@ -21,32 +21,33 @@ import os
 # -- General configuration -----------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
-#needs_sphinx = '1.0'
+#needs_sphinx = "1.0"
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
-# coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
+# coming with Sphinx (named "sphinx.ext.*") or your custom ones.
 extensions = [
-        'sphinx.ext.autodoc',
-        'sphinx.ext.intersphinx',
-        #'sphinx.ext.viewcode',
-        'sphinx.ext.doctest',
+        "sphinx.ext.autodoc",
+        "sphinx.ext.intersphinx",
+        #"sphinx.ext.viewcode",
+        "sphinx.ext.doctest",
+        "sphinx_copybutton",
         ]
 
 # Add any paths that contain templates here, relative to this directory.
-templates_path = ['_templates']
+templates_path = ["_templates"]
 
 # The suffix of source filenames.
-source_suffix = '.rst'
+source_suffix = ".rst"
 
 # The encoding of source files.
-#source_encoding = 'utf-8-sig'
+#source_encoding = "utf-8-sig"
 
 # The master toctree document.
-master_doc = 'index'
+master_doc = "index"
 
 # General information about the project.
-project = 'loopy'
-copyright = '2016, Andreas Klöckner'
+project = "loopy"
+copyright = "2016, Andreas Klöckner"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -59,7 +60,7 @@ with open(_version_source) as vpy_file:
     version_py = vpy_file.read()
 
 os.environ["AKPYTHON_EXEC_IMPORT_UNAVAILABLE"] = "1"
-exec(compile(version_py, _version_source, 'exec'), ver_dic)
+exec(compile(version_py, _version_source, "exec"), ver_dic)
 version = ".".join(str(x) for x in ver_dic["VERSION"])
 # The full version, including alpha/beta/rc tags.
 release = ver_dic["VERSION_TEXT"]
@@ -77,7 +78,7 @@ del os.environ["AKPYTHON_EXEC_IMPORT_UNAVAILABLE"]
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
-exclude_patterns = ['_build']
+exclude_patterns = ["_build"]
 
 # The reST default role (used for this markup: `text`) to use for all documents.
 #default_role = None
@@ -94,7 +95,7 @@ exclude_patterns = ['_build']
 #show_authors = False
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = 'sphinx'
+pygments_style = "sphinx"
 
 # A list of ignored prefixes for module index sorting.
 #modindex_common_prefix = []
@@ -102,23 +103,13 @@ pygments_style = 'sphinx'
 
 # -- Options for HTML output ---------------------------------------------------
 
-html_theme = "alabaster"
+html_theme = "furo"
 
 html_theme_options = {
-        "extra_nav_links": {
-            "🚀 Github": "https://github.com/inducer/loopy",
-            "💾 Download Releases": "https://pypi.org/project/loopy",
-            }
         }
 
 html_sidebars = {
-    '**': [
-        'about.html',
-        'navigation.html',
-        'relations.html',
-        'searchbox.html',
-    ]
-}
+        }
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -149,7 +140,7 @@ html_sidebars = {
 # so a file named "default.css" will overwrite the builtin "default.css".
 # html_static_path = ['_static']
 
-# If not '', a 'Last updated on:' timestamp is inserted at every page bottom,
+# If not '', a "Last updated on:" timestamp is inserted at every page bottom,
 # using the given strftime format.
 #html_last_updated_fmt = '%b %d, %Y'
 
@@ -191,22 +182,22 @@ html_show_sourcelink = False
 #html_file_suffix = None
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'loopydoc'
+htmlhelp_basename = "loopydoc"
 
 
 # -- Options for LaTeX output --------------------------------------------------
 
-# The paper size ('letter' or 'a4').
-#latex_paper_size = 'letter'
+# The paper size ("letter" or "a4").
+#latex_paper_size = "letter"
 
-# The font size ('10pt', '11pt' or '12pt').
-#latex_font_size = '10pt'
+# The font size ("10pt", "11pt" or "12pt").
+#latex_font_size = "10pt"
 
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto/manual]).
 latex_documents = [
-        ('index', 'loopy.tex', 'loopy Documentation',
-            'Andreas Kloeckner', 'manual'),
+        ("index", "loopy.tex", "loopy Documentation",
+            "Andreas Kloeckner", "manual"),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -238,20 +229,20 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    ('index', 'loopy', 'loopy Documentation',
-     ['Andreas Kloeckner'], 1)
+    ("index", "loopy", "loopy Documentation",
+     ["Andreas Kloeckner"], 1)
 ]
 
 
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
-    'https://docs.python.org/3': None,
-    'https://documen.tician.de/islpy': None,
-    'https://documen.tician.de/pyopencl': None,
-    'https://documen.tician.de/cgen': None,
-    'https://docs.scipy.org/doc/numpy/': None,
-    'https://documen.tician.de/pymbolic': None,
-    'https://documen.tician.de/pytools': None,
+    "https://docs.python.org/3": None,
+    "https://documen.tician.de/islpy": None,
+    "https://documen.tician.de/pyopencl": None,
+    "https://documen.tician.de/cgen": None,
+    "https://docs.scipy.org/doc/numpy/": None,
+    "https://documen.tician.de/pymbolic": None,
+    "https://documen.tician.de/pytools": None,
     }
 
 autoclass_content = "class"
