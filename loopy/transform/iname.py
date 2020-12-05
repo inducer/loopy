@@ -1656,7 +1656,7 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
     insns = [insn for insn in kernel.instructions if match(kernel, insn)]
 
     for insn in insns:
-        for iname in kernel.insn_inames(insn):
+        for iname in insn.within_inames:
             if kernel.iname_tags_of_type(iname, kind):
                 used_axes.add(kind.axis)
 

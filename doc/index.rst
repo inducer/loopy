@@ -47,6 +47,8 @@ Please check :ref:`installation` to get started.
     ref_other
     misc
     ref_internals
+    🚀 Github <https://github.com/inducer/loopy>
+    💾 Download Releases <https://pypi.org/project/loopy>
 
 Indices and tables
 ==================

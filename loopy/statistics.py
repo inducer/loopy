@@ -1513,7 +1513,7 @@ def get_unused_hw_axes_factor(knl, callables_table, insn,
     l_used = set()
 
     from loopy.kernel.data import LocalIndexTag, GroupIndexTag
-    for iname in knl.insn_inames(insn):
+    for iname in insn.within_inames:
         tags = knl.iname_tags_of_type(iname,
                               (LocalIndexTag, GroupIndexTag), max_num=1)
         if tags:
@@ -1558,7 +1558,7 @@ def count_inames_domain(knl, inames):
 def count_insn_runs(knl, callables_table, insn, count_redundant_work,
         disregard_local_axes=False):
 
-    insn_inames = knl.insn_inames(insn)
+    insn_inames = insn.within_inames
 
     if disregard_local_axes:
         from loopy.kernel.data import LocalIndexTag

@@ -124,7 +124,7 @@ def privatize_temporaries_with_inames(
         for writer_insn_id in wmap.get(tv.name, []):
             writer_insn = kernel.id_to_insn[writer_insn_id]
 
-            priv_axis_inames = kernel.insn_inames(writer_insn) & privatizing_inames
+            priv_axis_inames = writer_insn.within_inames & privatizing_inames
 
             referenced_priv_axis_inames = (priv_axis_inames
                     & writer_insn.write_dependency_names())

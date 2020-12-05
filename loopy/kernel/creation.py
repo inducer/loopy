@@ -1526,7 +1526,7 @@ def determine_shapes_of_temporaries(knl):
     def feed_all_expressions(receiver):
         for insn in knl.instructions:
             insn.with_transformed_expressions(
-                lambda expr: receiver(expr, knl.insn_inames(insn)))
+                lambda expr: receiver(expr, insn.within_inames))
 
     var_to_base_indices, var_to_shape, var_to_error = (
         find_shapes_of_vars(
@@ -1546,7 +1546,7 @@ def determine_shapes_of_temporaries(knl):
         def feed_assignee_of_instruction(receiver):
             for insn in knl.instructions:
                 for assignee in insn.assignees:
-                    receiver(assignee, knl.insn_inames(insn))
+                    receiver(assignee, insn.within_inames)
 
         var_to_base_indices_fallback, var_to_shape_fallback, var_to_error = (
             find_shapes_of_vars(

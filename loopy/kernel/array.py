@@ -139,6 +139,12 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
         return self.stringify(True)
 
     def map_expr(self, mapper):
+        from loopy.kernel.data import auto
+
+        if self.stride is auto:
+            # lp.auto not an expr => do not map
+            return self
+
         return self.copy(stride=mapper(self.stride))
 
     def depends_on(self):
@@ -620,7 +626,8 @@ class ArrayBase(ImmutableRecord):
     .. attribute:: offset
 
         Offset from the beginning of the buffer to the point from
-            which the strides are counted. May be one of
+        which the strides are counted, in units of the :attr:`dtype`.
+        May be one of
 
             * 0 or None
             * a string (that is interpreted as an argument name).

@@ -89,7 +89,7 @@ def generate_instruction_code(codegen_state, insn):
     else:
         raise RuntimeError("unexpected instruction type")
 
-    insn_inames = kernel.insn_inames(insn)
+    insn_inames = insn.within_inames
 
     return to_codegen_result(
             codegen_state,

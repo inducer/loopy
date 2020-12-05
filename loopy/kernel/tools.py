@@ -721,7 +721,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 
     from loopy.kernel.data import AutoLocalIndexTagBase
     auto_axis_inames = {
-        iname for iname in kernel.insn_inames(insn)
+        iname for iname in insn.within_inames
         if kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase)}
 
     # }}}
@@ -780,7 +780,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
     if aggregate_strides:
         very_large_stride = int(np.iinfo(np.int32).max)
 
-        return sorted((iname for iname in kernel.insn_inames(insn)),
+        return sorted((iname for iname in insn.within_inames),
                 key=lambda iname: (
                     aggregate_strides.get(iname, very_large_stride),
                     iname))
@@ -924,7 +924,7 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
             continue
 
         auto_axis_inames = [
-            iname for iname in kernel.insn_inames(insn)
+            iname for iname in insn.within_inames
             if kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase)]
 
         if not auto_axis_inames:
@@ -932,7 +932,7 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
 
         assigned_local_axes = set()
 
-        for iname in kernel.insn_inames(insn):
+        for iname in insn.within_inames:
             tags = kernel.iname_tags_of_type(iname, LocalIndexTag, max_num=1)
             if tags:
                 tag, = tags
@@ -1040,7 +1040,7 @@ def guess_var_shape(kernel, var_name):
     submap = SubstitutionRuleExpander(kernel.substitutions)
 
     def run_through_armap(expr):
-        armap(submap(expr), kernel.insn_inames(insn))
+        armap(submap(expr), insn.within_inames)
         return expr
 
     try:
@@ -1573,7 +1573,7 @@ def stringify_instruction_list(kernel):
             raise LoopyError("unexpected instruction type: %s"
                     % type(insn).__name__)
 
-        adapt_to_new_inames_list(kernel.insn_inames(insn))
+        adapt_to_new_inames_list(insn.within_inames)
 
         options = ["id="+Fore.GREEN+insn.id+Style.RESET_ALL]
         if insn.priority:
