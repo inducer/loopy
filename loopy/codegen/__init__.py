@@ -461,21 +461,6 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
         raise LoopyError("cannot generate code for a kernel that has not been "
                 "scheduled")
 
-    # {{{ cache retrieval
-
-    from loopy import CACHING_ENABLED
-
-    if CACHING_ENABLED:
-        input_kernel = kernel
-        try:
-            result = code_gen_cache[input_kernel]
-            logger.debug("%s: code generation cache hit" % kernel.name)
-            return result
-        except KeyError:
-            pass
-
-    # }}}
-
     from loopy.check import pre_codegen_checks
     pre_codegen_checks(kernel, callables_table)
 
@@ -590,13 +575,13 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
 
     codegen_plog.done()
 
-    if CACHING_ENABLED:
-        code_gen_cache.store_if_not_present(input_kernel, codegen_result)
-
     return codegen_result
 
 
 def diverge_callee_entrypoints(program):
+    """
+    If a kernel is both an entrypoint and a callee, then rename the callee.
+    """
     from loopy.program import _get_callable_ids
     from pytools import UniqueNameGenerator
     callable_ids = _get_callable_ids(program.callables_table,
@@ -640,6 +625,22 @@ def generate_code_v2(program):
     from loopy.kernel import LoopKernel
     from loopy.program import make_program
     from loopy.codegen.result import CodeGenerationResult
+
+    # {{{ cache retrieval
+
+    from loopy import CACHING_ENABLED
+
+    if CACHING_ENABLED:
+        input_program = program
+        try:
+            result = code_gen_cache[input_program]
+            logger.debug(f"Program with entrypoints {program.entrypoints}:"
+                         " code generation cache hit")
+            return result
+        except KeyError:
+            pass
+
+    # }}}
 
     if isinstance(program, LoopKernel):
         program = make_program(program)
@@ -721,6 +722,9 @@ def generate_code_v2(program):
             device_programs=device_programs,
             device_preambles=device_preambles,
             implemented_data_infos=implemented_data_infos)
+
+    if CACHING_ENABLED:
+        code_gen_cache.store_if_not_present(input_program, cgr)
 
     return cgr
 
