@@ -468,7 +468,7 @@ class ScalarCallable(InKernelCallable):
     fields = {"name", "arg_id_to_dtype", "arg_id_to_descr", "name_in_target"}
     init_arg_names = ("name", "arg_id_to_dtype", "arg_id_to_descr",
             "name_in_target")
-    hash_fields = fields
+    hash_fields = ("name", "arg_id_to_dtype", "arg_id_to_descr", "name_in_target")
 
     def __init__(self, name, arg_id_to_dtype=None,
             arg_id_to_descr=None, name_in_target=None):
@@ -633,7 +633,7 @@ class CallableKernel(InKernelCallable):
 
     fields = {"subkernel", "arg_id_to_dtype", "arg_id_to_descr"}
     init_arg_names = ("subkernel", "arg_id_to_dtype", "arg_id_to_descr")
-    hash_fields = fields
+    hash_fields = ("subkernel", "arg_id_to_dtype", "arg_id_to_descr")
 
     def __init__(self, subkernel, arg_id_to_dtype=None,
             arg_id_to_descr=None):
@@ -917,8 +917,8 @@ class ManglerCallable(ScalarCallable):
         "name_in_target"}
     init_arg_names = ("name", "function_mangler", "arg_id_to_dtype",
             "arg_id_to_descr", "name_in_target")
-    hash_fields = {"name", "arg_id_to_dtype", "arg_id_to_descr",
-        "name_in_target"}
+    hash_fields = ("name", "arg_id_to_dtype", "arg_id_to_descr",
+        "name_in_target")
 
     def __init__(self, name, function_mangler, arg_id_to_dtype=None,
             arg_id_to_descr=None, name_in_target=None):
