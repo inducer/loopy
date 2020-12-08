@@ -256,7 +256,6 @@ def find_temporary_address_space(kernel):
 
         overall_aspace = max(desired_aspace_per_insn)
 
-        from pytools import all
         if not all(iaspace == overall_aspace for iaspace in desired_aspace_per_insn):
             raise LoopyError("not all instructions agree on the "
                     "the desired address space (private/local/global) of  the "
