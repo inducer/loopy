@@ -1561,6 +1561,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         for field_name in self.hash_fields:
             key_builder.rec(key_hash, getattr(self, field_name))
 
+    @memoize_method
     def __hash__(self):
         from loopy.tools import LoopyKeyBuilder
         import hashlib
