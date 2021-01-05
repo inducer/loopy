@@ -717,9 +717,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 elif is_zero(expr.exponent - 2):
                     return self.rec(expr.base*expr.base, type_context)
 
-            if exponent_dtype.numpy_dtype.kind == "u":
-                # FIXME: need to add this to the seen functions
-
+            if exponent_dtype.is_integral():
                 from loopy.codegen import SeenFunction
                 func_name = ("loopy_pow_"
                         f"{base_dtype.numpy_dtype}_{exponent_dtype.numpy_dtype}")
@@ -741,7 +739,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         tgt_dtype,
                         var("pow")(self.rec(expr.base, type_context,
                                             loopy_f64_dtype),
-                                   self.rec(expr.base, type_context,
+                                   self.rec(expr.exponent, type_context,
                                             loopy_f64_dtype)))
 
         if not self.allow_complex:

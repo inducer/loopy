@@ -178,23 +178,37 @@ def _preamble_generator(preamble_info):
                     func.arg_dtypes[0])
             exp_ctype = preamble_info.kernel.target.dtype_to_typename(
                     func.arg_dtypes[1])
+            res_ctype = preamble_info.kernel.target.dtype_to_typename(
+                    func.res_dtypes[0])
+
+            if func.arg_dtypes[1].numpy_dtype.kind == "u":
+                signed_exponent_preamble = ""
+            else:
+                signed_exponent_preamble = """
+              if (n < 0) {
+                x = 1.0/x;
+                n =  -n;
+              }"""
 
             yield("07_int_pow", f"""
-            inline {base_ctype} {func.c_name}({base_ctype} b, {exp_ctype} n) {{
+            inline {res_ctype} {func.c_name}({base_ctype} x, {exp_ctype} n) {{
               if (n == 0)
-                return 1
+                return 1;
+              {signed_exponent_preamble}
 
-              {base_ctype} y = 1;
+              {res_ctype} y = 1;
 
               while (n > 1) {{
                 if (n % 2) {{
-                  x = x * x;
                   y = x * y;
+                  x = x * x;
                 }}
                 else
                   x = x * x;
                 n = n / 2;
               }}
+
+              return x*y;
             }}""")
 
 # }}}
