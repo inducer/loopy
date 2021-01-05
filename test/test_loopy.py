@@ -2995,6 +2995,49 @@ def test_split_iname_within(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
+@pytest.mark.parametrize("basetype,exptype", [(np.int32, np.uint32), (np.int64,
+    np.uint64), (np.int, np.float), (np.float, np.int)])
+def test_int_int_pow(ctx_factory, basetype, exptype):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    def _make_random_np_array(shape, dtype):
+        from numpy.random import default_rng
+        rng = default_rng()
+        if isinstance(shape, int):
+            shape = (shape,)
+
+        dtype = np.dtype(dtype)
+        if dtype.kind in ["u", "i"]:
+            # choosing numbers so that we don't have overflow, to not trigger
+            # undefined behavior
+            low = 0 if dtype.kind == "u" else -6
+            high = 6
+            return rng.integers(low=low, high=high, size=shape, dtype=dtype)
+        elif dtype.kind == "f":
+            return rng.random(*shape).astype(dtype)
+        else:
+            raise NotImplementedError()
+
+    base = _make_random_np_array(10, basetype)
+    power = _make_random_np_array(10, exptype)
+    expected_result = base ** power
+
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            """
+            res[i] = base[i] ** power[i]
+            """, [lp.GlobalArg("base", dtype=basetype, shape=lp.auto),
+                  lp.GlobalArg("power", dtype=exptype, shape=lp.auto),
+                  ...])
+
+    evt, (result,) = knl(queue, base=base, power=power)
+
+    assert result.dtype == expected_result.dtype
+
+    np.testing.assert_allclose(expected_result, result)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
