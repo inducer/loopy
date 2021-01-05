@@ -130,41 +130,6 @@ def check_for_integer_subscript_indices(kernel):
                 type(insn).__name__))
 
 
-class ExponentIsUnsignedChecker(TypeInferenceMapper):
-    def map_power(self, expr):
-        res_dtype = super().map_power(expr)
-        exp_dtype = self.rec(expr.exponent)
-        if not res_dtype:
-            raise LoopyError(
-                "When checking for unsigned exponents for int-int"
-                f"pow expressions, type inference did not find type of {expr}.")
-
-        if res_dtype[0].is_integral():
-            if exp_dtype[0].numpy_dtype.kind == "i":
-                raise LoopyError("Integers to signed integer powers are not"
-                        " allowed.")
-
-        return res_dtype
-
-
-def check_int_pow_has_unsigned_exponent(kernel):
-    """
-    Checks that all expressions of the ``a**b``, where both ``a``
-    and ``b`` are integers (signed or unsigned) have exponents of type
-    unsigned.
-    """
-    exp_is_uint_checker = ExponentIsUnsignedChecker(kernel)
-    for insn in kernel.instructions:
-        if isinstance(insn, MultiAssignmentBase):
-            exp_is_uint_checker(insn.expression, return_tuple=isinstance(insn,
-                CallInstruction), return_dtype_set=True)
-        elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
-            pass
-        else:
-            raise NotImplementedError("Unknown insn type %s." % (
-                type(insn).__name__))
-
-
 def check_insn_attributes(kernel):
     """
     Check for legality of attributes of every instruction in *kernel*.
@@ -836,7 +801,6 @@ def pre_schedule_checks(kernel):
         logger.debug("%s: pre-schedule check: start" % kernel.name)
 
         check_for_integer_subscript_indices(kernel)
-        check_int_pow_has_unsigned_exponent(kernel)
         check_for_duplicate_insn_ids(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel)
