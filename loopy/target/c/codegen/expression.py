@@ -325,7 +325,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             self.codegen_state.seen_functions.add(
                     SeenFunction(
                         name, f"{name}_{suffix}",
-                        (result_dtype, result_dtype)))
+                        (result_dtype, result_dtype),
+                        (result_dtype,)))
 
         if den_nonneg:
             if num_nonneg:
@@ -538,7 +539,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         self.codegen_state.seen_functions.add(
                 SeenFunction(identifier,
                     mangle_result.target_name,
-                    mangle_result.arg_dtypes or par_dtypes))
+                    mangle_result.arg_dtypes or par_dtypes,
+                    mangle_result.result_dtypes))
 
         return var(mangle_result.target_name)(*processed_parameters)
 
@@ -725,7 +727,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 self.codegen_state.seen_functions.add(
                         SeenFunction(
                             "int_pow", func_name,
-                            (base_dtype, exponent_dtype)))
+                            (base_dtype, exponent_dtype),
+                            (tgt_dtype, )))
                 return var("loopy_pow_"
                         f"{base_dtype.numpy_dtype}_{exponent_dtype.numpy_dtype}")(
                                 self.rec(expr.base), self.rec(expr.exponent))
