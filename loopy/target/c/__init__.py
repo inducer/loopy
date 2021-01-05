@@ -172,6 +172,31 @@ def _preamble_generator(preamble_info):
             yield ("04_%s" % func_name, func_body)
             yield undef_integer_types_macro
 
+    for func in preamble_info.seen_functions:
+        if func.name == "int_pow":
+            base_ctype = preamble_info.kernel.target.dtype_to_typename(
+                    func.arg_dtypes[0])
+            exp_ctype = preamble_info.kernel.target.dtype_to_typename(
+                    func.arg_dtypes[1])
+
+            yield("07_int_pow", f"""
+            inline {base_ctype} {func.c_name}({base_ctype} b, {exp_ctype} n) {{
+              if (n == 0)
+                return 1
+
+              {base_ctype} y = 1;
+
+              while (n > 1) {{
+                if (n % 2) {{
+                  x = x * x;
+                  y = x * y;
+                }}
+                else
+                  x = x * x;
+                n = n / 2;
+              }}
+            }}""")
+
 # }}}
 
 
