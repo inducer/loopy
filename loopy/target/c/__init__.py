@@ -490,7 +490,7 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
                 arg_dtypes=arg_dtypes)
 
     # binary functions
-    if (name in ["fmax", "fmin", "copysign"]
+    if (name in ["fmax", "fmin", "copysign", "pow"]
             and len(arg_dtypes) == 2):
 
         dtype = np.find_common_type(
@@ -516,17 +516,6 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
                     target_name=name,
                     result_dtypes=(result_dtype,),
                     arg_dtypes=2*(result_dtype,))
-
-    if name == "pow" and len(arg_dtypes) == 2:
-        if any(dtype.is_complex() == "c" for dtype in arg_dtypes):
-            raise LoopyTypeError(f"{name} does not support complex numbers")
-
-        f64_dtype = NumpyType(np.float64)
-
-        # math.h only provides double pow(double, double)
-        return CallMangleInfo(target_name=name,
-                              arg_dtypes=(f64_dtype, f64_dtype),
-                              result_dtypes=(f64_dtype,))
 
     return None
 
