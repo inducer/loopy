@@ -144,6 +144,7 @@ _CL_SIMPLE_MULTI_ARG_FUNCTIONS = {
         "rsqrt": 1,
         "clamp": 3,
         "atan2": 2,
+        "pow": 2,
         }
 
 

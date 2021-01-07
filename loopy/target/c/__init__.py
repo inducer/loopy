@@ -497,7 +497,7 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
             [], [dtype.numpy_dtype for dtype in arg_dtypes])
 
         if dtype.kind == "c":
-            raise LoopyTypeError("%s does not support complex numbers")
+            raise LoopyTypeError(f"{name} does not support complex numbers")
 
         elif dtype.kind == "f":
             if modify_name:
@@ -516,6 +516,17 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
                     target_name=name,
                     result_dtypes=(result_dtype,),
                     arg_dtypes=2*(result_dtype,))
+
+    if name == "pow" and len(arg_dtypes) == 2:
+        if any(dtype.is_complex() == "c" for dtype in arg_dtypes):
+            raise LoopyTypeError(f"{name} does not support complex numbers")
+
+        f64_dtype = NumpyType(np.float64)
+
+        # math.h only provides double pow(double, double)
+        return CallMangleInfo(target_name=name,
+                              arg_dtypes=(f64_dtype, f64_dtype),
+                              result_dtypes=(f64_dtype,))
 
     return None
 

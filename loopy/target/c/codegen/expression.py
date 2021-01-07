@@ -731,16 +731,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         f"{base_dtype.numpy_dtype}_{exponent_dtype.numpy_dtype}")(
                                 self.rec(expr.base), self.rec(expr.exponent))
             else:
-                from loopy.types import to_loopy_type
-                loopy_f64_dtype = to_loopy_type(np.float64,
-                        target=self.kernel.target)
-                return self.wrap_in_typecast(
-                        loopy_f64_dtype,
-                        tgt_dtype,
-                        var("pow")(self.rec(expr.base, type_context,
-                                            loopy_f64_dtype),
-                                   self.rec(expr.exponent, type_context,
-                                            loopy_f64_dtype)))
+                return self.rec(var("pow")(expr.base, expr.exponent), type_context)
 
         if not self.allow_complex:
             return base_impl(expr, type_context)
@@ -981,9 +972,7 @@ class CExpressionToCodeMapper(RecursiveMapper):
         return self._map_division_operator("%", expr, enclosing_prec)
 
     def map_power(self, expr, enclosing_prec):
-        # No trivial "**" operator for C-like targets, should have been preprocessed
-        # into other expression types.
-        raise RuntimeError()
+        raise RuntimeError(f"'{expr}' should have been transformed to 'Call' expression node.")
 
     def map_array_literal(self, expr, enclosing_prec):
         return "{ %s }" % self.join_rec(", ", expr.children, PREC_NONE)
