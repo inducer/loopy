@@ -179,7 +179,7 @@ def _preamble_generator(preamble_info):
             exp_ctype = preamble_info.kernel.target.dtype_to_typename(
                     func.arg_dtypes[1])
             res_ctype = preamble_info.kernel.target.dtype_to_typename(
-                    func.res_dtypes[0])
+                    func.result_dtypes[0])
 
             if func.arg_dtypes[1].numpy_dtype.kind == "u":
                 signed_exponent_preamble = ""
