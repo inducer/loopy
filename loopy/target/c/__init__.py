@@ -34,6 +34,9 @@ from loopy.symbolic import IdentityMapper
 from loopy.types import NumpyType
 import pymbolic.primitives as p
 
+from loopy.tools import remove_common_indentation
+import re
+
 from pytools import memoize_method
 
 __doc__ = """
@@ -184,17 +187,18 @@ def _preamble_generator(preamble_info):
             if func.arg_dtypes[1].numpy_dtype.kind == "u":
                 signed_exponent_preamble = ""
             else:
-                signed_exponent_preamble = """
-              if (n < 0) {
-                x = 1.0/x;
-                n =  -n;
-              }"""
+                signed_exponent_preamble = "\n" + remove_common_indentation(
+                        """
+                        if (n < 0) {
+                          x = 1.0/x;
+                          n =  -n;
+                        }""")
 
             yield("07_int_pow", f"""
             inline {res_ctype} {func.c_name}({base_ctype} x, {exp_ctype} n) {{
               if (n == 0)
                 return 1;
-              {signed_exponent_preamble}
+              {re.sub("^", 14*" ", signed_exponent_preamble, flags=re.M)}
 
               {res_ctype} y = 1;
 
