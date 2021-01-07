@@ -972,7 +972,8 @@ class CExpressionToCodeMapper(RecursiveMapper):
         return self._map_division_operator("%", expr, enclosing_prec)
 
     def map_power(self, expr, enclosing_prec):
-        raise RuntimeError(f"'{expr}' should have been transformed to 'Call' expression node.")
+        raise RuntimeError(f"'{expr}' should have been transformed to 'Call'"
+                           " expression node.")
 
     def map_array_literal(self, expr, enclosing_prec):
         return "{ %s }" % self.join_rec(", ", expr.children, PREC_NONE)
