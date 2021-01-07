@@ -981,7 +981,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
         codegen_state.seen_functions.add(
                 SeenFunction(func_id,
                     mangle_result.target_name,
-                    mangle_result.arg_dtypes))
+                    mangle_result.arg_dtypes,
+                    mangle_result.result_dtypes))
 
         from pymbolic import var
         for i, (a, tgt_dtype) in enumerate(

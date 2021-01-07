@@ -152,7 +152,7 @@ class SeenFunction(ImmutableRecord):
         a tuple of result dtypes
     """
 
-    def __init__(self, name, c_name, arg_dtypes, result_dtypes=()):
+    def __init__(self, name, c_name, arg_dtypes, result_dtypes):
         ImmutableRecord.__init__(self,
                 name=name,
                 c_name=c_name,
