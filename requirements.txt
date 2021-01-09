@@ -1,4 +1,4 @@
-git+https://github.com/nchristensen/pytools.git@master#egg=pytools == 2020.4.5
+git+https://github.com/inducer/pytools.git#egg=pytools
 git+https://github.com/inducer/islpy.git#egg=islpy
 git+https://github.com/inducer/cgen.git#egg=cgen
 git+https://github.com/inducer/pyopencl.git#egg=pyopencl
