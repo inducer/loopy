@@ -26,6 +26,7 @@ THE SOFTWARE.
 import re
 
 from pytools import ImmutableRecord, memoize_method
+from pytools.tag import Taggable
 
 import numpy as np  # noqa
 
@@ -563,7 +564,7 @@ def _parse_shape_or_strides(x):
     return tuple(_pymbolic_parse_if_necessary(xi) for xi in x)
 
 
-class ArrayBase(ImmutableRecord):
+class ArrayBase(ImmutableRecord, Taggable):
     """
     .. attribute :: name
 
@@ -643,6 +644,14 @@ class ArrayBase(ImmutableRecord):
 
         .. versionadded:: 2018.1
 
+    .. attribute:: tags
+
+        A (possibly empty) frozenset of instances of
+        :class:`pytools.tag.Tag` intended for
+        consumption by an application.
+
+        .. versionadded:: 2020.2.2
+
     .. automethod:: __init__
     .. automethod:: __eq__
     .. automethod:: num_user_axes
@@ -659,8 +668,7 @@ class ArrayBase(ImmutableRecord):
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
             dim_names=None, strides=None, order=None, for_atomic=False,
-            target=None, alignment=None,
-            **kwargs):
+            target=None, alignment=None, tags=None, **kwargs):
         """
         All of the following (except *name*) are optional.
         Specify either strides or shape.
@@ -698,7 +706,8 @@ class ArrayBase(ImmutableRecord):
             using atomic-capable data types.
         :arg offset: (See :attr:`offset`)
         :arg alignment: memory alignment in bytes
-
+        :arg tags: An instance of or an Iterable of instances of
+            :class:`pytools.tag.Tag`.
         """
 
         for kwarg_name in kwargs:
@@ -855,6 +864,7 @@ class ArrayBase(ImmutableRecord):
                 order=order,
                 alignment=alignment,
                 for_atomic=for_atomic,
+                tags=tags,
                 **kwargs)
 
     def __eq__(self, other):

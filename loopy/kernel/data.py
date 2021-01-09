@@ -27,6 +27,7 @@ THE SOFTWARE.
 from sys import intern
 import numpy as np  # noqa
 from pytools import ImmutableRecord
+from pytools.tag import Taggable
 from loopy.kernel.array import ArrayBase
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (  # noqa
@@ -357,7 +358,6 @@ class KernelArgument(ImmutableRecord):
                     DeprecationWarning, stacklevel=2)
 
             dtype = None
-
         kwargs["dtype"] = dtype
 
         ImmutableRecord.__init__(self, **kwargs)
@@ -379,13 +379,13 @@ class ArrayArg(ArrayBase, KernelArgument):
 
     allowed_extra_kwargs = [
             "address_space",
-            "is_output_only"]
+            "is_output_only",
+            "tags"]
 
     def __init__(self, *args, **kwargs):
         if "address_space" not in kwargs:
             raise TypeError("'address_space' must be specified")
         kwargs["is_output_only"] = kwargs.pop("is_output_only", False)
-
         super().__init__(*args, **kwargs)
 
     min_target_axes = 0
@@ -451,15 +451,29 @@ class ImageArg(ArrayBase, KernelArgument):
                 self.num_target_axes(), dtype, is_written)
 
 
-class ValueArg(KernelArgument):
+"""
+    :attribute tags: A (possibly empty) frozenset of instances of
+        :class:`pytools.tag.Tag` intended for consumption by an
+        application.
+
+        ..versionadded: 2020.2.2
+"""
+
+
+class ValueArg(KernelArgument, Taggable):
     def __init__(self, name, dtype=None, approximately=1000, target=None,
-            is_output_only=False):
+            is_output_only=False, tags=None):
+        """
+        :arg tags: A an instance of or Iterable of instances of
+            :class:`pytools.tag.Tag` intended for consumption by an
+            application.
+        """
 
         KernelArgument.__init__(self, name=name,
                 dtype=dtype,
                 approximately=approximately,
                 target=target,
-                is_output_only=is_output_only)
+                is_output_only=is_output_only, tags=tags)
 
     def __str__(self):
         import loopy as lp
