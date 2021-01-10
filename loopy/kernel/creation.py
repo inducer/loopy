@@ -2204,7 +2204,11 @@ def make_function(domains, instructions, kernel_data=["..."], **kwargs):
 
         # This *is* gross. But it seems like the right thing interface-wise.
         import inspect
-        caller_globals = inspect.currentframe().f_back.f_globals
+        if inspect.currentframe().f_back.f_code.co_name == "make_kernel":
+            # if caller is "make_kernel", read globals from make_kernel's caller
+            caller_globals = inspect.currentframe().f_back.f_back.f_globals
+        else:
+            caller_globals = inspect.currentframe().f_back.f_globals
 
         for ver_sym in LANGUAGE_VERSION_SYMBOLS:
             try:
