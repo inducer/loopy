@@ -720,16 +720,14 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             if exponent_dtype.is_integral():
                 from loopy.codegen import SeenFunction
                 func_name = ("loopy_pow_"
-                        f"{base_dtype.numpy_dtype}_{exponent_dtype.numpy_dtype}")
+                        f"{tgt_dtype.numpy_dtype}_{exponent_dtype.numpy_dtype}")
 
                 self.codegen_state.seen_functions.add(
                         SeenFunction(
                             "int_pow", func_name,
-                            (base_dtype, exponent_dtype),
+                            (tgt_dtype, exponent_dtype),
                             (tgt_dtype, )))
-                return var("loopy_pow_"
-                        f"{base_dtype.numpy_dtype}_{exponent_dtype.numpy_dtype}")(
-                                self.rec(expr.base), self.rec(expr.exponent))
+                return var(func_name)(self.rec(expr.base), self.rec(expr.exponent))
             else:
                 return self.rec(var("pow")(expr.base, expr.exponent), type_context)
 
