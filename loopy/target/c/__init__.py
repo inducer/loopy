@@ -194,7 +194,7 @@ def _preamble_generator(preamble_info):
                           n =  -n;
                         }""")
 
-            yield("07_int_pow", f"""
+            yield(f"07_{func.c_name}", f"""
             inline {res_ctype} {func.c_name}({base_ctype} x, {exp_ctype} n) {{
               if (n == 0)
                 return 1;
