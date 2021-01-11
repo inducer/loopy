@@ -34,6 +34,9 @@ from loopy.symbolic import IdentityMapper
 from loopy.types import NumpyType
 import pymbolic.primitives as p
 
+from loopy.tools import remove_common_indentation
+import re
+
 from pytools import memoize_method
 
 __doc__ = """
@@ -171,6 +174,46 @@ def _preamble_generator(preamble_info):
             yield def_integer_types_macro
             yield ("04_%s" % func_name, func_body)
             yield undef_integer_types_macro
+
+    for func in preamble_info.seen_functions:
+        if func.name == "int_pow":
+            base_ctype = preamble_info.kernel.target.dtype_to_typename(
+                    func.arg_dtypes[0])
+            exp_ctype = preamble_info.kernel.target.dtype_to_typename(
+                    func.arg_dtypes[1])
+            res_ctype = preamble_info.kernel.target.dtype_to_typename(
+                    func.result_dtypes[0])
+
+            if func.arg_dtypes[1].numpy_dtype.kind == "u":
+                signed_exponent_preamble = ""
+            else:
+                signed_exponent_preamble = "\n" + remove_common_indentation(
+                        """
+                        if (n < 0) {
+                          x = 1.0/x;
+                          n =  -n;
+                        }""")
+
+            yield(f"07_{func.c_name}", f"""
+            inline {res_ctype} {func.c_name}({base_ctype} x, {exp_ctype} n) {{
+              if (n == 0)
+                return 1;
+              {re.sub("^", 14*" ", signed_exponent_preamble, flags=re.M)}
+
+              {res_ctype} y = 1;
+
+              while (n > 1) {{
+                if (n % 2) {{
+                  y = x * y;
+                  x = x * x;
+                }}
+                else
+                  x = x * x;
+                n = n / 2;
+              }}
+
+              return x*y;
+            }}""")
 
 # }}}
 
@@ -447,14 +490,14 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
                 arg_dtypes=arg_dtypes)
 
     # binary functions
-    if (name in ["fmax", "fmin", "copysign"]
+    if (name in ["fmax", "fmin", "copysign", "pow"]
             and len(arg_dtypes) == 2):
 
         dtype = np.find_common_type(
             [], [dtype.numpy_dtype for dtype in arg_dtypes])
 
         if dtype.kind == "c":
-            raise LoopyTypeError("%s does not support complex numbers")
+            raise LoopyTypeError(f"{name} does not support complex numbers")
 
         elif dtype.kind == "f":
             if modify_name:
@@ -942,7 +985,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
         codegen_state.seen_functions.add(
                 SeenFunction(func_id,
                     mangle_result.target_name,
-                    mangle_result.arg_dtypes))
+                    mangle_result.arg_dtypes,
+                    mangle_result.result_dtypes))
 
         from pymbolic import var
         for i, (a, tgt_dtype) in enumerate(
