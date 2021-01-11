@@ -3,16 +3,20 @@
 Reference: Loopy's Model of a Kernel
 ====================================
 
-What Types of Computation can a Loopy Kernel Express?
------------------------------------------------------
+What Types of Computation can a Loopy Program Express?
+------------------------------------------------------
 
-Loopy kernels consist of an a-priori unordered set of statements, operating
-on :math:`n`-dimensional arrays.
+Loopy programs consist of an a-priori unordered set of statements, operating
+on :math:`n`-dimensional array variables.
 
 Arrays consist of "plain old data" and structures thereof, as describable
 by a :class:`numpy.dtype`.  The n-dimensional shape of these arrays is
 given by a tuple of expressions at most affine in parameters that are
 fixed for the duration of program execution.
+Each array variable in the program is either an argument or a temporary
+variable.  A temporary variable is only live within the program, while
+argument variables are accessible outside the program and constitute the
+program's inputs and outputs.
 
 A statement (still called 'instruction' in some places, cf.
 :class:`loopy.InstructionBase`) encodes an assignment to an entry of an array.
