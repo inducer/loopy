@@ -15,7 +15,7 @@ given by a tuple of expressions at most affine in parameters that are
 fixed for the duration of program execution.
 
 A statement (still called 'instruction' in some places, cf.
-:class:`loopy.Instruction`) encodes an assignment to an entry of an array.
+:class:`loopy.InstructionBase`) encodes an assignment to an entry of an array.
 The right-hand side of an assignment consists of an expression that may
 consist of arithmetic and calls to functions.
 If the outermost operation of the RHS expression is a function call,
