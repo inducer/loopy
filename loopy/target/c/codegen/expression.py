@@ -727,7 +727,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                             "int_pow", func_name,
                             (tgt_dtype, exponent_dtype),
                             (tgt_dtype, )))
-                return var(func_name)(self.rec(expr.base), self.rec(expr.exponent))
+                return var(func_name)(self.rec(expr.base, type_context),
+                                      self.rec(expr.exponent, type_context))
             else:
                 return self.rec(var("pow")(expr.base, expr.exponent), type_context)
 
