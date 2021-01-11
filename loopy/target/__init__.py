@@ -39,6 +39,14 @@ __doc__ = """
 .. autoclass:: NumbaTarget
 .. autoclass:: NumbaCudaTarget
 
+References to Canonical Names
+-----------------------------
+
+.. currentmodule:: loopy.target
+
+.. class:: TargetBase
+
+    See :class:`loopy.TargetBase`.
 """
 
 

@@ -28,7 +28,7 @@ import numpy as np
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from pytools import memoize_method
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.types import NumpyType
 from loopy.target.c import DTypeRegistryWrapper
 from loopy.kernel.data import AddressSpace
@@ -190,9 +190,7 @@ class OpenCLCallable(ScalarCallable):
                 if common_dtype.kind == "f":
                     name = "f"+name
 
-                target = [dtype.target for dtype in arg_id_to_dtype.values()
-                        if (id >= 0 and dtype is not None)][0]
-                dtype = NumpyType(common_dtype, target)
+                dtype = NumpyType(common_dtype)
                 return (
                         self.copy(name_in_target=name,
                             arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
@@ -205,7 +203,7 @@ class OpenCLCallable(ScalarCallable):
         if name == "dot":
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 1:
-                    raise LoopyError("%s can take only 2 arguments." % name)
+                    raise LoopyError(f"'{name}' can take only 2 arguments.")
 
             if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
                     arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
@@ -220,6 +218,30 @@ class OpenCLCallable(ScalarCallable):
             return (
                     self.copy(name_in_target=name, arg_id_to_dtype={-1:
                         NumpyType(scalar_dtype), 0: dtype, 1: dtype}),
+                    callables_table)
+
+        if name == "pow":
+            for id in arg_id_to_dtype:
+                if not -1 <= id <= 1:
+                    raise LoopyError(f"'{name}' can take only 2 arguments.")
+
+            common_dtype = np.find_common_type(
+                    [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                        if (id >= 0 and dtype is not None)])
+
+            if common_dtype == np.float64:
+                name = "powf64"
+            elif common_dtype == np.float32:
+                name = "powf32"
+            else:
+                raise LoopyTypeError(f"'pow' does not support type {dtype}.")
+
+            result_dtype = NumpyType(dtype)
+
+            return (
+                    self.copy(name_in_target=name,
+                              arg_id_to_dtype={-1: result_dtype,
+                                               0: dtype, 1: dtype}),
                     callables_table)
 
         if name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
@@ -284,18 +306,6 @@ class OpenCLCallable(ScalarCallable):
         return (
                 self.copy(arg_id_to_dtype=arg_id_to_dtype),
                 callables_table)
-
-
-def get_opencl_callables():
-    """
-    Returns an instance of :class:`InKernelCallable` if the function defined by
-    *identifier* is known in OpenCL.
-    """
-    opencl_function_ids = {"max", "min", "dot"} | set(
-            _CL_SIMPLE_MULTI_ARG_FUNCTIONS) | set(VECTOR_LITERAL_FUNCS)
-
-    return {id_: OpenCLCallable(name=id_) for id_ in
-        opencl_function_ids}
 
 # }}}
 
@@ -364,6 +374,19 @@ def opencl_preamble_generator(preamble_info):
                 #define gid(N) ((%(idx_ctype)s) get_group_id(N))
                 """ % dict(idx_ctype=kernel.target.dtype_to_typename(
                     kernel.index_dtype))))
+
+    for func in preamble_info.seen_functions:
+        if func.name == "pow" and func.c_name == "powf32":
+            yield("08_clpowf32", """
+            inline float powf32(float x, float y) {
+              return pow(x, y);
+            }""")
+
+        if func.name == "pow" and func.c_name == "powf64":
+            yield("08_clpowf64", """
+            inline double powf64(double x, double y) {
+              return pow(x, y);
+            }""")
 
 # }}}
 

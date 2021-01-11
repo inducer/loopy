@@ -1624,10 +1624,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     update_persistent_hash = update_persistent_hash
 
+    @memoize_method
     def __hash__(self):
         from loopy.tools import LoopyKeyBuilder
-        from pytools.persistent_dict import new_hash
-        key_hash = new_hash()
+        import hashlib
+        key_hash = hashlib.sha256()
         self.update_persistent_hash(key_hash, LoopyKeyBuilder())
         return hash(key_hash.digest())
 

@@ -91,11 +91,11 @@ class ExpressionToPythonMapper(StringifyMapper):
                     "indexof, indexof_vec not yet supported in Python")
 
         from loopy.kernel.function_interface import ManglerCallable
-        in_knl_callable = self.codegen_state.callables_table[
+        clbl = self.codegen_state.callables_table[
                 expr.function.name]
-        if isinstance(in_knl_callable, ManglerCallable):
+        if isinstance(clbl, ManglerCallable):
             from loopy.codegen import SeenFunction
-            mangle_result = in_knl_callable.mangle_result(self.kernel)
+            mangle_result = clbl.mangle_result(self.kernel)
             self.codegen_state.seen_functions.add(
                     SeenFunction(identifier_name,
                         mangle_result.target_name,
@@ -103,7 +103,7 @@ class ExpressionToPythonMapper(StringifyMapper):
 
         str_parameters = None
         number_of_assignees = len([key for key in
-            in_knl_callable.arg_id_to_dtype.keys() if key < 0])
+            clbl.arg_id_to_dtype.keys() if key < 0])
 
         if number_of_assignees != 1:
             raise LoopyError("functions with more or fewer than one return value "
@@ -111,7 +111,14 @@ class ExpressionToPythonMapper(StringifyMapper):
 
         str_parameters = [self.rec(par, PREC_NONE) for par in expr.parameters]
 
-        return "{}({})".format(in_knl_callable.name_in_target,
+        from loopy.codegen import SeenFunction
+        self.codegen_state.seen_functions.add(
+                SeenFunction(clbl.name,
+                             clbl.name_in_target,
+                             clbl.input_dtypes,
+                             clbl.result_dtypes))
+
+        return "{}({})".format(clbl.name_in_target,
                                ", ".join(str_parameters))
 
     def map_group_hw_index(self, expr, enclosing_prec):

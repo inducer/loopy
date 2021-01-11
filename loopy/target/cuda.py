@@ -29,7 +29,7 @@ from pytools import memoize_method
 
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.types import NumpyType
 from loopy.kernel.data import AddressSpace
 from pymbolic import var
@@ -126,33 +126,22 @@ class CudaCallable(ScalarCallable):
 
         name = self.name
 
-        if name == "dot":
-            for id in arg_id_to_dtype:
-                if not -1 <= id <= 1:
-                    raise LoopyError("%s can take only 2 arguments." % name)
-
-            if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
-                    arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
-                # the types provided aren't mature enough to specialize the
-                # callable
-                return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                        callables_table)
-
-            dtype = arg_id_to_dtype[0]
-            scalar_dtype, offset, field_name = dtype.numpy_dtype.fields["x"]
-            return (
-                    self.copy(name_in_target=name, arg_id_to_dtype={-1:
-                        NumpyType(scalar_dtype),
-                        0: dtype, 1: dtype}),
-                    callables_table)
+        # FIXME: dot is not implemented yet.
 
         if name in _CUDA_SPECIFIC_FUNCTIONS:
             num_args = _CUDA_SPECIFIC_FUNCTIONS[name]
-            for id in arg_id_to_dtype:
+
+            # {{{ sanity checks
+
+            for id, dtype in arg_id_to_dtype.items():
                 if not -1 <= id < num_args:
                     raise LoopyError("%s can take only %d arguments." % (name,
                             num_args))
+
+                if dtype is not None and dtype.kind == "c":
+                    raise LoopyTypeError(f"'{name}' does not support complex arguments.")
+
+            # }}}
 
             for i in range(num_args):
                 if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
@@ -166,17 +155,31 @@ class CudaCallable(ScalarCallable):
                     [], [dtype.numpy_dtype for id, dtype in
                         arg_id_to_dtype.items() if id >= 0])
 
-            if dtype.kind == "c":
-                raise LoopyError("%s does not support complex numbers"
-                        % name)
-
-            updated_arg_id_to_dtype = {id: NumpyType(dtype) for id in range(-1,
-                num_args)}
+            updated_arg_id_to_dtype = {id: NumpyType(dtype)
+                    for id in range(-1, num_args)}
 
             return (
                     self.copy(name_in_target=name,
                         arg_id_to_dtype=updated_arg_id_to_dtype),
                     callables_table)
+
+        if name == "dot":
+            # CUDA dot function:
+            # Performs dot product. Input types: vector and return type: scalar.
+            for i in range(2):
+                if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
+                    # the types provided aren't mature enough to specialize the
+                    # callable
+                    return (
+                            self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                            callables_table)
+
+            input_dtype = arg_id_to_dtype[0]
+
+            scalar_dtype, offset, field_name = input_dtype.fields["x"]
+            return_dtype = scalar_dtype
+            return self.copy(arg_id_to_dtype={0: input_dtype, 1: input_dtype,
+                                              -1: return_dtype})
 
         return (
                 self.copy(arg_id_to_dtype=arg_id_to_dtype),

@@ -331,7 +331,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             self.codegen_state.seen_functions.add(
                     SeenFunction(
                         name, f"{name}_{suffix}",
-                        (result_dtype, result_dtype)))
+                        (result_dtype, result_dtype),
+                        (result_dtype,)))
 
         if den_nonneg:
             if num_nonneg:
@@ -633,6 +634,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     self.rec(expr.denominator, type_context, tgt_dtype))
 
     def map_power(self, expr, type_context):
+        tgt_dtype = self.infer_type(expr)
+        base_dtype = self.infer_type(expr.base)
+        exponent_dtype = self.infer_type(expr.exponent)
+
         def base_impl(expr, type_context):
             from pymbolic.primitives import is_constant, is_zero
             if is_constant(expr.exponent):
@@ -643,14 +648,26 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 elif is_zero(expr.exponent - 2):
                     return self.rec(expr.base*expr.base, type_context)
 
-            return type(expr)(
-                    self.rec(expr.base, type_context),
-                    self.rec(expr.exponent, type_context))
+            if exponent_dtype.is_integral():
+                from loopy.codegen import SeenFunction
+                func_name = ("loopy_pow_"
+                        f"{tgt_dtype.numpy_dtype}_{exponent_dtype.numpy_dtype}")
+
+                self.codegen_state.seen_functions.add(
+                        SeenFunction(
+                            "int_pow", func_name,
+                            (tgt_dtype, exponent_dtype),
+                            (tgt_dtype, )))
+
+                # FIXME: This need some more callables to be registered.
+                return var(func_name)(self.rec(expr.base, type_context),
+                                      self.rec(expr.exponent, type_context))
+            else:
+                return self.rec(var("pow")(expr.base, expr.exponent), type_context)
 
         if not self.allow_complex:
             return base_impl(expr, type_context)
 
-        tgt_dtype = self.infer_type(expr)
         if tgt_dtype.is_complex():
             if expr.exponent in [2, 3, 4]:
                 value = expr.base
@@ -658,8 +675,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     value = value * expr.base
                 return self.rec(value, type_context)
             else:
-                b_complex = self.infer_type(expr.base).is_complex()
-                e_complex = self.infer_type(expr.exponent).is_complex()
+                b_complex = base_dtype.is_complex()
+                e_complex = exponent_dtype.is_complex()
 
                 if b_complex and not e_complex:
                     return var("%s_powr" % self.complex_type_name(tgt_dtype))(
@@ -686,6 +703,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 # {{{ C expression to code mapper
 
 class CExpressionToCodeMapper(RecursiveMapper):
+
     # {{{ helpers
 
     def parenthesize_if_needed(self, s, enclosing_prec, my_prec):
@@ -886,9 +904,8 @@ class CExpressionToCodeMapper(RecursiveMapper):
         return self._map_division_operator("%", expr, enclosing_prec)
 
     def map_power(self, expr, enclosing_prec):
-        return "pow({}, {})".format(
-                self.rec(expr.base, PREC_NONE),
-                self.rec(expr.exponent, PREC_NONE))
+        raise RuntimeError(f"'{expr}' should have been transformed to 'Call'"
+                           " expression node.")
 
     def map_array_literal(self, expr, enclosing_prec):
         return "{ %s }" % self.join_rec(", ", expr.children, PREC_NONE)

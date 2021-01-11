@@ -182,7 +182,6 @@ def has_barrier_within(kernel, sched_index):
     if isinstance(sched_item, BeginBlockItem):
         loop_contents, _ = gather_schedule_block(
                 kernel.schedule, sched_index)
-        from pytools import any
         return any(isinstance(subsched_item, Barrier)
                 for subsched_item in loop_contents)
     elif isinstance(sched_item, Barrier):
