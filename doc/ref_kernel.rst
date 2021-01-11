@@ -21,7 +21,7 @@ program's inputs and outputs.
 A statement (still called 'instruction' in some places, cf.
 :class:`loopy.InstructionBase`) encodes an assignment to an entry of an array.
 The right-hand side of an assignment consists of an expression that may
-consist of arithmetic and calls to functions.
+consist of arithmetic operations and calls to functions.
 If the outermost operation of the RHS expression is a function call,
 the RHS value may be a tuple, and multiple (still scalar) arrays appear
 as LHS values. (This is the only sense in which tuple types are supported.)
