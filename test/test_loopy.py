@@ -2996,8 +2996,9 @@ def test_split_iname_within(ctx_factory):
 
 
 @pytest.mark.parametrize("base_type,exp_type", [(np.int32, np.uint32), (np.int64,
-    np.uint64), (np.int, np.float), (np.float, np.int), (np.int, np.int)])
-def test_int_pow(ctx_factory, base_type, exp_type):
+    np.uint64), (np.int, np.float), (np.float, np.int), (np.int, np.int),
+    (np.float32, np.float64), (np.float64, np.float32)])
+def test_pow(ctx_factory, base_type, exp_type):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
