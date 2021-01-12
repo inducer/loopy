@@ -236,12 +236,12 @@ class OpenCLCallable(ScalarCallable):
             else:
                 raise LoopyTypeError(f"'pow' does not support type {dtype}.")
 
-            result_dtype = NumpyType(dtype)
+            result_dtype = NumpyType(common_dtype)
 
             return (
                     self.copy(name_in_target=name,
                               arg_id_to_dtype={-1: result_dtype,
-                                               0: dtype, 1: dtype}),
+                                               0: common_dtype, 1: common_dtype}),
                     callables_table)
 
         if name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
@@ -306,6 +306,18 @@ class OpenCLCallable(ScalarCallable):
         return (
                 self.copy(arg_id_to_dtype=arg_id_to_dtype),
                 callables_table)
+
+
+def get_opencl_callables():
+    """
+    Returns an instance of :class:`InKernelCallable` if the function defined by
+    *identifier* is known in OpenCL.
+    """
+    opencl_function_ids = {"max", "min", "dot", "pow"} | set(
+            _CL_SIMPLE_MULTI_ARG_FUNCTIONS) | set(VECTOR_LITERAL_FUNCS)
+
+    return {id_: OpenCLCallable(name=id_) for id_ in
+        opencl_function_ids}
 
 # }}}
 

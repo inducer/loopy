@@ -1886,9 +1886,6 @@ class SliceToInameReplacer(IdentityMapper):
         self.var_name_gen = knl.get_var_name_generator()
 
     def map_subscript(self, expr):
-        if expr in self.cache:
-            return self.cache[expr]
-
         subscript_iname_bounds = {}
         self.subarray_ref_bounds.append(subscript_iname_bounds)
 
@@ -1910,12 +1907,9 @@ class SliceToInameReplacer(IdentityMapper):
                                 expr.aggregate.name))
 
                 domain_length = shape[i]
-                start, stop, step = normalize_slice_params(
-                        index, domain_length)
+                start, stop, step = normalize_slice_params(index, domain_length)
                 subscript_iname_bounds[unique_var_name] = (start, stop, step)
-
                 new_index.append(start+step*Variable(unique_var_name))
-
                 swept_inames.append(Variable(unique_var_name))
             else:
                 new_index.append(index)
@@ -1925,9 +1919,7 @@ class SliceToInameReplacer(IdentityMapper):
                 self.rec(expr.aggregate),
                 self.rec(tuple(new_index))))
         else:
-            result = IdentityMapper.map_subscript(self, expr)
-
-        self.cache[expr] = result
+            result = super().map_subscript(expr)
 
         return result
 
@@ -1937,7 +1929,7 @@ class SliceToInameReplacer(IdentityMapper):
         return Call(new_expr.function, new_expr.parameters)
 
     def map_call_with_kwargs(self, expr):
-        def _convert_array_to_slices(knl, arg):
+        def _convert_array_to_slices(arg):
             # FIXME: We do not support something like A[1] should point to the
             # second row if 'A' is 3 x 3 array.
             if isinstance(arg, Variable):
@@ -1966,7 +1958,8 @@ class SliceToInameReplacer(IdentityMapper):
                                                 for _ in array_arg_shape))
             return arg
 
-        return Call(expr.function,
+        from pymbolic.primitives import CallWithKwargs
+        return CallWithKwargs(expr.function,
                 tuple(self.rec(_convert_array_to_slices(par))
                       for par in expr.parameters),
                 {kw: self.rec(_convert_array_to_slices(par))
