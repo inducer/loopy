@@ -375,15 +375,15 @@ class ArrayArg(ArrayBase, KernelArgument):
 
         .. attribute:: is_output
 
-            An instance of :class:`bool`. If set to *True*, the argument is used
-            to return information to the caller. If set to *False*, then the
-            callee should not write the array during execution.
+            An instance of :class:`bool`. If set to *True*, the array is used to
+            return information to the caller. If set to *False*, the callee does not
+            write to the array during a call.
 
         .. attribute:: is_input
 
-            An instance of :class:`bool`. If set to *True*, expected to be
-            provided by the caller. If *False* then the callee should not depend
-            on the state of the array on entry to a function.
+            An instance of :class:`bool`. If set to *True*, expected to be provided
+            by the caller. If *False*, the callee does not depend on the array
+            at kernel entry.
         """)
 
     allowed_extra_kwargs = [

@@ -60,10 +60,10 @@ class ValueArgDescriptor(ImmutableRecord):
 
 class ArrayArgDescriptor(ImmutableRecord):
     """
-    Records information about an array argument to an in-kernel callable, to be
+    Records information about an array argument to an in-kernel callable. To be
     passed to and returned from
-    :meth:`loopy.kernel.function_interface.InKernelCallable.with_descrs`, used
-    for matching shape and scope of caller and callee kernels.
+    :meth:`loopy.kernel.function_interface.InKernelCallable.with_descrs`, used for
+    matching shape and address space of caller and callee kernels.
 
     ..attribute:: shape
 
@@ -101,15 +101,9 @@ class ArrayArgDescriptor(ImmutableRecord):
                 address_space=address_space,
                 dim_tags=dim_tags)
 
-    hash_fields = (
-            "shape",
-            "address_space",
-            "dim_tags")
-
-    def map_expr(self, subst_mapper):
-        new_shape = tuple(subst_mapper(axis_len) for axis_len in self.shape)
-        new_dim_tags = tuple(dim_tag.map_expr(subst_mapper) for dim_tag in
-                self.dim_tags)
+    def map_expr(self, f):
+        new_shape = tuple(f(axis_len) for axis_len in self.shape)
+        new_dim_tags = tuple(dim_tag.map_expr(f) for dim_tag in self.dim_tags)
         return self.copy(shape=new_shape, dim_tags=new_dim_tags)
 
     def depends_on(self):
@@ -120,8 +114,6 @@ class ArrayArgDescriptor(ImmutableRecord):
                     self.dim_tags)))
         return frozenset(var.name for var in result)
 
-    # FIXME ArrayArgDescriptor should never need to be persisted, remove
-    # this method when that is so.
     def update_persistent_hash(self, key_hash, key_builder):
         for shape_i in self.shape:
             if shape_i is None:
@@ -162,7 +154,7 @@ def get_arg_descriptor_for_expression(kernel, expr):
         # will not work for non-stride dim tags (e.g. vec or sep).
 
         # (AK) FIXME: This will almost always be nonlinear--when does this
-        # actually help? Maybe the
+        # actually help? Maybe remove this?
         # (KK) Reply: This helps in identifying identities like
         # "2*(i//2) + i%2" := "i"
         # See the kernel in
@@ -179,9 +171,7 @@ def get_arg_descriptor_for_expression(kernel, expr):
                 )(linearized_index)
         sub_dim_tags = tuple(
                 # Not all swept inames necessarily occur in the expression.
-                # Also, some may have been simplified away by simplify_using_aff.
                 DimTag(strides_as_dict.get(iname, 0))
-
                 for iname in expr.swept_inames)
         sub_shape = tuple(
                 pw_aff_to_expr(

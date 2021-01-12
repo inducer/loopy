@@ -36,6 +36,9 @@ def find_instructions_in_single_kernel(kernel, insn_match):
 
 
 def find_instructions(program, insn_match):
+    if isinstance(program, LoopKernel):
+        return find_instructions_in_single_kernel(program, insn_match)
+
     assert isinstance(program, Program)
     insns = []
     for in_knl_callable in program.callables_table.values():

@@ -34,8 +34,6 @@ from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
         SubstitutionRule, AddressSpace, ValueArg)
-from loopy.kernel.instruction import (CInstruction, _DataObliviousInstruction,
-        CallInstruction)
 from loopy.program import iterate_over_kernels_if_given_program
 from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
@@ -243,11 +241,13 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                 if arrow_idx >= 0:
                     result["inames_to_dup"] = (
                             result.get("inames_to_dup", [])
-                            + [(value[:arrow_idx], value[arrow_idx+2:])])
+                            +
+                            [(value[:arrow_idx], value[arrow_idx+2:])])
                 else:
                     result["inames_to_dup"] = (
                             result.get("inames_to_dup", [])
-                            + [(value, None)])
+                            +
+                            [(value, None)])
 
         elif opt_key == "dep" and opt_value is not None:
             if opt_value.startswith("*"):
@@ -1657,7 +1657,7 @@ def _is_wildcard(s):
 
 
 def _resolve_dependencies(what, knl, insn, deps):
-    from loopy.transform.instruction import find_instructions_in_single_kernel
+    from loopy.transform.instruction import find_instructions
     from loopy.match import MatchExpressionBase
 
     new_deps = []
@@ -1666,7 +1666,7 @@ def _resolve_dependencies(what, knl, insn, deps):
         found_any = False
 
         if isinstance(dep, MatchExpressionBase):
-            for new_dep in find_instructions_in_single_kernel(knl, dep):
+            for new_dep in find_instructions(knl, dep):
                 if new_dep.id != insn.id:
                     new_deps.append(new_dep.id)
                     found_any = True
@@ -1822,13 +1822,12 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
 
 # {{{ slice to sub array ref
 
-def get_slice_params(slice, dimension_length):
+def normalize_slice_params(slice, dimension_length):
     """
-    Returns the slice parameters across an axes spanning *domain_length* as a
-    tuple of ``(start, stop, step)``.
+    Returns the normalized slice parameters ``(start, stop, step)``.
 
     :arg slice: An instance of :class:`pymbolic.primitives.Slice`.
-    :arg dimension_length: The axes length swept by *slice*.
+    :arg dimension_length: Length of the axis being sliced.
     """
     from pymbolic.primitives import Slice
     assert isinstance(slice, Slice)
@@ -1881,17 +1880,10 @@ class SliceToInameReplacer(IdentityMapper):
         the ``iname`` by the corresponding slice notation its intended to
         replace.
     """
-    def __init__(self, knl, var_name_gen):
-        self.var_name_gen = var_name_gen
-        self.knl = knl
-
-        # caching to map equivalent slices to equivalent SubArrayRefs
-        self.cache = {}
-
+    def __init__(self, knl):
         self.subarray_ref_bounds = []
-
-    def clear_cache(self):
-        self.cache = {}
+        self.knl = knl
+        self.var_name_gen = knl.get_var_name_generator()
 
     def map_subscript(self, expr):
         if expr in self.cache:
@@ -1918,7 +1910,7 @@ class SliceToInameReplacer(IdentityMapper):
                                 expr.aggregate.name))
 
                 domain_length = shape[i]
-                start, stop, step = get_slice_params(
+                start, stop, step = normalize_slice_params(
                         index, domain_length)
                 subscript_iname_bounds[unique_var_name] = (start, stop, step)
 
@@ -1940,7 +1932,12 @@ class SliceToInameReplacer(IdentityMapper):
         return result
 
     def map_call(self, expr):
-        def _convert_array_to_slices(arg):
+        from pymbolic.primitives import CallWithKwargs
+        new_expr = self.rec(CallWithKwargs(expr.function, expr.parameters, {}))
+        return Call(new_expr.function, new_expr.parameters)
+
+    def map_call_with_kwargs(self, expr):
+        def _convert_array_to_slices(knl, arg):
             # FIXME: We do not support something like A[1] should point to the
             # second row if 'A' is 3 x 3 array.
             if isinstance(arg, Variable):
@@ -1949,6 +1946,8 @@ class SliceToInameReplacer(IdentityMapper):
                     if self.knl.temporary_variables[arg.name].shape in [
                             auto, None]:
                         # do not convert arrays with unknown shapes to slices.
+                        # (If an array of unknown shape was passed in error, with be
+                        # caught and raised during preprocessing).
                         array_arg_shape = ()
                     else:
                         array_arg_shape = (
@@ -1963,15 +1962,15 @@ class SliceToInameReplacer(IdentityMapper):
                     array_arg_shape = ()
 
                 if array_arg_shape != ():
-                    return Subscript(arg, tuple(Slice(()) for _ in
-                        array_arg_shape))
+                    return Subscript(arg, tuple(Slice(())
+                                                for _ in array_arg_shape))
             return arg
 
         return Call(expr.function,
-                tuple(self.rec(_convert_array_to_slices(par)) for par in
-                    expr.parameters))
-
-    # FIXME: Missing map_call_with_kwargs
+                tuple(self.rec(_convert_array_to_slices(par))
+                      for par in expr.parameters),
+                {kw: self.rec(_convert_array_to_slices(par))
+                 for kw, par in expr.kw_parameters.items()})
 
     def get_iname_domain_as_isl_set(self):
         """
@@ -1983,12 +1982,10 @@ class SliceToInameReplacer(IdentityMapper):
             ctx = self.knl.isl_context
             space = isl.Space.create_from_names(ctx,
                     set=list(sar_bounds.keys()))
-            from loopy.symbolic import DependencyMapper
+            from loopy.symbolic import get_dependencies
             args_as_params_for_domains = set()
-            for _, (start, stop, step) in sar_bounds.items():
-                args_as_params_for_domains |= DependencyMapper()(start)
-                args_as_params_for_domains |= DependencyMapper()(stop)
-                args_as_params_for_domains |= DependencyMapper()(step)
+            for slice_ in sar_bounds.values():
+                args_as_params_for_domains |= get_dependencies(slice_)
 
             space = space.add_dims(dim_type.param, len(args_as_params_for_domains))
             for i, arg in enumerate(args_as_params_for_domains):
@@ -2010,25 +2007,9 @@ def realize_slices_array_inputs_as_sub_array_refs(kernel):
     Returns a kernel with the instances of :class:`pymbolic.primitives.Slice`
     encountered in expressions replaced as `loopy.symbolic.SubArrayRef`.
     """
-    unique_var_name_generator = kernel.get_var_name_generator()
-    slice_replacer = SliceToInameReplacer(kernel, unique_var_name_generator)
-    new_insns = []
-
-    for insn in kernel.instructions:
-        if isinstance(insn, CallInstruction):
-            new_expr = slice_replacer(insn.expression)
-            new_assignees = tuple(slice_replacer(assignee) for assignee in
-                    insn.assignees)
-            new_insns.append(insn.copy(assignees=new_assignees,
-                expression=new_expr))
-        elif isinstance(insn, (CInstruction, MultiAssignmentBase,
-                _DataObliviousInstruction)):
-            new_insns.append(insn)
-        else:
-            raise NotImplementedError("Unknown type of instruction -- %s" %
-                    type(insn))
-
-        slice_replacer.clear_cache()
+    slice_replacer = SliceToInameReplacer(kernel)
+    new_insns = [insn.with_transformed_expressions(slice_replacer)
+                for insn in kernel.instructions]
 
     return kernel.copy(
             domains=(

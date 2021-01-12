@@ -1019,42 +1019,12 @@ class CFamilyASTBuilder(ASTBuilderBase):
                 in_knl_callable.name_in_target == "loopy_make_tuple"):
             return self.emit_tuple_assignment(codegen_state, insn)
 
-<<<<<<< HEAD
         # takes "is_returned" to infer whether insn.assignees[0] is a part of
         # LHS.
         in_knl_callable_as_call, is_returned = in_knl_callable.emit_call_insn(
                 insn=insn,
                 target=self.target,
                 expression_to_code_mapper=ecm)
-=======
-        from loopy.expression import dtype_to_type_context
-        c_parameters = [
-                ecm(par, PREC_NONE,
-                    dtype_to_type_context(self.target, tgt_dtype),
-                    tgt_dtype).expr
-                for par, par_dtype, tgt_dtype in zip(
-                    parameters, par_dtypes, mangle_result.arg_dtypes)]
-
-        from loopy.codegen import SeenFunction
-        codegen_state.seen_functions.add(
-                SeenFunction(func_id,
-                    mangle_result.target_name,
-                    mangle_result.arg_dtypes,
-                    mangle_result.result_dtypes))
-
-        from pymbolic import var
-        for i, (a, tgt_dtype) in enumerate(
-                zip(insn.assignees[1:], mangle_result.result_dtypes[1:])):
-            if tgt_dtype != ecm.infer_type(a):
-                raise LoopyError("type mismatch in %d'th (1-based) left-hand "
-                        "side of instruction '%s'" % (i+1, insn.id))
-            c_parameters.append(
-                        # TODO Yuck: The "where-at function": &(...)
-                        var("&")(
-                            ecm(a, PREC_NONE,
-                                dtype_to_type_context(self.target, tgt_dtype),
-                                tgt_dtype).expr))
->>>>>>> origin/master
 
         if is_returned:
             from cgen import Assign
