@@ -28,7 +28,7 @@ import numpy as np
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from pytools import memoize_method
-from loopy.diagnostic import LoopyError, LoopyTypeError
+from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 from loopy.target.c import DTypeRegistryWrapper, c_math_mangler
 from loopy.kernel.data import AddressSpace, CallMangleInfo
@@ -181,22 +181,6 @@ def opencl_function_mangler(kernel, name, arg_dtypes):
                     result_dtypes=(result_dtype,),
                     arg_dtypes=2*(result_dtype,))
 
-    if name == "pow" and len(arg_dtypes) == 2:
-        dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for dtype in arg_dtypes])
-        if dtype == np.float64:
-            name = "powf64"
-        elif dtype == np.float32:
-            name = "powf32"
-        else:
-            raise LoopyTypeError(f"'pow' does not support type {dtype}.")
-
-        result_dtype = NumpyType(dtype)
-        return CallMangleInfo(
-                target_name=name,
-                result_dtypes=(result_dtype,),
-                arg_dtypes=2*(result_dtype,))
-
     if name == "dot":
         scalar_dtype, offset, field_name = arg_dtypes[0].numpy_dtype.fields["s0"]
         return CallMangleInfo(
@@ -301,19 +285,6 @@ def opencl_preamble_generator(preamble_info):
                 #define gid(N) ((%(idx_ctype)s) get_group_id(N))
                 """ % dict(idx_ctype=kernel.target.dtype_to_typename(
                     kernel.index_dtype))))
-
-    for func in preamble_info.seen_functions:
-        if func.name == "pow" and func.c_name == "powf32":
-            yield("08_clpowf32", """
-            inline float powf32(float x, float y) {
-              return pow(x, y);
-            }""")
-
-        if func.name == "pow" and func.c_name == "powf64":
-            yield("08_clpowf64", """
-            inline double powf64(double x, double y) {
-              return pow(x, y);
-            }""")
 
 # }}}
 

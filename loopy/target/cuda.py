@@ -127,18 +127,6 @@ def cuda_function_mangler(kernel, name, arg_dtypes):
 
         return dtype, name
 
-    if name in ["pow"] and len(arg_dtypes) == 2:
-        dtype = np.find_common_type([], arg_dtypes)
-
-        if dtype == np.float64:
-            pass  # pow
-        elif dtype == np.float32:
-            name = name + "f"  # powf
-        else:
-            raise RuntimeError(f"{name} does not support type {dtype}")
-
-        return dtype, name
-
     if name in "atan2" and len(arg_dtypes) == 2:
         return arg_dtypes[0], name
 
