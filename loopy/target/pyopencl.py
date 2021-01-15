@@ -602,7 +602,7 @@ def generate_array_arg_setup(kernel, implemented_data_info, arg_idx_to_cl_arg_id
 
         cl_arg_idx = arg_idx_to_cl_arg_idx[arg_idx]
 
-        gen(S("_lpy_knl.set_arg(%d, %s)" % (cl_arg_idx, arg.name)))
+        gen(S("_lpy_knl._set_arg_mem(%d, %s)" % (cl_arg_idx, arg.name)))
 
     return Suite(result)
 
