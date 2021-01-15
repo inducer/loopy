@@ -509,14 +509,6 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
                 Raise('RuntimeError("input argument \'{name}\' '
                         'must be supplied")'.format(name=idi.name))))
 
-        if idi.dtype.is_integral():
-            gen(Comment("cast to Python int to avoid trouble "
-                "with struct packing or Boost.Python"))
-            py_type = "int"
-
-            gen(Assign(idi.name, f"{py_type}({idi.name})"))
-            gen(Line())
-
         if idi.dtype.is_composite():
             gen(S("_lpy_knl.set_arg(%d, %s)" % (cl_arg_idx, idi.name)))
             cl_arg_idx += 1
