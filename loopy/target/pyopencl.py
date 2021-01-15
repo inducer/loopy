@@ -289,6 +289,12 @@ class PyOpenCLTarget(OpenCLTarget):
         # This ensures the dtype registry is populated.
         import pyopencl.tools  # noqa
 
+        import pyopencl.version
+        if pyopencl.version.VERSION < (2021, 1):
+            raise RuntimeError("The version of loopy you have installed "
+                    "generates invoker code that requires PyOpenCL 2021.1 "
+                    "or newer.")
+
         super().__init__(
                 atomics_flavor=atomics_flavor)
 
