@@ -435,6 +435,16 @@ class PyOpenCLTarget(OpenCLTarget):
 
 # {{{ host code: value arg setup
 
+_TYPE_TO_SET_ARG_SHORTCUT_NAME = {
+        np.int32: "i32",
+        np.int64: "i64",
+        np.uint32: "u32",
+        np.uint64: "u64",
+        np.float32: "f32",
+        np.float64: "f64",
+        }
+
+
 def generate_value_arg_setup(kernel, devices, implemented_data_info):
     options = kernel.options
 
@@ -569,9 +579,17 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
             if idi.dtype.dtype.kind == "f":
                 fp_arg_count += 1
 
-            gen(S(
-                "_lpy_knl.set_arg(%d, _lpy_pack('%s', %s))"
-                % (cl_arg_idx, idi.dtype.dtype.char, idi.name)))
+            set_arg_shortcut_name = _TYPE_TO_SET_ARG_SHORTCUT_NAME.get(
+                    idi.dtype.dtype.type)
+
+            if set_arg_shortcut_name is not None:
+                gen(S(
+                    f"_lpy_knl._set_arg_{set_arg_shortcut_name}({cl_arg_idx}, "
+                    f"{idi.name})"))
+            else:
+                gen(S(
+                    "_lpy_knl.set_arg(%d, _lpy_pack('%s', %s))"
+                    % (cl_arg_idx, idi.dtype.dtype.char, idi.name)))
 
             cl_arg_idx += 1
 
