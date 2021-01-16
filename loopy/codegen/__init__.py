@@ -627,6 +627,7 @@ def generate_code_v2(program):
 
     :param program: An instance of :class:`loopy.Program`.
     """
+
     from loopy.kernel import LoopKernel
     from loopy.program import make_program
     from loopy.codegen.result import CodeGenerationResult
@@ -634,9 +635,10 @@ def generate_code_v2(program):
     # {{{ cache retrieval
 
     from loopy import CACHING_ENABLED
+    from loopy.preprocess import prepare_for_caching
 
     if CACHING_ENABLED:
-        input_program = program
+        input_program = prepare_for_caching(program)
         try:
             result = code_gen_cache[input_program]
             logger.debug(f"Program with entrypoints {program.entrypoints}:"

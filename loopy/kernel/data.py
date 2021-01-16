@@ -396,7 +396,7 @@ class ArrayArg(ArrayBase, KernelArgument):
         if "address_space" not in kwargs:
             raise TypeError("'address_space' must be specified")
 
-        is_output_only = kwargs.pop("is_output_only", False)
+        is_output_only = kwargs.pop("is_output_only", None)
         if is_output_only is not None:
             warn("'is_output_only' is deprecated. Use 'is_output', 'is_input'"
                     " instead.", DeprecationWarning, stacklevel=2)

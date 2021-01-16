@@ -32,13 +32,9 @@ import islpy as isl
 from islpy import dim_type
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from pytools import memoize_on_first_arg, natsorted
-from loopy.symbolic import CombineMapper
 from loopy.kernel import LoopKernel
 from loopy.program import Program, iterate_over_kernels_if_given_program
 from loopy.kernel.function_interface import CallableKernel
-from loopy.kernel.instruction import (MultiAssignmentBase,
-        _DataObliviousInstruction)
-from functools import reduce
 import logging
 logger = logging.getLogger(__name__)
 
@@ -1979,63 +1975,6 @@ def infer_args_are_input_output(kernel):
         new_args.append(arg)
 
     return kernel.copy(args=new_args)
-
-# }}}
-
-
-# {{{ identify_root_kernel
-
-class CallCollector(CombineMapper):
-    def combine(self, values):
-        import operator
-        return reduce(operator.or_, values, frozenset())
-
-    def map_call(self, expr):
-        from pymbolic.primitives import CallWithKwargs
-        return self.rec(CallWithKwargs(
-            function=expr.function, parameters=expr.parameters,
-            kw_parameters={}))
-
-    def map_call_with_kwargs(self, expr):
-        return (frozenset([expr.function.name]) |
-                self.combine(self.rec(child) for child in expr.parameters
-                    + tuple(expr.kw_parameters.values())))
-
-    def map_constant(self, expr):
-        return frozenset()
-
-    map_variable = map_constant
-    map_function_symbol = map_constant
-    map_tagged_variable = map_constant
-    map_type_cast = map_constant
-
-
-def identify_root_kernel(kernels):
-    assert isinstance(kernels, list)
-    assert all(isinstance(knl, LoopKernel) for knl in kernels)
-    call_collector = CallCollector()
-
-    def _calls_in_a_kernel(knl):
-        calls = set()
-        for insn in knl.instructions:
-            if isinstance(insn, MultiAssignmentBase):
-                calls = calls | call_collector(insn.expression)
-            elif isinstance(insn, _DataObliviousInstruction):
-                pass
-            else:
-                raise NotImplementedError()
-
-        return calls
-
-    all_calls = frozenset().union(*[_calls_in_a_kernel(knl) for knl in
-        kernels])
-
-    kernel_names = frozenset([knl.name for knl in kernels])
-
-    assert len(kernel_names - all_calls) == 1
-
-    root_knl_name, = (kernel_names - all_calls)
-    return root_knl_name
 
 # }}}
 

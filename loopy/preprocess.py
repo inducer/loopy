@@ -2175,7 +2175,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
 def traverse_to_infer_arg_descr(kernel, callables_table):
     """
     Returns a copy of *kernel* with the argument shapes and strides matching for
-    scoped functions in the *kernel*. Refer
+    resolved functions in the *kernel*. Refer
     :meth:`loopy.kernel.function_interface.InKernelCallable.with_descrs`.
 
     .. note::
@@ -2202,12 +2202,13 @@ def infer_arg_descr(program):
     :attr:`loopy.InKernelCallable.arg_id_to_descr` inferred for all the
     callables.
     """
-
-    from loopy.program import make_clbl_inf_ctx
+    from loopy.program import make_clbl_inf_ctx, resolve_callables
     from loopy.kernel.array import ArrayBase
     from loopy.kernel.function_interface import (ArrayArgDescriptor,
             ValueArgDescriptor)
     from loopy import auto, ValueArg
+
+    program = resolve_callables(program)
 
     clbl_inf_ctx = make_clbl_inf_ctx(program.callables_table,
             program.entrypoints)
@@ -2215,9 +2216,6 @@ def infer_arg_descr(program):
     renamed_entrypoints = set()
 
     for e in program.entrypoints:
-        # FIXME: Need to add docs which say that we need not add the current
-        # callable to the clbl_inf_ctx while writing the "with_types"
-        # This is treacherous, we should use traverse... instead.
         def _tuple_if_int(s):
             if isinstance(s, int):
                 return s,
