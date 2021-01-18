@@ -725,8 +725,13 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             arry_arg_code,
             Assign("_lpy_evt", "%(pyopencl_module_name)s.enqueue_nd_range_kernel("
                 "queue, _lpy_knl, "
-                "%(gsize)s, %(lsize)s,  wait_for=wait_for, "
-                "g_times_l=True, allow_empty_ndrange=True)"
+                "%(gsize)s, %(lsize)s, "
+                # using positional args because pybind is slow with kwargs
+                "None, "  # offset
+                "wait_for, "
+                "True, "  # g_times_l
+                "True, "  # allow_empty_ndrange
+                ")"
                 % dict(
                     pyopencl_module_name=self.target.pyopencl_module_name,
                     gsize=ecm(gsize, prec=PREC_NONE, type_context="i"),
