@@ -639,8 +639,6 @@ class ExecutionWrapperGeneratorBase:
                     if issubclass(idi.arg_class, KernelArgument)
                     ])
 
-        gen.add_to_preamble("from __future__ import division")
-        gen.add_to_preamble("")
         self.target_specific_preamble(gen)
         gen.add_to_preamble("")
         self.generate_host_code(gen, codegen_result)
