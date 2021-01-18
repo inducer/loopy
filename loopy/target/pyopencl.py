@@ -624,15 +624,11 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     if not issubclass(idi.arg_class, TemporaryVariable)]
                 + ["wait_for=None", "allocator=None"])
 
-        from genpy import (For, Function, Suite, Import, ImportAs, Return,
-                FromImport, Line, Statement as S)
+        from genpy import (For, Function, Suite, Return, Line, Statement as S)
         return Function(
                 codegen_result.current_program(codegen_state).name,
                 args,
                 Suite([
-                    FromImport("struct", ["pack as _lpy_pack"]),
-                    ImportAs("pyopencl", "_lpy_cl"),
-                    Import("pyopencl.tools"),
                     Line(),
                     ] + [
                     Line(),
