@@ -624,25 +624,22 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     if not issubclass(idi.arg_class, TemporaryVariable)]
                 + ["wait_for=None", "allocator=None"])
 
-        from genpy import (For, Function, Suite, Import, ImportAs, Return,
-                FromImport, Line, Statement as S)
+        from genpy import (For, Function, Suite, Return, Line, Statement as S)
         return Function(
                 codegen_result.current_program(codegen_state).name,
                 args,
                 Suite([
-                    FromImport("struct", ["pack as _lpy_pack"]),
-                    ImportAs("pyopencl", "_lpy_cl"),
-                    Import("pyopencl.tools"),
                     Line(),
                     ] + [
                     Line(),
                     function_body,
                     Line(),
-                    ] + [
-                    For("_tv", "_global_temporaries",
-                        # free global temporaries
-                        S("_tv.release()"))
-                    ] + [
+                    ] + ([
+                        For("_tv", "_global_temporaries",
+                            # free global temporaries
+                            S("_tv.release()"))
+                        ] if self._get_global_temporaries(codegen_state) else []
+                    ) + [
                     Line(),
                     Return("_lpy_evt"),
                     ]))
@@ -652,6 +649,14 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         # no such thing in Python
         return None
 
+    def _get_global_temporaries(self, codegen_state):
+        from loopy.kernel.data import AddressSpace
+
+        return sorted(
+            (tv for tv in codegen_state.kernel.temporary_variables.values()
+            if tv.address_space == AddressSpace.GLOBAL),
+            key=lambda tv: tv.name)
+
     def get_temporary_decls(self, codegen_state, schedule_state):
         from genpy import Assign, Comment, Line
 
@@ -660,18 +665,12 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             from operator import mul
             return tv.dtype.numpy_dtype.itemsize * reduce(mul, tv.shape, 1)
 
-        from loopy.kernel.data import AddressSpace
-
-        global_temporaries = sorted(
-            (tv for tv in codegen_state.kernel.temporary_variables.values()
-            if tv.address_space == AddressSpace.GLOBAL),
-            key=lambda tv: tv.name)
-
         from pymbolic.mapper.stringifier import PREC_NONE
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
+        global_temporaries = self._get_global_temporaries(codegen_state)
         if not global_temporaries:
-            return [Assign("_global_temporaries", "[]"), Line()]
+            return []
 
         return [
             Comment("{{{ allocate global temporaries"),
