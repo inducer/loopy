@@ -570,7 +570,7 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
                 fp_arg_count += 1
 
             gen(S(
-                "_lpy_knl.set_arg(%d, _lpy_pack('%s', %s))"
+                "_lpy_knl._set_arg_buf(%d, _lpy_pack('%s', %s))"
                 % (cl_arg_idx, idi.dtype.dtype.char, idi.name)))
 
             cl_arg_idx += 1
