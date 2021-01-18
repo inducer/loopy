@@ -168,7 +168,18 @@ class Random123Callable(ScalarCallable):
     Records information about for the random123 functions.
     """
 
-    def with_types(self, arg_id_to_dtype, kernel, callables_table):
+    def __init__(self, name, arg_id_to_dtype=None,
+            arg_id_to_descr=None, name_in_target=None, target=None):
+
+        super().__init__(
+                name=name,
+                arg_id_to_dtype=arg_id_to_dtype,
+                arg_id_to_descr=arg_id_to_descr,
+                name_in_target=name_in_target)
+
+        self.target = target
+
+    def with_types(self, arg_id_to_dtype, callables_table):
 
         if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
                 arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
@@ -178,7 +189,7 @@ class Random123Callable(ScalarCallable):
                     callables_table)
 
         name = self.name
-        target = kernel.target
+        target = self.target
 
         rng_variant = FUNC_NAMES_TO_RNG[name]
 
@@ -230,7 +241,7 @@ class Random123Callable(ScalarCallable):
         return
 
 
-def get_random123_callables():
-    return {id_: Random123Callable(id_) for id_ in FUNC_NAMES_TO_RNG}
+def get_random123_callables(target):
+    return {id_: Random123Callable(id_, target=target) for id_ in FUNC_NAMES_TO_RNG}
 
 # vim: foldmethod=marker

@@ -171,10 +171,71 @@ class OpenCLCallable(ScalarCallable):
     :class:`loopy.target.c.CMathCallable`.
     """
 
-    def with_types(self, arg_id_to_dtype, caller_kernel, callables_table):
+    def with_types(self, arg_id_to_dtype, callables_table):
         name = self.name
 
-        if name in ["max", "min"]:
+        # unary functions
+        if name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
+                    "tan", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor",
+                    "erf", "erfc"]:
+
+            for id in arg_id_to_dtype:
+                if not -1 <= id <= 0:
+                    raise LoopyError(f"'{name}' can take only one argument.")
+
+            if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
+                # the types provided aren't mature enough to specialize the
+                # callable
+                return (
+                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        callables_table)
+
+            dtype = arg_id_to_dtype[0]
+            dtype = dtype.numpy_dtype
+
+            if dtype.kind in ("u", "i"):
+                # ints and unsigned casted to float32
+                dtype = np.float32
+            elif dtype.kind == "c":
+                raise LoopyTypeError(f"{name} does not support type {dtype}")
+
+            return (
+                    self.copy(name_in_target=name,
+                        arg_id_to_dtype={0: NumpyType(dtype), -1:
+                            NumpyType(dtype)}),
+                    callables_table)
+        # binary functions
+        elif name in ["fmax", "fmin", "atan2", "copysign"]:
+
+            for id in arg_id_to_dtype:
+                if not -1 <= id <= 1:
+                    #FIXME: Do we need to raise here?:
+                    #   The pattern we generally follow is that if we don't find
+                    #   a function, then we just return None
+                    raise LoopyError("%s can take only two arguments." % name)
+
+            if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
+                    arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
+                # the types provided aren't mature enough to specialize the
+                # callable
+                return (
+                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        callables_table)
+
+            dtype = np.find_common_type(
+                [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                     if id >= 0])
+
+            if dtype.kind == "c":
+                raise LoopyTypeError("%s does not support complex numbers")
+
+            dtype = NumpyType(dtype)
+            return (
+                    self.copy(name_in_target=name,
+                        arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
+                    callables_table)
+
+        elif name in ["max", "min"]:
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 1:
                     raise LoopyError("%s can take only 2 arguments." % name)
@@ -200,7 +261,7 @@ class OpenCLCallable(ScalarCallable):
                 raise LoopyError("%s function not supported for the types %s" %
                         (name, common_dtype))
 
-        if name == "dot":
+        elif name == "dot":
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 1:
                     raise LoopyError(f"'{name}' can take only 2 arguments.")
@@ -220,7 +281,7 @@ class OpenCLCallable(ScalarCallable):
                         NumpyType(scalar_dtype), 0: dtype, 1: dtype}),
                     callables_table)
 
-        if name == "pow":
+        elif name == "pow":
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 1:
                     raise LoopyError(f"'{name}' can take only 2 arguments.")
@@ -244,7 +305,7 @@ class OpenCLCallable(ScalarCallable):
                                                0: common_dtype, 1: common_dtype}),
                     callables_table)
 
-        if name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
+        elif name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
             num_args = _CL_SIMPLE_MULTI_ARG_FUNCTIONS[name]
             for id in arg_id_to_dtype:
                 if not -1 <= id < num_args:
@@ -275,7 +336,7 @@ class OpenCLCallable(ScalarCallable):
                         arg_id_to_dtype=updated_arg_id_to_dtype),
                     callables_table)
 
-        if name in VECTOR_LITERAL_FUNCS:
+        elif name in VECTOR_LITERAL_FUNCS:
             base_tp_name, dtype, count = VECTOR_LITERAL_FUNCS[name]
 
             for id in arg_id_to_dtype:
@@ -313,8 +374,13 @@ def get_opencl_callables():
     Returns an instance of :class:`InKernelCallable` if the function defined by
     *identifier* is known in OpenCL.
     """
-    opencl_function_ids = {"max", "min", "dot", "pow"} | set(
-            _CL_SIMPLE_MULTI_ARG_FUNCTIONS) | set(VECTOR_LITERAL_FUNCS)
+    opencl_function_ids = (
+            {"max", "min", "dot", "pow", "abs", "acos", "asin",
+            "atan", "cos", "cosh", "sin", "sinh", "pow", "atan2", "tanh", "exp",
+            "log", "log10", "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
+            "fabs", "tan", "erf", "erfc"}
+            | set(_CL_SIMPLE_MULTI_ARG_FUNCTIONS)
+            | set(VECTOR_LITERAL_FUNCS))
 
     return {id_: OpenCLCallable(name=id_) for id_ in
         opencl_function_ids}

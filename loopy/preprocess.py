@@ -2084,8 +2084,13 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         self.callables_table = callables_table
 
     def map_call(self, expr, expn_state, assignees=None):
-        from pymbolic.primitives import Call, CallWithKwargs
+        from pymbolic.primitives import Call, CallWithKwargs, Variable
+        from loopy.kernel.function_interface import ValueArgDescriptor
         from loopy.symbolic import ResolvedFunction
+        from loopy.kernel.array import ArrayBase
+        from loopy.kernel.data import ValueArg
+        from pymbolic.mapper.substitutor import make_subst_func
+        from loopy.symbolic import SubstitutionMapper
 
         if not isinstance(expr.function, ResolvedFunction):
             # ignore if the call is not to a ResolvedFunction
@@ -2105,13 +2110,45 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
                 arg_id: get_arg_descriptor_for_expression(
                     self.caller_kernel, arg)
                 for arg_id, arg in arg_id_to_val.items()}
+        in_knl_callable = self.callables_table[expr.function.name]
+
+        # {{{ translating descriptor expressions to the callable's namespace
+
+        deps_as_params = []
+        subst_map = {}
+
+        deps = frozenset().union(*(descr.depends_on()
+                                   for descr in arg_id_to_descr.values()))
+
+        assert deps <= self.caller_kernel.all_variable_names()
+
+        for dep in deps:
+            caller_arg = self.caller_kernel.arg_dict.get(dep, None)
+            caller_arg = self.caller_kernel.temporary_variables.get(dep, caller_arg)
+
+            if not (isinstance(caller_arg, ValueArg) or (isinstance(caller_arg,
+                    ArrayBase) and arg.shape == ())):
+                raise NotImplementedError(f"Obtained '{dep}' as a dependency for"
+                        f" call '{expr.function.name}' which is not a scalar.")
+
+            in_knl_callable, callee_name = in_knl_callable.with_added_arg(
+                    caller_arg.dtype, ValueArgDescriptor())
+
+            subst_map[dep] = Variable(callee_name)
+            deps_as_params.append(Variable(dep))
+
+        mapper = SubstitutionMapper(make_subst_func(subst_map))
+        arg_id_to_descr = {id_: descr.map_expr(mapper)
+                           for id_, descr in arg_id_to_descr.items()}
+
+        # }}}
 
         # specializing the function according to the parameter description
-        in_knl_callable = self.callables_table[expr.function.name]
-        new_in_knl_callable, self.callables_table, new_vars = (
+        new_in_knl_callable, self.callables_table = (
                 in_knl_callable.with_descrs(
-                    arg_id_to_descr, self.caller_kernel,
-                    self.callables_table, expr))
+                    arg_id_to_descr, self.callables_table))
+
+        # find the deps of the new in kernel callablen and add those arguments to
 
         self.callables_table, new_func_id = (
                 self.callables_table.with_callable(
@@ -2122,9 +2159,10 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
             return Call(
                     ResolvedFunction(new_func_id),
                     tuple(self.rec(child, expn_state)
-                    for child in expr.parameters)+new_vars)
+                          for child in expr.parameters)
+                    + tuple(deps_as_params))
         else:
-            # FIXME: Order for vars when kwards are present?
+            # FIXME: Order for vars when kwargs are present?
             assert isinstance(expr, CallWithKwargs)
             return CallWithKwargs(
                     ResolvedFunction(new_func_id),
@@ -2231,8 +2269,8 @@ def infer_arg_descr(program):
                 arg_id_to_descr[arg.name] = ValueArgDescriptor()
             else:
                 raise NotImplementedError()
-        new_callable, clbl_inf_ctx, _ = program.callables_table[e].with_descrs(
-                arg_id_to_descr, None, clbl_inf_ctx)
+        new_callable, clbl_inf_ctx = program.callables_table[e].with_descrs(
+                arg_id_to_descr, clbl_inf_ctx)
         clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable)
         renamed_entrypoints.add(new_name.name)
 

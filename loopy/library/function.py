@@ -22,10 +22,11 @@ THE SOFTWARE.
 
 from loopy.kernel.function_interface import ScalarCallable
 from loopy.diagnostic import LoopyError
+import numpy as np
 
 
 class MakeTupleCallable(ScalarCallable):
-    def with_types(self, arg_id_to_dtype, kernel, callables_table):
+    def with_types(self, arg_id_to_dtype, callables_table):
         new_arg_id_to_dtype = arg_id_to_dtype.copy()
         for i in range(len(arg_id_to_dtype)):
             if i in arg_id_to_dtype and arg_id_to_dtype[i] is not None:
@@ -34,22 +35,22 @@ class MakeTupleCallable(ScalarCallable):
         return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
             name_in_target="loopy_make_tuple"), callables_table)
 
-    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table, expr):
+    def with_descrs(self, arg_id_to_descr, callables_table):
         from loopy.kernel.function_interface import ValueArgDescriptor
         new_arg_id_to_descr = {(id, ValueArgDescriptor()):
             (-id-1, ValueArgDescriptor()) for id in arg_id_to_descr.keys()}
 
         return (
                 self.copy(arg_id_to_descr=new_arg_id_to_descr),
-                callables_table, ())
+                callables_table)
 
 
 class IndexOfCallable(ScalarCallable):
-    def with_types(self, arg_id_to_dtype, kernel, callables_table):
+    def with_types(self, arg_id_to_dtype, callables_table):
         new_arg_id_to_dtype = {i: dtype
                                for i, dtype in arg_id_to_dtype.items()
                                if dtype is not None}
-        new_arg_id_to_dtype[-1] = kernel.index_dtype
+        new_arg_id_to_dtype[-1] = np.int32
 
         return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype),
                 callables_table)

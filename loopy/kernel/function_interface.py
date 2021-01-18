@@ -20,15 +20,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import islpy as isl
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 
 from loopy.tools import update_persistent_hash
 from loopy.kernel import LoopKernel
-from loopy.kernel.data import ValueArg, ArrayArg, ConstantArg
-from loopy.symbolic import (SubstitutionMapper, DependencyMapper)
-from pymbolic.primitives import Variable
+from loopy.kernel.data import ValueArg, ArrayArg
+from loopy.symbolic import DependencyMapper, WalkMapper
 
 __doc__ = """
 
@@ -39,7 +37,6 @@ __doc__ = """
 .. autoclass:: InKernelCallable
 .. autoclass:: CallableKernel
 .. autoclass:: ScalarCallable
-.. autoclass:: ManglerCallable
 
 """
 
@@ -77,6 +74,9 @@ class ArrayArgDescriptor(ImmutableRecord):
 
         A tuple of instances of
         :class:`loopy.kernel.array.ArrayDimImplementationTag`
+
+    .. automethod:: map_expr
+    .. automethod:: depends_on
     """
 
     fields = {"shape", "address_space", "dim_tags"}
@@ -102,11 +102,19 @@ class ArrayArgDescriptor(ImmutableRecord):
                 dim_tags=dim_tags)
 
     def map_expr(self, f):
+        """
+        Returns an instance of :class:`ArrayArgDescriptor` with its shapes, strides,
+        mapped by *f*.
+        """
         new_shape = tuple(f(axis_len) for axis_len in self.shape)
         new_dim_tags = tuple(dim_tag.map_expr(f) for dim_tag in self.dim_tags)
         return self.copy(shape=new_shape, dim_tags=new_dim_tags)
 
     def depends_on(self):
+        """
+        Returns class:`frozenset` of all the variable names the
+        :class:`ArrayArgDescriptor` depends on.
+        """
         from loopy.kernel.data import auto
         result = DependencyMapper(composite_leaves=False)([lngth for lngth in
             self.shape if lngth not in [None, auto]]) | (
@@ -124,13 +132,50 @@ class ArrayArgDescriptor(ImmutableRecord):
         key_builder.rec(key_hash, self.dim_tags)
 
 
+class ExpressionIsScalarChecker(WalkMapper):
+    def __init__(self, kernel):
+        self.kernel = kernel
+
+    def map_sub_array_ref(self, expr):
+        raise LoopyError("Sub-array refs can only be used as call's parameters"
+                f" or assignees. '{expr}'violates this.")
+
+    def map_call(self, expr):
+        for child in expr.parameters:
+            self.rec(child)
+
+    def map_call_with_kwargs(self, expr):
+        for child in expr.parameters + tuple(expr.kw_parameters.values()):
+            self.rec(child)
+
+    def map_subscript(self, expr):
+        for child in expr.index_tuple:
+            self.rec(child)
+
+    def map_variable(self, expr):
+        from loopy.kernel.data import TemporaryVariable, ArrayArg
+        if expr.name in self.kernel.all_inames():
+            # inames are scalar
+            return
+
+        var = self.kernel.arg_dict.get(expr.name, None) or (
+                self.kernel.temporary_variables.get(expr.name, None))
+
+        if var is not None:
+            if isinstance(var, (ArrayArg, TemporaryVariable)) and (
+                    var.shape != ()):
+                raise LoopyError("Array regions can only passed as sub-array refs.")
+
+    def map_slice(self, expr):
+        raise LoopyError("Array regions can only passed as sub-array refs.")
+
+
 def get_arg_descriptor_for_expression(kernel, expr):
     """
     :returns: a :class:`ArrayArgDescriptor` or a :class:`ValueArgDescriptor`
         describing the argument expression *expr* which occurs
         in a call in the code of *kernel*.
     """
-    from pymbolic.primitives import Variable
     from loopy.symbolic import (SubArrayRef, pw_aff_to_expr,
             SweptInameStrideCollector)
     from loopy.kernel.data import TemporaryVariable, ArrayArg
@@ -186,24 +231,8 @@ def get_arg_descriptor_for_expression(kernel, expr):
                 address_space=aspace,
                 dim_tags=sub_dim_tags,
                 shape=sub_shape)
-
-    elif isinstance(expr, Variable):
-        arg = kernel.get_var_descriptor(expr.name)
-        from loopy.kernel.array import ArrayBase
-
-        if isinstance(arg, ValueArg) or (isinstance(arg, ArrayBase)
-                and arg.shape == ()):
-            return ValueArgDescriptor()
-        elif isinstance(arg, (ArrayArg, TemporaryVariable)):
-            raise LoopyError("may not pass entire array "
-                    "'%s' in call statement in kernel '%s'"
-                    % (expr.name, kernel.name))
-        else:
-            raise LoopyError("unsupported argument type "
-                    "'%s' of '%s' in call statement"
-                    % (type(arg).__name__, expr.name))
-
     else:
+        ExpressionIsScalarChecker(kernel)(expr)
         return ValueArgDescriptor()
 
 # }}}
@@ -242,8 +271,8 @@ class GridOverrideForCalleeKernel(ImmutableRecord):
     Helper class to set the
     :attr:`loopy.kernel.LoopKernel.override_get_grid_size_for_insn_ids` of the
     callee kernels. Refer to
-    :func:`loopy.kernel.function_interface.GridOverrideForCalleeKernel.__call__`,
-    :func:`loopy.kernel.function_interface.CallbleKernel.with_hw_axes_sizes`.
+    :meth:`loopy.kernel.function_interface.GridOverrideForCalleeKernel.__call__`,
+    :meth:`loopy.kernel.function_interface.CallbleKernel.with_hw_axes_sizes`.
 
     .. attribute:: global_size
 
@@ -325,7 +354,7 @@ class InKernelCallable(ImmutableRecord):
 
     update_persistent_hash = update_persistent_hash
 
-    def with_types(self, arg_id_to_dtype, caller_kernel, callables_table):
+    def with_types(self, arg_id_to_dtype, callables_table):
         """
         :arg arg_id_to_type: a mapping from argument identifiers
             (integers for positional arguments, names for keyword
@@ -345,12 +374,15 @@ class InKernelCallable(ImmutableRecord):
 
         raise NotImplementedError()
 
-    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table, expr):
+    def with_descrs(self, arg_id_to_descr, callables_table):
         """
-        :arg arg_id_to_descr: a mapping from argument identifiers
-            (integers for positional arguments, names for keyword
-            arguments) to :class:`loopy.ArrayArgDescriptor` instances.
-            Unspecified/unknown types are not represented in *arg_id_to_descr*.
+        :arg arg_id_to_descr: a mapping from argument identifiers (integers for
+            positional arguments, names for keyword arguments) to
+            :class:`loopy.ArrayArgDescriptor` instances.  Unspecified/unknown
+            descriptors are not represented in *arg_id_to_descr*.
+
+            All the expressions in arg_id_to_descr must have variables that belong
+            to the callable's namespace.
 
             Return values are denoted by negative integers, with the
             first returned value identified as *-1*.
@@ -439,6 +471,13 @@ class InKernelCallable(ImmutableRecord):
 
         return hash(tuple(self.fields))
 
+    def with_added_arg(self, arg_dtype, arg_descr):
+        """
+        Registers a new argument to the callable and returns the name of the
+        argument in the callable's namespace.
+        """
+        raise NotImplementedError()
+
 # }}}
 
 
@@ -451,8 +490,7 @@ class ScalarCallable(InKernelCallable):
     .. note::
 
         The :meth:`ScalarCallable.with_types` is intended to assist with type
-        specialization of the function and is expected to be supplemented in the
-        derived subclasses.
+        specialization of the function and sub-classes must define it.
     """
 
     fields = {"name", "arg_id_to_dtype", "arg_id_to_descr", "name_in_target"}
@@ -474,16 +512,16 @@ class ScalarCallable(InKernelCallable):
         return (self.arg_id_to_dtype, self.arg_id_to_descr,
                 self.name_in_target)
 
-    def with_types(self, arg_id_to_dtype, caller_kernel, callables_table):
+    def with_types(self, arg_id_to_dtype, callables_table):
         raise LoopyError("No type inference information present for "
                 "the function %s." % (self.name))
 
-    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table, expr):
+    def with_descrs(self, arg_id_to_descr, callables_table):
 
         arg_id_to_descr[-1] = ValueArgDescriptor()
         return (
                 self.copy(arg_id_to_descr=arg_id_to_descr),
-                callables_table, ())
+                callables_table)
 
     def with_hw_axes_sizes(self, global_size, local_size):
         return self.copy()
@@ -584,9 +622,6 @@ class ScalarCallable(InKernelCallable):
         # assignee is returned whenever the size of assignees is non zero.
         first_assignee_is_returned = len(insn.assignees) > 0
 
-        # TODO: Maybe this interface a bit confusing. Should we allow this
-        # method to directly return a cgen.Assign or cgen.ExpressionStatement?
-
         return var(self.name_in_target)(*c_parameters), first_assignee_is_returned
 
     def generate_preambles(self, target):
@@ -594,6 +629,9 @@ class ScalarCallable(InKernelCallable):
         yield
 
     # }}}
+
+    def with_added_arg(self, arg_dtype, arg_descr):
+        raise LoopyError("Cannot add args to scalar callables.")
 
 # }}}
 
@@ -645,8 +683,7 @@ class CallableKernel(InKernelCallable):
     def name(self):
         return self.subkernel.name
 
-    def with_types(self, arg_id_to_dtype, caller_kernel,
-            callables_table):
+    def with_types(self, arg_id_to_dtype, callables_table):
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
         new_args = []
@@ -684,124 +721,116 @@ class CallableKernel(InKernelCallable):
         return self.copy(subkernel=specialized_kernel,
                 arg_id_to_dtype=new_arg_id_to_dtype), callables_table
 
-    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table,
-            expr=None):
-        # tune the subkernel so that we have the matching shapes and
-        # dim_tags
+    def with_descrs(self, arg_id_to_descr, callables_table):
 
-        # {{{ map the arg_descrs so that all the variables are from the callees
-        # perspective
+        # arg_id_to_descr expressions provided are from the caller's namespace,
+        # need to register
 
-        domain_dependent_vars = frozenset().union(
-                *(frozenset(dom.get_var_names(isl.dim_type.param)) for dom in
-                    self.subkernel.domains))
+        kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
-        # FIXME: This is ill-formed, because par can be an expression, e.g.
-        # 2*i+2 or 2*(i+1). A key feature of expression is that structural
-        # equality and semantic equality are not the same, so even if the
-        # SubstitutionMapper allowed non-variables, it would have to solve the
-        # (considerable) problem of expression equivalence.
-
-        import numbers
-        substs = {}
-        assumptions = {}
-
-        if expr:
-            for arg, par in zip(self.subkernel.args, expr.parameters):
-                if isinstance(arg, ValueArg) and arg.name in domain_dependent_vars:
-                    if isinstance(par, Variable):
-                        if par in substs:
-                            assumptions[arg.name] = substs[par].name
-                        else:
-                            substs[par] = Variable(arg.name)
-                    elif isinstance(par, numbers.Number):
-                        assumptions[arg.name] = par
-
-            def subst_func(expr):
-                if expr in substs:
-                    return substs[expr]
-                else:
-                    return expr
-
-            subst_mapper = SubstitutionMapper(subst_func)
-
-            arg_id_to_descr = {arg_id: descr.map_expr(subst_mapper)
-                               for arg_id, descr in arg_id_to_descr.items()}
-
-        # }}}
-
-        dependents = frozenset().union(*(descr.depends_on() for descr in
-            arg_id_to_descr.values()))
-        unknown_deps = dependents - self.subkernel.all_variable_names()
-
-        if expr is None:
-            assert unknown_deps == frozenset()
-        # FIXME: Need to make sure that we make the name of the variables
-        # unique, and then run a subst_mapper
+        kw_to_callee_idx = {arg.name: i
+                            for i, arg in enumerate(self.subkernel.args)}
 
         new_args = self.subkernel.args[:]
-        kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
         for arg_id, descr in arg_id_to_descr.items():
             if isinstance(arg_id, int):
                 arg_id = pos_to_kw[arg_id]
-            assert isinstance(arg_id, str)
+
+            callee_arg = new_args[kw_to_callee_idx[arg_id]]
+
+            # {{{ checks
+
+            if isinstance(callee_arg, ValueArg) and (
+                    isinstance(descr, ArrayArgDescriptor)):
+                raise LoopyError(f"In call to {self.subkernel.name}, '{arg_id}' "
+                        "expected to be a scalar, got an array region.")
+
+            if isinstance(callee_arg, ArrayArg) and (
+                    isinstance(descr, ValueArgDescriptor)):
+                raise LoopyError(f"In call to {self.subkernel.name}, '{arg_id}' "
+                        "expected to be an array, got a scalar.")
+
+            if (isinstance(descr, ArrayArgDescriptor)
+                    and isinstance(callee_arg.shape, tuple)
+                    and len(callee_arg.shape) != len(descr.shape)):
+                raise LoopyError(f"In call to {self.subkernel.name}, '{arg_id}'"
+                        " has a dimensionality mismatch, expected "
+                        f"{len(callee_arg.shape)}, got {len(descr.shape)}")
+
+            # }}}
 
             if isinstance(descr, ArrayArgDescriptor):
-                if not isinstance(self.subkernel.arg_dict[arg_id], (ArrayArg,
-                        ConstantArg)):
-                    raise LoopyError("Array passed to scalar argument "
-                            "'%s' of the function '%s' (in '%s')." % (
-                                arg_id, self.subkernel.name,
-                                caller_kernel.name))
-                if self.subkernel.arg_dict[arg_id].shape and (
-                        len(self.subkernel.arg_dict[arg_id].shape) !=
-                        len(descr.shape)):
-                    raise LoopyError("Dimension mismatch for argument "
-                            " '%s' of the function '%s' (in '%s')." % (
-                                arg_id, self.subkernel.name,
-                                caller_kernel.name))
-
-                new_arg = self.subkernel.arg_dict[arg_id].copy(
-                        shape=descr.shape,
-                        dim_tags=descr.dim_tags,
-                        address_space=descr.address_space)
-                # replacing the new arg with the arg of the same name
-                new_args = [new_arg if arg.name == arg_id else arg for arg in
-                        new_args]
-            elif isinstance(descr, ValueArgDescriptor):
-                if not isinstance(self.subkernel.arg_dict[arg_id], ValueArg):
-                    raise LoopyError("Scalar passed to array argument "
-                            "'%s' of the callable '%s' (in '%s')" % (
-                                arg_id, self.subkernel.name,
-                                caller_kernel.name))
+                callee_arg = callee_arg.copy(shape=descr.shape,
+                                             dim_tags=descr.dim_tags,
+                                             address_space=descr.address_space)
             else:
-                raise LoopyError("Descriptor must be either an instance of "
-                        "ArrayArgDescriptor or ValueArgDescriptor -- got %s" %
-                        type(descr))
+                # do nothing for a scalar arg.
+                assert isinstance(descr, ValueArgDescriptor)
 
-        descriptor_specialized_knl = self.subkernel.copy(args=new_args)
-        # add the variables on which the strides/shapes depend but not provided
-        # as arguments
-        args_added_knl = descriptor_specialized_knl.copy(
-                args=descriptor_specialized_knl.args
-                + [ValueArg(dep) for dep in unknown_deps])
+            new_args[kw_to_callee_idx[arg_id]] = callee_arg
+
+        subkernel = self.subkernel.copy(args=new_args)
+
         from loopy.preprocess import traverse_to_infer_arg_descr
-        from loopy.transform.parameter import assume
-        args_added_knl, callables_table = (
-                traverse_to_infer_arg_descr(args_added_knl,
+        subkernel, callables_table = (
+                traverse_to_infer_arg_descr(subkernel,
                     callables_table))
 
-        if assumptions:
-            assumption_str = " and ".join([f"{key}={val}"
-                                           for key, val in assumptions.items()])
-            args_added_knl = assume(args_added_knl, assumption_str)
+        # {{{ update the arg descriptors
 
-        return (
-                self.copy(
-                    subkernel=args_added_knl,
-                    arg_id_to_descr=arg_id_to_descr),
-                callables_table, tuple(Variable(dep) for dep in unknown_deps))
+        for arg in subkernel.args:
+            kw = arg.name
+            if isinstance(arg, ArrayArg):
+                arg_id_to_descr[kw] = (
+                        ArrayArgDescriptor(shape=arg.shape,
+                                           dim_tags=arg.dim_tags,
+                                           address_space=arg.address_space))
+            else:
+                assert isinstance(arg, ValueArg)
+                arg_id_to_descr[kw] = ValueArgDescriptor()
+
+            arg_id_to_descr[kw_to_pos[kw]] = arg_id_to_descr[kw]
+
+        # }}}
+
+        return (self.copy(subkernel=subkernel,
+                          arg_id_to_descr=arg_id_to_descr),
+                callables_table)
+
+    def with_added_arg(self, arg_dtype, arg_descr):
+        var_name = self.subkernel.get_var_name_generator()(based_on="_lpy_arg")
+
+        if isinstance(arg_descr, ValueArgDescriptor):
+            subknl = self.subkernel.copy(
+                    args=self.subkernel.args+[
+                        ValueArg(var_name, arg_dtype, self.subkernel.target)])
+
+            kw_to_pos, pos_to_kw = get_kw_pos_association(subknl)
+
+            if self.arg_id_to_dtype is None:
+                arg_id_to_dtype = {}
+            else:
+                arg_id_to_dtype = self.arg_id_to_dtype.copy()
+            if self.arg_id_to_descr is None:
+                arg_id_to_descr = {}
+            else:
+                arg_id_to_descr = self.arg_id_to_descr.copy()
+
+            arg_id_to_dtype[var_name] = arg_dtype
+            arg_id_to_descr[var_name] = arg_descr
+            arg_id_to_dtype[kw_to_pos[var_name]] = arg_dtype
+            arg_id_to_descr[kw_to_pos[var_name]] = arg_descr
+
+            return (self.copy(subkernel=subknl,
+                              arg_id_to_dtype=arg_id_to_dtype,
+                              arg_id_to_descr=arg_id_to_descr),
+                    var_name)
+
+        else:
+            # don't think this should ever be needed
+            raise NotImplementedError("with_added_arg not implemented for array"
+                    " types arguments.")
 
     def with_packing_for_args(self):
         from loopy.kernel.data import AddressSpace
@@ -891,82 +920,5 @@ class CallableKernel(InKernelCallable):
 
 # }}}
 
-
-# {{{ mangler callable
-
-class ManglerCallable(ScalarCallable):
-    """
-    A callable whose characteristic is defined by a function mangler.
-
-    .. attribute:: function_mangler
-
-        A function of signature ``(kernel, name , arg_dtypes)`` and returns an
-        instance of ``loopy.CallMangleInfo``.
-    """
-    fields = {"name", "function_mangler", "arg_id_to_dtype", "arg_id_to_descr",
-        "name_in_target"}
-    init_arg_names = ("name", "function_mangler", "arg_id_to_dtype",
-            "arg_id_to_descr", "name_in_target")
-    hash_fields = ("name", "arg_id_to_dtype", "arg_id_to_descr",
-        "name_in_target")
-
-    def __init__(self, name, function_mangler, arg_id_to_dtype=None,
-            arg_id_to_descr=None, name_in_target=None):
-
-        self.function_mangler = function_mangler
-
-        super().__init__(
-                name=name,
-                arg_id_to_dtype=arg_id_to_dtype,
-                arg_id_to_descr=arg_id_to_descr,
-                name_in_target=name_in_target)
-
-    def __getinitargs__(self):
-        return (self.name, self.function_mangler, self.arg_id_to_dtype,
-                self.arg_id_to_descr, self.name_in_target)
-
-    def with_types(self, arg_id_to_dtype, kernel, callables_table):
-        if self.arg_id_to_dtype is not None:
-            # specializing an already specialized function.
-            for arg_id, dtype in arg_id_to_dtype.items():
-                # only checking for the ones which have been provided
-                # if does not match, returns an error.
-                if self.arg_id_to_dtype[arg_id] != arg_id_to_dtype[arg_id]:
-                    raise LoopyError("Overwriting a specialized"
-                            " function is illegal--maybe start with new instance of"
-                            " ManglerCallable?")
-
-        sorted_keys = sorted(arg_id_to_dtype.keys())
-        arg_dtypes = tuple(arg_id_to_dtype[key] for key in sorted_keys if
-                key >= 0)
-
-        mangle_result = self.function_mangler(kernel, self.name,
-                arg_dtypes)
-        if mangle_result:
-            new_arg_id_to_dtype = dict(enumerate(mangle_result.arg_dtypes))
-            new_arg_id_to_dtype.update({-i-1: dtype for i, dtype in
-                enumerate(mangle_result.result_dtypes)})
-            return (
-                    self.copy(name_in_target=mangle_result.target_name,
-                        arg_id_to_dtype=new_arg_id_to_dtype),
-                    callables_table)
-        else:
-            # The function mangler does not agree with the arg id to dtypes
-            # provided. Indicating that is illegal.
-            raise LoopyError("Function %s not coherent with the provided types." % (
-                self.name))
-
-    def mangle_result(self, kernel):
-        """
-        Returns an instance of :class:`loopy.kernel.data.CallMangleInfo` for
-        the given pair :attr:`function_mangler` and :attr:`arg_id_to_dtype`.
-        """
-        sorted_keys = sorted(self.arg_id_to_dtype.keys())
-        arg_dtypes = tuple(self.arg_id_to_dtype[key] for key in sorted_keys if
-                key >= 0)
-
-        return self.function_mangler(kernel, self.name, arg_dtypes)
-
-# }}}
 
 # vim: foldmethod=marker

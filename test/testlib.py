@@ -138,7 +138,7 @@ class SeparateTemporariesPreambleTestPreambleGenerator(
 
 class Log2Callable(lp.ScalarCallable):
 
-    def with_types(self, arg_id_to_dtype, kernel, callables_table):
+    def with_types(self, arg_id_to_dtype, callables_table):
 
         if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
             # the types provided aren't mature enough to specialize the
@@ -153,14 +153,13 @@ class Log2Callable(lp.ScalarCallable):
             # ints and unsigned casted to float32
             dtype = np.float32
 
-        from loopy.target.opencl import OpenCLTarget
-        name_in_target = "log2"
-        if not isinstance(kernel.target, OpenCLTarget):
-            # for CUDA, C Targets the name must be modified
-            if dtype == np.float32:
-                name_in_target = "log2f"
-            elif dtype == np.float128:
-                name_in_target = "log2l"
+        if dtype.type == np.float32:
+            name_in_target = "log2f"
+        elif dtype.type == np.float64:
+            name_in_target = "log2"
+            pass
+        else:
+            raise TypeError(f"log2: unexpected type {dtype}")
 
         from loopy.types import NumpyType
         return (

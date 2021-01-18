@@ -426,137 +426,75 @@ class TypeInferenceMapper(CombineMapper):
                 tuple(enumerate(expr.parameters)) + tuple(kw_parameters.items())}
 
         # specializing the known function wrt type
-        if isinstance(expr.function, ResolvedFunction):
-            in_knl_callable = self.clbl_inf_ctx[expr.function.name]
+        in_knl_callable = self.clbl_inf_ctx[expr.function.name]
 
-            # {{{ checking that there is no overwriting of types of in_knl_callable
+        # {{{ checking that there is no overwriting of types of in_knl_callable
 
-            if in_knl_callable.arg_id_to_dtype is not None:
+        if in_knl_callable.arg_id_to_dtype is not None:
 
-                # specializing an already specialized function.
-                for id, dtype in arg_id_to_dtype.items():
-                    if id in in_knl_callable.arg_id_to_dtype and (
-                            in_knl_callable.arg_id_to_dtype[id] !=
-                            arg_id_to_dtype[id]):
+            # specializing an already specialized function.
+            for id, dtype in arg_id_to_dtype.items():
+                if id in in_knl_callable.arg_id_to_dtype and (
+                        in_knl_callable.arg_id_to_dtype[id] !=
+                        arg_id_to_dtype[id]):
 
-                        # {{{ ignoring the the cases when there is a discrepancy
-                        # between np.uint and np.int
+                    # {{{ ignoring the the cases when there is a discrepancy
+                    # between np.uint and np.int
 
-                        import numpy as np
-                        if in_knl_callable.arg_id_to_dtype[id].dtype.type == (
-                                np.uint32) and (
-                                        arg_id_to_dtype[id].dtype.type == np.int32):
-                            continue
-                        if in_knl_callable.arg_id_to_dtype[id].dtype.type == (
-                                np.uint64) and (
-                                        arg_id_to_dtype[id].dtype.type ==
-                                        np.int64):
-                            continue
+                    import numpy as np
+                    if in_knl_callable.arg_id_to_dtype[id].dtype.type == (
+                            np.uint32) and (
+                                    arg_id_to_dtype[id].dtype.type == np.int32):
+                        continue
+                    if in_knl_callable.arg_id_to_dtype[id].dtype.type == (
+                            np.uint64) and (
+                                    arg_id_to_dtype[id].dtype.type ==
+                                    np.int64):
+                        continue
 
-                        if np.can_cast(arg_id_to_dtype[id].dtype.type,
-                                in_knl_callable.arg_id_to_dtype[id].dtype.type):
-                            continue
+                    if np.can_cast(arg_id_to_dtype[id].dtype.type,
+                            in_knl_callable.arg_id_to_dtype[id].dtype.type):
+                        continue
 
-                        # }}}
+                    # }}}
 
-                        raise LoopyError("Overwriting a specialized function "
-                                "is illegal--maybe start with new instance of "
-                                "InKernelCallable?")
+                    raise LoopyError("Overwriting a specialized function "
+                            "is illegal--maybe start with new instance of "
+                            "InKernelCallable?")
 
-            # }}}
+        # }}}
 
-            in_knl_callable, self.clbl_inf_ctx = (
-                    in_knl_callable.with_types(
-                        arg_id_to_dtype, self.kernel,
-                        self.clbl_inf_ctx))
+        in_knl_callable, self.clbl_inf_ctx = (
+                in_knl_callable.with_types(
+                    arg_id_to_dtype,
+                    self.clbl_inf_ctx))
 
-            in_knl_callable = in_knl_callable.with_target(self.kernel.target)
+        in_knl_callable = in_knl_callable.with_target(self.kernel.target)
 
-            # storing the type specialized function so that it can be used for
-            # later use
-            self.clbl_inf_ctx, new_function_id = (
-                    self.clbl_inf_ctx.with_callable(
-                        expr.function.function,
-                        in_knl_callable))
+        # storing the type specialized function so that it can be used for
+        # later use
+        self.clbl_inf_ctx, new_function_id = (
+                self.clbl_inf_ctx.with_callable(
+                    expr.function.function,
+                    in_knl_callable))
 
-            if isinstance(expr, Call):
-                self.old_calls_to_new_calls[expr] = new_function_id
-            else:
-                assert isinstance(expr, CallWithKwargs)
-                self.old_calls_to_new_calls[expr] = new_function_id
+        if isinstance(expr, Call):
+            self.old_calls_to_new_calls[expr] = new_function_id
+        else:
+            assert isinstance(expr, CallWithKwargs)
+            self.old_calls_to_new_calls[expr] = new_function_id
 
-            new_arg_id_to_dtype = in_knl_callable.arg_id_to_dtype
+        new_arg_id_to_dtype = in_knl_callable.arg_id_to_dtype
 
-            if new_arg_id_to_dtype is None:
-                return []
+        if new_arg_id_to_dtype is None:
+            return []
 
-            # collecting result dtypes in order of the assignees
-            if -1 in new_arg_id_to_dtype and new_arg_id_to_dtype[-1] is not None:
-                if return_tuple:
-                    return [get_return_types_as_tuple(new_arg_id_to_dtype)]
-                else:
-                    return [new_arg_id_to_dtype[-1]]
-
-        elif isinstance(expr.function, Variable):
-            # Since, the function is not "scoped", attempt to infer using
-            # kernel.function_manglers
-
-            # {{{ trying to infer using function manglers
-
-            arg_dtypes = tuple(none_if_empty(self.rec(par)) for par in
-                    expr.parameters)
-
-            # finding the function_mangler which would be associated with the
-            # realized function.
-
-            mangle_result = None
-            for function_mangler in self.kernel.function_manglers:
-                mangle_result = function_mangler(self.kernel, identifier,
-                        arg_dtypes)
-                if mangle_result:
-                    # found a match.
-                    break
-
-            if mangle_result is not None:
-                from loopy.kernel.function_interface import ManglerCallable
-
-                # creating arg_id_to_dtype from arg_dtypes
-                arg_id_to_dtype = {i: dt.with_target(self.kernel.target)
-                        for i, dt in enumerate(mangle_result.arg_dtypes)}
-                arg_id_to_dtype.update({-i-1:
-                    dtype.with_target(self.kernel.target) for i, dtype in enumerate(
-                        mangle_result.result_dtypes)})
-
-                # creating the ManglerCallable object corresponding to the
-                # function.
-                in_knl_callable = ManglerCallable(
-                        identifier, function_mangler, arg_id_to_dtype,
-                        name_in_target=mangle_result.target_name)
-                # FIXME: we have not tested how it works with mangler callable
-                # yet.
-                self.clbl_inf_ctx, new_function_id = (
-                        self.clbl_inf_ctx.with_callable(
-                            expr.function, in_knl_callable))
-
-                if isinstance(expr, Call):
-                    self.old_calls_to_new_calls[expr] = new_function_id
-                else:
-                    assert isinstance(expr, CallWithKwargs)
-                    self.old_calls_to_new_calls = new_function_id
-
-            # Returning the type.
+        # collecting result dtypes in order of the assignees
+        if -1 in new_arg_id_to_dtype and new_arg_id_to_dtype[-1] is not None:
             if return_tuple:
-                if mangle_result is not None:
-                    return [mangle_result.result_dtypes]
+                return [get_return_types_as_tuple(new_arg_id_to_dtype)]
             else:
-                if mangle_result is not None:
-                    if len(mangle_result.result_dtypes) != 1 and not return_tuple:
-                        raise LoopyError("functions with more or fewer than one "
-                                "return value may only be used in direct "
-                                "assignments")
-
-                    return [mangle_result.result_dtypes[0]]
-            # }}}
+                return [new_arg_id_to_dtype[-1]]
 
         return []
 
@@ -678,10 +616,10 @@ class TypeInferenceMapper(CombineMapper):
                 rec_results = self.rec(expr.expr)
 
         if return_tuple:
-            return [expr.operation.result_dtypes(self.kernel, *rec_result)
+            return [expr.operation.result_dtypes(*rec_result)
                     for rec_result in rec_results]
         else:
-            return [expr.operation.result_dtypes(self.kernel, rec_result)[0]
+            return [expr.operation.result_dtypes(rec_result)[0]
                     for rec_result in rec_results]
 
     def map_sub_array_ref(self, expr):
@@ -1111,13 +1049,11 @@ def infer_unknown_types(program, expect_completion=False):
     renamed_entrypoints = set()
 
     for e in program.entrypoints:
-        # FIXME: Need to add docs which say that we need not add the current
-        # callable to the clbl_inf_ctx while writing the "with_types"
         logger.debug(f"Entering entrypoint: {e}")
         arg_id_to_dtype = {arg.name: arg.dtype for arg in
                 program[e].args if arg.dtype not in (None, auto)}
         new_callable, clbl_inf_ctx = program.callables_table[e].with_types(
-                arg_id_to_dtype, None, clbl_inf_ctx)
+                arg_id_to_dtype, clbl_inf_ctx)
         clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable)
         renamed_entrypoints.add(new_name.name)
 
@@ -1174,7 +1110,7 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
                 raise LoopyError("failed to determine type of accumulator for "
                         "reduction '%s'" % expr)
 
-    reduction_dtypes = expr.operation.result_dtypes(kernel, *arg_dtypes)
+    reduction_dtypes = expr.operation.result_dtypes(*arg_dtypes)
     reduction_dtypes = tuple(
             dt.with_target(kernel.target)
             if dt is not lp.auto else dt

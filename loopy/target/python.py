@@ -90,16 +90,8 @@ class ExpressionToPythonMapper(StringifyMapper):
             raise LoopyError(
                     "indexof, indexof_vec not yet supported in Python")
 
-        from loopy.kernel.function_interface import ManglerCallable
         clbl = self.codegen_state.callables_table[
                 expr.function.name]
-        if isinstance(clbl, ManglerCallable):
-            from loopy.codegen import SeenFunction
-            mangle_result = clbl.mangle_result(self.kernel)
-            self.codegen_state.seen_functions.add(
-                    SeenFunction(identifier_name,
-                        mangle_result.target_name,
-                        mangle_result.arg_dtypes))
 
         str_parameters = None
         number_of_assignees = len([key for key in

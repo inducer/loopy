@@ -53,7 +53,7 @@ class ReductionOperation:
     equality-comparable.
     """
 
-    def result_dtypes(self, target, *arg_dtypes):
+    def result_dtypes(self, *arg_dtypes):
         """
         :arg arg_dtypes: may be None if not known
         :returns: None if not known, otherwise the returned type
@@ -112,10 +112,11 @@ class ScalarReductionOperation(ReductionOperation):
     def arg_count(self):
         return 1
 
-    def result_dtypes(self, kernel, arg_dtype):
+    def result_dtypes(self, arg_dtype):
         if self.forced_result_type is not None:
-            return (self.parse_result_type(
-                    kernel.target, self.forced_result_type),)
+            raise NotImplementedError()
+            # return (self.parse_result_type(
+            #         kernel.target, self.forced_result_type),)
 
         if arg_dtype is None:
             return None
@@ -224,7 +225,7 @@ class MaxReductionOperation(ScalarReductionOperation):
 
         # type specialize the callable
         max_scalar_callable, callables_table = max_scalar_callable.with_types(
-                {0: dtype, 1: dtype}, None, callables_table)
+                {0: dtype, 1: dtype}, callables_table)
 
         # populate callables_table
         func_id, callables_table = update_table(callables_table, "max",
@@ -246,7 +247,7 @@ class MinReductionOperation(ScalarReductionOperation):
 
         # type specialize the callable
         min_scalar_callable, callables_table = min_scalar_callable.with_types(
-                {0: dtype, 1: dtype}, None, callables_table)
+                {0: dtype, 1: dtype}, callables_table)
 
         # populate callables_table
         func_id, callables_table = update_table(callables_table, "min",
@@ -325,7 +326,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
 
         make_tuple_callable, callables_table = make_tuple_callable.with_types(
                 dict(enumerate([scalar_dtype, segment_flag_dtype])),
-                None, callables_table)
+                callables_table)
 
         func_id, callables_table = update_table(
                 callables_table, "make_tuple", make_tuple_callable)
@@ -333,8 +334,8 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         return ResolvedFunction(func_id)(scalar_neutral_element,
                 segment_flag_dtype.numpy_dtype.type(0)), callables_table
 
-    def result_dtypes(self, kernel, scalar_dtype, segment_flag_dtype):
-        return (self.inner_reduction.result_dtypes(kernel, scalar_dtype)
+    def result_dtypes(self, scalar_dtype, segment_flag_dtype):
+        return (self.inner_reduction.result_dtypes(scalar_dtype)
                 + (segment_flag_dtype,))
 
     def __str__(self):
@@ -355,7 +356,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         segmented_scalar_callable, callables_table = (
                 segmented_scalar_callable.with_types(
                     {0: dtypes[0], 1: dtypes[1], 2: dtypes[0], 3: dtypes[1]},
-                    None, callables_table))
+                    callables_table))
 
         # populate callables_table
         from loopy.program import update_table
@@ -414,7 +415,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
                 scalar_dtype.numpy_dtype.type.__name__,
                 index_dtype.numpy_dtype.type.__name__)
 
-    def result_dtypes(self, kernel, scalar_dtype, index_dtype):
+    def result_dtypes(self, scalar_dtype, index_dtype):
         return (scalar_dtype, index_dtype)
 
     def neutral_element(self, scalar_dtype, index_dtype, callables_table,
@@ -430,7 +431,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
 
         make_tuple_callable, callables_table = make_tuple_callable.with_types(
                 dict(enumerate([scalar_dtype, index_dtype])),
-                None, callables_table)
+                callables_table)
 
         # populate callables_table
         func_id, callables_table = update_table(callables_table, "make_tuple",
@@ -459,7 +460,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         arg_ext_scalar_callable, callables_table = (
                 arg_ext_scalar_callable.with_types(
                     {0: dtypes[0], 1: dtypes[1], 2: dtypes[0], 3: dtypes[1]},
-                    None, callables_table))
+                    callables_table))
 
         # populate callables_table
         from loopy.program import update_table
@@ -549,10 +550,10 @@ def parse_reduction_op(name):
 # {{{ reduction specific callables
 
 class ReductionCallable(ScalarCallable):
-    def with_types(self, arg_id_to_dtype, kernel, callables_table):
+    def with_types(self, arg_id_to_dtype, callables_table):
         scalar_dtype = arg_id_to_dtype[0]
         index_dtype = arg_id_to_dtype[1]
-        result_dtypes = self.name.reduction_op.result_dtypes(kernel, scalar_dtype,
+        result_dtypes = self.name.reduction_op.result_dtypes(scalar_dtype,
                 index_dtype)
         new_arg_id_to_dtype = arg_id_to_dtype.copy()
         new_arg_id_to_dtype[-1] = result_dtypes[0]
@@ -563,13 +564,13 @@ class ReductionCallable(ScalarCallable):
         return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
                 name_in_target=name_in_target), callables_table
 
-    def with_descrs(self, arg_id_to_descr, caller_kernel, callables_table, expr):
+    def with_descrs(self, arg_id_to_descr, callables_table):
         from loopy.kernel.function_interface import ValueArgDescriptor
         new_arg_id_to_descr = arg_id_to_descr.copy()
         new_arg_id_to_descr[-1] = ValueArgDescriptor()
         return (
                 self.copy(arg_id_to_descr=arg_id_to_descr),
-                callables_table, ())
+                callables_table)
 
     def generate_preambles(self, target):
         if isinstance(self.name, ArgExtOp):

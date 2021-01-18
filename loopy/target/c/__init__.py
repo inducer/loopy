@@ -466,7 +466,7 @@ class CMathCallable(ScalarCallable):
     C-Target.
     """
 
-    def with_types(self, arg_id_to_dtype, caller_kernel, callables_table):
+    def with_types(self, arg_id_to_dtype, callables_table):
         name = self.name
 
         if name in ["abs", "min", "max"]:
@@ -497,18 +497,16 @@ class CMathCallable(ScalarCallable):
             elif dtype.kind == "c":
                 raise LoopyTypeError(f"{name} does not support type {dtype}")
 
-            from loopy.target.opencl import OpenCLTarget
-            if not isinstance(caller_kernel.target, OpenCLTarget):
-                # for CUDA, C Targets the name must be modified
-                if dtype == np.float64:
-                    pass  # fabs
-                elif dtype == np.float32:
-                    name = name + "f"  # fabsf
-                elif dtype == np.float128:  # pylint:disable=no-member
-                    name = name + "l"  # fabsl
-                else:
-                    raise LoopyTypeError("{} does not support type {}".format(name,
-                        dtype))
+            # for CUDA, C Targets the name must be modified
+            if dtype == np.float64:
+                pass  # fabs
+            elif dtype == np.float32:
+                name = name + "f"  # fabsf
+            elif dtype == np.float128:  # pylint:disable=no-member
+                name = name + "l"  # fabsl
+            else:
+                raise LoopyTypeError("{} does not support type {}".format(name,
+                    dtype))
 
             return (
                     self.copy(name_in_target=name,
@@ -521,9 +519,6 @@ class CMathCallable(ScalarCallable):
 
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 1:
-                    #FIXME: Do we need to raise here?:
-                    #   The pattern we generally follow is that if we don't find
-                    #   a function, then we just return None
                     raise LoopyError("%s can take only two arguments." % name)
 
             if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
@@ -542,17 +537,15 @@ class CMathCallable(ScalarCallable):
                 raise LoopyTypeError("%s does not support complex numbers")
 
             elif dtype.kind == "f":
-                from loopy.target.opencl import OpenCLTarget
-                if not isinstance(caller_kernel.target, OpenCLTarget):
-                    if dtype == np.float64:
-                        pass  # fmin
-                    elif dtype == np.float32:
-                        name = name + "f"  # fminf
-                    elif dtype == np.float128:  # pylint:disable=no-member
-                        name = name + "l"  # fminl
-                    else:
-                        raise LoopyTypeError("%s does not support type %s"
-                                             % (name, dtype))
+                if dtype == np.float64:
+                    pass  # fmin
+                elif dtype == np.float32:
+                    name = name + "f"  # fminf
+                elif dtype == np.float128:  # pylint:disable=no-member
+                    name = name + "l"  # fminl
+                else:
+                    raise LoopyTypeError("%s does not support type %s"
+                                         % (name, dtype))
             dtype = NumpyType(dtype)
             return (
                     self.copy(name_in_target=name,

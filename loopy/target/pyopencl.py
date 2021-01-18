@@ -201,7 +201,7 @@ class PyOpenCLCallable(ScalarCallable):
     Records information about the callables which are not covered by
     :class:`loopy.target.opencl.OpenCLCallable`
     """
-    def with_types(self, arg_id_to_dtype, caller_kernel, callables_table):
+    def with_types(self, arg_id_to_dtype, callables_table):
 
         name = self.name
 
@@ -816,7 +816,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
         from loopy.library.random123 import get_random123_callables
         callables = super().known_callables
         callables.update(get_pyopencl_callables())
-        callables.update(get_random123_callables())
+        callables.update(get_random123_callables(self.target))
         return callables
 
     def preamble_generators(self):

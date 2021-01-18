@@ -121,12 +121,9 @@ _CUDA_SPECIFIC_FUNCTIONS = {
 
 class CudaCallable(ScalarCallable):
 
-    def cuda_with_types(self, arg_id_to_dtype, caller_kernel,
-            callables_table):
+    def cuda_with_types(self, arg_id_to_dtype, callables_table):
 
         name = self.name
-
-        # FIXME: dot is not implemented yet.
 
         if name in _CUDA_SPECIFIC_FUNCTIONS:
             num_args = _CUDA_SPECIFIC_FUNCTIONS[name]

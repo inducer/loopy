@@ -451,23 +451,6 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         "for constant '%s'" % expr)
 
     def map_call(self, expr, type_context):
-
-        identifier_name = (
-                self.codegen_state.callables_table[expr.function.name].name)
-
-        from loopy.kernel.function_interface import ManglerCallable
-        if isinstance(self.codegen_state.callables_table[expr.function.name],
-                ManglerCallable):
-            from loopy.codegen import SeenFunction
-            in_knl_callable = (
-                    self.codegen_state.callables_table[
-                        expr.function.name])
-            mangle_result = in_knl_callable.mangle_result(self.kernel)
-            self.codegen_state.seen_functions.add(
-                    SeenFunction(identifier_name,
-                        mangle_result.target_name,
-                        mangle_result.arg_dtypes))
-
         return (
                 self.codegen_state.callables_table[
                     expr.function.name].emit_call(
@@ -666,7 +649,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 from loopy.codegen import SeenFunction
                 clbl = self.codegen_state.ast_builder.known_callables["pow"]
                 clbl = clbl.with_types({0: tgt_dtype, 1: exponent_dtype},
-                        self.kernel, self.codegen_state.callables_table)[0]
+                        self.codegen_state.callables_table)[0]
                 self.codegen_state.seen_functions.add(
                         SeenFunction(
                             clbl.name, clbl.name_in_target,
