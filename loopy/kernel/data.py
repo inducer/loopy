@@ -869,6 +869,22 @@ class Iname(Taggable):
 
         return type(self)(name=name, tags=tags)
 
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+        key_builder.rec(key_hash, type(self).__name__.encode("utf-8"))
+        key_builder.rec(key_hash, self.name)
+        key_builder.rec(key_hash, self.tags)
+
+    def __lt__(self, other):
+        # Only present to allow comparing Inames in
+        # :meth:`pytools.persistent_dict.KeyBuilder`.
+        if isinstance(other, Iname):
+            return self.__hash__() < other.__hash__()
+        else:
+            raise TypeError(f"Can only compare with other Inames, got {type(other)}")
+
 # }}}
 
 # vim: foldmethod=marker

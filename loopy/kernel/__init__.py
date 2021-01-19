@@ -1539,7 +1539,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             "assumptions",
             "local_sizes",
             "temporary_variables",
-            "iname_to_tags",
+            "inames",
             "substitutions",
             "iname_slab_increments",
             "loop_priority",
