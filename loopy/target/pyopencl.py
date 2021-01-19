@@ -490,8 +490,7 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
 
     fp_arg_count = 0
 
-    from genpy import (
-            Comment, Line, If, Raise, Assign, Statement as S, Suite)
+    from genpy import Line, If, Raise, Statement as S, Suite
 
     result = []
     gen = result.append
