@@ -40,7 +40,7 @@ from loopy.library.function import (
 
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.diagnostic import StaticValueFindingError
-from loopy.kernel.data import filter_iname_tags_by_type
+from loopy.kernel.data import filter_iname_tags_by_type, Iname
 from warnings import warn
 
 
@@ -236,6 +236,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         A subclass of :class:`loopy.TargetBase`.
 
+    .. attribute:: inames
+
+        An instance of :class:`frozenset` of :class:`loopy.kernel.data.Iname`.
+
     .. automethod:: __call__
     .. automethod:: copy
     """
@@ -251,6 +255,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             assumptions=None,
             local_sizes=None,
             temporary_variables=None,
+            inames=None,
             iname_to_tags=None,
             substitutions=None,
             function_manglers=None,
@@ -288,8 +293,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             local_sizes = {}
         if temporary_variables is None:
             temporary_variables = {}
-        if iname_to_tags is None:
-            iname_to_tags = {}
         if substitutions is None:
             substitutions = {}
         if function_manglers is None:
@@ -313,6 +316,19 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if cache_manager is None:
             from loopy.kernel.tools import SetOperationCacheManager
             cache_manager = SetOperationCacheManager()
+
+        inames_from_domains = set().union(*
+                (set(dom.get_var_names(dim_type.set)) for dom in domains))
+
+        if inames is None:
+            inames = frozenset(Iname(name) for name in inames_from_domains)
+        else:
+            assert set(iname.name for iname in inames) == inames_from_domains
+
+        if iname_to_tags is not None:
+            inames = frozenset(
+                    iname.copy(tags=iname_to_tags.get(iname.name, frozenset()))
+                    for iname in inames)
 
         # }}}
 
@@ -370,14 +386,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         elif linearization is not None:
             schedule = linearization
 
-        from collections import defaultdict
-        assert not isinstance(iname_to_tags, defaultdict)
-
-        for iname, tags in iname_to_tags.items():
-            # don't tolerate empty sets
-            assert tags
-            assert isinstance(tags, frozenset)
-
         assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
 
@@ -395,7 +403,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 silenced_warnings=silenced_warnings,
                 temporary_variables=temporary_variables,
                 local_sizes=local_sizes,
-                iname_to_tags=iname_to_tags,
+                inames=inames,
                 substitutions=substitutions,
                 cache_manager=cache_manager,
                 applied_iname_rewrites=applied_iname_rewrites,
@@ -744,6 +752,12 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     # {{{ iname wrangling
 
+    @property
+    @memoize_method
+    def iname_to_tags(self):
+        return {iname.name: iname.tags
+                for iname in self.inames if iname.tags}
+
     def iname_tags(self, iname):
         return self.iname_to_tags.get(iname, frozenset())
 
@@ -766,11 +780,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     @memoize_method
     def all_inames(self):
-        result = set()
-        for dom in self.domains:
-            result.update(
-                    intern(n) for n in dom.get_var_names(dim_type.set))
-        return frozenset(result)
+        """
+        Returns a :class:`frozenset` of the names of all the inames in the kernel.
+        """
+        return frozenset(iname.name for iname in self.inames)
 
     @memoize_method
     def all_params(self):
@@ -1600,6 +1613,14 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return not self.__eq__(other)
 
     # }}}
+
+    def copy(self, **kwargs):
+        if "domains" in kwargs:
+            kwargs["inames"] = kwargs.get("inames")
+            kwargs["iname_to_tags"] = kwargs.get("iname_to_tags",
+                                                 self.iname_to_tags)
+
+        return super().copy(**kwargs)
 
 # }}}
 

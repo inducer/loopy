@@ -28,6 +28,7 @@ from sys import intern
 import numpy as np  # noqa
 from pytools import ImmutableRecord
 from pytools.tag import Taggable
+from pytools.tag import UniqueTag as UniqueTagBase
 from loopy.kernel.array import ArrayBase
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (  # noqa
@@ -65,6 +66,8 @@ __doc__ = """
 .. autoclass:: VectorizeTag
 
 .. autoclass:: UnrollTag
+
+.. autoclass:: Iname
 """
 
 
@@ -108,7 +111,7 @@ def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
     return result
 
 
-class IndexTag(ImmutableRecord):
+class IndexTag(ImmutableRecord, UniqueTagBase):
     __slots__ = []
 
     def __hash__(self):
@@ -838,6 +841,33 @@ class CallMangleInfo(ImmutableRecord):
                 target_name=target_name,
                 result_dtypes=result_dtypes,
                 arg_dtypes=arg_dtypes)
+
+# }}}
+
+
+# {{{ Iname class
+
+class Iname(Taggable):
+    """
+    Records an iname in a :class:`~loopy.LoopKernel`.
+
+    :arg name: An instance of :class:`str`, denoting the iname's name.
+    :arg tags: An instance of :class:`frozenset` of
+        :class:`pytools.tag.Tag`.
+    """
+    def __init__(self, name, tags=frozenset()):
+        super().__init__(tags=tags)
+
+        assert isinstance(name, str)
+        self.name = name
+
+    def copy(self, *, name=None, tags=None):
+        if name is None:
+            name = self.name
+        if tags is None:
+            tags = self.tags
+
+        return type(self)(name=name, tags=tags)
 
 # }}}
 
