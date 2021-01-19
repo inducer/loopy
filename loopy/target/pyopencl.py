@@ -292,6 +292,12 @@ class PyOpenCLTarget(OpenCLTarget):
         super().__init__(
                 atomics_flavor=atomics_flavor)
 
+        import pyopencl.version
+        if pyopencl.version.VERSION < (2021, 1):
+            raise RuntimeError("The version of loopy you have installed "
+                    "generates invoker code that requires PyOpenCL 2021.1 "
+                    "or newer.")
+
         self.device = device
         self.pyopencl_module_name = pyopencl_module_name
 
@@ -490,6 +496,9 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
     result = []
     gen = result.append
 
+    cl_arg_indices = []
+    cl_args = []
+
     for arg_idx, idi in enumerate(implemented_data_info):
         arg_idx_to_cl_arg_idx[arg_idx] = cl_arg_idx
 
@@ -501,16 +510,15 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
 
             continue
 
-        gen(Comment("{{{ process %s" % idi.name))
-        gen(Line())
-
         if not options.skip_arg_checks:
             gen(If("%s is None" % idi.name,
                 Raise('RuntimeError("input argument \'{name}\' '
                         'must be supplied")'.format(name=idi.name))))
 
         if idi.dtype.is_composite():
-            gen(S("_lpy_knl.set_arg(%d, %s)" % (cl_arg_idx, idi.name)))
+            cl_arg_indices.append(cl_arg_idx)
+            cl_args.append(f"{idi.name}")
+
             cl_arg_idx += 1
 
         elif idi.dtype.is_complex():
@@ -535,32 +543,18 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
             if (work_around_arg_count_bug
                     and dtype.numpy_dtype == np.complex128
                     and fp_arg_count + 2 <= 8):
-                gen(Assign(
-                    "_lpy_buf",
-                    "_lpy_pack('{arg_char}', {arg_var}.real)"
-                    .format(arg_char=arg_char, arg_var=idi.name)))
-                gen(S(
-                    "_lpy_knl.set_arg({cl_arg_idx}, _lpy_buf)"
-                    .format(cl_arg_idx=cl_arg_idx)))
+                cl_arg_indices.append(cl_arg_idx)
+                cl_args.append(f"_lpy_pack('{arg_char}', {idi.name}.real)")
                 cl_arg_idx += 1
 
-                gen(Assign(
-                    "_lpy_buf",
-                    "_lpy_pack('{arg_char}', {arg_var}.imag)"
-                    .format(arg_char=arg_char, arg_var=idi.name)))
-                gen(S(
-                        "_lpy_knl.set_arg({cl_arg_idx}, _lpy_buf)"
-                        .format(cl_arg_idx=cl_arg_idx)))
+                cl_arg_indices.append(cl_arg_idx)
+                cl_args.append(f"_lpy_pack('{arg_char}', {idi.name}.imag)")
                 cl_arg_idx += 1
             else:
-                gen(Assign(
-                    "_lpy_buf",
-                    "_lpy_pack('{arg_char}{arg_char}', "
-                    "{arg_var}.real, {arg_var}.imag)"
-                    .format(arg_char=arg_char, arg_var=idi.name)))
-                gen(S(
-                    "_lpy_knl.set_arg({cl_arg_idx}, _lpy_buf)"
-                    .format(cl_arg_idx=cl_arg_idx)))
+                cl_arg_indices.append(cl_arg_idx)
+                cl_args.append(
+                    f"_lpy_pack('{arg_char}{arg_char}', "
+                    f"{idi.name}.real, {idi.name}.imag)")
                 cl_arg_idx += 1
 
             fp_arg_count += 2
@@ -569,9 +563,8 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
             if idi.dtype.dtype.kind == "f":
                 fp_arg_count += 1
 
-            gen(S(
-                "_lpy_knl._set_arg_buf(%d, _lpy_pack('%s', %s))"
-                % (cl_arg_idx, idi.dtype.dtype.char, idi.name)))
+            cl_arg_indices.append(cl_arg_idx)
+            cl_args.append(f"_lpy_pack('{idi.dtype.dtype.char}', {idi.name})")
 
             cl_arg_idx += 1
 
@@ -579,10 +572,14 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
             raise LoopyError("do not know how to pass argument of type '%s'"
                     % idi.dtype)
 
-        gen(Line())
+    if cl_arg_indices:
+        assert len(cl_arg_indices) == len(cl_args)
 
-        gen(Comment("}}}"))
         gen(Line())
+        gen(S(f"_lpy_knl._set_arg_buf_multi("
+            f"({', '.join(str(i) for i in cl_arg_indices)},),"
+            f"({', '.join(cl_args)},)"
+            ")"))
 
     return Suite(result), arg_idx_to_cl_arg_idx, cl_arg_idx
 
@@ -596,13 +593,20 @@ def generate_array_arg_setup(kernel, implemented_data_info, arg_idx_to_cl_arg_id
     result = []
     gen = result.append
 
+    cl_arg_indices = []
+    cl_args = []
     for arg_idx, arg in enumerate(implemented_data_info):
-        if not issubclass(arg.arg_class, ArrayBase):
-            continue
+        if issubclass(arg.arg_class, ArrayBase):
+            cl_arg_indices.append(arg_idx_to_cl_arg_idx[arg_idx])
+            cl_args.append(arg.name)
 
-        cl_arg_idx = arg_idx_to_cl_arg_idx[arg_idx]
+    if cl_arg_indices:
+        assert len(cl_arg_indices) == len(cl_args)
 
-        gen(S("_lpy_knl.set_arg(%d, %s)" % (cl_arg_idx, arg.name)))
+        gen(S(f"_lpy_knl._set_arg_multi("
+            f"({', '.join(str(i) for i in cl_arg_indices)},),"
+            f"({', '.join(cl_args)},)"
+            ")"))
 
     return Suite(result)
 
