@@ -490,12 +490,24 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
 
     fp_arg_count = 0
 
-    from genpy import Line, If, Raise, Statement as S, Suite
+    from genpy import If, Raise, Statement as S, Suite
 
     result = []
     gen = result.append
 
-    cl_indices_and_args = []
+    buf_indices_and_args = []
+    buf_pack_indices_and_args = []
+
+    from pyopencl.invoker import BUF_PACK_TYPECHARS
+
+    def add_buf_arg(arg_idx, typechar, expr_str):
+        if typechar in BUF_PACK_TYPECHARS:
+            buf_pack_indices_and_args.append(cl_arg_idx)
+            buf_pack_indices_and_args.append(repr(typechar.encode()))
+            buf_pack_indices_and_args.append(expr_str)
+        else:
+            buf_indices_and_args.append(cl_arg_idx)
+            buf_indices_and_args.append(f"pack('{typechar}', {expr_str})")
 
     for arg_idx, idi in enumerate(implemented_data_info):
         arg_idx_to_cl_arg_idx[arg_idx] = cl_arg_idx
@@ -514,8 +526,8 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
                         'must be supplied")'.format(name=idi.name))))
 
         if idi.dtype.is_composite():
-            cl_indices_and_args.append(cl_arg_idx)
-            cl_indices_and_args.append(f"{idi.name}")
+            buf_indices_and_args.append(cl_arg_idx)
+            buf_indices_and_args.append(f"{idi.name}")
 
             cl_arg_idx += 1
 
@@ -541,18 +553,14 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
             if (work_around_arg_count_bug
                     and dtype.numpy_dtype == np.complex128
                     and fp_arg_count + 2 <= 8):
-                cl_indices_and_args.append(cl_arg_idx)
-                cl_indices_and_args.append(
-                        f"_lpy_pack('{arg_char}', {idi.name}.real)")
+                add_buf_arg(cl_arg_idx, arg_char, f"{idi.name}.real")
                 cl_arg_idx += 1
 
-                cl_indices_and_args.append(cl_arg_idx)
-                cl_indices_and_args.append(
-                        f"_lpy_pack('{arg_char}', {idi.name}.imag)")
+                add_buf_arg(cl_arg_idx, arg_char, f"{idi.name}.imag")
                 cl_arg_idx += 1
             else:
-                cl_indices_and_args.append(cl_arg_idx)
-                cl_indices_and_args.append(
+                buf_indices_and_args.append(cl_arg_idx)
+                buf_indices_and_args.append(
                     f"_lpy_pack('{arg_char}{arg_char}', "
                     f"{idi.name}.real, {idi.name}.imag)")
                 cl_arg_idx += 1
@@ -563,23 +571,22 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
             if idi.dtype.dtype.kind == "f":
                 fp_arg_count += 1
 
-            cl_indices_and_args.append(cl_arg_idx)
-            cl_indices_and_args.append(
-                    f"_lpy_pack('{idi.dtype.dtype.char}', {idi.name})")
-
+            add_buf_arg(cl_arg_idx, idi.dtype.dtype.char, idi.name)
             cl_arg_idx += 1
 
         else:
             raise LoopyError("do not know how to pass argument of type '%s'"
                     % idi.dtype)
 
-    if cl_indices_and_args:
-        assert len(cl_indices_and_args) % 2 == 0
-
-        gen(Line())
-        gen(S(f"_lpy_knl._set_arg_buf_multi("
-            f"({', '.join(str(i) for i in cl_indices_and_args)},)"
-            ")"))
+    for arg_kind, args_and_indices, entry_length in [
+            ("_buf", buf_indices_and_args, 2),
+            ("_buf_pack", buf_pack_indices_and_args, 3),
+            ]:
+        assert len(args_and_indices) % 2 == 0
+        if args_and_indices:
+            gen(S(f"_lpy_knl._set_arg{arg_kind}_multi("
+                    f"({', '.join(str(i) for i in args_and_indices)},), "
+                    ")"))
 
     return Suite(result), arg_idx_to_cl_arg_idx, cl_arg_idx
 
