@@ -502,11 +502,11 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
 
     def add_buf_arg(arg_idx, typechar, expr_str):
         if typechar in BUF_PACK_TYPECHARS:
-            buf_pack_indices_and_args.append(cl_arg_idx)
+            buf_pack_indices_and_args.append(arg_idx)
             buf_pack_indices_and_args.append(repr(typechar.encode()))
             buf_pack_indices_and_args.append(expr_str)
         else:
-            buf_indices_and_args.append(cl_arg_idx)
+            buf_indices_and_args.append(arg_idx)
             buf_indices_and_args.append(f"pack('{typechar}', {expr_str})")
 
     for arg_idx, idi in enumerate(implemented_data_info):
