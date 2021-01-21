@@ -2187,7 +2187,7 @@ class AccessRangeOverlapChecker:
         arm = BatchedAccessRangeMapper(self.kernel, self.vars, overestimate=True)
 
         for expr in exprs:
-            arm(expr, self.kernel.insn_inames(insn))
+            arm(expr, insn.within_inames)
 
         for name, arange in arm.access_ranges.items():
             if arm.bad_subscripts[name]:

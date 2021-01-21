@@ -142,6 +142,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         gen.add_to_preamble("import pyopencl as _lpy_cl")
         gen.add_to_preamble("import pyopencl.array as _lpy_cl_array")
         gen.add_to_preamble("import pyopencl.tools as _lpy_cl_tools")
+        gen.add_to_preamble("from struct import pack as _lpy_pack")
 
     def initialize_system_args(self, gen):
         """
