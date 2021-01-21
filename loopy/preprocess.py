@@ -2127,7 +2127,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
             caller_arg = self.caller_kernel.temporary_variables.get(dep, caller_arg)
 
             if not (isinstance(caller_arg, ValueArg) or (isinstance(caller_arg,
-                    ArrayBase) and arg.shape == ())):
+                    ArrayBase) and caller_arg.shape == ())):
                 raise NotImplementedError(f"Obtained '{dep}' as a dependency for"
                         f" call '{expr.function.name}' which is not a scalar.")
 
