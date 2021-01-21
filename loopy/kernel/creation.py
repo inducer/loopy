@@ -1887,7 +1887,6 @@ class SliceToInameReplacer(IdentityMapper):
 
     def map_subscript(self, expr):
         subscript_iname_bounds = {}
-        self.subarray_ref_bounds.append(subscript_iname_bounds)
 
         new_index = []
         swept_inames = []
@@ -1915,6 +1914,7 @@ class SliceToInameReplacer(IdentityMapper):
                 new_index.append(index)
 
         if swept_inames:
+            self.subarray_ref_bounds.append(subscript_iname_bounds)
             result = SubArrayRef(tuple(swept_inames), Subscript(
                 self.rec(expr.aggregate),
                 self.rec(tuple(new_index))))
