@@ -40,7 +40,8 @@ class CodegenOperationCacheManager(ImmutableRecord):
     def __init__(self, kernel):
         super().__init__()
         super().__setattr__("kernel", kernel)
-        self.find_activate_inames_at_cache = [frozenset()]
+        self._find_active_inames_at_cache = []
+        self._get_callkernel_index_cache = []
 
     def __setattr__(self, key, val):
         if key == "kernel":
@@ -51,29 +52,37 @@ class CodegenOperationCacheManager(ImmutableRecord):
 
         super().__setattr__(key, val)
 
-    def find_active_inames_at(self, sched_index):
+    def _forward_cached_method(self, sched_index, method, cache):
+        last_index = len(self.find_activate_inames_at_cache)
+        for sched_index_var in range(last_index, sched_index + 1):
+            res = method(sched_index_var)
+            if len(cache) == sched_index_var:
+                cache.append(res)
+        return cache[sched_index]
+
+    def find_activate_inames_at(self, sched_index):
         """
         Returns a :class:`frozenset` of active inames at the point just before
         *sched_index*.
         """
-        if len(self.find_activate_inames_at_cache) > sched_index:
-            return self.find_activate_inames_at_cache[sched_index]
+        return self._forward_cached_method(sched_index,
+                    self._find_active_inames_at,
+                    self._find_active_inames_at_cache)
 
-        last_index = len(self.find_activate_inames_at_cache)
-        for sched_index_var in range(last_index, sched_index+1):
-            sched_item = self.kernel.schedule[sched_index_var-1]
-            if isinstance(sched_item, EnterLoop):
-                res = (self.find_active_inames_at_cache[sched_index_var-1]
-                        | frozenset([sched_item.iname]))
-            elif isinstance(sched_item, LeaveLoop):
-                assert sched_item.iname in \
-                    self.find_active_inames_at_cache[sched_index_var-1]
-                res = (self.find_active_inames_at_cache[sched_index_var-1]
-                        - frozenset([sched_item.iname]))
-            else:
-                res = self.find_active_inames_at_cache[sched_index_var-1]
-            self.find_activate_inames_at_cache.append(res)
-        return self.find_activate_inames_at_cache[sched_index]
+    def _find_active_inames_at(self, sched_index):
+        if sched_index == 0:
+            return frozenset()
+
+        sched_item = self.kernel.schedule[sched_index-1]
+        if isinstance(sched_item, EnterLoop):
+            return (self.find_active_inames_at(sched_index-1)
+                    | frozenset([sched_item.iname]))
+        elif isinstance(sched_item, LeaveLoop):
+            assert sched_item.iname in self.find_active_inames_at(sched_index-1)
+            return (self.find_active_inames_at(sched_index-1)
+                    - frozenset([sched_item.iname]))
+        else:
+            return self.find_active_inames_at(sched_index-1)
 
     @memoize_method
     def has_barrier_within(self, sched_index):
@@ -94,13 +103,17 @@ class CodegenOperationCacheManager(ImmutableRecord):
         else:
             return False
 
-    @memoize_method
     def get_callkernel_index(self, sched_index):
         """
         Returns index of :class:`loopy.schedule.CallKernel` containing the point
         just before *sched_index*. Return *None* if the point is
         not a part of any sub-kernel.
         """
+        return self._forward_cached_method(sched_index,
+                    self._get_callkernel_index,
+                    self._get_callkernel_index_cache)
+
+    def _get_callkernel_index(self, sched_index):
         if sched_index == 0:
             return None
 
