@@ -60,7 +60,7 @@ class CodegenOperationCacheManager(ImmutableRecord):
                 cache.append(res)
         return cache[sched_index]
 
-    def find_activate_inames_at(self, sched_index):
+    def find_active_inames_at(self, sched_index):
         """
         Returns a :class:`frozenset` of active inames at the point just before
         *sched_index*.
