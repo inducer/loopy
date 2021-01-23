@@ -40,6 +40,7 @@ class CodegenOperationCacheManager(ImmutableRecord):
     def __init__(self, kernel):
         super().__init__()
         super().__setattr__("kernel", kernel)
+        self.find_activate_inames_at_cache = [frozenset()]
 
     def __setattr__(self, key, val):
         if key == "kernel":
@@ -50,25 +51,29 @@ class CodegenOperationCacheManager(ImmutableRecord):
 
         super().__setattr__(key, val)
 
-    @memoize_method
     def find_active_inames_at(self, sched_index):
         """
         Returns a :class:`frozenset` of active inames at the point just before
         *sched_index*.
         """
-        if sched_index == 0:
-            return frozenset()
+        if len(self.find_activate_inames_at_cache) > sched_index:
+            return self.find_activate_inames_at_cache[sched_index]
 
-        sched_item = self.kernel.schedule[sched_index-1]
-        if isinstance(sched_item, EnterLoop):
-            return (self.find_active_inames_at(sched_index-1)
-                    | frozenset([sched_item.iname]))
-        elif isinstance(sched_item, LeaveLoop):
-            assert sched_item.iname in self.find_active_inames_at(sched_index-1)
-            return (self.find_active_inames_at(sched_index-1)
-                    - frozenset([sched_item.iname]))
-        else:
-            return self.find_active_inames_at(sched_index-1)
+        last_index = len(self.find_activate_inames_at_cache)
+        for sched_index_var in range(last_index, sched_index+1):
+            sched_item = self.kernel.schedule[sched_index_var-1]
+            if isinstance(sched_item, EnterLoop):
+                res = (self.find_active_inames_at_cache[sched_index_var-1]
+                        | frozenset([sched_item.iname]))
+            elif isinstance(sched_item, LeaveLoop):
+                assert sched_item.iname in \
+                    self.find_active_inames_at_cache[sched_index_var-1]
+                res = (self.find_active_inames_at_cache[sched_index_var-1]
+                        - frozenset([sched_item.iname]))
+            else:
+                res = self.find_active_inames_at_cache[sched_index_var-1]
+            self.find_activate_inames_at_cache.append(res)
+        return self.find_activate_inames_at_cache[sched_index]
 
     @memoize_method
     def has_barrier_within(self, sched_index):
