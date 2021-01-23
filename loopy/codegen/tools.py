@@ -53,8 +53,7 @@ class CodegenOperationCacheManager(ImmutableRecord):
         super().__setattr__(key, val)
 
     def _forward_cached_method(self, sched_index, method, cache):
-        last_index = len(self.find_activate_inames_at_cache)
-        for sched_index_var in range(last_index, sched_index + 1):
+        for sched_index_var in range(len(cache), sched_index + 1):
             res = method(sched_index_var)
             if len(cache) == sched_index_var:
                 cache.append(res)
