@@ -118,7 +118,8 @@ class ExpressionToPythonMapper(StringifyMapper):
         self.codegen_state.seen_functions.add(
                 SeenFunction(identifier,
                     mangle_result.target_name,
-                    mangle_result.arg_dtypes or par_dtypes))
+                    mangle_result.arg_dtypes or par_dtypes,
+                    mangle_result.result_dtypes))
 
         return "{}({})".format(mangle_result.target_name, ", ".join(str_parameters))
 

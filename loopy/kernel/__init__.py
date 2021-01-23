@@ -824,7 +824,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         result = {
                 iname: set() for iname in self.all_inames()}
         for insn in self.instructions:
-            for iname in self.insn_inames(insn):
+            for iname in insn.within_inames:
                 result[iname].add(insn.id)
 
         return result
@@ -1561,10 +1561,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         for field_name in self.hash_fields:
             key_builder.rec(key_hash, getattr(self, field_name))
 
+    @memoize_method
     def __hash__(self):
         from loopy.tools import LoopyKeyBuilder
-        from pytools.persistent_dict import new_hash
-        key_hash = new_hash()
+        import hashlib
+        key_hash = hashlib.sha256()
         self.update_persistent_hash(key_hash, LoopyKeyBuilder())
         return hash(key_hash.digest())
 

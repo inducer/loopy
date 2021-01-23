@@ -148,13 +148,18 @@ class SeenFunction(ImmutableRecord):
     .. attribute:: arg_dtypes
 
         a tuple of arg dtypes
+
+    .. attribute:: result_dtypes
+
+        a tuple of result dtypes
     """
 
-    def __init__(self, name, c_name, arg_dtypes):
+    def __init__(self, name, c_name, arg_dtypes, result_dtypes):
         ImmutableRecord.__init__(self,
                 name=name,
                 c_name=c_name,
-                arg_dtypes=arg_dtypes)
+                arg_dtypes=arg_dtypes,
+                result_dtypes=result_dtypes)
 
 
 class CodeGenerationState:
