@@ -1045,9 +1045,10 @@ def generate_loop_schedules_internal(
                     sched_state.active_group_counts.keys()):
                 new_insn_ids_to_try = None
 
-            new_toposorted_insns = sched_state.insns_in_topologically_sorted_order[:]
+            # explicitly use id to compare to avoid performance issues like #199
             new_toposorted_insns = \
-                list(filter(lambda x: x.id != insn.id, new_toposorted_insns))
+                list(filter(lambda x: x.id != insn.id,
+                            sched_state.insns_in_topologically_sorted_order))
 
             # }}}
 
