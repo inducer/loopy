@@ -1046,7 +1046,8 @@ def generate_loop_schedules_internal(
                 new_insn_ids_to_try = None
 
             new_toposorted_insns = sched_state.insns_in_topologically_sorted_order[:]
-            new_toposorted_insns.remove(insn)
+            new_toposorted_insns = \
+                list(filter(lambda x: x.id != insn.id, new_toposorted_insns))
 
             # }}}
 
