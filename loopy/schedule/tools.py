@@ -21,7 +21,9 @@ THE SOFTWARE.
 """
 
 from loopy.kernel.data import AddressSpace
-
+import sys
+import platform
+from collections import OrderedDict
 
 # {{{ block boundary finder
 
@@ -104,3 +106,9 @@ def add_extra_args_to_schedule(kernel):
     return kernel.copy(schedule=new_schedule)
 
 # }}}
+
+if platform.python_implementation() == "CPython" or \
+        sys.version_info[:2] >= (3, 7):
+    ordered_dict_class = dict
+else:
+    ordered_dict_class = OrderedDict

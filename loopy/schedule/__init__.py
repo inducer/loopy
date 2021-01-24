@@ -643,8 +643,8 @@ class SchedulerState(ImmutableRecord):
 
     .. attribute:: insns_in_topologically_sorted_order
 
-        A list of loopy :class:`Instruction` objects in topologically sorted
-        order with instruction priorities as tie breaker.
+        An ordered dictionary of loopy :class:`Instruction` objects in
+        topologically sorted order with instruction priorities as tie breaker.
     """
 
     @property
@@ -659,6 +659,7 @@ class SchedulerState(ImmutableRecord):
 
 def get_insns_in_topologically_sorted_order(kernel):
     from pytools.graph import compute_topological_order
+    from loopy.schedule.tools import ordered_dict_class
 
     rev_dep_map = {insn.id: set() for insn in kernel.instructions}
     for insn in kernel.instructions:
@@ -672,7 +673,7 @@ def get_insns_in_topologically_sorted_order(kernel):
         return (-kernel.id_to_insn[insn_id].priority, insn.id)
 
     ids = compute_topological_order(rev_dep_map, key=key)
-    return [kernel.id_to_insn[insn_id] for insn_id in ids]
+    return ordered_dict_class((insn_id, kernel.id_to_insn[insn_id]) for insn_id in ids)
 
 
 # {{{ schedule_as_many_run_insns_as_possible
@@ -707,7 +708,7 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
 
     preschedule = sched_state.preschedule[:]
     have_inames = template_insn.within_inames - sched_state.parallel_inames
-    toposorted_insns = sched_state.insns_in_topologically_sorted_order
+    toposorted_insns = list(sched_state.insns_in_topologically_sorted_order.values())
 
     # {{{ helpers
 
@@ -738,7 +739,8 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
     ignored_unscheduled_insn_ids = set()
 
     # left_over_toposorted_insns: unscheduled insns in a topologically sorted order
-    left_over_toposorted_insns = []
+    from loopy.schedule.tools import ordered_dict_class
+    left_over_toposorted_insns = ordered_dict_class()
 
     for i, insn in enumerate(toposorted_insns):
         assert insn.id not in sched_state.scheduled_insn_ids
@@ -755,7 +757,7 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
                     newly_scheduled_insn_ids.append(insn.id)
                     continue
 
-        left_over_toposorted_insns.append(insn)
+        left_over_toposorted_insns[insn.id] = insn
         ignored_unscheduled_insn_ids.add(insn.id)
 
         # HEURISTIC: To avoid quadratic operation complexity we bail out of
@@ -768,7 +770,8 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
         # - No instruction in toposorted_insns is reachable due to instructions
         #   that were ignored.
         if len(ignored_unscheduled_insn_ids) > 5:
-            left_over_toposorted_insns.extend(toposorted_insns[i+1:])
+            for tmp_insn in toposorted_insns[i+1:]:
+                left_over_toposorted_insns[tmp_insn.id] = tmp_insn
             break
 
     sched_items = tuple(RunInstruction(insn_id=insn_id) for insn_id in
@@ -1045,9 +1048,8 @@ def generate_loop_schedules_internal(
                     sched_state.active_group_counts.keys()):
                 new_insn_ids_to_try = None
 
-            # explicitly use id to compare to avoid performance issues like #199
-            new_toposorted_insns = [x for x in
-                sched_state.insns_in_topologically_sorted_order if x.id != insn.id]
+            new_toposorted_insns = sched_state.insns_in_topologically_sorted_order.copy()
+            del new_toposorted_insns[insn.id]
 
             # }}}
 
