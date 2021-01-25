@@ -696,9 +696,8 @@ def test_inlining_with_callee_domain_param(ctx_factory):
             "{[i]: 0<=i<n}",
             """
             y[i] = 2.0
-            """, [lp.ValueArg("n"), ...],
-            name="fill2",
-            lang_version=(2018, 2))
+            """,
+            name="fill2")
 
     caller = lp.make_kernel(
             "{[i]: 0<=i<10}",
