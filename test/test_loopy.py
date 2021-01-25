@@ -2920,6 +2920,123 @@ def test_access_check_with_conditionals():
         lp.generate_code_v2(legal_but_nonaffine_condition_knl)
 
 
+def test_access_check_with_insn_predicates():
+    knl = lp.make_kernel(
+            "{[i]: 0<i<10}",
+            """
+            if i < 4
+              y[i] = 2*x[i]
+            end
+            """, [lp.GlobalArg("x", dtype=float, shape=(4,)), ...])
+
+    print(lp.generate_code_v2(knl).device_code())
+
+
+def test_conditional_access_range_with_parameters(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            ["{[i]: 0 <= i < 10}",
+             "{[j]: 0 <= j < problem_size+2}"],
+            """
+            if i < 8 and j < problem_size
+                tmp[j, i] = tmp[j, i] + 1
+            end
+           """,
+            [lp.GlobalArg("tmp", shape=("problem_size", 8,), dtype=np.int64),
+             lp.ValueArg("problem_size", dtype=np.int64)])
+
+    assert np.array_equal(knl(queue, tmp=np.arange(80).reshape((10, 8)),
+                              problem_size=10)[1][0], np.arange(1, 81).reshape(
+                                (10, 8)))
+
+    # test a conditional that's only _half_ data-dependent to ensure the other
+    # half works
+    knl = lp.make_kernel(
+            ["{[i]: 0 <= i < 10}",
+             "{[j]: 0 <= j < problem_size}"],
+            """
+            if i < 8 and (j + offset) < problem_size
+                tmp[j, i] = tmp[j, i] + 1
+            end
+           """,
+            [lp.GlobalArg("tmp", shape=("problem_size", 8,), dtype=np.int64),
+             lp.ValueArg("problem_size", dtype=np.int64),
+             lp.ValueArg("offset", dtype=np.int64)])
+
+    assert np.array_equal(knl(queue, tmp=np.arange(80).reshape((10, 8)),
+                              problem_size=10,
+                              offset=0)[1][0], np.arange(1, 81).reshape(
+                                (10, 8)))
+
+
+def test_split_iname_within(ctx_factory):
+    # https://github.com/inducer/loopy/issues/163
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{ [i, j]: 0<=i<n and 0<=j<n }",
+        """
+        x[i, j] = 3 {id=a}
+        y[i, j] = 2 * y[i, j] {id=b}
+        """,
+        options=dict(write_code=True))
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "j", 4,
+                         outer_tag="g.0", inner_tag="l.0",
+                         within="id:a")
+    knl = lp.split_iname(knl, "i", 4,
+                         outer_tag="g.0", inner_tag="l.0",
+                         within="id:b")
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+
+
+@pytest.mark.parametrize("base_type,exp_type", [(np.int32, np.uint32), (np.int64,
+    np.uint64), (np.int, np.float), (np.float, np.int), (np.int, np.int),
+    (np.float32, np.float64), (np.float64, np.float32)])
+def test_pow(ctx_factory, base_type, exp_type):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    def _make_random_np_array(shape, dtype):
+        from numpy.random import default_rng
+        rng = default_rng(0)
+        if isinstance(shape, int):
+            shape = (shape,)
+
+        dtype = np.dtype(dtype)
+        if dtype.kind in ["u", "i"]:
+            low = 0  # numpy might trigger error for -ve int exponents
+            high = 6  # choosing numbers to avoid overflow (undefined behavior)
+            return rng.integers(low=low, high=high, size=shape, dtype=dtype)
+        elif dtype.kind == "f":
+            return rng.random(*shape).astype(dtype)
+        else:
+            raise NotImplementedError()
+
+    base = _make_random_np_array(10, base_type)
+    power = _make_random_np_array(10, exp_type)
+    expected_result = base ** power
+
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            """
+            res[i] = base[i] ** power[i]
+            """)
+
+    knl = lp.add_dtypes(knl, {"base": base_type, "power": exp_type})
+
+    evt, (result,) = knl(queue, base=base, power=power)
+
+    assert result.dtype == expected_result.dtype
+
+    np.testing.assert_allclose(expected_result, result)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

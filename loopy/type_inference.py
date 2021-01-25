@@ -216,8 +216,12 @@ class TypeInferenceMapper(CombineMapper):
             # Numpy types are sized
             return [NumpyType(np.dtype(type(expr)))]
         elif dt.kind == "f":
-            # deduce the smaller type by default
-            return [NumpyType(np.dtype(np.float32))]
+            if np.float32(expr) == np.float64(expr):
+                # No precision is lost by 'guessing' single precision, use that.
+                # This at least covers simple cases like '1j'.
+                return [NumpyType(np.dtype(np.float32))]
+
+            return [NumpyType(np.dtype(np.float64))]
         elif dt.kind == "c":
             if np.complex64(expr) == np.complex128(expr):
                 # (COMPLEX_GUESS_LOGIC)

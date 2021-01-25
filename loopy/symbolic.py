@@ -1002,20 +1002,77 @@ class RuleAwareIdentityMapper(IdentityMapper):
                         lambda expr: self(expr, kernel, insn)))
                 for insn in kernel.instructions]
 
-        return kernel.copy(instructions=new_insns)
+        from functools import partial
+
+        non_insn_self = partial(self, kernel=kernel, insn=None)
+
+        from loopy.kernel.array import ArrayBase
+
+        # {{{ args
+
+        new_args = [
+                arg.map_exprs(non_insn_self) if isinstance(arg, ArrayBase) else arg
+                for arg in kernel.args]
+
+        # }}}
+
+        # {{{ tvs
+
+        new_tvs = {
+                tv_name: tv.map_exprs(non_insn_self)
+                for tv_name, tv in kernel.temporary_variables.items()}
+
+        # }}}
+
+        # domains, var names: not exprs => do not map
+
+        return kernel.copy(instructions=new_insns,
+                           args=new_args,
+                           temporary_variables=new_tvs)
 
 
 class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper):
+    """
+    Mapper to substitute expressions and record any divergence of substitution
+    rule expressions of :class:`loopy.LoopKernel`.
+
+    .. attribute:: rule_mapping_context
+
+        An instance of :class:`SubstitutionRuleMappingContext` to record
+        divergence of substitution rules.
+
+    .. attribute:: within
+
+        An instance of :class:`loopy.match.StackMatchComponent`.
+        :class:`RuleAwareSubstitutionMapper` would perform
+        substitutions in the expression if the stack match is ``True`` or
+        if the expression does not arise from an :class:`~loopy.InstructionBase`.
+
+    .. note::
+
+        The mapped kernel should be passed through
+        :meth:`SubstitutionRuleMappingContext.finish_kernel` to perform any
+        renaming mandated by the rule expression divergences.
+    """
     def __init__(self, rule_mapping_context, subst_func, within):
         super().__init__(rule_mapping_context)
 
         self.subst_func = subst_func
-        self.within = within
+        self._within = within
+
+    def within(self, kernel, instruction, stack):
+        if instruction is None:
+            # always perform substitutions on expressions not coming from
+            # instructions.
+            return True
+        else:
+            return self._within(kernel, instruction, stack)
 
     def map_variable(self, expr, expn_state):
         if (expr.name in expn_state.arg_context
                 or not self.within(
                     expn_state.kernel, expn_state.instruction, expn_state.stack)):
+            # expr not in within => do nothing (call IdentityMapper)
             return super().map_variable(
                     expr, expn_state)
 
@@ -1525,7 +1582,13 @@ def qpolynomial_from_expr(space, expr):
 def simplify_using_aff(kernel, expr):
     inames = get_dependencies(expr) & kernel.all_inames()
 
-    domain = kernel.get_inames_domain(inames)
+    # FIXME: Ideally, we should find out what inames are usable and allow
+    # the simplification to use all of those. For now, fall back to making
+    # sure that the simplification only uses inames that were already there.
+    domain = (
+            kernel
+            .get_inames_domain(inames)
+            .project_out_except(inames, [dim_type.set]))
 
     try:
         aff = guarded_aff_from_expr(domain.space, expr)
@@ -1678,6 +1741,25 @@ def isl_set_from_expr(space, expr):
     assert isinstance(set_, isl.Set)
 
     return set_
+
+
+def condition_to_set(space, expr):
+    """
+    Returns an instance of :class:`islpy.Set` if *expr* can be expressed as an
+    ISL-set on *space*, if not then returns *None*.
+    """
+    from loopy.symbolic import get_dependencies
+    if get_dependencies(expr) <= frozenset(
+            space.get_var_dict()):
+        try:
+            from loopy.symbolic import isl_set_from_expr
+            return isl_set_from_expr(space, expr)
+        except ExpressionToAffineConversionError:
+            # non-affine condition: can't do much
+            return None
+    else:
+        # data-dependent condition: can't do much
+        return None
 
 # }}}
 
@@ -2036,7 +2118,7 @@ class AccessRangeOverlapChecker:
         arm = BatchedAccessRangeMapper(self.kernel, self.vars, overestimate=True)
 
         for expr in exprs:
-            arm(expr, self.kernel.insn_inames(insn))
+            arm(expr, insn.within_inames)
 
         for name, arange in arm.access_ranges.items():
             if arm.bad_subscripts[name]:

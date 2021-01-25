@@ -509,14 +509,6 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
                 Raise('RuntimeError("input argument \'{name}\' '
                         'must be supplied")'.format(name=idi.name))))
 
-        if idi.dtype.is_integral():
-            gen(Comment("cast to Python int to avoid trouble "
-                "with struct packing or Boost.Python"))
-            py_type = "int"
-
-            gen(Assign(idi.name, f"{py_type}({idi.name})"))
-            gen(Line())
-
         if idi.dtype.is_composite():
             gen(S("_lpy_knl.set_arg(%d, %s)" % (cl_arg_idx, idi.name)))
             cl_arg_idx += 1
@@ -578,7 +570,7 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
                 fp_arg_count += 1
 
             gen(S(
-                "_lpy_knl.set_arg(%d, _lpy_pack('%s', %s))"
+                "_lpy_knl._set_arg_buf(%d, _lpy_pack('%s', %s))"
                 % (cl_arg_idx, idi.dtype.dtype.char, idi.name)))
 
             cl_arg_idx += 1
@@ -632,25 +624,22 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     if not issubclass(idi.arg_class, TemporaryVariable)]
                 + ["wait_for=None", "allocator=None"])
 
-        from genpy import (For, Function, Suite, Import, ImportAs, Return,
-                FromImport, Line, Statement as S)
+        from genpy import (For, Function, Suite, Return, Line, Statement as S)
         return Function(
                 codegen_result.current_program(codegen_state).name,
                 args,
                 Suite([
-                    FromImport("struct", ["pack as _lpy_pack"]),
-                    ImportAs("pyopencl", "_lpy_cl"),
-                    Import("pyopencl.tools"),
                     Line(),
                     ] + [
                     Line(),
                     function_body,
                     Line(),
-                    ] + [
-                    For("_tv", "_global_temporaries",
-                        # free global temporaries
-                        S("_tv.release()"))
-                    ] + [
+                    ] + ([
+                        For("_tv", "_global_temporaries",
+                            # free global temporaries
+                            S("_tv.release()"))
+                        ] if self._get_global_temporaries(codegen_state) else []
+                    ) + [
                     Line(),
                     Return("_lpy_evt"),
                     ]))
@@ -660,6 +649,14 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         # no such thing in Python
         return None
 
+    def _get_global_temporaries(self, codegen_state):
+        from loopy.kernel.data import AddressSpace
+
+        return sorted(
+            (tv for tv in codegen_state.kernel.temporary_variables.values()
+            if tv.address_space == AddressSpace.GLOBAL),
+            key=lambda tv: tv.name)
+
     def get_temporary_decls(self, codegen_state, schedule_state):
         from genpy import Assign, Comment, Line
 
@@ -668,18 +665,12 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             from operator import mul
             return tv.dtype.numpy_dtype.itemsize * reduce(mul, tv.shape, 1)
 
-        from loopy.kernel.data import AddressSpace
-
-        global_temporaries = sorted(
-            (tv for tv in codegen_state.kernel.temporary_variables.values()
-            if tv.address_space == AddressSpace.GLOBAL),
-            key=lambda tv: tv.name)
-
         from pymbolic.mapper.stringifier import PREC_NONE
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
+        global_temporaries = self._get_global_temporaries(codegen_state)
         if not global_temporaries:
-            return [Assign("_global_temporaries", "[]"), Line()]
+            return []
 
         return [
             Comment("{{{ allocate global temporaries"),
@@ -734,8 +725,13 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             arry_arg_code,
             Assign("_lpy_evt", "%(pyopencl_module_name)s.enqueue_nd_range_kernel("
                 "queue, _lpy_knl, "
-                "%(gsize)s, %(lsize)s,  wait_for=wait_for, "
-                "g_times_l=True, allow_empty_ndrange=True)"
+                "%(gsize)s, %(lsize)s, "
+                # using positional args because pybind is slow with kwargs
+                "None, "  # offset
+                "wait_for, "
+                "True, "  # g_times_l
+                "True, "  # allow_empty_ndrange
+                ")"
                 % dict(
                     pyopencl_module_name=self.target.pyopencl_module_name,
                     gsize=ecm(gsize, prec=PREC_NONE, type_context="i"),
