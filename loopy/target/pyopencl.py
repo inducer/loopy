@@ -1,9 +1,4 @@
-# coding: utf-8
 """OpenCL target integrated with PyOpenCL."""
-
-from __future__ import division, absolute_import
-
-import sys
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -26,9 +21,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
-import six
-from six.moves import range
 
 import numpy as np
 
@@ -56,7 +48,7 @@ def adjust_local_temp_var_storage(kernel, device):
     from loopy.kernel.data import AddressSpace
 
     lmem_size = cl_char.usable_local_mem_size(device)
-    for temp_var in six.itervalues(kernel.temporary_variables):
+    for temp_var in kernel.temporary_variables.values():
         if temp_var.address_space != AddressSpace.LOCAL:
             new_temp_vars[temp_var.name] = \
                     temp_var.copy(storage_shape=temp_var.shape)
@@ -69,7 +61,7 @@ def adjust_local_temp_var_storage(kernel, device):
 
         other_loctemp_nbytes = [
                 tv.nbytes
-                for tv in six.itervalues(kernel.temporary_variables)
+                for tv in kernel.temporary_variables.values()
                 if tv.address_space == AddressSpace.LOCAL
                 and tv.name != temp_var.name]
 
@@ -218,13 +210,13 @@ def pyopencl_function_mangler(target, name, arg_dtypes):
                     "sinh", "cosh", "tanh",
                     "conj"]:
                 return CallMangleInfo(
-                        target_name="%s_%s" % (tpname, name),
+                        target_name=f"{tpname}_{name}",
                         result_dtypes=(arg_dtype,),
                         arg_dtypes=(arg_dtype,))
 
             if name in ["real", "imag", "abs"]:
                 return CallMangleInfo(
-                        target_name="%s_%s" % (tpname, name),
+                        target_name=f"{tpname}_{name}",
                         result_dtypes=(NumpyType(
                             np.dtype(arg_dtype.numpy_dtype.type(0).real)),
                             ),
@@ -264,7 +256,7 @@ def pyopencl_preamble_generator(preamble_info):
 
 # {{{ pyopencl tools
 
-class _LegacyTypeRegistryStub(object):
+class _LegacyTypeRegistryStub:
     """Adapts legacy PyOpenCL type registry to be usable with PyOpenCLTarget."""
 
     def get_or_register_dtype(self, names, dtype=None):
@@ -297,7 +289,7 @@ class PyOpenCLTarget(OpenCLTarget):
         # This ensures the dtype registry is populated.
         import pyopencl.tools  # noqa
 
-        super(PyOpenCLTarget, self).__init__(
+        super().__init__(
                 atomics_flavor=atomics_flavor)
 
         self.device = device
@@ -310,7 +302,7 @@ class PyOpenCLTarget(OpenCLTarget):
             "pyopencl_module_name",)
 
     def __eq__(self, other):
-        if not super(PyOpenCLTarget, self).__eq__(other):
+        if not super().__eq__(other):
             return False
 
         if (self.device is None) != (other.device is None):
@@ -325,7 +317,7 @@ class PyOpenCLTarget(OpenCLTarget):
             return True
 
     def update_persistent_hash(self, key_hash, key_builder):
-        super(PyOpenCLTarget, self).update_persistent_hash(key_hash, key_builder)
+        super().update_persistent_hash(key_hash, key_builder)
         key_builder.rec(key_hash, getattr(
             self.device, "hashable_model_and_version_identifier", None))
 
@@ -517,17 +509,6 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
                 Raise('RuntimeError("input argument \'{name}\' '
                         'must be supplied")'.format(name=idi.name))))
 
-        if idi.dtype.is_integral():
-            gen(Comment("cast to Python int to avoid trouble "
-                "with struct packing or Boost.Python"))
-            if sys.version_info < (3,):
-                py_type = "long"
-            else:
-                py_type = "int"
-
-            gen(Assign(idi.name, "%s(%s)" % (py_type, idi.name)))
-            gen(Line())
-
         if idi.dtype.is_composite():
             gen(S("_lpy_knl.set_arg(%d, %s)" % (cl_arg_idx, idi.name)))
             cl_arg_idx += 1
@@ -589,7 +570,7 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
                 fp_arg_count += 1
 
             gen(S(
-                "_lpy_knl.set_arg(%d, _lpy_pack('%s', %s))"
+                "_lpy_knl._set_arg_buf(%d, _lpy_pack('%s', %s))"
                 % (cl_arg_idx, idi.dtype.dtype.char, idi.name)))
 
             cl_arg_idx += 1
@@ -643,25 +624,22 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     if not issubclass(idi.arg_class, TemporaryVariable)]
                 + ["wait_for=None", "allocator=None"])
 
-        from genpy import (For, Function, Suite, Import, ImportAs, Return,
-                FromImport, Line, Statement as S)
+        from genpy import (For, Function, Suite, Return, Line, Statement as S)
         return Function(
                 codegen_result.current_program(codegen_state).name,
                 args,
                 Suite([
-                    FromImport("struct", ["pack as _lpy_pack"]),
-                    ImportAs("pyopencl", "_lpy_cl"),
-                    Import("pyopencl.tools"),
                     Line(),
                     ] + [
                     Line(),
                     function_body,
                     Line(),
-                    ] + [
-                    For("_tv", "_global_temporaries",
-                        # free global temporaries
-                        S("_tv.release()"))
-                    ] + [
+                    ] + ([
+                        For("_tv", "_global_temporaries",
+                            # free global temporaries
+                            S("_tv.release()"))
+                        ] if self._get_global_temporaries(codegen_state) else []
+                    ) + [
                     Line(),
                     Return("_lpy_evt"),
                     ]))
@@ -671,26 +649,28 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         # no such thing in Python
         return None
 
+    def _get_global_temporaries(self, codegen_state):
+        from loopy.kernel.data import AddressSpace
+
+        return sorted(
+            (tv for tv in codegen_state.kernel.temporary_variables.values()
+            if tv.address_space == AddressSpace.GLOBAL),
+            key=lambda tv: tv.name)
+
     def get_temporary_decls(self, codegen_state, schedule_state):
         from genpy import Assign, Comment, Line
 
         def alloc_nbytes(tv):
-            from six.moves import reduce
+            from functools import reduce
             from operator import mul
             return tv.dtype.numpy_dtype.itemsize * reduce(mul, tv.shape, 1)
-
-        from loopy.kernel.data import AddressSpace
-
-        global_temporaries = sorted(
-            (tv for tv in six.itervalues(codegen_state.kernel.temporary_variables)
-            if tv.address_space == AddressSpace.GLOBAL),
-            key=lambda tv: tv.name)
 
         from pymbolic.mapper.stringifier import PREC_NONE
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
+        global_temporaries = self._get_global_temporaries(codegen_state)
         if not global_temporaries:
-            return [Assign("_global_temporaries", "[]"), Line()]
+            return []
 
         return [
             Comment("{{{ allocate global temporaries"),
@@ -745,8 +725,13 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             arry_arg_code,
             Assign("_lpy_evt", "%(pyopencl_module_name)s.enqueue_nd_range_kernel("
                 "queue, _lpy_knl, "
-                "%(gsize)s, %(lsize)s,  wait_for=wait_for, "
-                "g_times_l=True, allow_empty_ndrange=True)"
+                "%(gsize)s, %(lsize)s, "
+                # using positional args because pybind is slow with kwargs
+                "None, "  # offset
+                "wait_for, "
+                "True, "  # g_times_l
+                "True, "  # allow_empty_ndrange
+                ")"
                 % dict(
                     pyopencl_module_name=self.target.pyopencl_module_name,
                     gsize=ecm(gsize, prec=PREC_NONE, type_context="i"),
@@ -773,7 +758,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     def function_manglers(self):
         from loopy.library.random123 import random123_function_mangler
         return (
-                super(PyOpenCLCASTBuilder, self).function_manglers() + [
+                super().function_manglers() + [
                     pyopencl_function_mangler,
                     random123_function_mangler
                     ])
@@ -783,7 +768,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
         return ([
             pyopencl_preamble_generator,
             random123_preamble_generator,
-            ] + super(PyOpenCLCASTBuilder, self).preamble_generators())
+            ] + super().preamble_generators())
 
     # }}}
 

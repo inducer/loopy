@@ -8,7 +8,7 @@ import loopy as lp
 
 def main():
     fn = "matmul.floopy"
-    with open(fn, "r") as inf:
+    with open(fn) as inf:
         source = inf.read()
 
     dgemm, = lp.parse_transformed_fortran(source, filename=fn)

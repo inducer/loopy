@@ -30,8 +30,8 @@ __doc__ = """
 
 .. data:: LEX_VAR_PREFIX
 
-    E.g., a prefix of "_lp_linchk_lex" might yield lexicographic dimension
-    variables "_lp_linchk_lex0", "_lp_linchk_lex1", "_lp_linchk_lex2". Cf.
+    E.g., a prefix of ``_lp_linchk_lex`` might yield lexicographic dimension
+    variables ``_lp_linchk_lex0``, ``_lp_linchk_lex1``, ``_lp_linchk_lex2``. Cf.
     :ref:`reserved-identifiers`.
 
 .. data:: STATEMENT_VAR_NAME
@@ -44,7 +44,65 @@ __doc__ = """
 
 LIN_CHECK_IDENTIFIER_PREFIX = "_lp_linchk_"
 LEX_VAR_PREFIX = "%sl" % (LIN_CHECK_IDENTIFIER_PREFIX)
-STATEMENT_VAR_NAME = "%sstatement" % (LIN_CHECK_IDENTIFIER_PREFIX)
+STATEMENT_VAR_NAME = "%sstmt" % (LIN_CHECK_IDENTIFIER_PREFIX)
+
+
+def _pad_tuple_with_zeros(tup, desired_length):
+    return tup[:] + tuple([0]*(desired_length-len(tup)))
+
+
+def _simplify_lex_dims(tup0, tup1):
+    """Simplify a pair of lex tuples in order to reduce the complexity of
+    resulting maps. Remove lex tuple dimensions with matching integer values
+    since these do not provide information on relative ordering. Once a
+    dimension is found where both tuples have non-matching integer values,
+    remove any faster-updating lex dimensions since they are not necessary
+    to specify a relative ordering.
+    """
+
+    new_tup0 = []
+    new_tup1 = []
+
+    # Loop over dims from slowest updating to fastest
+    for d0, d1 in zip(tup0, tup1):
+        if isinstance(d0, int) and isinstance(d1, int):
+
+            # Both vals are ints for this dim
+            if d0 == d1:
+                # Do not keep this dim
+                continue
+            elif d0 > d1:
+                # These ints inform us about the relative ordering of
+                # two statements. While their values may be larger than 1 in
+                # the lexicographic ordering describing a larger set of
+                # statements, in a pairwise schedule, only ints 0 and 1 are
+                # necessary to specify relative order. To keep the pairwise
+                # schedules as simple and comprehensible as possible, use only
+                # integers 0 and 1 to specify this relative ordering.
+                # (doesn't take much extra time since we are already going
+                # through these to remove unnecessary lex tuple dims)
+                new_tup0.append(1)
+                new_tup1.append(0)
+
+                # No further dims needed to fully specify ordering
+                break
+            else:  # d1 > d0
+                new_tup0.append(0)
+                new_tup1.append(1)
+
+                # No further dims needed to fully specify ordering
+                break
+        else:
+            # Keep this dim without modifying
+            new_tup0.append(d0)
+            new_tup1.append(d1)
+
+    if len(new_tup0) == 0:
+        # Statements map to the exact same point(s) in the lex ordering,
+        # which is okay, but to represent this, our lex tuple cannot be empty.
+        return (0, ), (0, )
+    else:
+        return tuple(new_tup0), tuple(new_tup1)
 
 
 def generate_pairwise_schedules(
@@ -67,17 +125,16 @@ def generate_pairwise_schedules(
     :arg linearization_items: A list of :class:`loopy.schedule.ScheduleItem`
         (to be renamed to `loopy.schedule.LinearizationItem`) containing
         all linearization items for which pairwise schedules will be
-        created. This list may be a *partial* linearization for a
-        kernel since this function may be used during the linearization
-        process.
+        created. To allow usage of this routine during linearization, a
+        truncated (i.e. partial) linearization may be passed through this
+        argument.
 
-    :arg insn_id_pairs: A list of two-tuples containing pairs of instruction
-        identifiers, each of which is unique within a
-        :class:`loopy.kernel.LoopKernel`.
+    :arg insn_id_pairs: A list containing pairs of instruction identifiers.
 
     :arg loops_to_ignore: A set of inames that will be ignored when
         determining the relative ordering of statements. This will typically
-        contain concurrent inames.
+        contain concurrent inames tagged with the ``vec`` or ``ilp`` array
+        access tags.
 
     :returns: A dictionary mapping each two-tuple of instruction identifiers
         provided in `insn_id_pairs` to a corresponding two-tuple containing two
@@ -114,7 +171,7 @@ def generate_pairwise_schedules(
             # (not technically necessary if no statement was added in the
             # previous section; gratuitous incrementing is counteracted
             # in the simplification step below)
-            next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1]+1
+            next_insn_lex_tuple[-1] += 1
 
             # Upon entering a loop, add one lex dimension for the loop variable,
             # add second lex dim to enumerate sections of code within new loop
@@ -137,7 +194,7 @@ def generate_pairwise_schedules(
             # (not technically necessary if no statement was added in the
             # previous section; gratuitous incrementing is counteracted
             # in the simplification step below)
-            next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1]+1
+            next_insn_lex_tuple[-1] += 1
 
         elif isinstance(linearization_item, (RunInstruction, Barrier)):
             from loopy.schedule.checker.utils import (
@@ -160,10 +217,10 @@ def generate_pairwise_schedules(
             # Only process listed insns, otherwise ignore
             if lp_insn_id in all_insn_ids:
                 # Add item to stmt_instances
-                stmt_instances[lp_insn_id] = tuple(next_insn_lex_tuple[:])
+                stmt_instances[lp_insn_id] = tuple(next_insn_lex_tuple)
 
                 # Increment lex dim val enumerating items in current section of code
-                next_insn_lex_tuple[-1] = next_insn_lex_tuple[-1] + 1
+                next_insn_lex_tuple[-1] += 1
 
         else:
             from loopy.schedule import (CallKernel, ReturnFromKernel)
@@ -181,62 +238,6 @@ def generate_pairwise_schedules(
         create_symbolic_map_from_tuples,
         add_dims_to_isl_set,
     )
-
-    def _pad_tuple_with_zeros(tup, desired_length):
-        return tup[:] + tuple([0]*(desired_length-len(tup)))
-
-    def _simplify_lex_dims(tup0, tup1):
-        """Simplify a pair of lex tuples in order to reduce the complexity of
-        resulting maps. Remove lex tuple dimensions with matching integer values
-        since these do not provide information on relative ordering. Once a
-        dimension is found where both tuples have non-matching integer values,
-        remove any faster-updating lex dimensions since they are not necessary
-        to specify a relative ordering.
-        """
-
-        new_tup0 = []
-        new_tup1 = []
-
-        # Loop over dims from slowest updating to fastest
-        for d0, d1 in zip(tup0, tup1):
-            if isinstance(d0, int) and isinstance(d1, int):
-
-                # Both vals are ints for this dim
-                if d0 == d1:
-                    # Do not keep this dim
-                    continue
-                elif d0 > d1:
-                    # These ints inform us about the relative ordering of
-                    # two statements. While their values may be larger than 1 in
-                    # the lexicographic ordering describing a larger set of
-                    # statements, in a pairwise schedule, only ints 0 and 1 are
-                    # necessary to specify relative order. To keep the pairwise
-                    # schedules as simple and comprehensible as possible, use only
-                    # integers 0 and 1 to specify this relative ordering.
-                    # (doesn't take much extra time since we are already going
-                    # through these to remove unnecessary lex tuple dims)
-                    new_tup0.append(1)
-                    new_tup1.append(0)
-
-                    # No further dims needed to fully specify ordering
-                    break
-                else:  # d1 > d0
-                    new_tup0.append(0)
-                    new_tup1.append(1)
-
-                    # No further dims needed to fully specify ordering
-                    break
-            else:
-                # Keep this dim without modifying
-                new_tup0.append(d0)
-                new_tup1.append(d1)
-
-        if len(new_tup0) == 0:
-            # Statements map to the exact same point(s) in the lex ordering,
-            # which is okay, but to represent this, our lex tuple cannot be empty.
-            return (0, ), (0, )
-        else:
-            return tuple(new_tup0), tuple(new_tup1)
 
     def _get_map_for_stmt_inst(insn_id, lex_points, int_sid, out_names_sched):
 
@@ -316,17 +317,17 @@ def generate_pairwise_schedules(
 
 def get_lex_order_map_for_sched_space(schedule):
     """Return an :class:`islpy.BasicMap` that maps each point in a
-        lexicographic ordering to every point that is
-        lexocigraphically greater.
+        lexicographic ordering to every point that occurs later.
 
     :arg schedule: A :class:`islpy.Map` representing the ordering of
         statement instances as a mapping from statement instances to
         lexicographic time.
 
-    :returns: An :class:`islpy.BasicMap` that maps each point in a
-        lexicographic ordering to every point that is
-        lexocigraphically greater with the dimension number and names
-        matching the output dimension of `schedule`.
+    :returns: An :class:`islpy.BasicMap` representing a lexicographic
+        ordering as a mapping from each point in lexicographic time
+        to every point that occurs later in lexicographic time, with
+        the dimension count and names matching the output dimension
+        of `schedule`.
 
     """
 

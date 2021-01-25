@@ -1,7 +1,5 @@
-# coding=utf-8
 """Operations on the kernel object."""
 
-from __future__ import division, absolute_import, print_function
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -27,8 +25,7 @@ THE SOFTWARE.
 
 import sys
 
-import six
-from six.moves import intern
+from sys import intern
 
 import numpy as np
 import islpy as isl
@@ -42,36 +39,36 @@ logger = logging.getLogger(__name__)
 
 # {{{ add and infer argument dtypes
 
-def add_dtypes(knl, dtype_dict):
+def add_dtypes(kernel, dtype_dict):
     """Specify remaining unspecified argument/temporary variable types.
 
     :arg dtype_dict: a mapping from variable names to :class:`numpy.dtype`
         instances
     """
-    dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(knl, dtype_dict)
+    dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(kernel, dtype_dict)
 
     if dtype_dict_remainder:
         raise RuntimeError("unused argument dtypes: %s"
                 % ", ".join(dtype_dict_remainder))
 
-    return knl.copy(args=new_args, temporary_variables=new_temp_vars)
+    return kernel.copy(args=new_args, temporary_variables=new_temp_vars)
 
 
-def _add_dtypes_overdetermined(knl, dtype_dict):
-    dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(knl, dtype_dict)
+def _add_dtypes_overdetermined(kernel, dtype_dict):
+    dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(kernel, dtype_dict)
     # do not throw error for unused args
-    return knl.copy(args=new_args, temporary_variables=new_temp_vars)
+    return kernel.copy(args=new_args, temporary_variables=new_temp_vars)
 
 
-def _add_dtypes(knl, dtype_dict):
+def _add_dtypes(kernel, dtype_dict):
     dtype_dict = dtype_dict.copy()
     new_args = []
 
     from loopy.types import to_loopy_type
-    for arg in knl.args:
+    for arg in kernel.args:
         new_dtype = dtype_dict.pop(arg.name, None)
         if new_dtype is not None:
-            new_dtype = to_loopy_type(new_dtype, target=knl.target)
+            new_dtype = to_loopy_type(new_dtype, target=kernel.target)
             if arg.dtype is not None and arg.dtype != new_dtype:
                 raise RuntimeError(
                         "argument '%s' already has a different dtype "
@@ -81,10 +78,10 @@ def _add_dtypes(knl, dtype_dict):
 
         new_args.append(arg)
 
-    new_temp_vars = knl.temporary_variables.copy()
+    new_temp_vars = kernel.temporary_variables.copy()
 
     import loopy as lp
-    for tv_name in knl.temporary_variables:
+    for tv_name in kernel.temporary_variables:
         new_dtype = dtype_dict.pop(tv_name, None)
         if new_dtype is not None:
             new_dtype = np.dtype(new_dtype)
@@ -101,31 +98,31 @@ def _add_dtypes(knl, dtype_dict):
     return dtype_dict, new_args, new_temp_vars
 
 
-def get_arguments_with_incomplete_dtype(knl):
-    return [arg.name for arg in knl.args
+def get_arguments_with_incomplete_dtype(kernel):
+    return [arg.name for arg in kernel.args
             if arg.dtype is None]
 
 
-def add_and_infer_dtypes(knl, dtype_dict, expect_completion=False):
+def add_and_infer_dtypes(kernel, dtype_dict, expect_completion=False):
     processed_dtype_dict = {}
 
-    for k, v in six.iteritems(dtype_dict):
+    for k, v in dtype_dict.items():
         for subkey in k.split(","):
             subkey = subkey.strip()
             if subkey:
                 processed_dtype_dict[subkey] = v
 
-    knl = add_dtypes(knl, processed_dtype_dict)
+    kernel = add_dtypes(kernel, processed_dtype_dict)
 
     from loopy.type_inference import infer_unknown_types
-    return infer_unknown_types(knl, expect_completion=expect_completion)
+    return infer_unknown_types(kernel, expect_completion=expect_completion)
 
 
-def _add_and_infer_dtypes_overdetermined(knl, dtype_dict):
-    knl = _add_dtypes_overdetermined(knl, dtype_dict)
+def _add_and_infer_dtypes_overdetermined(kernel, dtype_dict):
+    kernel = _add_dtypes_overdetermined(kernel, dtype_dict)
 
     from loopy.type_inference import infer_unknown_types
-    return infer_unknown_types(knl, expect_completion=True)
+    return infer_unknown_types(kernel, expect_completion=True)
 
 # }}}
 
@@ -288,7 +285,7 @@ def find_all_insn_inames(kernel):
 
     logger.debug("%s: find_all_insn_inames: done" % kernel.name)
 
-    for v in six.itervalues(insn_id_to_inames):
+    for v in insn_id_to_inames.values():
         assert isinstance(v, frozenset)
 
     return insn_id_to_inames
@@ -298,53 +295,65 @@ def find_all_insn_inames(kernel):
 
 # {{{ set operation cache
 
+def _eliminate_except(set_, except_inames, dts):
+    return set_.eliminate_except(except_inames, dts)
+
+
+def _get_dim_max(set_, idx):
+    return set_.dim_max(idx)
+
+
+def _get_dim_min(set_, idx):
+    return set_.dim_min(idx)
+
+
 class SetOperationCacheManager:
     def __init__(self):
-        # mapping: set hash -> [(set, op, args, result)]
+        # mapping: set hash -> [(set, result)]
         self.cache = {}
 
-    def op(self, set, op_name, op, args):
-        hashval = hash(set)
+    def op(self, set_, op, args):
+        hashval = hash((set_, op, args))
         bucket = self.cache.setdefault(hashval, [])
 
-        for bkt_set, bkt_op, bkt_args, result in bucket:
-            if set.plain_is_equal(bkt_set) and op == bkt_op and args == bkt_args:
+        for bkt_set, result in bucket:
+            if set_.plain_is_equal(bkt_set):
                 return result
 
-        #print op, set.get_dim_name(dim_type.set, args[0])
-        result = op(set, *args)
-        bucket.append((set, op_name, args, result))
+        result = op(set_, *args)
+        bucket.append((set_, result))
         return result
 
-    def dim_min(self, set, *args):
-        if set.plain_is_empty():
-            raise LoopyError("domain '%s' is empty" % set)
+    def dim_min(self, set_, *args):
+        if set_.plain_is_empty():
+            raise LoopyError("domain '%s' is empty" % set_)
 
-        from loopy.isl_helpers import dim_min_with_elimination
-        return self.op(set, "dim_min", dim_min_with_elimination, args)
+        return self.op(set_, _get_dim_min, args)
 
-    def dim_max(self, set, *args):
-        if set.plain_is_empty():
-            raise LoopyError("domain '%s' is empty" % set)
+    def dim_max(self, set_, *args):
+        if set_.plain_is_empty():
+            raise LoopyError("domain '%s' is empty" % set_)
 
-        from loopy.isl_helpers import dim_max_with_elimination
-        return self.op(set, "dim_max", dim_max_with_elimination, args)
+        return self.op(set_, _get_dim_max, args)
 
-    def base_index_and_length(self, set, iname, context=None,
+    def eliminate_except(self, set_, *args):
+        return self.op(set_, _eliminate_except, args)
+
+    def base_index_and_length(self, set_, iname, context=None,
             n_allowed_params_in_length=None):
         """
         :arg n_allowed_params_in_length: Simplifies the 'length'
             argument so that only the first that many params
-            (in the domain of *set*) occur.
+            (in the domain of *set_*) occur.
         """
         if not isinstance(iname, int):
-            iname_to_dim = set.space.get_var_dict()
+            iname_to_dim = set_.space.get_var_dict()
             idx = iname_to_dim[iname][1]
         else:
             idx = iname
 
-        lower_bound_pw_aff = self.dim_min(set, idx)
-        upper_bound_pw_aff = self.dim_max(set, idx)
+        lower_bound_pw_aff = self.dim_min(set_, idx)
+        upper_bound_pw_aff = self.dim_max(set_, idx)
 
         from loopy.diagnostic import StaticValueFindingError
         from loopy.isl_helpers import (
@@ -455,7 +464,7 @@ class DomainChanger:
 # {{{ graphviz / dot export
 
 def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
-    """Return a string in the `dot <http://graphviz.org/>`_ language depicting
+    """Return a string in the `dot <https://graphviz.org/>`__ language depicting
     dependencies among kernel instructions.
     """
 
@@ -481,8 +490,8 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
 
     for insn in kernel.instructions:
         if isinstance(insn, MultiAssignmentBase):
-            lhs = ', '.join(str(assignee) for assignee in insn.assignees)
-            op = "%s <- %s" % (lhs, insn.expression)
+            lhs = ", ".join(str(assignee) for assignee in insn.assignees)
+            op = f"{lhs} <- {insn.expression}"
             if len(op) > 200:
                 op = op[:200] + "..."
 
@@ -498,7 +507,7 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
             insn_label = op
             tooltip = insn.id
 
-        lines.append("\"%s\" [label=\"%s\",shape=\"box\",tooltip=\"%s\"];"
+        lines.append('"%s" [label="%s",shape="box",tooltip="%s"];'
                 % (
                     insn.id,
                     repr(insn_label)[1:-1],
@@ -533,7 +542,7 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
 
     for insn_1 in dep_graph:
         for insn_2 in dep_graph.get(insn_1, set()):
-            lines.append("%s -> %s" % (insn_2, insn_1))
+            lines.append(f"{insn_2} -> {insn_1}")
 
     if iname_cluster:
         from loopy.schedule import (
@@ -542,7 +551,7 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
 
         for sched_item in kernel.schedule:
             if isinstance(sched_item, EnterLoop):
-                lines.append("subgraph cluster_%s { label=\"%s\""
+                lines.append('subgraph cluster_%s { label="%s"'
                         % (sched_item.iname, sched_item.iname))
             elif isinstance(sched_item, LeaveLoop):
                 lines.append("}")
@@ -553,7 +562,7 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
             else:
                 raise LoopyError("schedule item not unterstood: %r" % sched_item)
 
-    return "digraph %s {\n%s\n}" % (
+    return "digraph {} {{\n{}\n}}".format(
             kernel.name,
             "\n".join(lines)
             )
@@ -675,9 +684,9 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
     # {{{ figure out automatic-axis inames
 
     from loopy.kernel.data import AutoLocalIndexTagBase
-    auto_axis_inames = set(
-        iname for iname in kernel.insn_inames(insn)
-        if kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase))
+    auto_axis_inames = {
+        iname for iname in insn.within_inames
+        if kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase)}
 
     # }}}
 
@@ -716,7 +725,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
             if stride is None:
                 continue
             coeffs = CoefficientCollector()(iexpr_i)
-            for var, coeff in six.iteritems(coeffs):
+            for var, coeff in coeffs.items():
                 if (isinstance(var, Variable)
                         and var.name in auto_axis_inames):
                     # excludes '1', i.e.  the constant
@@ -728,14 +737,14 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
         # }}}
 
         from pymbolic import evaluate
-        for iname, stride_expr in six.iteritems(iname_to_stride_expr):
+        for iname, stride_expr in iname_to_stride_expr.items():
             stride = evaluate(stride_expr, approximate_arg_values)
             aggregate_strides[iname] = aggregate_strides.get(iname, 0) + stride
 
     if aggregate_strides:
         very_large_stride = int(np.iinfo(np.int32).max)
 
-        return sorted((iname for iname in kernel.insn_inames(insn)),
+        return sorted((iname for iname in insn.within_inames),
                 key=lambda iname: (
                     aggregate_strides.get(iname, very_large_stride),
                     iname))
@@ -876,7 +885,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             continue
 
         auto_axis_inames = [
-            iname for iname in kernel.insn_inames(insn)
+            iname for iname in insn.within_inames
             if kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase)]
 
         if not auto_axis_inames:
@@ -884,7 +893,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 
         assigned_local_axes = set()
 
-        for iname in kernel.insn_inames(insn):
+        for iname in insn.within_inames:
             tags = kernel.iname_tags_of_type(iname, LocalIndexTag, max_num=1)
             if tags:
                 tag, = tags
@@ -936,7 +945,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 
 # {{{ array modifier
 
-class ArrayChanger(object):
+class ArrayChanger:
     def __init__(self, kernel, array_name):
         self.kernel = kernel
         self.array_name = array_name
@@ -991,7 +1000,7 @@ def guess_var_shape(kernel, var_name):
     submap = SubstitutionRuleExpander(kernel.substitutions)
 
     def run_through_armap(expr):
-        armap(submap(expr), kernel.insn_inames(insn))
+        armap(submap(expr), insn.within_inames)
         return expr
 
     try:
@@ -1018,8 +1027,8 @@ def guess_var_shape(kernel, var_name):
                         % (var_name, ", ".join(
                                 str(i) for i in armap.bad_subscripts)))
 
-            n_axes_in_subscripts = set(
-                    len(sub.index_tuple) for sub in armap.bad_subscripts)
+            n_axes_in_subscripts = {
+                    len(sub.index_tuple) for sub in armap.bad_subscripts}
 
             if len(n_axes_in_subscripts) != 1:
                 raise RuntimeError("subscripts of '%s' with differing "
@@ -1070,7 +1079,7 @@ def guess_var_shape(kernel, var_name):
 
 # {{{ loop nest tracker
 
-class SetTrie(object):
+class SetTrie:
     """
     Similar to a trie, but uses an unordered sequence as the key.
     """
@@ -1085,9 +1094,8 @@ class SetTrie(object):
 
     def descend(self, on_found=lambda prefix: None, prefix=frozenset()):
         on_found(prefix)
-        from six import iteritems
         for prefix, child in sorted(
-                iteritems(self.children),
+                self.children.items(),
                 key=lambda it: sorted(it[0])):
             child.descend(on_found, prefix=prefix)
 
@@ -1099,9 +1107,7 @@ class SetTrie(object):
         if len(key) == 0:
             return
 
-        from six import iteritems
-
-        for child_key, child in iteritems(self.children):
+        for child_key, child in self.children.items():
             common = child_key & key
             if common:
                 break
@@ -1160,16 +1166,16 @@ def get_visual_iname_order_embedding(kernel):
     iname_trie = SetTrie()
 
     for insn in kernel.instructions:
-        within_inames = set(
+        within_inames = {
             iname for iname in insn.within_inames
-            if iname not in ilp_inames)
+            if iname not in ilp_inames}
         iname_trie.add_or_update(within_inames)
 
     embedding = {}
 
     def update_embedding(inames):
         embedding.update(
-            dict((iname, (len(embedding), iname)) for iname in inames))
+            {iname: (len(embedding), iname) for iname in inames})
 
     iname_trie.descend(update_embedding)
 
@@ -1270,8 +1276,8 @@ def draw_dependencies_as_unicode_arrows(
 
     def make_extender():
         result = n_columns[0] * [" "]
-        for col, (_, pointed_at_insn_id) in six.iteritems(columns_in_use):
-            result[col] = do_flag_downward(u"│", pointed_at_insn_id)
+        for col, (_, pointed_at_insn_id) in columns_in_use.items():
+            result[col] = do_flag_downward("│", pointed_at_insn_id)
 
         return result
 
@@ -1303,28 +1309,28 @@ def draw_dependencies_as_unicode_arrows(
 
         # }}}
 
-        for col, (starts, pointed_at_insn_id) in list(six.iteritems(columns_in_use)):
+        for col, (starts, pointed_at_insn_id) in list(columns_in_use.items()):
             if insn.id == pointed_at_insn_id:
                 if starts:
                     # will continue downward
-                    row[col] = do_flag_downward(u">", pointed_at_insn_id)
+                    row[col] = do_flag_downward(">", pointed_at_insn_id)
                 else:
                     # stops here
 
                     # placeholder, pending deletion
                     columns_in_use[col] = None
 
-                    row[col] = do_flag_downward(u"↳", pointed_at_insn_id)
+                    row[col] = do_flag_downward("↳", pointed_at_insn_id)
 
             elif insn.id in starts:
                 starts.remove(insn.id)
                 if starts or pointed_at_insn_id not in processed_ids:
                     # will continue downward
-                    row[col] = do_flag_downward(u"├", pointed_at_insn_id)
+                    row[col] = do_flag_downward("├", pointed_at_insn_id)
 
                 else:
                     # stops here
-                    row[col] = u"└"
+                    row[col] = "└"
                     # placeholder, pending deletion
                     columns_in_use[col] = None
 
@@ -1334,7 +1340,7 @@ def draw_dependencies_as_unicode_arrows(
         if dep_key not in dep_to_column and rdeps:
             col = dep_to_column[dep_key] = find_free_column()
             columns_in_use[col] = (rdeps, insn.id)
-            row[col] = u"↱"
+            row[col] = "↱"
 
         # }}}
 
@@ -1350,13 +1356,13 @@ def draw_dependencies_as_unicode_arrows(
                 # we're currently handling it.
                 columns_in_use[col] = (set(), dep)
 
-                row[col] = do_flag_downward(u"┌", dep)
+                row[col] = do_flag_downward("┌", dep)
 
         # }}}
 
         # {{{ delete columns_in_use entry for end-of-life columns
 
-        for col, value in list(six.iteritems(columns_in_use)):
+        for col, value in list(columns_in_use.items()):
             if value is None:
                 del columns_in_use[col]
 
@@ -1388,7 +1394,7 @@ def draw_dependencies_as_unicode_arrows(
                 .replace(fore.RED, "")
                 .replace(style.RESET_ALL, ""))
 
-        return s[:length] + u"…"
+        return s[:length] + "…"
 
     def conform_to_uniform_length(s):
         len_s = len_without_color_escapes(s)
@@ -1507,9 +1513,9 @@ def stringify_instruction_list(kernel):
             trailing = []
         elif isinstance(insn, lp.CInstruction):
             lhs = ", ".join(str(a) for a in insn.assignees)
-            rhs = "CODE(%s|%s)" % (
+            rhs = "CODE({}|{})".format(
                     ", ".join(str(x) for x in insn.read_variables),
-                    ", ".join("%s=%s" % (name, expr)
+                    ", ".join(f"{name}={expr}"
                         for name, expr in insn.iname_exprs))
 
             trailing = insn.code.split("\n")
@@ -1527,7 +1533,7 @@ def stringify_instruction_list(kernel):
             raise LoopyError("unexpected instruction type: %s"
                     % type(insn).__name__)
 
-        adapt_to_new_inames_list(kernel.insn_inames(insn))
+        adapt_to_new_inames_list(insn.within_inames)
 
         options = ["id="+Fore.GREEN+insn.id+Style.RESET_ALL]
         if insn.priority:
@@ -1546,11 +1552,11 @@ def stringify_instruction_list(kernel):
             options.append("no_sync_with=%s" % ":".join(
                 "%s@%s" % entry for entry in sorted(insn.no_sync_with)))
         if isinstance(insn, lp.BarrierInstruction) and \
-                insn.synchronization_kind == 'local':
-            options.append('mem_kind=%s' % insn.mem_kind)
+                insn.synchronization_kind == "local":
+            options.append("mem_kind=%s" % insn.mem_kind)
 
         if lhs:
-            core = "%s = %s" % (
+            core = "{} = {}".format(
                 Fore.CYAN+lhs+Style.RESET_ALL,
                 Fore.MAGENTA+rhs+Style.RESET_ALL,
                 )
@@ -1676,16 +1682,16 @@ def find_most_recent_global_barrier(kernel, insn_id):
     if len(insn.depends_on) == 0:
         return None
 
-    global_barrier_to_ordinal = dict(
-            (b, i) for i, b in enumerate(global_barrier_order))
+    global_barrier_to_ordinal = {
+            b: i for i, b in enumerate(global_barrier_order)}
 
     def get_barrier_ordinal(barrier_id):
         return (global_barrier_to_ordinal[barrier_id]
                 if barrier_id is not None
                 else -1)
 
-    direct_barrier_dependencies = set(
-            dep for dep in insn.depends_on if _is_global_barrier(kernel, dep))
+    direct_barrier_dependencies = {
+            dep for dep in insn.depends_on if _is_global_barrier(kernel, dep)}
 
     if len(direct_barrier_dependencies) > 0:
         return max(direct_barrier_dependencies, key=get_barrier_ordinal)
@@ -1755,7 +1761,7 @@ def get_subkernel_to_insn_id_map(kernel):
 
 # {{{ find aliasing equivalence classes
 
-class DisjointSets(object):
+class DisjointSets:
     """
     .. automethod:: __getitem__
     .. automethod:: find_leader_or_create_group
@@ -1777,7 +1783,7 @@ class DisjointSets(object):
         try:
             leader = self.element_to_leader[item]
         except KeyError:
-            return set([item])
+            return {item}
         else:
             return self.leader_to_group[leader]
 
@@ -1788,7 +1794,7 @@ class DisjointSets(object):
             pass
 
         self.element_to_leader[el] = el
-        self.leader_to_group[el] = set([el])
+        self.leader_to_group[el] = {el}
         return el
 
     def union(self, a, b):
@@ -1827,7 +1833,7 @@ class DisjointSets(object):
 def find_aliasing_equivalence_classes(kernel):
     return DisjointSets().union_many(
             (tv.base_storage, tv.name)
-            for tv in six.itervalues(kernel.temporary_variables)
+            for tv in kernel.temporary_variables.values()
             if tv.base_storage is not None)
 
 # }}}

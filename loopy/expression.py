@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2012-15 Andreas Kloeckner"
 
 __license__ = """
@@ -32,20 +30,20 @@ from loopy.diagnostic import LoopyError
 
 
 # type_context may be:
-# - 'i' for integer -
-# - 'f' for single-precision floating point
-# - 'd' for double-precision floating point
+# - "i" for integer -
+# - "f" for single-precision floating point
+# - "d" for double-precision floating point
 # or None for 'no known context'.
 
 def dtype_to_type_context(target, dtype):
     from loopy.types import NumpyType
 
     if dtype.is_integral():
-        return 'i'
+        return "i"
     if isinstance(dtype, NumpyType) and dtype.dtype in [np.float64, np.complex128]:
-        return 'd'
+        return "d"
     if isinstance(dtype, NumpyType) and dtype.dtype in [np.float32, np.complex64]:
-        return 'f'
+        return "f"
     if target.is_vector_dtype(dtype):
         return dtype_to_type_context(
                 target, NumpyType(dtype.numpy_dtype.fields["x"][0]))

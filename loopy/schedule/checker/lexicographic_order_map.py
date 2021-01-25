@@ -25,17 +25,19 @@ import islpy as isl
 
 
 def get_statement_ordering_map(
-        sched_map_before, sched_map_after, lex_map, before_marker="'"):
-    """Return a mapping that maps each statement instance to
-        all statement instances occuring later.
+        sched_before, sched_after, lex_map, before_marker="'"):
+    """Return a statement ordering represented as a map from each statement
+        instance to all statement instances occurring later.
 
-    :arg sched_map_before: An :class:`islpy.Map` representing instruction
-        instance order for the dependee as a mapping from each statement
-        instance to a point in the lexicographic ordering.
+    :arg sched_before: An :class:`islpy.Map` representing a schedule
+        as a mapping from statement instances (for one particular statement)
+        to lexicographic time. The statement represented will typically
+        be the dependee in a dependency relationship.
 
-    :arg sched_map_after: An :class:`islpy.Map` representing instruction
-        instance order for the depender as a mapping from each statement
-        instance to a point in the lexicographic ordering.
+    :arg sched_after: An :class:`islpy.Map` representing a schedule
+        as a mapping from statement instances (for one particular statement)
+        to lexicographic time. The statement represented will typically
+        be the depender in a dependency relationship.
 
     :arg lex_map: An :class:`islpy.Map` representing a lexicographic
         ordering as a mapping from each point in lexicographic time
@@ -45,17 +47,23 @@ def get_statement_ordering_map(
                 i0' < i0 or (i0' = i0 and i1' < i1)
                 or (i0' = i0 and i1' = i1 and i2' < i2) ...}
 
-    :returns: An :class:`islpy.Map` representing the lex schedule as
+    :arg before_marker: A :class:`str` to be appended to the names of the
+        map dimensions representing the 'before' statement in the
+        'happens before' relationship.
+
+    :returns: An :class:`islpy.Map` representing the statement odering as
         a mapping from each statement instance to all statement instances
-        occuring later. I.e., we compose relations B, L, and A as
-        B ∘ L ∘ A^-1, where B is sched_map_before, A is sched_map_after,
-        and L is the lexicographic ordering map.
+        occurring later. I.e., we compose relations B, L, and A as
+        B ∘ L ∘ A^-1, where B is `sched_before`, A is `sched_after`,
+        and L is `lex_map`.
 
     """
 
-    sio = sched_map_before.apply_range(
-        lex_map).apply_range(sched_map_after.reverse())
-    # append marker to in names
+    # Perform the composition of relations
+    sio = sched_before.apply_range(
+        lex_map).apply_range(sched_after.reverse())
+
+    # Append marker to in_ dims
     from loopy.schedule.checker.utils import (
         append_marker_to_isl_map_var_names,
     )
@@ -63,30 +71,38 @@ def get_statement_ordering_map(
         sio, isl.dim_type.in_, before_marker)
 
 
-def get_lex_order_constraint(before_names, after_names, islvars=None):
-    """Return a constraint represented as an :class:`islpy.Set`
-        defining a 'happens before' relationship in a lexicographic
-        ordering.
+def get_lex_order_set(before_names, after_names, islvars=None):
+    """Return an :class:`islpy.Set` representing a lexicographic ordering
+        with the number of dimensions provided in `before_names`
+        (equal to the number of dimensions in `after_names`).
 
-    :arg before_names: A list of :class:`str` variable names representing
-        the lexicographic space dimensions for a point in lexicographic
-        time that occurs before. (see example below)
+    :arg before_names: A list of :class:`str` variable names to be used
+        to describe lexicographic space dimensions for a point in a lexicographic
+        ordering that occurs before another point, which will be represented using
+        `after_names`. (see example below)
 
-    :arg after_names: A list of :class:`str` variable names representing
-        the lexicographic space dimensions for a point in lexicographic
-        time that occurs after. (see example below)
+    :arg after_names: A list of :class:`str` variable names to be used
+        to describe lexicographic space dimensions for a point in a lexicographic
+        ordering that occurs after another point, which will be represented using
+        `before_names`. (see example below)
 
-    :arg islvars: A dictionary from variable names to :class:`islpy.PwAff`
-        instances that represent each of the variables
-        (islvars may be produced by `islpy.make_zero_and_vars`). The key
-        '0' is also include and represents a :class:`islpy.PwAff` zero constant.
-        This dictionary defines the space to be used for the set. If no
-        value is passed, the dictionary will be made using ``before_names``
-        and ``after_names``.
+    :arg islvars: A dictionary mapping variable names in `before_names` and
+        `after_names` to :class:`islpy.PwAff` instances that represent each
+        of the variables (islvars may be produced by `islpy.make_zero_and_vars`).
+        The key '0' is also include and represents a :class:`islpy.PwAff` zero
+        constant. This dictionary defines the space to be used for the set. If no
+        value is passed, the dictionary will be made using `before_names`
+        and `after_names`.
 
-    :returns: An :class:`islpy.Set` representing a constraint that enforces a
-        lexicographic ordering. E.g., if ``before_names = [i0', i1', i2']`` and
-        ``after_names = [i0, i1, i2]``, return the set::
+    :returns: An :class:`islpy.Set` representing a big-endian lexicographic ordering
+        with the number of dimensions provided in `before_names`. The set
+        has one dimension for each name in *both* `before_names` and
+        `after_names`, and contains all points which meet a 'happens before'
+        constraint defining the lexicographic ordering. E.g., if
+        `before_names = [i0', i1', i2']` and `after_names = [i0, i1, i2]`,
+        return the set containing all points in a 3-dimensional, big-endian
+        lexicographic ordering such that point
+        `[i0', i1', i2']` happens before `[i0, i1, i2]`. I.e., return::
 
             {[i0', i1', i2', i0, i1, i2] :
                 i0' < i0 or (i0' = i0 and i1' < i1)
@@ -98,33 +114,31 @@ def get_lex_order_constraint(before_names, after_names, islvars=None):
     if islvars is None:
         islvars = isl.make_zero_and_vars(before_names+after_names, [])
 
-    # Initialize constraint with i0' < i0
-    lex_order_constraint = islvars[before_names[0]].lt_set(islvars[after_names[0]])
+    # Initialize set with constraint i0' < i0
+    lex_order_set = islvars[before_names[0]].lt_set(islvars[after_names[0]])
 
-    # Initialize conjunction constraint with True.
-    # For each dim d, starting with d=1, this conjunction will have d equalities,
-    # e.g., (i0' = i0 and i1' = i1 and ... i(d-1)' = i(d-1))
-    equality_constraint_conj = islvars[0].eq_set(islvars[0])
+    # For each dim d, starting with d=1, equality_conj_set will be constrained
+    # by d equalities, e.g., (i0' = i0 and i1' = i1 and ... i(d-1)' = i(d-1)).
+    equality_conj_set = islvars[0].eq_set(islvars[0])  # initialize to 'true'
 
     for i in range(1, len(before_names)):
 
-        # Add the next equality constraint to equality_constraint_conj
-        equality_constraint_conj = equality_constraint_conj & \
+        # Add the next equality constraint to equality_conj_set
+        equality_conj_set = equality_conj_set & \
             islvars[before_names[i-1]].eq_set(islvars[after_names[i-1]])
 
-        # Create a conjunction constraint by combining a less-than
-        # constraint for this dim, e.g., (i1' < i1), with the current
-        # equality constraint conjunction.
-        # For each dim d, starting with d=1, this conjunction will have d equalities,
-        # and one inequality,
-        # e.g., (i0' = i0 and i1' = i1 and ... i(d-1)' = i(d-1) and id' < id)
-        full_conj_constraint = islvars[before_names[i]].lt_set(
-            islvars[after_names[i]]) & equality_constraint_conj
+        # Create a set constrained by adding a less-than constraint for this dim,
+        # e.g., (i1' < i1), to the current equality conjunction set.
+        # For each dim d, starting with d=1, this full conjunction will have
+        # d equalities and one inequality, e.g.,
+        # (i0' = i0 and i1' = i1 and ... i(d-1)' = i(d-1) and id' < id)
+        full_conj_set = islvars[before_names[i]].lt_set(
+            islvars[after_names[i]]) & equality_conj_set
 
-        # Union this new constraint with the current lex_order_constraint
-        lex_order_constraint = lex_order_constraint | full_conj_constraint
+        # Union this new constraint with the current lex_order_set
+        lex_order_set = lex_order_set | full_conj_set
 
-    return lex_order_constraint
+    return lex_order_set
 
 
 def create_lex_order_map(
@@ -132,26 +146,28 @@ def create_lex_order_map(
         before_names=None,
         after_names=None,
         ):
-    """Return a mapping that maps each point in a lexicographic
-        ordering to every point that occurs later in lexicographic
-        time.
+    """Return a map from each point in a lexicographic ordering to every
+        point that occurs later in the lexicographic ordering.
 
     :arg n_dims: An :class:`int` representing the number of dimensions
-        in the lexicographic ordering.
+        in the lexicographic ordering. If not provided, `n_dims` will be
+        set to length of `after_names`.
 
-    :arg before_names: A list of :class:`str` variable names representing
-        the lexicographic space dimensions for a point in lexicographic
-        time that occurs before. (see example below)
+    :arg before_names: A list of :class:`str` variable names to be used
+        to describe lexicographic space dimensions for a point in a lexicographic
+        ordering that occurs before another point, which will be represented using
+        `after_names`. (see example below)
 
-    :arg after_names: A list of :class:`str` variable names representing
-        the lexicographic space dimensions for a point in lexicographic
-        time that occurs after. (see example below)
+    :arg after_names: A list of :class:`str` variable names to be used
+        to describe lexicographic space dimensions for a point in a lexicographic
+        ordering that occurs after another point, which will be represented using
+        `before_names`. (see example below)
 
     :returns: An :class:`islpy.Map` representing a lexicographic
         ordering as a mapping from each point in lexicographic time
         to every point that occurs later in lexicographic time.
-        E.g., if ``before_names = [i0', i1', i2']`` and
-        ``after_names = [i0, i1, i2]``, return the map::
+        E.g., if `before_names = [i0', i1', i2']` and
+        `after_names = [i0, i1, i2]`, return the map::
 
             {[i0', i1', i2'] -> [i0, i1, i2] :
                 i0' < i0 or (i0' = i0 and i1' < i1)
@@ -172,11 +188,11 @@ def create_lex_order_map(
     assert len(before_names) == len(after_names) == n_dims
     dim_type = isl.dim_type
 
-    lex_order_constraint = get_lex_order_constraint(before_names, after_names)
+    # First, get a set representing the lexicographic ordering.
+    lex_order_set = get_lex_order_set(before_names, after_names)
 
-    lex_map = isl.Map.from_domain(lex_order_constraint)
-    lex_map = lex_map.move_dims(
+    # Now convert that set to a map.
+    lex_map = isl.Map.from_domain(lex_order_set)
+    return lex_map.move_dims(
         dim_type.out, 0, dim_type.in_,
         len(before_names), len(after_names))
-
-    return lex_map

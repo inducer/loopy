@@ -1,6 +1,4 @@
-.. module:: loopy
-.. moduleauthor:: Andreas Kloeckner <inform@tiker.net>
-
+.. currentmodule:: loopy
 .. _creating-kernels:
 
 Reference: Creating Kernels

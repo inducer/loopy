@@ -42,7 +42,7 @@ else:
 # }}}
 
 
-VERSION = (2020, 2)
+VERSION = (2020, 2, 2)
 VERSION_STATUS = ""
 VERSION_TEXT = ".".join(str(x) for x in VERSION) + VERSION_STATUS
 
@@ -60,7 +60,7 @@ except ImportError:
 else:
     _cgen_version = cgen.version.VERSION_TEXT
 
-DATA_MODEL_VERSION = "%s-islpy%s-cgen%s-%s-v1" % (
+DATA_MODEL_VERSION = "{}-islpy{}-cgen{}-{}-v1".format(
         VERSION_TEXT, _islpy_version, _cgen_version, _git_rev)
 
 
@@ -125,7 +125,7 @@ History of Language Versions
 
 .. data:: LOOPY_USE_LANGUAGE_VERSION_2018_2
 
-    :attr:`loopy.Options.ignore_boostable_into` is turned on by default.
+    ``loopy.Options.ignore_boostable_into`` is turned on by default.
 
 .. data:: LOOPY_USE_LANGUAGE_VERSION_2018_1
 

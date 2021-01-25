@@ -3,6 +3,72 @@
 Reference: Loopy's Model of a Kernel
 ====================================
 
+What Types of Computation can a Loopy Program Express?
+------------------------------------------------------
+
+Loopy programs consist of an a-priori unordered set of statements, operating
+on :math:`n`-dimensional array variables.
+
+Arrays consist of "plain old data" and structures thereof, as describable
+by a :class:`numpy.dtype`.  The n-dimensional shape of these arrays is
+given by a tuple of expressions at most affine in parameters that are
+fixed for the duration of program execution.
+Each array variable in the program is either an argument or a temporary
+variable.  A temporary variable is only live within the program, while
+argument variables are accessible outside the program and constitute the
+program's inputs and outputs.
+
+A statement (still called 'instruction' in some places, cf.
+:class:`loopy.InstructionBase`) encodes an assignment to an entry of an array.
+The right-hand side of an assignment consists of an expression that may
+consist of arithmetic operations and calls to functions.
+If the outermost operation of the RHS expression is a function call,
+the RHS value may be a tuple, and multiple (still scalar) arrays appear
+as LHS values. (This is the only sense in which tuple types are supported.)
+Each statement is parametrized by zero or more loop variables ("inames").
+A statement is executed once for each integer point defined by the domain
+forest for the iname tuple given for that statement
+(:attr:`loopy.InstructionBase.within_inames`). Each execution of a
+statement (with specific values of the inames) is called a *statement
+instance*.  Dependencies between these instances as well as instances of
+other statements are encoded in the program representation and specify permissible
+execution orderings.  (The semantics of the dependencies are `being
+sharpened <https://github.com/inducer/loopy/pull/168>`__.) Assignments
+(comprising the evaluation of the RHS and the assignment to the LHS) may
+be specified to be atomic.
+
+The basic building blocks of the domain forest are sets given as
+conjunctions of equalities and inequalities of quasi-affine expressions on
+integer tuples, called domains, and represented as instances of
+:class:`islpy.BasicSet`. The entries of each integer tuple are
+either *parameters* or *inames*. Each domain may optionally have a *parent
+domain*. Parameters of parent-less domains are given by value arguments
+supplied to the program that will remain unchanged during program
+execution. Parameters of domains with parents may be
+
+- run-time-constant value arguments to the program, or
+- inames from parent domains, or
+- scalar, integer temporary variables that are written by statements
+  with iteration domains controlled by a parent domain.
+
+For each tuple of concrete parameter values, the set of iname tuples must be
+finite. Each iname is defined by exactly one domain.
+
+For a tuple of inames, the domain forest defines an iteration domain
+by finding all the domains defining the inames involved, along with their
+parent domains. The resulting tree of domains may contain multiple roots,
+but no branches. The iteration domain is then constructed by intersecting
+these domains and constructing the projection of that set onto the space
+given by the required iname tuple. Observe that, via the parent-child
+domain mechanism, imperfectly-nested and data-dependent loops become
+expressible.
+
+The set of functions callable from the language is predefined by the system.
+Additional functions may be defined by the user by registering them. It is
+not currently possible to define functions from within Loopy, however work
+is progressing on permitting this. Even once this is allowed, recursion
+will not be permitted.
+
 .. _domain-tree:
 
 Loop Domain Forest
@@ -180,7 +246,7 @@ be the prefix of an existing prefix.
 ======================= ==================================
 Reserved Prefix         Usage (module or purpose)
 ======================= ==================================
-``_lp_linchk_``         :mod:`loopy.linearization.checker`
+``_lp_linchk_``         ``loopy.linearization.checker``
 ======================= ==================================
 
 .. note::
@@ -396,6 +462,7 @@ TODO: Reductions
 Function Call Instructions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. automodule:: loopy
 .. autoclass:: CallInstruction
 
 C Block Instructions
@@ -411,6 +478,8 @@ Atomic Operations
 .. autoclass:: MemoryScope
 
 .. autoclass:: VarAtomicity
+
+.. autoclass:: OrderedAtomic
 
 .. autoclass:: AtomicInit
 
@@ -469,7 +538,7 @@ Temporary Variables
 Temporary variables model OpenCL's ``private`` and ``local`` address spaces. Both
 have the lifetime of a kernel invocation.
 
-.. autoclass:: temp_var_scope
+.. autoclass:: AddressSpace
 
 .. autoclass:: TemporaryVariable
     :members:
@@ -635,8 +704,8 @@ Do not create :class:`LoopKernel` objects directly. Instead, refer to
     :members:
     :undoc-members:
 
-Implementation Detail: The Base Array
--------------------------------------
+Implementation Details: The Base Array
+--------------------------------------
 
 All array-like data in :mod:`loopy` (such as :class:`ArrayArg` and
 :class:`TemporaryVariable`) derive from single, shared base array type,
@@ -645,5 +714,6 @@ described next.
 .. currentmodule:: loopy.kernel.array
 
 .. autoclass:: ArrayBase
+
 
 .. vim: tw=75:spell:fdm=marker

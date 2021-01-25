@@ -1,7 +1,6 @@
 """Matching functionality for instruction ids and subsitution
 rule invocations stacks."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -25,7 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from six.moves import range, intern
+from sys import intern
 
 
 NoneType = type(None)
@@ -113,7 +112,7 @@ _PREC_NOT = 30
 
 # {{{ match expression
 
-class MatchExpressionBase(object):
+class MatchExpressionBase:
     def __call__(self, kernel, matchable):
         raise NotImplementedError
 
@@ -159,7 +158,7 @@ class MultiChildMatchExpressionBase(MatchExpressionBase):
         return "(%s)" % (joiner.join(str(ch) for ch in self.children))
 
     def __repr__(self):
-        return "%s(%s)" % (
+        return "{}({})".format(
                 type(self).__name__,
                 ", ".join(repr(ch) for ch in self.children))
 
@@ -196,7 +195,7 @@ class Not(MatchExpressionBase):
         return "(not %s)" % str(self.child)
 
     def __repr__(self):
-        return "%s(%r)" % (type(self).__name__, self.child)
+        return "{}({!r})".format(type(self).__name__, self.child)
 
     def update_persistent_hash(self, key_hash, key_builder):
         key_builder.rec(key_hash, "not_match_expr")
@@ -223,7 +222,7 @@ class GlobMatchExpressionBase(MatchExpressionBase):
         return descr.lower() + ":" + self.glob
 
     def __repr__(self):
-        return "%s(%r)" % (type(self).__name__, self. glob)
+        return "{}({!r})".format(type(self).__name__, self. glob)
 
     def update_persistent_hash(self, key_hash, key_builder):
         key_builder.rec(key_hash, type(self).__name__)
@@ -374,7 +373,7 @@ def parse_match(expr):
 
 # {{{ stack match objects
 
-class StackMatchComponent(object):
+class StackMatchComponent:
     def __ne__(self, other):
         return not self.__eq__(other)
 
@@ -443,7 +442,7 @@ class StackWildcardMatchComponent(StackMatchComponent):
 
 # {{{ stack matcher
 
-class RuleInvocationMatchable(object):
+class RuleInvocationMatchable:
     def __init__(self, id, tags):
         self.id = id
         self.tags = tags
@@ -458,7 +457,7 @@ class RuleInvocationMatchable(object):
         raise TypeError("inames: query may not be applied to rule invocations")
 
 
-class StackMatch(object):
+class StackMatch:
     def __init__(self, root_component):
         self.root_component = root_component
 

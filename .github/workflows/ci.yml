@@ -4,8 +4,6 @@ on:
         branches:
         - master
     pull_request:
-        paths-ignore:
-        - 'doc/*.rst'
     schedule:
         - cron:  '17 3 * * 0'
 
@@ -22,7 +20,7 @@ jobs:
         -   name: "Main Script"
             run: |
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
-                . ./prepare-and-run-flake8.sh ./loopy ./test
+                . ./prepare-and-run-flake8.sh "$(basename $GITHUB_REPOSITORY)" ./test examples
 
     pylint:
         name: Pylint
@@ -35,9 +33,9 @@ jobs:
                 CONDA_ENVIRONMENT=.test-conda-env.yml
                 USE_CONDA_BUILD=1
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-pylint.sh
-                . ./prepare-and-run-pylint.sh loopy test/test_*.py
+                . ./prepare-and-run-pylint.sh "$(basename $GITHUB_REPOSITORY)" test/test_*.py
 
-    pytest3:
+    pytest:
         name: Conda Pytest
         runs-on: ubuntu-latest
         steps:
@@ -61,5 +59,45 @@ jobs:
                 build_py_project_in_conda_env
                 ( test_py_project )
                 ( test_py_project )
+
+    examples:
+        name: Conda Examples
+        runs-on: ubuntu-latest
+        steps:
+        -   uses: actions/checkout@v2
+        -   name: "Main Script"
+            run: |
+                CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+                EXTRA_INSTALL="matplotlib ipykernel nbconvert"
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+                . ./ci-support.sh
+                build_py_project_in_conda_env
+
+                curl -L "https://ci.appveyor.com/api/projects/ispc/ispc/artifacts/build%2Fispc-trunk-linux.tar.gz?job=Environment%3A%20APPVEYOR_BUILD_WORKER_IMAGE%3DUbuntu1604%2C%20LLVM_VERSION%3Dlatest" | tar xfz -
+                export PATH="$(pwd)/ispc-trunk-linux/bin:$PATH"
+
+                export PYOPENCL_TEST=portable:pthread
+
+                . ./build-py-project-and-run-examples.sh
+                run_py_examples
+                run_ipynb_examples
+                run_floopy_examples
+
+    docs:
+        name: Documentation
+        runs-on: ubuntu-latest
+        steps:
+        -   uses: actions/checkout@v2
+        -
+            uses: actions/setup-python@v1
+            with:
+                python-version: '3.x'
+        -   name: "Main Script"
+            run: |
+                CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+                . ci-support.sh
+                build_py_project_in_conda_env
+                build_docs
 
 # vim: sw=4

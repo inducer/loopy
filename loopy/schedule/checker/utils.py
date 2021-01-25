@@ -37,33 +37,10 @@ def add_dims_to_isl_set(isl_set, dim_type, names, new_idx_start):
     return new_set
 
 
-def map_names_match_check(
-        obj_map,
-        desired_names,
-        dim_type,
-        assert_subset=True,
-        assert_permutation=True,
-        ):
-    """Raise an error if names of the specified map dimension do not match
-    the desired names
-    """
-
-    obj_map_names = obj_map.space.get_var_names(dim_type)
-    if assert_permutation:
-        if not set(obj_map_names) == set(desired_names):
-            raise ValueError(
-                "Set of map names %s for dim %s does not match target set %s"
-                % (obj_map_names, dim_type, desired_names))
-    elif assert_subset:
-        if not set(obj_map_names).issubset(desired_names):
-            raise ValueError(
-                "Map names %s for dim %s are not a subset of target names %s"
-                % (obj_map_names, dim_type, desired_names))
-
-
 def reorder_dims_by_name(
         isl_set, dim_type, desired_dims_ordered):
-    """Return an isl_set with the dimensions in the specified order.
+    """Return an isl_set with the dimensions of the specified dim_type
+    in the specified order.
 
     :arg isl_set: A :class:`islpy.Set` whose dimensions are
         to be reordered.
@@ -79,18 +56,14 @@ def reorder_dims_by_name(
 
     """
 
-    map_names_match_check(
-        isl_set, desired_dims_ordered, dim_type,
-        assert_subset=True, assert_permutation=False)
-
     assert dim_type != isl.dim_type.param
+    assert set(isl_set.get_var_names(dim_type)) == set(desired_dims_ordered)
 
     other_dim_type = isl.dim_type.param
     other_dim_len = len(isl_set.get_var_names(other_dim_type))
 
     new_set = isl_set.copy()
     for desired_idx, name in enumerate(desired_dims_ordered):
-        assert name in new_set.get_var_names(dim_type)
 
         current_idx = new_set.find_dim_by_name(dim_type, name)
         if current_idx != desired_idx:
@@ -107,27 +80,27 @@ def reorder_dims_by_name(
 def ensure_dim_names_match_and_align(obj_map, tgt_map):
 
     # first make sure names match
-    for dt in [isl.dim_type.in_, isl.dim_type.out, isl.dim_type.param]:
-        map_names_match_check(
-            obj_map, tgt_map.get_var_names(dt), dt,
-            assert_permutation=True)
+    assert all(
+        set(obj_map.get_var_names(dt)) == set(tgt_map.get_var_names(dt))
+        for dt in [isl.dim_type.in_, isl.dim_type.out, isl.dim_type.param])
 
-    aligned_obj_map = isl.align_spaces(obj_map, tgt_map)
-
-    return aligned_obj_map
+    return isl.align_spaces(obj_map, tgt_map)
 
 
 def append_marker_to_isl_map_var_names(old_isl_map, dim_type, marker="'"):
-    """Return an isl_map with marker appended to
-        dim_type dimension names.
+    """Return an :class:`islpy.Map` with a marker appended to the specified
+    dimension names.
 
-    :arg old_isl_map: A :class:`islpy.Map`.
+    :arg old_isl_map: An :class:`islpy.Map`.
 
-    :arg dim_type: A :class:`islpy.dim_type`, i.e., an :class:`int`,
+    :arg dim_type: An :class:`islpy.dim_type`, i.e., an :class:`int`,
         specifying the dimension to be marked.
 
-    :returns: A :class:`islpy.Map` matching `old_isl_map` with
-        apostrophes appended to dim_type dimension names.
+    :arg marker: A :class:`str` to be appended to the specified dimension
+        names. If not provided, `marker` defaults to an apostrophe.
+
+    :returns: An :class:`islpy.Map` matching `old_isl_map` with
+        `marker` appended to the `dim_type` dimension names.
 
     """
 
@@ -173,10 +146,8 @@ def make_islvars_with_marker(
 
 
 def append_marker_to_strings(strings, marker="'"):
-    if not isinstance(strings, list):
-        raise ValueError("append_marker_to_strings did not receive a list")
-    else:
-        return [s+marker for s in strings]
+    assert isinstance(strings, list)
+    return [s+marker for s in strings]
 
 
 def append_apostrophes(strings):
