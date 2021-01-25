@@ -689,6 +689,30 @@ def test_inlining_with_indirections(ctx_factory):
     assert (expected_out == out).all()
 
 
+def test_inlining_with_callee_domain_param(ctx_factory):
+    queue = cl.CommandQueue(ctx_factory())
+
+    fill2 = lp.make_function(
+            "{[i]: 0<=i<n}",
+            """
+            y[i] = 2.0
+            """, [lp.ValueArg("n"), ...],
+            name="fill2",
+            lang_version=(2018, 2))
+
+    caller = lp.make_kernel(
+            "{[i]: 0<=i<10}",
+            """
+            [i]: res[i] = fill2(10)
+            """)
+
+    caller = lp.merge([caller, fill2])
+    caller = lp.inline_callable_kernel(caller, "fill2")
+    evt, (out, ) = caller(queue)
+
+    assert (out == 2).all()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
