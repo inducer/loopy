@@ -257,7 +257,7 @@ def create_legacy_dependency_constraint(
                 from loopy.schedule.checker import (
                     lexicographic_order_map as lom)
                 # TODO handle case where inames list is empty
-                constraint_set = lom.get_lex_order_constraint(
+                constraint_set = lom.get_lex_order_set(
                     inames_list_nest_ordered_prime,
                     inames_list_nest_ordered,
                     islvars,
