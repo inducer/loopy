@@ -788,7 +788,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             # going to happen for this iname.
             new_inames = kernel.inames.copy()
             new_inames[iname] = kernel.inames[iname].copy(
-                    frozenset(tag
+                    tags=frozenset(tag
                         for tag in kernel.inames[iname].tags
                         if not isinstance(tag, AutoLocalIndexTagBase)))
             return assign_automatic_axes(
