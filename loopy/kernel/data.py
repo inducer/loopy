@@ -877,6 +877,12 @@ class Iname(Taggable):
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.tags)
 
+    def __eq__(self, other):
+        return (
+                type(self) == type(other)
+                and self.name == other.name
+                and self.tags == other.tags)
+
 # }}}
 
 # vim: foldmethod=marker
