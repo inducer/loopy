@@ -877,14 +877,6 @@ class Iname(Taggable):
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.tags)
 
-    def __lt__(self, other):
-        # Only present to allow comparing Inames in
-        # :meth:`pytools.persistent_dict.KeyBuilder`.
-        if isinstance(other, Iname):
-            return self.name < other.name
-        else:
-            raise TypeError(f"Can only compare with other Inames, got {type(other)}")
-
 # }}}
 
 # vim: foldmethod=marker
