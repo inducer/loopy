@@ -875,24 +875,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return frozenset(cond_inames - multi_use_inames)
 
-    # {{{ compatibility wrapper for iname_to_tag.get("iname")
-
-    @property
-    def iname_to_tag(self):
-        from warnings import warn
-        warn("Since version 2018.1, inames can hold multiple tags. Use "
-             "iname_to_tags['iname'] instead. iname_to_tag.get('iname') will be "
-             "removed at version 2019.0.", DeprecationWarning)
-        for iname, tags in self.iname_to_tags.items():
-            if len(tags) > 1:
-                raise LoopyError(
-                    "iname {} has multiple tags: {}. "
-                    "Use iname_to_tags['iname'] instead.".format(iname, tags))
-        return {k: next(iter(v))
-                    for k, v in self.iname_to_tags.items() if v}
-
-    # }}}
-
     # }}}
 
     # {{{ dependency wrangling
