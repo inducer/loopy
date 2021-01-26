@@ -146,6 +146,11 @@ class kernel_state:  # noqa
 # }}}
 
 
+def _get_inames_from_domains(domains):
+    return frozenset().union(*
+            (frozenset(dom.get_var_names(dim_type.set)) for dom in domains))
+
+
 class LoopKernel(ImmutableRecordWithoutPickling):
     """These correspond more or less directly to arguments of
     :func:`loopy.make_kernel`.
@@ -187,12 +192,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         A :class:`dict` of mapping variable names to
         :class:`loopy.TemporaryVariable`
         instances.
-
-    .. attribute:: iname_to_tags
-
-        A :class:`dict` mapping inames (as strings)
-        to set of instances of :class:`loopy.kernel.data.IndexTag`.
-        .. versionadded:: 2018.1
 
     .. attribute:: function_manglers
     .. attribute:: symbol_manglers
@@ -238,7 +237,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     .. attribute:: inames
 
-        An instance of :class:`frozenset` of :class:`loopy.kernel.data.Iname`.
+        An instance of :class:`dict`, a mapping from the names of kernel's
+        inames to their corresponding instances of :class:`loopy.kernel.data.Iname`.
 
     .. automethod:: __call__
     .. automethod:: copy
@@ -317,18 +317,24 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             from loopy.kernel.tools import SetOperationCacheManager
             cache_manager = SetOperationCacheManager()
 
-        inames_from_domains = set().union(*
-                (set(dom.get_var_names(dim_type.set)) for dom in domains))
+        if iname_to_tags is not None:
+            warn("Providing iname_to_tags is deprecated, pass inames instead.",
+                    DeprecationWarning, stacklevel=2)
 
         if inames is None:
-            inames = frozenset(Iname(name) for name in inames_from_domains)
-        else:
-            assert set(iname.name for iname in inames) == inames_from_domains
+            if iname_to_tags is None:
+                iname_to_tags = {}
 
-        if iname_to_tags is not None:
-            inames = frozenset(
-                    iname.copy(tags=iname_to_tags.get(iname.name, frozenset()))
-                    for iname in inames)
+            inames = {name: Iname(name, iname_to_tags.get(name, frozenset()))
+                      for name in _get_inames_from_domains(domains)}
+        else:
+            if iname_to_tags is not None:
+                raise LoopyError("Cannot provide both iname_to_tags and inames to "
+                        "LoopKernel.__init__")
+
+            inames = {
+                name: inames.get(name, Iname(name, frozenset()))
+                for name in _get_inames_from_domains(domains)}
 
         # }}}
 
@@ -755,11 +761,16 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     @property
     @memoize_method
     def iname_to_tags(self):
-        return {iname.name: iname.tags
-                for iname in self.inames if iname.tags}
+        warn(
+                "LoopKernel.iname_to_tags is deprecated. "
+                "Call LoopKernel.inames instead",
+                DeprecationWarning, stacklevel=2)
+        return {name: iname.tags
+                for name, iname in self.inames.items()
+                if iname.tags}
 
     def iname_tags(self, iname):
-        return self.iname_to_tags.get(iname, frozenset())
+        return self.inames[iname].tags
 
     def iname_tags_of_type(self, iname, tag_type_or_types,
             max_num=None, min_num=None):
@@ -775,7 +786,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         from loopy.kernel.data import filter_iname_tags_by_type
         return filter_iname_tags_by_type(
-                self.iname_to_tags.get(iname, frozenset()),
+                self.iname_tags(iname),
                 tag_type_or_types, max_num=max_num, min_num=min_num)
 
     @memoize_method
@@ -783,7 +794,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         """
         Returns a :class:`frozenset` of the names of all the inames in the kernel.
         """
-        return frozenset(iname.name for iname in self.inames)
+        return _get_inames_from_domains(self.domains)
 
     @memoize_method
     def all_params(self):
@@ -1597,11 +1608,12 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     # }}}
 
     def copy(self, **kwargs):
-        if "domains" in kwargs:
-            kwargs["inames"] = kwargs.get("inames")
-            kwargs["iname_to_tags"] = kwargs.get("iname_to_tags",
-                                                 self.iname_to_tags)
+        if "iname_to_tags" in kwargs:
+            if "inames" in kwargs:
+                raise LoopyError("Cannot pass both `inames` and `iname_to_tags` to "
+                        "LoopKernel.copy")
 
+            kwargs["inames"] = None
         return super().copy(**kwargs)
 
 # }}}
