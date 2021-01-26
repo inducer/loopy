@@ -849,7 +849,13 @@ class CallMangleInfo(ImmutableRecord):
 
 class Iname(Taggable):
     """
-    Records an iname in a :class:`~loopy.LoopKernel`.
+    Records an iname in a :class:`~loopy.LoopKernel`. See :ref:`domain-tree` for
+    semantics of *inames* in :mod:`loopy`.
+
+    This class records the metadata attached to an iname as instances of
+    :class:pytools.tag.Tag`. A tag maybe a builtin tag like
+    :class:`loopy.kernel.data.IndexTag` or a user-defined custom tag. Custom tags
+    are attached to inames to be targeted later during transformations.
 
     :arg name: An instance of :class:`str`, denoting the iname's name.
     :arg tags: An instance of :class:`frozenset` of

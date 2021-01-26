@@ -318,7 +318,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             cache_manager = SetOperationCacheManager()
 
         if iname_to_tags is not None:
-            warn("Providing iname_to_tags is deprecated, pass inames instead.",
+            warn("Providing iname_to_tags is deprecated, pass inames instead. "
+                    "Will be unsupported in 2022.",
                     DeprecationWarning, stacklevel=2)
 
         if inames is None:
@@ -763,7 +764,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     def iname_to_tags(self):
         warn(
                 "LoopKernel.iname_to_tags is deprecated. "
-                "Call LoopKernel.inames instead",
+                "Call LoopKernel.inames instead, ",
+                "will be unsupported in 2022.",
                 DeprecationWarning, stacklevel=2)
         return {name: iname.tags
                 for name, iname in self.inames.items()
