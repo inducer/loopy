@@ -764,7 +764,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     def iname_to_tags(self):
         warn(
                 "LoopKernel.iname_to_tags is deprecated. "
-                "Call LoopKernel.inames instead, ",
+                "Call LoopKernel.inames instead, "
                 "will be unsupported in 2022.",
                 DeprecationWarning, stacklevel=2)
         return {name: iname.tags
