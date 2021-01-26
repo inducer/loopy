@@ -443,9 +443,9 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                 else:
                     for dep in get_dependencies(term):
                         if filter_iname_tags_by_type(
-                                kernel.iname_to_tags.get(dep, []), LocalIndexTag):
+                                kernel.inames[dep], LocalIndexTag):
                             tag, = filter_iname_tags_by_type(
-                                kernel.iname_to_tags.get(dep, []), LocalIndexTag, 1)
+                                kernel.inames[dep], LocalIndexTag, 1)
                             if tag.axis == 0:
                                 raise LoopyError(
                                     "streaming store must have stride 1 in "
