@@ -56,19 +56,31 @@ def get_approximate_convex_bounds_checks(domain, check_inames,
 # {{{ on which inames may a conditional depend?
 
 def get_usable_inames_for_conditional(kernel, sched_index, op_cache_manager):
-    result = op_cache_manager.find_active_inames_at(sched_index)
-    crosses_barrier = op_cache_manager.has_barrier_within(sched_index)
+    result = op_cache_manager.active_inames[sched_index]
+    crosses_barrier = op_cache_manager.has_barrier_within[sched_index]
 
     # Find our containing subkernel. Grab inames for all insns from there.
-    subkernel_index = op_cache_manager.get_callkernel_index(sched_index)
+    subkernel_index = op_cache_manager.callkernel_index[sched_index]
 
     if subkernel_index is None:
         # Outside all subkernels - use only inames available to host.
         return frozenset(result)
 
-    usable_parallel_inames_in_subkernel = (
-            op_cache_manager.get_usable_inames_for_conditional_in_subkernel(
-                subkernel_index, crosses_barrier))
+    parallel_inames_in_subkernel = (
+            op_cache_manager.get_parallel_inames_in_a_callkernel(
+                subkernel_index))
+
+    # not all parallel inames are usable:
+    #  - local indices may not be used in conditionals that cross barriers.
+    #  - ILP indices and vector lane indices are not available in loop
+    #    bounds, they only get defined at the innermost level of nesting.
+    from loopy.kernel.data import VectorizeTag, LocalIndexTagBase, IlpBaseTag
+    usable_parallel_inames_in_subkernel = frozenset(iname
+            for iname in parallel_inames_in_subkernel
+            if (not (kernel.iname_tags_of_type(iname, LocalIndexTagBase)
+                         and crosses_barrier)
+                and not kernel.iname_tags_of_type(iname, VectorizeTag)
+                and not kernel.iname_tags_of_type(iname, IlpBaseTag)))
 
     return result | usable_parallel_inames_in_subkernel
 

@@ -207,7 +207,7 @@ class CodeGenerationState:
 
     .. attribute:: schedule_index_end
 
-    .. attribute:: cgen_cachemanager
+    .. attribute:: codegen_cachemanager
 
         An instance of :class:`loopy.codegen.tools.CodegenOperationCacheManager`.
     """
@@ -220,7 +220,7 @@ class CodeGenerationState:
             is_generating_device_code=None,
             gen_program_name=None,
             schedule_index_end=None,
-            cgen_cachemanager=None):
+            codegen_cachemanager=None):
         self.kernel = kernel
         self.implemented_data_info = implemented_data_info
         self.implemented_domain = implemented_domain
@@ -235,7 +235,7 @@ class CodeGenerationState:
         self.is_generating_device_code = is_generating_device_code
         self.gen_program_name = gen_program_name
         self.schedule_index_end = schedule_index_end
-        self.cgen_cachemanager = cgen_cachemanager
+        self.codegen_cachemanager = codegen_cachemanager
 
     # {{{ copy helpers
 
@@ -248,16 +248,6 @@ class CodeGenerationState:
 
         if kernel is None:
             kernel = self.kernel
-            cgen_cachemanager = self.cgen_cachemanager
-        else:
-            if ((self.kernel.instructions != kernel.instructions)
-                 or (self.kernel.schedule != kernel.schedule)
-                 or (self.kernel.iname_to_tags != kernel.iname_to_tags)):
-                # cgen_cachemanager is invalidated, must create a new one
-                from loopy.codegen.tools import CodegenOperationCacheManager
-                cgen_cachemanager = CodegenOperationCacheManager(kernel)
-            else:
-                cgen_cachemanager = self.cgen_cachemanager
 
         if implemented_data_info is None:
             implemented_data_info = self.implemented_data_info
@@ -293,7 +283,7 @@ class CodeGenerationState:
                 is_generating_device_code=is_generating_device_code,
                 gen_program_name=gen_program_name,
                 schedule_index_end=schedule_index_end,
-                cgen_cachemanager=cgen_cachemanager,
+                codegen_cachemanager=self.codegen_cachemanager.with_kernel(kernel),
                 )
 
     def copy_and_assign(self, name, value):
@@ -492,7 +482,7 @@ def generate_code_v2(kernel):
 
     initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
 
-    from loopy.codegen.tools import CodegenOperationCacheManager
+    from loopy.codegen.tools import make_codegen_cache_manager
 
     codegen_state = CodeGenerationState(
             kernel=kernel,
@@ -511,7 +501,7 @@ def generate_code_v2(kernel):
                 + kernel.name
                 + kernel.target.host_program_name_suffix),
             schedule_index_end=len(kernel.schedule),
-            cgen_cachemanager=CodegenOperationCacheManager(kernel),
+            codegen_cachemanager=make_codegen_cache_manager(kernel),
             )
 
     from loopy.codegen.result import generate_host_or_device_program

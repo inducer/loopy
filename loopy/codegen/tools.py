@@ -20,8 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-from pytools import ImmutableRecord, memoize_method
+from pytools import memoize_method
 from loopy.schedule import (EnterLoop, LeaveLoop, CallKernel, ReturnFromKernel,
                             Barrier, BeginBlockItem, gather_schedule_block)
 
@@ -29,101 +28,131 @@ from loopy.schedule import (EnterLoop, LeaveLoop, CallKernel, ReturnFromKernel,
 __doc__ = """
 .. currentmodule:: loopy.codegen.tools
 
+.. autofunction:: make_codegen_cache_manager
+
 .. autoclass:: CodegenOperationCacheManager
 """
 
 
-class CodegenOperationCacheManager(ImmutableRecord):
+def make_codegen_cache_manager(kernel):
     """
-    Caches operations arising during the codegen pipeline.
+    Returns an instance of :class:`CodegenOperationCacheManager` for *kernel*.
     """
-    def __init__(self, kernel):
-        super().__init__()
-        super().__setattr__("kernel", kernel)
-        self._find_active_inames_at_cache = []
-        self._get_callkernel_index_cache = []
+    # {{{ computing active inames for sched indices
 
-    def __setattr__(self, key, val):
-        if key == "kernel":
-            # overwriting self.kernel is not allowed, as cache will become
-            # invalidated
-            raise ValueError("Cannot update CodegenOperationCacheManager.kernel,"
-                             " create a new instance instead.")
+    active_inames = []
 
-        super().__setattr__(key, val)
+    for i in range(len(kernel.schedule)):
+        if i == 0:
+            active_inames.append(frozenset())
+            continue
 
-    def _forward_cached_method(self, sched_index, method, cache):
-        for sched_index_var in range(len(cache), sched_index + 1):
-            res = method(sched_index_var)
-            if len(cache) == sched_index_var:
-                cache.append(res)
-        return cache[sched_index]
-
-    def find_active_inames_at(self, sched_index):
-        """
-        Returns a :class:`frozenset` of active inames at the point just before
-        *sched_index*.
-        """
-        return self._forward_cached_method(sched_index,
-                    self._find_active_inames_at,
-                    self._find_active_inames_at_cache)
-
-    def _find_active_inames_at(self, sched_index):
-        if sched_index == 0:
-            return frozenset()
-
-        sched_item = self.kernel.schedule[sched_index-1]
+        sched_item = kernel.schedule[i-1]
         if isinstance(sched_item, EnterLoop):
-            return (self.find_active_inames_at(sched_index-1)
+            active_inames.append(active_inames[i-1]
                     | frozenset([sched_item.iname]))
         elif isinstance(sched_item, LeaveLoop):
-            assert sched_item.iname in self.find_active_inames_at(sched_index-1)
-            return (self.find_active_inames_at(sched_index-1)
-                    - frozenset([sched_item.iname]))
+            assert sched_item.iname in active_inames[i-1]
+            active_inames.append(active_inames[i-1] - frozenset([sched_item.iname]))
         else:
-            return self.find_active_inames_at(sched_index-1)
+            active_inames.append(active_inames[i-1])
+    # }}}
 
-    @memoize_method
-    def has_barrier_within(self, sched_index):
-        """
-        Checks if the kernel's schedule block from *sched_index* contains a
-        barrier.
-        """
-        sched_item = self.kernel.schedule[sched_index]
+    # {{{ computing call kernel indices
 
-        if isinstance(sched_item, BeginBlockItem):
-            # TODO: calls to "gather_schedule_block" can be amortized
-            _, endblock_index = gather_schedule_block(self.kernel.schedule,
-                    sched_index)
-            return any(self.has_barrier_within(i)
-                       for i in range(sched_index+1, endblock_index))
-        elif isinstance(sched_item, Barrier):
-            return True
-        else:
-            return False
+    # callkernel_index[i]: schedule index of CallKernel containing the point
+    # just before ith-schedule item. None if the point is not a part of any
+    # callkernel.
+    callkernel_index = []
 
-    def get_callkernel_index(self, sched_index):
-        """
-        Returns index of :class:`loopy.schedule.CallKernel` containing the point
-        just before *sched_index*. Return *None* if the point is
-        not a part of any sub-kernel.
-        """
-        return self._forward_cached_method(sched_index,
-                    self._get_callkernel_index,
-                    self._get_callkernel_index_cache)
+    for i in range(len(kernel.schedule)):
+        if i == 0:
+            callkernel_index.append(None)
+            continue
 
-    def _get_callkernel_index(self, sched_index):
-        if sched_index == 0:
-            return None
-
-        sched_item = self.kernel.schedule[sched_index-1]
+        sched_item = kernel.schedule[i-1]
 
         if isinstance(sched_item, CallKernel):
-            return sched_index-1
+            callkernel_index.append(i-1)
         elif isinstance(sched_item, ReturnFromKernel):
-            return None
+            callkernel_index.append(None)
         else:
-            return self.get_callkernel_index(sched_index-1)
+            callkernel_index.append(callkernel_index[i-1])
+
+    # }}}
+
+    # {{{ computing has_barrier_within
+
+    # has_barrier_within[i]: 'True' if the i-th schedule item's is a begin block
+    # containing a barrier of if the i-th schedule item is a barrier.
+
+    has_barrier_within = []
+
+    for sched_idx, sched_item in enumerate(kernel.schedule):
+        if isinstance(sched_item, BeginBlockItem):
+            # TODO: calls to "gather_schedule_block" can be amortized
+            _, endblock_index = gather_schedule_block(kernel.schedule,
+                    sched_idx)
+            has_barrier_within.append(any(
+                    isinstance(kernel.schedule[i], Barrier)
+                    for i in range(sched_idx+1, endblock_index)))
+        elif isinstance(sched_item, Barrier):
+            has_barrier_within.append(True)
+        else:
+            has_barrier_within.append(False)
+    # }}}
+
+    return CodegenOperationCacheManager(kernel, active_inames, callkernel_index,
+            has_barrier_within)
+
+
+class CodegenOperationCacheManager:
+    """
+    Caches operations arising during the codegen pipeline.
+
+    .. attribute:: kernel
+
+        An instance of :class:`loopy.LoopKernel` the cache manager is tied to.
+
+    .. attribute:: active_inames
+
+        An instance of :class:`list`, with the i-th entry being a :class:`frozenset`
+        of active inames at the point just before i-th schedule item.
+
+    .. attribute:: callkernel_index
+
+        An instance of :class:`list`, with the i-th entry being the index of
+        :class:`loopy.schedule.CallKernel` containing the point just before i-th
+        schedule item.
+
+    .. attribute:: has_barrier_within
+
+        An instance of :class:`list`. The list's i-th entry is *True* if the i-th
+        schedule item is a :class:`loopy.schedule.BeginBlockItem` containing a
+        barrier or if the i-th schedule item is a :class:`loopy.schedule.Barrier`.
+
+    .. automethod:: with_kernel
+    .. automethod:: get_parallel_inames_in_a_callkernel
+    """
+    def __init__(self, kernel, active_inames, callkernel_index, has_barrier_within):
+        self.kernel = kernel
+        self.active_inames = active_inames
+        self.callkernel_index = callkernel_index
+        self.has_barrier_within = has_barrier_within
+
+    def with_kernel(self, kernel):
+        """
+        Returns a new instance of :class:`CodegenOperationCacheManager`
+        corresponding to *kernel* if the cached variables in *self* would
+        be valid for *kernel*, else returns *self*.
+        """
+        if ((self.kernel.instructions != kernel.instructions)
+                or (self.kernel.schedule != kernel.schedule)
+                or (self.kernel.iname_to_tags != kernel.iname_to_tags)):
+            # cached values are invalidated, must create a new one
+            return make_codegen_cache_manager(kernel)
+
+        return self
 
     @memoize_method
     def get_insn_ids_for_block_at(self, sched_index):
@@ -134,36 +163,26 @@ class CodegenOperationCacheManager(ImmutableRecord):
         return get_insn_ids_for_block_at(self.kernel.schedule, sched_index)
 
     @memoize_method
-    def get_usable_inames_for_conditional_in_subkernel(self, subknl_index,
-                                                       crosses_barrier):
+    def get_parallel_inames_in_a_callkernel(self, callkernel_index):
         """
-        Returns a :class:`frozenset` of parallel inames are defined within a
-        subkernel, BUT:
+        Returns a :class:`frozenset` of parallel inames in a callkernel
 
-        - local indices may not be used in conditionals that cross barriers.
-
-        - ILP indices and vector lane indices are not available in loop
-          bounds, they only get defined at the innermost level of nesting.
+        :arg callkernel_index: Index of the :class:`loopy.schedule.CallKernel` in the
+            :attr:`CodegenOperationCacheManager.kernel`'s schedule, whose parallel
+            inames are to be found.
         """
 
-        assert isinstance(self.kernel.schedule[subknl_index], CallKernel)
-        insn_ids_in_subkernel = self.get_insn_ids_for_block_at(subknl_index)
+        from loopy.kernel.data import ConcurrentTag
+        assert isinstance(self.kernel.schedule[callkernel_index], CallKernel)
+        insn_ids_in_subkernel = self.get_insn_ids_for_block_at(callkernel_index)
 
-        inames_for_subkernel = set(
-            iname
-            for insn in insn_ids_in_subkernel
-            for iname in self.kernel.insn_inames(insn))
-
-        def filterfunc(iname):
-            from loopy.kernel.data import (ConcurrentTag, LocalIndexTagBase,
-                                           VectorizeTag,
-                                           IlpBaseTag)
-            return (self.kernel.iname_tags_of_type(iname, ConcurrentTag)
-                    and not self.kernel.iname_tags_of_type(iname, VectorizeTag)
-                    and not (self.kernel.iname_tags_of_type(iname, LocalIndexTagBase)
-                             and crosses_barrier)
-                    and not self.kernel.iname_tags_of_type(iname, IlpBaseTag))
+        inames_in_subkernel = {iname
+                               for insn in insn_ids_in_subkernel
+                               for iname in self.kernel.insn_inames(insn)}
 
         return frozenset([iname
-                          for iname in inames_for_subkernel
-                          if filterfunc(iname)])
+                          for iname in inames_in_subkernel
+                          if self.kernel.iname_tags_of_type(iname, ConcurrentTag)])
+
+
+# vim: fdm=marker
