@@ -64,7 +64,8 @@ def get_usable_inames_for_conditional(kernel, sched_index, op_cache_manager):
 
     if subkernel_index is None:
         # Outside all subkernels - use only inames available to host.
-        return frozenset(result)
+        assert isinstance(result, frozenset)
+        return result
 
     parallel_inames_in_subkernel = (
             op_cache_manager.get_parallel_inames_in_a_callkernel(
