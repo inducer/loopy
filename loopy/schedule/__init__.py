@@ -40,6 +40,11 @@ __doc__ = """
 .. currentmodule:: loopy.schedule
 
 .. autoclass:: ScheduleItem
+.. autoclass:: BeginBlockItem
+.. autoclass:: EndBlockItem
+.. autoclass:: CallKernel
+.. autoclass:: Barrier
+.. autoclass:: RunInstruction
 
 .. autoclass:: MinRecursionLimitForScheduling
 """
