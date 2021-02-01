@@ -46,7 +46,7 @@ jobs:
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
 
-    pytest:
+    pytest_no_arg_check:
         name: Conda Pytest without arg check
         runs-on: ubuntu-latest
         steps:
