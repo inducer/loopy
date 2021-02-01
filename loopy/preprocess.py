@@ -2312,21 +2312,6 @@ preprocess_cache = WriteOncePersistentDict(
 def preprocess_single_kernel(kernel, callables_table, device=None):
     from loopy.kernel import KernelState
 
-    # {{{ cache retrieval
-
-    from loopy import CACHING_ENABLED
-    if CACHING_ENABLED:
-        input_kernel = kernel
-
-        try:
-            result = preprocess_cache[kernel]
-            logger.debug("%s: preprocess cache hit" % kernel.name)
-            return result
-        except KeyError:
-            pass
-
-    # }}}
-
     prepro_logger = ProcessLogger(logger, "%s: preprocess" % kernel.name)
 
     from loopy.check import check_identifiers_in_subst_rules
@@ -2369,27 +2354,27 @@ def preprocess_single_kernel(kernel, callables_table, device=None):
 
     prepro_logger.done()
 
-    # {{{ prepare for caching
-
-    # PicklableDtype instances for example need to know the target they're working
-    # towards in order to pickle and unpickle them. This is the first pass that
-    # uses caching, so we need to be ready to pickle. This means propagating
-    # this target information.
-
-    if CACHING_ENABLED:
-        input_kernel = prepare_for_caching(input_kernel)
-
-    kernel = prepare_for_caching(kernel)
-
-    # }}}
-
-    if CACHING_ENABLED:
-        preprocess_cache.store_if_not_present(input_kernel, kernel)
-
     return kernel
 
 
 def preprocess_program(program, device=None):
+
+    # {{{ cache retrieval
+
+    from loopy import CACHING_ENABLED
+    if CACHING_ENABLED:
+        input_program = program
+
+        try:
+            result = preprocess_cache[program]
+            logger.debug(f"program with entrypoints: {program.entrypoints}"
+                    " preprocess cache hit")
+            return result
+        except KeyError:
+            pass
+
+    # }}}
+
     from loopy.kernel import KernelState
     if program.state >= KernelState.PREPROCESSED:
         return program
@@ -2467,6 +2452,23 @@ def preprocess_program(program, device=None):
     # callees with gbarrier in them must be inlined after inferrring arg_descr.
     # inline_kernels_with_gbarriers does not recursively inline the callees.
     program = inline_kernels_with_gbarriers(program)
+
+    # {{{ prepare for caching
+
+    # PicklableDtype instances for example need to know the target they're working
+    # towards in order to pickle and unpickle them. This is the first pass that
+    # uses caching, so we need to be ready to pickle. This means propagating
+    # this target information.
+
+    if CACHING_ENABLED:
+        input_program = prepare_for_caching(input_program)
+
+    program = prepare_for_caching(program)
+
+    # }}}
+
+    if CACHING_ENABLED:
+        preprocess_cache.store_if_not_present(input_program, program)
 
     return program
 
