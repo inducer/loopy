@@ -1,5 +1,3 @@
-from __future__ import division
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -29,11 +27,13 @@ from islpy import dim_type
 
 # {{{ approximate, convex bounds check generator
 
-def get_approximate_convex_bounds_checks(domain, check_inames, implemented_domain):
+def get_approximate_convex_bounds_checks(domain, check_inames,
+        implemented_domain, op_cache_manager):
     if isinstance(domain, isl.BasicSet):
         domain = isl.Set.from_basic_set(domain)
     domain = domain.remove_redundancies()
-    result = domain.eliminate_except(check_inames, [dim_type.set])
+    result = op_cache_manager.eliminate_except(domain, check_inames,
+            (dim_type.set,))
 
     # This is ok, because we're really looking for the
     # projection, with no remaining constraints from
@@ -59,6 +59,7 @@ def get_usable_inames_for_conditional(kernel, sched_index):
     from loopy.schedule import (
         find_active_inames_at, get_insn_ids_for_block_at, has_barrier_within)
     from loopy.kernel.data import (ConcurrentTag, LocalIndexTagBase,
+                                   VectorizeTag,
                                    IlpBaseTag)
 
     result = find_active_inames_at(kernel, sched_index)
@@ -67,7 +68,7 @@ def get_usable_inames_for_conditional(kernel, sched_index):
     # Find our containing subkernel. Grab inames for all insns from there.
     within_subkernel = False
 
-    for sched_item_index, sched_item in enumerate(kernel.schedule[:sched_index+1]):
+    for sched_item_index, sched_item in enumerate(kernel.schedule[:sched_index]):
         from loopy.schedule import CallKernel, ReturnFromKernel
         if isinstance(sched_item, CallKernel):
             within_subkernel = True
@@ -92,11 +93,12 @@ def get_usable_inames_for_conditional(kernel, sched_index):
         #
         # - local indices may not be used in conditionals that cross barriers.
         #
-        # - ILP indices are not available in loop bounds, they only get defined
-        #   at the innermost level of nesting.
+        # - ILP indices and vector lane indices are not available in loop
+        #   bounds, they only get defined at the innermost level of nesting.
 
         if (
                 kernel.iname_tags_of_type(iname, ConcurrentTag)
+                and not kernel.iname_tags_of_type(iname, VectorizeTag)
                 and not (kernel.iname_tags_of_type(iname, LocalIndexTagBase)
                     and crosses_barrier)
                 and not kernel.iname_tags_of_type(iname, IlpBaseTag)

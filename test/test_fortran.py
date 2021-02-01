@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
 __license__ = """
@@ -38,11 +36,11 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl \
 
 __all__ = [
         "pytest_generate_tests",
-        "cl"  # 'cl.create_some_context'
+        "cl"  # "cl.create_some_context"
         ]
 
 
-pytestmark = pytest.mark.importorskip("fparser")
+pytest.importorskip("fparser")
 
 
 def test_fill(ctx_factory):
@@ -275,6 +273,12 @@ def test_tagged(ctx_factory):
     "i_inner,j_inner",
     ])
 def test_matmul(ctx_factory, buffer_inames):
+    ctx = ctx_factory()
+
+    if (buffer_inames and
+            ctx.devices[0].platform.name == "Portable Computing Language"):
+        pytest.skip("crashes on pocl")
+
     logging.basicConfig(level=logging.INFO)
 
     fortran_src = """
@@ -310,13 +314,16 @@ def test_matmul(ctx_factory, buffer_inames):
 
     knl = lp.extract_subst(knl, "a_acc", "a[i1,i2]", parameters="i1, i2")
     knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")
-    knl = lp.precompute(knl, "a_acc", "k_inner,i_inner", default_tag="l.auto")
-    knl = lp.precompute(knl, "b_acc", "j_inner,k_inner", default_tag="l.auto")
+    knl = lp.precompute(knl, "a_acc", "k_inner,i_inner",
+            precompute_outer_inames="i_outer, j_outer, k_outer",
+            default_tag="l.auto")
+    knl = lp.precompute(knl, "b_acc", "j_inner,k_inner",
+            precompute_outer_inames="i_outer, j_outer, k_outer",
+            default_tag="l.auto")
 
     knl = lp.buffer_array(knl, "c", buffer_inames=buffer_inames,
             init_expression="0", store_expression="base+buffer")
 
-    ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=128, m=128, ell=128))
 
 
@@ -487,9 +494,11 @@ def test_precompute_some_exist(ctx_factory):
     knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")
     knl = lp.precompute(knl, "a_acc", "k_inner,i_inner",
             precompute_inames="ktemp,itemp",
+            precompute_outer_inames="i_outer, j_outer, k_outer",
             default_tag="l.auto")
     knl = lp.precompute(knl, "b_acc", "j_inner,k_inner",
             precompute_inames="itemp,k2temp",
+            precompute_outer_inames="i_outer, j_outer, k_outer",
             default_tag="l.auto")
 
     ref_knl = knl

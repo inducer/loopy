@@ -1,7 +1,5 @@
 """Kernel object."""
 
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -24,8 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
-from six.moves import range, zip, intern
+from sys import intern
 
 from collections import defaultdict
 
@@ -35,14 +32,13 @@ import islpy as isl
 from islpy import dim_type
 import re
 
-from pytools import UniqueNameGenerator, generate_unique_names
+from pytools import UniqueNameGenerator, generate_unique_names, natsorted
 
 from loopy.library.function import (
         default_function_mangler,
         single_arg_function_mangler)
 
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
-from loopy.tools import natsorted
 from loopy.diagnostic import StaticValueFindingError
 from loopy.kernel.data import filter_iname_tags_by_type
 from warnings import warn
@@ -53,7 +49,7 @@ from warnings import warn
 class _UniqueVarNameGenerator(UniqueNameGenerator):
 
     def __init__(self, existing_names=set(), forced_prefix=""):
-        super(_UniqueVarNameGenerator, self).__init__(existing_names, forced_prefix)
+        super().__init__(existing_names, forced_prefix)
         array_prefix_pattern = re.compile("(.*)_s[0-9]+$")
 
         array_prefixes = set()
@@ -99,14 +95,29 @@ class _UniqueVarNameGenerator(UniqueNameGenerator):
 
 # {{{ loop kernel object
 
+class _deprecated_KernelState_SCHEDULED:  # noqa
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, klass):
+        warn(
+            "'KernelState.SCHEDULED' is deprecated. "
+            "Use 'KernelState.LINEARIZED'.",
+            DeprecationWarning, stacklevel=2)
+        return self.f()
+
 class KernelState:  # noqa
     INITIAL = 0
     PREPROCESSED = 1
-    SCHEDULED = 2
+    LINEARIZED = 2
+
+    @_deprecated_KernelState_SCHEDULED
+    def SCHEDULED():  # pylint:disable=no-method-argument
+        return KernelState.LINEARIZED
 
 # {{{ kernel_state, KernelState compataibility
 
-class _deperecated_kernel_state_class_method(object):  # noqa
+class _deperecated_kernel_state_class_method:  # noqa
     def __init__(self, f):
         self.f = f
 
@@ -116,7 +127,7 @@ class _deperecated_kernel_state_class_method(object):  # noqa
         return self.f()
 
 
-class kernel_state(object):  # noqa
+class kernel_state:  # noqa
     """Deprecated. Use :class:`loopy.kernel.KernelState` instead.
     """
 
@@ -224,11 +235,16 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     .. attribute:: target
 
         A subclass of :class:`loopy.TargetBase`.
+
+    .. automethod:: __call__
+    .. automethod:: copy
     """
 
     # {{{ constructor
 
-    def __init__(self, domains, instructions, args=None, schedule=None,
+    def __init__(self, domains, instructions, args=None,
+            schedule=None,
+            linearization=None,
             name="loopy_kernel",
             preambles=None,
             preamble_generators=None,
@@ -333,14 +349,31 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if state not in [
                 KernelState.INITIAL,
                 KernelState.PREPROCESSED,
-                KernelState.SCHEDULED,
+                KernelState.LINEARIZED,
                 ]:
             raise ValueError("invalid value for 'state'")
+
+        # `linearization` is replacing `schedule`, but we're not changing
+        # this under the hood yet, so for now, store it inside `schedule`
+        # and raise deprecation warning anyway
+        if schedule is not None:
+            if linearization is not None:
+                # these should not both be present
+                raise ValueError(
+                    "received both `schedule` and `linearization` args, "
+                    "'LoopKernel.schedule' is deprecated. "
+                    "Use 'LoopKernel.linearization'.")
+            warn(
+                "'LoopKernel.schedule' is deprecated. "
+                "Use 'LoopKernel.linearization'.",
+                DeprecationWarning, stacklevel=2)
+        elif linearization is not None:
+            schedule = linearization
 
         from collections import defaultdict
         assert not isinstance(iname_to_tags, defaultdict)
 
-        for iname, tags in six.iteritems(iname_to_tags):
+        for iname, tags in iname_to_tags.items():
             # don't tolerate empty sets
             assert tags
             assert isinstance(tags, frozenset)
@@ -443,25 +476,25 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     @memoize_method
     def non_iname_variable_names(self):
-        return (set(six.iterkeys(self.arg_dict))
-                | set(six.iterkeys(self.temporary_variables)))
+        return (set(self.arg_dict.keys())
+                | set(self.temporary_variables.keys()))
 
     @memoize_method
     def all_variable_names(self, include_temp_storage=True):
         return (
-                set(six.iterkeys(self.temporary_variables))
-                | set(tv.base_storage
-                    for tv in six.itervalues(self.temporary_variables)
-                    if tv.base_storage is not None and include_temp_storage)
-                | set(six.iterkeys(self.substitutions))
-                | set(arg.name for arg in self.args)
+                set(self.temporary_variables.keys())
+                | {tv.base_storage
+                    for tv in self.temporary_variables.values()
+                    if tv.base_storage is not None and include_temp_storage}
+                | set(self.substitutions.keys())
+                | {arg.name for arg in self.args}
                 | set(self.all_inames()))
 
     def get_var_name_generator(self):
         return _UniqueVarNameGenerator(self.all_variable_names())
 
     def get_instruction_id_generator(self, based_on="insn"):
-        used_ids = set(insn.id for insn in self.instructions)
+        used_ids = {insn.id for insn in self.instructions}
 
         return UniqueNameGenerator(used_ids)
 
@@ -470,7 +503,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if insns is None:
             insns = self.instructions
 
-        used_ids = set(insn.id for insn in insns) | extra_used_ids
+        used_ids = {insn.id for insn in insns} | extra_used_ids
 
         for id_str in generate_unique_names(based_on):
             if id_str not in used_ids:
@@ -503,7 +536,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     @property
     @memoize_method
     def id_to_insn(self):
-        return dict((insn.id, insn) for insn in self.instructions)
+        return {insn.id: insn for insn in self.instructions}
 
     # }}}
 
@@ -598,10 +631,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     @memoize_method
     def _get_home_domain_map(self):
-        return dict(
-                (iname, i_domain)
+        return {
+                iname: i_domain
                 for i_domain, dom in enumerate(self.domains)
-                for iname in dom.get_var_names(dim_type.set))
+                for iname in dom.get_var_names(dim_type.set)}
 
     def get_home_domain_index(self, iname):
         return self._get_home_domain_map()[iname]
@@ -777,7 +810,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     @memoize_method
     def all_referenced_inames(self):
         result = set()
-        for inames in six.itervalues(self.all_insn_inames()):
+        for inames in self.all_insn_inames().values():
             result.update(inames)
         return result
 
@@ -788,10 +821,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     @memoize_method
     def iname_to_insns(self):
-        result = dict(
-                (iname, set()) for iname in self.all_inames())
+        result = {
+                iname: set() for iname in self.all_inames()}
         for insn in self.instructions:
-            for iname in self.insn_inames(insn):
+            for iname in insn.within_inames:
                 result[iname].add(insn.id)
 
         return result
@@ -815,9 +848,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 tag, = tags
                 tag_key_uses[tag.key].append(iname)
 
-        multi_use_keys = set(
-                key for key, user_inames in six.iteritems(tag_key_uses)
-                if len(user_inames) > 1)
+        multi_use_keys = {
+                key for key, user_inames in tag_key_uses.items()
+                if len(user_inames) > 1}
 
         multi_use_inames = set()
         for iname in cond_inames:
@@ -837,13 +870,13 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         warn("Since version 2018.1, inames can hold multiple tags. Use "
              "iname_to_tags['iname'] instead. iname_to_tag.get('iname') will be "
              "removed at version 2019.0.", DeprecationWarning)
-        for iname, tags in six.iteritems(self.iname_to_tags):
+        for iname, tags in self.iname_to_tags.items():
             if len(tags) > 1:
                 raise LoopyError(
-                    "iname {0} has multiple tags: {1}. "
+                    "iname {} has multiple tags: {}. "
                     "Use iname_to_tags['iname'] instead.".format(iname, tags))
-        return dict((k, next(iter(v)))
-                    for k, v in six.iteritems(self.iname_to_tags) if v)
+        return {k: next(iter(v))
+                    for k, v in self.iname_to_tags.items() if v}
 
     # }}}
 
@@ -893,8 +926,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         result = {}
 
         admissible_vars = (
-                set(arg.name for arg in self.args)
-                | set(six.iterkeys(self.temporary_variables)))
+                {arg.name for arg in self.args}
+                | set(self.temporary_variables.keys()))
 
         for insn in self.instructions:
             for var_name in insn.read_dependency_names() & admissible_vars:
@@ -921,6 +954,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         result = set()
         for insn in self.instructions:
             result.update(insn.read_dependency_names())
+
+        for domain in self.domains:
+            result.update(domain.get_var_names(dim_type.param))
+
         return result
 
     @memoize_method
@@ -936,7 +973,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     @memoize_method
     def get_temporary_to_base_storage_map(self):
         result = {}
-        for tv in six.itervalues(self.temporary_variables):
+        for tv in self.temporary_variables.values():
             if tv.base_storage:
                 result[tv.name] = tv.base_storage
 
@@ -947,10 +984,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         written_vars = self.get_written_variables()
 
         from loopy.kernel.data import ValueArg
-        return set(
+        return {
                 arg.name
                 for arg in self.args
-                if isinstance(arg, ValueArg) and arg.name not in written_vars)
+                if isinstance(arg, ValueArg) and arg.name not in written_vars}
 
     # }}}
 
@@ -959,7 +996,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     @property
     @memoize_method
     def arg_dict(self):
-        return dict((arg.name, arg) for arg in self.args)
+        return {arg.name: arg for arg in self.args}
 
     @property
     @memoize_method
@@ -981,13 +1018,14 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         from loopy.kernel.data import ArrayArg
         return (
-                set(
+                {
                     arg.name for arg in self.args
-                    if isinstance(arg, ArrayArg))
-                | set(
+                    if (isinstance(arg, ArrayArg)
+                        and arg.address_space == AddressSpace.GLOBAL)}
+                | {
                     tv.name
-                    for tv in six.itervalues(self.temporary_variables)
-                    if tv.address_space == AddressSpace.GLOBAL))
+                    for tv in self.temporary_variables.values()
+                    if tv.address_space == AddressSpace.GLOBAL})
 
     # }}}
 
@@ -1112,7 +1150,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             forced_sizes = forced_sizes.copy()
 
             size_list = []
-            sorted_axes = sorted(six.iterkeys(size_dict))
+            sorted_axes = sorted(size_dict.keys())
 
             while sorted_axes or forced_sizes:
                 if sorted_axes:
@@ -1184,15 +1222,15 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     @memoize_method
     def local_var_names(self):
         from loopy.kernel.data import AddressSpace
-        return set(
+        return {
             tv.name
-            for tv in six.itervalues(self.temporary_variables)
-            if tv.address_space == AddressSpace.LOCAL)
+            for tv in self.temporary_variables.values()
+            if tv.address_space == AddressSpace.LOCAL}
 
     def local_mem_use(self):
         from loopy.kernel.data import AddressSpace
         return sum(
-                tv.nbytes for tv in six.itervalues(self.temporary_variables)
+                tv.nbytes for tv in self.temporary_variables.values()
                 if tv.address_space == AddressSpace.LOCAL)
 
     # }}}
@@ -1225,13 +1263,13 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 "consistent iname nesting order. This is a possible indication "
                 "that the kernel may not schedule successfully, but for now "
                 "it only impacts printing of the kernel.")
-            embedding = dict((iname, iname) for iname in self.all_inames())
+            embedding = {iname: iname for iname in self.all_inames()}
 
         return embedding
 
     def stringify(self, what=None, with_dependencies=False, use_separators=True,
             show_labels=True):
-        all_what = set([
+        all_what = {
             "name",
             "arguments",
             "domains",
@@ -1241,10 +1279,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             "instructions",
             "Dependencies",
             "schedule",
-            ])
+            }
 
-        first_letter_to_what = dict(
-                (w[0], w) for w in all_what)
+        first_letter_to_what = {
+                w[0]: w for w in all_what}
         assert len(first_letter_to_what) == len(all_what)
 
         if what is None:
@@ -1255,11 +1293,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if isinstance(what, str):
             if "," in what:
                 what = what.split(",")
-                what = set(s.strip() for s in what)
+                what = {s.strip() for s in what}
             else:
-                what = set(
+                what = {
                         first_letter_to_what[w]
-                        for w in what)
+                        for w in what}
 
         if not (what <= all_what):
             raise LoopyError("invalid 'what' passed: %s"
@@ -1304,14 +1342,14 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 else:
                     tags_str = ", ".join(str(tag) for tag in tags)
 
-                line = "%s: %s" % (iname, tags_str)
+                line = f"{iname}: {tags_str}"
                 lines.append(line)
 
         if "variables" in what and kernel.temporary_variables:
             lines.extend(sep)
             if show_labels:
                 lines.append("TEMPORARIES:")
-            for tv in natsorted(six.itervalues(kernel.temporary_variables),
+            for tv in natsorted(kernel.temporary_variables.values(),
                     key=lambda tv: tv.name):
                 lines.append(str(tv))
 
@@ -1319,7 +1357,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             lines.extend(sep)
             if show_labels:
                 lines.append("SUBSTITUTION RULES:")
-            for rule_name in natsorted(six.iterkeys(kernel.substitutions)):
+            for rule_name in natsorted(kernel.substitutions.keys()):
                 lines.append(str(kernel.substitutions[rule_name]))
 
         if "instructions" in what:
@@ -1333,7 +1371,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         dep_lines = []
         for insn in kernel.instructions:
             if insn.depends_on:
-                dep_lines.append("%s : %s" % (insn.id, ",".join(insn.depends_on)))
+                dep_lines.append("{} : {}".format(
+                    insn.id, ",".join(insn.depends_on)))
 
         if "Dependencies" in what and dep_lines:
             lines.extend(sep)
@@ -1345,7 +1384,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if "schedule" in what and kernel.schedule is not None:
             lines.extend(sep)
             if show_labels:
-                lines.append("SCHEDULE:")
+                lines.append("LINEARIZATION:")
             from loopy.schedule import dump_schedule
             lines.append(dump_schedule(kernel, kernel.schedule))
 
@@ -1354,11 +1393,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return "\n".join(lines)
 
     def __str__(self):
-        if six.PY3:
-            return self.stringify()
-        else:
-            # Path of least resistance...
-            return self.stringify().encode("utf-8")
+        return self.stringify()
 
     def __unicode__(self):
         return self.stringify()
@@ -1395,9 +1430,20 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     # }}}
 
+    # {{{ handle linearization variable that doesn't yet exist
+
+    @property
+    def linearization(self):
+        return self.schedule
+
+    # }}}
+
     # {{{ direct execution
 
     def __call__(self, *args, **kwargs):
+        """
+        Execute the :class:`LoopKernel`.
+        """
         key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
         try:
             kex = self._kernel_executor_cache[key]
@@ -1412,10 +1458,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     # {{{ pickling
 
     def __getstate__(self):
-        result = dict(
-                (key, getattr(self, key))
+        result = {
+                key: getattr(self, key)
                 for key in self.__class__.fields
-                if hasattr(self, key))
+                if hasattr(self, key)}
 
         result.pop("cache_manager", None)
 
@@ -1446,7 +1492,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         new_fields = set()
 
-        for k, v in six.iteritems(attribs):
+        for k, v in attribs.items():
             setattr(self, k, v)
             new_fields.add(k)
 
@@ -1515,10 +1561,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         for field_name in self.hash_fields:
             key_builder.rec(key_hash, getattr(self, field_name))
 
+    @memoize_method
     def __hash__(self):
         from loopy.tools import LoopyKeyBuilder
-        from pytools.persistent_dict import new_hash
-        key_hash = new_hash()
+        import hashlib
+        key_hash = hashlib.sha256()
         self.update_persistent_hash(key_hash, LoopyKeyBuilder())
         return hash(key_hash.digest())
 

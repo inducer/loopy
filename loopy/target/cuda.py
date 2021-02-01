@@ -1,6 +1,5 @@
 """CUDA target independent of PyCUDA."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -58,18 +57,18 @@ def _create_vector_types():
     vec.type_to_scalar_and_count = {}
 
     for base_name, base_type, counts in [
-            ('char', np.int8, [1, 2, 3, 4]),
-            ('uchar', np.uint8, [1, 2, 3, 4]),
-            ('short', np.int16, [1, 2, 3, 4]),
-            ('ushort', np.uint16, [1, 2, 3, 4]),
-            ('int', np.int32, [1, 2, 3, 4]),
-            ('uint', np.uint32, [1, 2, 3, 4]),
-            ('long', long_dtype, [1, 2, 3, 4]),
-            ('ulong', ulong_dtype, [1, 2, 3, 4]),
-            ('longlong', np.int64, [1, 2]),
-            ('ulonglong', np.uint64, [1, 2]),
-            ('float', np.float32, [1, 2, 3, 4]),
-            ('double', np.float64, [1, 2]),
+            ("char", np.int8, [1, 2, 3, 4]),
+            ("uchar", np.uint8, [1, 2, 3, 4]),
+            ("short", np.int16, [1, 2, 3, 4]),
+            ("ushort", np.uint16, [1, 2, 3, 4]),
+            ("int", np.int32, [1, 2, 3, 4]),
+            ("uint", np.uint32, [1, 2, 3, 4]),
+            ("long", long_dtype, [1, 2, 3, 4]),
+            ("ulong", ulong_dtype, [1, 2, 3, 4]),
+            ("longlong", np.int64, [1, 2]),
+            ("ulonglong", np.uint64, [1, 2]),
+            ("float", np.float32, [1, 2, 3, 4]),
+            ("double", np.float64, [1, 2]),
             ]:
         for count in counts:
             name = "%s%d" % (base_name, count)
@@ -128,6 +127,18 @@ def cuda_function_mangler(kernel, name, arg_dtypes):
 
         return dtype, name
 
+    if name in ["pow"] and len(arg_dtypes) == 2:
+        dtype = np.find_common_type([], arg_dtypes)
+
+        if dtype == np.float64:
+            pass  # pow
+        elif dtype == np.float32:
+            name = name + "f"  # powf
+        else:
+            raise RuntimeError(f"{name} does not support type {dtype}")
+
+        return dtype, name
+
     if name in "atan2" and len(arg_dtypes) == 2:
         return arg_dtypes[0], name
 
@@ -155,12 +166,12 @@ class ExpressionToCudaCExpressionMapper(ExpressionToCExpressionMapper):
             raise LoopyError("unexpected index type")
 
     def map_group_hw_index(self, expr, type_context):
-        return var("((%s) blockIdx.%s)" % (
+        return var("(({}) blockIdx.{})".format(
             self._get_index_ctype(self.kernel),
             self._GRID_AXES[expr.axis]))
 
     def map_local_hw_index(self, expr, type_context):
-        return var("((%s) threadIdx.%s)" % (
+        return var("(({}) threadIdx.{})".format(
             self._get_index_ctype(self.kernel),
             self._GRID_AXES[expr.axis]))
 
@@ -179,7 +190,7 @@ class CudaTarget(CFamilyTarget):
         """
         self.extern_c = extern_c
 
-        super(CudaTarget, self).__init__()
+        super().__init__()
 
     def get_device_ast_builder(self):
         return CUDACASTBuilder(self)
@@ -221,7 +232,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
     def function_manglers(self):
         return (
-                super(CUDACASTBuilder, self).function_manglers() + [
+                super().function_manglers() + [
                     cuda_function_mangler
                     ])
 
@@ -231,7 +242,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
     def get_function_declaration(self, codegen_state, codegen_result,
             schedule_index):
-        fdecl = super(CUDACASTBuilder, self).get_function_declaration(
+        fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
         from loopy.target.c import FunctionDeclarationWrapper

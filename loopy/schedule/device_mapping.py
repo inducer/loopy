@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2016 Matt Wala"
 
 __license__ = """
@@ -31,7 +29,7 @@ from loopy.schedule.tools import get_block_boundaries
 def map_schedule_onto_host_or_device(kernel):
     # FIXME: Should be idempotent.
     from loopy.kernel import KernelState
-    assert kernel.state == KernelState.SCHEDULED
+    assert kernel.state == KernelState.LINEARIZED
 
     from functools import partial
     device_prog_name_gen = partial(

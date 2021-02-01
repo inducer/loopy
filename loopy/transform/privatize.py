@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
 __license__ = """
@@ -23,7 +21,6 @@ THE SOFTWARE.
 """
 
 
-import six
 from loopy.diagnostic import LoopyError
 
 import logging
@@ -120,14 +117,14 @@ def privatize_temporaries_with_inames(
 
     # {{{ find variables that need extra indices
 
-    for tv in six.itervalues(kernel.temporary_variables):
+    for tv in kernel.temporary_variables.values():
         if only_var_names is not None and tv.name not in only_var_names:
             continue
 
         for writer_insn_id in wmap.get(tv.name, []):
             writer_insn = kernel.id_to_insn[writer_insn_id]
 
-            priv_axis_inames = kernel.insn_inames(writer_insn) & privatizing_inames
+            priv_axis_inames = writer_insn.within_inames & privatizing_inames
 
             referenced_priv_axis_inames = (priv_axis_inames
                     & writer_insn.write_dependency_names())
@@ -158,7 +155,7 @@ def privatize_temporaries_with_inames(
     from loopy.symbolic import pw_aff_to_expr
 
     priv_axis_iname_to_length = {}
-    for priv_axis_inames in six.itervalues(var_to_new_priv_axis_iname):
+    for priv_axis_inames in var_to_new_priv_axis_iname.values():
         for iname in priv_axis_inames:
             if iname in priv_axis_iname_to_length:
                 continue
@@ -177,7 +174,7 @@ def privatize_temporaries_with_inames(
     from loopy.kernel.data import VectorizeTag
 
     new_temp_vars = kernel.temporary_variables.copy()
-    for tv_name, inames in six.iteritems(var_to_new_priv_axis_iname):
+    for tv_name, inames in var_to_new_priv_axis_iname.items():
         tv = new_temp_vars[tv_name]
         extra_shape = tuple(priv_axis_iname_to_length[iname] for iname in inames)
 
@@ -199,9 +196,9 @@ def privatize_temporaries_with_inames(
     # }}}
 
     from pymbolic import var
-    var_to_extra_iname = dict(
-            (var_name, tuple(var(iname) for iname in inames))
-            for var_name, inames in six.iteritems(var_to_new_priv_axis_iname))
+    var_to_extra_iname = {
+            var_name: tuple(var(iname) for iname in inames)
+            for var_name, inames in var_to_new_priv_axis_iname.items()}
 
     new_insns = []
 

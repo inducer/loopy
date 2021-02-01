@@ -1,5 +1,3 @@
-from __future__ import division, with_statement
-
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -23,7 +21,6 @@ THE SOFTWARE.
 """
 
 
-import six
 from pytools import ImmutableRecord
 import re
 
@@ -31,7 +28,7 @@ import re
 ALLOW_TERMINAL_COLORS = True
 
 
-class _ColoramaStub(object):
+class _ColoramaStub:
     def __getattribute__(self, name):
         return ""
 
@@ -39,7 +36,7 @@ class _ColoramaStub(object):
 def _apply_legacy_map(lmap, kwargs):
     result = {}
 
-    for name, val in six.iteritems(kwargs):
+    for name, val in kwargs.items():
         try:
             lmap_value = lmap[name]
         except KeyError:
@@ -89,12 +86,6 @@ class Options(ImmutableRecord):
         Like :attr:`trace_assignments`, but also trace the
         assigned values.
 
-    .. attribute:: ignore_boostable_into
-
-        Ignore the boostable_into field of the kernel, when
-        determining whether an iname duplication is necessary
-        for the kernel to be schedulable.
-
     .. attribute:: check_dep_resolution
 
         Whether loopy should issue an error if a dependency
@@ -107,6 +98,12 @@ class Options(ImmutableRecord):
         Do not do any checking (data type, data layout, shape,
         etc.) on arguments for a minor performance gain.
 
+        .. versionchanged:: 2021.1
+
+            This now defaults to the same value as the ``optimize``
+            sub-flag from :data:`sys.flags`. This flag can be controlled
+            (i.e. set to *True*) by running Python with the ``-O`` flag.
+
     .. attribute:: no_numpy
 
         Do not check for or accept :mod:`numpy` arrays as
@@ -117,7 +114,7 @@ class Options(ImmutableRecord):
     .. attribute:: cl_exec_manage_array_events
 
         Within the PyOpenCL executor, respect and udpate
-        :attr:`pyopencl.array.Array.event`.
+        :attr:`pyopencl.array.Array.events`.
 
         Defaults to *True*.
 
@@ -146,7 +143,7 @@ class Options(ImmutableRecord):
     .. attribute:: edit_code
 
         Invoke an editor (given by the environment variable
-        :envvar:`EDITOR`) on the generated kernel code,
+        ``EDITOR``) on the generated kernel code,
         allowing for tweaks before the code is passed on to
         the target for compilation.
 
@@ -205,15 +202,15 @@ class Options(ImmutableRecord):
         allow_terminal_colors_def = (
                 ALLOW_TERMINAL_COLORS and allow_terminal_colors_def)
 
+        import sys
         ImmutableRecord.__init__(
                 self,
 
                 annotate_inames=kwargs.get("annotate_inames", False),
                 trace_assignments=kwargs.get("trace_assignments", False),
                 trace_assignment_values=kwargs.get("trace_assignment_values", False),
-                ignore_boostable_into=kwargs.get("ignore_boostable_into", False),
 
-                skip_arg_checks=kwargs.get("skip_arg_checks", False),
+                skip_arg_checks=kwargs.get("skip_arg_checks", sys.flags.optimize),
                 no_numpy=kwargs.get("no_numpy", False),
                 cl_exec_manage_array_events=kwargs.get("no_numpy", True),
                 return_dict=kwargs.get("return_dict", False),
@@ -228,7 +225,7 @@ class Options(ImmutableRecord):
                 check_dep_resolution=kwargs.get("check_dep_resolution", True),
 
                 enforce_variable_access_ordered=kwargs.get(
-                    "enforce_variable_access_ordered", False),
+                    "enforce_variable_access_ordered", True),
                 )
 
     # {{{ legacy compatibility

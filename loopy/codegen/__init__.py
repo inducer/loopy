@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,8 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
-
 from loopy.diagnostic import LoopyError, warn
 from pytools import ImmutableRecord
 import islpy as isl
@@ -34,6 +30,22 @@ from loopy.version import DATA_MODEL_VERSION
 
 import logging
 logger = logging.getLogger(__name__)
+
+__doc__ = """
+.. currentmodule:: loopy.codegen
+
+.. autoclass:: ImplementedDataInfo
+
+.. autoclass:: PreambleInfo
+
+.. autoclass:: VectorizationInfo
+
+.. autoclass:: SeenFunction
+
+.. autoclass:: CodeGenerationState
+
+.. automodule:: loopy.codegen.result
+"""
 
 
 # {{{ implemented data info
@@ -114,7 +126,7 @@ class Unvectorizable(Exception):
     pass
 
 
-class VectorizationInfo(object):
+class VectorizationInfo:
     """
     .. attribute:: iname
     .. attribute:: length
@@ -134,16 +146,21 @@ class SeenFunction(ImmutableRecord):
     .. attribute:: arg_dtypes
 
         a tuple of arg dtypes
+
+    .. attribute:: result_dtypes
+
+        a tuple of result dtypes
     """
 
-    def __init__(self, name, c_name, arg_dtypes):
+    def __init__(self, name, c_name, arg_dtypes, result_dtypes):
         ImmutableRecord.__init__(self,
                 name=name,
                 c_name=c_name,
-                arg_dtypes=arg_dtypes)
+                arg_dtypes=arg_dtypes,
+                result_dtypes=result_dtypes)
 
 
-class CodeGenerationState(object):
+class CodeGenerationState:
     """
     .. attribute:: kernel
     .. attribute:: implemented_data_info
@@ -388,7 +405,7 @@ def generate_code_v2(kernel):
         from loopy.schedule import get_one_scheduled_kernel
         kernel = get_one_scheduled_kernel(kernel)
 
-    if kernel.state != KernelState.SCHEDULED:
+    if kernel.state != KernelState.LINEARIZED:
         raise LoopyError("cannot generate code for a kernel that has not been "
                 "scheduled")
 
@@ -443,7 +460,7 @@ def generate_code_v2(kernel):
             raise ValueError("argument type not understood: '%s'" % type(arg))
 
     allow_complex = False
-    for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):
+    for var in kernel.args + list(kernel.temporary_variables.values()):
         if var.dtype.involves_complex():
             allow_complex = True
 
@@ -485,10 +502,12 @@ def generate_code_v2(kernel):
 
     # {{{ handle preambles
 
-    for arg in kernel.args:
-        seen_dtypes.add(arg.dtype)
-    for tv in six.itervalues(kernel.temporary_variables):
-        seen_dtypes.add(tv.dtype)
+    for idi in codegen_state.implemented_data_info:
+        seen_dtypes.add(idi.dtype)
+
+    for tv in kernel.temporary_variables.values():
+        for idi in tv.decl_info(kernel.target, index_dtype=kernel.index_dtype):
+            seen_dtypes.add(idi.dtype)
 
     preambles = kernel.preambles[:]
 
