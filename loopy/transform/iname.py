@@ -1977,13 +1977,23 @@ def map_domain(kernel, isl_map, within=None):
                 ]
         aligned_map = _align_dim_type(
                 dim_type.param,
+                isl_map, map_with_s_domain, False,
+                map_names, s_names)
+        aligned_map = _align_dim_type(
+                dim_type.in_,
+                isl_map, map_with_s_domain, False,
+                map_names, s_names)
+        # Old code
+        """
+        aligned_map = _align_dim_type(
+                dim_type.param,
                 isl_map, map_with_s_domain, obj_bigger_ok=False,
                 obj_names=map_names, tgt_names=s_names)
         aligned_map = _align_dim_type(
                 dim_type.in_,
                 isl_map, map_with_s_domain, obj_bigger_ok=False,
                 obj_names=map_names, tgt_names=s_names)
-
+        """
         # }}}
 
         return aligned_map.intersect_domain(s).range()
