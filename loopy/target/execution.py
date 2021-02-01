@@ -293,8 +293,9 @@ class ExecutionWrapperGeneratorBase:
                                 % (stride_impl_axis, impl_array_name))
                         gen("del _lpy_remdr")
                     else:
-                        gen("%s = _lpy_offset // %d"
-                                % (arg.name, base_arg.dtype.itemsize))
+                        gen("%s = %s.strides[%d] // %d"
+                                % (arg.name,  impl_array_name, stride_impl_axis,
+                                    base_arg.dtype.itemsize))
 
         gen("# }}}")
         gen("")
