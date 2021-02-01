@@ -23,6 +23,7 @@ THE SOFTWARE.
 
 from pytools import ImmutableRecord
 import re
+import os
 
 
 ALLOW_TERMINAL_COLORS = True
@@ -210,7 +211,9 @@ class Options(ImmutableRecord):
                 trace_assignments=kwargs.get("trace_assignments", False),
                 trace_assignment_values=kwargs.get("trace_assignment_values", False),
 
-                skip_arg_checks=kwargs.get("skip_arg_checks", sys.flags.optimize),
+                skip_arg_checks=kwargs.get("skip_arg_checks",
+                    sys.flags.optimize
+                    or bool(os.environ.get("_LOOPY_SKIP_ARG_CHECKS"))),
                 no_numpy=kwargs.get("no_numpy", False),
                 cl_exec_manage_array_events=kwargs.get("no_numpy", True),
                 return_dict=kwargs.get("return_dict", False),
