@@ -1400,6 +1400,57 @@ def test_strided_footprint():
     assert 2*num < denom
 
 
+def test_stats_on_callable_kernel():
+    callee = lp.make_function(
+            "{[i, j]: 0<=i, j< 20}",
+            """
+            y[i] = sum(j, A[i,j]*x[j])
+            """, name="matvec20x20")
+
+    caller = lp.make_kernel(
+            "{:}",
+            """
+            y[:]  = matvec20x20(A[:,:], x[:])
+            """,
+            [
+                lp.GlobalArg("x,y", shape=(20,), dtype=np.float),
+                lp.GlobalArg("A", shape=(20, 20), dtype=np.float),
+                ],
+            name="matvec")
+    caller = lp.merge([caller, callee])
+
+    op_map = lp.get_op_map(caller, subgroup_size=SGS, count_redundant_work=True,
+                           count_within_subscripts=True)
+    f64_add = op_map.filter_by(name="add").eval_and_sum({})
+    assert f64_add == 400
+
+
+def test_stats_on_callable_kernel_within_loop():
+    callee = lp.make_function(
+            "{[i, j]: 0<=i, j< 20}",
+            """
+            y[i] = sum(j, A[i,j]*x[j])
+            """, name="matvec20x20")
+
+    caller = lp.make_kernel(
+            "{[i]: 0<=i< 20}",
+            """
+            y[i, :]  = matvec20x20(A[:,:], x[i, :])
+            """,
+            [
+                lp.GlobalArg("x,y", shape=(20, 20), dtype=np.float),
+                lp.GlobalArg("A", shape=(20, 20), dtype=np.float),
+                ],
+            name="matmat")
+    caller = lp.merge([caller, callee])
+
+    op_map = lp.get_op_map(caller, subgroup_size=SGS, count_redundant_work=True,
+                           count_within_subscripts=True)
+
+    f64_add = op_map.filter_by(name="add").eval_and_sum({})
+    assert f64_add == 8000
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

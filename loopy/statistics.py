@@ -98,6 +98,7 @@ def _get_param_tuple(obj):
 
 class GuardedPwQPolynomial:
     def __init__(self, pwqpolynomial, valid_domain):
+        assert isinstance(pwqpolynomial, isl.PwQPolynomial)
         self.pwqpolynomial = pwqpolynomial
         self.valid_domain = valid_domain
 
@@ -664,10 +665,10 @@ class Op(ImmutableRecord):
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
         if self.kernel_name is not None:
-            return (f"Op({self.dtype}, {self.name}, {self.count_granularity},"
-                    f" {self.kernel_name})")
+            return (f'Op("{self.dtype}", "{self.name}", "{self.count_granularity}",'
+                    f' "{self.kernel_name}")')
         else:
-            return f"Op({self.dtype}, {self.name}, {self.count_granularity})"
+            return f'Op("{self.dtype}", "{self.name}", "{self.count_granularity}")'
 
 # }}}
 
@@ -1548,7 +1549,8 @@ def get_unused_hw_axes_factor(knl, callables_table, insn,
 def count_inames_domain(knl, inames):
     space = get_kernel_parameter_space(knl)
     if not inames:
-        return get_kernel_zero_pwqpolynomial(knl) + 1
+        return add_assumptions_guard(knl,
+                get_kernel_zero_pwqpolynomial(knl) + 1)
 
     inames_domain = knl.get_inames_domain(inames)
     domain = inames_domain.project_out_except(inames, [dim_type.set])
