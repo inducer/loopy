@@ -56,6 +56,17 @@ __doc__ = """
 """
 
 
+def get_kernel_parameter_space(kernel):
+    return isl.Space.create_from_names(kernel.isl_context,
+            set=[], params=sorted(list(kernel.outer_params()))).params()
+
+
+def get_kernel_zero_pwqpolynomial(kernel):
+    space = get_kernel_parameter_space(kernel)
+    space = space.insert_dims(dim_type.out, 0, 1)
+    return isl.PwQPolynomial.zero(space)
+
+
 # {{{ GuardedPwQPolynomial
 
 class GuardedPwQPolynomial:
@@ -1231,7 +1242,7 @@ def count(kernel, set, space=None):
     return add_assumptions_guard(kernel, count)
 
 
-def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
+def get_unused_hw_axes_factor(knl, insn, disregard_local_axes):
     # FIXME: Multi-kernel support
     gsize, lsize = knl.get_grid_size_upper_bounds()
 
@@ -1250,12 +1261,12 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
                 g_used.add(tag.axis)
 
     def mult_grid_factor(used_axes, size):
-        result = 1
+        result = get_kernel_zero_pwqpolynomial(knl) + 1
+
         for iaxis, size in enumerate(size):
             if iaxis not in used_axes:
                 if not isinstance(size, int):
-                    if space is not None:
-                        size = size.align_params(space)
+                    size = size.align_params(result.space)
 
                     size = isl.PwQPolynomial.from_pw_aff(size)
 
@@ -1271,6 +1282,17 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
     return add_assumptions_guard(knl, result)
 
 
+def count_inames_domain(knl, inames):
+    space = get_kernel_parameter_space(knl)
+    if not inames:
+        return add_assumptions_guard(knl,
+                get_kernel_zero_pwqpolynomial(knl) + 1)
+
+    inames_domain = knl.get_inames_domain(inames)
+    domain = inames_domain.project_out_except(inames, [dim_type.set])
+    return count(knl, domain, space=space)
+
+
 def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False):
 
     insn_inames = insn.within_inames
@@ -1281,19 +1303,11 @@ def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False)
                 for iname in insn_inames
                 if not knl.iname_tags_of_type(iname, LocalIndexTag)]
 
-    inames_domain = knl.get_inames_domain(insn_inames)
-    domain = (inames_domain.project_out_except(
-                            insn_inames, [dim_type.set]))
-
-    space = isl.Space.create_from_names(isl.DEFAULT_CONTEXT,
-            set=[], params=knl.outer_params())
-
-    c = count(knl, domain, space=space)
+    c = count_inames_domain(knl, insn_inames)
 
     if count_redundant_work:
         unused_fac = get_unused_hw_axes_factor(knl, insn,
-                        disregard_local_axes=disregard_local_axes,
-                        space=space)
+                        disregard_local_axes=disregard_local_axes)
         return c * unused_fac
     else:
         return c
