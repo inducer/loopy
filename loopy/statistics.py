@@ -215,7 +215,7 @@ class ToCountMap:
     def __mul__(self, other):
         if isinstance(other, GuardedPwQPolynomial):
             return self.copy({
-                index: value*other
+                index: other*value
                 for index, value in self.count_map.items()})
         else:
             raise ValueError("ToCountMap: Attempted to multiply "
@@ -451,7 +451,7 @@ class ToCountMap:
         total = self._zero()
 
         for k, v in self.count_map.items():
-            total += v
+            total = v + total
 
         return total
 

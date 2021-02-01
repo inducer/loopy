@@ -1268,7 +1268,7 @@ def test_gather_access_footprint_2():
     fp = gather_access_footprints(knl)
 
     params = {"n": 200}
-    for key, footprint in fp.item():
+    for key, footprint in fp.items():
         assert count(knl, footprint).eval_with_dict(params) == 200
         print(key, count(knl, footprint))
 
