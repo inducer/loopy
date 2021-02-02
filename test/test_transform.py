@@ -713,6 +713,24 @@ def test_rename_argument_with_auto_stride(ctx_factory):
     evt, (out, ) = knl(queue, x_new=np.random.rand(10))
 
 
+def test_rename_argument_with_assumptions():
+    import islpy as isl
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n_old}",
+            """
+            y[i] = 2.0f
+            """)
+    knl = lp.assume(knl, "n_old=10")
+
+    knl = lp.rename_argument(knl, "n_old", "n_new")
+
+    assert "n_old" not in knl.assumptions.get_var_dict()
+    assert "n_new" in knl.assumptions.get_var_dict()
+    assert (
+            (knl.assumptions & isl.BasicSet("[n_new]->{: n_new=10}"))
+            == knl.assumptions)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
