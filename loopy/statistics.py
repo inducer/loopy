@@ -1635,34 +1635,24 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
 
     for insn in knl.instructions:
         if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
-            access_expr = (
+            insn_access_map = (
                     access_counter_g(insn.expression)
                     + access_counter_l(insn.expression)
                     ).with_set_attributes(direction="load")
 
-            access_assignee = (
-                    access_counter_g(insn.assignee)
-                    + access_counter_l(insn.assignee)
-                    ).with_set_attributes(direction="store")
+            for assignee in insn.assignees:
+                insn_access_map += (
+                        access_counter_g(assignee)
+                        + access_counter_l(assignee)
+                        ).with_set_attributes(direction="store")
 
-            for key, val in access_expr.count_map.items():
-
+            for key, val in insn_access_map.count_map.items():
                 access_map = (
                         access_map
                         + ToCountMap({key: val})
                         * _get_insn_count(knl, insn.id, subgroup_size,
                                           count_redundant_work,
                                           key.count_granularity))
-
-            for key, val in access_assignee.count_map.items():
-
-                access_map = (
-                        access_map
-                        + ToCountMap({key: val})
-                        * _get_insn_count(knl, insn.id, subgroup_size,
-                                          count_redundant_work,
-                                          key.count_granularity))
-
         elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
             pass
         else:
