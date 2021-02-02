@@ -1451,6 +1451,34 @@ def test_stats_on_callable_kernel_within_loop():
     assert f64_add == 8000
 
 
+def test_callable_kernel_with_substitution():
+    callee = lp.make_function(
+            "{[i, j]: 0<=i, j< n}",
+            """
+            y[i] = sum(j, A[i,j]*x[j])
+            """,
+            [lp.ValueArg("n"), ...],
+            name="matvec")
+
+    caller = lp.make_kernel(
+            "{[i]: 0<=i< 20}",
+            """
+            y[i, :]  = matvec(20, A[:,:], x[i, :])
+            """,
+            [
+                lp.GlobalArg("x,y", shape=(20, 20), dtype=np.float),
+                lp.GlobalArg("A", shape=(20, 20), dtype=np.float),
+                ],
+            name="matmat")
+    caller = lp.merge([caller, callee])
+
+    op_map = lp.get_op_map(caller, subgroup_size=SGS, count_redundant_work=True,
+                           count_within_subscripts=True)
+
+    f64_add = op_map.filter_by(name="add").eval_and_sum({})
+    assert f64_add == 8000
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

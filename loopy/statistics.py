@@ -841,21 +841,22 @@ class CounterBase(CombineMapper):
         assert isinstance(expr.function, ResolvedFunction)
         clbl = self.callables_table[expr.function.name]
 
-        from loopy.kernel.function_interface import CallableKernel
+        from loopy.kernel.function_interface import (CallableKernel,
+                get_kw_pos_association)
         from loopy.kernel.data import ValueArg
         if isinstance(clbl, CallableKernel):
             sub_result = self.kernel_rec(clbl.subkernel)
+            _, pos_to_kw = get_kw_pos_association(clbl.subkernel)
 
-            arg_dict = {
-                    arg.name: value
-                    for arg, value in zip(
-                        clbl.subkernel.args,
-                        expr.parameters)
-                    if isinstance(arg, ValueArg)}
+            subst_dict = {
+                    pos_to_kw[i]: param
+                    for i, param in enumerate(expr.parameters)
+                    if isinstance(clbl.subkernel.arg_dict[pos_to_kw[i]],
+                                  ValueArg)}
 
             return subst_into_to_count_map(
                     self.param_space,
-                    sub_result, arg_dict) \
+                    sub_result, subst_dict) \
                     + self.rec(expr.parameters)
 
         else:
