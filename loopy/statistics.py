@@ -1851,8 +1851,8 @@ def _get_mem_access_map_for_single_kernel(knl, callables_table,
                         ).with_set_attributes(direction="load")
             for assignee in insn.assignees:
                 insn_access_map = insn_access_map + (
-                        access_counter_g(insn.assignee)
-                        + access_counter_l(insn.assignee)
+                        access_counter_g(assignee)
+                        + access_counter_l(assignee)
                         ).with_set_attributes(direction="store")
 
             for key, val in insn_access_map.count_map.items():
