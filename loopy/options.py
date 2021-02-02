@@ -213,6 +213,11 @@ class Options(ImmutableRecord):
 
                 skip_arg_checks=kwargs.get("skip_arg_checks",
                     sys.flags.optimize
+                    # Not considered a documented env var: Only used to test
+                    # the skip_arg_checks branch during CI, which can't use
+                    # python -O.
+                    #
+                    # Considered enabled if non-empty.
                     or bool(os.environ.get("_LOOPY_SKIP_ARG_CHECKS"))),
                 no_numpy=kwargs.get("no_numpy", False),
                 cl_exec_manage_array_events=kwargs.get("no_numpy", True),
