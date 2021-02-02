@@ -46,6 +46,18 @@ jobs:
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
 
+    pytest_no_arg_check:
+        name: Conda Pytest without arg check
+        runs-on: ubuntu-latest
+        steps:
+        -   uses: actions/checkout@v2
+        -   name: "Main Script"
+            run: |
+                CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
+                export _LOOPY_SKIP_ARG_CHECKS=1
+                . ./build-and-test-py-project-within-miniconda.sh
+
     pytest_twice:
         name: Conda Pytest Twice (for cache behavior)
         runs-on: ubuntu-latest
