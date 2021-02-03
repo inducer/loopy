@@ -731,6 +731,22 @@ def test_rename_argument_with_assumptions():
             == knl.assumptions)
 
 
+def test_tag_iname_with_match_pattern():
+    knl = lp.make_kernel(
+            "{[i0, i1]: 0<=i0, i1<n}",
+            """
+            x[i0] = 2.0f
+            y[i1] = 2.0f
+            """)
+
+    knl = lp.tag_inames(knl, "i*:unr")
+    i0_tag, = knl.inames["i0"].tags
+    i1_tag, = knl.inames["i1"].tags
+
+    assert str(i0_tag) == "unr"
+    assert str(i1_tag) == "unr"
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
