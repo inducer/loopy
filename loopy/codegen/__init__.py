@@ -207,7 +207,7 @@ class CodeGenerationState:
 
     .. attribute:: schedule_index_end
 
-    .. attribute:: codegen_cachemanager
+    .. attribute:: codegen_cache_manager
 
         An instance of :class:`loopy.codegen.tools.CodegenOperationCacheManager`.
     """
