@@ -28,6 +28,7 @@ from sys import intern
 import numpy as np  # noqa
 from pytools import ImmutableRecord
 from pytools.tag import Taggable
+from pytools.tag import UniqueTag as UniqueTagBase
 from loopy.kernel.array import ArrayBase
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (  # noqa
@@ -65,6 +66,8 @@ __doc__ = """
 .. autoclass:: VectorizeTag
 
 .. autoclass:: UnrollTag
+
+.. autoclass:: Iname
 """
 
 
@@ -108,7 +111,7 @@ def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
     return result
 
 
-class IndexTag(ImmutableRecord):
+class IndexTag(ImmutableRecord, UniqueTagBase):
     __slots__ = []
 
     def __hash__(self):
@@ -838,6 +841,57 @@ class CallMangleInfo(ImmutableRecord):
                 target_name=target_name,
                 result_dtypes=result_dtypes,
                 arg_dtypes=arg_dtypes)
+
+# }}}
+
+
+# {{{ Iname class
+
+class Iname(Taggable):
+    """
+    Records an iname in a :class:`~loopy.LoopKernel`. See :ref:`domain-tree` for
+    semantics of *inames* in :mod:`loopy`.
+
+    This class records the metadata attached to an iname as instances of
+    :class:pytools.tag.Tag`. A tag maybe a builtin tag like
+    :class:`loopy.kernel.data.IndexTag` or a user-defined custom tag. Custom tags
+    may be attached to inames to be used in targeting later during transformations.
+
+    .. attribute:: name
+
+        An instance of :class:`str`, denoting the iname's name.
+
+    .. attribute:: tas
+
+        An instance of :class:`frozenset` of :class:`pytools.tag.Tag`.
+    """
+    def __init__(self, name, tags=frozenset()):
+        super().__init__(tags=tags)
+
+        assert isinstance(name, str)
+        self.name = name
+
+    def copy(self, *, name=None, tags=None):
+        if name is None:
+            name = self.name
+        if tags is None:
+            tags = self.tags
+
+        return type(self)(name=name, tags=tags)
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+        key_builder.rec(key_hash, type(self).__name__.encode("utf-8"))
+        key_builder.rec(key_hash, self.name)
+        key_builder.rec(key_hash, self.tags)
+
+    def __eq__(self, other):
+        return (
+                type(self) == type(other)
+                and self.name == other.name
+                and self.tags == other.tags)
 
 # }}}
 

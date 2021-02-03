@@ -1939,8 +1939,8 @@ def realize_ilp(kernel):
                                    filter_iname_tags_by_type)
 
     privatizing_inames = frozenset(
-        iname for iname, tags in kernel.iname_to_tags.items()
-        if filter_iname_tags_by_type(tags, (IlpBaseTag, VectorizeTag))
+        name for name, iname in kernel.inames.items()
+        if filter_iname_tags_by_type(iname.tags, (IlpBaseTag, VectorizeTag))
     )
 
     from loopy.transform.privatize import privatize_temporaries_with_inames
@@ -2030,9 +2030,9 @@ def preprocess_kernel(kernel, device=None):
     # {{{ check that there are no l.auto-tagged inames
 
     from loopy.kernel.data import AutoLocalIndexTagBase
-    for iname, tags in kernel.iname_to_tags.items():
-        if (filter_iname_tags_by_type(tags, AutoLocalIndexTagBase)
-                 and iname in kernel.all_inames()):
+    for name, iname in kernel.inames.items():
+        if (filter_iname_tags_by_type(iname.tags, AutoLocalIndexTagBase)
+                 and name in kernel.all_inames()):
             raise LoopyError("kernel with automatically-assigned "
                     "local axes passed to preprocessing")
 
