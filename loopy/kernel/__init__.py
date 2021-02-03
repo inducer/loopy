@@ -239,6 +239,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         An instance of :class:`dict`, a mapping from the names of kernel's
         inames to their corresponding instances of :class:`loopy.kernel.data.Iname`.
+        An entry is guaranteed to be present for each iname.
 
     .. automethod:: __call__
     .. automethod:: copy

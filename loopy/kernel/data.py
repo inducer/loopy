@@ -855,11 +855,15 @@ class Iname(Taggable):
     This class records the metadata attached to an iname as instances of
     :class:pytools.tag.Tag`. A tag maybe a builtin tag like
     :class:`loopy.kernel.data.IndexTag` or a user-defined custom tag. Custom tags
-    are attached to inames to be targeted later during transformations.
+    may be attached to inames to be used in targeting later during transformations.
 
-    :arg name: An instance of :class:`str`, denoting the iname's name.
-    :arg tags: An instance of :class:`frozenset` of
-        :class:`pytools.tag.Tag`.
+    .. attribute:: name
+
+        An instance of :class:`str`, denoting the iname's name.
+
+    .. attribute:: tas
+
+        An instance of :class:`frozenset` of :class:`pytools.tag.Tag`.
     """
     def __init__(self, name, tags=frozenset()):
         super().__init__(tags=tags)
