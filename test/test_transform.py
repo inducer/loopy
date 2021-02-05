@@ -747,6 +747,31 @@ def test_tag_iname_with_match_pattern():
     assert str(i1_tag) == "unr"
 
 
+def test_custom_iname_tag():
+    from pytools.tag import Tag
+
+    class ElementLoopTag(Tag):
+        def __str__(self):
+            return "iel"
+
+    class DOFLoopTag(Tag):
+        def __str__(self):
+            return "idof"
+
+    knl = lp.make_kernel(
+            "{[ifuzz0, ifuzz1]: 0<=ifuzz0<100 and 0<=ifuzz1<32}",
+            """
+            out_dofs[ifuzz0, ifuzz1] = 2*in_dofs[ifuzz0, ifuzz1]
+            """)
+    knl = lp.tag_inames(knl, {"ifuzz0": ElementLoopTag(), "ifuzz1": DOFLoopTag()})
+
+    ifuzz0_tag, = knl.inames["ifuzz0"].tags
+    ifuzz1_tag, = knl.inames["ifuzz1"].tags
+
+    assert str(ifuzz0_tag) == "iel"
+    assert str(ifuzz1_tag) == "idof"
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

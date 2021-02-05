@@ -232,10 +232,11 @@ class InOrderSequentialSequentialTag(IndexTag):
 
 
 def parse_tag(tag):
+    from pytools.tag import Tag as TagBase
     if tag is None:
         return tag
 
-    if isinstance(tag, IndexTag):
+    if isinstance(tag, TagBase):
         return tag
 
     if not isinstance(tag, str):
