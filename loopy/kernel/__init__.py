@@ -332,7 +332,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             assumptions = isl.BasicSet.read_from_str(domains[0].get_ctx(),
                     assumptions_set_str)
 
-        assert assumptions.is_params()
+        # assert assumptions.is_params()
 
         # }}}
 

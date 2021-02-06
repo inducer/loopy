@@ -28,12 +28,13 @@ from loopy.kernel import LoopKernel
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
         Assignment, CInstruction, _DataObliviousInstruction)
-from loopy.symbolic import IdentityMapper, SubstitutionMapper, CombineMapper
+from loopy.symbolic import (
+            RuleAwareSubstitutionMapper,
+            SubstitutionRuleMappingContext, CombineMapper, IdentityMapper)
 from loopy.isl_helpers import simplify_via_aff
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
 from loopy.program import Program
-from loopy.symbolic import SubArrayRef
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -112,54 +113,41 @@ def merge(translation_units):
 
 # {{{ kernel inliner mapper
 
-class KernelInliner(SubstitutionMapper):
-    """Mapper to replace variables (indices, temporaries, arguments) in the
-    callee kernel with variables in the caller kernel.
+class KernelInliner(RuleAwareSubstitutionMapper):
+    def __init__(self, rule_mapping_context, subst_func, caller_knl,
+            callee_knl, callee_arg_to_call_param):
+        super().__init__(rule_mapping_context, subst_func, lambda *args: True)
+        self.caller_knl = caller_knl
+        self.callee_knl = callee_knl
+        self.callee_arg_to_call_param = callee_arg_to_call_param
 
-    :arg caller: the caller kernel
-    :arg arg_map: dict of argument name to variables in caller
-    :arg arg_dict: dict of argument name to arguments in callee
-    """
+    def map_subscript(self, expr, expn_state):
+        if expr.aggregate.name in self.callee_knl.arg_dict:
+            from loopy.symbolic import get_start_subscript_from_sar
+            from loopy.isl_helpers import simplify_via_aff
+            from pymbolic.primitives import Subscript, Variable
 
-    def __init__(self, subst_func, caller, arg_map, arg_dict):
-        super().__init__(subst_func)
-        self.caller = caller
-        self.arg_map = arg_map
-        self.arg_dict = arg_dict
+            sar = self.callee_arg_to_call_param[expr.aggregate.name]  # SubArrayRef
 
-    def map_subscript(self, expr):
-        if expr.aggregate.name in self.arg_map:
-
-            aggregate = self.subst_func(expr.aggregate)
-            sar = self.arg_map[expr.aggregate.name]  # SubArrayRef in caller
-            callee_arg = self.arg_dict[expr.aggregate.name]  # Arg in callee
-            if aggregate.name in self.caller.arg_dict:
-                caller_arg = self.caller.arg_dict[aggregate.name]  # Arg in caller
+            callee_arg = self.callee_knl.arg_dict[expr.aggregate.name]
+            if sar.subscript.aggregate.name in self.caller_knl.arg_dict:
+                caller_arg = self.caller_knl.arg_dict[sar.subscript.aggregate.name]
             else:
-                caller_arg = self.caller.temporary_variables[aggregate.name]
+                caller_arg = self.caller_knl.temporary_variables[
+                        sar.subscript.aggregate.name]
 
-            # Firstly, map inner inames to outer inames.
-            outer_indices = self.map_tuple(expr.index_tuple)
-
-            # Next, reshape to match dimension of outer arrays.
-            # We can have e.g. A[3, 2] from outside and B[6] from inside
-            from numbers import Integral
-            if not all(isinstance(d, Integral) for d in callee_arg.shape):
-                raise LoopyError(
-                    "Argument: {} in callee kernel does not have "
-                    "constant shape.".format(callee_arg))
+            # map inner inames to outer inames.
+            outer_indices = self.map_tuple(expr.index_tuple, expn_state)
 
             flatten_index = 0
-            from loopy.symbolic import get_start_subscript_from_sar
             for i, idx in enumerate(get_start_subscript_from_sar(sar,
-                    self.caller).index_tuple):
+                    self.caller_knl).index_tuple):
                 flatten_index += idx*caller_arg.dim_tags[i].stride
 
             flatten_index += sum(
                 idx * tag.stride
                 for idx, tag in zip(outer_indices, callee_arg.dim_tags))
 
-            from loopy.isl_helpers import simplify_via_aff
             flatten_index = simplify_via_aff(flatten_index)
 
             new_indices = []
@@ -170,80 +158,143 @@ class KernelInliner(SubstitutionMapper):
 
             new_indices = tuple(simplify_via_aff(i) for i in new_indices)
 
-            return aggregate.index(tuple(new_indices))
+            return Subscript(Variable(sar.subscript.aggregate.name), new_indices)
         else:
-            return super().map_subscript(expr)
+            assert expr.aggregate.name in self.callee_knl.temporary_variables
+            return super().map_subscript(expr, expn_state)
 
 # }}}
 
 
 # {{{ inlining of a single call instruction
 
-def _inline_call_instruction(caller_kernel, callee_knl, instruction):
+def substitute_into_domain(domain, param_name, expr, allowed_param_dims):
     """
-    Returns a copy of *kernel* with the *instruction* in the *kernel*
-    replaced by inlining :attr:`subkernel` within it.
+    :arg allowed_deps: A :class:`list` of :class:`str` that are
     """
+    import pymbolic.primitives as prim
+    from loopy.symbolic import get_dependencies, isl_set_from_expr
+    if param_name not in domain.get_var_dict():
+        # param_name not in domain => domain will be unchanged
+        return domain
+
+    # {{{ rename 'param_name' to avoid namespace pollution with allowed_param_dims
+
+    dt, pos = domain.get_var_dict()[param_name]
+    domain = domain.set_dim_name(dt, pos, UniqueNameGenerator(
+        set(allowed_param_dims))(param_name))
+
+    # }}}
+
+    for dep in get_dependencies(expr):
+        if dep in allowed_param_dims:
+            domain = domain.add_dims(isl.dim_type.param, 1)
+            domain = domain.set_dim_name(
+                    isl.dim_type.param,
+                    domain.dim(isl.dim_type.param)-1,
+                    dep)
+        else:
+            raise ValueError("Augmenting caller's domain "
+                    f"with '{dep}' is not allowed.")
+
+    set_ = isl_set_from_expr(domain.space,
+            prim.Comparison(prim.Variable(param_name),
+                            "==",
+                            expr))
+
+    bset, = set_.get_basic_sets()
+    domain = domain & bset
+
+    return domain.project_out(dt, pos, 1)
+
+
+def rename_iname(domain, old_iname, new_iname):
+    if old_iname not in domain.get_var_dict():
+        return domain
+
+    dt, pos = domain.get_var_dict()[old_iname]
+    return domain.set_dim_name(dt, pos, new_iname)
+
+
+def get_valid_domain_param_names(knl):
+    from loopy.kernel.data import ValueArg
+    return ([arg.name for arg in knl.args if isinstance(arg, ValueArg)]
+            + [tv.name
+               for tv in knl.temporary_variables.values()
+               if tv.shape == ()]
+            + list(knl.all_inames())
+            )
+
+
+def _inline_call_instruction(caller_knl, callee_knl, call_insn):
+    """
+    Returns a copy of *caller_knl* with the *call_insn* in the *kernel*
+    replaced by inlining *callee_knl* into it within it.
+    """
+    import pymbolic.primitives as prim
+    from pymbolic.mapper.substitutor import make_subst_func
+    from loopy.kernel.data import ValueArg
+
+    # {{{ sanity checks
+
+    assert call_insn.expression.function.name == callee_knl.name
+
+    # }}}
+
     callee_label = callee_knl.name[:4] + "_"
+    vng = caller_knl.get_var_name_generator()
+    ing = caller_knl.get_instruction_id_generator()
 
-    # {{{ duplicate and rename inames
+    # {{{ construct callee->caller name mappings
 
-    vng = caller_kernel.get_var_name_generator()
-    ing = caller_kernel.get_instruction_id_generator()
-    dim_type = isl.dim_type.set
+    # name_map: Mapping[str, str]
+    # A mapping from variable names in the callee kernel's namespace to
+    # the ones they would be referred by in the caller's namespace post inlining.
+    name_map = {}
 
-    iname_map = {}
-    for iname in callee_knl.all_inames():
-        iname_map[iname] = vng(callee_label+iname)
-
-    new_domains = []
-    new_iname_to_tags = caller_kernel.iname_to_tags.copy()
-
-    # transferring iname tags info from the callee to the caller kernel
-    for domain in callee_knl.domains:
-        new_domain = domain.copy()
-        for i in range(new_domain.n_dim()):
-            iname = new_domain.get_dim_name(dim_type, i)
-
-            if iname in callee_knl.iname_to_tags:
-                new_iname_to_tags[iname_map[iname]] = (
-                        callee_knl.iname_to_tags[iname])
-            new_domain = new_domain.set_dim_name(
-                dim_type, i, iname_map[iname])
-        new_domains.append(new_domain)
-
-    kernel = caller_kernel.copy(domains=caller_kernel.domains + new_domains,
-            iname_to_tags=new_iname_to_tags)
-
-    # }}}
-
-    # {{{ rename temporaries
-
-    temp_map = {}
-    new_temps = kernel.temporary_variables.copy()
-    for name, temp in callee_knl.temporary_variables.items():
+    # only consider temporary variables and inames, arguments would be mapping
+    # according to the invocation in call_insn.
+    for name in (callee_knl.all_inames()
+                 | set(callee_knl.temporary_variables.keys())):
         new_name = vng(callee_label+name)
-        temp_map[name] = new_name
-        new_temps[new_name] = temp.copy(name=new_name)
-
-    kernel = kernel.copy(temporary_variables=new_temps)
+        name_map[name] = new_name
 
     # }}}
 
-    # {{{ match kernel arguments
+    # {{{ iname_to_tags
+
+    # new_iname_to_tags: caller's iname_to_tags post inlining
+    new_iname_to_tags = caller_knl.iname_to_tags
+
+    for old_name, tags in callee_knl.iname_to_tags.items():
+        new_iname_to_tags[name_map[old_name]] = tags
+
+    # }}}
+
+    # {{{ register callee's temps as caller's
+
+    # new_temps: caller's temps post inlining
+    new_temps = caller_knl.temporary_variables.copy()
+
+    for name, tv in callee_knl.temporary_variables.items():
+        new_temps[name_map[name]] = tv.copy(name=name_map[name])
+
+    # }}}
+
+    # {{{ get callee args -> parameters passed to the call
 
     arg_map = {}  # callee arg name -> caller symbols (e.g. SubArrayRef)
 
-    assignees = instruction.assignees  # writes
-    parameters = instruction.expression.parameters  # reads
+    assignees = call_insn.assignees  # writes
+    parameters = call_insn.expression.parameters  # reads
 
     # add keyword parameters
     from pymbolic.primitives import CallWithKwargs
 
     from loopy.kernel.function_interface import get_kw_pos_association
     kw_to_pos, pos_to_kw = get_kw_pos_association(callee_knl)
-    if isinstance(instruction.expression, CallWithKwargs):
-        kw_parameters = instruction.expression.kw_parameters
+    if isinstance(call_insn.expression, CallWithKwargs):
+        kw_parameters = call_insn.expression.kw_parameters
     else:
         kw_parameters = {}
 
@@ -258,37 +309,51 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
 
     # }}}
 
-    # {{{ rewrite instructions
+    # {{{ domains/assumptions
 
-    import pymbolic.primitives as p
-    from pymbolic.mapper.substitutor import make_subst_func
+    new_domains = callee_knl.domains.copy()
+    for old_iname in callee_knl.all_inames():
+        new_domains = [rename_iname(dom, old_iname, name_map[old_iname])
+                       for dom in new_domains]
 
-    var_map = {p.Variable(k): p.Variable(v)
-                   for k, v in iname_map.items()}
-    var_map.update({p.Variable(k): p.Variable(v)
-                        for k, v in temp_map.items()})
-    for k, v in arg_map.items():
-        if isinstance(v, SubArrayRef):
-            var_map[p.Variable(k)] = v.subscript.aggregate
-        else:
-            var_map[p.Variable(k)] = v
+    new_assumptions = callee_knl.assumptions
 
-    subst_mapper = KernelInliner(
-        make_subst_func(var_map), kernel, arg_map, callee_knl.arg_dict)
+    for callee_arg_name, param_expr in arg_map.items():
+        if isinstance(callee_knl.arg_dict[callee_arg_name],
+                      ValueArg):
+            new_domains = [
+                    substitute_into_domain(
+                        dom,
+                        callee_arg_name,
+                        param_expr, get_valid_domain_param_names(caller_knl))
+                    for dom in new_domains]
 
-    insn_id = {}
+            new_assumptions = substitute_into_domain(
+                        new_assumptions,
+                        callee_arg_name,
+                        param_expr, get_valid_domain_param_names(caller_knl))
+
+    # }}}
+
+    # {{{ map callee's expressions to get expressions after inlining
+
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            callee_knl.substitutions, vng)
+    smap = KernelInliner(rule_mapping_context,
+            make_subst_func({old_name: prim.Variable(new_name)
+                             for old_name, new_name in name_map.items()}),
+            caller_knl, callee_knl, arg_map)
+
+    callee_knl = rule_mapping_context.finish_kernel(smap.map_kernel(
+        callee_knl))
+
+    # }}}
+
+    # {{{ generate new ids for instructions
+
+    insn_id_map = {}
     for insn in callee_knl.instructions:
-        insn_id[insn.id] = ing(callee_label+insn.id)
-
-    # {{{ root and leave instructions in callee kernel
-
-    dep_map = callee_knl.recursive_insn_dep_map()
-    # roots depend on nothing
-    heads = {insn for insn, deps in dep_map.items() if not deps}
-    # leaves have nothing that depends on them
-    tails = set(dep_map.keys())
-    for insn, deps in dep_map.items():
-        tails = tails - deps
+        insn_id_map[insn.id] = ing(callee_label+insn.id)
 
     # }}}
 
@@ -298,70 +363,74 @@ def _inline_call_instruction(caller_kernel, callee_knl, instruction):
 
     noop_start = NoOpInstruction(
         id=ing(callee_label+"_start"),
-        within_inames=instruction.within_inames,
-        depends_on=instruction.depends_on
+        within_inames=call_insn.within_inames,
+        depends_on=call_insn.depends_on
     )
     noop_end = NoOpInstruction(
-        id=instruction.id,
-        within_inames=instruction.within_inames,
-        depends_on=frozenset(insn_id[insn] for insn in tails)
+        id=call_insn.id,
+        within_inames=call_insn.within_inames,
+        depends_on=frozenset(insn_id_map.values())
     )
+
     # }}}
 
-    inner_insns = [noop_start]
+    # {{{ map callee's instruction ids
+
+    inlined_insns = [noop_start]
 
     for insn in callee_knl.instructions:
-        insn = insn.with_transformed_expressions(subst_mapper)
-        within_inames = frozenset(map(iname_map.get, insn.within_inames))
-        within_inames = within_inames | instruction.within_inames
-        depends_on = frozenset(map(insn_id.get, insn.depends_on)) | (
-                instruction.depends_on)
-        no_sync_with = frozenset((insn_id[id], scope)
+        new_within_inames = (frozenset(name_map[iname]
+                             for iname in insn.within_inames)
+                | call_insn.within_inames)
+        new_depends_on = (frozenset(insn_id_map[dep] for dep in insn.depends_on)
+                      | {noop_start.id})
+        new_no_sync_with = frozenset((insn_id_map[id], scope)
                                  for id, scope in insn.no_sync_with)
-
-        if insn.id in heads:
-            depends_on = depends_on | {noop_start.id}
+        new_id = insn_id_map[insn.id]
 
         if isinstance(insn, Assignment):
             new_atomicity = tuple(
-                    type(atomicity)(var_map[p.Variable(atomicity.var_name)].name)
+                    type(atomicity)(name_map[atomicity.var_name])
                     for atomicity in insn.atomicity)
             insn = insn.copy(
-                id=insn_id[insn.id],
-                within_inames=within_inames,
-                # TODO: probaby need to keep priority in callee kernel
-                priority=instruction.priority,
-                depends_on=depends_on,
-                tags=insn.tags | instruction.tags,
+                id=insn_id_map[insn.id],
+                within_inames=new_within_inames,
+                depends_on=new_depends_on,
+                tags=insn.tags | call_insn.tags,
                 atomicity=new_atomicity,
-                no_sync_with=no_sync_with
+                no_sync_with=new_no_sync_with
             )
         else:
             insn = insn.copy(
-                id=insn_id[insn.id],
-                within_inames=within_inames,
-                # TODO: probaby need to keep priority in callee kernel
-                priority=instruction.priority,
-                depends_on=depends_on,
-                tags=insn.tags | instruction.tags,
-                no_sync_with=no_sync_with
+                id=new_id,
+                within_inames=new_within_inames,
+                depends_on=new_depends_on,
+                tags=insn.tags | call_insn.tags,
+                no_sync_with=new_no_sync_with
             )
-        inner_insns.append(insn)
+        inlined_insns.append(insn)
 
-    inner_insns.append(noop_end)
-
-    new_insns = []
-    for insn in kernel.instructions:
-        if insn == instruction:
-            new_insns.extend(inner_insns)
-        else:
-            new_insns.append(insn)
-
-    kernel = kernel.copy(instructions=new_insns)
+    inlined_insns.append(noop_end)
 
     # }}}
 
-    return kernel
+    # {{{ swap out call_insn with inlined_instructions
+
+    idx = caller_knl.instructions.index(call_insn)
+    new_insns = (caller_knl.instructions[:idx]
+                 + inlined_insns
+                 + caller_knl.instructions[idx+1:])
+
+    # }}}
+
+    old_assumptions, new_assumptions = isl.align_two(
+            caller_knl.assumptions, new_assumptions)
+
+    return caller_knl.copy(instructions=new_insns,
+            temporary_variables=new_temps,
+            domains=caller_knl.domains+new_domains,
+            assumptions=old_assumptions.params() & new_assumptions.params(),
+            iname_to_tags=new_iname_to_tags)
 
 # }}}
 
