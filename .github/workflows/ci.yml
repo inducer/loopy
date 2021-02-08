@@ -134,6 +134,8 @@ jobs:
                     grep -v symengine .test-conda-env-py3.yml > .test-conda-env.yml
                     export CONDA_ENVIRONMENT=.test-conda-env.yml
                     export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+                else
+                    export CONDA_ENVIRONMENT=.test-conda-env-py3.yml
                 fi
 
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
