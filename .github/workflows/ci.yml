@@ -112,4 +112,33 @@ jobs:
                 build_py_project_in_conda_env
                 build_docs
 
+    dep_tests:
+        strategy:
+            matrix:
+                dep_project: [meshmode, grudge, pytential]
+        name: Tests for depending project ${{ matrix.dep_project }}
+        runs-on: ubuntu-latest
+        steps:
+        -   uses: actions/checkout@v2
+        -   name: "Main Script"
+            env:
+                DEP_PROJECT: ${{ matrix.dep_project }}
+            run: |
+                git clone "https://github.com/inducer/$DEP_PROJECT.git"
+                cd "$DEP_PROJECT"
+                echo "*** $DEP_PROJECT version: $(git rev-parse --short HEAD)"
+
+                sed "/egg=loopy/ c git+file://$(readlink -f ..)#egg=loopy" requirements.txt
+
+                if test "$DEP_PROJECT" = "pytential"; then
+                    grep -v symengine .test-conda-env-py3.yml > .test-conda-env.yml
+                    export CONDA_ENVIRONMENT=.test-conda-env.yml
+                    export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest}
+                fi
+
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+                . ./ci-support.sh
+                build_py_project_in_conda_env
+                test_py_project
+
 # vim: sw=4
