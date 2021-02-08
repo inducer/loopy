@@ -138,7 +138,7 @@ jobs:
                 fi
 
                 # Avoid slow or complicated tests in downstream projects
-                export PYTEST_ADDOPTS=${PYTEST_ADDOPTS:--k-slowtest --k-octave --k-mpi}
+                export PYTEST_ADDOPTS="-k-slowtest -k-octave -k-mpi"
 
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
                 . ./ci-support.sh
