@@ -128,7 +128,7 @@ jobs:
                 cd "$DEP_PROJECT"
                 echo "*** $DEP_PROJECT version: $(git rev-parse --short HEAD)"
 
-                sed "/egg=loopy/ c git+file://$(readlink -f ..)#egg=loopy" requirements.txt
+                sed -i "/egg=loopy/ c git+file://$(readlink -f ..)#egg=loopy" requirements.txt
 
                 if test "$DEP_PROJECT" = "pytential"; then
                     grep -v symengine .test-conda-env-py3.yml > .test-conda-env.yml
