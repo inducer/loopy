@@ -138,7 +138,7 @@ jobs:
                 fi
 
                 # Avoid slow or complicated tests in downstream projects
-                export PYTEST_ADDOPTS="-k-slowtest -k-octave -k-mpi"
+                export PYTEST_ADDOPTS="-k 'not (slowtest or octave or mpi)'"
 
                 sed -i "/mpi4py/ d" requirements.txt
 
