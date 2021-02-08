@@ -115,7 +115,7 @@ jobs:
     downstream_tests:
         strategy:
             matrix:
-                downstream_project: [meshmode, grudge, pytential]
+                downstream_project: [meshmode, grudge, pytential, pytato]
         name: Tests for downstream project ${{ matrix.downstream_project }}
         runs-on: ubuntu-latest
         steps:
