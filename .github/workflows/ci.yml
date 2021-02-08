@@ -140,6 +140,8 @@ jobs:
                 # Avoid slow or complicated tests in downstream projects
                 export PYTEST_ADDOPTS="-k-slowtest -k-octave -k-mpi"
 
+                sed -i "/mpi4py/ d" requirements.txt
+
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
                 . ./ci-support.sh
                 build_py_project_in_conda_env
