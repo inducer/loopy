@@ -130,12 +130,7 @@ jobs:
 
                 sed -i "/egg=loopy/ c git+file://$(readlink -f ..)#egg=loopy" requirements.txt
 
-                if test "$DOWNSTREAM_PROJECT" = "pytential"; then
-                    grep -v symengine .test-conda-env-py3.yml > .test-conda-env.yml
-                    export CONDA_ENVIRONMENT=.test-conda-env.yml
-                else
-                    export CONDA_ENVIRONMENT=.test-conda-env-py3.yml
-                fi
+                export CONDA_ENVIRONMENT=.test-conda-env-py3.yml
 
                 # Avoid slow or complicated tests in downstream projects
                 export PYTEST_ADDOPTS="-k 'not (slowtest or octave or mpi)'"
