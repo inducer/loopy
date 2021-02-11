@@ -1558,6 +1558,15 @@ class PwQPolyEvaluationMapper(EvaluationMapperBase):
         raise TypeError("true division in '%s' not supported "
                 "for as-pwqpoly evaluation" % expr)
 
+    def map_power(self, expr):
+        from numbers import Integral
+        if not isinstance(expr.exponent, Integral):
+            raise TypeError("Only integral powers allowed in pwqpolynomials.")
+
+        # do not "rec" exponent as it will be cast to a pwqpoly and
+        # pwqpoly ** pwqpoly isn't allowed
+        return self.rec(expr.base) ** expr.exponent
+
 
 def pw_qpolynomial_from_expr(space, expr, vars_to_zero=frozenset()):
     return PwQPolyEvaluationMapper(space, vars_to_zero)(expr)

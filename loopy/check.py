@@ -199,11 +199,11 @@ def check_multiple_tags_allowed(kernel):
         (GroupIndexTag, LocalIndexTag, VectorizeTag, UnrollTag, ForceSequentialTag),
         (IlpBaseTag, ForceSequentialTag)
     ]
-    for iname, tags in kernel.iname_to_tags.items():
+    for iname in kernel.inames.values():
         for comb in illegal_combinations:
-            if len(filter_iname_tags_by_type(tags, comb)) > 1:
+            if len(filter_iname_tags_by_type(iname.tags, comb)) > 1:
                 raise LoopyError("iname {} has illegal combination of "
-                                 "tags: {}".format(iname, tags))
+                                 "tags: {}".format(iname.name, iname.tags))
 
 
 def check_for_double_use_of_hw_axes(kernel):
@@ -334,8 +334,8 @@ def check_for_orphaned_user_hardware_axes(kernel):
     from loopy.kernel.data import LocalIndexTag
     for axis in kernel.local_sizes:
         found = False
-        for tags in kernel.iname_to_tags.values():
-            for tag in tags:
+        for iname in kernel.inames.values():
+            for tag in iname.tags:
                 if isinstance(tag, LocalIndexTag) and tag.axis == axis:
                     found = True
                     break
