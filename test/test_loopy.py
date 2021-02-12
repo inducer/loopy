@@ -2827,6 +2827,9 @@ def test_shape_mismatch_check(ctx_factory):
     a = np.random.rand(10, 10).astype(np.float32)
     b = np.random.rand(10).astype(np.float32)
 
+    if prg.options.skip_arg_checks:
+        pytest.skip("args checks disabled, cannot check")
+
     with pytest.raises(TypeError, match="strides mismatch"):
         prg(queue, a=a, b=b)
 

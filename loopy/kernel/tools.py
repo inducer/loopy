@@ -818,18 +818,13 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
         except isl.Error:
             # Likely unbounded, automatic assignment is not
             # going to happen for this iname.
-            new_iname_to_tags = kernel.iname_to_tags.copy()
-            new_tags = new_iname_to_tags.get(iname, frozenset())
-            new_tags = frozenset(tag for tag in new_tags
-                    if not isinstance(tag, AutoLocalIndexTagBase))
-
-            if new_tags:
-                new_iname_to_tags[iname] = new_tags
-            else:
-                del new_iname_to_tags[iname]
-
+            new_inames = kernel.inames.copy()
+            new_inames[iname] = kernel.inames[iname].copy(
+                    tags=frozenset(tag
+                        for tag in kernel.inames[iname].tags
+                        if not isinstance(tag, AutoLocalIndexTagBase)))
             return assign_automatic_axes(
-                    kernel.copy(iname_to_tags=new_iname_to_tags),
+                    kernel.copy(inames=new_inames),
                     callables_table,
                     axis=recursion_axis)
 
@@ -892,18 +887,13 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
             new_tag_set = frozenset([new_tag])
         else:
             new_tag_set = frozenset()
-        new_iname_to_tags = kernel.iname_to_tags.copy()
         new_tags = (
-                frozenset(tag for tag in new_iname_to_tags.get(iname, frozenset())
+                frozenset(tag for tag in kernel.inames[iname].tags
                     if not isinstance(tag, AutoLocalIndexTagBase))
                 | new_tag_set)
-
-        if new_tags:
-            new_iname_to_tags[iname] = new_tags
-        else:
-            del new_iname_to_tags[iname]
-
-        return assign_automatic_axes(kernel.copy(iname_to_tags=new_iname_to_tags),
+        new_inames = kernel.inames.copy()
+        new_inames[iname] = kernel.inames[iname].copy(tags=new_tags)
+        return assign_automatic_axes(kernel.copy(inames=new_inames),
                 callables_table, axis=recursion_axis, local_size=local_size)
 
     # }}}
@@ -1196,7 +1186,7 @@ def get_visual_iname_order_embedding(kernel):
     # Ignore ILP tagged inames, since they do not have to form a strict loop
     # nest.
     ilp_inames = frozenset(iname
-        for iname in kernel.iname_to_tags
+        for iname in kernel.inames
         if kernel.iname_tags_of_type(iname, IlpBaseTag))
 
     iname_trie = SetTrie()

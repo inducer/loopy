@@ -284,20 +284,21 @@ class ExecutionWrapperGeneratorBase:
                                     'passed array")'
                                     % (arg.name, impl_array_name))
 
-                        base_arg = kernel.impl_arg_to_arg[impl_array_name]
+                    base_arg = kernel.impl_arg_to_arg[impl_array_name]
 
-                        if not options.skip_arg_checks:
-                            gen("%s, _lpy_remdr = divmod(%s.strides[%d], %d)"
-                                    % (arg.name, impl_array_name, stride_impl_axis,
-                                        base_arg.dtype.dtype.itemsize))
+                    if not options.skip_arg_checks:
+                        gen("%s, _lpy_remdr = divmod(%s.strides[%d], %d)"
+                                % (arg.name, impl_array_name, stride_impl_axis,
+                                    base_arg.dtype.dtype.itemsize))
 
-                            gen("assert _lpy_remdr == 0, \"Stride %d of array '%s' "
-                                    ' is not divisible by its dtype itemsize"'
-                                    % (stride_impl_axis, impl_array_name))
-                            gen("del _lpy_remdr")
-                        else:
-                            gen("%s = _lpy_offset // %d"
-                                    % (arg.name, base_arg.dtype.itemsize))
+                        gen("assert _lpy_remdr == 0, \"Stride %d of array '%s' "
+                                ' is not divisible by its dtype itemsize"'
+                                % (stride_impl_axis, impl_array_name))
+                        gen("del _lpy_remdr")
+                    else:
+                        gen("%s = %s.strides[%d] // %d"
+                                % (arg.name,  impl_array_name, stride_impl_axis,
+                                    base_arg.dtype.itemsize))
 
         gen("# }}}")
         gen("")
@@ -644,8 +645,6 @@ class ExecutionWrapperGeneratorBase:
                     if issubclass(idi.arg_class, KernelArgument)
                     ])
 
-        gen.add_to_preamble("from __future__ import division")
-        gen.add_to_preamble("")
         self.target_specific_preamble(gen)
         gen.add_to_preamble("")
         self.generate_host_code(gen, codegen_result)

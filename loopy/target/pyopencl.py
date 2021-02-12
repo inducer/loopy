@@ -343,6 +343,12 @@ class PyOpenCLTarget(OpenCLTarget):
         super().__init__(
                 atomics_flavor=atomics_flavor)
 
+        import pyopencl.version
+        if pyopencl.version.VERSION < (2021, 1):
+            raise RuntimeError("The version of loopy you have installed "
+                    "generates invoker code that requires PyOpenCL 2021.1 "
+                    "or newer.")
+
         self.device = device
         self.pyopencl_module_name = pyopencl_module_name
 
@@ -536,11 +542,24 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
 
     fp_arg_count = 0
 
-    from genpy import (
-            Comment, Line, If, Raise, Assign, Statement as S, Suite)
+    from genpy import If, Raise, Statement as S, Suite
 
     result = []
     gen = result.append
+
+    buf_indices_and_args = []
+    buf_pack_indices_and_args = []
+
+    from pyopencl.invoker import BUF_PACK_TYPECHARS
+
+    def add_buf_arg(arg_idx, typechar, expr_str):
+        if typechar in BUF_PACK_TYPECHARS:
+            buf_pack_indices_and_args.append(arg_idx)
+            buf_pack_indices_and_args.append(repr(typechar.encode()))
+            buf_pack_indices_and_args.append(expr_str)
+        else:
+            buf_indices_and_args.append(arg_idx)
+            buf_indices_and_args.append(f"pack('{typechar}', {expr_str})")
 
     for arg_idx, idi in enumerate(implemented_data_info):
         arg_idx_to_cl_arg_idx[arg_idx] = cl_arg_idx
@@ -553,24 +572,15 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
 
             continue
 
-        gen(Comment("{{{ process %s" % idi.name))
-        gen(Line())
-
         if not options.skip_arg_checks:
             gen(If("%s is None" % idi.name,
                 Raise('RuntimeError("input argument \'{name}\' '
                         'must be supplied")'.format(name=idi.name))))
 
-        if idi.dtype.is_integral():
-            gen(Comment("cast to Python int to avoid trouble "
-                "with struct packing or Boost.Python"))
-            py_type = "int"
-
-            gen(Assign(idi.name, f"{py_type}({idi.name})"))
-            gen(Line())
-
         if idi.dtype.is_composite():
-            gen(S("_lpy_knl.set_arg(%d, %s)" % (cl_arg_idx, idi.name)))
+            buf_indices_and_args.append(cl_arg_idx)
+            buf_indices_and_args.append(f"{idi.name}")
+
             cl_arg_idx += 1
 
         elif idi.dtype.is_complex():
@@ -595,32 +605,16 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
             if (work_around_arg_count_bug
                     and dtype.numpy_dtype == np.complex128
                     and fp_arg_count + 2 <= 8):
-                gen(Assign(
-                    "_lpy_buf",
-                    "_lpy_pack('{arg_char}', {arg_var}.real)"
-                    .format(arg_char=arg_char, arg_var=idi.name)))
-                gen(S(
-                    "_lpy_knl.set_arg({cl_arg_idx}, _lpy_buf)"
-                    .format(cl_arg_idx=cl_arg_idx)))
+                add_buf_arg(cl_arg_idx, arg_char, f"{idi.name}.real")
                 cl_arg_idx += 1
 
-                gen(Assign(
-                    "_lpy_buf",
-                    "_lpy_pack('{arg_char}', {arg_var}.imag)"
-                    .format(arg_char=arg_char, arg_var=idi.name)))
-                gen(S(
-                        "_lpy_knl.set_arg({cl_arg_idx}, _lpy_buf)"
-                        .format(cl_arg_idx=cl_arg_idx)))
+                add_buf_arg(cl_arg_idx, arg_char, f"{idi.name}.imag")
                 cl_arg_idx += 1
             else:
-                gen(Assign(
-                    "_lpy_buf",
-                    "_lpy_pack('{arg_char}{arg_char}', "
-                    "{arg_var}.real, {arg_var}.imag)"
-                    .format(arg_char=arg_char, arg_var=idi.name)))
-                gen(S(
-                    "_lpy_knl.set_arg({cl_arg_idx}, _lpy_buf)"
-                    .format(cl_arg_idx=cl_arg_idx)))
+                buf_indices_and_args.append(cl_arg_idx)
+                buf_indices_and_args.append(
+                    f"_lpy_pack('{arg_char}{arg_char}', "
+                    f"{idi.name}.real, {idi.name}.imag)")
                 cl_arg_idx += 1
 
             fp_arg_count += 2
@@ -629,20 +623,22 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
             if idi.dtype.dtype.kind == "f":
                 fp_arg_count += 1
 
-            gen(S(
-                "_lpy_knl.set_arg(%d, _lpy_pack('%s', %s))"
-                % (cl_arg_idx, idi.dtype.dtype.char, idi.name)))
-
+            add_buf_arg(cl_arg_idx, idi.dtype.dtype.char, idi.name)
             cl_arg_idx += 1
 
         else:
             raise LoopyError("do not know how to pass argument of type '%s'"
                     % idi.dtype)
 
-        gen(Line())
-
-        gen(Comment("}}}"))
-        gen(Line())
+    for arg_kind, args_and_indices, entry_length in [
+            ("_buf", buf_indices_and_args, 2),
+            ("_buf_pack", buf_pack_indices_and_args, 3),
+            ]:
+        assert len(args_and_indices) % entry_length == 0
+        if args_and_indices:
+            gen(S(f"_lpy_knl._set_arg{arg_kind}_multi("
+                    f"({', '.join(str(i) for i in args_and_indices)},), "
+                    ")"))
 
     return Suite(result), arg_idx_to_cl_arg_idx, cl_arg_idx
 
@@ -656,13 +652,18 @@ def generate_array_arg_setup(kernel, implemented_data_info, arg_idx_to_cl_arg_id
     result = []
     gen = result.append
 
+    cl_indices_and_args = []
     for arg_idx, arg in enumerate(implemented_data_info):
-        if not issubclass(arg.arg_class, ArrayBase):
-            continue
+        if issubclass(arg.arg_class, ArrayBase):
+            cl_indices_and_args.append(arg_idx_to_cl_arg_idx[arg_idx])
+            cl_indices_and_args.append(arg.name)
 
-        cl_arg_idx = arg_idx_to_cl_arg_idx[arg_idx]
+    if cl_indices_and_args:
+        assert len(cl_indices_and_args) % 2 == 0
 
-        gen(S("_lpy_knl.set_arg(%d, %s)" % (cl_arg_idx, arg.name)))
+        gen(S(f"_lpy_knl._set_arg_multi("
+            f"({', '.join(str(i) for i in cl_indices_and_args)},)"
+            ")"))
 
     return Suite(result)
 
@@ -684,25 +685,22 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     if not issubclass(idi.arg_class, TemporaryVariable)]
                 + ["wait_for=None", "allocator=None"])
 
-        from genpy import (For, Function, Suite, Import, ImportAs, Return,
-                FromImport, Line, Statement as S)
+        from genpy import (For, Function, Suite, Return, Line, Statement as S)
         return Function(
                 codegen_result.current_program(codegen_state).name,
                 args,
                 Suite([
-                    FromImport("struct", ["pack as _lpy_pack"]),
-                    ImportAs("pyopencl", "_lpy_cl"),
-                    Import("pyopencl.tools"),
                     Line(),
                     ] + [
                     Line(),
                     function_body,
                     Line(),
-                    ] + [
-                    For("_tv", "_global_temporaries",
-                        # free global temporaries
-                        S("_tv.release()"))
-                    ] + [
+                    ] + ([
+                        For("_tv", "_global_temporaries",
+                            # free global temporaries
+                            S("_tv.release()"))
+                        ] if self._get_global_temporaries(codegen_state) else []
+                    ) + [
                     Line(),
                     Return("_lpy_evt"),
                     ]))
@@ -712,6 +710,14 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         # no such thing in Python
         return None
 
+    def _get_global_temporaries(self, codegen_state):
+        from loopy.kernel.data import AddressSpace
+
+        return sorted(
+            (tv for tv in codegen_state.kernel.temporary_variables.values()
+            if tv.address_space == AddressSpace.GLOBAL),
+            key=lambda tv: tv.name)
+
     def get_temporary_decls(self, codegen_state, schedule_state):
         from genpy import Assign, Comment, Line
 
@@ -720,18 +726,12 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             from operator import mul
             return tv.dtype.numpy_dtype.itemsize * reduce(mul, tv.shape, 1)
 
-        from loopy.kernel.data import AddressSpace
-
-        global_temporaries = sorted(
-            (tv for tv in codegen_state.kernel.temporary_variables.values()
-            if tv.address_space == AddressSpace.GLOBAL),
-            key=lambda tv: tv.name)
-
         from pymbolic.mapper.stringifier import PREC_NONE
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
+        global_temporaries = self._get_global_temporaries(codegen_state)
         if not global_temporaries:
-            return [Assign("_global_temporaries", "[]"), Line()]
+            return []
 
         return [
             Comment("{{{ allocate global temporaries"),
@@ -786,8 +786,13 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             arry_arg_code,
             Assign("_lpy_evt", "%(pyopencl_module_name)s.enqueue_nd_range_kernel("
                 "queue, _lpy_knl, "
-                "%(gsize)s, %(lsize)s,  wait_for=wait_for, "
-                "g_times_l=True, allow_empty_ndrange=True)"
+                "%(gsize)s, %(lsize)s, "
+                # using positional args because pybind is slow with kwargs
+                "None, "  # offset
+                "wait_for, "
+                "True, "  # g_times_l
+                "True, "  # allow_empty_ndrange
+                ")"
                 % dict(
                     pyopencl_module_name=self.target.pyopencl_module_name,
                     gsize=ecm(gsize, prec=PREC_NONE, type_context="i"),

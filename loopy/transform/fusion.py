@@ -248,10 +248,10 @@ def _fuse_two_kernels(kernela, kernelb):
             local_sizes=_merge_dicts(
                 "local size", kernela.local_sizes, kernelb.local_sizes),
             temporary_variables=new_temporaries,
-            iname_to_tags=_merge_dicts(
-                "iname-to-tag mapping",
-                kernela.iname_to_tags,
-                kernelb.iname_to_tags),
+            inames=_merge_dicts(
+                "inames",
+                kernela.inames,
+                kernelb.inames),
             substitutions=_merge_dicts(
                 "substitution",
                 kernela.substitutions,

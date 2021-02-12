@@ -23,6 +23,7 @@ THE SOFTWARE.
 
 from pytools import ImmutableRecord
 import re
+import os
 
 
 ALLOW_TERMINAL_COLORS = True
@@ -97,6 +98,12 @@ class Options(ImmutableRecord):
 
         Do not do any checking (data type, data layout, shape,
         etc.) on arguments for a minor performance gain.
+
+        .. versionchanged:: 2021.1
+
+            This now defaults to the same value as the ``optimize``
+            sub-flag from :data:`sys.flags`. This flag can be controlled
+            (i.e. set to *True*) by running Python with the ``-O`` flag.
 
     .. attribute:: no_numpy
 
@@ -196,6 +203,7 @@ class Options(ImmutableRecord):
         allow_terminal_colors_def = (
                 ALLOW_TERMINAL_COLORS and allow_terminal_colors_def)
 
+        import sys
         ImmutableRecord.__init__(
                 self,
 
@@ -203,7 +211,14 @@ class Options(ImmutableRecord):
                 trace_assignments=kwargs.get("trace_assignments", False),
                 trace_assignment_values=kwargs.get("trace_assignment_values", False),
 
-                skip_arg_checks=kwargs.get("skip_arg_checks", False),
+                skip_arg_checks=kwargs.get("skip_arg_checks",
+                    sys.flags.optimize
+                    # Not considered a documented env var: Only used to test
+                    # the skip_arg_checks branch during CI, which can't use
+                    # python -O.
+                    #
+                    # Considered enabled if non-empty.
+                    or bool(os.environ.get("_LOOPY_SKIP_ARG_CHECKS"))),
                 no_numpy=kwargs.get("no_numpy", False),
                 cl_exec_manage_array_events=kwargs.get("no_numpy", True),
                 return_dict=kwargs.get("return_dict", False),

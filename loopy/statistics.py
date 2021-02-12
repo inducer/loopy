@@ -1506,8 +1506,7 @@ def count(kernel, set, space=None):
     return add_assumptions_guard(kernel, total_count)
 
 
-def get_unused_hw_axes_factor(knl, callables_table, insn,
-        disregard_local_axes):
+def get_unused_hw_axes_factor(knl, callables_table, insn, disregard_local_axes):
     # FIXME: Multi-kernel support
     gsize, lsize = knl.get_grid_size_upper_bounds(callables_table)
 

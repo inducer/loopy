@@ -1149,7 +1149,7 @@ def test_floor_div_coefficient_collector():
         [
             "for i_outer",
             "for j_outer",
-            "<> loc[i_inner,j_inner] = 3.14  {id=loc_init}",
+            "<> loc[i_inner,j_inner] = 3.14f  {id=loc_init}",
             "loc[i_inner,(j_inner+r+4) %% %d] = loc[i_inner,(j_inner+r) %% %d]"
             "  {id=add,dep=loc_init}" % (bsize, bsize),
             "out0[i_outer*16+i_inner,j_outer*16+j_inner] = loc[i_inner,j_inner]"
@@ -1477,6 +1477,26 @@ def test_callable_kernel_with_substitution():
 
     f64_add = op_map.filter_by(name="add").eval_and_sum({})
     assert f64_add == 8000
+
+
+def test_no_loop_ops():
+    # See https://github.com/inducer/loopy/issues/211
+
+    knl = lp.make_kernel(
+        "{ : }",
+        """
+        c = a + b
+        d = 2*c + a + b
+        """)
+
+    knl = lp.add_dtypes(knl, {"a": np.float, "b": np.float})
+
+    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
+                           count_within_subscripts=True)
+    f64_add = op_map.filter_by(name="add").eval_and_sum({})
+    f64_mul = op_map.filter_by(name="mul").eval_and_sum({})
+    assert f64_add == 3
+    assert f64_mul == 1
 
 
 if __name__ == "__main__":

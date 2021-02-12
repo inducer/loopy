@@ -699,20 +699,27 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 
     # }}}
 
-    # {{{ domain
+    # {{{ domain/assumptions
 
-    new_domains = []
-    for dom in kernel.domains:
+    def rename_arg_in_basic_set(dom):
         dom_var_dict = dom.get_var_dict()
         if old_name in dom_var_dict:
             dt, pos = dom_var_dict[old_name]
             dom = dom.set_dim_name(dt, pos, new_name)
 
+        return dom
+
+    new_domains = []
+    for dom in kernel.domains:
+        dom = rename_arg_in_basic_set(dom)
         new_domains.append(dom)
+
+    new_assumptions = rename_arg_in_basic_set(kernel.assumptions)
 
     # }}}
 
-    return kernel.copy(domains=new_domains, args=new_args)
+    return kernel.copy(domains=new_domains, args=new_args,
+            assumptions=new_assumptions)
 
 # }}}
 

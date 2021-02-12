@@ -15,6 +15,24 @@ Python 3 POCL:
     reports:
       junit: test/pytest.xml
 
+Python 3 POCL without arg check:
+  script:
+  - export PY_EXE=python3
+  - export PYOPENCL_TEST=portable:pthread
+  - export EXTRA_INSTALL="pybind11 numpy mako"
+  - export LOOPY_NO_CACHE=1
+  - export _LOOPY_SKIP_ARG_CHECKS=1
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  tags:
+  - python3
+  - pocl
+  except:
+  - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
+
 Python 3 Intel:
   script:
   - export PY_EXE=python3
