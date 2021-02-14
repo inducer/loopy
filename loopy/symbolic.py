@@ -2769,15 +2769,15 @@ def _check_for_write_races(map_a, insn_a, map_b, insn_b, knl):
 
     assert set_a.get_space() == set_b.get_space()
 
-    # {{{ Step 5: create the set (l.i.A != l.i.B and g.i.A != g.i.B)
+    # {{{ Step 5: create the set any(l.i.A != l.i.B) OR any(g.i.A != g.i.B)
 
     space = set_a.space
-    unequal_global_id_set = isl.Set.universe(set_a.get_space())
+    unequal_global_id_set = isl.Set.empty(set_a.get_space())
 
     for i_l in range(len(lsize)):
         lid_a = p.Variable(f"l.{i_l}.A")
         lid_b = p.Variable(f"l.{i_l}.B")
-        unequal_global_id_set &= (
+        unequal_global_id_set |= (
                 isl_set_from_expr(space,
                     p.Comparison(lid_a, "!=", lid_b))
                 )
@@ -2785,7 +2785,7 @@ def _check_for_write_races(map_a, insn_a, map_b, insn_b, knl):
     for i_g in range(len(gsize)):
         gid_a = p.Variable(f"g.{i_g}.A")
         gid_b = p.Variable(f"g.{i_g}.B")
-        unequal_global_id_set &= (
+        unequal_global_id_set |= (
                 isl_set_from_expr(space,
                     p.Comparison(gid_a, "!=", gid_b))
                 )
