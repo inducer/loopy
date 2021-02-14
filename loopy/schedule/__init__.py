@@ -1531,8 +1531,8 @@ class DependencyTracker:
         self.reverse = reverse
         self.var_kind = var_kind
 
-        from loopy.symbolic import AccessRangeOverlapChecker
-        self.overlap_checker = AccessRangeOverlapChecker(kernel)
+        from loopy.symbolic import WriteRaceChecker
+        self.write_race_checker = WriteRaceChecker(kernel)
 
         if var_kind == "local":
             self.relevant_vars = kernel.local_var_names()
@@ -1654,7 +1654,7 @@ class DependencyTracker:
                     race_var, = src_race_vars
 
                     if not (
-                        self.overlap_checker.do_access_ranges_overlap_conservative(
+                        self.write_race_checker.do_accesses_result_in_races(
                                 target.id, tgt_dir, source_id, src_dir, race_var)):
                         continue
 
