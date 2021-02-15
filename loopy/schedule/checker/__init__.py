@@ -155,13 +155,14 @@ def create_dependencies_from_legacy_knl(knl):
     specified by the ``SAME`` attribute of
     :class:`loopy.schedule.checker.dependency.LegacyDependencyType`.
 
-    (2) For each subset of non-concurrent inames used by any instruction,
+    (2) For each unique set of non-concurrent inames used by any instruction
+    (i.e., for each loop tier),
 
-        (a), find the set of all instructions using those inames,
+        (a), find the set of all instructions using a superset of those inames,
 
         (b), create a directed graph with these instructions as nodes and
         edges representing a 'happens before' relationship specfied by
-        each dependency,
+        each legacy dependency pair within these instructions,
 
         (c), find the sources and sinks within this graph, and
 
@@ -181,6 +182,7 @@ def create_dependencies_from_legacy_knl(knl):
         partition_inames_by_concurrency,
         get_all_nonconcurrent_insn_iname_subsets,
         get_linearization_item_ids_within_inames,
+        get_loop_nesting_map,
     )
 
     # Preprocess if not already preprocessed
@@ -191,13 +193,16 @@ def create_dependencies_from_legacy_knl(knl):
     # TODO instead of keeping these in a set, attach each one to depender insn
 
     # Create constraint maps from kernel dependencies
-    #dep_maps = set()  # TODO update other stuff after this change
-    dep_maps = {}
+    dep_maps = {}  # TODO update other stuff after this change from set->dict
 
-    # Introduce SAME dep for set of shared, non-concurrent inames
+    # For each pair of insns involved in a legacy dependency,
+    # introduce SAME dep for set of shared, non-concurrent inames
 
     conc_inames, non_conc_inames = partition_inames_by_concurrency(
         preprocessed_knl)
+
+    nests_inside_map = get_loop_nesting_map(knl, non_conc_inames)
+
     for insn_after in preprocessed_knl.instructions:
         for insn_before_id in insn_after.depends_on:
             insn_before = preprocessed_knl.id_to_insn[insn_before_id]
@@ -217,15 +222,9 @@ def create_dependencies_from_legacy_knl(knl):
                 insn_before_id,
                 insn_after.id,
                 {LegacyDependencyType.SAME: shared_non_conc_inames},
+                nests_inside_map=None,  # not used for SAME
                 )
 
-            """
-            dep_maps.add((
-                insn_before_id,
-                insn_after.id,
-                constraint_map,
-                ))
-            """
             dep_maps.setdefault(
                 (insn_before_id, insn_after.id), []
                 ).append(constraint_map)
@@ -239,11 +238,13 @@ def create_dependencies_from_legacy_knl(knl):
     # For each set of insns within a given iname set, find sources and sinks.
     # Then make PRIOR dep from all sinks to all sources at previous iterations
     for iname_subset in non_conc_iname_subsets:
-        # find items within this iname set
+        # find linearization items within this iname set
+        # TODO: could combine this step with the creation of the iname subsets
+        # to save time?
         linearization_item_ids = get_linearization_item_ids_within_inames(
             preprocessed_knl, iname_subset)
 
-        # find sources and sinks
+        # find sources and sinks (these sets may have non-empty intersection)
         sources, sinks = get_dependency_sources_and_sinks(
             preprocessed_knl, linearization_item_ids)
 
@@ -266,16 +267,13 @@ def create_dependencies_from_legacy_knl(knl):
                     sink_id,
                     source_id,
                     {LegacyDependencyType.PRIOR: shared_non_conc_inames},
+                    nests_inside_map=nests_inside_map,
                     )
+                # TODO in PRIOR case, there's some stuff happening in
+                # create_legacy_dep_constraint^ that may be redundant and could be
+                # done once for whole kernel
 
                 # TODO what if there is already a different dep from sink->source?
-                """
-                dep_maps.add((
-                    sink_id,
-                    source_id,
-                    constraint_map,
-                    ))
-                """
                 dep_maps.setdefault(
                     (sink_id, source_id), []
                     ).append(constraint_map)

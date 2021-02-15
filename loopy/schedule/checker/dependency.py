@@ -109,6 +109,7 @@ def create_legacy_dependency_constraint(
         insn_id_before,
         insn_id_after,
         deps,
+        nests_inside_map=None,
         ):
     """Create a statement dependency constraint represented as a map from
         each statement instance to statement instances that must occur later,
@@ -193,34 +194,24 @@ def create_legacy_dependency_constraint(
                 # e.g., if prios={(a, b), (b, c), (c, d, e)}, then we know
                 # a -> b -> c -> d -> e
 
-                # remove irrelevant inames from priority tuples (because we're
-                # about to perform a costly operation on remaining tuples)
-                relevant_priorities = set()
-                for p_tuple in knl.loop_priority:
-                    new_tuple = [iname for iname in p_tuple if iname in inames_list]
-                    # empty tuples and single tuples don't help us define
-                    # a nesting, so ignore them (if we're dealing with a single
-                    # iname, priorities will be ignored later anyway)
-                    if len(new_tuple) > 1:
-                        relevant_priorities.add(tuple(new_tuple))
+                assert nests_inside_map
 
-                # create a mapping from each iname to inames that must be
-                # nested inside that iname
-                nested_inside = {}
-                for outside_iname in inames_list:
-                    nested_inside_inames = set()
-                    for p_tuple in relevant_priorities:
-                        if outside_iname in p_tuple:
-                            nested_inside_inames.update([
-                                inside_iname for inside_iname in
-                                p_tuple[p_tuple.index(outside_iname)+1:]])
-                    nested_inside[outside_iname] = nested_inside_inames
+                # before reasoning about loop orderings,
+                # remove irrelevant inames from nesting requirements
+                # TODO more efficient way to do this?
+                relevant_nests_inside_map = {}
+                for iname, inside_inames in nests_inside_map.items():
+                    # ignore irrelevant iname keys
+                    if iname in inames_list:
+                        # only keep relevant subset of iname vals
+                        relevant_nests_inside_map[iname] = set(
+                            inames_list) & nests_inside_map[iname]
 
+                # get all orderings that are explicitly allowed by priorities
                 from loopy.schedule.checker.utils import (
                     get_orderings_of_length_n)
-                # get all orderings that are explicitly allowed by priorities
                 orders = get_orderings_of_length_n(
-                    nested_inside,
+                    relevant_nests_inside_map,
                     required_length=len(inames_list),
                     #return_first_found=True,
                     return_first_found=False,  # slower; allows priorities test below
@@ -301,8 +292,8 @@ def create_legacy_dependency_constraint(
         domain_constraint_set, isl.dim_type.out,
         [statement_var_name_prime], statement_var_idx)
 
-    # insert inames missing from doms to enable intersection
-    # TODO nothing should be missing now, just reorder
+    # reorder inames to enable intersection (inames should already match at
+    # this point)
     assert set(
         append_apostrophes([STATEMENT_VAR_NAME] + dom_inames_ordered_before)
         ) == set(domain_to_intersect.get_var_names(isl.dim_type.out))
@@ -350,5 +341,7 @@ def get_dependency_sources_and_sinks(knl, linearization_item_ids):
 
     # sinks don't point to anyone
     sinks = linearization_item_ids - dependees
+
+    # Note that some instructions may be both a source and a sink
 
     return sources, sinks

@@ -273,6 +273,27 @@ def partition_inames_by_concurrency(knl):
     return conc_inames, all_inames-conc_inames
 
 
+def get_loop_nesting_map(knl, inames=None):
+    # Create a mapping from each iname to inames that must be
+    # nested inside that iname, based on nesting constraints.
+    # Once the new nest constraint semantics are added,
+    # this function will change and may not be necessary.
+
+    if inames is None:
+        inames = knl.all_inames()
+
+    nests_inside_map = {}
+    for outside_iname in inames:
+        nested_inside_inames = set()
+        for p_tuple in knl.loop_priority:
+            if outside_iname in p_tuple:
+                nested_inside_inames.update(
+                    p_tuple[p_tuple.index(outside_iname)+1:])
+        nests_inside_map[outside_iname] = nested_inside_inames
+
+    return nests_inside_map
+
+
 def get_insn_id_from_linearization_item(linearization_item):
     from loopy.schedule import Barrier
     if isinstance(linearization_item, Barrier):
@@ -285,8 +306,8 @@ def get_insn_id_from_linearization_item(linearization_item):
 # loop over linearization more than once
 def get_all_nonconcurrent_insn_iname_subsets(
         knl, exclude_empty=False, non_conc_inames=None):
-    """Return a :class:`set` of every unique subset of non-concurrent
-        inames used in an instruction in a :class:`loopy.LoopKernel`.
+    """Return a :class:`set` of every unique set of non-concurrent
+        inames used in a single instruction in a :class:`loopy.LoopKernel`.
 
     :arg knl: A :class:`loopy.LoopKernel`.
 
@@ -296,7 +317,7 @@ def get_all_nonconcurrent_insn_iname_subsets(
     :arg non_conc_inames: A :class:`set` of non-concurrent inames
         which may be provided if already known.
 
-    :returns: A :class:`set` of every unique subset of non-concurrent
+    :returns: A :class:`set` of every unique set of non-concurrent
         inames used in any instruction in a :class:`loopy.LoopKernel`.
 
     """
@@ -304,14 +325,14 @@ def get_all_nonconcurrent_insn_iname_subsets(
     if non_conc_inames is None:
         _, non_conc_inames = partition_inames_by_concurrency(knl)
 
-    iname_subsets = set()
+    iname_sets = set()
     for insn in knl.instructions:
-        iname_subsets.add(insn.within_inames & non_conc_inames)
+        iname_sets.add(insn.within_inames & non_conc_inames)
 
     if exclude_empty:
-        iname_subsets.discard(frozenset())
+        iname_sets.discard(frozenset())
 
-    return iname_subsets
+    return iname_sets
 
 
 def get_linearization_item_ids_within_inames(knl, inames):
