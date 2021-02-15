@@ -2724,21 +2724,7 @@ def _check_for_write_races(map_a, insn_a, map_b, insn_b, knl):
 
     # }}}
 
-    # {{{ Step 2: Intersect map_a, map_b's domains
-
-    # Step 2.1: Align the map_a, map_b's spaces (needed for [2.2])
-    # Step 2.2: Intersect the domain
-
-    map_a, map_b = isl.align_two(map_a, map_b)
-
-    shared_domain = map_a.domain() & map_b.domain()
-
-    map_a, map_b = (map_a.intersect_domain(shared_domain),
-            map_b.intersect_domain(shared_domain))
-
-    # }}}
-
-    # {{{ Step 3: rename all lid's, gid's in map_a to lid.A, gid.A
+    # {{{ Step 2: rename all lid's, gid's in map_a to lid.A, gid.A
 
     for name, (dt, pos) in map_a.get_var_dict().items():
         if dt == isl.dim_type.in_:
@@ -2746,7 +2732,7 @@ def _check_for_write_races(map_a, insn_a, map_b, insn_b, knl):
 
     # }}}
 
-    # {{{ Step 4: rename all lid's, gid's in map_b to lid.B, gid.B
+    # {{{ Step 3: rename all lid's, gid's in map_b to lid.B, gid.B
 
     for name, (dt, pos) in map_b.get_var_dict().items():
         if dt == isl.dim_type.in_:
@@ -2754,7 +2740,7 @@ def _check_for_write_races(map_a, insn_a, map_b, insn_b, knl):
 
     # }}}
 
-    # {{{ Step 5: make map_a, map_b ISL sets
+    # {{{ Step 4: make map_a, map_b ISL sets
 
     map_a, map_b = isl.align_two(map_a, map_b)
     map_a = map_a.move_dims(isl.dim_type.in_, map_a.dim(isl.dim_type.in_),
@@ -2849,10 +2835,11 @@ class WriteRaceChecker:
 
     def do_accesses_result_in_races(
                 self, insn1, insn1_dir, insn2, insn2_dir, var_name):
-        """Determine whether the access ranges to *var_name* in the two
-        given instructions overlap. This determination is made 'conservatively',
-        i.e. if precise information is unavailable, it is concluded that the
-        ranges overlap.
+        """Determine whether the access maps to *var_name* in the two given
+        instructions result in write races owing to concurrent iname tags. This
+        determination is made 'conservatively', i.e. if precise information is
+        unavailable (for ex. if one of the instructions accesses *var_name* via
+        indirection), it is concluded that the ranges overlap.
 
         :arg insn1_dir: either ``"w"`` or ``"any"``, to indicate which
             type of access is desired--writing or any
