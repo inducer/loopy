@@ -2072,7 +2072,7 @@ class BatchedAccessMapMapper(WalkMapper):
             self.bad_subscripts[arg_name].append(expr)
             return
 
-        # {{{ check that access dimensionality is the same.
+        # {{{ check that the access' dimensionality matches previously seen accesses
 
         if self.access_maps[arg_name]:
             other_access_map = next(iter(self.access_maps[arg_name].values()))
