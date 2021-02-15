@@ -2031,11 +2031,11 @@ class BatchedAccessMapMapper(WalkMapper):
 
     def __init__(self, kernel, var_names, overestimate=False):
         self.kernel = kernel
-        self.var_names = set(var_names)
         from collections import defaultdict
         self.access_maps = defaultdict(lambda: defaultdict(lambda: None))
         self.bad_subscripts = defaultdict(list)
-        self.overestimate = overestimate
+        self._overestimate = overestimate
+        self._var_names = set(var_names)
 
     def get_access_range(self, var_name):
         loops_to_amaps = self.access_maps[var_name]
@@ -2052,7 +2052,7 @@ class BatchedAccessMapMapper(WalkMapper):
 
         assert isinstance(expr.aggregate, p.Variable)
 
-        if expr.aggregate.name not in self.var_names:
+        if expr.aggregate.name not in self._var_names:
             return
 
         if expr.aggregate.name in self.bad_subscripts:
@@ -2066,7 +2066,7 @@ class BatchedAccessMapMapper(WalkMapper):
         try:
             access_map = get_access_map(
                     domain, subscript, self.kernel.assumptions,
-                    shape=descriptor.shape if self.overestimate else None,
+                    shape=descriptor.shape if self._overestimate else None,
                     allowed_constant_names=self.kernel.get_unwritten_value_args())
         except UnableToDetermineAccessRange:
             self.bad_subscripts[arg_name].append(expr)
@@ -2094,7 +2094,7 @@ class BatchedAccessMapMapper(WalkMapper):
     def map_linear_subscript(self, expr, inames):
         self.rec(expr.index, inames)
 
-        if expr.aggregate.name in self.var_names:
+        if expr.aggregate.name in self._var_names:
             self.bad_subscripts[expr.aggregate.name].append(expr)
 
     def map_reduction(self, expr, inames):
