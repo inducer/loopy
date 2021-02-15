@@ -2760,6 +2760,11 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl):
     unequal_global_id_set = isl.Set.empty(set_a.get_space())
 
     for i_l in range(len(lsize)):
+        if ((space.find_dim_by_name(isl.dim_type.set, f"l.{i_l}.A") == -1)
+                or (space.find_dim_by_name(isl.dim_type.set, f"l.{i_l}.B") == -1)):
+            # one of the instructions is missing a hw axes => skip the inequality
+            continue
+
         lid_a = p.Variable(f"l.{i_l}.A")
         lid_b = p.Variable(f"l.{i_l}.B")
         unequal_global_id_set |= (
@@ -2768,6 +2773,10 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl):
                 )
 
     for i_g in range(len(gsize)):
+        if ((space.find_dim_by_name(isl.dim_type.set, f"g.{i_g}.A") == -1)
+                or (space.find_dim_by_name(isl.dim_type.set, f"g.{i_g}.B") == -1)):
+            # one of the instructions is missing a hw axes => skip the inequality
+            continue
         gid_a = p.Variable(f"g.{i_g}.A")
         gid_b = p.Variable(f"g.{i_g}.B")
         unequal_global_id_set |= (
