@@ -2027,7 +2027,7 @@ def get_access_range(domain, subscript, assumptions=None, shape=None,
 
 # {{{ access range mapper
 
-class BatchedAccessRangeMapper(WalkMapper):
+class BatchedAccessMapMapper(WalkMapper):
 
     def __init__(self, kernel, var_names, overestimate=False):
         self.kernel = kernel
@@ -2110,17 +2110,17 @@ class AccessRangeMapper:
     Using this class *will likely* lead to performance bottlenecks.
 
     To avoid performance issues, rewrite your code to use
-    BatchedAccessRangeMapper if at all possible.
+    BatchedAccessMapMapper if at all possible.
 
     For *n* variables and *m* expressions, calling this class to compute the
     access ranges will take *O(mn)* time for traversing the expressions.
 
-    BatchedAccessRangeMapper does the same traversal in *O(m + n)* time.
+    BatchedAccessMapMapper does the same traversal in *O(m + n)* time.
     """
 
     def __init__(self, kernel, var_name, overestimate=None):
         self.var_name = var_name
-        self.inner_mapper = BatchedAccessRangeMapper(
+        self.inner_mapper = BatchedAccessMapMapper(
                 kernel, [var_name], overestimate)
 
     def __call__(self, expr, inames):
@@ -2163,7 +2163,7 @@ class AccessRangeOverlapChecker:
         from collections import defaultdict
         aranges = defaultdict(lambda: False)
 
-        arm = BatchedAccessRangeMapper(self.kernel, self.vars, overestimate=True)
+        arm = BatchedAccessMapMapper(self.kernel, self.vars, overestimate=True)
 
         for expr in exprs:
             arm(expr, insn.within_inames)

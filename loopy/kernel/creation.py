@@ -1461,10 +1461,10 @@ def create_temporaries(knl, default_order):
 # {{{ determine shapes of temporaries
 
 def find_shapes_of_vars(knl, var_names, feed_expression):
-    from loopy.symbolic import BatchedAccessRangeMapper, SubstitutionRuleExpander
+    from loopy.symbolic import BatchedAccessMapMapper, SubstitutionRuleExpander
     submap = SubstitutionRuleExpander(knl.substitutions)
 
-    armap = BatchedAccessRangeMapper(knl, var_names)
+    armap = BatchedAccessMapMapper(knl, var_names)
 
     def run_through_armap(expr, inames):
         armap(submap(expr), inames)
