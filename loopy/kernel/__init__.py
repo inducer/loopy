@@ -1147,9 +1147,12 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             from loopy.isl_helpers import static_max_of_pw_aff
             try:
                 # insist block size is constant
-                size = static_max_of_pw_aff(size,
-                        constants_only=isinstance(tag, LocalIndexTag),
-                        context=self.assumptions)
+                size = isl.PwAff.alloc(
+                        isl.Set.universe(self.assumptions.space),
+                        static_max_of_pw_aff(size,
+                            constants_only=isinstance(tag, LocalIndexTag),
+                            context=self.assumptions)
+                        )
             except StaticValueFindingError:
                 pass
 
