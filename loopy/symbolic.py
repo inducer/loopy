@@ -1903,9 +1903,12 @@ class UnableToDetermineAccessRange(Exception):
     pass
 
 
-def get_access_range(domain, subscript, assumptions=None, shape=None,
+def get_access_map(domain, subscript, assumptions=None, shape=None,
         allowed_constant_names=None):
     """
+    Returns an instance of :class:`isl.Map` accessed by *subscript*.
+
+    :arg subscript: An instance of :class:`tuple` of index expressions.
     :arg assumptions: An instance of :class:`islpy.BasicSet` or *None*. *None*
         is equivalent to the universal set over *domain*'s space.
     :arg shape: if not *None*, indicates that it is desired to return an
@@ -1914,7 +1917,16 @@ def get_access_range(domain, subscript, assumptions=None, shape=None,
     :arg allowed_constant_names: An iterable of names of constants that are to be
         permitted in the access range expressions. Names that are already
         parameters of *domain* may be repeated without ill effects.
+
+    ::
+        >>> import islpy as isl
+        >>> from loopy.symbolic import get_access_map
+        >>> from pymbolic import var
+        >>> get_access_map(isl.BasicSet("[n]->{[i, j]: 0<=i<n and i<=j<n}"),
+                           (var("i") + 1, var("j")))
+        >>> Map("[n]->{[i, j]->[i+1, j]: 0<=i<n and i<=j<n}")
     """
+
     if assumptions is not None:
         domain, assumptions = isl.align_two(domain,
                 assumptions)
@@ -1998,28 +2010,41 @@ def get_access_range(domain, subscript, assumptions=None, shape=None,
     access_map = access_map_as_map.move_dims(
             dim_type.in_, 0,
             dim_type.out, 0, dn)
-    del access_map_as_map
 
-    return access_map.range()
+    return access_map
+
+
+def get_access_range(domain, subscript, assumptions=None, shape=None,
+        allowed_constant_names=None):
+    from warnings import warn
+    warn("Call get_access_map(...).range() instead. Will be remove in 2022.x",
+            DeprecationWarning, stacklevel=2)
+    return get_access_map(domain, subscript, assumptions, shape,
+            allowed_constant_names).range()
 
 # }}}
 
 
 # {{{ access range mapper
 
-class BatchedAccessRangeMapper(WalkMapper):
+class BatchedAccessMapMapper(WalkMapper):
 
-    def __init__(self, kernel, var_names, overestimate=None):
+    def __init__(self, kernel, var_names, overestimate=False):
         self.kernel = kernel
-        self.var_names = set(var_names)
         from collections import defaultdict
-        self.access_ranges = defaultdict(lambda: None)
+        self.access_maps = defaultdict(lambda: defaultdict(lambda: None))
         self.bad_subscripts = defaultdict(list)
+        self._overestimate = overestimate
+        self._var_names = set(var_names)
 
-        if overestimate is None:
-            overestimate = False
+    def get_access_range(self, var_name):
+        loops_to_amaps = self.access_maps[var_name]
+        if not loops_to_amaps:
+            return None
 
-        self.overestimate = overestimate
+        import operator
+        from functools import reduce
+        return reduce(operator.or_, (val.range() for val in loops_to_amaps.values()))
 
     def map_subscript(self, expr, inames):
         domain = self.kernel.get_inames_domain(inames)
@@ -2027,7 +2052,10 @@ class BatchedAccessRangeMapper(WalkMapper):
 
         assert isinstance(expr.aggregate, p.Variable)
 
-        if expr.aggregate.name not in self.var_names:
+        if expr.aggregate.name not in self._var_names:
+            return
+
+        if expr.aggregate.name in self.bad_subscripts:
             return
 
         arg_name = expr.aggregate.name
@@ -2036,31 +2064,37 @@ class BatchedAccessRangeMapper(WalkMapper):
         descriptor = self.kernel.get_var_descriptor(arg_name)
 
         try:
-            access_range = get_access_range(
+            access_map = get_access_map(
                     domain, subscript, self.kernel.assumptions,
-                    shape=descriptor.shape if self.overestimate else None,
+                    shape=descriptor.shape if self._overestimate else None,
                     allowed_constant_names=self.kernel.get_unwritten_value_args())
         except UnableToDetermineAccessRange:
             self.bad_subscripts[arg_name].append(expr)
             return
 
-        if self.access_ranges[arg_name] is None:
-            self.access_ranges[arg_name] = access_range
-        else:
-            if (self.access_ranges[arg_name].dim(dim_type.set)
-                    != access_range.dim(dim_type.set)):
+        # {{{ check that the access' dimensionality matches previously seen accesses
+
+        if self.access_maps[arg_name]:
+            other_access_map = next(iter(self.access_maps[arg_name].values()))
+
+            if (other_access_map.dim(dim_type.set)
+                    != access_map.dim(dim_type.set)):
                 raise RuntimeError(
                         "error while determining shape of argument '%s': "
                         "varying number of indices encountered"
                         % arg_name)
 
-            self.access_ranges[arg_name] = (
-                    self.access_ranges[arg_name] | access_range)
+        # }}}
+
+        if self.access_maps[arg_name][inames] is None:
+            self.access_maps[arg_name][inames] = access_map
+        else:
+            self.access_maps[arg_name][inames] |= access_map
 
     def map_linear_subscript(self, expr, inames):
         self.rec(expr.index, inames)
 
-        if expr.aggregate.name in self.var_names:
+        if expr.aggregate.name in self._var_names:
             self.bad_subscripts[expr.aggregate.name].append(expr)
 
     def map_reduction(self, expr, inames):
@@ -2076,17 +2110,17 @@ class AccessRangeMapper:
     Using this class *will likely* lead to performance bottlenecks.
 
     To avoid performance issues, rewrite your code to use
-    BatchedAccessRangeMapper if at all possible.
+    BatchedAccessMapMapper if at all possible.
 
     For *n* variables and *m* expressions, calling this class to compute the
     access ranges will take *O(mn)* time for traversing the expressions.
 
-    BatchedAccessRangeMapper does the same traversal in *O(m + n)* time.
+    BatchedAccessMapMapper does the same traversal in *O(m + n)* time.
     """
 
     def __init__(self, kernel, var_name, overestimate=None):
         self.var_name = var_name
-        self.inner_mapper = BatchedAccessRangeMapper(
+        self.inner_mapper = BatchedAccessMapMapper(
                 kernel, [var_name], overestimate)
 
     def __call__(self, expr, inames):
@@ -2094,7 +2128,7 @@ class AccessRangeMapper:
 
     @property
     def access_range(self):
-        return self.inner_mapper.access_ranges[self.var_name]
+        return self.inner_mapper.get_access_range(self.var_name)
 
     @property
     def bad_subscripts(self):
@@ -2110,7 +2144,12 @@ class AccessRangeOverlapChecker:
 
     def __init__(self, kernel):
         self.kernel = kernel
-        self.vars = kernel.get_written_variables() | kernel.get_read_variables()
+
+    @property
+    @memoize_method
+    def vars(self):
+        return (self.kernel.get_written_variables()
+                | self.kernel.get_read_variables())
 
     @memoize_method
     def _get_access_ranges(self, insn_id, access_dir):
@@ -2124,16 +2163,16 @@ class AccessRangeOverlapChecker:
         from collections import defaultdict
         aranges = defaultdict(lambda: False)
 
-        arm = BatchedAccessRangeMapper(self.kernel, self.vars, overestimate=True)
+        arm = BatchedAccessMapMapper(self.kernel, self.vars, overestimate=True)
 
         for expr in exprs:
             arm(expr, insn.within_inames)
 
-        for name, arange in arm.access_ranges.items():
+        for name in arm.access_maps:
             if arm.bad_subscripts[name]:
                 aranges[name] = True
                 continue
-            aranges[name] = arange
+            aranges[name] = arm.get_access_range(name)
 
         return aranges
 
