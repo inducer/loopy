@@ -144,7 +144,7 @@ class CodegenOperationCacheManager:
         """
         Returns a new instance of :class:`CodegenOperationCacheManager`
         corresponding to *kernel* if the cached variables in *self* would
-        be valid for *kernel*, else returns *self*.
+        be invalid for *kernel*, else returns *self*.
         """
         if ((self.kernel.instructions != kernel.instructions)
                 or (self.kernel.schedule != kernel.schedule)
