@@ -1343,7 +1343,15 @@ def _get_insn_count(knl, insn_id, subgroup_size, count_redundant_work,
         workgroup_size = 1
         if local_size:
             for size in local_size:
-                s = aff_to_expr(size)
+                if size.n_piece() != 1:
+                    raise LoopyError("local sizes should be static")
+
+                (valid_set, aff), = size.get_pieces()
+
+                assert ((valid_set.n_basic_set() == 1)
+                        and (valid_set.get_basic_sets()[0].is_universe()))
+
+                s = aff_to_expr(aff)
                 if not isinstance(s, int):
                     raise LoopyError("Cannot count insn with %s granularity, "
                                      "work-group size is not integer: %s"
