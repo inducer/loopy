@@ -1344,7 +1344,8 @@ def _get_insn_count(knl, insn_id, subgroup_size, count_redundant_work,
         if local_size:
             for size in local_size:
                 if size.n_piece() != 1:
-                    raise LoopyError("local sizes should be static")
+                    raise LoopyError("Workgroup size found to be genuinely "
+                        "piecewise defined, which is not allowed in stats gathering")
 
                 (valid_set, aff), = size.get_pieces()
 
