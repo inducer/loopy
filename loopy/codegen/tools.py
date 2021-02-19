@@ -148,6 +148,8 @@ class CodegenOperationCacheManager:
         """
         if ((self.kernel.instructions != kernel.instructions)
                 or (self.kernel.schedule != kernel.schedule)
+                # TODO: could be more precise by only looking the inames' attributes
+                # relevant to CodegenOperationCacheManager
                 or (self.kernel.inames != kernel.inames)):
             # cached values are invalidated, must create a new one
             return make_codegen_cache_manager(kernel)
