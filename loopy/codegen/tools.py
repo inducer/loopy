@@ -148,7 +148,7 @@ class CodegenOperationCacheManager:
         """
         if ((self.kernel.instructions != kernel.instructions)
                 or (self.kernel.schedule != kernel.schedule)
-                or (self.kernel.iname_to_tags != kernel.iname_to_tags)):
+                or (self.kernel.inames != kernel.inames)):
             # cached values are invalidated, must create a new one
             return make_codegen_cache_manager(kernel)
 
