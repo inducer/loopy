@@ -1150,9 +1150,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 size_as_aff = static_max_of_pw_aff(size,
                         constants_only=isinstance(tag, LocalIndexTag),
                         context=self.assumptions)
-                size = isl.PwAff.alloc(
-                        isl.Set.universe(size_as_aff.space.params()),
-                        size_as_aff)
+                size = isl.PwAff.from_aff(size_as_aff)
             except StaticValueFindingError:
                 pass
 
