@@ -501,7 +501,7 @@ def generate_code_v2(kernel):
                 + kernel.name
                 + kernel.target.host_program_name_suffix),
             schedule_index_end=len(kernel.schedule),
-            codegen_cachemanager=CodegenOperationCacheManager(kernel),
+            codegen_cachemanager=CodegenOperationCacheManager.from_kernel(kernel),
             )
 
     from loopy.codegen.result import generate_host_or_device_program

@@ -22,25 +22,71 @@ THE SOFTWARE.
 
 from pytools import memoize_method
 from loopy.schedule import (EnterLoop, LeaveLoop, CallKernel, ReturnFromKernel,
-                            Barrier, BeginBlockItem, gather_schedule_block)
+                            Barrier, BeginBlockItem, gather_schedule_block,
+                            ScheduleItem)
+from dataclasses import dataclass
+from typing import List, Dict
+from loopy.kernel.instruction import InstructionBase
+from loopy.kernel import LoopKernel
+from loopy.kernel.data import Iname
 
 
 __doc__ = """
 .. currentmodule:: loopy.codegen.tools
 
+.. autoclass:: ProxyKernel
+
 .. autoclass:: CodegenOperationCacheManager
 """
+
+
+@dataclass
+class ProxyKernel:
+    """
+    Proxy to :class:`loopy.LoopKernel` to be used by
+    :class:`CodegenOperationCacheManager`.
+    """
+    instructions: List[InstructionBase]
+    schedule: List[ScheduleItem]
+    inames: Dict[str, Iname]
+
+    @property
+    @memoize_method
+    def id_to_insn(self):
+        return {insn.id: insn for insn in self.instructions}
+
+    def insn_inames(self, insn):
+        return LoopKernel.insn_inames(self, insn)
+
+    def iname_tags_of_type(self, iname, tag_type_or_types):
+        from loopy.kernel.data import filter_iname_tags_by_type
+        return filter_iname_tags_by_type(
+                self.inames[iname].tags,
+                tag_type_or_types)
 
 
 class CodegenOperationCacheManager:
     """
     Caches operations arising during the codegen pipeline.
 
+    .. attribute:: kernel
+
+        An instance of :class:`ProxyKernel`.
+
     .. automethod:: with_kernel
     .. automethod:: get_parallel_inames_in_a_callkernel
     """
     def __init__(self, kernel):
-        self._kernel = kernel
+        assert isinstance(kernel, ProxyKernel)
+        self.kernel = kernel
+
+    @classmethod
+    def from_kernel(self, kernel):
+        assert isinstance(kernel, LoopKernel)
+        return CodegenOperationCacheManager(
+                ProxyKernel(kernel.instructions,
+                            kernel.schedule,
+                            kernel.inames))
 
     def with_kernel(self, kernel):
         """
@@ -48,13 +94,13 @@ class CodegenOperationCacheManager:
         corresponding to *kernel* if the cached variables in *self* would
         be invalid for *kernel*, else returns *self*.
         """
-        if ((self._kernel.instructions != kernel.instructions)
-                or (self._kernel.schedule != kernel.schedule)
+        if ((self.kernel.instructions != kernel.instructions)
+                or (self.kernel.schedule != kernel.schedule)
                 # TODO: could be more precise by only looking the inames' attributes
                 # relevant to CodegenOperationCacheManager
-                or (self._kernel.inames != kernel.inames)):
+                or (self.kernel.inames != kernel.inames)):
             # cached values are invalidated, must create a new one
-            return CodegenOperationCacheManager(kernel)
+            return CodegenOperationCacheManager.from_kernel(kernel)
 
         return self
 
@@ -68,12 +114,12 @@ class CodegenOperationCacheManager:
         """
         active_inames = []
 
-        for i in range(len(self._kernel.schedule)):
+        for i in range(len(self.kernel.schedule)):
             if i == 0:
                 active_inames.append(frozenset())
                 continue
 
-            sched_item = self._kernel.schedule[i-1]
+            sched_item = self.kernel.schedule[i-1]
             if isinstance(sched_item, EnterLoop):
                 active_inames.append(active_inames[i-1]
                         | frozenset([sched_item.iname]))
@@ -96,12 +142,12 @@ class CodegenOperationCacheManager:
         """
         callkernel_index = []
 
-        for i in range(len(self._kernel.schedule)):
+        for i in range(len(self.kernel.schedule)):
             if i == 0:
                 callkernel_index.append(None)
                 continue
 
-            sched_item = self._kernel.schedule[i-1]
+            sched_item = self.kernel.schedule[i-1]
 
             if isinstance(sched_item, CallKernel):
                 callkernel_index.append(i-1)
@@ -122,13 +168,13 @@ class CodegenOperationCacheManager:
         """
         has_barrier_within = []
 
-        for sched_idx, sched_item in enumerate(self._kernel.schedule):
+        for sched_idx, sched_item in enumerate(self.kernel.schedule):
             if isinstance(sched_item, BeginBlockItem):
                 # TODO: calls to "gather_schedule_block" can be amortized
-                _, endblock_index = gather_schedule_block(self._kernel.schedule,
+                _, endblock_index = gather_schedule_block(self.kernel.schedule,
                         sched_idx)
                 has_barrier_within.append(any(
-                        isinstance(self._kernel.schedule[i], Barrier)
+                        isinstance(self.kernel.schedule[i], Barrier)
                         for i in range(sched_idx+1, endblock_index)))
             elif isinstance(sched_item, Barrier):
                 has_barrier_within.append(True)
@@ -143,7 +189,7 @@ class CodegenOperationCacheManager:
         Cached variant of :func:`loopy.schedule.get_insn_ids_for_block_at`.
         """
         from loopy.schedule import get_insn_ids_for_block_at
-        return get_insn_ids_for_block_at(self._kernel.schedule, sched_index)
+        return get_insn_ids_for_block_at(self.kernel.schedule, sched_index)
 
     @memoize_method
     def get_parallel_inames_in_a_callkernel(self, callkernel_index):
@@ -151,21 +197,21 @@ class CodegenOperationCacheManager:
         Returns a :class:`frozenset` of parallel inames in a callkernel
 
         :arg callkernel_index: Index of the :class:`loopy.schedule.CallKernel` in the
-            :attr:`CodegenOperationCacheManager._kernel`'s schedule, whose parallel
+            :attr:`CodegenOperationCacheManager.kernel`'s schedule, whose parallel
             inames are to be found.
         """
 
         from loopy.kernel.data import ConcurrentTag
-        assert isinstance(self._kernel.schedule[callkernel_index], CallKernel)
+        assert isinstance(self.kernel.schedule[callkernel_index], CallKernel)
         insn_ids_in_subkernel = self.get_insn_ids_for_block_at(callkernel_index)
 
         inames_in_subkernel = {iname
                                for insn in insn_ids_in_subkernel
-                               for iname in self._kernel.insn_inames(insn)}
+                               for iname in self.kernel.insn_inames(insn)}
 
         return frozenset([iname
                           for iname in inames_in_subkernel
-                          if self._kernel.iname_tags_of_type(iname, ConcurrentTag)])
+                          if self.kernel.iname_tags_of_type(iname, ConcurrentTag)])
 
 
 # vim: fdm=marker
