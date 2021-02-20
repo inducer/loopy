@@ -80,8 +80,8 @@ class CodegenOperationCacheManager:
         assert isinstance(kernel, ProxyKernel)
         self.kernel = kernel
 
-    @classmethod
-    def from_kernel(self, kernel):
+    @staticmethod
+    def from_kernel(kernel):
         assert isinstance(kernel, LoopKernel)
         return CodegenOperationCacheManager(
                 ProxyKernel(kernel.instructions,
