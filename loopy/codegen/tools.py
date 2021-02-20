@@ -151,7 +151,7 @@ class CodegenOperationCacheManager:
         Returns a :class:`frozenset` of parallel inames in a callkernel
 
         :arg callkernel_index: Index of the :class:`loopy.schedule.CallKernel` in the
-            :attr:`CodegenOperationCacheManager.kernel`'s schedule, whose parallel
+            :attr:`CodegenOperationCacheManager._kernel`'s schedule, whose parallel
             inames are to be found.
         """
 
