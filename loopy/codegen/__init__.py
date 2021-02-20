@@ -482,7 +482,7 @@ def generate_code_v2(kernel):
 
     initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
 
-    from loopy.codegen.tools import make_codegen_cache_manager
+    from loopy.codegen.tools import CodegenOperationCacheManager
 
     codegen_state = CodeGenerationState(
             kernel=kernel,
@@ -501,7 +501,7 @@ def generate_code_v2(kernel):
                 + kernel.name
                 + kernel.target.host_program_name_suffix),
             schedule_index_end=len(kernel.schedule),
-            codegen_cachemanager=make_codegen_cache_manager(kernel),
+            codegen_cachemanager=CodegenOperationCacheManager(kernel),
             )
 
     from loopy.codegen.result import generate_host_or_device_program
