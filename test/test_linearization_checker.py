@@ -31,7 +31,6 @@ from pyopencl.tools import (  # noqa
     as pytest_generate_tests)
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 import logging
-from loopy.kernel import KernelState
 from loopy import (
     preprocess_kernel,
     get_one_linearized_kernel,
@@ -91,7 +90,7 @@ def test_pairwise_schedule_creation():
     # get a linearization
     knl = preprocess_kernel(knl)
     knl = get_one_linearized_kernel(knl)
-    linearization_items = knl.linearization
+    lin_items = knl.linearization
 
     def _lex_space_string(dim_vals):
         # Return a string describing lex space dimension assignments
@@ -110,7 +109,7 @@ def test_pairwise_schedule_creation():
         ]
     sched_maps = get_schedules_for_statement_pairs(
         knl,
-        linearization_items,
+        lin_items,
         insn_id_pairs,
         )
 
@@ -417,7 +416,7 @@ def test_statement_instance_ordering_creation():
     # get a linearization
     knl = preprocess_kernel(knl)
     knl = get_one_linearized_kernel(knl)
-    linearization_items = knl.linearization
+    lin_items = knl.linearization
 
     # Get pairwise schedules
     insn_id_pairs = [
@@ -430,7 +429,7 @@ def test_statement_instance_ordering_creation():
         ]
     sched_maps = get_schedules_for_statement_pairs(
         knl,
-        linearization_items,
+        lin_items,
         insn_id_pairs,
         )
 
@@ -567,7 +566,14 @@ def test_statement_instance_ordering_creation():
 
 
 def test_linearization_checker_with_loop_prioritization():
-    knl = lp.make_kernel(
+
+    # TODO REMOVE THIS
+    # (prevents
+    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
+    # )
+    lp.set_caching_enabled(False)
+
+    unproc_knl = lp.make_kernel(
         [
             "{[i]: 0<=i<pi}",
             "{[k]: 0<=k<pk}",
@@ -592,34 +598,34 @@ def test_linearization_checker_with_loop_prioritization():
         assumptions="pi,pj,pk,pt >= 1",
         lang_version=(2018, 2)
         )
-    knl = lp.add_and_infer_dtypes(
-            knl,
+    unproc_knl = lp.add_and_infer_dtypes(
+            unproc_knl,
             {"b": np.float32, "d": np.float32, "f": np.float32})
-    knl = lp.prioritize_loops(knl, "i,k")
-    knl = lp.prioritize_loops(knl, "i,j")
+    unproc_knl = lp.prioritize_loops(unproc_knl, "i,k")
+    unproc_knl = lp.prioritize_loops(unproc_knl, "i,j")
 
-    unprocessed_knl = knl.copy()
-
-    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
-    if hasattr(lp, "add_dependencies_v2"):
-        # TODO update this after dep refactoring
-        knl = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl, deps)
+    proc_knl = preprocess_kernel(unproc_knl)
+    proc_knl = lp.create_dependencies_from_legacy_knl(proc_knl)
 
     # get a linearization to check
-    if knl.state < KernelState.PREPROCESSED:
-        knl = preprocess_kernel(knl)
-    knl = get_one_linearized_kernel(knl)
-    linearization_items = knl.linearization
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, deps, linearization_items)
+        proc_knl, lin_items)
     assert linearization_is_valid
 
 
 def test_linearization_checker_with_matmul():
+
+    # TODO REMOVE THIS
+    # (prevents
+    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
+    # )
+    lp.set_caching_enabled(False)
+
     bsize = 16
-    knl = lp.make_kernel(
+    unproc_knl = lp.make_kernel(
             "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<ell}",
             [
                 "c[i, j] = sum(k, a[i, k]*b[k, j])"
@@ -628,34 +634,39 @@ def test_linearization_checker_with_matmul():
             assumptions="n,m,ell >= 1",
             lang_version=(2018, 2),
             )
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
-    knl = lp.split_iname(knl, "i", bsize, outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_iname(knl, "j", bsize, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_iname(knl, "k", bsize)
-    knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"], default_tag="l.auto")
-    knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"], default_tag="l.auto")
-    knl = lp.prioritize_loops(knl, "k_outer,k_inner")
+    unproc_knl = lp.add_and_infer_dtypes(
+        unproc_knl, dict(a=np.float32, b=np.float32))
+    unproc_knl = lp.split_iname(
+        unproc_knl, "i", bsize, outer_tag="g.0", inner_tag="l.1")
+    unproc_knl = lp.split_iname(
+        unproc_knl, "j", bsize, outer_tag="g.1", inner_tag="l.0")
+    unproc_knl = lp.split_iname(unproc_knl, "k", bsize)
+    unproc_knl = lp.add_prefetch(
+        unproc_knl, "a", ["k_inner", "i_inner"], default_tag="l.auto")
+    unproc_knl = lp.add_prefetch(
+        unproc_knl, "b", ["j_inner", "k_inner"], default_tag="l.auto")
+    unproc_knl = lp.prioritize_loops(unproc_knl, "k_outer,k_inner")
 
-    unprocessed_knl = knl.copy()
-
-    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
-    if hasattr(lp, "add_dependencies_v2"):
-        # TODO update this after dep refactoring
-        knl = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl, deps)
+    proc_knl = preprocess_kernel(unproc_knl)
+    proc_knl = lp.create_dependencies_from_legacy_knl(proc_knl)
 
     # get a linearization to check
-    if knl.state < KernelState.PREPROCESSED:
-        knl = preprocess_kernel(knl)
-    knl = get_one_linearized_kernel(knl)
-    linearization_items = knl.linearization
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, deps, linearization_items)
+        proc_knl, lin_items)
     assert linearization_is_valid
 
 
 def test_linearization_checker_with_scan():
+
+    # TODO REMOVE THIS
+    # (prevents
+    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
+    # )
+    lp.set_caching_enabled(False)
+
     stride = 1
     n_scan = 16
     knl = lp.make_kernel(
@@ -672,7 +683,14 @@ def test_linearization_checker_with_scan():
 
 
 def test_linearization_checker_with_dependent_domain():
-    knl = lp.make_kernel(
+
+    # TODO REMOVE THIS
+    # (prevents
+    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
+    # )
+    lp.set_caching_enabled(False)
+
+    unproc_knl = lp.make_kernel(
         [
             "[n] -> {[i]: 0<=i<n}",
             "{[j]: 0<=j<=2*i}"
@@ -685,29 +703,29 @@ def test_linearization_checker_with_dependent_domain():
         )
     # TODO current check for unused inames is incorrectly
     # causing linearizing to fail when realize_reduction is used
-    #knl = lp.realize_reduction(knl, force_scan=True)
+    #unproc_knl = lp.realize_reduction(unproc_knl, force_scan=True)
 
-    unprocessed_knl = knl.copy()
-
-    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
-    if hasattr(lp, "add_dependencies_v2"):
-        # TODO update this after dep refactoring
-        knl = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl, deps)
+    proc_knl = preprocess_kernel(unproc_knl)
+    proc_knl = lp.create_dependencies_from_legacy_knl(proc_knl)
 
     # get a linearization to check
-    if knl.state < KernelState.PREPROCESSED:
-        knl = preprocess_kernel(knl)
-    knl = get_one_linearized_kernel(knl)
-    linearization_items = knl.linearization
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, deps, linearization_items)
+        proc_knl, lin_items)
     assert linearization_is_valid
 
 
 def test_linearization_checker_with_stroud_bernstein():
-    knl = lp.make_kernel(
+
+    # TODO REMOVE THIS
+    # (prevents
+    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
+    # )
+    lp.set_caching_enabled(False)
+
+    unproc_knl = lp.make_kernel(
             "{[el, i2, alpha1,alpha2]: \
                     0 <= el < nels and \
                     0 <= i2 < nqp1d and \
@@ -733,35 +751,36 @@ def test_linearization_checker_with_stroud_bernstein():
             """,
             [lp.GlobalArg("coeffs", None, shape=None), "..."],
             name="stroud_bernstein_orig", assumptions="deg>=0 and nels>=1")
-    knl = lp.add_and_infer_dtypes(knl,
+    unproc_knl = lp.add_and_infer_dtypes(unproc_knl,
         dict(coeffs=np.float32, qpts=np.int32))
-    knl = lp.fix_parameters(knl, nqp1d=7, deg=4)
-    knl = lp.split_iname(knl, "el", 16, inner_tag="l.0")
-    knl = lp.split_iname(knl, "el_outer", 2, outer_tag="g.0",
+    unproc_knl = lp.fix_parameters(unproc_knl, nqp1d=7, deg=4)
+    unproc_knl = lp.split_iname(unproc_knl, "el", 16, inner_tag="l.0")
+    unproc_knl = lp.split_iname(unproc_knl, "el_outer", 2, outer_tag="g.0",
         inner_tag="ilp", slabs=(0, 1))
-    knl = lp.tag_inames(knl, dict(i2="l.1", alpha1="unr", alpha2="unr"))
+    unproc_knl = lp.tag_inames(
+        unproc_knl, dict(i2="l.1", alpha1="unr", alpha2="unr"))
 
-    unprocessed_knl = knl.copy()
-
-    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
-    if hasattr(lp, "add_dependencies_v2"):
-        # TODO update this after dep refactoring
-        knl = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl, deps)
+    proc_knl = preprocess_kernel(unproc_knl)
+    proc_knl = lp.create_dependencies_from_legacy_knl(proc_knl)
 
     # get a linearization to check
-    if knl.state < KernelState.PREPROCESSED:
-        knl = preprocess_kernel(knl)
-    knl = get_one_linearized_kernel(knl)
-    linearization_items = knl.linearization
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, deps, linearization_items)
+        proc_knl, lin_items)
     assert linearization_is_valid
 
 
 def test_linearization_checker_with_nop():
-    knl = lp.make_kernel(
+
+    # TODO REMOVE THIS
+    # (prevents
+    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
+    # )
+    lp.set_caching_enabled(False)
+
+    unproc_knl = lp.make_kernel(
         [
             "{[b]: b_start<=b<b_end}",
             "{[c]: c_start<=c<c_end}",
@@ -776,29 +795,29 @@ def test_linearization_checker_with_nop():
         """,
         "...",
         seq_dependencies=True)
-    knl = lp.fix_parameters(knl, dim=3)
+    unproc_knl = lp.fix_parameters(unproc_knl, dim=3)
 
-    unprocessed_knl = knl.copy()
-
-    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
-    if hasattr(lp, "add_dependencies_v2"):
-        # TODO update this after dep refactoring
-        knl = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl, deps)
+    proc_knl = preprocess_kernel(unproc_knl)
+    proc_knl = lp.create_dependencies_from_legacy_knl(proc_knl)
 
     # get a linearization to check
-    if knl.state < KernelState.PREPROCESSED:
-        knl = preprocess_kernel(knl)
-    knl = get_one_linearized_kernel(knl)
-    linearization_items = knl.linearization
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, deps, linearization_items)
+        proc_knl, lin_items)
     assert linearization_is_valid
 
 
 def test_linearization_checker_with_multi_domain():
-    knl = lp.make_kernel(
+
+    # TODO REMOVE THIS
+    # (prevents
+    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
+    # )
+    lp.set_caching_enabled(False)
+
+    unproc_knl = lp.make_kernel(
         [
             "{[i]: 0<=i<ni}",
             "{[j]: 0<=j<nj}",
@@ -821,31 +840,31 @@ def test_linearization_checker_with_multi_domain():
         assumptions="ni,nj,nk,nx >= 1",
         lang_version=(2018, 2)
         )
-    knl = lp.prioritize_loops(knl, "x,xx,i")
-    knl = lp.prioritize_loops(knl, "i,j")
-    knl = lp.prioritize_loops(knl, "j,k")
+    unproc_knl = lp.prioritize_loops(unproc_knl, "x,xx,i")
+    unproc_knl = lp.prioritize_loops(unproc_knl, "i,j")
+    unproc_knl = lp.prioritize_loops(unproc_knl, "j,k")
 
-    unprocessed_knl = knl.copy()
-
-    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
-    if hasattr(lp, "add_dependencies_v2"):
-        # TODO update this after dep refactoring
-        knl = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl, deps)
+    proc_knl = preprocess_kernel(unproc_knl)
+    proc_knl = lp.create_dependencies_from_legacy_knl(proc_knl)
 
     # get a linearization to check
-    if knl.state < KernelState.PREPROCESSED:
-        knl = preprocess_kernel(knl)
-    knl = get_one_linearized_kernel(knl)
-    linearization_items = knl.linearization
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, deps, linearization_items)
+        proc_knl, lin_items)
     assert linearization_is_valid
 
 
 def test_linearization_checker_with_loop_carried_deps():
-    knl = lp.make_kernel(
+
+    # TODO REMOVE THIS
+    # (prevents
+    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
+    # )
+    lp.set_caching_enabled(False)
+
+    unproc_knl = lp.make_kernel(
         "{[i]: 0<=i<n}",
         """
         <>acc0 = 0 {id=insn0}
@@ -861,26 +880,26 @@ def test_linearization_checker_with_loop_carried_deps():
         lang_version=(2018, 2)
         )
 
-    unprocessed_knl = knl.copy()
-
-    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
-    if hasattr(lp, "add_dependencies_v2"):
-        # TODO update this after dep refactoring
-        knl = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl, deps)
+    proc_knl = preprocess_kernel(unproc_knl)
+    proc_knl = lp.create_dependencies_from_legacy_knl(proc_knl)
 
     # get a linearization to check
-    if knl.state < KernelState.PREPROCESSED:
-        knl = preprocess_kernel(knl)
-    knl = get_one_linearized_kernel(knl)
-    linearization_items = knl.linearization
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, deps, linearization_items)
+        proc_knl, lin_items)
     assert linearization_is_valid
 
 
 def test_linearization_checker_and_invalid_prioritiy_detection():
+
+    # TODO REMOVE THIS
+    # (prevents
+    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
+    # )
+    lp.set_caching_enabled(False)
+
     ref_knl = lp.make_kernel(
         [
             "{[h]: 0<=h<nh}",
@@ -900,85 +919,62 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
         )
 
     # no error:
-    knl0 = lp.prioritize_loops(ref_knl, "h,i")
-    knl0 = lp.prioritize_loops(ref_knl, "i,j")
-    knl0 = lp.prioritize_loops(knl0, "j,k")
+    unproc_knl0 = lp.prioritize_loops(ref_knl, "h,i")
+    unproc_knl0 = lp.prioritize_loops(unproc_knl0, "i,j")
+    unproc_knl0 = lp.prioritize_loops(unproc_knl0, "j,k")
 
-    unprocessed_knl = knl0.copy()
-
-    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
-    if hasattr(lp, "add_dependencies_v2"):
-        # TODO update this after dep refactoring
-        knl0 = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl0, deps)
+    proc_knl0 = preprocess_kernel(unproc_knl0)
+    proc_knl0 = lp.create_dependencies_from_legacy_knl(proc_knl0)
 
     # get a linearization to check
-    if knl0.state < KernelState.PREPROCESSED:
-        knl0 = preprocess_kernel(knl0)
-    knl0 = get_one_linearized_kernel(knl0)
-    linearization_items = knl0.linearization
+    lin_knl0 = get_one_linearized_kernel(proc_knl0)
+    lin_items = lin_knl0.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, deps, linearization_items)
+        proc_knl0, lin_items)
     assert linearization_is_valid
 
     # no error:
-    knl1 = lp.prioritize_loops(ref_knl, "h,i,k")
-    knl1 = lp.prioritize_loops(knl1, "h,j,k")
+    unproc_knl1 = lp.prioritize_loops(ref_knl, "h,i,k")
+    unproc_knl1 = lp.prioritize_loops(unproc_knl1, "h,j,k")
 
-    unprocessed_knl = knl1.copy()
-
-    deps = lp.create_dependencies_from_legacy_knl(unprocessed_knl)
-    if hasattr(lp, "add_dependencies_v2"):
-        # TODO update this after dep refactoring
-        knl1 = lp.add_dependencies_v2(  # pylint:disable=no-member
-            knl1, deps)
+    proc_knl1 = preprocess_kernel(unproc_knl1)
+    proc_knl1 = lp.create_dependencies_from_legacy_knl(proc_knl1)
 
     # get a linearization to check
-    if knl1.state < KernelState.PREPROCESSED:
-        knl1 = preprocess_kernel(knl1)
-    knl1 = get_one_linearized_kernel(knl1)
-    linearization_items = knl1.linearization
+    lin_knl1 = get_one_linearized_kernel(proc_knl1)
+    lin_items = lin_knl1.linearization
 
     linearization_is_valid = lp.check_linearization_validity(
-        unprocessed_knl, deps, linearization_items)
+        proc_knl1, lin_items)
     assert linearization_is_valid
 
     # error (cycle):
-    knl2 = lp.prioritize_loops(ref_knl, "h,i,j")
-    knl2 = lp.prioritize_loops(knl2, "j,k")
+    unproc_knl2 = lp.prioritize_loops(ref_knl, "h,i,j")
+    unproc_knl2 = lp.prioritize_loops(unproc_knl2, "j,k")
     # TODO think about when legacy deps should be updated based on prio changes
 
     try:
         if hasattr(lp, "constrain_loop_nesting"):
-            knl2 = lp.constrain_loop_nesting(knl2, "k,i")  # pylint:disable=no-member
+            unproc_knl2 = lp.constrain_loop_nesting(
+                unproc_knl2, "k,i")  # pylint:disable=no-member
 
             # legacy deps depend on priorities, so update deps using new knl
-            deps = lp.create_dependencies_from_legacy_knl(knl2)
-            if hasattr(lp, "add_dependencies_v2"):
-                # TODO update this after dep refactoring
-                knl2 = lp.add_dependencies_v2(  # pylint:disable=no-member
-                    knl2, deps)
+            proc_knl2 = preprocess_kernel(unproc_knl2)
+            proc_knl2 = lp.create_dependencies_from_legacy_knl(proc_knl2)
         else:
-            knl2 = lp.prioritize_loops(knl2, "k,i")
+            unproc_knl2 = lp.prioritize_loops(unproc_knl2, "k,i")
 
             # legacy deps depend on priorities, so update deps using new knl
-            deps = lp.create_dependencies_from_legacy_knl(knl2)
-            if hasattr(lp, "add_dependencies_v2"):
-                # TODO update this after dep refactoring
-                knl2 = lp.add_dependencies_v2(  # pylint:disable=no-member
-                    knl2, deps)
-
-            unprocessed_knl = knl2.copy()
+            proc_knl2 = preprocess_kernel(unproc_knl2)
+            proc_knl2 = lp.create_dependencies_from_legacy_knl(proc_knl2)
 
             # get a linearization to check
-            if knl2.state < KernelState.PREPROCESSED:
-                knl2 = preprocess_kernel(knl2)
-            knl2 = get_one_linearized_kernel(knl2)
-            linearization_items = knl2.linearization
+            lin_knl2 = get_one_linearized_kernel(proc_knl2)
+            lin_items = lin_knl2.linearization
 
             linearization_is_valid = lp.check_linearization_validity(
-                unprocessed_knl, deps, linearization_items)
+                proc_knl2, lin_items)
         # should raise error
         assert False
     except ValueError as e:
@@ -988,39 +984,29 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
             assert "invalid priorities" in str(e)
 
     # error (inconsistent priorities):
-    knl3 = lp.prioritize_loops(ref_knl, "h,i,j,k")
+    unproc_knl3 = lp.prioritize_loops(ref_knl, "h,i,j,k")
     # TODO think about when legacy deps should be updated based on prio changes
     try:
         if hasattr(lp, "constrain_loop_nesting"):
-            knl3 = lp.constrain_loop_nesting(  # pylint:disable=no-member
-                knl3, "h,j,i,k")
+            unproc_knl3 = lp.constrain_loop_nesting(  # pylint:disable=no-member
+                unproc_knl3, "h,j,i,k")
 
             # legacy deps depend on priorities, so update deps using new knl
-            deps = lp.create_dependencies_from_legacy_knl(knl3)
-            if hasattr(lp, "add_dependencies_v2"):
-                # TODO update this after dep refactoring
-                knl3 = lp.add_dependencies_v2(  # pylint:disable=no-member
-                    knl3, deps)
+            proc_knl3 = preprocess_kernel(unproc_knl3)
+            proc_knl3 = lp.create_dependencies_from_legacy_knl(proc_knl3)
         else:
-            knl3 = lp.prioritize_loops(knl3, "h,j,i,k")
+            unproc_knl3 = lp.prioritize_loops(unproc_knl3, "h,j,i,k")
 
             # legacy deps depend on priorities, so update deps using new knl
-            deps = lp.create_dependencies_from_legacy_knl(knl3)
-            if hasattr(lp, "add_dependencies_v2"):
-                # TODO update this after dep refactoring
-                knl3 = lp.add_dependencies_v2(  # pylint:disable=no-member
-                    knl3, deps)
-
-            unprocessed_knl = knl3.copy()
+            proc_knl3 = preprocess_kernel(unproc_knl3)
+            proc_knl3 = lp.create_dependencies_from_legacy_knl(proc_knl3)
 
             # get a linearization to check
-            if knl3.state < KernelState.PREPROCESSED:
-                knl3 = preprocess_kernel(knl3)
-            knl3 = get_one_linearized_kernel(knl3)
-            linearization_items = knl3.linearization
+            lin_knl3 = get_one_linearized_kernel(proc_knl3)
+            lin_items = lin_knl3.linearization
 
             linearization_is_valid = lp.check_linearization_validity(
-                unprocessed_knl, deps, linearization_items)
+                proc_knl3, lin_items)
         # should raise error
         assert False
     except ValueError as e:

@@ -166,6 +166,7 @@ class InstructionBase(ImmutableRecord):
     pymbolic_set_fields = {"predicates"}
 
     def __init__(self, id, depends_on, depends_on_is_final,
+            dependencies,
             groups, conflicts_with_groups,
             no_sync_with,
             within_inames_is_final, within_inames,
@@ -194,6 +195,9 @@ class InstructionBase(ImmutableRecord):
 
         if depends_on is None:
             depends_on = frozenset()
+
+        if dependencies is None:
+            dependencies = {}
 
         if groups is None:
             groups = frozenset()
@@ -251,6 +255,7 @@ class InstructionBase(ImmutableRecord):
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
+                dependencies=dependencies,
                 no_sync_with=no_sync_with,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 within_inames_is_final=within_inames_is_final,
@@ -337,6 +342,7 @@ class InstructionBase(ImmutableRecord):
 
         if self.depends_on:
             result.append("dep="+":".join(self.depends_on))
+        # TODO something with dependencies?
         if self.no_sync_with:
             result.append("nosync="+":".join(
                     "%s@%s" % entry for entry in self.no_sync_with))
@@ -404,6 +410,7 @@ class InstructionBase(ImmutableRecord):
         if self.id is not None:  # pylint:disable=access-member-before-definition
             self.id = intern(self.id)
         self.depends_on = intern_frozenset_of_ids(self.depends_on)
+        # TODO something with dependencies?
         self.groups = intern_frozenset_of_ids(self.groups)
         self.conflicts_with_groups = (
                 intern_frozenset_of_ids(self.conflicts_with_groups))
@@ -821,6 +828,7 @@ class Assignment(MultiAssignmentBase):
             id=None,
             depends_on=None,
             depends_on_is_final=None,
+            dependencies=None,
             groups=None,
             conflicts_with_groups=None,
             no_sync_with=None,
@@ -834,6 +842,7 @@ class Assignment(MultiAssignmentBase):
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
+                dependencies=dependencies,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
@@ -952,6 +961,7 @@ class CallInstruction(MultiAssignmentBase):
             id=None,
             depends_on=None,
             depends_on_is_final=None,
+            dependencies=None,
             groups=None,
             conflicts_with_groups=None,
             no_sync_with=None,
@@ -965,6 +975,7 @@ class CallInstruction(MultiAssignmentBase):
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
+                dependencies=dependencies,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
@@ -1126,13 +1137,20 @@ class CInstruction(InstructionBase):
 
     def __init__(self,
             iname_exprs, code,
-            read_variables=frozenset(), assignees=tuple(),
-            id=None, depends_on=None, depends_on_is_final=None,
-            groups=None, conflicts_with_groups=None,
+            read_variables=frozenset(),
+            assignees=tuple(),
+            id=None,
+            depends_on=None,
+            depends_on_is_final=None,
+            dependencies=None,
+            groups=None,
+            conflicts_with_groups=None,
             no_sync_with=None,
-            within_inames_is_final=None, within_inames=None,
+            within_inames_is_final=None,
+            within_inames=None,
             priority=0,
-            predicates=frozenset(), tags=None):
+            predicates=frozenset(),
+            tags=None):
         """
         :arg iname_exprs: Like :attr:`iname_exprs`, but instead of tuples,
             simple strings pepresenting inames are also allowed. A single
@@ -1147,11 +1165,13 @@ class CInstruction(InstructionBase):
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
+                dependencies=dependencies,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
-                priority=priority, predicates=predicates, tags=tags)
+                priority=priority, predicates=predicates,
+                tags=tags)
 
         # {{{ normalize iname_exprs
 
@@ -1286,16 +1306,25 @@ class NoOpInstruction(_DataObliviousInstruction):
         ... nop
     """
 
-    def __init__(self, id=None, depends_on=None, depends_on_is_final=None,
-            groups=None, conflicts_with_groups=None,
+    def __init__(
+            self,
+            id=None,
+            depends_on=None,
+            depends_on_is_final=None,
+            dependencies=None,
+            groups=None,
+            conflicts_with_groups=None,
             no_sync_with=None,
-            within_inames_is_final=None, within_inames=None,
+            within_inames_is_final=None,
+            within_inames=None,
             priority=None,
-            predicates=None, tags=None):
+            predicates=None,
+            tags=None):
         super().__init__(
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
+                dependencies=dependencies,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
@@ -1345,12 +1374,21 @@ class BarrierInstruction(_DataObliviousInstruction):
     fields = _DataObliviousInstruction.fields | {"synchronization_kind",
                                                      "mem_kind"}
 
-    def __init__(self, id, depends_on=None, depends_on_is_final=None,
-            groups=None, conflicts_with_groups=None,
+    def __init__(
+            self,
+            id,
+            depends_on=None,
+            depends_on_is_final=None,
+            dependencies=None,
+            groups=None,
+            conflicts_with_groups=None,
             no_sync_with=None,
-            within_inames_is_final=None, within_inames=None,
+            within_inames_is_final=None,
+            within_inames=None,
             priority=None,
-            predicates=None, tags=None, synchronization_kind="global",
+            predicates=None,
+            tags=None,
+            synchronization_kind="global",
             mem_kind="local"):
 
         if predicates:
@@ -1360,6 +1398,7 @@ class BarrierInstruction(_DataObliviousInstruction):
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
+                dependencies=dependencies,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,

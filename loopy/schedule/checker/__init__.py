@@ -187,13 +187,19 @@ def create_dependencies_from_legacy_knl(knl):
 
     # Preprocess if not already preprocessed
     # note: kernels must always be preprocessed before scheduling
+
+    from loopy.kernel import KernelState
+    assert knl.state in [
+        KernelState.PREPROCESSED, KernelState.LINEARIZED]
+
     from loopy import preprocess_kernel
     preprocessed_knl = preprocess_kernel(knl)
+    # TODO just assert that it's already been preprocessed
 
     # TODO instead of keeping these in a set, attach each one to depender insn
 
     # Create constraint maps from kernel dependencies
-    dep_maps = {}  # TODO update other stuff after this change from set->dict
+    stmts_to_deps = {}  # used to (temporarily) collect all deps for each stmt
 
     # For each pair of insns involved in a legacy dependency,
     # introduce SAME dep for set of shared, non-concurrent inames
@@ -204,6 +210,7 @@ def create_dependencies_from_legacy_knl(knl):
     nests_inside_map = get_loop_nesting_map(knl, non_conc_inames)
 
     for insn_after in preprocessed_knl.instructions:
+        deps_for_stmt_after = insn_after.dependencies  # TODO copy?
         for insn_before_id in insn_after.depends_on:
             insn_before = preprocessed_knl.id_to_insn[insn_before_id]
             insn_before_inames = insn_before.within_inames
@@ -225,9 +232,17 @@ def create_dependencies_from_legacy_knl(knl):
                 nests_inside_map=None,  # not used for SAME
                 )
 
-            dep_maps.setdefault(
-                (insn_before_id, insn_after.id), []
-                ).append(constraint_map)
+            # add this dep map to this statement's deps
+            deps_for_stmt_after.setdefault(insn_before_id, []).append(constraint_map)
+
+        # store this statement's deps in stmts_to_deps
+        # (don't add deps to stmt in knl yet because more are created below)
+        #stmts_to_deps.setdefault(insn_after.id, []).append(deps_for_stmt_after)
+        # TODO be more efficient here...
+        new_deps_for_stmt_after = stmts_to_deps.get(insn_after.id, {})
+        for before_id_new, deps_new in deps_for_stmt_after.items():
+            new_deps_for_stmt_after.setdefault(before_id_new, []).extend(deps_new)
+        stmts_to_deps[insn_after.id] = new_deps_for_stmt_after
 
     # loop-carried deps ------------------------------------------
 
@@ -252,6 +267,7 @@ def create_dependencies_from_legacy_knl(knl):
 
         # in future, consider inserting single no-op source and sink
         for source_id in sources:
+            deps_for_this_source = {}
             for sink_id in sinks:
                 sink_insn_inames = preprocessed_knl.id_to_insn[sink_id].within_inames
                 source_insn_inames = preprocessed_knl.id_to_insn[
@@ -274,16 +290,29 @@ def create_dependencies_from_legacy_knl(knl):
                 # done once for whole kernel
 
                 # TODO what if there is already a different dep from sink->source?
-                dep_maps.setdefault(
-                    (sink_id, source_id), []
-                    ).append(constraint_map)
+                # add this dep map to this statement's deps
+                deps_for_this_source.setdefault(sink_id, []).append(constraint_map)
 
-    return dep_maps
+            # store this statement's deps in stmts_to_deps
+            #stmts_to_deps.setdefault(source_id, []).append(deps_for_this_source)
+            # TODO be more efficient here...
+            new_deps_for_this_source = stmts_to_deps.get(source_id, {})
+            for before_id_new, deps_new in deps_for_this_source.items():
+                new_deps_for_this_source.setdefault(
+                    before_id_new, []).extend(deps_new)
+            stmts_to_deps[source_id] = new_deps_for_this_source
+
+    # replace instructions with new instructions containing deps
+    new_instructions = []
+    for insn_after in preprocessed_knl.instructions:
+        new_instructions.append(
+            insn_after.copy(dependencies=stmts_to_deps[insn_after.id]))
+
+    return preprocessed_knl.copy(instructions=new_instructions)
 
 
 def check_linearization_validity(
         knl,
-        dep_maps,
         linearization_items,
         ):
     # TODO document
@@ -298,20 +327,40 @@ def check_linearization_validity(
         get_lex_order_map_for_sched_space,
     )
 
-    # Preprocess if not already preprocessed
+    # {{{ make sure kernel has been preprocessed
+
     # note: kernels must always be preprocessed before scheduling
-    from loopy import preprocess_kernel
-    preprocessed_knl = preprocess_kernel(knl)
+    from loopy.kernel import KernelState
+    assert knl.state in [
+            KernelState.PREPROCESSED,
+            KernelState.LINEARIZED]
+
+    # }}}
+
+    # {{{ Create map from dependent instruction id pairs to dependencies
+
+    # To minimize time complexity, all pairwise schedules will be created
+    # in one pass, which first requires finding all pairs of statements involved
+    # in deps.
+    # So, since we have to find these pairs anyway, collect their deps at
+    # the same time so we don't have to do it again later during lin checking.
+
+    stmts_to_deps = {}
+    for insn_after in knl.instructions:
+        for before_id, dep_list in insn_after.dependencies.items():
+            stmts_to_deps.setdefault(
+                (before_id, insn_after.id), []).extend(dep_list)
+    # }}}
 
     schedules = get_schedules_for_statement_pairs(
-        preprocessed_knl,
+        knl,
         linearization_items,
-        dep_maps.keys(),
+        stmts_to_deps.keys(),
         )
 
     # For each dependency, create+test linearization containing pair of insns------
     linearization_is_valid = True
-    for (insn_id_before, insn_id_after), constraint_maps in dep_maps.items():
+    for (insn_id_before, insn_id_after), constraint_maps in stmts_to_deps.items():
 
         constraint_map = constraint_maps[0]  # TODO handle multple properly?
 
@@ -370,7 +419,7 @@ def check_linearization_validity(
             print("sio.gist(constraint_map)")
             print(prettier_map_string(sio.gist(aligned_constraint_map)))
             print("Loop priority known:")
-            print(preprocessed_knl.loop_priority)
+            print(knl.loop_priority)
             print("===========================================================")
 
     return linearization_is_valid
