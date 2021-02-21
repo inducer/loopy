@@ -1016,6 +1016,7 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
             assert "invalid priorities" in str(e)
 
 # TODO create more kernels with invalid linearizations to test linearization checker
+# TODO test with multiple deps between same statement pair
 
 
 if __name__ == "__main__":

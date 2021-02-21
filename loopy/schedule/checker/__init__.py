@@ -362,8 +362,6 @@ def check_linearization_validity(
     linearization_is_valid = True
     for (insn_id_before, insn_id_after), dependencies in stmts_to_deps.items():
 
-        dependency = dependencies[0]  # TODO handle multple properly?
-
         # Get two isl maps from {statement instance: lex point},
         # one for each linearization item involved in the dependency
         isl_sched_map_before, isl_sched_map_after = schedules[
@@ -380,46 +378,49 @@ def check_linearization_validity(
             sched_lex_order_map,
             )
 
-        # reorder variables/params in constraint map space to match SIO so we can
-        # check to see whether the constraint map is a subset of the SIO
-        # (spaces must be aligned so that the variables in the constraint map
-        # correspond to the same variables in the SIO)
-        from loopy.schedule.checker.utils import (
-            ensure_dim_names_match_and_align,
-        )
+        # check each dep for this statement pair
+        for dependency in dependencies:
 
-        aligned_dep_map = ensure_dim_names_match_and_align(
-            dependency, sio)
+            # reorder variables/params in constraint map space to match SIO so we can
+            # check to see whether the constraint map is a subset of the SIO
+            # (spaces must be aligned so that the variables in the constraint map
+            # correspond to the same variables in the SIO)
+            from loopy.schedule.checker.utils import (
+                ensure_dim_names_match_and_align,
+            )
 
-        import islpy as isl
-        assert aligned_dep_map.space == sio.space
-        assert (
-            aligned_dep_map.space.get_var_names(isl.dim_type.in_)
-            == sio.space.get_var_names(isl.dim_type.in_))
-        assert (
-            aligned_dep_map.space.get_var_names(isl.dim_type.out)
-            == sio.space.get_var_names(isl.dim_type.out))
-        assert (
-            aligned_dep_map.space.get_var_names(isl.dim_type.param)
-            == sio.space.get_var_names(isl.dim_type.param))
+            aligned_dep_map = ensure_dim_names_match_and_align(
+                dependency, sio)
 
-        if not aligned_dep_map.is_subset(sio):
+            import islpy as isl
+            assert aligned_dep_map.space == sio.space
+            assert (
+                aligned_dep_map.space.get_var_names(isl.dim_type.in_)
+                == sio.space.get_var_names(isl.dim_type.in_))
+            assert (
+                aligned_dep_map.space.get_var_names(isl.dim_type.out)
+                == sio.space.get_var_names(isl.dim_type.out))
+            assert (
+                aligned_dep_map.space.get_var_names(isl.dim_type.param)
+                == sio.space.get_var_names(isl.dim_type.param))
 
-            linearization_is_valid = False
+            if not aligned_dep_map.is_subset(sio):
 
-            print("================ constraint check failure =================")
-            print("Constraint map not subset of SIO")
-            print("Dependencies:")
-            print(insn_id_before+"->"+insn_id_after)
-            print(prettier_map_string(dependency))
-            print("Statement instance ordering:")
-            print(prettier_map_string(sio))
-            print("dependency.gist(sio):")
-            print(prettier_map_string(aligned_dep_map.gist(sio)))
-            print("sio.gist(dependency)")
-            print(prettier_map_string(sio.gist(aligned_dep_map)))
-            print("Loop priority known:")
-            print(knl.loop_priority)
-            print("===========================================================")
+                linearization_is_valid = False
+
+                print("================ constraint check failure =================")
+                print("Constraint map not subset of SIO")
+                print("Dependencies:")
+                print(insn_id_before+"->"+insn_id_after)
+                print(prettier_map_string(dependency))
+                print("Statement instance ordering:")
+                print(prettier_map_string(sio))
+                print("dependency.gist(sio):")
+                print(prettier_map_string(aligned_dep_map.gist(sio)))
+                print("sio.gist(dependency)")
+                print(prettier_map_string(sio.gist(aligned_dep_map)))
+                print("Loop priority known:")
+                print(knl.loop_priority)
+                print("===========================================================")
 
     return linearization_is_valid
