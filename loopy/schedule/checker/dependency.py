@@ -109,7 +109,7 @@ def create_legacy_dependency_constraint(
         insn_id_before,
         insn_id_after,
         deps,
-        nests_inside_map=None,
+        nests_outside_map=None,
         ):
     """Create a statement dependency constraint represented as a map from
         each statement instance to statement instances that must occur later,
@@ -148,14 +148,12 @@ def create_legacy_dependency_constraint(
     # This function uses the dependency given to create the following constraint:
     # Statement [s,i,j] comes before statement [s',i',j'] iff <constraint>
 
-    # TODO we're now computing these doms multiple times
-    # could be more efficient...
     dom_before = knl.get_inames_domain(knl.id_to_insn[insn_id_before].within_inames)
     dom_after = knl.get_inames_domain(knl.id_to_insn[insn_id_after].within_inames)
-    dom_inames_ordered_before = sorted_union_of_names_in_isl_sets([dom_before])
-    dom_inames_ordered_after = sorted_union_of_names_in_isl_sets([dom_after])
 
     # create some (ordered) isl vars to use, e.g., {s, i, j, s', i', j'}
+    dom_inames_ordered_before = sorted_union_of_names_in_isl_sets([dom_before])
+    dom_inames_ordered_after = sorted_union_of_names_in_isl_sets([dom_after])
     islvars = make_islvars_with_marker(
         var_names_needing_marker=[STATEMENT_VAR_NAME]+dom_inames_ordered_before,
         other_var_names=[STATEMENT_VAR_NAME]+dom_inames_ordered_after,
@@ -194,24 +192,24 @@ def create_legacy_dependency_constraint(
                 # e.g., if prios={(a, b), (b, c), (c, d, e)}, then we know
                 # a -> b -> c -> d -> e
 
-                assert nests_inside_map
+                assert nests_outside_map
 
                 # before reasoning about loop orderings,
                 # remove irrelevant inames from nesting requirements
                 # TODO more efficient way to do this?
-                relevant_nests_inside_map = {}
-                for iname, inside_inames in nests_inside_map.items():
+                relevant_nests_outside_map = {}
+                for iname, inside_inames in nests_outside_map.items():
                     # ignore irrelevant iname keys
                     if iname in inames_list:
                         # only keep relevant subset of iname vals
-                        relevant_nests_inside_map[iname] = set(
-                            inames_list) & nests_inside_map[iname]
+                        relevant_nests_outside_map[iname] = set(
+                            inames_list) & nests_outside_map[iname]
 
                 # get all orderings that are explicitly allowed by priorities
                 from loopy.schedule.checker.utils import (
                     get_orderings_of_length_n)
                 orders = get_orderings_of_length_n(
-                    relevant_nests_inside_map,
+                    relevant_nests_outside_map,
                     required_length=len(inames_list),
                     #return_first_found=True,
                     return_first_found=False,  # slower; allows priorities test below
@@ -241,9 +239,6 @@ def create_legacy_dependency_constraint(
                     if iname in inames_list]
                 inames_list_nest_ordered_prime = append_apostrophes(
                     inames_list_nest_ordered)
-                if set(inames_list_nest_ordered) != set(inames_list):
-                    # TODO could this happen?
-                    assert False
 
                 from loopy.schedule.checker import (
                     lexicographic_order_map as lom)

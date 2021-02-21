@@ -207,8 +207,6 @@ def create_dependencies_from_legacy_knl(knl):
     conc_inames, non_conc_inames = partition_inames_by_concurrency(
         preprocessed_knl)
 
-    nests_inside_map = get_loop_nesting_map(knl, non_conc_inames)
-
     for insn_after in preprocessed_knl.instructions:
         deps_for_stmt_after = insn_after.dependencies  # TODO copy?
         for insn_before_id in insn_after.depends_on:
@@ -229,7 +227,7 @@ def create_dependencies_from_legacy_knl(knl):
                 insn_before_id,
                 insn_after.id,
                 {LegacyDependencyType.SAME: shared_non_conc_inames},
-                nests_inside_map=None,  # not used for SAME
+                nests_outside_map=None,  # not used for SAME
                 )
 
             # add this dep map to this statement's deps
@@ -245,6 +243,8 @@ def create_dependencies_from_legacy_knl(knl):
         stmts_to_deps[insn_after.id] = new_deps_for_stmt_after
 
     # loop-carried deps ------------------------------------------
+
+    nests_outside_map = get_loop_nesting_map(knl, non_conc_inames)
 
     # Go through insns and get all unique insn.depends_on iname sets
     non_conc_iname_subsets = get_all_nonconcurrent_insn_iname_subsets(
@@ -283,7 +283,7 @@ def create_dependencies_from_legacy_knl(knl):
                     sink_id,
                     source_id,
                     {LegacyDependencyType.PRIOR: shared_non_conc_inames},
-                    nests_inside_map=nests_inside_map,
+                    nests_outside_map=nests_outside_map,
                     )
                 # TODO in PRIOR case, there's some stuff happening in
                 # create_legacy_dep_constraint^ that may be redundant and could be
@@ -362,8 +362,8 @@ def check_linearization_validity(
     linearization_is_valid = True
     for (insn_id_before, insn_id_after), dependencies in stmts_to_deps.items():
 
-        # Get two isl maps from {statement instance: lex point},
-        # one for each linearization item involved in the dependency
+        # Get pairwise schedule for stmts involved in the dependency:
+        # two isl maps from {statement instance: lex point},
         isl_sched_map_before, isl_sched_map_after = schedules[
             (insn_id_before, insn_id_after)]
 

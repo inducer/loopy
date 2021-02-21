@@ -282,16 +282,16 @@ def get_loop_nesting_map(knl, inames=None):
     if inames is None:
         inames = knl.all_inames()
 
-    nests_inside_map = {}
+    nests_outside_map = {}
     for outside_iname in inames:
         nested_inside_inames = set()
         for p_tuple in knl.loop_priority:
             if outside_iname in p_tuple:
                 nested_inside_inames.update(
                     p_tuple[p_tuple.index(outside_iname)+1:])
-        nests_inside_map[outside_iname] = nested_inside_inames
+        nests_outside_map[outside_iname] = nested_inside_inames
 
-    return nests_inside_map
+    return nests_outside_map
 
 
 def get_insn_id_from_linearization_item(linearization_item):
