@@ -178,6 +178,7 @@ def create_legacy_dependency_constraint(
         inames_prime = append_apostrophes(inames_list)  # e.g., [j', k']
 
         if dep_type == ldt.SAME:
+            # TODO test/handle case where inames list is empty (stmt0->stmt1 if true)
             constraint_set = create_elementwise_comparison_conjunction_set(
                     inames_prime, inames_list, islvars, op="eq")
         elif dep_type == ldt.PRIOR:
@@ -242,7 +243,7 @@ def create_legacy_dependency_constraint(
 
                 from loopy.schedule.checker import (
                     lexicographic_order_map as lom)
-                # TODO handle case where inames list is empty
+
                 constraint_set = lom.get_lex_order_set(
                     inames_list_nest_ordered_prime,
                     inames_list_nest_ordered,

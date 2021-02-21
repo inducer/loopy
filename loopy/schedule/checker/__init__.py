@@ -233,14 +233,15 @@ def create_dependencies_from_legacy_knl(knl):
             # add this dep map to this statement's deps
             deps_for_stmt_after.setdefault(insn_before_id, []).append(dependency)
 
-        # store this statement's deps in stmts_to_deps
-        # (don't add deps to stmt in knl yet because more are created below)
-        #stmts_to_deps.setdefault(insn_after.id, []).append(deps_for_stmt_after)
-        # TODO be more efficient here...
-        new_deps_for_stmt_after = stmts_to_deps.get(insn_after.id, {})
-        for before_id_new, deps_new in deps_for_stmt_after.items():
-            new_deps_for_stmt_after.setdefault(before_id_new, []).extend(deps_new)
-        stmts_to_deps[insn_after.id] = new_deps_for_stmt_after
+        if deps_for_stmt_after:
+            # store this statement's deps in stmts_to_deps
+            # (don't add deps to stmt in knl yet because more are created below)
+            # TODO be more efficient here...
+            new_deps_for_stmt_after = stmts_to_deps.get(insn_after.id, {})
+            for before_id_new, deps_new in deps_for_stmt_after.items():
+                new_deps_for_stmt_after.setdefault(
+                    before_id_new, []).extend(deps_new)
+            stmts_to_deps[insn_after.id] = new_deps_for_stmt_after
 
     # loop-carried deps ------------------------------------------
 
@@ -293,20 +294,24 @@ def create_dependencies_from_legacy_knl(knl):
                 # add this dep map to this statement's deps
                 deps_for_this_source.setdefault(sink_id, []).append(dependency)
 
-            # store this statement's deps in stmts_to_deps
-            #stmts_to_deps.setdefault(source_id, []).append(deps_for_this_source)
-            # TODO be more efficient here...
-            new_deps_for_this_source = stmts_to_deps.get(source_id, {})
-            for before_id_new, deps_new in deps_for_this_source.items():
-                new_deps_for_this_source.setdefault(
-                    before_id_new, []).extend(deps_new)
-            stmts_to_deps[source_id] = new_deps_for_this_source
+            if deps_for_this_source:
+                # store this statement's deps in stmts_to_deps
+                # TODO be more efficient here...
+                new_deps_for_this_source = stmts_to_deps.get(source_id, {})
+                for before_id_new, deps_new in deps_for_this_source.items():
+                    new_deps_for_this_source.setdefault(
+                        before_id_new, []).extend(deps_new)
+                stmts_to_deps[source_id] = new_deps_for_this_source
 
     # replace instructions with new instructions containing deps
     new_instructions = []
     for insn_after in preprocessed_knl.instructions:
-        new_instructions.append(
-            insn_after.copy(dependencies=stmts_to_deps[insn_after.id]))
+        if insn_after.id in stmts_to_deps:
+            new_instructions.append(
+                insn_after.copy(dependencies=stmts_to_deps[insn_after.id]))
+        else:
+            new_instructions.append(
+                insn_after.copy())
 
     return preprocessed_knl.copy(instructions=new_instructions)
 
