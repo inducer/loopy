@@ -224,7 +224,7 @@ def create_dependencies_from_legacy_knl(knl):
             # create a map representing constraints from the dependency,
             # which maps statement instance to all stmt instances that must occur
             # later and is acquired from the non-preprocessed kernel
-            constraint_map = create_legacy_dependency_constraint(
+            dependency = create_legacy_dependency_constraint(
                 preprocessed_knl,
                 insn_before_id,
                 insn_after.id,
@@ -233,7 +233,7 @@ def create_dependencies_from_legacy_knl(knl):
                 )
 
             # add this dep map to this statement's deps
-            deps_for_stmt_after.setdefault(insn_before_id, []).append(constraint_map)
+            deps_for_stmt_after.setdefault(insn_before_id, []).append(dependency)
 
         # store this statement's deps in stmts_to_deps
         # (don't add deps to stmt in knl yet because more are created below)
@@ -278,7 +278,7 @@ def create_dependencies_from_legacy_knl(knl):
                 # create a map representing constraints from the dependency,
                 # which maps statement instance to all stmt instances that must occur
                 # later and is acquired from the non-preprocessed kernel
-                constraint_map = create_legacy_dependency_constraint(
+                dependency = create_legacy_dependency_constraint(
                     preprocessed_knl,
                     sink_id,
                     source_id,
@@ -291,7 +291,7 @@ def create_dependencies_from_legacy_knl(knl):
 
                 # TODO what if there is already a different dep from sink->source?
                 # add this dep map to this statement's deps
-                deps_for_this_source.setdefault(sink_id, []).append(constraint_map)
+                deps_for_this_source.setdefault(sink_id, []).append(dependency)
 
             # store this statement's deps in stmts_to_deps
             #stmts_to_deps.setdefault(source_id, []).append(deps_for_this_source)
@@ -360,9 +360,9 @@ def check_linearization_validity(
 
     # For each dependency, create+test linearization containing pair of insns------
     linearization_is_valid = True
-    for (insn_id_before, insn_id_after), constraint_maps in stmts_to_deps.items():
+    for (insn_id_before, insn_id_after), dependencies in stmts_to_deps.items():
 
-        constraint_map = constraint_maps[0]  # TODO handle multple properly?
+        dependency = dependencies[0]  # TODO handle multple properly?
 
         # Get two isl maps from {statement instance: lex point},
         # one for each linearization item involved in the dependency
@@ -388,22 +388,22 @@ def check_linearization_validity(
             ensure_dim_names_match_and_align,
         )
 
-        aligned_constraint_map = ensure_dim_names_match_and_align(
-            constraint_map, sio)
+        aligned_dep_map = ensure_dim_names_match_and_align(
+            dependency, sio)
 
         import islpy as isl
-        assert aligned_constraint_map.space == sio.space
+        assert aligned_dep_map.space == sio.space
         assert (
-            aligned_constraint_map.space.get_var_names(isl.dim_type.in_)
+            aligned_dep_map.space.get_var_names(isl.dim_type.in_)
             == sio.space.get_var_names(isl.dim_type.in_))
         assert (
-            aligned_constraint_map.space.get_var_names(isl.dim_type.out)
+            aligned_dep_map.space.get_var_names(isl.dim_type.out)
             == sio.space.get_var_names(isl.dim_type.out))
         assert (
-            aligned_constraint_map.space.get_var_names(isl.dim_type.param)
+            aligned_dep_map.space.get_var_names(isl.dim_type.param)
             == sio.space.get_var_names(isl.dim_type.param))
 
-        if not aligned_constraint_map.is_subset(sio):
+        if not aligned_dep_map.is_subset(sio):
 
             linearization_is_valid = False
 
@@ -411,13 +411,13 @@ def check_linearization_validity(
             print("Constraint map not subset of SIO")
             print("Dependencies:")
             print(insn_id_before+"->"+insn_id_after)
-            print(prettier_map_string(constraint_map))
+            print(prettier_map_string(dependency))
             print("Statement instance ordering:")
             print(prettier_map_string(sio))
-            print("constraint_map.gist(sio):")
-            print(prettier_map_string(aligned_constraint_map.gist(sio)))
-            print("sio.gist(constraint_map)")
-            print(prettier_map_string(sio.gist(aligned_constraint_map)))
+            print("dependency.gist(sio):")
+            print(prettier_map_string(aligned_dep_map.gist(sio)))
+            print("sio.gist(dependency)")
+            print(prettier_map_string(sio.gist(aligned_dep_map)))
             print("Loop priority known:")
             print(knl.loop_priority)
             print("===========================================================")
