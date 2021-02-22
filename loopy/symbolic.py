@@ -2017,7 +2017,7 @@ def get_access_map(domain, subscript, assumptions=None, shape=None,
 def get_access_range(domain, subscript, assumptions=None, shape=None,
         allowed_constant_names=None):
     from warnings import warn
-    warn("Call get_access_map(...).range() instead. Will be remove in 2022.x",
+    warn("Call get_access_map(...).range() instead. Will be removed in 2022.x",
             DeprecationWarning, stacklevel=2)
     return get_access_map(domain, subscript, assumptions, shape,
             allowed_constant_names).range()
