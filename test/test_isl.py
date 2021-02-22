@@ -71,6 +71,22 @@ def test_subst_into_pwqpolynomial():
     assert (result - expected_pwqpoly).is_zero()
 
 
+def test_subst_into_pwaff():
+    from pymbolic.primitives import Variable
+    arg_dict = {
+            "m": 3*Variable("nx"),
+            "n": 2*Variable("ny")}
+    space = isl.Set("[nx, ny, nz] -> { []: }").params().space
+    poly = isl.PwAff("[m, n] -> { [3 * m + 2 * n] : "
+        "m > 0 and n > 0; [7* m + 4*n] : m > 0 and n <= 0 }")
+
+    from loopy.isl_helpers import subst_into_pwaff
+    result = subst_into_pwaff(space, poly, arg_dict)
+    expected = isl.PwAff("[nx, ny, nz] -> { [(9nx + 4ny)] : nx > 0 and ny > 0;"
+            " [(21nx + 8ny)] : nx > 0 and ny <= 0 }")
+    assert result == expected
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
