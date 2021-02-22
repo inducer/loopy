@@ -909,8 +909,10 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
         lang_version=(2018, 2)
         )
 
+    unproc_knl0 = ref_knl
+
     # no error:
-    unproc_knl0 = lp.prioritize_loops(ref_knl, "h,i")
+    unproc_knl0 = lp.prioritize_loops(unproc_knl0, "h,i")
     unproc_knl0 = lp.prioritize_loops(unproc_knl0, "i,j")
     unproc_knl0 = lp.prioritize_loops(unproc_knl0, "j,k")
 
@@ -925,8 +927,10 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
         proc_knl0, lin_items)
     assert linearization_is_valid
 
+    unproc_knl1 = ref_knl
+
     # no error:
-    unproc_knl1 = lp.prioritize_loops(ref_knl, "h,i,k")
+    unproc_knl1 = lp.prioritize_loops(unproc_knl1, "h,i,k")
     unproc_knl1 = lp.prioritize_loops(unproc_knl1, "h,j,k")
 
     proc_knl1 = preprocess_kernel(unproc_knl1)
@@ -940,8 +944,10 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
         proc_knl1, lin_items)
     assert linearization_is_valid
 
+    unproc_knl2 = ref_knl
+
     # error (cycle):
-    unproc_knl2 = lp.prioritize_loops(ref_knl, "h,i,j")
+    unproc_knl2 = lp.prioritize_loops(unproc_knl2, "h,i,j")
     unproc_knl2 = lp.prioritize_loops(unproc_knl2, "j,k")
     # TODO think about when legacy deps should be updated based on prio changes
 
@@ -974,8 +980,10 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
         else:
             assert "invalid priorities" in str(e)
 
+    unproc_knl3 = ref_knl
+
     # error (inconsistent priorities):
-    unproc_knl3 = lp.prioritize_loops(ref_knl, "h,i,j,k")
+    unproc_knl3 = lp.prioritize_loops(unproc_knl3, "h,i,j,k")
     # TODO think about when legacy deps should be updated based on prio changes
     try:
         if hasattr(lp, "constrain_loop_nesting"):

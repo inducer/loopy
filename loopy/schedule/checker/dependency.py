@@ -185,15 +185,13 @@ def create_legacy_dependency_constraint(
 
             priority_known = False
             # if nesting info is provided:
-            if knl.loop_priority:
+            if nests_outside_map:
                 # assumes all loop_priority tuples are consistent
 
                 # with multiple priority tuples, determine whether the combined
                 # info they contain can give us a single, full proiritization,
                 # e.g., if prios={(a, b), (b, c), (c, d, e)}, then we know
                 # a -> b -> c -> d -> e
-
-                assert nests_outside_map
 
                 # before reasoning about loop orderings,
                 # remove irrelevant inames from nesting requirements

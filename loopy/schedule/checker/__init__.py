@@ -142,27 +142,24 @@ def get_schedules_for_statement_pairs(
 
 
 def create_dependencies_from_legacy_knl(knl):
-    """Return a set of
-    :class:`loopy.schedule.checker.dependency.TBD`
-    instances created for a :class:`loopy.LoopKernel` containing legacy
-    depencencies.
+    """Return a kernel with additional dependencies constructed
+    based on legacy kernel dependencies according to the
+    following rules:
 
-    Create the new dependencies according to the following rules:
-
-    (1) If a dependency exists between ``insn0`` and ``insn1``, create the
-    dependnecy ``SAME(SNC)`` where ``SNC`` is the set of non-concurrent inames
-    used by both ``insn0`` and ``insn1``, and ``SAME`` is the relationship
-    specified by the ``SAME`` attribute of
+    (1) If a legacy dependency exists between ``insn0`` and ``insn1``,
+    create the dependnecy ``SAME(SNC)`` where ``SNC`` is the set of
+    non-concurrent inames used by both ``insn0`` and ``insn1``, and
+    ``SAME`` is the relationship specified by the ``SAME`` attribute of
     :class:`loopy.schedule.checker.dependency.LegacyDependencyType`.
 
-    (2) For each unique set of non-concurrent inames used by any instruction
-    (i.e., for each loop tier),
+    (2) For each unique set of non-concurrent inames used by any statement
+    (legacy term: `instruction'), i.e., for each loop tier,
 
-        (a), find the set of all instructions using a superset of those inames,
+        (a), find the set of all statements using a superset of those inames,
 
-        (b), create a directed graph with these instructions as nodes and
+        (b), create a directed graph with these statements as nodes and
         edges representing a 'happens before' relationship specfied by
-        each legacy dependency pair within these instructions,
+        each legacy dependency pair within these statements,
 
         (c), find the sources and sinks within this graph, and
 
@@ -170,6 +167,11 @@ def create_dependencies_from_legacy_knl(knl):
         with a ``PRIOR(SNC)`` dependency, where ``PRIOR`` is the
         relationship specified by the ``PRIOR`` attribute of
         :class:`loopy.schedule.checker.dependency.LegacyDependencyType`.
+
+    :arg knl: A preprocessed :class:`loopy.kernel.LoopKernel`.
+
+    :returns: A :class:`loopy.kernel.LoopKernel` containing additional
+        dependencies as described above.
 
     """
 
@@ -192,128 +194,120 @@ def create_dependencies_from_legacy_knl(knl):
     assert knl.state in [
         KernelState.PREPROCESSED, KernelState.LINEARIZED]
 
-    from loopy import preprocess_kernel
-    preprocessed_knl = preprocess_kernel(knl)
-    # TODO just assert that it's already been preprocessed
+    # (Temporarily) collect all deps for each stmt in a dict
+    # {stmt_after1: {stmt_before1: [dep1, dep2, ...], stmt_before2: [dep1, ...], ...}
+    #  stmt_after2: {stmt_before1: [dep1, dep2, ...], stmt_before2: [dep1, ...], ...}
+    #  ...}
+    stmts_to_deps = {}
 
-    # TODO instead of keeping these in a set, attach each one to depender insn
-
-    # Create constraint maps from kernel dependencies
-    stmts_to_deps = {}  # used to (temporarily) collect all deps for each stmt
-
-    # For each pair of insns involved in a legacy dependency,
+    # 1. For each pair of insns involved in a legacy dependency,
     # introduce SAME dep for set of shared, non-concurrent inames
 
-    conc_inames, non_conc_inames = partition_inames_by_concurrency(
-        preprocessed_knl)
+    conc_inames, non_conc_inames = partition_inames_by_concurrency(knl)
 
-    for insn_after in preprocessed_knl.instructions:
-        deps_for_stmt_after = insn_after.dependencies  # TODO copy?
-        for insn_before_id in insn_after.depends_on:
-            insn_before = preprocessed_knl.id_to_insn[insn_before_id]
-            insn_before_inames = insn_before.within_inames
-            insn_after_inames = insn_after.within_inames
+    for stmt_after in knl.instructions:
+
+        # Get any existing non-legacy dependencies, then add to these
+        deps_for_stmt_after = stmt_after.dependencies.copy()
+
+        # Loop over legacy dependees for this statement
+        for stmt_before_id in stmt_after.depends_on:
+
+            # Find non-concurrent inames shared between statements
             shared_non_conc_inames = (
-                insn_before_inames & insn_after_inames & non_conc_inames)
+                knl.id_to_insn[stmt_before_id].within_inames &
+                stmt_after.within_inames &
+                non_conc_inames)
 
-            # TODO what to do if there is already a dep from insn_before->insn_after?
-            # (currently just add a new one)
-
-            # create a map representing constraints from the dependency,
-            # which maps statement instance to all stmt instances that must occur
-            # later and is acquired from the non-preprocessed kernel
+            # Create a new dependency of type LegacyDependencyType.SAME
             dependency = create_legacy_dependency_constraint(
-                preprocessed_knl,
-                insn_before_id,
-                insn_after.id,
+                knl,
+                stmt_before_id,
+                stmt_after.id,
                 {LegacyDependencyType.SAME: shared_non_conc_inames},
-                nests_outside_map=None,  # not used for SAME
                 )
 
-            # add this dep map to this statement's deps
-            deps_for_stmt_after.setdefault(insn_before_id, []).append(dependency)
+            # Add this dependency to this statement's dependencies
+            deps_for_stmt_after.setdefault(stmt_before_id, []).append(dependency)
 
         if deps_for_stmt_after:
-            # store this statement's deps in stmts_to_deps
-            # (don't add deps to stmt in knl yet because more are created below)
-            # TODO be more efficient here...
-            new_deps_for_stmt_after = stmts_to_deps.get(insn_after.id, {})
+            # Add this statement's dependencies to stmts_to_deps map
+            # (don't add deps directly to statement in kernel yet
+            # because more are created below)
+            new_deps_for_stmt_after = stmts_to_deps.get(stmt_after.id, {})
             for before_id_new, deps_new in deps_for_stmt_after.items():
                 new_deps_for_stmt_after.setdefault(
                     before_id_new, []).extend(deps_new)
-            stmts_to_deps[insn_after.id] = new_deps_for_stmt_after
+            stmts_to_deps[stmt_after.id] = new_deps_for_stmt_after
 
-    # loop-carried deps ------------------------------------------
+    # 2. For each set of insns within a loop tier, create a directed graph
+    # based on legacy dependencies and introduce PRIOR dep from sinks to sources
 
+    # Get loop nesting structure for use in creation of PRIOR dep
+    # (to minimize time complexity, compute this once for whole kernel here)
     nests_outside_map = get_loop_nesting_map(knl, non_conc_inames)
 
-    # Go through insns and get all unique insn.depends_on iname sets
+    # Get all unique nonconcurrent within_iname sets
     non_conc_iname_subsets = get_all_nonconcurrent_insn_iname_subsets(
-        preprocessed_knl, exclude_empty=True, non_conc_inames=non_conc_inames)
+        knl, exclude_empty=True, non_conc_inames=non_conc_inames)
 
-    # For each set of insns within a given iname set, find sources and sinks.
-    # Then make PRIOR dep from all sinks to all sources at previous iterations
     for iname_subset in non_conc_iname_subsets:
-        # find linearization items within this iname set
-        # TODO: could combine this step with the creation of the iname subsets
-        # to save time?
+        # Find linearization items within this iname set
         linearization_item_ids = get_linearization_item_ids_within_inames(
-            preprocessed_knl, iname_subset)
+            knl, iname_subset)
 
-        # find sources and sinks (these sets may have non-empty intersection)
+        # Find sources and sinks (these sets may intersect)
         sources, sinks = get_dependency_sources_and_sinks(
-            preprocessed_knl, linearization_item_ids)
+            knl, linearization_item_ids)
 
-        # create prior deps
-
-        # in future, consider inserting single no-op source and sink
+        # Create deps
         for source_id in sources:
-            deps_for_this_source = {}
-            for sink_id in sinks:
-                sink_insn_inames = preprocessed_knl.id_to_insn[sink_id].within_inames
-                source_insn_inames = preprocessed_knl.id_to_insn[
-                    source_id].within_inames
-                shared_non_conc_inames = (
-                    sink_insn_inames & source_insn_inames & non_conc_inames)
 
-                # create a map representing constraints from the dependency,
-                # which maps statement instance to all stmt instances that must occur
-                # later and is acquired from the non-preprocessed kernel
+            # Get any existing non-legacy dependencies, then add to these
+            source = knl.id_to_insn[source_id]
+            deps_for_this_source = source.dependencies.copy()
+
+            for sink_id in sinks:
+
+                # Find non-concurrent inames shared between statements
+                shared_non_conc_inames = (
+                    knl.id_to_insn[sink_id].within_inames &
+                    source.within_inames &
+                    non_conc_inames)
+
+                # Create a new dependency of type LegacyDependencyType.PRIOR
                 dependency = create_legacy_dependency_constraint(
-                    preprocessed_knl,
+                    knl,
                     sink_id,
                     source_id,
                     {LegacyDependencyType.PRIOR: shared_non_conc_inames},
                     nests_outside_map=nests_outside_map,
                     )
-                # TODO in PRIOR case, there's some stuff happening in
-                # create_legacy_dep_constraint^ that may be redundant and could be
-                # done once for whole kernel
 
-                # TODO what if there is already a different dep from sink->source?
-                # add this dep map to this statement's deps
+                # Add this dependency to this statement's dependencies
                 deps_for_this_source.setdefault(sink_id, []).append(dependency)
 
             if deps_for_this_source:
-                # store this statement's deps in stmts_to_deps
-                # TODO be more efficient here...
+                # Add this statement's dependencies to stmts_to_deps map
+                # (don't add deps directly to statement in kernel yet
+                # because more are created below)
                 new_deps_for_this_source = stmts_to_deps.get(source_id, {})
                 for before_id_new, deps_new in deps_for_this_source.items():
                     new_deps_for_this_source.setdefault(
                         before_id_new, []).extend(deps_new)
                 stmts_to_deps[source_id] = new_deps_for_this_source
 
-    # replace instructions with new instructions containing deps
-    new_instructions = []
-    for insn_after in preprocessed_knl.instructions:
-        if insn_after.id in stmts_to_deps:
-            new_instructions.append(
-                insn_after.copy(dependencies=stmts_to_deps[insn_after.id]))
+    # Replace statements with new statements containing deps
+    new_stmts = []
+    for stmt_after in knl.instructions:
+        if stmt_after.id in stmts_to_deps:
+            new_stmts.append(
+                stmt_after.copy(dependencies=stmts_to_deps[stmt_after.id]))
         else:
-            new_instructions.append(
-                insn_after.copy())
+            new_stmts.append(
+                stmt_after.copy())
 
-    return preprocessed_knl.copy(instructions=new_instructions)
+    return knl.copy(instructions=new_stmts)
 
 
 def check_linearization_validity(

@@ -302,8 +302,6 @@ def get_insn_id_from_linearization_item(linearization_item):
         return linearization_item.insn_id
 
 
-# TODO for better performance, could combine these funcs so we don't
-# loop over linearization more than once
 def get_all_nonconcurrent_insn_iname_subsets(
         knl, exclude_empty=False, non_conc_inames=None):
     """Return a :class:`set` of every unique set of non-concurrent
