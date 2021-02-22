@@ -296,6 +296,22 @@ class CPlusPlusCompiler(CCompiler):
             library_dirs=library_dirs, defines=defines, source_suffix=source_suffix)
 
 
+# {{{ placeholder till ctypes fixes: bugs.python.org/issue16899
+
+class Complex64(ctypes.Structure):
+    _fields_ = [("real", ctypes.c_float), ("imag", ctypes.c_float)]
+
+
+class Complex128(ctypes.Structure):
+    _fields_ = [("real", ctypes.c_double), ("imag", ctypes.c_double)]
+
+
+class Complex256(ctypes.Structure):
+    _fields_ = [("real", ctypes.c_longdouble), ("imag", ctypes.c_longdouble)]
+
+# }}}
+
+
 class IDIToCDLL:
     """
     A utility class that extracts arguement and return type info from a
@@ -303,8 +319,8 @@ class IDIToCDLL:
     """
     def __init__(self, target):
         self.target = target
-        from loopy.target.c import CFamilyTarget
-        self.registry = CFamilyTarget().get_dtype_registry().wrapped_registry
+        from loopy.target.c import CTarget
+        self.registry = CTarget().get_dtype_registry().wrapped_registry
 
     def __call__(self, knl, idi):
         # next loop through the implemented data info to get the arg data
@@ -318,9 +334,17 @@ class IDIToCDLL:
 
     def _dtype_to_ctype(self, dtype, pointer=False):
         """Map NumPy dtype to equivalent ctypes type."""
-        typename = self.registry.dtype_to_ctype(dtype)
-        typename = {"unsigned": "uint"}.get(typename, typename)
-        basetype = getattr(ctypes, "c_" + typename)
+        if dtype.is_complex():
+            # complex ctypes aren't exposed
+            np_dtype = dtype.numpy_dtype.type
+            basetype = {np.complex64: Complex64,
+                    np.complex128: Complex128,
+                    np.complex256: Complex256}[np_dtype]
+        else:
+            basetype = np.ctypeslib.as_ctypes_type(dtype)
+            typename = self.registry.dtype_to_ctype(dtype)
+            typename = {"unsigned": "uint"}.get(typename, typename)
+            basetype = getattr(ctypes, "c_" + typename)
         if pointer:
             return ctypes.POINTER(basetype)
         return basetype
