@@ -492,8 +492,8 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
             else:
                 raise LoopyTypeError(f"{name} does not support type {real_dtype}")
 
-        if dtype.kind == "c":
-            name = "c" + name
+            if dtype.kind == "c":
+                name = "c" + name
 
         return CallMangleInfo(
                 target_name=name,
