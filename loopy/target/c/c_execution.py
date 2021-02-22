@@ -342,9 +342,6 @@ class IDIToCDLL:
                     np.complex256: Complex256}[np_dtype]
         else:
             basetype = np.ctypeslib.as_ctypes_type(dtype)
-            typename = self.registry.dtype_to_ctype(dtype)
-            typename = {"unsigned": "uint"}.get(typename, typename)
-            basetype = getattr(ctypes, "c_" + typename)
         if pointer:
             return ctypes.POINTER(basetype)
         return basetype
