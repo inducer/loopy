@@ -1973,17 +1973,17 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
     from loopy.kernel.data import (IlpBaseTag, ConcurrentTag, VectorizeTag,
                                    filter_iname_tags_by_type)
     ilp_inames = {
-            iname
-            for iname, tags in kernel.iname_to_tags.items()
-            if filter_iname_tags_by_type(tags, IlpBaseTag)}
+            name
+            for name, iname in kernel.inames.items()
+            if filter_iname_tags_by_type(iname.tags, IlpBaseTag)}
     vec_inames = {
-            iname
-            for iname, tags in kernel.iname_to_tags.items()
-            if filter_iname_tags_by_type(tags, VectorizeTag)}
+            name
+            for name, iname in kernel.inames.items()
+            if filter_iname_tags_by_type(iname.tags, VectorizeTag)}
     parallel_inames = {
-            iname
-            for iname, tags in kernel.iname_to_tags.items()
-            if filter_iname_tags_by_type(tags, ConcurrentTag)}
+            name
+            for name, iname in kernel.inames.items()
+            if filter_iname_tags_by_type(iname.tags, ConcurrentTag)}
 
     loop_nest_with_map = find_loop_nest_with_map(kernel)
     loop_nest_around_map = find_loop_nest_around_map(kernel)
