@@ -1098,21 +1098,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 self.get_iname_bounds(iname, constants_only=True).size,
                 constants_only=True)))
 
+    @memoize_method
     def get_grid_sizes_for_insn_ids_as_dicts(self, insn_ids,
             callables_table, ignore_auto=False):
-        # FIXME: re-add the memoization?
         # FIXME: docs
-        """Return a tuple (global_size, local_size) containing a grid that
-        could accommodate execution of all instructions whose IDs are given
-        in *insn_ids*.
-
-        :arg insn_ids: a :class:`frozenset` of instruction IDs
-        :arg callables_table: an instance of :class:`loopy.Program.CallablesTable`
-
-        *global_size* and *local_size* are instances of :class:`dict` with
-        mapping of the form from ``axis`` to :class:`islpy.PwAff` objects.
-        """
-
         # {{{ collecting the callee kernels in insn_ids
 
         from loopy.kernel.tools import get_direct_callee_kernels
@@ -1186,9 +1175,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return global_sizes, local_sizes
 
+    @memoize_method
     def get_grid_sizes_for_insn_ids(self, insn_ids, callables_table,
             ignore_auto=False, return_dict=False):
-        #Fixme: Re-add the memoize wrap here?
         # Fixme: docs
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of all instructions whose IDs are given
@@ -1241,6 +1230,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return (to_dim_tuple(global_sizes, "global"),
                 to_dim_tuple(local_sizes, "local", forced_sizes=self.local_sizes))
 
+    @memoize_method
     def get_grid_sizes_for_insn_ids_as_exprs(self, insn_ids,
             callables_table, ignore_auto=False, return_dict=False):
         # FIXME docs
