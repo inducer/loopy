@@ -1319,6 +1319,26 @@ def test_strided_footprint():
     assert 2*num < denom
 
 
+def test_no_loop_ops():
+    # See https://github.com/inducer/loopy/issues/211
+
+    knl = lp.make_kernel(
+        "{ : }",
+        """
+        c = a + b
+        d = 2*c + a + b
+        """)
+
+    knl = lp.add_dtypes(knl, {"a": np.float, "b": np.float})
+
+    op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
+                           count_within_subscripts=True)
+    f64_add = op_map.filter_by(name="add").eval_and_sum({})
+    f64_mul = op_map.filter_by(name="mul").eval_and_sum({})
+    assert f64_add == 3
+    assert f64_mul == 1
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

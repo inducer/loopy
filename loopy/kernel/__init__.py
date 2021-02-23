@@ -40,7 +40,7 @@ from loopy.library.function import (
 
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.diagnostic import StaticValueFindingError
-from loopy.kernel.data import filter_iname_tags_by_type
+from loopy.kernel.data import filter_iname_tags_by_type, Iname
 from warnings import warn
 
 
@@ -146,6 +146,11 @@ class kernel_state:  # noqa
 # }}}
 
 
+def _get_inames_from_domains(domains):
+    return frozenset().union(*
+            (frozenset(dom.get_var_names(dim_type.set)) for dom in domains))
+
+
 class LoopKernel(ImmutableRecordWithoutPickling):
     """These correspond more or less directly to arguments of
     :func:`loopy.make_kernel`.
@@ -187,12 +192,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         A :class:`dict` of mapping variable names to
         :class:`loopy.TemporaryVariable`
         instances.
-
-    .. attribute:: iname_to_tags
-
-        A :class:`dict` mapping inames (as strings)
-        to set of instances of :class:`loopy.kernel.data.IndexTag`.
-        .. versionadded:: 2018.1
 
     .. attribute:: function_manglers
     .. attribute:: symbol_manglers
@@ -236,6 +235,12 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         A subclass of :class:`loopy.TargetBase`.
 
+    .. attribute:: inames
+
+        An instance of :class:`dict`, a mapping from the names of kernel's
+        inames to their corresponding instances of :class:`loopy.kernel.data.Iname`.
+        An entry is guaranteed to be present for each iname.
+
     .. automethod:: __call__
     .. automethod:: copy
     """
@@ -251,6 +256,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             assumptions=None,
             local_sizes=None,
             temporary_variables=None,
+            inames=None,
             iname_to_tags=None,
             substitutions=None,
             function_manglers=None,
@@ -288,8 +294,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             local_sizes = {}
         if temporary_variables is None:
             temporary_variables = {}
-        if iname_to_tags is None:
-            iname_to_tags = {}
         if substitutions is None:
             substitutions = {}
         if function_manglers is None:
@@ -313,6 +317,26 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if cache_manager is None:
             from loopy.kernel.tools import SetOperationCacheManager
             cache_manager = SetOperationCacheManager()
+
+        if iname_to_tags is not None:
+            warn("Providing iname_to_tags is deprecated, pass inames instead. "
+                    "Will be unsupported in 2022.",
+                    DeprecationWarning, stacklevel=2)
+
+        if inames is None:
+            if iname_to_tags is None:
+                iname_to_tags = {}
+
+            inames = {name: Iname(name, iname_to_tags.get(name, frozenset()))
+                      for name in _get_inames_from_domains(domains)}
+        else:
+            if iname_to_tags is not None:
+                raise LoopyError("Cannot provide both iname_to_tags and inames to "
+                        "LoopKernel.__init__")
+
+            inames = {
+                name: inames.get(name, Iname(name, frozenset()))
+                for name in _get_inames_from_domains(domains)}
 
         # }}}
 
@@ -370,14 +394,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         elif linearization is not None:
             schedule = linearization
 
-        from collections import defaultdict
-        assert not isinstance(iname_to_tags, defaultdict)
-
-        for iname, tags in iname_to_tags.items():
-            # don't tolerate empty sets
-            assert tags
-            assert isinstance(tags, frozenset)
-
         assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
 
@@ -395,7 +411,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 silenced_warnings=silenced_warnings,
                 temporary_variables=temporary_variables,
                 local_sizes=local_sizes,
-                iname_to_tags=iname_to_tags,
+                inames=inames,
                 substitutions=substitutions,
                 cache_manager=cache_manager,
                 applied_iname_rewrites=applied_iname_rewrites,
@@ -744,8 +760,20 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     # {{{ iname wrangling
 
+    @property
+    @memoize_method
+    def iname_to_tags(self):
+        warn(
+                "LoopKernel.iname_to_tags is deprecated. "
+                "Call LoopKernel.inames instead, "
+                "will be unsupported in 2022.",
+                DeprecationWarning, stacklevel=2)
+        return {name: iname.tags
+                for name, iname in self.inames.items()
+                if iname.tags}
+
     def iname_tags(self, iname):
-        return self.iname_to_tags.get(iname, frozenset())
+        return self.inames[iname].tags
 
     def iname_tags_of_type(self, iname, tag_type_or_types,
             max_num=None, min_num=None):
@@ -761,16 +789,15 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         from loopy.kernel.data import filter_iname_tags_by_type
         return filter_iname_tags_by_type(
-                self.iname_to_tags.get(iname, frozenset()),
+                self.iname_tags(iname),
                 tag_type_or_types, max_num=max_num, min_num=min_num)
 
     @memoize_method
     def all_inames(self):
-        result = set()
-        for dom in self.domains:
-            result.update(
-                    intern(n) for n in dom.get_var_names(dim_type.set))
-        return frozenset(result)
+        """
+        Returns a :class:`frozenset` of the names of all the inames in the kernel.
+        """
+        return _get_inames_from_domains(self.domains)
 
     @memoize_method
     def all_params(self):
@@ -861,24 +888,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                     multi_use_inames.add(iname)
 
         return frozenset(cond_inames - multi_use_inames)
-
-    # {{{ compatibility wrapper for iname_to_tag.get("iname")
-
-    @property
-    def iname_to_tag(self):
-        from warnings import warn
-        warn("Since version 2018.1, inames can hold multiple tags. Use "
-             "iname_to_tags['iname'] instead. iname_to_tag.get('iname') will be "
-             "removed at version 2019.0.", DeprecationWarning)
-        for iname, tags in self.iname_to_tags.items():
-            if len(tags) > 1:
-                raise LoopyError(
-                    "iname {} has multiple tags: {}. "
-                    "Use iname_to_tags['iname'] instead.".format(iname, tags))
-        return {k: next(iter(v))
-                    for k, v in self.iname_to_tags.items() if v}
-
-    # }}}
 
     # }}}
 
@@ -1138,9 +1147,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             from loopy.isl_helpers import static_max_of_pw_aff
             try:
                 # insist block size is constant
-                size = static_max_of_pw_aff(size,
+                size_as_aff = static_max_of_pw_aff(size,
                         constants_only=isinstance(tag, LocalIndexTag),
                         context=self.assumptions)
+                size = isl.PwAff.from_aff(size_as_aff)
             except StaticValueFindingError:
                 pass
 
@@ -1526,7 +1536,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             "assumptions",
             "local_sizes",
             "temporary_variables",
-            "iname_to_tags",
+            "inames",
             "substitutions",
             "iname_slab_increments",
             "loop_priority",
@@ -1600,6 +1610,15 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return not self.__eq__(other)
 
     # }}}
+
+    def copy(self, **kwargs):
+        if "iname_to_tags" in kwargs:
+            if "inames" in kwargs:
+                raise LoopyError("Cannot pass both `inames` and `iname_to_tags` to "
+                        "LoopKernel.copy")
+
+            kwargs["inames"] = None
+        return super().copy(**kwargs)
 
 # }}}
 
