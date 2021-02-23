@@ -1037,10 +1037,11 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 # Do not inherit predicates: Those might read variables
                 # that may not yet be set, and we don't have a great way
                 # of figuring out what the dependencies of the accumulator
-                # initializer should be (FIXME!).
+                # initializer should be.
 
                 # This way, we may initialize a few too many accumulators,
                 # but that's better than being incorrect.
+                # https://github.com/inducer/loopy/issues/231
                 )
 
         generated_insns.append(init_insn)
@@ -1192,10 +1193,11 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 # Do not inherit predicates: Those might read variables
                 # that may not yet be set, and we don't have a great way
                 # of figuring out what the dependencies of the accumulator
-                # initializer should be (FIXME!).
+                # initializer should be.
 
                 # This way, we may initialize a few too many accumulators,
                 # but that's better than being incorrect.
+                # https://github.com/inducer/loopy/issues/231
                 )
         generated_insns.append(init_insn)
 
@@ -1419,10 +1421,11 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 # Do not inherit predicates: Those might read variables
                 # that may not yet be set, and we don't have a great way
                 # of figuring out what the dependencies of the accumulator
-                # initializer should be (FIXME!).
+                # initializer should be.
 
                 # This way, we may initialize a few too many accumulators,
                 # but that's better than being incorrect.
+                # https://github.com/inducer/loopy/issues/231
                 )
 
         generated_insns.append(init_insn)
@@ -1558,10 +1561,11 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 # Do not inherit predicates: Those might read variables
                 # that may not yet be set, and we don't have a great way
                 # of figuring out what the dependencies of the accumulator
-                # initializer should be (FIXME!).
+                # initializer should be.
 
                 # This way, we may initialize a few too many accumulators,
                 # but that's better than being incorrect.
+                # https://github.com/inducer/loopy/issues/231
                 )
         generated_insns.append(init_insn)
 
