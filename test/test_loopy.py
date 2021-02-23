@@ -3040,6 +3040,33 @@ def test_pow(ctx_factory, base_type, exp_type):
     np.testing.assert_allclose(expected_result, result)
 
 
+def test_deps_from_conditionals():
+    # https://github.com/inducer/loopy/issues/231
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            """
+            <> icontaining_tgt_box = 1 {id=flagset}
+            if icontaining_tgt_box == 1
+                result = result + simul_reduce(sum, i, i*i)
+                result = result + simul_reduce(sum, i, 2*i*i)
+            end
+            """)
+    ppknl = lp.preprocess_kernel(knl)
+
+    # accumulator initializers must be dependency-less
+    assert all(not insn.depends_on
+            for insn in ppknl.instructions
+            if "init" in insn.id)
+    # accumulator initializers must not have inherited the predicates
+    assert all(not insn.predicates
+            for insn in ppknl.instructions
+            if "init" in insn.id)
+
+    # Ensure valid linearization exists: No valid linearization unless the
+    # accumulator initializers can move out of the loop.
+    print(lp.generate_code_v2(ppknl).device_code())
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
