@@ -951,10 +951,11 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
     unproc_knl2 = lp.prioritize_loops(unproc_knl2, "j,k")
     # TODO think about when legacy deps should be updated based on prio changes
 
+    # TODO move constrain_loop_nesting stuff to later PR
     try:
         if hasattr(lp, "constrain_loop_nesting"):
-            unproc_knl2 = lp.constrain_loop_nesting(
-                unproc_knl2, "k,i")  # pylint:disable=no-member
+            unproc_knl2 = lp.constrain_loop_nesting(  # pylint:disable=no-member
+                unproc_knl2, "k,i")
 
             # legacy deps depend on priorities, so update deps using new knl
             proc_knl2 = preprocess_kernel(unproc_knl2)
@@ -985,6 +986,7 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
     # error (inconsistent priorities):
     unproc_knl3 = lp.prioritize_loops(unproc_knl3, "h,i,j,k")
     # TODO think about when legacy deps should be updated based on prio changes
+    # TODO move constrain_loop_nesting stuff to later PR
     try:
         if hasattr(lp, "constrain_loop_nesting"):
             unproc_knl3 = lp.constrain_loop_nesting(  # pylint:disable=no-member
