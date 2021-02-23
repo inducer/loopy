@@ -2998,8 +2998,15 @@ def test_split_iname_within(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
-@pytest.mark.parametrize("base_type,exp_type", [(np.int32, np.uint32), (np.int64,
-    np.uint64), (np.int, np.float), (np.float, np.int), (np.int, np.int),
+@pytest.mark.parametrize("base_type,exp_type", [
+    (np.int32, np.uint32), (np.int64, np.uint64),
+
+    #  It looks like numpy thinks int32**float32 should be float64, which seems
+    #  weird.
+    # (np.int32, np.float32),
+
+    (np.int32, np.float64),
+    (np.float64, np.int32), (np.int64, np.int32),
     (np.float32, np.float64), (np.float64, np.float32)])
 def test_pow(ctx_factory, base_type, exp_type):
     ctx = ctx_factory()
