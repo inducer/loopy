@@ -1990,10 +1990,10 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 def realize_reduction(program, *args, **kwargs):
     assert isinstance(program, Program)
 
-    callables_table = program.callables_table.copy()
-    kernels_to_scan = [in_knl_callable.subkernel for in_knl_callable in
-            program.callables_table.values() if isinstance(in_knl_callable,
-                CallableKernel)]
+    callables_table = dict(program.callables_table)
+    kernels_to_scan = [in_knl_callable.subkernel
+            for in_knl_callable in program.callables_table.values()
+            if isinstance(in_knl_callable, CallableKernel)]
 
     for knl in kernels_to_scan:
         new_knl, callables_table = realize_reduction_for_single_kernel(

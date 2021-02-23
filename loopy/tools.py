@@ -114,6 +114,8 @@ class LoopyKeyBuilder(KeyBuilderBase):
         else:
             PersistentHashWalkMapper(key_hash)(key)
 
+    update_for_PMap = update_for_dict  # noqa: N815
+
 
 class PymbolicExpressionHashWrapper:
     def __init__(self, expression):

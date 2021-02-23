@@ -21,6 +21,7 @@ THE SOFTWARE.
 """
 
 import re
+import collections
 
 from pytools import ImmutableRecord
 from pymbolic.primitives import Variable
@@ -39,6 +40,7 @@ from loopy.kernel import LoopKernel
 from loopy.tools import update_persistent_hash
 from pymbolic.primitives import Call, CallWithKwargs
 from functools import reduce
+from pyrsistent import pmap, PMap
 
 __doc__ = """
 
@@ -138,8 +140,8 @@ class Program(ImmutableRecord):
 
     .. attribute:: callables_table
 
-        An instance of :class:`dict` mapping the function identifiers in a
-        kernel to their associated instances of
+        An instance of :class:`pyrsistent.PMap` mapping the function
+        identifiers in a kernel to their associated instances of
         :class:`loopy.kernel.function_interface.InKernelCallable`.
 
     .. attribute:: target
@@ -166,20 +168,23 @@ class Program(ImmutableRecord):
     """
     def __init__(self,
             entrypoints=frozenset(),
-            callables_table={},
+            callables_table=pmap(),
             target=None,
             func_id_to_in_knl_callable_mappers=[]):
 
         # {{{ sanity checks
 
-        assert isinstance(callables_table, dict)
+        assert isinstance(callables_table, collections.abc.Mapping)
         assert isinstance(entrypoints, frozenset)
+
+        if not isinstance(callables_table, PMap):
+            callables_table = pmap(callables_table)
 
         # }}}
 
         super().__init__(
                 entrypoints=entrypoints,
-                callables_table=callables_table,
+                callables_table=pmap(callables_table),
                 target=target,
                 func_id_to_in_knl_callable_mappers=(
                     func_id_to_in_knl_callable_mappers))
@@ -198,14 +203,15 @@ class Program(ImmutableRecord):
         program = super().copy(**kwargs)
         if target:
             from loopy.kernel import KernelState
-            if max(callable_knl.subkernel.state for callable_knl in
-                    self.callables_table.values() if
-                    isinstance(callable_knl, CallableKernel)) > (
+            if max(callable_knl.subkernel.state
+                   for callable_knl in self.callables_table.values()
+                   if isinstance(callable_knl, CallableKernel)) > (
                             KernelState.INITIAL):
                 if not isinstance(target, type(self.target)):
-                    raise LoopyError("One of the kenels in the program has been "
+                    raise LoopyError("One of the kernels in the program has been "
                             "preprocessed, cannot modify target now.")
-            callables = {}
+
+            new_callables = {}
             for func_id, clbl in program.callables_table.items():
                 if isinstance(clbl, CallableKernel):
                     knl = clbl.subkernel
@@ -215,10 +221,10 @@ class Program(ImmutableRecord):
                     pass
                 else:
                     raise NotImplementedError()
-                callables[func_id] = clbl
+                new_callables[func_id] = clbl
 
             program = super().copy(
-                callables_table=callables, target=target)
+                callables_table=new_callables, target=target)
 
         return program
 
@@ -255,14 +261,13 @@ class Program(ImmutableRecord):
             # update the callable kernel
             new_in_knl_callable = self.callables_table[kernel.name].copy(
                     subkernel=kernel)
-            new_callables = self.callables_table.copy()
-            new_callables[kernel.name] = new_in_knl_callable
+            new_callables = self.callables_table.remove(kernel.name).set(
+                    kernel.name, new_in_knl_callable)
             return self.copy(callables_table=new_callables)
         else:
             # add a new callable kernel
             clbl = CallableKernel(kernel)
-            new_callables = self.callables_table.copy()
-            new_callables[kernel.name] = clbl
+            new_callables = self.callables_table.set(kernel.name, clbl)
             return self.copy(callables_table=new_callables)
 
     def __getitem__(self, name):
@@ -452,7 +457,8 @@ def make_clbl_inf_ctx(callables, entrypoints):
 
 class CallablesInferenceContext(ImmutableRecord):
     def __init__(self, callables, old_callable_ids, history={}):
-        assert isinstance(callables, dict)
+        assert isinstance(callables, collections.abc.Mapping)
+        callables = dict(callables)
 
         super().__init__(
                 callables=callables,
@@ -730,7 +736,7 @@ def resolve_callables(program):
         return program
 
     # get registered callables
-    known_callables = program.callables_table.copy()
+    known_callables = dict(program.callables_table)
     # get target specific callables
     known_callables.update(program.target.get_device_ast_builder().known_callables)
     # get loopy specific callables

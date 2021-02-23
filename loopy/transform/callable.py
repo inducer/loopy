@@ -61,14 +61,14 @@ def register_callable(translation_unit, function_identifier, callable_,
     if (function_identifier in translation_unit.callables_table) and (
             translation_unit.callables_table[function_identifier] != callable_
             and redefining_not_ok):
-        raise LoopyError("Redifining function identifier not allowed. Set the"
+        raise LoopyError("Redefining function identifier not allowed. Set the"
                 " option 'redefining_not_ok=False' to bypass this error.")
 
-    callables = translation_unit.callables_table.copy()
-    callables[function_identifier] = callable_
+    new_callables = translation_unit.callables_table.set(function_identifier,
+            callable_)
 
     return translation_unit.copy(
-            callables_table=callables)
+            callables_table=new_callables)
 
 
 def merge(translation_units):
