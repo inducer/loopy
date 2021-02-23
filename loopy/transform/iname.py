@@ -634,17 +634,14 @@ def untag_inames(kernel, iname_to_untag, tag_type):
 
     .. versionadded:: 2018.1
     """
+    from loopy.kernel.data import filter_iname_tags_by_type
+    tags_to_remove = filter_iname_tags_by_type(
+            kernel.inames[iname_to_untag].tags, tag_type)
+    new_inames = kernel.inames.copy()
+    new_inames[iname_to_untag] = kernel.inames[iname_to_untag].without_tags(
+            tags_to_remove, verify_existence=False)
 
-    knl_iname_to_tags = kernel.iname_to_tags.copy()
-    old_tags = knl_iname_to_tags.get(iname_to_untag, frozenset())
-    old_tags = {tag for tag in old_tags if not isinstance(tag, tag_type)}
-
-    if old_tags:
-        knl_iname_to_tags[iname_to_untag] = old_tags
-    else:
-        del knl_iname_to_tags[iname_to_untag]
-
-    return kernel.copy(iname_to_tags=knl_iname_to_tags)
+    return kernel.copy(inames=new_inames)
 
 # }}}
 
@@ -722,9 +719,6 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
     iname_to_tag = [(iname, parse_tag(tag)) for iname, tag in iname_to_tag]
 
-    from loopy.kernel.data import (ConcurrentTag, ForceSequentialTag,
-                                   filter_iname_tags_by_type)
-
     # {{{ globbing
 
     all_inames = kernel.all_inames()
@@ -752,31 +746,17 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
     # }}}
 
-    knl_iname_to_tags = kernel.iname_to_tags.copy()
-    for iname, new_tag in iname_to_tag.items():
+    knl_inames = kernel.inames.copy()
+    for name, new_tag in iname_to_tag.items():
         if not new_tag:
             continue
 
-        old_tags = kernel.iname_tags(iname)
+        if name not in kernel.all_inames():
+            raise ValueError("cannot tag '%s'--not known" % name)
 
-        if iname not in kernel.all_inames():
-            raise ValueError("cannot tag '%s'--not known" % iname)
+        knl_inames[name] = knl_inames[name].tagged(new_tag)
 
-        if (isinstance(new_tag, ConcurrentTag)
-                and filter_iname_tags_by_type(old_tags, ForceSequentialTag)):
-            raise ValueError("cannot tag '%s' as parallel--"
-                    "iname requires sequential execution" % iname)
-
-        if (isinstance(new_tag, ForceSequentialTag)
-                and filter_iname_tags_by_type(old_tags, ConcurrentTag)):
-            raise ValueError("'%s' is already tagged as parallel, "
-                    "but is now prohibited from being parallel "
-                    "(likely because of participation in a precompute or "
-                    "a reduction)" % iname)
-
-        knl_iname_to_tags[iname] = old_tags | frozenset([new_tag])
-
-    return kernel.copy(iname_to_tags=knl_iname_to_tags)
+    return kernel.copy(inames=knl_inames)
 
 # }}}
 
@@ -1052,8 +1032,7 @@ def get_iname_duplication_options(kernel, use_boostable_into=None):
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_iname_sets):
         # Check whether this iname has a parallel tag and discard it if so
-        if (iname in kernel.iname_to_tags
-                and kernel.iname_tags_of_type(iname, ConcurrentTag)):
+        if kernel.iname_tags_of_type(iname, ConcurrentTag):
             continue
 
         # Reconstruct an object that may be passed to the within parameter of
@@ -1804,20 +1783,20 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
             AutoFitLocalIndexTag)
 
     n_local_axes = max([tag.axis
-        for tags in kernel.iname_to_tags.values()
-        for tag in tags
+        for iname in kernel.inames.values()
+        for tag in iname.tags
         if isinstance(tag, LocalIndexTag)],
         default=-1) + 1
 
     n_group_axes = max([tag.axis
-        for tags in kernel.iname_to_tags.values()
-        for tag in tags
+        for iname in kernel.inames.values()
+        for tag in iname.tags
         if isinstance(tag, GroupIndexTag)],
         default=-1) + 1
 
     contains_auto_local_tag = any([isinstance(tag, AutoFitLocalIndexTag)
-        for tags in kernel.iname_to_tags
-        for tag in tags])
+        for iname in kernel.inames.values()
+        for tag in iname.tags])
 
     if contains_auto_local_tag:
         raise LoopyError("Kernels containing l.auto tags are invalid"
@@ -1834,9 +1813,9 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
 
     for i in range(n_local_axes):
         ith_local_axes_tag = LocalIndexTag(i)
-        inames = [iname
-                for iname, tags in kernel.iname_to_tags.items()
-                if ith_local_axes_tag in tags]
+        inames = [name
+                for name, iname in kernel.inames.items()
+                if ith_local_axes_tag in iname.tags]
         if not inames:
             raise LoopyError(f"Unused local hw axes {i}.")
 
@@ -1844,9 +1823,9 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
 
     for i in range(n_group_axes):
         ith_group_axes_tag = GroupIndexTag(i)
-        inames = [iname
-                for iname, tags in kernel.iname_to_tags.items()
-                if ith_group_axes_tag in tags]
+        inames = [name
+                for name, iname in kernel.inames.items()
+                if ith_group_axes_tag in iname.tags]
         if not inames:
             raise LoopyError(f"Unused group hw axes {i}.")
 
@@ -1861,8 +1840,8 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
 
     for insn in kernel.instructions:
         if within(kernel, insn):
-            within_tags = frozenset().union(*(kernel.iname_to_tags.get(iname,
-                frozenset()) for iname in insn.within_inames))
+            within_tags = frozenset().union(*(kernel.inames[iname].tags
+                for iname in insn.within_inames))
             missing_local_axes = [i for i in range(n_local_axes)
                     if LocalIndexTag(i) not in within_tags]
             missing_group_axes = [i for i in range(n_group_axes)
