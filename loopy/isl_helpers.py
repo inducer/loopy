@@ -581,6 +581,8 @@ def set_dim_name(obj, dt, pos, name):
     if isinstance(obj, isl.PwQPolynomial):
         return obj.set_dim_name(dt, pos, name)
     elif isinstance(obj, isl.PwAff):
+        # work around missing isl_pw_aff_set_dim_name for now.
+        # https://github.com/inducer/loopy/pull/233/files#r580594032
         return obj.set_dim_id(dt, pos, isl.Id.read_from_str(obj.get_ctx(), name))
     else:
         raise NotImplementedError(f"not implemented for {type(obj)}.")
