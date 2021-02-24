@@ -64,6 +64,17 @@ class KernelProxyForCodegenOperationCacheManager:
                 self.inames[iname].tags,
                 tag_type_or_types)
 
+    def __eq__(self, other):
+        if not isinstance(other, (LoopKernel,
+                KernelProxyForCodegenOperationCacheManager)):
+            return False
+
+        # TODO: could be more precise by only looking the inames' attributes
+        # relevant to CodegenOperationCacheManager
+        return (self.inames == other.inames
+                and self.instructions == other.instructions
+                and self.schedule == other.schedule)
+
 
 class CodegenOperationCacheManager:
     """
@@ -94,11 +105,7 @@ class CodegenOperationCacheManager:
         corresponding to *kernel* if the cached variables in *self* would
         be invalid for *kernel*, else returns *self*.
         """
-        if ((self.kernel.instructions != kernel.instructions)
-                or (self.kernel.schedule != kernel.schedule)
-                # TODO: could be more precise by only looking the inames' attributes
-                # relevant to CodegenOperationCacheManager
-                or (self.kernel.inames != kernel.inames)):
+        if self.kernel != kernel:
             # cached values are invalidated, must create a new one
             return CodegenOperationCacheManager.from_kernel(kernel)
 
