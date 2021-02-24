@@ -80,16 +80,16 @@ class CodegenOperationCacheManager:
     """
     Caches operations arising during the codegen pipeline.
 
-    .. attribute:: kernel
+    .. attribute:: kernel_proxy
 
         An instance of :class:`KernelProxyForCodegenOperationCacheManager`.
 
     .. automethod:: with_kernel
     .. automethod:: get_parallel_inames_in_a_callkernel
     """
-    def __init__(self, kernel):
+    def __init__(self, kernel_proxy):
         assert isinstance(kernel_proxy, KernelProxyForCodegenOperationCacheManager)
-        self.kernel = kernel
+        self.kernel_proxy = kernel_proxy
 
     @staticmethod
     def from_kernel(kernel):
@@ -105,7 +105,7 @@ class CodegenOperationCacheManager:
         corresponding to *kernel* if the cached variables in *self* would
         be invalid for *kernel*, else returns *self*.
         """
-        if self.kernel != kernel:
+        if self.kernel_proxy != kernel:
             # cached values are invalidated, must create a new one
             return CodegenOperationCacheManager.from_kernel(kernel)
 
@@ -121,12 +121,12 @@ class CodegenOperationCacheManager:
         """
         active_inames = []
 
-        for i in range(len(self.kernel.schedule)):
+        for i in range(len(self.kernel_proxy.schedule)):
             if i == 0:
                 active_inames.append(frozenset())
                 continue
 
-            sched_item = self.kernel.schedule[i-1]
+            sched_item = self.kernel_proxy.schedule[i-1]
             if isinstance(sched_item, EnterLoop):
                 active_inames.append(active_inames[i-1]
                         | frozenset([sched_item.iname]))
@@ -149,12 +149,12 @@ class CodegenOperationCacheManager:
         """
         callkernel_index = []
 
-        for i in range(len(self.kernel.schedule)):
+        for i in range(len(self.kernel_proxy.schedule)):
             if i == 0:
                 callkernel_index.append(None)
                 continue
 
-            sched_item = self.kernel.schedule[i-1]
+            sched_item = self.kernel_proxy.schedule[i-1]
 
             if isinstance(sched_item, CallKernel):
                 callkernel_index.append(i-1)
@@ -175,13 +175,13 @@ class CodegenOperationCacheManager:
         """
         has_barrier_within = []
 
-        for sched_idx, sched_item in enumerate(self.kernel.schedule):
+        for sched_idx, sched_item in enumerate(self.kernel_proxy.schedule):
             if isinstance(sched_item, BeginBlockItem):
                 # TODO: calls to "gather_schedule_block" can be amortized
-                _, endblock_index = gather_schedule_block(self.kernel.schedule,
+                _, endblock_index = gather_schedule_block(self.kernel_proxy.schedule,
                         sched_idx)
                 has_barrier_within.append(any(
-                        isinstance(self.kernel.schedule[i], Barrier)
+                        isinstance(self.kernel_proxy.schedule[i], Barrier)
                         for i in range(sched_idx+1, endblock_index)))
             elif isinstance(sched_item, Barrier):
                 has_barrier_within.append(True)
@@ -196,7 +196,7 @@ class CodegenOperationCacheManager:
         Cached variant of :func:`loopy.schedule.get_insn_ids_for_block_at`.
         """
         from loopy.schedule import get_insn_ids_for_block_at
-        return get_insn_ids_for_block_at(self.kernel.schedule, sched_index)
+        return get_insn_ids_for_block_at(self.kernel_proxy.schedule, sched_index)
 
     @memoize_method
     def get_parallel_inames_in_a_callkernel(self, callkernel_index):
@@ -209,16 +209,17 @@ class CodegenOperationCacheManager:
         """
 
         from loopy.kernel.data import ConcurrentTag
-        assert isinstance(self.kernel.schedule[callkernel_index], CallKernel)
+        assert isinstance(self.kernel_proxy.schedule[callkernel_index], CallKernel)
         insn_ids_in_subkernel = self.get_insn_ids_for_block_at(callkernel_index)
 
         inames_in_subkernel = {iname
                                for insn in insn_ids_in_subkernel
-                               for iname in self.kernel.insn_inames(insn)}
+                               for iname in self.kernel_proxy.insn_inames(insn)}
 
         return frozenset([iname
                           for iname in inames_in_subkernel
-                          if self.kernel.iname_tags_of_type(iname, ConcurrentTag)])
+                          if self.kernel_proxy.iname_tags_of_type(iname,
+                                                                  ConcurrentTag)])
 
 
 # vim: fdm=marker
