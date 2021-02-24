@@ -34,14 +34,14 @@ from loopy.kernel.data import Iname
 __doc__ = """
 .. currentmodule:: loopy.codegen.tools
 
-.. autoclass:: ProxyKernel
+.. autoclass:: KernelProxyForCodegenOperationCacheManager
 
 .. autoclass:: CodegenOperationCacheManager
 """
 
 
 @dataclass
-class ProxyKernel:
+class KernelProxyForCodegenOperationCacheManager:
     """
     Proxy to :class:`loopy.LoopKernel` to be used by
     :class:`CodegenOperationCacheManager`.
@@ -71,20 +71,20 @@ class CodegenOperationCacheManager:
 
     .. attribute:: kernel
 
-        An instance of :class:`ProxyKernel`.
+        An instance of :class:`KernelProxyForCodegenOperationCacheManager`.
 
     .. automethod:: with_kernel
     .. automethod:: get_parallel_inames_in_a_callkernel
     """
     def __init__(self, kernel):
-        assert isinstance(kernel, ProxyKernel)
+        assert isinstance(kernel_proxy, KernelProxyForCodegenOperationCacheManager)
         self.kernel = kernel
 
     @staticmethod
     def from_kernel(kernel):
         assert isinstance(kernel, LoopKernel)
         return CodegenOperationCacheManager(
-                ProxyKernel(kernel.instructions,
+                KernelProxyForCodegenOperationCacheManager(kernel.instructions,
                             kernel.schedule,
                             kernel.inames))
 
