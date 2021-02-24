@@ -86,13 +86,15 @@ class ArrayArgDescriptor(ImmutableRecord):
         # {{{ sanity checks
 
         from loopy.kernel.array import ArrayDimImplementationTag
+        from loopy.kernel.data import auto
 
-        assert isinstance(shape, tuple)
-        assert isinstance(dim_tags, tuple)
+        assert isinstance(shape, tuple) or shape in [None, auto]
+        assert isinstance(dim_tags, tuple) or dim_tags is None
 
-        # FIXME at least vector dim tags should be supported
-        assert all(isinstance(dim_tag, ArrayDimImplementationTag) for dim_tag in
-                dim_tags)
+        if dim_tags:
+            # FIXME at least vector dim tags should be supported
+            assert all(isinstance(dim_tag, ArrayDimImplementationTag) for dim_tag in
+                    dim_tags)
 
         # }}}
 
@@ -106,8 +108,16 @@ class ArrayArgDescriptor(ImmutableRecord):
         Returns an instance of :class:`ArrayArgDescriptor` with its shapes, strides,
         mapped by *f*.
         """
-        new_shape = tuple(f(axis_len) for axis_len in self.shape)
-        new_dim_tags = tuple(dim_tag.map_expr(f) for dim_tag in self.dim_tags)
+        if self.shape is not None:
+            new_shape = tuple(f(axis_len) for axis_len in self.shape)
+        else:
+            new_shape = None
+
+        if self.dim_tags is not None:
+            new_dim_tags = tuple(dim_tag.map_expr(f) for dim_tag in self.dim_tags)
+        else:
+            new_dim_tags = None
+
         return self.copy(shape=new_shape, dim_tags=new_dim_tags)
 
     def depends_on(self):
@@ -116,18 +126,22 @@ class ArrayArgDescriptor(ImmutableRecord):
         :class:`ArrayArgDescriptor` depends on.
         """
         from loopy.kernel.data import auto
-        result = DependencyMapper(composite_leaves=False)([lngth for lngth in
-            self.shape if lngth not in [None, auto]]) | (
-                frozenset().union(*(dim_tag.depends_on() for dim_tag in
-                    self.dim_tags)))
+        result = set()
+
+        if self.shape:
+            dep_mapper = DependencyMapper(composite_leaves=False)
+            for axis_len in self.shape:
+                if axis_len not in [None, auto]:
+                    result |= dep_mapper(axis_len)
+
+        if self.dim_tags:
+            for dim_tag in self.dim_tags:
+                result |= dim_tag.depends_on()
+
         return frozenset(var.name for var in result)
 
     def update_persistent_hash(self, key_hash, key_builder):
-        for shape_i in self.shape:
-            if shape_i is None:
-                key_builder.rec(key_hash, shape_i)
-            else:
-                key_builder.update_for_pymbolic_expression(key_hash, shape_i)
+        key_builder.update_for_pymbolic_expression(key_hash, self.shape)
         key_builder.rec(key_hash, self.address_space)
         key_builder.rec(key_hash, self.dim_tags)
 

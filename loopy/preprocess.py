@@ -2254,16 +2254,20 @@ def infer_arg_descr(program):
     renamed_entrypoints = set()
 
     for e in program.entrypoints:
-        def _tuple_if_int(s):
-            if isinstance(s, int):
+        def _tuple_or_None(s):
+            if isinstance(s, tuple):
+                return s
+            elif s in [None, auto]:
+                return s
+            else:
                 return s,
-            return s
+
         arg_id_to_descr = {}
         for arg in program[e].args:
             if isinstance(arg, ArrayBase):
                 if arg.shape not in (None, auto):
                     arg_id_to_descr[arg.name] = ArrayArgDescriptor(
-                            _tuple_if_int(arg.shape), arg.address_space,
+                            _tuple_or_None(arg.shape), arg.address_space,
                             arg.dim_tags)
             elif isinstance(arg, ValueArg):
                 arg_id_to_descr[arg.name] = ValueArgDescriptor()
