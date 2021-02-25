@@ -116,7 +116,8 @@ def test_pairwise_schedule_creation():
     # Relationship between insn_a and insn_b ---------------------------------------
 
     # Get two maps
-    sched_map_before, sched_map_after = sched_maps[("insn_a", "insn_b")]
+    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
+        ("insn_a", "insn_b")]
 
     # Create expected maps, align, compare
 
@@ -147,7 +148,8 @@ def test_pairwise_schedule_creation():
     # Relationship between insn_a and insn_c ---------------------------------------
 
     # Get two maps
-    sched_map_before, sched_map_after = sched_maps[("insn_a", "insn_c")]
+    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
+        ("insn_a", "insn_c")]
 
     # Create expected maps, align, compare
 
@@ -178,7 +180,8 @@ def test_pairwise_schedule_creation():
     # Relationship between insn_a and insn_d ---------------------------------------
 
     # Get two maps
-    sched_map_before, sched_map_after = sched_maps[("insn_a", "insn_d")]
+    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
+        ("insn_a", "insn_d")]
 
     # Create expected maps, align, compare
 
@@ -209,7 +212,8 @@ def test_pairwise_schedule_creation():
     # Relationship between insn_b and insn_c ---------------------------------------
 
     # Get two maps
-    sched_map_before, sched_map_after = sched_maps[("insn_b", "insn_c")]
+    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
+        ("insn_b", "insn_c")]
 
     # Create expected maps, align, compare
 
@@ -240,7 +244,8 @@ def test_pairwise_schedule_creation():
     # Relationship between insn_b and insn_d ---------------------------------------
 
     # Get two maps
-    sched_map_before, sched_map_after = sched_maps[("insn_b", "insn_d")]
+    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
+        ("insn_b", "insn_d")]
 
     # Create expected maps, align, compare
 
@@ -271,7 +276,8 @@ def test_pairwise_schedule_creation():
     # Relationship between insn_c and insn_d ---------------------------------------
 
     # Get two maps
-    sched_map_before, sched_map_after = sched_maps[("insn_c", "insn_d")]
+    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
+        ("insn_c", "insn_d")]
 
     # Create expected maps, align, compare
 
@@ -369,9 +375,6 @@ def test_statement_instance_ordering_creation():
     from loopy.schedule.checker import (
         get_schedules_for_statement_pairs,
     )
-    from loopy.schedule.checker.schedule import (
-        get_lex_order_map_for_sched_space,
-    )
     from loopy.schedule.checker.utils import (
         ensure_dim_names_match_and_align,
         append_marker_to_isl_map_var_names,
@@ -441,11 +444,8 @@ def test_statement_instance_ordering_creation():
             ):
 
         # Get pairwise schedule
-        sched_map_before, sched_map_after = sched_maps[
+        (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
             (insn_id_before, insn_id_after)]
-
-        # Get map representing lexicographic ordering
-        sched_lex_order_map = get_lex_order_map_for_sched_space(sched_map_before)
 
         # Get expected lex order map
         expected_lex_order_map = create_lex_order_map(

@@ -277,6 +277,10 @@ def generate_pairwise_schedules(
 
     # Second, create pairwise schedules for each individual pair of insns
 
+    from loopy.schedule.checker.lexicographic_order_map import (
+        create_lex_order_map,
+    )
+
     pairwise_schedules = {}
     for insn_ids in insn_id_pairs:
         lex_tuples = [stmt_instances[insn_id] for insn_id in insn_ids]
@@ -310,30 +314,13 @@ def generate_pairwise_schedules(
             in zip(insn_ids, lex_tuples_simplified, int_sids)
             ]
 
-        pairwise_schedules[tuple(insn_ids)] = tuple(sched_maps)
+        # TODO (moved func below up here to avoid passing extra info around)
+        # Benefit (e.g.): don't want to examine the schedule tuple in separate func
+        # below to re-determine which parallel
+        # dims are used. (could simplify everything by always using all dims, which
+        # would make maps more complex than necessary)
+        lex_order_map = create_lex_order_map(after_names=out_names_sched)
+
+        pairwise_schedules[tuple(insn_ids)] = (tuple(sched_maps), lex_order_map)
 
     return pairwise_schedules
-
-
-def get_lex_order_map_for_sched_space(schedule):
-    """Return an :class:`islpy.BasicMap` that maps each point in a
-        lexicographic ordering to every point that occurs later.
-
-    :arg schedule: A :class:`islpy.Map` representing the ordering of
-        statement instances as a mapping from statement instances to
-        lexicographic time.
-
-    :returns: An :class:`islpy.BasicMap` representing a lexicographic
-        ordering as a mapping from each point in lexicographic time
-        to every point that occurs later in lexicographic time, with
-        the dimension count and names matching the output dimension
-        of `schedule`.
-
-    """
-
-    from loopy.schedule.checker.lexicographic_order_map import (
-        create_lex_order_map,
-    )
-
-    lex_dim_names = schedule.space.get_var_names(isl.dim_type.out)
-    return create_lex_order_map(after_names=lex_dim_names)
