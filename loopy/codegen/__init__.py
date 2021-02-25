@@ -524,6 +524,9 @@ def generate_code_v2(kernel):
         for idi in tv.decl_info(kernel.target, index_dtype=kernel.index_dtype):
             seen_dtypes.add(idi.dtype)
 
+    if kernel.all_inames():
+        seen_dtypes.add(kernel.index_dtype)
+
     preambles = kernel.preambles[:]
 
     preamble_info = PreambleInfo(
