@@ -2524,7 +2524,7 @@ def test_preamble_with_separate_temporaries(ctx_factory):
     # create a function mangler
 
     # and finally create a test
-    n = 10
+    n = 5
     # for each entry come up with a random number of data points
     num_data = np.asarray(np.random.randint(2, 10, size=n), dtype=np.int32)
     # turn into offsets
