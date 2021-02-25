@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,10 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
-
 from loopy.diagnostic import LoopyError, warn
-from pytools import ImmutableRecord
+from pytools import ImmutableRecord, ProcessLogger
 import islpy as isl
 
 from pytools.persistent_dict import WriteOncePersistentDict
@@ -34,6 +30,24 @@ from loopy.version import DATA_MODEL_VERSION
 
 import logging
 logger = logging.getLogger(__name__)
+
+__doc__ = """
+.. currentmodule:: loopy.codegen
+
+.. autoclass:: ImplementedDataInfo
+
+.. autoclass:: PreambleInfo
+
+.. autoclass:: VectorizationInfo
+
+.. autoclass:: SeenFunction
+
+.. autoclass:: CodeGenerationState
+
+.. automodule:: loopy.codegen.result
+
+.. automodule:: loopy.codegen.tools
+"""
 
 
 # {{{ implemented data info
@@ -114,7 +128,7 @@ class Unvectorizable(Exception):
     pass
 
 
-class VectorizationInfo(object):
+class VectorizationInfo:
     """
     .. attribute:: iname
     .. attribute:: length
@@ -134,16 +148,21 @@ class SeenFunction(ImmutableRecord):
     .. attribute:: arg_dtypes
 
         a tuple of arg dtypes
+
+    .. attribute:: result_dtypes
+
+        a tuple of result dtypes
     """
 
-    def __init__(self, name, c_name, arg_dtypes):
+    def __init__(self, name, c_name, arg_dtypes, result_dtypes):
         ImmutableRecord.__init__(self,
                 name=name,
                 c_name=c_name,
-                arg_dtypes=arg_dtypes)
+                arg_dtypes=arg_dtypes,
+                result_dtypes=result_dtypes)
 
 
-class CodeGenerationState(object):
+class CodeGenerationState:
     """
     .. attribute:: kernel
     .. attribute:: implemented_data_info
@@ -187,6 +206,10 @@ class CodeGenerationState(object):
         generated.
 
     .. attribute:: schedule_index_end
+
+    .. attribute:: codegen_cache_manager
+
+        An instance of :class:`loopy.codegen.tools.CodegenOperationCacheManager`.
     """
 
     def __init__(self, kernel,
@@ -196,7 +219,8 @@ class CodeGenerationState(object):
             vectorization_info=None, var_name_generator=None,
             is_generating_device_code=None,
             gen_program_name=None,
-            schedule_index_end=None):
+            schedule_index_end=None,
+            codegen_cachemanager=None):
         self.kernel = kernel
         self.implemented_data_info = implemented_data_info
         self.implemented_domain = implemented_domain
@@ -211,6 +235,7 @@ class CodeGenerationState(object):
         self.is_generating_device_code = is_generating_device_code
         self.gen_program_name = gen_program_name
         self.schedule_index_end = schedule_index_end
+        self.codegen_cachemanager = codegen_cachemanager
 
     # {{{ copy helpers
 
@@ -257,7 +282,9 @@ class CodeGenerationState(object):
                 var_name_generator=self.var_name_generator,
                 is_generating_device_code=is_generating_device_code,
                 gen_program_name=gen_program_name,
-                schedule_index_end=schedule_index_end)
+                schedule_index_end=schedule_index_end,
+                codegen_cachemanager=self.codegen_cachemanager.with_kernel(kernel),
+                )
 
     def copy_and_assign(self, name, value):
         """Make a copy of self with variable *name* fixed to *value*."""
@@ -388,7 +415,7 @@ def generate_code_v2(kernel):
         from loopy.schedule import get_one_scheduled_kernel
         kernel = get_one_scheduled_kernel(kernel)
 
-    if kernel.state != KernelState.SCHEDULED:
+    if kernel.state != KernelState.LINEARIZED:
         raise LoopyError("cannot generate code for a kernel that has not been "
                 "scheduled")
 
@@ -413,7 +440,7 @@ def generate_code_v2(kernel):
     from loopy.check import pre_codegen_checks
     pre_codegen_checks(kernel)
 
-    logger.info("%s: generate code: start" % kernel.name)
+    codegen_plog = ProcessLogger(logger, f"{kernel.name}: generate code")
 
     # {{{ examine arg list
 
@@ -443,7 +470,7 @@ def generate_code_v2(kernel):
             raise ValueError("argument type not understood: '%s'" % type(arg))
 
     allow_complex = False
-    for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):
+    for var in kernel.args + list(kernel.temporary_variables.values()):
         if var.dtype.involves_complex():
             allow_complex = True
 
@@ -454,6 +481,9 @@ def generate_code_v2(kernel):
     seen_atomic_dtypes = set()
 
     initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
+
+    from loopy.codegen.tools import CodegenOperationCacheManager
+
     codegen_state = CodeGenerationState(
             kernel=kernel,
             implemented_data_info=implemented_data_info,
@@ -470,7 +500,9 @@ def generate_code_v2(kernel):
                 kernel.target.host_program_name_prefix
                 + kernel.name
                 + kernel.target.host_program_name_suffix),
-            schedule_index_end=len(kernel.schedule))
+            schedule_index_end=len(kernel.schedule),
+            codegen_cachemanager=CodegenOperationCacheManager.from_kernel(kernel),
+            )
 
     from loopy.codegen.result import generate_host_or_device_program
     codegen_result = generate_host_or_device_program(
@@ -485,10 +517,12 @@ def generate_code_v2(kernel):
 
     # {{{ handle preambles
 
-    for arg in kernel.args:
-        seen_dtypes.add(arg.dtype)
-    for tv in six.itervalues(kernel.temporary_variables):
-        seen_dtypes.add(tv.dtype)
+    for idi in codegen_state.implemented_data_info:
+        seen_dtypes.add(idi.dtype)
+
+    for tv in kernel.temporary_variables.values():
+        for idi in tv.decl_info(kernel.target, index_dtype=kernel.index_dtype):
+            seen_dtypes.add(idi.dtype)
 
     preambles = kernel.preambles[:]
 
@@ -516,7 +550,7 @@ def generate_code_v2(kernel):
             implemented_domains=LazilyUnpicklingDict(
                     codegen_result.implemented_domains))
 
-    logger.info("%s: generate code: done" % kernel.name)
+    codegen_plog.done()
 
     if CACHING_ENABLED:
         code_gen_cache.store_if_not_present(input_kernel, codegen_result)

@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,8 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-import six
 
 import islpy as isl
 from islpy import dim_type
@@ -53,7 +49,7 @@ def _rename_temporaries(kernel, suffix, all_identifiers):
     vng = kernel.get_var_name_generator()
 
     new_temporaries = {}
-    for tv in six.itervalues(kernel.temporary_variables):
+    for tv in kernel.temporary_variables.values():
         if tv.name in all_identifiers:
             new_tv_name = vng(tv.name+suffix)
         else:
@@ -105,7 +101,7 @@ def _ordered_merge_lists(list_a, list_b):
 def _merge_dicts(item_name, dict_a, dict_b):
     result = dict_a.copy()
 
-    for k, v in six.iteritems(dict_b):
+    for k, v in dict_b.items():
         if k in result:
             if v != result[k]:
                 raise LoopyError("inconsistent %ss for key '%s' in merge: %s and %s"
@@ -129,16 +125,16 @@ def _merge_values(item_name, val_a, val_b):
 
 # {{{ two-kernel fusion
 
-def _fuse_two_kernels(knla, knlb):
+def _fuse_two_kernels(kernela, kernelb):
     from loopy.kernel import KernelState
-    if knla.state != KernelState.INITIAL or knlb.state != KernelState.INITIAL:
+    if kernela.state != KernelState.INITIAL or kernelb.state != KernelState.INITIAL:
         raise LoopyError("can only fuse kernels in INITIAL state")
 
     # {{{ fuse domains
 
-    new_domains = knla.domains[:]
+    new_domains = kernela.domains[:]
 
-    for dom_b in knlb.domains:
+    for dom_b in kernelb.domains:
         i_fuse = _find_fusable_loop_domain_index(dom_b, new_domains)
         if i_fuse is None:
             new_domains.append(dom_b)
@@ -164,14 +160,14 @@ def _fuse_two_kernels(knla, knlb):
 
     # }}}
 
-    vng = knla.get_var_name_generator()
+    vng = kernela.get_var_name_generator()
     b_var_renames = {}
 
     # {{{ fuse args
 
-    new_args = knla.args[:]
-    for b_arg in knlb.args:
-        if b_arg.name not in knla.arg_dict:
+    new_args = kernela.args[:]
+    for b_arg in kernelb.args:
+        if b_arg.name not in kernela.arg_dict:
             new_arg_name = vng(b_arg.name)
 
             if new_arg_name != b_arg.name:
@@ -179,21 +175,21 @@ def _fuse_two_kernels(knla, knlb):
 
             new_args.append(b_arg.copy(name=new_arg_name))
         else:
-            if b_arg != knla.arg_dict[b_arg.name]:
+            if b_arg != kernela.arg_dict[b_arg.name]:
                 raise LoopyError(
                         "argument '{arg_name}' has inconsistent definition between "
                         "the two kernels being merged ({arg_a} <-> {arg_b})"
                         .format(
                             arg_name=b_arg.name,
-                            arg_a=str(knla.arg_dict[b_arg.name]),
+                            arg_a=str(kernela.arg_dict[b_arg.name]),
                             arg_b=str(b_arg)))
 
     # }}}
 
     # {{{ fuse temporaries
 
-    new_temporaries = knla.temporary_variables.copy()
-    for b_name, b_tv in six.iteritems(knlb.temporary_variables):
+    new_temporaries = kernela.temporary_variables.copy()
+    for b_name, b_tv in kernelb.temporary_variables.items():
         assert b_name == b_tv.name
 
         new_tv_name = vng(b_name)
@@ -206,18 +202,18 @@ def _fuse_two_kernels(knla, knlb):
 
     # }}}
 
-    knlb = _apply_renames_in_exprs(knlb, b_var_renames)
+    kernelb = _apply_renames_in_exprs(kernelb, b_var_renames)
 
     from pymbolic.imperative.transform import \
             fuse_statement_streams_with_unique_ids
     new_instructions, old_b_id_to_new_b_id = \
             fuse_statement_streams_with_unique_ids(
-                    knla.instructions, knlb.instructions)
+                    kernela.instructions, kernelb.instructions)
 
     # {{{ fuse assumptions
 
-    assump_a = knla.assumptions
-    assump_b = knlb.assumptions
+    assump_a = kernela.assumptions
+    assump_b = kernelb.assumptions
     assump_a, assump_b = isl.align_two(assump_a, assump_b)
 
     shared_param_names = list(
@@ -240,49 +236,49 @@ def _fuse_two_kernels(knla, knlb):
             domains=new_domains,
             instructions=new_instructions,
             args=new_args,
-            name="%s_and_%s" % (knla.name, knlb.name),
-            preambles=_ordered_merge_lists(knla.preambles, knlb.preambles),
+            name=f"{kernela.name}_and_{kernelb.name}",
+            preambles=_ordered_merge_lists(kernela.preambles, kernelb.preambles),
             preamble_generators=_ordered_merge_lists(
-                knla.preamble_generators, knlb.preamble_generators),
+                kernela.preamble_generators, kernelb.preamble_generators),
             assumptions=new_assumptions,
             local_sizes=_merge_dicts(
-                "local size", knla.local_sizes, knlb.local_sizes),
+                "local size", kernela.local_sizes, kernelb.local_sizes),
             temporary_variables=new_temporaries,
-            iname_to_tags=_merge_dicts(
-                "iname-to-tag mapping",
-                knla.iname_to_tags,
-                knlb.iname_to_tags),
+            inames=_merge_dicts(
+                "inames",
+                kernela.inames,
+                kernelb.inames),
             substitutions=_merge_dicts(
                 "substitution",
-                knla.substitutions,
-                knlb.substitutions),
+                kernela.substitutions,
+                kernelb.substitutions),
             function_manglers=_ordered_merge_lists(
-                knla.function_manglers,
-                knlb.function_manglers),
+                kernela.function_manglers,
+                kernelb.function_manglers),
             symbol_manglers=_ordered_merge_lists(
-                knla.symbol_manglers,
-                knlb.symbol_manglers),
+                kernela.symbol_manglers,
+                kernelb.symbol_manglers),
 
             iname_slab_increments=_merge_dicts(
                 "iname slab increment",
-                knla.iname_slab_increments,
-                knlb.iname_slab_increments),
-            loop_priority=knla.loop_priority.union(knlb.loop_priority),
+                kernela.iname_slab_increments,
+                kernelb.iname_slab_increments),
+            loop_priority=kernela.loop_priority.union(kernelb.loop_priority),
             silenced_warnings=_ordered_merge_lists(
-                knla.silenced_warnings,
-                knlb.silenced_warnings),
+                kernela.silenced_warnings,
+                kernelb.silenced_warnings),
             applied_iname_rewrites=_ordered_merge_lists(
-                knla.applied_iname_rewrites,
-                knlb.applied_iname_rewrites),
+                kernela.applied_iname_rewrites,
+                kernelb.applied_iname_rewrites),
             index_dtype=_merge_values(
                 "index dtype",
-                knla.index_dtype,
-                knlb.index_dtype),
+                kernela.index_dtype,
+                kernelb.index_dtype),
             target=_merge_values(
                 "target",
-                knla.target,
-                knlb.target),
-            options=knla.options), old_b_id_to_new_b_id
+                kernela.target,
+                kernelb.target),
+            options=kernela.options), old_b_id_to_new_b_id
 
 # }}}
 
@@ -371,19 +367,19 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
     kernel_insn_ids = []
     result = None
 
-    for knlb in kernels:
+    for kernelb in kernels:
         if result is None:
-            result = knlb
+            result = kernelb
             kernel_insn_ids.append([
-                insn.id for insn in knlb.instructions])
+                insn.id for insn in kernelb.instructions])
         else:
             result, old_b_id_to_new_b_id = _fuse_two_kernels(
-                    knla=result,
-                    knlb=knlb)
+                    kernela=result,
+                    kernelb=kernelb)
 
             kernel_insn_ids.append([
                 old_b_id_to_new_b_id[insn.id]
-                for insn in knlb.instructions])
+                for insn in kernelb.instructions])
 
     # {{{ realize data_flow dependencies
 

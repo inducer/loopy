@@ -1,5 +1,3 @@
-from __future__ import division, with_statement
-
 __copyright__ = "Copyright (C) 2009 Andreas Kloeckner"
 
 __license__ = """
@@ -27,7 +25,7 @@ import re
 from loopy.diagnostic import LoopyError
 
 
-class FTreeWalkerBase(object):
+class FTreeWalkerBase:
     def __init__(self, filename):
         from loopy.frontend.fortran.expression import FortranExpressionParser
         self.expr_parser = FortranExpressionParser(self)
@@ -53,8 +51,8 @@ class FTreeWalkerBase(object):
                     type(expr)))
 
     ENTITY_RE = re.compile(
-            r"^(?P<name>[_0-9a-zA-Z]+)"
-            r"(\((?P<shape>[-+*0-9:a-zA-Z, \t]+)\))?$")
+            r"^(?P<name>[_0-9a-zA-Z]+)\s*"
+            r"(\((?P<shape>[-+*/0-9:a-zA-Z, \t]+)\))?$")
 
     def parse_dimension_specs(self, node, dim_decls):
         def parse_bounds(bounds_str):

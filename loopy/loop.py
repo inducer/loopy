@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -24,7 +22,6 @@ THE SOFTWARE.
 
 
 import islpy as isl
-import six
 
 
 def potential_loop_nest_map(kernel):
@@ -65,7 +62,7 @@ def fuse_loop_domains(kernel):
 
         new_domains = None
 
-        for inner_iname, outer_inames in six.iteritems(lnm):
+        for inner_iname, outer_inames in lnm.items():
             for outer_iname in outer_inames:
                 # {{{ check if it's safe to fuse
 

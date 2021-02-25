@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -23,9 +21,6 @@ THE SOFTWARE.
 """
 
 
-import six
-from six.moves import range, zip
-
 from loopy.symbolic import (
         TaggedVariable, Reduction, LinearSubscript, TypeCast)
 from loopy.diagnostic import LoopyError, LoopyWarning
@@ -39,7 +34,7 @@ from loopy.library.function import (
 from loopy.kernel.instruction import (
         MemoryOrdering, memory_ordering,
         MemoryScope, memory_scope,
-        VarAtomicity, AtomicInit, AtomicUpdate,
+        VarAtomicity, OrderedAtomic, AtomicInit, AtomicUpdate,
         InstructionBase,
         MultiAssignmentBase, Assignment, ExpressionInstruction,
         CallInstruction, CInstruction, NoOpInstruction, BarrierInstruction)
@@ -78,7 +73,7 @@ from loopy.transform.iname import (
         affine_map_inames, find_unused_axis_tag,
         make_reduction_inames_unique,
         has_schedulable_iname_nesting, get_iname_duplication_options,
-        add_inames_to_insn)
+        add_inames_to_insn, add_inames_for_unused_hw_axes)
 
 from loopy.transform.instruction import (
         find_instructions, map_instructions,
@@ -123,12 +118,12 @@ from loopy.transform.add_barrier import add_barrier
 
 from loopy.type_inference import infer_unknown_types
 from loopy.preprocess import preprocess_kernel, realize_reduction
-from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
-from loopy.statistics import (ToCountMap, CountGranularity, stringify_stats_mapping,
-        Op, MemAccess, get_op_poly, get_op_map, get_lmem_access_poly,
-        get_DRAM_access_poly, get_gmem_access_poly, get_mem_access_map,
-        get_synchronization_poly, get_synchronization_map,
-        gather_access_footprints, gather_access_footprint_bytes)
+from loopy.schedule import (
+    generate_loop_schedules, get_one_scheduled_kernel, get_one_linearized_kernel)
+from loopy.statistics import (ToCountMap, CountGranularity,
+        stringify_stats_mapping, Op, MemAccess, get_op_map, get_mem_access_map,
+        get_synchronization_map, gather_access_footprints,
+        gather_access_footprint_bytes)
 from loopy.codegen import (
         PreambleInfo,
         generate_code, generate_code_v2, generate_body)
@@ -164,7 +159,7 @@ __all__ = [
         "MemoryScope", "memory_scope",  # lower case is deprecated
 
         "VarAtomicity",
-        "AtomicInit", "AtomicUpdate",
+        "OrderedAtomic", "AtomicInit", "AtomicUpdate",
         "InstructionBase",
         "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
         "CallInstruction", "CInstruction", "NoOpInstruction",
@@ -195,7 +190,7 @@ __all__ = [
         "affine_map_inames", "find_unused_axis_tag",
         "make_reduction_inames_unique",
         "has_schedulable_iname_nesting", "get_iname_duplication_options",
-        "add_inames_to_insn",
+        "add_inames_to_insn", "add_inames_for_unused_hw_axes",
 
         "add_prefetch", "change_arg_to_image",
         "tag_array_axes", "tag_data_axes",
@@ -248,16 +243,16 @@ __all__ = [
         "infer_unknown_types",
 
         "preprocess_kernel", "realize_reduction",
-        "generate_loop_schedules", "get_one_scheduled_kernel",
+        "generate_loop_schedules",
+        "get_one_scheduled_kernel", "get_one_linearized_kernel",
         "GeneratedProgram", "CodeGenerationResult",
         "PreambleInfo",
         "generate_code", "generate_code_v2", "generate_body",
 
         "ToCountMap", "CountGranularity", "stringify_stats_mapping", "Op",
-        "MemAccess", "get_op_poly", "get_op_map", "get_lmem_access_poly",
-        "get_DRAM_access_poly", "get_gmem_access_poly", "get_mem_access_map",
-        "get_synchronization_poly", "get_synchronization_map",
-        "gather_access_footprints", "gather_access_footprint_bytes",
+        "MemAccess",  "get_op_map", "get_mem_access_map",
+        "get_synchronization_map", "gather_access_footprints",
+        "gather_access_footprint_bytes",
 
         "CompiledKernel",
 
@@ -314,7 +309,7 @@ def set_options(kernel, *args, **kwargs):
         from loopy.options import _apply_legacy_map, Options
         kwargs = _apply_legacy_map(Options._legacy_options_map, kwargs)
 
-        for key, val in six.iteritems(kwargs):
+        for key, val in kwargs.items():
             if not hasattr(new_opt, key):
                 raise ValueError("unknown option '%s'" % key)
 
@@ -417,7 +412,7 @@ def set_caching_enabled(flag):
     CACHING_ENABLED = flag
 
 
-class CacheMode(object):
+class CacheMode:
     """A context manager for setting whether :mod:`loopy` is allowed to use
     disk caches.
     """
@@ -464,10 +459,10 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
     shape = ["n%d" % i for i in range(rank)]
     commad_indices = ", ".join(indices)
     bounds = " and ".join(
-            "0<=%s<%s" % (ind, shape_i)
+            f"0<={ind}<{shape_i}"
             for ind, shape_i in zip(indices, shape))
 
-    set_str = "{[%s]: %s}" % (
+    set_str = "{{[{}]: {}}}".format(
                 commad_indices,
                 bounds
                 )

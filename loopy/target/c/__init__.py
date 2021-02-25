@@ -1,6 +1,5 @@
 """Plain C target and base for other C-family languages."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -24,8 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
-
 import numpy as np  # noqa
 from loopy.kernel.data import CallMangleInfo
 from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
@@ -37,12 +34,25 @@ from loopy.symbolic import IdentityMapper
 from loopy.types import NumpyType
 import pymbolic.primitives as p
 
+from loopy.tools import remove_common_indentation
+import re
+
 from pytools import memoize_method
+
+__doc__ = """
+.. currentmodule loopy.target.c
+
+.. autoclass:: POD
+
+.. autoclass:: ScopingBlock
+
+.. automodule:: loopy.target.c.codegen.expression
+"""
 
 
 # {{{ dtype registry wrapper
 
-class DTypeRegistryWrapper(object):
+class DTypeRegistryWrapper:
     def __init__(self, wrapped_registry):
         self.wrapped_registry = wrapped_registry
 
@@ -80,6 +90,11 @@ class DTypeRegistryWrapper(object):
 def c99_preamble_generator(preamble_info):
     if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
         yield("10_stdint", "#include <stdint.h>")
+    if any(dtype.numpy_dtype == np.dtype("bool")
+           for dtype in preamble_info.seen_dtypes):
+        yield("10_stdbool", "#include <stdbool.h>")
+    if any(dtype.is_complex() for dtype in preamble_info.seen_dtypes):
+        yield("10_complex", "#include <complex.h>")
 
 
 def _preamble_generator(preamble_info):
@@ -151,14 +166,54 @@ def _preamble_generator(preamble_info):
             """,
             }
 
-    c_funcs = set(func.c_name for func in preamble_info.seen_functions)
+    c_funcs = {func.c_name for func in preamble_info.seen_functions}
 
-    for func_name, func_body in six.iteritems(function_defs):
+    for func_name, func_body in function_defs.items():
         if any((func_name + "_" + tpname) in c_funcs
                 for tpname in integer_type_names):
             yield def_integer_types_macro
             yield ("04_%s" % func_name, func_body)
             yield undef_integer_types_macro
+
+    for func in preamble_info.seen_functions:
+        if func.name == "int_pow":
+            base_ctype = preamble_info.kernel.target.dtype_to_typename(
+                    func.arg_dtypes[0])
+            exp_ctype = preamble_info.kernel.target.dtype_to_typename(
+                    func.arg_dtypes[1])
+            res_ctype = preamble_info.kernel.target.dtype_to_typename(
+                    func.result_dtypes[0])
+
+            if func.arg_dtypes[1].numpy_dtype.kind == "u":
+                signed_exponent_preamble = ""
+            else:
+                signed_exponent_preamble = "\n" + remove_common_indentation(
+                        """
+                        if (n < 0) {
+                          x = 1.0/x;
+                          n =  -n;
+                        }""")
+
+            yield(f"07_{func.c_name}", f"""
+            inline {res_ctype} {func.c_name}({base_ctype} x, {exp_ctype} n) {{
+              if (n == 0)
+                return 1;
+              {re.sub("^", 14*" ", signed_exponent_preamble, flags=re.M)}
+
+              {res_ctype} y = 1;
+
+              while (n > 1) {{
+                if (n % 2) {{
+                  y = x * y;
+                  x = x * x;
+                }}
+                else
+                  x = x * x;
+                n = n / 2;
+              }}
+
+              return x*y;
+            }}""")
 
 # }}}
 
@@ -202,7 +257,7 @@ class POD(Declarator):
 
 class ScopingBlock(Block):
     """A block that is mandatory for scoping and may not be simplified away
-    by :func:`loopy.codegen.results.merge_codegen_results`.
+    by :func:`loopy.codegen.result.merge_codegen_results`.
     """
 
 
@@ -246,8 +301,7 @@ def generate_linearized_array(array, value):
 
     assert array.offset == 0
 
-    from pytools import indices_in_shape
-    for ituple in indices_in_shape(value.shape):
+    for ituple in np.ndindex(value.shape):
         i = sum(i_ax * strd_ax for i_ax, strd_ax in zip(ituple, strides))
         data[i] = value[ituple]
 
@@ -308,7 +362,7 @@ class ASTSubscriptCollector(CASTIdentityMapper):
 
 # {{{ lazy expression generation
 
-class CExpression(object):
+class CExpression:
     def __init__(self, to_code_mapper, expr):
         self.to_code_mapper = to_code_mapper
         self.expr = expr
@@ -330,7 +384,7 @@ class CFamilyTarget(TargetBase):
 
     def __init__(self, fortran_abi=False):
         self.fortran_abi = fortran_abi
-        super(CFamilyTarget, self).__init__()
+        super().__init__()
 
     def split_kernel_at_global_barriers(self):
         return False
@@ -428,7 +482,7 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
             elif dtype == np.float128:  # pylint:disable=no-member
                 name = name + "l"  # fabsl
             else:
-                raise LoopyTypeError("%s does not support type %s" % (name, dtype))
+                raise LoopyTypeError(f"{name} does not support type {dtype}")
 
         return CallMangleInfo(
                 target_name=name,
@@ -436,14 +490,14 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
                 arg_dtypes=arg_dtypes)
 
     # binary functions
-    if (name in ["fmax", "fmin", "copysign"]
+    if (name in ["fmax", "fmin", "copysign", "pow"]
             and len(arg_dtypes) == 2):
 
         dtype = np.find_common_type(
             [], [dtype.numpy_dtype for dtype in arg_dtypes])
 
         if dtype.kind == "c":
-            raise LoopyTypeError("%s does not support complex numbers")
+            raise LoopyTypeError(f"{name} does not support complex numbers")
 
         elif dtype.kind == "f":
             if modify_name:
@@ -473,19 +527,19 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
     def function_manglers(self):
         return (
-                super(CFamilyASTBuilder, self).function_manglers() + [
+                super().function_manglers() + [
                     c_math_mangler
                     ])
 
     def symbol_manglers(self):
         return (
-                super(CFamilyASTBuilder, self).symbol_manglers() + [
+                super().symbol_manglers() + [
                     c_symbol_mangler
                     ])
 
     def preamble_generators(self):
         return (
-                super(CFamilyASTBuilder, self).preamble_generators() + [
+                super().preamble_generators() + [
                     _preamble_generator,
                     ])
 
@@ -520,7 +574,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
                 break
         if is_first_dev_prog:
             for tv in sorted(
-                    six.itervalues(kernel.temporary_variables),
+                    kernel.temporary_variables.values(),
                     key=lambda tv: tv.name):
 
                 if tv.address_space == AddressSpace.GLOBAL and (
@@ -610,7 +664,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
                 temporaries_written_in_subkernel(kernel, subkernel))
 
         for tv in sorted(
-                six.itervalues(kernel.temporary_variables),
+                kernel.temporary_variables.values(),
                 key=lambda tv: tv.name):
             decl_info = tv.decl_info(self.target, index_dtype=kernel.index_dtype)
 
@@ -673,7 +727,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
                     cast_tp, cast_d = cast_decl.get_decl_pair()
                     temp_var_decl = Initializer(
                             temp_var_decl,
-                            "(%s %s) (%s + %s)" % (
+                            "({} {}) ({} + {})".format(
                                 " ".join(cast_tp), cast_d,
                                 tv.base_storage,
                                 offset))
@@ -687,7 +741,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
-        for bs_name, bs_sizes in sorted(six.iteritems(base_storage_sizes)):
+        for bs_name, bs_sizes in sorted(base_storage_sizes.items()):
             bs_var_decl = Value("char", bs_name)
             from pytools import single_valued
             bs_var_decl = self.wrap_temporary_decl(
@@ -931,7 +985,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
         codegen_state.seen_functions.add(
                 SeenFunction(func_id,
                     mangle_result.target_name,
-                    mangle_result.arg_dtypes))
+                    mangle_result.arg_dtypes,
+                    mangle_result.result_dtypes))
 
         from pymbolic import var
         for i, (a, tgt_dtype) in enumerate(
@@ -1034,7 +1089,7 @@ class CFunctionDeclExtractor(CASTIdentityMapper):
 
     def map_function_decl_wrapper(self, node):
         self.decls.append(node.subdecl)
-        return super(CFunctionDeclExtractor, self)\
+        return super()\
                 .map_function_decl_wrapper(node)
 
 
@@ -1042,7 +1097,7 @@ def generate_header(kernel, codegen_result=None):
     """
     :arg kernel: a :class:`loopy.LoopKernel`
     :arg codegen_result: an instance of :class:`loopy.CodeGenerationResult`
-    :returns: a list of AST nodes (which may have :func:`str`
+    :returns: a list of AST nodes (which may have :class:`str`
         called on them to produce a string) representing
         function declarations for the generated device
         functions.
@@ -1050,7 +1105,7 @@ def generate_header(kernel, codegen_result=None):
 
     if not isinstance(kernel.target, CFamilyTarget):
         raise LoopyError(
-                'Header generation for non C-based languages are not implemented')
+                "Header generation for non C-based languages are not implemented")
 
     if codegen_result is None:
         from loopy.codegen import generate_code_v2
@@ -1079,16 +1134,18 @@ class CTarget(CFamilyTarget):
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (
-                DTypeRegistry, fill_registry_with_c99_stdint_types)
+                DTypeRegistry, fill_registry_with_c99_stdint_types,
+                fill_registry_with_c99_complex_types)
         result = DTypeRegistry()
         fill_registry_with_c99_stdint_types(result)
+        fill_registry_with_c99_complex_types(result)
         return DTypeRegistryWrapper(result)
 
 
 class CASTBuilder(CFamilyASTBuilder):
     def preamble_generators(self):
         return (
-                super(CASTBuilder, self).preamble_generators() + [
+                super().preamble_generators() + [
                     c99_preamble_generator,
                     ])
 
@@ -1103,7 +1160,7 @@ class ExecutableCTarget(CTarget):
     """
 
     def __init__(self, compiler=None, fortran_abi=False):
-        super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
+        super().__init__(fortran_abi=fortran_abi)
         from loopy.target.c.c_execution import CCompiler
         self.compiler = compiler or CCompiler()
 

@@ -1,6 +1,5 @@
 """Target for Intel ISPC."""
 
-from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -93,7 +92,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
                 return expr
 
         else:
-            return super(ExprToISPCExprMapper, self).map_variable(
+            return super().map_variable(
                     expr, type_context)
 
     def map_subscript(self, expr, type_context):
@@ -117,7 +116,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
 
                 subscript, = access_info.subscripts
                 result = var(access_info.array_name)[
-                        var("programIndex") + self.rec(lsize*subscript, 'i')]
+                        var("programIndex") + self.rec(lsize*subscript, "i")]
 
                 if access_info.vector_index is not None:
                     return self.kernel.target.add_vector_access(
@@ -125,7 +124,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
                 else:
                     return result
 
-        return super(ExprToISPCExprMapper, self).map_subscript(
+        return super().map_subscript(
                 expr, type_context)
 
 # }}}
@@ -167,7 +166,7 @@ class ISPCTarget(CFamilyTarget):
         """
         self.occa_mode = occa_mode
 
-        super(ISPCTarget, self).__init__()
+        super().__init__()
 
     host_program_name_suffix = ""
     device_program_name_suffix = "_inner"
@@ -273,7 +272,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         result.append(
                 ISPCLaunch(
                     tuple(ecm(gs_i, PREC_NONE) for gs_i in gsize),
-                    "%s(%s)" % (
+                    "{}({})".format(
                         name,
                         ", ".join(arg_names)
                         )))
@@ -351,7 +350,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                 dtype, is_written)
 
     def get_value_arg_decl(self, name, shape, dtype, is_written):
-        result = super(ISPCASTBuilder, self).get_value_arg_decl(
+        result = super().get_value_arg_decl(
                 name, shape, dtype, is_written)
 
         from cgen import Reference, Const
@@ -443,10 +442,11 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                         continue
                 else:
                     for dep in get_dependencies(term):
-                        if filter_iname_tags_by_type(
-                                kernel.iname_to_tags.get(dep, []), LocalIndexTag):
+                        if dep in kernel.all_inames() and (
+                                filter_iname_tags_by_type(kernel.inames[dep].tags,
+                                    LocalIndexTag)):
                             tag, = filter_iname_tags_by_type(
-                                kernel.iname_to_tags.get(dep, []), LocalIndexTag, 1)
+                                kernel.inames[dep].tags, LocalIndexTag, 1)
                             if tag.axis == 0:
                                 raise LoopyError(
                                     "streaming store must have stride 1 in "
@@ -475,7 +475,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                     "streaming_store(%s + %s, %s)"
                     % (
                         access_info.array_name,
-                        ecm(flattened_sum(new_terms), PREC_NONE, 'i'),
+                        ecm(flattened_sum(new_terms), PREC_NONE, "i"),
                         rhs_code))
 
         # }}}

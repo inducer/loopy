@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -23,7 +21,6 @@ THE SOFTWARE.
 """
 
 
-import six
 from loopy.symbolic import (RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
 import islpy as isl
@@ -113,7 +110,7 @@ def _fix_parameter(kernel, name, value):
             new_args.append(arg.map_exprs(map_expr))
 
     new_temp_vars = {}
-    for tv in six.itervalues(kernel.temporary_variables):
+    for tv in kernel.temporary_variables.values():
         new_temp_vars[tv.name] = tv.map_exprs(map_expr)
 
     from loopy.match import parse_stack_match
@@ -142,7 +139,7 @@ def fix_parameters(kernel, **value_dict):
     :ref:`arguments`.
     """
 
-    for name, value in six.iteritems(value_dict):
+    for name, value in value_dict.items():
         kernel = _fix_parameter(kernel, name, value)
 
     return kernel

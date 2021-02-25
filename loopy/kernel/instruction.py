@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import, print_function
-
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"
 
 __license__ = """
@@ -22,11 +20,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from six.moves import intern
+from sys import intern
 from pytools import ImmutableRecord, memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.tools import Optional
 from warnings import warn
+import islpy as isl
 
 
 # {{{ instructions: base class
@@ -38,14 +37,14 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: id
 
         An (otherwise meaningless) identifier that is unique within
-        a :class:`loopy.kernel.LoopKernel`.
+        a :class:`loopy.LoopKernel`.
 
     .. rubric:: Instruction ordering
 
     .. attribute:: depends_on
 
-        a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances
-        that *must* be executed before this one. Note that
+        a :class:`frozenset` of :attr:`id` values of :class:`InstructionBase`
+        instances that *must* be executed before this one. Note that
         :func:`loopy.preprocess_kernel` (usually invoked automatically)
         augments this by adding dependencies on any writes to temporaries read
         by this instruction.
@@ -66,7 +65,8 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: depends_on_is_final
 
         A :class:`bool` determining whether :attr:`depends_on` constitutes
-        the *entire* list of iname dependencies.
+        the *entire* list of iname dependencies. If *not* marked final,
+        various semi-broken heuristics will try to add further dependencies.
 
         Defaults to *False*.
 
@@ -80,7 +80,7 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: conflicts_with_groups
 
         A :class:`frozenset` of strings indicating which instruction groups
-        (see :class:`InstructionBase.groups`) may not be active when this
+        (see :attr:`groups`) may not be active when this
         instruction is scheduled.
 
     .. attribute:: priority
@@ -93,7 +93,7 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: no_sync_with
 
         a :class:`frozenset` of tuples of the form ``(insn_id, scope)``, where
-        `insn_id` refers to :attr:`id` of :class:`Instruction` instances
+        ``insn_id`` refers to :attr:`id` of :class:`InstructionBase` instances
         and `scope` is one of the following strings:
 
            - `"local"`
@@ -112,7 +112,7 @@ class InstructionBase(ImmutableRecord):
         and match expression, just like :attr:`depends_on`.
 
         This data is used specifically by barrier insertion and
-        :func:`loopy.check.enforce_variable_access_ordered`.
+        :func:`loopy.check.check_variable_access_ordered`.
 
     .. rubric:: Conditionals
 
@@ -150,51 +150,27 @@ class InstructionBase(ImmutableRecord):
     .. automethod:: copy
     """
 
-    # within_inames_is_final, boostable and boostable_into are deprecated and
-    # will be removed in version 2017.x.
+    # within_inames_is_final is deprecated and will be removed in version 2017.x.
 
     fields = set("id depends_on depends_on_is_final "
             "groups conflicts_with_groups "
             "no_sync_with "
             "predicates "
             "within_inames_is_final within_inames "
-            "priority boostable boostable_into".split())
+            "priority".split())
 
     # Names of fields that are pymbolic expressions. Needed for key building
     pymbolic_fields = set("")
 
     # Names of fields that are sets of pymbolic expressions. Needed for key building
-    pymbolic_set_fields = set(["predicates"])
+    pymbolic_set_fields = {"predicates"}
 
     def __init__(self, id, depends_on, depends_on_is_final,
             groups, conflicts_with_groups,
             no_sync_with,
             within_inames_is_final, within_inames,
             priority,
-            boostable, boostable_into, predicates, tags,
-            insn_deps=None, insn_deps_is_final=None,
-            forced_iname_deps=None, forced_iname_deps_is_final=None):
-
-        # {{{ backwards compatibility goop
-
-        if depends_on is not None and insn_deps is not None:
-            raise LoopyError("may not specify both insn_deps and depends_on")
-        elif insn_deps is not None:
-            warn("insn_deps is deprecated, use depends_on",
-                    DeprecationWarning, stacklevel=2)
-
-            depends_on = insn_deps
-            depends_on_is_final = insn_deps_is_final
-
-        if forced_iname_deps is not None and within_inames is not None:
-            raise LoopyError("may not specify both forced_iname_deps "
-                    "and within_inames")
-        elif forced_iname_deps is not None:
-            warn("forced_iname_deps is deprecated, use within_inames",
-                    DeprecationWarning, stacklevel=2)
-
-            within_inames = forced_iname_deps
-            within_inames_is_final = forced_iname_deps_is_final
+            predicates, tags):
 
         if predicates is None:
             predicates = frozenset()
@@ -215,8 +191,6 @@ class InstructionBase(ImmutableRecord):
 
         predicates = frozenset(new_predicates)
         del new_predicates
-
-        # }}}
 
         if depends_on is None:
             depends_on = frozenset()
@@ -282,41 +256,8 @@ class InstructionBase(ImmutableRecord):
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
                 priority=priority,
-                boostable=boostable,
-                boostable_into=boostable_into,
                 predicates=predicates,
                 tags=tags)
-
-    # {{{ backwards compatibility goop
-
-    @property
-    def insn_deps(self):
-        warn("insn_deps is deprecated, use depends_on",
-                DeprecationWarning, stacklevel=2)
-
-        return self.depends_on
-
-    # legacy
-    @property
-    def insn_deps_is_final(self):
-        warn("insn_deps_is_final is deprecated, use depends_on_is_final",
-                DeprecationWarning, stacklevel=2)
-
-        return self.depends_on_is_final
-
-    @property
-    def forced_iname_deps(self):
-        warn("forced_iname_deps is deprecated, use within_inames",
-                DeprecationWarning, stacklevel=2)
-        return self.within_inames
-
-    @property
-    def forced_iname_deps_is_final(self):
-        warn("forced_iname_deps_is_final is deprecated, use within_inames_is_final",
-                DeprecationWarning, stacklevel=2)
-        return self.within_inames_is_final
-
-    # }}}
 
     # {{{ abstract interface
 
@@ -333,7 +274,7 @@ class InstructionBase(ImmutableRecord):
         raise NotImplementedError
 
     def assignee_var_names(self):
-        """Return a tuple of tuples of assignee variable names, one
+        """Return a tuple of assignee variable names, one
         for each quantity being assigned to.
         """
         raise NotImplementedError
@@ -344,10 +285,13 @@ class InstructionBase(ImmutableRecord):
         """
         raise NotImplementedError
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, assignee_f=None):
         """Return a new copy of *self* where *f* has been applied to every
         expression occurring in *self*. *args* will be passed as extra
         arguments (in addition to the expression) to *f*.
+
+        If *assignee_f* is passed, then left-hand sides of assignments are
+        passed to it. If it is not given, it defaults to the same as *f*.
         """
         raise NotImplementedError
 
@@ -390,18 +334,6 @@ class InstructionBase(ImmutableRecord):
 
     def get_str_options(self):
         result = []
-
-        if self.boostable is True:
-            if self.boostable_into:
-                result.append("boostable into '%s'" % ",".join(self.boostable_into))
-            else:
-                result.append("boostable")
-        elif self.boostable is False:
-            result.append("not boostable")
-        elif self.boostable is None:
-            pass
-        else:
-            raise RuntimeError("unexpected value for Instruction.boostable")
 
         if self.depends_on:
             result.append("dep="+":".join(self.depends_on))
@@ -464,23 +396,8 @@ class InstructionBase(ImmutableRecord):
 
     # }}}
 
-    def copy(self, **kwargs):
-        if "insn_deps" in kwargs:
-            warn("insn_deps is deprecated, use depends_on",
-                    DeprecationWarning, stacklevel=2)
-
-            kwargs["depends_on"] = kwargs.pop("insn_deps")
-
-        if "insn_deps_is_final" in kwargs:
-            warn("insn_deps_is_final is deprecated, use depends_on",
-                    DeprecationWarning, stacklevel=2)
-
-            kwargs["depends_on_is_final"] = kwargs.pop("insn_deps_is_final")
-
-        return super(InstructionBase, self).copy(**kwargs)
-
     def __setstate__(self, val):
-        super(InstructionBase, self).__setstate__(val)
+        super().__setstate__(val)
 
         from loopy.tools import intern_frozenset_of_ids
 
@@ -570,7 +487,7 @@ class MemoryOrdering:  # noqa
 
 # {{{ memory_ordering, MemoryOrdering compatibility
 
-class _deprecated_memory_ordering_class_method(object):  # noqa
+class _deprecated_memory_ordering_class_method:  # noqa
     def __init__(self, f):
         self.f = f
 
@@ -580,7 +497,7 @@ class _deprecated_memory_ordering_class_method(object):  # noqa
         return self.f()
 
 
-class memory_ordering(object):  # noqa
+class memory_ordering:  # noqa
     """Deprecated. Use :class:`MemoryOrdering` instead.
     """
 
@@ -647,7 +564,7 @@ class MemoryScope:  # noqa
 
 # {{{ memory_scope, MemoryScope compatiability
 
-class _deprecated_memory_scope_class_method(object):  # noqa
+class _deprecated_memory_scope_class_method:  # noqa
     def __init__(self, f):
         self.f = f
 
@@ -657,7 +574,7 @@ class _deprecated_memory_scope_class_method(object):  # noqa
         return self.f()
 
 
-class memory_scope(object):  # noqa
+class memory_scope:  # noqa
     """Deprecated. Use :class:`MemoryScope` instead.
     """
 
@@ -690,7 +607,7 @@ class memory_scope(object):  # noqa
 # }}}
 
 
-class VarAtomicity(object):
+class VarAtomicity:
     """A base class for the description of how atomic access to :attr:`var_name`
     shall proceed.
 
@@ -735,13 +652,13 @@ class OrderedAtomic(VarAtomicity):
         :class:`pytools.persistent_dict.PersistentDict`.
         """
 
-        super(OrderedAtomic, self).update_persistent_hash(key_hash, key_builder)
+        super().update_persistent_hash(key_hash, key_builder)
         key_builder.rec(key_hash, str(self.__class__.__name__))
         key_builder.rec(key_hash, self.ordering)
         key_builder.rec(key_hash, self.scope)
 
     def __eq__(self, other):
-        return (super(OrderedAtomic, self).__eq__(other)
+        return (super().__eq__(other)
                 and self.ordering == other.ordering
                 and self.scope == other.scope)
 
@@ -750,7 +667,7 @@ class OrderedAtomic(VarAtomicity):
         raise NotImplementedError
 
     def __str__(self):
-        return "%s[%s]%s/%s" % (
+        return "{}[{}]{}/{}".format(
                 self.op_name,
                 self.var_name,
                 MemoryOrdering.to_string(self.ordering),
@@ -769,11 +686,12 @@ class AtomicInit(OrderedAtomic):
 
         One of the values from :class:`MemoryScope`
     """
-    op_name = 'init'
+    op_name = "init"
 
 
 class AtomicUpdate(OrderedAtomic):
-    """Properties of an atomic update. A subclass of :class:`OrderedAtomic`.
+    """Properties of an atomic update. A subclass of
+    :class:`OrderedAtomic`.
 
     .. attribute:: ordering
 
@@ -783,7 +701,7 @@ class AtomicUpdate(OrderedAtomic):
 
         One of the values from :class:`MemoryScope`
     """
-    op_name = 'update'
+    op_name = "update"
 
 
 class AtomicLoad(OrderedAtomic):
@@ -797,7 +715,7 @@ class AtomicLoad(OrderedAtomic):
 
         One of the values from :class:`MemoryScope`
     """
-    op_name = 'load'
+    op_name = "load"
 
 # }}}
 
@@ -807,14 +725,14 @@ class AtomicLoad(OrderedAtomic):
 class MultiAssignmentBase(InstructionBase):
     """An assignment instruction with an expression as a right-hand side."""
 
-    fields = InstructionBase.fields | set(["expression"])
-    pymbolic_fields = InstructionBase.pymbolic_fields | set(["expression"])
+    fields = InstructionBase.fields | {"expression"}
+    pymbolic_fields = InstructionBase.pymbolic_fields | {"expression"}
 
     @memoize_method
     def read_dependency_names(self):
         from loopy.symbolic import get_dependencies
         result = (
-                super(MultiAssignmentBase, self).read_dependency_names()
+                super().read_dependency_names()
                 | get_dependencies(self.expression))
 
         for subscript_deps in self.assignee_subscript_deps():
@@ -896,7 +814,7 @@ class Assignment(MultiAssignmentBase):
 
     fields = MultiAssignmentBase.fields | \
             set("assignee temp_var_type atomicity".split())
-    pymbolic_fields = MultiAssignmentBase.pymbolic_fields | set(["assignee"])
+    pymbolic_fields = MultiAssignmentBase.pymbolic_fields | {"assignee"}
 
     def __init__(self,
             assignee, expression,
@@ -908,13 +826,11 @@ class Assignment(MultiAssignmentBase):
             no_sync_with=None,
             within_inames_is_final=None,
             within_inames=None,
-            boostable=None, boostable_into=None, tags=None,
+            tags=None,
             temp_var_type=Optional(), atomicity=(),
-            priority=0, predicates=frozenset(),
-            insn_deps=None, insn_deps_is_final=None,
-            forced_iname_deps=None, forced_iname_deps_is_final=None):
+            priority=0, predicates=frozenset()):
 
-        super(Assignment, self).__init__(
+        super().__init__(
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
@@ -923,15 +839,9 @@ class Assignment(MultiAssignmentBase):
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
-                boostable=boostable,
-                boostable_into=boostable_into,
                 priority=priority,
                 predicates=predicates,
-                tags=tags,
-                insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final,
-                forced_iname_deps=forced_iname_deps,
-                forced_iname_deps_is_final=forced_iname_deps_is_final)
+                tags=tags)
 
         from loopy.symbolic import parse
         if isinstance(assignee, str):
@@ -959,17 +869,20 @@ class Assignment(MultiAssignmentBase):
     def assignee_subscript_deps(self):
         return (_get_assignee_subscript_deps(self.assignee),)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, assignee_f=None):
+        if assignee_f is None:
+            assignee_f = f
+
         return self.copy(
-                assignee=f(self.assignee, *args),
-                expression=f(self.expression, *args),
+                assignee=assignee_f(self.assignee),
+                expression=f(self.expression),
                 predicates=frozenset(
-                    f(pred, *args) for pred in self.predicates))
+                    f(pred) for pred in self.predicates))
 
     # }}}
 
     def __str__(self):
-        result = "%s <- %s" % (self.assignee, self.expression)
+        result = f"{self.assignee} <- {self.expression}"
 
         if self.id is not None:
             result = "%s: " % self.id + result
@@ -1001,7 +914,7 @@ class ExpressionInstruction(Assignment):
         warn("ExpressionInstruction is deprecated. Use Assignment instead",
                 DeprecationWarning, stacklevel=2)
 
-        super(ExpressionInstruction, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
 # }}}
 
@@ -1032,7 +945,7 @@ class CallInstruction(MultiAssignmentBase):
 
     fields = MultiAssignmentBase.fields | \
             set("assignees temp_var_types".split())
-    pymbolic_fields = MultiAssignmentBase.pymbolic_fields | set(["assignees"])
+    pymbolic_fields = MultiAssignmentBase.pymbolic_fields | {"assignees"}
 
     def __init__(self,
             assignees, expression,
@@ -1044,14 +957,11 @@ class CallInstruction(MultiAssignmentBase):
             no_sync_with=None,
             within_inames_is_final=None,
             within_inames=None,
-            boostable=None, boostable_into=None, tags=None,
+            tags=None,
             temp_var_types=None,
-            priority=0, predicates=frozenset(),
-            insn_deps=None, insn_deps_is_final=None,
-            forced_iname_deps=None,
-            forced_iname_deps_is_final=None):
+            priority=0, predicates=frozenset()):
 
-        super(CallInstruction, self).__init__(
+        super().__init__(
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
@@ -1060,15 +970,9 @@ class CallInstruction(MultiAssignmentBase):
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
-                boostable=boostable,
-                boostable_into=boostable_into,
                 priority=priority,
                 predicates=predicates,
-                tags=tags,
-                insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final,
-                forced_iname_deps=forced_iname_deps,
-                forced_iname_deps_is_final=forced_iname_deps_is_final)
+                tags=tags)
 
         from pymbolic.primitives import Call
         from loopy.symbolic import Reduction
@@ -1114,17 +1018,20 @@ class CallInstruction(MultiAssignmentBase):
                 _get_assignee_subscript_deps(a)
                 for a in self.assignees)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, assignee_f=None):
+        if assignee_f is None:
+            assignee_f = f
+
         return self.copy(
-                assignees=f(self.assignees, *args),
-                expression=f(self.expression, *args),
+                assignees=assignee_f(self.assignees),
+                expression=f(self.expression),
                 predicates=frozenset(
-                    f(pred, *args) for pred in self.predicates))
+                    f(pred) for pred in self.predicates))
 
     # }}}
 
     def __str__(self):
-        result = "%s: %s <- %s" % (self.id,
+        result = "{}: {} <- {}".format(self.id,
                 ", ".join(str(a) for a in self.assignees),
                 self.expression)
 
@@ -1224,9 +1131,8 @@ class CInstruction(InstructionBase):
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
-            priority=0, boostable=None, boostable_into=None,
-            predicates=frozenset(), tags=None,
-            insn_deps=None, insn_deps_is_final=None):
+            priority=0,
+            predicates=frozenset(), tags=None):
         """
         :arg iname_exprs: Like :attr:`iname_exprs`, but instead of tuples,
             simple strings pepresenting inames are also allowed. A single
@@ -1245,11 +1151,7 @@ class CInstruction(InstructionBase):
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
-                boostable=boostable,
-                boostable_into=boostable_into,
-                priority=priority, predicates=predicates, tags=tags,
-                insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final)
+                priority=priority, predicates=predicates, tags=tags)
 
         # {{{ normalize iname_exprs
 
@@ -1292,7 +1194,7 @@ class CInstruction(InstructionBase):
 
     def read_dependency_names(self):
         result = (
-                super(CInstruction, self).read_dependency_names()
+                super().read_dependency_names()
                 | frozenset(self.read_variables))
 
         from loopy.symbolic import get_dependencies
@@ -1315,22 +1217,25 @@ class CInstruction(InstructionBase):
                 _get_assignee_subscript_deps(a)
                 for a in self.assignees)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, assignee_f=None):
+        if assignee_f is None:
+            assignee_f = f
+
         return self.copy(
                 iname_exprs=[
-                    (name, f(expr, *args))
+                    (name, f(expr))
                     for name, expr in self.iname_exprs],
-                assignees=[f(a, *args) for a in self.assignees],
+                assignees=[assignee_f(a) for a in self.assignees],
                 predicates=frozenset(
-                    f(pred, *args) for pred in self.predicates))
+                    f(pred) for pred in self.predicates))
 
     # }}}
 
     def __str__(self):
-        first_line = "%s: %s <- CODE(%s|%s)" % (self.id,
+        first_line = "{}: {} <- CODE({}|{})".format(self.id,
                 ", ".join(str(a) for a in self.assignees),
                 ", ".join(str(x) for x in self.read_variables),
-                ", ".join("%s=%s" % (name, expr)
+                ", ".join(f"{name}={expr}"
                     for name, expr in self.iname_exprs))
 
         options = self.get_str_options()
@@ -1357,7 +1262,7 @@ class _DataObliviousInstruction(InstructionBase):
     def assignee_subscript_deps(self):
         return frozenset()
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, assignee_f=None):
         return self.copy(
                 predicates=frozenset(
                     f(pred) for pred in self.predicates))
@@ -1386,9 +1291,8 @@ class NoOpInstruction(_DataObliviousInstruction):
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=None,
-            boostable=None, boostable_into=None,
             predicates=None, tags=None):
-        super(NoOpInstruction, self).__init__(
+        super().__init__(
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
@@ -1398,8 +1302,6 @@ class NoOpInstruction(_DataObliviousInstruction):
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
                 priority=priority,
-                boostable=boostable,
-                boostable_into=boostable_into,
                 predicates=predicates,
                 tags=tags)
 
@@ -1440,22 +1342,21 @@ class BarrierInstruction(_DataObliviousInstruction):
         ... lbarrier {mem_kind=global}
     """
 
-    fields = _DataObliviousInstruction.fields | set(["synchronization_kind",
-                                                     "mem_kind"])
+    fields = _DataObliviousInstruction.fields | {"synchronization_kind",
+                                                     "mem_kind"}
 
     def __init__(self, id, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=None,
-            boostable=None, boostable_into=None,
             predicates=None, tags=None, synchronization_kind="global",
             mem_kind="local"):
 
         if predicates:
             raise LoopyError("conditional barriers are not supported")
 
-        super(BarrierInstruction, self).__init__(
+        super().__init__(
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
@@ -1465,8 +1366,6 @@ class BarrierInstruction(_DataObliviousInstruction):
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
                 priority=priority,
-                boostable=boostable,
-                boostable_into=boostable_into,
                 predicates=predicates,
                 tags=tags
                 )
@@ -1475,12 +1374,13 @@ class BarrierInstruction(_DataObliviousInstruction):
         self.mem_kind = mem_kind
 
     def __str__(self):
-        first_line = "%s: ... %sbarrier" % (self.id, self.synchronization_kind[0])
+        first_line = \
+                "{}: ... {}barrier".format(self.id, self.synchronization_kind[0])
 
         options = self.get_str_options()
         if self.synchronization_kind == "local":
             # add the memory kind
-            options += ['mem_kind={}'.format(self.mem_kind)]
+            options += [f"mem_kind={self.mem_kind}"]
         if options:
             first_line += " {%s}" % (": ".join(options))
 
@@ -1537,6 +1437,51 @@ def _check_and_fix_temp_var_type(temp_var_type, stacklevel=2):
     return temp_var_type
 
 # }}}
+
+
+def get_insn_domain(insn, kernel):
+    """
+    Returns an instance of :class:`islpy.Set` for the *insn*'s domain.
+
+    .. note::
+
+        Does not take into account additional hints available through
+        :attr:`loopy.LoopKernel.assumptions`.
+    """
+    domain = kernel.get_inames_domain(insn.within_inames)
+
+    # {{{ add read-only ValueArgs to domain
+
+    from loopy.kernel.data import ValueArg
+
+    valueargs_to_add = ({arg.name for arg in kernel.args
+                         if isinstance(arg, ValueArg)
+                         and arg.name not in kernel.get_written_variables()}
+                        - set(domain.get_var_names(isl.dim_type.param)))
+
+    # only consider valueargs relevant to *insn*
+    valueargs_to_add = valueargs_to_add & insn.read_dependency_names()
+
+    for arg_to_add in valueargs_to_add:
+        idim = domain.dim(isl.dim_type.param)
+        domain = domain.add_dims(isl.dim_type.param, 1)
+        domain = domain.set_dim_name(isl.dim_type.param, idim, arg_to_add)
+
+    # }}}
+
+    # {{{ enforce restriction from predicates
+
+    insn_preds_set = isl.BasicSet.universe(domain.space)
+
+    for predicate in insn.predicates:
+        from loopy.symbolic import condition_to_set
+        predicate_as_isl_set = condition_to_set(domain.space, predicate)
+        if predicate_as_isl_set is not None:
+            insn_preds_set = insn_preds_set & predicate_as_isl_set
+
+    # }}}
+
+    return domain & insn_preds_set
 
 
 # vim: foldmethod=marker

@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012-16 Andreas Kloeckner"
 
 __license__ = """
@@ -22,8 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
-
 from pymbolic.mapper import CombineMapper
 import numpy as np
 
@@ -41,7 +37,7 @@ logger = logging.getLogger(__name__)
 def _debug(kernel, s, *args):
     if logger.isEnabledFor(logging.DEBUG):
         logstr = s % args
-        logger.debug("%s: %s" % (kernel.name, logstr))
+        logger.debug(f"{kernel.name}: {logstr}")
 
 
 # {{{ type inference mapper
@@ -66,7 +62,7 @@ class TypeInferenceMapper(CombineMapper):
         if return_tuple:
             kwargs["return_tuple"] = True
 
-        result = super(TypeInferenceMapper, self).__call__(
+        result = super().__call__(
                 expr, **kwargs)
 
         assert isinstance(result, list)
@@ -220,8 +216,12 @@ class TypeInferenceMapper(CombineMapper):
             # Numpy types are sized
             return [NumpyType(np.dtype(type(expr)))]
         elif dt.kind == "f":
-            # deduce the smaller type by default
-            return [NumpyType(np.dtype(np.float32))]
+            if np.float32(expr) == np.float64(expr):
+                # No precision is lost by 'guessing' single precision, use that.
+                # This at least covers simple cases like '1j'.
+                return [NumpyType(np.dtype(np.float32))]
+
+            return [NumpyType(np.dtype(np.float64))]
         elif dt.kind == "c":
             if np.complex64(expr) == np.complex128(expr):
                 # (COMPLEX_GUESS_LOGIC)
@@ -240,7 +240,7 @@ class TypeInferenceMapper(CombineMapper):
     def map_type_cast(self, expr):
         subtype, = self.rec(expr.child)
         if not issubclass(subtype.dtype.type, np.number):
-            raise LoopyError("Can't cast a '%s' to '%s'" % (subtype, expr.type))
+            raise LoopyError(f"Can't cast a '{subtype}' to '{expr.type}'")
         return [expr.type]
 
     def map_subscript(self, expr):
@@ -428,11 +428,11 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         if isinstance(writer_insn, lp.Assignment):
             result = type_inf_mapper(expr, return_dtype_set=True)
         elif isinstance(writer_insn, lp.CallInstruction):
-            return_dtype_set = type_inf_mapper(expr, return_tuple=True,
+            return_dtype_sets = type_inf_mapper(expr, return_tuple=True,
                     return_dtype_set=True)
 
             result = []
-            for return_dtype_set in return_dtype_set:
+            for return_dtype_set in return_dtype_sets:
                 result_i = None
                 found = False
                 for assignee, comp_dtype_set in zip(
@@ -507,7 +507,7 @@ def infer_unknown_types(kernel, expect_completion=False):
     names_for_type_inference = []
 
     import loopy as lp
-    for tv in six.itervalues(kernel.temporary_variables):
+    for tv in kernel.temporary_variables.values():
         assert tv.dtype is not lp.auto
         if tv.dtype is None:
             names_for_type_inference.append(tv.name)
@@ -524,15 +524,15 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     writer_map = kernel.writer_map()
 
-    dep_graph = dict(
-            (written_var, set(
+    dep_graph = {
+            written_var: {
                 read_var
                 for insn_id in writer_map.get(written_var, [])
                 for read_var in kernel.id_to_insn[insn_id].read_dependency_names()
-                if read_var in names_for_type_inference))
-            for written_var in names_for_type_inference)
+                if read_var in names_for_type_inference}
+            for written_var in names_for_type_inference}
 
-    from loopy.tools import compute_sccs
+    from pytools.graph import compute_sccs
 
     # To speed up processing, we sort the variables by computing the SCCs of the
     # type dependency graph. Each SCC represents a set of variables whose types

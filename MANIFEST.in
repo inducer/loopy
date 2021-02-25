@@ -1,7 +1,7 @@
 include test/*.py
 include test/*.f90
-recursive-include examples *.py *.cl *.floopy *.sh *.ipynb *.cpp
-recursive-include contrib *.vim
+recursive-include examples *.py *.cl *.floopy *.sh *.ipynb *.cpp *.loopy
+recursive-include contrib *.vim *.py
 
 include build-helpers/*.sh
 include build-helpers/*.spec
@@ -18,4 +18,5 @@ include doc/images/*.png
 include configure.py
 include Makefile.in
 include README.rst
+include LICENSE
 include requirements*.txt

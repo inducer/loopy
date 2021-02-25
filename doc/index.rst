@@ -20,43 +20,18 @@ When you run this script, the following kernel is generated, compiled, and execu
 
 .. _static-binary:
 
-Want to try out loopy?
-----------------------
-
-There's no need to go through :ref:`installation` if you'd just like to get a
-feel for what loopy is.  Instead, you may
-`download a self-contained Linux binary <https://gitlab.tiker.net/inducer/loopy/-/jobs/66778/artifacts/browse/build-helpers/>`_.
-This is purposefully built on an ancient Linux distribution, so it should work
-on most versions of Linux that are currently out there.
-
-Once you have the binary, do the following::
-
-    chmod +x ./loopy-centos6
-    ./loopy-centos6 --target=opencl hello-loopy.loopy
-    ./loopy-centos6 --target=cuda hello-loopy.loopy
-    ./loopy-centos6 --target=ispc hello-loopy.loopy
-
-Grab the example here: :download:`examples/python/hello-loopy.loopy <../examples/python/hello-loopy.loopy>`.
-
-You may also donwload the most recent version by going to the `list of builds
-<https://gitlab.tiker.net/inducer/loopy/builds>`_, clicking on the newest one
-of type "CentOS binary", clicking on "Browse" under "Build Artifacts", then
-navigating to "build-helpers", and downloading the binary from there.
-
 Places on the web related to Loopy
 ----------------------------------
 
-* `Python package index <http://pypi.python.org/pypi/loo.py>`_ (download releases) Note the extra '.' in the PyPI identifier!
-
-* `Github <http://github.com/inducer/loopy>`_ (get latest source code, file bugs)
-* `Wiki <http://wiki.tiker.net/Loopy>`_ (read installation tips, get examples, read FAQ)
-* `Homepage <http://mathema.tician.de/software/loopy>`_
+* `Python package index <https://pypi.org/project/loopy>`_ (download releases)
+* `Github <https://github.com/inducer/loopy>`_ (get latest source code, file bugs)
+* `Homepage <https://mathema.tician.de/software/loopy>`_
 
 Table of Contents
 -----------------
 
 If you're only just learning about loopy, consider the following `paper
-<http://arxiv.org/abs/1405.7470>`_ on loo.py that may serve as a good
+<https://arxiv.org/abs/1405.7470>`_ on loopy that may serve as a good
 introduction.
 
 Please check :ref:`installation` to get started.
@@ -70,6 +45,9 @@ Please check :ref:`installation` to get started.
     ref_transform
     ref_other
     misc
+    ref_internals
+    🚀 Github <https://github.com/inducer/loopy>
+    💾 Download Releases <https://pypi.org/project/loopy>
 
 Indices and tables
 ==================

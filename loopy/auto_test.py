@@ -1,5 +1,3 @@
-from __future__ import division, absolute_import
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from six.moves import range, zip
 import os
 from warnings import warn
 
@@ -454,7 +451,7 @@ def auto_test_vs_ref(
             ref_sched_kernel = knl
             break
 
-        logger.info("%s (ref): trying %s for the reference calculation" % (
+        logger.info("{} (ref): trying {} for the reference calculation".format(
             ref_knl.name, dev))
 
         ref_compiled = CompiledKernel(ref_ctx, ref_sched_kernel)
@@ -494,7 +491,7 @@ def auto_test_vs_ref(
 
         ref_queue.finish()
 
-        logger.info("%s (ref): using %s for the reference calculation" % (
+        logger.info("{} (ref): using {} for the reference calculation".format(
             ref_knl.name, dev))
         logger.info("%s (ref): run" % ref_knl.name)
 
@@ -534,7 +531,7 @@ def auto_test_vs_ref(
     from loopy.target.pyopencl import PyOpenCLTarget
     if test_knl.state not in [
             KernelState.PREPROCESSED,
-            KernelState.SCHEDULED]:
+            KernelState.LINEARIZED]:
         if isinstance(test_knl.target, PyOpenCLTarget):
             test_knl = test_knl.copy(target=PyOpenCLTarget(ctx.devices[0]))
 
@@ -677,7 +674,7 @@ def auto_test_vs_ref(
 
         rates = ""
         for cnt, lbl in zip(op_count, op_label):
-            rates += " %g %s/s" % (cnt/elapsed_wall, lbl)
+            rates += " {:g} {}/s".format(cnt/elapsed_wall, lbl)
 
         if not quiet:
             def format_float_or_none(v):
@@ -695,9 +692,9 @@ def auto_test_vs_ref(
         if do_check:
             ref_rates = ""
             for cnt, lbl in zip(op_count, op_label):
-                ref_rates += " %g %s/s" % (cnt/ref_elapsed_event, lbl)
+                ref_rates += " {:g} {}/s".format(cnt/ref_elapsed_event, lbl)
             if not quiet:
-                print("ref: elapsed: %g s event, %g s wall%s" % (
+                print("ref: elapsed: {:g} s event, {:g} s wall{}".format(
                         ref_elapsed_event, ref_elapsed_wall, ref_rates))
 
     # }}}
