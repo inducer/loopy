@@ -31,9 +31,10 @@ def prettier_map_string(map_obj):
 def add_dims_to_isl_set(isl_set, dim_type, names, new_idx_start):
     new_set = isl_set.insert_dims(
         dim_type, new_idx_start, len(names)
-        ).set_dim_name(dim_type, new_idx_start, names[0])
-    for i, name in enumerate(names[1:]):
-        new_set = new_set.set_dim_name(dim_type, new_idx_start+1+i, name)
+        )
+    #.set_dim_name(dim_type, new_idx_start, names[0])
+    for i, name in enumerate(names):
+        new_set = new_set.set_dim_name(dim_type, new_idx_start+i, name)
     return new_set
 
 
@@ -250,3 +251,36 @@ def get_EnterLoop_inames(linearization_items):
         [item.iname, ] for item in linearization_items
         if isinstance(item, EnterLoop)
         ])
+
+
+def create_elementwise_comparison_conjunction_set(
+        names0, names1, islvars, op="eq"):
+    """Create a set constrained by the conjunction of conditions comparing
+       `names0` to `names1`.
+
+    :arg names0: A list of :class:`str` representing variable names.
+
+    :arg names1: A list of :class:`str` representing variable names.
+
+    :arg islvars: A dictionary from variable names to :class:`islpy.PwAff`
+        instances that represent each of the variables
+        (islvars may be produced by `islpy.make_zero_and_vars`). The key
+        '0' is also include and represents a :class:`islpy.PwAff` zero constant.
+
+    :arg op: A :class:`str` describing the operator to use when creating
+        the set constraints. Options: `eq` for `=`, `lt` for `<`
+
+    :returns: A set involving `islvars` cosntrained by the constraints
+        `{names0[0] <op> names1[0] and names0[1] <op> names1[1] and ...}`.
+
+    """
+
+    # initialize set with constraint that is always true
+    conj_set = islvars[0].eq_set(islvars[0])
+    for n0, n1 in zip(names0, names1):
+        if op == "eq":
+            conj_set = conj_set & islvars[n0].eq_set(islvars[n1])
+        elif op == "lt":
+            conj_set = conj_set & islvars[n0].lt_set(islvars[n1])
+
+    return conj_set
