@@ -38,12 +38,26 @@ from loopy import (
 from loopy.schedule.checker.schedule import (
     LEX_VAR_PREFIX,
     STATEMENT_VAR_NAME,
+    LTAG_VAR_NAMES,
+    GTAG_VAR_NAMES,
 )
 
 logger = logging.getLogger(__name__)
 
 
 # {{{ test pairwise schedule creation
+
+def _lex_space_string(dim_vals, lid_axes=[], gid_axes=[]):
+    # Return a string describing lex space dimension assignments
+    # (used to create maps below)
+
+    lid_names = [LTAG_VAR_NAMES[i] for i in lid_axes]
+    gid_names = [GTAG_VAR_NAMES[i] for i in gid_axes]
+
+    return ", ".join(
+        ["%s%d=%s" % (LEX_VAR_PREFIX, idx, str(val))
+        for idx, val in enumerate(dim_vals)] + lid_names + gid_names)
+
 
 def test_pairwise_schedule_creation():
     import islpy as isl
@@ -88,16 +102,9 @@ def test_pairwise_schedule_creation():
     knl = lp.prioritize_loops(knl, "i,j")
 
     # get a linearization
-    knl = preprocess_kernel(knl)
-    knl = get_one_linearized_kernel(knl)
-    linearization_items = knl.linearization
-
-    def _lex_space_string(dim_vals):
-        # Return a string describing lex space dimension assignments
-        # (used to create maps below)
-        return ", ".join(
-            ["%s%d=%s" % (LEX_VAR_PREFIX, idx, str(val))
-            for idx, val in enumerate(dim_vals)])
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    linearization_items = lin_knl.linearization
 
     insn_id_pairs = [
         ("insn_a", "insn_b"),
@@ -108,7 +115,7 @@ def test_pairwise_schedule_creation():
         ("insn_c", "insn_d"),
         ]
     sched_maps = get_schedules_for_statement_pairs(
-        knl,
+        proc_knl,
         linearization_items,
         insn_id_pairs,
         )
@@ -296,6 +303,99 @@ def test_pairwise_schedule_creation():
         % (
             STATEMENT_VAR_NAME,
             _lex_space_string([1, ]),
+            )
+        )
+    sched_map_after_expected = ensure_dim_names_match_and_align(
+        sched_map_after_expected, sched_map_after)
+
+    assert sched_map_before == sched_map_before_expected
+    assert sched_map_after == sched_map_after_expected
+
+
+def test_pairwise_schedule_creation_parallel():
+    import islpy as isl
+    from loopy.schedule.checker import (
+        get_schedules_for_statement_pairs,
+    )
+    from loopy.schedule.checker.utils import (
+        ensure_dim_names_match_and_align,
+    )
+
+    # example kernel
+    knl = lp.make_kernel(
+        [
+            "{[i]: 0<=i<pi}",
+            "{[k]: 0<=k<pk}",
+            "{[j,jj]: 0<=j,jj<pj}",
+            "{[t]: 0<=t<pt}",
+        ],
+        """
+        for i
+            for k
+                <>temp = b[i,k]  {id=insn_a}
+            end
+            for j
+                for jj
+                    a[i,j,jj] = temp + 1  {id=insn_b,dep=insn_a}
+                    c[i,j,jj] = d[i,j,jj]  {id=insn_c,dep=insn_b}
+                end
+            end
+        end
+        for t
+            e[t] = f[t]  {id=insn_d, dep=insn_c}
+        end
+        """,
+        name="example",
+        assumptions="pi,pj,pk,pt >= 1",
+        )
+    knl = lp.add_and_infer_dtypes(
+            knl,
+            {"b": np.float32, "d": np.float32, "f": np.float32})
+    knl = lp.prioritize_loops(knl, "i,k")
+    knl = lp.tag_inames(knl, {"j": "l.1", "jj": "l.0", "t": "g.0"})
+
+    # get a linearization
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    linearization_items = lin_knl.linearization
+
+    insn_id_pairs = [
+        ("insn_a", "insn_b"),
+        ("insn_a", "insn_c"),
+        ("insn_a", "insn_d"),
+        ("insn_b", "insn_c"),
+        ("insn_b", "insn_d"),
+        ("insn_c", "insn_d"),
+        ]
+    sched_maps = get_schedules_for_statement_pairs(
+        proc_knl,
+        linearization_items,
+        insn_id_pairs,
+        )
+
+    # Relationship between insn_a and insn_b ---------------------------------------
+
+    # Get two maps
+    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
+        ("insn_a", "insn_b")]
+
+    # Create expected maps, align, compare
+
+    sched_map_before_expected = isl.Map(
+        "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_space_string(["i", "0"], lid_axes=[0, 1], gid_axes=[0]),
+            )
+        )
+    sched_map_before_expected = ensure_dim_names_match_and_align(
+        sched_map_before_expected, sched_map_before)
+
+    sched_map_after_expected = isl.Map(
+        "[pi, pj] -> { [%s=1, i, j, jj] -> [%s] : 0 <= i < pi and 0 <= j,jj < pj }"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_space_string(["i", "1"], lid_axes=[0, 1], gid_axes=[0]),
             )
         )
     sched_map_after_expected = ensure_dim_names_match_and_align(

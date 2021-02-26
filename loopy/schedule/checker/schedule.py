@@ -43,8 +43,14 @@ __doc__ = """
 """
 
 LIN_CHECK_IDENTIFIER_PREFIX = "_lp_linchk_"
-LEX_VAR_PREFIX = "%sl" % (LIN_CHECK_IDENTIFIER_PREFIX)
+LEX_VAR_PREFIX = "%slex" % (LIN_CHECK_IDENTIFIER_PREFIX)
 STATEMENT_VAR_NAME = "%sstmt" % (LIN_CHECK_IDENTIFIER_PREFIX)
+# TODO document:
+GTAG_VAR_NAMES = []
+LTAG_VAR_NAMES = []
+for par_level in [0, 1, 2]:
+    GTAG_VAR_NAMES.append("%sgid%d" % (LIN_CHECK_IDENTIFIER_PREFIX, par_level))
+    LTAG_VAR_NAMES.append("%slid%d" % (LIN_CHECK_IDENTIFIER_PREFIX, par_level))
 
 
 def _pad_tuple_with_zeros(tup, desired_length):
@@ -142,8 +148,10 @@ def generate_pairwise_schedules(
         mappings from statement instances to lexicographic time, one for
         each of the two statements.
     """
+    # TODO update doc
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
+    from loopy.kernel.data import (LocalIndexTag, GroupIndexTag)
 
     all_insn_ids = set().union(*insn_id_pairs)
 
@@ -233,13 +241,16 @@ def generate_pairwise_schedules(
         if len(stmt_instances.keys()) == len(all_insn_ids):
             break
 
+    # Second, create pairwise schedules for each individual pair of insns
+
     from loopy.schedule.checker.utils import (
         sorted_union_of_names_in_isl_sets,
         create_symbolic_map_from_tuples,
         add_dims_to_isl_set,
     )
 
-    def _get_map_for_stmt_inst(insn_id, lex_points, int_sid, out_names_sched):
+    def _get_map_for_stmt(
+            insn_id, lex_points, int_sid, seq_lex_dim_names, conc_lex_dim_names):
 
         # Get inames domain for statement instance (a BasicSet)
         dom = knl.get_inames_domain(
@@ -253,13 +264,15 @@ def generate_pairwise_schedules(
         in_names_sched = [STATEMENT_VAR_NAME] + dom_inames_ordered[:]
         sched_space = isl.Space.create_from_names(
             isl.DEFAULT_CONTEXT,
-            in_=in_names_sched, out=out_names_sched, params=[])
+            in_=in_names_sched,
+            out=seq_lex_dim_names+conc_lex_dim_names,
+            params=[],
+            )
 
         # Insert 'statement' dim into domain so that its space allows
         # for intersection with sched map later
-        dom_to_intersect = [
-            add_dims_to_isl_set(
-                dom, isl.dim_type.set, [STATEMENT_VAR_NAME], 0), ]
+        dom_to_intersect = add_dims_to_isl_set(
+                dom, isl.dim_type.set, [STATEMENT_VAR_NAME], 0)
 
         # Each map will map statement instances -> lex time.
         # Right now, statement instance tuples consist of single int.
@@ -271,11 +284,30 @@ def generate_pairwise_schedules(
 
         # Create map
         return create_symbolic_map_from_tuples(
-            tuple_pairs_with_domains=zip(tuple_pair, dom_to_intersect),
+            tuple_pairs_with_domains=zip(tuple_pair, [dom_to_intersect,]),
             space=sched_space,
             )
 
-    # Second, create pairwise schedules for each individual pair of insns
+    # Get local/group axes for this kernel
+    l_axes_used = set()
+    g_axes_used = set()
+    for iname in knl.all_inames():
+        ltag = knl.iname_tags_of_type(iname, LocalIndexTag)
+        if ltag:
+            assert len(ltag) == 1  # TODO always true? remove?
+            l_axes_used.add(ltag.pop().axis)
+            continue
+        gtag = knl.iname_tags_of_type(iname, GroupIndexTag)
+        if gtag:
+            assert len(gtag) == 1  # TODO always true? remove?
+            g_axes_used.add(gtag.pop().axis)
+            continue
+    conc_lex_dim_names = (
+        [LTAG_VAR_NAMES[i] for i in sorted(l_axes_used)] +
+        [GTAG_VAR_NAMES[i] for i in sorted(g_axes_used)]
+        )
+    # TODO (For now, using same loc/glob axes for for all pairwise
+    # schedules in this knl.)
 
     from loopy.schedule.checker.lexicographic_order_map import (
         create_lex_order_map,
@@ -299,8 +331,8 @@ def generate_pairwise_schedules(
 
         # Now generate maps from the blueprint --------------------------------------
 
-        # Create names for the output dimensions
-        out_names_sched = [
+        # Create names for the output dimensions for sequential loops
+        seq_lex_dim_names = [
             LEX_VAR_PREFIX+str(i) for i in range(len(lex_tuples_simplified[0]))]
 
         # Determine integer IDs that will represent each statement in mapping
@@ -309,7 +341,8 @@ def generate_pairwise_schedules(
         int_sids = [0, 0] if insn_ids[0] == insn_ids[1] else [0, 1]
 
         sched_maps = [
-            _get_map_for_stmt_inst(insn_id, lex_tuple, int_sid, out_names_sched)
+            _get_map_for_stmt(
+                insn_id, lex_tuple, int_sid, seq_lex_dim_names, conc_lex_dim_names)
             for insn_id, lex_tuple, int_sid
             in zip(insn_ids, lex_tuples_simplified, int_sids)
             ]
@@ -319,7 +352,10 @@ def generate_pairwise_schedules(
         # below to re-determine which parallel
         # dims are used. (could simplify everything by always using all dims, which
         # would make maps more complex than necessary)
-        lex_order_map = create_lex_order_map(after_names=out_names_sched)
+        lex_order_map = create_lex_order_map(
+            after_names=seq_lex_dim_names,
+            after_names_concurrent=conc_lex_dim_names,
+            )
 
         pairwise_schedules[tuple(insn_ids)] = (tuple(sched_maps), lex_order_map)
 

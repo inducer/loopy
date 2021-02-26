@@ -71,7 +71,12 @@ def get_statement_ordering_map(
         sio, isl.dim_type.in_, before_marker)
 
 
-def get_lex_order_set(before_names, after_names, islvars=None):
+def get_lex_order_set(
+        before_names, after_names,
+        before_names_concurrent=[],
+        after_names_concurrent=[],
+        islvars=None,
+        ):
     """Return an :class:`islpy.Set` representing a lexicographic ordering
         with the number of dimensions provided in `before_names`
         (equal to the number of dimensions in `after_names`).
@@ -109,10 +114,17 @@ def get_lex_order_set(before_names, after_names, islvars=None):
                 or (i0' = i0 and i1' = i1 and i2' < i2)}
 
     """
+    # TODO update doc
+
+    from loopy.schedule.checker.utils import (
+        create_elementwise_comparison_conjunction_set,
+    )
 
     # If no islvars passed, make them using the names provided
     if islvars is None:
-        islvars = isl.make_zero_and_vars(before_names+after_names, [])
+        islvars = isl.make_zero_and_vars(
+            before_names+after_names+before_names_concurrent+after_names_concurrent,
+            [])
 
     # Initialize set with constraint i0' < i0
     lex_order_set = islvars[before_names[0]].lt_set(islvars[after_names[0]])
@@ -138,6 +150,12 @@ def get_lex_order_set(before_names, after_names, islvars=None):
         # Union this new constraint with the current lex_order_set
         lex_order_set = lex_order_set | full_conj_set
 
+    lex_order_set = lex_order_set & \
+        create_elementwise_comparison_conjunction_set(
+            before_names_concurrent, after_names_concurrent,
+            islvars, op="eq",
+            )
+
     return lex_order_set
 
 
@@ -145,6 +163,7 @@ def create_lex_order_map(
         n_dims=None,
         before_names=None,
         after_names=None,
+        after_names_concurrent=[],
         ):
     """Return a map from each point in a lexicographic ordering to every
         point that occurs later in the lexicographic ordering.
@@ -174,25 +193,31 @@ def create_lex_order_map(
                 or (i0' = i0 and i1' = i1 and i2' < i2)}
 
     """
+    # TODO update doc
+
+    from loopy.schedule.checker.utils import append_marker_to_strings
 
     if after_names is None:
         after_names = ["i%s" % (i) for i in range(n_dims)]
     if before_names is None:
-        from loopy.schedule.checker.utils import (
-            append_marker_to_strings,
-        )
         before_names = append_marker_to_strings(after_names, marker="'")
     if n_dims is None:
         n_dims = len(after_names)
+    before_names_concurrent = append_marker_to_strings(
+        after_names_concurrent, marker="'")
 
     assert len(before_names) == len(after_names) == n_dims
     dim_type = isl.dim_type
 
     # First, get a set representing the lexicographic ordering.
-    lex_order_set = get_lex_order_set(before_names, after_names)
+    lex_order_set = get_lex_order_set(
+        before_names, after_names,
+        before_names_concurrent, after_names_concurrent,
+        )
 
     # Now convert that set to a map.
     lex_map = isl.Map.from_domain(lex_order_set)
     return lex_map.move_dims(
         dim_type.out, 0, dim_type.in_,
-        len(before_names), len(after_names))
+        len(before_names) + len(before_names_concurrent),
+        len(after_names) + len(after_names_concurrent))
