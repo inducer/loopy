@@ -284,7 +284,7 @@ def generate_pairwise_schedules(
 
         # Create map
         return create_symbolic_map_from_tuples(
-            tuple_pairs_with_domains=zip(tuple_pair, [dom_to_intersect,]),
+            tuple_pairs_with_domains=zip(tuple_pair, [dom_to_intersect, ]),
             space=sched_space,
             )
 

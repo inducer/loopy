@@ -662,6 +662,8 @@ def test_statement_instance_ordering_creation():
 
     check_sio_for_insn_pair("insn_c", "insn_d", 1, expected_sio)
 
+# TODO test SIO creation with parallel loops
+
 # }}}
 
 
