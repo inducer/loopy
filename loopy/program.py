@@ -106,7 +106,12 @@ class CallableResolver(RuleAwareIdentityMapper):
             # record that we resolved a call
             self.calls_resolved.add(name)
 
-            return Call(ResolvedFunction(expr.function), params)
+            function = expr.function
+
+            if not isinstance(expr.function, ResolvedFunction):
+                function = ResolvedFunction(expr.function)
+
+            return Call(function, params)
 
         return super().map_call(expr, expn_state)
 

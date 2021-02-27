@@ -712,6 +712,31 @@ def test_inlining_with_callee_domain_param(ctx_factory):
     assert (out == 2).all()
 
 
+def test_double_resolving():
+    from loopy.program import resolve_callables
+    from loopy.kernel import KernelState
+    from loopy.symbolic import ResolvedFunction
+
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<10}",
+            """
+            y[i] = sin(x[i])
+            """,
+            [
+                lp.GlobalArg("x", dtype=float, shape=lp.auto),
+                ...],
+            name="foo"
+            )
+
+    knl = resolve_callables(knl)
+    knl = knl.with_kernel(knl["foo"].copy(state=KernelState.INITIAL))
+    knl = resolve_callables(knl)
+
+    assert "sin" in knl.callables_table
+    assert isinstance(knl["foo"].instructions[0].expression.function,
+                      ResolvedFunction)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
