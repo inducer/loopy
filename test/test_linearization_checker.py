@@ -558,13 +558,9 @@ def _check_sio_for_stmt_pair(
         stmt_id_before,
         stmt_id_after,
         sched_maps,
-        expected_seq_lex_dims,
-        lid_axes_used=[],
-        gid_axes_used=[],
         ):
     from loopy.schedule.checker.lexicographic_order_map import (
         get_statement_ordering_map,
-        create_lex_order_map,
     )
     from loopy.schedule.checker.utils import (
         ensure_dim_names_match_and_align,
@@ -573,20 +569,6 @@ def _check_sio_for_stmt_pair(
     # Get pairwise schedule
     (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
         (stmt_id_before, stmt_id_after)]
-
-    # Get expected lex order map
-    expected_lex_order_map = create_lex_order_map(
-        n_dims=expected_seq_lex_dims,
-        before_names=["%s%d'" % (LEX_VAR_PREFIX, i)
-            for i in range(expected_seq_lex_dims)],
-        after_names=["%s%d" % (LEX_VAR_PREFIX, i)
-            for i in range(expected_seq_lex_dims)],
-        after_names_concurrent=[
-            LTAG_VAR_NAMES[i] for i in lid_axes_used] + [
-            GTAG_VAR_NAMES[i] for i in gid_axes_used],
-        )
-
-    assert sched_lex_order_map == expected_lex_order_map
 
     # Create statement instance ordering,
     # maps each statement instance to all statement instances occuring later
@@ -676,7 +658,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    _check_sio_for_stmt_pair(expected_sio, "stmt_a", "stmt_b", sched_maps, 2)
+    _check_sio_for_stmt_pair(expected_sio, "stmt_a", "stmt_b", sched_maps)
 
     # Relationship between stmt_a and stmt_c ---------------------------------------
 
@@ -692,7 +674,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    _check_sio_for_stmt_pair(expected_sio, "stmt_a", "stmt_c", sched_maps, 2)
+    _check_sio_for_stmt_pair(expected_sio, "stmt_a", "stmt_c", sched_maps)
 
     # Relationship between stmt_a and stmt_d ---------------------------------------
 
@@ -706,7 +688,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    _check_sio_for_stmt_pair(expected_sio, "stmt_a", "stmt_d", sched_maps, 1)
+    _check_sio_for_stmt_pair(expected_sio, "stmt_a", "stmt_d", sched_maps)
 
     # Relationship between stmt_b and stmt_c ---------------------------------------
 
@@ -724,7 +706,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    _check_sio_for_stmt_pair(expected_sio, "stmt_b", "stmt_c", sched_maps, 3)
+    _check_sio_for_stmt_pair(expected_sio, "stmt_b", "stmt_c", sched_maps)
 
     # Relationship between stmt_b and stmt_d ---------------------------------------
 
@@ -738,7 +720,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    _check_sio_for_stmt_pair(expected_sio, "stmt_b", "stmt_d", sched_maps, 1)
+    _check_sio_for_stmt_pair(expected_sio, "stmt_b", "stmt_d", sched_maps)
 
     # Relationship between stmt_c and stmt_d ---------------------------------------
 
@@ -752,7 +734,7 @@ def test_statement_instance_ordering_creation():
     expected_sio = append_marker_to_isl_map_var_names(
         expected_sio, isl.dim_type.in_, "'")
 
-    _check_sio_for_stmt_pair(expected_sio, "stmt_c", "stmt_d", sched_maps, 1)
+    _check_sio_for_stmt_pair(expected_sio, "stmt_c", "stmt_d", sched_maps)
 
 # TODO test SIO creation with parallel loops
 
