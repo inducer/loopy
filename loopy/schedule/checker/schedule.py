@@ -269,6 +269,10 @@ def generate_pairwise_schedules(
             params=[],
             )
 
+        # TODO Either set inames equal to relevant gid/lid var names
+        # or replace inames with gid/lid var names...
+        # (otherwise gid/lid conditions will be lost in SIO composition)
+
         # Insert 'statement' dim into domain so that its space allows
         # for intersection with sched map later
         dom_to_intersect = add_dims_to_isl_set(

@@ -128,7 +128,7 @@ def test_pairwise_schedule_creation():
         ("insn_c", "insn_d"),
         ]
     sched_maps = get_schedules_for_statement_pairs(
-        proc_knl,
+        lin_knl,
         linearization_items,
         insn_id_pairs,
         )
@@ -360,7 +360,7 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
         ("insn_b", "insn_d"),
         ]
     sched_maps = get_schedules_for_statement_pairs(
-        proc_knl,
+        lin_knl,
         linearization_items,
         insn_id_pairs,
         )
@@ -583,7 +583,7 @@ def _check_sio_for_stmt_pair(
     assert sio_aligned == expected_sio
 
 
-def test_statement_instance_ordering_creation():
+def test_statement_instance_ordering():
     import islpy as isl
     from loopy.schedule.checker import (
         get_schedules_for_statement_pairs,
@@ -736,7 +736,144 @@ def test_statement_instance_ordering_creation():
 
     _check_sio_for_stmt_pair(expected_sio, "stmt_c", "stmt_d", sched_maps)
 
-# TODO test SIO creation with parallel loops
+
+'''
+def test_statement_instance_ordering_with_hw_par_tags():
+    import islpy as isl
+    from loopy.schedule.checker import (
+        get_schedules_for_statement_pairs,
+    )
+    from loopy.schedule.checker.utils import (
+        append_marker_to_isl_map_var_names,
+        append_marker_to_strings,
+    )
+
+    # Example kernel
+    knl = lp.make_kernel(
+        [
+            "{[i]: 0<=i<pi}",
+            "{[k]: 0<=k<pk}",
+            "{[j,jj]: 0<=j,jj<pj}",
+            "{[t]: 0<=t<pt}",
+        ],
+        """
+        for i
+            for k
+                <>temp = b[i,k]  {id=stmt_a}
+            end
+            for j
+                for jj
+                    a[i,j,jj] = temp + 1  {id=stmt_b,dep=stmt_a}
+                end
+            end
+        end
+        for t
+            e[t] = f[t]  {id=stmt_d, dep=stmt_b}
+        end
+        """,
+        name="example",
+        assumptions="pi,pj,pk,pt >= 1",
+        lang_version=(2018, 2)
+        )
+    knl = lp.add_and_infer_dtypes(knl, {"b": np.float32, "f": np.float32})
+    knl = lp.prioritize_loops(knl, "i,k")
+    knl = lp.tag_inames(knl, {"j": "l.1", "jj": "l.0", "t": "g.0"})
+
+    # Get a linearization
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    linearization_items = lin_knl.linearization
+
+    # Get pairwise schedules
+    stmt_id_pairs = [
+        ("stmt_a", "stmt_b"),
+        ("stmt_a", "stmt_d"),
+        ("stmt_b", "stmt_d"),
+        ]
+    sched_maps = get_schedules_for_statement_pairs(
+        lin_knl,
+        linearization_items,
+        stmt_id_pairs,
+        )
+
+    # Create strings for representing hardware tag portions of sio maps
+
+    # Get par tag names for this kernel
+    ltag_var_names = [LTAG_VAR_NAMES[lid] for lid in [0, 1]]
+    gtag_var_names = [GTAG_VAR_NAMES[gid] for gid in [0]]
+
+    # Equality condition, e.g., "lid0' = lid0 and lid1' = lid1, and ..."
+    par_tag_condition = " and ".join(
+        ["{0}' = {0}".format(ltag) for ltag in ltag_var_names] +
+        ["{0}' = {0}".format(gtag) for gtag in gtag_var_names]
+        )
+
+    # Comma separated dim names, e.g., "lid0', lid1', gid0'"
+    par_tag_var_names = ", ".join(ltag_var_names + gtag_var_names)
+    par_tag_var_names_prime = ", ".join(
+        append_marker_to_strings(ltag_var_names + gtag_var_names, "'"))
+
+    # Relationship between stmt_a and stmt_b ---------------------------------------
+
+    expected_sio = isl.Map(
+        "[pi, pj, pk] -> {{ "
+        "[{0}'=0, i', k', {1}] -> [{0}=1, i, j, {2}] : "
+        "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj and 0 <= i < pi and i > i' "
+        "and {3}; "
+        "[{0}'=0, i', k', {1}] -> [{0}=1, i=i', j, {2}] : "
+        "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj "
+        "and {3}"
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            par_tag_var_names_prime,
+            par_tag_var_names,
+            par_tag_condition,
+            )
+        )
+    # isl ignores these apostrophes, so explicitly add them
+    expected_sio = append_marker_to_isl_map_var_names(
+        expected_sio, isl.dim_type.in_, "'")
+
+    _check_sio_for_stmt_pair(expected_sio, "stmt_a", "stmt_b", sched_maps)
+
+    # Relationship between stmt_a and stmt_d ---------------------------------------
+
+    expected_sio = isl.Map(
+        "[pt, pi, pk] -> {{ "
+        "[{0}'=0, i', k', {1}] -> [{0}=1, t, {2}] : "
+        "0 <= i' < pi and 0 <= k' < pk and 0 <= t < pt and {3}"
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            par_tag_var_names_prime,
+            par_tag_var_names,
+            par_tag_condition,
+            )
+        )
+    # isl ignores these apostrophes, so explicitly add them
+    expected_sio = append_marker_to_isl_map_var_names(
+        expected_sio, isl.dim_type.in_, "'")
+
+    _check_sio_for_stmt_pair(expected_sio, "stmt_a", "stmt_d", sched_maps)
+
+    # Relationship between stmt_b and stmt_d ---------------------------------------
+
+    expected_sio = isl.Map(
+        "[pt, pi, pj] -> {{ "
+        "[{0}'=0, i', j', {1}] -> [{0}=1, t, {2}] : "
+        "0 <= i' < pi and 0 <= j' < pj and 0 <= t < pt and {3}"
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            par_tag_var_names_prime,
+            par_tag_var_names,
+            par_tag_condition,
+            )
+        )
+    # isl ignores these apostrophes, so explicitly add them
+    expected_sio = append_marker_to_isl_map_var_names(
+        expected_sio, isl.dim_type.in_, "'")
+
+    _check_sio_for_stmt_pair(expected_sio, "stmt_b", "stmt_d", sched_maps)
+'''
 
 # }}}
 
