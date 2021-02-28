@@ -121,9 +121,10 @@ def get_lex_order_set(
     )
 
     # If no islvars passed, make them using the names provided
+    # (make sure to pass var names in desired order of space dims)
     if islvars is None:
         islvars = isl.make_zero_and_vars(
-            before_names+after_names+before_names_concurrent+after_names_concurrent,
+            before_names+before_names_concurrent+after_names+after_names_concurrent,
             [])
 
     # Initialize set with constraint i0' < i0
