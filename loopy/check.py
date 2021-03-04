@@ -889,21 +889,21 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
 
             if group_axes != group_axes_used:
                 raise LoopyError(
-                        "instruction '%s' does not use all group hw axes"
-                        " (available: %s used:%s). "
-                        "Calling loopy.add_inames_for_unused_hw_axes(...)"
-                        " might help."
-                        % (insn.id,
+                        f"instruction '{insn.id}' does not use all group hw axes "
+                        "(available: %s used: %s). "
+                        "Calling loopy.add_inames_for_unused_hw_axes(...) "
+                        "might help."
+                        % (
                             ",".join(str(i) for i in group_axes),
-                            ",".join(str(i) for i in group_axes_used)),
-                        DeprecationWarning, stacklevel=2)
+                            ",".join(str(i) for i in group_axes_used)))
 
             if local_axes != local_axes_used:
-                raise LoopyError("instruction '%s' does not use all local"
-                        " hw axes (available: %s used:%s). "
-                        "Calling loopy.add_inames_for_unused_hw_axes(...)"
-                        " might help."
-                        % (insn.id,
+                raise LoopyError(
+                        f"instruction '{insn.id}' does not use all local hw axes "
+                        "(available: %s used: %s). "
+                        "Calling loopy.add_inames_for_unused_hw_axes(...) "
+                        "might help."
+                        % (
                             ",".join(str(i) for i in local_axes),
                             ",".join(str(i) for i in local_axes_used)))
 
