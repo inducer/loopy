@@ -81,7 +81,7 @@ def get_schedules_for_statement_pairs(
         >>> # Print maps
         >>> print("\n".join(
         ...     str(m).replace("{ ", "{\n").replace(" :", "\n:")
-        ...     for m in schedules[("insn_a", "insn_b")[0]]
+        ...     for m in schedules[("insn_a", "insn_b")][0]
         ...     ))
         [pi, pj, pk] -> {
         [_lp_linchk_stmt = 0, i, j, k] -> [_lp_linchk_lex0 = i, _lp_linchk_lex1 = 0]
