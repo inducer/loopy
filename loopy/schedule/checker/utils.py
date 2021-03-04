@@ -29,10 +29,7 @@ def prettier_map_string(map_obj):
 
 
 def add_dims_to_isl_set(isl_set, dim_type, names, new_idx_start):
-    new_set = isl_set.insert_dims(
-        dim_type, new_idx_start, len(names)
-        )
-    #.set_dim_name(dim_type, new_idx_start, names[0])
+    new_set = isl_set.insert_dims(dim_type, new_idx_start, len(names))
     for i, name in enumerate(names):
         new_set = new_set.set_dim_name(dim_type, new_idx_start+i, name)
     return new_set
