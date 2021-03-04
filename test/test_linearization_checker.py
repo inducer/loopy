@@ -58,17 +58,19 @@ def _align_and_compare_maps(maps1, maps2):
         assert map1_aligned == map2
 
 
-def _lex_point_string(dim_vals, lid_axes=[], gid_axes=[]):
+def _lex_point_string(dim_vals, lid_inames=[], gid_inames=[]):
     # Return a string describing a point in a lex space
     # by assigning values to lex dimension variables
     # (used to create maps below)
 
-    lid_names = [LTAG_VAR_NAMES[i] for i in lid_axes]
-    gid_names = [GTAG_VAR_NAMES[i] for i in gid_axes]
-
     return ", ".join(
         ["%s%d=%s" % (LEX_VAR_PREFIX, idx, str(val))
-        for idx, val in enumerate(dim_vals)] + lid_names + gid_names)
+        for idx, val in enumerate(dim_vals)] +
+        ["%s=%s" % (LTAG_VAR_NAMES[idx], iname)
+        for idx, iname in enumerate(lid_inames)] +
+        ["%s=%s" % (GTAG_VAR_NAMES[idx], iname)
+        for idx, iname in enumerate(gid_inames)]
+        )
 
 # }}}
 
@@ -322,130 +324,63 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
     # Example kernel
     knl = lp.make_kernel(
         [
-            "{[i]: 0<=i<pi}",
-            "{[k]: 0<=k<pk}",
+            "{[i,ii]: 0<=i,ii<pi}",
             "{[j,jj]: 0<=j,jj<pj}",
-            "{[t]: 0<=t<pt}",
         ],
         """
         for i
-            for k
-                <>temp = b[i,k]  {id=insn_a}
-            end
-            for j
-                for jj
-                    a[i,j,jj] = temp + 1  {id=insn_b,dep=insn_a}
+            for ii
+                for j
+                    for jj
+                        <>temp = b[i,ii,j,jj]  {id=stmt_a}
+                        a[i,ii,j,jj] = temp + 1  {id=stmt_b,dep=stmt_a}
+                    end
                 end
             end
         end
-        for t
-            e[t] = f[t]  {id=insn_d, dep=insn_b}
-        end
         """,
         name="example",
-        assumptions="pi,pj,pk,pt >= 1",
+        assumptions="pi,pj >= 1",
+        lang_version=(2018, 2)
         )
-    knl = lp.add_and_infer_dtypes(knl, {"b": np.float32, "f": np.float32})
-    knl = lp.prioritize_loops(knl, "i,k")
-    knl = lp.tag_inames(knl, {"j": "l.1", "jj": "l.0", "t": "g.0"})
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
+    knl = lp.tag_inames(knl, {"j": "l.1", "jj": "l.0", "i": "g.0"})
 
     # Get a linearization
     proc_knl = preprocess_kernel(knl)
     lin_knl = get_one_linearized_kernel(proc_knl)
     linearization_items = lin_knl.linearization
 
-    insn_id_pairs = [
-        ("insn_a", "insn_b"),
-        ("insn_a", "insn_d"),
-        ("insn_b", "insn_d"),
+    stmt_id_pairs = [
+        ("stmt_a", "stmt_b"),
         ]
     sched_maps = get_schedules_for_statement_pairs(
         lin_knl,
         linearization_items,
-        insn_id_pairs,
+        stmt_id_pairs,
         )
 
-    # Relationship between insn_a and insn_b ---------------------------------------
+    # Relationship between stmt_a and stmt_b ---------------------------------------
 
     # Get two maps
     (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
-        ("insn_a", "insn_b")]
+        ("stmt_a", "stmt_b")]
 
     # Create expected maps and compare
 
     sched_map_before_expected = isl.Map(
-        "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
+        "[pi,pj] -> {[%s=0,i,ii,j,jj] -> [%s] : 0 <= i,ii < pi and 0 <= j,jj < pj}"
         % (
             STATEMENT_VAR_NAME,
-            _lex_point_string(["i", "0"], lid_axes=[0, 1], gid_axes=[0]),
+            _lex_point_string(["ii", "0"], lid_inames=["jj", "j"], gid_inames=["i"]),
             )
         )
 
     sched_map_after_expected = isl.Map(
-        "[pi, pj] -> { [%s=1, i, j, jj] -> [%s] : 0 <= i < pi and 0 <= j,jj < pj }"
+        "[pi,pj] -> {[%s=1,i,ii,j,jj] -> [%s] : 0 <= i,ii < pi and 0 <= j,jj < pj}"
         % (
             STATEMENT_VAR_NAME,
-            _lex_point_string(["i", "1"], lid_axes=[0, 1], gid_axes=[0]),
-            )
-        )
-
-    _align_and_compare_maps(
-        [sched_map_before_expected, sched_map_after_expected],
-        [sched_map_before, sched_map_after],
-        )
-
-    # ------------------------------------------------------------------------------
-    # Relationship between insn_a and insn_d ---------------------------------------
-
-    # Get two maps
-    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
-        ("insn_a", "insn_d")]
-
-    # Create expected maps and compare
-
-    sched_map_before_expected = isl.Map(
-        "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
-        % (
-            STATEMENT_VAR_NAME,
-            _lex_point_string([0, ], lid_axes=[0, 1], gid_axes=[0]),
-            )
-        )
-
-    sched_map_after_expected = isl.Map(
-        "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
-        % (
-            STATEMENT_VAR_NAME,
-            _lex_point_string([1, ], lid_axes=[0, 1], gid_axes=[0]),
-            )
-        )
-
-    _align_and_compare_maps(
-        [sched_map_before_expected, sched_map_after_expected],
-        [sched_map_before, sched_map_after],
-        )
-
-    # ------------------------------------------------------------------------------
-    # Relationship between insn_b and insn_d ---------------------------------------
-
-    # Get two maps
-    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
-        ("insn_b", "insn_d")]
-
-    # Create expected maps and compare
-
-    sched_map_before_expected = isl.Map(
-        "[pi, pj] -> { [%s=0, i, j, jj] -> [%s] : 0 <= i < pi and 0 <= j,jj < pj }"
-        % (
-            STATEMENT_VAR_NAME,
-            _lex_point_string([0, ], lid_axes=[0, 1], gid_axes=[0]),
-            )
-        )
-
-    sched_map_after_expected = isl.Map(
-        "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
-        % (
-            STATEMENT_VAR_NAME,
-            _lex_point_string([1, ], lid_axes=[0, 1], gid_axes=[0]),
+            _lex_point_string(["ii", "1"], lid_inames=["jj", "j"], gid_inames=["i"]),
             )
         )
 
@@ -737,7 +672,6 @@ def test_statement_instance_ordering():
     _check_sio_for_stmt_pair(expected_sio, "stmt_c", "stmt_d", sched_maps)
 
 
-'''
 def test_statement_instance_ordering_with_hw_par_tags():
     import islpy as isl
     from loopy.schedule.checker import (
@@ -745,39 +679,33 @@ def test_statement_instance_ordering_with_hw_par_tags():
     )
     from loopy.schedule.checker.utils import (
         append_marker_to_isl_map_var_names,
-        append_marker_to_strings,
+        partition_inames_by_concurrency,
     )
 
     # Example kernel
     knl = lp.make_kernel(
         [
-            "{[i]: 0<=i<pi}",
-            "{[k]: 0<=k<pk}",
+            "{[i,ii]: 0<=i,ii<pi}",
             "{[j,jj]: 0<=j,jj<pj}",
-            "{[t]: 0<=t<pt}",
         ],
         """
         for i
-            for k
-                <>temp = b[i,k]  {id=stmt_a}
-            end
-            for j
-                for jj
-                    a[i,j,jj] = temp + 1  {id=stmt_b,dep=stmt_a}
+            for ii
+                for j
+                    for jj
+                        <>temp = b[i,ii,j,jj]  {id=stmt_a}
+                        a[i,ii,j,jj] = temp + 1  {id=stmt_b,dep=stmt_a}
+                    end
                 end
             end
         end
-        for t
-            e[t] = f[t]  {id=stmt_d, dep=stmt_b}
-        end
         """,
         name="example",
-        assumptions="pi,pj,pk,pt >= 1",
+        assumptions="pi,pj >= 1",
         lang_version=(2018, 2)
         )
-    knl = lp.add_and_infer_dtypes(knl, {"b": np.float32, "f": np.float32})
-    knl = lp.prioritize_loops(knl, "i,k")
-    knl = lp.tag_inames(knl, {"j": "l.1", "jj": "l.0", "t": "g.0"})
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
+    knl = lp.tag_inames(knl, {"j": "l.1", "jj": "l.0", "i": "g.0"})
 
     # Get a linearization
     proc_knl = preprocess_kernel(knl)
@@ -787,8 +715,6 @@ def test_statement_instance_ordering_with_hw_par_tags():
     # Get pairwise schedules
     stmt_id_pairs = [
         ("stmt_a", "stmt_b"),
-        ("stmt_a", "stmt_d"),
-        ("stmt_b", "stmt_d"),
         ]
     sched_maps = get_schedules_for_statement_pairs(
         lin_knl,
@@ -796,38 +722,21 @@ def test_statement_instance_ordering_with_hw_par_tags():
         stmt_id_pairs,
         )
 
-    # Create strings for representing hardware tag portions of sio maps
-
-    # Get par tag names for this kernel
-    ltag_var_names = [LTAG_VAR_NAMES[lid] for lid in [0, 1]]
-    gtag_var_names = [GTAG_VAR_NAMES[gid] for gid in [0]]
-
-    # Equality condition, e.g., "lid0' = lid0 and lid1' = lid1, and ..."
-    par_tag_condition = " and ".join(
-        ["{0}' = {0}".format(ltag) for ltag in ltag_var_names] +
-        ["{0}' = {0}".format(gtag) for gtag in gtag_var_names]
-        )
-
-    # Comma separated dim names, e.g., "lid0', lid1', gid0'"
-    par_tag_var_names = ", ".join(ltag_var_names + gtag_var_names)
-    par_tag_var_names_prime = ", ".join(
-        append_marker_to_strings(ltag_var_names + gtag_var_names, "'"))
+    # Create string for representing parallel iname condition in sio
+    conc_inames, _ = partition_inames_by_concurrency(knl)
+    par_iname_condition = " and ".join(
+        "{0} = {0}'".format(iname) for iname in conc_inames)
 
     # Relationship between stmt_a and stmt_b ---------------------------------------
 
     expected_sio = isl.Map(
-        "[pi, pj, pk] -> {{ "
-        "[{0}'=0, i', k', {1}] -> [{0}=1, i, j, {2}] : "
-        "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj and 0 <= i < pi and i > i' "
-        "and {3}; "
-        "[{0}'=0, i', k', {1}] -> [{0}=1, i=i', j, {2}] : "
-        "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj "
-        "and {3}"
+        "[pi, pj] -> {{ "
+        "[{0}'=0, i', ii', j', jj'] -> [{0}=1, i, ii, j, jj] : "
+        "0 <= i,ii,i',ii' < pi and 0 <= j,jj,j',jj' < pj and ii >= ii' "
+        "and {1} "
         "}}".format(
             STATEMENT_VAR_NAME,
-            par_tag_var_names_prime,
-            par_tag_var_names,
-            par_tag_condition,
+            par_iname_condition,
             )
         )
     # isl ignores these apostrophes, so explicitly add them
@@ -836,44 +745,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
 
     _check_sio_for_stmt_pair(expected_sio, "stmt_a", "stmt_b", sched_maps)
 
-    # Relationship between stmt_a and stmt_d ---------------------------------------
-
-    expected_sio = isl.Map(
-        "[pt, pi, pk] -> {{ "
-        "[{0}'=0, i', k', {1}] -> [{0}=1, t, {2}] : "
-        "0 <= i' < pi and 0 <= k' < pk and 0 <= t < pt and {3}"
-        "}}".format(
-            STATEMENT_VAR_NAME,
-            par_tag_var_names_prime,
-            par_tag_var_names,
-            par_tag_condition,
-            )
-        )
-    # isl ignores these apostrophes, so explicitly add them
-    expected_sio = append_marker_to_isl_map_var_names(
-        expected_sio, isl.dim_type.in_, "'")
-
-    _check_sio_for_stmt_pair(expected_sio, "stmt_a", "stmt_d", sched_maps)
-
-    # Relationship between stmt_b and stmt_d ---------------------------------------
-
-    expected_sio = isl.Map(
-        "[pt, pi, pj] -> {{ "
-        "[{0}'=0, i', j', {1}] -> [{0}=1, t, {2}] : "
-        "0 <= i' < pi and 0 <= j' < pj and 0 <= t < pt and {3}"
-        "}}".format(
-            STATEMENT_VAR_NAME,
-            par_tag_var_names_prime,
-            par_tag_var_names,
-            par_tag_condition,
-            )
-        )
-    # isl ignores these apostrophes, so explicitly add them
-    expected_sio = append_marker_to_isl_map_var_names(
-        expected_sio, isl.dim_type.in_, "'")
-
-    _check_sio_for_stmt_pair(expected_sio, "stmt_b", "stmt_d", sched_maps)
-'''
+    # ------------------------------------------------------------------------------
 
 # }}}
 

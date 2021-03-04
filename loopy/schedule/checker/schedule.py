@@ -243,6 +243,31 @@ def generate_pairwise_schedules(
 
     # Second, create pairwise schedules for each individual pair of insns
 
+    # Get dim names representing local/group axes for this kernel,
+    # and get the dictionary that will be used later to create a
+    # constraint requiring {par inames == par axes} in sched
+    l_axes_used = set()
+    g_axes_used = set()
+    par_iname_constraint_dicts = []
+    for iname in knl.all_inames():
+        ltag = knl.iname_tags_of_type(iname, LocalIndexTag)
+        if ltag:
+            # assert len(ltag) == 1  # (should always be true)
+            ltag_var = LTAG_VAR_NAMES[ltag.pop().axis]
+            l_axes_used.add(ltag_var)
+            # Represent constraint 'iname = ltag_var' in par_iname_constraint_dicts:
+            par_iname_constraint_dicts.append({1: 0, iname: 1, ltag_var: -1})
+            continue
+        gtag = knl.iname_tags_of_type(iname, GroupIndexTag)
+        if gtag:
+            # assert len(gtag) == 1  # (should always be true)
+            gtag_var = GTAG_VAR_NAMES[gtag.pop().axis]
+            g_axes_used.add(gtag_var)
+            # Represent constraint 'iname = gtag_var' in par_iname_constraint_dicts:
+            par_iname_constraint_dicts.append({1: 0, iname: 1, gtag_var: -1})
+            continue
+    conc_lex_dim_names = sorted(l_axes_used) + sorted(g_axes_used)
+
     from loopy.schedule.checker.utils import (
         sorted_union_of_names_in_isl_sets,
         create_symbolic_map_from_tuples,
@@ -269,10 +294,6 @@ def generate_pairwise_schedules(
             params=[],
             )
 
-        # TODO Either set inames equal to relevant gid/lid var names
-        # or replace inames with gid/lid var names...
-        # (otherwise gid/lid conditions will be lost in SIO composition)
-
         # Insert 'statement' dim into domain so that its space allows
         # for intersection with sched map later
         dom_to_intersect = add_dims_to_isl_set(
@@ -287,31 +308,17 @@ def generate_pairwise_schedules(
             )]
 
         # Create map
-        return create_symbolic_map_from_tuples(
+        sched_map = create_symbolic_map_from_tuples(
             tuple_pairs_with_domains=zip(tuple_pair, [dom_to_intersect, ]),
             space=sched_space,
             )
 
-    # Get local/group axes for this kernel
-    l_axes_used = set()
-    g_axes_used = set()
-    for iname in knl.all_inames():
-        ltag = knl.iname_tags_of_type(iname, LocalIndexTag)
-        if ltag:
-            assert len(ltag) == 1  # TODO always true? remove?
-            l_axes_used.add(ltag.pop().axis)
-            continue
-        gtag = knl.iname_tags_of_type(iname, GroupIndexTag)
-        if gtag:
-            assert len(gtag) == 1  # TODO always true? remove?
-            g_axes_used.add(gtag.pop().axis)
-            continue
-    conc_lex_dim_names = (
-        [LTAG_VAR_NAMES[i] for i in sorted(l_axes_used)] +
-        [GTAG_VAR_NAMES[i] for i in sorted(g_axes_used)]
-        )
-    # TODO (For now, using same loc/glob axes for for all pairwise
-    # schedules in this knl.)
+        # Set inames equal to relevant gid/lid var names
+        for constraint_dict in par_iname_constraint_dicts:
+            sched_map = sched_map.add_constraint(
+                isl.Constraint.eq_from_names(sched_map.space, constraint_dict))
+
+        return sched_map
 
     from loopy.schedule.checker.lexicographic_order_map import (
         create_lex_order_map,
