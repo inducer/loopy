@@ -584,9 +584,7 @@ def test_statement_instance_ordering():
     expected_sio = isl.Map(
         "[pi, pj, pk] -> {{ "
         "[{0}'=0, i', k'] -> [{0}=1, i, j] : "
-        "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj and 0 <= i < pi and i > i'; "
-        "[{0}'=0, i', k'] -> [{0}=1, i=i', j] : "
-        "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj "
+        "0 <= i,i' < pi and 0 <= k' < pk and 0 <= j < pj and i >= i' "
         "}}".format(STATEMENT_VAR_NAME)
         )
     # isl ignores these apostrophes, so explicitly add them
@@ -600,9 +598,7 @@ def test_statement_instance_ordering():
     expected_sio = isl.Map(
         "[pi, pj, pk] -> {{ "
         "[{0}'=0, i', k'] -> [{0}=1, i, j] : "
-        "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj and 0 <= i < pi and i > i'; "
-        "[{0}'=0, i', k'] -> [{0}=1, i=i', j] : "
-        "0 <= i' < pi and 0 <= k' < pk and 0 <= j < pj "
+        "0 <= i,i' < pi and 0 <= k' < pk and 0 <= j < pj and i >= i' "
         "}}".format(STATEMENT_VAR_NAME)
         )
     # isl ignores these apostrophes, so explicitly add them
@@ -630,11 +626,9 @@ def test_statement_instance_ordering():
     expected_sio = isl.Map(
         "[pi, pj] -> {{ "
         "[{0}'=0, i', j'] -> [{0}=1, i, j] : "
-        "0 <= i' < pi and 0 <= j' < pj and i > i' and 0 <= i < pi and 0 <= j < pj; "
+        "0 <= i,i' < pi and 0 <= j,j' < pj and i > i'; "
         "[{0}'=0, i', j'] -> [{0}=1, i=i', j] : "
-        "0 <= i' < pi and 0 <= j' < pj and j > j' and 0 <= j < pj; "
-        "[{0}'=0, i', j'] -> [{0}=1, i=i', j=j'] : "
-        "0 <= i' < pi and 0 <= j' < pj "
+        "0 <= i' < pi and 0 <= j,j' < pj and j >= j'; "
         "}}".format(STATEMENT_VAR_NAME)
         )
     # isl ignores these apostrophes, so explicitly add them
