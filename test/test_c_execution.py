@@ -351,6 +351,18 @@ def test_missing_compilers():
         __test(eval_tester, ExecutableCTarget, compiler=ccomp)
 
 
+def test_one_length_loop():
+    # https://github.com/inducer/loopy/issues/239
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<1}",
+            """
+            a[i] = 42.0
+            """, target=lp.ExecutableCTarget())
+
+    _, (out, ) = knl()
+    assert out == 42
+
+
 def test_scalar_global_args():
     n = np.random.default_rng().integers(30, 100)
     evt, (out,) = lp.make_kernel(

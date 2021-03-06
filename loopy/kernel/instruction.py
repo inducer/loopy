@@ -274,7 +274,7 @@ class InstructionBase(ImmutableRecord):
         raise NotImplementedError
 
     def assignee_var_names(self):
-        """Return a tuple of tuples of assignee variable names, one
+        """Return a tuple of assignee variable names, one
         for each quantity being assigned to.
         """
         raise NotImplementedError
