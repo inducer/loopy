@@ -242,9 +242,10 @@ def assert_parse_roundtrip(expr):
     assert expr == parsed_expr
 
 
+@pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
 @pytest.mark.parametrize("random_seed", [0, 1, 2, 3, 4, 5])
 @pytest.mark.parametrize("expr_type", ["int", "int_nonneg", "real", "complex"])
-def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
+def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target):
     from pymbolic import evaluate
 
     def get_numpy_type(x):
@@ -261,9 +262,6 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
             raise ValueError("unknown expr_type: %s" % expr_type)
 
     from random import seed
-
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
 
     seed(random_seed)
 
@@ -332,7 +330,8 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
         if expr_type == "int_nonneg":
             var_names.extend(var_values)
 
-    knl = lp.make_kernel("{ : }", instructions, data, seq_dependencies=True)
+    knl = lp.make_kernel("{ : }", instructions, data, seq_dependencies=True,
+            target=target())
 
     import islpy as isl
     knl = lp.assume(knl, isl.BasicSet(
@@ -343,7 +342,14 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
 
     knl = lp.set_options(knl, return_dict=True)
     print(knl)
-    evt, lp_values = knl(queue, out_host=True)
+
+    if target == lp.PyOpenCLTarget:
+        knl = lp.set_options(knl, "write_cl")
+        evt, lp_values = knl(cl.CommandQueue(ctx_factory()), out_host=True)
+    elif target == lp.ExecutableCTarget:
+        evt, lp_values = knl()
+    else:
+        raise NotImplementedError("unsupported target")
 
     for name, ref_value in ref_values.items():
         lp_value = lp_values[name]
