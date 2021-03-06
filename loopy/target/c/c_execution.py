@@ -326,8 +326,9 @@ class IDIToCDLL:
         # next loop through the implemented data info to get the arg data
         arg_info = []
         for arg in idi:
-            # check if pointer
-            pointer = arg.shape
+            # check if pointer: outputs and arrays must be passed
+            # by reference.
+            pointer = arg.shape or arg.is_written
             arg_info.append(self._dtype_to_ctype(arg.dtype, pointer))
 
         return arg_info
