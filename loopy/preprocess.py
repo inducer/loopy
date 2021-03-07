@@ -40,7 +40,8 @@ from loopy.symbolic import RuleAwareIdentityMapper, ReductionCallbackMapper
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
-from loopy.program import Program, iterate_over_kernels_if_given_program
+from loopy.kernel import LoopKernel
+from loopy.program import Program
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 from pytools import ProcessLogger
@@ -49,8 +50,7 @@ from functools import partial
 
 # {{{ prepare for caching
 
-@iterate_over_kernels_if_given_program
-def prepare_for_caching(kernel):
+def prepare_for_caching_inner(kernel):
     import loopy as lp
     from loopy.types import OpaqueType
     new_args = []
@@ -80,6 +80,32 @@ def prepare_for_caching(kernel):
             temporary_variables=new_temporary_variables)
 
     return kernel
+
+
+def prepare_for_caching(program):
+    if isinstance(program, LoopKernel):
+        return prepare_for_caching_inner(program)
+
+    assert isinstance(program, Program)
+    tgt = program.target
+
+    new_clbls = {}
+    for name, clbl in program.callables_table.items():
+        if clbl.arg_id_to_dtype is not None:
+            arg_id_to_dtype = {id: dtype.with_target(tgt)
+                               for id, dtype in clbl.arg_id_to_dtype.items()}
+            clbl = clbl.copy(arg_id_to_dtype=arg_id_to_dtype)
+        if isinstance(clbl, ScalarCallable):
+            pass
+        elif isinstance(clbl, CallableKernel):
+            subknl = prepare_for_caching_inner(clbl.subkernel)
+            clbl = clbl.copy(subkernel=subknl)
+        else:
+            raise NotImplementedError(type(clbl))
+
+        new_clbls[name] = clbl
+
+    return program.copy(callables_table=new_clbls)
 
 # }}}
 
