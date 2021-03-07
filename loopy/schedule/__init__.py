@@ -643,6 +643,13 @@ def get_insns_in_topologically_sorted_order(kernel):
         for dep in insn.depends_on:
             rev_dep_map[dep].add(insn.id)
 
+    # For breaking ties, we compare the features of an intruction
+    # so that instructions with the same set of features are lumped
+    # together. This helps in :method:`schedule_as_many_run_insns_as_possible`
+    # which bails after 5 insns that don't have the same feature.
+    #
+    # Instead of returning these features as a key, we assign an id to
+    # each set of features to avoid comparing them which can be expensive.
     insn_id_to_feature_id = {}
     insn_features = {}
     for insn in kernel.instructions:
