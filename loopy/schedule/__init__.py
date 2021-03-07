@@ -647,7 +647,7 @@ def get_insns_in_topologically_sorted_order(kernel):
         # negative of insn.priority because
         # pytools.graph.compute_topological_order schedules the nodes with
         # lower 'key' first in case of a tie.
-        return (-kernel.id_to_insn[insn_id].priority, insn.id)
+        return (-kernel.id_to_insn[insn_id].priority, insn_id)
 
     ids = compute_topological_order(rev_dep_map, key=key)
     return [kernel.id_to_insn[insn_id] for insn_id in ids]
