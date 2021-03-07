@@ -727,8 +727,10 @@ class CallableKernel(InKernelCallable):
 
         new_arg_id_to_dtype = {}
         for pos, kw in pos_to_kw.items():
-            new_arg_id_to_dtype[kw] = specialized_kernel.arg_dict[kw].dtype
-            new_arg_id_to_dtype[pos] = specialized_kernel.arg_dict[kw].dtype
+            arg = specialized_kernel.arg_dict[kw]
+            if arg.dtype:
+                new_arg_id_to_dtype[kw] = arg.dtype
+                new_arg_id_to_dtype[pos] = arg.dtype
 
         # Return the kernel call with specialized subkernel and the corresponding
         # new arg_id_to_dtype
