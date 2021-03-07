@@ -643,11 +643,23 @@ def get_insns_in_topologically_sorted_order(kernel):
         for dep in insn.depends_on:
             rev_dep_map[dep].add(insn.id)
 
+    insn_id_to_feature_id = {}
+    insn_features = {}
+    for insn in kernel.instructions:
+        feature = (insn.within_inames, insn.groups, insn.conflicts_with_groups)
+        if feature not in insn_features:
+            feature_id = len(insn_features)
+            insn_features[feature] = feature_id
+        else:
+            feature_id = insn_features[feature]
+        insn_id_to_feature_id[insn.id] = feature_id
+
     def key(insn_id):
         # negative of insn.priority because
         # pytools.graph.compute_topological_order schedules the nodes with
         # lower 'key' first in case of a tie.
-        return (-kernel.id_to_insn[insn_id].priority, insn_id)
+        return (-kernel.id_to_insn[insn_id].priority,
+                insn_id_to_feature_id[insn_id], insn_id)
 
     ids = compute_topological_order(rev_dep_map, key=key)
     return [kernel.id_to_insn[insn_id] for insn_id in ids]
