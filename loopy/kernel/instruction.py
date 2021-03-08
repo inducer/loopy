@@ -380,7 +380,9 @@ class InstructionBase(ImmutableRecord):
         if self.priority:
             result.append("priority=%d" % self.priority)
         if self.tags:
-            result.append("tags=%s" % ":".join(self.tags))
+            from loopy.kernel.tools import stringify_instruction_tag
+            result.append("tags=%s" % ":".join(
+                stringify_instruction_tag(t) for t in self.tags))
         if hasattr(self, "atomicity") and self.atomicity:
             result.append("atomic=%s" % ":".join(str(a) for a in self.atomicity))
 
