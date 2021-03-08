@@ -1538,7 +1538,7 @@ def stringify_instruction_list(kernel):
             options.append("priority=%d" % insn.priority)
         if insn.tags:
             options.append("tags=%s" % ":".join(
-            stringify_instruction_tag(t) for t in insn.tags))
+                stringify_instruction_tag(t) for t in insn.tags))
         if isinstance(insn, lp.Assignment) and insn.atomicity:
             options.append("atomic=%s" % ":".join(
                 str(a) for a in insn.atomicity))
