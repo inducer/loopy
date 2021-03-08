@@ -50,6 +50,12 @@ class UseStreamingStoreTag(Tag):
     :class:`Assignment` or a :class:`CallInstruction`, then the 'store' part of
     the assignment should be realized using streaming stores.
 
+    .. note::
+
+        This tag is advisory in nature and may be ignored by targets
+        that do not understand it or in situations where it does not
+        apply.
+
     .. warning::
 
         This is a dodgy shortcut, and no promise is made that this will
