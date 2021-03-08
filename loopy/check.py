@@ -24,7 +24,8 @@ THE SOFTWARE.
 from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper
-from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_kernel
+from loopy.diagnostic import (LoopyError, BoundsCheckError,
+        WriteRaceConditionWarning, warn_with_kernel)
 from loopy.type_inference import TypeInferenceMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
@@ -438,7 +439,7 @@ class _AccessCheckMapper(WalkMapper):
                     shape_domain = shape_domain.intersect(slab)
 
             if not access_range.is_subset(shape_domain):
-                raise LoopyError("'%s' in instruction '%s' "
+                raise BoundsCheckError("'%s' in instruction '%s' "
                         "accesses out-of-bounds array element (could not"
                         " establish '%s' is a subset of '%s')."
                         % (expr, self.insn_id, access_range, shape_domain))
