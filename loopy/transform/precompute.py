@@ -267,6 +267,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         fetch_bounding_box=False,
         temporary_address_space=None,
         compute_insn_id=None,
+        stream_iname=None,  # if not None, use streaming prefetch in precompute
         **kwargs):
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
@@ -835,31 +836,228 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # }}}
 
-    from loopy.kernel.data import Assignment
-    if compute_insn_id is None:
-        compute_insn_id = kernel.make_unique_instruction_id(based_on=c_subst_name)
+    if stream_iname is not None:
+        from pymbolic import parse
+        stream_var = parse(stream_iname)
 
-    compute_insn = Assignment(
-            id=compute_insn_id,
-            assignee=assignee,
-            expression=compute_expression,
-            # within_inames determined below
-            )
-    compute_dep_id = compute_insn_id
-    added_compute_insns = [compute_insn]
+        # {{{ some utility functions
 
-    if temporary_address_space == AddressSpace.GLOBAL:
-        barrier_insn_id = kernel.make_unique_instruction_id(
-                based_on=c_subst_name+"_barrier")
+        def increment(expr, iname):
+            from pymbolic import parse, substitute
+            if isinstance(iname, str):
+                iname = parse(iname)
+            return substitute(expr, {iname: iname + 1})
+
+        def decrement(expr, iname):
+            from pymbolic import parse, substitute
+            if isinstance(iname, str):
+                iname = parse(iname)
+            return substitute(expr, {iname: iname - 1})
+
+        def rename(set, old, new):
+            var_dict = set.get_var_dict()
+            dt, dim_idx = var_dict[old]
+            return set.set_dim_name(dt, dim_idx, new)
+
+        def add_iname(set, inames):
+            from pymbolic.primitives import Variable
+            if isinstance(inames, Variable):
+                inames = [inames.name]
+            elif isinstance(inames, str):
+                inames = [inames]
+            for iname in inames:
+                set = set.add_dims(isl.dim_type.out,
+                        1).set_dim_name(isl.dim_type.out, set.n_dim(), iname)
+            return set
+
+        # }}}
+
+        # primed storage inames
+        non1_pstorage_axis_names = [name+"'" for name in non1_storage_axis_names]
+
+        # append "_g" to storage inames for corresponding global iname
+        global_storage_axis_dict = {}
+        for iname in non1_storage_axis_names:
+            global_storage_axis_dict[iname] = iname+"_g"
+        global_storage_axis_names = list(global_storage_axis_dict.values())
+
+        domain = kernel.domains[0]  # ??? what should I do about this indexing
+
+        storage_axis_subst_dict_1 = storage_axis_subst_dict
+
+        storage_axis_subst_dict_0 = {}
+        for iname in storage_axis_subst_dict.keys():
+            storage_axis_subst_dict_0[iname] = \
+                decrement(storage_axis_subst_dict[iname], stream_var)
+
+        domain = add_iname(domain, global_storage_axis_names)
+
+        from loopy.symbolic import aff_from_expr
+
+        # these were removed from loopy.symbolic
+        def eq_constraint_from_expr(space, expr):
+            return isl.Constraint.equality_from_aff(aff_from_expr(space, expr))
+
+        def ineq_constraint_from_expr(space, expr):
+            return isl.Constraint.inequality_from_aff(aff_from_expr(space, expr))
+
+        # constraints on relationship between storage, etc. inames and global inames
+        constraints_0 \
+            = [eq_constraint_from_expr(domain.space,
+                parse(global_storage_axis_dict[si])
+                - storage_axis_subst_dict_0[si]) for si in non1_storage_axis_names]
+        constraints_1 \
+            = [eq_constraint_from_expr(domain.space,
+                parse(global_storage_axis_dict[si])
+                - storage_axis_subst_dict_1[si]) for si in non1_storage_axis_names]
+
+        domain_0 = domain.add_constraints(constraints_0)
+        domain_1 = domain.add_constraints(constraints_1)
+
+        for si, psi in zip(non1_storage_axis_names, non1_pstorage_axis_names):
+            domain_1 = add_iname(domain_1, psi)
+            domain_0 = rename(domain_0, si, psi)
+            domain_0 = add_iname(domain_0, si)
+            domain_0, domain_1 = isl.align_two(domain_0, domain_1)
+
+        overlap = domain_0 & domain_1
+
+        # ??? better way to ensure stream_iname is not on first iteration?
+        # e.g., this (and other code) assumes stream_iname increments by positive 1
+        dt, dim_idx = domain.get_var_dict()[stream_iname]
+        from loopy.symbolic import pw_aff_to_expr
+        stream_min = pw_aff_to_expr(domain.dim_min(dim_idx))
+        overlap = overlap.add_constraint(
+            ineq_constraint_from_expr(overlap.space, stream_var - stream_min - 1))
+
+        from loopy.symbolic import basic_set_to_cond_expr
+        in_overlap = basic_set_to_cond_expr(
+            overlap.project_out_except(
+                non1_storage_axis_names+[stream_iname], [isl.dim_type.out]))
+
+        fetch_var = var(temporary_name)
+
+        stream_assignee = fetch_var[tuple(var(iname)
+                            for iname in non1_storage_axis_names)]
+
+        # {{{ obtain global indexing from constraints
+
+        # ??? better way?
+        stream_replace_rules = overlap.project_out_except(
+                                non1_storage_axis_names+non1_pstorage_axis_names,
+                                [isl.dim_type.out])
+        from loopy.symbolic import aff_to_expr
+        cns_exprs = [aff_to_expr(cns.get_aff())
+                        for cns in stream_replace_rules.get_constraints()]
+
+        stream_subst_dict = {}
+        from pymbolic.algorithm import solve_affine_equations_for
+        stream_subst_dict = solve_affine_equations_for(non1_pstorage_axis_names,
+                                                [(0, cns) for cns in cns_exprs])
+
+        # }}}
+
+        # {{{ create instructions
+
+        from pymbolic import parse
+        fetch_var = parse(temporary_name)
+        stream_temp_expression = fetch_var[tuple([stream_subst_dict[Variable(psname)]
+                                            for psname in non1_pstorage_axis_names])]
+
+        stream_fetch_expression = compute_expression
+
+        var_name_gen = kernel.get_var_name_generator()
+        # ??? probably want to generate temporary name with var_name_gen?
+        stream_temp_assignee = temporary_name+"_temp"
+
+        copy_temp_insn_id = temporary_name+"_copy_temp_rule"
+        stream_temp_insn_id = temporary_name+"_stream_temp_rule"
+        fetch_temp_insn_id = temporary_name+"_fetch_temp_rule"
+
+        from loopy.kernel.data import Assignment
+        stream_temp_insn = Assignment(
+                id=stream_temp_insn_id,
+                assignee=stream_temp_assignee,
+                expression=stream_temp_expression,
+                predicates=[in_overlap],
+                depends_on_is_final=True
+                # within_inames determined below
+                )
+
+        fetch_temp_insn = Assignment(
+                id=fetch_temp_insn_id,
+                assignee=stream_temp_assignee,
+                expression=stream_fetch_expression,
+                predicates=[in_overlap.not_()],
+                depends_on_is_final=True
+                # within_inames determined below
+                )
+
+        stream_barrier_insn_id = kernel.make_unique_instruction_id(
+                based_on=stream_temp_insn_id+"_barrier")
         from loopy.kernel.instruction import BarrierInstruction
-        barrier_insn = BarrierInstruction(
-                id=barrier_insn_id,
-                depends_on=frozenset([compute_insn_id]),
-                synchronization_kind="global",
-                mem_kind="global")
-        compute_dep_id = barrier_insn_id
+        stream_barrier_insn = BarrierInstruction(
+                id=stream_barrier_insn_id,
+                depends_on=frozenset([stream_temp_insn_id, fetch_temp_insn_id]),
+                depends_on_is_final=True,
+                synchronization_kind="local",
+                mem_kind="local")
 
-        added_compute_insns.append(barrier_insn)
+        copy_temp_insn = Assignment(
+                id=copy_temp_insn_id,
+                assignee=stream_assignee,
+                expression=stream_temp_assignee,
+                depends_on_is_final=True,
+                depends_on=frozenset([stream_barrier_insn_id])
+                # within_inames determined below
+                )
+
+        copy_barrier_insn_id = kernel.make_unique_instruction_id(
+                based_on=copy_temp_insn_id+"_barrier")
+        from loopy.kernel.instruction import BarrierInstruction
+        copy_barrier_insn = BarrierInstruction(
+                id=copy_barrier_insn_id,
+                depends_on=frozenset([copy_temp_insn_id]),
+                depends_on_is_final=True,
+                synchronization_kind="local",
+                mem_kind="local")
+
+        added_compute_insns = [fetch_temp_insn, stream_temp_insn,
+            stream_barrier_insn, copy_temp_insn, copy_barrier_insn]
+
+        # }}}
+
+        # ??? this is for compatibility with old (shared) precompute code
+        compute_insn_id = copy_barrier_insn_id
+        compute_dep_id = copy_barrier_insn_id
+        compute_insn = copy_barrier_insn
+    else:
+        from loopy.kernel.data import Assignment
+        if compute_insn_id is None:
+            compute_insn_id = kernel.make_unique_instruction_id(
+                                        based_on=c_subst_name)
+
+        compute_insn = Assignment(
+                id=compute_insn_id,
+                assignee=assignee,
+                expression=compute_expression,
+                # within_inames determined below
+                )
+        compute_dep_id = compute_insn_id
+        added_compute_insns = [compute_insn]
+
+        if temporary_address_space == AddressSpace.GLOBAL:
+            barrier_insn_id = kernel.make_unique_instruction_id(
+                    based_on=c_subst_name+"_barrier")
+            from loopy.kernel.instruction import BarrierInstruction
+            barrier_insn = BarrierInstruction(
+                    id=barrier_insn_id,
+                    depends_on=frozenset([compute_insn_id]),
+                    synchronization_kind="global",
+                    mem_kind="global")
+            compute_dep_id = barrier_insn_id
+
+            added_compute_insns.append(barrier_insn)
 
     # }}}
 
@@ -878,19 +1076,21 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     kernel = invr.map_kernel(kernel)
     kernel = kernel.copy(
-            instructions=added_compute_insns + kernel.instructions)
+                instructions=added_compute_insns + kernel.instructions)
     kernel = rule_mapping_context.finish_kernel(kernel)
 
     # }}}
 
     # {{{ add dependencies to compute insn
 
-    kernel = kernel.copy(
-            instructions=[
-                insn.copy(depends_on=frozenset(invr.compute_insn_depends_on))
-                if insn.id == compute_insn_id
-                else insn
-                for insn in kernel.instructions])
+    # ??? removed this from streaming case for now - it adds a redundant barrier
+    if stream_iname is None:
+        kernel = kernel.copy(
+                instructions=[
+                    insn.copy(depends_on=frozenset(invr.compute_insn_depends_on))
+                    if insn.id == compute_insn_id
+                    else insn
+                    for insn in kernel.instructions])
 
     # }}}
 
@@ -944,7 +1144,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     kernel = kernel.copy(
             instructions=[
                 insn.copy(within_inames=precompute_outer_inames)
-                if insn.id == compute_insn_id
+                # ??? replaced the below - should work for normal precompute?
+                # if insn.id == compute_insn_id
+                if insn.id in [a.id for a in added_compute_insns]
                 else insn
                 for insn in kernel.instructions])
 
@@ -1024,6 +1226,17 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         # }}}
 
     new_temporary_variables[temporary_name] = temp_var
+
+    if stream_iname is not None:
+        temp_name = temporary_name+"_temp"
+        temp_fetch_variable = lp.TemporaryVariable(
+            name=temp_name,
+            dtype=dtype,
+            base_indices=()*len(new_temp_shape),
+            shape=tuple(),
+            address_space=lp.AddressSpace.PRIVATE)
+
+        new_temporary_variables[temp_name] = temp_fetch_variable
 
     kernel = kernel.copy(
             temporary_variables=new_temporary_variables)

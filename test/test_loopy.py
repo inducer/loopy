@@ -2742,6 +2742,107 @@ def test_dep_cycle_printing_and_error():
         print(lp.generate_code(knl)[0])
 
 
+@pytest.mark.parametrize("op", [">", ">=", "<", "<=", "==", "!="])
+def test_conditional_access_range(ctx_factory, op):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    def get_condition():
+        if op == ">":
+            return "not (i > 7)"
+        elif op == ">=":
+            return "not (i >= 8)"
+        elif op == "<":
+            return "i < 8"
+        elif op == "<=":
+            return "i <=7"
+        elif op == "==":
+            return " or ".join(["i == {}".format(i) for i in range(8)])
+        elif op == "!=":
+            return " and ".join(["i != {}".format(i) for i in range(8, 10)])
+
+    condition = get_condition()
+    knl = lp.make_kernel(
+            "{[i]: 0 <= i < 10}",
+            """
+            if {condition}
+                tmp[i] = tmp[i] + 1
+            end
+           """.format(condition=condition),
+            [lp.GlobalArg("tmp", shape=(8,), dtype=np.int64)])
+
+    assert np.array_equal(knl(queue, tmp=np.arange(8))[1][0], np.arange(1, 9))
+
+
+def test_conditional_access_range_with_parameters(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    # test that conditional on parameter works, otherwise the tmp[j, i] will show
+    # as OOB
+    knl = lp.make_kernel(
+            ["{[i]: 0 <= i < 10}",
+             "{[j]: 0 <= j < problem_size + 2}"],
+            """
+            if i < 8 and j < problem_size
+                tmp[j, i] = tmp[j, i] + 1
+            end
+           """,
+            [lp.GlobalArg("tmp", shape=("problem_size", 8,), dtype=np.int64),
+             lp.ValueArg("problem_size", dtype=np.int64)])
+
+    assert np.array_equal(knl(queue, tmp=np.arange(80).reshape((10, 8)),
+                              problem_size=10)[1][0], np.arange(1, 81).reshape(
+                                (10, 8)))
+
+    # test a conditional that's only _half_ data-dependent to ensure the other
+    # half works
+    knl = lp.make_kernel(
+            ["{[i]: 0 <= i < 10}",
+             "{[j]: 0 <= j < problem_size}"],
+            """
+            if i < 8 and (j + offset) < problem_size
+                tmp[j, i] = tmp[j, i] + 1
+            end
+           """,
+            [lp.GlobalArg("tmp", shape=("problem_size", 8,), dtype=np.int64),
+             lp.ValueArg("problem_size", dtype=np.int64),
+             lp.ValueArg("offset", dtype=np.int64)])
+
+    assert np.array_equal(knl(queue, tmp=np.arange(80).reshape((10, 8)),
+                              problem_size=10,
+                              offset=0)[1][0], np.arange(1, 81).reshape(
+                                (10, 8)))
+
+
+def test_conditional_access_range_failure(ctx_factory):
+    # predicate doesn't actually limit access_range
+    knl = lp.make_kernel(
+            "{[i,j]: 0 <= i,j < 10}",
+            """
+            if j < 8
+                tmp[i] = tmp[i]
+            end
+           """, [lp.GlobalArg("tmp", shape=(8,), dtype=np.int32)])
+
+    from loopy.diagnostic import LoopyError
+    with pytest.raises(LoopyError):
+        lp.generate_code_v2(knl).device_code()
+
+    # predicate non affine
+    knl = lp.make_kernel(
+            "{[i,j]: 0 <= i,j < 10}",
+            """
+            if (i+3)*i < 15
+                tmp[i] = tmp[i]
+            end
+           """, [lp.GlobalArg("tmp", shape=(2,), dtype=np.int32)])
+
+    from loopy.diagnostic import LoopyError
+    with pytest.raises(LoopyError):
+        lp.generate_code_v2(knl).device_code()
+
+
 def test_backwards_dep_printing_and_error():
     knl = lp.make_kernel(
             "{[i]: 0<=i<n}",
@@ -2933,45 +3034,6 @@ def test_access_check_with_insn_predicates():
             """, [lp.GlobalArg("x", dtype=float, shape=(4,)), ...])
 
     print(lp.generate_code_v2(knl).device_code())
-
-
-def test_conditional_access_range_with_parameters(ctx_factory):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-
-    knl = lp.make_kernel(
-            ["{[i]: 0 <= i < 10}",
-             "{[j]: 0 <= j < problem_size+2}"],
-            """
-            if i < 8 and j < problem_size
-                tmp[j, i] = tmp[j, i] + 1
-            end
-           """,
-            [lp.GlobalArg("tmp", shape=("problem_size", 8,), dtype=np.int64),
-             lp.ValueArg("problem_size", dtype=np.int64)])
-
-    assert np.array_equal(knl(queue, tmp=np.arange(80).reshape((10, 8)),
-                              problem_size=10)[1][0], np.arange(1, 81).reshape(
-                                (10, 8)))
-
-    # test a conditional that's only _half_ data-dependent to ensure the other
-    # half works
-    knl = lp.make_kernel(
-            ["{[i]: 0 <= i < 10}",
-             "{[j]: 0 <= j < problem_size}"],
-            """
-            if i < 8 and (j + offset) < problem_size
-                tmp[j, i] = tmp[j, i] + 1
-            end
-           """,
-            [lp.GlobalArg("tmp", shape=("problem_size", 8,), dtype=np.int64),
-             lp.ValueArg("problem_size", dtype=np.int64),
-             lp.ValueArg("offset", dtype=np.int64)])
-
-    assert np.array_equal(knl(queue, tmp=np.arange(80).reshape((10, 8)),
-                              problem_size=10,
-                              offset=0)[1][0], np.arange(1, 81).reshape(
-                                (10, 8)))
 
 
 def test_split_iname_within(ctx_factory):

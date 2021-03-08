@@ -1470,6 +1470,66 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
                         "for as-pwaff evaluation" % expr)
 
 
+class ConditionalMapper(EvaluationMapperBase, IdentityMapperMixin):
+    def __init__(self, space, vars_to_zero):
+        self.pw_map = PwAffEvaluationMapper(space, vars_to_zero)
+        super(ConditionalMapper, self).__init__(self.pw_map.context.copy())
+
+    def map_logical_not(self, expr):
+        constraints = self.rec(expr.child)
+        out = []
+        for constraint in constraints:
+            negated = constraint.get_aff().neg()
+            if constraint.is_equality():
+                out.append(isl.Constraint.equality_from_aff(negated))
+            else:
+                # since we're flipping a >= need to account for the ='s
+                val = int(str(constraint.get_constant_val()))
+                if val > 0:
+                    val = 1
+                elif val < 0:
+                    val = -1
+                out.append(isl.Constraint.inequality_from_aff(negated + val))
+        return out
+
+    def map_logical_and(self, expr):
+        from pymbolic.mapper.evaluator import UnknownVariableError
+        constraints = []
+        for child in expr.children:
+            try:
+                constraints += [c for c in self.rec(child)]
+            except UnknownVariableError:
+                # the child contained data-dependent conditionals -> can't apply
+                pass
+        return constraints
+
+    map_logical_or = map_logical_and
+
+    def map_constant(self, expr):
+        return self.pw_map(expr)
+
+    def map_comparison(self, expr):
+        left = self.rec(expr.left)
+        right = self.rec(expr.right)
+        _, aff = (left - right).get_pieces()[-1]
+        if expr.operator == "==":
+            return [isl.Constraint.equality_from_aff(aff)]
+        elif expr.operator == "!=":
+            # piecewise
+            return [isl.Constraint.inequality_from_aff(aff + 1),
+                    isl.Constraint.inequality_from_aff(aff - 1)]
+        elif expr.operator == "<":
+            return [isl.Constraint.inequality_from_aff((aff + 1).neg())]
+        elif expr.operator == "<=":
+            return [isl.Constraint.inequality_from_aff((aff).neg())]
+        elif expr.operator == ">":
+            return [isl.Constraint.inequality_from_aff((aff - 1))]
+        elif expr.operator == ">=":
+            return [isl.Constraint.inequality_from_aff((aff))]
+        else:
+            raise ValueError("invalid comparison operator")
+
+
 def aff_from_expr(space, expr, vars_to_zero=None):
     if vars_to_zero is None:
         vars_to_zero = frozenset()
@@ -1608,6 +1668,15 @@ def simplify_using_aff(kernel, expr):
     aff = aff.gist(domain)
 
     return aff_to_expr(aff)
+
+# }}}
+
+
+# {{{ expression/set <-> constraints conversion
+
+def constraints_from_expr(space, expr):
+    with isl.SuppressedWarnings(space.get_ctx()):
+        return ConditionalMapper(space, vars_to_zero=[None])(expr)
 
 # }}}
 

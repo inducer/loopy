@@ -383,6 +383,7 @@ class _AccessCheckMapper(WalkMapper):
         WalkMapper.map_subscript(self, expr, domain)
 
         from pymbolic.primitives import Variable
+        from pymbolic.mapper.evaluator import UnknownVariableError
         assert isinstance(expr.aggregate, Variable)
 
         shape = None
@@ -419,8 +420,33 @@ class _AccessCheckMapper(WalkMapper):
                             expr.aggregate.name, expr,
                             len(subscript), len(shape)))
 
+            # apply predicates
+            access_range = domain
+            insn = self.kernel.id_to_insn[self.insn_id]
+            possible_warns = []
+            if insn.predicates:
+                from loopy.symbolic import constraints_from_expr
+                for pred in insn.predicates:
+                    if insn.within_inames & get_dependencies(pred):
+                        with isl.SuppressedWarnings(domain.get_ctx()):
+                            try:
+                                constraints = constraints_from_expr(
+                                    domain.space, pred)
+                                for constraint in constraints:
+                                    access_range = access_range.add_constraint(
+                                        constraint)
+
+                            except isl.Error:
+                                # non-affine predicate - store for warning if we fail
+                                # this check
+                                possible_warns += [pred]
+                            except UnknownVariableError:
+                                # data dependent bounds
+                                pass
+
             try:
-                access_range = get_access_range(domain, subscript)
+                access_range = get_access_range(access_range, subscript,
+                        self.kernel.assumptions)
             except UnableToDetermineAccessRange:
                 # Likely: index was non-affine, nothing we can do.
                 return
@@ -438,6 +464,13 @@ class _AccessCheckMapper(WalkMapper):
                     shape_domain = shape_domain.intersect(slab)
 
             if not access_range.is_subset(shape_domain):
+                if possible_warns:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info("Predicates: ({}) are are expressed in a "
+                        "non-affine manner, and were not considered "
+                        "for out-of-bounds array checking.".format(
+                            ", ".join(str(x) for x in possible_warns)))
                 raise LoopyError("'%s' in instruction '%s' "
                         "accesses out-of-bounds array element (could not"
                         " establish '%s' is a subset of '%s')."

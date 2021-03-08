@@ -146,6 +146,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         temporary_address_space=None, temporary_scope=None,
         footprint_subscripts=None,
         fetch_bounding_box=False,
+        stream_iname=None,  # if not None, use streaming prefetch in precompute
         fetch_outer_inames=None):
     """Prefetch all accesses to the variable *var_name*, with all accesses
     being swept through *sweep_inames*.
@@ -332,7 +333,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
             temporary_name=temporary_name,
             temporary_address_space=temporary_address_space,
             temporary_scope=temporary_scope,
-            precompute_outer_inames=fetch_outer_inames)
+            precompute_outer_inames=fetch_outer_inames,
+            stream_iname=stream_iname)
 
     # {{{ remove inames that were temporarily added by slice sweeps
 
