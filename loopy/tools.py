@@ -643,7 +643,7 @@ def resolve_name(name):
     if sys.version_info >= (3, 9):
         # use the official version
         import pkgutil
-        return pkgutil.resolve_name(name)
+        return pkgutil.resolve_name(name)  # pylint: disable=no-member
 
     import importlib
 
