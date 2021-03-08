@@ -72,6 +72,38 @@ class UniqueName:
 # }}}
 
 
+# {{{ tag normalization
+
+def _normalize_string_tag(tag):
+    from pytools.tag import Tag
+
+    from loopy.kernel.instruction import (
+            UseStreamingStoreTag, LegacyStringInstructionTag)
+    if tag == "!streaming_store":
+        return UseStreamingStoreTag()
+    else:
+        from loopy.tools import resolve_name
+        try:
+            tag_cls = resolve_name(tag)
+        except ImportError:
+            pass
+        except AttributeError:
+            pass
+        else:
+            if issubclass(tag_cls, Tag):
+                return tag_cls()
+
+        return LegacyStringInstructionTag(tag)
+
+
+def _normalize_tags(tags):
+    return frozenset(
+                    _normalize_string_tag(t) if isinstance(t, str) else t
+                    for t in tags)
+
+# }}}
+
+
 # {{{ expand defines
 
 WORD_RE = re.compile(r"\b([a-zA-Z0-9_]+)\b")
@@ -328,9 +360,9 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
             del new_predicates
 
         elif opt_key == "tags" and opt_value is not None:
-            result["tags"] = frozenset(
+            result["tags"] = _normalize_tags([
                     tag.strip() for tag in opt_value.split(":")
-                    if tag.strip())
+                    if tag.strip()])
 
         elif opt_key == "atomic":
             if is_with_block:
@@ -802,6 +834,10 @@ def parse_instructions(instructions, defines):
                             insn.conflicts_with_groups
                             | insn_options_stack[-1]["conflicts_with_groups"]),
                         **kwargs)
+
+            norm_tags = _normalize_tags(insn.tags)
+            if norm_tags != insn.tags:
+                insn = insn.copy(tags=norm_tags)
 
             new_instructions.append(insn)
             inames_to_dup.append([])

@@ -22,10 +22,43 @@ THE SOFTWARE.
 
 from sys import intern
 from pytools import ImmutableRecord, memoize_method
+from pytools.tag import Tag, tag_dataclass
 from loopy.diagnostic import LoopyError
 from loopy.tools import Optional
 from warnings import warn
 import islpy as isl
+
+
+# {{{ tags
+
+@tag_dataclass
+class LegacyStringInstructionTag(Tag):
+    """A subclass of :class:`pytools.tag.Tag` for use in
+    :attr:`InstructionBase.tags` used for forward compatibility of the old
+    string-based tagging mechanism. String-based tags are automatically converted
+    to this type.
+
+    .. attribute:: value
+    """
+    value: str
+
+
+@tag_dataclass
+class UseStreamingStoreTag(Tag):
+    """A subclass of :class:`pytools.tag.Tag` for use in
+    :attr:`InstructionBase.tags` used to indicate that if the instruction is an
+    :class:`Assignment` or a :class:`CallInstruction`, then the 'store' part of
+    the assignment should be realized using streaming stores.
+
+    .. warning::
+
+        This is a dodgy shortcut, and no promise is made that this will
+        continue to work. Whether this is safe is target-dependent and
+        program-dependent. No promise of safety is made.
+    """
+    pass
+
+# }}}
 
 
 # {{{ instructions: base class
@@ -135,11 +168,11 @@ class InstructionBase(ImmutableRecord):
 
     .. attribute:: tags
 
-        A :class:`frozenset` of string identifiers that can be used to
-        identify groups of instructions.
-
-        Tags starting with exclamation marks (``!``) are reserved and may have
-        specific meanings defined by :mod:`loopy` or its targets.
+        A :class:`frozenset` of subclasses of :class:`pytools.tag.Tag` used to
+        provide metadata on this object. Legacy string tags are converted to
+        :class:`LegacyStringInstructionTag` or, if they used to carry
+        a functional meaning, the tag carrying that same fucntional meaning
+        (e.g. :class:`UseStreamingStoreTag`).
 
     .. automethod:: __init__
     .. automethod:: assignee_var_names
