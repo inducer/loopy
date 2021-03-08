@@ -84,7 +84,7 @@ setup(name="loopy",
 
       python_requires="~=3.6",
       install_requires=[
-          "pytools>=2021.1.2",
+          "pytools>=2021.2",
           "pymbolic>=2019.2",
           "genpy>=2016.1.2",
           "cgen>=2016.1",
