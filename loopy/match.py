@@ -250,9 +250,6 @@ class Tagged(GlobMatchExpressionBase):
                     if isinstance(tag, LegacyStringInstructionTag)
                     else
 
-                    self.re.match(tag) if isinstance(tag, str)
-                    else
-
                     False
 
                     for tag in matchable.tags)

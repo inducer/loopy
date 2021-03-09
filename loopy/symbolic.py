@@ -237,7 +237,7 @@ class StringifyMapper(StringifyMapperBase):
                 self.rec(expr.expr, PREC_NONE))
 
     def map_tagged_variable(self, expr, prec):
-        return f"{expr.name}${expr.tag}"
+        return f"{expr.name}${{{', '.join(str(t) for t in expr.tags)}}}"
 
     def map_linear_subscript(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_CALL, PREC_NONE
@@ -311,7 +311,7 @@ class UnidirectionalUnifier(UnidirectionalUnifierBase):
             # Check if the variables match literally--that's ok, too.
             if (isinstance(other, TaggedVariable)
                     and expr.name == other.name
-                    and expr.tag == other.tag
+                    and expr.tags == other.tags
                     and expr.name not in self.lhs_mapping_candidates):
                 return urecs
             else:
@@ -560,16 +560,47 @@ class TaggedVariable(LoopyExpressionBase, p.Variable):
     'one' identifies this specific use of the identifier. This mechanism
     may then be used to address these uses--such as by prefetching only
     accesses tagged a certain way.
+
+    .. attribute:: tags
+
+        A :class:`frozenset` of subclasses of :class:`pytools.tag.Tag` used to
+        provide metadata on this object. Legacy string tags are converted to
+        :class:`LegacyStringInstructionTag` or, if they used to carry
+        a functional meaning, the tag carrying that same fucntional meaning
+        (e.g. :class:`UseStreamingStoreTag`).
+
+    Inherits from :class:`pymbolic.primitives.Variable`.
     """
 
-    init_arg_names = ("name", "tag")
+    init_arg_names = ("name", "tags")
 
-    def __init__(self, name, tag):
+    def __init__(self, name, tags):
         super().__init__(name)
-        self.tag = tag
+        if isinstance(tags, str):
+            from loopy.kernel.creation import _normalize_string_tag
+            tags = frozenset({_normalize_string_tag(tags)})
+
+        assert isinstance(tags, frozenset)
+        assert tags
+
+        self.tags = tags
+
+    @property
+    def tag(self):
+        from warnings import warn
+        warn("Accessing TaggedVariable.tag is deprecated and will stop working "
+                "in 2022. Use TaggedVariable.tags instead.", DeprecationWarning,
+                stacklevel=2)
+
+        if len(self.tags) != 1:
+            raise ValueError("cannot access TaggedVariable.tag: variable has "
+                    f"{len(self.tags)} tags")
+
+        tag, = self.tags
+        return tag
 
     def __getinitargs__(self):
-        return self.name, self.tag
+        return self.name, self.tags
 
     mapper_method = intern("map_tagged_variable")
 
@@ -719,7 +750,7 @@ def get_dependencies(expr):
 
 def parse_tagged_name(expr):
     if isinstance(expr, TaggedVariable):
-        return expr.name, expr.tag
+        return expr.name, expr.tags
     elif isinstance(expr, p.Variable):
         return expr.name, None
     else:
@@ -759,30 +790,30 @@ class SubstitutionRuleRenamer(IdentityMapper):
         if not isinstance(expr.function, p.Variable):
             return IdentityMapper.map_call(self, expr)
 
-        name, tag = parse_tagged_name(expr.function)
+        name, tags = parse_tagged_name(expr.function)
 
         new_name = self.renames.get(name)
         if new_name is None:
             return IdentityMapper.map_call(self, expr)
 
-        if tag is None:
-            sym = p.Variable(new_name)
+        if tags:
+            sym = TaggedVariable(new_name, tags)
         else:
-            sym = TaggedVariable(new_name, tag)
+            sym = p.Variable(new_name)
 
         return type(expr)(sym, tuple(self.rec(child) for child in expr.parameters))
 
     def map_variable(self, expr):
-        name, tag = parse_tagged_name(expr)
+        name, tags = parse_tagged_name(expr)
 
         new_name = self.renames.get(name)
         if new_name is None:
             return IdentityMapper.map_variable(self, expr)
 
-        if tag is None:
-            return p.Variable(new_name)
+        if tags:
+            return TaggedVariable(new_name, tags)
         else:
-            return TaggedVariable(new_name, tag)
+            return p.Variable(new_name)
 
 
 def rename_subst_rules_in_instructions(insns, renames):
@@ -918,22 +949,22 @@ class RuleAwareIdentityMapper(IdentityMapper):
         self.rule_mapping_context = rule_mapping_context
 
     def map_variable(self, expr, expn_state):
-        name, tag = parse_tagged_name(expr)
+        name, tags = parse_tagged_name(expr)
         if name not in self.rule_mapping_context.old_subst_rules:
             return IdentityMapper.map_variable(self, expr, expn_state)
         else:
-            return self.map_substitution(name, tag, (), expn_state)
+            return self.map_substitution(name, tags, (), expn_state)
 
     def map_call(self, expr, expn_state):
         if not isinstance(expr.function, p.Variable):
             return IdentityMapper.map_call(self, expr, expn_state)
 
-        name, tag = parse_tagged_name(expr.function)
+        name, tags = parse_tagged_name(expr.function)
 
         if name not in self.rule_mapping_context.old_subst_rules:
             return super().map_call(expr, expn_state)
         else:
-            return self.map_substitution(name, tag, self.rec(
+            return self.map_substitution(name, tags, self.rec(
                 expr.parameters, expn_state), expn_state)
 
     @staticmethod
@@ -948,15 +979,10 @@ class RuleAwareIdentityMapper(IdentityMapper):
                 formal_arg_name: arg_subst_map(arg_value)
                 for formal_arg_name, arg_value in zip(arg_names, arguments)}
 
-    def map_substitution(self, name, tag, arguments, expn_state):
+    def map_substitution(self, name, tags, arguments, expn_state):
         rule = self.rule_mapping_context.old_subst_rules[name]
 
         rec_arguments = self.rec(arguments, expn_state)
-
-        if tag is None:
-            tags = None
-        else:
-            tags = (tag,)
 
         new_expn_state = expn_state.copy(
                 stack=expn_state.stack + ((name, tags),),
@@ -968,10 +994,10 @@ class RuleAwareIdentityMapper(IdentityMapper):
         new_name = self.rule_mapping_context.register_subst_rule(
                 name, rule.arguments, result)
 
-        if tag is None:
-            sym = p.Variable(new_name)
+        if tags:
+            sym = TaggedVariable(new_name, tags)
         else:
-            sym = TaggedVariable(new_name, tag)
+            sym = p.Variable(new_name)
 
         if arguments:
             return sym(*rec_arguments)
@@ -1091,12 +1117,7 @@ class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper):
         self.rules = rules
         self.within = within
 
-    def map_substitution(self, name, tag, arguments, expn_state):
-        if tag is None:
-            tags = None
-        else:
-            tags = (tag,)
-
+    def map_substitution(self, name, tags, arguments, expn_state):
         new_stack = expn_state.stack + ((name, tags),)
 
         if self.within(expn_state.kernel, expn_state.instruction, new_stack):
@@ -1120,7 +1141,7 @@ class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper):
         else:
             # do not expand
             return super().map_substitution(
-                    name, tag, arguments, expn_state)
+                    name, tags, arguments, expn_state)
 
 # }}}
 
@@ -1890,7 +1911,7 @@ class PrimeAdder(IdentityMapper):
 
     def map_tagged_variable(self, expr):
         if expr.name in self.which_vars:
-            return TaggedVariable(expr.name+"'", expr.tag)
+            return TaggedVariable(expr.name+"'", expr.tags)
         else:
             return expr
 
