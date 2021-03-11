@@ -589,10 +589,11 @@ class MemAccess(Record):
        A :class:`str` that specifies the variable name of the data
        accessed.
 
-    .. attribute:: variable_tag
+    .. attribute:: variable_tags
 
-       A :class:`str` that specifies the variable tag of a
-       :class:`loopy.symbolic.TaggedVariable`.
+       A :class:`frozenset` of subclasses of :class:`~pytools.tag.Tag`
+       that reflects :attr:`~loopy.symbolic.TaggedVariable.tags` of
+       an accessed variable.
 
     .. attribute:: count_granularity
 
@@ -610,7 +611,8 @@ class MemAccess(Record):
     """
 
     def __init__(self, mtype=None, dtype=None, lid_strides=None, gid_strides=None,
-                 direction=None, variable=None, variable_tag=None,
+                 direction=None, variable=None,
+                 *, variable_tags=None, variable_tag=None,
                  count_granularity=None):
 
         if count_granularity not in CountGranularity.ALL+[None]:
@@ -618,18 +620,50 @@ class MemAccess(Record):
                     "not allowed. count_granularity options: %s"
                     % (count_granularity, CountGranularity.ALL+[None]))
 
+        # {{{ normalize variable_tags
+
+        if variable_tags is not None and variable_tag is not None:
+            raise TypeError(
+                    "may not specify both 'variable_tags' and 'variable_tag'")
+        if variable_tag is not None:
+            from loopy.kernel.creation import _normalize_string_tag
+            variable_tags = frozenset({_normalize_string_tag(variable_tag)})
+
+            from warnings import warn
+            warn("Passing 'variable_tag' to MemAccess is deprecated and will "
+                    "stop working in 2022. Pass variable_tags instead.")
+
+        if variable_tags is None:
+            variable_tags = frozenset()
+
+        # }}}
+
         if dtype is None:
             Record.__init__(self, mtype=mtype, dtype=dtype, lid_strides=lid_strides,
                             gid_strides=gid_strides, direction=direction,
-                            variable=variable, variable_tag=variable_tag,
+                            variable=variable, variable_tags=variable_tags,
                             count_granularity=count_granularity)
         else:
             from loopy.types import to_loopy_type
             Record.__init__(self, mtype=mtype, dtype=to_loopy_type(dtype),
                             lid_strides=lid_strides, gid_strides=gid_strides,
                             direction=direction, variable=variable,
-                            variable_tag=variable_tag,
+                            variable_tags=variable_tags,
                             count_granularity=count_granularity)
+
+    @property
+    def variable_tag(self):
+        from warnings import warn
+        warn("Accessing MemAccess.variable_tag is deprecated and will stop working "
+                "in 2022. Use MemAccess.variable_tags instead.", DeprecationWarning,
+                stacklevel=2)
+
+        if len(self.variable_tags) != 1:
+            raise ValueError("cannot access MemAccess.variable_tag: access has "
+                    f"{len(self.variable_tags)} tags")
+
+        tag, = self.variable_tags
+        return tag
 
     def __hash__(self):
         # Note that this means lid_strides and gid_strides must be sorted
@@ -647,7 +681,7 @@ class MemAccess(Record):
                 sorted(self.gid_strides.items())),
             self.direction,
             self.variable,
-            self.variable_tag,
+            self.variable_tags,
             self.count_granularity)
 
 # }}}
@@ -1031,9 +1065,9 @@ class GlobalMemAccessCounter(MemAccessCounter):
     def map_subscript(self, expr):
         name = expr.aggregate.name
         try:
-            var_tag = expr.aggregate.tag
+            var_tags = expr.aggregate.tags
         except AttributeError:
-            var_tag = None
+            var_tags = frozenset()
 
         if name in self.knl.arg_dict:
             array = self.knl.arg_dict[name]
@@ -1062,7 +1096,7 @@ class GlobalMemAccessCounter(MemAccessCounter):
                             lid_strides=dict(sorted(lid_strides.items())),
                             gid_strides=dict(sorted(gid_strides.items())),
                             variable=name,
-                            variable_tag=var_tag,
+                            variable_tags=var_tags,
                             count_granularity=count_granularity
                             ): 1}
                           ) + self.rec(expr.index_tuple)
@@ -1678,7 +1712,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                             gid_strides=mem_access.gid_strides,
                             direction=mem_access.direction,
                             variable=mem_access.variable,
-                            variable_tag=mem_access.variable_tag,
+                            variable_tags=mem_access.variable_tags,
                             count_granularity=mem_access.count_granularity):
                         ct
                         for mem_access, ct in access_map.count_map.items()},
