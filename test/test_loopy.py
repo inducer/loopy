@@ -409,7 +409,7 @@ def test_arg_guessing_with_reduction(ctx_factory):
             "{[i,j]: 0<=i,j<n }",
             """
                 a = 1.5 + simul_reduce(sum, (i,j), i*j)
-                d = 1.5 + simul_reduce(sum, (i,j), b[i,j])
+                d = 1.5 + simul_reduce(sum, [i,j], b[i,j])
                 b[i, j] = i*j
                 c[i+j, j] = b[j,i]
                 """,
