@@ -29,7 +29,7 @@ from warnings import warn
 import islpy as isl
 
 
-# {{{ tags
+# {{{ instruction tags
 
 @tag_dataclass
 class LegacyStringInstructionTag(Tag):
