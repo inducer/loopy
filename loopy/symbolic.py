@@ -565,9 +565,9 @@ class TaggedVariable(LoopyExpressionBase, p.Variable):
 
         A :class:`frozenset` of subclasses of :class:`pytools.tag.Tag` used to
         provide metadata on this object. Legacy string tags are converted to
-        :class:`LegacyStringInstructionTag` or, if they used to carry
+        :class:`~loopy.LegacyStringInstructionTag` or, if they used to carry
         a functional meaning, the tag carrying that same fucntional meaning
-        (e.g. :class:`UseStreamingStoreTag`).
+        (e.g. :class:`~loopy.UseStreamingStoreTag`).
 
     Inherits from :class:`pymbolic.primitives.Variable`.
     """
