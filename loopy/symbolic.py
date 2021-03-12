@@ -29,6 +29,7 @@ from sys import intern
 
 from pytools import memoize, memoize_method, ImmutableRecord
 import pytools.lex
+from pytools.tag import Taggable
 
 import pymbolic.primitives as p
 
@@ -555,8 +556,8 @@ class TypeCast(LoopyExpressionBase):
     mapper_method = intern("map_type_cast")
 
 
-class TaggedVariable(LoopyExpressionBase, p.Variable):
-    """This is an identifier with a tag, such as 'matrix$one', where
+class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
+    """This is an identifier with tags, such as ``matrix$one``, where
     'one' identifies this specific use of the identifier. This mechanism
     may then be used to address these uses--such as by prefetching only
     accesses tagged a certain way.
@@ -569,13 +570,14 @@ class TaggedVariable(LoopyExpressionBase, p.Variable):
         a functional meaning, the tag carrying that same fucntional meaning
         (e.g. :class:`~loopy.UseStreamingStoreTag`).
 
-    Inherits from :class:`pymbolic.primitives.Variable`.
+    Inherits from :class:`pymbolic.primitives.Variable`
+    and :class:`pytools.tag.Taggable`.
     """
 
     init_arg_names = ("name", "tags")
 
     def __init__(self, name, tags):
-        super().__init__(name)
+        p.Variable.__init__(self, name)
         if isinstance(tags, str):
             from loopy.kernel.creation import _normalize_string_tag
             tags = frozenset({_normalize_string_tag(tags)})
@@ -583,7 +585,7 @@ class TaggedVariable(LoopyExpressionBase, p.Variable):
         assert isinstance(tags, frozenset)
         assert tags
 
-        self.tags = tags
+        Taggable.__init__(self, tags)
 
     @property
     def tag(self):

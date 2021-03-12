@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 from sys import intern
 from pytools import ImmutableRecord, memoize_method
-from pytools.tag import Tag, tag_dataclass
+from pytools.tag import Tag, tag_dataclass, Taggable
 from loopy.diagnostic import LoopyError
 from loopy.tools import Optional
 from warnings import warn
@@ -69,7 +69,7 @@ class UseStreamingStoreTag(Tag):
 
 # {{{ instructions: base class
 
-class InstructionBase(ImmutableRecord):
+class InstructionBase(ImmutableRecord, Taggable):
     """A base class for all types of instruction that can occur in
     a kernel.
 
@@ -187,6 +187,8 @@ class InstructionBase(ImmutableRecord):
     .. automethod:: write_dependency_names
     .. automethod:: dependency_names
     .. automethod:: copy
+
+    Inherits from :class:`pytools.tag.Taggable`.
     """
 
     # within_inames_is_final is deprecated and will be removed in version 2017.x.
@@ -296,7 +298,12 @@ class InstructionBase(ImmutableRecord):
                 within_inames=within_inames,
                 priority=priority,
                 predicates=predicates,
+                # Yes, tags is set by both this and the Taggable constructor.
+                # Here, we set it so that ImmutableRecord knows about it.
+                # The Taggable constructor call does extra validation.
                 tags=tags)
+
+        Taggable.__init__(self, tags)
 
     # {{{ abstract interface
 
