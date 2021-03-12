@@ -42,6 +42,11 @@ class LegacyStringInstructionTag(Tag):
     """
     value: str
 
+    # FIXME: This class should be deprecated as soon as there is a viable
+    # alternative. For now, pattern matching and the textual syntax are
+    # only able to generate string tags, which is why the deprecation is not
+    # yet in effect.
+
 
 @tag_dataclass
 class UseStreamingStoreTag(Tag):
