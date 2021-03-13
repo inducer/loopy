@@ -1662,14 +1662,17 @@ def find_most_recent_global_barrier(kernel, insn_id):
     totally ordered within the kernel.
     """
 
-    global_barrier_order = get_global_barrier_order(kernel)
-
-    if len(global_barrier_order) == 0:
-        return None
-
     insn = kernel.id_to_insn[insn_id]
 
     if len(insn.depends_on) == 0:
+        return None
+
+    if all(not _is_global_barrier(kernel, insn.id) for insn in kernel.instructions):
+        return None
+
+    global_barrier_order = get_global_barrier_order(kernel)
+
+    if len(global_barrier_order) == 0:
         return None
 
     global_barrier_to_ordinal = {
