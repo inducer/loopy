@@ -1147,9 +1147,9 @@ class FunctionToPrimitiveMapper(IdentityMapper):
         if isinstance(inames, p.Variable):
             inames = (inames,)
 
-        if not isinstance(inames, (tuple)):
+        if not isinstance(inames, (tuple, list)):
             raise TypeError("iname argument to reduce() must be a symbol "
-                    "or a tuple of symbols")
+                    "or a list/tuple of symbols")
 
         processed_inames = []
         for iname in inames:
