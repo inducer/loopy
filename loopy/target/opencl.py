@@ -39,6 +39,22 @@ from functools import partial
 # {{{ dtype registry wrappers
 
 
+class DTypeRegistryWrapperWithInt8ForBool(DTypeRegistryWrapper):
+    """
+    A DType registry that uses int8 for bool8 types.
+
+    .. note::
+
+        This sub-class is needed because compyte's type registry does
+        not support type aliases.
+    """
+    def dtype_to_ctype(self, dtype):
+        from loopy.types import NumpyType
+        if isinstance(dtype, NumpyType) and dtype.dtype == np.bool8:
+            return super().dtype_to_ctype(NumpyType(np.int8, dtype.target))
+        return super().dtype_to_ctype(dtype)
+
+
 class DTypeRegistryWrapperWithAtomics(DTypeRegistryWrapper):
     def get_or_register_dtype(self, names, dtype=None):
         if dtype is not None:
@@ -336,12 +352,15 @@ class OpenCLTarget(CFamilyTarget):
     """A target for the OpenCL C heterogeneous compute programming language.
     """
 
-    def __init__(self, atomics_flavor=None):
+    def __init__(self, atomics_flavor=None, use_int8_for_bool=True):
         """
         :arg atomics_flavor: one of ``"cl1"`` (C11-style atomics from OpenCL 2.0),
             ``"cl1"`` (OpenCL 1.1 atomics, using bit-for-bit compare-and-swap
             for floating point), ``"cl1-exch"`` (OpenCL 1.1 atomics, using
             double-exchange for floating point--not yet supported).
+        :arg use_int8_for_bool: Size of *bool* is undefined as per
+            OpenCL spec, if *True* all bool8 variables would be treated
+            as int8's.
         """
         super().__init__()
 
@@ -352,6 +371,7 @@ class OpenCLTarget(CFamilyTarget):
             raise ValueError("unsupported atomics flavor: %s" % atomics_flavor)
 
         self.atomics_flavor = atomics_flavor
+        self.use_int8_for_bool = use_int8_for_bool
 
     def split_kernel_at_global_barriers(self):
         return True
@@ -372,9 +392,14 @@ class OpenCLTarget(CFamilyTarget):
         _register_vector_types(result)
 
         if self.atomics_flavor == "cl1":
-            return DTypeRegistryWrapperWithCL1Atomics(result)
+            result = DTypeRegistryWrapperWithCL1Atomics(result)
         else:
             raise NotImplementedError("atomics flavor: %s" % self.atomics_flavor)
+
+        if self.use_int8_for_bool:
+            result = DTypeRegistryWrapperWithInt8ForBool(result)
+
+        return result
 
     def is_vector_dtype(self, dtype):
         return (isinstance(dtype, NumpyType)
