@@ -963,7 +963,8 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
                 [
                     pyopencl_function_mangler,
                     random123_function_mangler
-                    # order matters: e.g. prefer our abs() over that of the superclass
+                    # order matters: e.g. prefer our abs() over that of the
+                    # superclass
                     ] + super().function_manglers())
 
     def preamble_generators(self):
