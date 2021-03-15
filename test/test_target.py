@@ -408,6 +408,20 @@ def test_pyopencl_execution_numpy_handling(ctx_factory):
     assert x[0] == 5.
 
 
+def test_opencl_support_for_bool(ctx_factory):
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        y[i] = i%2
+        """,
+        [lp.GlobalArg("y", dtype=np.bool8, shape=lp.auto)])
+
+    evt, (out, ) = knl(cl.CommandQueue(ctx_factory()))
+    out = out.get()
+
+    np.testing.assert_equal(out, np.tile(np.array([0, 1], dtype=np.bool8), 5))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
