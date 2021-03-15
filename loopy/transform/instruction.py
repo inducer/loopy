@@ -209,11 +209,14 @@ def tag_instructions(kernel, new_tag, within=None):
     from loopy.match import parse_match
     within = parse_match(within)
 
+    from loopy.kernel.creation import _normalize_tags
+    new_tags = _normalize_tags([new_tag])
+
     new_insns = []
     for insn in kernel.instructions:
         if within(kernel, insn):
             new_insns.append(
-                    insn.copy(tags=insn.tags | frozenset([new_tag])))
+                    insn.copy(tags=insn.tags | new_tags))
         else:
             new_insns.append(insn)
 

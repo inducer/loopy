@@ -356,7 +356,7 @@ def test_ispc_streaming_stores():
 
     knl = lp.preprocess_kernel(knl)
     knl = lp.get_one_scheduled_kernel(knl)
-    lp.generate_code_v2(knl).all_code()
+    assert "streaming_store(" in lp.generate_code_v2(knl).all_code()
 
 
 def test_cuda_short_vector():

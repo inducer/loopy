@@ -243,8 +243,16 @@ class Id(GlobMatchExpressionBase):
 
 class Tagged(GlobMatchExpressionBase):
     def __call__(self, kernel, matchable):
+        from loopy.kernel.instruction import LegacyStringInstructionTag
         if matchable.tags:
-            return any(self.re.match(tag) for tag in matchable.tags)
+            return any(
+                    self.re.match(tag.value)
+                    if isinstance(tag, LegacyStringInstructionTag)
+                    else
+
+                    False
+
+                    for tag in matchable.tags)
         else:
             return False
 
