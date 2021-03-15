@@ -173,7 +173,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         def make_var(name):
             from loopy import TaggedVariable
             if isinstance(expr.aggregate, TaggedVariable):
-                return TaggedVariable(name, expr.aggregate.tag)
+                return TaggedVariable(name, expr.aggregate.tags)
             else:
                 return var(name)
 
