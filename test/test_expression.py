@@ -242,9 +242,10 @@ def assert_parse_roundtrip(expr):
     assert expr == parsed_expr
 
 
+@pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
 @pytest.mark.parametrize("random_seed", [0, 1, 2, 3, 4, 5])
 @pytest.mark.parametrize("expr_type", ["int", "int_nonneg", "real", "complex"])
-def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
+def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target):
     from pymbolic import evaluate
 
     def get_numpy_type(x):
@@ -261,9 +262,6 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
             raise ValueError("unknown expr_type: %s" % expr_type)
 
     from random import seed
-
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
 
     seed(random_seed)
 
@@ -332,7 +330,8 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
         if expr_type == "int_nonneg":
             var_names.extend(var_values)
 
-    knl = lp.make_kernel("{ : }", instructions, data, seq_dependencies=True)
+    knl = lp.make_kernel("{ : }", instructions, data, seq_dependencies=True,
+            target=target())
 
     import islpy as isl
     knl = lp.assume(knl, isl.BasicSet(
@@ -343,7 +342,14 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed):
 
     knl = lp.set_options(knl, return_dict=True)
     print(knl)
-    evt, lp_values = knl(queue, out_host=True)
+
+    if target == lp.PyOpenCLTarget:
+        knl = lp.set_options(knl, "write_cl")
+        evt, lp_values = knl(cl.CommandQueue(ctx_factory()), out_host=True)
+    elif target == lp.ExecutableCTarget:
+        evt, lp_values = knl()
+    else:
+        raise NotImplementedError("unsupported target")
 
     for name, ref_value in ref_values.items():
         lp_value = lp_values[name]
@@ -481,6 +487,52 @@ def test_divide_precedence(ctx_factory):
     evt.wait()
     assert x_out.get() == 4
     assert y_out.get() == 2
+
+
+@pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
+def test_complex_support(ctx_factory, target):
+    knl = lp.make_kernel(
+            "{[i, i1, i2]: 0<=i,i1,i2<10}",
+            """
+            euler1[i]  = exp(3.14159265359j)
+            euler2[i] = (2.7182818284 ** (3.14159265359j))
+            euler1_real[i] = real(euler1[i])
+            euler1_imag[i] = imag(euler1[i])
+            real_times_complex[i] = in1[i]*(in2[i]*1j)
+            real_plus_complex[i] = in1[i] + (in2[i]*1j)
+            complex_div_complex[i] = (2jf + 7*in1[i])/(32jf + 37*in1[i])
+            complex_div_real[i] = (2jf + 7*in1[i])/in1[i]
+            real_div_complex[i] = in1[i]/(2jf + 7*in1[i])
+            tmp_sum[0] = sum(i1, 1.0*i1 + i1*1jf)*sum(i2, 1.0*i2 + i2*1jf)
+            """,
+            target=target())
+    knl = lp.set_options(knl, "return_dict")
+
+    n = 10
+
+    in1 = np.random.rand(n)
+    in2 = np.random.rand(n)
+
+    kwargs = {"in1": in1, "in2": in2}
+
+    if target == lp.PyOpenCLTarget:
+        knl = lp.set_options(knl, "write_cl")
+        evt, out = knl(cl.CommandQueue(ctx_factory()), **kwargs)
+    elif target == lp.ExecutableCTarget:
+        evt, out = knl(**kwargs)
+    else:
+        raise NotImplementedError("unsupported target")
+
+    np.testing.assert_allclose(out["euler1"], -1)
+    np.testing.assert_allclose(out["euler2"], -1)
+    np.testing.assert_allclose(out["euler1_real"], -1)
+    np.testing.assert_allclose(out["euler1_imag"], 0, atol=1e-10)
+    np.testing.assert_allclose(out["real_times_complex"], in1*(in2*1j))
+    np.testing.assert_allclose(out["real_plus_complex"], in1+(in2*1j))
+    np.testing.assert_allclose(out["complex_div_complex"], (2j+7*in1)/(32j+37*in1))
+    np.testing.assert_allclose(out["complex_div_real"], (2j + 7*in1)/in1)
+    np.testing.assert_allclose(out["real_div_complex"], in1/(2j + 7*in1))
+    np.testing.assert_allclose(out["tmp_sum"], (0.5*n*(n-1) + 0.5*n*(n-1)*1j) ** 2)
 
 
 if __name__ == "__main__":
