@@ -30,6 +30,7 @@ from sys import intern
 NoneType = type(None)
 
 from pytools.lex import RE
+import pytools.tag
 
 __doc__ = """
 .. autofunction:: parse_match
@@ -45,6 +46,7 @@ Match expressions
 .. autoclass:: Or
 .. autoclass:: Not
 .. autoclass:: Id
+.. autoclass:: ObjTagged
 .. autoclass:: Tagged
 .. autoclass:: Writes
 .. autoclass:: Reads
@@ -209,6 +211,21 @@ class Not(MatchExpressionBase):
         return hash((type(self), self.child))
 
 
+class ObjTagged(MatchExpressionBase):
+    """Match if the object is tagged with a given :class:`~pytools.tag.Tag`.
+
+    .. note::
+
+        These instance-based tags will, in the not-too-distant future, replace
+        the string-based tags matched by :class:`Tagged`.
+    """
+    def __init__(self, tag: pytools.tag.Tag):
+        self.tag = tag
+
+    def __call__(self, kernel, matchable):
+        return self.tag in matchable.tags
+
+
 class GlobMatchExpressionBase(MatchExpressionBase):
     def __init__(self, glob):
         self.glob = glob
@@ -242,6 +259,13 @@ class Id(GlobMatchExpressionBase):
 
 
 class Tagged(GlobMatchExpressionBase):
+    """Match a string-based tagged using a glob expression.
+
+    .. note::
+
+        These string-based tags will, in the not-too-distant future, be replace
+        by instance-based tags matched by :class:`ObjTagged`.
+    """
     def __call__(self, kernel, matchable):
         from loopy.kernel.instruction import LegacyStringInstructionTag
         if matchable.tags:

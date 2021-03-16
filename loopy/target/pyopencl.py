@@ -478,12 +478,13 @@ class PyOpenCLTarget(OpenCLTarget):
     host_program_name_suffix = ""
 
     def __init__(self, device=None, pyopencl_module_name="_lpy_cl",
-            atomics_flavor=None):
+                 atomics_flavor=None, use_int8_for_bool=True):
         # This ensures the dtype registry is populated.
         import pyopencl.tools  # noqa
 
         super().__init__(
-                atomics_flavor=atomics_flavor)
+            atomics_flavor=atomics_flavor,
+            use_int8_for_bool=use_int8_for_bool)
 
         import pyopencl.version
         if pyopencl.version.VERSION < (2021, 1):
@@ -528,12 +529,14 @@ class PyOpenCLTarget(OpenCLTarget):
         return {
                 "device_id": dev_id,
                 "atomics_flavor": self.atomics_flavor,
+                "use_int8_for_bool": self.use_int8_for_bool,
                 "fortran_abi": self.fortran_abi,
                 "pyopencl_module_name": self.pyopencl_module_name,
                 }
 
     def __setstate__(self, state):
         self.atomics_flavor = state["atomics_flavor"]
+        self.use_int8_for_bool = state["use_int8_for_bool"]
         self.fortran_abi = state["fortran_abi"]
         self.pyopencl_module_name = state["pyopencl_module_name"]
 
@@ -579,11 +582,18 @@ class PyOpenCLTarget(OpenCLTarget):
         else:
             result = TYPE_REGISTRY
 
-        from loopy.target.opencl import DTypeRegistryWrapperWithCL1Atomics
+        from loopy.target.opencl import (DTypeRegistryWrapperWithCL1Atomics,
+                                         DTypeRegistryWrapperWithInt8ForBool)
+
         if self.atomics_flavor == "cl1":
-            return DTypeRegistryWrapperWithCL1Atomics(result)
+            result = DTypeRegistryWrapperWithCL1Atomics(result)
         else:
             raise NotImplementedError("atomics flavor: %s" % self.atomics_flavor)
+
+        if self.use_int8_for_bool:
+            result = DTypeRegistryWrapperWithInt8ForBool(result)
+
+        return result
 
     def is_vector_dtype(self, dtype):
         try:
