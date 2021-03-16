@@ -51,8 +51,9 @@ class DTypeRegistryWrapperWithInt8ForBool(DTypeRegistryWrapper):
     def dtype_to_ctype(self, dtype):
         from loopy.types import NumpyType
         if isinstance(dtype, NumpyType) and dtype.dtype == np.bool8:
-            return super().dtype_to_ctype(NumpyType(np.int8, dtype.target))
-        return super().dtype_to_ctype(dtype)
+            return self.wrapped_registry.dtype_to_ctype(
+                    NumpyType(np.int8, dtype.target))
+        return self.wrapped_registry.dtype_to_ctype(dtype)
 
 
 class DTypeRegistryWrapperWithAtomics(DTypeRegistryWrapper):
@@ -60,11 +61,10 @@ class DTypeRegistryWrapperWithAtomics(DTypeRegistryWrapper):
         if dtype is not None:
             from loopy.types import AtomicNumpyType, NumpyType
             if isinstance(dtype, AtomicNumpyType):
-                return super(self.wrapped_registry.get_or_register_dtype(
-                        names, NumpyType(dtype.dtype)))
+                return self.wrapped_registry.get_or_register_dtype(
+                        names, NumpyType(dtype.dtype))
 
-        return super().get_or_register_dtype(
-                names, dtype)
+        return self.wrapped_registry.get_or_register_dtype(names, dtype)
 
 
 class DTypeRegistryWrapperWithCL1Atomics(DTypeRegistryWrapperWithAtomics):
@@ -74,8 +74,7 @@ class DTypeRegistryWrapperWithCL1Atomics(DTypeRegistryWrapperWithAtomics):
         if isinstance(dtype, AtomicNumpyType):
             return "volatile " + self.wrapped_registry.dtype_to_ctype(dtype)
         else:
-            return super().dtype_to_ctype(
-                    dtype)
+            return self.wrapped_registry.dtype_to_ctype(dtype)
 
 # }}}
 
