@@ -529,12 +529,14 @@ class PyOpenCLTarget(OpenCLTarget):
         return {
                 "device_id": dev_id,
                 "atomics_flavor": self.atomics_flavor,
+                "use_int8_for_bool": self.use_int8_for_bool,
                 "fortran_abi": self.fortran_abi,
                 "pyopencl_module_name": self.pyopencl_module_name,
                 }
 
     def __setstate__(self, state):
         self.atomics_flavor = state["atomics_flavor"]
+        self.use_int8_for_bool = state["use_int8_for_bool"]
         self.fortran_abi = state["fortran_abi"]
         self.pyopencl_module_name = state["pyopencl_module_name"]
 
