@@ -384,6 +384,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             iota = p.Variable("I" if "I" not in self.kernel.all_variable_names()
                     else "_Complex_I")
             return real + imag*iota
+        elif expr is np.nan:
+            return p.Variable("NAN")
         elif isinstance(expr, np.generic):
             # Explicitly typed: Generated code must reflect type exactly.
 
