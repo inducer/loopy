@@ -63,8 +63,8 @@ jobs:
                 . ./ci-support-v0
                 build_py_project_in_conda_env
 
-        - name: Setup tmate session
-                  uses: mxschmitt/action-tmate@v3
+        -   name: Setup tmate session
+            uses: mxschmitt/action-tmate@v3
         -   name: "Script Continued"
             run: |
                 curl -L -O https://raw.githubusercontent.com/inducer/pyopencl/main/examples/dump-properties.py
