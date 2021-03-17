@@ -29,6 +29,7 @@ from loopy.program import iterate_over_kernels_if_given_program
 # {{{ imported user interface
 
 from loopy.kernel.instruction import (
+        LegacyStringInstructionTag, UseStreamingStoreTag,
         MemoryOrdering, memory_ordering,
         MemoryScope, memory_scope,
         VarAtomicity, OrderedAtomic, AtomicInit, AtomicUpdate,
@@ -161,6 +162,7 @@ __all__ = [
         "LoopKernel",
         "KernelState", "kernel_state",  # lower case is deprecated
 
+        "LegacyStringInstructionTag", "UseStreamingStoreTag",
         "MemoryOrdering", "memory_ordering",  # lower case is deprecated
         "MemoryScope", "memory_scope",  # lower case is deprecated
 

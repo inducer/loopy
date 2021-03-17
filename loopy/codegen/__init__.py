@@ -55,6 +55,8 @@ __doc__ = """
 .. autoclass:: CodeGenerationState
 
 .. automodule:: loopy.codegen.result
+
+.. automodule:: loopy.codegen.tools
 """
 
 
@@ -225,6 +227,10 @@ class CodeGenerationState:
 
         A :class:`bool` to indicate if the code is being generated for an
         entrypoint kernel
+
+    .. attribute:: codegen_cache_manager
+
+        An instance of :class:`loopy.codegen.tools.CodegenOperationCacheManager`.
     """
 
     def __init__(self, kernel, target,
@@ -236,7 +242,8 @@ class CodeGenerationState:
             vectorization_info=None, var_name_generator=None,
             is_generating_device_code=None,
             gen_program_name=None,
-            schedule_index_end=None):
+            schedule_index_end=None,
+            codegen_cachemanager=None):
         self.kernel = kernel
         self.target = target
         self.implemented_data_info = implemented_data_info
@@ -254,6 +261,7 @@ class CodeGenerationState:
         self.is_generating_device_code = is_generating_device_code
         self.gen_program_name = gen_program_name
         self.schedule_index_end = schedule_index_end
+        self.codegen_cachemanager = codegen_cachemanager
 
     # {{{ copy helpers
 
@@ -308,7 +316,9 @@ class CodeGenerationState:
                 var_name_generator=self.var_name_generator,
                 is_generating_device_code=is_generating_device_code,
                 gen_program_name=gen_program_name,
-                schedule_index_end=schedule_index_end)
+                schedule_index_end=schedule_index_end,
+                codegen_cachemanager=self.codegen_cachemanager.with_kernel(kernel),
+                )
 
     def copy_and_assign(self, name, value):
         """Make a copy of self with variable *name* fixed to *value*."""
@@ -469,7 +479,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
     from loopy.check import pre_codegen_checks
     pre_codegen_checks(kernel, callables_table)
 
-    codegen_plog = ProcessLogger(logger, "%s: generate code" % kernel.name)
+    codegen_plog = ProcessLogger(logger, f"{kernel.name}: generate code")
 
     # {{{ examine arg list
 
@@ -510,6 +520,9 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
     seen_atomic_dtypes = set()
 
     initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
+
+    from loopy.codegen.tools import CodegenOperationCacheManager
+
     codegen_state = CodeGenerationState(
             kernel=kernel,
             target=target,
@@ -529,7 +542,9 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
                 + kernel.target.host_program_name_suffix),
             schedule_index_end=len(kernel.schedule),
             callables_table=callables_table,
-            is_entrypoint=is_entrypoint)
+            is_entrypoint=is_entrypoint,
+            codegen_cachemanager=CodegenOperationCacheManager.from_kernel(kernel),
+            )
 
     from loopy.codegen.result import generate_host_or_device_program
 
@@ -551,6 +566,9 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
     for tv in kernel.temporary_variables.values():
         for idi in tv.decl_info(kernel.target, index_dtype=kernel.index_dtype):
             seen_dtypes.add(idi.dtype)
+
+    if kernel.all_inames():
+        seen_dtypes.add(kernel.index_dtype)
 
     preambles = kernel.preambles[:]
 

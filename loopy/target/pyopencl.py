@@ -23,8 +23,11 @@ THE SOFTWARE.
 """
 
 import numpy as np
+import pymbolic.primitives as p
 
-from loopy.target.opencl import OpenCLTarget, OpenCLCASTBuilder
+from loopy.kernel.data import CallMangleInfo
+from loopy.target.opencl import (OpenCLTarget, OpenCLCASTBuilder,
+        ExpressionToOpenCLCExpressionMapper)
 from loopy.target.python import PythonASTBuilderBase
 from loopy.types import NumpyType
 from loopy.diagnostic import LoopyError, warn_with_kernel, LoopyTypeError
@@ -321,6 +324,197 @@ class _LegacyTypeRegistryStub:
 # }}}
 
 
+# {{{ expression mapper
+
+class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper):
+    def complex_type_name(self, dtype):
+        from loopy.types import NumpyType
+        if not isinstance(dtype, NumpyType):
+            raise LoopyError("'%s' is not a complex type" % dtype)
+
+        if dtype.dtype == np.complex64:
+            return "cfloat"
+        if dtype.dtype == np.complex128:
+            return "cdouble"
+        else:
+            raise RuntimeError
+
+    def wrap_in_typecast(self, actual_type, needed_dtype, s):
+        if (actual_type.is_complex() and needed_dtype.is_complex()
+                and actual_type != needed_dtype):
+            return p.Variable("%s_cast" % self.complex_type_name(needed_dtype))(s)
+        elif not actual_type.is_complex() and needed_dtype.is_complex():
+            return p.Variable("%s_fromreal" % self.complex_type_name(needed_dtype))(
+                    s)
+        else:
+            return s
+
+    def map_sum(self, expr, type_context):
+        # I've added 'type_context == "i"' because of the following
+        # idiotic corner case: Code generation for subscripts comes
+        # through here, and it may involve variables that we know
+        # nothing about (offsets and such). If we fall into the allow_complex
+        # branch, we'll try to do type inference on these variables,
+        # and stuff breaks. This band-aid works around that. -AK
+        if not self.allow_complex or type_context == "i":
+            return super().map_sum(expr, type_context)
+
+        tgt_dtype = self.infer_type(expr)
+        is_complex = tgt_dtype.is_complex()
+
+        if not is_complex:
+            return super().map_sum(expr, type_context)
+        else:
+            tgt_name = self.complex_type_name(tgt_dtype)
+
+            reals = []
+            complexes = []
+            for child in expr.children:
+                if self.infer_type(child).is_complex():
+                    complexes.append(child)
+                else:
+                    reals.append(child)
+
+            real_sum = p.flattened_sum([self.rec(r, type_context) for r in reals])
+
+            c_applied = [self.rec(c, type_context, tgt_dtype) for c in complexes]
+
+            def binary_tree_add(start, end):
+                if start + 1 == end:
+                    return c_applied[start]
+                mid = (start + end)//2
+                lsum = binary_tree_add(start, mid)
+                rsum = binary_tree_add(mid, end)
+                return p.Variable("%s_add" % tgt_name)(lsum, rsum)
+
+            complex_sum = binary_tree_add(0, len(c_applied))
+
+            if real_sum:
+                return p.Variable("%s_radd" % tgt_name)(real_sum, complex_sum)
+            else:
+                return complex_sum
+
+    def map_product(self, expr, type_context):
+        # I've added 'type_context == "i"' because of the following
+        # idiotic corner case: Code generation for subscripts comes
+        # through here, and it may involve variables that we know
+        # nothing about (offsets and such). If we fall into the allow_complex
+        # branch, we'll try to do type inference on these variables,
+        # and stuff breaks. This band-aid works around that. -AK
+        if not self.allow_complex or type_context == "i":
+            return super().map_product(expr, type_context)
+
+        tgt_dtype = self.infer_type(expr)
+        is_complex = tgt_dtype.is_complex()
+
+        if not is_complex:
+            return super().map_product(expr, type_context)
+        else:
+            tgt_name = self.complex_type_name(tgt_dtype)
+
+            reals = []
+            complexes = []
+            for child in expr.children:
+                if self.infer_type(child).is_complex():
+                    complexes.append(child)
+                else:
+                    reals.append(child)
+
+            real_prd = p.flattened_product(
+                    [self.rec(r, type_context) for r in reals])
+
+            c_applied = [self.rec(c, type_context, tgt_dtype) for c in complexes]
+
+            def binary_tree_mul(start, end):
+                if start + 1 == end:
+                    return c_applied[start]
+                mid = (start + end)//2
+                lsum = binary_tree_mul(start, mid)
+                rsum = binary_tree_mul(mid, end)
+                return p.Variable("%s_mul" % tgt_name)(lsum, rsum)
+
+            complex_prd = binary_tree_mul(0, len(complexes))
+
+            if real_prd:
+                return p.Variable("%s_rmul" % tgt_name)(real_prd, complex_prd)
+            else:
+                return complex_prd
+
+    def map_quotient(self, expr, type_context):
+        n_dtype = self.infer_type(expr.numerator).numpy_dtype
+        d_dtype = self.infer_type(expr.denominator).numpy_dtype
+        tgt_dtype = self.infer_type(expr)
+        n_complex = "c" == n_dtype.kind
+        d_complex = "c" == d_dtype.kind
+
+        if not self.allow_complex or (not (n_complex or d_complex)):
+            return super().map_quotient(expr, type_context)
+
+        if n_complex and not d_complex:
+            return p.Variable("%s_divider" % self.complex_type_name(tgt_dtype))(
+                    self.rec(expr.numerator, type_context, tgt_dtype),
+                    self.rec(expr.denominator, type_context))
+        elif not n_complex and d_complex:
+            return p.Variable("%s_rdivide" % self.complex_type_name(tgt_dtype))(
+                    self.rec(expr.numerator, type_context),
+                    self.rec(expr.denominator, type_context, tgt_dtype))
+        else:
+            return p.Variable("%s_divide" % self.complex_type_name(tgt_dtype))(
+                    self.rec(expr.numerator, type_context, tgt_dtype),
+                    self.rec(expr.denominator, type_context, tgt_dtype))
+
+    def map_constant(self, expr, type_context):
+        if isinstance(expr, (complex, np.complexfloating)):
+            try:
+                dtype = expr.dtype
+            except AttributeError:
+                # (COMPLEX_GUESS_LOGIC) This made it through type 'guessing' in
+                # type inference, and it was concluded there (search for
+                # COMPLEX_GUESS_LOGIC in loopy.type_inference), that no
+                # accuracy was lost by using single precision.
+                cast_type = "cfloat"
+            else:
+                if dtype == np.complex128:
+                    cast_type = "cdouble"
+                elif dtype == np.complex64:
+                    cast_type = "cfloat"
+                else:
+                    raise RuntimeError("unsupported complex type in expression "
+                            "generation: %s" % type(expr))
+
+            return p.Variable("%s_new" % cast_type)(expr.real, expr.imag)
+
+        return super().map_constant(expr, type_context)
+
+    def map_power(self, expr, type_context):
+        tgt_dtype = self.infer_type(expr)
+        base_dtype = self.infer_type(expr.base)
+        exponent_dtype = self.infer_type(expr.exponent)
+
+        if not self.allow_complex or (not tgt_dtype.is_complex()):
+            return super().map_power(expr, type_context)
+
+        if expr.exponent in [2, 3, 4]:
+            value = expr.base
+            for i in range(expr.exponent-1):
+                value = value * expr.base
+            return self.rec(value, type_context)
+        else:
+            b_complex = base_dtype.is_complex()
+            e_complex = exponent_dtype.is_complex()
+
+            if b_complex and not e_complex:
+                return p.Variable("%s_powr" % self.complex_type_name(tgt_dtype))(
+                        self.rec(expr.base, type_context, tgt_dtype),
+                        self.rec(expr.exponent, type_context))
+            else:
+                return p.Variable("%s_pow" % self.complex_type_name(tgt_dtype))(
+                        self.rec(expr.base, type_context, tgt_dtype),
+                        self.rec(expr.exponent, type_context, tgt_dtype))
+
+# }}}
+
+
 # {{{ target
 
 class PyOpenCLTarget(OpenCLTarget):
@@ -336,12 +530,13 @@ class PyOpenCLTarget(OpenCLTarget):
     host_program_name_suffix = ""
 
     def __init__(self, device=None, pyopencl_module_name="_lpy_cl",
-            atomics_flavor=None):
+                 atomics_flavor=None, use_int8_for_bool=True):
         # This ensures the dtype registry is populated.
         import pyopencl.tools  # noqa
 
         super().__init__(
-                atomics_flavor=atomics_flavor)
+            atomics_flavor=atomics_flavor,
+            use_int8_for_bool=use_int8_for_bool)
 
         import pyopencl.version
         if pyopencl.version.VERSION < (2021, 1):
@@ -386,12 +581,14 @@ class PyOpenCLTarget(OpenCLTarget):
         return {
                 "device_id": dev_id,
                 "atomics_flavor": self.atomics_flavor,
+                "use_int8_for_bool": self.use_int8_for_bool,
                 "fortran_abi": self.fortran_abi,
                 "pyopencl_module_name": self.pyopencl_module_name,
                 }
 
     def __setstate__(self, state):
         self.atomics_flavor = state["atomics_flavor"]
+        self.use_int8_for_bool = state["use_int8_for_bool"]
         self.fortran_abi = state["fortran_abi"]
         self.pyopencl_module_name = state["pyopencl_module_name"]
 
@@ -437,11 +634,18 @@ class PyOpenCLTarget(OpenCLTarget):
         else:
             result = TYPE_REGISTRY
 
-        from loopy.target.opencl import DTypeRegistryWrapperWithCL1Atomics
+        from loopy.target.opencl import (DTypeRegistryWrapperWithCL1Atomics,
+                                         DTypeRegistryWrapperWithInt8ForBool)
+
         if self.atomics_flavor == "cl1":
-            return DTypeRegistryWrapperWithCL1Atomics(result)
+            result = DTypeRegistryWrapperWithCL1Atomics(result)
         else:
             raise NotImplementedError("atomics flavor: %s" % self.atomics_flavor)
+
+        if self.use_int8_for_bool:
+            result = DTypeRegistryWrapperWithInt8ForBool(result)
+
+        return result
 
     def is_vector_dtype(self, dtype):
         try:
@@ -819,9 +1023,11 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     @property
     def known_callables(self):
         from loopy.library.random123 import get_random123_callables
-        callables = super().known_callables
-        callables.update(get_pyopencl_callables())
+        callables = get_pyopencl_callables()
         callables.update(get_random123_callables(self.target))
+        # order matters: e.g. prefer our abs() over that of the
+        # superclass
+        callables.update(super().known_callables)
         return callables
 
     def preamble_generators(self):
@@ -830,6 +1036,10 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
             ] + super().preamble_generators())
 
     # }}}
+
+    def get_expression_to_c_expression_mapper(self, codegen_state):
+        return ExpressionToPyOpenCLCExpressionMapper(codegen_state)
+
 
 # }}}
 

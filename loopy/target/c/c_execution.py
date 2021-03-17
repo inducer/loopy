@@ -92,7 +92,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                 for i in range(num_axes))
 
         # find order of array
-        order = "'C'" if arg.unvec_strides[-1] == 1 else "'F'"
+        order = "'C'" if (arg.shape == () or arg.unvec_strides[-1] == 1) else "'F'"
 
         gen("%(name)s = _lpy_np.empty(%(shape)s, "
                 "%(dtype)s, order=%(order)s)"
@@ -297,6 +297,30 @@ class CPlusPlusCompiler(CCompiler):
             library_dirs=library_dirs, defines=defines, source_suffix=source_suffix)
 
 
+# {{{ placeholder till ctypes fixes: bugs.python.org/issue16899
+
+class Complex64(ctypes.Structure):
+    _fields_ = [("real", ctypes.c_float), ("imag", ctypes.c_float)]
+
+
+class Complex128(ctypes.Structure):
+    _fields_ = [("real", ctypes.c_double), ("imag", ctypes.c_double)]
+
+
+class Complex256(ctypes.Structure):
+    _fields_ = [("real", ctypes.c_longdouble), ("imag", ctypes.c_longdouble)]
+
+
+_NUMPY_COMPLEX_TYPE_TO_CTYPE = {
+        np.complex64: Complex64,
+        np.complex128: Complex128,
+        }
+if hasattr(np, "complex256"):
+    _NUMPY_COMPLEX_TYPE_TO_CTYPE[np.complex256] = Complex256
+
+# }}}
+
+
 class IDIToCDLL:
     """
     A utility class that extracts arguement and return type info from a
@@ -304,24 +328,28 @@ class IDIToCDLL:
     """
     def __init__(self, target):
         self.target = target
-        from loopy.target.c import CFamilyTarget
-        self.registry = CFamilyTarget().get_dtype_registry().wrapped_registry
+        from loopy.target.c import CTarget
+        self.registry = CTarget().get_dtype_registry().wrapped_registry
 
     def __call__(self, knl, idi):
         # next loop through the implemented data info to get the arg data
         arg_info = []
         for arg in idi:
-            # check if pointer
-            pointer = arg.shape
+            # check if pointer: outputs and arrays must be passed
+            # by reference.
+            pointer = arg.shape or arg.is_written
             arg_info.append(self._dtype_to_ctype(arg.dtype, pointer))
 
         return arg_info
 
     def _dtype_to_ctype(self, dtype, pointer=False):
         """Map NumPy dtype to equivalent ctypes type."""
-        typename = self.registry.dtype_to_ctype(dtype)
-        typename = {"unsigned": "uint"}.get(typename, typename)
-        basetype = getattr(ctypes, "c_" + typename)
+        if dtype.is_complex():
+            # complex ctypes aren't exposed
+            np_dtype = dtype.numpy_dtype.type
+            basetype = _NUMPY_COMPLEX_TYPE_TO_CTYPE[np_dtype]
+        else:
+            basetype = np.ctypeslib.as_ctypes_type(dtype)
         if pointer:
             return ctypes.POINTER(basetype)
         return basetype

@@ -393,7 +393,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
         # {{{ handle streaming stores
 
-        if "!streaming_store" in insn.tags:
+        from loopy.kernel.instruction import UseStreamingStoreTag
+        if UseStreamingStoreTag() in insn.tags:
             ary = ecm.find_array(lhs)
 
             from loopy.kernel.array import get_access_info

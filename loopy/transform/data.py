@@ -263,21 +263,24 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
 
     # }}}
 
-    # {{{ fish out tag
+    # {{{ fish out tags
 
     from loopy.symbolic import TaggedVariable
     if isinstance(parsed_var_name, TaggedVariable):
         var_name = parsed_var_name.name
-        tag = parsed_var_name.tag
+        tags = parsed_var_name.tags
     else:
         var_name = parsed_var_name.name
-        tag = None
+        tags = ()
 
     # }}}
 
     c_name = var_name
-    if tag is not None:
-        c_name = c_name + "_" + tag
+    from loopy.kernel.instruction import LegacyStringInstructionTag
+    tag_suffix = "_".join(tag.value for tag in tags
+            if isinstance(tag, LegacyStringInstructionTag))
+    if tag_suffix:
+        c_name = c_name + "_" + tag_suffix
 
     var_name_gen = kernel.get_var_name_generator()
 

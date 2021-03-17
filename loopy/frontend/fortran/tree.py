@@ -51,8 +51,8 @@ class FTreeWalkerBase:
                     type(expr)))
 
     ENTITY_RE = re.compile(
-            r"^(?P<name>[_0-9a-zA-Z]+)"
-            r"(\((?P<shape>[-+*0-9:a-zA-Z, \t]+)\))?"
+            r"^(?P<name>[_0-9a-zA-Z]+)\s*"
+            r"(\((?P<shape>[-+*/0-9:a-zA-Z, \t]+)\))?"
             r"(\s*=\s*(?P<initializer>.+))?"
             "$")
 

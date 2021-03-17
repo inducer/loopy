@@ -469,8 +469,15 @@ class CMathCallable(ScalarCallable):
     def with_types(self, arg_id_to_dtype, callables_table):
         name = self.name
 
+        # {{{ (abs|max|min) -> (fabs|fmax|fmin)
+
         if name in ["abs", "min", "max"]:
-            name = "f" + name
+            dtype = np.find_common_type(
+                [], [dtype.numpy_dtype for dtype in arg_dtypes])
+            if dtype.kind == "f":
+                name = "f" + name
+
+        # }}}
 
         # unary functions
         if name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
@@ -488,8 +495,8 @@ class CMathCallable(ScalarCallable):
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
 
-            dtype = arg_id_to_dtype[0]
-            dtype = dtype.numpy_dtype
+            dtype = arg_id_to_dtype[0].numpy_dtype
+            real_dtype = np.empty(0, dtype=dtype).real.dtype
 
             if dtype.kind in ("u", "i"):
                 # ints and unsigned casted to float32
@@ -498,11 +505,12 @@ class CMathCallable(ScalarCallable):
                 raise LoopyTypeError(f"{name} does not support type {dtype}")
 
             # for CUDA, C Targets the name must be modified
-            if dtype == np.float64:
+            if real_dtype == np.float64:
                 pass  # fabs
-            elif dtype == np.float32:
+            elif real_dtype == np.float32:
                 name = name + "f"  # fabsf
-            elif dtype == np.float128:  # pylint:disable=no-member
+            elif (hasattr(np, "float128")
+                    and real_dtype == np.float128):  # pylint:disable=no-member
                 name = name + "l"  # fabsl
             else:
                 raise LoopyTypeError("{} does not support type {}".format(name,
@@ -532,29 +540,29 @@ class CMathCallable(ScalarCallable):
             dtype = np.find_common_type(
                 [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
                      if id >= 0])
+            real_dtype = np.empty(0, dtype=dtype).real.dtype
 
-            if dtype.kind == "c":
-                raise LoopyTypeError("%s does not support complex numbers")
+            if name in ["fmax", "fmin", "copysign"] and dtype.kind == "c":
+                raise LoopyTypeError(f"{name} does not support complex numbers")
 
-            elif dtype.kind == "f":
-                if dtype == np.float64:
+            elif real_dtype.kind in "fc":
+                if real_dtype == np.float64:
                     pass  # fmin
-                elif dtype == np.float32:
+                elif real_dtype == np.float32:
                     name = name + "f"  # fminf
-                elif dtype == np.float128:  # pylint:disable=no-member
+                elif (hasattr(np, "float128")
+                        and real_dtype == np.float128):  # pylint:disable=no-member
                     name = name + "l"  # fminl
                 else:
                     raise LoopyTypeError("%s does not support type %s"
                                          % (name, dtype))
+            if dtype.kind == "c":
+                name = "c" + name  # cpow
             dtype = NumpyType(dtype)
             return (
                     self.copy(name_in_target=name,
                         arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
                     callables_table)
-
-        return (
-                self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                callables_table)
 
 
 def get_c_callables():

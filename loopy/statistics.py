@@ -716,10 +716,11 @@ class MemAccess(ImmutableRecord):
        A :class:`str` that specifies the variable name of the data
        accessed.
 
-    .. attribute:: variable_tag
+    .. attribute:: variable_tags
 
-       A :class:`str` that specifies the variable tag of a
-       :class:`loopy.symbolic.TaggedVariable`.
+       A :class:`frozenset` of subclasses of :class:`~pytools.tag.Tag`
+       that reflects :attr:`~loopy.symbolic.TaggedVariable.tags` of
+       an accessed variable.
 
     .. attribute:: count_granularity
 
@@ -740,7 +741,8 @@ class MemAccess(ImmutableRecord):
     """
 
     def __init__(self, mtype=None, dtype=None, lid_strides=None, gid_strides=None,
-                 direction=None, variable=None, variable_tag=None,
+                 direction=None, variable=None,
+                 *, variable_tags=None, variable_tag=None,
                  count_granularity=None, kernel_name=None):
 
         if count_granularity not in CountGranularity.ALL+[None]:
@@ -748,16 +750,52 @@ class MemAccess(ImmutableRecord):
                     "not allowed. count_granularity options: %s"
                     % (count_granularity, CountGranularity.ALL+[None]))
 
-        if dtype is not None:
-            from loopy.types import to_loopy_type
-            dtype = to_loopy_type(dtype)
+        # {{{ normalize variable_tags
 
-        super().__init__(mtype=mtype, dtype=dtype,
-                        lid_strides=lid_strides, gid_strides=gid_strides,
-                        direction=direction, variable=variable,
-                        variable_tag=variable_tag,
-                        count_granularity=count_granularity,
-                        kernel_name=kernel_name)
+        if variable_tags is not None and variable_tag is not None:
+            raise TypeError(
+                    "may not specify both 'variable_tags' and 'variable_tag'")
+        if variable_tag is not None:
+            from loopy.kernel.creation import _normalize_string_tag
+            variable_tags = frozenset({_normalize_string_tag(variable_tag)})
+
+            from warnings import warn
+            warn("Passing 'variable_tag' to MemAccess is deprecated and will "
+                    "stop working in 2022. Pass variable_tags instead.")
+
+        if variable_tags is None:
+            variable_tags = frozenset()
+
+        # }}}
+
+        if dtype is None:
+            Record.__init__(self, mtype=mtype, dtype=dtype, lid_strides=lid_strides,
+                            gid_strides=gid_strides, direction=direction,
+                            variable=variable, variable_tags=variable_tags,
+                            count_granularity=count_granularity,
+                            kernel_name=kernel_name)
+        else:
+            from loopy.types import to_loopy_type
+            Record.__init__(self, mtype=mtype, dtype=to_loopy_type(dtype),
+                            lid_strides=lid_strides, gid_strides=gid_strides,
+                            direction=direction, variable=variable,
+                            variable_tags=variable_tags,
+                            count_granularity=count_granularity,
+                            kernel_name=kernel_name)
+
+    @property
+    def variable_tag(self):
+        from warnings import warn
+        warn("Accessing MemAccess.variable_tag is deprecated and will stop working "
+                "in 2022. Use MemAccess.variable_tags instead.", DeprecationWarning,
+                stacklevel=2)
+
+        if len(self.variable_tags) != 1:
+            raise ValueError("cannot access MemAccess.variable_tag: access has "
+                    f"{len(self.variable_tags)} tags")
+
+        tag, = self.variable_tags
+        return tag
 
     def __hash__(self):
         # dicts in gid_strides and lid_strides aren't natively hashable
@@ -774,10 +812,9 @@ class MemAccess(ImmutableRecord):
                 sorted(self.gid_strides.items())),
             self.direction,
             self.variable,
-            self.variable_tag,
-            self.count_granularity,
+            self.variable_tags,
+            self.count_granularity
             self.kernel_name)
-
 # }}}
 
 
@@ -1278,9 +1315,9 @@ class GlobalMemAccessCounter(MemAccessCounterBase):
     def map_subscript(self, expr):
         name = expr.aggregate.name
         try:
-            var_tag = expr.aggregate.tag
+            var_tags = expr.aggregate.tags
         except AttributeError:
-            var_tag = None
+            var_tags = frozenset()
 
         if name in self.knl.arg_dict:
             array = self.knl.arg_dict[name]
@@ -1316,7 +1353,7 @@ class GlobalMemAccessCounter(MemAccessCounterBase):
                             lid_strides=dict(sorted(lid_strides.items())),
                             gid_strides=dict(sorted(gid_strides.items())),
                             variable=name,
-                            variable_tag=var_tag,
+                            variable_tags=var_tags,
                             count_granularity=count_granularity,
                             kernel_name=self.knl.name,
                             ): self.one}
@@ -1609,7 +1646,16 @@ def _get_insn_count(knl, callables_table, insn_id, subgroup_size,
         workgroup_size = 1
         if local_size:
             for size in local_size:
-                s = aff_to_expr(size)
+                if size.n_piece() != 1:
+                    raise LoopyError("Workgroup size found to be genuinely "
+                        "piecewise defined, which is not allowed in stats gathering")
+
+                (valid_set, aff), = size.get_pieces()
+
+                assert ((valid_set.n_basic_set() == 1)
+                        and (valid_set.get_basic_sets()[0].is_universe()))
+
+                s = aff_to_expr(aff)
                 if not isinstance(s, int):
                     raise LoopyError("Cannot count insn with %s granularity, "
                                      "work-group size is not integer: %s"
