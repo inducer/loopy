@@ -59,8 +59,12 @@ jobs:
                 echo "- ocl-icd-system" >> "$CONDA_ENVIRONMENT"
                 export PYOPENCL_TEST=intel
                 source /opt/enable-intel-cl.sh
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
-                . ./build-and-test-py-project-within-miniconda.sh
+                curl -L -O https://tiker.net/ci-support-v0
+                . ./ci-support-v0
+                build_py_project_in_conda_env
+                python ./examples/dump-properties.py -s
+                python ./examples/demo.py
+                test_py_project
 
     pytest_no_arg_check:
         name: Conda Pytest without arg check
