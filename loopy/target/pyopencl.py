@@ -25,7 +25,6 @@ THE SOFTWARE.
 import numpy as np
 import pymbolic.primitives as p
 
-from loopy.kernel.data import CallMangleInfo
 from loopy.target.opencl import (OpenCLTarget, OpenCLCASTBuilder,
         ExpressionToOpenCLCExpressionMapper)
 from loopy.target.python import PythonASTBuilderBase

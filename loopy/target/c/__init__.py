@@ -472,10 +472,7 @@ class CMathCallable(ScalarCallable):
         # {{{ (abs|max|min) -> (fabs|fmax|fmin)
 
         if name in ["abs", "min", "max"]:
-            dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for dtype in arg_dtypes])
-            if dtype.kind == "f":
-                name = "f" + name
+            name = "f" + name
 
         # }}}
 

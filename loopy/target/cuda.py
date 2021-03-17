@@ -136,7 +136,8 @@ class CudaCallable(ScalarCallable):
                             num_args))
 
                 if dtype is not None and dtype.kind == "c":
-                    raise LoopyTypeError(f"'{name}' does not support complex arguments.")
+                    raise LoopyTypeError(
+                        f"'{name}' does not support complex arguments.")
 
             # }}}
 

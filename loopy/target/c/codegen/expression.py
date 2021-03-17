@@ -464,6 +464,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
     def map_power(self, expr, type_context):
         tgt_dtype = self.infer_type(expr)
+        base_dtype = self.infer_type(expr.base)
         exponent_dtype = self.infer_type(expr.exponent)
 
         from pymbolic.primitives import is_constant, is_zero

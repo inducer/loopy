@@ -768,18 +768,14 @@ class MemAccess(ImmutableRecord):
 
         # }}}
 
-        if dtype is None:
-            Record.__init__(self, mtype=mtype, dtype=dtype, lid_strides=lid_strides,
+        if dtype is not None:
+            from loopy.types import to_loopy_type
+            dtype = to_loopy_type(dtype)
+
+        ImmutableRecord.__init__(self, mtype=mtype, dtype=dtype,
+                            lid_strides=lid_strides,
                             gid_strides=gid_strides, direction=direction,
                             variable=variable, variable_tags=variable_tags,
-                            count_granularity=count_granularity,
-                            kernel_name=kernel_name)
-        else:
-            from loopy.types import to_loopy_type
-            Record.__init__(self, mtype=mtype, dtype=to_loopy_type(dtype),
-                            lid_strides=lid_strides, gid_strides=gid_strides,
-                            direction=direction, variable=variable,
-                            variable_tags=variable_tags,
                             count_granularity=count_granularity,
                             kernel_name=kernel_name)
 
@@ -813,7 +809,7 @@ class MemAccess(ImmutableRecord):
             self.direction,
             self.variable,
             self.variable_tags,
-            self.count_granularity
+            self.count_granularity,
             self.kernel_name)
 # }}}
 
