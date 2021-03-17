@@ -57,21 +57,22 @@ jobs:
                 sudo bash ./install-intel-icd.sh
                 CONDA_ENVIRONMENT=.test-conda-env-py3.yml
                 echo "- ocl-icd-system" >> "$CONDA_ENVIRONMENT"
+                sed -i "/pocl/ d" "$CONDA_ENVIRONMENT"
                 export PYOPENCL_TEST=intel
                 source /opt/enable-intel-cl.sh
                 curl -L -O https://tiker.net/ci-support-v0
                 . ./ci-support-v0
                 build_py_project_in_conda_env
-
-        -   name: Setup tmate session
-            uses: mxschmitt/action-tmate@v3
-        -   name: "Script Continued"
-            run: |
-                curl -L -O https://raw.githubusercontent.com/inducer/pyopencl/main/examples/dump-properties.py
-                python ./dump-properties.py -s
-                curl -L -O https://raw.githubusercontent.com/inducer/pyopencl/main/examples/demo.py
-                python ./examples/demo.py
                 test_py_project
+
+#         -   name: Setup tmate session
+#             uses: mxschmitt/action-tmate@v3
+#         -   name: "Script Continued"
+#             run: |
+#                 curl -L -O https://raw.githubusercontent.com/inducer/pyopencl/main/examples/dump-properties.py
+#                 python ./dump-properties.py -s
+#                 curl -L -O https://raw.githubusercontent.com/inducer/pyopencl/main/examples/demo.py
+#                 python ./examples/demo.py
 
     pytest_no_arg_check:
         name: Conda Pytest without arg check
