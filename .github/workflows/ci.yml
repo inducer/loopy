@@ -46,6 +46,22 @@ jobs:
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
 
+    pytest_intel:
+        name: Conda Pytest with Intel CL
+        runs-on: ubuntu-latest
+        steps:
+        -   uses: actions/checkout@v2
+        -   name: "Main Script"
+            run: |
+                curl -L -O https://github.com/illinois-scicomp/machine-shop-maintenance/blob/main/install-intel-icd.sh
+                sudo ./install-intel-icd.sh
+                CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+                echo "- ocl-icd-system" >> "$CONDA_ENVIRONMENT"
+                export PYOPENCL_TEST=intel
+                source /opt/enable-intel-cl.sh
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
+                . ./build-and-test-py-project-within-miniconda.sh
+
     pytest_no_arg_check:
         name: Conda Pytest without arg check
         runs-on: ubuntu-latest
