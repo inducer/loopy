@@ -54,7 +54,7 @@ jobs:
         -   name: "Main Script"
             run: |
                 curl -L -O https://raw.githubusercontent.com/illinois-scicomp/machine-shop-maintenance/main/install-intel-icd.sh
-                sudo ./install-intel-icd.sh
+                sudo bash ./install-intel-icd.sh
                 CONDA_ENVIRONMENT=.test-conda-env-py3.yml
                 echo "- ocl-icd-system" >> "$CONDA_ENVIRONMENT"
                 export PYOPENCL_TEST=intel
