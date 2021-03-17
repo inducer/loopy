@@ -309,6 +309,7 @@ class Complex128(ctypes.Structure):
 class Complex256(ctypes.Structure):
     _fields_ = [("real", ctypes.c_longdouble), ("imag", ctypes.c_longdouble)]
 
+
 _NUMPY_COMPLEX_TYPE_TO_CTYPE = {
         np.complex64: Complex64,
         np.complex128: Complex128,
