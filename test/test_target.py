@@ -424,6 +424,7 @@ def test_opencl_support_for_bool(ctx_factory):
 
 def test_nan_support(ctx_factory):
     from loopy.symbolic import parse
+    ctx = ctx_factory()
     knl = lp.make_kernel(
         "{:}",
         [lp.Assignment(parse("a"), np.nan),
@@ -433,7 +434,7 @@ def test_nan_support(ctx_factory):
 
     knl = lp.set_options(knl, "return_dict")
 
-    evt, out_dict = knl(cl.CommandQueue(ctx_factory()))
+    evt, out_dict = knl(cl.CommandQueue(ctx))
     assert np.isnan(out_dict["a"].get())
     assert out_dict["b"] == 1
     assert out_dict["c"] == 0
