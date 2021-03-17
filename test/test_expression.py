@@ -344,8 +344,9 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target):
     print(knl)
 
     if target == lp.PyOpenCLTarget:
+        cl_ctx = ctx_factory()
         knl = lp.set_options(knl, "write_cl")
-        evt, lp_values = knl(cl.CommandQueue(ctx_factory()), out_host=True)
+        evt, lp_values = knl(cl.CommandQueue(cl_ctx), out_host=True)
     elif target == lp.ExecutableCTarget:
         evt, lp_values = knl()
     else:
