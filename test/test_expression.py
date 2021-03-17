@@ -518,7 +518,8 @@ def test_complex_support(ctx_factory, target):
 
     if target == lp.PyOpenCLTarget:
         knl = lp.set_options(knl, "write_cl")
-        evt, out = knl(cl.CommandQueue(ctx_factory()), **kwargs)
+        cl_ctx = ctx_factory()
+        evt, out = knl(cl.CommandQueue(cl_ctx), **kwargs)
     elif target == lp.ExecutableCTarget:
         evt, out = knl(**kwargs)
     else:
