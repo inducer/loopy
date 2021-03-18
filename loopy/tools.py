@@ -64,6 +64,14 @@ class PersistentHashWalkMapper(LoopyWalkMapper, PersistentHashWalkMapperBase):
         self.rec(expr.expr, *args)
 
 
+    def map_foreign(self, expr, *args, **kwargs):
+        """Mapper method dispatch for non-:mod:`pymbolic` objects."""
+        if expr is None:
+            self.key_hash.update(b"<None>")
+        else:
+            PersistentHashWalkMapperBase.map_foreign(self, expr, *args, **kwargs)
+
+
 class LoopyKeyBuilder(KeyBuilderBase):
     """A custom :class:`pytools.persistent_dict.KeyBuilder` subclass
     for objects within :mod:`loopy`.
