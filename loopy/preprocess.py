@@ -1083,7 +1083,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                 within_inames=outer_insn_inames - frozenset(expr.inames),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=init_insn_depends_on,
-                expression=expr.operation.neutral_element(*arg_dtypes)
+                expression=expression,
 
                 # Do not inherit predicates: Those might read variables
                 # that may not yet be set, and we don't have a great way
@@ -1484,7 +1484,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                     (sweep_iname,) + expr.inames),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=init_insn_depends_on,
-                expression=expr.operation.neutral_element(*arg_dtypes),
+                expression=expression,
                 # Do not inherit predicates: Those might read variables
                 # that may not yet be set, and we don't have a great way
                 # of figuring out what the dependencies of the accumulator
