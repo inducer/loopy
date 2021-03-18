@@ -338,7 +338,7 @@ def parse_fortran(source, filename="<floopy code>", free_form=None, strict=None,
     from loopy.transform.callable import merge
     prog = merge(kernels)
     all_kernels = [clbl.subkernel
-                   for clbl in prog.callables_table.items()]
+                   for clbl in prog.callables_table.values()]
 
     for knl in all_kernels:
         prog.with_kernel(_add_assignees_to_calls(knl, all_kernels))
