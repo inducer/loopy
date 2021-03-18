@@ -1022,11 +1022,12 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     @property
     def known_callables(self):
         from loopy.library.random123 import get_random123_callables
-        callables = get_pyopencl_callables()
-        callables.update(get_random123_callables(self.target))
+
         # order matters: e.g. prefer our abs() over that of the
         # superclass
-        callables.update(super().known_callables)
+        callables = super().known_callables
+        callables.update(get_pyopencl_callables())
+        callables.update(get_random123_callables(self.target))
         return callables
 
     def preamble_generators(self):
