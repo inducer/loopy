@@ -677,12 +677,6 @@ def auto_test_vs_ref(
             rates += " {:g} {}/s".format(cnt/elapsed_wall, lbl)
 
         if not quiet:
-            def format_float_or_none(v):
-                if v is None:
-                    return "<unavailable>"
-                else:
-                    return "%g" % v
-
             print("elapsed: %s s event, %s s marker-event %s s wall "
                     "(%d rounds)%s" % (
                         format_float_or_none(elapsed_event),
