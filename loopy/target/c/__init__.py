@@ -498,8 +498,6 @@ class CMathCallable(ScalarCallable):
             if dtype.kind in ("u", "i"):
                 # ints and unsigned casted to float32
                 dtype = np.float32
-            elif dtype.kind == "c":
-                raise LoopyTypeError(f"{name} does not support type {dtype}")
 
             # for CUDA, C Targets the name must be modified
             if real_dtype == np.float64:
