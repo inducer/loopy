@@ -63,7 +63,6 @@ class PersistentHashWalkMapper(LoopyWalkMapper, PersistentHashWalkMapperBase):
         self.key_hash.update(type(expr.operation).__name__.encode("utf-8"))
         self.rec(expr.expr, *args)
 
-
     def map_foreign(self, expr, *args, **kwargs):
         """Mapper method dispatch for non-:mod:`pymbolic` objects."""
         if expr is None:
