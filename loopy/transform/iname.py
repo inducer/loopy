@@ -508,6 +508,16 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
         :func:`loopy.match.parse_stack_match`.
     """
 
+    from loopy.match import parse_match
+    within = parse_match(within)
+
+    # {{{ return the same kernel if no kernel matches
+
+    if not any(within(kernel, insn) for insn in kernel.instructions):
+        return kernel
+
+    # }}}
+
     # now fastest varying first
     inames = inames[::-1]
 
