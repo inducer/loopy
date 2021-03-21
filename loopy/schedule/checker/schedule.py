@@ -148,7 +148,7 @@ def generate_pairwise_schedules(
         mappings from statement instances to lexicographic time, one for
         each of the two statements.
     """
-    # TODO update doc
+    # TODO update docs now that we're returning SIOs
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
     from loopy.kernel.data import (LocalIndexTag, GroupIndexTag)
@@ -322,6 +322,7 @@ def generate_pairwise_schedules(
 
     from loopy.schedule.checker.lexicographic_order_map import (
         create_lex_order_map,
+        get_statement_ordering_map,
     )
 
     pairwise_schedules = {}
@@ -358,16 +359,25 @@ def generate_pairwise_schedules(
             in zip(insn_ids, lex_tuples_simplified, int_sids)
             ]
 
-        # TODO (moved func below up here to avoid passing extra info around)
-        # Benefit (e.g.): don't want to examine the schedule tuple in separate func
-        # below to re-determine which parallel
-        # dims are used. (could simplify everything by always using all dims, which
-        # would make maps more complex than necessary)
+        # Create lex order maps and SIOs here (rather than returning schedules
+        # and lex maps separately and combining them outside function to get
+        # SIOs) to avoid passing extra info around. Don't want to, e.g.,
+        # examine the schedule tuple in separate func to re-determine which
+        # parallel dims are used. (could simplify everything by always using
+        # all dims..., which would make maps more complex than necessary)
         lex_order_map = create_lex_order_map(
             after_names=seq_lex_dim_names,
             after_names_concurrent=conc_lex_dim_names,
             )
 
-        pairwise_schedules[tuple(insn_ids)] = (tuple(sched_maps), lex_order_map)
+        # Create statement instance ordering,
+        # maps each statement instance to all statement instances occuring later
+        sio = get_statement_ordering_map(
+            *sched_maps,  # note, func accepts exactly two maps
+            lex_order_map,
+            )
+
+        #pairwise_schedules[tuple(insn_ids)] = tuple(sched_maps)
+        pairwise_schedules[tuple(insn_ids)] = (sio, tuple(sched_maps))
 
     return pairwise_schedules

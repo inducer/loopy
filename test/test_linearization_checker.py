@@ -138,7 +138,7 @@ def test_pairwise_schedule_creation():
     # Relationship between insn_a and insn_b ---------------------------------------
 
     # Get two maps
-    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
+    sio, (sched_map_before, sched_map_after) = sched_maps[
         ("insn_a", "insn_b")]
 
     # Create expected maps and compare
@@ -168,7 +168,7 @@ def test_pairwise_schedule_creation():
     # Relationship between insn_a and insn_c ---------------------------------------
 
     # Get two maps
-    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
+    sio, (sched_map_before, sched_map_after) = sched_maps[
         ("insn_a", "insn_c")]
 
     # Create expected maps and compare
@@ -198,7 +198,7 @@ def test_pairwise_schedule_creation():
     # Relationship between insn_a and insn_d ---------------------------------------
 
     # Get two maps
-    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
+    sio, (sched_map_before, sched_map_after) = sched_maps[
         ("insn_a", "insn_d")]
 
     # Create expected maps and compare
@@ -228,7 +228,7 @@ def test_pairwise_schedule_creation():
     # Relationship between insn_b and insn_c ---------------------------------------
 
     # Get two maps
-    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
+    sio, (sched_map_before, sched_map_after) = sched_maps[
         ("insn_b", "insn_c")]
 
     # Create expected maps and compare
@@ -258,7 +258,7 @@ def test_pairwise_schedule_creation():
     # Relationship between insn_b and insn_d ---------------------------------------
 
     # Get two maps
-    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
+    sio, (sched_map_before, sched_map_after) = sched_maps[
         ("insn_b", "insn_d")]
 
     # Create expected maps and compare
@@ -288,7 +288,7 @@ def test_pairwise_schedule_creation():
     # Relationship between insn_c and insn_d ---------------------------------------
 
     # Get two maps
-    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
+    sio, (sched_map_before, sched_map_after) = sched_maps[
         ("insn_c", "insn_d")]
 
     # Create expected maps and compare
@@ -363,7 +363,7 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
     # Relationship between stmt_a and stmt_b ---------------------------------------
 
     # Get two maps
-    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
+    sio, (sched_map_before, sched_map_after) = sched_maps[
         ("stmt_a", "stmt_b")]
 
     # Create expected maps and compare
@@ -502,16 +502,8 @@ def _check_sio_for_stmt_pair(
     )
 
     # Get pairwise schedule
-    (sched_map_before, sched_map_after), sched_lex_order_map = sched_maps[
+    sio, (sched_map_before, sched_map_after) = sched_maps[
         (stmt_id_before, stmt_id_after)]
-
-    # Create statement instance ordering,
-    # maps each statement instance to all statement instances occuring later
-    sio = get_statement_ordering_map(
-        sched_map_before,
-        sched_map_after,
-        sched_lex_order_map,
-        )
 
     sio_aligned = ensure_dim_names_match_and_align(sio, expected_sio)
 
@@ -740,6 +732,32 @@ def test_statement_instance_ordering_with_hw_par_tags():
     _check_sio_for_stmt_pair(expected_sio, "stmt_a", "stmt_b", sched_maps)
 
     # ------------------------------------------------------------------------------
+
+
+# TODO when testing happens-after-barrier map, make sure to test parameter assumption issues:
+"""
+>>> test_pair2 = append_marker_to_isl_map_var_names(isl.Map("[p] -> { [stmt' = 0, i'=1, j'=p-1] -> [stmt = 1] : p > 1 }"), isl.dim_type.in_, "'")
+>>> test_pair3 = append_marker_to_isl_map_var_names(isl.Map("[p] -> { [stmt' = 0, i'=1, j'=p-1] -> [stmt = 1] : p > 2 }"), isl.dim_type.in_, "'")
+>>> hab = append_marker_to_isl_map_var_names(isl.Map("[p] -> { [stmt' = 0, i', j'] -> [stmt = 1] : 0 <= i' < p and 0 <= j' <= -2 + p; [stmt' = 0, i', j' = -1 + p] -> [stmt = 1] : 0 <= i' <= -2 + p }"), isl.dim_type.in_, "'")
+>>> print(prettier_map_string(hab))
+[p] -> {
+[stmt' = 0, i', j'] -> [stmt = 1] : 0 <= i' < p and 0 <= j' <= -2 + p;
+[stmt' = 0, i', j' = -1 + p] -> [stmt = 1] : 0 <= i' <= -2 + p
+}
+>>> print(prettier_map_string(test_pair2))
+[p] -> {
+[stmt' = 0, i' = 1, j' = -1 + p] -> [stmt = 1] : p >= 2
+}
+>>> print(prettier_map_string(test_pair3))
+[p] -> {
+[stmt' = 0, i' = 1, j' = -1 + p] -> [stmt = 1] : p >= 3
+}
+>>> test_pair2.is_subset(hab)
+False
+>>> test_pair3.is_subset(hab)
+True
+"""
+
 
 # }}}
 
