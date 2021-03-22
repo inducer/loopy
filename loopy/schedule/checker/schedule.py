@@ -302,7 +302,7 @@ def generate_pairwise_schedules(
     # (Could try to combine this with pass below but would make things messy)
 
     iname_bounds_pwaff = {}
-    blex_map_params = set()
+    lblex_map_params = set()
 
     for iname in loops_with_barriers:
         # Get first and last vals for this iname
@@ -310,78 +310,78 @@ def generate_pairwise_schedules(
         ubound = bounds.upper_bound_pw_aff
         lbound = bounds.lower_bound_pw_aff
         iname_bounds_pwaff[iname] = (lbound, ubound)
-        blex_map_params |= set(
+        lblex_map_params |= set(
             lbound.get_var_names(dt.param) + ubound.get_var_names(dt.param))
 
-    blex_map_params = sorted(blex_map_params)
+    lblex_map_params = sorted(lblex_map_params)
 
     # }}}
 
     # {{{ Construct blueprint for creating blex space and orderings
     # TODO combine this pass over the linearization items with the pass above
 
-    stmt_inst_to_blex = {}
-    subtract_map_blueprint = {}
+    stmt_inst_to_lblex = {}
+    lblex_exclusion_info = {}
 
     # Keep track of the next tuple of points in our blexicographic
     # ordering, initially this as a 1-d point with value 0
-    next_blex_pt = [0]
-    n_blex_dims = 1
-    iname_to_blexdim = {}
+    next_lblex_pt = [0]
+    n_lblex_dims = 1
+    iname_to_lblex_dim = {}
 
     for linearization_item in linearization_items:
         if isinstance(linearization_item, EnterLoop):
             enter_iname = linearization_item.iname
             if enter_iname in loops_with_barriers:
                 # update next blex pt
-                pre_loop_blex_pt = next_blex_pt[:]
-                next_blex_pt[-1] += 1
-                next_blex_pt.append(enter_iname)
-                next_blex_pt.append(0)
+                pre_loop_lblex_pt = next_lblex_pt[:]
+                next_lblex_pt[-1] += 1
+                next_lblex_pt.append(enter_iname)
+                next_lblex_pt.append(0)
 
                 # store tuples that will be used to create pairs
                 # that will later be subtracted from happens-before map
-                first_iter_blex_pt = next_blex_pt[:]
-                first_iter_blex_pt[-2] = iname_bounds_pwaff[enter_iname][0]
-                subtract_map_blueprint[enter_iname] = {
-                    PRE: tuple(pre_loop_blex_pt),  # make sure to copy
-                    TOP: tuple(next_blex_pt),  # make sure to copy
-                    FIRST: tuple(first_iter_blex_pt),  # make sure to copy
+                first_iter_lblex_pt = next_lblex_pt[:]
+                first_iter_lblex_pt[-2] = iname_bounds_pwaff[enter_iname][0]
+                lblex_exclusion_info[enter_iname] = {
+                    PRE: tuple(pre_loop_lblex_pt),  # make sure to copy
+                    TOP: tuple(next_lblex_pt),  # make sure to copy
+                    FIRST: tuple(first_iter_lblex_pt),  # make sure to copy
                     }
 
         elif isinstance(linearization_item, LeaveLoop):
             leave_iname = linearization_item.iname
             if leave_iname in loops_with_barriers:
                 # update max blex dims
-                n_blex_dims = max(n_blex_dims, len(next_blex_pt))
-                iname_to_blexdim[leave_iname] = len(next_blex_pt)-2
+                n_lblex_dims = max(n_lblex_dims, len(next_lblex_pt))
+                iname_to_lblex_dim[leave_iname] = len(next_lblex_pt)-2
 
                 # update next blex pt
-                pre_end_loop_blex_pt = next_blex_pt[:]
-                next_blex_pt.pop()
-                next_blex_pt.pop()
-                next_blex_pt[-1] += 1
+                pre_end_loop_lblex_pt = next_lblex_pt[:]
+                next_lblex_pt.pop()
+                next_lblex_pt.pop()
+                next_lblex_pt[-1] += 1
 
                 # store tuples that will be used to create pairs
                 # that will later be subtracted from happens-before map
-                last_iter_blex_pt = pre_end_loop_blex_pt[:]
-                last_iter_blex_pt[-2] = iname_bounds_pwaff[leave_iname][1]
-                subtract_map_blueprint[leave_iname][BOTTOM] = tuple(
-                    pre_end_loop_blex_pt)
-                subtract_map_blueprint[leave_iname][LAST] = tuple(last_iter_blex_pt)
-                subtract_map_blueprint[leave_iname][POST] = tuple(next_blex_pt)
+                last_iter_lblex_pt = pre_end_loop_lblex_pt[:]
+                last_iter_lblex_pt[-2] = iname_bounds_pwaff[leave_iname][1]
+                lblex_exclusion_info[leave_iname][BOTTOM] = tuple(
+                    pre_end_loop_lblex_pt)
+                lblex_exclusion_info[leave_iname][LAST] = tuple(last_iter_lblex_pt)
+                lblex_exclusion_info[leave_iname][POST] = tuple(next_lblex_pt)
                 # (make sure ^these are copies)
 
         elif isinstance(linearization_item, RunInstruction):
-            # Add item to stmt_inst_to_blex
+            # Add item to stmt_inst_to_lblex
             lp_insn_id = linearization_item.insn_id
-            stmt_inst_to_blex[lp_insn_id] = tuple(next_blex_pt)
+            stmt_inst_to_lblex[lp_insn_id] = tuple(next_lblex_pt)
 
             # Don't increment blex dim val
 
         elif isinstance(linearization_item, Barrier):
 
-            next_blex_pt[-1] += 1
+            next_lblex_pt[-1] += 1
 
         else:
             from loopy.schedule import (CallKernel, ReturnFromKernel)
@@ -393,43 +393,43 @@ def generate_pairwise_schedules(
     # }}}
 
     # pad tuples w/zeros
-    for stmt, tup in stmt_inst_to_blex.items():
-        stmt_inst_to_blex[stmt] = _pad_tuple_with_zeros(tup, n_blex_dims)
+    for stmt, tup in stmt_inst_to_lblex.items():
+        stmt_inst_to_lblex[stmt] = _pad_tuple_with_zeros(tup, n_lblex_dims)
 
     # Create names for the blex dimensions for sequential loops
     from loopy.schedule.checker.utils import (
         append_marker_to_strings,
     )
-    seq_blex_dim_names = [
-        BLEX_VAR_PREFIX+str(i) for i in range(n_blex_dims)]
-    seq_blex_dim_names_prime = append_marker_to_strings(
-        seq_blex_dim_names, marker=BEFORE_MARK)
+    seq_lblex_dim_names = [
+        BLEX_VAR_PREFIX+str(i) for i in range(n_lblex_dims)]
+    seq_lblex_dim_names_prime = append_marker_to_strings(
+        seq_lblex_dim_names, marker=BEFORE_MARK)
 
-    blex_order_map = create_lex_order_map(
-        before_names=seq_blex_dim_names_prime,
-        after_names=seq_blex_dim_names,
+    lblex_order_map = create_lex_order_map(
+        before_names=seq_lblex_dim_names_prime,
+        after_names=seq_lblex_dim_names,
         after_names_concurrent=conc_lex_dim_names,
         conc_var_comparison_op="ne",
         in_dim_marker=BEFORE_MARK,
         )
 
-    iname_to_blexvar = {}
-    for iname, dim in iname_to_blexdim.items():
-        iname_to_blexvar[iname] = seq_blex_dim_names[dim]
-        iname_to_blexvar[iname+BEFORE_MARK] = seq_blex_dim_names_prime[dim]
+    iname_to_lblex_var = {}
+    for iname, dim in iname_to_lblex_dim.items():
+        iname_to_lblex_var[iname] = seq_lblex_dim_names[dim]
+        iname_to_lblex_var[iname+BEFORE_MARK] = seq_lblex_dim_names_prime[dim]
 
     # Add params to blex map
-    blex_order_map = blex_order_map.add_dims(dt.param, len(blex_map_params))
-    for i, p in enumerate(blex_map_params):
-        blex_order_map = blex_order_map.set_dim_name(dt.param, i, p)
+    lblex_order_map = lblex_order_map.add_dims(dt.param, len(lblex_map_params))
+    for i, p in enumerate(lblex_map_params):
+        lblex_order_map = lblex_order_map.set_dim_name(dt.param, i, p)
 
     # get a set representing blex_order_map space
-    blex_set_template = isl.align_spaces(
-        isl.Map("[ ] -> { [ ] -> [ ] }"), blex_order_map
+    lblex_set_template = isl.align_spaces(
+        isl.Map("[ ] -> { [ ] -> [ ] }"), lblex_order_map
         ).move_dims(
-        dt.in_, n_blex_dims, dt.out, 0, n_blex_dims
+        dt.in_, n_lblex_dims, dt.out, 0, n_lblex_dims
         ).domain()
-    blex_set_affs = isl.affs_from_space(blex_set_template.space)
+    lblex_set_affs = isl.affs_from_space(lblex_set_template.space)
 
     def _create_subtraction_map_for_iname(iname, blueprint):
         # Note: blueprint[FIRST] and blueprint[LAST] contain pwaffs
@@ -437,67 +437,67 @@ def generate_pairwise_schedules(
         def _create_blex_set_from_tuple_pair(before, after, wrap_cond=False):
 
             # start with a set representing blex_order_map space
-            blex_set = blex_set_template.copy()
+            lblex_set = lblex_set_template.copy()
 
             # add markers to inames in before tuple
             # (assume strings are the inames)
             before_prime = tuple(
                 v+BEFORE_MARK if isinstance(v, str) else v for v in before)
-            before_padded = _pad_tuple_with_zeros(before_prime, n_blex_dims)
-            after_padded = _pad_tuple_with_zeros(after, n_blex_dims)
+            before_padded = _pad_tuple_with_zeros(before_prime, n_lblex_dims)
+            after_padded = _pad_tuple_with_zeros(after, n_lblex_dims)
 
             # assign vals to dims
             for dim_name, dim_val in zip(
-                    seq_blex_dim_names_prime+seq_blex_dim_names,
+                    seq_lblex_dim_names_prime+seq_lblex_dim_names,
                     before_padded+after_padded):
                 # (could exploit knowledge of content types of odd/even
                 # tuple dims to reduce conditionals but would be ugly
                 # and less robust)
                 if isinstance(dim_val, int):
                     # set idx to int val
-                    blex_set &= blex_set_affs[dim_name].eq_set(
-                        blex_set_affs[0]+dim_val)
+                    lblex_set &= lblex_set_affs[dim_name].eq_set(
+                        lblex_set_affs[0]+dim_val)
                 elif isinstance(dim_val, str):
                     # assume this is an iname, set idx to corresponding blex var
-                    blex_set &= blex_set_affs[dim_name].eq_set(
-                        blex_set_affs[iname_to_blexvar[dim_val]])
+                    lblex_set &= lblex_set_affs[dim_name].eq_set(
+                        lblex_set_affs[iname_to_lblex_var[dim_val]])
                 else:
                     assert isinstance(dim_val, isl.PwAff)
-                    pwaff_aligned = isl.align_spaces(dim_val, blex_set_affs[0])
-                    # (doesn't matter which element of blex_set_affs we use^)
-                    blex_set &= blex_set_affs[dim_name].eq_set(pwaff_aligned)
+                    pwaff_aligned = isl.align_spaces(dim_val, lblex_set_affs[0])
+                    # (doesn't matter which element of lblex_set_affs we use^)
+                    lblex_set &= lblex_set_affs[dim_name].eq_set(pwaff_aligned)
 
             if wrap_cond:
                 # i = i' + step
                 # TODO what about step sizes != 1?
-                blex_set &= blex_set_affs[iname_to_blexvar[iname]].eq_set(
-                    blex_set_affs[iname_to_blexvar[iname+BEFORE_MARK]] + 1)
+                lblex_set &= lblex_set_affs[iname_to_lblex_var[iname]].eq_set(
+                    lblex_set_affs[iname_to_lblex_var[iname+BEFORE_MARK]] + 1)
 
-            return blex_set
+            return lblex_set
 
         # enter loop case
-        full_blex_set = _create_blex_set_from_tuple_pair(
+        full_lblex_set = _create_blex_set_from_tuple_pair(
             blueprint[PRE], blueprint[FIRST])
         # wrap loop case
-        full_blex_set |= _create_blex_set_from_tuple_pair(
+        full_lblex_set |= _create_blex_set_from_tuple_pair(
             blueprint[BOTTOM], blueprint[TOP], wrap_cond=True)
         # leave loop case
-        full_blex_set |= _create_blex_set_from_tuple_pair(
+        full_lblex_set |= _create_blex_set_from_tuple_pair(
             blueprint[LAST], blueprint[POST])
 
         # add cond to fix iteration value for surrounding loops (i = i')
         for surrounding_iname in blueprint[PRE][1::2]:
-            s_blex_var = iname_to_blexvar[surrounding_iname]
-            full_blex_set &= blex_set_affs[s_blex_var].eq_set(
-                blex_set_affs[s_blex_var+BEFORE_MARK])
+            s_lblex_var = iname_to_lblex_var[surrounding_iname]
+            full_lblex_set &= lblex_set_affs[s_lblex_var].eq_set(
+                lblex_set_affs[s_lblex_var+BEFORE_MARK])
 
         # convert blex set back to map
-        return isl.Map.from_domain(full_blex_set).move_dims(
-            dt.out, 0, dt.in_, n_blex_dims, n_blex_dims)
+        return isl.Map.from_domain(full_lblex_set).move_dims(
+            dt.out, 0, dt.in_, n_lblex_dims, n_lblex_dims)
 
     # subtract unwanted pairs from happens-before blex map
     maps_to_subtract = []
-    for iname, subdict in subtract_map_blueprint.items():
+    for iname, subdict in lblex_exclusion_info.items():
         maps_to_subtract.append(_create_subtraction_map_for_iname(iname, subdict))
 
     if maps_to_subtract:
@@ -511,7 +511,7 @@ def generate_pairwise_schedules(
         assert closure_exact  # TODO warn instead
 
         # subtract from blex order map
-        blex_order_map = blex_order_map - map_to_subtract
+        lblex_order_map = lblex_order_map - map_to_subtract
 
     # }}}  end blex order/map machinery
 
@@ -635,32 +635,32 @@ def generate_pairwise_schedules(
 
         # NOTE: use *unsimplified* lex tuples with blex map
 
-        blex_tuples = [stmt_inst_to_blex[insn_id] for insn_id in insn_ids]
+        lblex_tuples = [stmt_inst_to_lblex[insn_id] for insn_id in insn_ids]
 
         # At this point, one of the lex tuples may have more dimensions than another;
         # the missing dims are the fastest-updating dims, and their values should
         # be zero. Add them.
-        max_blex_dims = max([len(blex_tuple) for blex_tuple in blex_tuples])
-        blex_tuples_padded = [
-            _pad_tuple_with_zeros(blex_tuple, max_blex_dims)
-            for blex_tuple in blex_tuples]
+        max_lblex_dims = max([len(lblex_tuple) for lblex_tuple in lblex_tuples])
+        lblex_tuples_padded = [
+            _pad_tuple_with_zeros(lblex_tuple, max_lblex_dims)
+            for lblex_tuple in lblex_tuples]
 
         # Create names for the output dimensions for sequential loops
-        seq_blex_dim_names = [
-            BLEX_VAR_PREFIX+str(i) for i in range(len(blex_tuples_padded[0]))]
+        seq_lblex_dim_names = [
+            BLEX_VAR_PREFIX+str(i) for i in range(len(lblex_tuples_padded[0]))]
 
         lconc_sched_maps = [
             _get_map_for_stmt(
-                insn_id, blex_tuple, int_sid,
-                seq_blex_dim_names+conc_lex_dim_names)  # conc dim names same for all
-            for insn_id, blex_tuple, int_sid
-            in zip(insn_ids, blex_tuples_padded, int_sids)
+                insn_id, lblex_tuple, int_sid,
+                seq_lblex_dim_names+conc_lex_dim_names)  # conc names same for all
+            for insn_id, lblex_tuple, int_sid
+            in zip(insn_ids, lblex_tuples_padded, int_sids)
             ]
 
         # Create statement instance ordering
         sio_lconc = get_statement_ordering_map(
             *lconc_sched_maps,  # note, func accepts exactly two maps
-            blex_order_map,
+            lblex_order_map,
             before_marker=BEFORE_MARK,
             )
 
@@ -668,7 +668,7 @@ def generate_pairwise_schedules(
         # TODO
         #sio_gconc = get_statement_ordering_map(
         #    *gconc_sched_maps,  # note, func accepts exactly two maps
-        #    g_blex_order_map,
+        #    gblex_order_map,
         #    before_marker=BEFORE_MARK,
         #    )
 
