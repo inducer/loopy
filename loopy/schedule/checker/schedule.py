@@ -284,7 +284,8 @@ def generate_pairwise_schedules(
 
     # {{{ Determine which loops contain barriers
 
-    loops_with_barriers = set()
+    loops_with_lbarriers = set()
+    loops_with_gbarriers = set()
     current_inames = set()
 
     for linearization_item in linearization_items:
@@ -293,7 +294,10 @@ def generate_pairwise_schedules(
         elif isinstance(linearization_item, LeaveLoop):
             current_inames.remove(linearization_item.iname)
         elif isinstance(linearization_item, Barrier):
-            loops_with_barriers |= current_inames
+            if linearization_item.synchronization_kind == "local":
+                loops_with_lbarriers |= current_inames
+            elif linearization_item.synchronization_kind == "global":
+                loops_with_gbarriers |= current_inames
             # At this point we could technically skip ahead to next enterloop
 
     # }}}
@@ -302,37 +306,29 @@ def generate_pairwise_schedules(
     # (Could try to combine this with pass below but would make things messy)
 
     iname_bounds_pwaff = {}
-    lblex_map_params = set()
-
-    for iname in loops_with_barriers:
+    for iname in loops_with_lbarriers:
         # Get first and last vals for this iname
         bounds = knl.get_iname_bounds(iname)
-        ubound = bounds.upper_bound_pw_aff
-        lbound = bounds.lower_bound_pw_aff
-        iname_bounds_pwaff[iname] = (lbound, ubound)
-        lblex_map_params |= set(
-            lbound.get_var_names(dt.param) + ubound.get_var_names(dt.param))
-
-    lblex_map_params = sorted(lblex_map_params)
+        iname_bounds_pwaff[iname] = (
+            bounds.lower_bound_pw_aff, bounds.upper_bound_pw_aff)
 
     # }}}
 
     # {{{ Construct blueprint for creating blex space and orderings
     # TODO combine this pass over the linearization items with the pass above
 
-    stmt_inst_to_lblex = {}
-    lblex_exclusion_info = {}
+    stmt_inst_to_lblex = {}  # map stmt instances to lblex space
+    iname_to_lblex_dim = {}  # map from inames to corresponding lblex space dim
+    lblex_exclusion_info = {}  # info for creating pairs to subtract from lblex order
+    lblex_map_params = set()  # params needed in lblex map
+    next_lblex_pt = [0]  # next tuple of points in lblex order
+    n_lblex_dims = 1  # number of dims in lblex space
 
-    # Keep track of the next tuple of points in our blexicographic
-    # ordering, initially this as a 1-d point with value 0
-    next_lblex_pt = [0]
-    n_lblex_dims = 1
-    iname_to_lblex_dim = {}
-
+    # do both lblex and gblex processing in single pass through insns
     for linearization_item in linearization_items:
         if isinstance(linearization_item, EnterLoop):
             enter_iname = linearization_item.iname
-            if enter_iname in loops_with_barriers:
+            if enter_iname in loops_with_lbarriers:
                 # update next blex pt
                 pre_loop_lblex_pt = next_lblex_pt[:]
                 next_lblex_pt[-1] += 1
@@ -341,17 +337,19 @@ def generate_pairwise_schedules(
 
                 # store tuples that will be used to create pairs
                 # that will later be subtracted from happens-before map
+                lbound = iname_bounds_pwaff[enter_iname][0]
                 first_iter_lblex_pt = next_lblex_pt[:]
-                first_iter_lblex_pt[-2] = iname_bounds_pwaff[enter_iname][0]
+                first_iter_lblex_pt[-2] = lbound
                 lblex_exclusion_info[enter_iname] = {
                     PRE: tuple(pre_loop_lblex_pt),  # make sure to copy
                     TOP: tuple(next_lblex_pt),  # make sure to copy
                     FIRST: tuple(first_iter_lblex_pt),  # make sure to copy
                     }
+                lblex_map_params |= set(lbound.get_var_names(dt.param))
 
         elif isinstance(linearization_item, LeaveLoop):
             leave_iname = linearization_item.iname
-            if leave_iname in loops_with_barriers:
+            if leave_iname in loops_with_lbarriers:
                 # update max blex dims
                 n_lblex_dims = max(n_lblex_dims, len(next_lblex_pt))
                 iname_to_lblex_dim[leave_iname] = len(next_lblex_pt)-2
@@ -364,13 +362,15 @@ def generate_pairwise_schedules(
 
                 # store tuples that will be used to create pairs
                 # that will later be subtracted from happens-before map
+                ubound = iname_bounds_pwaff[leave_iname][1]
                 last_iter_lblex_pt = pre_end_loop_lblex_pt[:]
-                last_iter_lblex_pt[-2] = iname_bounds_pwaff[leave_iname][1]
+                last_iter_lblex_pt[-2] = ubound
                 lblex_exclusion_info[leave_iname][BOTTOM] = tuple(
                     pre_end_loop_lblex_pt)
                 lblex_exclusion_info[leave_iname][LAST] = tuple(last_iter_lblex_pt)
                 lblex_exclusion_info[leave_iname][POST] = tuple(next_lblex_pt)
                 # (make sure ^these are copies)
+                lblex_map_params |= set(ubound.get_var_names(dt.param))
 
         elif isinstance(linearization_item, RunInstruction):
             # Add item to stmt_inst_to_lblex
@@ -389,6 +389,8 @@ def generate_pairwise_schedules(
             assert isinstance(
                 linearization_item, (CallKernel, ReturnFromKernel))
             pass
+
+    lblex_map_params = sorted(lblex_map_params)
 
     # }}}
 
@@ -674,8 +676,11 @@ def generate_pairwise_schedules(
 
         # }}}
 
+        # TODO don't return sched maps?
         #pairwise_schedules[tuple(insn_ids)] = tuple(intra_thread_sched_maps)
         pairwise_schedules[tuple(insn_ids)] = (
-            sio_seq, sio_lconc, tuple(intra_thread_sched_maps))
+            (sio_seq, tuple(intra_thread_sched_maps), ),
+            (sio_lconc, tuple(lconc_sched_maps), )
+            )
 
     return pairwise_schedules
