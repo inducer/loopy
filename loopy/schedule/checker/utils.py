@@ -277,6 +277,8 @@ def create_elementwise_comparison_conjunction_set(
     for n0, n1 in zip(names0, names1):
         if op == "eq":
             conj_set = conj_set & islvars[n0].eq_set(islvars[n1])
+        elif op == "ne":
+            conj_set = conj_set & islvars[n0].ne_set(islvars[n1])
         elif op == "lt":
             conj_set = conj_set & islvars[n0].lt_set(islvars[n1])
 

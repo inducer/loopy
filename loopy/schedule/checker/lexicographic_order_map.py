@@ -76,6 +76,7 @@ def get_lex_order_set(
         before_names_concurrent=[],
         after_names_concurrent=[],
         islvars=None,
+        conc_var_comparison_op="eq",
         ):
     """Return an :class:`islpy.Set` representing a lexicographic ordering
         with the number of dimensions provided in `before_names`
@@ -154,7 +155,7 @@ def get_lex_order_set(
     lex_order_set = lex_order_set & \
         create_elementwise_comparison_conjunction_set(
             before_names_concurrent, after_names_concurrent,
-            islvars, op="eq",
+            islvars, op=conc_var_comparison_op,
             )
 
     return lex_order_set
@@ -165,6 +166,8 @@ def create_lex_order_map(
         before_names=None,
         after_names=None,
         after_names_concurrent=[],
+        conc_var_comparison_op="eq",
+        in_dim_marker="'",
         ):
     """Return a map from each point in a lexicographic ordering to every
         point that occurs later in the lexicographic ordering.
@@ -201,11 +204,11 @@ def create_lex_order_map(
     if after_names is None:
         after_names = ["i%s" % (i) for i in range(n_dims)]
     if before_names is None:
-        before_names = append_marker_to_strings(after_names, marker="'")
+        before_names = append_marker_to_strings(after_names, marker=in_dim_marker)
     if n_dims is None:
         n_dims = len(after_names)
     before_names_concurrent = append_marker_to_strings(
-        after_names_concurrent, marker="'")
+        after_names_concurrent, marker=in_dim_marker)
 
     assert len(before_names) == len(after_names) == n_dims
     dim_type = isl.dim_type
@@ -214,6 +217,7 @@ def create_lex_order_map(
     lex_order_set = get_lex_order_set(
         before_names, after_names,
         before_names_concurrent, after_names_concurrent,
+        conc_var_comparison_op=conc_var_comparison_op,
         )
 
     # Now convert that set to a map.
