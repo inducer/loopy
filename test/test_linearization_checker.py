@@ -142,6 +142,8 @@ def test_pairwise_schedule_creation():
         sio_seq, (sched_before, sched_after)
     ), (
         sio_lconc, (lconc_sched_before, lconc_sched_after)
+    ), (
+        sio_gconc, (gconc_sched_before, gconc_sched_after)
     ) = scheds[
         ("insn_a", "insn_b")]
 
@@ -176,6 +178,8 @@ def test_pairwise_schedule_creation():
         sio_seq, (sched_before, sched_after)
     ), (
         sio_lconc, (lconc_sched_before, lconc_sched_after)
+    ), (
+        sio_gconc, (gconc_sched_before, gconc_sched_after)
     ) = scheds[
         ("insn_a", "insn_c")]
 
@@ -210,6 +214,8 @@ def test_pairwise_schedule_creation():
         sio_seq, (sched_before, sched_after)
     ), (
         sio_lconc, (lconc_sched_before, lconc_sched_after)
+    ), (
+        sio_gconc, (gconc_sched_before, gconc_sched_after)
     ) = scheds[
         ("insn_a", "insn_d")]
 
@@ -244,6 +250,8 @@ def test_pairwise_schedule_creation():
         sio_seq, (sched_before, sched_after)
     ), (
         sio_lconc, (lconc_sched_before, lconc_sched_after)
+    ), (
+        sio_gconc, (gconc_sched_before, gconc_sched_after)
     ) = scheds[
         ("insn_b", "insn_c")]
 
@@ -278,6 +286,8 @@ def test_pairwise_schedule_creation():
         sio_seq, (sched_before, sched_after)
     ), (
         sio_lconc, (lconc_sched_before, lconc_sched_after)
+    ), (
+        sio_gconc, (gconc_sched_before, gconc_sched_after)
     ) = scheds[
         ("insn_b", "insn_d")]
 
@@ -312,6 +322,8 @@ def test_pairwise_schedule_creation():
         sio_seq, (sched_before, sched_after)
     ), (
         sio_lconc, (lconc_sched_before, lconc_sched_after)
+    ), (
+        sio_gconc, (gconc_sched_before, gconc_sched_after)
     ) = scheds[
         ("insn_c", "insn_d")]
 
@@ -391,6 +403,8 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
         sio_seq, (sched_before, sched_after)
     ), (
         sio_lconc, (lconc_sched_before, lconc_sched_after)
+    ), (
+        sio_gconc, (gconc_sched_before, gconc_sched_after)
     ) = scheds[
         ("stmt_a", "stmt_b")]
 
@@ -531,6 +545,8 @@ def _check_sio_for_stmt_pair(
         sio_seq, (sched_before, sched_after)
     ), (
         sio_lconc, (lconc_sched_before, lconc_sched_after)
+    ), (
+        sio_gconc, (gconc_sched_before, gconc_sched_after)
     ) = scheds[
         (stmt_id_before, stmt_id_after)]
 
