@@ -125,6 +125,7 @@ def generate_pairwise_schedules(
         lin_items,
         insn_id_pairs,
         loops_to_ignore=set(),
+        return_schedules=False,
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
@@ -708,10 +709,13 @@ def generate_pairwise_schedules(
 
         # TODO have option to return sched maps, but default to not returning them
         #pairwise_schedules[tuple(insn_ids)] = tuple(intra_thread_sched_maps)
-        pairwise_schedules[tuple(insn_ids)] = (
-            (sio_seq, tuple(intra_thread_sched_maps), ),
-            (sio_lconc, tuple(lconc_sched_maps), ),
-            (sio_gconc, tuple(gconc_sched_maps), ),
-            )
+        if return_schedules:
+            pairwise_schedules[tuple(insn_ids)] = (
+                (sio_seq, tuple(intra_thread_sched_maps), ),
+                (sio_lconc, tuple(lconc_sched_maps), ),
+                (sio_gconc, tuple(gconc_sched_maps), ),
+                )
+        else:
+            pairwise_schedules[tuple(insn_ids)] = (sio_seq, sio_lconc, sio_gconc)
 
     return pairwise_schedules

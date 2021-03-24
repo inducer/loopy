@@ -27,6 +27,7 @@ def get_schedules_for_statement_pairs(
         knl,
         linearization_items,
         insn_id_pairs,
+        return_schedules=False,
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
@@ -135,6 +136,7 @@ def get_schedules_for_statement_pairs(
         linearization_items,
         insn_id_pairs,
         loops_to_ignore=conc_loop_inames,
+        return_schedules=return_schedules,
         )
 
     # }}}

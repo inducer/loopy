@@ -133,6 +133,7 @@ def test_pairwise_schedule_creation():
         lin_knl,
         linearization_items,
         insn_id_pairs,
+        return_schedules=True,
         )
 
     # Relationship between insn_a and insn_b ---------------------------------------
@@ -394,6 +395,7 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
         lin_knl,
         linearization_items,
         stmt_id_pairs,
+        return_schedules=True,
         )
 
     # Relationship between stmt_a and stmt_b ---------------------------------------
@@ -578,6 +580,7 @@ def test_statement_instance_ordering():
         knl,
         linearization_items,
         stmt_id_pairs,
+        return_schedules=True,
         )
 
     # Relationship between stmt_a and stmt_b ---------------------------------------
@@ -715,6 +718,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
         lin_knl,
         linearization_items,
         stmt_id_pairs,
+        return_schedules=True,
         )
 
     # Create string for representing parallel iname condition in sio
