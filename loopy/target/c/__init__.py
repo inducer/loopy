@@ -559,6 +559,13 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
                 result_dtypes=(NumpyType(real_dtype),),
                 arg_dtypes=arg_dtypes)
 
+    if (name == "isnan" and len(arg_dtypes) == 1
+            and arg_dtypes[0].numpy_dtype.kind == "f"):
+        return CallMangleInfo(
+                target_name=name,
+                result_dtypes=(NumpyType(np.int32),),
+                arg_dtypes=arg_dtypes)
+
     return None
 
 # }}}
