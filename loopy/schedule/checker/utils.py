@@ -28,7 +28,7 @@ def prettier_map_string(map_obj):
                ).replace("{ ", "{\n").replace(" }", "\n}").replace("; ", ";\n")
 
 
-def add_dims_to_isl_set(isl_set, dim_type, names, new_idx_start):
+def insert_and_name_isl_dims(isl_set, dim_type, names, new_idx_start):
     new_set = isl_set.insert_dims(dim_type, new_idx_start, len(names))
     for i, name in enumerate(names):
         new_set = new_set.set_dim_name(dim_type, new_idx_start+i, name)

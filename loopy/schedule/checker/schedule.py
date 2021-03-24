@@ -677,7 +677,7 @@ def generate_pairwise_schedules(
     from loopy.schedule.checker.utils import (
         sorted_union_of_names_in_isl_sets,
         create_symbolic_map_from_tuples,
-        add_dims_to_isl_set,
+        insert_and_name_isl_dims,
     )
 
     def _get_map_for_stmt(
@@ -702,7 +702,7 @@ def generate_pairwise_schedules(
 
         # Insert 'statement' dim into domain so that its space allows
         # for intersection with sched map later
-        dom_to_intersect = add_dims_to_isl_set(
+        dom_to_intersect = insert_and_name_isl_dims(
                 dom, dt.set, [STATEMENT_VAR_NAME], 0)
 
         # Each map will map statement instances -> lex time.
