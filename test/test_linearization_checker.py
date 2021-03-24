@@ -42,6 +42,9 @@ from loopy.schedule.checker.schedule import (
     LTAG_VAR_NAMES,
     GTAG_VAR_NAMES,
 )
+from loopy.schedule.checker.utils import (
+    ensure_dim_names_match_and_align,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +52,6 @@ logger = logging.getLogger(__name__)
 # {{{ helper functions for map creation/handling
 
 def _align_and_compare_maps(maps1, maps2):
-    from loopy.schedule.checker.utils import (
-        ensure_dim_names_match_and_align,
-    )
 
     for map1, map2 in zip(maps1, maps2):
         # Align maps and compare
@@ -63,7 +63,6 @@ def _lex_point_string(dim_vals, lid_inames=[], gid_inames=[], prefix=LEX_VAR_PRE
     # Return a string describing a point in a lex space
     # by assigning values to lex dimension variables
     # (used to create maps below)
-    # TODO make lid/gid condition optional
 
     return ", ".join(
         ["%s%d=%s" % (prefix, idx, str(val))
@@ -418,7 +417,10 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
         "[pi,pj] -> {[%s=0,i,ii,j,jj] -> [%s] : 0 <= i,ii < pi and 0 <= j,jj < pj}"
         % (
             STATEMENT_VAR_NAME,
-            _lex_point_string(["ii", "0"], lid_inames=["jj", "j"], gid_inames=["i"]),
+            _lex_point_string(
+                ["ii", "0"],
+                lid_inames=["jj", "j"], gid_inames=["i"],
+                ),
             )
         )
 
@@ -426,7 +428,10 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
         "[pi,pj] -> {[%s=1,i,ii,j,jj] -> [%s] : 0 <= i,ii < pi and 0 <= j,jj < pj}"
         % (
             STATEMENT_VAR_NAME,
-            _lex_point_string(["ii", "1"], lid_inames=["jj", "j"], gid_inames=["i"]),
+            _lex_point_string(
+                ["ii", "1"],
+                lid_inames=["jj", "j"], gid_inames=["i"],
+                ),
             )
         )
 
@@ -436,101 +441,6 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
         )
 
     # ------------------------------------------------------------------------------
-
-
-def test_pairwise_schedule_creation_with_lbarriers():
-    import islpy as isl
-    from loopy.schedule.checker import (
-        get_schedules_for_statement_pairs,
-    )
-    from loopy.schedule.checker.utils import (
-        append_marker_to_isl_map_var_names,
-    )
-    dt = isl.dim_type
-
-    knl = lp.make_kernel(
-        [
-            "{[i,j]: 0<=i,j<p}",
-        ],
-        """
-        <>temp0 = 0  {id=0}
-        ... lbarrier  {id=b0,dep=0}
-        <>temp1 = 1  {id=1,dep=b0}
-        for i
-            <>tempi0 = 0  {id=i0,dep=1}
-            ... lbarrier {id=ib0,dep=i0}
-            <>tempi1 = 0  {id=i1,dep=ib0}
-            <>tempi2 = 0  {id=i2,dep=i1}
-            for j
-                <>tempj0 = 0  {id=j0,dep=i2}
-                ... lbarrier {id=jb0,dep=j0}
-                <>tempj1 = 0  {id=j1,dep=jb0}
-            end
-        end
-        <>temp2 = 0  {id=2,dep=i0}
-        """,
-        name="funky",
-        assumptions="p >= 1",
-        lang_version=(2018, 2)
-        )
-
-    # Get a linearization
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    linearization_items = lin_knl.linearization
-
-    insn_id_pairs = [("j1", "2")]
-    scheds = get_schedules_for_statement_pairs(
-        lin_knl, linearization_items, insn_id_pairs, return_schedules=True)
-
-    # Get two maps
-    (
-        sio_seq, (sched_map_before, sched_map_after)
-    ), (
-        sio_lconc, (lconc_sched_before, lconc_sched_after)
-    ), (
-        sio_gconc, (gconc_sched_before, gconc_sched_after)
-    ) = scheds[insn_id_pairs[0]]
-
-    # Create expected maps and compare
-
-    lconc_sched_before_exp = isl.Map(
-        "[p] -> {[%s=0,i,j] -> [%s] : 0 <= i,j < p}"
-        % (
-            STATEMENT_VAR_NAME,
-            _lex_point_string(["2", "i", "2", "j", "1"], prefix=BLEX_VAR_PREFIX),
-            )
-        )
-
-    lconc_sched_after_exp = isl.Map(
-        "[ ] -> {[%s=1] -> [%s]}"
-        % (
-            STATEMENT_VAR_NAME,
-            _lex_point_string(["3", "0", "0", "0", "0"], prefix=BLEX_VAR_PREFIX),
-            )
-        )
-
-    _align_and_compare_maps(
-        [lconc_sched_before_exp, lconc_sched_after_exp],
-        [lconc_sched_before, lconc_sched_after],
-        )
-
-    hab_test_pair = isl.Map(
-        "[p] -> {"
-        "[stmt' = 0, i'=1, j'=p-1] -> [stmt = 1] : p > 2"
-        "}")
-    hab_test_pair = append_marker_to_isl_map_var_names(
-        hab_test_pair, dt.in_, "'")
-
-    #blex_pts_for_test_pair = isl.Map(
-    #    "[p] -> {"
-    #    "[blex0' = 2, blex1' = 1, blex2' = 2, blex3' = p - 1, blex4' = 1] -> "
-    #    "[blex0 = 3, blex1 = 0, blex2 = 0, blex3 = 0, blex4 = 0]"
-    #    "}")
-    #blex_pts_for_test_pair = append_marker_to_isl_map_var_names(
-    #    blex_pts_for_test_pair, dt.in_, "'")
-
-    assert hab_test_pair.is_subset(sio_lconc)
 
 # }}}
 
@@ -846,31 +756,142 @@ def test_statement_instance_ordering_with_hw_par_tags():
 
     # ------------------------------------------------------------------------------
 
+# }}}
 
-# TODO when testing happens-after-barrier map, make sure to test parameter assumption issues:
-"""
->>> test_pair2 = append_marker_to_isl_map_var_names(isl.Map("[p] -> { [stmt' = 0, i'=1, j'=p-1] -> [stmt = 1] : p > 1 }"), isl.dim_type.in_, "'")
->>> test_pair3 = append_marker_to_isl_map_var_names(isl.Map("[p] -> { [stmt' = 0, i'=1, j'=p-1] -> [stmt = 1] : p > 2 }"), isl.dim_type.in_, "'")
->>> hab = append_marker_to_isl_map_var_names(isl.Map("[p] -> { [stmt' = 0, i', j'] -> [stmt = 1] : 0 <= i' < p and 0 <= j' <= -2 + p; [stmt' = 0, i', j' = -1 + p] -> [stmt = 1] : 0 <= i' <= -2 + p }"), isl.dim_type.in_, "'")
->>> print(prettier_map_string(hab))
-[p] -> {
-[stmt' = 0, i', j'] -> [stmt = 1] : 0 <= i' < p and 0 <= j' <= -2 + p;
-[stmt' = 0, i', j' = -1 + p] -> [stmt = 1] : 0 <= i' <= -2 + p
-}
->>> print(prettier_map_string(test_pair2))
-[p] -> {
-[stmt' = 0, i' = 1, j' = -1 + p] -> [stmt = 1] : p >= 2
-}
->>> print(prettier_map_string(test_pair3))
-[p] -> {
-[stmt' = 0, i' = 1, j' = -1 + p] -> [stmt = 1] : p >= 3
-}
->>> test_pair2.is_subset(hab)
-False
->>> test_pair3.is_subset(hab)
-True
-"""
 
+# {{{ SIOs and schedules with barriers
+
+def test_sios_and_schedules_with_lbarriers():
+    import islpy as isl
+    from loopy.schedule.checker import (
+        get_schedules_for_statement_pairs,
+    )
+    from loopy.schedule.checker.utils import (
+        append_marker_to_isl_map_var_names,
+    )
+    dt = isl.dim_type
+
+    knl = lp.make_kernel(
+        [
+            #"{[i,j,l0,l1,g0]: 0<=i,j,l0,l1,g0<p}",
+            "{[i,j]: 0<=i,j<p1}",
+            "{[l0,l1,g0]: 0<=l0,l1,g0<p2}",
+        ],
+        """
+        for g0
+            for l0
+                for l1
+                    <>temp0 = 0  {id=0}
+                    ... lbarrier  {id=b0,dep=0}
+                    <>temp1 = 1  {id=1,dep=b0}
+                    for i
+                        <>tempi0 = 0  {id=i0,dep=1}
+                        ... lbarrier {id=ib0,dep=i0}
+                        <>tempi1 = 0  {id=i1,dep=ib0}
+                        <>tempi2 = 0  {id=i2,dep=i1}
+                        for j
+                            <>tempj0 = 0  {id=j0,dep=i2}
+                            ... lbarrier {id=jb0,dep=j0}
+                            <>tempj1 = 0  {id=j1,dep=jb0}
+                        end
+                    end
+                    <>temp2 = 0  {id=2,dep=i0}
+                end
+            end
+        end
+        """,
+        name="funky",
+        assumptions="p1,p2 >= 1",
+        lang_version=(2018, 2)
+        )
+    knl = lp.tag_inames(knl, {"l0": "l.0", "l1": "l.1", "g0": "g.0"})
+
+    # Get a linearization
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    linearization_items = lin_knl.linearization
+
+    insn_id_pairs = [("j1", "2")]
+    scheds = get_schedules_for_statement_pairs(
+        lin_knl, linearization_items, insn_id_pairs, return_schedules=True)
+
+    # Get two maps
+    (
+        sio_seq, (sched_map_before, sched_map_after)
+    ), (
+        sio_lconc, (lconc_sched_before, lconc_sched_after)
+    ), (
+        sio_gconc, (gconc_sched_before, gconc_sched_after)
+    ) = scheds[insn_id_pairs[0]]
+
+    # Create expected maps and compare
+
+    lconc_sched_before_exp = isl.Map(
+        "[p1,p2] -> {[%s=0,i,j,l0,l1,g0] -> [%s] : 0<=i,j<p1 and 0<=l0,l1,g0<p2}"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(
+                ["2", "i", "2", "j", "1"],
+                lid_inames=["l0", "l1"], gid_inames=["g0"],
+                prefix=BLEX_VAR_PREFIX,
+                ),
+            )
+        )
+
+    lconc_sched_after_exp = isl.Map(
+        "[p2] -> {[%s=1,l0,l1,g0] -> [%s] : 0<=l0,l1,g0<p2}"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(
+                ["3", "0", "0", "0", "0"],
+                lid_inames=["l0", "l1"], gid_inames=["g0"],
+                prefix=BLEX_VAR_PREFIX,
+                ),
+            )
+        )
+
+    _align_and_compare_maps(
+        [lconc_sched_before_exp, lconc_sched_after_exp],
+        [lconc_sched_before, lconc_sched_after],
+        )
+
+    # Check for some example pairs in the sio_lconc map
+
+    # As long as this is not the last iteration of the i loop, then there
+    # should be a barrier between the last instance of statement j1
+    # and statement 2:
+    p1_val = 7
+    last_i_val = p1_val - 1
+    max_non_last_i_val = last_i_val - 1
+
+    wanted_pairs = isl.Map(
+        "[p1,p2] -> {{"
+        "[{0}' = 0, i', j'=p1-1, g0', l0', l1'] -> [{0} = 1, l0, l1, g0] : "
+        "0 <= i' <= {1} and "  # constrain i
+        "p1 >= {2} and "  # constrain p
+        "0<=l0',l1',g0',l0,l1,g0<p2 and g0=g0'"
+        "}}".format(STATEMENT_VAR_NAME, max_non_last_i_val, p1_val))
+    wanted_pairs = append_marker_to_isl_map_var_names(
+        wanted_pairs, dt.in_, "'")
+    wanted_pairs = ensure_dim_names_match_and_align(wanted_pairs, sio_lconc)
+
+    assert wanted_pairs.is_subset(sio_lconc)
+
+    # If this IS the last iteration of the i loop, then there
+    # should NOT be a barrier between the last instance of statement j1
+    # and statement 2:
+    unwanted_pairs = isl.Map(
+        "[p1,p2] -> {{"
+        "[{0}' = 0, i', j'=p1-1, g0', l0', l1'] -> [{0} = 1, l0, l1, g0] : "
+        "0 <= i' <= {1} and "  # constrain i
+        "p1 >= {2} and "  # constrain p
+        "0<=l0',l1',g0',l0,l1,g0<p2 and g0=g0'"
+        "}}".format(STATEMENT_VAR_NAME, last_i_val, p1_val))
+    unwanted_pairs = append_marker_to_isl_map_var_names(
+        unwanted_pairs, dt.in_, "'")
+    unwanted_pairs = ensure_dim_names_match_and_align(unwanted_pairs, sio_lconc)
+
+    assert not unwanted_pairs.is_subset(sio_lconc)
 
 # }}}
 
