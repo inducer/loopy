@@ -447,8 +447,7 @@ def test_lex_order_map_creation():
         append_marker_to_isl_map_var_names,
     )
 
-    def _check_lex_map(
-            exp_lex_order_map, n_dims, lid_axes_used=[], gid_axes_used=[]):
+    def _check_lex_map(exp_lex_order_map, n_dims):
 
         # Isl ignores the apostrophes, so explicitly add them
         exp_lex_order_map = append_marker_to_isl_map_var_names(
@@ -456,20 +455,11 @@ def test_lex_order_map_creation():
 
         lex_order_map = create_lex_order_map(
             n_dims=n_dims,
-            before_names=["%s%d'" % (LEX_VAR_PREFIX, i) for i in range(n_dims)],
-            after_names=["%s%d" % (LEX_VAR_PREFIX, i) for i in range(n_dims)],
-            after_names_concurrent=[
-                LTAG_VAR_NAMES[i] for i in lid_axes_used] + [
-                GTAG_VAR_NAMES[i] for i in gid_axes_used],
+            dim_names=["%s%d" % (LEX_VAR_PREFIX, i) for i in range(n_dims)],
             )
 
         assert lex_order_map == exp_lex_order_map
-        assert (
-            lex_order_map.get_var_names(isl.dim_type.in_) ==
-            exp_lex_order_map.get_var_names(isl.dim_type.in_))
-        assert (
-            lex_order_map.get_var_names(isl.dim_type.out) ==
-            exp_lex_order_map.get_var_names(isl.dim_type.out))
+        assert lex_order_map.get_var_dict() == exp_lex_order_map.get_var_dict()
 
     exp_lex_order_map = isl.Map(
         "{{ "
@@ -498,32 +488,6 @@ def test_lex_order_map_creation():
         "}}".format(LEX_VAR_PREFIX))
 
     _check_lex_map(exp_lex_order_map, 1)
-
-    # Lex map for kernel with parallel HW tags
-
-    lid_axes_used = [0, 1]
-    gid_axes_used = [0, 1, 2]
-    hw_par_lex_vars = [
-        LTAG_VAR_NAMES[i] for i in lid_axes_used] + [
-        GTAG_VAR_NAMES[i] for i in gid_axes_used]
-    exp_lex_order_map = isl.Map(
-        "{{ "
-        "[{0}0', {0}1', {0}2', {1}', {2}', {3}', {4}', {5}'] "
-        "-> [{0}0, {0}1, {0}2, {1}, {2}, {3}, {4}, {5}] :"
-        "(("
-        "{0}0' < {0}0 "
-        ") or ("
-        "{0}0'={0}0 and {0}1' < {0}1 "
-        ") or ("
-        "{0}0'={0}0 and {0}1'={0}1 and {0}2' < {0}2 "
-        ")) and ("
-        "{1}' = {1} and {2}' = {2} and {3}' = {3} and {4}' = {4} and {5}' = {5}"
-        ")"
-        "}}".format(LEX_VAR_PREFIX, *hw_par_lex_vars))
-
-    _check_lex_map(
-        exp_lex_order_map, 3,
-        lid_axes_used=lid_axes_used, gid_axes_used=gid_axes_used)
 
 # }}}
 

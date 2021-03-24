@@ -165,6 +165,12 @@ def generate_pairwise_schedules(
         create_lex_order_map,
         get_statement_ordering_map,
     )
+    from loopy.schedule.checker.utils import (
+        add_and_name_isl_dims,
+        append_marker_to_strings,
+        add_eq_isl_constraint_from_names,
+        add_ne_isl_constraint_from_names,
+    )
 
     all_insn_ids = set().union(*insn_id_pairs)
 
@@ -397,21 +403,27 @@ def generate_pairwise_schedules(
         # }}}
 
         # Create names for the blex dimensions for sequential loops
-        from loopy.schedule.checker.utils import (
-            append_marker_to_strings,
-        )
         seq_blex_dim_names = [
             BLEX_VAR_PREFIX+str(i) for i in range(n_blex_dims)]
         seq_blex_dim_names_prime = append_marker_to_strings(
             seq_blex_dim_names, marker=BEFORE_MARK)
 
         blex_order_map = create_lex_order_map(
-            before_names=seq_blex_dim_names_prime,
-            after_names=seq_blex_dim_names,
-            after_names_concurrent=conc_lex_dim_names,
-            conc_var_comparison_op="ne",
+            dim_names=seq_blex_dim_names,
             in_dim_marker=BEFORE_MARK,
             )
+
+        # Add lid/gid dims to lex order map
+        blex_order_map = add_and_name_isl_dims(
+            blex_order_map, dt.out, conc_lex_dim_names)
+        blex_order_map = add_and_name_isl_dims(
+            blex_order_map, dt.in_, append_marker_to_strings(conc_lex_dim_names))
+        # Constrain lid/gid vars to be *not* equal
+        # TODO do right thing with conc vars for lblex, gblex case
+        # TODO LEFT OFF HERE
+        for var_name in conc_lex_dim_names:
+            blex_order_map = add_ne_isl_constraint_from_names(
+                    blex_order_map, var_name, var_name+BEFORE_MARK)
 
         iname_to_blex_var = {}
         for iname, dim in iname_to_blex_dim.items():
@@ -419,9 +431,8 @@ def generate_pairwise_schedules(
             iname_to_blex_var[iname+BEFORE_MARK] = seq_blex_dim_names_prime[dim]
 
         # Add params to blex map
-        blex_order_map = blex_order_map.add_dims(dt.param, len(blex_map_params))
-        for i, p in enumerate(blex_map_params):
-            blex_order_map = blex_order_map.set_dim_name(dt.param, i, p)
+        blex_order_map = add_and_name_isl_dims(
+            blex_order_map, dt.param, blex_map_params)
 
         # get a set representing blex_order_map space
         blex_set_template = isl.align_spaces(
@@ -759,11 +770,19 @@ def generate_pairwise_schedules(
         # parallel dims are used. (could simplify everything by always using
         # all dims..., which would make maps more complex than necessary)
         lex_order_map = create_lex_order_map(
-            after_names=seq_lex_dim_names,
-            after_names_concurrent=conc_lex_dim_names,
-            conc_var_comparison_op="eq",
+            dim_names=seq_lex_dim_names,
             in_dim_marker=BEFORE_MARK,
             )
+
+        # Add lid/gid dims to lex order map
+        lex_order_map = add_and_name_isl_dims(
+            lex_order_map, dt.out, conc_lex_dim_names)
+        lex_order_map = add_and_name_isl_dims(
+            lex_order_map, dt.in_, append_marker_to_strings(conc_lex_dim_names))
+        # Constrain lid/gid vars to be equal
+        for var_name in conc_lex_dim_names:
+            lex_order_map = add_eq_isl_constraint_from_names(
+                lex_order_map, var_name, var_name+BEFORE_MARK)
 
         # Create statement instance ordering,
         # maps each statement instance to all statement instances occuring later
