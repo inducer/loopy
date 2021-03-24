@@ -101,15 +101,6 @@ def add_eq_isl_constraint_from_names(isl_map, var1, var2):
                    {1: 0, var1: 1, var2: -1}))
 
 
-def add_ne_isl_constraint_from_names(isl_map, var1, var2):
-    # add constraint var1 != var2
-    return isl_map.add_constraint(
-        isl.Constraint.ineq_from_names(isl_map.space, {1: -1, var1: 1, var2: -1})
-        ) | isl_map.add_constraint(
-        isl.Constraint.ineq_from_names(isl_map.space, {1: -1, var2: 1, var1: -1})
-        )
-
-
 def append_marker_to_isl_map_var_names(old_isl_map, dim_type, marker="'"):
     """Return an :class:`islpy.Map` with a marker appended to the specified
     dimension names.

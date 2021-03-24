@@ -169,7 +169,6 @@ def generate_pairwise_schedules(
         add_and_name_isl_dims,
         append_marker_to_strings,
         add_eq_isl_constraint_from_names,
-        add_ne_isl_constraint_from_names,
     )
 
     all_insn_ids = set().union(*insn_id_pairs)
@@ -264,15 +263,15 @@ def generate_pairwise_schedules(
     # Get dim names representing local/group axes for this kernel,
     # and get the dictionary that will be used later to create a
     # constraint requiring {par inames == par axes} in sched
-    l_axes_used = set()
-    g_axes_used = set()
+    lid_lex_dim_names = set()
+    gid_lex_dim_names = set()
     par_iname_constraint_dicts = []
     for iname in knl.all_inames():
         ltag = knl.iname_tags_of_type(iname, LocalIndexTag)
         if ltag:
             # assert len(ltag) == 1  # (should always be true)
             ltag_var = LTAG_VAR_NAMES[ltag.pop().axis]
-            l_axes_used.add(ltag_var)
+            lid_lex_dim_names.add(ltag_var)
             # Represent constraint 'iname = ltag_var' in par_iname_constraint_dicts:
             par_iname_constraint_dicts.append({1: 0, iname: 1, ltag_var: -1})
             continue
@@ -280,11 +279,12 @@ def generate_pairwise_schedules(
         if gtag:
             # assert len(gtag) == 1  # (should always be true)
             gtag_var = GTAG_VAR_NAMES[gtag.pop().axis]
-            g_axes_used.add(gtag_var)
+            gid_lex_dim_names.add(gtag_var)
             # Represent constraint 'iname = gtag_var' in par_iname_constraint_dicts:
             par_iname_constraint_dicts.append({1: 0, iname: 1, gtag_var: -1})
             continue
-    conc_lex_dim_names = sorted(l_axes_used) + sorted(g_axes_used)
+    lid_lex_dim_names = sorted(lid_lex_dim_names)
+    gid_lex_dim_names = sorted(gid_lex_dim_names)
 
     # {{{  Create blex ordering (may later be combined with pass above)
 
@@ -315,6 +315,8 @@ def generate_pairwise_schedules(
             bounds.lower_bound_pw_aff, bounds.upper_bound_pw_aff)
 
     # }}}
+
+    conc_lex_dim_names = lid_lex_dim_names + gid_lex_dim_names
 
     def _collect_blex_ordering_info(sync_kind):
 
@@ -418,12 +420,12 @@ def generate_pairwise_schedules(
             blex_order_map, dt.out, conc_lex_dim_names)
         blex_order_map = add_and_name_isl_dims(
             blex_order_map, dt.in_, append_marker_to_strings(conc_lex_dim_names))
-        # Constrain lid/gid vars to be *not* equal
-        # TODO do right thing with conc vars for lblex, gblex case
-        # TODO LEFT OFF HERE
-        for var_name in conc_lex_dim_names:
-            blex_order_map = add_ne_isl_constraint_from_names(
-                    blex_order_map, var_name, var_name+BEFORE_MARK)
+        if sync_kind == "local":
+            # Constrain gid vars to be equal
+            for var_name in gid_lex_dim_names:
+                blex_order_map = add_eq_isl_constraint_from_names(
+                        blex_order_map, var_name, var_name+BEFORE_MARK)
+        # (if sync_kind == "global", don't need constraints on lid/gid vars)
 
         iname_to_blex_var = {}
         for iname, dim in iname_to_blex_dim.items():
@@ -434,7 +436,7 @@ def generate_pairwise_schedules(
         blex_order_map = add_and_name_isl_dims(
             blex_order_map, dt.param, blex_map_params)
 
-        # get a set representing blex_order_map space
+        # Get a set representing blex_order_map space
         blex_set_template = isl.align_spaces(
             isl.Map("[ ] -> { [ ] -> [ ] }"), blex_order_map
             ).move_dims(
