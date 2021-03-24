@@ -327,7 +327,7 @@ def generate_pairwise_schedules(
         iname_to_blex_dim = {}  # map from inames to corresponding blex space dim
         blex_exclusion_info = {}  # info for creating maps to exclude from blex order
         blex_map_params = set()  # params needed in blex map
-        n_blex_dims = 1  # number of dims in blex space
+        n_seq_blex_dims = 1  # num dims representing sequential order in blex space
         next_blex_pt = [0]  # next tuple of points in blex order
 
         for lin_item in lin_items:
@@ -357,7 +357,7 @@ def generate_pairwise_schedules(
                 if leave_iname in loops_with_barriers[sync_kind]:
 
                     # update max blex dims
-                    n_blex_dims = max(n_blex_dims, len(next_blex_pt))
+                    n_seq_blex_dims = max(n_seq_blex_dims, len(next_blex_pt))
                     iname_to_blex_dim[leave_iname] = len(next_blex_pt)-2
 
                     # update next blex pt
@@ -400,13 +400,13 @@ def generate_pairwise_schedules(
         # the missing dims are the fastest-updating dims, and their values should
         # be zero. Add them.
         for stmt, tup in stmt_inst_to_blex.items():
-            stmt_inst_to_blex[stmt] = _pad_tuple_with_zeros(tup, n_blex_dims)
+            stmt_inst_to_blex[stmt] = _pad_tuple_with_zeros(tup, n_seq_blex_dims)
 
         # }}}
 
         # Create names for the blex dimensions for sequential loops
         seq_blex_dim_names = [
-            BLEX_VAR_PREFIX+str(i) for i in range(n_blex_dims)]
+            BLEX_VAR_PREFIX+str(i) for i in range(n_seq_blex_dims)]
         seq_blex_dim_names_prime = append_marker_to_strings(
             seq_blex_dim_names, marker=BEFORE_MARK)
 
@@ -437,6 +437,7 @@ def generate_pairwise_schedules(
             blex_order_map, dt.param, blex_map_params)
 
         # Get a set representing blex_order_map space
+        n_blex_dims = n_seq_blex_dims + len(conc_lex_dim_names)
         blex_set_template = isl.align_spaces(
             isl.Map("[ ] -> { [ ] -> [ ] }"), blex_order_map
             ).move_dims(
@@ -456,8 +457,8 @@ def generate_pairwise_schedules(
                 # (assume strings are the inames)
                 before_prime = tuple(
                     v+BEFORE_MARK if isinstance(v, str) else v for v in before)
-                before_padded = _pad_tuple_with_zeros(before_prime, n_blex_dims)
-                after_padded = _pad_tuple_with_zeros(after, n_blex_dims)
+                before_padded = _pad_tuple_with_zeros(before_prime, n_seq_blex_dims)
+                after_padded = _pad_tuple_with_zeros(after, n_seq_blex_dims)
 
                 # assign vals to dims
                 for dim_name, dim_val in zip(
@@ -555,6 +556,8 @@ def generate_pairwise_schedules(
         # Get inames domain for statement instance (a BasicSet)
         dom = knl.get_inames_domain(
             knl.id_to_insn[insn_id].within_inames)
+        # (note that this domain may include inames that are
+        # not in stmt.within_inames)
 
         # Create map space (an isl space in current implementation)
         # {('statement', <inames used in statement domain>) ->
@@ -581,6 +584,12 @@ def generate_pairwise_schedules(
             (int_sid, ) + tuple(dom_inames_ordered),
             lex_points
             )]
+
+        # Note that lex_points may have fewer dims than the out-dim of sched_space
+        # if sched_space includes concurrent lid/gid dims. This is okay because
+        # the following symbolic map creation step, when assigning dim values,
+        # zips the space dims with the lex tuple, and any leftover lid/gid dims
+        # will not be assigned a value yet, which is what we want.
 
         # Create map
         sched_map = create_symbolic_map_from_tuples(
