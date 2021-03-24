@@ -35,6 +35,14 @@ def add_dims_to_isl_set(isl_set, dim_type, names, new_idx_start):
     return new_set
 
 
+def add_and_name_isl_dims(isl_map, dim_type, names):
+    new_idx_start = isl_map.dim(dim_type)
+    new_map = isl_map.add_dims(dim_type, len(names))
+    for i, name in enumerate(names):
+        new_map = new_map.set_dim_name(dim_type, new_idx_start+i, name)
+    return new_map
+
+
 def reorder_dims_by_name(
         isl_set, dim_type, desired_dims_ordered):
     """Return an isl_set with the dimensions of the specified dim_type
@@ -83,6 +91,23 @@ def ensure_dim_names_match_and_align(obj_map, tgt_map):
         for dt in [isl.dim_type.in_, isl.dim_type.out, isl.dim_type.param])
 
     return isl.align_spaces(obj_map, tgt_map)
+
+
+def add_eq_isl_constraint_from_names(isl_map, var1, var2):
+    # add constraint var1 = var2
+    return isl_map.add_constraint(
+               isl.Constraint.eq_from_names(
+                   isl_map.space,
+                   {1: 0, var1: 1, var2: -1}))
+
+
+def add_ne_isl_constraint_from_names(isl_map, var1, var2):
+    # add constraint var1 != var2
+    return isl_map.add_constraint(
+        isl.Constraint.ineq_from_names(isl_map.space, {1: -1, var1: 1, var2: -1})
+        ) | isl_map.add_constraint(
+        isl.Constraint.ineq_from_names(isl_map.space, {1: -1, var2: 1, var1: -1})
+        )
 
 
 def append_marker_to_isl_map_var_names(old_isl_map, dim_type, marker="'"):
