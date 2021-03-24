@@ -37,6 +37,7 @@ from loopy import (
 )
 from loopy.schedule.checker.schedule import (
     LEX_VAR_PREFIX,
+    BLEX_VAR_PREFIX,
     STATEMENT_VAR_NAME,
     LTAG_VAR_NAMES,
     GTAG_VAR_NAMES,
@@ -58,13 +59,14 @@ def _align_and_compare_maps(maps1, maps2):
         assert map1_aligned == map2
 
 
-def _lex_point_string(dim_vals, lid_inames=[], gid_inames=[]):
+def _lex_point_string(dim_vals, lid_inames=[], gid_inames=[], prefix=LEX_VAR_PREFIX):
     # Return a string describing a point in a lex space
     # by assigning values to lex dimension variables
     # (used to create maps below)
+    # TODO make lid/gid condition optional
 
     return ", ".join(
-        ["%s%d=%s" % (LEX_VAR_PREFIX, idx, str(val))
+        ["%s%d=%s" % (prefix, idx, str(val))
         for idx, val in enumerate(dim_vals)] +
         ["%s=%s" % (LTAG_VAR_NAMES[idx], iname)
         for idx, iname in enumerate(lid_inames)] +
@@ -435,6 +437,101 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
 
     # ------------------------------------------------------------------------------
 
+
+def test_pairwise_schedule_creation_with_lbarriers():
+    import islpy as isl
+    from loopy.schedule.checker import (
+        get_schedules_for_statement_pairs,
+    )
+    from loopy.schedule.checker.utils import (
+        append_marker_to_isl_map_var_names,
+    )
+    dt = isl.dim_type
+
+    knl = lp.make_kernel(
+        [
+            "{[i,j]: 0<=i,j<p}",
+        ],
+        """
+        <>temp0 = 0  {id=0}
+        ... lbarrier  {id=b0,dep=0}
+        <>temp1 = 1  {id=1,dep=b0}
+        for i
+            <>tempi0 = 0  {id=i0,dep=1}
+            ... lbarrier {id=ib0,dep=i0}
+            <>tempi1 = 0  {id=i1,dep=ib0}
+            <>tempi2 = 0  {id=i2,dep=i1}
+            for j
+                <>tempj0 = 0  {id=j0,dep=i2}
+                ... lbarrier {id=jb0,dep=j0}
+                <>tempj1 = 0  {id=j1,dep=jb0}
+            end
+        end
+        <>temp2 = 0  {id=2,dep=i0}
+        """,
+        name="funky",
+        assumptions="p >= 1",
+        lang_version=(2018, 2)
+        )
+
+    # Get a linearization
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    linearization_items = lin_knl.linearization
+
+    insn_id_pairs = [("j1", "2")]
+    scheds = get_schedules_for_statement_pairs(
+        lin_knl, linearization_items, insn_id_pairs, return_schedules=True)
+
+    # Get two maps
+    (
+        sio_seq, (sched_map_before, sched_map_after)
+    ), (
+        sio_lconc, (lconc_sched_before, lconc_sched_after)
+    ), (
+        sio_gconc, (gconc_sched_before, gconc_sched_after)
+    ) = scheds[insn_id_pairs[0]]
+
+    # Create expected maps and compare
+
+    lconc_sched_before_exp = isl.Map(
+        "[p] -> {[%s=0,i,j] -> [%s] : 0 <= i,j < p}"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(["2", "i", "2", "j", "1"], prefix=BLEX_VAR_PREFIX),
+            )
+        )
+
+    lconc_sched_after_exp = isl.Map(
+        "[ ] -> {[%s=1] -> [%s]}"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(["3", "0", "0", "0", "0"], prefix=BLEX_VAR_PREFIX),
+            )
+        )
+
+    _align_and_compare_maps(
+        [lconc_sched_before_exp, lconc_sched_after_exp],
+        [lconc_sched_before, lconc_sched_after],
+        )
+
+    hab_test_pair = isl.Map(
+        "[p] -> {"
+        "[stmt' = 0, i'=1, j'=p-1] -> [stmt = 1] : p > 2"
+        "}")
+    hab_test_pair = append_marker_to_isl_map_var_names(
+        hab_test_pair, dt.in_, "'")
+
+    #blex_pts_for_test_pair = isl.Map(
+    #    "[p] -> {"
+    #    "[blex0' = 2, blex1' = 1, blex2' = 2, blex3' = p - 1, blex4' = 1] -> "
+    #    "[blex0 = 3, blex1 = 0, blex2 = 0, blex3 = 0, blex4 = 0]"
+    #    "}")
+    #blex_pts_for_test_pair = append_marker_to_isl_map_var_names(
+    #    blex_pts_for_test_pair, dt.in_, "'")
+
+    assert hab_test_pair.is_subset(sio_lconc)
+
 # }}}
 
 
@@ -448,12 +545,13 @@ def test_lex_order_map_creation():
     from loopy.schedule.checker.utils import (
         append_marker_to_isl_map_var_names,
     )
+    dt = isl.dim_type
 
     def _check_lex_map(exp_lex_order_map, n_dims):
 
         # Isl ignores the apostrophes, so explicitly add them
         exp_lex_order_map = append_marker_to_isl_map_var_names(
-            exp_lex_order_map, isl.dim_type.in_, "'")
+            exp_lex_order_map, dt.in_, "'")
 
         lex_order_map = create_lex_order_map(
             n_dims=n_dims,
@@ -529,6 +627,7 @@ def test_statement_instance_ordering():
     from loopy.schedule.checker.utils import (
         append_marker_to_isl_map_var_names,
     )
+    dt = isl.dim_type
 
     # Example kernel (add deps to fix loop order)
     knl = lp.make_kernel(
@@ -593,7 +692,7 @@ def test_statement_instance_ordering():
         )
     # isl ignores these apostrophes, so explicitly add them
     exp_sio_seq = append_marker_to_isl_map_var_names(
-        exp_sio_seq, isl.dim_type.in_, "'")
+        exp_sio_seq, dt.in_, "'")
 
     _check_sio_for_stmt_pair(exp_sio_seq, "stmt_a", "stmt_b", scheds)
 
@@ -607,7 +706,7 @@ def test_statement_instance_ordering():
         )
     # isl ignores these apostrophes, so explicitly add them
     exp_sio_seq = append_marker_to_isl_map_var_names(
-        exp_sio_seq, isl.dim_type.in_, "'")
+        exp_sio_seq, dt.in_, "'")
 
     _check_sio_for_stmt_pair(exp_sio_seq, "stmt_a", "stmt_c", scheds)
 
@@ -621,7 +720,7 @@ def test_statement_instance_ordering():
         )
     # isl ignores these apostrophes, so explicitly add them
     exp_sio_seq = append_marker_to_isl_map_var_names(
-        exp_sio_seq, isl.dim_type.in_, "'")
+        exp_sio_seq, dt.in_, "'")
 
     _check_sio_for_stmt_pair(exp_sio_seq, "stmt_a", "stmt_d", scheds)
 
@@ -637,7 +736,7 @@ def test_statement_instance_ordering():
         )
     # isl ignores these apostrophes, so explicitly add them
     exp_sio_seq = append_marker_to_isl_map_var_names(
-        exp_sio_seq, isl.dim_type.in_, "'")
+        exp_sio_seq, dt.in_, "'")
 
     _check_sio_for_stmt_pair(exp_sio_seq, "stmt_b", "stmt_c", scheds)
 
@@ -651,7 +750,7 @@ def test_statement_instance_ordering():
         )
     # isl ignores these apostrophes, so explicitly add them
     exp_sio_seq = append_marker_to_isl_map_var_names(
-        exp_sio_seq, isl.dim_type.in_, "'")
+        exp_sio_seq, dt.in_, "'")
 
     _check_sio_for_stmt_pair(exp_sio_seq, "stmt_b", "stmt_d", scheds)
 
@@ -665,7 +764,7 @@ def test_statement_instance_ordering():
         )
     # isl ignores these apostrophes, so explicitly add them
     exp_sio_seq = append_marker_to_isl_map_var_names(
-        exp_sio_seq, isl.dim_type.in_, "'")
+        exp_sio_seq, dt.in_, "'")
 
     _check_sio_for_stmt_pair(exp_sio_seq, "stmt_c", "stmt_d", scheds)
 
@@ -679,6 +778,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
         append_marker_to_isl_map_var_names,
         partition_inames_by_concurrency,
     )
+    dt = isl.dim_type
 
     # Example kernel
     knl = lp.make_kernel(
@@ -740,7 +840,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
         )
     # isl ignores these apostrophes, so explicitly add them
     exp_sio_seq = append_marker_to_isl_map_var_names(
-        exp_sio_seq, isl.dim_type.in_, "'")
+        exp_sio_seq, dt.in_, "'")
 
     _check_sio_for_stmt_pair(exp_sio_seq, "stmt_a", "stmt_b", scheds)
 
