@@ -42,7 +42,7 @@ else:
 # }}}
 
 
-VERSION = (2020, 2, 2)
+VERSION = (2021, 1)
 VERSION_STATUS = ""
 VERSION_TEXT = ".".join(str(x) for x in VERSION) + VERSION_STATUS
 
@@ -132,9 +132,12 @@ History of Language Versions
     :attr:`loopy.Options.enforce_variable_access_ordered` is turned on by
     default. Unsupported from :mod:`loopy` version 2020.2 onwards.
 
+    (no longer available)
+
 .. data:: LOOPY_USE_LANGUAGE_VERSION_2017_2_1
 
     Initial legacy language version. Unsupported from :mod:`loopy` version
     2020.2 onwards.
 
+    (no longer available)
 """

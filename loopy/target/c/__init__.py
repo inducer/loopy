@@ -487,7 +487,8 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
                 pass  # fabs
             elif real_dtype == np.float32:
                 name = name + "f"  # fabsf
-            elif real_dtype == np.float128:  # pylint:disable=no-member
+            elif (hasattr(np, "float128")
+                    and real_dtype == np.float128):  # pylint:disable=no-member
                 name = name + "l"  # fabsl
             else:
                 raise LoopyTypeError(f"{name} does not support type {real_dtype}")
@@ -517,7 +518,8 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
                     pass  # fmin
                 elif real_dtype == np.float32:
                     name = name + "f"  # fminf
-                elif real_dtype == np.float128:  # pylint:disable=no-member
+                elif (hasattr(np, "float128")
+                        and real_dtype == np.float128):  # pylint:disable=no-member
                     name = name + "l"  # fminl
                 else:
                     raise LoopyTypeError("%s does not support type %s"
@@ -544,7 +546,8 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
                 pass  # fabs
             elif real_dtype == np.float32:
                 name = name + "f"  # fabsf
-            elif real_dtype == np.float128:  # pylint:disable=no-member
+            elif (hasattr(np, "float128")
+                    and real_dtype == np.float128):  # pylint:disable=no-member
                 name = name + "l"  # fabsl
             else:
                 raise LoopyTypeError(f"{name} does not support type {real_dtype}")
