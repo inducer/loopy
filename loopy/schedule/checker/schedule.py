@@ -321,11 +321,10 @@ def generate_pairwise_schedules(
     def _collect_blex_ordering_info(sync_kind):
 
         # {{{ Construct blueprint for creating blex space and orderings
-        # TODO combine this pass over the linearization items with the pass above
 
         stmt_inst_to_blex = {}  # map stmt instances to blex space
         iname_to_blex_dim = {}  # map from inames to corresponding blex space dim
-        blex_exclusion_info = {}  # info for creating pairs to subtract from blex order
+        blex_exclusion_info = {}  # info for creating maps to exclude from blex order
         blex_map_params = set()  # params needed in blex map
         n_blex_dims = 1  # number of dims in blex space
         next_blex_pt = [0]  # next tuple of points in blex order
@@ -334,7 +333,7 @@ def generate_pairwise_schedules(
             if isinstance(lin_item, EnterLoop):
                 enter_iname = lin_item.iname
                 if enter_iname in loops_with_barriers[sync_kind]:
-                   # update next blex pt
+                    # update next blex pt
                     pre_loop_blex_pt = next_blex_pt[:]
                     next_blex_pt[-1] += 1
                     next_blex_pt.append(enter_iname)
@@ -444,7 +443,7 @@ def generate_pairwise_schedules(
             ).domain()
         blex_set_affs = isl.affs_from_space(blex_set_template.space)
 
-        def _create_subtraction_map_for_iname(iname, blueprint):
+        def _create_excluded_map_for_iname(iname, blueprint):
             # Note: blueprint[FIRST] and blueprint[LAST] contain pwaffs
 
             def _create_blex_set_from_tuple_pair(before, after, wrap_cond=False):
@@ -511,7 +510,7 @@ def generate_pairwise_schedules(
         # subtract unwanted pairs from happens-before blex map
         maps_to_subtract = []
         for iname, subdict in blex_exclusion_info.items():
-            maps_to_subtract.append(_create_subtraction_map_for_iname(iname, subdict))
+            maps_to_subtract.append(_create_excluded_map_for_iname(iname, subdict))
 
         if maps_to_subtract:
             # get union of maps
@@ -532,145 +531,12 @@ def generate_pairwise_schedules(
             seq_blex_dim_names,
             )
 
-    # {{{ combining local and global stuff in single pass (old, TODO remove?)
-    """
-    GLOBAL = "global"
-    LOCAL = "local"
-    stmt_inst_to_blex = {LOCAL: {}, GLOBAL: {}}  # map stmt instances to blex space
-    iname_to_blex_dim = {LOCAL: {}, GLOBAL: {}}  # map from inames to corresponding blex space dim
-    blex_exclusion_info = {LOCAL: {}, GLOBAL: {}}  # info for creating pairs to subtract from blex order
-    blex_map_params = {LOCAL: set(), GLOBAL: set()}  # params needed in blex map
-    next_blex_pt = {LOCAL: [0], GLOBAL: [0]}  # next tuple of points in blex order
-    n_blex_dims = {LOCAL: 1, GLOBAL: 1}  # number of dims in blex space
-
-    def _enter_loop_blex_processing(scope, enter_iname):
-        # scope is either LOCAL or GLOBAL
-
-        pre_loop_blex_pt = next_blex_pt[scope][:]
-        next_blex_pt[scope][-1] += 1
-        next_blex_pt[scope].append(enter_iname)
-        next_blex_pt[scope].append(0)
-
-        # store tuples that will be used to create pairs
-        # that will later be subtracted from happens-before map
-        lbound = iname_bounds_pwaff[enter_iname][0]
-        first_iter_blex_pt = next_blex_pt[scope][:]
-        first_iter_blex_pt[-2] = lbound
-        blex_exclusion_info[scope][enter_iname] = {
-            PRE: tuple(pre_loop_blex_pt),  # make sure to copy
-            TOP: tuple(next_blex_pt[scope]),  # make sure to copy
-            FIRST: tuple(first_iter_blex_pt),  # make sure to copy
-            }
-        blex_map_params[scope] |= set(lbound.get_var_names(dt.param))
-
-    def _leave_loop_blex_processing(scope, leave_iname):
-        # scope is either LOCAL or GLOBAL
-
-        # update max blex dims
-        n_blex_dims[scope] = max(n_blex_dims[scope], len(next_blex_pt[scope]))
-        iname_to_blex_dim[scope][leave_iname] = len(next_blex_pt[scope])-2
-
-        # update next blex pt
-        pre_end_loop_blex_pt = next_blex_pt[scope][:]
-        next_blex_pt[scope].pop()
-        next_blex_pt[scope].pop()
-        next_blex_pt[scope][-1] += 1
-
-        # store tuples that will be used to create pairs
-        # that will later be subtracted from happens-before map
-        ubound = iname_bounds_pwaff[leave_iname][1]
-        last_iter_blex_pt = pre_end_loop_blex_pt[:]
-        last_iter_blex_pt[-2] = ubound
-        blex_exclusion_info[scope][leave_iname][BOTTOM] = tuple(
-            pre_end_loop_blex_pt)
-        blex_exclusion_info[scope][leave_iname][LAST] = tuple(last_iter_blex_pt)
-        blex_exclusion_info[scope][leave_iname][POST] = tuple(next_blex_pt[scope])
-        # (make sure ^these are copies)
-        blex_map_params[scope] |= set(ubound.get_var_names(dt.param))
-
-
-    # do both lblex and gblex processing in single pass through insns
-    for lin_item in lin_items:
-        if isinstance(lin_item, EnterLoop):
-            enter_iname = lin_item.iname
-            if enter_iname in loops_with_lbarriers:
-                _enter_loop_blex_processing(LOCAL, enter_iname)
-               # update next blex pt
-                pre_loop_lblex_pt = next_lblex_pt[:]
-                next_lblex_pt[-1] += 1
-                next_lblex_pt.append(enter_iname)
-                next_lblex_pt.append(0)
-
-                # store tuples that will be used to create pairs
-                # that will later be subtracted from happens-before map
-                lbound = iname_bounds_pwaff[enter_iname][0]
-                first_iter_lblex_pt = next_lblex_pt[:]
-                first_iter_lblex_pt[-2] = lbound
-                lblex_exclusion_info[enter_iname] = {
-                    PRE: tuple(pre_loop_lblex_pt),  # make sure to copy
-                    TOP: tuple(next_lblex_pt),  # make sure to copy
-                    FIRST: tuple(first_iter_lblex_pt),  # make sure to copy
-                    }
-                lblex_map_params |= set(lbound.get_var_names(dt.param))
-            if enter_iname in loops_with_gbarriers:
-                _enter_loop_blex_processing(GLOBAL, enter_iname)
-
-        elif isinstance(lin_item, LeaveLoop):
-            leave_iname = lin_item.iname
-            if leave_iname in loops_with_lbarriers:
-                _leave_loop_blex_processing(LOCAL, leave_iname)
-
-                # update max blex dims
-                n_lblex_dims = max(n_lblex_dims, len(next_lblex_pt))
-                iname_to_lblex_dim[leave_iname] = len(next_lblex_pt)-2
-
-                # update next blex pt
-                pre_end_loop_lblex_pt = next_lblex_pt[:]
-                next_lblex_pt.pop()
-                next_lblex_pt.pop()
-                next_lblex_pt[-1] += 1
-
-                # store tuples that will be used to create pairs
-                # that will later be subtracted from happens-before map
-                ubound = iname_bounds_pwaff[leave_iname][1]
-                last_iter_lblex_pt = pre_end_loop_lblex_pt[:]
-                last_iter_lblex_pt[-2] = ubound
-                lblex_exclusion_info[leave_iname][BOTTOM] = tuple(
-                    pre_end_loop_lblex_pt)
-                lblex_exclusion_info[leave_iname][LAST] = tuple(last_iter_lblex_pt)
-                lblex_exclusion_info[leave_iname][POST] = tuple(next_lblex_pt)
-                # (make sure ^these are copies)
-                lblex_map_params |= set(ubound.get_var_names(dt.param))
-            if leave_iname in loops_with_gbarriers:
-                _leave_loop_blex_processing(GLOBAL, leave_iname)
-
-        elif isinstance(lin_item, RunInstruction):
-            # Add item to stmt_inst_to_lblex
-            lp_insn_id = lin_item.insn_id
-            stmt_inst_to_blex[LOCAL][lp_insn_id] = tuple(next_blex_pt[LOCAL])
-            stmt_inst_to_blex[GLOBAL][lp_insn_id] = tuple(next_blex_pt[GLOBAL])
-
-            stmt_inst_to_lblex[lp_insn_id] = tuple(next_lblex_pt)
-
-            # Don't increment blex dim val
-
-        elif isinstance(lin_item, Barrier):
-
-            next_lblex_pt[-1] += 1
-
-        else:
-            from loopy.schedule import (CallKernel, ReturnFromKernel)
-            # No action needed for these types of linearization item
-            assert isinstance(
-                lin_item, (CallKernel, ReturnFromKernel))
-            pass
-
-    lblex_map_params = sorted(lblex_map_params)
-    """
-    # }}}
-
-    stmt_inst_to_lblex, lblex_order_map, seq_lblex_dim_names = _collect_blex_ordering_info("local")
-    stmt_inst_to_gblex, gblex_order_map, seq_gblex_dim_names = _collect_blex_ordering_info("global")
+    (stmt_inst_to_lblex,
+     lblex_order_map,
+     seq_lblex_dim_names) = _collect_blex_ordering_info("local")
+    (stmt_inst_to_gblex,
+     gblex_order_map,
+     seq_gblex_dim_names) = _collect_blex_ordering_info("global")
 
     # }}}  end blex order/map machinery
 
@@ -796,11 +662,11 @@ def generate_pairwise_schedules(
 
         # }}}
 
-        # {{{  Create SIOs for inter-thread cases (lid0' != lid0, etc)
+        # {{{  Create SIOs for intra-group case (gid0' == gid0, etc)
 
         # TODO finish separating lid stuff from gid stuff
 
-        # NOTE: use *unsimplified* lex tuples with blex map, which have already been padded
+        # Use *unsimplified* lex tuples with blex map, which have already been padded
 
         lblex_tuples_padded = [stmt_inst_to_lblex[insn_id] for insn_id in insn_ids]
 
@@ -838,10 +704,9 @@ def generate_pairwise_schedules(
             before_marker=BEFORE_MARK,
             )
 
-
         # }}}
 
-        # TODO don't return sched maps?
+        # TODO have option to return sched maps, but default to not returning them
         #pairwise_schedules[tuple(insn_ids)] = tuple(intra_thread_sched_maps)
         pairwise_schedules[tuple(insn_ids)] = (
             (sio_seq, tuple(intra_thread_sched_maps), ),
