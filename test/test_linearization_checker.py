@@ -26,6 +26,7 @@ import six  # noqa: F401
 import sys
 import numpy as np
 import loopy as lp
+import islpy as isl
 from pyopencl.tools import (  # noqa
     pytest_generate_tests_for_pyopencl
     as pytest_generate_tests)
@@ -41,6 +42,7 @@ from loopy.schedule.checker.schedule import (
     STATEMENT_VAR_NAME,
     LTAG_VAR_NAMES,
     GTAG_VAR_NAMES,
+    BEFORE_MARK,
 )
 from loopy.schedule.checker.utils import (
     ensure_dim_names_match_and_align,
@@ -52,10 +54,15 @@ logger = logging.getLogger(__name__)
 # {{{ helper functions for map creation/handling
 
 def _align_and_compare_maps(maps1, maps2):
+    from loopy.schedule.checker.utils import prettier_map_string
 
     for map1, map2 in zip(maps1, maps2):
         # Align maps and compare
         map1_aligned = ensure_dim_names_match_and_align(map1, map2)
+        if map1_aligned != map2:
+            print("Maps not equal:")
+            print(prettier_map_string(map1_aligned))
+            print(prettier_map_string(map2))
         assert map1_aligned == map2
 
 
@@ -73,13 +80,21 @@ def _lex_point_string(dim_vals, lid_inames=[], gid_inames=[], prefix=LEX_VAR_PRE
         for idx, iname in enumerate(gid_inames)]
         )
 
+
+def _isl_map_with_marked_dims(s):
+    from loopy.schedule.checker.utils import (
+        append_marker_to_isl_map_var_names,
+    )
+    dt = isl.dim_type
+    # Isl ignores the apostrophes in map strings, until they are explicitly added
+    return append_marker_to_isl_map_var_names(isl.Map(s), dt.in_, BEFORE_MARK)
+
 # }}}
 
 
 # {{{ test pairwise schedule creation
 
 def test_pairwise_schedule_creation():
-    import islpy as isl
     from loopy.schedule.checker import (
         get_schedules_for_statement_pairs,
     )
@@ -139,7 +154,7 @@ def test_pairwise_schedule_creation():
 
     # Relationship between insn_a and insn_b ---------------------------------------
 
-    # Get two maps
+    # Get maps (include schedules, just for test purposes)
     (
         sio_seq, (sched_before, sched_after)
     ), (
@@ -175,7 +190,7 @@ def test_pairwise_schedule_creation():
     # ------------------------------------------------------------------------------
     # Relationship between insn_a and insn_c ---------------------------------------
 
-    # Get two maps
+    # Get maps (include schedules, just for test purposes)
     (
         sio_seq, (sched_before, sched_after)
     ), (
@@ -211,7 +226,7 @@ def test_pairwise_schedule_creation():
     # ------------------------------------------------------------------------------
     # Relationship between insn_a and insn_d ---------------------------------------
 
-    # Get two maps
+    # Get maps (include schedules, just for test purposes)
     (
         sio_seq, (sched_before, sched_after)
     ), (
@@ -247,7 +262,7 @@ def test_pairwise_schedule_creation():
     # ------------------------------------------------------------------------------
     # Relationship between insn_b and insn_c ---------------------------------------
 
-    # Get two maps
+    # Get maps (include schedules, just for test purposes)
     (
         sio_seq, (sched_before, sched_after)
     ), (
@@ -283,7 +298,7 @@ def test_pairwise_schedule_creation():
     # ------------------------------------------------------------------------------
     # Relationship between insn_b and insn_d ---------------------------------------
 
-    # Get two maps
+    # Get maps (include schedules, just for test purposes)
     (
         sio_seq, (sched_before, sched_after)
     ), (
@@ -319,7 +334,7 @@ def test_pairwise_schedule_creation():
     # ------------------------------------------------------------------------------
     # Relationship between insn_c and insn_d ---------------------------------------
 
-    # Get two maps
+    # Get maps (include schedules, just for test purposes)
     (
         sio_seq, (sched_before, sched_after)
     ), (
@@ -354,7 +369,6 @@ def test_pairwise_schedule_creation():
 
 
 def test_pairwise_schedule_creation_with_hw_par_tags():
-    import islpy as isl
     from loopy.schedule.checker import (
         get_schedules_for_statement_pairs,
     )
@@ -401,7 +415,7 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
 
     # Relationship between stmt_a and stmt_b ---------------------------------------
 
-    # Get two maps
+    # Get maps (include schedules, just for test purposes)
     (
         sio_seq, (sched_before, sched_after)
     ), (
@@ -448,20 +462,11 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
 # {{{ test lex order map creation
 
 def test_lex_order_map_creation():
-    import islpy as isl
     from loopy.schedule.checker.lexicographic_order_map import (
         create_lex_order_map,
     )
-    from loopy.schedule.checker.utils import (
-        append_marker_to_isl_map_var_names,
-    )
-    dt = isl.dim_type
 
     def _check_lex_map(exp_lex_order_map, n_dims):
-
-        # Isl ignores the apostrophes, so explicitly add them
-        exp_lex_order_map = append_marker_to_isl_map_var_names(
-            exp_lex_order_map, dt.in_, "'")
 
         lex_order_map = create_lex_order_map(
             n_dims=n_dims,
@@ -471,7 +476,7 @@ def test_lex_order_map_creation():
         assert lex_order_map == exp_lex_order_map
         assert lex_order_map.get_var_dict() == exp_lex_order_map.get_var_dict()
 
-    exp_lex_order_map = isl.Map(
+    exp_lex_order_map = _isl_map_with_marked_dims(
         "{{ "
         "[{0}0', {0}1', {0}2', {0}3', {0}4'] -> [{0}0, {0}1, {0}2, {0}3, {0}4] :"
         "("
@@ -489,7 +494,7 @@ def test_lex_order_map_creation():
 
     _check_lex_map(exp_lex_order_map, 5)
 
-    exp_lex_order_map = isl.Map(
+    exp_lex_order_map = _isl_map_with_marked_dims(
         "{{ "
         "[{0}0'] -> [{0}0] :"
         "("
@@ -505,39 +510,49 @@ def test_lex_order_map_creation():
 # {{{ test statement instance ordering creation
 
 def _check_sio_for_stmt_pair(
-        exp_sio,
         stmt_id_before,
         stmt_id_after,
-        scheds,
+        sio_dict,
+        exp_sio_seq=None,
+        exp_sched_before_seq=None,
+        exp_sched_after_seq=None,
+        exp_sio_lconc=None,
+        exp_sched_before_lconc=None,
+        exp_sched_after_lconc=None,
+        exp_sio_gconc=None,
+        exp_sched_before_gconc=None,
+        exp_sched_after_gconc=None,
         ):
     from loopy.schedule.checker.utils import (
         ensure_dim_names_match_and_align,
     )
 
-    # Get pairwise schedule
+    # Check whether scheds were included
+    #try:
     (
         sio_seq, (sched_before, sched_after)
     ), (
-        sio_lconc, (lconc_sched_before, lconc_sched_after)
+        sio_lconc, (sched_before_lconc, sched_after_lconc)
     ), (
-        sio_gconc, (gconc_sched_before, gconc_sched_after)
-    ) = scheds[
+        sio_gconc, (sched_before_gconc, sched_after_gconc)
+    ) = sio_dict[
         (stmt_id_before, stmt_id_after)]
+    #except :
+    #    sio_seq, sio_lconc, sio_gconc = sio_dict[
+    #        (stmt_id_before, stmt_id_after)]
 
-    sio_seq_aligned = ensure_dim_names_match_and_align(sio_seq, exp_sio)
+    # TODO left off here, check all passed maps,
+    # en eliminate _align_and_comp...
 
-    assert sio_seq_aligned == exp_sio
+    sio_seq_aligned = ensure_dim_names_match_and_align(exp_sio_seq, sio_seq)
+
+    assert sio_seq_aligned == exp_sio_seq
 
 
 def test_statement_instance_ordering():
-    import islpy as isl
     from loopy.schedule.checker import (
         get_schedules_for_statement_pairs,
     )
-    from loopy.schedule.checker.utils import (
-        append_marker_to_isl_map_var_names,
-    )
-    dt = isl.dim_type
 
     # Example kernel (add deps to fix loop order)
     knl = lp.make_kernel(
@@ -594,49 +609,40 @@ def test_statement_instance_ordering():
 
     # Relationship between stmt_a and stmt_b ---------------------------------------
 
-    exp_sio_seq = isl.Map(
+    exp_sio_seq = _isl_map_with_marked_dims(
         "[pi, pj, pk] -> {{ "
         "[{0}'=0, i', k'] -> [{0}=1, i, j] : "
         "0 <= i,i' < pi and 0 <= k' < pk and 0 <= j < pj and i >= i' "
         "}}".format(STATEMENT_VAR_NAME)
         )
-    # isl ignores these apostrophes, so explicitly add them
-    exp_sio_seq = append_marker_to_isl_map_var_names(
-        exp_sio_seq, dt.in_, "'")
 
-    _check_sio_for_stmt_pair(exp_sio_seq, "stmt_a", "stmt_b", scheds)
+    _check_sio_for_stmt_pair("stmt_a", "stmt_b", scheds, exp_sio_seq=exp_sio_seq)
 
     # Relationship between stmt_a and stmt_c ---------------------------------------
 
-    exp_sio_seq = isl.Map(
+    exp_sio_seq = _isl_map_with_marked_dims(
         "[pi, pj, pk] -> {{ "
         "[{0}'=0, i', k'] -> [{0}=1, i, j] : "
         "0 <= i,i' < pi and 0 <= k' < pk and 0 <= j < pj and i >= i' "
         "}}".format(STATEMENT_VAR_NAME)
         )
-    # isl ignores these apostrophes, so explicitly add them
-    exp_sio_seq = append_marker_to_isl_map_var_names(
-        exp_sio_seq, dt.in_, "'")
 
-    _check_sio_for_stmt_pair(exp_sio_seq, "stmt_a", "stmt_c", scheds)
+    _check_sio_for_stmt_pair("stmt_a", "stmt_c", scheds, exp_sio_seq=exp_sio_seq)
 
     # Relationship between stmt_a and stmt_d ---------------------------------------
 
-    exp_sio_seq = isl.Map(
+    exp_sio_seq = _isl_map_with_marked_dims(
         "[pt, pi, pk] -> {{ "
         "[{0}'=0, i', k'] -> [{0}=1, t] : "
         "0 <= i' < pi and 0 <= k' < pk and 0 <= t < pt "
         "}}".format(STATEMENT_VAR_NAME)
         )
-    # isl ignores these apostrophes, so explicitly add them
-    exp_sio_seq = append_marker_to_isl_map_var_names(
-        exp_sio_seq, dt.in_, "'")
 
-    _check_sio_for_stmt_pair(exp_sio_seq, "stmt_a", "stmt_d", scheds)
+    _check_sio_for_stmt_pair("stmt_a", "stmt_d", scheds, exp_sio_seq=exp_sio_seq)
 
     # Relationship between stmt_b and stmt_c ---------------------------------------
 
-    exp_sio_seq = isl.Map(
+    exp_sio_seq = _isl_map_with_marked_dims(
         "[pi, pj] -> {{ "
         "[{0}'=0, i', j'] -> [{0}=1, i, j] : "
         "0 <= i,i' < pi and 0 <= j,j' < pj and i > i'; "
@@ -644,51 +650,39 @@ def test_statement_instance_ordering():
         "0 <= i' < pi and 0 <= j,j' < pj and j >= j'; "
         "}}".format(STATEMENT_VAR_NAME)
         )
-    # isl ignores these apostrophes, so explicitly add them
-    exp_sio_seq = append_marker_to_isl_map_var_names(
-        exp_sio_seq, dt.in_, "'")
 
-    _check_sio_for_stmt_pair(exp_sio_seq, "stmt_b", "stmt_c", scheds)
+    _check_sio_for_stmt_pair("stmt_b", "stmt_c", scheds, exp_sio_seq=exp_sio_seq)
 
     # Relationship between stmt_b and stmt_d ---------------------------------------
 
-    exp_sio_seq = isl.Map(
+    exp_sio_seq = _isl_map_with_marked_dims(
         "[pt, pi, pj] -> {{ "
         "[{0}'=0, i', j'] -> [{0}=1, t] : "
         "0 <= i' < pi and 0 <= j' < pj and 0 <= t < pt "
         "}}".format(STATEMENT_VAR_NAME)
         )
-    # isl ignores these apostrophes, so explicitly add them
-    exp_sio_seq = append_marker_to_isl_map_var_names(
-        exp_sio_seq, dt.in_, "'")
 
-    _check_sio_for_stmt_pair(exp_sio_seq, "stmt_b", "stmt_d", scheds)
+    _check_sio_for_stmt_pair("stmt_b", "stmt_d", scheds, exp_sio_seq=exp_sio_seq)
 
     # Relationship between stmt_c and stmt_d ---------------------------------------
 
-    exp_sio_seq = isl.Map(
+    exp_sio_seq = _isl_map_with_marked_dims(
         "[pt, pi, pj] -> {{ "
         "[{0}'=0, i', j'] -> [{0}=1, t] : "
         "0 <= i' < pi and 0 <= j' < pj and 0 <= t < pt "
         "}}".format(STATEMENT_VAR_NAME)
         )
-    # isl ignores these apostrophes, so explicitly add them
-    exp_sio_seq = append_marker_to_isl_map_var_names(
-        exp_sio_seq, dt.in_, "'")
 
-    _check_sio_for_stmt_pair(exp_sio_seq, "stmt_c", "stmt_d", scheds)
+    _check_sio_for_stmt_pair("stmt_c", "stmt_d", scheds, exp_sio_seq=exp_sio_seq)
 
 
 def test_statement_instance_ordering_with_hw_par_tags():
-    import islpy as isl
     from loopy.schedule.checker import (
         get_schedules_for_statement_pairs,
     )
     from loopy.schedule.checker.utils import (
-        append_marker_to_isl_map_var_names,
         partition_inames_by_concurrency,
     )
-    dt = isl.dim_type
 
     # Example kernel
     knl = lp.make_kernel(
@@ -738,7 +732,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
 
     # Relationship between stmt_a and stmt_b ---------------------------------------
 
-    exp_sio_seq = isl.Map(
+    exp_sio_seq = _isl_map_with_marked_dims(
         "[pi, pj] -> {{ "
         "[{0}'=0, i', ii', j', jj'] -> [{0}=1, i, ii, j, jj] : "
         "0 <= i,ii,i',ii' < pi and 0 <= j,jj,j',jj' < pj and ii >= ii' "
@@ -748,11 +742,8 @@ def test_statement_instance_ordering_with_hw_par_tags():
             par_iname_condition,
             )
         )
-    # isl ignores these apostrophes, so explicitly add them
-    exp_sio_seq = append_marker_to_isl_map_var_names(
-        exp_sio_seq, dt.in_, "'")
 
-    _check_sio_for_stmt_pair(exp_sio_seq, "stmt_a", "stmt_b", scheds)
+    _check_sio_for_stmt_pair("stmt_a", "stmt_b", scheds, exp_sio_seq=exp_sio_seq)
 
     # ------------------------------------------------------------------------------
 
@@ -762,14 +753,9 @@ def test_statement_instance_ordering_with_hw_par_tags():
 # {{{ SIOs and schedules with barriers
 
 def test_sios_and_schedules_with_lbarriers():
-    import islpy as isl
     from loopy.schedule.checker import (
         get_schedules_for_statement_pairs,
     )
-    from loopy.schedule.checker.utils import (
-        append_marker_to_isl_map_var_names,
-    )
-    dt = isl.dim_type
 
     knl = lp.make_kernel(
         [
@@ -811,23 +797,28 @@ def test_sios_and_schedules_with_lbarriers():
     lin_knl = get_one_linearized_kernel(proc_knl)
     linearization_items = lin_knl.linearization
 
-    insn_id_pairs = [("j1", "2")]
+    insn_id_pairs = [("j1", "2"), ("1", "i0")]
     scheds = get_schedules_for_statement_pairs(
         lin_knl, linearization_items, insn_id_pairs, return_schedules=True)
 
-    # Get two maps
+    # Relationship between j1 and 2 --------------------------------------------
+
+    # Get maps (include schedules, just for test purposes)
     (
         sio_seq, (sched_map_before, sched_map_after)
     ), (
         sio_lconc, (lconc_sched_before, lconc_sched_after)
     ), (
         sio_gconc, (gconc_sched_before, gconc_sched_after)
-    ) = scheds[insn_id_pairs[0]]
+    ) = scheds[("j1", "2")]
 
     # Create expected maps and compare
 
+    conc_iname_bound_str = "0<=l0,l1,g0<p2"
+    conc_iname_bound_str_p = "0<=l0',l1',g0'<p2"
+
     lconc_sched_before_exp = isl.Map(
-        "[p1,p2] -> {[%s=0,i,j,l0,l1,g0] -> [%s] : 0<=i,j<p1 and 0<=l0,l1,g0<p2}"
+        "[p1,p2] -> {[%s=0,i,j,l0,l1,g0] -> [%s] : 0<=i,j<p1 and %s}"
         % (
             STATEMENT_VAR_NAME,
             _lex_point_string(
@@ -835,11 +826,12 @@ def test_sios_and_schedules_with_lbarriers():
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 prefix=BLEX_VAR_PREFIX,
                 ),
+            conc_iname_bound_str,
             )
         )
 
     lconc_sched_after_exp = isl.Map(
-        "[p2] -> {[%s=1,l0,l1,g0] -> [%s] : 0<=l0,l1,g0<p2}"
+        "[p2] -> {[%s=1,l0,l1,g0] -> [%s] : %s}"
         % (
             STATEMENT_VAR_NAME,
             _lex_point_string(
@@ -847,32 +839,45 @@ def test_sios_and_schedules_with_lbarriers():
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 prefix=BLEX_VAR_PREFIX,
                 ),
+            conc_iname_bound_str,
+            )
+        )
+
+    sio_lconc_exp = _isl_map_with_marked_dims(
+        "[p1,p2] -> {{ "
+        "[{0}'=0,i',j',l0',l1',g0'] -> [{0}=1,l0,l1,g0] : "
+        "((0 <= i' < p1 and 0 <= j' < p1-1) or "  # not last iteration of j
+        " (0 <= i' < p1-1 and 0 <= j' < p1))"  # not last iteration of i
+        "and g0 = g0' "  # within a single group
+        "and {1} and {2}"  # conc iname bounds
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            conc_iname_bound_str,
+            conc_iname_bound_str_p,
             )
         )
 
     _align_and_compare_maps(
-        [lconc_sched_before_exp, lconc_sched_after_exp],
-        [lconc_sched_before, lconc_sched_after],
+        [lconc_sched_before_exp, lconc_sched_after_exp, sio_lconc_exp],
+        [lconc_sched_before, lconc_sched_after, sio_lconc],
         )
 
-    # Check for some example pairs in the sio_lconc map
+    # Check for some key example pairs in the sio_lconc map
 
     # As long as this is not the last iteration of the i loop, then there
     # should be a barrier between the last instance of statement j1
     # and statement 2:
     p1_val = 7
     last_i_val = p1_val - 1
-    max_non_last_i_val = last_i_val - 1
+    max_non_last_i_val = last_i_val - 1  # max i val that isn't the last iteration
 
-    wanted_pairs = isl.Map(
+    wanted_pairs = _isl_map_with_marked_dims(
         "[p1,p2] -> {{"
         "[{0}' = 0, i', j'=p1-1, g0', l0', l1'] -> [{0} = 1, l0, l1, g0] : "
         "0 <= i' <= {1} and "  # constrain i
         "p1 >= {2} and "  # constrain p
         "0<=l0',l1',g0',l0,l1,g0<p2 and g0=g0'"
         "}}".format(STATEMENT_VAR_NAME, max_non_last_i_val, p1_val))
-    wanted_pairs = append_marker_to_isl_map_var_names(
-        wanted_pairs, dt.in_, "'")
     wanted_pairs = ensure_dim_names_match_and_align(wanted_pairs, sio_lconc)
 
     assert wanted_pairs.is_subset(sio_lconc)
@@ -880,19 +885,71 @@ def test_sios_and_schedules_with_lbarriers():
     # If this IS the last iteration of the i loop, then there
     # should NOT be a barrier between the last instance of statement j1
     # and statement 2:
-    unwanted_pairs = isl.Map(
+    unwanted_pairs = _isl_map_with_marked_dims(
         "[p1,p2] -> {{"
         "[{0}' = 0, i', j'=p1-1, g0', l0', l1'] -> [{0} = 1, l0, l1, g0] : "
         "0 <= i' <= {1} and "  # constrain i
         "p1 >= {2} and "  # constrain p
         "0<=l0',l1',g0',l0,l1,g0<p2 and g0=g0'"
         "}}".format(STATEMENT_VAR_NAME, last_i_val, p1_val))
-    unwanted_pairs = append_marker_to_isl_map_var_names(
-        unwanted_pairs, dt.in_, "'")
     unwanted_pairs = ensure_dim_names_match_and_align(unwanted_pairs, sio_lconc)
 
     assert not unwanted_pairs.is_subset(sio_lconc)
 
+    # Relationship between 1 and i0 --------------------------------------------
+
+    # Get maps (include schedules, just for test purposes)
+    (
+        sio_seq, (sched_map_before, sched_map_after)
+    ), (
+        sio_lconc, (lconc_sched_before, lconc_sched_after)
+    ), (
+        sio_gconc, (gconc_sched_before, gconc_sched_after)
+    ) = scheds[("1", "i0")]
+
+    # Create expected maps and compare
+
+    lconc_sched_before_exp = isl.Map(
+        "[p2] -> {[%s=0,l0,l1,g0] -> [%s] : 0<=l0,l1,g0<p2}"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(
+                ["1", "0", "0", "0", "0"],
+                lid_inames=["l0", "l1"], gid_inames=["g0"],
+                prefix=BLEX_VAR_PREFIX,
+                ),
+            )
+        )
+
+    lconc_sched_after_exp = isl.Map(
+        "[p1,p2] -> {[%s=1,i,j,l0,l1,g0] -> [%s] : 0<=i,j<p1 and 0<=l0,l1,g0<p2}"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(
+                ["2", "i", "0", "0", "0"],
+                lid_inames=["l0", "l1"], gid_inames=["g0"],
+                prefix=BLEX_VAR_PREFIX,
+                ),
+            )
+        )
+
+    sio_lconc_exp = _isl_map_with_marked_dims(
+        "[p1,p2] -> {{ "
+        "[{0}'=0,l0',l1',g0'] -> [{0}=1,i,j,l0,l1,g0] : "
+        "1 <= i < p1 and 0 <= j < p1 "  # not first iteration of i
+        "and g0 = g0' "  # within a single group
+        "and {1} and {2}"  # conc iname bounds
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            conc_iname_bound_str,
+            conc_iname_bound_str_p,
+            )
+        )
+
+    _align_and_compare_maps(
+        [lconc_sched_before_exp, lconc_sched_after_exp, sio_lconc_exp],
+        [lconc_sched_before, lconc_sched_after, sio_lconc],
+        )
 # }}}
 
 
