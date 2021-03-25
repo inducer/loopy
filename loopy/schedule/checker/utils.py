@@ -86,9 +86,14 @@ def reorder_dims_by_name(
 def ensure_dim_names_match_and_align(obj_map, tgt_map):
 
     # first make sure names match
-    assert all(
-        set(obj_map.get_var_names(dt)) == set(tgt_map.get_var_names(dt))
-        for dt in [isl.dim_type.in_, isl.dim_type.out, isl.dim_type.param])
+    if not all(
+            set(obj_map.get_var_names(dt)) == set(tgt_map.get_var_names(dt))
+            for dt in
+            [isl.dim_type.in_, isl.dim_type.out, isl.dim_type.param]):
+        raise ValueError(
+            "Cannot align spaces; names don't match:\n%s\n%s"
+            % (prettier_map_string(obj_map), prettier_map_string(tgt_map))
+            )
 
     return isl.align_spaces(obj_map, tgt_map)
 
