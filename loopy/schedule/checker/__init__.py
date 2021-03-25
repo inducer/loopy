@@ -92,7 +92,7 @@ def get_schedules_for_statement_pairs(
         : 0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
 
     """
-    # TODO update docs now that we're returning SIOs
+    # TODO update docs and docstring now that we're returning SIOs
 
     # {{{ make sure kernel has been preprocessed
 
