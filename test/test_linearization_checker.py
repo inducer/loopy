@@ -53,10 +53,10 @@ logger = logging.getLogger(__name__)
 
 # {{{ helper functions for map creation/handling
 
-def _align_and_compare_maps(maps1, maps2):
+def _align_and_compare_maps(maps):
     from loopy.schedule.checker.utils import prettier_map_string
 
-    for map1, map2 in zip(maps1, maps2):
+    for map1, map2 in maps:
         # Align maps and compare
         map1_aligned = ensure_dim_names_match_and_align(map1, map2)
         if map1_aligned != map2:
@@ -149,24 +149,14 @@ def test_pairwise_schedule_creation():
         lin_knl,
         linearization_items,
         insn_id_pairs,
-        return_schedules=True,
+        return_schedules=True,  # include schedules for testing
         )
 
     # Relationship between insn_a and insn_b ---------------------------------------
 
-    # Get maps (include schedules, just for test purposes)
-    (
-        sio_seq, (sched_before, sched_after)
-    ), (
-        sio_lconc, (lconc_sched_before, lconc_sched_after)
-    ), (
-        sio_gconc, (gconc_sched_before, gconc_sched_after)
-    ) = scheds[
-        ("insn_a", "insn_b")]
-
     # Create expected maps and compare
 
-    sched_before_exp = isl.Map(
+    sched_before_seq_exp = isl.Map(
         "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
         % (
             STATEMENT_VAR_NAME,
@@ -174,7 +164,7 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    sched_after_exp = isl.Map(
+    sched_after_seq_exp = isl.Map(
         "[pi, pj] -> { [%s=1, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
@@ -182,27 +172,18 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    _align_and_compare_maps(
-        [sched_before_exp, sched_after_exp],
-        [sched_before, sched_after],
+    _check_sio_for_stmt_pair(
+        "insn_a", "insn_b", scheds,
+        sched_before_seq_exp=sched_before_seq_exp,
+        sched_after_seq_exp=sched_after_seq_exp,
         )
 
     # ------------------------------------------------------------------------------
     # Relationship between insn_a and insn_c ---------------------------------------
 
-    # Get maps (include schedules, just for test purposes)
-    (
-        sio_seq, (sched_before, sched_after)
-    ), (
-        sio_lconc, (lconc_sched_before, lconc_sched_after)
-    ), (
-        sio_gconc, (gconc_sched_before, gconc_sched_after)
-    ) = scheds[
-        ("insn_a", "insn_c")]
-
     # Create expected maps and compare
 
-    sched_before_exp = isl.Map(
+    sched_before_seq_exp = isl.Map(
         "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
         % (
             STATEMENT_VAR_NAME,
@@ -210,7 +191,7 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    sched_after_exp = isl.Map(
+    sched_after_seq_exp = isl.Map(
         "[pi, pj] -> { [%s=1, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
@@ -218,27 +199,18 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    _align_and_compare_maps(
-        [sched_before_exp, sched_after_exp],
-        [sched_before, sched_after],
+    _check_sio_for_stmt_pair(
+        "insn_a", "insn_c", scheds,
+        sched_before_seq_exp=sched_before_seq_exp,
+        sched_after_seq_exp=sched_after_seq_exp,
         )
 
     # ------------------------------------------------------------------------------
     # Relationship between insn_a and insn_d ---------------------------------------
 
-    # Get maps (include schedules, just for test purposes)
-    (
-        sio_seq, (sched_before, sched_after)
-    ), (
-        sio_lconc, (lconc_sched_before, lconc_sched_after)
-    ), (
-        sio_gconc, (gconc_sched_before, gconc_sched_after)
-    ) = scheds[
-        ("insn_a", "insn_d")]
-
     # Create expected maps and compare
 
-    sched_before_exp = isl.Map(
+    sched_before_seq_exp = isl.Map(
         "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
         % (
             STATEMENT_VAR_NAME,
@@ -246,7 +218,7 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    sched_after_exp = isl.Map(
+    sched_after_seq_exp = isl.Map(
         "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
         % (
             STATEMENT_VAR_NAME,
@@ -254,27 +226,18 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    _align_and_compare_maps(
-        [sched_before_exp, sched_after_exp],
-        [sched_before, sched_after],
+    _check_sio_for_stmt_pair(
+        "insn_a", "insn_d", scheds,
+        sched_before_seq_exp=sched_before_seq_exp,
+        sched_after_seq_exp=sched_after_seq_exp,
         )
 
     # ------------------------------------------------------------------------------
     # Relationship between insn_b and insn_c ---------------------------------------
 
-    # Get maps (include schedules, just for test purposes)
-    (
-        sio_seq, (sched_before, sched_after)
-    ), (
-        sio_lconc, (lconc_sched_before, lconc_sched_after)
-    ), (
-        sio_gconc, (gconc_sched_before, gconc_sched_after)
-    ) = scheds[
-        ("insn_b", "insn_c")]
-
     # Create expected maps and compare
 
-    sched_before_exp = isl.Map(
+    sched_before_seq_exp = isl.Map(
         "[pi, pj] -> { [%s=0, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
@@ -282,7 +245,7 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    sched_after_exp = isl.Map(
+    sched_after_seq_exp = isl.Map(
         "[pi, pj] -> { [%s=1, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
@@ -290,27 +253,18 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    _align_and_compare_maps(
-        [sched_before_exp, sched_after_exp],
-        [sched_before, sched_after],
+    _check_sio_for_stmt_pair(
+        "insn_b", "insn_c", scheds,
+        sched_before_seq_exp=sched_before_seq_exp,
+        sched_after_seq_exp=sched_after_seq_exp,
         )
 
     # ------------------------------------------------------------------------------
     # Relationship between insn_b and insn_d ---------------------------------------
 
-    # Get maps (include schedules, just for test purposes)
-    (
-        sio_seq, (sched_before, sched_after)
-    ), (
-        sio_lconc, (lconc_sched_before, lconc_sched_after)
-    ), (
-        sio_gconc, (gconc_sched_before, gconc_sched_after)
-    ) = scheds[
-        ("insn_b", "insn_d")]
-
     # Create expected maps and compare
 
-    sched_before_exp = isl.Map(
+    sched_before_seq_exp = isl.Map(
         "[pi, pj] -> { [%s=0, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
@@ -318,7 +272,7 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    sched_after_exp = isl.Map(
+    sched_after_seq_exp = isl.Map(
         "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
         % (
             STATEMENT_VAR_NAME,
@@ -326,27 +280,18 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    _align_and_compare_maps(
-        [sched_before_exp, sched_after_exp],
-        [sched_before, sched_after],
+    _check_sio_for_stmt_pair(
+        "insn_b", "insn_d", scheds,
+        sched_before_seq_exp=sched_before_seq_exp,
+        sched_after_seq_exp=sched_after_seq_exp,
         )
 
     # ------------------------------------------------------------------------------
     # Relationship between insn_c and insn_d ---------------------------------------
 
-    # Get maps (include schedules, just for test purposes)
-    (
-        sio_seq, (sched_before, sched_after)
-    ), (
-        sio_lconc, (lconc_sched_before, lconc_sched_after)
-    ), (
-        sio_gconc, (gconc_sched_before, gconc_sched_after)
-    ) = scheds[
-        ("insn_c", "insn_d")]
-
     # Create expected maps and compare
 
-    sched_before_exp = isl.Map(
+    sched_before_seq_exp = isl.Map(
         "[pi, pj] -> { [%s=0, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
@@ -354,7 +299,7 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    sched_after_exp = isl.Map(
+    sched_after_seq_exp = isl.Map(
         "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
         % (
             STATEMENT_VAR_NAME,
@@ -362,9 +307,10 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    _align_and_compare_maps(
-        [sched_before_exp, sched_after_exp],
-        [sched_before, sched_after],
+    _check_sio_for_stmt_pair(
+        "insn_c", "insn_d", scheds,
+        sched_before_seq_exp=sched_before_seq_exp,
+        sched_after_seq_exp=sched_after_seq_exp,
         )
 
 
@@ -415,19 +361,9 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
 
     # Relationship between stmt_a and stmt_b ---------------------------------------
 
-    # Get maps (include schedules, just for test purposes)
-    (
-        sio_seq, (sched_before, sched_after)
-    ), (
-        sio_lconc, (lconc_sched_before, lconc_sched_after)
-    ), (
-        sio_gconc, (gconc_sched_before, gconc_sched_after)
-    ) = scheds[
-        ("stmt_a", "stmt_b")]
-
     # Create expected maps and compare
 
-    sched_before_exp = isl.Map(
+    sched_before_seq_exp = isl.Map(
         "[pi,pj] -> {[%s=0,i,ii,j,jj] -> [%s] : 0 <= i,ii < pi and 0 <= j,jj < pj}"
         % (
             STATEMENT_VAR_NAME,
@@ -438,7 +374,7 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
             )
         )
 
-    sched_after_exp = isl.Map(
+    sched_after_seq_exp = isl.Map(
         "[pi,pj] -> {[%s=1,i,ii,j,jj] -> [%s] : 0 <= i,ii < pi and 0 <= j,jj < pj}"
         % (
             STATEMENT_VAR_NAME,
@@ -449,9 +385,10 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
             )
         )
 
-    _align_and_compare_maps(
-        [sched_before_exp, sched_after_exp],
-        [sched_before, sched_after],
+    _check_sio_for_stmt_pair(
+        "stmt_a", "stmt_b", scheds,
+        sched_before_seq_exp=sched_before_seq_exp,
+        sched_after_seq_exp=sched_after_seq_exp,
         )
 
     # ------------------------------------------------------------------------------
@@ -513,40 +450,48 @@ def _check_sio_for_stmt_pair(
         stmt_id_before,
         stmt_id_after,
         sio_dict,
-        exp_sio_seq=None,
-        exp_sched_before_seq=None,
-        exp_sched_after_seq=None,
-        exp_sio_lconc=None,
-        exp_sched_before_lconc=None,
-        exp_sched_after_lconc=None,
-        exp_sio_gconc=None,
-        exp_sched_before_gconc=None,
-        exp_sched_after_gconc=None,
+        sio_seq_exp=None,
+        sched_before_seq_exp=None,
+        sched_after_seq_exp=None,
+        sio_lconc_exp=None,
+        sched_before_lconc_exp=None,
+        sched_after_lconc_exp=None,
+        sio_gconc_exp=None,
+        sched_before_gconc_exp=None,
+        sched_after_gconc_exp=None,
         ):
-    from loopy.schedule.checker.utils import (
-        ensure_dim_names_match_and_align,
-    )
 
-    # Check whether scheds were included
-    #try:
-    (
-        sio_seq, (sched_before, sched_after)
-    ), (
-        sio_lconc, (sched_before_lconc, sched_after_lconc)
-    ), (
-        sio_gconc, (sched_before_gconc, sched_after_gconc)
-    ) = sio_dict[
-        (stmt_id_before, stmt_id_after)]
-    #except :
-    #    sio_seq, sio_lconc, sio_gconc = sio_dict[
-    #        (stmt_id_before, stmt_id_after)]
+    maps_found = sio_dict[(stmt_id_before, stmt_id_after)]
 
-    # TODO left off here, check all passed maps,
-    # en eliminate _align_and_comp...
+    # Check whether scheds were included in sio_dict
+    if isinstance(maps_found[0], tuple):
+        # Scheds were included
+        (
+            sio_seq, (sched_before_seq, sched_after_seq)
+        ), (
+            sio_lconc, (sched_before_lconc, sched_after_lconc)
+        ), (
+            sio_gconc, (sched_before_gconc, sched_after_gconc)
+        ) = maps_found
+        map_candidates = zip([
+            sio_seq_exp, sched_before_seq_exp, sched_after_seq_exp,
+            sio_lconc_exp, sched_before_lconc_exp, sched_after_lconc_exp,
+            sio_gconc_exp, sched_before_gconc_exp, sched_after_gconc_exp,
+            ], [
+            sio_seq, sched_before_seq, sched_after_seq,
+            sio_lconc, sched_before_lconc, sched_after_lconc,
+            sio_gconc, sched_before_gconc, sched_after_gconc,
+            ])
+    else:
+        # Scheds not included
+        sio_seq, sio_lconc, sio_gconc = maps_found
+        map_candidates = zip(
+            [sio_seq_exp, sio_lconc_exp, sio_gconc_exp, ],
+            [sio_seq, sio_lconc, sio_gconc, ])
 
-    sio_seq_aligned = ensure_dim_names_match_and_align(exp_sio_seq, sio_seq)
-
-    assert sio_seq_aligned == exp_sio_seq
+    # Only compare to maps that were passed
+    maps_to_compare = [(m1, m2) for m1, m2 in map_candidates if m1 is not None]
+    _align_and_compare_maps(maps_to_compare)
 
 
 def test_statement_instance_ordering():
@@ -609,40 +554,40 @@ def test_statement_instance_ordering():
 
     # Relationship between stmt_a and stmt_b ---------------------------------------
 
-    exp_sio_seq = _isl_map_with_marked_dims(
+    sio_seq_exp = _isl_map_with_marked_dims(
         "[pi, pj, pk] -> {{ "
         "[{0}'=0, i', k'] -> [{0}=1, i, j] : "
         "0 <= i,i' < pi and 0 <= k' < pk and 0 <= j < pj and i >= i' "
         "}}".format(STATEMENT_VAR_NAME)
         )
 
-    _check_sio_for_stmt_pair("stmt_a", "stmt_b", scheds, exp_sio_seq=exp_sio_seq)
+    _check_sio_for_stmt_pair("stmt_a", "stmt_b", scheds, sio_seq_exp=sio_seq_exp)
 
     # Relationship between stmt_a and stmt_c ---------------------------------------
 
-    exp_sio_seq = _isl_map_with_marked_dims(
+    sio_seq_exp = _isl_map_with_marked_dims(
         "[pi, pj, pk] -> {{ "
         "[{0}'=0, i', k'] -> [{0}=1, i, j] : "
         "0 <= i,i' < pi and 0 <= k' < pk and 0 <= j < pj and i >= i' "
         "}}".format(STATEMENT_VAR_NAME)
         )
 
-    _check_sio_for_stmt_pair("stmt_a", "stmt_c", scheds, exp_sio_seq=exp_sio_seq)
+    _check_sio_for_stmt_pair("stmt_a", "stmt_c", scheds, sio_seq_exp=sio_seq_exp)
 
     # Relationship between stmt_a and stmt_d ---------------------------------------
 
-    exp_sio_seq = _isl_map_with_marked_dims(
+    sio_seq_exp = _isl_map_with_marked_dims(
         "[pt, pi, pk] -> {{ "
         "[{0}'=0, i', k'] -> [{0}=1, t] : "
         "0 <= i' < pi and 0 <= k' < pk and 0 <= t < pt "
         "}}".format(STATEMENT_VAR_NAME)
         )
 
-    _check_sio_for_stmt_pair("stmt_a", "stmt_d", scheds, exp_sio_seq=exp_sio_seq)
+    _check_sio_for_stmt_pair("stmt_a", "stmt_d", scheds, sio_seq_exp=sio_seq_exp)
 
     # Relationship between stmt_b and stmt_c ---------------------------------------
 
-    exp_sio_seq = _isl_map_with_marked_dims(
+    sio_seq_exp = _isl_map_with_marked_dims(
         "[pi, pj] -> {{ "
         "[{0}'=0, i', j'] -> [{0}=1, i, j] : "
         "0 <= i,i' < pi and 0 <= j,j' < pj and i > i'; "
@@ -651,29 +596,29 @@ def test_statement_instance_ordering():
         "}}".format(STATEMENT_VAR_NAME)
         )
 
-    _check_sio_for_stmt_pair("stmt_b", "stmt_c", scheds, exp_sio_seq=exp_sio_seq)
+    _check_sio_for_stmt_pair("stmt_b", "stmt_c", scheds, sio_seq_exp=sio_seq_exp)
 
     # Relationship between stmt_b and stmt_d ---------------------------------------
 
-    exp_sio_seq = _isl_map_with_marked_dims(
+    sio_seq_exp = _isl_map_with_marked_dims(
         "[pt, pi, pj] -> {{ "
         "[{0}'=0, i', j'] -> [{0}=1, t] : "
         "0 <= i' < pi and 0 <= j' < pj and 0 <= t < pt "
         "}}".format(STATEMENT_VAR_NAME)
         )
 
-    _check_sio_for_stmt_pair("stmt_b", "stmt_d", scheds, exp_sio_seq=exp_sio_seq)
+    _check_sio_for_stmt_pair("stmt_b", "stmt_d", scheds, sio_seq_exp=sio_seq_exp)
 
     # Relationship between stmt_c and stmt_d ---------------------------------------
 
-    exp_sio_seq = _isl_map_with_marked_dims(
+    sio_seq_exp = _isl_map_with_marked_dims(
         "[pt, pi, pj] -> {{ "
         "[{0}'=0, i', j'] -> [{0}=1, t] : "
         "0 <= i' < pi and 0 <= j' < pj and 0 <= t < pt "
         "}}".format(STATEMENT_VAR_NAME)
         )
 
-    _check_sio_for_stmt_pair("stmt_c", "stmt_d", scheds, exp_sio_seq=exp_sio_seq)
+    _check_sio_for_stmt_pair("stmt_c", "stmt_d", scheds, sio_seq_exp=sio_seq_exp)
 
 
 def test_statement_instance_ordering_with_hw_par_tags():
@@ -732,7 +677,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
 
     # Relationship between stmt_a and stmt_b ---------------------------------------
 
-    exp_sio_seq = _isl_map_with_marked_dims(
+    sio_seq_exp = _isl_map_with_marked_dims(
         "[pi, pj] -> {{ "
         "[{0}'=0, i', ii', j', jj'] -> [{0}=1, i, ii, j, jj] : "
         "0 <= i,ii,i',ii' < pi and 0 <= j,jj,j',jj' < pj and ii >= ii' "
@@ -743,7 +688,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
             )
         )
 
-    _check_sio_for_stmt_pair("stmt_a", "stmt_b", scheds, exp_sio_seq=exp_sio_seq)
+    _check_sio_for_stmt_pair("stmt_a", "stmt_b", scheds, sio_seq_exp=sio_seq_exp)
 
     # ------------------------------------------------------------------------------
 
@@ -799,25 +744,18 @@ def test_sios_and_schedules_with_lbarriers():
 
     insn_id_pairs = [("j1", "2"), ("1", "i0")]
     scheds = get_schedules_for_statement_pairs(
-        lin_knl, linearization_items, insn_id_pairs, return_schedules=True)
+        lin_knl, linearization_items, insn_id_pairs,
+        return_schedules=True,  # include schedules for testing
+        )
 
     # Relationship between j1 and 2 --------------------------------------------
-
-    # Get maps (include schedules, just for test purposes)
-    (
-        sio_seq, (sched_map_before, sched_map_after)
-    ), (
-        sio_lconc, (lconc_sched_before, lconc_sched_after)
-    ), (
-        sio_gconc, (gconc_sched_before, gconc_sched_after)
-    ) = scheds[("j1", "2")]
 
     # Create expected maps and compare
 
     conc_iname_bound_str = "0<=l0,l1,g0<p2"
     conc_iname_bound_str_p = "0<=l0',l1',g0'<p2"
 
-    lconc_sched_before_exp = isl.Map(
+    sched_before_lconc_exp = isl.Map(
         "[p1,p2] -> {[%s=0,i,j,l0,l1,g0] -> [%s] : 0<=i,j<p1 and %s}"
         % (
             STATEMENT_VAR_NAME,
@@ -830,7 +768,7 @@ def test_sios_and_schedules_with_lbarriers():
             )
         )
 
-    lconc_sched_after_exp = isl.Map(
+    sched_after_lconc_exp = isl.Map(
         "[p2] -> {[%s=1,l0,l1,g0] -> [%s] : %s}"
         % (
             STATEMENT_VAR_NAME,
@@ -857,12 +795,23 @@ def test_sios_and_schedules_with_lbarriers():
             )
         )
 
-    _align_and_compare_maps(
-        [lconc_sched_before_exp, lconc_sched_after_exp, sio_lconc_exp],
-        [lconc_sched_before, lconc_sched_after, sio_lconc],
+    _check_sio_for_stmt_pair(
+        "j1", "2", scheds,
+        sio_lconc_exp=sio_lconc_exp,
+        sched_before_lconc_exp=sched_before_lconc_exp,
+        sched_after_lconc_exp=sched_after_lconc_exp,
         )
 
     # Check for some key example pairs in the sio_lconc map
+
+    # Get maps
+    (
+        sio_seq, (sched_map_before, sched_map_after)
+    ), (
+        sio_lconc, (sched_before_lconc, sched_after_lconc)
+    ), (
+        sio_gconc, (sched_before_gconc, sched_after_gconc)
+    ) = scheds[("j1", "2")]
 
     # As long as this is not the last iteration of the i loop, then there
     # should be a barrier between the last instance of statement j1
@@ -898,18 +847,9 @@ def test_sios_and_schedules_with_lbarriers():
 
     # Relationship between 1 and i0 --------------------------------------------
 
-    # Get maps (include schedules, just for test purposes)
-    (
-        sio_seq, (sched_map_before, sched_map_after)
-    ), (
-        sio_lconc, (lconc_sched_before, lconc_sched_after)
-    ), (
-        sio_gconc, (gconc_sched_before, gconc_sched_after)
-    ) = scheds[("1", "i0")]
-
     # Create expected maps and compare
 
-    lconc_sched_before_exp = isl.Map(
+    sched_before_lconc_exp = isl.Map(
         "[p2] -> {[%s=0,l0,l1,g0] -> [%s] : 0<=l0,l1,g0<p2}"
         % (
             STATEMENT_VAR_NAME,
@@ -921,7 +861,7 @@ def test_sios_and_schedules_with_lbarriers():
             )
         )
 
-    lconc_sched_after_exp = isl.Map(
+    sched_after_lconc_exp = isl.Map(
         "[p1,p2] -> {[%s=1,i,j,l0,l1,g0] -> [%s] : 0<=i,j<p1 and 0<=l0,l1,g0<p2}"
         % (
             STATEMENT_VAR_NAME,
@@ -946,10 +886,13 @@ def test_sios_and_schedules_with_lbarriers():
             )
         )
 
-    _align_and_compare_maps(
-        [lconc_sched_before_exp, lconc_sched_after_exp, sio_lconc_exp],
-        [lconc_sched_before, lconc_sched_after, sio_lconc],
+    _check_sio_for_stmt_pair(
+        "1", "i0", scheds,
+        sio_lconc_exp=sio_lconc_exp,
+        sched_before_lconc_exp=sched_before_lconc_exp,
+        sched_after_lconc_exp=sched_after_lconc_exp,
         )
+
 # }}}
 
 
