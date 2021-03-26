@@ -53,12 +53,6 @@ LTAG_VAR_NAMES = []
 for par_level in [0, 1, 2]:
     GTAG_VAR_NAMES.append("%sgid%d" % (LIN_CHECK_IDENTIFIER_PREFIX, par_level))
     LTAG_VAR_NAMES.append("%slid%d" % (LIN_CHECK_IDENTIFIER_PREFIX, par_level))
-PRE = "pre"
-FIRST = "first"
-TOP = "top"
-BOTTOM = "bottom"
-LAST = "last"
-POST = "post"
 # TODO document new vars
 
 
@@ -120,6 +114,43 @@ def _simplify_lex_dims(tup0, tup1):
         return tuple(new_tup0), tuple(new_tup1)
 
 
+class SpecialLexPointWRTLoop:
+    """Strings specifying a particular position in a lexicographic
+       ordering of statements relative to a loop.
+
+    .. attribute:: PRE
+       A :class:`str` indicating the last lexicographic point that
+       precedes the loop.
+
+    .. attribute:: FIRST
+       A :class:`str` indicating the first lexicographic point in the
+       first loop iteration (i.e., with the iname set to its min. val).
+
+    .. attribute:: TOP
+       A :class:`str` indicating the first lexicographic point in
+       an arbitrary loop iteration.
+
+    .. attribute:: BOTTOM
+       A :class:`str` indicating the last lexicographic point in
+       an arbitrary loop iteration.
+
+    .. attribute:: LAST
+       A :class:`str` indicating the last lexicographic point in the
+       last loop iteration (i.e., with the iname set to its max val).
+
+    .. attribute:: POST
+       A :class:`str` indicating the first lexicographic point that
+       follows the loop.
+    """
+
+    PRE = "pre"
+    FIRST = "first"
+    TOP = "top"
+    BOTTOM = "bottom"
+    LAST = "last"
+    POST = "post"
+
+
 def generate_pairwise_schedules(
         knl,
         lin_items,
@@ -171,6 +202,7 @@ def generate_pairwise_schedules(
         append_marker_to_strings,
         add_eq_isl_constraint_from_names,
     )
+    slex = SpecialLexPointWRTLoop
 
     all_insn_ids = set().union(*insn_id_pairs)
 
@@ -346,9 +378,9 @@ def generate_pairwise_schedules(
                     first_iter_blex_pt = next_blex_pt[:]
                     first_iter_blex_pt[-2] = lbound
                     blex_exclusion_info[enter_iname] = {
-                        PRE: tuple(pre_loop_blex_pt),  # make sure to copy
-                        TOP: tuple(next_blex_pt),  # make sure to copy
-                        FIRST: tuple(first_iter_blex_pt),  # make sure to copy
+                        slex.PRE: tuple(pre_loop_blex_pt),  # make sure to copy
+                        slex.TOP: tuple(next_blex_pt),  # make sure to copy
+                        slex.FIRST: tuple(first_iter_blex_pt),  # make sure to copy
                         }
                     blex_map_params |= set(lbound.get_var_names(dt.param))
 
@@ -371,10 +403,12 @@ def generate_pairwise_schedules(
                     ubound = iname_bounds_pwaff[leave_iname][1]
                     last_iter_blex_pt = pre_end_loop_blex_pt[:]
                     last_iter_blex_pt[-2] = ubound
-                    blex_exclusion_info[leave_iname][BOTTOM] = tuple(
+                    blex_exclusion_info[leave_iname][slex.BOTTOM] = tuple(
                         pre_end_loop_blex_pt)
-                    blex_exclusion_info[leave_iname][LAST] = tuple(last_iter_blex_pt)
-                    blex_exclusion_info[leave_iname][POST] = tuple(next_blex_pt)
+                    blex_exclusion_info[leave_iname][slex.LAST] = tuple(
+                        last_iter_blex_pt)
+                    blex_exclusion_info[leave_iname][slex.POST] = tuple(
+                        next_blex_pt)
                     # (make sure ^these are copies)
                     blex_map_params |= set(ubound.get_var_names(dt.param))
 
@@ -447,7 +481,7 @@ def generate_pairwise_schedules(
         blex_set_affs = isl.affs_from_space(blex_set_template.space)
 
         def _create_excluded_map_for_iname(iname, blueprint):
-            # Note: blueprint[FIRST] and blueprint[LAST] contain pwaffs
+            # Note: blueprint[slex.FIRST] and blueprint[slex.LAST] contain pwaffs
 
             def _create_blex_set_from_tuple_pair(before, after, wrap_cond=False):
 
@@ -492,16 +526,16 @@ def generate_pairwise_schedules(
 
             # enter loop case
             full_blex_set = _create_blex_set_from_tuple_pair(
-                blueprint[PRE], blueprint[FIRST])
+                blueprint[slex.PRE], blueprint[slex.FIRST])
             # wrap loop case
             full_blex_set |= _create_blex_set_from_tuple_pair(
-                blueprint[BOTTOM], blueprint[TOP], wrap_cond=True)
+                blueprint[slex.BOTTOM], blueprint[slex.TOP], wrap_cond=True)
             # leave loop case
             full_blex_set |= _create_blex_set_from_tuple_pair(
-                blueprint[LAST], blueprint[POST])
+                blueprint[slex.LAST], blueprint[slex.POST])
 
             # add cond to fix iteration value for surrounding loops (i = i')
-            for surrounding_iname in blueprint[PRE][1::2]:
+            for surrounding_iname in blueprint[slex.PRE][1::2]:
                 s_blex_var = iname_to_blex_var[surrounding_iname]
                 full_blex_set &= blex_set_affs[s_blex_var].eq_set(
                     blex_set_affs[s_blex_var+BEFORE_MARK])
@@ -717,15 +751,16 @@ def generate_pairwise_schedules(
 
         # }}}
 
-        # TODO have option to return sched maps, but default to not returning them
-        #pairwise_schedules[tuple(insn_ids)] = tuple(intra_thread_sched_maps)
         if return_schedules:
+            # Store sched maps along with SIOs
+            # (currently helpful for testing; also could be desired by a user)
             pairwise_schedules[tuple(insn_ids)] = (
                 (sio_seq, tuple(intra_thread_sched_maps), ),
                 (sio_lconc, tuple(lconc_sched_maps), ),
                 (sio_gconc, tuple(gconc_sched_maps), ),
                 )
         else:
+            # Store SIOs
             pairwise_schedules[tuple(insn_ids)] = (sio_seq, sio_lconc, sio_gconc)
 
     return pairwise_schedules
