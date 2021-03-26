@@ -27,32 +27,49 @@ __doc__ = """
 
 .. data:: LIN_CHECK_IDENTIFIER_PREFIX
 
-    The prefix for identifiers involved in linearization checking.
+    The :class:`str` prefix for identifiers involved in linearization
+    checking.
 
 .. data:: LEX_VAR_PREFIX
 
-    E.g., a prefix of ``_lp_linchk_lex`` might yield lexicographic dimension
-    variables ``_lp_linchk_lex0``, ``_lp_linchk_lex1``, ``_lp_linchk_lex2``. Cf.
-    :ref:`reserved-identifiers`.
+    The :class:`str` prefix for the variables representing the
+    dimensions in the lexicographic ordering used in a pairwise schedule. E.g.,
+    a prefix of ``_lp_linchk_lex`` might yield lexicographic dimension
+    variables ``_lp_linchk_lex0``, ``_lp_linchk_lex1``, ``_lp_linchk_lex2``.
+    Cf.  :ref:`reserved-identifiers`.
 
 .. data:: STATEMENT_VAR_NAME
 
-    Set the :class:`str` specifying the prefix to be used for the variables
-    representing the dimensions in the lexicographic ordering used in a
-    pairwise schedule.
+    The :class:`str` name for the statement-identifying dimension of maps
+    representing schedules and statement instance orderings.
+
+.. data:: LTAG_VAR_NAME
+
+    An array of :class:`str` names for map dimensions carrying values for local
+    (intra work-group) thread identifiers in maps representing schedules and
+    statement instance orderings.
+
+.. data:: GTAG_VAR_NAME
+
+    An array of :class:`str` names for map dimensions carrying values for group
+    identifiers in maps representing schedules and statement instance orderings.
+
+.. data:: BEFORE_MARK
+
+    The :class:`str` identifier to be appended to input dimension names in
+    maps representing schedules and statement instance orderings.
 
 """
 
 LIN_CHECK_IDENTIFIER_PREFIX = "_lp_linchk_"
 LEX_VAR_PREFIX = "%slex" % (LIN_CHECK_IDENTIFIER_PREFIX)
 STATEMENT_VAR_NAME = "%sstmt" % (LIN_CHECK_IDENTIFIER_PREFIX)
-BEFORE_MARK = "'"
-GTAG_VAR_NAMES = []
 LTAG_VAR_NAMES = []
+GTAG_VAR_NAMES = []
 for par_level in [0, 1, 2]:
-    GTAG_VAR_NAMES.append("%sgid%d" % (LIN_CHECK_IDENTIFIER_PREFIX, par_level))
     LTAG_VAR_NAMES.append("%slid%d" % (LIN_CHECK_IDENTIFIER_PREFIX, par_level))
-# TODO document new vars
+    GTAG_VAR_NAMES.append("%sgid%d" % (LIN_CHECK_IDENTIFIER_PREFIX, par_level))
+BEFORE_MARK = "'"
 
 
 def _pad_tuple_with_zeros(tup, desired_length):
