@@ -702,11 +702,11 @@ def test_sios_and_schedules_with_barriers():
         get_schedules_for_statement_pairs,
     )
 
+    assumptions = "ij_end >= ij_start + 1 and lg_end >= 1"
     knl = lp.make_kernel(
         [
-            #"{[i,j,l0,l1,g0]: 0<=i,j,l0,l1,g0<p}",
-            "{[i,j]: 0<=i,j<p1}",
-            "{[l0,l1,g0]: 0<=l0,l1,g0<p2}",
+            "{[i,j]: ij_start<=i,j<ij_end}",
+            "{[l0,l1,g0]: 0<=l0,l1,g0<lg_end}",
         ],
         """
         for g0
@@ -733,7 +733,7 @@ def test_sios_and_schedules_with_barriers():
         end
         """,
         name="funky",
-        assumptions="p1,p2 >= 1",
+        assumptions=assumptions,
         lang_version=(2018, 2)
         )
     knl = lp.tag_inames(knl, {"l0": "l.0", "l1": "l.1", "g0": "g.0"})
@@ -753,28 +753,34 @@ def test_sios_and_schedules_with_barriers():
 
     # Create expected maps and compare
 
-    conc_iname_bound_str = "0<=l0,l1,g0<p2"
-    conc_iname_bound_str_p = "0<=l0',l1',g0'<p2"
+    # Iname bound strings to facilitate creation of expected maps
+    iname_bound_str = "ij_start <= i,j< ij_end"
+    iname_bound_str_p = "ij_start <= i',j'< ij_end"
+    conc_iname_bound_str = "0 <= l0,l1,g0 < lg_end"
+    conc_iname_bound_str_p = "0 <= l0',l1',g0' < lg_end"
 
     sched_before_lconc_exp = isl.Map(
-        "[p1,p2] -> {[%s=0,i,j,l0,l1,g0] -> [%s] : 0<=i,j<p1 and %s}"
+        "[ij_start, ij_end, lg_end] -> {"
+        "[%s=0, i, j, l0, l1, g0] -> [%s] : "
+        "%s and %s}"  # iname bounds
         % (
             STATEMENT_VAR_NAME,
             _lex_point_string(
-                ["2", "i", "2", "j", "1"],
+                ["2", "i", "2", "j", "1"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 prefix=BLEX_VAR_PREFIX,
                 ),
+            iname_bound_str,
             conc_iname_bound_str,
             )
         )
 
     sched_after_lconc_exp = isl.Map(
-        "[p2] -> {[%s=1,l0,l1,g0] -> [%s] : %s}"
+        "[lg_end] -> {[%s=1, l0, l1, g0] -> [%s] : %s}"
         % (
             STATEMENT_VAR_NAME,
             _lex_point_string(
-                ["3", "0", "0", "0", "0"],
+                ["3", "0", "0", "0", "0"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 prefix=BLEX_VAR_PREFIX,
                 ),
@@ -783,38 +789,45 @@ def test_sios_and_schedules_with_barriers():
         )
 
     sio_lconc_exp = _isl_map_with_marked_dims(
-        "[p1,p2] -> {{ "
-        "[{0}'=0,i',j',l0',l1',g0'] -> [{0}=1,l0,l1,g0] : "
-        "((0 <= i' < p1 and 0 <= j' < p1-1) or "  # not last iteration of j
-        " (0 <= i' < p1-1 and 0 <= j' < p1))"  # not last iteration of i
+        "[ij_start, ij_end, lg_end] -> {{ "
+        "[{0}'=0, i', j', l0', l1', g0'] -> [{0}=1, l0, l1, g0] : "
+        "(ij_start <= j' < ij_end-1 or "  # not last iteration of j
+        " ij_start <= i' < ij_end-1) "  # not last iteration of i
         "and g0 = g0' "  # within a single group
-        "and {1} and {2}"  # conc iname bounds
+        "and {1} and {2} and {3} "  # iname bounds
+        "and {4}"  # param assumptions
         "}}".format(
             STATEMENT_VAR_NAME,
+            iname_bound_str_p,
             conc_iname_bound_str,
             conc_iname_bound_str_p,
+            assumptions,
             )
         )
 
     sched_before_gconc_exp = isl.Map(
-        "[p1,p2] -> {[%s=0,i,j,l0,l1,g0] -> [%s] : 0<=i,j<p1 and %s}"
+        "[ij_start, ij_end, lg_end] -> {"
+        "[%s=0, i, j, l0, l1, g0] -> [%s] : "
+        "%s and %s}"  # iname bounds
         % (
             STATEMENT_VAR_NAME,
             _lex_point_string(
-                ["1", "i", "1"],
+                ["1", "i", "1"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 prefix=BLEX_VAR_PREFIX,
                 ),
+            iname_bound_str,
             conc_iname_bound_str,
             )
         )
 
     sched_after_gconc_exp = isl.Map(
-        "[p2] -> {[%s=1,l0,l1,g0] -> [%s] : %s}"
+        "[lg_end] -> {[%s=1, l0, l1, g0] -> [%s] : "
+        "%s}"  # iname bounds
         % (
             STATEMENT_VAR_NAME,
             _lex_point_string(
-                ["2", "0", "0"],
+                ["2", "0", "0"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 prefix=BLEX_VAR_PREFIX,
                 ),
@@ -823,14 +836,17 @@ def test_sios_and_schedules_with_barriers():
         )
 
     sio_gconc_exp = _isl_map_with_marked_dims(
-        "[p1,p2] -> {{ "
-        "[{0}'=0,i',j',l0',l1',g0'] -> [{0}=1,l0,l1,g0] : "
-        "0 <= i' < p1-1 and 0 <= j' < p1 "  # not last iteration of j
-        "and {1} and {2}"  # conc iname bounds
+        "[ij_start,ij_end,lg_end] -> {{ "
+        "[{0}'=0, i', j', l0', l1', g0'] -> [{0}=1, l0, l1, g0] : "
+        "ij_start <= i' < ij_end-1 "  # not last iteration of i
+        "and {1} and {2} and {3} "  # iname bounds
+        "and {4}"  # param assumptions
         "}}".format(
             STATEMENT_VAR_NAME,
+            iname_bound_str_p,
             conc_iname_bound_str,
             conc_iname_bound_str_p,
+            assumptions,
             )
         )
 
@@ -858,17 +874,24 @@ def test_sios_and_schedules_with_barriers():
     # As long as this is not the last iteration of the i loop, then there
     # should be a barrier between the last instance of statement j1
     # and statement 2:
-    p1_val = 7
-    last_i_val = p1_val - 1
+    ij_end_val = 7
+    last_i_val = ij_end_val - 1
     max_non_last_i_val = last_i_val - 1  # max i val that isn't the last iteration
 
     wanted_pairs = _isl_map_with_marked_dims(
-        "[p1,p2] -> {{"
-        "[{0}' = 0, i', j'=p1-1, g0', l0', l1'] -> [{0} = 1, l0, l1, g0] : "
-        "0 <= i' <= {1} and "  # constrain i
-        "p1 >= {2} and "  # constrain p
-        "0<=l0',l1',g0',l0,l1,g0<p2 and g0=g0'"
-        "}}".format(STATEMENT_VAR_NAME, max_non_last_i_val, p1_val))
+        "[ij_start, ij_end, lg_end] -> {{"
+        "[{0}' = 0, i', j'=ij_end-1, g0', l0', l1'] -> [{0} = 1, l0, l1, g0] : "
+        "ij_start <= i' <= {1} "  # constrain i
+        "and ij_end >= {2} "  # constrain ij_end
+        "and g0 = g0' "  # within a single group
+        "and {3} and {4} "  # conc iname bounds
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            max_non_last_i_val,
+            ij_end_val,
+            conc_iname_bound_str,
+            conc_iname_bound_str_p,
+            ))
     wanted_pairs = ensure_dim_names_match_and_align(wanted_pairs, sio_lconc)
 
     assert wanted_pairs.is_subset(sio_lconc)
@@ -877,12 +900,19 @@ def test_sios_and_schedules_with_barriers():
     # should NOT be a barrier between the last instance of statement j1
     # and statement 2:
     unwanted_pairs = _isl_map_with_marked_dims(
-        "[p1,p2] -> {{"
-        "[{0}' = 0, i', j'=p1-1, g0', l0', l1'] -> [{0} = 1, l0, l1, g0] : "
-        "0 <= i' <= {1} and "  # constrain i
-        "p1 >= {2} and "  # constrain p
-        "0<=l0',l1',g0',l0,l1,g0<p2 and g0=g0'"
-        "}}".format(STATEMENT_VAR_NAME, last_i_val, p1_val))
+        "[ij_start, ij_end, lg_end] -> {{"
+        "[{0}' = 0, i', j'=ij_end-1, g0', l0', l1'] -> [{0} = 1, l0, l1, g0] : "
+        "ij_start <= i' <= {1} "  # constrain i
+        "and ij_end >= {2} "  # constrain p
+        "and g0 = g0' "  # within a single group
+        "and {3} and {4} "  # conc iname bounds
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            last_i_val,
+            ij_end_val,
+            conc_iname_bound_str,
+            conc_iname_bound_str_p,
+            ))
     unwanted_pairs = ensure_dim_names_match_and_align(unwanted_pairs, sio_lconc)
 
     assert not unwanted_pairs.is_subset(sio_lconc)
@@ -892,75 +922,93 @@ def test_sios_and_schedules_with_barriers():
     # Create expected maps and compare
 
     sched_before_lconc_exp = isl.Map(
-        "[p2] -> {[%s=0,l0,l1,g0] -> [%s] : 0<=l0,l1,g0<p2}"
+        "[lg_end] -> {[%s=0, l0, l1, g0] -> [%s] : "
+        "%s}"  # iname bounds
         % (
             STATEMENT_VAR_NAME,
             _lex_point_string(
-                ["1", "0", "0", "0", "0"],
+                ["1", "0", "0", "0", "0"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 prefix=BLEX_VAR_PREFIX,
                 ),
+            conc_iname_bound_str,
             )
         )
 
     sched_after_lconc_exp = isl.Map(
-        "[p1,p2] -> {[%s=1,i,j,l0,l1,g0] -> [%s] : 0<=i,j<p1 and 0<=l0,l1,g0<p2}"
+        "[ij_start, ij_end, lg_end] -> {"
+        "[%s=1, i, j, l0, l1, g0] -> [%s] : "
+        "%s and %s}"  # iname bounds
         % (
             STATEMENT_VAR_NAME,
             _lex_point_string(
-                ["2", "i", "0", "0", "0"],
+                ["2", "i", "0", "0", "0"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 prefix=BLEX_VAR_PREFIX,
                 ),
+            iname_bound_str,
+            conc_iname_bound_str,
             )
         )
 
     sio_lconc_exp = _isl_map_with_marked_dims(
-        "[p1,p2] -> {{ "
-        "[{0}'=0,l0',l1',g0'] -> [{0}=1,i,j,l0,l1,g0] : "
-        "1 <= i < p1 and 0 <= j < p1 "  # not first iteration of i
+        "[ij_start, ij_end, lg_end] -> {{ "
+        "[{0}'=0, l0', l1', g0'] -> [{0}=1, i, j, l0, l1, g0] : "
+        "ij_start + 1 <= i < ij_end "  # not first iteration of i
         "and g0 = g0' "  # within a single group
-        "and {1} and {2}"  # conc iname bounds
+        "and {1} and {2} and {3} "  # iname bounds
+        "and {4}"  # param assumptions
         "}}".format(
             STATEMENT_VAR_NAME,
+            iname_bound_str,
             conc_iname_bound_str,
             conc_iname_bound_str_p,
+            assumptions,
             )
         )
 
     sched_before_gconc_exp = isl.Map(
-        "[p2] -> {[%s=0,l0,l1,g0] -> [%s] : 0<=l0,l1,g0<p2}"
+        "[lg_end] -> {[%s=0, l0, l1, g0] -> [%s] : "
+        "%s}"  # iname bounds
         % (
             STATEMENT_VAR_NAME,
             _lex_point_string(
-                ["0", "0", "0"],
+                ["0", "0", "0"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 prefix=BLEX_VAR_PREFIX,
                 ),
+            conc_iname_bound_str,
             )
         )
 
     sched_after_gconc_exp = isl.Map(
-        "[p1,p2] -> {[%s=1,i,j,l0,l1,g0] -> [%s] : 0<=i,j<p1 and 0<=l0,l1,g0<p2}"
+        "[ij_start, ij_end, lg_end] -> {"
+        "[%s=1, i, j, l0, l1, g0] -> [%s] : "
+        "%s and %s}"  # iname bounds
         % (
             STATEMENT_VAR_NAME,
             _lex_point_string(
-                ["1", "i", "0"],
+                ["1", "i", "0"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 prefix=BLEX_VAR_PREFIX,
                 ),
+            iname_bound_str,
+            conc_iname_bound_str,
             )
         )
 
     sio_gconc_exp = _isl_map_with_marked_dims(
-        "[p1,p2] -> {{ "
-        "[{0}'=0,l0',l1',g0'] -> [{0}=1,i,j,l0,l1,g0] : "
-        "1 <= i < p1 and 0 <= j < p1 "  # not first iteration of i
-        "and {1} and {2}"  # conc iname bounds
+        "[ij_start, ij_end, lg_end] -> {{ "
+        "[{0}'=0, l0', l1', g0'] -> [{0}=1, i, j, l0, l1, g0] : "
+        "ij_start + 1 <= i < ij_end "  # not first iteration of i
+        "and {1} and {2} and {3} "  # iname bounds
+        "and {4}"  # param assumptions
         "}}".format(
             STATEMENT_VAR_NAME,
+            iname_bound_str,
             conc_iname_bound_str,
             conc_iname_bound_str_p,
+            assumptions,
             )
         )
 
