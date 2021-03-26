@@ -384,8 +384,9 @@ def generate_pairwise_schedules(
                 # Don't increment blex dim val
 
             elif isinstance(lin_item, Barrier):
-                # Increment blex dim val
-                next_blex_pt[-1] += 1
+                # Increment blex dim val if the sync scope matches
+                if lin_item.synchronization_kind == sync_kind:
+                    next_blex_pt[-1] += 1
 
             else:
                 from loopy.schedule import (CallKernel, ReturnFromKernel)
