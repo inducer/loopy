@@ -253,14 +253,6 @@ def partition_inames_by_concurrency(knl):
     return conc_inames, all_inames-conc_inames
 
 
-def get_insn_id_from_linearization_item(linearization_item):
-    from loopy.schedule import Barrier
-    if isinstance(linearization_item, Barrier):
-        return linearization_item.originating_insn_id
-    else:
-        return linearization_item.insn_id
-
-
 def get_EnterLoop_inames(linearization_items):
     from loopy.schedule import EnterLoop
 
