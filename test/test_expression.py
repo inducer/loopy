@@ -537,6 +537,23 @@ def test_complex_support(ctx_factory, target):
     np.testing.assert_allclose(out["tmp_sum"], (0.5*n*(n-1) + 0.5*n*(n-1)*1j) ** 2)
 
 
+def test_bool_type_context(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        k = 8.0 and 7.0
+        """,
+        [
+            lp.GlobalArg("k", dtype=np.bool8, shape=lp.auto),
+        ])
+
+    evt, (out,) = knl(queue)
+    assert out.get() == np.logical_and(7.0, 8.0)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
