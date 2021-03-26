@@ -206,6 +206,8 @@ def generate_pairwise_schedules(
         each of the two statements.
     """
     # TODO update docs now that we're returning SIOs
+    # TODO rename loops_to_ignore to loops_to_ignore_for_intra_thread_stuff...
+    # TODO handle 'vec' appropriately; then remove loops_to_ignore?
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
     from loopy.kernel.data import (LocalIndexTag, GroupIndexTag)
@@ -222,22 +224,30 @@ def generate_pairwise_schedules(
 
     all_insn_ids = set().union(*insn_id_pairs)
 
-    # First, use one pass through lin_items to generate a lexicographic
-    # ordering describing the relative order of *all* statements represented by
-    # all_insn_ids
+    # First, use one pass through lin_items to generate an *intra-work-item*
+    # lexicographic ordering describing the relative order of all statements
+    # represented by all_insn_ids
 
     # For each statement, map the insn_id to a tuple representing points
-    # in the lexicographic ordering containing items of :class:`int` or
-    # :class:`str` :mod:`loopy` inames.
+    # in the intra-group lexicographic ordering containing items of :class:`int` or
+    # :class:`str` :mod:`loopy` inames
     stmt_inst_to_lex = {}
 
     # Keep track of the next tuple of points in our lexicographic
     # ordering, initially this as a 1-d point with value 0
     next_insn_lex_tuple = [0]
 
+    # While we're passing through, determine which loops contain barriers,
+    # this information will be used later when creating *intra-group* and
+    # *global* lexicographic orderings
+    loops_with_barriers = {"local": set(), "global": set()}
+    current_inames = set()
+
     for lin_item in lin_items:
         if isinstance(lin_item, EnterLoop):
             iname = lin_item.iname
+            current_inames.add(iname)
+
             if iname in loops_to_ignore:
                 continue
 
@@ -254,7 +264,10 @@ def generate_pairwise_schedules(
             next_insn_lex_tuple.append(0)
 
         elif isinstance(lin_item, LeaveLoop):
-            if lin_item.iname in loops_to_ignore:
+            iname = lin_item.iname
+            current_inames.remove(iname)
+
+            if iname in loops_to_ignore:
                 continue
 
             # Upon leaving a loop,
@@ -271,15 +284,22 @@ def generate_pairwise_schedules(
             # in the simplification step below)
             next_insn_lex_tuple[-1] += 1
 
-        elif isinstance(lin_item, (RunInstruction, Barrier)):
-            from loopy.schedule.checker.utils import (
-                get_insn_id_from_linearization_item,
-            )
-            lp_insn_id = get_insn_id_from_linearization_item(lin_item)
+        elif isinstance(lin_item, RunInstruction):
+            lp_insn_id = lin_item.insn_id
+
+            # Only process listed insns, otherwise ignore
+            if lp_insn_id in all_insn_ids:
+                # Add item to stmt_inst_to_lex
+                stmt_inst_to_lex[lp_insn_id] = tuple(next_insn_lex_tuple)
+
+                # Increment lex dim val enumerating items in current section of code
+                next_insn_lex_tuple[-1] += 1
+
+        elif isinstance(lin_item, Barrier):
+            lp_insn_id = lin_item.originating_insn_id
+            loops_with_barriers[lin_item.synchronization_kind] |= current_inames
 
             if lp_insn_id is None:
-                assert isinstance(lin_item, Barrier)
-
                 # Barriers without insn ids were inserted as a result of a
                 # dependency. They don't themselves have dependencies. Ignore them.
 
@@ -289,7 +309,7 @@ def generate_pairwise_schedules(
 
                 continue
 
-            # Only process listed insns, otherwise ignore
+            # If barrier was identified in listed insns, process it
             if lp_insn_id in all_insn_ids:
                 # Add item to stmt_inst_to_lex
                 stmt_inst_to_lex[lp_insn_id] = tuple(next_insn_lex_tuple)
@@ -304,54 +324,39 @@ def generate_pairwise_schedules(
                 lin_item, (CallKernel, ReturnFromKernel))
             pass
 
-        # To save time, stop when we've found all statements
-        if len(stmt_inst_to_lex.keys()) == len(all_insn_ids):
-            # TODO if combining blex map creation with this pass, cannot stop early
-            break
+    # {{{ Create blex dim names representing parallel axes
 
-    # Get dim names representing local/group axes for this kernel,
-    # and get the dictionary that will be used later to create a
-    # constraint requiring {par inames == par axes} in sched
+    # Create blex dim names representing lid/gid axes, and create the dicts
+    # that will be used later to create map constraints that match each
+    # parallel iname to the corresponding blex dim name in schedules,
+    # i.e., i = lid0, j = lid1, etc.
     lid_lex_dim_names = set()
     gid_lex_dim_names = set()
     par_iname_constraint_dicts = []
     for iname in knl.all_inames():
         ltag = knl.iname_tags_of_type(iname, LocalIndexTag)
         if ltag:
-            # assert len(ltag) == 1  # (should always be true)
+            assert len(ltag) == 1  # (should always be true)
             ltag_var = LTAG_VAR_NAMES[ltag.pop().axis]
             lid_lex_dim_names.add(ltag_var)
-            # Represent constraint 'iname = ltag_var' in par_iname_constraint_dicts:
             par_iname_constraint_dicts.append({1: 0, iname: 1, ltag_var: -1})
-            continue
+
+            continue  # shouldn't be any GroupIndexTags
+
         gtag = knl.iname_tags_of_type(iname, GroupIndexTag)
         if gtag:
-            # assert len(gtag) == 1  # (should always be true)
+            assert len(gtag) == 1  # (should always be true)
             gtag_var = GTAG_VAR_NAMES[gtag.pop().axis]
             gid_lex_dim_names.add(gtag_var)
-            # Represent constraint 'iname = gtag_var' in par_iname_constraint_dicts:
             par_iname_constraint_dicts.append({1: 0, iname: 1, gtag_var: -1})
-            continue
+
+    # Sort for consistent dimension ordering
     lid_lex_dim_names = sorted(lid_lex_dim_names)
     gid_lex_dim_names = sorted(gid_lex_dim_names)
 
-    # {{{  Create blex ordering (may later be combined with pass above)
-
-    # {{{ Determine which loops contain barriers
-
-    loops_with_barriers = {"local": set(), "global": set()}
-    current_inames = set()
-
-    for lin_item in lin_items:
-        if isinstance(lin_item, EnterLoop):
-            current_inames.add(lin_item.iname)
-        elif isinstance(lin_item, LeaveLoop):
-            current_inames.remove(lin_item.iname)
-        elif isinstance(lin_item, Barrier):
-            loops_with_barriers[lin_item.synchronization_kind] |= current_inames
-            # At this point we could technically skip ahead to next enterloop
-
     # }}}
+
+    # {{{  Create blex ordering (may later be combined with pass above)
 
     # {{{ Get upper and lower bound for each loop that contains a barrier
     # (Could try to combine this with pass below but would make things messy)
