@@ -697,7 +697,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
 
 # {{{ SIOs and schedules with barriers
 
-def test_sios_and_schedules_with_lbarriers():
+def test_sios_and_schedules_with_barriers():
     from loopy.schedule.checker import (
         get_schedules_for_statement_pairs,
     )
@@ -718,6 +718,7 @@ def test_sios_and_schedules_with_lbarriers():
                     for i
                         <>tempi0 = 0  {id=i0,dep=1}
                         ... lbarrier {id=ib0,dep=i0}
+                        ... gbarrier {id=ibb0,dep=i0}
                         <>tempi1 = 0  {id=i1,dep=ib0}
                         <>tempi2 = 0  {id=i2,dep=i1}
                         for j
@@ -795,11 +796,52 @@ def test_sios_and_schedules_with_lbarriers():
             )
         )
 
+    sched_before_gconc_exp = isl.Map(
+        "[p1,p2] -> {[%s=0,i,j,l0,l1,g0] -> [%s] : 0<=i,j<p1 and %s}"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(
+                ["1", "i", "1"],
+                lid_inames=["l0", "l1"], gid_inames=["g0"],
+                prefix=BLEX_VAR_PREFIX,
+                ),
+            conc_iname_bound_str,
+            )
+        )
+
+    sched_after_gconc_exp = isl.Map(
+        "[p2] -> {[%s=1,l0,l1,g0] -> [%s] : %s}"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(
+                ["2", "0", "0"],
+                lid_inames=["l0", "l1"], gid_inames=["g0"],
+                prefix=BLEX_VAR_PREFIX,
+                ),
+            conc_iname_bound_str,
+            )
+        )
+
+    sio_gconc_exp = _isl_map_with_marked_dims(
+        "[p1,p2] -> {{ "
+        "[{0}'=0,i',j',l0',l1',g0'] -> [{0}=1,l0,l1,g0] : "
+        "0 <= i' < p1-1 and 0 <= j' < p1 "  # not last iteration of j
+        "and {1} and {2}"  # conc iname bounds
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            conc_iname_bound_str,
+            conc_iname_bound_str_p,
+            )
+        )
+
     _check_sio_for_stmt_pair(
         "j1", "2", scheds,
         sio_lconc_exp=sio_lconc_exp,
         sched_before_lconc_exp=sched_before_lconc_exp,
         sched_after_lconc_exp=sched_after_lconc_exp,
+        sio_gconc_exp=sio_gconc_exp,
+        sched_before_gconc_exp=sched_before_gconc_exp,
+        sched_after_gconc_exp=sched_after_gconc_exp,
         )
 
     # Check for some key example pairs in the sio_lconc map
@@ -886,11 +928,50 @@ def test_sios_and_schedules_with_lbarriers():
             )
         )
 
+    sched_before_gconc_exp = isl.Map(
+        "[p2] -> {[%s=0,l0,l1,g0] -> [%s] : 0<=l0,l1,g0<p2}"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(
+                ["0", "0", "0"],
+                lid_inames=["l0", "l1"], gid_inames=["g0"],
+                prefix=BLEX_VAR_PREFIX,
+                ),
+            )
+        )
+
+    sched_after_gconc_exp = isl.Map(
+        "[p1,p2] -> {[%s=1,i,j,l0,l1,g0] -> [%s] : 0<=i,j<p1 and 0<=l0,l1,g0<p2}"
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(
+                ["1", "i", "0"],
+                lid_inames=["l0", "l1"], gid_inames=["g0"],
+                prefix=BLEX_VAR_PREFIX,
+                ),
+            )
+        )
+
+    sio_gconc_exp = _isl_map_with_marked_dims(
+        "[p1,p2] -> {{ "
+        "[{0}'=0,l0',l1',g0'] -> [{0}=1,i,j,l0,l1,g0] : "
+        "1 <= i < p1 and 0 <= j < p1 "  # not first iteration of i
+        "and {1} and {2}"  # conc iname bounds
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            conc_iname_bound_str,
+            conc_iname_bound_str_p,
+            )
+        )
+
     _check_sio_for_stmt_pair(
         "1", "i0", scheds,
         sio_lconc_exp=sio_lconc_exp,
         sched_before_lconc_exp=sched_before_lconc_exp,
         sched_after_lconc_exp=sched_after_lconc_exp,
+        sio_gconc_exp=sio_gconc_exp,
+        sched_before_gconc_exp=sched_before_gconc_exp,
+        sched_after_gconc_exp=sched_after_gconc_exp,
         )
 
 # }}}
