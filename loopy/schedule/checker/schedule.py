@@ -45,7 +45,6 @@ __doc__ = """
 
 LIN_CHECK_IDENTIFIER_PREFIX = "_lp_linchk_"
 LEX_VAR_PREFIX = "%slex" % (LIN_CHECK_IDENTIFIER_PREFIX)
-BLEX_VAR_PREFIX = "%sblex" % (LIN_CHECK_IDENTIFIER_PREFIX)
 STATEMENT_VAR_NAME = "%sstmt" % (LIN_CHECK_IDENTIFIER_PREFIX)
 BEFORE_MARK = "'"
 GTAG_VAR_NAMES = []
@@ -441,7 +440,7 @@ def generate_pairwise_schedules(
 
         # Create names for the blex dimensions for sequential loops
         seq_blex_dim_names = [
-            BLEX_VAR_PREFIX+str(i) for i in range(n_seq_blex_dims)]
+            LEX_VAR_PREFIX+str(i) for i in range(n_seq_blex_dims)]
         seq_blex_dim_names_prime = append_marker_to_strings(
             seq_blex_dim_names, marker=BEFORE_MARK)
 

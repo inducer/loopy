@@ -38,7 +38,6 @@ from loopy import (
 )
 from loopy.schedule.checker.schedule import (
     LEX_VAR_PREFIX,
-    BLEX_VAR_PREFIX,
     STATEMENT_VAR_NAME,
     LTAG_VAR_NAMES,
     GTAG_VAR_NAMES,
@@ -66,13 +65,13 @@ def _align_and_compare_maps(maps):
         assert map1_aligned == map2
 
 
-def _lex_point_string(dim_vals, lid_inames=[], gid_inames=[], prefix=LEX_VAR_PREFIX):
+def _lex_point_string(dim_vals, lid_inames=[], gid_inames=[]):
     # Return a string describing a point in a lex space
     # by assigning values to lex dimension variables
     # (used to create maps below)
 
     return ", ".join(
-        ["%s%d=%s" % (prefix, idx, str(val))
+        ["%s%d=%s" % (LEX_VAR_PREFIX, idx, str(val))
         for idx, val in enumerate(dim_vals)] +
         ["%s=%s" % (LTAG_VAR_NAMES[idx], iname)
         for idx, iname in enumerate(lid_inames)] +
@@ -768,7 +767,6 @@ def test_sios_and_schedules_with_barriers():
             _lex_point_string(
                 ["2", "i", "2", "j", "1"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
-                prefix=BLEX_VAR_PREFIX,
                 ),
             iname_bound_str,
             conc_iname_bound_str,
@@ -782,7 +780,6 @@ def test_sios_and_schedules_with_barriers():
             _lex_point_string(
                 ["3", "0", "0", "0", "0"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
-                prefix=BLEX_VAR_PREFIX,
                 ),
             conc_iname_bound_str,
             )
@@ -814,7 +811,6 @@ def test_sios_and_schedules_with_barriers():
             _lex_point_string(
                 ["1", "i", "1"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
-                prefix=BLEX_VAR_PREFIX,
                 ),
             iname_bound_str,
             conc_iname_bound_str,
@@ -829,7 +825,6 @@ def test_sios_and_schedules_with_barriers():
             _lex_point_string(
                 ["2", "0", "0"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
-                prefix=BLEX_VAR_PREFIX,
                 ),
             conc_iname_bound_str,
             )
@@ -929,7 +924,6 @@ def test_sios_and_schedules_with_barriers():
             _lex_point_string(
                 ["1", "0", "0", "0", "0"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
-                prefix=BLEX_VAR_PREFIX,
                 ),
             conc_iname_bound_str,
             )
@@ -944,7 +938,6 @@ def test_sios_and_schedules_with_barriers():
             _lex_point_string(
                 ["2", "i", "0", "0", "0"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
-                prefix=BLEX_VAR_PREFIX,
                 ),
             iname_bound_str,
             conc_iname_bound_str,
@@ -975,7 +968,6 @@ def test_sios_and_schedules_with_barriers():
             _lex_point_string(
                 ["0", "0", "0"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
-                prefix=BLEX_VAR_PREFIX,
                 ),
             conc_iname_bound_str,
             )
@@ -990,7 +982,6 @@ def test_sios_and_schedules_with_barriers():
             _lex_point_string(
                 ["1", "i", "0"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
-                prefix=BLEX_VAR_PREFIX,
                 ),
             iname_bound_str,
             conc_iname_bound_str,
