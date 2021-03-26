@@ -100,8 +100,8 @@ def test_pairwise_schedule_creation():
     )
 
     # Example kernel
-    # insn_c depends on insn_b only to create deterministic order
-    # insn_d depends on insn_c only to create deterministic order
+    # stmt_c depends on stmt_b only to create deterministic order
+    # stmt_d depends on stmt_c only to create deterministic order
     knl = lp.make_kernel(
         [
             "{[i]: 0<=i<pi}",
@@ -112,15 +112,15 @@ def test_pairwise_schedule_creation():
         """
         for i
             for k
-                <>temp = b[i,k]  {id=insn_a}
+                <>temp = b[i,k]  {id=stmt_a}
             end
             for j
-                a[i,j] = temp + 1  {id=insn_b,dep=insn_a}
-                c[i,j] = d[i,j]  {id=insn_c,dep=insn_b}
+                a[i,j] = temp + 1  {id=stmt_b,dep=stmt_a}
+                c[i,j] = d[i,j]  {id=stmt_c,dep=stmt_b}
             end
         end
         for t
-            e[t] = f[t]  {id=insn_d, dep=insn_c}
+            e[t] = f[t]  {id=stmt_d, dep=stmt_c}
         end
         """,
         name="example",
@@ -138,12 +138,12 @@ def test_pairwise_schedule_creation():
     linearization_items = lin_knl.linearization
 
     insn_id_pairs = [
-        ("insn_a", "insn_b"),
-        ("insn_a", "insn_c"),
-        ("insn_a", "insn_d"),
-        ("insn_b", "insn_c"),
-        ("insn_b", "insn_d"),
-        ("insn_c", "insn_d"),
+        ("stmt_a", "stmt_b"),
+        ("stmt_a", "stmt_c"),
+        ("stmt_a", "stmt_d"),
+        ("stmt_b", "stmt_c"),
+        ("stmt_b", "stmt_d"),
+        ("stmt_c", "stmt_d"),
         ]
     scheds = get_schedules_for_statement_pairs(
         lin_knl,
@@ -152,7 +152,7 @@ def test_pairwise_schedule_creation():
         return_schedules=True,  # include schedules for testing
         )
 
-    # Relationship between insn_a and insn_b ---------------------------------------
+    # Relationship between stmt_a and stmt_b ---------------------------------------
 
     # Create expected maps and compare
 
@@ -173,13 +173,13 @@ def test_pairwise_schedule_creation():
         )
 
     _check_sio_for_stmt_pair(
-        "insn_a", "insn_b", scheds,
+        "stmt_a", "stmt_b", scheds,
         sched_before_seq_exp=sched_before_seq_exp,
         sched_after_seq_exp=sched_after_seq_exp,
         )
 
     # ------------------------------------------------------------------------------
-    # Relationship between insn_a and insn_c ---------------------------------------
+    # Relationship between stmt_a and stmt_c ---------------------------------------
 
     # Create expected maps and compare
 
@@ -200,13 +200,13 @@ def test_pairwise_schedule_creation():
         )
 
     _check_sio_for_stmt_pair(
-        "insn_a", "insn_c", scheds,
+        "stmt_a", "stmt_c", scheds,
         sched_before_seq_exp=sched_before_seq_exp,
         sched_after_seq_exp=sched_after_seq_exp,
         )
 
     # ------------------------------------------------------------------------------
-    # Relationship between insn_a and insn_d ---------------------------------------
+    # Relationship between stmt_a and stmt_d ---------------------------------------
 
     # Create expected maps and compare
 
@@ -227,13 +227,13 @@ def test_pairwise_schedule_creation():
         )
 
     _check_sio_for_stmt_pair(
-        "insn_a", "insn_d", scheds,
+        "stmt_a", "stmt_d", scheds,
         sched_before_seq_exp=sched_before_seq_exp,
         sched_after_seq_exp=sched_after_seq_exp,
         )
 
     # ------------------------------------------------------------------------------
-    # Relationship between insn_b and insn_c ---------------------------------------
+    # Relationship between stmt_b and stmt_c ---------------------------------------
 
     # Create expected maps and compare
 
@@ -254,13 +254,13 @@ def test_pairwise_schedule_creation():
         )
 
     _check_sio_for_stmt_pair(
-        "insn_b", "insn_c", scheds,
+        "stmt_b", "stmt_c", scheds,
         sched_before_seq_exp=sched_before_seq_exp,
         sched_after_seq_exp=sched_after_seq_exp,
         )
 
     # ------------------------------------------------------------------------------
-    # Relationship between insn_b and insn_d ---------------------------------------
+    # Relationship between stmt_b and stmt_d ---------------------------------------
 
     # Create expected maps and compare
 
@@ -281,13 +281,13 @@ def test_pairwise_schedule_creation():
         )
 
     _check_sio_for_stmt_pair(
-        "insn_b", "insn_d", scheds,
+        "stmt_b", "stmt_d", scheds,
         sched_before_seq_exp=sched_before_seq_exp,
         sched_after_seq_exp=sched_after_seq_exp,
         )
 
     # ------------------------------------------------------------------------------
-    # Relationship between insn_c and insn_d ---------------------------------------
+    # Relationship between stmt_c and stmt_d ---------------------------------------
 
     # Create expected maps and compare
 
@@ -308,7 +308,7 @@ def test_pairwise_schedule_creation():
         )
 
     _check_sio_for_stmt_pair(
-        "insn_c", "insn_d", scheds,
+        "stmt_c", "stmt_d", scheds,
         sched_before_seq_exp=sched_before_seq_exp,
         sched_after_seq_exp=sched_after_seq_exp,
         )
