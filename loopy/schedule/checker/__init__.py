@@ -61,35 +61,30 @@ def get_schedules_for_statement_pairs(
         >>> import numpy as np
         >>> # Make kernel -----------------------------------------------------------
         >>> knl = lp.make_kernel(
-        ...     "{[i,j,k]: 0<=i<pi and 0<=j<pj and 0<=k<pk}",
+        ...     "{[j,k]: 0<=j<pj and 0<=k<pk}",
         ...     [
-        ...         "a[i,j] = j  {id=insn_a}",
-        ...         "b[i,k] = k+a[i,0]  {id=insn_b,dep=insn_a}",
+        ...         "a[j] = j  {id=insn_a}",
+        ...         "b[k] = k+a[0]  {id=insn_b,dep=insn_a}",
         ...     ])
         >>> knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
-        >>> knl = lp.prioritize_loops(knl, "i,j")
-        >>> knl = lp.prioritize_loops(knl, "i,k")
         >>> # Get a linearization
         >>> knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
         >>> # Get a pairwise schedule -----------------------------------------------
         >>> from loopy.schedule.checker import get_schedules_for_statement_pairs
         >>> # Get two maps ----------------------------------------------------------
-        >>> schedules = get_schedules_for_statement_pairs(
+        >>> sio_dict = get_schedules_for_statement_pairs(
         ...     knl,
         ...     knl.linearization,
         ...     [("insn_a", "insn_b")],
         ...     )
-        >>> # Print maps
+        >>> # Print map
         >>> print("\n".join(
         ...     str(m).replace("{ ", "{\n").replace(" :", "\n:")
-        ...     for m in schedules[("insn_a", "insn_b")][0]
+        ...     for m in sio_dict[("insn_a", "insn_b")][0]
         ...     ))
         [pi, pj, pk] -> {
-        [_lp_linchk_stmt = 0, i, j, k] -> [_lp_linchk_lex0 = i, _lp_linchk_lex1 = 0]
-        : 0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
-        [pi, pj, pk] -> {
-        [_lp_linchk_stmt = 1, i, j, k] -> [_lp_linchk_lex0 = i, _lp_linchk_lex1 = 1]
-        : 0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
+        [_lp_linchk_stmt' = 0, j', k'] -> [_lp_linchk_stmt = 1, j, k]
+        : 0 <= j < pj and 0 <= k < pk and 0 <= j' < pj and 0 <= k' < pk }
 
     """
     # TODO update docs and docstring now that we're returning SIOs
