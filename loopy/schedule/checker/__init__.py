@@ -78,16 +78,14 @@ def get_schedules_for_statement_pairs(
         ...     [("insn_a", "insn_b")],
         ...     )
         >>> # Print map
-        >>> print("\n".join(
-        ...     str(m).replace("{ ", "{\n").replace(" :", "\n:")
-        ...     for m in sio_dict[("insn_a", "insn_b")][0]
-        ...     ))
+        >>> print(str(sio_dict[("insn_a", "insn_b")][0]
+        ...     ).replace("{ ", "{\n").replace(" :", "\n:"))
         [pi, pj, pk] -> {
         [_lp_linchk_stmt' = 0, j', k'] -> [_lp_linchk_stmt = 1, j, k]
         : 0 <= j < pj and 0 <= k < pk and 0 <= j' < pj and 0 <= k' < pk }
 
     """
-    # TODO update docs and docstring now that we're returning SIOs
+    # TODO update docs and doctest now that we're returning SIOs
 
     # {{{ make sure kernel has been preprocessed
 
