@@ -418,7 +418,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 return Literal(repr(np.float32(expr))+"f")
             elif type_context == "d":
                 return Literal(repr(float(expr)))
-            elif type_context == "i":
+            elif type_context in ["i", "b"]:
                 return int(expr)
             else:
                 if is_integer(expr):
