@@ -82,7 +82,7 @@ def get_schedules_for_statement_pairs(
         ...     ).replace("{ ", "{\n").replace(" :", "\n:"))
         [pi, pj, pk] -> {
         [_lp_linchk_stmt' = 0, j', k'] -> [_lp_linchk_stmt = 1, j, k]
-        : 0 <= j < pj and 0 <= k < pk and 0 <= j' < pj and 0 <= k' < pk }
+        : 0 <= j' < pj and 0 <= k' < pk and 0 <= j < pj and 0 <= k < pk }
 
     """
     # TODO update docs and doctest now that we're returning SIOs
