@@ -80,7 +80,7 @@ def get_schedules_for_statement_pairs(
         >>> # Print map
         >>> print(str(sio_dict[("insn_a", "insn_b")][0]
         ...     ).replace("{ ", "{\n").replace(" :", "\n:"))
-        [pi, pj, pk] -> {
+        [pj, pk] -> {
         [_lp_linchk_stmt' = 0, j', k'] -> [_lp_linchk_stmt = 1, j, k]
         : 0 <= j' < pj and 0 <= k' < pk and 0 <= j < pj and 0 <= k < pk }
 
