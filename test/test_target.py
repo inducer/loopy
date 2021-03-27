@@ -416,6 +416,24 @@ def test_opencl_support_for_bool(ctx_factory):
     np.testing.assert_equal(out, np.tile(np.array([0, 1], dtype=np.bool8), 5))
 
 
+def test_nan_support(ctx_factory):
+    from loopy.symbolic import parse
+    ctx = ctx_factory()
+    knl = lp.make_kernel(
+        "{:}",
+        [lp.Assignment(parse("a"), np.nan),
+         lp.Assignment(parse("b"), parse("isnan(a)")),
+         lp.Assignment(parse("c"), parse("isnan(3.14)"))],
+        seq_dependencies=True)
+
+    knl = lp.set_options(knl, "return_dict")
+
+    evt, out_dict = knl(cl.CommandQueue(ctx))
+    assert np.isnan(out_dict["a"].get())
+    assert out_dict["b"] == 1
+    assert out_dict["c"] == 0
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

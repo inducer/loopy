@@ -390,6 +390,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             iota = p.Variable("I" if "I" not in self.kernel.all_variable_names()
                     else "_Complex_I")
             return real + imag*iota
+        elif np.isnan(expr):
+            return p.Variable("NAN")
         elif isinstance(expr, np.generic):
             # Explicitly typed: Generated code must reflect type exactly.
 
@@ -422,7 +424,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 return Literal(repr(np.float32(expr))+"f")
             elif type_context == "d":
                 return Literal(repr(float(expr)))
-            elif type_context == "i":
+            elif type_context in ["i", "b"]:
                 return int(expr)
             else:
                 if is_integer(expr):

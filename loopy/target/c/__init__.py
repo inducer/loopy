@@ -559,6 +559,27 @@ class CMathCallable(ScalarCallable):
                         arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
                     callables_table)
 
+        elif name == "isnan":
+            for id in arg_id_to_dtype:
+                if not -1 <= id <= 0:
+                    raise LoopyError(f"'{name}' can take only one argument.")
+
+            if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
+                # the types provided aren't mature enough to specialize the
+                # callable
+                return (
+                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        callables_table)
+
+            dtype = arg_id_to_dtype[0].numpy_dtype
+            return (
+                    self.copy(
+                        name_in_target=name,
+                        arg_id_to_dtype={
+                            0: NumpyType(dtype),
+                            -1: NumpyType(np.int32)}),
+                    callables_table)
+
 
 def get_c_callables():
     """
@@ -566,9 +587,9 @@ def get_c_callables():
     represented by :arg:`identifier` is known in C, otherwise returns *None*.
     """
     cmath_ids = ["abs", "acos", "asin", "atan", "cos", "cosh", "sin",
-                      "sinh", "pow", "atan2", "tanh", "exp", "log", "log10",
-                      "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
-                      "fabs", "tan", "erf", "erfc"]
+                 "sinh", "pow", "atan2", "tanh", "exp", "log", "log10",
+                 "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
+                 "fabs", "tan", "erf", "erfc", "isnan"]
 
     return {id_: CMathCallable(id_) for id_ in cmath_ids}
 
