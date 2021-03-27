@@ -139,7 +139,7 @@ def create_legacy_dependency_constraint(
     from loopy.schedule.checker.utils import (
         make_islvars_with_marker,
         append_apostrophes,
-        add_dims_to_isl_set,
+        insert_and_name_isl_dims,
         reorder_dims_by_name,
         append_marker_to_isl_map_var_names,
         sorted_union_of_names_in_isl_sets,
@@ -277,12 +277,12 @@ def create_legacy_dependency_constraint(
     # (anything other than 0 risks being out of bounds)
 
     # add statement variable to doms to enable intersection
-    range_to_intersect = add_dims_to_isl_set(
+    range_to_intersect = insert_and_name_isl_dims(
         dom_after, isl.dim_type.out,
         [STATEMENT_VAR_NAME], statement_var_idx)
     domain_constraint_set = append_marker_to_isl_map_var_names(
         dom_before, isl.dim_type.set, marker="'")
-    domain_to_intersect = add_dims_to_isl_set(
+    domain_to_intersect = insert_and_name_isl_dims(
         domain_constraint_set, isl.dim_type.out,
         [statement_var_name_prime], statement_var_idx)
 
