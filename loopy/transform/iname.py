@@ -226,14 +226,8 @@ def _split_iname_backend(kernel, iname_to_split,
 
     # {{{ return the same kernel if no kernel matches
 
-    def _do_not_transform_if_no_within_matches():
-        for insn in kernel.instructions:
-            if within(kernel, insn):
-                return
-
+    if not any(within(kernel, insn) for insn in kernel.instructions):
         return kernel
-
-    _do_not_transform_if_no_within_matches()
 
     # }}}
 
@@ -513,6 +507,16 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
     :arg within: a stack match as understood by
         :func:`loopy.match.parse_stack_match`.
     """
+
+    from loopy.match import parse_match
+    within = parse_match(within)
+
+    # {{{ return the same kernel if no kernel matches
+
+    if not any(within(kernel, insn) for insn in kernel.instructions):
+        return kernel
+
+    # }}}
 
     # now fastest varying first
     inames = inames[::-1]
