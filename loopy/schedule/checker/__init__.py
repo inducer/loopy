@@ -312,14 +312,8 @@ def check_linearization_validity(
         ):
     # TODO document
 
-    from loopy.schedule.checker.lexicographic_order_map import (
-        get_statement_ordering_map,
-    )
     from loopy.schedule.checker.utils import (
         prettier_map_string,
-    )
-    from loopy.schedule.checker.schedule import (
-        get_lex_order_map_for_sched_space,
     )
 
     # {{{ make sure kernel has been preprocessed
@@ -359,19 +353,9 @@ def check_linearization_validity(
 
         # Get pairwise schedule for stmts involved in the dependency:
         # two isl maps from {statement instance: lex point},
-        isl_sched_map_before, isl_sched_map_after = schedules[
+        # TODO rename these, update comments
+        sio, sio_lpar, sio_gpar = schedules[
             (insn_id_before, insn_id_after)]
-
-        # get map representing lexicographic ordering
-        sched_lex_order_map = get_lex_order_map_for_sched_space(isl_sched_map_before)
-
-        # create statement instance ordering,
-        # maps each statement instance to all statement instances occuring later
-        sio = get_statement_ordering_map(
-            isl_sched_map_before,
-            isl_sched_map_after,
-            sched_lex_order_map,
-            )
 
         # check each dep for this statement pair
         for dependency in dependencies:
@@ -387,19 +371,14 @@ def check_linearization_validity(
             aligned_dep_map = ensure_dim_names_match_and_align(
                 dependency, sio)
 
-            import islpy as isl
             assert aligned_dep_map.space == sio.space
-            assert (
-                aligned_dep_map.space.get_var_names(isl.dim_type.in_)
-                == sio.space.get_var_names(isl.dim_type.in_))
-            assert (
-                aligned_dep_map.space.get_var_names(isl.dim_type.out)
-                == sio.space.get_var_names(isl.dim_type.out))
-            assert (
-                aligned_dep_map.space.get_var_names(isl.dim_type.param)
-                == sio.space.get_var_names(isl.dim_type.param))
+            assert aligned_dep_map.space == sio_lpar.space
+            assert aligned_dep_map.space == sio_gpar.space
+            assert aligned_dep_map.get_var_dict() == sio.get_var_dict()
+            assert aligned_dep_map.get_var_dict() == sio_lpar.get_var_dict()
+            assert aligned_dep_map.get_var_dict() == sio_gpar.get_var_dict()
 
-            if not aligned_dep_map.is_subset(sio):
+            if not aligned_dep_map.is_subset(sio | sio_lpar | sio_gpar):
 
                 linearization_is_valid = False
 

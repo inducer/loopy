@@ -21,6 +21,7 @@ THE SOFTWARE.
 """
 
 import islpy as isl
+from loopy.schedule.checker.schedule import BEFORE_MARK
 
 
 class LegacyDependencyType:
@@ -110,6 +111,7 @@ def create_legacy_dependency_constraint(
         insn_id_after,
         deps,
         nests_outside_map=None,
+        before_marker=BEFORE_MARK,
         ):
     """Create a statement dependency constraint represented as a map from
         each statement instance to statement instances that must occur later,
@@ -236,16 +238,14 @@ def create_legacy_dependency_constraint(
                 inames_list_nest_ordered = [
                     iname for iname in priority_tuple
                     if iname in inames_list]
-                inames_list_nest_ordered_prime = append_apostrophes(
-                    inames_list_nest_ordered)
 
                 from loopy.schedule.checker import (
                     lexicographic_order_map as lom)
 
                 constraint_set = lom.get_lex_order_set(
-                    inames_list_nest_ordered_prime,
                     inames_list_nest_ordered,
                     islvars,
+                    in_dim_marker=before_marker,
                     )
             else:  # priority not known
                 # PRIOR requires upper left quadrant happen before:
