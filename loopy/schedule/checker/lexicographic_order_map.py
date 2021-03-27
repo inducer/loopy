@@ -71,7 +71,11 @@ def get_statement_ordering_map(
         sio, isl.dim_type.in_, before_marker)
 
 
-def get_lex_order_set(before_names, after_names, islvars=None):
+def get_lex_order_set(
+        dim_names,
+        islvars=None,
+        in_dim_marker="'",
+        ):
     """Return an :class:`islpy.Set` representing a lexicographic ordering
         with the number of dimensions provided in `before_names`
         (equal to the number of dimensions in `after_names`).
@@ -109,31 +113,41 @@ def get_lex_order_set(before_names, after_names, islvars=None):
                 or (i0' = i0 and i1' = i1 and i2' < i2)}
 
     """
+    # TODO update doc
+
+    from loopy.schedule.checker.utils import (
+        append_marker_to_strings,
+    )
+
+    in_dim_names = append_marker_to_strings(dim_names, marker=in_dim_marker)
 
     # If no islvars passed, make them using the names provided
+    # (make sure to pass var names in desired order of space dims)
     if islvars is None:
-        islvars = isl.make_zero_and_vars(before_names+after_names, [])
+        islvars = isl.make_zero_and_vars(
+            in_dim_names+dim_names,
+            [])
 
     # Initialize set with constraint i0' < i0
-    lex_order_set = islvars[before_names[0]].lt_set(islvars[after_names[0]])
+    lex_order_set = islvars[in_dim_names[0]].lt_set(islvars[dim_names[0]])
 
     # For each dim d, starting with d=1, equality_conj_set will be constrained
     # by d equalities, e.g., (i0' = i0 and i1' = i1 and ... i(d-1)' = i(d-1)).
     equality_conj_set = islvars[0].eq_set(islvars[0])  # initialize to 'true'
 
-    for i in range(1, len(before_names)):
+    for i in range(1, len(in_dim_names)):
 
         # Add the next equality constraint to equality_conj_set
         equality_conj_set = equality_conj_set & \
-            islvars[before_names[i-1]].eq_set(islvars[after_names[i-1]])
+            islvars[in_dim_names[i-1]].eq_set(islvars[dim_names[i-1]])
 
         # Create a set constrained by adding a less-than constraint for this dim,
         # e.g., (i1' < i1), to the current equality conjunction set.
         # For each dim d, starting with d=1, this full conjunction will have
         # d equalities and one inequality, e.g.,
         # (i0' = i0 and i1' = i1 and ... i(d-1)' = i(d-1) and id' < id)
-        full_conj_set = islvars[before_names[i]].lt_set(
-            islvars[after_names[i]]) & equality_conj_set
+        full_conj_set = islvars[in_dim_names[i]].lt_set(
+            islvars[dim_names[i]]) & equality_conj_set
 
         # Union this new constraint with the current lex_order_set
         lex_order_set = lex_order_set | full_conj_set
@@ -143,8 +157,8 @@ def get_lex_order_set(before_names, after_names, islvars=None):
 
 def create_lex_order_map(
         n_dims=None,
-        before_names=None,
-        after_names=None,
+        dim_names=None,
+        in_dim_marker="'",
         ):
     """Return a map from each point in a lexicographic ordering to every
         point that occurs later in the lexicographic ordering.
@@ -174,25 +188,24 @@ def create_lex_order_map(
                 or (i0' = i0 and i1' = i1 and i2' < i2)}
 
     """
+    # TODO update doc
 
-    if after_names is None:
-        after_names = ["i%s" % (i) for i in range(n_dims)]
-    if before_names is None:
-        from loopy.schedule.checker.utils import (
-            append_marker_to_strings,
-        )
-        before_names = append_marker_to_strings(after_names, marker="'")
+    if dim_names is None:
+        dim_names = ["i%s" % (i) for i in range(n_dims)]
     if n_dims is None:
-        n_dims = len(after_names)
+        n_dims = len(dim_names)
 
-    assert len(before_names) == len(after_names) == n_dims
+    assert len(dim_names) == n_dims
     dim_type = isl.dim_type
 
     # First, get a set representing the lexicographic ordering.
-    lex_order_set = get_lex_order_set(before_names, after_names)
+    lex_order_set = get_lex_order_set(
+        dim_names,
+        in_dim_marker=in_dim_marker,
+        )
 
     # Now convert that set to a map.
     lex_map = isl.Map.from_domain(lex_order_set)
     return lex_map.move_dims(
         dim_type.out, 0, dim_type.in_,
-        len(before_names), len(after_names))
+        n_dims, n_dims)
