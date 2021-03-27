@@ -68,7 +68,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
             elif type_context == "d":
                 # Keepin' the good ideas flowin' since '66.
                 return Literal(repr(float(expr))+"d")
-            elif type_context == "i":
+            elif type_context in ["i", "b"]:
                 return expr
             else:
                 from loopy.tools import is_integer
