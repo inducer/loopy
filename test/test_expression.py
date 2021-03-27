@@ -538,6 +538,8 @@ def test_complex_support(ctx_factory, target):
 
 
 def test_bool_type_context(ctx_factory):
+    # Checks if a boolean type context is correctly handled in codegen phase.
+    # See https://github.com/inducer/loopy/pull/258
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
