@@ -224,18 +224,20 @@ def generate_pairwise_schedules(
 
     all_insn_ids = set().union(*insn_id_pairs)
 
-    # First, use one pass through lin_items to generate an *intra-work-item*
+    # {{{ Intra-thread lex order creation
+
+    # First, use one pass through lin_items to generate an *intra-thread*
     # lexicographic ordering describing the relative order of all statements
     # represented by all_insn_ids
 
     # For each statement, map the insn_id to a tuple representing points
-    # in the intra-group lexicographic ordering containing items of :class:`int` or
+    # in the intra-thread lexicographic ordering containing items of :class:`int` or
     # :class:`str` :mod:`loopy` inames
-    stmt_inst_to_lex = {}
+    stmt_inst_to_lex_intra_thread = {}
 
     # Keep track of the next tuple of points in our lexicographic
     # ordering, initially this as a 1-d point with value 0
-    next_insn_lex_tuple = [0]
+    next_lex_tuple = [0]
 
     # While we're passing through, determine which loops contain barriers,
     # this information will be used later when creating *intra-group* and
@@ -251,17 +253,17 @@ def generate_pairwise_schedules(
             if iname in loops_to_ignore:
                 continue
 
-            # Increment next_insn_lex_tuple[-1] for statements in the section
-            # of code after this EnterLoop.
+            # Increment next_lex_tuple[-1] for statements in the section
+            # of code between this EnterLoop and the matching LeaveLoop.
             # (not technically necessary if no statement was added in the
             # previous section; gratuitous incrementing is counteracted
             # in the simplification step below)
-            next_insn_lex_tuple[-1] += 1
+            next_lex_tuple[-1] += 1
 
-            # Upon entering a loop, add one lex dimension for the loop variable,
+            # Upon entering a loop, add one lex dimension for the loop iteration,
             # add second lex dim to enumerate sections of code within new loop
-            next_insn_lex_tuple.append(iname)
-            next_insn_lex_tuple.append(0)
+            next_lex_tuple.append(iname)
+            next_lex_tuple.append(0)
 
         elif isinstance(lin_item, LeaveLoop):
             iname = lin_item.iname
@@ -270,30 +272,28 @@ def generate_pairwise_schedules(
             if iname in loops_to_ignore:
                 continue
 
-            # Upon leaving a loop,
-            # pop lex dimension for enumerating code sections within this loop, and
-            # pop lex dimension for the loop variable, and
-            # increment lex dim val enumerating items in current section of code
-            next_insn_lex_tuple.pop()
-            next_insn_lex_tuple.pop()
+            # Upon leaving a loop:
+            # - Pop lex dim for enumerating code sections within this loop
+            # - Pop lex dim for the loop iteration
+            # - Increment lex dim val enumerating items in current section of code
+            next_lex_tuple.pop()
+            next_lex_tuple.pop()
+            next_lex_tuple[-1] += 1
 
-            # Increment next_insn_lex_tuple[-1] for statements in the section
-            # of code after this LeaveLoop.
             # (not technically necessary if no statement was added in the
             # previous section; gratuitous incrementing is counteracted
             # in the simplification step below)
-            next_insn_lex_tuple[-1] += 1
 
         elif isinstance(lin_item, RunInstruction):
             lp_insn_id = lin_item.insn_id
 
             # Only process listed insns, otherwise ignore
             if lp_insn_id in all_insn_ids:
-                # Add item to stmt_inst_to_lex
-                stmt_inst_to_lex[lp_insn_id] = tuple(next_insn_lex_tuple)
+                # Add item to stmt_inst_to_lex_intra_thread
+                stmt_inst_to_lex_intra_thread[lp_insn_id] = tuple(next_lex_tuple)
 
                 # Increment lex dim val enumerating items in current section of code
-                next_insn_lex_tuple[-1] += 1
+                next_lex_tuple[-1] += 1
 
         elif isinstance(lin_item, Barrier):
             lp_insn_id = lin_item.originating_insn_id
@@ -311,11 +311,11 @@ def generate_pairwise_schedules(
 
             # If barrier was identified in listed insns, process it
             if lp_insn_id in all_insn_ids:
-                # Add item to stmt_inst_to_lex
-                stmt_inst_to_lex[lp_insn_id] = tuple(next_insn_lex_tuple)
+                # Add item to stmt_inst_to_lex_intra_thread
+                stmt_inst_to_lex_intra_thread[lp_insn_id] = tuple(next_lex_tuple)
 
                 # Increment lex dim val enumerating items in current section of code
-                next_insn_lex_tuple[-1] += 1
+                next_lex_tuple[-1] += 1
 
         else:
             from loopy.schedule import (CallKernel, ReturnFromKernel)
@@ -324,12 +324,14 @@ def generate_pairwise_schedules(
                 lin_item, (CallKernel, ReturnFromKernel))
             pass
 
-    # {{{ Create blex dim names representing parallel axes
+    # }}}
 
-    # Create blex dim names representing lid/gid axes, and create the dicts
-    # that will be used later to create map constraints that match each
-    # parallel iname to the corresponding blex dim name in schedules,
-    # i.e., i = lid0, j = lid1, etc.
+    # {{{ Create lex dim names representing parallel axes
+
+    # Create lex dim names representing lid/gid axes.
+    # At the same time, create the dicts that will be used later to create map
+    # constraints that match each parallel iname to the corresponding lex dim
+    # name in schedules, i.e., i = lid0, j = lid1, etc.
     lid_lex_dim_names = set()
     gid_lex_dim_names = set()
     par_iname_constraint_dicts = []
@@ -341,7 +343,7 @@ def generate_pairwise_schedules(
             lid_lex_dim_names.add(ltag_var)
             par_iname_constraint_dicts.append({1: 0, iname: 1, ltag_var: -1})
 
-            continue  # shouldn't be any GroupIndexTags
+            continue  # Shouldn't be any GroupIndexTags
 
         gtag = knl.iname_tags_of_type(iname, GroupIndexTag)
         if gtag:
@@ -356,71 +358,119 @@ def generate_pairwise_schedules(
 
     # }}}
 
-    # {{{  Create blex ordering (may later be combined with pass above)
+    # {{{ Intra-group and global blex ("barrier-lex") order creation
+
+    # (may be combined with pass above in future)
+
+    # In blex space, we order barrier-delimited sections of code.
+    # Each statement instance within a single barrier-delimited section will
+    # map to the same blex point. The resulting statement instance ordering
+    # will map each statement to all statements that occur in a later
+    # barrier-delimited section.
+
+    # To achieve this, we will first create a map from statement instances to
+    # lexicographic space almost as before, though we will not increment the
+    # fastest-updating lex dim with each statement, and we will increment it
+    # with each barrier encountered. To denote these differences, we refer to
+    # this space as 'blex' space.
+    # The resulting pairwise schedule, if composed with a map defining a
+    # standard lexicographic ordering (SIO), would include a number of unwanted
+    # 'before->after' pairs, so before creating the SIO, we will subtract the
+    # unwanted pairs from the standard lex order map, yielding the 'blex' order
+    # map.
 
     # {{{ Get upper and lower bound for each loop that contains a barrier
-    # (Could try to combine this with pass below but would make things messy)
 
     iname_bounds_pwaff = {}
     for iname in loops_with_barriers["local"] | loops_with_barriers["global"]:
-        # Get first and last vals for this iname
         bounds = knl.get_iname_bounds(iname)
         iname_bounds_pwaff[iname] = (
             bounds.lower_bound_pw_aff, bounds.upper_bound_pw_aff)
 
     # }}}
 
-    conc_lex_dim_names = lid_lex_dim_names + gid_lex_dim_names
+    all_par_lex_dim_names = lid_lex_dim_names + gid_lex_dim_names
 
-    def _collect_blex_ordering_info(sync_kind):
+    # {{{ _gather_blex_ordering_info()
 
-        # {{{ Construct blueprint for creating blex space and orderings
+    def _gather_blex_ordering_info(sync_kind):
+        # For the given sync_kind ("local" or "global"), create a mapping from
+        # statement instances to blex space (dict), as well as a mapping
+        # defining the blex ordering (isl map from blex space -> blex space)
 
-        stmt_inst_to_blex = {}  # map stmt instances to blex space
-        iname_to_blex_dim = {}  # map from inames to corresponding blex space dim
-        blex_exclusion_info = {}  # info for creating maps to exclude from blex order
-        blex_map_params = set()  # params needed in blex map
-        n_seq_blex_dims = 1  # num dims representing sequential order in blex space
-        next_blex_pt = [0]  # next tuple of points in blex order
+        # Note that, unlike in the intra-thread case, there will be a single
+        # blex ordering map defining the blex ordering for all statement pairs,
+        # rather than separate (smaller) lex ordering maps for each pair
+
+        # {{{ First, create map from stmt instances to blex space.
+
+        # At the same time, gather information necessary to create the
+        # blex ordering map, i.e., for each loop, gather the 6 lex order tuples
+        # defined above in SpecialLexPointWRTLoop that will be required to
+        # create sub-maps which will be *excluded* (subtracted) from a standard
+        # lexicographic ordering in order to create the blex ordering
+
+        stmt_inst_to_blex = {}  # Map stmt instances to blex space
+        iname_to_blex_dim = {}  # Map from inames to corresponding blex space dim
+        blex_exclusion_info = {}  # Info for creating maps to exclude from blex order
+        blex_order_map_params = set()  # Params needed in blex order map
+        n_seq_blex_dims = 1  # Num dims representing sequential order in blex space
+        next_blex_tuple = [0]  # Next tuple of points in blex order
 
         for lin_item in lin_items:
             if isinstance(lin_item, EnterLoop):
                 enter_iname = lin_item.iname
                 if enter_iname in loops_with_barriers[sync_kind]:
-                    # update next blex pt
-                    pre_loop_blex_pt = next_blex_pt[:]
-                    next_blex_pt[-1] += 1
-                    next_blex_pt.append(enter_iname)
-                    next_blex_pt.append(0)
+                    pre_loop_blex_pt = next_blex_tuple[:]
 
-                    # store tuples that will be used to create pairs
-                    # that will later be subtracted from happens-before map
+                    # Increment next_blex_tuple[-1] for statements in the section
+                    # of code between this EnterLoop and the matching LeaveLoop.
+                    next_blex_tuple[-1] += 1
+
+                    # Upon entering a loop, add one blex dimension for the loop
+                    # iteration, add second blex dim to enumerate sections of
+                    # code within new loop
+                    next_blex_tuple.append(enter_iname)
+                    next_blex_tuple.append(0)
+
+                    # Store 3 tuples that will be used later to create pairs
+                    # that will later be subtracted from the blex order map
                     lbound = iname_bounds_pwaff[enter_iname][0]
-                    first_iter_blex_pt = next_blex_pt[:]
+                    first_iter_blex_pt = next_blex_tuple[:]
                     first_iter_blex_pt[-2] = lbound
                     blex_exclusion_info[enter_iname] = {
-                        slex.PRE: tuple(pre_loop_blex_pt),  # make sure to copy
-                        slex.TOP: tuple(next_blex_pt),  # make sure to copy
-                        slex.FIRST: tuple(first_iter_blex_pt),  # make sure to copy
+                        slex.PRE: tuple(pre_loop_blex_pt),
+                        slex.TOP: tuple(next_blex_tuple),
+                        slex.FIRST: tuple(first_iter_blex_pt),
                         }
-                    blex_map_params |= set(lbound.get_var_names(dt.param))
+                    # (make sure ^these are copies)
+
+                    # Store any new params found
+                    blex_order_map_params |= set(lbound.get_var_names(dt.param))
 
             elif isinstance(lin_item, LeaveLoop):
                 leave_iname = lin_item.iname
                 if leave_iname in loops_with_barriers[sync_kind]:
 
-                    # update max blex dims
-                    n_seq_blex_dims = max(n_seq_blex_dims, len(next_blex_pt))
-                    iname_to_blex_dim[leave_iname] = len(next_blex_pt)-2
+                    # Update max blex dims
+                    n_seq_blex_dims = max(n_seq_blex_dims, len(next_blex_tuple))
+
+                    # Record the blex dim for this loop iname
+                    iname_to_blex_dim[leave_iname] = len(next_blex_tuple)-2
 
                     # update next blex pt
-                    pre_end_loop_blex_pt = next_blex_pt[:]
-                    next_blex_pt.pop()
-                    next_blex_pt.pop()
-                    next_blex_pt[-1] += 1
+                    pre_end_loop_blex_pt = next_blex_tuple[:]
 
-                    # store tuples that will be used to create pairs
-                    # that will later be subtracted from happens-before map
+                    # Upon leaving a loop:
+                    # - Pop lex dim for enumerating code sections within this loop
+                    # - Pop lex dim for the loop iteration
+                    # - Increment lex dim val enumerating items in current section
+                    next_blex_tuple.pop()
+                    next_blex_tuple.pop()
+                    next_blex_tuple[-1] += 1
+
+                    # Store 3 tuples that will be used later to create pairs
+                    # that will later be subtracted from the blex order map
                     ubound = iname_bounds_pwaff[leave_iname][1]
                     last_iter_blex_pt = pre_end_loop_blex_pt[:]
                     last_iter_blex_pt[-2] = ubound
@@ -429,19 +479,22 @@ def generate_pairwise_schedules(
                     blex_exclusion_info[leave_iname][slex.LAST] = tuple(
                         last_iter_blex_pt)
                     blex_exclusion_info[leave_iname][slex.POST] = tuple(
-                        next_blex_pt)
+                        next_blex_tuple)
                     # (make sure ^these are copies)
-                    blex_map_params |= set(ubound.get_var_names(dt.param))
+
+                    # Store any new params found
+                    blex_order_map_params |= set(ubound.get_var_names(dt.param))
 
             elif isinstance(lin_item, RunInstruction):
-                # Add item to stmt_inst_to_blex
-                stmt_inst_to_blex[lin_item.insn_id] = tuple(next_blex_pt)
-                # Don't increment blex dim val
+                # Add stmt->blex pair to stmt_inst_to_blex
+                stmt_inst_to_blex[lin_item.insn_id] = tuple(next_blex_tuple)
+
+                # (Don't increment blex dim val)
 
             elif isinstance(lin_item, Barrier):
                 # Increment blex dim val if the sync scope matches
                 if lin_item.synchronization_kind == sync_kind:
-                    next_blex_pt[-1] += 1
+                    next_blex_tuple[-1] += 1
 
             else:
                 from loopy.schedule import (CallKernel, ReturnFromKernel)
@@ -450,7 +503,7 @@ def generate_pairwise_schedules(
                     lin_item, (CallKernel, ReturnFromKernel))
                 pass
 
-        blex_map_params = sorted(blex_map_params)
+        blex_order_map_params = sorted(blex_order_map_params)
 
         # At this point, some blex tuples may have more dimensions than others;
         # the missing dims are the fastest-updating dims, and their values should
@@ -460,40 +513,50 @@ def generate_pairwise_schedules(
 
         # }}}
 
+        # {{{ Create the blex order map
+
+        # {{{ Create the initial (pre-subtraction) blex order map
+
         # Create names for the blex dimensions for sequential loops
         seq_blex_dim_names = [
             LEX_VAR_PREFIX+str(i) for i in range(n_seq_blex_dims)]
         seq_blex_dim_names_prime = append_marker_to_strings(
             seq_blex_dim_names, marker=BEFORE_MARK)
 
+        # Begin with the blex order map created as a standard lex order map
         blex_order_map = create_lex_order_map(
             dim_names=seq_blex_dim_names,
             in_dim_marker=BEFORE_MARK,
             )
 
-        # Add lid/gid dims to lex order map
+        # Add LID/GID dims to blex order map
         blex_order_map = add_and_name_isl_dims(
-            blex_order_map, dt.out, conc_lex_dim_names)
+            blex_order_map, dt.out, all_par_lex_dim_names)
         blex_order_map = add_and_name_isl_dims(
-            blex_order_map, dt.in_, append_marker_to_strings(conc_lex_dim_names))
+            blex_order_map, dt.in_, append_marker_to_strings(all_par_lex_dim_names))
         if sync_kind == "local":
-            # Constrain gid vars to be equal
+            # For intra-group case, constrain GID 'before' to equal GID 'after'
             for var_name in gid_lex_dim_names:
                 blex_order_map = add_eq_isl_constraint_from_names(
                         blex_order_map, var_name, var_name+BEFORE_MARK)
-        # (if sync_kind == "global", don't need constraints on lid/gid vars)
+        # (if sync_kind == "global", don't need constraints on LID/GID vars)
 
+        # }}}
+
+        # {{{ Subtract unwanted pairs from happens-before blex map
+
+        # Create map from iname to corresponding blex dim name
         iname_to_blex_var = {}
         for iname, dim in iname_to_blex_dim.items():
             iname_to_blex_var[iname] = seq_blex_dim_names[dim]
             iname_to_blex_var[iname+BEFORE_MARK] = seq_blex_dim_names_prime[dim]
 
-        # Add params to blex map
+        # Add bounds params needed in blex map
         blex_order_map = add_and_name_isl_dims(
-            blex_order_map, dt.param, blex_map_params)
+            blex_order_map, dt.param, blex_order_map_params)
 
         # Get a set representing blex_order_map space
-        n_blex_dims = n_seq_blex_dims + len(conc_lex_dim_names)
+        n_blex_dims = n_seq_blex_dims + len(all_par_lex_dim_names)
         blex_set_template = isl.align_spaces(
             isl.Map("[ ] -> { [ ] -> [ ] }"), blex_order_map
             ).move_dims(
@@ -501,87 +564,108 @@ def generate_pairwise_schedules(
             ).domain()
         blex_set_affs = isl.affs_from_space(blex_set_template.space)
 
+        # {{{ _create_excluded_map_for_iname
+
         def _create_excluded_map_for_iname(iname, blueprint):
-            # Note: blueprint[slex.FIRST] and blueprint[slex.LAST] contain pwaffs
+            # Create the blex->blex pairs that must be subtracted from the
+            # initial blex order map for this particular loop:
+            # PRE->FIRST, BOTTOM(iname')->TOP(iname'+1), LAST->POST
+
+            # Note: only blueprint[slex.FIRST] & blueprint[slex.LAST] contain pwaffs
+
+            # {{{ _create_blex_set_from_tuple_pair
 
             def _create_blex_set_from_tuple_pair(before, after, wrap_cond=False):
+                # Given a before->after tuple pair in the blueprint, which may
+                # have dim vals described by strings (inames) and pwaffs,
+                # create an ISL set in blex space that can be converted into
+                # the ISL map to be subtracted
 
-                # start with a set representing blex_order_map space
+                # Start with a set representing blex_order_map space
                 blex_set = blex_set_template.copy()
 
-                # add markers to inames in before tuple
-                # (assume strings are the inames)
+                # Add markers to inames in the 'before' tuple
+                # (all strings should be inames)
                 before_prime = tuple(
                     v+BEFORE_MARK if isinstance(v, str) else v for v in before)
                 before_padded = _pad_tuple_with_zeros(before_prime, n_seq_blex_dims)
                 after_padded = _pad_tuple_with_zeros(after, n_seq_blex_dims)
 
-                # assign vals to dims
+                # Assign vals in the tuple to dims in the ISL set
                 for dim_name, dim_val in zip(
                         seq_blex_dim_names_prime+seq_blex_dim_names,
                         before_padded+after_padded):
-                    # (could exploit knowledge of content types of odd/even
-                    # tuple dims to reduce conditionals but would be ugly
-                    # and less robust)
+
                     if isinstance(dim_val, int):
-                        # set idx to int val
+                        # Set idx to int val
                         blex_set &= blex_set_affs[dim_name].eq_set(
                             blex_set_affs[0]+dim_val)
                     elif isinstance(dim_val, str):
-                        # assume this is an iname, set idx to corresponding blex var
+                        # This is an iname, set idx to corresponding blex var
                         blex_set &= blex_set_affs[dim_name].eq_set(
                             blex_set_affs[iname_to_blex_var[dim_val]])
                     else:
+                        # This is a pwaff iname bound, align and intersect
                         assert isinstance(dim_val, isl.PwAff)
                         pwaff_aligned = isl.align_spaces(dim_val, blex_set_affs[0])
-                        # (doesn't matter which element of blex_set_affs we use^)
+                        # (doesn't matter which blex_set_affs item we align to^)
                         blex_set &= blex_set_affs[dim_name].eq_set(pwaff_aligned)
 
                 if wrap_cond:
-                    # i = i' + step
-                    # TODO what about step sizes != 1?
+                    # This is the BOTTOM->TOP pair, add condition i = i' + 1
                     blex_set &= blex_set_affs[iname_to_blex_var[iname]].eq_set(
                         blex_set_affs[iname_to_blex_var[iname+BEFORE_MARK]] + 1)
 
                 return blex_set
 
-            # enter loop case
+            # }}}
+
+            # Create pairs to be subtracted (sets will be converted to map)
+
+            # Enter loop case: PRE->FIRST
             full_blex_set = _create_blex_set_from_tuple_pair(
                 blueprint[slex.PRE], blueprint[slex.FIRST])
-            # wrap loop case
+            # Wrap loop case: BOTTOM(iname')->TOP(iname'+1)
             full_blex_set |= _create_blex_set_from_tuple_pair(
                 blueprint[slex.BOTTOM], blueprint[slex.TOP], wrap_cond=True)
-            # leave loop case
+            # Leave loop case: LAST->POST
             full_blex_set |= _create_blex_set_from_tuple_pair(
                 blueprint[slex.LAST], blueprint[slex.POST])
 
-            # add cond to fix iteration value for surrounding loops (i = i')
+            # Add condition to fix iteration value for *surrounding* loops (j = j')
             for surrounding_iname in blueprint[slex.PRE][1::2]:
                 s_blex_var = iname_to_blex_var[surrounding_iname]
                 full_blex_set &= blex_set_affs[s_blex_var].eq_set(
                     blex_set_affs[s_blex_var+BEFORE_MARK])
 
-            # convert blex set back to map
+            # Convert blex set back to map
             return isl.Map.from_domain(full_blex_set).move_dims(
                 dt.out, 0, dt.in_, n_blex_dims, n_blex_dims)
 
-        # subtract unwanted pairs from happens-before blex map
+        # }}}
+
+        # Create map for each iname
         maps_to_subtract = []
         for iname, subdict in blex_exclusion_info.items():
             maps_to_subtract.append(_create_excluded_map_for_iname(iname, subdict))
 
         if maps_to_subtract:
-            # get union of maps
+
+            # Get union of maps
             map_to_subtract = maps_to_subtract[0]
             for other_map in maps_to_subtract[1:]:
                 map_to_subtract |= other_map
 
-            # get some closure
+            # Get transitive closure of maps
             map_to_subtract, closure_exact = map_to_subtract.transitive_closure()
-            assert closure_exact  # TODO warn instead
+            assert closure_exact  # TODO warn instead?
 
-            # subtract from blex order map
+            # Subtract closure from blex order map
             blex_order_map = blex_order_map - map_to_subtract
+
+        # }}}
+
+        # }}}
 
         return (
             stmt_inst_to_blex,  # map stmt instances to blex space
@@ -589,22 +673,28 @@ def generate_pairwise_schedules(
             seq_blex_dim_names,
             )
 
+    # }}}
+
+    # Get the blex schedule blueprint (dict will become a map below) and
+    # blex order map w.r.t. local and global barriers
     (stmt_inst_to_lblex,
      lblex_order_map,
-     seq_lblex_dim_names) = _collect_blex_ordering_info("local")
+     seq_lblex_dim_names) = _gather_blex_ordering_info("local")
     (stmt_inst_to_gblex,
      gblex_order_map,
-     seq_gblex_dim_names) = _collect_blex_ordering_info("global")
+     seq_gblex_dim_names) = _gather_blex_ordering_info("global")
 
     # }}}  end blex order/map machinery
 
-    # Second, create pairwise schedules for each individual pair of insns
+    # {{{ Create pairwise schedules (ISL maps) for each stmt pair
 
     from loopy.schedule.checker.utils import (
         sorted_union_of_names_in_isl_sets,
         create_symbolic_map_from_tuples,
         insert_and_name_isl_dims,
     )
+
+    # {{{ _get_map_for_stmt()
 
     def _get_map_for_stmt(
             insn_id, lex_points, int_sid, lex_dim_names):
@@ -634,7 +724,7 @@ def generate_pairwise_schedules(
                 dom, dt.set, [STATEMENT_VAR_NAME], 0)
 
         # Each map will map statement instances -> lex time.
-        # Right now, statement instance tuples consist of single int.
+        # At this point, statement instance tuples consist of single int.
         # Add all inames from domains to each map domain tuple.
         tuple_pair = [(
             (int_sid, ) + tuple(dom_inames_ordered),
@@ -642,9 +732,9 @@ def generate_pairwise_schedules(
             )]
 
         # Note that lex_points may have fewer dims than the out-dim of sched_space
-        # if sched_space includes concurrent lid/gid dims. This is okay because
+        # if sched_space includes concurrent LID/GID dims. This is okay because
         # the following symbolic map creation step, when assigning dim values,
-        # zips the space dims with the lex tuple, and any leftover lid/gid dims
+        # zips the space dims with the lex tuple, and any leftover LID/GID dims
         # will not be assigned a value yet, which is what we want.
 
         # Create map
@@ -660,22 +750,25 @@ def generate_pairwise_schedules(
 
         return sched_map
 
+    # }}}
+
     pairwise_schedules = {}
     for insn_ids in insn_id_pairs:
         # Determine integer IDs that will represent each statement in mapping
         # (dependency map creation assumes sid_before=0 and sid_after=1, unless
-        # before and after refer to same stmt, in which case sid_before=sid_after=0)
+        # before and after refer to same stmt, in which case
+        # sid_before=sid_after=0)
         int_sids = [0, 0] if insn_ids[0] == insn_ids[1] else [0, 1]
 
-        # {{{  Create SIO for intra-thread case (lid0' == lid0, etc)
+        # {{{  Create SIO for intra-thread case (lid0' == lid0, gid0' == gid0, etc)
 
         # Simplify tuples to the extent possible ------------------------------------
 
-        lex_tuples = [stmt_inst_to_lex[insn_id] for insn_id in insn_ids]
+        lex_tuples = [stmt_inst_to_lex_intra_thread[insn_id] for insn_id in insn_ids]
 
-        # At this point, one of the lex tuples may have more dimensions than another;
-        # the missing dims are the fastest-updating dims, and their values should
-        # be zero. Add them.
+        # At this point, one of the lex tuples may have more dimensions than
+        # another; the missing dims are the fastest-updating dims, and their
+        # values should be zero. Add them.
         max_lex_dims = max([len(lex_tuple) for lex_tuple in lex_tuples])
         lex_tuples_padded = [
             _pad_tuple_with_zeros(lex_tuple, max_lex_dims)
@@ -692,17 +785,12 @@ def generate_pairwise_schedules(
         intra_thread_sched_maps = [
             _get_map_for_stmt(
                 insn_id, lex_tuple, int_sid,
-                seq_lex_dim_names+conc_lex_dim_names)
+                seq_lex_dim_names+all_par_lex_dim_names)
             for insn_id, lex_tuple, int_sid
             in zip(insn_ids, lex_tuples_simplified, int_sids)
             ]
 
-        # Create lex order maps and SIOs here (rather than returning schedules
-        # and lex maps separately and combining them outside function to get
-        # SIOs) to avoid passing extra info around. Don't want to, e.g.,
-        # examine the schedule tuple in separate func to re-determine which
-        # parallel dims are used. (could simplify everything by always using
-        # all dims..., which would make maps more complex than necessary)
+        # Create pairwise lex order map (pairwise only in the intra-thread case)
         lex_order_map = create_lex_order_map(
             dim_names=seq_lex_dim_names,
             in_dim_marker=BEFORE_MARK,
@@ -710,16 +798,16 @@ def generate_pairwise_schedules(
 
         # Add lid/gid dims to lex order map
         lex_order_map = add_and_name_isl_dims(
-            lex_order_map, dt.out, conc_lex_dim_names)
+            lex_order_map, dt.out, all_par_lex_dim_names)
         lex_order_map = add_and_name_isl_dims(
-            lex_order_map, dt.in_, append_marker_to_strings(conc_lex_dim_names))
+            lex_order_map, dt.in_, append_marker_to_strings(all_par_lex_dim_names))
         # Constrain lid/gid vars to be equal
-        for var_name in conc_lex_dim_names:
+        for var_name in all_par_lex_dim_names:
             lex_order_map = add_eq_isl_constraint_from_names(
                 lex_order_map, var_name, var_name+BEFORE_MARK)
 
         # Create statement instance ordering,
-        # maps each statement instance to all statement instances occuring later
+        # maps each statement instance to all statement instances occurring later
         sio_seq = get_statement_ordering_map(
             *intra_thread_sched_maps,  # note, func accepts exactly two maps
             lex_order_map,
@@ -730,8 +818,6 @@ def generate_pairwise_schedules(
 
         # {{{  Create SIOs for intra-group case (gid0' == gid0, etc)
 
-        # TODO finish separating lid stuff from gid stuff
-
         # Use *unsimplified* lex tuples with blex map, which have already been padded
 
         lblex_tuples_padded = [stmt_inst_to_lblex[insn_id] for insn_id in insn_ids]
@@ -739,7 +825,7 @@ def generate_pairwise_schedules(
         lconc_sched_maps = [
             _get_map_for_stmt(
                 insn_id, lblex_tuple, int_sid,
-                seq_lblex_dim_names+conc_lex_dim_names)  # conc names same for all
+                seq_lblex_dim_names+all_par_lex_dim_names)  # Par names same for all
             for insn_id, lblex_tuple, int_sid
             in zip(insn_ids, lblex_tuples_padded, int_sids)
             ]
@@ -758,7 +844,7 @@ def generate_pairwise_schedules(
         gconc_sched_maps = [
             _get_map_for_stmt(
                 insn_id, gblex_tuple, int_sid,
-                seq_gblex_dim_names+conc_lex_dim_names)  # conc names same for all
+                seq_gblex_dim_names+all_par_lex_dim_names)  # Par names same for all
             for insn_id, gblex_tuple, int_sid
             in zip(insn_ids, gblex_tuples_padded, int_sids)
             ]
@@ -781,7 +867,9 @@ def generate_pairwise_schedules(
                 (sio_gconc, tuple(gconc_sched_maps), ),
                 )
         else:
-            # Store SIOs
+            # Store SIOs only
             pairwise_schedules[tuple(insn_ids)] = (sio_seq, sio_lconc, sio_gconc)
+
+    # }}}
 
     return pairwise_schedules
