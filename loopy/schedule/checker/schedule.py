@@ -150,8 +150,8 @@ def _simplify_lex_dims(tup0, tup1):
 # {{{ class SpecialLexPointWRTLoop
 
 class SpecialLexPointWRTLoop:
-    """Strings specifying a particular position in a lexicographic
-       ordering of statements relative to a loop.
+    """Strings identifying a particular point or set of points in a
+        lexicographic ordering of statements, specified relative to a loop.
 
     .. attribute:: PRE
        A :class:`str` indicating the last lexicographic point that
@@ -188,9 +188,9 @@ class SpecialLexPointWRTLoop:
 # }}}
 
 
-# {{{ generate_pairwise_schedules
+# {{{ get_pairwise_statement_orderings_inner
 
-def generate_pairwise_schedules(
+def get_pairwise_statement_orderings_inner(
         knl,
         lin_items,
         insn_id_pairs,
@@ -199,21 +199,23 @@ def generate_pairwise_schedules(
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
-    instances are executed. For each pair, describe this relative ordering with
-    a pair of mappings from statement instances to points in a single
-    lexicographic ordering (a ``pairwise schedule'').
+    instances are executed. For each pair, represent this relative ordering as
+    a ``statement instance ordering`` (SIO): a map from each instance of the
+    first statement to all instances of the second statement that occur
+    later.
 
     :arg knl: A preprocessed :class:`loopy.kernel.LoopKernel` containing the
-        linearization items that will be used to create a schedule. This
+        linearization items that will be used to create the SIOs. This
         kernel will be used to get the domains associated with the inames
-        used in the statements.
+        used in the statements, and to determine which inames have been
+        tagged with parallel tags.
 
     :arg lin_items: A list of :class:`loopy.schedule.ScheduleItem`
         (to be renamed to `loopy.schedule.LinearizationItem`) containing
-        all linearization items for which pairwise schedules will be
+        all linearization items for which SIOs will be
         created. To allow usage of this routine during linearization, a
         truncated (i.e. partial) linearization may be passed through this
-        argument.
+        argument
 
     :arg insn_id_pairs: A list containing pairs of instruction identifiers.
 
@@ -222,14 +224,22 @@ def generate_pairwise_schedules(
         contain concurrent inames tagged with the ``vec`` or ``ilp`` array
         access tags.
 
+    :arg return_schedules: A :class:`bool` determining whether to include
+        pairwise schedules in the returned dictionary.
+
     :returns: A dictionary mapping each two-tuple of instruction identifiers
-        provided in `insn_id_pairs` to a corresponding two-tuple containing two
-        :class:`islpy.Map`\ s representing a pairwise schedule as two
-        mappings from statement instances to lexicographic time, one for
-        each of the two statements.
+        provided in `insn_id_pairs` to a statement instance ordering, realized
+        as an :class:`islpy.Map` from each instance of the first
+        statement to all instances of the second statement that occur later.
+
+        Optional (mainly used for testing): If `return_schedules=True`,
+        each dict value will be a two-tuple containing the statement instance
+        ordering and also a ``pairwise schedule'', a pair of
+        mappings from statement instances to points in a single lexicographic
+        ordering, realized as a two-tuple containing two
+        :class:`islpy.Map`\ s, one for each statement.
+
     """
-    # TODO update docs now that we're returning SIOs
-    # TODO rename loops_to_ignore to loops_to_ignore_for_intra_thread_stuff...
     # TODO handle 'vec' appropriately; then remove loops_to_ignore?
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)

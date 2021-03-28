@@ -95,7 +95,7 @@ def _isl_map_with_marked_dims(s):
 
 def test_pairwise_schedule_creation():
     from loopy.schedule.checker import (
-        get_schedules_for_statement_pairs,
+        get_pairwise_statement_orderings,
     )
 
     # Example kernel
@@ -144,7 +144,7 @@ def test_pairwise_schedule_creation():
         ("stmt_b", "stmt_d"),
         ("stmt_c", "stmt_d"),
         ]
-    scheds = get_schedules_for_statement_pairs(
+    scheds = get_pairwise_statement_orderings(
         lin_knl,
         linearization_items,
         insn_id_pairs,
@@ -315,7 +315,7 @@ def test_pairwise_schedule_creation():
 
 def test_pairwise_schedule_creation_with_hw_par_tags():
     from loopy.schedule.checker import (
-        get_schedules_for_statement_pairs,
+        get_pairwise_statement_orderings,
     )
 
     # Example kernel
@@ -351,7 +351,7 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
     stmt_id_pairs = [
         ("stmt_a", "stmt_b"),
         ]
-    scheds = get_schedules_for_statement_pairs(
+    scheds = get_pairwise_statement_orderings(
         lin_knl,
         linearization_items,
         stmt_id_pairs,
@@ -495,7 +495,7 @@ def _check_sio_for_stmt_pair(
 
 def test_statement_instance_ordering():
     from loopy.schedule.checker import (
-        get_schedules_for_statement_pairs,
+        get_pairwise_statement_orderings,
     )
 
     # Example kernel (add deps to fix loop order)
@@ -544,7 +544,7 @@ def test_statement_instance_ordering():
         ("stmt_b", "stmt_d"),
         ("stmt_c", "stmt_d"),
         ]
-    scheds = get_schedules_for_statement_pairs(
+    scheds = get_pairwise_statement_orderings(
         knl,
         linearization_items,
         stmt_id_pairs,
@@ -622,7 +622,7 @@ def test_statement_instance_ordering():
 
 def test_statement_instance_ordering_with_hw_par_tags():
     from loopy.schedule.checker import (
-        get_schedules_for_statement_pairs,
+        get_pairwise_statement_orderings,
     )
     from loopy.schedule.checker.utils import (
         partition_inames_by_concurrency,
@@ -662,7 +662,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
     stmt_id_pairs = [
         ("stmt_a", "stmt_b"),
         ]
-    scheds = get_schedules_for_statement_pairs(
+    scheds = get_pairwise_statement_orderings(
         lin_knl,
         linearization_items,
         stmt_id_pairs,
@@ -698,7 +698,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
 
 def test_sios_and_schedules_with_barriers():
     from loopy.schedule.checker import (
-        get_schedules_for_statement_pairs,
+        get_pairwise_statement_orderings,
     )
 
     assumptions = "ij_end >= ij_start + 1 and lg_end >= 1"
@@ -743,7 +743,7 @@ def test_sios_and_schedules_with_barriers():
     linearization_items = lin_knl.linearization
 
     insn_id_pairs = [("j1", "2"), ("1", "i0")]
-    scheds = get_schedules_for_statement_pairs(
+    scheds = get_pairwise_statement_orderings(
         lin_knl, linearization_items, insn_id_pairs,
         return_schedules=True,  # include schedules for testing
         )
