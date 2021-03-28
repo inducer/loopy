@@ -68,7 +68,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
             elif type_context == "d":
                 # Keepin' the good ideas flowin' since '66.
                 return Literal(repr(float(expr))+"d")
-            elif type_context == "i":
+            elif type_context in ["i", "b"]:
                 return expr
             else:
                 from loopy.tools import is_integer
@@ -392,7 +392,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
         # {{{ handle streaming stores
 
-        if "!streaming_store" in insn.tags:
+        from loopy.kernel.instruction import UseStreamingStoreTag
+        if UseStreamingStoreTag() in insn.tags:
             ary = ecm.find_array(lhs)
 
             from loopy.kernel.array import get_access_info

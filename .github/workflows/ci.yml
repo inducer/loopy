@@ -2,7 +2,7 @@ name: CI
 on:
     push:
         branches:
-        - master
+        - main
     pull_request:
     schedule:
         - cron:  '17 3 * * 0'
@@ -19,7 +19,7 @@ jobs:
                 python-version: '3.x'
         -   name: "Main Script"
             run: |
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-flake8.sh
                 . ./prepare-and-run-flake8.sh "$(basename $GITHUB_REPOSITORY)" ./test examples
 
     pylint:
@@ -32,7 +32,7 @@ jobs:
                 sed 's/python=3/python=3.7/' .test-conda-env-py3.yml > .test-conda-env.yml
                 CONDA_ENVIRONMENT=.test-conda-env.yml
                 USE_CONDA_BUILD=1
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-pylint.sh
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-pylint.sh
                 . ./prepare-and-run-pylint.sh "$(basename $GITHUB_REPOSITORY)" test/test_*.py
 
     pytest:
@@ -43,8 +43,27 @@ jobs:
         -   name: "Main Script"
             run: |
                 CONDA_ENVIRONMENT=.test-conda-env-py3.yml
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
+
+    pytest_intel:
+        name: Conda Pytest with Intel CL
+        runs-on: ubuntu-latest
+        steps:
+        -   uses: actions/checkout@v2
+        -   name: "Main Script"
+            run: |
+                curl -L -O https://raw.githubusercontent.com/illinois-scicomp/machine-shop-maintenance/main/install-intel-icd.sh
+                sudo bash ./install-intel-icd.sh
+                CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+                echo "- ocl-icd-system" >> "$CONDA_ENVIRONMENT"
+                sed -i "/pocl/ d" "$CONDA_ENVIRONMENT"
+                export PYOPENCL_TEST=intel
+                source /opt/enable-intel-cl.sh
+                curl -L -O https://tiker.net/ci-support-v0
+                . ./ci-support-v0
+                build_py_project_in_conda_env
+                test_py_project
 
     pytest_no_arg_check:
         name: Conda Pytest without arg check
@@ -54,7 +73,7 @@ jobs:
         -   name: "Main Script"
             run: |
                 CONDA_ENVIRONMENT=.test-conda-env-py3.yml
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project-within-miniconda.sh
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
                 export _LOOPY_SKIP_ARG_CHECKS=1
                 . ./build-and-test-py-project-within-miniconda.sh
 
@@ -66,7 +85,7 @@ jobs:
         -   name: "Main Script"
             run: |
                 CONDA_ENVIRONMENT=.test-conda-env-py3.yml
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
                 . ./ci-support.sh
                 build_py_project_in_conda_env
                 ( test_py_project )
@@ -81,7 +100,7 @@ jobs:
             run: |
                 CONDA_ENVIRONMENT=.test-conda-env-py3.yml
                 EXTRA_INSTALL="matplotlib ipykernel nbconvert"
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
                 . ./ci-support.sh
                 build_py_project_in_conda_env
 
@@ -107,7 +126,7 @@ jobs:
         -   name: "Main Script"
             run: |
                 CONDA_ENVIRONMENT=.test-conda-env-py3.yml
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
                 . ci-support.sh
                 build_py_project_in_conda_env
                 build_docs
@@ -137,7 +156,7 @@ jobs:
 
                 sed -i "/mpi4py/ d" requirements.txt
 
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
                 . ./ci-support.sh
                 build_py_project_in_conda_env
                 test_py_project

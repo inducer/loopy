@@ -354,7 +354,7 @@ class ExecutionWrapperGeneratorBase:
         # argument. Arguments should be sequences of strings.
         return " and ".join(
                 "(%s == 1 or %s == %s)" % elem
-                for elem in zip(shape, strides, sym_strides))
+                for elem in zip(shape, strides, sym_strides)) or "True"
 
     # {{{ arg setup
 
