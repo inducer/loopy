@@ -240,7 +240,6 @@ def get_pairwise_statement_orderings_inner(
         :class:`islpy.Map`\ s, one for each statement.
 
     """
-    # TODO handle 'vec' appropriately; then remove loops_to_ignore?
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
     from loopy.kernel.data import (LocalIndexTag, GroupIndexTag)

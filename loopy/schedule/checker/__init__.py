@@ -104,10 +104,7 @@ def get_pairwise_statement_orderings(
 
     # {{{ Find any EnterLoop inames that are tagged as concurrent
     # so that get_pairwise_statement_orderings_inner() knows to ignore them
-    # (In the future, this shouldn't be necessary because there
-    # won't be any inames with ConcurrentTags in EnterLoop linearization items.
-    # Test which exercises this in downstream PR:
-    # test_linearization_checker_with_stroud_bernstein())
+    # (In the future, this should only include inames tagged with 'vec'.)
     from loopy.schedule.checker.utils import (
         partition_inames_by_concurrency,
         get_EnterLoop_inames,
