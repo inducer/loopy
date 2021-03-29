@@ -1799,6 +1799,7 @@ def add_inames_to_insn(kernel, inames, insn_match):
 # }}}
 
 
+@iterate_over_kernels_if_given_program
 def add_inames_for_unused_hw_axes(kernel, within=None):
     """
     Returns a kernel with inames added to each instruction
