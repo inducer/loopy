@@ -685,9 +685,7 @@ class CallableKernel(InKernelCallable):
                 arg_id_to_dtype=arg_id_to_dtype,
                 arg_id_to_descr=arg_id_to_descr)
 
-        self.subkernel = subkernel.copy(
-                args=[arg.copy(dtype=arg.dtype.with_target(subkernel.target))
-                    if arg.dtype is not None else arg for arg in subkernel.args])
+        self.subkernel = subkernel
 
     def __getinitargs__(self):
         return (self.subkernel, self.arg_id_to_dtype,
