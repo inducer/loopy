@@ -195,7 +195,6 @@ def get_pairwise_statement_orderings_inner(
         lin_items,
         insn_id_pairs,
         loops_to_ignore=set(),
-        return_schedules=False,
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
@@ -224,21 +223,19 @@ def get_pairwise_statement_orderings_inner(
         contain concurrent inames tagged with the ``vec`` or ``ilp`` array
         access tags.
 
-    :arg return_schedules: A :class:`bool` determining whether to include
-        pairwise schedules in the returned dictionary.
-
     :returns: A dictionary mapping each two-tuple of instruction identifiers
-        provided in `insn_id_pairs` to a statement instance ordering, realized
+        provided in `insn_id_pairs` to a :class:`collections.namedtuple`
+        containing the intra-thread SIO (`sio_intra_thread`), intra-group SIO
+        (`sio_intra_group`), and global SIO (`sio_global`), each realized
         as an :class:`islpy.Map` from each instance of the first
-        statement to all instances of the second statement that occur later.
-
-        Optional (mainly used for testing): If `return_schedules=True`,
-        each dict value will be a two-tuple containing the statement instance
-        ordering and also a ``pairwise schedule'', a pair of
-        mappings from statement instances to points in a single lexicographic
-        ordering, realized as a two-tuple containing two
-        :class:`islpy.Map`\ s, one for each statement.
-
+        statement to all instances of the second statement that occur later,
+        as well as the intra-thread pairwise schedule (`pwsched_intra_thread`),
+        intra-group pairwise schedule (`pwsched_intra_group`), and the global
+        pairwise schedule (`pwsched_global`), each containing a pair of
+        mappings from statement instances to points in a lexicographic
+        ordering, one for each statement. Note that a pairwise schedule
+        alone cannot be used to reproduce the corresponding SIO without the
+        corresponding (unique) lexicographic order map, which is not returned.
     """
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
@@ -796,6 +793,16 @@ def get_pairwise_statement_orderings_inner(
     # }}}
 
     pairwise_sios = {}
+    from collections import namedtuple
+    StatementOrdering = namedtuple(
+        'StatementOrdering',
+        [
+            'sio_intra_thread', 'pwsched_intra_thread',
+            'sio_intra_group', 'pwsched_intra_group',
+            'sio_global', 'pwsched_global',
+        ])
+    # ("sio" = statement instance ordering; "pwsched" = pairwise schedule)
+
     for insn_ids in insn_id_pairs:
         # Determine integer IDs that will represent each statement in mapping
         # (dependency map creation assumes sid_before=0 and sid_after=1, unless
@@ -893,17 +900,15 @@ def get_pairwise_statement_orderings_inner(
 
         # }}}
 
-        if return_schedules:
-            # Store sched maps along with SIOs
-            # (currently helpful for testing; also could be desired by a user)
-            pairwise_sios[tuple(insn_ids)] = (
-                (sio_seq, tuple(intra_thread_sched_maps), ),
-                (sio_lpar, tuple(lpar_sched_maps), ),
-                (sio_gpar, tuple(gpar_sched_maps), ),
-                )
-        else:
-            # Store SIOs only
-            pairwise_sios[tuple(insn_ids)] = (sio_seq, sio_lpar, sio_gpar)
+        # Store sched maps along with SIOs
+        pairwise_sios[tuple(insn_ids)] = StatementOrdering(
+            sio_intra_thread=sio_seq,
+            pwsched_intra_thread=tuple(intra_thread_sched_maps),
+            sio_intra_group=sio_lpar,
+            pwsched_intra_group=tuple(lpar_sched_maps),
+            sio_global=sio_gpar,
+            pwsched_global=tuple(gpar_sched_maps),
+            )
 
     # }}}
 

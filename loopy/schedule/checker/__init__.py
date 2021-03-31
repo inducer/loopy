@@ -27,7 +27,6 @@ def get_pairwise_statement_orderings(
         knl,
         lin_items,
         insn_id_pairs,
-        return_schedules=False,
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
@@ -51,16 +50,18 @@ def get_pairwise_statement_orderings(
         pairwise schedules in the returned dictionary.
 
     :returns: A dictionary mapping each two-tuple of instruction identifiers
-        provided in `insn_id_pairs` to a statement instance ordering, realized
-        as an :class:`islpy.Map` from each instance of the first statement to
-        all instances of the second statement that occur later.
-
-        Optional (mainly used for testing): If `return_schedules = True`, each
-        dict value will be a two-tuple containing the statement instance
-        ordering and also a ``pairwise schedule'', a pair of mappings from
-        statement instances to points in a single lexicographic ordering,
-        realized as a two-tuple containing two :class:`islpy.Map`\ s, one for
-        each statement.
+        provided in `insn_id_pairs` to a :class:`collections.namedtuple`
+        containing the intra-thread SIO (`sio_intra_thread`), intra-group SIO
+        (`sio_intra_group`), and global SIO (`sio_global`), each realized
+        as an :class:`islpy.Map` from each instance of the first
+        statement to all instances of the second statement that occur later,
+        as well as the intra-thread pairwise schedule (`pwsched_intra_thread`),
+        intra-group pairwise schedule (`pwsched_intra_group`), and the global
+        pairwise schedule (`pwsched_global`), each containing a pair of
+        mappings from statement instances to points in a lexicographic
+        ordering, one for each statement. Note that a pairwise schedule
+        alone cannot be used to reproduce the corresponding SIO without the
+        corresponding (unique) lexicographic order map, which is not returned.
 
     .. doctest:
 
@@ -85,7 +86,7 @@ def get_pairwise_statement_orderings(
         ...     [("insn_a", "insn_b")],
         ...     )
         >>> # Print map
-        >>> print(str(sio_dict[("insn_a", "insn_b")][0]
+        >>> print(str(sio_dict[("insn_a", "insn_b")].sio_intra_thread
         ...     ).replace("{ ", "{\n").replace(" :", "\n:"))
         [pj, pk] -> {
         [_lp_linchk_stmt' = 0, j', k'] -> [_lp_linchk_stmt = 1, j, k]
@@ -134,7 +135,6 @@ def get_pairwise_statement_orderings(
         lin_items,
         insn_id_pairs,
         loops_to_ignore=conc_loop_inames,
-        return_schedules=return_schedules,
         )
 
     # }}}

@@ -148,7 +148,6 @@ def test_pairwise_schedule_creation():
         lin_knl,
         linearization_items,
         insn_id_pairs,
-        return_schedules=True,  # include schedules for testing
         )
 
     # Relationship between stmt_a and stmt_b ---------------------------------------
@@ -355,7 +354,6 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
         lin_knl,
         linearization_items,
         stmt_id_pairs,
-        return_schedules=True,
         )
 
     # Relationship between stmt_a and stmt_b ---------------------------------------
@@ -448,7 +446,7 @@ def test_lex_order_map_creation():
 def _check_sio_for_stmt_pair(
         stmt_id_before,
         stmt_id_after,
-        sio_dict,
+        all_sios,
         sio_seq_exp=None,
         sched_before_seq_exp=None,
         sched_after_seq_exp=None,
@@ -460,33 +458,21 @@ def _check_sio_for_stmt_pair(
         sched_after_gconc_exp=None,
         ):
 
-    maps_found = sio_dict[(stmt_id_before, stmt_id_after)]
+    order_info = all_sios[(stmt_id_before, stmt_id_after)]
 
-    # Check whether scheds were included in sio_dict
-    if isinstance(maps_found[0], tuple):
-        # Scheds were included
-        (
-            sio_seq, (sched_before_seq, sched_after_seq)
-        ), (
-            sio_lconc, (sched_before_lconc, sched_after_lconc)
-        ), (
-            sio_gconc, (sched_before_gconc, sched_after_gconc)
-        ) = maps_found
-        map_candidates = zip([
-            sio_seq_exp, sched_before_seq_exp, sched_after_seq_exp,
-            sio_lconc_exp, sched_before_lconc_exp, sched_after_lconc_exp,
-            sio_gconc_exp, sched_before_gconc_exp, sched_after_gconc_exp,
-            ], [
-            sio_seq, sched_before_seq, sched_after_seq,
-            sio_lconc, sched_before_lconc, sched_after_lconc,
-            sio_gconc, sched_before_gconc, sched_after_gconc,
-            ])
-    else:
-        # Scheds not included
-        sio_seq, sio_lconc, sio_gconc = maps_found
-        map_candidates = zip(
-            [sio_seq_exp, sio_lconc_exp, sio_gconc_exp, ],
-            [sio_seq, sio_lconc, sio_gconc, ])
+    # Get pairs of maps to compare for equality
+    map_candidates = zip([
+        sio_seq_exp, sched_before_seq_exp, sched_after_seq_exp,
+        sio_lconc_exp, sched_before_lconc_exp, sched_after_lconc_exp,
+        sio_gconc_exp, sched_before_gconc_exp, sched_after_gconc_exp,
+        ], [
+        order_info.sio_intra_thread,
+        order_info.pwsched_intra_thread[0], order_info.pwsched_intra_thread[1],
+        order_info.sio_intra_group,
+        order_info.pwsched_intra_group[0], order_info.pwsched_intra_group[1],
+        order_info.sio_global,
+        order_info.pwsched_global[0], order_info.pwsched_global[1],
+        ])
 
     # Only compare to maps that were passed
     maps_to_compare = [(m1, m2) for m1, m2 in map_candidates if m1 is not None]
@@ -548,7 +534,6 @@ def test_statement_instance_ordering():
         knl,
         linearization_items,
         stmt_id_pairs,
-        return_schedules=True,
         )
 
     # Relationship between stmt_a and stmt_b ---------------------------------------
@@ -666,7 +651,6 @@ def test_statement_instance_ordering_with_hw_par_tags():
         lin_knl,
         linearization_items,
         stmt_id_pairs,
-        return_schedules=True,
         )
 
     # Create string for representing parallel iname condition in sio
@@ -744,9 +728,7 @@ def test_sios_and_schedules_with_barriers():
 
     insn_id_pairs = [("j1", "2"), ("1", "i0")]
     scheds = get_pairwise_statement_orderings(
-        lin_knl, linearization_items, insn_id_pairs,
-        return_schedules=True,  # include schedules for testing
-        )
+        lin_knl, linearization_items, insn_id_pairs)
 
     # Relationship between j1 and 2 --------------------------------------------
 
@@ -858,13 +840,7 @@ def test_sios_and_schedules_with_barriers():
     # Check for some key example pairs in the sio_lconc map
 
     # Get maps
-    (
-        sio_seq, (sched_map_before, sched_map_after)
-    ), (
-        sio_lconc, (sched_before_lconc, sched_after_lconc)
-    ), (
-        sio_gconc, (sched_before_gconc, sched_after_gconc)
-    ) = scheds[("j1", "2")]
+    order_info = scheds[("j1", "2")]
 
     # As long as this is not the last iteration of the i loop, then there
     # should be a barrier between the last instance of statement j1
@@ -887,9 +863,10 @@ def test_sios_and_schedules_with_barriers():
             conc_iname_bound_str,
             conc_iname_bound_str_p,
             ))
-    wanted_pairs = ensure_dim_names_match_and_align(wanted_pairs, sio_lconc)
+    wanted_pairs = ensure_dim_names_match_and_align(
+        wanted_pairs, order_info.sio_intra_group)
 
-    assert wanted_pairs.is_subset(sio_lconc)
+    assert wanted_pairs.is_subset(order_info.sio_intra_group)
 
     # If this IS the last iteration of the i loop, then there
     # should NOT be a barrier between the last instance of statement j1
@@ -908,9 +885,10 @@ def test_sios_and_schedules_with_barriers():
             conc_iname_bound_str,
             conc_iname_bound_str_p,
             ))
-    unwanted_pairs = ensure_dim_names_match_and_align(unwanted_pairs, sio_lconc)
+    unwanted_pairs = ensure_dim_names_match_and_align(
+        unwanted_pairs, order_info.sio_intra_group)
 
-    assert not unwanted_pairs.is_subset(sio_lconc)
+    assert not unwanted_pairs.is_subset(order_info.sio_intra_group)
 
     # Relationship between 1 and i0 --------------------------------------------
 
