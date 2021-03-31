@@ -121,6 +121,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     # }}}
 
     def map_variable(self, expr, type_context):
+        from loopy.kernel.data import ValueArg, AddressSpace
+
         def postproc(x):
             return x
 
@@ -148,12 +150,12 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     raise RuntimeError("unsubscripted reference to array '%s'"
                             % expr.name)
 
-            from loopy.kernel.data import ValueArg
             if isinstance(arg, ValueArg) and self.fortran_abi:
                 postproc = lambda x: x[0]  # noqa
         elif expr.name in self.kernel.temporary_variables:
             temporary = self.kernel.temporary_variables[expr.name]
-            if temporary.base_storage:
+            if (temporary.base_storage
+                    or temporary.address_space == AddressSpace.GLOBAL):
                 postproc = lambda x: x[0]  # noqa
 
         result = self.kernel.mangle_symbol(self.codegen_state.ast_builder, expr.name)
