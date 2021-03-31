@@ -559,7 +559,7 @@ def get_pairwise_statement_orderings_inner(
         seq_blex_dim_names_prime = append_marker_to_strings(
             seq_blex_dim_names, marker=BEFORE_MARK)
 
-        # Begin with the blex order map created as a standard lex order map
+        # Begin with the blex order map created as a standard lexicographical order
         blex_order_map = create_lex_order_map(
             dim_names=seq_blex_dim_names,
             in_dim_marker=BEFORE_MARK,
@@ -602,19 +602,20 @@ def get_pairwise_statement_orderings_inner(
 
         # {{{ _create_excluded_map_for_iname
 
-        def _create_excluded_map_for_iname(iname, blueprint):
+        def _create_excluded_map_for_iname(iname, key_lex_tuples):
             """Create the blex->blex pairs that must be subtracted from the
             initial blex order map for this particular loop using the 6 blex
-            tuples in the blueprint:
+            tuples in the key_lex_tuples:
             PRE->FIRST, BOTTOM(iname')->TOP(iname'+1), LAST->POST
             """
 
-            # Note: only blueprint[slex.FIRST] & blueprint[slex.LAST] contain pwaffs
+            # Note:
+            # only key_lex_tuples[slex.FIRST] & key_lex_tuples[slex.LAST] are pwaffs
 
             # {{{ _create_blex_set_from_tuple_pair
 
             def _create_blex_set_from_tuple_pair(before, after, wrap_cond=False):
-                """Given a before->after tuple pair in the blueprint, which may
+                """Given a before->after tuple pair in the key_lex_tuples, which may
                 have dim vals described by ints, strings (inames), and pwaffs,
                 create an ISL set in blex space that can be converted into
                 the ISL map to be subtracted
@@ -668,16 +669,17 @@ def get_pairwise_statement_orderings_inner(
 
             # Enter loop case: PRE->FIRST
             full_blex_set = _create_blex_set_from_tuple_pair(
-                blueprint[slex.PRE], blueprint[slex.FIRST])
+                key_lex_tuples[slex.PRE], key_lex_tuples[slex.FIRST])
             # Wrap loop case: BOTTOM(iname')->TOP(iname'+1)
             full_blex_set |= _create_blex_set_from_tuple_pair(
-                blueprint[slex.BOTTOM], blueprint[slex.TOP], wrap_cond=True)
+                key_lex_tuples[slex.BOTTOM], key_lex_tuples[slex.TOP],
+                wrap_cond=True)
             # Leave loop case: LAST->POST
             full_blex_set |= _create_blex_set_from_tuple_pair(
-                blueprint[slex.LAST], blueprint[slex.POST])
+                key_lex_tuples[slex.LAST], key_lex_tuples[slex.POST])
 
             # Add condition to fix iteration value for *surrounding* loops (j = j')
-            for surrounding_iname in blueprint[slex.PRE][1::2]:
+            for surrounding_iname in key_lex_tuples[slex.PRE][1::2]:
                 s_blex_var = iname_to_blex_var[surrounding_iname]
                 full_blex_set &= blex_set_affs[s_blex_var].eq_set(
                     blex_set_affs[s_blex_var+BEFORE_MARK])
@@ -795,11 +797,11 @@ def get_pairwise_statement_orderings_inner(
     pairwise_sios = {}
     from collections import namedtuple
     StatementOrdering = namedtuple(
-        'StatementOrdering',
+        "StatementOrdering",
         [
-            'sio_intra_thread', 'pwsched_intra_thread',
-            'sio_intra_group', 'pwsched_intra_group',
-            'sio_global', 'pwsched_global',
+            "sio_intra_thread", "pwsched_intra_thread",
+            "sio_intra_group", "pwsched_intra_group",
+            "sio_global", "pwsched_global",
         ])
     # ("sio" = statement instance ordering; "pwsched" = pairwise schedule)
 
@@ -858,7 +860,7 @@ def get_pairwise_statement_orderings_inner(
 
         # Create statement instance ordering,
         # maps each statement instance to all statement instances occurring later
-        sio_seq = get_statement_ordering_map(
+        sio_intra_thread = get_statement_ordering_map(
             *intra_thread_sched_maps,  # note, func accepts exactly two maps
             lex_order_map,
             before_marker=BEFORE_MARK,
@@ -893,21 +895,21 @@ def get_pairwise_statement_orderings_inner(
 
             return par_sched_maps, sio_par
 
-        lpar_sched_maps, sio_lpar = _get_sched_maps_and_sio(
+        pwsched_intra_group, sio_intra_group = _get_sched_maps_and_sio(
             stmt_inst_to_lblex, lblex_order_map, seq_lblex_dim_names)
-        gpar_sched_maps, sio_gpar = _get_sched_maps_and_sio(
+        pwsched_global, sio_global = _get_sched_maps_and_sio(
             stmt_inst_to_gblex, gblex_order_map, seq_gblex_dim_names)
 
         # }}}
 
         # Store sched maps along with SIOs
         pairwise_sios[tuple(insn_ids)] = StatementOrdering(
-            sio_intra_thread=sio_seq,
+            sio_intra_thread=sio_intra_thread,
             pwsched_intra_thread=tuple(intra_thread_sched_maps),
-            sio_intra_group=sio_lpar,
-            pwsched_intra_group=tuple(lpar_sched_maps),
-            sio_global=sio_gpar,
-            pwsched_global=tuple(gpar_sched_maps),
+            sio_intra_group=sio_intra_group,
+            pwsched_intra_group=tuple(pwsched_intra_group),
+            sio_global=sio_global,
+            pwsched_global=tuple(pwsched_global),
             )
 
     # }}}
