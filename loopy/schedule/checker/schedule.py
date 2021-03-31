@@ -795,7 +795,7 @@ def get_pairwise_statement_orderings_inner(
 
     # }}}
 
-    pairwise_schedules = {}
+    pairwise_sios = {}
     for insn_ids in insn_id_pairs:
         # Determine integer IDs that will represent each statement in mapping
         # (dependency map creation assumes sid_before=0 and sid_after=1, unless
@@ -896,17 +896,17 @@ def get_pairwise_statement_orderings_inner(
         if return_schedules:
             # Store sched maps along with SIOs
             # (currently helpful for testing; also could be desired by a user)
-            pairwise_schedules[tuple(insn_ids)] = (
+            pairwise_sios[tuple(insn_ids)] = (
                 (sio_seq, tuple(intra_thread_sched_maps), ),
                 (sio_lpar, tuple(lpar_sched_maps), ),
                 (sio_gpar, tuple(gpar_sched_maps), ),
                 )
         else:
             # Store SIOs only
-            pairwise_schedules[tuple(insn_ids)] = (sio_seq, sio_lpar, sio_gpar)
+            pairwise_sios[tuple(insn_ids)] = (sio_seq, sio_lpar, sio_gpar)
 
     # }}}
 
-    return pairwise_schedules
+    return pairwise_sios
 
 # }}}
