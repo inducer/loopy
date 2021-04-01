@@ -144,7 +144,7 @@ def test_pairwise_schedule_creation():
         ("stmt_b", "stmt_d"),
         ("stmt_c", "stmt_d"),
         ]
-    scheds = get_pairwise_statement_orderings(
+    pworders = get_pairwise_statement_orderings(
         lin_knl,
         linearization_items,
         insn_id_pairs,
@@ -170,8 +170,8 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    _check_sio_for_stmt_pair(
-        "stmt_a", "stmt_b", scheds,
+    _check_orderings_for_stmt_pair(
+        "stmt_a", "stmt_b", pworders,
         sched_before_intra_thread_exp=sched_before_intra_thread_exp,
         sched_after_intra_thread_exp=sched_after_intra_thread_exp,
         )
@@ -197,8 +197,8 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    _check_sio_for_stmt_pair(
-        "stmt_a", "stmt_c", scheds,
+    _check_orderings_for_stmt_pair(
+        "stmt_a", "stmt_c", pworders,
         sched_before_intra_thread_exp=sched_before_intra_thread_exp,
         sched_after_intra_thread_exp=sched_after_intra_thread_exp,
         )
@@ -224,8 +224,8 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    _check_sio_for_stmt_pair(
-        "stmt_a", "stmt_d", scheds,
+    _check_orderings_for_stmt_pair(
+        "stmt_a", "stmt_d", pworders,
         sched_before_intra_thread_exp=sched_before_intra_thread_exp,
         sched_after_intra_thread_exp=sched_after_intra_thread_exp,
         )
@@ -251,8 +251,8 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    _check_sio_for_stmt_pair(
-        "stmt_b", "stmt_c", scheds,
+    _check_orderings_for_stmt_pair(
+        "stmt_b", "stmt_c", pworders,
         sched_before_intra_thread_exp=sched_before_intra_thread_exp,
         sched_after_intra_thread_exp=sched_after_intra_thread_exp,
         )
@@ -278,8 +278,8 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    _check_sio_for_stmt_pair(
-        "stmt_b", "stmt_d", scheds,
+    _check_orderings_for_stmt_pair(
+        "stmt_b", "stmt_d", pworders,
         sched_before_intra_thread_exp=sched_before_intra_thread_exp,
         sched_after_intra_thread_exp=sched_after_intra_thread_exp,
         )
@@ -305,8 +305,8 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    _check_sio_for_stmt_pair(
-        "stmt_c", "stmt_d", scheds,
+    _check_orderings_for_stmt_pair(
+        "stmt_c", "stmt_d", pworders,
         sched_before_intra_thread_exp=sched_before_intra_thread_exp,
         sched_after_intra_thread_exp=sched_after_intra_thread_exp,
         )
@@ -350,7 +350,7 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
     stmt_id_pairs = [
         ("stmt_a", "stmt_b"),
         ]
-    scheds = get_pairwise_statement_orderings(
+    pworders = get_pairwise_statement_orderings(
         lin_knl,
         linearization_items,
         stmt_id_pairs,
@@ -382,8 +382,8 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
             )
         )
 
-    _check_sio_for_stmt_pair(
-        "stmt_a", "stmt_b", scheds,
+    _check_orderings_for_stmt_pair(
+        "stmt_a", "stmt_b", pworders,
         sched_before_intra_thread_exp=sched_before_intra_thread_exp,
         sched_after_intra_thread_exp=sched_after_intra_thread_exp,
         )
@@ -443,7 +443,7 @@ def test_lex_order_map_creation():
 
 # {{{ test statement instance ordering creation
 
-def _check_sio_for_stmt_pair(
+def _check_orderings_for_stmt_pair(
         stmt_id_before,
         stmt_id_after,
         all_sios,
@@ -533,7 +533,7 @@ def test_statement_instance_ordering():
         ("stmt_b", "stmt_d"),
         ("stmt_c", "stmt_d"),
         ]
-    scheds = get_pairwise_statement_orderings(
+    pworders = get_pairwise_statement_orderings(
         knl,
         linearization_items,
         stmt_id_pairs,
@@ -548,8 +548,8 @@ def test_statement_instance_ordering():
         "}}".format(STATEMENT_VAR_NAME)
         )
 
-    _check_sio_for_stmt_pair(
-        "stmt_a", "stmt_b", scheds, sio_intra_thread_exp=sio_intra_thread_exp)
+    _check_orderings_for_stmt_pair(
+        "stmt_a", "stmt_b", pworders, sio_intra_thread_exp=sio_intra_thread_exp)
 
     # Relationship between stmt_a and stmt_c ---------------------------------------
 
@@ -560,8 +560,8 @@ def test_statement_instance_ordering():
         "}}".format(STATEMENT_VAR_NAME)
         )
 
-    _check_sio_for_stmt_pair(
-        "stmt_a", "stmt_c", scheds, sio_intra_thread_exp=sio_intra_thread_exp)
+    _check_orderings_for_stmt_pair(
+        "stmt_a", "stmt_c", pworders, sio_intra_thread_exp=sio_intra_thread_exp)
 
     # Relationship between stmt_a and stmt_d ---------------------------------------
 
@@ -572,8 +572,8 @@ def test_statement_instance_ordering():
         "}}".format(STATEMENT_VAR_NAME)
         )
 
-    _check_sio_for_stmt_pair(
-        "stmt_a", "stmt_d", scheds, sio_intra_thread_exp=sio_intra_thread_exp)
+    _check_orderings_for_stmt_pair(
+        "stmt_a", "stmt_d", pworders, sio_intra_thread_exp=sio_intra_thread_exp)
 
     # Relationship between stmt_b and stmt_c ---------------------------------------
 
@@ -586,8 +586,8 @@ def test_statement_instance_ordering():
         "}}".format(STATEMENT_VAR_NAME)
         )
 
-    _check_sio_for_stmt_pair(
-        "stmt_b", "stmt_c", scheds, sio_intra_thread_exp=sio_intra_thread_exp)
+    _check_orderings_for_stmt_pair(
+        "stmt_b", "stmt_c", pworders, sio_intra_thread_exp=sio_intra_thread_exp)
 
     # Relationship between stmt_b and stmt_d ---------------------------------------
 
@@ -598,8 +598,8 @@ def test_statement_instance_ordering():
         "}}".format(STATEMENT_VAR_NAME)
         )
 
-    _check_sio_for_stmt_pair(
-        "stmt_b", "stmt_d", scheds, sio_intra_thread_exp=sio_intra_thread_exp)
+    _check_orderings_for_stmt_pair(
+        "stmt_b", "stmt_d", pworders, sio_intra_thread_exp=sio_intra_thread_exp)
 
     # Relationship between stmt_c and stmt_d ---------------------------------------
 
@@ -610,8 +610,8 @@ def test_statement_instance_ordering():
         "}}".format(STATEMENT_VAR_NAME)
         )
 
-    _check_sio_for_stmt_pair(
-        "stmt_c", "stmt_d", scheds, sio_intra_thread_exp=sio_intra_thread_exp)
+    _check_orderings_for_stmt_pair(
+        "stmt_c", "stmt_d", pworders, sio_intra_thread_exp=sio_intra_thread_exp)
 
 
 def test_statement_instance_ordering_with_hw_par_tags():
@@ -656,7 +656,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
     stmt_id_pairs = [
         ("stmt_a", "stmt_b"),
         ]
-    scheds = get_pairwise_statement_orderings(
+    pworders = get_pairwise_statement_orderings(
         lin_knl,
         linearization_items,
         stmt_id_pairs,
@@ -680,8 +680,8 @@ def test_statement_instance_ordering_with_hw_par_tags():
             )
         )
 
-    _check_sio_for_stmt_pair(
-        "stmt_a", "stmt_b", scheds, sio_intra_thread_exp=sio_intra_thread_exp)
+    _check_orderings_for_stmt_pair(
+        "stmt_a", "stmt_b", pworders, sio_intra_thread_exp=sio_intra_thread_exp)
 
     # ------------------------------------------------------------------------------
 
@@ -737,7 +737,7 @@ def test_sios_and_schedules_with_barriers():
     linearization_items = lin_knl.linearization
 
     insn_id_pairs = [("j1", "2"), ("1", "i0")]
-    scheds = get_pairwise_statement_orderings(
+    pworders = get_pairwise_statement_orderings(
         lin_knl, linearization_items, insn_id_pairs)
 
     # Relationship between j1 and 2 --------------------------------------------
@@ -837,8 +837,8 @@ def test_sios_and_schedules_with_barriers():
             )
         )
 
-    _check_sio_for_stmt_pair(
-        "j1", "2", scheds,
+    _check_orderings_for_stmt_pair(
+        "j1", "2", pworders,
         sio_intra_group_exp=sio_intra_group_exp,
         sched_before_intra_group_exp=sched_before_intra_group_exp,
         sched_after_intra_group_exp=sched_after_intra_group_exp,
@@ -850,7 +850,7 @@ def test_sios_and_schedules_with_barriers():
     # Check for some key example pairs in the sio_intra_group map
 
     # Get maps
-    order_info = scheds[("j1", "2")]
+    order_info = pworders[("j1", "2")]
 
     # As long as this is not the last iteration of the i loop, then there
     # should be a barrier between the last instance of statement j1
@@ -991,8 +991,8 @@ def test_sios_and_schedules_with_barriers():
             )
         )
 
-    _check_sio_for_stmt_pair(
-        "1", "i0", scheds,
+    _check_orderings_for_stmt_pair(
+        "1", "i0", pworders,
         sio_intra_group_exp=sio_intra_group_exp,
         sched_before_intra_group_exp=sched_before_intra_group_exp,
         sched_after_intra_group_exp=sched_after_intra_group_exp,
