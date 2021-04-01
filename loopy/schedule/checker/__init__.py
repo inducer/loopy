@@ -46,9 +46,6 @@ def get_pairwise_statement_orderings(
 
     :arg insn_id_pairs: A list containing pairs of instruction identifiers.
 
-    :arg return_schedules: A :class:`bool` determining whether to include
-        pairwise schedules in the returned dictionary.
-
     :returns: A dictionary mapping each two-tuple of instruction identifiers
         provided in `insn_id_pairs` to a :class:`collections.namedtuple`
         containing the intra-thread SIO (`sio_intra_thread`), intra-group SIO
@@ -77,9 +74,8 @@ def get_pairwise_statement_orderings(
         >>> knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
         >>> # Get a linearization
         >>> knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-        >>> # Get a pairwise schedule -----------------------------------------------
+        >>> # Get pairwise order info -----------------------------------------------
         >>> from loopy.schedule.checker import get_pairwise_statement_orderings
-        >>> # Get two maps ----------------------------------------------------------
         >>> sio_dict = get_pairwise_statement_orderings(
         ...     knl,
         ...     knl.linearization,
