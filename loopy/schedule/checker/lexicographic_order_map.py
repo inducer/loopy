@@ -77,33 +77,34 @@ def get_lex_order_set(
         in_dim_marker="'",
         ):
     """Return an :class:`islpy.Set` representing a lexicographic ordering
-        with the number of dimensions provided in `before_names`
-        (equal to the number of dimensions in `after_names`).
+        over a space with the number of dimensions provided in `dim_names`
+        (the set itself will have twice this many dimensions in order to
+        represent the ordering as before-after pairs of points).
 
-    :arg before_names: A list of :class:`str` variable names to be used
+    :arg dim_names: A list of :class:`str` variable names to be used
         to describe lexicographic space dimensions for a point in a lexicographic
-        ordering that occurs before another point, which will be represented using
-        `after_names`. (see example below)
+        ordering. (see example below)
 
-    :arg after_names: A list of :class:`str` variable names to be used
-        to describe lexicographic space dimensions for a point in a lexicographic
-        ordering that occurs after another point, which will be represented using
-        `before_names`. (see example below)
-
-    :arg islvars: A dictionary mapping variable names in `before_names` and
-        `after_names` to :class:`islpy.PwAff` instances that represent each
-        of the variables (islvars may be produced by `islpy.make_zero_and_vars`).
+    :arg islvars: A dictionary mapping variable names in `dim_names` to
+        :class:`islpy.PwAff` instances that represent each of the variables
+        (islvars may be produced by `islpy.make_zero_and_vars`).
         The key '0' is also include and represents a :class:`islpy.PwAff` zero
-        constant. This dictionary defines the space to be used for the set. If no
-        value is passed, the dictionary will be made using `before_names`
-        and `after_names`.
+        constant. This dictionary defines the space to be used for the set and
+        must also include versions of `dim_names` with the `in_dim_marker`
+        appended. If no value is passed, the dictionary will be made using
+        `dim_names` and `dim_names` with the `in_dim_marker` appended.
 
-    :returns: An :class:`islpy.Set` representing a big-endian lexicographic ordering
-        with the number of dimensions provided in `before_names`. The set
-        has one dimension for each name in *both* `before_names` and
-        `after_names`, and contains all points which meet a 'happens before'
+    :arg in_dim_marker: A :class:`str` to be appended to dimension names to
+        distinguish corresponding dimensions in before-after pairs of points.
+        (see example below)
+
+    :returns: An :class:`islpy.Set` representing a big-endian lexicographic
+        ordering with the number of dimensions provided in `dim_names`. The set
+        has two dimensions for each name in `dim_names`, one identified by the
+        given name and another identified by the same name with `in_dim_marker`
+        appended. The set contains all points which meet a 'happens before'
         constraint defining the lexicographic ordering. E.g., if
-        `before_names = [i0', i1', i2']` and `after_names = [i0, i1, i2]`,
+        `dim_names = [i0, i1, i2]` and `in_dim_marker="'"`,
         return the set containing all points in a 3-dimensional, big-endian
         lexicographic ordering such that point
         `[i0', i1', i2']` happens before `[i0, i1, i2]`. I.e., return::
@@ -113,7 +114,6 @@ def get_lex_order_set(
                 or (i0' = i0 and i1' = i1 and i2' < i2)}
 
     """
-    # TODO update doc
 
     from loopy.schedule.checker.utils import (
         append_marker_to_strings,
@@ -165,30 +165,27 @@ def create_lex_order_map(
 
     :arg n_dims: An :class:`int` representing the number of dimensions
         in the lexicographic ordering. If not provided, `n_dims` will be
-        set to length of `after_names`.
+        set to length of `dim_names`.
 
-    :arg before_names: A list of :class:`str` variable names to be used
-        to describe lexicographic space dimensions for a point in a lexicographic
-        ordering that occurs before another point, which will be represented using
-        `after_names`. (see example below)
+    :arg dim_names: A list of :class:`str` variable names for the
+        lexicographic space dimensions.
 
-    :arg after_names: A list of :class:`str` variable names to be used
-        to describe lexicographic space dimensions for a point in a lexicographic
-        ordering that occurs after another point, which will be represented using
-        `before_names`. (see example below)
+    :arg in_dim_marker: A :class:`str` to be appended to `dim_names` to create
+        the names for the input dimensions of the map, thereby distinguishing
+        them from the corresponding output dimensions in before-after pairs of
+        points. (see example below)
 
     :returns: An :class:`islpy.Map` representing a lexicographic
         ordering as a mapping from each point in lexicographic time
         to every point that occurs later in lexicographic time.
-        E.g., if `before_names = [i0', i1', i2']` and
-        `after_names = [i0, i1, i2]`, return the map::
+        E.g., if `dim_names = [i0, i1, i2]` and `in_dim_marker = "'"`,
+        return the map::
 
             {[i0', i1', i2'] -> [i0, i1, i2] :
                 i0' < i0 or (i0' = i0 and i1' < i1)
                 or (i0' = i0 and i1' = i1 and i2' < i2)}
 
     """
-    # TODO update doc
 
     if dim_names is None:
         dim_names = ["i%s" % (i) for i in range(n_dims)]

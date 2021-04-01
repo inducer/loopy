@@ -22,15 +22,59 @@ THE SOFTWARE.
 
 from sys import intern
 from pytools import ImmutableRecord, memoize_method
+from pytools.tag import Tag, tag_dataclass, Taggable
 from loopy.diagnostic import LoopyError
 from loopy.tools import Optional
 from warnings import warn
 import islpy as isl
 
 
+# {{{ instruction tags
+
+@tag_dataclass
+class LegacyStringInstructionTag(Tag):
+    """A subclass of :class:`pytools.tag.Tag` for use in
+    :attr:`InstructionBase.tags` used for forward compatibility of the old
+    string-based tagging mechanism. String-based tags are automatically converted
+    to this type.
+
+    .. attribute:: value
+    """
+    value: str
+
+    # FIXME: This class should be deprecated as soon as there is a viable
+    # alternative. For now, pattern matching and the textual syntax are
+    # only able to generate string tags, which is why the deprecation is not
+    # yet in effect.
+
+
+@tag_dataclass
+class UseStreamingStoreTag(Tag):
+    """A subclass of :class:`pytools.tag.Tag` for use in
+    :attr:`InstructionBase.tags` used to indicate that if the instruction is an
+    :class:`Assignment` or a :class:`CallInstruction`, then the 'store' part of
+    the assignment should be realized using streaming stores.
+
+    .. note::
+
+        This tag is advisory in nature and may be ignored by targets
+        that do not understand it or in situations where it does not
+        apply.
+
+    .. warning::
+
+        This is a dodgy shortcut, and no promise is made that this will
+        continue to work. Whether this is safe is target-dependent and
+        program-dependent. No promise of safety is made.
+    """
+    pass
+
+# }}}
+
+
 # {{{ instructions: base class
 
-class InstructionBase(ImmutableRecord):
+class InstructionBase(ImmutableRecord, Taggable):
     """A base class for all types of instruction that can occur in
     a kernel.
 
@@ -135,11 +179,11 @@ class InstructionBase(ImmutableRecord):
 
     .. attribute:: tags
 
-        A :class:`frozenset` of string identifiers that can be used to
-        identify groups of instructions.
-
-        Tags starting with exclamation marks (``!``) are reserved and may have
-        specific meanings defined by :mod:`loopy` or its targets.
+        A :class:`frozenset` of subclasses of :class:`pytools.tag.Tag` used to
+        provide metadata on this object. Legacy string tags are converted to
+        :class:`LegacyStringInstructionTag` or, if they used to carry
+        a functional meaning, the tag carrying that same fucntional meaning
+        (e.g. :class:`UseStreamingStoreTag`).
 
     .. automethod:: __init__
     .. automethod:: assignee_var_names
@@ -148,6 +192,8 @@ class InstructionBase(ImmutableRecord):
     .. automethod:: write_dependency_names
     .. automethod:: dependency_names
     .. automethod:: copy
+
+    Inherits from :class:`pytools.tag.Taggable`.
     """
 
     # within_inames_is_final is deprecated and will be removed in version 2017.x.
@@ -262,7 +308,12 @@ class InstructionBase(ImmutableRecord):
                 within_inames=within_inames,
                 priority=priority,
                 predicates=predicates,
+                # Yes, tags is set by both this and the Taggable constructor.
+                # Here, we set it so that ImmutableRecord knows about it.
+                # The Taggable constructor call does extra validation.
                 tags=tags)
+
+        Taggable.__init__(self, tags)
 
     # {{{ abstract interface
 
@@ -279,7 +330,7 @@ class InstructionBase(ImmutableRecord):
         raise NotImplementedError
 
     def assignee_var_names(self):
-        """Return a tuple of tuples of assignee variable names, one
+        """Return a tuple of assignee variable names, one
         for each quantity being assigned to.
         """
         raise NotImplementedError
@@ -353,7 +404,9 @@ class InstructionBase(ImmutableRecord):
         if self.priority:
             result.append("priority=%d" % self.priority)
         if self.tags:
-            result.append("tags=%s" % ":".join(self.tags))
+            from loopy.kernel.tools import stringify_instruction_tag
+            result.append("tags=%s" % ":".join(
+                stringify_instruction_tag(t) for t in self.tags))
         if hasattr(self, "atomicity") and self.atomicity:
             result.append("atomic=%s" % ":".join(str(a) for a in self.atomicity))
 

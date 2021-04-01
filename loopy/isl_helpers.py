@@ -574,7 +574,19 @@ def find_max_of_pwaff_with_params(pw_aff, n_allowed_params):
 # }}}
 
 
-# {{{ subst_into_pwqpolynomial
+# {{{ subst_into_pw(qpolynomial|aff)
+
+def set_dim_name(obj, dt, pos, name):
+    assert isinstance(name, str)
+    if isinstance(obj, isl.PwQPolynomial):
+        return obj.set_dim_name(dt, pos, name)
+    elif isinstance(obj, isl.PwAff):
+        # work around missing isl_pw_aff_set_dim_name for now.
+        # https://github.com/inducer/loopy/pull/233/files#r580594032
+        return obj.set_dim_id(dt, pos, isl.Id.read_from_str(obj.get_ctx(), name))
+    else:
+        raise NotImplementedError(f"not implemented for {type(obj)}.")
+
 
 def get_param_subst_domain(new_space, base_obj, subst_dict):
     """Modify the :mod:`islpy` object *base_obj* to incorporate parameters for
@@ -603,7 +615,7 @@ def get_param_subst_domain(new_space, base_obj, subst_dict):
         old_name = base_obj.space.get_dim_name(dim_type.param, i)
         new_name = old_name + "'"
         new_subst_dict[new_name] = subst_dict[old_name]
-        base_obj = base_obj.set_dim_name(dim_type.param, i, new_name)
+        base_obj = set_dim_name(base_obj, dim_type.param, i, new_name)
 
     subst_dict = new_subst_dict
     del new_subst_dict
@@ -614,7 +626,7 @@ def get_param_subst_domain(new_space, base_obj, subst_dict):
 
     base_obj = base_obj.add_dims(dim_type.param, new_space.dim(dim_type.param))
     for i in range(new_space.dim(dim_type.param)):
-        base_obj = base_obj.set_dim_name(dim_type.param, i+i_begin_subst_space,
+        base_obj = set_dim_name(base_obj, dim_type.param, i+i_begin_subst_space,
                 new_space.get_dim_name(dim_type.param, i))
 
     # }}}
@@ -685,6 +697,45 @@ def subst_into_pwqpolynomial(new_space, poly, subst_dict):
 
     assert result.dim(dim_type.out)
     return result
+
+
+def subst_into_pwaff(new_space, pwaff, subst_dict):
+    """
+    Returns an instance of :class:`islpy.PwAff` with substitutions from
+    *subst_dict* substituted into *pwaff*.
+
+    :arg pwaff: an instance of :class:`islpy.PwAff`
+    :arg subst_dict: a mapping from parameters of *pwaff* to
+        :class:`pymbolic.primitives.Expression` made up of terms comprising the
+        parameters of *new_space*. The expression must be affine in the param
+        dims of *new_space*.
+    """
+    from pymbolic.mapper.substitutor import (
+            SubstitutionMapper, make_subst_func)
+    from loopy.symbolic import aff_from_expr, aff_to_expr
+    from functools import reduce
+
+    i_begin_subst_space = pwaff.dim(dim_type.param)
+    pwaff, subst_domain, subst_dict = get_param_subst_domain(
+            new_space, pwaff, subst_dict)
+    subst_mapper = SubstitutionMapper(make_subst_func(subst_dict))
+    pwaffs = []
+
+    for valid_set, qpoly in pwaff.get_pieces():
+        valid_set = valid_set & subst_domain
+        if valid_set.plain_is_empty():
+            continue
+
+        valid_set = valid_set.project_out(dim_type.param, 0, i_begin_subst_space)
+        aff = aff_from_expr(valid_set.space, subst_mapper(aff_to_expr(qpoly)))
+
+        pwaffs.append(isl.PwAff.alloc(valid_set, aff))
+
+    if not pwaffs:
+        raise ValueError("no pieces of PwAff survived the substitution")
+
+    return reduce(lambda pwaff1, pwaff2: pwaff1.union_add(pwaff2),
+                  pwaffs).coalesce()
 
 # }}}
 

@@ -21,39 +21,47 @@ THE SOFTWARE.
 """
 
 
-# {{{ create a pairwise schedules for statement pairs
+# {{{ get pairwise statement orderings
 
-def get_schedules_for_statement_pairs(
+def get_pairwise_statement_orderings(
         knl,
-        linearization_items,
+        lin_items,
         insn_id_pairs,
-        return_schedules=False,
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
-    instances are executed. For each pair, describe this relative ordering with
-    a pair of mappings from statement instances to points in a single
-    lexicographic ordering (a ``pairwise schedule''). When determining the
-    relative ordering, ignore concurrent inames.
+    instances are executed. For each pair, represent this relative ordering as
+    a ``statement instance ordering`` (SIO): a map from each instance of the
+    first statement to all instances of the second statement that occur
+    later.
 
     :arg knl: A preprocessed :class:`loopy.kernel.LoopKernel` containing the
-        linearization items that will be used to create a schedule.
+        linearization items that will be used to create the SIOs.
 
-    :arg linearization_items: A list of :class:`loopy.schedule.ScheduleItem`
-        (to be renamed to `loopy.schedule.LinearizationItem`) containing
-        all linearization items for which pairwise schedules will be
-        created. To allow usage of this routine during linearization, a
-        truncated (i.e. partial) linearization may be passed through this
-        argument.
+    :arg lin_items: A list of :class:`loopy.schedule.ScheduleItem`
+        (to be renamed to `loopy.schedule.LinearizationItem`) containing all
+        linearization items for which SIOs will be created. To allow usage of
+        this routine during linearization, a truncated (i.e. partial)
+        linearization may be passed through this argument.
 
-    :arg insn_id_pairs: A list containing pairs of instruction
-        identifiers.
+    :arg insn_id_pairs: A list containing pairs of instruction identifiers.
+
+    :arg return_schedules: A :class:`bool` determining whether to include
+        pairwise schedules in the returned dictionary.
 
     :returns: A dictionary mapping each two-tuple of instruction identifiers
-        provided in `insn_id_pairs` to a corresponding two-tuple containing two
-        :class:`islpy.Map`\ s representing a pairwise schedule as two
-        mappings from statement instances to lexicographic time, one for
-        each of the two statements.
+        provided in `insn_id_pairs` to a :class:`collections.namedtuple`
+        containing the intra-thread SIO (`sio_intra_thread`), intra-group SIO
+        (`sio_intra_group`), and global SIO (`sio_global`), each realized
+        as an :class:`islpy.Map` from each instance of the first
+        statement to all instances of the second statement that occur later,
+        as well as the intra-thread pairwise schedule (`pwsched_intra_thread`),
+        intra-group pairwise schedule (`pwsched_intra_group`), and the global
+        pairwise schedule (`pwsched_global`), each containing a pair of
+        mappings from statement instances to points in a lexicographic
+        ordering, one for each statement. Note that a pairwise schedule
+        alone cannot be used to reproduce the corresponding SIO without the
+        corresponding (unique) lexicographic order map, which is not returned.
 
     .. doctest:
 
@@ -70,22 +78,21 @@ def get_schedules_for_statement_pairs(
         >>> # Get a linearization
         >>> knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
         >>> # Get a pairwise schedule -----------------------------------------------
-        >>> from loopy.schedule.checker import get_schedules_for_statement_pairs
+        >>> from loopy.schedule.checker import get_pairwise_statement_orderings
         >>> # Get two maps ----------------------------------------------------------
-        >>> sio_dict = get_schedules_for_statement_pairs(
+        >>> sio_dict = get_pairwise_statement_orderings(
         ...     knl,
         ...     knl.linearization,
         ...     [("insn_a", "insn_b")],
         ...     )
         >>> # Print map
-        >>> print(str(sio_dict[("insn_a", "insn_b")][0]
+        >>> print(str(sio_dict[("insn_a", "insn_b")].sio_intra_thread
         ...     ).replace("{ ", "{\n").replace(" :", "\n:"))
         [pj, pk] -> {
         [_lp_linchk_stmt' = 0, j', k'] -> [_lp_linchk_stmt = 1, j, k]
         : 0 <= j' < pj and 0 <= k' < pk and 0 <= j < pj and 0 <= k < pk }
 
     """
-    # TODO update docs and doctest now that we're returning SIOs
 
     # {{{ make sure kernel has been preprocessed
 
@@ -97,16 +104,14 @@ def get_schedules_for_statement_pairs(
     # }}}
 
     # {{{ Find any EnterLoop inames that are tagged as concurrent
-    # so that generate_pairwise_schedule() knows to ignore them
-    # (In the future, this shouldn't be necessary because there
-    # won't be any inames with ConcurrentTags in EnterLoop linearization items.
-    # Test which exercises this: test_linearization_checker_with_stroud_bernstein())
+    # so that get_pairwise_statement_orderings_inner() knows to ignore them
+    # (In the future, this should only include inames tagged with 'vec'.)
     from loopy.schedule.checker.utils import (
         partition_inames_by_concurrency,
         get_EnterLoop_inames,
     )
     conc_inames, _ = partition_inames_by_concurrency(knl)
-    enterloop_inames = get_EnterLoop_inames(linearization_items)
+    enterloop_inames = get_EnterLoop_inames(lin_items)
     conc_loop_inames = conc_inames & enterloop_inames
 
     # The only concurrent EnterLoop inames should be Vec and ILP
@@ -122,14 +127,14 @@ def get_schedules_for_statement_pairs(
 
     # {{{ Create two mappings from {statement instance: lex point}
 
-    # include only instructions involved in this dependency
-    from loopy.schedule.checker.schedule import generate_pairwise_schedules
-    return generate_pairwise_schedules(
+    from loopy.schedule.checker.schedule import (
+        get_pairwise_statement_orderings_inner
+    )
+    return get_pairwise_statement_orderings_inner(
         knl,
-        linearization_items,
+        lin_items,
         insn_id_pairs,
         loops_to_ignore=conc_loop_inames,
-        return_schedules=return_schedules,
         )
 
     # }}}
@@ -341,7 +346,7 @@ def check_linearization_validity(
                 (before_id, insn_after.id), []).extend(dep_list)
     # }}}
 
-    schedules = get_schedules_for_statement_pairs(
+    pworders = get_pairwise_statement_orderings(
         knl,
         linearization_items,
         stmts_to_deps.keys(),
@@ -354,8 +359,7 @@ def check_linearization_validity(
         # Get pairwise schedule for stmts involved in the dependency:
         # two isl maps from {statement instance: lex point},
         # TODO rename these, update comments
-        sio, sio_lpar, sio_gpar = schedules[
-            (insn_id_before, insn_id_after)]
+        pworder = pworders[(insn_id_before, insn_id_after)]
 
         # check each dep for this statement pair
         for dependency in dependencies:
@@ -369,16 +373,23 @@ def check_linearization_validity(
             )
 
             aligned_dep_map = ensure_dim_names_match_and_align(
-                dependency, sio)
+                dependency, pworder.sio_intra_thread)
 
-            assert aligned_dep_map.space == sio.space
-            assert aligned_dep_map.space == sio_lpar.space
-            assert aligned_dep_map.space == sio_gpar.space
-            assert aligned_dep_map.get_var_dict() == sio.get_var_dict()
-            assert aligned_dep_map.get_var_dict() == sio_lpar.get_var_dict()
-            assert aligned_dep_map.get_var_dict() == sio_gpar.get_var_dict()
+            assert aligned_dep_map.space == pworder.sio_intra_thread.space
+            assert aligned_dep_map.space == pworder.sio_intra_group.space
+            assert aligned_dep_map.space == pworder.sio_global.space
+            assert (aligned_dep_map.get_var_dict() ==
+                pworder.sio_intra_thread.get_var_dict())
+            assert (aligned_dep_map.get_var_dict() ==
+                pworder.sio_intra_group.get_var_dict())
+            assert (aligned_dep_map.get_var_dict() ==
+                pworder.sio_global.get_var_dict())
 
-            if not aligned_dep_map.is_subset(sio | sio_lpar | sio_gpar):
+            if not aligned_dep_map.is_subset(
+                    pworder.sio_intra_thread |
+                    pworder.sio_intra_group |
+                    pworder.sio_global
+                    ):
 
                 linearization_is_valid = False
 
@@ -388,11 +399,13 @@ def check_linearization_validity(
                 print(insn_id_before+"->"+insn_id_after)
                 print(prettier_map_string(dependency))
                 print("Statement instance ordering:")
-                print(prettier_map_string(sio))
-                print("dependency.gist(sio):")
-                print(prettier_map_string(aligned_dep_map.gist(sio)))
-                print("sio.gist(dependency)")
-                print(prettier_map_string(sio.gist(aligned_dep_map)))
+                print(prettier_map_string(pworder.sio_intra_thread))
+                print("dependency.gist(pworder.sio_intra_thread):")
+                print(prettier_map_string(
+                    aligned_dep_map.gist(pworder.sio_intra_thread)))
+                print("pworder.sio_intra_thread.gist(dependency)")
+                print(prettier_map_string(
+                    pworder.sio_intra_thread.gist(aligned_dep_map)))
                 print("Loop priority known:")
                 print(knl.loop_priority)
                 print("===========================================================")

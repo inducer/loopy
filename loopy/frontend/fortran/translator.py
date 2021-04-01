@@ -34,6 +34,7 @@ import islpy as isl
 from islpy import dim_type
 from loopy.symbolic import IdentityMapper
 from loopy.diagnostic import LoopyError
+from loopy.kernel.instruction import LegacyStringInstructionTag
 from pymbolic.primitives import Wildcard
 
 
@@ -640,16 +641,16 @@ class F2LoopyTranslator(FTreeWalkerBase):
                 stripped_comment_line)
 
         if begin_tag_match:
-            tag = begin_tag_match.group(1)
+            tag = LegacyStringInstructionTag(begin_tag_match.group(1))
             if tag in self.instruction_tags:
-                raise TranslationError("nested begin tag for tag '%s'" % tag)
+                raise TranslationError(f"nested begin tag for tag '{tag.value}'")
             self.instruction_tags.append(tag)
 
         elif end_tag_match:
-            tag = end_tag_match.group(1)
+            tag = LegacyStringInstructionTag(end_tag_match.group(1))
             if tag not in self.instruction_tags:
                 raise TranslationError(
-                        "end tag without begin tag for tag '%s'" % tag)
+                        f"end tag without begin tag for tag '{tag.value}'")
             self.instruction_tags.remove(tag)
 
         elif faulty_loopy_pragma_match is not None:

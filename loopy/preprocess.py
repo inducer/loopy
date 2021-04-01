@@ -1032,8 +1032,17 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 within_inames=outer_insn_inames - frozenset(expr.inames),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=init_insn_depends_on,
-                expression=expr.operation.neutral_element(*arg_dtypes),
-                predicates=insn.predicates,)
+                expression=expr.operation.neutral_element(*arg_dtypes)
+
+                # Do not inherit predicates: Those might read variables
+                # that may not yet be set, and we don't have a great way
+                # of figuring out what the dependencies of the accumulator
+                # initializer should be.
+
+                # This way, we may initialize a few too many accumulators,
+                # but that's better than being incorrect.
+                # https://github.com/inducer/loopy/issues/231
+                )
 
         generated_insns.append(init_insn)
 
@@ -1181,7 +1190,14 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 within_inames=base_iname_deps | frozenset([base_exec_iname]),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=frozenset(),
-                predicates=insn.predicates,
+                # Do not inherit predicates: Those might read variables
+                # that may not yet be set, and we don't have a great way
+                # of figuring out what the dependencies of the accumulator
+                # initializer should be.
+
+                # This way, we may initialize a few too many accumulators,
+                # but that's better than being incorrect.
+                # https://github.com/inducer/loopy/issues/231
                 )
         generated_insns.append(init_insn)
 
@@ -1402,7 +1418,14 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=init_insn_depends_on,
                 expression=expr.operation.neutral_element(*arg_dtypes),
-                predicates=insn.predicates,
+                # Do not inherit predicates: Those might read variables
+                # that may not yet be set, and we don't have a great way
+                # of figuring out what the dependencies of the accumulator
+                # initializer should be.
+
+                # This way, we may initialize a few too many accumulators,
+                # but that's better than being incorrect.
+                # https://github.com/inducer/loopy/issues/231
                 )
 
         generated_insns.append(init_insn)
@@ -1535,7 +1558,14 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 within_inames=base_iname_deps | frozenset([base_exec_iname]),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=init_insn_depends_on,
-                predicates=insn.predicates,
+                # Do not inherit predicates: Those might read variables
+                # that may not yet be set, and we don't have a great way
+                # of figuring out what the dependencies of the accumulator
+                # initializer should be.
+
+                # This way, we may initialize a few too many accumulators,
+                # but that's better than being incorrect.
+                # https://github.com/inducer/loopy/issues/231
                 )
         generated_insns.append(init_insn)
 

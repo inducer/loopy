@@ -150,8 +150,8 @@ def _simplify_lex_dims(tup0, tup1):
 # {{{ class SpecialLexPointWRTLoop
 
 class SpecialLexPointWRTLoop:
-    """Strings specifying a particular position in a lexicographic
-       ordering of statements relative to a loop.
+    """Strings identifying a particular point or set of points in a
+        lexicographic ordering of statements, specified relative to a loop.
 
     .. attribute:: PRE
        A :class:`str` indicating the last lexicographic point that
@@ -188,32 +188,33 @@ class SpecialLexPointWRTLoop:
 # }}}
 
 
-# {{{ generate_pairwise_schedules
+# {{{ get_pairwise_statement_orderings_inner
 
-def generate_pairwise_schedules(
+def get_pairwise_statement_orderings_inner(
         knl,
         lin_items,
         insn_id_pairs,
         loops_to_ignore=set(),
-        return_schedules=False,
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
-    instances are executed. For each pair, describe this relative ordering with
-    a pair of mappings from statement instances to points in a single
-    lexicographic ordering (a ``pairwise schedule'').
+    instances are executed. For each pair, represent this relative ordering as
+    a ``statement instance ordering`` (SIO): a map from each instance of the
+    first statement to all instances of the second statement that occur
+    later.
 
     :arg knl: A preprocessed :class:`loopy.kernel.LoopKernel` containing the
-        linearization items that will be used to create a schedule. This
+        linearization items that will be used to create the SIOs. This
         kernel will be used to get the domains associated with the inames
-        used in the statements.
+        used in the statements, and to determine which inames have been
+        tagged with parallel tags.
 
     :arg lin_items: A list of :class:`loopy.schedule.ScheduleItem`
         (to be renamed to `loopy.schedule.LinearizationItem`) containing
-        all linearization items for which pairwise schedules will be
+        all linearization items for which SIOs will be
         created. To allow usage of this routine during linearization, a
         truncated (i.e. partial) linearization may be passed through this
-        argument.
+        argument
 
     :arg insn_id_pairs: A list containing pairs of instruction identifiers.
 
@@ -223,14 +224,19 @@ def generate_pairwise_schedules(
         access tags.
 
     :returns: A dictionary mapping each two-tuple of instruction identifiers
-        provided in `insn_id_pairs` to a corresponding two-tuple containing two
-        :class:`islpy.Map`\ s representing a pairwise schedule as two
-        mappings from statement instances to lexicographic time, one for
-        each of the two statements.
+        provided in `insn_id_pairs` to a :class:`collections.namedtuple`
+        containing the intra-thread SIO (`sio_intra_thread`), intra-group SIO
+        (`sio_intra_group`), and global SIO (`sio_global`), each realized
+        as an :class:`islpy.Map` from each instance of the first
+        statement to all instances of the second statement that occur later,
+        as well as the intra-thread pairwise schedule (`pwsched_intra_thread`),
+        intra-group pairwise schedule (`pwsched_intra_group`), and the global
+        pairwise schedule (`pwsched_global`), each containing a pair of
+        mappings from statement instances to points in a lexicographic
+        ordering, one for each statement. Note that a pairwise schedule
+        alone cannot be used to reproduce the corresponding SIO without the
+        corresponding (unique) lexicographic order map, which is not returned.
     """
-    # TODO update docs now that we're returning SIOs
-    # TODO rename loops_to_ignore to loops_to_ignore_for_intra_thread_stuff...
-    # TODO handle 'vec' appropriately; then remove loops_to_ignore?
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
     from loopy.kernel.data import (LocalIndexTag, GroupIndexTag)
@@ -553,7 +559,7 @@ def generate_pairwise_schedules(
         seq_blex_dim_names_prime = append_marker_to_strings(
             seq_blex_dim_names, marker=BEFORE_MARK)
 
-        # Begin with the blex order map created as a standard lex order map
+        # Begin with the blex order map created as a standard lexicographical order
         blex_order_map = create_lex_order_map(
             dim_names=seq_blex_dim_names,
             in_dim_marker=BEFORE_MARK,
@@ -596,19 +602,20 @@ def generate_pairwise_schedules(
 
         # {{{ _create_excluded_map_for_iname
 
-        def _create_excluded_map_for_iname(iname, blueprint):
+        def _create_excluded_map_for_iname(iname, key_lex_tuples):
             """Create the blex->blex pairs that must be subtracted from the
             initial blex order map for this particular loop using the 6 blex
-            tuples in the blueprint:
+            tuples in the key_lex_tuples:
             PRE->FIRST, BOTTOM(iname')->TOP(iname'+1), LAST->POST
             """
 
-            # Note: only blueprint[slex.FIRST] & blueprint[slex.LAST] contain pwaffs
+            # Note:
+            # only key_lex_tuples[slex.FIRST] & key_lex_tuples[slex.LAST] are pwaffs
 
             # {{{ _create_blex_set_from_tuple_pair
 
             def _create_blex_set_from_tuple_pair(before, after, wrap_cond=False):
-                """Given a before->after tuple pair in the blueprint, which may
+                """Given a before->after tuple pair in the key_lex_tuples, which may
                 have dim vals described by ints, strings (inames), and pwaffs,
                 create an ISL set in blex space that can be converted into
                 the ISL map to be subtracted
@@ -662,16 +669,17 @@ def generate_pairwise_schedules(
 
             # Enter loop case: PRE->FIRST
             full_blex_set = _create_blex_set_from_tuple_pair(
-                blueprint[slex.PRE], blueprint[slex.FIRST])
+                key_lex_tuples[slex.PRE], key_lex_tuples[slex.FIRST])
             # Wrap loop case: BOTTOM(iname')->TOP(iname'+1)
             full_blex_set |= _create_blex_set_from_tuple_pair(
-                blueprint[slex.BOTTOM], blueprint[slex.TOP], wrap_cond=True)
+                key_lex_tuples[slex.BOTTOM], key_lex_tuples[slex.TOP],
+                wrap_cond=True)
             # Leave loop case: LAST->POST
             full_blex_set |= _create_blex_set_from_tuple_pair(
-                blueprint[slex.LAST], blueprint[slex.POST])
+                key_lex_tuples[slex.LAST], key_lex_tuples[slex.POST])
 
             # Add condition to fix iteration value for *surrounding* loops (j = j')
-            for surrounding_iname in blueprint[slex.PRE][1::2]:
+            for surrounding_iname in key_lex_tuples[slex.PRE][1::2]:
                 s_blex_var = iname_to_blex_var[surrounding_iname]
                 full_blex_set &= blex_set_affs[s_blex_var].eq_set(
                     blex_set_affs[s_blex_var+BEFORE_MARK])
@@ -786,7 +794,17 @@ def generate_pairwise_schedules(
 
     # }}}
 
-    pairwise_schedules = {}
+    pairwise_sios = {}
+    from collections import namedtuple
+    StatementOrdering = namedtuple(
+        "StatementOrdering",
+        [
+            "sio_intra_thread", "pwsched_intra_thread",
+            "sio_intra_group", "pwsched_intra_group",
+            "sio_global", "pwsched_global",
+        ])
+    # ("sio" = statement instance ordering; "pwsched" = pairwise schedule)
+
     for insn_ids in insn_id_pairs:
         # Determine integer IDs that will represent each statement in mapping
         # (dependency map creation assumes sid_before=0 and sid_after=1, unless
@@ -842,7 +860,7 @@ def generate_pairwise_schedules(
 
         # Create statement instance ordering,
         # maps each statement instance to all statement instances occurring later
-        sio_seq = get_statement_ordering_map(
+        sio_intra_thread = get_statement_ordering_map(
             *intra_thread_sched_maps,  # note, func accepts exactly two maps
             lex_order_map,
             before_marker=BEFORE_MARK,
@@ -877,27 +895,25 @@ def generate_pairwise_schedules(
 
             return par_sched_maps, sio_par
 
-        lpar_sched_maps, sio_lpar = _get_sched_maps_and_sio(
+        pwsched_intra_group, sio_intra_group = _get_sched_maps_and_sio(
             stmt_inst_to_lblex, lblex_order_map, seq_lblex_dim_names)
-        gpar_sched_maps, sio_gpar = _get_sched_maps_and_sio(
+        pwsched_global, sio_global = _get_sched_maps_and_sio(
             stmt_inst_to_gblex, gblex_order_map, seq_gblex_dim_names)
 
         # }}}
 
-        if return_schedules:
-            # Store sched maps along with SIOs
-            # (currently helpful for testing; also could be desired by a user)
-            pairwise_schedules[tuple(insn_ids)] = (
-                (sio_seq, tuple(intra_thread_sched_maps), ),
-                (sio_lpar, tuple(lpar_sched_maps), ),
-                (sio_gpar, tuple(gpar_sched_maps), ),
-                )
-        else:
-            # Store SIOs only
-            pairwise_schedules[tuple(insn_ids)] = (sio_seq, sio_lpar, sio_gpar)
+        # Store sched maps along with SIOs
+        pairwise_sios[tuple(insn_ids)] = StatementOrdering(
+            sio_intra_thread=sio_intra_thread,
+            pwsched_intra_thread=tuple(intra_thread_sched_maps),
+            sio_intra_group=sio_intra_group,
+            pwsched_intra_group=tuple(pwsched_intra_group),
+            sio_global=sio_global,
+            pwsched_global=tuple(pwsched_global),
+            )
 
     # }}}
 
-    return pairwise_schedules
+    return pairwise_sios
 
 # }}}

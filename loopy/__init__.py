@@ -32,6 +32,7 @@ from loopy.library.function import (
         default_function_mangler, single_arg_function_mangler)
 
 from loopy.kernel.instruction import (
+        LegacyStringInstructionTag, UseStreamingStoreTag,
         MemoryOrdering, memory_ordering,
         MemoryScope, memory_scope,
         VarAtomicity, OrderedAtomic, AtomicInit, AtomicUpdate,
@@ -158,6 +159,7 @@ __all__ = [
         "LoopKernel",
         "KernelState", "kernel_state",  # lower case is deprecated
 
+        "LegacyStringInstructionTag", "UseStreamingStoreTag",
         "MemoryOrdering", "memory_ordering",  # lower case is deprecated
         "MemoryScope", "memory_scope",  # lower case is deprecated
 
