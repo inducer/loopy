@@ -1004,12 +1004,125 @@ def test_sios_and_schedules_with_barriers():
 # }}}
 
 
+def test_add_stmt_inst_dependencies():
+
+    lp.set_caching_enabled(False)
+    # TODO REMOVE THIS^ (prevents
+    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
+    # ) during preprocessing
+
+    # Make kernel and use OLD deps to linearize correctly for now
+    i_range_str = "0 <= i < pi"
+    i_range_str_p = "0 <= i' < pi"
+    assumptions_str = "pi >= 1"
+    knl = lp.make_kernel(
+        "{[i]: %s}" % (i_range_str),
+        """
+        a[i] = 3.14  {id=stmt_a}
+        b[i] = a[i]  {id=stmt_b, dep=stmt_a}
+        c[i] = b[i]  {id=stmt_c, dep=stmt_b}
+        """,
+        name="example",
+        assumptions=assumptions_str,
+        lang_version=(2018, 2)
+        )
+    knl = lp.add_and_infer_dtypes(
+            knl, {"a": np.float32, "b": np.float32, "c": np.float32})
+
+    for stmt in knl.instructions:
+        assert not stmt.dependencies
+
+    # Add a dependency to stmt_b
+    dep_b_on_a = _isl_map_with_marked_dims(
+        "[pi] -> {{ [{0}'=0, i'] -> [{0}=1, i] : i > i' "
+        "and {1} and {2} and {3} }}".format(
+            STATEMENT_VAR_NAME,
+            i_range_str,
+            i_range_str_p,
+            assumptions_str,
+            ))
+
+    knl = lp.add_stmt_inst_dependency(knl, "stmt_b", "stmt_a", dep_b_on_a)
+
+    for stmt in knl.instructions:
+        if stmt.id == "stmt_b":
+            assert stmt.dependencies == {
+                "stmt_a": [dep_b_on_a, ],
+                }
+        else:
+            assert not stmt.dependencies
+
+    # Add a second dependency to stmt_b
+    dep_b_on_a_2 = _isl_map_with_marked_dims(
+        "[pi] -> {{ [{0}'=0, i'] -> [{0}=1, i] : i = i' "
+        "and {1} and {2} and {3} }}".format(
+            STATEMENT_VAR_NAME,
+            i_range_str,
+            i_range_str_p,
+            assumptions_str,
+            ))
+
+    knl = lp.add_stmt_inst_dependency(knl, "stmt_b", "stmt_a", dep_b_on_a_2)
+
+    for stmt in knl.instructions:
+        if stmt.id == "stmt_b":
+            assert stmt.dependencies == {
+                "stmt_a": [dep_b_on_a, dep_b_on_a_2],
+                }
+        else:
+            assert not stmt.dependencies
+
+    # Add dependencies to stmt_c
+
+    dep_c_on_a = _isl_map_with_marked_dims(
+        "[pi] -> {{ [{0}'=0, i'] -> [{0}=1, i] : i >= i' "
+        "and {1} and {2} and {3} }}".format(
+            STATEMENT_VAR_NAME,
+            i_range_str,
+            i_range_str_p,
+            assumptions_str,
+            ))
+    dep_c_on_b = _isl_map_with_marked_dims(
+        "[pi] -> {{ [{0}'=0, i'] -> [{0}=1, i] : i >= i' "
+        "and {1} and {2} and {3} }}".format(
+            STATEMENT_VAR_NAME,
+            i_range_str,
+            i_range_str_p,
+            assumptions_str,
+            ))
+
+    knl = lp.add_stmt_inst_dependency(knl, "stmt_c", "stmt_a", dep_c_on_a)
+    knl = lp.add_stmt_inst_dependency(knl, "stmt_c", "stmt_b", dep_c_on_b)
+
+    for stmt in knl.instructions:
+        if stmt.id == "stmt_b":
+            assert stmt.dependencies == {
+                "stmt_a": [dep_b_on_a, dep_b_on_a_2],
+                }
+        elif stmt.id == "stmt_c":
+            assert stmt.dependencies == {
+                "stmt_a": [dep_c_on_a, ],
+                "stmt_b": [dep_c_on_b, ],
+                }
+        else:
+            assert not stmt.dependencies
+
+    # Now make sure deps are satisfied
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
+
+    linearization_is_valid = lp.check_linearization_validity(
+        proc_knl, lin_items)
+    assert linearization_is_valid
+
+
 def test_linearization_checker_with_loop_prioritization():
 
     lp.set_caching_enabled(False)
     # TODO REMOVE THIS^ (prevents
     # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # )
+    # ) during preprocessing during preprocessing
 
     unproc_knl = lp.make_kernel(
         [
@@ -1055,13 +1168,13 @@ def test_linearization_checker_with_loop_prioritization():
 
 
 # TODO fails, why? ...make sure dep creation is consistent with new sio strategies
-'''
+"""
 def test_linearization_checker_with_matmul():
 
     lp.set_caching_enabled(False)
     # TODO REMOVE THIS^ (prevents
     # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # )
+    # ) during preprocessing
 
     bsize = 16
     unproc_knl = lp.make_kernel(
@@ -1096,7 +1209,7 @@ def test_linearization_checker_with_matmul():
     linearization_is_valid = lp.check_linearization_validity(
         proc_knl, lin_items)
     assert linearization_is_valid
-'''
+"""
 
 
 def test_linearization_checker_with_scan():
@@ -1104,7 +1217,7 @@ def test_linearization_checker_with_scan():
     lp.set_caching_enabled(False)
     # TODO REMOVE THIS^ (prevents
     # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # )
+    # ) during preprocessing
 
     stride = 1
     n_scan = 16
@@ -1126,7 +1239,7 @@ def test_linearization_checker_with_dependent_domain():
     lp.set_caching_enabled(False)
     # TODO REMOVE THIS^ (prevents
     # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # )
+    # ) during preprocessing
 
     unproc_knl = lp.make_kernel(
         [
@@ -1162,7 +1275,7 @@ def test_linearization_checker_with_stroud_bernstein():
     lp.set_caching_enabled(False)
     # TODO REMOVE THIS^ (prevents
     # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # )
+    # ) during preprocessing
 
     unproc_knl = lp.make_kernel(
             "{[el, i2, alpha1,alpha2]: \
@@ -1216,7 +1329,7 @@ def test_linearization_checker_with_nop():
     lp.set_caching_enabled(False)
     # TODO REMOVE THIS^ (prevents
     # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # )
+    # ) during preprocessing
 
     unproc_knl = lp.make_kernel(
         [
@@ -1253,7 +1366,7 @@ def test_linearization_checker_with_multi_domain():
     lp.set_caching_enabled(False)
     # TODO REMOVE THIS^ (prevents
     # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # )
+    # ) during preprocessing
 
     unproc_knl = lp.make_kernel(
         [
@@ -1299,7 +1412,7 @@ def test_linearization_checker_with_loop_carried_deps():
     lp.set_caching_enabled(False)
     # TODO REMOVE THIS^ (prevents
     # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # )
+    # ) during preprocessing
 
     unproc_knl = lp.make_kernel(
         "{[i]: 0<=i<n}",
@@ -1334,7 +1447,7 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
     lp.set_caching_enabled(False)
     # TODO REMOVE THIS^ (prevents
     # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # )
+    # ) during preprocessing
 
     ref_knl = lp.make_kernel(
         [
@@ -1467,7 +1580,7 @@ def test_legacy_dep_creation_with_separate_loops():
     lp.set_caching_enabled(False)
     # TODO REMOVE THIS^ (prevents
     # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # )
+    # ) during preprocessing
 
     # Test two dep situations:
     # 1. stmts with no common inames

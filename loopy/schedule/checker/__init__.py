@@ -352,9 +352,7 @@ def check_linearization_validity(
     linearization_is_valid = True
     for (insn_id_before, insn_id_after), dependencies in stmts_to_deps.items():
 
-        # Get pairwise schedule for stmts involved in the dependency:
-        # two isl maps from {statement instance: lex point},
-        # TODO rename these, update comments
+        # Get pairwise ordering info for stmts involved in the dependency
         pworder = pworders[(insn_id_before, insn_id_after)]
 
         # check each dep for this statement pair
