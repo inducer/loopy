@@ -307,7 +307,7 @@ def create_dependencies_from_legacy_knl(knl):
     return knl.copy(instructions=new_stmts)
 
 
-def check_linearization_validity(
+def check_dependency_satisfaction(
         knl,
         linearization_items,
         ):

@@ -1112,7 +1112,7 @@ def test_add_stmt_inst_dependencies():
     lin_knl = get_one_linearized_kernel(proc_knl)
     lin_items = lin_knl.linearization
 
-    linearization_is_valid = lp.check_linearization_validity(
+    linearization_is_valid = lp.check_dependency_satisfaction(
         proc_knl, lin_items)
     assert linearization_is_valid
 
@@ -1162,7 +1162,7 @@ def test_linearization_checker_with_loop_prioritization():
     lin_knl = get_one_linearized_kernel(proc_knl)
     lin_items = lin_knl.linearization
 
-    linearization_is_valid = lp.check_linearization_validity(
+    linearization_is_valid = lp.check_dependency_satisfaction(
         proc_knl, lin_items)
     assert linearization_is_valid
 
@@ -1206,7 +1206,7 @@ def test_linearization_checker_with_matmul():
     lin_knl = get_one_linearized_kernel(proc_knl)
     lin_items = lin_knl.linearization
 
-    linearization_is_valid = lp.check_linearization_validity(
+    linearization_is_valid = lp.check_dependency_satisfaction(
         proc_knl, lin_items)
     assert linearization_is_valid
 """
@@ -1263,7 +1263,7 @@ def test_linearization_checker_with_dependent_domain():
     lin_knl = get_one_linearized_kernel(proc_knl)
     lin_items = lin_knl.linearization
 
-    linearization_is_valid = lp.check_linearization_validity(
+    linearization_is_valid = lp.check_dependency_satisfaction(
         proc_knl, lin_items)
     assert linearization_is_valid
 
@@ -1319,7 +1319,7 @@ def test_linearization_checker_with_stroud_bernstein():
     lin_knl = get_one_linearized_kernel(proc_knl)
     lin_items = lin_knl.linearization
 
-    linearization_is_valid = lp.check_linearization_validity(
+    linearization_is_valid = lp.check_dependency_satisfaction(
         proc_knl, lin_items)
     assert linearization_is_valid
 
@@ -1355,7 +1355,7 @@ def test_linearization_checker_with_nop():
     lin_knl = get_one_linearized_kernel(proc_knl)
     lin_items = lin_knl.linearization
 
-    linearization_is_valid = lp.check_linearization_validity(
+    linearization_is_valid = lp.check_dependency_satisfaction(
         proc_knl, lin_items)
     assert linearization_is_valid
 '''
@@ -1402,7 +1402,7 @@ def test_linearization_checker_with_multi_domain():
     lin_knl = get_one_linearized_kernel(proc_knl)
     lin_items = lin_knl.linearization
 
-    linearization_is_valid = lp.check_linearization_validity(
+    linearization_is_valid = lp.check_dependency_satisfaction(
         proc_knl, lin_items)
     assert linearization_is_valid
 
@@ -1437,7 +1437,7 @@ def test_linearization_checker_with_loop_carried_deps():
     lin_knl = get_one_linearized_kernel(proc_knl)
     lin_items = lin_knl.linearization
 
-    linearization_is_valid = lp.check_linearization_validity(
+    linearization_is_valid = lp.check_dependency_satisfaction(
         proc_knl, lin_items)
     assert linearization_is_valid
 
@@ -1481,7 +1481,7 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
     lin_knl0 = get_one_linearized_kernel(proc_knl0)
     lin_items = lin_knl0.linearization
 
-    linearization_is_valid = lp.check_linearization_validity(
+    linearization_is_valid = lp.check_dependency_satisfaction(
         proc_knl0, lin_items)
     assert linearization_is_valid
 
@@ -1498,7 +1498,7 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
     lin_knl1 = get_one_linearized_kernel(proc_knl1)
     lin_items = lin_knl1.linearization
 
-    linearization_is_valid = lp.check_linearization_validity(
+    linearization_is_valid = lp.check_dependency_satisfaction(
         proc_knl1, lin_items)
     assert linearization_is_valid
 
@@ -1529,7 +1529,7 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
             lin_knl2 = get_one_linearized_kernel(proc_knl2)
             lin_items = lin_knl2.linearization
 
-            linearization_is_valid = lp.check_linearization_validity(
+            linearization_is_valid = lp.check_dependency_satisfaction(
                 proc_knl2, lin_items)
         # should raise error
         assert False
@@ -1564,7 +1564,7 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
             lin_knl3 = get_one_linearized_kernel(proc_knl3)
             lin_items = lin_knl3.linearization
 
-            linearization_is_valid = lp.check_linearization_validity(
+            linearization_is_valid = lp.check_dependency_satisfaction(
                 proc_knl3, lin_items)
         # should raise error
         assert False
@@ -1614,7 +1614,7 @@ def test_legacy_dep_creation_with_separate_loops():
     lin_knl = get_one_linearized_kernel(proc_knl)
     lin_items = lin_knl.linearization
 
-    linearization_is_valid = lp.check_linearization_validity(
+    linearization_is_valid = lp.check_dependency_satisfaction(
         proc_knl, lin_items)
     assert linearization_is_valid
 
