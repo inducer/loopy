@@ -977,8 +977,7 @@ def test_within_inames_and_reduction():
     from pymbolic.primitives import Subscript, Variable
     i2 = lp.Assignment("a",
             lp.Reduction("sum", "j", Subscript(Variable("phi"), Variable("j"))),
-            within_inames=frozenset(),
-            within_inames_is_final=True)
+            within_inames=frozenset())
 
     k = lp.make_kernel("{[i,j] : 0<=i,j<n}",
             [i1, i2],

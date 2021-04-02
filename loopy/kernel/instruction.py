@@ -196,13 +196,11 @@ class InstructionBase(ImmutableRecord, Taggable):
     Inherits from :class:`pytools.tag.Taggable`.
     """
 
-    # within_inames_is_final is deprecated and will be removed in version 2017.x.
-
     fields = set("id depends_on depends_on_is_final "
             "groups conflicts_with_groups "
             "no_sync_with "
             "predicates "
-            "within_inames_is_final within_inames "
+            "within_inames "
             "priority".split())
 
     # Names of fields that are pymbolic expressions. Needed for key building
@@ -211,7 +209,7 @@ class InstructionBase(ImmutableRecord, Taggable):
     # Names of fields that are sets of pymbolic expressions. Needed for key building
     pymbolic_set_fields = {"predicates"}
 
-    def __init__(self, id, depends_on, depends_on_is_final,
+    def __init__(self, id, *, depends_on, depends_on_is_final,
             groups, conflicts_with_groups,
             no_sync_with,
             within_inames_is_final, within_inames,
@@ -253,8 +251,11 @@ class InstructionBase(ImmutableRecord, Taggable):
         if within_inames is None:
             within_inames = frozenset()
 
-        if within_inames_is_final is None:
-            within_inames_is_final = False
+        if within_inames_is_final is not None:
+            from warnings import warn
+            warn("within_inames_is_final was passed. This is deprecated and "
+                    "will start causing an error in 2022.x.",
+                    DeprecationWarning, stacklevel=2)
 
         if isinstance(depends_on, str):
             depends_on = frozenset(
@@ -299,7 +300,6 @@ class InstructionBase(ImmutableRecord, Taggable):
                 depends_on_is_final=depends_on_is_final,
                 no_sync_with=no_sync_with,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
-                within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
                 priority=priority,
                 predicates=predicates,
@@ -309,6 +309,15 @@ class InstructionBase(ImmutableRecord, Taggable):
                 tags=tags)
 
         Taggable.__init__(self, tags)
+
+    @property
+    def within_inames_is_final(self):
+        from warnings import warn
+        warn("Instruction.within_inames_is_final was accessed. This is deprecated "
+                "and will stop working in 2022.x.",
+                DeprecationWarning, stacklevel=2)
+
+        return True
 
     # {{{ abstract interface
 
@@ -872,6 +881,7 @@ class Assignment(MultiAssignmentBase):
     def __init__(self,
             assignee, expression,
             id=None,
+            *,
             depends_on=None,
             depends_on_is_final=None,
             groups=None,
@@ -1003,6 +1013,7 @@ class CallInstruction(MultiAssignmentBase):
     def __init__(self,
             assignees, expression,
             id=None,
+            *,
             depends_on=None,
             depends_on_is_final=None,
             groups=None,
@@ -1180,7 +1191,9 @@ class CInstruction(InstructionBase):
     def __init__(self,
             iname_exprs, code,
             read_variables=frozenset(), assignees=tuple(),
-            id=None, depends_on=None, depends_on_is_final=None,
+            id=None,
+            *,
+            depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
@@ -1339,7 +1352,7 @@ class NoOpInstruction(_DataObliviousInstruction):
         ... nop
     """
 
-    def __init__(self, id=None, depends_on=None, depends_on_is_final=None,
+    def __init__(self, id=None, *, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
@@ -1398,7 +1411,7 @@ class BarrierInstruction(_DataObliviousInstruction):
     fields = _DataObliviousInstruction.fields | {"synchronization_kind",
                                                      "mem_kind"}
 
-    def __init__(self, id, depends_on=None, depends_on_is_final=None,
+    def __init__(self, id, *, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,

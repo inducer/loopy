@@ -196,7 +196,6 @@ def get_default_insn_options_dict():
         "insn_id": None,
         "inames_to_dup": [],
         "priority": 0,
-        "within_inames_is_final": False,
         "within_inames": frozenset(),
         "predicates": frozenset(),
         "tags": frozenset(),
@@ -329,10 +328,10 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
 
         elif opt_key == "inames" and opt_value is not None:
             if opt_value.startswith("+"):
-                result["within_inames_is_final"] = False
+                # This used to indicate that "within_inames_is_final", which
+                # meant, "do not use some hare-brained heuristic" to add more
+                # stuff here.
                 opt_value = (opt_value[1:]).strip()
-            else:
-                result["within_inames_is_final"] = True
 
             result["within_inames"] = intern_frozenset_of_ids(
                     opt_value.split(":"))
@@ -812,10 +811,6 @@ def parse_instructions(instructions, defines):
 
                 insn = insn.copy(
                         within_inames=insn.within_inames | local_w_inames,
-                        within_inames_is_final=(
-                            # If it's inside a for/with block, then it's
-                            # final now.
-                            bool(local_w_inames)),
                         depends_on=(
                             (insn.depends_on
                                 | insn_options_stack[-1]["depends_on"])
@@ -869,7 +864,6 @@ def parse_instructions(instructions, defines):
             options["within_inames"] = (
                     options.get("within_inames", frozenset())
                     | added_inames)
-            options["within_inames_is_final"] = True
 
             insn_options_stack.append(options)
             del options
@@ -1379,7 +1373,6 @@ def expand_cses(instructions, inames_to_dup, cse_prefix="cse_expr"):
                 expression=expr,
                 predicates=insn.predicates,
                 within_inames=insn.within_inames | additional_inames,
-                within_inames_is_final=insn.within_inames_is_final,
                 )
         newly_created_insn_ids.add(new_insn.id)
         new_insns.append(new_insn)
@@ -1769,19 +1762,6 @@ def add_used_inames(knl):
 # }}}
 
 
-# {{{ add inferred iname deps
-
-def add_inferred_inames(knl):
-    from loopy.kernel.tools import find_all_insn_inames
-    insn_inames = find_all_insn_inames(knl)
-
-    return knl.copy(instructions=[
-            insn.copy(within_inames=insn_inames[insn.id])
-            for insn in knl.instructions])
-
-# }}}
-
-
 # {{{ apply single-writer heuristic
 
 def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
@@ -2158,9 +2138,6 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     # Must create temporaries before fixing parameters.
     # -------------------------------------------------------------------------
     knl = add_used_inames(knl)
-    # NOTE: add_inferred_inames will be phased out and throws warnings if it
-    # does something.
-    knl = add_inferred_inames(knl)
     from loopy.transform.parameter import fix_parameters
     knl = fix_parameters(knl, **fixed_parameters)
     # -------------------------------------------------------------------------
