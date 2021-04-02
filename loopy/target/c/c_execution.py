@@ -442,6 +442,7 @@ class CKernelExecutor(KernelExecutorBase):
     @memoize_method
     def program_info(self, entrypoint, arg_to_dtype_set=frozenset(),
             all_kwargs=None):
+        from loopy.schedule.tools import get_callkernel_dependencies
         program = self.get_typed_and_scheduled_translation_unit(
                 entrypoint, arg_to_dtype_set)
 
@@ -472,9 +473,14 @@ class CKernelExecutor(KernelExecutorBase):
         c_kernels = []
 
         for dp in codegen_result.device_programs:
-            c_kernels.append(CompiledCKernel(dp,
-                codegen_result.implemented_data_infos[entrypoint], all_code,
-                self.program.target, self.compiler))
+            all_args = [
+                arg
+                for arg in codegen_result.implemented_data_infos[entrypoint]
+                if arg.name in get_callkernel_dependencies(program[entrypoint],
+                                                           dp.name)]
+            c_kernels.append(CompiledCKernel(dp, all_args, all_code,
+                                             self.program.target,
+                                             self.compiler))
 
         return _KernelInfo(
                 program=program,
