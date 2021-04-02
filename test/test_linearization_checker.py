@@ -134,7 +134,7 @@ def test_pairwise_schedule_creation():
     # Get a linearization
     proc_knl = preprocess_kernel(knl)
     lin_knl = get_one_linearized_kernel(proc_knl)
-    linearization_items = lin_knl.linearization
+    lin_items = lin_knl.linearization
 
     insn_id_pairs = [
         ("stmt_a", "stmt_b"),
@@ -146,7 +146,7 @@ def test_pairwise_schedule_creation():
         ]
     pworders = get_pairwise_statement_orderings(
         lin_knl,
-        linearization_items,
+        lin_items,
         insn_id_pairs,
         )
 
@@ -345,14 +345,14 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
     # Get a linearization
     proc_knl = preprocess_kernel(knl)
     lin_knl = get_one_linearized_kernel(proc_knl)
-    linearization_items = lin_knl.linearization
+    lin_items = lin_knl.linearization
 
     stmt_id_pairs = [
         ("stmt_a", "stmt_b"),
         ]
     pworders = get_pairwise_statement_orderings(
         lin_knl,
-        linearization_items,
+        lin_items,
         stmt_id_pairs,
         )
 
@@ -522,7 +522,7 @@ def test_statement_instance_ordering():
     # Get a linearization
     knl = preprocess_kernel(knl)
     knl = get_one_linearized_kernel(knl)
-    linearization_items = knl.linearization
+    lin_items = knl.linearization
 
     # Get pairwise schedules
     stmt_id_pairs = [
@@ -535,7 +535,7 @@ def test_statement_instance_ordering():
         ]
     pworders = get_pairwise_statement_orderings(
         knl,
-        linearization_items,
+        lin_items,
         stmt_id_pairs,
         )
 
@@ -650,7 +650,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
     # Get a linearization
     proc_knl = preprocess_kernel(knl)
     lin_knl = get_one_linearized_kernel(proc_knl)
-    linearization_items = lin_knl.linearization
+    lin_items = lin_knl.linearization
 
     # Get pairwise schedules
     stmt_id_pairs = [
@@ -658,7 +658,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
         ]
     pworders = get_pairwise_statement_orderings(
         lin_knl,
-        linearization_items,
+        lin_items,
         stmt_id_pairs,
         )
 
@@ -734,11 +734,11 @@ def test_sios_and_schedules_with_barriers():
     # Get a linearization
     proc_knl = preprocess_kernel(knl)
     lin_knl = get_one_linearized_kernel(proc_knl)
-    linearization_items = lin_knl.linearization
+    lin_items = lin_knl.linearization
 
     insn_id_pairs = [("j1", "2"), ("1", "i0")]
     pworders = get_pairwise_statement_orderings(
-        lin_knl, linearization_items, insn_id_pairs)
+        lin_knl, lin_items, insn_id_pairs)
 
     # Relationship between j1 and 2 --------------------------------------------
 
@@ -1002,6 +1002,123 @@ def test_sios_and_schedules_with_barriers():
         )
 
 # }}}
+
+
+def test_add_stmt_inst_dependencies():
+
+    lp.set_caching_enabled(False)
+    # TODO REMOVE THIS^ (prevents
+    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
+    # ) during preprocessing
+
+    # Make kernel and use OLD deps to linearize correctly for now
+    i_range_str = "0 <= i < pi"
+    i_range_str_p = "0 <= i' < pi"
+    assumptions_str = "pi >= 1"
+    knl = lp.make_kernel(
+        "{[i]: %s}" % (i_range_str),
+        """
+        a[i] = 3.14  {id=stmt_a}
+        b[i] = a[i]  {id=stmt_b, dep=stmt_a}
+        c[i] = b[i]  {id=stmt_c, dep=stmt_b}
+        """,
+        name="example",
+        assumptions=assumptions_str,
+        lang_version=(2018, 2)
+        )
+    knl = lp.add_and_infer_dtypes(
+            knl, {"a": np.float32, "b": np.float32, "c": np.float32})
+
+    for stmt in knl.instructions:
+        assert not stmt.dependencies
+
+    # Add a dependency to stmt_b
+    dep_b_on_a = _isl_map_with_marked_dims(
+        "[pi] -> {{ [{0}'=0, i'] -> [{0}=1, i] : i > i' "
+        "and {1} and {2} and {3} }}".format(
+            STATEMENT_VAR_NAME,
+            i_range_str,
+            i_range_str_p,
+            assumptions_str,
+            ))
+
+    knl = lp.add_stmt_inst_dependency(knl, "stmt_b", "stmt_a", dep_b_on_a)
+
+    for stmt in knl.instructions:
+        if stmt.id == "stmt_b":
+            assert stmt.dependencies == {
+                "stmt_a": [dep_b_on_a, ],
+                }
+        else:
+            assert not stmt.dependencies
+
+    # Add a second dependency to stmt_b
+    dep_b_on_a_2 = _isl_map_with_marked_dims(
+        "[pi] -> {{ [{0}'=0, i'] -> [{0}=1, i] : i = i' "
+        "and {1} and {2} and {3} }}".format(
+            STATEMENT_VAR_NAME,
+            i_range_str,
+            i_range_str_p,
+            assumptions_str,
+            ))
+
+    knl = lp.add_stmt_inst_dependency(knl, "stmt_b", "stmt_a", dep_b_on_a_2)
+
+    for stmt in knl.instructions:
+        if stmt.id == "stmt_b":
+            assert stmt.dependencies == {
+                "stmt_a": [dep_b_on_a, dep_b_on_a_2],
+                }
+        else:
+            assert not stmt.dependencies
+
+    # Add dependencies to stmt_c
+
+    dep_c_on_a = _isl_map_with_marked_dims(
+        "[pi] -> {{ [{0}'=0, i'] -> [{0}=1, i] : i >= i' "
+        "and {1} and {2} and {3} }}".format(
+            STATEMENT_VAR_NAME,
+            i_range_str,
+            i_range_str_p,
+            assumptions_str,
+            ))
+    dep_c_on_b = _isl_map_with_marked_dims(
+        "[pi] -> {{ [{0}'=0, i'] -> [{0}=1, i] : i >= i' "
+        "and {1} and {2} and {3} }}".format(
+            STATEMENT_VAR_NAME,
+            i_range_str,
+            i_range_str_p,
+            assumptions_str,
+            ))
+
+    knl = lp.add_stmt_inst_dependency(knl, "stmt_c", "stmt_a", dep_c_on_a)
+    knl = lp.add_stmt_inst_dependency(knl, "stmt_c", "stmt_b", dep_c_on_b)
+
+    for stmt in knl.instructions:
+        if stmt.id == "stmt_b":
+            assert stmt.dependencies == {
+                "stmt_a": [dep_b_on_a, dep_b_on_a_2],
+                }
+        elif stmt.id == "stmt_c":
+            assert stmt.dependencies == {
+                "stmt_a": [dep_c_on_a, ],
+                "stmt_b": [dep_c_on_b, ],
+                }
+        else:
+            assert not stmt.dependencies
+
+    # Now make sure deps are satisfied
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
+
+    linearization_is_valid = lp.check_linearization_validity(
+        proc_knl, lin_items)
+
+    assert linearization_is_valid
+
+
+# TODO create more kernels with valid/invalid linearizations to test checker
 
 
 if __name__ == "__main__":
