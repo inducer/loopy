@@ -556,6 +556,20 @@ def test_bool_type_context(ctx_factory):
     assert out.get() == np.logical_and(7.0, 8.0)
 
 
+def test_np_bool_handling(ctx_factory):
+    import pymbolic.primitives as p
+    from loopy.symbolic import parse
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{:}",
+        [lp.Assignment(parse("y"), p.LogicalNot(np.bool_(False)))],
+        [lp.GlobalArg("y", dtype=np.bool_, shape=lp.auto)])
+    evt, (out,) = knl(queue)
+    assert out.get().item() is True
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

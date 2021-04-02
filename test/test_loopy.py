@@ -3119,6 +3119,26 @@ def test_deps_from_conditionals():
     print(lp.generate_code_v2(ppknl).device_code())
 
 
+def test_scalar_temporary(ctx_factory):
+    from numpy.random import default_rng
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    rng = default_rng()
+    x_in = rng.random()
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        tmp = 2*x
+        y = 2*tmp
+        """,
+        [lp.ValueArg("x", dtype=float),
+        lp.TemporaryVariable("tmp", address_space=lp.AddressSpace.GLOBAL,
+                             shape=lp.auto),
+        ...])
+    evt, (out, ) = knl(queue, x=x_in)
+    np.testing.assert_allclose(4*x_in, out.get())
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
