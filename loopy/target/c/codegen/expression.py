@@ -414,7 +414,6 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 if iinfo.max > (2**31-1):
                     suffix += "l"
                 return Literal(repr(expr)+suffix)
-
             else:
                 raise LoopyError("do not know how to generate code for "
                         "constant of numpy type '%s'" % type(expr).__name__)

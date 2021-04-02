@@ -302,9 +302,9 @@ def test_multi_arg_array_call(ctx_factory):
     queue = cl.CommandQueue(ctx)
     import pymbolic.primitives as p
     n = 10
-    acc_i = p.Variable("acc_i")[0]
+    acc_i = p.Variable("acc_i")
     i = p.Variable("i")
-    index = p.Variable("index")[0]
+    index = p.Variable("index")
     a_i = p.Subscript(p.Variable("a"), p.Variable("i"))
     argmin_kernel = lp.make_function(
             "{[i]: 0 <= i < n}",
@@ -321,7 +321,8 @@ def test_multi_arg_array_call(ctx_factory):
                     depends_on="init1,init2")],
             [
                 lp.GlobalArg("a"),
-                lp.GlobalArg("acc_i, index", is_input=False, is_output=True),
+                lp.GlobalArg("acc_i, index", is_input=False, is_output=True,
+                             shape=lp.auto),
                 ...],
             name="custom_argmin")
 
@@ -330,7 +331,7 @@ def test_multi_arg_array_call(ctx_factory):
     knl = lp.make_kernel(
             "{[i]:0<=i<n}",
             """
-            min_val, min_index = custom_argmin([i]:b[i])
+            []: min_val[()], []: min_index[()] = custom_argmin([i]:b[i])
             """)
 
     knl = lp.fix_parameters(knl, n=n)
@@ -341,8 +342,8 @@ def test_multi_arg_array_call(ctx_factory):
     evt, out_dict = knl(queue, b=b)
     tol = 1e-15
     from numpy.linalg import norm
-    assert(norm(out_dict["min_val"][0] - np.min(b)) < tol)
-    assert(norm(out_dict["min_index"][0] - np.argmin(b)) < tol)
+    assert(norm(out_dict["min_val"] - np.min(b)) < tol)
+    assert(norm(out_dict["min_index"] - np.argmin(b)) < tol)
 
 
 @pytest.mark.parametrize("inline", [False, True])
@@ -452,9 +453,9 @@ def test_empty_sub_array_refs(ctx_factory, inline):
             c[d] = a[d] - b[d]
             """, name="wence_function")
 
-    caller = lp.make_kernel("{[i]: 0<=i<10}",
+    caller = lp.make_kernel("{[i,k]: 0<=i<10 and 0<=k<1}",
             """
-            []:z[i] = wence_function([]:x[i], []:y[i])
+            [k]:z[i+k] = wence_function([k]:x[i+k], [k]:y[i+k])
             """,
             [lp.GlobalArg("x, y", dtype=np.float64, shape=(10, )), ...])
 
