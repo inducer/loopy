@@ -1974,7 +1974,7 @@ class SliceToInameReplacer(IdentityMapper):
                     if self.knl.temporary_variables[arg.name].shape in [
                             auto, None]:
                         # do not convert arrays with unknown shapes to slices.
-                        # (If an array of unknown shape was passed in error, with be
+                        # (If an array of unknown shape was passed in error, will be
                         # caught and raised during preprocessing).
                         array_arg_shape = ()
                     else:
@@ -1984,7 +1984,16 @@ class SliceToInameReplacer(IdentityMapper):
                     if isinstance(self.knl.arg_dict[arg.name], ValueArg):
                         array_arg_shape = ()
                     else:
-                        array_arg_shape = self.knl.arg_dict[arg.name].shape
+
+                        if self.knl.arg_dict[arg.name].shape in [
+                                auto, None]:
+                            # do not convert arrays with unknown shapes to slices.
+                            # (If an array of unknown shape was passed in error, will
+                            # be caught and raised during preprocessing).
+                            array_arg_shape = ()
+                        else:
+                            array_arg_shape = (
+                                    self.knl.arg_dict[arg.name].shape)
                 else:
                     assert arg.name in self.knl.all_inames()
                     array_arg_shape = ()
