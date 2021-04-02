@@ -328,9 +328,9 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
 
         elif opt_key == "inames" and opt_value is not None:
             if opt_value.startswith("+"):
-                # This used to indicate that "within_inames_is_final", which
-                # meant, "do not use some hare-brained heuristic" to add more
-                # stuff here.
+                # This used to indicate that "within_inames_is_final" should be
+                # set, which meant "do not use some hare-brained heuristic to
+                # add more stuff here".
                 opt_value = (opt_value[1:]).strip()
 
             result["within_inames"] = intern_frozenset_of_ids(
