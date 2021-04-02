@@ -123,7 +123,7 @@ from loopy.preprocess import preprocess_kernel, realize_reduction
 from loopy.schedule import (
     generate_loop_schedules, get_one_scheduled_kernel, get_one_linearized_kernel)
 from loopy.schedule.checker import (
-    check_linearization_validity)
+    check_dependency_satisfaction)
 from loopy.statistics import (ToCountMap, CountGranularity,
         stringify_stats_mapping, Op, MemAccess, get_op_map, get_mem_access_map,
         get_synchronization_map, gather_access_footprints,
@@ -251,7 +251,7 @@ __all__ = [
         "preprocess_kernel", "realize_reduction",
         "generate_loop_schedules",
         "get_one_scheduled_kernel", "get_one_linearized_kernel",
-        "check_linearization_validity",
+        "check_dependency_satisfaction",
         "GeneratedProgram", "CodeGenerationResult",
         "PreambleInfo",
         "generate_code", "generate_code_v2", "generate_body",

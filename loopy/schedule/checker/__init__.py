@@ -138,7 +138,7 @@ def get_pairwise_statement_orderings(
 # }}}
 
 
-def check_linearization_validity(
+def check_dependency_satisfaction(
         knl,
         linearization_items,
         ):

@@ -1112,7 +1112,7 @@ def test_add_stmt_inst_dependencies():
     lin_knl = get_one_linearized_kernel(proc_knl)
     lin_items = lin_knl.linearization
 
-    linearization_is_valid = lp.check_linearization_validity(
+    linearization_is_valid = lp.check_dependency_satisfaction(
         proc_knl, lin_items)
 
     assert linearization_is_valid
