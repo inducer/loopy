@@ -78,7 +78,8 @@ from loopy.transform.iname import (
 
 from loopy.transform.instruction import (
         find_instructions, map_instructions,
-        set_instruction_priority, add_dependency,
+        set_instruction_priority,
+        add_dependency, add_stmt_inst_dependency,
         remove_instructions,
         replace_instruction_ids,
         tag_instructions,
@@ -121,6 +122,8 @@ from loopy.type_inference import infer_unknown_types
 from loopy.preprocess import preprocess_kernel, realize_reduction
 from loopy.schedule import (
     generate_loop_schedules, get_one_scheduled_kernel, get_one_linearized_kernel)
+from loopy.schedule.checker import (
+    check_linearization_validity)
 from loopy.statistics import (ToCountMap, CountGranularity,
         stringify_stats_mapping, Op, MemAccess, get_op_map, get_mem_access_map,
         get_synchronization_map, gather_access_footprints,
@@ -202,7 +205,8 @@ __all__ = [
         "rename_argument", "set_temporary_scope",
 
         "find_instructions", "map_instructions",
-        "set_instruction_priority", "add_dependency",
+        "set_instruction_priority",
+        "add_dependency", "add_stmt_inst_dependency",
         "remove_instructions",
         "replace_instruction_ids",
         "tag_instructions",
@@ -247,6 +251,7 @@ __all__ = [
         "preprocess_kernel", "realize_reduction",
         "generate_loop_schedules",
         "get_one_scheduled_kernel", "get_one_linearized_kernel",
+        "check_linearization_validity",
         "GeneratedProgram", "CodeGenerationResult",
         "PreambleInfo",
         "generate_code", "generate_code_v2", "generate_body",
