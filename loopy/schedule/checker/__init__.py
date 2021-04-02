@@ -136,3 +136,103 @@ def get_pairwise_statement_orderings(
     # }}}
 
 # }}}
+
+
+def check_linearization_validity(
+        knl,
+        linearization_items,
+        ):
+    # TODO document
+
+    from loopy.schedule.checker.utils import (
+        prettier_map_string,
+    )
+
+    # {{{ make sure kernel has been preprocessed
+
+    # note: kernels must always be preprocessed before scheduling
+    from loopy.kernel import KernelState
+    assert knl.state in [
+            KernelState.PREPROCESSED,
+            KernelState.LINEARIZED]
+
+    # }}}
+
+    # {{{ Create map from dependent instruction id pairs to dependencies
+
+    # To minimize time complexity, all pairwise schedules will be created
+    # in one pass, which first requires finding all pairs of statements involved
+    # in deps.
+    # So, since we have to find these pairs anyway, collect their deps at
+    # the same time so we don't have to do it again later during lin checking.
+
+    stmts_to_deps = {}
+    for insn_after in knl.instructions:
+        for before_id, dep_list in insn_after.dependencies.items():
+            stmts_to_deps.setdefault(
+                (before_id, insn_after.id), []).extend(dep_list)
+    # }}}
+
+    pworders = get_pairwise_statement_orderings(
+        knl,
+        linearization_items,
+        stmts_to_deps.keys(),
+        )
+
+    # For each dependency, create+test linearization containing pair of insns------
+    linearization_is_valid = True
+    for (insn_id_before, insn_id_after), dependencies in stmts_to_deps.items():
+
+        # Get pairwise ordering info for stmts involved in the dependency
+        pworder = pworders[(insn_id_before, insn_id_after)]
+
+        # check each dep for this statement pair
+        for dependency in dependencies:
+
+            # reorder variables/params in constraint map space to match SIO so we can
+            # check to see whether the constraint map is a subset of the SIO
+            # (spaces must be aligned so that the variables in the constraint map
+            # correspond to the same variables in the SIO)
+            from loopy.schedule.checker.utils import (
+                ensure_dim_names_match_and_align,
+            )
+
+            aligned_dep_map = ensure_dim_names_match_and_align(
+                dependency, pworder.sio_intra_thread)
+
+            assert aligned_dep_map.space == pworder.sio_intra_thread.space
+            assert aligned_dep_map.space == pworder.sio_intra_group.space
+            assert aligned_dep_map.space == pworder.sio_global.space
+            assert (aligned_dep_map.get_var_dict() ==
+                pworder.sio_intra_thread.get_var_dict())
+            assert (aligned_dep_map.get_var_dict() ==
+                pworder.sio_intra_group.get_var_dict())
+            assert (aligned_dep_map.get_var_dict() ==
+                pworder.sio_global.get_var_dict())
+
+            if not aligned_dep_map.is_subset(
+                    pworder.sio_intra_thread |
+                    pworder.sio_intra_group |
+                    pworder.sio_global
+                    ):
+
+                linearization_is_valid = False
+
+                print("================ constraint check failure =================")
+                print("Constraint map not subset of SIO")
+                print("Dependencies:")
+                print(insn_id_before+"->"+insn_id_after)
+                print(prettier_map_string(dependency))
+                print("Statement instance ordering:")
+                print(prettier_map_string(pworder.sio_intra_thread))
+                print("dependency.gist(pworder.sio_intra_thread):")
+                print(prettier_map_string(
+                    aligned_dep_map.gist(pworder.sio_intra_thread)))
+                print("pworder.sio_intra_thread.gist(dependency)")
+                print(prettier_map_string(
+                    pworder.sio_intra_thread.gist(aligned_dep_map)))
+                print("Loop priority known:")
+                print(knl.loop_priority)
+                print("===========================================================")
+
+    return linearization_is_valid
