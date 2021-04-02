@@ -117,6 +117,42 @@ def add_dependency(kernel, insn_match, depends_on):
 # }}}
 
 
+# {{{ add_stmt_inst_dependency
+
+def add_stmt_inst_dependency(
+        kernel, stmt_id, depends_on_id, new_dependency):
+    """Add the statement instance dependency *new_dependency* to statement with
+    id *stmt_id*.
+    """
+
+    if stmt_id not in kernel.id_to_insn:
+        raise LoopyError("no instructions found matching '%s',"
+                "cannot add dependency %s->%s"
+                % (stmt_id, depends_on_id, stmt_id))
+    if depends_on_id not in kernel.id_to_insn:
+        raise LoopyError("no instructions found matching '%s',"
+                "cannot add dependency %s->%s"
+                % (depends_on_id, depends_on_id, stmt_id))
+
+    matched = [False]
+
+    def _add_dep(stmt):
+        new_deps_dict = stmt.dependencies  # dict mapping depends-on ids to dep maps
+        matched[0] = True
+        new_deps_dict.setdefault(depends_on_id, []).append(new_dependency)
+        return stmt.copy(dependencies=new_deps_dict)
+
+    result = map_instructions(kernel, "id:%s" % (stmt_id), _add_dep)
+
+    if not matched[0]:  # Is this possible, given check above?
+        raise LoopyError("no instructions found matching '%s' "
+                "(to which dependencies would be added)" % stmt_id)
+
+    return result
+
+# }}}
+
+
 # {{{ remove_instructions
 
 def remove_instructions(kernel, insn_ids):
