@@ -56,9 +56,10 @@ def temporaries_read_in_subkernel(kernel, subkernel):
     insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel]
     inames = frozenset().union(*(kernel.insn_inames(insn_id)
                                  for insn_id in insn_ids))
+    domain_idxs = {kernel.get_home_domain_index(iname) for iname in inames}
     params = frozenset().union(*(
         kernel.domains[dom_idx].get_var_names(isl.dim_type.param)
-        for dom_idx in kernel.get_leaf_domain_indices(inames)))
+        for dom_idx in domain_idxs))
 
     return (frozenset(tv
                       for insn_id in insn_ids
@@ -81,9 +82,10 @@ def args_read_in_subkernel(kernel, subkernel):
     insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel]
     inames = frozenset().union(*(kernel.insn_inames(insn_id)
                                  for insn_id in insn_ids))
+    domain_idxs = {kernel.get_home_domain_index(iname) for iname in inames}
     params = frozenset().union(*(
         kernel.domains[dom_idx].get_var_names(isl.dim_type.param)
-        for dom_idx in kernel.get_leaf_domain_indices(inames)))
+        for dom_idx in domain_idxs))
 
     return (frozenset(arg
                       for insn_id in insn_ids
