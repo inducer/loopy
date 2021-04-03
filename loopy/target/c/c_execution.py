@@ -442,11 +442,11 @@ class CKernelExecutor(KernelExecutorBase):
     @memoize_method
     def program_info(self, entrypoint, arg_to_dtype_set=frozenset(),
             all_kwargs=None):
-        from loopy.schedule.tools import get_callkernel_dependencies
         program = self.get_typed_and_scheduled_translation_unit(
                 entrypoint, arg_to_dtype_set)
 
         from loopy.codegen import generate_code_v2
+        from loopy.schedule.tools import get_callkernel_dependencies
         codegen_result = generate_code_v2(program)
 
         dev_code = codegen_result.device_code()

@@ -853,10 +853,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
     def get_function_declaration(self, codegen_state, codegen_result,
             schedule_index):
-        from loopy.schedule.tools import get_callkernel_dependencies
         kernel = codegen_state.kernel
         subkernel = codegen_state.kernel.schedule[schedule_index].kernel_name
-        subknl_deps = get_callkernel_dependencies(kernel, subkernel)
 
         from cgen import FunctionDeclaration, Value
 
@@ -872,8 +870,9 @@ class CFamilyASTBuilder(ASTBuilderBase):
                 FunctionDeclaration(
                     name,
                     [self.idi_to_cgen_declarator(kernel, idi)
-                     for idi in codegen_state.implemented_data_info
-                     if idi.name in subknl_deps]))
+                     for idi in codegen_result.get_idis_for_subkernel(kernel,
+                                                                      subkernel)]
+                ))
 
     def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
         return None

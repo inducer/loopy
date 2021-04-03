@@ -195,6 +195,26 @@ class CodeGenerationResult(ImmutableRecord):
                 self.current_program(codegen_state).copy(
                     ast=new_ast))
 
+    def get_idis_for_subkernel(self, kernel, name):
+        """
+        Returns a :class:`list` of :class:`~loopy.codegen.ImplementedDataInfo` for
+        the subkernel named *name*.
+
+        :arg kernel: An instance of :class:`loopy.LoopKernel`.
+        """
+        from loopy.schedule.tools import get_callkernel_dependencies
+        from loopy.kernel.data import InameArg
+        subknl_deps = get_callkernel_dependencies(kernel, name)
+        return [idi
+                for idi in self.implemented_data_info
+                if (idi.name in subknl_deps
+                    or idi.arg_class is InameArg
+                    or idi.base_name in subknl_deps
+                    or idi.offset_for_name in subknl_deps
+                    or (idi.stride_for_name_and_axis is not None
+                        and idi.stride_for_name_and_axis[0] in subknl_deps))]
+
+
 # }}}
 
 
