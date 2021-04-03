@@ -204,13 +204,15 @@ class CodeGenerationResult(ImmutableRecord):
         """
         from loopy.schedule.tools import get_callkernel_dependencies
         from loopy.kernel.data import InameArg
+        name2idi = {idi.name: idi for idi in self.implemented_data_info}
         subknl_deps = get_callkernel_dependencies(kernel, name)
         return [idi
                 for idi in self.implemented_data_info
                 if (idi.name in subknl_deps
                     or idi.arg_class is InameArg
                     or idi.base_name in subknl_deps
-                    or idi.offset_for_name in subknl_deps
+                    or (idi.offset_for_name is not None
+                        and name2idi[idi.offset_for_name].base_name in subknl_deps)
                     or (idi.stride_for_name_and_axis is not None
                         and idi.stride_for_name_and_axis[0] in subknl_deps))]
 
