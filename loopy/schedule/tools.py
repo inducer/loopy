@@ -86,7 +86,6 @@ def args_read_in_subkernel(kernel, subkernel):
     params = frozenset().union(*(
         kernel.domains[dom_idx].get_var_names(isl.dim_type.param)
         for dom_idx in domain_idxs))
-
     return (frozenset(arg
                       for insn_id in insn_ids
                       for arg in kernel.id_to_insn[insn_id].read_dependency_names()
@@ -108,10 +107,31 @@ def get_callkernel_dependencies(kernel, subkernel):
     Returns variable names referenced by :class:`~loopy.schedule.CallKernel`
     named *subkernel*.
     """
-    return (temporaries_read_in_subkernel(kernel, subkernel)
-            | temporaries_written_in_subkernel(kernel, subkernel)
-            | args_read_in_subkernel(kernel, subkernel)
-            | args_written_in_subkernel(kernel, subkernel))
+    from loopy.symbolic import IdentityMapper
+    from loopy.kernel.array import ArrayBase
+
+    class VariableNoter(IdentityMapper):
+        def __init__(self):
+            self.deps = set()
+            super().__init__()
+
+        def map_variable(self, expr):
+            self.deps.add(expr.name)
+            return super().map_variable(expr)
+
+    var_names = (temporaries_read_in_subkernel(kernel, subkernel)
+                 | temporaries_written_in_subkernel(kernel, subkernel)
+                 | args_read_in_subkernel(kernel, subkernel)
+                 | args_written_in_subkernel(kernel, subkernel))
+
+    noter = VariableNoter()
+
+    for var_name in var_names:
+        var = kernel.arg_dict.get(var_name, kernel.temporary_variables.get(var_name))
+        if isinstance(var, ArrayBase):
+            var.map_exprs(noter)
+
+    return var_names | frozenset(noter.deps)
 
 # }}}
 
