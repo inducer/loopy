@@ -54,10 +54,17 @@ def get_block_boundaries(schedule):
 def temporaries_read_in_subkernel(kernel, subkernel):
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
     insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel]
-    return frozenset(tv
-            for insn_id in insn_ids
-            for tv in kernel.id_to_insn[insn_id].read_dependency_names()
-            if tv in kernel.temporary_variables)
+    inames = frozenset().union(*(kernel.insn_inames(insn_id)
+                                 for insn_id in insn_ids))
+    params = frozenset().union(*(
+        kernel.domains[dom_idx].get_var_names(isl.dim_type.param)
+        for dom_idx in kernel.get_leaf_domain_indices(inames)))
+
+    return (frozenset(tv
+                      for insn_id in insn_ids
+                      for tv in kernel.id_to_insn[insn_id].read_dependency_names()
+                      if tv in kernel.temporary_variables)
+            | (params & frozenset(kernel.temporary_variables)))
 
 
 def temporaries_written_in_subkernel(kernel, subkernel):
@@ -72,10 +79,17 @@ def temporaries_written_in_subkernel(kernel, subkernel):
 def args_read_in_subkernel(kernel, subkernel):
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
     insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel]
-    return frozenset(arg
-                     for insn_id in insn_ids
-                     for arg in kernel.id_to_insn[insn_id].read_dependency_names()
-                     if arg in kernel.arg_dict)
+    inames = frozenset().union(*(kernel.insn_inames(insn_id)
+                                 for insn_id in insn_ids))
+    params = frozenset().union(*(
+        kernel.domains[dom_idx].get_var_names(isl.dim_type.param)
+        for dom_idx in kernel.get_leaf_domain_indices(inames)))
+
+    return (frozenset(arg
+                      for insn_id in insn_ids
+                      for arg in kernel.id_to_insn[insn_id].read_dependency_names()
+                      if arg in kernel.arg_dict)
+            | (params & frozenset(kernel.arg_dict)))
 
 
 def args_written_in_subkernel(kernel, subkernel):
