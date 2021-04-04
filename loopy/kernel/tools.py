@@ -987,7 +987,10 @@ def guess_var_shape(kernel, var_name):
 
     armap = AccessRangeMapper(kernel, var_name)
 
-    submap = SubstitutionRuleExpander(kernel.substitutions)
+    if kernel.substitutions:
+        submap = SubstitutionRuleExpander(kernel.substitutions)
+    else:
+        submap = lambda expr: expr
 
     def run_through_armap(expr):
         armap(submap(expr), insn.within_inames)

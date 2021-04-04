@@ -547,7 +547,10 @@ def infer_unknown_types(kernel, expect_completion=False):
     type_inf_mapper = TypeInferenceMapper(kernel, item_lookup)
 
     from loopy.symbolic import SubstitutionRuleExpander
-    subst_expander = SubstitutionRuleExpander(kernel.substitutions)
+    if kernel.substitutions:
+        subst_expander = SubstitutionRuleExpander(kernel.substitutions)
+    else:
+        subst_expander = lambda expr: expr
 
     # {{{ work on type inference queue
 

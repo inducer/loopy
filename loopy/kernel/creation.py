@@ -1122,7 +1122,10 @@ class ArgumentGuesser:
         self.default_offset = default_offset
 
         from loopy.symbolic import SubstitutionRuleExpander
-        self.submap = SubstitutionRuleExpander(subst_rules)
+        if subst_rules:
+            self.submap = SubstitutionRuleExpander(subst_rules)
+        else:
+            self.submap = lambda expr: expr
 
         self.all_inames = set()
         for dom in domains:
@@ -1498,7 +1501,10 @@ def create_temporaries(knl, default_order):
 
 def find_shapes_of_vars(knl, var_names, feed_expression):
     from loopy.symbolic import BatchedAccessMapMapper, SubstitutionRuleExpander
-    submap = SubstitutionRuleExpander(knl.substitutions)
+    if knl.substitutions:
+        submap = SubstitutionRuleExpander(knl.substitutions)
+    else:
+        submap = lambda expr: expr
 
     armap = BatchedAccessMapMapper(knl, var_names)
 
