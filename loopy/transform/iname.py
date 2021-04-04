@@ -818,6 +818,44 @@ class _InameDuplicator(RuleAwareIdentityMapper):
                 for iname in insn.within_inames)
         return insn.copy(within_inames=new_fid)
 
+    def map_kernel(self, kernel):
+        new_insns = [
+                # While subst rules are not allowed in assignees, the mapper
+                # may perform tasks entirely unrelated to subst rules, so
+                # we must map assignees, too.
+                insn if not self.within(kernel, insn, ()) else
+                self.map_instruction(kernel,
+                    insn.with_transformed_expressions(
+                        lambda expr: self(expr, kernel, insn)))
+                for insn in kernel.instructions]
+
+        from functools import partial
+
+        non_insn_self = partial(self, kernel=kernel, insn=None)
+
+        from loopy.kernel.array import ArrayBase
+
+        # {{{ args
+
+        new_args = [
+                arg.map_exprs(non_insn_self) if isinstance(arg, ArrayBase) else arg
+                for arg in kernel.args]
+
+        # }}}
+
+        # {{{ tvs
+
+        new_tvs = {
+                tv_name: tv.map_exprs(non_insn_self)
+                for tv_name, tv in kernel.temporary_variables.items()}
+
+        # }}}
+
+        # domains, var names: not exprs => do not map
+
+        return kernel.copy(instructions=new_insns,
+                           args=new_args,
+                           temporary_variables=new_tvs)
 
 def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
         tags={}):
