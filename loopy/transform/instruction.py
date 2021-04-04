@@ -170,6 +170,9 @@ def remove_instructions(kernel, insn_ids):
 # {{{ replace_instruction_ids
 
 def replace_instruction_ids(kernel, replacements):
+    if not replacements:
+        return kernel
+
     new_insns = []
 
     for insn in kernel.instructions:
