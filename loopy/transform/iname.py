@@ -273,10 +273,7 @@ def _split_iname_backend(kernel, iname_to_split,
                     (insn.within_inames.copy()
                     - frozenset([iname_to_split]))
                     | frozenset([outer_iname, inner_iname]))
-        else:
-            new_within_inames = insn.within_inames
-
-        insn = insn.copy(
+            insn = insn.copy(
                 within_inames=new_within_inames)
 
         new_insns.append(insn)
