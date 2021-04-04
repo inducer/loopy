@@ -1973,6 +1973,9 @@ def realize_ilp(kernel):
         if filter_iname_tags_by_type(iname.tags, (IlpBaseTag, VectorizeTag))
     )
 
+    if not privatizing_inames:
+        return kernel
+
     from loopy.transform.privatize import privatize_temporaries_with_inames
     return privatize_temporaries_with_inames(kernel, privatizing_inames)
 
