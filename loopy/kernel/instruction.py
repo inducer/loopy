@@ -945,10 +945,9 @@ class Assignment(MultiAssignmentBase):
             return self
 
         return self.copy(
-                assignee=assignee_f(self.assignee),
-                expression=f(self.expression),
-                predicates=frozenset(
-                    f(pred) for pred in self.predicates))
+                assignee=assignee,
+                expression=expression,
+                predicates=predicates)
 
     # }}}
 
@@ -1115,10 +1114,9 @@ class CallInstruction(MultiAssignmentBase):
             return self
 
         return self.copy(
-                assignees=assignee_f(self.assignees),
-                expression=f(self.expression),
-                predicates=frozenset(
-                    f(pred) for pred in self.predicates))
+                assignees=assignees,
+                expression=expression,
+                predicates=predicates)
 
     # }}}
 
