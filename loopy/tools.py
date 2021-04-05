@@ -78,6 +78,8 @@ class LoopyKeyBuilder(KeyBuilderBase):
         getattr(prn, "print_"+key._base_name)(key)
         key_hash.update(prn.get_str().encode("utf8"))
 
+    update_for_Map = update_for_BasicSet  # noqa
+
     def update_for_type(self, key_hash, key):
         try:
             method = getattr(self, "update_for_type_"+key.__name__)
