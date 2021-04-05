@@ -64,8 +64,15 @@ def assume(kernel, assumptions):
 
 # {{{ fix_parameter
 
-def _fix_parameter(kernel, name, value):
-    def process_set(s):
+def fix_parameters(kernel, **value_dict):
+    """Fix the values of the arguments to specific constants.
+
+    *value_dict* consists of *name*/*value* pairs, where *name* will be fixed
+    to be *value*. *name* may refer to :ref:`domain-parameters` or
+    :ref:`arguments`.
+    """
+
+    def process_set_one_param(s, name, value):
         var_dict = s.get_var_dict()
 
         try:
@@ -85,10 +92,15 @@ def _fix_parameter(kernel, name, value):
 
         return s
 
+    def process_set(s):
+        for name, value in value_dict.items():
+            s = process_set_one_param(s, name, value)
+        return s
+
     new_domains = [process_set(dom) for dom in kernel.domains]
 
     from pymbolic.mapper.substitutor import make_subst_func
-    subst_func = make_subst_func({name: value})
+    subst_func = make_subst_func(value_dict)
 
     from loopy.symbolic import SubstitutionMapper, PartialEvaluationMapper
     subst_map = SubstitutionMapper(subst_func)
@@ -100,7 +112,7 @@ def _fix_parameter(kernel, name, value):
     from loopy.kernel.array import ArrayBase
     new_args = []
     for arg in kernel.args:
-        if arg.name == name:
+        if arg.name in value_dict.keys():
             # remove from argument list
             continue
 
@@ -131,18 +143,6 @@ def _fix_parameter(kernel, name, value):
                 ))
 
 
-def fix_parameters(kernel, **value_dict):
-    """Fix the values of the arguments to specific constants.
-
-    *value_dict* consists of *name*/*value* pairs, where *name* will be fixed
-    to be *value*. *name* may refer to :ref:`domain-parameters` or
-    :ref:`arguments`.
-    """
-
-    for name, value in value_dict.items():
-        kernel = _fix_parameter(kernel, name, value)
-
-    return kernel
 
 # }}}
 
