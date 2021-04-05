@@ -1389,11 +1389,6 @@ def test_add_stmt_inst_dependency():
 
 def test_linearization_checker_with_loop_prioritization():
 
-    lp.set_caching_enabled(False)
-    # TODO REMOVE THIS^ (prevents
-    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # ) during preprocessing during preprocessing
-
     unproc_knl = lp.make_kernel(
         [
             "{[i]: 0<=i<pi}",
@@ -1441,11 +1436,6 @@ def test_linearization_checker_with_loop_prioritization():
 """
 def test_linearization_checker_with_matmul():
 
-    lp.set_caching_enabled(False)
-    # TODO REMOVE THIS^ (prevents
-    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # ) during preprocessing
-
     bsize = 16
     unproc_knl = lp.make_kernel(
             "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<ell}",
@@ -1484,11 +1474,6 @@ def test_linearization_checker_with_matmul():
 
 def test_linearization_checker_with_scan():
 
-    lp.set_caching_enabled(False)
-    # TODO REMOVE THIS^ (prevents
-    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # ) during preprocessing
-
     stride = 1
     n_scan = 16
     knl = lp.make_kernel(
@@ -1505,11 +1490,6 @@ def test_linearization_checker_with_scan():
 
 
 def test_linearization_checker_with_dependent_domain():
-
-    lp.set_caching_enabled(False)
-    # TODO REMOVE THIS^ (prevents
-    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # ) during preprocessing
 
     unproc_knl = lp.make_kernel(
         [
@@ -1541,11 +1521,6 @@ def test_linearization_checker_with_dependent_domain():
 # TODO fails, first handle ilp, then figure out reason for failure
 '''
 def test_linearization_checker_with_stroud_bernstein():
-
-    lp.set_caching_enabled(False)
-    # TODO REMOVE THIS^ (prevents
-    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # ) during preprocessing
 
     unproc_knl = lp.make_kernel(
             "{[el, i2, alpha1,alpha2]: \
@@ -1596,11 +1571,6 @@ def test_linearization_checker_with_stroud_bernstein():
 
 def test_linearization_checker_with_nop():
 
-    lp.set_caching_enabled(False)
-    # TODO REMOVE THIS^ (prevents
-    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # ) during preprocessing
-
     unproc_knl = lp.make_kernel(
         [
             "{[b]: b_start<=b<b_end}",
@@ -1632,11 +1602,6 @@ def test_linearization_checker_with_nop():
 
 
 def test_linearization_checker_with_multi_domain():
-
-    lp.set_caching_enabled(False)
-    # TODO REMOVE THIS^ (prevents
-    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # ) during preprocessing
 
     unproc_knl = lp.make_kernel(
         [
@@ -1679,11 +1644,6 @@ def test_linearization_checker_with_multi_domain():
 
 def test_linearization_checker_with_loop_carried_deps():
 
-    lp.set_caching_enabled(False)
-    # TODO REMOVE THIS^ (prevents
-    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # ) during preprocessing
-
     unproc_knl = lp.make_kernel(
         "{[i]: 0<=i<n}",
         """
@@ -1713,11 +1673,6 @@ def test_linearization_checker_with_loop_carried_deps():
 
 
 def test_linearization_checker_and_invalid_prioritiy_detection():
-
-    lp.set_caching_enabled(False)
-    # TODO REMOVE THIS^ (prevents
-    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # ) during preprocessing
 
     ref_knl = lp.make_kernel(
         [
@@ -1846,11 +1801,6 @@ def test_linearization_checker_and_invalid_prioritiy_detection():
 
 
 def test_legacy_dep_creation_with_separate_loops():
-
-    lp.set_caching_enabled(False)
-    # TODO REMOVE THIS^ (prevents
-    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # ) during preprocessing
 
     # Test two dep situations:
     # 1. stmts with no common inames
