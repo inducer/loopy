@@ -193,7 +193,7 @@ class SpecialLexPointWRTLoop:
 def get_pairwise_statement_orderings_inner(
         knl,
         lin_items,
-        insn_id_pairs,
+        stmt_id_pairs,
         loops_to_ignore=set(),
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
@@ -216,15 +216,15 @@ def get_pairwise_statement_orderings_inner(
         truncated (i.e. partial) linearization may be passed through this
         argument
 
-    :arg insn_id_pairs: A list containing pairs of instruction identifiers.
+    :arg stmt_id_pairs: A list containing pairs of statement identifiers.
 
     :arg loops_to_ignore: A set of inames that will be ignored when
         determining the relative ordering of statements. This will typically
         contain concurrent inames tagged with the ``vec`` or ``ilp`` array
         access tags.
 
-    :returns: A dictionary mapping each two-tuple of instruction identifiers
-        provided in `insn_id_pairs` to a :class:`collections.namedtuple`
+    :returns: A dictionary mapping each two-tuple of statement identifiers
+        provided in `stmt_id_pairs` to a :class:`collections.namedtuple`
         containing the intra-thread SIO (`sio_intra_thread`), intra-group SIO
         (`sio_intra_group`), and global SIO (`sio_global`), each realized
         as an :class:`islpy.Map` from each instance of the first
@@ -254,15 +254,15 @@ def get_pairwise_statement_orderings_inner(
     )
     slex = SpecialLexPointWRTLoop
 
-    all_insn_ids = set().union(*insn_id_pairs)
+    all_stmt_ids = set().union(*stmt_id_pairs)
 
     # {{{ Intra-thread lex order creation
 
     # First, use one pass through lin_items to generate an *intra-thread*
     # lexicographic ordering describing the relative order of all statements
-    # represented by all_insn_ids
+    # represented by all_stmt_ids
 
-    # For each statement, map the insn_id to a tuple representing points
+    # For each statement, map the stmt_id to a tuple representing points
     # in the intra-thread lexicographic ordering containing items of :class:`int` or
     # :class:`str` :mod:`loopy` inames
     stmt_inst_to_lex_intra_thread = {}
@@ -317,22 +317,22 @@ def get_pairwise_statement_orderings_inner(
             # in the simplification step below)
 
         elif isinstance(lin_item, RunInstruction):
-            lp_insn_id = lin_item.insn_id
+            lp_stmt_id = lin_item.insn_id
 
-            # Only process listed insns, otherwise ignore
-            if lp_insn_id in all_insn_ids:
+            # Only process listed stmts, otherwise ignore
+            if lp_stmt_id in all_stmt_ids:
                 # Add item to stmt_inst_to_lex_intra_thread
-                stmt_inst_to_lex_intra_thread[lp_insn_id] = tuple(next_lex_tuple)
+                stmt_inst_to_lex_intra_thread[lp_stmt_id] = tuple(next_lex_tuple)
 
                 # Increment lex dim val enumerating items in current section of code
                 next_lex_tuple[-1] += 1
 
         elif isinstance(lin_item, Barrier):
-            lp_insn_id = lin_item.originating_insn_id
+            lp_stmt_id = lin_item.originating_insn_id
             loops_with_barriers[lin_item.synchronization_kind] |= current_inames
 
-            if lp_insn_id is None:
-                # Barriers without insn ids were inserted as a result of a
+            if lp_stmt_id is None:
+                # Barriers without stmt ids were inserted as a result of a
                 # dependency. They don't themselves have dependencies. Ignore them.
 
                 # FIXME: It's possible that we could record metadata about them
@@ -341,10 +341,10 @@ def get_pairwise_statement_orderings_inner(
 
                 continue
 
-            # If barrier was identified in listed insns, process it
-            if lp_insn_id in all_insn_ids:
+            # If barrier was identified in listed stmts, process it
+            if lp_stmt_id in all_stmt_ids:
                 # Add item to stmt_inst_to_lex_intra_thread
-                stmt_inst_to_lex_intra_thread[lp_insn_id] = tuple(next_lex_tuple)
+                stmt_inst_to_lex_intra_thread[lp_stmt_id] = tuple(next_lex_tuple)
 
                 # Increment lex dim val enumerating items in current section of code
                 next_lex_tuple[-1] += 1
@@ -739,11 +739,11 @@ def get_pairwise_statement_orderings_inner(
     # {{{ _get_map_for_stmt()
 
     def _get_map_for_stmt(
-            insn_id, lex_points, int_sid, lex_dim_names):
+            stmt_id, lex_points, int_sid, lex_dim_names):
 
         # Get inames domain for statement instance (a BasicSet)
         dom = knl.get_inames_domain(
-            knl.id_to_insn[insn_id].within_inames)
+            knl.id_to_insn[stmt_id].within_inames)
         # (note that this domain may include inames that are
         # not in stmt.within_inames)
 
@@ -805,18 +805,18 @@ def get_pairwise_statement_orderings_inner(
         ])
     # ("sio" = statement instance ordering; "pwsched" = pairwise schedule)
 
-    for insn_ids in insn_id_pairs:
+    for stmt_ids in stmt_id_pairs:
         # Determine integer IDs that will represent each statement in mapping
         # (dependency map creation assumes sid_before=0 and sid_after=1, unless
         # before and after refer to same stmt, in which case
         # sid_before=sid_after=0)
-        int_sids = [0, 0] if insn_ids[0] == insn_ids[1] else [0, 1]
+        int_sids = [0, 0] if stmt_ids[0] == stmt_ids[1] else [0, 1]
 
         # {{{  Create SIO for intra-thread case (lid0' == lid0, gid0' == gid0, etc)
 
         # Simplify tuples to the extent possible ------------------------------------
 
-        lex_tuples = [stmt_inst_to_lex_intra_thread[insn_id] for insn_id in insn_ids]
+        lex_tuples = [stmt_inst_to_lex_intra_thread[stmt_id] for stmt_id in stmt_ids]
 
         # At this point, one of the lex tuples may have more dimensions than
         # another; the missing dims are the fastest-updating dims, and their
@@ -836,10 +836,10 @@ def get_pairwise_statement_orderings_inner(
 
         intra_thread_sched_maps = [
             _get_map_for_stmt(
-                insn_id, lex_tuple, int_sid,
+                stmt_id, lex_tuple, int_sid,
                 seq_lex_dim_names+all_par_lex_dim_names)
-            for insn_id, lex_tuple, int_sid
-            in zip(insn_ids, lex_tuples_simplified, int_sids)
+            for stmt_id, lex_tuple, int_sid
+            in zip(stmt_ids, lex_tuples_simplified, int_sids)
             ]
 
         # Create pairwise lex order map (pairwise only in the intra-thread case)
@@ -873,17 +873,17 @@ def get_pairwise_statement_orderings_inner(
         def _get_sched_maps_and_sio(
                 stmt_inst_to_blex, blex_order_map, seq_blex_dim_names):
             # (Vars from outside func used here:
-            # insn_ids, int_sids, all_par_lex_dim_names)
+            # stmt_ids, int_sids, all_par_lex_dim_names)
 
             # Use *unsimplified* lex tuples w/ blex map, which are already padded
-            blex_tuples_padded = [stmt_inst_to_blex[insn_id] for insn_id in insn_ids]
+            blex_tuples_padded = [stmt_inst_to_blex[stmt_id] for stmt_id in stmt_ids]
 
             par_sched_maps = [
                 _get_map_for_stmt(
-                    insn_id, blex_tuple, int_sid,
+                    stmt_id, blex_tuple, int_sid,
                     seq_blex_dim_names+all_par_lex_dim_names)  # all par names
-                for insn_id, blex_tuple, int_sid
-                in zip(insn_ids, blex_tuples_padded, int_sids)
+                for stmt_id, blex_tuple, int_sid
+                in zip(stmt_ids, blex_tuples_padded, int_sids)
                 ]
 
             # Create statement instance ordering
@@ -903,7 +903,7 @@ def get_pairwise_statement_orderings_inner(
         # }}}
 
         # Store sched maps along with SIOs
-        pairwise_sios[tuple(insn_ids)] = StatementOrdering(
+        pairwise_sios[tuple(stmt_ids)] = StatementOrdering(
             sio_intra_thread=sio_intra_thread,
             pwsched_intra_thread=tuple(intra_thread_sched_maps),
             sio_intra_group=sio_intra_group,

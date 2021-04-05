@@ -44,9 +44,9 @@ def get_pairwise_statement_orderings(
         this routine during linearization, a truncated (i.e. partial)
         linearization may be passed through this argument.
 
-    :arg stmt_id_pairs: A list containing pairs of instruction identifiers.
+    :arg stmt_id_pairs: A list containing pairs of statement identifiers.
 
-    :returns: A dictionary mapping each two-tuple of instruction identifiers
+    :returns: A dictionary mapping each two-tuple of statement identifiers
         provided in `stmt_id_pairs` to a :class:`collections.namedtuple`
         containing the intra-thread SIO (`sio_intra_thread`), intra-group SIO
         (`sio_intra_group`), and global SIO (`sio_global`), each realized
