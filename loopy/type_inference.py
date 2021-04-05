@@ -550,7 +550,8 @@ def infer_unknown_types(kernel, expect_completion=False):
     if kernel.substitutions:
         subst_expander = SubstitutionRuleExpander(kernel.substitutions)
     else:
-        subst_expander = lambda expr: expr
+        def subst_expander(expr):
+            return expr
 
     # {{{ work on type inference queue
 

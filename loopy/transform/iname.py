@@ -854,6 +854,7 @@ class _InameDuplicator(RuleAwareIdentityMapper):
                            args=new_args,
                            temporary_variables=new_tvs)
 
+
 def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
         tags={}):
     """

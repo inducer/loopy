@@ -181,7 +181,6 @@ def replace_instruction_ids(kernel, replacements):
         extra_depends_on = []
         new_no_sync_with = []
 
-        count += len(insn.depends_on) + len(insn.no_sync_with)
         for idep, dep in enumerate(insn.depends_on):
             if dep in replacements:
                 new_deps = list(replacements[dep])

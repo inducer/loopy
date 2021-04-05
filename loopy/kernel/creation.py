@@ -1504,7 +1504,8 @@ def find_shapes_of_vars(knl, var_names, feed_expression):
     if knl.substitutions:
         submap = SubstitutionRuleExpander(knl.substitutions)
     else:
-        submap = lambda expr: expr
+        def submap(expr):
+            return expr
 
     armap = BatchedAccessMapMapper(knl, var_names)
 
