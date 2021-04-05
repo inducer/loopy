@@ -50,7 +50,7 @@ from loopy.schedule.checker.utils import (
 logger = logging.getLogger(__name__)
 
 
-# {{{ helper functions for map creation/handling
+# {{{ Helper functions for map creation/handling
 
 def _align_and_compare_maps(maps):
     from loopy.schedule.checker.utils import prettier_map_string
@@ -88,12 +88,51 @@ def _isl_map_with_marked_dims(s):
     # Isl ignores the apostrophes in map strings, until they are explicitly added
     return append_marker_to_isl_map_var_names(isl.Map(s), dt.in_, BEFORE_MARK)
 
+
+def _check_orderings_for_stmt_pair(
+        stmt_id_before,
+        stmt_id_after,
+        all_sios,
+        sio_intra_thread_exp=None,
+        sched_before_intra_thread_exp=None,
+        sched_after_intra_thread_exp=None,
+        sio_intra_group_exp=None,
+        sched_before_intra_group_exp=None,
+        sched_after_intra_group_exp=None,
+        sio_global_exp=None,
+        sched_before_global_exp=None,
+        sched_after_global_exp=None,
+        ):
+
+    order_info = all_sios[(stmt_id_before, stmt_id_after)]
+
+    # Get pairs of maps to compare for equality
+    map_candidates = zip([
+        sio_intra_thread_exp,
+        sched_before_intra_thread_exp, sched_after_intra_thread_exp,
+        sio_intra_group_exp,
+        sched_before_intra_group_exp, sched_after_intra_group_exp,
+        sio_global_exp,
+        sched_before_global_exp, sched_after_global_exp,
+        ], [
+        order_info.sio_intra_thread,
+        order_info.pwsched_intra_thread[0], order_info.pwsched_intra_thread[1],
+        order_info.sio_intra_group,
+        order_info.pwsched_intra_group[0], order_info.pwsched_intra_group[1],
+        order_info.sio_global,
+        order_info.pwsched_global[0], order_info.pwsched_global[1],
+        ])
+
+    # Only compare to maps that were passed
+    maps_to_compare = [(m1, m2) for m1, m2 in map_candidates if m1 is not None]
+    _align_and_compare_maps(maps_to_compare)
+
 # }}}
 
 
-# {{{ test pairwise schedule creation
+# {{{ test_intra_thread_pairwise_schedule_creation()
 
-def test_pairwise_schedule_creation():
+def test_intra_thread_pairwise_schedule_creation():
     from loopy.schedule.checker import (
         get_pairwise_statement_orderings,
     )
@@ -136,7 +175,7 @@ def test_pairwise_schedule_creation():
     lin_knl = get_one_linearized_kernel(proc_knl)
     linearization_items = lin_knl.linearization
 
-    insn_id_pairs = [
+    stmt_id_pairs = [
         ("stmt_a", "stmt_b"),
         ("stmt_a", "stmt_c"),
         ("stmt_a", "stmt_d"),
@@ -147,14 +186,14 @@ def test_pairwise_schedule_creation():
     pworders = get_pairwise_statement_orderings(
         lin_knl,
         linearization_items,
-        insn_id_pairs,
+        stmt_id_pairs,
         )
 
-    # Relationship between stmt_a and stmt_b ---------------------------------------
+    # {{{ Relationship between stmt_a and stmt_b
 
     # Create expected maps and compare
 
-    sched_before_intra_thread_exp = isl.Map(
+    sched_stmt_a_intra_thread_exp = isl.Map(
         "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
         % (
             STATEMENT_VAR_NAME,
@@ -162,7 +201,7 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    sched_after_intra_thread_exp = isl.Map(
+    sched_stmt_b_intra_thread_exp = isl.Map(
         "[pi, pj] -> { [%s=1, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
@@ -172,16 +211,17 @@ def test_pairwise_schedule_creation():
 
     _check_orderings_for_stmt_pair(
         "stmt_a", "stmt_b", pworders,
-        sched_before_intra_thread_exp=sched_before_intra_thread_exp,
-        sched_after_intra_thread_exp=sched_after_intra_thread_exp,
+        sched_before_intra_thread_exp=sched_stmt_a_intra_thread_exp,
+        sched_after_intra_thread_exp=sched_stmt_b_intra_thread_exp,
         )
 
-    # ------------------------------------------------------------------------------
-    # Relationship between stmt_a and stmt_c ---------------------------------------
+    # }}}
+
+    # {{{ Relationship between stmt_a and stmt_c
 
     # Create expected maps and compare
 
-    sched_before_intra_thread_exp = isl.Map(
+    sched_stmt_a_intra_thread_exp = isl.Map(
         "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
         % (
             STATEMENT_VAR_NAME,
@@ -189,7 +229,7 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    sched_after_intra_thread_exp = isl.Map(
+    sched_stmt_c_intra_thread_exp = isl.Map(
         "[pi, pj] -> { [%s=1, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
@@ -199,16 +239,17 @@ def test_pairwise_schedule_creation():
 
     _check_orderings_for_stmt_pair(
         "stmt_a", "stmt_c", pworders,
-        sched_before_intra_thread_exp=sched_before_intra_thread_exp,
-        sched_after_intra_thread_exp=sched_after_intra_thread_exp,
+        sched_before_intra_thread_exp=sched_stmt_a_intra_thread_exp,
+        sched_after_intra_thread_exp=sched_stmt_c_intra_thread_exp,
         )
 
-    # ------------------------------------------------------------------------------
-    # Relationship between stmt_a and stmt_d ---------------------------------------
+    # }}}
+
+    # {{{ Relationship between stmt_a and stmt_d
 
     # Create expected maps and compare
 
-    sched_before_intra_thread_exp = isl.Map(
+    sched_stmt_a_intra_thread_exp = isl.Map(
         "[pi, pk] -> { [%s=0, i, k] -> [%s] : 0 <= i < pi and 0 <= k < pk }"
         % (
             STATEMENT_VAR_NAME,
@@ -216,7 +257,7 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    sched_after_intra_thread_exp = isl.Map(
+    sched_stmt_d_intra_thread_exp = isl.Map(
         "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
         % (
             STATEMENT_VAR_NAME,
@@ -226,16 +267,17 @@ def test_pairwise_schedule_creation():
 
     _check_orderings_for_stmt_pair(
         "stmt_a", "stmt_d", pworders,
-        sched_before_intra_thread_exp=sched_before_intra_thread_exp,
-        sched_after_intra_thread_exp=sched_after_intra_thread_exp,
+        sched_before_intra_thread_exp=sched_stmt_a_intra_thread_exp,
+        sched_after_intra_thread_exp=sched_stmt_d_intra_thread_exp,
         )
 
-    # ------------------------------------------------------------------------------
-    # Relationship between stmt_b and stmt_c ---------------------------------------
+    # }}}
+
+    # {{{ Relationship between stmt_b and stmt_c
 
     # Create expected maps and compare
 
-    sched_before_intra_thread_exp = isl.Map(
+    sched_stmt_b_intra_thread_exp = isl.Map(
         "[pi, pj] -> { [%s=0, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
@@ -243,7 +285,7 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    sched_after_intra_thread_exp = isl.Map(
+    sched_stmt_c_intra_thread_exp = isl.Map(
         "[pi, pj] -> { [%s=1, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
@@ -253,16 +295,17 @@ def test_pairwise_schedule_creation():
 
     _check_orderings_for_stmt_pair(
         "stmt_b", "stmt_c", pworders,
-        sched_before_intra_thread_exp=sched_before_intra_thread_exp,
-        sched_after_intra_thread_exp=sched_after_intra_thread_exp,
+        sched_before_intra_thread_exp=sched_stmt_b_intra_thread_exp,
+        sched_after_intra_thread_exp=sched_stmt_c_intra_thread_exp,
         )
 
-    # ------------------------------------------------------------------------------
-    # Relationship between stmt_b and stmt_d ---------------------------------------
+    # }}}
+
+    # {{{ Relationship between stmt_b and stmt_d
 
     # Create expected maps and compare
 
-    sched_before_intra_thread_exp = isl.Map(
+    sched_stmt_b_intra_thread_exp = isl.Map(
         "[pi, pj] -> { [%s=0, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
@@ -270,7 +313,7 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    sched_after_intra_thread_exp = isl.Map(
+    sched_stmt_d_intra_thread_exp = isl.Map(
         "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
         % (
             STATEMENT_VAR_NAME,
@@ -280,16 +323,17 @@ def test_pairwise_schedule_creation():
 
     _check_orderings_for_stmt_pair(
         "stmt_b", "stmt_d", pworders,
-        sched_before_intra_thread_exp=sched_before_intra_thread_exp,
-        sched_after_intra_thread_exp=sched_after_intra_thread_exp,
+        sched_before_intra_thread_exp=sched_stmt_b_intra_thread_exp,
+        sched_after_intra_thread_exp=sched_stmt_d_intra_thread_exp,
         )
 
-    # ------------------------------------------------------------------------------
-    # Relationship between stmt_c and stmt_d ---------------------------------------
+    # }}}
+
+    # {{{ Relationship between stmt_c and stmt_d
 
     # Create expected maps and compare
 
-    sched_before_intra_thread_exp = isl.Map(
+    sched_stmt_c_intra_thread_exp = isl.Map(
         "[pi, pj] -> { [%s=0, i, j] -> [%s] : 0 <= i < pi and 0 <= j < pj }"
         % (
             STATEMENT_VAR_NAME,
@@ -297,7 +341,7 @@ def test_pairwise_schedule_creation():
             )
         )
 
-    sched_after_intra_thread_exp = isl.Map(
+    sched_stmt_d_intra_thread_exp = isl.Map(
         "[pt] -> { [%s=1, t] -> [%s] : 0 <= t < pt }"
         % (
             STATEMENT_VAR_NAME,
@@ -307,12 +351,20 @@ def test_pairwise_schedule_creation():
 
     _check_orderings_for_stmt_pair(
         "stmt_c", "stmt_d", pworders,
-        sched_before_intra_thread_exp=sched_before_intra_thread_exp,
-        sched_after_intra_thread_exp=sched_after_intra_thread_exp,
+        sched_before_intra_thread_exp=sched_stmt_c_intra_thread_exp,
+        sched_after_intra_thread_exp=sched_stmt_d_intra_thread_exp,
         )
 
+    # }}}
+
+# }}}
+
+
+# {{{ test_pairwise_schedule_creation_with_hw_par_tags()
 
 def test_pairwise_schedule_creation_with_hw_par_tags():
+    # (further sched testing in SIO tests below)
+
     from loopy.schedule.checker import (
         get_pairwise_statement_orderings,
     )
@@ -356,11 +408,11 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
         stmt_id_pairs,
         )
 
-    # Relationship between stmt_a and stmt_b ---------------------------------------
+    # {{{ Relationship between stmt_a and stmt_b
 
     # Create expected maps and compare
 
-    sched_before_intra_thread_exp = isl.Map(
+    sched_stmt_a_intra_thread_exp = isl.Map(
         "[pi,pj] -> {[%s=0,i,ii,j,jj] -> [%s] : 0 <= i,ii < pi and 0 <= j,jj < pj}"
         % (
             STATEMENT_VAR_NAME,
@@ -371,7 +423,7 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
             )
         )
 
-    sched_after_intra_thread_exp = isl.Map(
+    sched_stmt_b_intra_thread_exp = isl.Map(
         "[pi,pj] -> {[%s=1,i,ii,j,jj] -> [%s] : 0 <= i,ii < pi and 0 <= j,jj < pj}"
         % (
             STATEMENT_VAR_NAME,
@@ -384,16 +436,16 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
 
     _check_orderings_for_stmt_pair(
         "stmt_a", "stmt_b", pworders,
-        sched_before_intra_thread_exp=sched_before_intra_thread_exp,
-        sched_after_intra_thread_exp=sched_after_intra_thread_exp,
+        sched_before_intra_thread_exp=sched_stmt_a_intra_thread_exp,
+        sched_after_intra_thread_exp=sched_stmt_b_intra_thread_exp,
         )
 
-    # ------------------------------------------------------------------------------
+    # }}}
 
 # }}}
 
 
-# {{{ test lex order map creation
+# {{{ test_lex_order_map_creation()
 
 def test_lex_order_map_creation():
     from loopy.schedule.checker.lexicographic_order_map import (
@@ -441,48 +493,9 @@ def test_lex_order_map_creation():
 # }}}
 
 
-# {{{ test statement instance ordering creation
+# {{{ test_intra_thread_statement_instance_ordering()
 
-def _check_orderings_for_stmt_pair(
-        stmt_id_before,
-        stmt_id_after,
-        all_sios,
-        sio_intra_thread_exp=None,
-        sched_before_intra_thread_exp=None,
-        sched_after_intra_thread_exp=None,
-        sio_intra_group_exp=None,
-        sched_before_intra_group_exp=None,
-        sched_after_intra_group_exp=None,
-        sio_global_exp=None,
-        sched_before_global_exp=None,
-        sched_after_global_exp=None,
-        ):
-
-    order_info = all_sios[(stmt_id_before, stmt_id_after)]
-
-    # Get pairs of maps to compare for equality
-    map_candidates = zip([
-        sio_intra_thread_exp,
-        sched_before_intra_thread_exp, sched_after_intra_thread_exp,
-        sio_intra_group_exp,
-        sched_before_intra_group_exp, sched_after_intra_group_exp,
-        sio_global_exp,
-        sched_before_global_exp, sched_after_global_exp,
-        ], [
-        order_info.sio_intra_thread,
-        order_info.pwsched_intra_thread[0], order_info.pwsched_intra_thread[1],
-        order_info.sio_intra_group,
-        order_info.pwsched_intra_group[0], order_info.pwsched_intra_group[1],
-        order_info.sio_global,
-        order_info.pwsched_global[0], order_info.pwsched_global[1],
-        ])
-
-    # Only compare to maps that were passed
-    maps_to_compare = [(m1, m2) for m1, m2 in map_candidates if m1 is not None]
-    _align_and_compare_maps(maps_to_compare)
-
-
-def test_statement_instance_ordering():
+def test_intra_thread_statement_instance_ordering():
     from loopy.schedule.checker import (
         get_pairwise_statement_orderings,
     )
@@ -539,7 +552,7 @@ def test_statement_instance_ordering():
         stmt_id_pairs,
         )
 
-    # Relationship between stmt_a and stmt_b ---------------------------------------
+    # {{{ Relationship between stmt_a and stmt_b
 
     sio_intra_thread_exp = _isl_map_with_marked_dims(
         "[pi, pj, pk] -> {{ "
@@ -551,7 +564,9 @@ def test_statement_instance_ordering():
     _check_orderings_for_stmt_pair(
         "stmt_a", "stmt_b", pworders, sio_intra_thread_exp=sio_intra_thread_exp)
 
-    # Relationship between stmt_a and stmt_c ---------------------------------------
+    # }}}
+
+    # {{{ Relationship between stmt_a and stmt_c
 
     sio_intra_thread_exp = _isl_map_with_marked_dims(
         "[pi, pj, pk] -> {{ "
@@ -563,7 +578,9 @@ def test_statement_instance_ordering():
     _check_orderings_for_stmt_pair(
         "stmt_a", "stmt_c", pworders, sio_intra_thread_exp=sio_intra_thread_exp)
 
-    # Relationship between stmt_a and stmt_d ---------------------------------------
+    # }}}
+
+    # {{{ Relationship between stmt_a and stmt_d
 
     sio_intra_thread_exp = _isl_map_with_marked_dims(
         "[pt, pi, pk] -> {{ "
@@ -575,7 +592,9 @@ def test_statement_instance_ordering():
     _check_orderings_for_stmt_pair(
         "stmt_a", "stmt_d", pworders, sio_intra_thread_exp=sio_intra_thread_exp)
 
-    # Relationship between stmt_b and stmt_c ---------------------------------------
+    # }}}
+
+    # {{{ Relationship between stmt_b and stmt_c
 
     sio_intra_thread_exp = _isl_map_with_marked_dims(
         "[pi, pj] -> {{ "
@@ -589,7 +608,9 @@ def test_statement_instance_ordering():
     _check_orderings_for_stmt_pair(
         "stmt_b", "stmt_c", pworders, sio_intra_thread_exp=sio_intra_thread_exp)
 
-    # Relationship between stmt_b and stmt_d ---------------------------------------
+    # }}}
+
+    # {{{ Relationship between stmt_b and stmt_d
 
     sio_intra_thread_exp = _isl_map_with_marked_dims(
         "[pt, pi, pj] -> {{ "
@@ -601,7 +622,9 @@ def test_statement_instance_ordering():
     _check_orderings_for_stmt_pair(
         "stmt_b", "stmt_d", pworders, sio_intra_thread_exp=sio_intra_thread_exp)
 
-    # Relationship between stmt_c and stmt_d ---------------------------------------
+    # }}}
+
+    # {{{ Relationship between stmt_c and stmt_d
 
     sio_intra_thread_exp = _isl_map_with_marked_dims(
         "[pt, pi, pj] -> {{ "
@@ -613,6 +636,12 @@ def test_statement_instance_ordering():
     _check_orderings_for_stmt_pair(
         "stmt_c", "stmt_d", pworders, sio_intra_thread_exp=sio_intra_thread_exp)
 
+    # }}}
+
+# }}}
+
+
+# {{{ test_statement_instance_ordering_with_hw_par_tags()
 
 def test_statement_instance_ordering_with_hw_par_tags():
     from loopy.schedule.checker import (
@@ -667,7 +696,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
     par_iname_condition = " and ".join(
         "{0} = {0}'".format(iname) for iname in conc_inames)
 
-    # Relationship between stmt_a and stmt_b ---------------------------------------
+    # {{{ Relationship between stmt_a and stmt_b
 
     sio_intra_thread_exp = _isl_map_with_marked_dims(
         "[pi, pj] -> {{ "
@@ -683,12 +712,12 @@ def test_statement_instance_ordering_with_hw_par_tags():
     _check_orderings_for_stmt_pair(
         "stmt_a", "stmt_b", pworders, sio_intra_thread_exp=sio_intra_thread_exp)
 
-    # ------------------------------------------------------------------------------
+    # }}}
 
 # }}}
 
 
-# {{{ SIOs and schedules with barriers
+# {{{ test_sios_and_schedules_with_barriers()
 
 def test_sios_and_schedules_with_barriers():
     from loopy.schedule.checker import (
@@ -705,22 +734,22 @@ def test_sios_and_schedules_with_barriers():
         for g0
             for l0
                 for l1
-                    <>temp0 = 0  {id=0}
-                    ... lbarrier  {id=b0,dep=0}
-                    <>temp1 = 1  {id=1,dep=b0}
+                    <>temp0 = 0  {id=stmt_0}
+                    ... lbarrier  {id=stmt_b0,dep=stmt_0}
+                    <>temp1 = 1  {id=stmt_1,dep=stmt_b0}
                     for i
-                        <>tempi0 = 0  {id=i0,dep=1}
-                        ... lbarrier {id=ib0,dep=i0}
-                        ... gbarrier {id=ibb0,dep=i0}
-                        <>tempi1 = 0  {id=i1,dep=ib0}
-                        <>tempi2 = 0  {id=i2,dep=i1}
+                        <>tempi0 = 0  {id=stmt_i0,dep=stmt_1}
+                        ... lbarrier {id=stmt_ib0,dep=stmt_i0}
+                        ... gbarrier {id=stmt_ibb0,dep=stmt_i0}
+                        <>tempi1 = 0  {id=stmt_i1,dep=stmt_ib0}
+                        <>tempi2 = 0  {id=stmt_i2,dep=stmt_i1}
                         for j
-                            <>tempj0 = 0  {id=j0,dep=i2}
-                            ... lbarrier {id=jb0,dep=j0}
-                            <>tempj1 = 0  {id=j1,dep=jb0}
+                            <>tempj0 = 0  {id=stmt_j0,dep=stmt_i2}
+                            ... lbarrier {id=stmt_jb0,dep=stmt_j0}
+                            <>tempj1 = 0  {id=stmt_j1,dep=stmt_jb0}
                         end
                     end
-                    <>temp2 = 0  {id=2,dep=i0}
+                    <>temp2 = 0  {id=stmt_2,dep=stmt_i0}
                 end
             end
         end
@@ -736,11 +765,11 @@ def test_sios_and_schedules_with_barriers():
     lin_knl = get_one_linearized_kernel(proc_knl)
     linearization_items = lin_knl.linearization
 
-    insn_id_pairs = [("j1", "2"), ("1", "i0")]
+    stmt_id_pairs = [("stmt_j1", "stmt_2"), ("stmt_1", "stmt_i0")]
     pworders = get_pairwise_statement_orderings(
-        lin_knl, linearization_items, insn_id_pairs)
+        lin_knl, linearization_items, stmt_id_pairs)
 
-    # {{{ Relationship between j1 and 2
+    # {{{ Relationship between stmt_j1 and stmt_2
 
     # Create expected maps and compare
 
@@ -750,7 +779,9 @@ def test_sios_and_schedules_with_barriers():
     conc_iname_bound_str = "0 <= l0,l1,g0 < lg_end"
     conc_iname_bound_str_p = "0 <= l0',l1',g0' < lg_end"
 
-    sched_before_intra_group_exp = isl.Map(
+    # {{{ Intra-group
+
+    sched_stmt_j1_intra_group_exp = isl.Map(
         "[ij_start, ij_end, lg_end] -> {"
         "[%s=0, i, j, l0, l1, g0] -> [%s] : "
         "%s and %s}"  # iname bounds
@@ -765,7 +796,7 @@ def test_sios_and_schedules_with_barriers():
             )
         )
 
-    sched_after_intra_group_exp = isl.Map(
+    sched_stmt_2_intra_group_exp = isl.Map(
         "[lg_end] -> {[%s=1, l0, l1, g0] -> [%s] : %s}"
         % (
             STATEMENT_VAR_NAME,
@@ -794,7 +825,11 @@ def test_sios_and_schedules_with_barriers():
             )
         )
 
-    sched_before_global_exp = isl.Map(
+    # }}}
+
+    # {{{ Global
+
+    sched_stmt_j1_global_exp = isl.Map(
         "[ij_start, ij_end, lg_end] -> {"
         "[%s=0, i, j, l0, l1, g0] -> [%s] : "
         "%s and %s}"  # iname bounds
@@ -809,7 +844,7 @@ def test_sios_and_schedules_with_barriers():
             )
         )
 
-    sched_after_global_exp = isl.Map(
+    sched_stmt_2_global_exp = isl.Map(
         "[lg_end] -> {[%s=1, l0, l1, g0] -> [%s] : "
         "%s}"  # iname bounds
         % (
@@ -837,24 +872,26 @@ def test_sios_and_schedules_with_barriers():
             )
         )
 
+    # }}}
+
     _check_orderings_for_stmt_pair(
-        "j1", "2", pworders,
+        "stmt_j1", "stmt_2", pworders,
         sio_intra_group_exp=sio_intra_group_exp,
-        sched_before_intra_group_exp=sched_before_intra_group_exp,
-        sched_after_intra_group_exp=sched_after_intra_group_exp,
+        sched_before_intra_group_exp=sched_stmt_j1_intra_group_exp,
+        sched_after_intra_group_exp=sched_stmt_2_intra_group_exp,
         sio_global_exp=sio_global_exp,
-        sched_before_global_exp=sched_before_global_exp,
-        sched_after_global_exp=sched_after_global_exp,
+        sched_before_global_exp=sched_stmt_j1_global_exp,
+        sched_after_global_exp=sched_stmt_2_global_exp,
         )
 
-    # Check for some key example pairs in the sio_intra_group map
+    # {{{ Check for some key example pairs in the sio_intra_group map
 
     # Get maps
-    order_info = pworders[("j1", "2")]
+    order_info = pworders[("stmt_j1", "stmt_2")]
 
     # As long as this is not the last iteration of the i loop, then there
-    # should be a barrier between the last instance of statement j1
-    # and statement 2:
+    # should be a barrier between the last instance of statement stmt_j1
+    # and statement stmt_2:
     ij_end_val = 7
     last_i_val = ij_end_val - 1
     max_non_last_i_val = last_i_val - 1  # max i val that isn't the last iteration
@@ -879,8 +916,8 @@ def test_sios_and_schedules_with_barriers():
     assert wanted_pairs.is_subset(order_info.sio_intra_group)
 
     # If this IS the last iteration of the i loop, then there
-    # should NOT be a barrier between the last instance of statement j1
-    # and statement 2:
+    # should NOT be a barrier between the last instance of statement stmt_j1
+    # and statement stmt_2:
     unwanted_pairs = _isl_map_with_marked_dims(
         "[ij_start, ij_end, lg_end] -> {{"
         "[{0}' = 0, i', j'=ij_end-1, g0', l0', l1'] -> [{0} = 1, l0, l1, g0] : "
@@ -902,11 +939,15 @@ def test_sios_and_schedules_with_barriers():
 
     # }}}
 
-    # {{{ Relationship between 1 and i0
+    # }}}
+
+    # {{{ Relationship between stmt_1 and stmt_i0
 
     # Create expected maps and compare
 
-    sched_before_intra_group_exp = isl.Map(
+    # {{{ Intra-group
+
+    sched_stmt_1_intra_group_exp = isl.Map(
         "[lg_end] -> {[%s=0, l0, l1, g0] -> [%s] : "
         "%s}"  # iname bounds
         % (
@@ -919,7 +960,7 @@ def test_sios_and_schedules_with_barriers():
             )
         )
 
-    sched_after_intra_group_exp = isl.Map(
+    sched_stmt_i0_intra_group_exp = isl.Map(
         "[ij_start, ij_end, lg_end] -> {"
         "[%s=1, i, j, l0, l1, g0] -> [%s] : "
         "%s and %s}"  # iname bounds
@@ -950,7 +991,11 @@ def test_sios_and_schedules_with_barriers():
             )
         )
 
-    sched_before_global_exp = isl.Map(
+    # }}}
+
+    # {{{ Global
+
+    sched_stmt_1_global_exp = isl.Map(
         "[lg_end] -> {[%s=0, l0, l1, g0] -> [%s] : "
         "%s}"  # iname bounds
         % (
@@ -963,7 +1008,7 @@ def test_sios_and_schedules_with_barriers():
             )
         )
 
-    sched_after_global_exp = isl.Map(
+    sched_stmt_i0_global_exp = isl.Map(
         "[ij_start, ij_end, lg_end] -> {"
         "[%s=1, i, j, l0, l1, g0] -> [%s] : "
         "%s and %s}"  # iname bounds
@@ -993,14 +1038,16 @@ def test_sios_and_schedules_with_barriers():
             )
         )
 
+    # }}}
+
     _check_orderings_for_stmt_pair(
-        "1", "i0", pworders,
+        "stmt_1", "stmt_i0", pworders,
         sio_intra_group_exp=sio_intra_group_exp,
-        sched_before_intra_group_exp=sched_before_intra_group_exp,
-        sched_after_intra_group_exp=sched_after_intra_group_exp,
+        sched_before_intra_group_exp=sched_stmt_1_intra_group_exp,
+        sched_after_intra_group_exp=sched_stmt_i0_intra_group_exp,
         sio_global_exp=sio_global_exp,
-        sched_before_global_exp=sched_before_global_exp,
-        sched_after_global_exp=sched_after_global_exp,
+        sched_before_global_exp=sched_stmt_1_global_exp,
+        sched_after_global_exp=sched_stmt_i0_global_exp,
         )
 
     # }}}
@@ -1008,7 +1055,7 @@ def test_sios_and_schedules_with_barriers():
 # }}}
 
 
-# {{{ SIOs and schedules with vec tag
+# {{{ test_sios_and_schedules_with_vec_and_barriers()
 
 def test_sios_and_schedules_with_vec_and_barriers():
     from loopy.schedule.checker import (
@@ -1021,9 +1068,9 @@ def test_sios_and_schedules_with_vec_and_barriers():
         for l0
             for i
                 for j
-                    b[i,j,l0] = 1 {id=s1}
-                    ... lbarrier  {id=b,dep=s1}
-                    c[i,j,l0] = 2 {id=s2, dep=b}
+                    b[i,j,l0] = 1 {id=stmt_1}
+                    ... lbarrier  {id=b,dep=stmt_1}
+                    c[i,j,l0] = 2 {id=stmt_2, dep=b}
                 end
             end
         end
@@ -1037,11 +1084,11 @@ def test_sios_and_schedules_with_vec_and_barriers():
     lin_knl = get_one_linearized_kernel(proc_knl)
     linearization_items = lin_knl.linearization
 
-    insn_id_pairs = [("s1", "s2")]
+    stmt_id_pairs = [("stmt_1", "stmt_2")]
     pworders = get_pairwise_statement_orderings(
-        lin_knl, linearization_items, insn_id_pairs)
+        lin_knl, linearization_items, stmt_id_pairs)
 
-    # {{{ Relationship between s1 and s2
+    # {{{ Relationship between stmt_1 and stmt_2
 
     # Create expected maps and compare
 
@@ -1053,7 +1100,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
 
     # {{{ Intra-thread
 
-    sched_s1_intra_thread_exp = isl.Map(
+    sched_stmt_1_intra_thread_exp = isl.Map(
         "[n] -> {"
         "[%s=0, i, j, l0] -> [%s] : "
         "%s and %s}"  # iname bounds
@@ -1068,7 +1115,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
             )
         )
 
-    sched_s2_intra_thread_exp = isl.Map(
+    sched_stmt_2_intra_thread_exp = isl.Map(
         "[n] -> {"
         "[%s=1, i, j, l0] -> [%s] : "
         "%s and %s}"  # iname bounds
@@ -1106,7 +1153,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
     # but since lex tuples are not simplified in intra-group/global
     # cases, there's an extra lex dim:
 
-    sched_s1_intra_group_exp = isl.Map(
+    sched_stmt_1_intra_group_exp = isl.Map(
         "[n] -> {"
         "[%s=0, i, j, l0] -> [%s] : "
         "%s and %s}"  # iname bounds
@@ -1121,7 +1168,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
             )
         )
 
-    sched_s2_intra_group_exp = isl.Map(
+    sched_stmt_2_intra_group_exp = isl.Map(
         "[n] -> {"
         "[%s=1, i, j, l0] -> [%s] : "
         "%s and %s}"  # iname bounds
@@ -1154,7 +1201,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
 
     # {{{ Global
 
-    sched_s1_global_exp = isl.Map(
+    sched_stmt_1_global_exp = isl.Map(
         "[n] -> {"
         "[%s=0, i, j, l0] -> [%s] : "
         "%s and %s}"  # iname bounds
@@ -1169,8 +1216,8 @@ def test_sios_and_schedules_with_vec_and_barriers():
             )
         )
 
-    # (same as s1 except for statement id because no global barriers)
-    sched_s2_global_exp = isl.Map(
+    # (same as stmt_1 except for statement id because no global barriers)
+    sched_stmt_2_global_exp = isl.Map(
         "[n] -> {"
         "[%s=1, i, j, l0] -> [%s] : "
         "%s and %s}"  # iname bounds
@@ -1202,16 +1249,16 @@ def test_sios_and_schedules_with_vec_and_barriers():
     # }}}
 
     _check_orderings_for_stmt_pair(
-        "s1", "s2", pworders,
+        "stmt_1", "stmt_2", pworders,
         sio_intra_thread_exp=sio_intra_thread_exp,
-        sched_before_intra_thread_exp=sched_s1_intra_thread_exp,
-        sched_after_intra_thread_exp=sched_s2_intra_thread_exp,
+        sched_before_intra_thread_exp=sched_stmt_1_intra_thread_exp,
+        sched_after_intra_thread_exp=sched_stmt_2_intra_thread_exp,
         sio_intra_group_exp=sio_intra_group_exp,
-        sched_before_intra_group_exp=sched_s1_intra_group_exp,
-        sched_after_intra_group_exp=sched_s2_intra_group_exp,
+        sched_before_intra_group_exp=sched_stmt_1_intra_group_exp,
+        sched_after_intra_group_exp=sched_stmt_2_intra_group_exp,
         sio_global_exp=sio_global_exp,
-        sched_before_global_exp=sched_s1_global_exp,
-        sched_after_global_exp=sched_s2_global_exp,
+        sched_before_global_exp=sched_stmt_1_global_exp,
+        sched_after_global_exp=sched_stmt_2_global_exp,
         )
 
     # }}}
