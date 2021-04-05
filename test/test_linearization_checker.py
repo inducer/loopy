@@ -740,7 +740,7 @@ def test_sios_and_schedules_with_barriers():
     pworders = get_pairwise_statement_orderings(
         lin_knl, linearization_items, insn_id_pairs)
 
-    # Relationship between j1 and 2 --------------------------------------------
+    # {{{ Relationship between j1 and 2
 
     # Create expected maps and compare
 
@@ -900,7 +900,9 @@ def test_sios_and_schedules_with_barriers():
 
     assert not unwanted_pairs.is_subset(order_info.sio_intra_group)
 
-    # Relationship between 1 and i0 --------------------------------------------
+    # }}}
+
+    # {{{ Relationship between 1 and i0
 
     # Create expected maps and compare
 
@@ -1000,6 +1002,219 @@ def test_sios_and_schedules_with_barriers():
         sched_before_global_exp=sched_before_global_exp,
         sched_after_global_exp=sched_after_global_exp,
         )
+
+    # }}}
+
+# }}}
+
+
+# {{{ SIOs and schedules with vec tag
+
+def test_sios_and_schedules_with_vec_and_barriers():
+    from loopy.schedule.checker import (
+        get_pairwise_statement_orderings,
+    )
+
+    knl = lp.make_kernel(
+        "{[i, j, l0] : 0 <= i < 4 and 0 <= j < n and 0 <= l0 < 32}",
+        """
+        for l0
+            for i
+                for j
+                    b[i,j,l0] = 1 {id=s1}
+                    ... lbarrier  {id=b,dep=s1}
+                    c[i,j,l0] = 2 {id=s2, dep=b}
+                end
+            end
+        end
+        """)
+    knl = lp.add_and_infer_dtypes(knl, {"b": "float32", "c": "float32"})
+
+    knl = lp.tag_inames(knl, {"i": "vec", "l0": "l.0"})
+
+    # Get a linearization
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    linearization_items = lin_knl.linearization
+
+    insn_id_pairs = [("s1", "s2")]
+    pworders = get_pairwise_statement_orderings(
+        lin_knl, linearization_items, insn_id_pairs)
+
+    # {{{ Relationship between s1 and s2
+
+    # Create expected maps and compare
+
+    # Iname bound strings to facilitate creation of expected maps
+    iname_bound_str = "0 <= i < 4 and 0 <= j < n"
+    iname_bound_str_p = "0 <= i' < 4 and 0 <= j' < n"
+    conc_iname_bound_str = "0 <= l0 < 32"
+    conc_iname_bound_str_p = "0 <= l0' < 32"
+
+    # {{{ Intra-thread
+
+    sched_s1_intra_thread_exp = isl.Map(
+        "[n] -> {"
+        "[%s=0, i, j, l0] -> [%s] : "
+        "%s and %s}"  # iname bounds
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(
+                ["j", "0"],  # lex points (initial matching dim gets removed)
+                lid_inames=["l0"],
+                ),
+            iname_bound_str,
+            conc_iname_bound_str,
+            )
+        )
+
+    sched_s2_intra_thread_exp = isl.Map(
+        "[n] -> {"
+        "[%s=1, i, j, l0] -> [%s] : "
+        "%s and %s}"  # iname bounds
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(
+                ["j", "1"],  # lex points (initial matching dim gets removed)
+                lid_inames=["l0"],
+                ),
+            iname_bound_str,
+            conc_iname_bound_str,
+            )
+        )
+
+    sio_intra_thread_exp = _isl_map_with_marked_dims(
+        "[n] -> {{ "
+        "[{0}'=0, i', j', l0'] -> [{0}=1, i, j, l0] : "
+        "j' <= j "
+        "and l0 = l0' "  # within a single thread
+        "and {1} and {2} and {3} and {4}"  # iname bounds
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            iname_bound_str,
+            iname_bound_str_p,
+            conc_iname_bound_str,
+            conc_iname_bound_str_p,
+            )
+        )
+
+    # }}}
+
+    # {{{ Intra-group
+
+    # Intra-group scheds would be same due to lbarrier,
+    # but since lex tuples are not simplified in intra-group/global
+    # cases, there's an extra lex dim:
+
+    sched_s1_intra_group_exp = isl.Map(
+        "[n] -> {"
+        "[%s=0, i, j, l0] -> [%s] : "
+        "%s and %s}"  # iname bounds
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(
+                ["1", "j", "0"],  # lex points
+                lid_inames=["l0"],
+                ),
+            iname_bound_str,
+            conc_iname_bound_str,
+            )
+        )
+
+    sched_s2_intra_group_exp = isl.Map(
+        "[n] -> {"
+        "[%s=1, i, j, l0] -> [%s] : "
+        "%s and %s}"  # iname bounds
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(
+                ["1", "j", "1"],  # lex points
+                lid_inames=["l0"],
+                ),
+            iname_bound_str,
+            conc_iname_bound_str,
+            )
+        )
+
+    sio_intra_group_exp = _isl_map_with_marked_dims(
+        "[n] -> {{ "
+        "[{0}'=0, i', j', l0'] -> [{0}=1, i, j, l0] : "
+        "j' <= j "
+        "and {1} and {2} and {3} and {4}"  # iname bounds
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            iname_bound_str,
+            iname_bound_str_p,
+            conc_iname_bound_str,
+            conc_iname_bound_str_p,
+            )
+        )
+
+    # }}}
+
+    # {{{ Global
+
+    sched_s1_global_exp = isl.Map(
+        "[n] -> {"
+        "[%s=0, i, j, l0] -> [%s] : "
+        "%s and %s}"  # iname bounds
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(
+                ["0"],  # lex points
+                lid_inames=["l0"],
+                ),
+            iname_bound_str,
+            conc_iname_bound_str,
+            )
+        )
+
+    # (same as s1 except for statement id because no global barriers)
+    sched_s2_global_exp = isl.Map(
+        "[n] -> {"
+        "[%s=1, i, j, l0] -> [%s] : "
+        "%s and %s}"  # iname bounds
+        % (
+            STATEMENT_VAR_NAME,
+            _lex_point_string(
+                ["0"],  # lex points
+                lid_inames=["l0"],
+                ),
+            iname_bound_str,
+            conc_iname_bound_str,
+            )
+        )
+
+    sio_global_exp = _isl_map_with_marked_dims(
+        "[n] -> {{ "
+        "[{0}'=0, i', j', l0'] -> [{0}=1, i, j, l0] : "
+        "False "
+        "and {1} and {2} and {3} and {4}"  # iname bounds
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            iname_bound_str,
+            iname_bound_str_p,
+            conc_iname_bound_str,
+            conc_iname_bound_str_p,
+            )
+        )
+
+    # }}}
+
+    _check_orderings_for_stmt_pair(
+        "s1", "s2", pworders,
+        sio_intra_thread_exp=sio_intra_thread_exp,
+        sched_before_intra_thread_exp=sched_s1_intra_thread_exp,
+        sched_after_intra_thread_exp=sched_s2_intra_thread_exp,
+        sio_intra_group_exp=sio_intra_group_exp,
+        sched_before_intra_group_exp=sched_s1_intra_group_exp,
+        sched_after_intra_group_exp=sched_s2_intra_group_exp,
+        sio_global_exp=sio_global_exp,
+        sched_before_global_exp=sched_s1_global_exp,
+        sched_after_global_exp=sched_s2_global_exp,
+        )
+
+    # }}}
 
 # }}}
 
