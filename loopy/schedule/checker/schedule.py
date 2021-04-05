@@ -246,7 +246,7 @@ def get_pairwise_statement_orderings_inner(
     )
     from loopy.schedule.checker.utils import (
         add_and_name_isl_dims,
-        append_marker_to_strings,
+        append_mark_to_strings,
         add_eq_isl_constraint_from_names,
         sorted_union_of_names_in_isl_sets,
         create_symbolic_map_from_tuples,
@@ -556,20 +556,21 @@ def get_pairwise_statement_orderings_inner(
         # Create names for the blex dimensions for sequential loops
         seq_blex_dim_names = [
             LEX_VAR_PREFIX+str(i) for i in range(n_seq_blex_dims)]
-        seq_blex_dim_names_prime = append_marker_to_strings(
-            seq_blex_dim_names, marker=BEFORE_MARK)
+        seq_blex_dim_names_prime = append_mark_to_strings(
+            seq_blex_dim_names, mark=BEFORE_MARK)
 
         # Begin with the blex order map created as a standard lexicographical order
         blex_order_map = create_lex_order_map(
             dim_names=seq_blex_dim_names,
-            in_dim_marker=BEFORE_MARK,
+            in_dim_mark=BEFORE_MARK,
             )
 
         # Add LID/GID dims to blex order map
         blex_order_map = add_and_name_isl_dims(
             blex_order_map, dt.out, all_par_lex_dim_names)
         blex_order_map = add_and_name_isl_dims(
-            blex_order_map, dt.in_, append_marker_to_strings(all_par_lex_dim_names))
+            blex_order_map, dt.in_,
+            append_mark_to_strings(all_par_lex_dim_names, mark=BEFORE_MARK))
         if sync_kind == "local":
             # For intra-group case, constrain GID 'before' to equal GID 'after'
             for var_name in gid_lex_dim_names:
@@ -628,7 +629,7 @@ def get_pairwise_statement_orderings_inner(
                 # Start with a set representing blex_order_map space
                 blex_set = blex_set_template.copy()
 
-                # Add markers to inames in the 'before' tuple
+                # Add marks to inames in the 'before' tuple
                 # (all strings should be inames)
                 before_prime = tuple(
                     v+BEFORE_MARK if isinstance(v, str) else v for v in before)
@@ -845,14 +846,15 @@ def get_pairwise_statement_orderings_inner(
         # Create pairwise lex order map (pairwise only in the intra-thread case)
         lex_order_map = create_lex_order_map(
             dim_names=seq_lex_dim_names,
-            in_dim_marker=BEFORE_MARK,
+            in_dim_mark=BEFORE_MARK,
             )
 
         # Add lid/gid dims to lex order map
         lex_order_map = add_and_name_isl_dims(
             lex_order_map, dt.out, all_par_lex_dim_names)
         lex_order_map = add_and_name_isl_dims(
-            lex_order_map, dt.in_, append_marker_to_strings(all_par_lex_dim_names))
+            lex_order_map, dt.in_,
+            append_mark_to_strings(all_par_lex_dim_names, mark=BEFORE_MARK))
         # Constrain lid/gid vars to be equal
         for var_name in all_par_lex_dim_names:
             lex_order_map = add_eq_isl_constraint_from_names(
@@ -863,7 +865,7 @@ def get_pairwise_statement_orderings_inner(
         sio_intra_thread = get_statement_ordering_map(
             *intra_thread_sched_maps,  # note, func accepts exactly two maps
             lex_order_map,
-            before_marker=BEFORE_MARK,
+            before_mark=BEFORE_MARK,
             )
 
         # }}}
@@ -890,7 +892,7 @@ def get_pairwise_statement_orderings_inner(
             sio_par = get_statement_ordering_map(
                 *par_sched_maps,  # note, func accepts exactly two maps
                 blex_order_map,
-                before_marker=BEFORE_MARK,
+                before_mark=BEFORE_MARK,
                 )
 
             return par_sched_maps, sio_par
