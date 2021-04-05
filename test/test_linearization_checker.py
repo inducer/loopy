@@ -80,13 +80,24 @@ def _lex_point_string(dim_vals, lid_inames=[], gid_inames=[]):
         )
 
 
-def _isl_map_with_marked_dims(s):
+def _isl_map_with_marked_dims(s, placeholder_mark="'"):
+    # For creating legible tests, map strings may be created with a placeholder
+    # for the 'before' mark. Replace this placeholder with BEFORE_MARK before
+    # creating the map.
+    # ALSO, if BEFORE_MARK == "'", ISL will ignore this mark when creating
+    # variable names, so it must be added manually.
     from loopy.schedule.checker.utils import (
-        append_marker_to_isl_map_var_names,
+        append_mark_to_isl_map_var_names,
     )
     dt = isl.dim_type
-    # Isl ignores the apostrophes in map strings, until they are explicitly added
-    return append_marker_to_isl_map_var_names(isl.Map(s), dt.in_, BEFORE_MARK)
+    if BEFORE_MARK == "'":
+        # ISL will ignore the apostrophe; manually name the in_ vars
+        return append_mark_to_isl_map_var_names(
+            isl.Map(s.replace(placeholder_mark, BEFORE_MARK)),
+            dt.in_,
+            BEFORE_MARK)
+    else:
+        return isl.Map(s.replace(placeholder_mark, BEFORE_MARK))
 
 
 def _check_orderings_for_stmt_pair(
@@ -455,8 +466,8 @@ def test_lex_order_map_creation():
     def _check_lex_map(exp_lex_order_map, n_dims):
 
         lex_order_map = create_lex_order_map(
-            n_dims=n_dims,
             dim_names=["%s%d" % (LEX_VAR_PREFIX, i) for i in range(n_dims)],
+            in_dim_mark=BEFORE_MARK,
             )
 
         assert lex_order_map == exp_lex_order_map
@@ -909,7 +920,8 @@ def test_sios_and_schedules_with_barriers():
             ij_end_val,
             conc_iname_bound_str,
             conc_iname_bound_str_p,
-            ))
+            )
+        )
     wanted_pairs = ensure_dim_names_match_and_align(
         wanted_pairs, order_info.sio_intra_group)
 
@@ -931,7 +943,8 @@ def test_sios_and_schedules_with_barriers():
             ij_end_val,
             conc_iname_bound_str,
             conc_iname_bound_str_p,
-            ))
+            )
+        )
     unwanted_pairs = ensure_dim_names_match_and_align(
         unwanted_pairs, order_info.sio_intra_group)
 
