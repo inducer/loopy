@@ -157,7 +157,7 @@ def find_unsatisfied_dependencies(
 
     # }}}
 
-    # {{{ Create map from dependent instruction id pairs to dependencies
+    # {{{ Create map from dependent statement id pairs to dependencies
 
     # To minimize time complexity, all pairwise schedules will be created
     # in one pass, which first requires finding all pairs of statements involved
