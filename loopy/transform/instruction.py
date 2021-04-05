@@ -185,7 +185,7 @@ def replace_instruction_ids(kernel, replacements):
             if dep in replacements:
                 new_deps = list(replacements[dep])
                 new_depends_on[idep] = new_deps[0]
-                extra_depends_on.append(new_deps[1:])
+                extra_depends_on.extend(new_deps[1:])
                 changed = True
 
         for insn_id, scope in insn.no_sync_with:
