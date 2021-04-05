@@ -111,7 +111,7 @@ def create_legacy_dependency_constraint(
         insn_id_after,
         deps,
         nests_outside_map=None,
-        before_marker=BEFORE_MARK,
+        before_mark=BEFORE_MARK,
         ):
     """Create a statement dependency constraint represented as a map from
         each statement instance to statement instances that must occur later,
@@ -139,11 +139,11 @@ def create_legacy_dependency_constraint(
     """
 
     from loopy.schedule.checker.utils import (
-        make_islvars_with_marker,
-        append_apostrophes,
+        make_islvars_with_mark,
+        append_mark_to_strings,
         insert_and_name_isl_dims,
         reorder_dims_by_name,
-        append_marker_to_isl_map_var_names,
+        append_mark_to_isl_map_var_names,
         sorted_union_of_names_in_isl_sets,
     )
     from loopy.schedule.checker.schedule import STATEMENT_VAR_NAME
@@ -156,12 +156,12 @@ def create_legacy_dependency_constraint(
     # create some (ordered) isl vars to use, e.g., {s, i, j, s', i', j'}
     dom_inames_ordered_before = sorted_union_of_names_in_isl_sets([dom_before])
     dom_inames_ordered_after = sorted_union_of_names_in_isl_sets([dom_after])
-    islvars = make_islvars_with_marker(
-        var_names_needing_marker=[STATEMENT_VAR_NAME]+dom_inames_ordered_before,
+    islvars = make_islvars_with_mark(
+        var_names_needing_mark=[STATEMENT_VAR_NAME]+dom_inames_ordered_before,
         other_var_names=[STATEMENT_VAR_NAME]+dom_inames_ordered_after,
-        marker="'",
+        mark=before_mark,
         )
-    statement_var_name_prime = STATEMENT_VAR_NAME+"'"
+    statement_var_name_prime = STATEMENT_VAR_NAME+before_mark
 
     # initialize constraints to False
     # this will disappear as soon as we add a constraint
@@ -177,7 +177,7 @@ def create_legacy_dependency_constraint(
             inames_list = list(inames)
         else:
             inames_list = inames[:]
-        inames_prime = append_apostrophes(inames_list)  # e.g., [j', k']
+        inames_prime = append_mark_to_strings(inames_list, before_mark)  # [j', k']
 
         if dep_type == ldt.SAME:
             # TODO test/handle case where inames list is empty (stmt0->stmt1 if true)
@@ -244,8 +244,8 @@ def create_legacy_dependency_constraint(
 
                 constraint_set = lom.get_lex_order_set(
                     inames_list_nest_ordered,
+                    before_mark,
                     islvars,
-                    in_dim_marker=before_marker,
                     )
             else:  # priority not known
                 # PRIOR requires upper left quadrant happen before:
@@ -280,8 +280,8 @@ def create_legacy_dependency_constraint(
     range_to_intersect = insert_and_name_isl_dims(
         dom_after, isl.dim_type.out,
         [STATEMENT_VAR_NAME], statement_var_idx)
-    domain_constraint_set = append_marker_to_isl_map_var_names(
-        dom_before, isl.dim_type.set, marker="'")
+    domain_constraint_set = append_mark_to_isl_map_var_names(
+        dom_before, isl.dim_type.set, mark=before_mark)
     domain_to_intersect = insert_and_name_isl_dims(
         domain_constraint_set, isl.dim_type.out,
         [statement_var_name_prime], statement_var_idx)
@@ -289,14 +289,16 @@ def create_legacy_dependency_constraint(
     # reorder inames to enable intersection (inames should already match at
     # this point)
     assert set(
-        append_apostrophes([STATEMENT_VAR_NAME] + dom_inames_ordered_before)
+        append_mark_to_strings(
+            [STATEMENT_VAR_NAME] + dom_inames_ordered_before, before_mark)
         ) == set(domain_to_intersect.get_var_names(isl.dim_type.out))
     assert set(
         [STATEMENT_VAR_NAME] + dom_inames_ordered_after
         ) == set(range_to_intersect.get_var_names(isl.dim_type.out))
     domain_to_intersect = reorder_dims_by_name(
         domain_to_intersect, isl.dim_type.out,
-        append_apostrophes([STATEMENT_VAR_NAME] + dom_inames_ordered_before))
+        append_mark_to_strings(
+            [STATEMENT_VAR_NAME] + dom_inames_ordered_before, before_mark))
     range_to_intersect = reorder_dims_by_name(
         range_to_intersect,
         isl.dim_type.out,
