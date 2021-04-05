@@ -738,6 +738,31 @@ def test_double_resolving():
                       ResolvedFunction)
 
 
+@pytest.mark.parametrize("inline", [False, True])
+def test_passing_and_getting_scalar_in_clbl_knl(ctx_factory, inline):
+    ctx = cl.create_some_context()
+    cq = cl.CommandQueue(ctx)
+
+    call_sin = lp.make_function(
+        "{:}",
+        """
+        y = sin(x)
+        """, name="call_sin")
+
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        []: real_y[()] = call_sin(real_x)
+        """)
+
+    knl = lp.merge([knl, call_sin])
+    knl = lp.set_options(knl, "write_cl")
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "call_sin")
+
+    evt, (out,) = knl(cq, real_x=np.asarray(3.0, dtype=float))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
