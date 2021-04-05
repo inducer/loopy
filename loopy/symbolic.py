@@ -931,6 +931,8 @@ class SubstitutionRuleMappingContext:
 
     def finish_kernel(self, kernel):
         new_substs, renames = self._get_new_substitutions_and_renames()
+        if not renames:
+            return kernel.copy(substitutions=new_substs)
 
         new_insns = rename_subst_rules_in_instructions(kernel.instructions, renames)
 
