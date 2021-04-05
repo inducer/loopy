@@ -1266,7 +1266,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
 # }}}
 
 
-def test_add_stmt_inst_dependencies():
+def test_add_stmt_inst_dependency():
 
     lp.set_caching_enabled(False)
     # TODO REMOVE THIS^ (prevents
@@ -1374,10 +1374,11 @@ def test_add_stmt_inst_dependencies():
     lin_knl = get_one_linearized_kernel(proc_knl)
     lin_items = lin_knl.linearization
 
-    linearization_is_valid = lp.check_dependency_satisfaction(
+    deps_are_satisfied, unsatisfied_deps = lp.check_dependency_satisfaction(
         proc_knl, lin_items)
 
-    assert linearization_is_valid
+    assert deps_are_satisfied
+    assert not unsatisfied_deps
 
 
 # TODO create more kernels with valid/invalid linearizations to test checker

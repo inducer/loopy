@@ -26,7 +26,7 @@ THE SOFTWARE.
 def get_pairwise_statement_orderings(
         knl,
         lin_items,
-        insn_id_pairs,
+        stmt_id_pairs,
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
@@ -44,10 +44,10 @@ def get_pairwise_statement_orderings(
         this routine during linearization, a truncated (i.e. partial)
         linearization may be passed through this argument.
 
-    :arg insn_id_pairs: A list containing pairs of instruction identifiers.
+    :arg stmt_id_pairs: A list containing pairs of instruction identifiers.
 
     :returns: A dictionary mapping each two-tuple of instruction identifiers
-        provided in `insn_id_pairs` to a :class:`collections.namedtuple`
+        provided in `stmt_id_pairs` to a :class:`collections.namedtuple`
         containing the intra-thread SIO (`sio_intra_thread`), intra-group SIO
         (`sio_intra_group`), and global SIO (`sio_global`), each realized
         as an :class:`islpy.Map` from each instance of the first
@@ -68,8 +68,8 @@ def get_pairwise_statement_orderings(
         >>> knl = lp.make_kernel(
         ...     "{[j,k]: 0<=j<pj and 0<=k<pk}",
         ...     [
-        ...         "a[j] = j  {id=insn_a}",
-        ...         "b[k] = k+a[0]  {id=insn_b,dep=insn_a}",
+        ...         "a[j] = j  {id=stmt_a}",
+        ...         "b[k] = k+a[0]  {id=stmt_b,dep=stmt_a}",
         ...     ])
         >>> knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
         >>> # Get a linearization
@@ -79,10 +79,10 @@ def get_pairwise_statement_orderings(
         >>> sio_dict = get_pairwise_statement_orderings(
         ...     knl,
         ...     knl.linearization,
-        ...     [("insn_a", "insn_b")],
+        ...     [("stmt_a", "stmt_b")],
         ...     )
         >>> # Print map
-        >>> print(str(sio_dict[("insn_a", "insn_b")].sio_intra_thread
+        >>> print(str(sio_dict[("stmt_a", "stmt_b")].sio_intra_thread
         ...     ).replace("{ ", "{\n").replace(" :", "\n:"))
         [pj, pk] -> {
         [_lp_linchk_stmt' = 0, j', k'] -> [_lp_linchk_stmt = 1, j, k]
@@ -129,7 +129,7 @@ def get_pairwise_statement_orderings(
     return get_pairwise_statement_orderings_inner(
         knl,
         lin_items,
-        insn_id_pairs,
+        stmt_id_pairs,
         loops_to_ignore=conc_loop_inames,
         )
 
@@ -142,6 +142,7 @@ def check_dependency_satisfaction(
         knl,
         linearization_items,
         ):
+
     # TODO document
 
     from loopy.schedule.checker.utils import (
@@ -150,7 +151,7 @@ def check_dependency_satisfaction(
 
     # {{{ make sure kernel has been preprocessed
 
-    # note: kernels must always be preprocessed before scheduling
+    # Note: kernels must always be preprocessed before scheduling
     from loopy.kernel import KernelState
     assert knl.state in [
             KernelState.PREPROCESSED,
@@ -162,44 +163,61 @@ def check_dependency_satisfaction(
 
     # To minimize time complexity, all pairwise schedules will be created
     # in one pass, which first requires finding all pairs of statements involved
-    # in deps.
-    # So, since we have to find these pairs anyway, collect their deps at
-    # the same time so we don't have to do it again later during lin checking.
+    # in deps. We will also need to collect the deps for each statement pair,
+    # so do this at the same time.
 
-    stmts_to_deps = {}
-    for insn_after in knl.instructions:
-        for before_id, dep_list in insn_after.dependencies.items():
-            stmts_to_deps.setdefault(
-                (before_id, insn_after.id), []).extend(dep_list)
+    stmt_pairs_to_deps = {}
+
+    # stmt_pairs_to_deps:
+    # {(stmt_id_before1, stmt_id_after1): [dep1, dep2, ...],
+    #  (stmt_id_before2, stmt_id_after2): [dep1, dep2, ...],
+    #  ...}
+
+    for stmt_after in knl.instructions:
+        for before_id, dep_list in stmt_after.dependencies.items():
+            # (don't compare dep maps to maps found; duplicate deps should be rare)
+            stmt_pairs_to_deps.setdefault(
+                (before_id, stmt_after.id), []).extend(dep_list)
     # }}}
+
+    # {{{ Get statement instance orderings
 
     pworders = get_pairwise_statement_orderings(
         knl,
         linearization_items,
-        stmts_to_deps.keys(),
+        stmt_pairs_to_deps.keys(),
         )
 
-    # For each dependency, create+test linearization containing pair of insns------
-    linearization_is_valid = True
-    for (insn_id_before, insn_id_after), dependencies in stmts_to_deps.items():
+    # }}}
 
-        # Get pairwise ordering info for stmts involved in the dependency
-        pworder = pworders[(insn_id_before, insn_id_after)]
+    # {{{ For each depender-dependee pair of statements, check all deps vs. SIO
 
-        # check each dep for this statement pair
+    deps_are_satisfied = True
+
+    # Collect info about unsatisfied deps
+    unsatisfied_deps = []
+    from collections import namedtuple
+    UnsatisfiedDependencyInfo = namedtuple(
+        "UnsatisfiedDependencyInfo",
+        ["statement_pair", "dependency", "statement_ordering"])
+
+    for stmt_id_pair, dependencies in stmt_pairs_to_deps.items():
+
+        # Get the pairwise ordering info (includes SIOs)
+        pworder = pworders[stmt_id_pair]
+
+        # Check each dep for this statement pair
         for dependency in dependencies:
 
-            # reorder variables/params in constraint map space to match SIO so we can
+            # Align constraint map space to match SIO so we can
             # check to see whether the constraint map is a subset of the SIO
-            # (spaces must be aligned so that the variables in the constraint map
-            # correspond to the same variables in the SIO)
             from loopy.schedule.checker.utils import (
                 ensure_dim_names_match_and_align,
             )
-
             aligned_dep_map = ensure_dim_names_match_and_align(
                 dependency, pworder.sio_intra_thread)
 
+            # Spaces must match
             assert aligned_dep_map.space == pworder.sio_intra_thread.space
             assert aligned_dep_map.space == pworder.sio_intra_group.space
             assert aligned_dep_map.space == pworder.sio_global.space
@@ -210,29 +228,20 @@ def check_dependency_satisfaction(
             assert (aligned_dep_map.get_var_dict() ==
                 pworder.sio_global.get_var_dict())
 
+            # Check dependency
             if not aligned_dep_map.is_subset(
                     pworder.sio_intra_thread |
                     pworder.sio_intra_group |
                     pworder.sio_global
                     ):
 
-                linearization_is_valid = False
+                deps_are_satisfied = False
 
-                print("================ constraint check failure =================")
-                print("Constraint map not subset of SIO")
-                print("Dependencies:")
-                print(insn_id_before+"->"+insn_id_after)
-                print(prettier_map_string(dependency))
-                print("Statement instance ordering:")
-                print(prettier_map_string(pworder.sio_intra_thread))
-                print("dependency.gist(pworder.sio_intra_thread):")
-                print(prettier_map_string(
-                    aligned_dep_map.gist(pworder.sio_intra_thread)))
-                print("pworder.sio_intra_thread.gist(dependency)")
-                print(prettier_map_string(
-                    pworder.sio_intra_thread.gist(aligned_dep_map)))
-                print("Loop priority known:")
-                print(knl.loop_priority)
-                print("===========================================================")
+                unsatisfied_deps.append(
+                    UnsatisfiedDependencyInfo(stmt_id_pair, aligned_dep_map, pworder))
 
-    return linearization_is_valid
+                # Could break here if we don't care about remaining deps
+
+    # }}}
+
+    return deps_are_satisfied, unsatisfied_deps
