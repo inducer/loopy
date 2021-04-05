@@ -457,7 +457,7 @@ def get_pairwise_statement_orderings_inner(
         for lin_item in lin_items:
             if isinstance(lin_item, EnterLoop):
                 enter_iname = lin_item.iname
-                if enter_iname in loops_with_barriers[sync_kind]:
+                if enter_iname in loops_with_barriers[sync_kind] - loops_to_ignore:
                     pre_loop_blex_pt = next_blex_tuple[:]
 
                     # Increment next_blex_tuple[-1] for statements in the section
@@ -487,7 +487,7 @@ def get_pairwise_statement_orderings_inner(
 
             elif isinstance(lin_item, LeaveLoop):
                 leave_iname = lin_item.iname
-                if leave_iname in loops_with_barriers[sync_kind]:
+                if leave_iname in loops_with_barriers[sync_kind] - loops_to_ignore:
 
                     # Update max blex dims
                     n_seq_blex_dims = max(n_seq_blex_dims, len(next_blex_tuple))
