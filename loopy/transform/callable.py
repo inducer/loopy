@@ -163,6 +163,23 @@ class KernelInliner(RuleAwareSubstitutionMapper):
             assert expr.aggregate.name in self.callee_knl.temporary_variables
             return super().map_subscript(expr, expn_state)
 
+    def map_variable(self, expr, expn_state):
+        from loopy.kernel.data import ArrayArg, ValueArg
+        from loopy.symbolic import SubArrayRef
+        if expr.name in self.callee_knl.arg_dict:
+            arg = self.callee_knl.arg_dict[expr.name]
+            par = self.callee_arg_to_call_param[expr.name]
+            if isinstance(arg, ArrayArg):
+                assert arg.shape == ()
+                assert isinstance(par, SubArrayRef) and par.swept_inames == ()
+                return par.subscript.aggregate
+            else:
+                assert isinstance(arg, ValueArg)
+                return par
+
+        else:
+            return super().map_variable(expr, expn_state)
+
 # }}}
 
 
