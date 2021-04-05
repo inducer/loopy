@@ -26,7 +26,7 @@ THE SOFTWARE.
 def get_pairwise_statement_orderings(
         knl,
         lin_items,
-        insn_id_pairs,
+        stmt_id_pairs,
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
@@ -44,10 +44,10 @@ def get_pairwise_statement_orderings(
         this routine during linearization, a truncated (i.e. partial)
         linearization may be passed through this argument.
 
-    :arg insn_id_pairs: A list containing pairs of instruction identifiers.
+    :arg stmt_id_pairs: A list containing pairs of statement identifiers.
 
-    :returns: A dictionary mapping each two-tuple of instruction identifiers
-        provided in `insn_id_pairs` to a :class:`collections.namedtuple`
+    :returns: A dictionary mapping each two-tuple of statement identifiers
+        provided in `stmt_id_pairs` to a :class:`collections.namedtuple`
         containing the intra-thread SIO (`sio_intra_thread`), intra-group SIO
         (`sio_intra_group`), and global SIO (`sio_global`), each realized
         as an :class:`islpy.Map` from each instance of the first
@@ -68,8 +68,8 @@ def get_pairwise_statement_orderings(
         >>> knl = lp.make_kernel(
         ...     "{[j,k]: 0<=j<pj and 0<=k<pk}",
         ...     [
-        ...         "a[j] = j  {id=insn_a}",
-        ...         "b[k] = k+a[0]  {id=insn_b,dep=insn_a}",
+        ...         "a[j] = j  {id=stmt_a}",
+        ...         "b[k] = k+a[0]  {id=stmt_b,dep=stmt_a}",
         ...     ])
         >>> knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
         >>> # Get a linearization
@@ -79,10 +79,10 @@ def get_pairwise_statement_orderings(
         >>> sio_dict = get_pairwise_statement_orderings(
         ...     knl,
         ...     knl.linearization,
-        ...     [("insn_a", "insn_b")],
+        ...     [("stmt_a", "stmt_b")],
         ...     )
         >>> # Print map
-        >>> print(str(sio_dict[("insn_a", "insn_b")].sio_intra_thread
+        >>> print(str(sio_dict[("stmt_a", "stmt_b")].sio_intra_thread
         ...     ).replace("{ ", "{\n").replace(" :", "\n:"))
         [pj, pk] -> {
         [_lp_linchk_stmt' = 0, j', k'] -> [_lp_linchk_stmt = 1, j, k]
@@ -129,7 +129,7 @@ def get_pairwise_statement_orderings(
     return get_pairwise_statement_orderings_inner(
         knl,
         lin_items,
-        insn_id_pairs,
+        stmt_id_pairs,
         loops_to_ignore=conc_loop_inames,
         )
 
