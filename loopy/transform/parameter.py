@@ -72,6 +72,9 @@ def fix_parameters(kernel, within=None, **value_dict):
     :ref:`arguments`.
     """
 
+    if not value_dict:
+        return kernel
+
     def process_set_one_param(s, name, value):
         var_dict = s.get_var_dict()
 
@@ -141,7 +144,6 @@ def fix_parameters(kernel, within=None, **value_dict):
                 temporary_variables=new_temp_vars,
                 assumptions=process_set(kernel.assumptions),
                 ))
-
 
 
 # }}}
