@@ -131,7 +131,7 @@ def append_mark_to_isl_map_var_names(old_isl_map, dim_type, mark):
 
 
 def make_islvars_with_mark(
-        var_names_needing_mark, other_var_names, param_names=[], mark="'"):
+        var_names_needing_mark, other_var_names, mark, param_names=[]):
     """Return a dictionary from variable and parameter names
         to :class:`islpy.PwAff` instances that represent each of
         the variables and parameters, appending mark to
@@ -152,6 +152,7 @@ def make_islvars_with_mark(
         '0' is also include and represents a :class:`islpy.PwAff` zero constant.
 
     """
+    # TODO update docstring
 
     def append_mark(items, mark):
         new_items = []
