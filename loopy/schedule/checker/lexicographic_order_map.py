@@ -25,7 +25,7 @@ import islpy as isl
 
 
 def get_statement_ordering_map(
-        sched_before, sched_after, lex_map, before_marker="'"):
+        sched_before, sched_after, lex_map, before_mark):
     """Return a statement ordering represented as a map from each statement
         instance to all statement instances occurring later.
 
@@ -47,7 +47,7 @@ def get_statement_ordering_map(
                 i0' < i0 or (i0' = i0 and i1' < i1)
                 or (i0' = i0 and i1' = i1 and i2' < i2) ...}
 
-    :arg before_marker: A :class:`str` to be appended to the names of the
+    :arg before_mark: A :class:`str` to be appended to the names of the
         map dimensions representing the 'before' statement in the
         'happens before' relationship.
 
@@ -63,18 +63,18 @@ def get_statement_ordering_map(
     sio = sched_before.apply_range(
         lex_map).apply_range(sched_after.reverse())
 
-    # Append marker to in_ dims
+    # Append mark to in_ dims
     from loopy.schedule.checker.utils import (
-        append_marker_to_isl_map_var_names,
+        append_mark_to_isl_map_var_names,
     )
-    return append_marker_to_isl_map_var_names(
-        sio, isl.dim_type.in_, before_marker)
+    return append_mark_to_isl_map_var_names(
+        sio, isl.dim_type.in_, before_mark)
 
 
 def get_lex_order_set(
         dim_names,
+        in_dim_mark,
         islvars=None,
-        in_dim_marker="'",
         ):
     """Return an :class:`islpy.Set` representing a lexicographic ordering
         over a space with the number of dimensions provided in `dim_names`
@@ -85,26 +85,26 @@ def get_lex_order_set(
         to describe lexicographic space dimensions for a point in a lexicographic
         ordering. (see example below)
 
+    :arg in_dim_mark: A :class:`str` to be appended to dimension names to
+        distinguish corresponding dimensions in before-after pairs of points.
+        (see example below)
+
     :arg islvars: A dictionary mapping variable names in `dim_names` to
         :class:`islpy.PwAff` instances that represent each of the variables
         (islvars may be produced by `islpy.make_zero_and_vars`).
         The key '0' is also include and represents a :class:`islpy.PwAff` zero
         constant. This dictionary defines the space to be used for the set and
-        must also include versions of `dim_names` with the `in_dim_marker`
+        must also include versions of `dim_names` with the `in_dim_mark`
         appended. If no value is passed, the dictionary will be made using
-        `dim_names` and `dim_names` with the `in_dim_marker` appended.
-
-    :arg in_dim_marker: A :class:`str` to be appended to dimension names to
-        distinguish corresponding dimensions in before-after pairs of points.
-        (see example below)
+        `dim_names` and `dim_names` with the `in_dim_mark` appended.
 
     :returns: An :class:`islpy.Set` representing a big-endian lexicographic
         ordering with the number of dimensions provided in `dim_names`. The set
         has two dimensions for each name in `dim_names`, one identified by the
-        given name and another identified by the same name with `in_dim_marker`
+        given name and another identified by the same name with `in_dim_mark`
         appended. The set contains all points which meet a 'happens before'
         constraint defining the lexicographic ordering. E.g., if
-        `dim_names = [i0, i1, i2]` and `in_dim_marker="'"`,
+        `dim_names = [i0, i1, i2]` and `in_dim_mark="'"`,
         return the set containing all points in a 3-dimensional, big-endian
         lexicographic ordering such that point
         `[i0', i1', i2']` happens before `[i0, i1, i2]`. I.e., return::
@@ -116,10 +116,10 @@ def get_lex_order_set(
     """
 
     from loopy.schedule.checker.utils import (
-        append_marker_to_strings,
+        append_mark_to_strings,
     )
 
-    in_dim_names = append_marker_to_strings(dim_names, marker=in_dim_marker)
+    in_dim_names = append_mark_to_strings(dim_names, mark=in_dim_mark)
 
     # If no islvars passed, make them using the names provided
     # (make sure to pass var names in desired order of space dims)
@@ -156,21 +156,16 @@ def get_lex_order_set(
 
 
 def create_lex_order_map(
-        n_dims=None,
-        dim_names=None,
-        in_dim_marker="'",
+        dim_names,
+        in_dim_mark,
         ):
     """Return a map from each point in a lexicographic ordering to every
         point that occurs later in the lexicographic ordering.
 
-    :arg n_dims: An :class:`int` representing the number of dimensions
-        in the lexicographic ordering. If not provided, `n_dims` will be
-        set to length of `dim_names`.
-
     :arg dim_names: A list of :class:`str` variable names for the
         lexicographic space dimensions.
 
-    :arg in_dim_marker: A :class:`str` to be appended to `dim_names` to create
+    :arg in_dim_mark: A :class:`str` to be appended to `dim_names` to create
         the names for the input dimensions of the map, thereby distinguishing
         them from the corresponding output dimensions in before-after pairs of
         points. (see example below)
@@ -178,7 +173,7 @@ def create_lex_order_map(
     :returns: An :class:`islpy.Map` representing a lexicographic
         ordering as a mapping from each point in lexicographic time
         to every point that occurs later in lexicographic time.
-        E.g., if `dim_names = [i0, i1, i2]` and `in_dim_marker = "'"`,
+        E.g., if `dim_names = [i0, i1, i2]` and `in_dim_mark = "'"`,
         return the map::
 
             {[i0', i1', i2'] -> [i0, i1, i2] :
@@ -187,18 +182,13 @@ def create_lex_order_map(
 
     """
 
-    if dim_names is None:
-        dim_names = ["i%s" % (i) for i in range(n_dims)]
-    if n_dims is None:
-        n_dims = len(dim_names)
-
-    assert len(dim_names) == n_dims
+    n_dims = len(dim_names)
     dim_type = isl.dim_type
 
     # First, get a set representing the lexicographic ordering.
     lex_order_set = get_lex_order_set(
         dim_names,
-        in_dim_marker=in_dim_marker,
+        in_dim_mark=in_dim_mark,
         )
 
     # Now convert that set to a map.
