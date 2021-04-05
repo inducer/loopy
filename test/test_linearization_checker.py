@@ -1281,11 +1281,6 @@ def test_sios_and_schedules_with_vec_and_barriers():
 
 def test_add_stmt_inst_dependency():
 
-    lp.set_caching_enabled(False)
-    # TODO REMOVE THIS^ (prevents
-    # TypeError: unsupported type for persistent hash keying:<class 'islpy._isl.Map'>
-    # ) during preprocessing
-
     # Make kernel and use OLD deps to linearize correctly for now
     i_range_str = "0 <= i < pi"
     i_range_str_p = "0 <= i' < pi"
