@@ -64,7 +64,7 @@ def assume(kernel, assumptions):
 
 # {{{ fix_parameter
 
-def fix_parameters(kernel, **value_dict):
+def fix_parameters(kernel, within=None, **value_dict):
     """Fix the values of the arguments to specific constants.
 
     *value_dict* consists of *name*/*value* pairs, where *name* will be fixed
@@ -126,7 +126,7 @@ def fix_parameters(kernel, **value_dict):
         new_temp_vars[tv.name] = tv.map_exprs(map_expr)
 
     from loopy.match import parse_stack_match
-    within = parse_stack_match(None)
+    within = parse_stack_match(within)
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
