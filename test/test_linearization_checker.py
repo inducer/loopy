@@ -1374,10 +1374,9 @@ def test_add_stmt_inst_dependency():
     lin_knl = get_one_linearized_kernel(proc_knl)
     lin_items = lin_knl.linearization
 
-    deps_are_satisfied, unsatisfied_deps = lp.check_dependency_satisfaction(
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(
         proc_knl, lin_items)
 
-    assert deps_are_satisfied
     assert not unsatisfied_deps
 
 

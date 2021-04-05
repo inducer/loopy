@@ -138,16 +138,14 @@ def get_pairwise_statement_orderings(
 # }}}
 
 
-def check_dependency_satisfaction(
+# {{{ find_unsatisfied_dependencies()
+
+def find_unsatisfied_dependencies(
         knl,
         linearization_items,
         ):
 
     # TODO document
-
-    from loopy.schedule.checker.utils import (
-        prettier_map_string,
-    )
 
     # {{{ make sure kernel has been preprocessed
 
@@ -192,8 +190,6 @@ def check_dependency_satisfaction(
 
     # {{{ For each depender-dependee pair of statements, check all deps vs. SIO
 
-    deps_are_satisfied = True
-
     # Collect info about unsatisfied deps
     unsatisfied_deps = []
     from collections import namedtuple
@@ -235,13 +231,13 @@ def check_dependency_satisfaction(
                     pworder.sio_global
                     ):
 
-                deps_are_satisfied = False
-
-                unsatisfied_deps.append(
-                    UnsatisfiedDependencyInfo(stmt_id_pair, aligned_dep_map, pworder))
+                unsatisfied_deps.append(UnsatisfiedDependencyInfo(
+                    stmt_id_pair, aligned_dep_map, pworder))
 
                 # Could break here if we don't care about remaining deps
 
     # }}}
 
-    return deps_are_satisfied, unsatisfied_deps
+    return unsatisfied_deps
+
+# }}}
