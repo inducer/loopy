@@ -816,7 +816,6 @@ class _InameDuplicator(RuleAwareIdentityMapper):
         return insn.copy(within_inames=new_fid)
 
 
-
 def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
         tags={}):
     """
