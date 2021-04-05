@@ -106,8 +106,8 @@ def add_eq_isl_constraint_from_names(isl_map, var1, var2):
                    {1: 0, var1: 1, var2: -1}))
 
 
-def append_marker_to_isl_map_var_names(old_isl_map, dim_type, marker="'"):
-    """Return an :class:`islpy.Map` with a marker appended to the specified
+def append_mark_to_isl_map_var_names(old_isl_map, dim_type, mark):
+    """Return an :class:`islpy.Map` with a mark appended to the specified
     dimension names.
 
     :arg old_isl_map: An :class:`islpy.Map`.
@@ -115,24 +115,24 @@ def append_marker_to_isl_map_var_names(old_isl_map, dim_type, marker="'"):
     :arg dim_type: An :class:`islpy.dim_type`, i.e., an :class:`int`,
         specifying the dimension to be marked.
 
-    :arg marker: A :class:`str` to be appended to the specified dimension
-        names. If not provided, `marker` defaults to an apostrophe.
+    :arg mark: A :class:`str` to be appended to the specified dimension
+        names. If not provided, `mark` defaults to an apostrophe.
 
     :returns: An :class:`islpy.Map` matching `old_isl_map` with
-        `marker` appended to the `dim_type` dimension names.
+        `mark` appended to the `dim_type` dimension names.
 
     """
 
     new_map = old_isl_map.copy()
     for i in range(len(old_isl_map.get_var_names(dim_type))):
         new_map = new_map.set_dim_name(dim_type, i, old_isl_map.get_dim_name(
-            dim_type, i)+marker)
+            dim_type, i)+mark)
     return new_map
 
 
-def append_marker_to_strings(strings, marker="'"):
+def append_mark_to_strings(strings, mark):
     assert isinstance(strings, list)
-    return [s+marker for s in strings]
+    return [s+mark for s in strings]
 
 
 def sorted_union_of_names_in_isl_sets(
