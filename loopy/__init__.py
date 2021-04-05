@@ -124,7 +124,7 @@ from loopy.schedule import (
     generate_loop_schedules, get_one_scheduled_kernel, get_one_linearized_kernel)
 from loopy.schedule.checker import (
     create_dependencies_from_legacy_knl,
-    check_dependency_satisfaction)
+    find_unsatisfied_dependencies)
 from loopy.statistics import (ToCountMap, CountGranularity,
         stringify_stats_mapping, Op, MemAccess, get_op_map, get_mem_access_map,
         get_synchronization_map, gather_access_footprints,
@@ -253,7 +253,7 @@ __all__ = [
         "generate_loop_schedules",
         "get_one_scheduled_kernel", "get_one_linearized_kernel",
         "create_dependencies_from_legacy_knl",
-        "check_dependency_satisfaction",
+        "find_unsatisfied_dependencies",
         "GeneratedProgram", "CodeGenerationResult",
         "PreambleInfo",
         "generate_code", "generate_code_v2", "generate_body",
