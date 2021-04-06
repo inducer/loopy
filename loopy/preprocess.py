@@ -32,6 +32,7 @@ from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment, filter_iname_tags_by_type
+from loopy.kernel.tools import kernel_has_global_barriers
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
 from loopy.transform.iname import remove_any_newly_unused_inames
@@ -1015,10 +1016,16 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         init_insn_depends_on = frozenset()
 
-        global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
+        # check first that the original kernel had global barriers
+        # if not, we don't need to check. Since the function
+        # kernel_has_global_barriers is cached, we don't do
+        # extra work compared to not checking.
+        if kernel_has_global_barriers(kernel):
+            global_barrier = lp.find_most_recent_global_barrier(temp_kernel,
+                    insn.id)
 
-        if global_barrier is not None:
-            init_insn_depends_on |= frozenset([global_barrier])
+            if global_barrier is not None:
+                init_insn_depends_on |= frozenset([global_barrier])
 
         from pymbolic import var
         acc_vars = tuple(var(n) for n in acc_var_names)
@@ -1405,10 +1412,11 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         init_insn_depends_on = frozenset()
 
-        global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
+        if kernel_has_global_barriers(kernel):
+            global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
 
-        if global_barrier is not None:
-            init_insn_depends_on |= frozenset([global_barrier])
+            if global_barrier is not None:
+                init_insn_depends_on |= frozenset([global_barrier])
 
         init_insn = make_assignment(
                 id=init_id,
@@ -1543,10 +1551,11 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         init_insn_depends_on = insn.depends_on
 
-        global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
+        if kernel_has_global_barriers(kernel):
+            global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
 
-        if global_barrier is not None:
-            init_insn_depends_on |= frozenset([global_barrier])
+            if global_barrier is not None:
+                init_insn_depends_on |= frozenset([global_barrier])
 
         init_id = insn_id_gen(f"{insn.id}_{scan_iname}_init")
         init_insn = make_assignment(
