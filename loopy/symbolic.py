@@ -124,9 +124,13 @@ class IdentityMapperMixin:
 
             new_inames.append(new_sym_iname.name)
 
+        new_expr = self.rec(expr.expr, *args, **kwargs)
+        if new_expr is expr.expr and new_inames == expr.inames:
+            return expr
+
         return Reduction(
                 expr.operation, tuple(new_inames),
-                self.rec(expr.expr, *args, **kwargs),
+                new_expr,
                 allow_simultaneous=expr.allow_simultaneous)
 
     def map_tagged_variable(self, expr, *args, **kwargs):
