@@ -1910,19 +1910,20 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                         for i, (assignee, new_expr) in enumerate(zip(
                             insn.assignees, new_expressions))]
 
+                insn_id_replacements[insn.id] = [
+                    rinsn.id for rinsn in replacement_insns]
             else:
                 new_expr, = new_expressions
+                # since we are replacing the instruction with
+                # only one instruction, there's no need to replace id
                 replacement_insns = [
                         make_assignment(
-                            id=insn_id_gen(insn.id),
+                            id=insn.id,
                             depends_on=result_assignment_dep_on,
                             assignees=insn.assignees,
                             expression=new_expr,
                             **kwargs)
                         ]
-
-            insn_id_replacements[insn.id] = [
-                    rinsn.id for rinsn in replacement_insns]
 
             insn_queue = generated_insns + replacement_insns + insn_queue
 
@@ -1972,6 +1973,9 @@ def realize_ilp(kernel):
         name for name, iname in kernel.inames.items()
         if filter_iname_tags_by_type(iname.tags, (IlpBaseTag, VectorizeTag))
     )
+
+    if not privatizing_inames:
+        return kernel
 
     from loopy.transform.privatize import privatize_temporaries_with_inames
     return privatize_temporaries_with_inames(kernel, privatizing_inames)

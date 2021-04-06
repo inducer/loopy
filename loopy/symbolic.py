@@ -358,6 +358,11 @@ class SubstitutionRuleExpander(IdentityMapper):
     def __init__(self, rules):
         self.rules = rules
 
+    def __call__(self, expr, *args, **kwargs):
+        if not self.rules:
+            return expr
+        return super().__call__(expr, *args, **kwargs)
+
     def map_variable(self, expr):
         if expr.name in self.rules:
             return self.map_substitution(expr.name, self.rules[expr.name], ())
