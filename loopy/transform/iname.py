@@ -499,8 +499,13 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
 
 
 def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
-    """
-    :arg inames: fastest varying last
+    """In a sense, the inverse of :func:`split_iname`. Takes in inames,
+    finds their bounds (all but the first have to be bounded), and combines
+    them into a single loop via analogs of ``new_iname = i0 * LEN(i1) + i1``.
+    The old inames are re-obtained via the appropriate division/modulo
+    operations.
+
+    :arg inames: a sequence of inames, fastest varying last
     :arg within: a stack match as understood by
         :func:`loopy.match.parse_stack_match`.
     """
@@ -988,7 +993,7 @@ def get_iname_duplication_options(kernel, use_boostable_into=None):
 
     Some kernels require the duplication of inames in order to be schedulable, as the
     forced iname dependencies define an over-determined problem to the scheduler.
-    Consider the following minimal example:
+    Consider the following minimal example::
 
         knl = lp.make_kernel(["{[i,j]:0<=i,j<n}"],
                              \"\"\"
