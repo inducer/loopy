@@ -499,7 +499,7 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
 
 
 def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
-    """In a sense, the inverse of :func:`split_inames`. Takes in inames,
+    """In a sense, the inverse of :func:`~loopy.split_inames`. Takes in inames,
     finds their bounds (all but the first have to be bounded), and combines
     them into a single loop via analogs of ``new_iname = i0 * LEN(i1) + i1``.
     The old inames are re-obtained via the appropriate division/modulo
