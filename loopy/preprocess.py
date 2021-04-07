@@ -1020,6 +1020,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         # if not, we don't need to check. Since the function
         # kernel_has_global_barriers is cached, we don't do
         # extra work compared to not checking.
+        # FIXME: Explain why we care about global barriers her
         if kernel_has_global_barriers(kernel):
             global_barrier = lp.find_most_recent_global_barrier(temp_kernel,
                     insn.id)
@@ -1412,6 +1413,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         init_insn_depends_on = frozenset()
 
+        # FIXME: Explain why we care about global barriers here
         if kernel_has_global_barriers(kernel):
             global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
 
@@ -1551,6 +1553,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         init_insn_depends_on = insn.depends_on
 
+        # FIXME: Explain why we care about global barriers here
         if kernel_has_global_barriers(kernel):
             global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
 
