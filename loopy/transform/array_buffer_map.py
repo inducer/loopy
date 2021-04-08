@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 
-import islpy as isl
+import islpy.oppool as isl
 from islpy import dim_type
 from loopy.symbolic import (get_dependencies, SubstitutionMapper)
 from pymbolic.mapper.substitutor import make_subst_func

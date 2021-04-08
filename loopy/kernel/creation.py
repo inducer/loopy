@@ -34,7 +34,8 @@ from loopy.kernel.data import (
         MultiAssignmentBase, Assignment,
         SubstitutionRule)
 from loopy.diagnostic import LoopyError, warn_with_kernel
-import islpy as isl
+import islpy
+import islpy.oppool as isl
 from islpy import dim_type
 from pytools import ProcessLogger
 
@@ -1034,8 +1035,8 @@ def _find_existentially_quantified_inames(dom_str):
     return {ex_quant.group(1) for ex_quant in EX_QUANT_RE.finditer(dom_str)}
 
 
-def parse_domains(domains, defines):
-    if isinstance(domains, (isl.BasicSet, str)):
+def parse_domains(domains, defines, isl_op_pool):
+    if isinstance(domains, (isl.BasicSet, str, islpy.BasicSet)):
         domains = [domains]
 
     result = []
@@ -1053,20 +1054,25 @@ def parse_domains(domains, defines):
                 dom = "[{}] -> {}".format(",".join(sorted(parameters)), dom)
 
             try:
-                dom = isl.BasicSet.read_from_str(isl.DEFAULT_CONTEXT, dom)
+                dom = isl.BasicSet.read_from_str(islpy.DEFAULT_CONTEXT, dom)
             except Exception:
                 print("failed to parse domain '%s'" % dom)
                 raise
+        elif isinstance(dom, islpy.BasicSet):
+            dom = isl.BasicSet.unlift(dom)
+        elif isinstance(dom, islpy.Set):
+            dom = isl.Set.unlift(dom)
         else:
-            assert isinstance(dom, (isl.Set, isl.BasicSet))
+            assert isinstance(dom, (isl.Set, isl.BasicSet,
+                                    islpy.BasicSet, islpy.Set))
             # assert dom.get_ctx() == ctx
 
         if isinstance(dom, isl.Set):
             from loopy.isl_helpers import convexify
-            dom = convexify(dom)
+            dom = convexify(dom, isl_op_pool)
 
-        for i_iname in range(dom.dim(dim_type.set)):
-            iname = dom.get_dim_name(dim_type.set, i_iname)
+        for i_iname in range(dom.dim(isl_op_pool, dim_type.set)):
+            iname = dom.get_dim_name(isl_op_pool, dim_type.set, i_iname)
 
             if iname is None:
                 raise RuntimeError("domain '%s' provided no iname at index "
@@ -1114,7 +1120,7 @@ class IndexRankFinder(CSECachingMapperMixin, WalkMapper):
 
 class ArgumentGuesser:
     def __init__(self, domains, instructions, temporary_variables,
-            subst_rules, default_offset):
+                 subst_rules, default_offset, isl_op_pool):
         self.domains = domains
         self.instructions = instructions
         self.temporary_variables = temporary_variables
@@ -1126,11 +1132,11 @@ class ArgumentGuesser:
 
         self.all_inames = set()
         for dom in domains:
-            self.all_inames.update(dom.get_var_names(dim_type.set))
+            self.all_inames.update(dom.get_var_names(isl_op_pool, dim_type.set))
 
         all_params = set()
         for dom in domains:
-            all_params.update(dom.get_var_names(dim_type.param))
+            all_params.update(dom.get_var_names(isl_op_pool, dim_type.param))
         self.all_params = all_params - self.all_inames
 
         self.all_names = set()
@@ -1291,7 +1297,9 @@ def check_for_multiple_writes_to_loop_bounds(knl):
 
     domain_parameters = set()
     for dom in knl.domains:
-        domain_parameters.update(dom.get_space().get_var_dict(dim_type.param))
+        domain_parameters.update(
+            dom.get_space(knl.isl_op_pool).get_var_dict(knl.isl_op_pool,
+                                                        dim_type.param))
 
     temp_var_domain_parameters = domain_parameters & set(
             knl.temporary_variables)
@@ -1930,6 +1938,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     :arg seq_dependencies: If *True*, dependencies that sequentially
         connect the given *instructions* will be added. Defaults to
         *False*.
+    :arg isl_op_pool: An instance of :class:`islpy.oppool.ISLOpMemoizer`.
     :arg fixed_parameters: A dictionary of *name*/*value* pairs, where *name*
         will be fixed to *value*. *name* may refer to :ref:`domain-parameters`
         or :ref:`arguments`. See also :func:`loopy.fix_parameters`.
@@ -1980,6 +1989,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     target = kwargs.pop("target", None)
     seq_dependencies = kwargs.pop("seq_dependencies", False)
     fixed_parameters = kwargs.pop("fixed_parameters", {})
+    isl_op_pool = kwargs.pop("isl_op_pool", isl.ISLOpMemoizer())
 
     if defines:
         from warnings import warn
@@ -2100,8 +2110,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     # {{{ find/create isl_context
 
     for domain in domains:
-        if isinstance(domain, isl.BasicSet):
-            assert domain.get_ctx() == isl.DEFAULT_CONTEXT
+        if isinstance(domain, (islpy.BasicSet, isl.BasicSet)):
+            assert domain.get_ctx() == islpy.DEFAULT_CONTEXT
 
     # }}}
 
@@ -2111,11 +2121,11 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         temporary_variables[tv.name] = tv
     del cse_temp_vars
 
-    domains = parse_domains(domains, defines)
+    domains = parse_domains(domains, defines, isl_op_pool)
 
     arg_guesser = ArgumentGuesser(domains, instructions,
             temporary_variables, substitutions,
-            default_offset)
+            default_offset, isl_op_pool)
 
     kernel_args = arg_guesser.convert_names_to_full_args(kernel_args)
     kernel_args = arg_guesser.guess_kernel_args_if_requested(kernel_args)

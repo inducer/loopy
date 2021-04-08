@@ -29,7 +29,7 @@ from pymbolic.mapper.stringifier import (PREC_NONE, PREC_CALL, PREC_PRODUCT,
         PREC_UNARY, PREC_LOGICAL_OR, PREC_LOGICAL_AND,
         PREC_BITWISE_AND, PREC_BITWISE_OR)
 
-import islpy as isl
+import islpy.oppool as isl
 import pymbolic.primitives as p
 from pymbolic import var
 

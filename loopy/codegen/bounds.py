@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 
-import islpy as isl
+import islpy.oppool as isl
 from islpy import dim_type
 
 

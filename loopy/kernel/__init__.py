@@ -28,7 +28,8 @@ from collections import defaultdict
 
 import numpy as np
 from pytools import ImmutableRecordWithoutPickling, ImmutableRecord, memoize_method
-import islpy as isl
+import islpy
+import islpy.oppool as isl
 from islpy import dim_type
 import re
 
@@ -146,9 +147,10 @@ class kernel_state:  # noqa
 # }}}
 
 
-def _get_inames_from_domains(domains):
+def _get_inames_from_domains(domains, isl_op_pool):
     return frozenset().union(*
-            (frozenset(dom.get_var_names(dim_type.set)) for dom in domains))
+            (frozenset(dom.get_var_names(isl_op_pool, dim_type.set))
+             for dom in domains))
 
 
 class LoopKernel(ImmutableRecordWithoutPickling):
@@ -222,7 +224,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         were applied to the kernel. These are stored so that they may be repeated
         on expressions the user specifies later.
 
-    .. attribute:: cache_manager
+    .. attribute:: isl_op_pool
+
+       An instance of :class:`islpy.oppool.ISLOpMemoizer`.
+
     .. attribute:: options
 
         An instance of :class:`loopy.Options`
@@ -267,7 +272,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             silenced_warnings=None,
 
             applied_iname_rewrites=None,
-            cache_manager=None,
+            isl_op_pool=None,
             index_dtype=np.int32,
             options=None,
 
@@ -314,9 +319,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if applied_iname_rewrites is None:
             applied_iname_rewrites = []
 
-        if cache_manager is None:
-            from loopy.kernel.tools import SetOperationCacheManager
-            cache_manager = SetOperationCacheManager()
+        if isl_op_pool is None:
+            isl_op_pool = isl.ISLOpMemoizer()
 
         if iname_to_tags is not None:
             warn("Providing iname_to_tags is deprecated, pass inames instead. "
@@ -328,7 +332,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 iname_to_tags = {}
 
             inames = {name: Iname(name, iname_to_tags.get(name, frozenset()))
-                      for name in _get_inames_from_domains(domains)}
+                      for name in _get_inames_from_domains(domains, isl_op_pool)}
         else:
             if iname_to_tags is not None:
                 raise LoopyError("Cannot provide both iname_to_tags and inames to "
@@ -336,20 +340,23 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
             inames = {
                 name: inames.get(name, Iname(name, frozenset()))
-                for name in _get_inames_from_domains(domains)}
+                for name in _get_inames_from_domains(domains, isl_op_pool)}
 
         # }}}
 
         # {{{ process assumptions
 
         if assumptions is None:
-            dom0_space = domains[0].get_space()
+            dom0_space = domains[0].get_space(isl_op_pool)
             assumptions_space = isl.Space.params_alloc(
-                    dom0_space.get_ctx(), dom0_space.dim(dim_type.param))
-            for i in range(dom0_space.dim(dim_type.param)):
+                    dom0_space.get_ctx(),
+                    dom0_space.dim(isl_op_pool, dim_type.param))
+            for i in range(dom0_space.dim(isl_op_pool, dim_type.param)):
                 assumptions_space = assumptions_space.set_dim_name(
+                        isl_op_pool,
                         dim_type.param, i,
-                        dom0_space.get_dim_name(dim_type.param, i))
+                        dom0_space.get_dim_name(isl_op_pool,
+                                                dim_type.param, i))
             assumptions = isl.BasicSet.universe(assumptions_space)
 
         elif isinstance(assumptions, str):
@@ -359,7 +366,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             assumptions = isl.BasicSet.read_from_str(domains[0].get_ctx(),
                     assumptions_set_str)
 
-        assert assumptions.is_params()
+        assert assumptions.is_params(isl_op_pool)
 
         # }}}
 
@@ -394,8 +401,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         elif linearization is not None:
             schedule = linearization
 
-        assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
-        assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
+        assert all(dom.get_ctx(isl_op_pool) == islpy.DEFAULT_CONTEXT
+                   for dom in domains)
+        assert assumptions.get_ctx(isl_op_pool) == islpy.DEFAULT_CONTEXT
 
         ImmutableRecordWithoutPickling.__init__(self,
                 domains=domains,
@@ -413,7 +421,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 local_sizes=local_sizes,
                 inames=inames,
                 substitutions=substitutions,
-                cache_manager=cache_manager,
+                isl_op_pool=isl_op_pool,
                 applied_iname_rewrites=applied_iname_rewrites,
                 function_manglers=function_manglers,
                 symbol_manglers=symbol_manglers,
@@ -579,7 +587,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         from loopy.kernel.tools import is_domain_dependent_on_inames
 
         for dom_idx, dom in enumerate(self.domains):
-            inames = set(dom.get_var_names(dim_type.set))
+            inames = set(dom.get_var_names(self.isl_op_pool, dim_type.set))
 
             # This next domain may be nested inside the previous domain.
             # Or it may not, in which case we need to figure out how many
@@ -650,7 +658,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return {
                 iname: i_domain
                 for i_domain, dom in enumerate(self.domains)
-                for iname in dom.get_var_names(dim_type.set)}
+                for iname in dom.get_var_names(self.isl_op_pool, dim_type.set)}
 
     def get_home_domain_index(self, iname):
         return self._get_home_domain_map()[iname]
@@ -658,7 +666,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     @property
     def isl_context(self):
         for dom in self.domains:
-            return dom.get_ctx()
+            return dom.get_ctx(self.isl_op_pool)
 
         assert False
 
@@ -682,8 +690,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 result = dom
             else:
                 aligned_dom, aligned_result = isl.align_two(
-                        dom, result)
-                result = aligned_result & aligned_dom
+                        self.isl_op_pool, dom, result)
+                result = aligned_result.intersect(self.isl_op_pool, aligned_dom)
 
         return result
 
@@ -797,7 +805,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         """
         Returns a :class:`frozenset` of the names of all the inames in the kernel.
         """
-        return _get_inames_from_domains(self.domains)
+        return _get_inames_from_domains(self.domains, self.isl_op_pool)
 
     @memoize_method
     def all_params(self):
@@ -805,7 +813,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         result = set()
         for dom in self.domains:
-            result.update(set(dom.get_var_names(dim_type.param)) - all_inames)
+            result.update(set(dom.get_var_names(self.isl_op_pool,
+                                                dim_type.param))
+                          - all_inames)
 
         from loopy.tools import intern_frozenset_of_ids
         return intern_frozenset_of_ids(result)
@@ -1045,33 +1055,38 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         domain = self.get_inames_domain(frozenset([iname]))
 
         assumptions = self.assumptions.project_out_except(
-                set(domain.get_var_dict(dim_type.param)), [dim_type.param])
+                self.isl_op_pool,
+                set(domain.get_var_dict(self.isl_op_pool, dim_type.param)),
+                [dim_type.param])
 
-        aligned_assumptions, domain = isl.align_two(assumptions, domain)
+        aligned_assumptions, domain = isl.align_two(self.isl_op_pool,
+                                                    assumptions,
+                                                    domain)
 
-        dom_intersect_assumptions = aligned_assumptions & domain
+        dom_intersect_assumptions = aligned_assumptions.intersect(self.isl_op_pool,
+                                                                  domain)
 
         if constants_only:
             # Kill all variable dependencies
             dom_intersect_assumptions = dom_intersect_assumptions.project_out_except(
-                    [iname], [dim_type.param, dim_type.set])
+                    self.isl_op_pool, frozenset([iname]),
+                    frozenset([dim_type.param, dim_type.set]))
 
-        iname_idx = dom_intersect_assumptions.get_var_dict()[iname][1]
+        iname_idx = dom_intersect_assumptions.get_var_dict(
+            self.isl_op_pool)[iname][1]
 
         lower_bound_pw_aff = (
-                self.cache_manager.dim_min(
-                    dom_intersect_assumptions, iname_idx)
-                .coalesce())
+                dom_intersect_assumptions.dim_min(self.isl_op_pool, iname_idx)
+                .coalesce(self.isl_op_pool))
         upper_bound_pw_aff = (
-                self.cache_manager.dim_max(
-                    dom_intersect_assumptions, iname_idx)
-                .coalesce())
+                dom_intersect_assumptions.dim_max(self.isl_op_pool, iname_idx)
+                .coalesce(self.isl_op_pool))
 
         class BoundsRecord(ImmutableRecord):
             pass
 
         size = (upper_bound_pw_aff - lower_bound_pw_aff + 1)
-        size = size.gist(assumptions)
+        size = size.gist(self.isl_op_pool, assumptions)
 
         return BoundsRecord(
                 lower_bound_pw_aff=lower_bound_pw_aff,

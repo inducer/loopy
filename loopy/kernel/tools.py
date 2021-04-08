@@ -251,7 +251,8 @@ def find_all_insn_inames(kernel):
             for iname in inames_old:
                 home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
 
-                for par in home_domain.get_var_names(dim_type.param):
+                for par in home_domain.get_var_names(kernel.isl_op_pool,
+                                                     dim_type.param):
                     # Add all inames occurring in parameters of domains that my
                     # current inames refer to.
 
@@ -993,19 +994,19 @@ def guess_var_shape(kernel, var_name):
         armap(submap(expr), insn.within_inames)
         return expr
 
-    try:
-        for insn in kernel.instructions:
-            insn.with_transformed_expressions(run_through_armap)
-    except TypeError as e:
-        from traceback import print_exc
-        print_exc()
+    # try:
+    for insn in kernel.instructions:
+        insn.with_transformed_expressions(run_through_armap)
+    # except TypeError as e:
+    #     from traceback import print_exc
+    #     print_exc()
 
-        raise LoopyError(
-                "Failed to (automatically, as requested) find "
-                "shape/strides for variable '%s'. "
-                "Specifying the shape manually should get rid of this. "
-                "The following error occurred: %s"
-                % (var_name, str(e)))
+    #     raise LoopyError(
+    #             "Failed to (automatically, as requested) find "
+    #             "shape/strides for variable '%s'. "
+    #             "Specifying the shape manually should get rid of this. "
+    #             "The following error occurred: %s"
+    #             % (var_name, str(e)))
 
     if armap.access_range is None:
         if armap.bad_subscripts:

@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 
 from islpy import dim_type
-import islpy as isl
+import islpy.oppool as isl
 from loopy.symbolic import WalkMapper
 from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_kernel
 from loopy.type_inference import TypeInferenceMapper
@@ -354,7 +354,7 @@ def check_for_data_dependent_parallel_bounds(kernel):
     from loopy.kernel.data import ConcurrentTag
 
     for i, dom in enumerate(kernel.domains):
-        dom_inames = set(dom.get_var_names(dim_type.set))
+        dom_inames = set(dom.get_var_names(kernel.isl_op_pool, dim_type.set))
         par_inames = {
                 iname for iname in dom_inames
                 if kernel.iname_tags_of_type(iname, ConcurrentTag)}

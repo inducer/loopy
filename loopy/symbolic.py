@@ -59,7 +59,8 @@ from pymbolic.parser import Parser as ParserBase
 
 from loopy.diagnostic import ExpressionToAffineConversionError
 
-import islpy as isl
+import islpy
+import islpy.oppool as isl
 from islpy import dim_type
 
 import re
@@ -1524,11 +1525,10 @@ def pwaff_from_expr(space, expr, vars_to_zero=None):
 
 
 def with_aff_conversion_guard(f, space, expr, *args):
-    import islpy as isl
     from pymbolic.mapper.evaluator import UnknownVariableError
 
     err = None
-    with isl.SuppressedWarnings(space.get_ctx()):
+    with islpy.SuppressedWarnings(space.get_ctx()):
         try:
             return f(space, expr, *args)
         except TypeError as e:
@@ -1937,8 +1937,9 @@ class UnableToDetermineAccessRange(Exception):
     pass
 
 
-def get_access_map(domain, subscript, assumptions=None, shape=None,
-        allowed_constant_names=None):
+def get_access_map(domain, subscript, isl_op_pool,
+                   assumptions=None, shape=None,
+                   allowed_constant_names=None):
     """
     Returns an instance of :class:`isl.Map` accessed by *subscript*.
 
@@ -1962,9 +1963,10 @@ def get_access_map(domain, subscript, assumptions=None, shape=None,
     """
 
     if assumptions is not None:
-        domain, assumptions = isl.align_two(domain,
-                assumptions)
-        domain = domain & assumptions
+        domain, assumptions = isl.align_two(isl_op_pool,
+                                            domain,
+                                            assumptions)
+        domain = domain.intersect(isl_op_pool, assumptions)
         del assumptions
 
     dims = len(subscript)
@@ -1981,17 +1983,17 @@ def get_access_map(domain, subscript, assumptions=None, shape=None,
     if allowed_constant_names is not None:
         allowed_constant_names = set(allowed_constant_names) - {
                 access_map.get_dim_name(dim_type.param, i)
-                for i in range(access_map.dim(dim_type.param))}
+                for i in range(access_map.dim(isl_op_pool, dim_type.param))}
 
-        par_base = access_map.dim(dim_type.param)
-        access_map = access_map.insert_dims(dim_type.param, par_base,
-                len(allowed_constant_names))
+        par_base = access_map.dim(isl_op_pool, dim_type.param)
+        access_map = access_map.insert_dims(isl_op_pool, dim_type.param,
+                                            par_base, len(allowed_constant_names))
         for i, const_name in enumerate(allowed_constant_names):
             access_map = access_map.set_dim_name(
                     dim_type.param, par_base+i, const_name)
 
-    dn = access_map.dim(dim_type.set)
-    access_map = access_map.insert_dims(dim_type.set, dn, dims)
+    dn = access_map.dim(isl_op_pool, dim_type.set)
+    access_map = access_map.insert_dims(isl_op_pool, dim_type.set, dn, dims)
 
     from loopy.diagnostic import ExpressionToAffineConversionError
 
@@ -1999,7 +2001,8 @@ def get_access_map(domain, subscript, assumptions=None, shape=None,
         idx_aff = None
 
         try:
-            idx_aff = guarded_aff_from_expr(access_map.space, subscript[idim])
+            idx_aff = guarded_aff_from_expr(access_map.get_space(isl_op_pool),
+                                            subscript[idim])
         except ExpressionToAffineConversionError as err:
             shape_aff = None
 
@@ -2098,8 +2101,8 @@ class BatchedAccessMapMapper(WalkMapper):
         descriptor = self.kernel.get_var_descriptor(arg_name)
 
         try:
-            access_map = get_access_map(
-                    domain, subscript, self.kernel.assumptions,
+            access_map = get_access_map(domain, subscript,
+                    self.kernel.isl_op_pool, self.kernel.assumptions,
                     shape=descriptor.shape if self._overestimate else None,
                     allowed_constant_names=self.kernel.get_unwritten_value_args())
         except UnableToDetermineAccessRange:

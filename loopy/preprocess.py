@@ -25,7 +25,7 @@ from loopy.diagnostic import (
         LoopyError, WriteRaceConditionWarning, warn_with_kernel,
         LoopyAdvisory)
 
-import islpy as isl
+import islpy.oppool as isl
 
 from pytools.persistent_dict import WriteOncePersistentDict
 
