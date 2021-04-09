@@ -254,6 +254,50 @@ def _split_iname_backend(kernel, iname_to_split,
             _split_iname_in_set(dom, iname_to_split, inner_iname, outer_iname,
                 fixed_length, fixed_length_is_inner)
             for dom in kernel.domains]
+    from loopy.transform.instruction import map_stmt_inst_dependencies
+
+    # {{{ split iname in deps
+
+    from loopy.schedule.checker.schedule import BEFORE_MARK
+    def _split_iname_in_dep(dep):
+
+        # Temporarily convert map to set for processing
+        # (TODO make generic func for this)
+        dt = isl.dim_type
+        n_in_dims = len(dep.get_var_names(dt.in_))
+        n_out_dims = len(dep.get_var_names(dt.out))
+        set_from_map = dep.move_dims(dt.in_, n_in_dims, dt.out, 0, n_out_dims).domain()
+
+        # Split iname
+        s = _split_iname_in_set(
+            set_from_map,
+            iname_to_split,
+            inner_iname,
+            outer_iname,
+            fixed_length,
+            fixed_length_is_inner)
+        s = _split_iname_in_set(
+            s,
+            iname_to_split+BEFORE_MARK,
+            inner_iname+BEFORE_MARK,
+            outer_iname+BEFORE_MARK,
+            fixed_length,
+            fixed_length_is_inner)
+
+        # now set looks like
+        # [... in_dims ..., ... out dims ..., i_outer, i_inner, i_outer', i_inner']
+
+        # Convert set back to map
+        map_from_set = isl.Map.from_domain(s)
+        # move original out dims + 2 new dims:
+        map_from_set = map_from_set.move_dims(
+            dt.out, 0, dt.in_, n_in_dims, n_out_dims+2)
+
+        return map_from_set
+
+    kernel = map_stmt_inst_dependencies(kernel, "id:*", _split_iname_in_dep)
+
+    # }}}
 
     from pymbolic import var
     inner = var(inner_iname)
@@ -1168,6 +1212,15 @@ def get_used_inames(kernel):
     return used_inames
 
 
+def remove_var_from_set(s, var):
+    try:
+        dt, idx = s.get_var_dict()[var]
+    except KeyError:
+        return s
+    else:
+        return s.project_out(dt, idx, 1)
+
+
 def remove_unused_inames(kernel, inames=None):
     """Delete those among *inames* that are unused, i.e. project them
     out of the domain. If these inames pose implicit restrictions on
@@ -1199,6 +1252,7 @@ def remove_unused_inames(kernel, inames=None):
         new_domains = []
 
         for dom in domains:
+            """
             try:
                 dt, idx = dom.get_var_dict()[iname]
             except KeyError:
@@ -1206,10 +1260,26 @@ def remove_unused_inames(kernel, inames=None):
             else:
                 dom = dom.project_out(dt, idx, 1)
             new_domains.append(dom)
+            """
+            new_domains.append(remove_var_from_set(dom, iname))
 
         domains = new_domains
 
     kernel = kernel.copy(domains=domains)
+
+    # }}}
+
+    # {{{ remove iname from deps
+
+    from loopy.transform.instruction import map_stmt_inst_dependencies
+    from loopy.schedule.checker.schedule import BEFORE_MARK
+    def _remove_iname_from_dep(dep):
+        pu.db
+        return remove_var_from_set(
+            remove_var_from_set(dep, iname), iname+BEFORE_MARK)
+
+    pu.db
+    kernel = map_stmt_inst_dependencies(kernel, "id:*", _remove_iname_from_dep)
 
     # }}}
 
