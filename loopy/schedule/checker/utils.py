@@ -131,7 +131,6 @@ def append_mark_to_isl_map_var_names(old_isl_map, dim_type, mark):
 
 
 def append_mark_to_strings(strings, mark):
-    assert isinstance(strings, list)
     return [s+mark for s in strings]
 
 
