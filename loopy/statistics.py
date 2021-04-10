@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 import loopy as lp
 from islpy import dim_type
-import islpy as isl
+import islpy.oppool as isl
 from pymbolic.mapper import CombineMapper
 from functools import reduce
 from loopy.kernel.data import (

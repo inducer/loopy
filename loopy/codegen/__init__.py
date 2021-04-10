@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 from loopy.diagnostic import LoopyError, warn
 from pytools import ImmutableRecord, ProcessLogger
-import islpy as isl
+import islpy.oppool as isl
 
 from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
@@ -306,8 +306,10 @@ class CodeGenerationState:
         return self.ast_builder.get_expression_to_code_mapper(self)
 
     def intersect(self, other):
-        new_impl, new_other = isl.align_two(self.implemented_domain, other)
-        return self.copy(implemented_domain=new_impl & new_other)
+        new_impl, new_other = isl.align_two(self.kernel.isl_op_pool,
+                                            self.implemented_domain, other)
+        return self.copy(implemented_domain=new_impl.intersect(
+            self.kernel.isl_op_pool, new_other))
 
     def fix(self, iname, aff):
         new_impl_domain = self.implemented_domain

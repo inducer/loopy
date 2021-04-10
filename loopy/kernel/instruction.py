@@ -26,7 +26,8 @@ from pytools.tag import Tag, tag_dataclass, Taggable
 from loopy.diagnostic import LoopyError
 from loopy.tools import Optional
 from warnings import warn
-import islpy as isl
+import islpy
+import islpy.oppool as isl
 
 
 # {{{ instruction tags
@@ -1547,7 +1548,8 @@ def get_insn_domain(insn, kernel):
     valueargs_to_add = ({arg.name for arg in kernel.args
                          if isinstance(arg, ValueArg)
                          and arg.name not in kernel.get_written_variables()}
-                        - set(domain.get_var_names(isl.dim_type.param)))
+                        - set(domain.get_var_names(kernel.isl_op_pool,
+                                                   islpy.dim_type.param)))
 
     # only consider valueargs relevant to *insn*
     valueargs_to_add = valueargs_to_add & insn.read_dependency_names()
@@ -1561,7 +1563,7 @@ def get_insn_domain(insn, kernel):
 
     # {{{ enforce restriction from predicates
 
-    insn_preds_set = isl.BasicSet.universe(domain.space)
+    insn_preds_set = isl.BasicSet.universe(domain.get_space(kernel.isl_op_pool))
 
     for predicate in insn.predicates:
         from loopy.symbolic import condition_to_set
@@ -1571,7 +1573,7 @@ def get_insn_domain(insn, kernel):
 
     # }}}
 
-    return domain & insn_preds_set
+    return domain.intersect(kernel.isl_op_pool, insn_preds_set)
 
 
 # vim: foldmethod=marker

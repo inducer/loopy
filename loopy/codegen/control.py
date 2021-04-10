@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 from loopy.codegen.result import merge_codegen_results, wrap_in_if
-import islpy as isl
+import islpy.oppool as isl
 from loopy.schedule import (
         EnterLoop, LeaveLoop, RunInstruction, Barrier, CallKernel,
         gather_schedule_block, generate_sub_sched_items)
@@ -319,13 +319,14 @@ def build_loop_nest(codegen_state, schedule_index):
                 return []
 
             domain = isl.align_spaces(
+                    self.kernel.isl_op_pool,
                     self.kernel.get_inames_domain(check_inames),
                     self.impl_domain, obj_bigger_ok=True)
             from loopy.codegen.bounds import get_approximate_convex_bounds_checks
             # Each instruction individually gets its bounds checks,
             # so we can safely overapproximate here.
             return get_approximate_convex_bounds_checks(domain,
-                    check_inames, self.impl_domain, self.kernel.cache_manager)
+                        check_inames, self.impl_domain, self.kernel.isl_op_pool)
 
     def build_insn_group(sched_index_info_entries, codegen_state,
             done_group_lengths=set()):

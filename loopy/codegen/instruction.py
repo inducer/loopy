@@ -24,8 +24,8 @@ THE SOFTWARE.
 """
 
 
-import islpy as isl
-dim_type = isl.dim_type
+import islpy.oppool as isl
+from islpy import dim_type
 from loopy.codegen import Unvectorizable
 from loopy.codegen.result import CodeGenerationResult
 from pymbolic.mapper.stringifier import PREC_NONE
@@ -33,26 +33,29 @@ from pymbolic.mapper.stringifier import PREC_NONE
 
 def to_codegen_result(
         codegen_state, insn_id, domain, check_inames, required_preds, ast):
+    isl_op_pool = codegen_state.kernel.isl_op_pool
+
     # {{{ get bounds check
 
     chk_domain = isl.Set.from_basic_set(domain)
-    chk_domain = chk_domain.remove_redundancies()
-    chk_domain = codegen_state.kernel.cache_manager.eliminate_except(chk_domain,
-            check_inames, (dim_type.set,))
+    chk_domain = chk_domain.remove_redundancies(isl_op_pool)
+    chk_domain = chk_domain.eliminate_except(isl_op_pool,
+                                             check_inames, (dim_type.set,))
 
-    chk_domain, implemented_domain = isl.align_two(
-            chk_domain, codegen_state.implemented_domain)
-    chk_domain = chk_domain.gist(implemented_domain)
+    chk_domain, implemented_domain = isl.align_two(isl_op_pool, chk_domain,
+                                                   codegen_state.implemented_domain)
+    chk_domain = chk_domain.gist(isl_op_pool, implemented_domain)
 
     # }}}
 
-    new_implemented_domain = implemented_domain & chk_domain
+    new_implemented_domain = implemented_domain.intersect(
+        isl_op_pool, chk_domain)
 
-    if chk_domain.is_empty():
+    if chk_domain.is_empty(isl_op_pool):
         return None
 
     condition_exprs = []
-    if not chk_domain.plain_is_universe():
+    if not chk_domain.plain_is_universe(isl_op_pool):
         from loopy.symbolic import set_to_cond_expr
         condition_exprs.append(set_to_cond_expr(chk_domain))
 

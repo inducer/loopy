@@ -23,7 +23,7 @@ THE SOFTWARE.
 
 from loopy.diagnostic import warn, LoopyError
 from loopy.codegen.result import merge_codegen_results
-import islpy as isl
+import islpy.oppool as isl
 from islpy import dim_type
 from loopy.codegen.control import build_loop_nest
 from pymbolic.mapper.stringifier import PREC_NONE
@@ -34,10 +34,10 @@ from pymbolic.mapper.stringifier import PREC_NONE
 def get_slab_decomposition(kernel, iname):
     iname_domain = kernel.get_inames_domain(iname)
 
-    if iname_domain.is_empty():
+    if iname_domain.is_empty(kernel.isl_op_pool):
         return ()
 
-    space = iname_domain.space
+    space = iname_domain.get_space(kernel.isl_op_pool)
 
     lower_incr, upper_incr = kernel.iname_slab_increments.get(iname, (0, 0))
     lower_bulk_bound = None
@@ -222,8 +222,8 @@ def intersect_kernel_with_slab(kernel, slab, iname):
 
     domch = DomainChanger(kernel, (iname,))
     orig_domain = domch.get_original_domain()
-    orig_domain, slab = isl.align_two(slab, orig_domain)
-    return domch.get_kernel_with(orig_domain & slab)
+    orig_domain, slab = isl.align_two(kernel.isl_op_pool, slab, orig_domain)
+    return domch.get_kernel_with(orig_domain.intersect(kernel.isl_op_pool, slab))
 
 
 # {{{ hw-parallel loop
@@ -293,20 +293,24 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
     # generators will mop up after us.
     from loopy.isl_helpers import static_min_of_pw_aff
     lower_bound = static_min_of_pw_aff(bounds.lower_bound_pw_aff,
-            constants_only=False)
+                                       constants_only=False,
+                                       isl_op_pool=kernel.isl_op_pool)
 
     # These bounds are 'implemented' by the hardware. Make sure
     # that the downstream conditional generators realize that.
     if not isinstance(hw_axis_size, int):
-        hw_axis_size, lower_bound = isl.align_two(hw_axis_size, lower_bound)
+        hw_axis_size, lower_bound = isl.align_two(kernel.isl_op_pool,
+                                                  hw_axis_size, lower_bound)
 
     from loopy.isl_helpers import make_slab
-    slab = make_slab(domain.get_space(), iname,
-            lower_bound, lower_bound+hw_axis_size)
+    slab = make_slab(domain.get_space(kernel.isl_op_pool), iname,
+                     lower_bound, lower_bound.add(kernel.isl_op_pool,
+                                                  hw_axis_size),
+                     kernel.isl_op_pool)
     codegen_state = codegen_state.intersect(slab)
 
     from loopy.symbolic import pw_aff_to_expr
-    hw_axis_expr = hw_axis_expr + pw_aff_to_expr(lower_bound)
+    hw_axis_expr = hw_axis_expr + pw_aff_to_expr(lower_bound, kernel.isl_op_pool)
 
     # }}}
 
@@ -368,67 +372,76 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         # {{{ find bounds
 
-        aligned_domain = isl.align_spaces(domain, slab, obj_bigger_ok=True)
+        aligned_domain = isl.align_spaces(kernel.isl_op_pool, domain, slab,
+                                          obj_bigger_ok=True)
 
-        dom_and_slab = aligned_domain & slab
+        dom_and_slab = aligned_domain.intersect(kernel.isl_op_pool, slab)
 
         assumptions_non_param = isl.BasicSet.from_params(kernel.assumptions)
         dom_and_slab, assumptions_non_param = isl.align_two(
-                dom_and_slab, assumptions_non_param)
-        dom_and_slab = dom_and_slab & assumptions_non_param
+                kernel.isl_op_pool, dom_and_slab, assumptions_non_param)
+        dom_and_slab = dom_and_slab.intersect(kernel.isl_op_pool,
+                                              assumptions_non_param)
 
         # move inames that are usable into parameters
         moved_inames = []
-        for das_iname in sorted(dom_and_slab.get_var_names(dim_type.set)):
+        for das_iname in sorted(dom_and_slab.get_var_names(kernel.isl_op_pool,
+                                                           dim_type.set)):
             if das_iname in usable_inames:
                 moved_inames.append(das_iname)
-                dt, idx = dom_and_slab.get_var_dict()[das_iname]
+                dt, idx = dom_and_slab.get_var_dict(kernel.isl_op_pool)[das_iname]
                 dom_and_slab = dom_and_slab.move_dims(
-                        dim_type.param, dom_and_slab.dim(dim_type.param),
+                        dim_type.param, dom_and_slab.dim(kernel.isl_op_pool,
+                                                         dim_type.param),
                         dt, idx, 1)
 
-        _, loop_iname_idx = dom_and_slab.get_var_dict()[loop_iname]
+        _, loop_iname_idx = dom_and_slab.get_var_dict(kernel.isl_op_pool)[loop_iname]
 
         impl_domain = isl.align_spaces(
+            kernel.isl_op_pool,
             codegen_state.implemented_domain,
             dom_and_slab,
             obj_bigger_ok=True
-            ).params()
+            ).params(kernel.isl_op_pool)
 
         lbound = (
-                kernel.cache_manager.dim_min(
-                    dom_and_slab, loop_iname_idx)
-                .gist(kernel.assumptions)
-                .gist(impl_domain)
-                .coalesce())
+                dom_and_slab.dim_min(
+                    kernel.isl_op_pool, loop_iname_idx)
+                .gist(kernel.isl_op_pool, kernel.assumptions)
+                .gist(kernel.isl_op_pool, impl_domain)
+                .coalesce(kernel.isl_op_pool))
+
         ubound = (
-            kernel.cache_manager.dim_max(
-                dom_and_slab, loop_iname_idx)
-            .gist(kernel.assumptions)
-            .gist(impl_domain)
-            .coalesce())
+                dom_and_slab.dim_max(
+                    kernel.isl_op_pool, loop_iname_idx)
+                .gist(kernel.isl_op_pool, kernel.assumptions)
+                .gist(kernel.isl_op_pool, impl_domain)
+                .coalesce(kernel.isl_op_pool))
 
         # }}}
 
         # {{{ find implemented loop, build inner code
 
         from loopy.symbolic import pw_aff_to_pw_aff_implemented_by_expr
-        impl_lbound = pw_aff_to_pw_aff_implemented_by_expr(lbound)
-        impl_ubound = pw_aff_to_pw_aff_implemented_by_expr(ubound)
+        impl_lbound = pw_aff_to_pw_aff_implemented_by_expr(lbound,
+                                                           kernel.isl_op_pool)
+        impl_ubound = pw_aff_to_pw_aff_implemented_by_expr(ubound,
+                                                           kernel.isl_op_pool)
 
         # impl_loop may be overapproximated
         from loopy.isl_helpers import make_loop_bounds_from_pwaffs
         impl_loop = make_loop_bounds_from_pwaffs(
-                dom_and_slab.space,
+                dom_and_slab.get_space(kernel.isl_op_pool),
                 loop_iname,
                 impl_lbound,
-                impl_ubound)
+                impl_ubound,
+                kernel.isl_op_pool)
 
         for moved_iname in moved_inames:
             # move moved_iname to 'set' dim_type in impl_loop
-            dt, idx = impl_loop.get_var_dict()[moved_iname]
-            impl_loop = impl_loop.move_dims(
-                    dim_type.set, impl_loop.dim(dim_type.set),
+            dt, idx = impl_loop.get_var_dict(kernel.isl_op_pool)[moved_iname]
+            impl_loop = impl_loop.move_dims(kernel.isl_op_pool,
+                    dim_type.set, impl_loop.dim(kernel.isl_op_pool, dim_type.set),
                     dt, idx, 1)
 
         new_codegen_state = (
@@ -448,7 +461,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         from loopy.symbolic import pw_aff_to_expr
 
-        if impl_ubound.is_equal(impl_lbound):
+        if impl_ubound.is_equal(kernel.isl_op_pool, impl_lbound):
             # single-trip, generate just a variable assignment, not a loop
             inner = merge_codegen_results(codegen_state, [
                 astb.emit_initializer(
@@ -475,8 +488,14 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                     codegen_state,
                     astb.emit_sequential_loop(
                         codegen_state, loop_iname, kernel.index_dtype,
-                        pw_aff_to_expr(simplify_pw_aff(lbound, kernel.assumptions)),
-                        pw_aff_to_expr(simplify_pw_aff(ubound, kernel.assumptions)),
+                        pw_aff_to_expr(simplify_pw_aff(lbound,
+                                                       kernel.isl_op_pool,
+                                                       kernel.assumptions),
+                                       kernel.isl_op_pool),
+                        pw_aff_to_expr(simplify_pw_aff(ubound,
+                                                       kernel.isl_op_pool,
+                                                       kernel.assumptions),
+                                       kernel.isl_op_pool),
                         inner_ast)))
 
     return merge_codegen_results(codegen_state, result)

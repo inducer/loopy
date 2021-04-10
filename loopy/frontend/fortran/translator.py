@@ -30,7 +30,7 @@ from warnings import warn
 from loopy.frontend.fortran.tree import FTreeWalkerBase
 from loopy.frontend.fortran.diagnostic import (
         TranslationError, TranslatorWarning)
-import islpy as isl
+import islpy.oppool as isl
 from islpy import dim_type
 from loopy.symbolic import IdentityMapper
 from loopy.diagnostic import LoopyError

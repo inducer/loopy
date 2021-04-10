@@ -26,23 +26,23 @@ THE SOFTWARE.
 
 from loopy.diagnostic import StaticValueFindingError
 
-import islpy as isl
+import islpy.oppool as isl
 from islpy import dim_type
 
 
-def pw_aff_to_aff(pw_aff):
+def pw_aff_to_aff(pw_aff, isl_op_pool):
     if isinstance(pw_aff, isl.Aff):
         return pw_aff
 
     assert isinstance(pw_aff, isl.PwAff)
-    pieces = pw_aff.get_pieces()
+    pieces = pw_aff.get_pieces(isl_op_pool)
 
     if len(pieces) == 0:
         raise RuntimeError("PwAff does not have any pieces")
     if len(pieces) > 1:
         _, first_aff = pieces[0]
         for _, other_aff in pieces[1:]:
-            if not first_aff.plain_is_equal(other_aff):
+            if not first_aff.plain_is_equal(isl_op_pool, other_aff):
                 raise NotImplementedError("only single-valued piecewise affine "
                         "expressions are supported here--encountered "
                         "multi-valued expression '%s'" % pw_aff)
@@ -60,22 +60,26 @@ def dump_space(ls):
 
 # {{{ make_slab
 
-def make_slab(space, iname, start, stop):
+def make_slab(space, iname, start, stop, isl_op_pool):
     zero = isl.Aff.zero_on_domain(space)
 
     if isinstance(start, (isl.Aff, isl.PwAff)):
-        start, zero = isl.align_two(pw_aff_to_aff(start), zero)
+        start, zero = isl.align_two(isl_op_pool, pw_aff_to_aff(start,
+                                                               isl_op_pool),
+                                    zero)
     if isinstance(stop, (isl.Aff, isl.PwAff)):
-        stop, zero = isl.align_two(pw_aff_to_aff(stop), zero)
+        stop, zero = isl.align_two(isl_op_pool, pw_aff_to_aff(stop,
+                                                              isl_op_pool),
+                                   zero)
 
-    space = zero.get_domain_space()
+    space = zero.get_domain_space(isl_op_pool)
 
     from pymbolic.primitives import Expression
     from loopy.symbolic import aff_from_expr
     if isinstance(start, Expression):
-        start = aff_from_expr(space, start)
+        start = aff_from_expr(space, start, isl_op_pool)
     if isinstance(stop, Expression):
-        stop = aff_from_expr(space, stop)
+        stop = aff_from_expr(space, stop, isl_op_pool)
 
     if isinstance(start, int):
         start = zero + start
@@ -83,68 +87,68 @@ def make_slab(space, iname, start, stop):
         stop = zero + stop
 
     if isinstance(iname, str):
-        iname_dt, iname_idx = zero.get_space().get_var_dict()[iname]
+        iname_dt, iname_idx = zero.get_space(
+            isl_op_pool).get_var_dict(isl_op_pool)[iname]
     else:
         iname_dt, iname_idx = iname
 
-    iname_aff = zero.add_coefficient_val(iname_dt, iname_idx, 1)
+    iname_aff = zero.add_coefficient_val(isl_op_pool, iname_dt, iname_idx, 1)
 
     result = (isl.BasicSet.universe(space)
             # start <= iname
-            .add_constraint(isl.Constraint.inequality_from_aff(
-                iname_aff - start))
+            .add_constraint(isl_op_pool, isl.Constraint.inequality_from_aff(
+                iname_aff.sub(isl_op_pool, start)))
             # iname < stop
-            .add_constraint(isl.Constraint.inequality_from_aff(
-                stop-1 - iname_aff)))
+            .add_constraint(isl_op_pool, isl.Constraint.inequality_from_aff(
+                (stop-1).sub(isl_op_pool, iname_aff))))
 
     return result
 
 
-def make_loop_bounds_from_pwaffs(space, iname, lbound, ubound):
-    dt, pos = space.get_var_dict()[iname]
+def make_loop_bounds_from_pwaffs(space, iname, lbound, ubound, isl_op_pool):
+    dt, pos = space.get_var_dict(isl_op_pool)[iname]
     iname_pwaff = isl.PwAff.var_on_domain(space, dt, pos)
 
-    iname_pwaff, lbound = isl.align_two(iname_pwaff, lbound)
-    iname_pwaff, ubound = isl.align_two(iname_pwaff, ubound)
-    assert iname_pwaff.space == lbound.space
-    assert iname_pwaff.space == ubound.space
+    iname_pwaff, lbound = isl.align_two(isl_op_pool, iname_pwaff, lbound)
+    iname_pwaff, ubound = isl.align_two(isl_op_pool, iname_pwaff, ubound)
+    assert iname_pwaff.get_space(isl_op_pool) == lbound.get_space(isl_op_pool)
+    assert iname_pwaff.get_space(isl_op_pool) == ubound.get_space(isl_op_pool)
 
-    return (
-        iname_pwaff.ge_set(lbound)
-        &
-        iname_pwaff.le_set(ubound))
+    return (iname_pwaff.ge_set(isl_op_pool,
+                               lbound).intersect(isl_op_pool,
+                                                 iname_pwaff.le_set(isl_op_pool,
+                                                                    ubound)))
 
 # }}}
 
 
-def iname_rel_aff(space, iname, rel, aff):
+def iname_rel_aff(space, iname, rel, aff, isl_op_pool):
     """*aff*'s domain space is allowed to not match *space*."""
 
-    dt, pos = space.get_var_dict()[iname]
-    assert dt in [isl.dim_type.set, isl.dim_type.param]
-    if dt == isl.dim_type.set:
-        dt = isl.dim_type.in_
+    dt, pos = space.get_var_dict(isl_op_pool)[iname]
+    assert dt in [dim_type.set, dim_type.param]
+    if dt == dim_type.set:
+        dt = dim_type.in_
 
-    from islpy import align_spaces
-    aff = align_spaces(aff, isl.Aff.zero_on_domain(space))
+    aff = isl.align_spaces(isl_op_pool, aff, isl.Aff.zero_on_domain(space))
 
     if rel in ["==", "<="]:
-        return aff.add_coefficient_val(dt, pos, -1)
+        return aff.add_coefficient_val(isl_op_pool, dt, pos, -1)
     elif rel == ">=":
-        return aff.neg().add_coefficient_val(dt, pos, 1)
+        return aff.neg(isl_op_pool).add_coefficient_val(isl_op_pool, dt, pos, 1)
     elif rel == "<":
-        return (aff-1).add_coefficient_val(dt, pos, -1)
+        return (aff-1).add_coefficient_val(isl_op_pool, pos, -1)
     elif rel == ">":
-        return (aff+1).neg().add_coefficient_val(dt, pos, 1)
+        return (aff+1).neg(isl_op_pool).add_coefficient_val(isl_op_pool, dt, pos, 1)
     else:
         raise ValueError("unknown value of 'rel': %s" % rel)
 
 
 # {{{ simplify_pw_aff
 
-def simplify_pw_aff(pw_aff, context=None):
+def simplify_pw_aff(pw_aff, isl_op_pool, context=None):
     if context is not None:
-        pw_aff = pw_aff.gist_params(context)
+        pw_aff = pw_aff.gist_params(isl_op_pool, context)
 
     old_pw_aff = pw_aff
 
@@ -152,13 +156,13 @@ def simplify_pw_aff(pw_aff, context=None):
         restart = False
         did_something = False
 
-        pieces = pw_aff.get_pieces()
+        pieces = pw_aff.get_pieces(isl_op_pool)
         for i, (dom_i, aff_i) in enumerate(pieces):
             for j, (dom_j, aff_j) in enumerate(pieces):
                 if i == j:
                     continue
 
-                if aff_i.gist(dom_j).is_equal(aff_j):
+                if aff_i.gist(isl_op_pool, dom_j).is_equal(isl_op_pool, aff_j):
                     # aff_i is sufficient to conver aff_j, eliminate aff_j
                     new_pieces = pieces[:]
                     if i < j:
@@ -168,9 +172,11 @@ def simplify_pw_aff(pw_aff, context=None):
                         new_pieces.pop(i)
                         new_pieces.pop(j)
 
-                    pw_aff = isl.PwAff.alloc(dom_i | dom_j, aff_i)
+                    pw_aff = isl.PwAff.alloc(dom_i.union(isl_op_pool, dom_j), aff_i)
                     for dom, aff in new_pieces:
-                        pw_aff = pw_aff.union_max(isl.PwAff.alloc(dom, aff))
+                        pw_aff = pw_aff.union_max(isl_op_pool,
+                                                  isl.PwAff.alloc(dom,
+                                                                  aff))
 
                     restart = True
                     did_something = True
@@ -182,7 +188,8 @@ def simplify_pw_aff(pw_aff, context=None):
         if not did_something:
             break
 
-    assert pw_aff.get_aggregate_domain() <= pw_aff.eq_set(old_pw_aff)
+    assert pw_aff.get_aggregate_domain(isl_op_pool).is_subset(
+        isl_op_pool, pw_aff.eq_set(isl_op_pool, old_pw_aff))
 
     return pw_aff
 
@@ -191,16 +198,18 @@ def simplify_pw_aff(pw_aff, context=None):
 
 # {{{ static_*_of_pw_aff
 
-def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context):
+def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what,
+                              isl_op_pool, context):
     if context is not None:
-        context = isl.align_spaces(context, pw_aff.get_domain_space(),
-                obj_bigger_ok=True).params()
-        pw_aff = pw_aff.gist(context)
+        context = isl.align_spaces(isl_op_pool, context,
+                                   pw_aff.get_domain_space(isl_op_pool),
+                                   obj_bigger_ok=True).params(isl_op_pool)
+        pw_aff = pw_aff.gist(isl_op_pool, context)
 
-    pieces = pw_aff.get_pieces()
+    pieces = pw_aff.get_pieces(isl_op_pool)
     if len(pieces) == 1:
         (_, result), = pieces
-        if constants_only and not result.is_cst():
+        if constants_only and not result.is_cst(isl_op_pool):
             raise StaticValueFindingError("a numeric %s was not found for PwAff '%s'"
                     % (what, pw_aff))
         return result
@@ -209,11 +218,11 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context)
 
     @memoize
     def is_bounded(set):
-        assert set.dim(dim_type.set) == 0
+        assert set.dim(isl_op_pool, dim_type.set) == 0
         return (set
-                .move_dims(dim_type.set, 0,
-                    dim_type.param, 0, set.dim(dim_type.param))
-                .is_bounded())
+                .move_dims(isl_op_pool, dim_type.set, 0,
+                    dim_type.param, 0, set.dim(isl_op_pool, dim_type.param))
+                .is_bounded(isl_op_pool))
 
     # put constant bounds with unbounded validity first
     order = [
@@ -225,13 +234,13 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context)
 
     pieces = flatten([
             [(set, aff) for set, aff in pieces
-                if aff.is_cst() == want_is_constant
+                if aff.is_cst(isl_op_pool) == want_is_constant
                 and is_bounded(set) == want_is_bounded]
             for want_is_constant, want_is_bounded in order])
 
-    reference = pw_aff.get_aggregate_domain()
+    reference = pw_aff.get_aggregate_domain(isl_op_pool)
     if context is not None:
-        reference = reference.intersect(context)
+        reference = reference.intersect(isl_op_pool, context)
 
     # {{{ find bounds that are also global bounds
 
@@ -239,12 +248,12 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context)
         # gist can be time-consuming, try without first
         for use_gist in [False, True]:
             if use_gist:
-                candidate_aff = candidate_aff.gist(set)
+                candidate_aff = candidate_aff.gist(isl_op_pool, set)
 
-            if constants_only and not candidate_aff.is_cst():
+            if constants_only and not candidate_aff.is_cst(isl_op_pool):
                 continue
 
-            if reference <= set_method(pw_aff, candidate_aff):
+            if reference.is_subset(isl_op_pool, set_method(pw_aff, candidate_aff)):
                 return candidate_aff
 
     # }}}
@@ -253,29 +262,29 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context)
             % (what, pw_aff))
 
 
-def static_min_of_pw_aff(pw_aff, constants_only, context=None):
+def static_min_of_pw_aff(pw_aff, constants_only, isl_op_pool, context=None):
     return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.ge_set,
-            "minimum", context)
+                                     "minimum", isl_op_pool, context)
 
 
-def static_max_of_pw_aff(pw_aff, constants_only, context=None):
+def static_max_of_pw_aff(pw_aff, constants_only, isl_op_pool, context=None):
     return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.le_set,
-            "maximum", context)
+                                     "maximum", isl_op_pool, context)
 
 
-def static_value_of_pw_aff(pw_aff, constants_only, context=None):
+def static_value_of_pw_aff(pw_aff, constants_only, isl_op_pool, context=None):
     return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.eq_set,
-            "value", context)
+                                     "value", isl_op_pool, context)
 
 # }}}
 
 
 # {{{ duplicate_axes
 
-def duplicate_axes(isl_obj, duplicate_inames, new_inames):
+def duplicate_axes(isl_obj, duplicate_inames, new_inames, isl_op_pool):
     if isinstance(isl_obj, list):
         return [
-                duplicate_axes(i, duplicate_inames, new_inames)
+                duplicate_axes(i, duplicate_inames, new_inames, isl_op_pool)
                 for i in isl_obj]
 
     if not duplicate_inames:
@@ -283,19 +292,18 @@ def duplicate_axes(isl_obj, duplicate_inames, new_inames):
 
     # {{{ add dims
 
-    start_idx = isl_obj.dim(dim_type.set)
+    start_idx = isl_obj.dim(isl_op_pool, dim_type.set)
     more_dims = isl_obj.insert_dims(
-            dim_type.set, start_idx,
-            len(duplicate_inames))
+            isl_op_pool, dim_type.set, start_idx, len(duplicate_inames))
 
     for i, iname in enumerate(new_inames):
         new_idx = start_idx+i
         more_dims = more_dims.set_dim_name(
-                dim_type.set, new_idx, iname)
+                isl_op_pool, dim_type.set, new_idx, iname)
 
     # }}}
 
-    iname_to_dim = more_dims.get_space().get_var_dict()
+    iname_to_dim = more_dims.get_space(isl_op_pool).get_var_dict(isl_op_pool)
 
     moved_dims = isl_obj.copy()
 
@@ -304,20 +312,24 @@ def duplicate_axes(isl_obj, duplicate_inames, new_inames):
         new_dt, new_idx = iname_to_dim[new_iname]
 
         moved_dims = moved_dims.set_dim_name(
-                old_dt, old_idx, new_iname)
+                isl_op_pool, old_dt, old_idx, new_iname)
         moved_dims = (moved_dims
                 .move_dims(
+                    isl_op_pool,
                     dim_type.param, 0,
                     old_dt, old_idx, 1)
                 .move_dims(
+                    isl_op_pool,
                     new_dt, new_idx-1,
                     dim_type.param, 0, 1))
 
-        moved_dims = moved_dims.insert_dims(old_dt, old_idx, 1)
+        moved_dims = moved_dims.insert_dims(isl_op_pool, old_dt, old_idx, 1)
         moved_dims = moved_dims.set_dim_name(
-                old_dt, old_idx, old_iname)
+                isl_op_pool, old_dt, old_idx, old_iname)
 
-    return moved_dims.intersect(more_dims)
+    more_dims, moved_dims = isl.align_two(isl_op_pool, more_dims, moved_dims)
+
+    return moved_dims.intersect(isl_op_pool, more_dims)
 
 # }}}
 
@@ -338,7 +350,7 @@ def is_nonnegative(expr, over_set):
 
 # {{{ convexify
 
-def convexify(domain):
+def convexify(domain, isl_op_pool):
     """Try a few ways to get *domain* to be a BasicSet, i.e.
     explicitly convex.
     """
@@ -346,32 +358,32 @@ def convexify(domain):
     if isinstance(domain, isl.BasicSet):
         return domain
 
-    dom_bsets = domain.get_basic_sets()
+    dom_bsets = domain.get_basic_sets(isl_op_pool)
     if len(dom_bsets) == 1:
         domain, = dom_bsets
         return domain
 
-    hull_domain = domain.simple_hull()
+    hull_domain = domain.simple_hull(isl_op_pool)
     if isl.Set.from_basic_set(hull_domain) <= domain:
         return hull_domain
 
-    domain = domain.coalesce()
+    domain = domain.coalesce(isl_op_pool)
 
-    dom_bsets = domain.get_basic_sets()
-    if len(domain.get_basic_sets()) == 1:
+    dom_bsets = domain.get_basic_sets(isl_op_pool)
+    if domain.n_basic_set(isl_op_pool) == 1:
         domain, = dom_bsets
         return domain
 
-    hull_domain = domain.simple_hull()
-    if isl.Set.from_basic_set(hull_domain) <= domain:
+    hull_domain = domain.simple_hull(isl_op_pool)
+    if isl.Set.from_basic_set(hull_domain).is_subset(isl_op_pool, domain):
         return hull_domain
 
-    dom_bsets = domain.get_basic_sets()
+    dom_bsets = domain.get_basic_sets(isl_op_pool)
     assert len(dom_bsets) > 1
 
     print("PIECES:")
     for dbs in dom_bsets:
-        print("  %s" % (isl.Set.from_basic_set(dbs).gist(domain)))
+        print("  %s" % (isl.Set.from_basic_set(dbs).gist(isl_op_pool, domain)))
     raise NotImplementedError("Could not find convex representation of set")
 
 # }}}
@@ -379,7 +391,7 @@ def convexify(domain):
 
 # {{{ boxify
 
-def boxify(cache_manager, domain, box_inames, context):
+def boxify(isl_op_pool, domain, box_inames, context):
     var_dict = domain.get_var_dict(dim_type.set)
     box_iname_indices = [var_dict[iname][1] for iname in box_inames]
     n_nonbox_inames = min(box_iname_indices)
@@ -402,26 +414,26 @@ def boxify(cache_manager, domain, box_inames, context):
         def add_in_dims(aff):
             return aff.add_dims(dim_type.in_, len(box_inames))
 
-        iname_min = add_in_dims(cache_manager.dim_min(domain, i)).coalesce()
-        iname_max = add_in_dims(cache_manager.dim_max(domain, i)).coalesce()
+        iname_min = add_in_dims(domain.dim_min(isl_op_pool, i)).coalesce(isl_op_pool)
+        iname_max = add_in_dims(domain.dim_max(isl_op_pool, i)).coalesce(isl_op_pool)
 
-        iname_slab = (iname_min.le_set(iname_aff)
-                .intersect(iname_max.ge_set(iname_aff)))
+        iname_slab = (iname_min.le_set(isl_op_pool, iname_aff)
+                .intersect(isl_op_pool, iname_max.ge_set(isl_op_pool, iname_aff)))
 
         for i, iname in enumerate(box_inames):
-            iname_slab = iname_slab.set_dim_name(dim_type.set, i, iname)
+            iname_slab = iname_slab.set_dim_name(isl_op_pool, dim_type.set, i, iname)
 
         if context is not None:
-            iname_slab, context = isl.align_two(iname_slab, context)
-            iname_slab = iname_slab.gist(context)
-        iname_slab = iname_slab.coalesce()
+            iname_slab, context = isl.align_two(isl_op_pool, iname_slab, context)
+            iname_slab = iname_slab.gist(isl_op_pool, context)
+        iname_slab = iname_slab.coalesce(isl_op_pool)
 
-        result = result & iname_slab
+        result = result.intersect(isl_op_pool, iname_slab)
 
-    result = result.move_dims(
-            dim_type.set, 0, dim_type.param, n_old_parameters, n_nonbox_inames)
+    result = result.move_dims(isl_op_pool, dim_type.set, 0, dim_type.param,
+                              n_old_parameters, n_nonbox_inames)
 
-    return convexify(result)
+    return convexify(result, isl_op_pool)
 
 # }}}
 

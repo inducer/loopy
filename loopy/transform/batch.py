@@ -23,7 +23,7 @@ THE SOFTWARE.
 
 from loopy.symbolic import (RuleAwareIdentityMapper, SubstitutionRuleMappingContext)
 from loopy.kernel.data import ValueArg, ArrayArg
-import islpy as isl
+import islpy.oppool as isl
 
 __doc__ = """
 .. currentmodule:: loopy

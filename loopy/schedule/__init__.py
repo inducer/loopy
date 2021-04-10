@@ -23,7 +23,8 @@ THE SOFTWARE.
 
 from pytools import ImmutableRecord
 import sys
-import islpy as isl
+import islpy
+import islpy.oppool as isl
 from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
 from pytools import MinRecursionLimit, ProcessLogger
@@ -242,7 +243,8 @@ def find_loop_nest_around_map(kernel):
                 result[inner_iname].add(outer_iname)
 
     for dom_idx, dom in enumerate(kernel.domains):
-        for outer_iname in dom.get_var_names(isl.dim_type.param):
+        for outer_iname in dom.get_var_names(kernel.isl_op_pool,
+                                             islpy.dim_type.param):
             if outer_iname not in all_inames:
                 continue
 
@@ -1253,7 +1255,8 @@ def generate_loop_schedules_internal(
             iname_home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
             from islpy import dim_type
             iname_home_domain_params = set(
-                    iname_home_domain.get_var_names(dim_type.param))
+                    iname_home_domain.get_var_names(kernel.isl_op_pool,
+                                                    dim_type.param))
 
             # The previous check should have ensured this is true, because
             # the loop_nest_around_map takes the domain dependency graph into

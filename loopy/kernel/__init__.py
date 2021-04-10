@@ -1085,7 +1085,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         class BoundsRecord(ImmutableRecord):
             pass
 
-        size = (upper_bound_pw_aff - lower_bound_pw_aff + 1)
+        size = (upper_bound_pw_aff.sub(self.isl_op_pool, lower_bound_pw_aff) + 1)
         size = size.gist(self.isl_op_pool, assumptions)
 
         return BoundsRecord(
@@ -1099,7 +1099,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         from loopy.symbolic import aff_to_expr
         return int(aff_to_expr(static_max_of_pw_aff(
                 self.get_iname_bounds(iname, constants_only=True).size,
-                constants_only=True)))
+                constants_only=True,
+                isl_op_pool=self.isl_op_pool)))
 
     @memoize_method
     def get_grid_sizes_for_insn_ids(self, insn_ids, ignore_auto=False):
@@ -1157,13 +1158,14 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             size = self.get_iname_bounds(iname).size
 
             if tag.axis in tgt_dict:
-                size = tgt_dict[tag.axis].max(size)
+                size = tgt_dict[tag.axis].max(self.isl_op_pool, size)
 
             from loopy.isl_helpers import static_max_of_pw_aff
             try:
                 # insist block size is constant
                 size_as_aff = static_max_of_pw_aff(size,
                         constants_only=isinstance(tag, LocalIndexTag),
+                        isl_op_pool=self.isl_op_pool,
                         context=self.assumptions)
                 size = isl.PwAff.from_aff(size_as_aff)
             except StaticValueFindingError:
@@ -1215,7 +1217,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         def tup_to_exprs(tup):
             from loopy.symbolic import pw_aff_to_expr
-            return tuple(pw_aff_to_expr(i, int_ok=True) for i in tup)
+            return tuple(pw_aff_to_expr(i, self.isl_op_pool, int_ok=True) for i in tup)
 
         return tup_to_exprs(grid_size), tup_to_exprs(group_size)
 

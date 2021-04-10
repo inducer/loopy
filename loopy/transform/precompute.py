@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 
-import islpy as isl
+import islpy.oppool as isl
 from loopy.symbolic import (get_dependencies,
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)

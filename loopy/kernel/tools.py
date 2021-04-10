@@ -28,7 +28,7 @@ import sys
 from sys import intern
 
 import numpy as np
-import islpy as isl
+import islpy.oppool as isl
 from islpy import dim_type
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from pytools import memoize_on_first_arg, natsorted
@@ -994,19 +994,19 @@ def guess_var_shape(kernel, var_name):
         armap(submap(expr), insn.within_inames)
         return expr
 
-    # try:
-    for insn in kernel.instructions:
-        insn.with_transformed_expressions(run_through_armap)
-    # except TypeError as e:
-    #     from traceback import print_exc
-    #     print_exc()
+    try:
+        for insn in kernel.instructions:
+            insn.with_transformed_expressions(run_through_armap)
+    except TypeError as e:
+        from traceback import print_exc
+        print_exc()
 
-    #     raise LoopyError(
-    #             "Failed to (automatically, as requested) find "
-    #             "shape/strides for variable '%s'. "
-    #             "Specifying the shape manually should get rid of this. "
-    #             "The following error occurred: %s"
-    #             % (var_name, str(e)))
+        raise LoopyError(
+                "Failed to (automatically, as requested) find "
+                "shape/strides for variable '%s'. "
+                "Specifying the shape manually should get rid of this. "
+                "The following error occurred: %s"
+                % (var_name, str(e)))
 
     if armap.access_range is None:
         if armap.bad_subscripts:

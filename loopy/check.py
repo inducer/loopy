@@ -362,7 +362,7 @@ def check_for_data_dependent_parallel_bounds(kernel):
         if not par_inames:
             continue
 
-        parameters = set(dom.get_var_names(dim_type.param))
+        parameters = set(dom.get_var_names(kernel.isl_op_pool, dim_type.param))
         for par in parameters:
             if par in kernel.temporary_variables:
                 raise LoopyError("Domain number %d has a data-dependent "
@@ -402,7 +402,7 @@ class _AccessCheckMapper(WalkMapper):
             from loopy.symbolic import (get_dependencies, get_access_range,
                     UnableToDetermineAccessRange)
 
-            available_vars = set(domain.get_var_dict())
+            available_vars = set(domain.get_var_dict(self.kernel.isl_op_pool))
             shape_deps = set()
             for shape_axis in shape:
                 if shape_axis is not None:
@@ -419,22 +419,26 @@ class _AccessCheckMapper(WalkMapper):
                             len(subscript), len(shape)))
 
             try:
-                access_range = get_access_range(domain, subscript)
+                access_range = get_access_range(domain, subscript,
+                                                self.kernel.isl_op_pool)
             except UnableToDetermineAccessRange:
                 # Likely: index was non-affine, nothing we can do.
                 return
 
-            shape_domain = isl.BasicSet.universe(access_range.get_space())
+            shape_domain = isl.BasicSet.universe(
+                access_range.get_space(self.kernel.isl_op_pool))
             for idim in range(len(subscript)):
                 shape_axis = shape[idim]
 
                 if shape_axis is not None:
                     from loopy.isl_helpers import make_slab
                     slab = make_slab(
-                            shape_domain.get_space(), (dim_type.in_, idim),
-                            0, shape_axis)
+                            shape_domain.get_space(self.kernel.isl_op_pool),
+                            (dim_type.in_, idim),
+                            0, shape_axis, self.kernel.isl_op_pool)
 
-                    shape_domain = shape_domain.intersect(slab)
+                    shape_domain = shape_domain.intersect(self.kernel.isl_op_pool,
+                                                          slab)
 
             if not access_range.is_subset(shape_domain):
                 raise LoopyError("'%s' in instruction '%s' "
@@ -450,7 +454,7 @@ class _AccessCheckMapper(WalkMapper):
             # for domain contributions enforced by it
             then_set = else_set = isl.BasicSet.universe(domain.space)
         else:
-            else_set = then_set.complement()
+            else_set = then_set.complement(self.kernel.isl_op_pool)
 
         self.rec(expr.then, domain & then_set)
         self.rec(expr.else_, domain & else_set)
@@ -466,12 +470,14 @@ def check_bounds(kernel):
         domain = get_insn_domain(insn, kernel)
 
         # data-dependent bounds? can't do much
-        if set(domain.get_var_names(dim_type.param)) & temp_var_names:
+        if (set(domain.get_var_names(kernel.isl_op_pool, dim_type.param))
+                & temp_var_names):
             continue
 
         acm = _AccessCheckMapper(kernel, insn.id)
-        domain, assumptions = isl.align_two(domain, kernel.assumptions)
-        domain_with_assumptions = domain & assumptions
+        domain, assumptions = isl.align_two(kernel.isl_op_pool, domain,
+                                            kernel.assumptions)
+        domain_with_assumptions = domain.intersect(kernel.isl_op_pool, assumptions)
 
         def run_acm(expr):
             acm(expr, domain_with_assumptions)
@@ -491,7 +497,8 @@ def check_write_destinations(kernel):
                 raise LoopyError("iname '%s' may not be written" % wvar)
 
             insn_domain = kernel.get_inames_domain(insn.within_inames)
-            insn_params = set(insn_domain.get_var_names(dim_type.param))
+            insn_params = set(insn_domain.get_var_names(kernel.isl_op_pool,
+                                                        dim_type.param))
 
             if wvar in kernel.all_params():
                 if wvar not in kernel.temporary_variables:
@@ -1098,8 +1105,6 @@ def pre_codegen_checks(kernel):
 def check_implemented_domains(kernel, implemented_domains, code=None):
     from islpy import dim_type
 
-    from islpy import align_two
-
     last_idomains = None
     last_insn_inames = None
 
@@ -1123,13 +1128,14 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
 
         insn_impl_domain = idomains[0]
         for idomain in idomains[1:]:
-            insn_impl_domain = insn_impl_domain | idomain
+            insn_impl_domain = insn_impl_domain.union(kernel.isl_op_pool, idomain)
         assumption_non_param = isl.BasicSet.from_params(kernel.assumptions)
-        assumptions, insn_impl_domain = align_two(
-                assumption_non_param, insn_impl_domain)
+        assumptions, insn_impl_domain = isl.align_two(kernel.isl_op_pool,
+                                                      assumption_non_param,
+                                                      insn_impl_domain)
         insn_impl_domain = (
-                (insn_impl_domain & assumptions)
-                .project_out_except(insn_inames, [dim_type.set]))
+                insn_impl_domain.intersect(kernel.isl_op_pool, assumptions)
+                .project_out_except(kernel.isl_op_pool, insn_inames, [dim_type.set]))
 
         from loopy.kernel.instruction import BarrierInstruction
         from loopy.kernel.data import LocalIndexTag
@@ -1141,43 +1147,51 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                 non_lid_inames, [dim_type.set])
 
         insn_domain = kernel.get_inames_domain(insn_inames)
-        insn_parameters = frozenset(insn_domain.get_var_names(dim_type.param))
-        assumptions, insn_domain = align_two(assumption_non_param, insn_domain)
-        desired_domain = ((insn_domain & assumptions)
-            .project_out_except(insn_inames, [dim_type.set])
-            .project_out_except(insn_parameters, [dim_type.param]))
+        insn_parameters = frozenset(insn_domain.get_var_names(kernel.isl_op_pool,
+                                                              dim_type.param))
+        assumptions, insn_domain = isl.align_two(kernel.isl_op_pool,
+                                                 assumption_non_param,
+                                                 insn_domain)
+        desired_domain = ((insn_domain.intersect(kernel.isl_op_pool, assumptions))
+            .project_out_except(kernel.isl_op_pool, insn_inames, [dim_type.set])
+            .project_out_except(kernel.isl_op_pool,
+                                insn_parameters, [dim_type.param]))
 
         if isinstance(insn, BarrierInstruction):
             # project out local-id-mapped inames, solves #94 on gitlab
             desired_domain = desired_domain.project_out_except(
-                non_lid_inames, [dim_type.set])
+                kernel.isl_op_pool, non_lid_inames, [dim_type.set])
 
         insn_impl_domain = (insn_impl_domain
-                .project_out_except(insn_parameters, [dim_type.param]))
-        insn_impl_domain, desired_domain = align_two(
-                insn_impl_domain, desired_domain)
+                .project_out_except(kernel.isl_op_pool, insn_parameters,
+                                    [dim_type.param]))
+        insn_impl_domain, desired_domain = isl.align_two(
+                kernel.isl_op_pool, insn_impl_domain, desired_domain)
 
-        if insn_impl_domain != desired_domain:
-            i_minus_d = insn_impl_domain - desired_domain
-            d_minus_i = desired_domain - insn_impl_domain
+        if not insn_impl_domain.is_equal(kernel.isl_op_pool, desired_domain):
+            i_minus_d = insn_impl_domain.intersect(kernel.isl_op_pool,
+                    desired_domain.complement(kernel.isl_op_pool))
+            d_minus_i = desired_domain.intersect(kernel.isl_op_pool,
+                    insn_impl_domain.complement(kernel.isl_op_pool))
 
             parameter_inames = {
-                    insn_domain.get_dim_name(dim_type.param, i)
-                    for i in range(insn_impl_domain.dim(dim_type.param))}
+                    insn_domain.get_dim_name(kernel.isl_op_pool, dim_type.param, i)
+                    for i in range(insn_impl_domain.dim(kernel.isl_op_pool,
+                                                        dim_type.param))}
 
             lines = []
             for bigger, smaller, diff_set, gist_domain in [
                     ("implemented", "desired", i_minus_d,
-                        desired_domain.gist(insn_impl_domain)),
+                        desired_domain.gist(kernel.isl_op_pool, insn_impl_domain)),
                     ("desired", "implemented", d_minus_i,
-                        insn_impl_domain.gist(desired_domain))]:
+                        insn_impl_domain.gist(kernel.isl_op_pool, desired_domain))]:
 
-                if diff_set.is_empty():
+                if diff_set.is_empty(kernel.isl_op_pool):
                     continue
 
-                diff_set = diff_set.coalesce()
-                pt = diff_set.sample_point()
-                assert not pt.is_void()
+                diff_set = diff_set.coalesce(kernel.isl_op_pool)
+                pt = diff_set.sample_point(kernel.isl_op_pool)
+                assert not pt.is_void(kernel.isl_op_pool)
 
                 #pt_set = isl.Set.from_point(pt)
                 #lines.append("point implemented: %s" % (pt_set <= insn_impl_domain))

@@ -255,7 +255,7 @@ class TemporarySaver:
         self.base_storage_to_representative = {}
 
         from loopy.kernel.data import ValueArg
-        import islpy as isl
+        import islpy.oppool as isl
         self.new_subdomain = (
                 isl.BasicSet.universe(
                     isl.Space.create_from_names(
@@ -598,7 +598,7 @@ class TemporarySaver:
         self.updated_temporary_variables.update(self.kernel.temporary_variables)
 
         new_domains = list(self.kernel.domains)
-        import islpy as isl
+        import islpy.oppool as isl
         if self.new_subdomain.dim(isl.dim_type.set) > 0:
             new_domains.append(self.new_subdomain)
 
@@ -639,7 +639,7 @@ class TemporarySaver:
         reload stage. These get prefixed onto the already existing axes.
         """
         assert mode in ("save", "reload")
-        import islpy as isl
+        import islpy.oppool as isl
 
         orig_temporary = (
                 self.kernel.temporary_variables[

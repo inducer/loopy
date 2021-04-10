@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 
-import islpy as isl
+import islpy.oppool as isl
 
 
 def potential_loop_nest_map(kernel):

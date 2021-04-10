@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import islpy as isl
+import islpy.oppool as isl
 
 from pymbolic.mapper.differentiator import DifferentiationMapper
 

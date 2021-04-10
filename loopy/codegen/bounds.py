@@ -28,27 +28,28 @@ from islpy import dim_type
 # {{{ approximate, convex bounds check generator
 
 def get_approximate_convex_bounds_checks(domain, check_inames,
-        implemented_domain, op_cache_manager):
+        implemented_domain, isl_op_pool):
     if isinstance(domain, isl.BasicSet):
         domain = isl.Set.from_basic_set(domain)
-    domain = domain.remove_redundancies()
-    result = op_cache_manager.eliminate_except(domain, check_inames,
-            (dim_type.set,))
+    domain = domain.remove_redundancies(isl_op_pool)
+    result = isl.eliminate_except(isl_op_pool, domain, check_inames,
+                                  (dim_type.set,))
 
     # This is ok, because we're really looking for the
     # projection, with no remaining constraints from
     # the eliminated variables.
-    result = result.remove_divs()
+    result = result.remove_divs(isl_op_pool)
 
-    result, implemented_domain = isl.align_two(result, implemented_domain)
-    result = result.gist(implemented_domain)
+    result, implemented_domain = isl.align_two(isl_op_pool, result,
+                                               implemented_domain)
+    result = result.gist(isl_op_pool, implemented_domain)
 
     # (see above)
-    result = result.remove_divs()
+    result = result.remove_divs(isl_op_pool)
 
     from loopy.isl_helpers import convexify
-    result = convexify(result)
-    return result.get_constraints()
+    result = convexify(result, isl_op_pool)
+    return result.get_constraints(isl_op_pool)
 
 # }}}
 

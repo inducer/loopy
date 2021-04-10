@@ -1378,28 +1378,29 @@ class ArrayAccessFinder(CombineMapper):
 
 # {{{ (pw)aff to expr conversion
 
-def aff_to_expr(aff):
+def aff_to_expr(aff, isl_op_pool):
     from pymbolic import var
 
-    denom = aff.get_denominator_val().to_python()
+    denom = aff.get_denominator_val(isl_op_pool).to_python()
 
-    result = (aff.get_constant_val()*denom).to_python()
+    result = (aff.get_constant_val(isl_op_pool)*denom).to_python()
     for dt in [dim_type.in_, dim_type.param]:
-        for i in range(aff.dim(dt)):
-            coeff = (aff.get_coefficient_val(dt, i)*denom).to_python()
+        for i in range(aff.dim(isl_op_pool, dt)):
+            coeff = (aff.get_coefficient_val(isl_op_pool, dt, i)*denom).to_python()
             if coeff:
-                dim_name = aff.get_dim_name(dt, i)
+                dim_name = aff.get_dim_name(isl_op_pool, dt, i)
                 result += coeff*var(dim_name)
 
-    for i in range(aff.dim(dim_type.div)):
-        coeff = (aff.get_coefficient_val(dim_type.div, i)*denom).to_python()
+    for i in range(aff.dim(isl_op_pool, dim_type.div)):
+        coeff = (aff.get_coefficient_val(isl_op_pool,
+                                         dim_type.div, i)*denom).to_python()
         if coeff:
-            result += coeff*aff_to_expr(aff.get_div(i))
+            result += coeff*aff_to_expr(aff.get_div(isl_op_pool, i), isl_op_pool)
 
     return result // denom
 
 
-def pw_aff_to_expr(pw_aff, int_ok=False):
+def pw_aff_to_expr(pw_aff, isl_op_pool, int_ok=False):
     if isinstance(pw_aff, int):
         if not int_ok:
             from warnings import warn
@@ -1407,10 +1408,11 @@ def pw_aff_to_expr(pw_aff, int_ok=False):
 
         return pw_aff
 
-    pieces = pw_aff.get_pieces()
-    last_expr = aff_to_expr(pieces[-1][1])
+    pieces = pw_aff.get_pieces(isl_op_pool)
+    last_expr = aff_to_expr(pieces[-1][1], isl_op_pool)
 
-    pairs = [(set_to_cond_expr(constr_set), aff_to_expr(aff))
+    pairs = [(set_to_cond_expr(constr_set, isl_op_pool),
+              aff_to_expr(aff, isl_op_pool))
              for constr_set, aff in pieces[:-1]]
 
     from pymbolic.primitives import If
@@ -1421,21 +1423,23 @@ def pw_aff_to_expr(pw_aff, int_ok=False):
     return expr
 
 
-def pw_aff_to_pw_aff_implemented_by_expr(pw_aff):
-    pieces = pw_aff.get_pieces()
+def pw_aff_to_pw_aff_implemented_by_expr(pw_aff, isl_op_pool):
+    pieces = pw_aff.get_pieces(isl_op_pool)
 
-    rest = isl.Set.universe(pw_aff.space.params())
+    rest = isl.Set.universe(pw_aff.get_space(isl_op_pool).params(isl_op_pool))
     aff_set, aff = pieces[0]
     impl_pw_aff = isl.PwAff.alloc(aff_set, aff)
-    rest = rest.intersect_params(aff_set.complement())
+    rest = rest.intersect_params(isl_op_pool, aff_set.complement(isl_op_pool))
 
     for aff_set, aff in pieces[1:-1]:
         impl_pw_aff = impl_pw_aff.union_max(
+            isl_op_pool,
             isl.PwAff.alloc(aff_set, aff))
-        rest = rest.intersect_params(aff_set.complement())
+        rest = rest.intersect_params(isl_op_pool, aff_set.complement(isl_op_pool))
 
     _, aff = pieces[-1]
-    return impl_pw_aff.union_max(isl.PwAff.alloc(rest, aff)).coalesce()
+    return impl_pw_aff.union_max(isl_op_pool,
+                                 isl.PwAff.alloc(rest, aff)).coalesce(isl_op_pool)
 
 # }}}
 
@@ -1533,7 +1537,7 @@ def with_aff_conversion_guard(f, space, expr, *args):
             return f(space, expr, *args)
         except TypeError as e:
             err = e
-        except isl.Error as e:
+        except islpy.Error as e:
             err = e
         except UnknownVariableError as e:
             err = e
@@ -1631,10 +1635,11 @@ def simplify_using_aff(kernel, expr):
     domain = (
             kernel
             .get_inames_domain(inames)
-            .project_out_except(inames, [dim_type.set]))
+            .project_out_except(kernel.isl_op_pool, inames,
+                                frozenset([dim_type.set])))
 
     try:
-        aff = guarded_aff_from_expr(domain.space, expr)
+        aff = guarded_aff_from_expr(domain.get_space(kernel.isl_op_pool), expr)
     except ExpressionToAffineConversionError:
         return expr
 
@@ -1982,7 +1987,7 @@ def get_access_map(domain, subscript, isl_op_pool,
 
     if allowed_constant_names is not None:
         allowed_constant_names = set(allowed_constant_names) - {
-                access_map.get_dim_name(dim_type.param, i)
+                access_map.get_dim_name(isl_op_pool, dim_type.param, i)
                 for i in range(access_map.dim(isl_op_pool, dim_type.param))}
 
         par_base = access_map.dim(isl_op_pool, dim_type.param)
@@ -1990,7 +1995,7 @@ def get_access_map(domain, subscript, isl_op_pool,
                                             par_base, len(allowed_constant_names))
         for i, const_name in enumerate(allowed_constant_names):
             access_map = access_map.set_dim_name(
-                    dim_type.param, par_base+i, const_name)
+                    isl_op_pool, dim_type.param, par_base+i, const_name)
 
     dn = access_map.dim(isl_op_pool, dim_type.set)
     access_map = access_map.insert_dims(isl_op_pool, dim_type.set, dn, dims)
@@ -2008,7 +2013,9 @@ def get_access_map(domain, subscript, isl_op_pool,
 
             if shape is not None:
                 try:
-                    shape_aff = guarded_aff_from_expr(access_map.space, shape[idim])
+                    shape_aff = guarded_aff_from_expr(
+                        access_map.get_space(isl_op_pool),
+                        shape[idim])
                 except ExpressionToAffineConversionError:
                     pass
 
@@ -2024,40 +2031,44 @@ def get_access_map(domain, subscript, isl_op_pool,
             # successfully converted shape[idim] to aff, but not subscript[idim]
 
             upper_bound_cns = isl.Constraint.inequality_from_aff(
-                    shape_aff.set_coefficient_val(
+                    shape_aff.set_coefficient_val(isl_op_pool,
                         dim_type.in_, dn+idim, -1) - 1)
             lower_bound_cns = isl.Constraint.inequality_from_aff(
-                    isl.Aff.zero_on_domain(access_map.space).set_coefficient_val(
+                isl.Aff.zero_on_domain(
+                    access_map.get_space(isl_op_pool)).set_coefficient_val(
+                        isl_op_pool,
                         dim_type.in_, dn+idim, 1))
 
-            access_map = access_map.add_constraint(upper_bound_cns)
-            access_map = access_map.add_constraint(lower_bound_cns)
+            access_map = access_map.add_constraint(isl_op_pool, upper_bound_cns)
+            access_map = access_map.add_constraint(isl_op_pool, lower_bound_cns)
 
         else:
             # successfully converted subscript[idim] -> idx_aff
 
             idx_aff = idx_aff.set_coefficient_val(
-                    dim_type.in_, dn+idim, -1)
+                    isl_op_pool, dim_type.in_, dn+idim, -1)
 
             access_map = access_map.add_constraint(
                     isl.Constraint.equality_from_aff(idx_aff))
 
-    access_map_as_map = isl.Map.universe(access_map.get_space())
-    access_map_as_map = access_map_as_map.intersect_range(access_map)
+    access_map_as_map = isl.Map.universe(access_map.get_space(isl_op_pool))
+    access_map_as_map = access_map_as_map.intersect_range(isl_op_pool, access_map)
     access_map = access_map_as_map.move_dims(
+            isl_op_pool,
             dim_type.in_, 0,
             dim_type.out, 0, dn)
 
     return access_map
 
 
-def get_access_range(domain, subscript, assumptions=None, shape=None,
+def get_access_range(domain, subscript, isl_op_pool, assumptions=None, shape=None,
         allowed_constant_names=None):
     from warnings import warn
     warn("Call get_access_map(...).range() instead. Will be removed in 2022.x",
             DeprecationWarning, stacklevel=2)
-    return get_access_map(domain, subscript, assumptions, shape,
-            allowed_constant_names).range()
+    return get_access_map(domain, subscript, isl_op_pool,
+                          assumptions, shape,
+                          allowed_constant_names).range(isl_op_pool)
 
 # }}}
 
@@ -2114,8 +2125,8 @@ class BatchedAccessMapMapper(WalkMapper):
         if self.access_maps[arg_name]:
             other_access_map = next(iter(self.access_maps[arg_name].values()))
 
-            if (other_access_map.dim(dim_type.set)
-                    != access_map.dim(dim_type.set)):
+            if (other_access_map.dim(self.kernel.isl_op_pool, dim_type.set)
+                    != access_map.dim(self.kernel.isl_op_pool, dim_type.set)):
                 raise RuntimeError(
                         "error while determining shape of argument '%s': "
                         "varying number of indices encountered"
@@ -2126,7 +2137,9 @@ class BatchedAccessMapMapper(WalkMapper):
         if self.access_maps[arg_name][inames] is None:
             self.access_maps[arg_name][inames] = access_map
         else:
-            self.access_maps[arg_name][inames] |= access_map
+            self.access_maps[arg_name][inames] = (
+                self.access_maps[arg_name][inames].union(self.kernel.isl_op_pool,
+                                                         access_map))
 
     def map_linear_subscript(self, expr, inames):
         self.rec(expr.index, inames)

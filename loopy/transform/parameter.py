@@ -23,7 +23,7 @@ THE SOFTWARE.
 
 from loopy.symbolic import (RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
-import islpy as isl
+import islpy.oppool as isl
 
 __doc__ = """
 
@@ -76,22 +76,24 @@ def fix_parameters(kernel, within=None, **value_dict):
         return kernel
 
     def process_set_one_param(s, name, value):
-        var_dict = s.get_var_dict()
+        var_dict = s.get_var_dict(kernel.isl_op_pool)
 
         try:
             dt, idx = var_dict[name]
         except KeyError:
             return s
 
-        value_aff = isl.Aff.zero_on_domain(s.space) + value
+        value_aff = isl.Aff.zero_on_domain(s.get_space(kernel.isl_op_pool)) + value
 
         from loopy.isl_helpers import iname_rel_aff
-        name_equal_value_aff = iname_rel_aff(s.space, name, "==", value_aff)
+        name_equal_value_aff = iname_rel_aff(s.get_space(kernel.isl_op_pool),
+                                             name, "==", value_aff,
+                                             kernel.isl_op_pool)
 
         s = (s
-                .add_constraint(
+                .add_constraint(kernel.isl_op_pool,
                     isl.Constraint.equality_from_aff(name_equal_value_aff))
-                .project_out(dt, idx, 1))
+                .project_out(kernel.isl_op_pool, dt, idx, 1))
 
         return s
 

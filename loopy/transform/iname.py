@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 
-import islpy as isl
+import islpy.oppool as isl
 from islpy import dim_type
 
 from loopy.symbolic import (
@@ -158,8 +158,8 @@ class _InameSplitter(RuleAwareIdentityMapper):
 
 
 def _split_iname_in_set(s, iname_to_split, inner_iname, outer_iname, fixed_length,
-        fixed_length_is_inner):
-    var_dict = s.get_var_dict()
+                        fixed_length_is_inner, isl_op_pool):
+    var_dict = s.get_var_dict(isl_op_pool)
 
     if iname_to_split not in var_dict:
         return s
@@ -176,14 +176,14 @@ def _split_iname_in_set(s, iname_to_split, inner_iname, outer_iname, fixed_lengt
             break
 
     from loopy.isl_helpers import duplicate_axes
-    s = duplicate_axes(s, (iname_to_split,), (dup_iname_to_split,))
+    s = duplicate_axes(s, (iname_to_split,), (dup_iname_to_split,), isl_op_pool)
 
-    outer_var_nr = s.dim(orig_dim_type)
-    inner_var_nr = s.dim(orig_dim_type)+1
+    outer_var_nr = s.dim(isl_op_pool, orig_dim_type)
+    inner_var_nr = s.dim(isl_op_pool, orig_dim_type)+1
 
-    s = s.add_dims(orig_dim_type, 2)
-    s = s.set_dim_name(orig_dim_type, outer_var_nr, outer_iname)
-    s = s.set_dim_name(orig_dim_type, inner_var_nr, inner_iname)
+    s = s.add_dims(isl_op_pool, orig_dim_type, 2)
+    s = s.set_dim_name(isl_op_pool, orig_dim_type, outer_var_nr, outer_iname)
+    s = s.set_dim_name(isl_op_pool, orig_dim_type, inner_var_nr, inner_iname)
 
     from loopy.isl_helpers import make_slab
 
@@ -192,18 +192,19 @@ def _split_iname_in_set(s, iname_to_split, inner_iname, outer_iname, fixed_lengt
     else:
         fixed_iname, var_length_iname = outer_iname, inner_iname
 
-    space = s.get_space()
-    s = s & (
-            make_slab(space, fixed_iname, 0, fixed_length)
+    space = s.get_space(isl_op_pool)
+    s = s.intersect(isl_op_pool,
+            make_slab(space, fixed_iname, 0, fixed_length, isl_op_pool)
             # name = fixed_iname + fixed_length*var_length_iname
-            .add_constraint(isl.Constraint.eq_from_names(
+            .add_constraint(isl_op_pool, isl.Constraint.eq_from_names(
                 space, {
                     dup_iname_to_split: 1,
                     fixed_iname: -1,
                     var_length_iname: -fixed_length})))
 
-    dup_iname_dim_type, dup_name_idx = space.get_var_dict()[dup_iname_to_split]
-    s = s.project_out(dup_iname_dim_type, dup_name_idx, 1)
+    dup_iname_dim_type, dup_name_idx = space.get_var_dict(isl_op_pool)[
+        dup_iname_to_split]
+    s = s.project_out(isl_op_pool, dup_iname_dim_type, dup_name_idx, 1)
 
     return s
 
@@ -252,7 +253,8 @@ def _split_iname_backend(kernel, iname_to_split,
 
     new_domains = [
             _split_iname_in_set(dom, iname_to_split, inner_iname, outer_iname,
-                fixed_length, fixed_length_is_inner)
+                                fixed_length, fixed_length_is_inner,
+                                kernel.isl_op_pool)
             for dom in kernel.domains]
 
     from pymbolic import var
@@ -1197,11 +1199,11 @@ def remove_unused_inames(kernel, inames=None):
 
         for dom in domains:
             try:
-                dt, idx = dom.get_var_dict()[iname]
+                dt, idx = dom.get_var_dict(kernel.isl_op_pool)[iname]
             except KeyError:
                 pass
             else:
-                dom = dom.project_out(dt, idx, 1)
+                dom = dom.project_out(kernel.isl_op_pool, dt, idx, 1)
             new_domains.append(dom)
 
         domains = new_domains
