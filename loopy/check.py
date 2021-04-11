@@ -659,9 +659,9 @@ def _check_variable_access_ordered_inner(kernel):
 
     # {{{ remove pairs from dep_reqs_to_vars for which dependencies exist
 
-    topological_order = _get_topological_order(kernel)
+    _ = _get_topological_order(kernel)
 
-    def discard_dep_reqs_in_order(dep_reqs_to_vars, edges, order):
+    def discard_dep_reqs_in_order(dep_reqs_to_vars, edges):
         """
         Subtracts dependency requirements of insn_ids by all direct/indirect
         predecessors of a directed graph of insn_ids as nodes and *edges* as
@@ -692,12 +692,11 @@ def _check_variable_access_ordered_inner(kernel):
 
     # forward dep. graph traversal in reverse topological sort order
     # (proceeds "end of program" -> "beginning of program")
-    discard_dep_reqs_in_order(dep_reqs_to_vars, depends_on,
-            topological_order[::-1])
+    discard_dep_reqs_in_order(dep_reqs_to_vars, depends_on)
 
     # reverse dep. graph traversal in topological sort order
     # (proceeds "beginning of program" -> "end of program")
-    discard_dep_reqs_in_order(dep_reqs_to_vars, rev_depends, topological_order)
+    discard_dep_reqs_in_order(dep_reqs_to_vars, rev_depends)
 
     # }}}
 
