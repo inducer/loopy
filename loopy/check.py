@@ -28,6 +28,7 @@ from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_ke
 from loopy.type_inference import TypeInferenceMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
+from pytools import memoize_method
 
 import logging
 logger = logging.getLogger(__name__)
@@ -374,12 +375,24 @@ def check_for_data_dependent_parallel_bounds(kernel):
 # {{{ check access bounds
 
 class _AccessCheckMapper(WalkMapper):
-    def __init__(self, kernel, insn_id):
+    def __init__(self, kernel):
         self.kernel = kernel
-        self.insn_id = insn_id
 
-    def map_subscript(self, expr, domain):
-        WalkMapper.map_subscript(self, expr, domain)
+    @memoize_method
+    def _make_slab(self, space, iname, start, stop):
+        from loopy.isl_helpers import make_slab
+        return make_slab(space, iname, start, stop)
+
+    @memoize_method
+    def _get_access_range(self, domain, subscript):
+        from loopy.symbolic import (get_access_range, UnableToDetermineAccessRange)
+        try:
+            return get_access_range(domain, subscript)
+        except UnableToDetermineAccessRange:
+            return None
+
+    def map_subscript(self, expr, domain, insn_id):
+        WalkMapper.map_subscript(self, expr, domain, insn_id)
 
         from pymbolic.primitives import Variable
         assert isinstance(expr.aggregate, Variable)
@@ -418,9 +431,8 @@ class _AccessCheckMapper(WalkMapper):
                             expr.aggregate.name, expr,
                             len(subscript), len(shape)))
 
-            try:
-                access_range = get_access_range(domain, subscript)
-            except UnableToDetermineAccessRange:
+            access_range = self._get_access_range(domain, subscript)
+            if access_range is None:
                 # Likely: index was non-affine, nothing we can do.
                 return
 
@@ -429,8 +441,7 @@ class _AccessCheckMapper(WalkMapper):
                 shape_axis = shape[idim]
 
                 if shape_axis is not None:
-                    from loopy.isl_helpers import make_slab
-                    slab = make_slab(
+                    slab = self._make_slab(
                             shape_domain.get_space(), (dim_type.in_, idim),
                             0, shape_axis)
 
@@ -440,9 +451,9 @@ class _AccessCheckMapper(WalkMapper):
                 raise LoopyError("'%s' in instruction '%s' "
                         "accesses out-of-bounds array element (could not"
                         " establish '%s' is a subset of '%s')."
-                        % (expr, self.insn_id, access_range, shape_domain))
+                        % (expr, insn_id, access_range, shape_domain))
 
-    def map_if(self, expr, domain):
+    def map_if(self, expr, domain, insn_id):
         from loopy.symbolic import condition_to_set
         then_set = condition_to_set(domain.space, expr.condition)
         if then_set is None:
@@ -452,8 +463,8 @@ class _AccessCheckMapper(WalkMapper):
         else:
             else_set = then_set.complement()
 
-        self.rec(expr.then, domain & then_set)
-        self.rec(expr.else_, domain & else_set)
+        self.rec(expr.then, domain & then_set, insn_id)
+        self.rec(expr.else_, domain & else_set, insn_id)
 
 
 def check_bounds(kernel):
@@ -462,6 +473,7 @@ def check_bounds(kernel):
     """
     from loopy.kernel.instruction import get_insn_domain
     temp_var_names = set(kernel.temporary_variables)
+    acm = _AccessCheckMapper(kernel)
     for insn in kernel.instructions:
         domain = get_insn_domain(insn, kernel)
 
@@ -469,12 +481,11 @@ def check_bounds(kernel):
         if set(domain.get_var_names(dim_type.param)) & temp_var_names:
             continue
 
-        acm = _AccessCheckMapper(kernel, insn.id)
         domain, assumptions = isl.align_two(domain, kernel.assumptions)
         domain_with_assumptions = domain & assumptions
 
         def run_acm(expr):
-            acm(expr, domain_with_assumptions)
+            acm(expr, domain_with_assumptions, insn.id)
             return expr
 
         insn.with_transformed_expressions(run_acm)
