@@ -1393,6 +1393,57 @@ def test_add_stmt_inst_dependency():
 
 # {{{ Check dependency handling during transformations
 
+def test_assignment_to_subst_with_dependencies():
+    knl = lp.make_kernel(
+        "{[i]: 0 <= i < n}",
+        """
+        <>temp0 = 0.1*i {id=stmt0}
+        <>tsq = temp0**2  {id=stmt1,dep=stmt0}
+        a[i] = 23*tsq + 25*tsq  {id=stmt2,dep=stmt1}
+        <>temp1 = 3*tsq  {id=stmt3,dep=stmt1}
+        <>temp2 = 5.5*i {id=stmt4,dep=stmt1}
+        """)
+
+    # TODO test where 'within' for subst doesn't match all occurances?
+    # TODO what if stmt2 depends on <>tsq = b[i-1]**2 and then we do
+    #     assignment to subst? remove i'=i from dep?
+    # TODO what if stmt3 doesn't have iname i in it?
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+
+    print("instructions before subst")
+    for insn in knl.instructions:
+        print(insn)
+
+    dep_eq = _isl_map_with_marked_dims(
+        "[n] -> {{ [{0}'=0, i']->[{0}=1, i] : "
+        "0 <= i,i' < n and i' = i"
+        "}}".format(STATEMENT_VAR_NAME))
+    dep_le = _isl_map_with_marked_dims(
+        "[n] -> {{ [{0}'=0, i']->[{0}=1, i] : "
+        "0 <= i,i' < n and i' <= i"
+        "}}".format(STATEMENT_VAR_NAME))
+
+    from copy import deepcopy
+    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", deepcopy(dep_le))
+    knl = lp.add_stmt_inst_dependency(knl, "stmt2", "stmt1", deepcopy(dep_eq))
+    knl = lp.add_stmt_inst_dependency(knl, "stmt3", "stmt1", deepcopy(dep_eq))
+    knl = lp.add_stmt_inst_dependency(knl, "stmt4", "stmt1", deepcopy(dep_eq))
+
+    knl = lp.assignment_to_subst(knl, "tsq")
+
+    for stmt_id in ["stmt2", "stmt3"]:
+        deps_found = knl.id_to_insn[stmt_id].dependencies
+
+        # Dep on stmt1 should have been removed
+        assert list(deps_found.keys()) == ["stmt0"]
+        assert len(deps_found["stmt0"]) == 1
+
+        # Should now depend on stmt0
+        _align_and_compare_maps([(dep_le, deps_found["stmt0"][0])])
+
+    assert not knl.id_to_insn["stmt4"].dependencies
+
+
 def test_split_iname_with_dependencies():
     knl = lp.make_kernel(
         "{[i]: 0<=i<p}",
