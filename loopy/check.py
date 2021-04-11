@@ -29,6 +29,8 @@ from loopy.type_inference import TypeInferenceMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
 
+from collections import defaultdict
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -668,27 +670,26 @@ def _check_variable_access_ordered_inner(kernel):
         :arg order: An instance of :class:`list` of instruction ids in which the
             *edges* graph is to be traversed.
         """
-        # predecessors: mapping from insn_id to its direct/indirect
-        # predecessors
-        predecessors = {}
 
-        for insn_id in order:
-            # insn_predecessors:insn_id's direct+indirect predecessors
+        dep_reqs_to_vars_dict = defaultdict(set)
+        for (insn_id, pred) in dep_reqs_to_vars:
+            dep_reqs_to_vars_dict[pred].add(insn_id)
 
-            # This set of predecessors is complete because we're
-            # traversing in topological order: No predecessor
-            # can occur after the instruction itself.
-            insn_predecessors = predecessors.pop(insn_id, set())
+        for pred, check_successors in dep_reqs_to_vars_dict.items():
+            all_successors = set()
+            to_check = edges[pred].copy()
+            while to_check:
+                successor = to_check.pop()
+                all_successors.add(successor)
+                if successor in check_successors:
+                    dep_reqs_to_vars.pop((successor, pred))
+                    check_successors.remove(successor)
+                    if not check_successors:
+                        break
+                for edge in edges[successor]:
+                    if edge not in all_successors:
+                        to_check.add(edge)
 
-            for pred in insn_predecessors:
-                dep_reqs_to_vars.pop(
-                    (insn_id, pred),
-                    # don't fail if pair doesn't exist
-                    None)
-
-            for successor in edges[insn_id]:
-                predecessors.setdefault(successor, set()).update(
-                        insn_predecessors | {insn_id})
 
     # forward dep. graph traversal in reverse topological sort order
     # (proceeds "end of program" -> "beginning of program")
