@@ -254,10 +254,10 @@ def _split_iname_backend(kernel, iname_to_split,
             _split_iname_in_set(dom, iname_to_split, inner_iname, outer_iname,
                 fixed_length, fixed_length_is_inner)
             for dom in kernel.domains]
-    from loopy.transform.instruction import map_stmt_inst_dependencies
 
     # {{{ Split iname in dependencies
 
+    from loopy.transform.instruction import map_stmt_inst_dependency_maps
     from loopy.schedule.checker.schedule import BEFORE_MARK
     from loopy.schedule.checker.utils import convert_map_to_set
 
@@ -299,7 +299,7 @@ def _split_iname_backend(kernel, iname_to_split,
 
         return map_from_set
 
-    kernel = map_stmt_inst_dependencies(kernel, "id:*", _split_iname_in_dep)
+    kernel = map_stmt_inst_dependency_maps(kernel, "id:*", _split_iname_in_dep)
 
     # }}}
 
@@ -1265,7 +1265,7 @@ def remove_unused_inames(kernel, inames=None):
 
     # {{{ Remove inames from deps
 
-    from loopy.transform.instruction import map_stmt_inst_dependencies
+    from loopy.transform.instruction import map_stmt_inst_dependency_maps
     from loopy.schedule.checker.schedule import BEFORE_MARK
     from loopy.schedule.checker.utils import append_mark_to_strings
     unused_inames_marked = append_mark_to_strings(unused_inames, BEFORE_MARK)
@@ -1274,7 +1274,7 @@ def remove_unused_inames(kernel, inames=None):
         return remove_vars_from_set(
             remove_vars_from_set(dep, unused_inames), unused_inames_marked)
 
-    kernel = map_stmt_inst_dependencies(kernel, "id:*", _remove_iname_from_dep)
+    kernel = map_stmt_inst_dependency_maps(kernel, "id:*", _remove_iname_from_dep)
 
     # }}}
 
