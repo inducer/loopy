@@ -150,6 +150,22 @@ def add_stmt_inst_dependency(
 
     return result
 
+
+# {{{ map_stmt_inst_dependencies
+
+def map_stmt_inst_dependencies(kernel, stmt_match, f):
+
+    def _update_dep(stmt):
+        new_deps = {}
+        for dep_id, deps in stmt.dependencies.items():
+            new_deps[dep_id] = [f(dep) for dep in deps]
+
+        return stmt.copy(dependencies=new_deps)
+
+    return map_instructions(kernel, stmt_match, _update_dep)
+
+# }}}
+
 # }}}
 
 

@@ -1843,6 +1843,141 @@ def test_legacy_dep_creation_with_separate_loops():
 # TODO test with multiple deps between same statement pair
 
 
+# {{{ Check dependency handling during transformations
+
+def test_split_iname_with_dependencies():
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<p}",
+        """
+        a[i] = 0.1  {id=stmt0}
+        b[i] = a[i]  {id=stmt1,dep=stmt0}
+        """,
+        name="example",
+        assumptions="p >= 1",
+        lang_version=(2018, 2)
+        )
+
+    from copy import deepcopy
+    ref_knl = deepcopy(knl)  # deepcopy necessary?
+
+    # {{{ dep that should be satisfied
+
+    dep_inout_space_str = "[{0}'=0, i'] -> [{0}=1, i]".format(STATEMENT_VAR_NAME)
+    dep = _isl_map_with_marked_dims(
+        "[p] -> { %s : 0 <= i < p and i' = i }"
+        % (dep_inout_space_str))
+
+    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep)
+    knl = lp.split_iname(knl, "i", 32)
+
+    dep_exp = _isl_map_with_marked_dims(
+        "[p] -> {{ [{0}'=0, i_outer', i_inner'] -> [{0}=1, i_outer, i_inner] : "
+        "0 <= i_inner, i_inner' < 32"  # new bounds
+        " and 0 <= 32*i_outer + i_inner < p"  # transformed bounds (0 <= i < p)
+        " and 0 <= 32*i_outer' + i_inner' < p"  # transformed bounds (0 <= i' < p)
+        " and i_inner + 32*i_outer = 32*i_outer' + i_inner'"  # i = i'
+        "}}".format(STATEMENT_VAR_NAME))
+    dep_found = knl.id_to_insn["stmt1"].dependencies["stmt0"][0]
+
+    # make sure dep is correct
+    _align_and_compare_maps([(dep_exp, dep_found)])
+
+    # Get a linearization
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
+
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(
+        proc_knl, lin_items)
+
+    assert not unsatisfied_deps
+
+    # }}}
+
+    # {{{ dep that should not be satisfied
+
+    knl = ref_knl
+
+    dep_unsatisfied = _isl_map_with_marked_dims(
+        "[p] -> { %s : 0 <= i < p and i' = i + 1 }"
+        % (dep_inout_space_str))
+
+    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep_unsatisfied)
+    knl = lp.split_iname(knl, "i", 32)
+
+    # Get a linearization
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
+
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(
+        proc_knl, lin_items)
+
+    assert len(unsatisfied_deps) == 1
+
+    # }}}
+
+    # {{{ more deps that should be satisfied
+
+    knl = lp.make_kernel(
+        ["{[i,j]: 0<=i,j<p}", "{[k,m]: 0<=k,m<p}"],
+        """
+        a[i,k] = 0.1  {id=stmt0}
+        b[i,k] = a[i,k]  {id=stmt1,dep=stmt0}
+        c[i,k,j,m] = 0.1  {id=stmt2}
+        d[i,k,j,m] = c[i,k,j,m]  {id=stmt3,dep=stmt2}
+        """,
+        name="example",
+        assumptions="p >= 1",
+        lang_version=(2018, 2)
+        )
+
+    dep_inout_space_str = "[{0}'=0, i', j', k', m'] -> [{0}=1, i, j, k, m]".format(
+        STATEMENT_VAR_NAME)
+    iname_bounds_str = "0 <= i,j,k,m,i',j',k',m' < p"
+    dep1 = _isl_map_with_marked_dims(
+        "[p] -> { %s : %s and i' = i and k' = k}"
+        % (dep_inout_space_str, iname_bounds_str))
+    dep2 = _isl_map_with_marked_dims(
+        "[p] -> { %s : %s and i' < i and k' < k}"
+        % (dep_inout_space_str, iname_bounds_str))
+    dep3 = _isl_map_with_marked_dims(
+        "[p] -> { %s : %s and i' = i and k' = k and j' = j and m' = m}"
+        % (dep_inout_space_str, iname_bounds_str))
+
+    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep1)
+    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep2)
+    knl = lp.add_stmt_inst_dependency(knl, "stmt3", "stmt2", dep3)
+
+    # Gratuitous splitting
+    knl = lp.split_iname(knl, "i", 64)
+    knl = lp.split_iname(knl, "j", 64)
+    knl = lp.split_iname(knl, "k", 64)
+    knl = lp.split_iname(knl, "m", 64)
+    knl = lp.split_iname(knl, "i_inner", 8)
+    knl = lp.split_iname(knl, "j_inner", 8)
+    knl = lp.split_iname(knl, "k_inner", 8)
+    knl = lp.split_iname(knl, "m_inner", 8)
+    knl = lp.split_iname(knl, "i_outer", 4)
+    knl = lp.split_iname(knl, "j_outer", 4)
+    knl = lp.split_iname(knl, "k_outer", 4)
+    knl = lp.split_iname(knl, "m_outer", 4)
+
+    # Get a linearization
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
+
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(
+        proc_knl, lin_items)
+
+    assert not unsatisfied_deps
+
+    # }}}
+
+# }}}
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

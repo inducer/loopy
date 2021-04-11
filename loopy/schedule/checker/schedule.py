@@ -72,7 +72,7 @@ GTAG_VAR_NAMES = []
 for par_level in [0, 1, 2]:
     LTAG_VAR_NAMES.append("%slid%d" % (LIN_CHECK_IDENTIFIER_PREFIX, par_level))
     GTAG_VAR_NAMES.append("%sgid%d" % (LIN_CHECK_IDENTIFIER_PREFIX, par_level))
-BEFORE_MARK = "_"
+BEFORE_MARK = "_"  # TODO switch back to apostrophe after islpy is updated
 
 # }}}
 
