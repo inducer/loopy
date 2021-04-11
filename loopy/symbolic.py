@@ -1621,7 +1621,7 @@ def qpolynomial_from_expr(space, expr):
 
 
 # {{{ simplify using aff
-
+@memoize_method
 def simplify_using_aff(kernel, expr):
     inames = get_dependencies(expr) & kernel.all_inames()
 
