@@ -1425,7 +1425,7 @@ def test_split_iname_with_dependencies():
         " and 0 <= 32*i_outer' + i_inner' < p"  # transformed bounds (0 <= i' < p)
         " and i_inner + 32*i_outer = 32*i_outer' + i_inner'"  # i = i'
         "}}".format(STATEMENT_VAR_NAME))
-    dep_found = knl.id_to_insn["stmt1"].dependencies['stmt0'][0]
+    dep_found = knl.id_to_insn["stmt1"].dependencies["stmt0"][0]
 
     # make sure dep is correct
     _align_and_compare_maps([(dep_exp, dep_found)])
