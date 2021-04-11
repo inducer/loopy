@@ -21,6 +21,7 @@ THE SOFTWARE.
 """
 
 import islpy as isl
+dt = isl.dim_type
 
 
 def prettier_map_string(map_obj):
@@ -62,10 +63,10 @@ def reorder_dims_by_name(
 
     """
 
-    assert dim_type != isl.dim_type.param
+    assert dim_type != dt.param
     assert set(isl_set.get_var_names(dim_type)) == set(desired_dims_ordered)
 
-    other_dim_type = isl.dim_type.param
+    other_dim_type = dt.param
     other_dim_len = len(isl_set.get_var_names(other_dim_type))
 
     new_set = isl_set.copy()
@@ -89,7 +90,7 @@ def ensure_dim_names_match_and_align(obj_map, tgt_map):
     if not all(
             set(obj_map.get_var_names(dt)) == set(tgt_map.get_var_names(dt))
             for dt in
-            [isl.dim_type.in_, isl.dim_type.out, isl.dim_type.param]):
+            [dt.in_, dt.out, dt.param]):
         raise ValueError(
             "Cannot align spaces; names don't match:\n%s\n%s"
             % (prettier_map_string(obj_map), prettier_map_string(tgt_map))
@@ -137,7 +138,7 @@ def append_mark_to_strings(strings, mark):
 
 def sorted_union_of_names_in_isl_sets(
         isl_sets,
-        set_dim=isl.dim_type.set):
+        set_dim=dt.set):
     r"""Return a sorted list of the union of all variable names found in
     the provided :class:`islpy.Set`\ s.
     """
@@ -176,16 +177,14 @@ def create_symbolic_map_from_tuples(
     """
     # TODO allow None for domains
 
-    dim_type = isl.dim_type
-
-    space_out_names = space.get_var_names(dim_type.out)
-    space_in_names = space.get_var_names(isl.dim_type.in_)
+    space_out_names = space.get_var_names(dt.out)
+    space_in_names = space.get_var_names(dt.in_)
 
     # Get islvars from space
     islvars = isl.affs_from_space(
         space.move_dims(
-            isl.dim_type.out, 0,
-            isl.dim_type.in_, 0,
+            dt.out, 0,
+            dt.in_, 0,
             len(space_in_names),
             ).range()
         )
@@ -205,7 +204,7 @@ def create_symbolic_map_from_tuples(
     union_of_maps = isl.Map.from_domain(
         islvars[0].eq_set(islvars[0]+1)  # 0 == 1 (false)
         ).move_dims(
-            dim_type.out, 0, dim_type.in_, len(space_in_names), len(space_out_names))
+            dt.out, 0, dt.in_, len(space_in_names), len(space_out_names))
 
     # Loop through tuple pairs
     for (tup_in, tup_out), dom in tuple_pairs_with_domains:
@@ -221,13 +220,13 @@ def create_symbolic_map_from_tuples(
         # Convert set to map by moving dimensions around
         map_from_set = isl.Map.from_domain(condition)
         map_from_set = map_from_set.move_dims(
-            dim_type.out, 0, dim_type.in_,
+            dt.out, 0, dt.in_,
             len(space_in_names), len(space_out_names))
 
         # Align the *out* dims of dom with the space *in_* dims
         # in preparation for intersection
         dom_with_set_dim_aligned = reorder_dims_by_name(
-            dom, isl.dim_type.set,
+            dom, dt.set,
             space_in_names,
             )
 
