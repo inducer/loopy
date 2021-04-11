@@ -259,14 +259,19 @@ def _split_iname_backend(kernel, iname_to_split,
     # {{{ split iname in deps
 
     from loopy.schedule.checker.schedule import BEFORE_MARK
+    from loopy.schedule.checker.utils import convert_map_to_set
+
     def _split_iname_in_dep(dep):
 
         # Temporarily convert map to set for processing
         # (TODO make generic func for this)
         dt = isl.dim_type
-        n_in_dims = len(dep.get_var_names(dt.in_))
-        n_out_dims = len(dep.get_var_names(dt.out))
-        set_from_map = dep.move_dims(dt.in_, n_in_dims, dt.out, 0, n_out_dims).domain()
+
+        # If iname is not present in dep, return unmodified dep
+        if iname_to_split not in dep.get_var_names(dt.out):
+            return dep
+
+        set_from_map, n_in_dims, n_out_dims = convert_map_to_set(dep)
 
         # Split iname
         s = _split_iname_in_set(
@@ -285,7 +290,7 @@ def _split_iname_backend(kernel, iname_to_split,
             fixed_length_is_inner)
 
         # now set looks like
-        # [... in_dims ..., ... out dims ..., i_outer, i_inner, i_outer', i_inner']
+        # [old_inames' ..., old_inames ..., i_outer, i_inner, i_outer', i_inner']
 
         # Convert set back to map
         map_from_set = isl.Map.from_domain(s)
@@ -1212,13 +1217,17 @@ def get_used_inames(kernel):
     return used_inames
 
 
-def remove_var_from_set(s, var):
-    try:
-        dt, idx = s.get_var_dict()[var]
-    except KeyError:
-        return s
-    else:
-        return s.project_out(dt, idx, 1)
+def remove_vars_from_set(s, remove_vars):
+    from copy import deepcopy
+    new_s = deepcopy(s)
+    for var in remove_vars:
+        try:
+            dt, idx = s.get_var_dict()[var]
+        except KeyError:
+            continue
+        else:
+            new_s = new_s.project_out(dt, idx, 1)
+    return new_s
 
 
 def remove_unused_inames(kernel, inames=None):
@@ -1247,38 +1256,25 @@ def remove_unused_inames(kernel, inames=None):
 
     # {{{ remove them
 
-    domains = kernel.domains
-    for iname in unused_inames:
-        new_domains = []
+    new_domains = []
+    for dom in kernel.domains:
+        new_domains.append(remove_vars_from_set(dom, unused_inames))
 
-        for dom in domains:
-            """
-            try:
-                dt, idx = dom.get_var_dict()[iname]
-            except KeyError:
-                pass
-            else:
-                dom = dom.project_out(dt, idx, 1)
-            new_domains.append(dom)
-            """
-            new_domains.append(remove_var_from_set(dom, iname))
-
-        domains = new_domains
-
-    kernel = kernel.copy(domains=domains)
+    kernel = kernel.copy(domains=new_domains)
 
     # }}}
 
-    # {{{ remove iname from deps
+    # {{{ remove inames from deps
 
     from loopy.transform.instruction import map_stmt_inst_dependencies
     from loopy.schedule.checker.schedule import BEFORE_MARK
-    def _remove_iname_from_dep(dep):
-        pu.db
-        return remove_var_from_set(
-            remove_var_from_set(dep, iname), iname+BEFORE_MARK)
+    from loopy.schedule.checker.utils import append_mark_to_strings
+    unused_inames_marked = append_mark_to_strings(unused_inames, BEFORE_MARK)
 
-    pu.db
+    def _remove_iname_from_dep(dep):
+        return remove_vars_from_set(
+            remove_vars_from_set(dep, unused_inames), unused_inames_marked)
+
     kernel = map_stmt_inst_dependencies(kernel, "id:*", _remove_iname_from_dep)
 
     # }}}
