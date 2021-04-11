@@ -117,6 +117,33 @@ def add_dependency(kernel, insn_match, depends_on):
 # }}}
 
 
+# {{{ map_stmt_inst_dependencies
+
+def map_stmt_inst_dependencies(kernel, stmt_match, f):
+    # Set stmt.dependences = f(stmt.dependencies) for stmts matching stmt_match
+
+    def _update_deps(stmt):
+        new_deps = f(stmt.dependencies)
+        return stmt.copy(dependencies=new_deps)
+
+    return map_instructions(kernel, stmt_match, _update_deps)
+
+
+def map_stmt_inst_dependency_maps(kernel, stmt_match, f):
+    # Set map = f(map) for all dep maps in stmt.dependencies.values()
+    # for statements matching stmt_match
+
+    def _update_dep_map(stmt_deps):
+        new_deps = {}
+        for dep_id, deps in stmt_deps.items():
+            new_deps[dep_id] = [f(dep) for dep in deps]
+        return new_deps
+
+    return map_stmt_inst_dependencies(kernel, stmt_match, _update_dep_map)
+
+# }}}
+
+
 # {{{ add_stmt_inst_dependency
 
 def add_stmt_inst_dependency(
@@ -134,37 +161,14 @@ def add_stmt_inst_dependency(
                 "cannot add dependency %s->%s"
                 % (depends_on_id, depends_on_id, stmt_id))
 
-    matched = [False]
+    def _add_dep(stmt_deps):
+        # stmt_deps: dict mapping depends-on ids to dep maps
+        stmt_deps.setdefault(depends_on_id, []).append(new_dependency)
+        return stmt_deps
 
-    def _add_dep(stmt):
-        new_deps_dict = stmt.dependencies  # dict mapping depends-on ids to dep maps
-        matched[0] = True
-        new_deps_dict.setdefault(depends_on_id, []).append(new_dependency)
-        return stmt.copy(dependencies=new_deps_dict)
-
-    result = map_instructions(kernel, "id:%s" % (stmt_id), _add_dep)
-
-    if not matched[0]:  # Is this possible, given check above?
-        raise LoopyError("no instructions found matching '%s' "
-                "(to which dependencies would be added)" % stmt_id)
+    result = map_stmt_inst_dependencies(kernel, "id:%s" % (stmt_id), _add_dep)
 
     return result
-
-
-# {{{ map_stmt_inst_dependencies
-
-def map_stmt_inst_dependencies(kernel, stmt_match, f):
-
-    def _update_dep(stmt):
-        new_deps = {}
-        for dep_id, deps in stmt.dependencies.items():
-            new_deps[dep_id] = [f(dep) for dep in deps]
-
-        return stmt.copy(dependencies=new_deps)
-
-    return map_instructions(kernel, stmt_match, _update_dep)
-
-# }}}
 
 # }}}
 
