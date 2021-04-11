@@ -256,44 +256,43 @@ def _split_iname_backend(kernel, iname_to_split,
             for dom in kernel.domains]
     from loopy.transform.instruction import map_stmt_inst_dependencies
 
-    # {{{ split iname in deps
+    # {{{ Split iname in dependencies
 
     from loopy.schedule.checker.schedule import BEFORE_MARK
     from loopy.schedule.checker.utils import convert_map_to_set
 
     def _split_iname_in_dep(dep):
-
-        # Temporarily convert map to set for processing
-        # (TODO make generic func for this)
         dt = isl.dim_type
 
         # If iname is not present in dep, return unmodified dep
         if iname_to_split not in dep.get_var_names(dt.out):
             return dep
 
+        # Temporarily convert map to set for processing
         set_from_map, n_in_dims, n_out_dims = convert_map_to_set(dep)
 
         # Split iname
-        s = _split_iname_in_set(
+        set_from_map = _split_iname_in_set(
             set_from_map,
             iname_to_split,
             inner_iname,
             outer_iname,
             fixed_length,
             fixed_length_is_inner)
-        s = _split_iname_in_set(
-            s,
+        # Split iname'
+        set_from_map = _split_iname_in_set(
+            set_from_map,
             iname_to_split+BEFORE_MARK,
             inner_iname+BEFORE_MARK,
             outer_iname+BEFORE_MARK,
             fixed_length,
             fixed_length_is_inner)
 
-        # now set looks like
+        # Now set dims look like
         # [old_inames' ..., old_inames ..., i_outer, i_inner, i_outer', i_inner']
 
         # Convert set back to map
-        map_from_set = isl.Map.from_domain(s)
+        map_from_set = isl.Map.from_domain(set_from_map)
         # move original out dims + 2 new dims:
         map_from_set = map_from_set.move_dims(
             dt.out, 0, dt.in_, n_in_dims, n_out_dims+2)
@@ -1264,7 +1263,7 @@ def remove_unused_inames(kernel, inames=None):
 
     # }}}
 
-    # {{{ remove inames from deps
+    # {{{ Remove inames from deps
 
     from loopy.transform.instruction import map_stmt_inst_dependencies
     from loopy.schedule.checker.schedule import BEFORE_MARK
