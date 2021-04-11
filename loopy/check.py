@@ -690,7 +690,6 @@ def _check_variable_access_ordered_inner(kernel):
                     if edge not in all_successors:
                         to_check.add(edge)
 
-
     # forward dep. graph traversal in reverse topological sort order
     # (proceeds "end of program" -> "beginning of program")
     discard_dep_reqs_in_order(dep_reqs_to_vars, depends_on,
