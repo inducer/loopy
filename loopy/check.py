@@ -671,11 +671,11 @@ def _check_variable_access_ordered_inner(kernel):
             *edges* graph is to be traversed.
         """
 
-        dep_reqs_to_vars_dict = defaultdict(set)
+        insn_to_req_deps = defaultdict(set)
         for (insn_id, pred) in dep_reqs_to_vars:
-            dep_reqs_to_vars_dict[pred].add(insn_id)
+            insn_to_req_deps[pred].add(insn_id)
 
-        for pred, check_successors in dep_reqs_to_vars_dict.items():
+        for pred, check_successors in insn_to_req_deps.items():
             all_successors = set()
             to_check = edges[pred].copy()
             while to_check:
