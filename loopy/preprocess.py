@@ -33,6 +33,7 @@ from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment, filter_iname_tags_by_type
+from loopy.kernel.tools import kernel_has_global_barriers
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
 from loopy.symbolic import RuleAwareIdentityMapper, ReductionCallbackMapper
@@ -1063,10 +1064,17 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
         init_insn_depends_on = frozenset()
 
-        global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
+        # check first that the original kernel had global barriers
+        # if not, we don't need to check. Since the function
+        # kernel_has_global_barriers is cached, we don't do
+        # extra work compared to not checking.
+        # FIXME: Explain why we care about global barriers her
+        if kernel_has_global_barriers(kernel):
+            global_barrier = lp.find_most_recent_global_barrier(temp_kernel,
+                    insn.id)
 
-        if global_barrier is not None:
-            init_insn_depends_on |= frozenset([global_barrier])
+            if global_barrier is not None:
+                init_insn_depends_on |= frozenset([global_barrier])
 
         from pymbolic import var
         acc_vars = tuple(var(n) for n in acc_var_names)
@@ -1469,10 +1477,12 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
         init_insn_depends_on = frozenset()
 
-        global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
+        # FIXME: Explain why we care about global barriers here
+        if kernel_has_global_barriers(kernel):
+            global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
 
-        if global_barrier is not None:
-            init_insn_depends_on |= frozenset([global_barrier])
+            if global_barrier is not None:
+                init_insn_depends_on |= frozenset([global_barrier])
 
         expression, callables_table = expr.operation.neutral_element(
                 *arg_dtypes, callables_table=callables_table, target=kernel.target)
@@ -1615,10 +1625,12 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
         init_insn_depends_on = insn.depends_on
 
-        global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
+        # FIXME: Explain why we care about global barriers here
+        if kernel_has_global_barriers(kernel):
+            global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
 
-        if global_barrier is not None:
-            init_insn_depends_on |= frozenset([global_barrier])
+            if global_barrier is not None:
+                init_insn_depends_on |= frozenset([global_barrier])
 
         init_id = insn_id_gen(f"{insn.id}_{scan_iname}_init")
         init_insn = make_assignment(
@@ -1994,19 +2006,20 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                         for i, (assignee, new_expr) in enumerate(zip(
                             insn.assignees, new_expressions))]
 
+                insn_id_replacements[insn.id] = [
+                    rinsn.id for rinsn in replacement_insns]
             else:
                 new_expr, = new_expressions
+                # since we are replacing the instruction with
+                # only one instruction, there's no need to replace id
                 replacement_insns = [
                         make_assignment(
-                            id=insn_id_gen(insn.id),
+                            id=insn.id,
                             depends_on=result_assignment_dep_on,
                             assignees=insn.assignees,
                             expression=new_expr,
                             **kwargs)
                         ]
-
-            insn_id_replacements[insn.id] = [
-                    rinsn.id for rinsn in replacement_insns]
 
             insn_queue = generated_insns + replacement_insns + insn_queue
 
@@ -2075,6 +2088,9 @@ def realize_ilp(kernel):
         name for name, iname in kernel.inames.items()
         if filter_iname_tags_by_type(iname.tags, (IlpBaseTag, VectorizeTag))
     )
+
+    if not privatizing_inames:
+        return kernel
 
     from loopy.transform.privatize import privatize_temporaries_with_inames
     return privatize_temporaries_with_inames(kernel, privatizing_inames)

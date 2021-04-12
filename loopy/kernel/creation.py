@@ -1500,6 +1500,8 @@ def create_temporaries(knl, default_order):
 # {{{ determine shapes of temporaries
 
 def find_shapes_of_vars(knl, var_names, feed_expression):
+    if not var_names:
+        return {}, {}, {}
     from loopy.symbolic import BatchedAccessMapMapper, SubstitutionRuleExpander
     submap = SubstitutionRuleExpander(knl.substitutions)
 
@@ -1554,10 +1556,22 @@ def determine_shapes_of_temporaries(knl):
     import loopy as lp
 
     vars_needing_shape_inference = set()
+    scalar_vars = set()
 
     for tv in knl.temporary_variables.values():
         if tv.shape is lp.auto or tv.base_indices is lp.auto:
             vars_needing_shape_inference.add(tv.name)
+
+    from loopy.kernel.instruction import Assignment
+    from pymbolic.primitives import Variable
+    for insn in knl.instructions:
+        # If there's an assignment to a var without a subscript
+        # then assume that the variable is a scalar.
+        # This is beneficial if afterwards there's no vars
+        # needing shape inference
+        if isinstance(insn, Assignment) and isinstance(insn.assignee, Variable):
+            vars_needing_shape_inference.discard(insn.assignee.name)
+            scalar_vars.add(insn.assignee.name)
 
     def feed_all_expressions(receiver):
         for insn in knl.instructions:
@@ -1605,10 +1619,16 @@ def determine_shapes_of_temporaries(knl):
     new_temp_vars = {}
 
     for tv in knl.temporary_variables.values():
-        if tv.base_indices is lp.auto:
-            tv = tv.copy(base_indices=var_to_base_indices[tv.name])
-        if tv.shape is lp.auto:
-            tv = tv.copy(shape=var_to_shape[tv.name])
+        if tv.name in scalar_vars:
+            if tv.base_indices is lp.auto:
+                tv = tv.copy(base_indices=())
+            if tv.shape is lp.auto:
+                tv = tv.copy(shape=())
+        else:
+            if tv.base_indices is lp.auto:
+                tv = tv.copy(base_indices=var_to_base_indices[tv.name])
+            if tv.shape is lp.auto:
+                tv = tv.copy(shape=var_to_shape[tv.name])
         new_temp_vars[tv.name] = tv
 
     return knl.copy(temporary_variables=new_temp_vars)

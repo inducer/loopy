@@ -68,7 +68,7 @@ def assume(kernel, assumptions):
 
 # {{{ fix_parameter
 
-def _fix_parameter(kernel, name, value, remove_argument):
+def _fix_parameter(kernel, name, value, remove_argument, within=None):
     def process_set(s):
         var_dict = s.get_var_dict()
 
@@ -105,7 +105,6 @@ def _fix_parameter(kernel, name, value, remove_argument):
     new_args = []
     for arg in kernel.args:
         if arg.name == name and remove_argument:
-            # remove from argument list
             continue
 
         if not isinstance(arg, ArrayBase):
@@ -118,7 +117,7 @@ def _fix_parameter(kernel, name, value, remove_argument):
         new_temp_vars[tv.name] = tv.map_exprs(map_expr)
 
     from loopy.match import parse_stack_match
-    within = parse_stack_match(None)
+    within = parse_stack_match(within)
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
@@ -126,7 +125,7 @@ def _fix_parameter(kernel, name, value, remove_argument):
             rule_mapping_context, subst_func, within=within)
     return (
             rule_mapping_context.finish_kernel(
-                esubst_map.map_kernel(kernel))
+                esubst_map.map_kernel(kernel, within=within))
             .copy(
                 domains=new_domains,
                 args=new_args,
@@ -151,9 +150,10 @@ def fix_parameters(kernel, **value_dict):
     # the potential namespace conflict. If yes, document. If no, fix.
 
     remove_arg = value_dict.pop("_remove", True)
+    within = value_dict.pop("within", None)
 
     for name, value in value_dict.items():
-        kernel = _fix_parameter(kernel, name, value, remove_arg)
+        kernel = _fix_parameter(kernel, name, value, remove_arg, within)
 
     return kernel
 
