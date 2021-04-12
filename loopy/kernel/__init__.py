@@ -1618,6 +1618,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                         "LoopKernel.copy")
 
             kwargs["inames"] = None
+
+        # Avoid carrying over an invalid cache when other parts of the kernel
+        # are modified.
+        kwargs["_cached_written_variables"] = None
+
         return super().copy(**kwargs)
 
 # }}}
