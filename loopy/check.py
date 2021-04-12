@@ -412,8 +412,7 @@ class _AccessCheckMapper(WalkMapper):
             if not isinstance(subscript, tuple):
                 subscript = (subscript,)
 
-            from loopy.symbolic import (get_dependencies, get_access_range,
-                    UnableToDetermineAccessRange)
+            from loopy.symbolic import get_dependencies
 
             available_vars = set(domain.get_var_dict())
             shape_deps = set()
