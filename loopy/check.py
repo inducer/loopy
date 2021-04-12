@@ -674,10 +674,10 @@ def _check_variable_access_ordered_inner(kernel):
         """
 
         insn_to_req_deps = defaultdict(set)
-        insn_to_order = dict((insn, i) for i, insn in enumerate(order))
+        insn_to_order = {insn: i for i, insn in enumerate(order)}
         # For each pairof (insn, pred), let us create a dictionary mapping
         # *pred* to all its potential successors *insn*
-        for (insn, pred) in dep_reqs_to_vars:
+        for insn, pred in dep_reqs_to_vars:
             # if *pred* happens after *insn*, then *insn* definitely
             # doesn't have a path from *pred*
             if insn_to_order[pred] > insn_to_order[insn]:
