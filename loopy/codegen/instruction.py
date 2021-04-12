@@ -29,11 +29,11 @@ dim_type = isl.dim_type
 from loopy.codegen import Unvectorizable
 from loopy.codegen.result import CodeGenerationResult
 from pymbolic.mapper.stringifier import PREC_NONE
-from pytools import memoize_method
+from pytools import memoize_on_first_arg
 
 
-@memoize_method
-def _get_new_implemented_domain(chk_domain, implemented_domain):
+@memoize_on_first_arg
+def _get_new_implemented_domain(kernel, chk_domain, implemented_domain):
 
     chk_domain, implemented_domain = isl.align_two(
             chk_domain, implemented_domain)
@@ -50,8 +50,8 @@ def to_codegen_result(
     chk_domain = codegen_state.kernel.cache_manager.eliminate_except(chk_domain,
             check_inames, (dim_type.set,))
 
-    chk_domain, new_implemented_domain = \
-        _get_new_implemented_domain(chk_domain, codegen_state.implemented_domain)
+    chk_domain, new_implemented_domain = _get_new_implemented_domain(
+            codegen_state.kernel, chk_domain, codegen_state.implemented_domain)
 
     if chk_domain.is_empty():
         return None
