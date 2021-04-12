@@ -891,7 +891,7 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
             within=within)
 
     kernel = rule_mapping_context.finish_kernel(
-            indup.map_kernel(kernel))
+            indup.map_kernel(kernel, within=within))
 
     # }}}
 
