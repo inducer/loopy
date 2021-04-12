@@ -27,7 +27,7 @@ THE SOFTWARE.
 from functools import reduce
 from sys import intern
 
-from pytools import memoize, memoize_method, ImmutableRecord
+from pytools import memoize, memoize_method, memoize_on_first_arg, ImmutableRecord
 import pytools.lex
 from pytools.tag import Taggable
 
@@ -1621,7 +1621,8 @@ def qpolynomial_from_expr(space, expr):
 
 
 # {{{ simplify using aff
-@memoize_method
+
+@memoize_on_first_arg
 def simplify_using_aff(kernel, expr):
     inames = get_dependencies(expr) & kernel.all_inames()
 
