@@ -694,6 +694,9 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
                 parse_kv(s) for s in iname_to_tag.split(",")
                 if s.strip()]
 
+    if not iname_to_tag:
+        return kernel
+
     # convert dict to list of tuples
     if isinstance(iname_to_tag, dict):
         iname_to_tag = list(iname_to_tag.items())
@@ -1238,11 +1241,14 @@ def remove_any_newly_unused_inames(transformation_func):
         remove_newly_unused_inames = kwargs.pop("remove_newly_unused_inames", True)
 
         if remove_newly_unused_inames:
-            # determine which inames were already unused
-            inames_already_unused = kernel.all_inames() - get_used_inames(kernel)
-
             # call transform
             transformed_kernel = transformation_func(kernel, *args, **kwargs)
+
+            if transformed_kernel is kernel:
+                return kernel
+
+            # determine which inames were already unused
+            inames_already_unused = kernel.all_inames() - get_used_inames(kernel)
 
             # Remove inames that are unused due to transform
             return remove_unused_inames(
