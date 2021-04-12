@@ -676,6 +676,7 @@ def _check_variable_access_ordered_inner(kernel):
         for (insn_id, pred) in dep_reqs_to_vars:
             if insn_to_order[pred] > insn_to_order[insn_id]:
                 continue
+            insn_to_req_deps[pred].add(insn_id)
 
         for pred, check_successors in insn_to_req_deps.items():
             all_successors = set()
