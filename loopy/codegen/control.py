@@ -428,20 +428,22 @@ def build_loop_nest(codegen_state, schedule_index):
 
         check_set = None
         for cns in bounds_checks:
-            cns_set = (isl.BasicSet.universe(cns.get_space())
-                    .add_constraint(cns))
+            cns_set = (isl.BasicSet.universe(cns.get_space(kernel.isl_op_pool))
+                    .add_constraint(kernel.isl_op_pool, cns))
 
             if check_set is None:
                 check_set = cns_set
             else:
-                check_set, cns_set = isl.align_two(check_set, cns_set)
-                check_set = check_set.intersect(cns_set)
+                check_set, cns_set = isl.align_two(kernel.isl_op_pool,
+                                                   check_set,
+                                                   cns_set)
+                check_set = check_set.intersect(kernel.isl_op_pool, cns_set)
 
         if check_set is None:
             new_codegen_state = codegen_state
             is_empty = False
         else:
-            is_empty = check_set.is_empty()
+            is_empty = check_set.is_empty(kernel.isl_op_pool)
             new_codegen_state = codegen_state.intersect(check_set)
 
         if pred_checks:
@@ -483,7 +485,7 @@ def build_loop_nest(codegen_state, schedule_index):
 
                 def gen_code(inner_codegen_state):  # noqa pylint:disable=function-redefined
                     condition_exprs = [
-                            constraint_to_cond_expr(cns)
+                            constraint_to_cond_expr(cns, kernel.isl_op_pool)
                             for cns in bounds_checks] + [
                                 pred_chk for pred_chk in pred_checks]
 

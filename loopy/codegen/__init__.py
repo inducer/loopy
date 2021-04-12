@@ -23,6 +23,7 @@ THE SOFTWARE.
 from loopy.diagnostic import LoopyError, warn
 from pytools import ImmutableRecord, ProcessLogger
 import islpy.oppool as isl
+from islpy import dim_type
 
 from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
@@ -314,24 +315,28 @@ class CodeGenerationState:
     def fix(self, iname, aff):
         new_impl_domain = self.implemented_domain
 
-        impl_space = self.implemented_domain.get_space()
-        if iname not in impl_space.get_var_dict():
+        impl_space = self.implemented_domain.get_space(self.kernel.isl_op_pool)
+        if iname not in impl_space.get_var_dict(self.kernel.isl_op_pool):
             new_impl_domain = (new_impl_domain
-                    .add_dims(isl.dim_type.set, 1)
+                    .add_dims(self.kernel.isl_op_pool, dim_type.set, 1)
                     .set_dim_name(
-                        isl.dim_type.set,
-                        new_impl_domain.dim(isl.dim_type.set),
+                        self.kernel.isl_op_pool,
+                        dim_type.set,
+                        new_impl_domain.dim(self.kernel.isl_op_pool,
+                                            dim_type.set),
                         iname))
-            impl_space = new_impl_domain.get_space()
+            impl_space = new_impl_domain.get_space(self.kernel.isl_op_pool)
 
         from loopy.isl_helpers import iname_rel_aff
-        iname_plus_lb_aff = iname_rel_aff(impl_space, iname, "==", aff)
+        iname_plus_lb_aff = iname_rel_aff(impl_space, iname, "==", aff,
+                                          self.kernel.isl_op_pool)
 
         from loopy.symbolic import pw_aff_to_expr
         cns = isl.Constraint.equality_from_aff(iname_plus_lb_aff)
-        expr = pw_aff_to_expr(aff)
+        expr = pw_aff_to_expr(aff, self.kernel.isl_op_pool)
 
-        new_impl_domain = new_impl_domain.add_constraint(cns)
+        new_impl_domain = new_impl_domain.add_constraint(self.kernel.isl_op_pool,
+                                                         cns)
         return self.copy_and_assign(iname, expr).copy(
                 implemented_domain=new_impl_domain)
 

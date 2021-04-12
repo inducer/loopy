@@ -360,8 +360,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             assumptions = isl.BasicSet.universe(assumptions_space)
 
         elif isinstance(assumptions, str):
+            from loopy.kernel.tools import get_outer_params
             assumptions_set_str = "[%s] -> { : %s}" \
-                    % (",".join(s for s in self.outer_params(domains)),
+                    % (",".join(s for s in get_outer_params(domains, isl_op_pool)),
                         assumptions)
             assumptions = isl.BasicSet.read_from_str(domains[0].get_ctx(),
                     assumptions_set_str)
@@ -821,17 +822,12 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return intern_frozenset_of_ids(result)
 
     def outer_params(self, domains=None):
-        if domains is None:
-            domains = self.domains
-
-        all_inames = set()
-        all_params = set()
-        for dom in domains:
-            all_inames.update(dom.get_var_names(dim_type.set))
-            all_params.update(dom.get_var_names(dim_type.param))
-
-        from loopy.tools import intern_frozenset_of_ids
-        return intern_frozenset_of_ids(all_params-all_inames)
+        from warnings import warn
+        warn("LoopKernel.outer_params is deprecated use"
+             " lp.kernel.tools.get_outer_params instead",
+             DeprecationWarning, stacklevel=2)
+        from loopy.kernel.tools import get_outer_params
+        return get_outer_params(domains or self.domains, self.isl_op_pool)
 
     @memoize_method
     def all_insn_inames(self):
@@ -975,7 +971,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             result.update(insn.read_dependency_names())
 
         for domain in self.domains:
-            result.update(domain.get_var_names(dim_type.param))
+            result.update(domain.get_var_names(self.isl_op_pool, dim_type.param))
 
         return result
 
@@ -1100,7 +1096,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return int(aff_to_expr(static_max_of_pw_aff(
                 self.get_iname_bounds(iname, constants_only=True).size,
                 constants_only=True,
-                isl_op_pool=self.isl_op_pool)))
+                isl_op_pool=self.isl_op_pool), self.isl_op_pool))
 
     @memoize_method
     def get_grid_sizes_for_insn_ids(self, insn_ids, ignore_auto=False):
@@ -1217,7 +1213,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         def tup_to_exprs(tup):
             from loopy.symbolic import pw_aff_to_expr
-            return tuple(pw_aff_to_expr(i, self.isl_op_pool, int_ok=True) for i in tup)
+            return tuple(pw_aff_to_expr(i, self.isl_op_pool, int_ok=True)
+                         for i in tup)
 
         return tup_to_exprs(grid_size), tup_to_exprs(group_size)
 

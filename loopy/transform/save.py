@@ -31,6 +31,7 @@ from loopy.schedule import (
             CallKernel, ReturnFromKernel, Barrier)
 
 from loopy.schedule.tools import get_block_boundaries
+from islpy import dim_type
 
 
 import logging
@@ -226,6 +227,7 @@ class TemporarySaver:
                 name=self.name,
                 dtype=temporary.dtype,
                 address_space=AddressSpace.GLOBAL,
+
                 shape=self.new_shape)
 
         @property
@@ -259,7 +261,7 @@ class TemporarySaver:
         self.new_subdomain = (
                 isl.BasicSet.universe(
                     isl.Space.create_from_names(
-                        isl.DEFAULT_CONTEXT,
+                        kernel.isl_context,
                         set=[],
                         params={
                             arg.name for arg in kernel.args
@@ -599,7 +601,7 @@ class TemporarySaver:
 
         new_domains = list(self.kernel.domains)
         import islpy.oppool as isl
-        if self.new_subdomain.dim(isl.dim_type.set) > 0:
+        if self.new_subdomain.dim(self.kernel.isl_op_pool, dim_type.set) > 0:
             new_domains.append(self.new_subdomain)
 
         kernel = self.kernel.copy(
@@ -644,7 +646,7 @@ class TemporarySaver:
         orig_temporary = (
                 self.kernel.temporary_variables[
                     promoted_temporary.orig_temporary_name])
-        orig_dim = domain.dim(isl.dim_type.set)
+        orig_dim = domain.dim(self.kernel.isl_op_pool, dim_type.set)
 
         # Tags for newly added inames
         iname_to_tags = {}
@@ -655,9 +657,10 @@ class TemporarySaver:
 
         # Add dimension-dependent inames.
         dim_inames = []
-        domain = domain.add_dims(isl.dim_type.set,
-                            len(promoted_temporary.non_hw_dims)
-                            + len(promoted_temporary.hw_dims))
+        domain = domain.add_dims(self.kernel.isl_op_pool,
+                                 dim_type.set,
+                                 len(promoted_temporary.non_hw_dims)
+                                 + len(promoted_temporary.hw_dims))
 
         for dim_idx, dim_size in enumerate(promoted_temporary.non_hw_dims):
             new_iname = self.insn_name_gen("{name}_{mode}_axis_{dim}_{sk}".
@@ -666,7 +669,8 @@ class TemporarySaver:
                        dim=dim_idx,
                        sk=subkernel))
             domain = domain.set_dim_name(
-                isl.dim_type.set, orig_dim + dim_idx, new_iname)
+                self.kernel.isl_op_pool, dim_type.set, orig_dim + dim_idx,
+                new_iname)
 
             if orig_temporary.address_space == AddressSpace.LOCAL:
                 # If the temporary has local scope, then loads / stores can
@@ -677,9 +681,19 @@ class TemporarySaver:
             dim_inames.append(new_iname)
 
             # Add size information.
-            aff = isl.affs_from_space(domain.space)
-            domain &= aff[0].le_set(aff[new_iname])
-            domain &= aff[new_iname].lt_set(aff_from_expr(domain.space, dim_size))
+            aff = isl.affs_from_space(self.kernel.isl_op_pool,
+                                      domain.get_space(self.kernel.isl_op_pool))
+            domain = domain.intersect(self.kernel.isl_op_pool,
+                                      aff[0].le_set(self.kernel.isl_op_pool,
+                                                    aff[new_iname]))
+            domain = domain.intersect(self.kernel.isl_op_pool,
+                                      aff[new_iname].lt_set(
+                                          self.kernel.isl_op_pool,
+                                          aff_from_expr(
+                                              domain.get_space(
+                                                  self.kernel.isl_op_pool),
+                                              dim_size,
+                                              self.kernel.isl_op_pool)))
 
         dim_offset = orig_dim + len(promoted_temporary.non_hw_dims)
 
@@ -693,23 +707,30 @@ class TemporarySaver:
                        dim=hw_iname_idx,
                        sk=subkernel))
             domain = domain.set_dim_name(
-                isl.dim_type.set, dim_offset + hw_iname_idx, new_iname)
+                self.kernel.isl_op_pool,
+                dim_type.set, dim_offset + hw_iname_idx, new_iname)
 
-            aff = isl.affs_from_space(domain.space)
+            aff = isl.affs_from_space(self.kernel.isl_op_pool,
+                                      domain.get_space(self.kernel.isl_op_pool))
             domain = (domain
-                &
-                aff[0].le_set(aff[new_iname])
-                &
-                aff[new_iname].lt_set(aff_from_expr(domain.space, dim)))
+                .intersect(
+                    self.kernel.isl_op_pool,
+                    aff[0].le_set(self.kernel.isl_op_pool, aff[new_iname]))
+                .intersect(
+                    self.kernel.isl_op_pool,
+                    aff[new_iname].lt_set(
+                        self.kernel.isl_op_pool,
+                        aff_from_expr(domain.get_space(self.kernel.isl_op_pool),
+                                      dim, self.kernel.isl_op_pool))))
 
             self.updated_iname_to_tags[new_iname] = frozenset([hw_tag])
             hw_inames.append(new_iname)
 
         # The operations on the domain above return a Set object, but the
         # underlying domain should be expressible as a single BasicSet.
-        domain_list = domain.get_basic_set_list()
-        assert domain_list.n_basic_set() == 1
-        domain = domain_list.get_basic_set(0)
+        domain_list = domain.get_basic_sets(self.kernel.isl_op_pool)
+        assert len(domain_list) == 1
+        domain = domain_list[0]
         return domain, hw_inames, dim_inames, iname_to_tags
 
 # }}}

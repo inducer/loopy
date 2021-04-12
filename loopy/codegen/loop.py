@@ -46,8 +46,12 @@ def get_slab_decomposition(kernel, iname):
     if lower_incr or upper_incr:
         bounds = kernel.get_iname_bounds(iname)
 
-        lower_bound_pw_aff_pieces = bounds.lower_bound_pw_aff.coalesce().get_pieces()
-        upper_bound_pw_aff_pieces = bounds.upper_bound_pw_aff.coalesce().get_pieces()
+        lower_bound_pw_aff_pieces = (bounds.lower_bound_pw_aff
+                                     .coalesce(kernel.isl_op_pool)
+                                     .get_pieces(kernel.isl_op_pool))
+        upper_bound_pw_aff_pieces = (bounds.upper_bound_pw_aff
+                                     .coalesce(kernel.isl_op_pool)
+                                     .get_pieces(kernel.isl_op_pool))
 
         if len(lower_bound_pw_aff_pieces) > 1:
             raise NotImplementedError("lower bound for slab decomp of '%s' needs "
@@ -65,32 +69,41 @@ def get_slab_decomposition(kernel, iname):
             assert lower_incr > 0
             lower_slab = ("initial", isl.BasicSet.universe(space)
                     .add_constraint(
+                        kernel.isl_op_pool,
                         isl.Constraint.inequality_from_aff(
                             iname_rel_aff(space,
-                                iname, "<", lower_bound_aff+lower_incr))))
+                                          iname, "<",
+                                          lower_bound_aff+lower_incr,
+                                          kernel.isl_op_pool))))
             lower_bulk_bound = (
                     isl.Constraint.inequality_from_aff(
                         iname_rel_aff(space,
-                            iname, ">=", lower_bound_aff+lower_incr)))
+                                      iname, ">=", lower_bound_aff+lower_incr,
+                                      kernel.isl_op_pool)))
         else:
             lower_slab = None
 
         if upper_incr:
             assert upper_incr > 0
             upper_bset = isl.BasicSet.universe(space).add_constraint(
+                kernel.isl_op_pool,
                 isl.Constraint.inequality_from_aff(
                     iname_rel_aff(space,
-                        iname, ">", upper_bound_aff-upper_incr)))
+                                  iname, ">", upper_bound_aff-upper_incr,
+                                  kernel.isl_op_pool)))
             if lower_incr:
                 # Ensure that this slab is actually distinct from the
                 # lower one, if it exists.
                 _, lower_bset = lower_slab
-                upper_bset, = upper_bset.subtract(lower_bset).get_basic_sets()
+                upper_bset, = (upper_bset.subtract(kernel.isl_op_pool,
+                                                   lower_bset)
+                               .get_basic_sets(kernel.isl_op_pool))
             upper_slab = ("final", upper_bset)
             upper_bulk_bound = (
                     isl.Constraint.inequality_from_aff(
                         iname_rel_aff(space,
-                            iname, "<=", upper_bound_aff-upper_incr)))
+                                      iname, "<=", upper_bound_aff-upper_incr,
+                                      kernel.isl_op_pool)))
         else:
             upper_slab = None
 
@@ -98,9 +111,11 @@ def get_slab_decomposition(kernel, iname):
 
         bulk_slab = isl.BasicSet.universe(space)
         if lower_bulk_bound is not None:
-            bulk_slab = bulk_slab.add_constraint(lower_bulk_bound)
+            bulk_slab = bulk_slab.add_constraint(kernel.isl_op_pool,
+                                                 lower_bulk_bound)
         if upper_bulk_bound is not None:
-            bulk_slab = bulk_slab.add_constraint(upper_bulk_bound)
+            bulk_slab = bulk_slab.add_constraint(kernel.isl_op_pool,
+                                                 upper_bulk_bound)
 
         slabs.append(("bulk", bulk_slab))
         if lower_slab:
@@ -129,19 +144,21 @@ def generate_unroll_loop(codegen_state, sched_index):
             static_max_of_pw_aff, static_value_of_pw_aff)
     from loopy.symbolic import pw_aff_to_expr
 
-    length_aff = static_max_of_pw_aff(bounds.size, constants_only=True)
+    length_aff = static_max_of_pw_aff(bounds.size, constants_only=True,
+                                      isl_op_pool=kernel.isl_op_pool)
 
-    if not length_aff.is_cst():
+    if not length_aff.is_cst(kernel.isl_op_pool):
         raise LoopyError(
                 "length of unrolled loop '%s' is not a constant, "
                 "cannot unroll")
 
-    length = int(pw_aff_to_expr(length_aff))
+    length = int(pw_aff_to_expr(length_aff, kernel.isl_op_pool))
 
     try:
         lower_bound_aff = static_value_of_pw_aff(
-                bounds.lower_bound_pw_aff.coalesce(),
-                constants_only=False)
+                bounds.lower_bound_pw_aff.coalesce(kernel.isl_op_pool),
+                constants_only=False,
+                isl_op_pool=kernel.isl_op_pool)
     except Exception as e:
         raise type(e)("while finding lower bound of '%s': " % iname)
 
@@ -171,24 +188,26 @@ def generate_vectorize_loop(codegen_state, sched_index):
             static_max_of_pw_aff, static_value_of_pw_aff)
     from loopy.symbolic import pw_aff_to_expr
 
-    length_aff = static_max_of_pw_aff(bounds.size, constants_only=True)
+    length_aff = static_max_of_pw_aff(bounds.size, constants_only=True,
+                                      isl_op_pool=kernel.isl_op_pool)
 
-    if not length_aff.is_cst():
+    if not length_aff.is_cst(kernel.isl_op_pool):
         warn(kernel, "vec_upper_not_const",
                 "upper bound for vectorized loop '%s' is not a constant, "
                 "cannot vectorize--unrolling instead")
         return generate_unroll_loop(codegen_state, sched_index)
 
-    length = int(pw_aff_to_expr(length_aff))
+    length = int(pw_aff_to_expr(length_aff, kernel.isl_op_pool))
 
     try:
         lower_bound_aff = static_value_of_pw_aff(
-                bounds.lower_bound_pw_aff.coalesce(),
-                constants_only=False)
+                bounds.lower_bound_pw_aff.coalesce(kernel.isl_op_pool),
+                constants_only=False,
+                isl_op_pool=kernel.isl_op_pool)
     except Exception as e:
         raise type(e)("while finding lower bound of '%s': " % iname)
 
-    if not lower_bound_aff.plain_is_zero():
+    if not lower_bound_aff.plain_is_zero(kernel.isl_op_pool):
         warn(kernel, "vec_lower_not_0",
                 "lower bound for vectorized loop '%s' is not zero, "
                 "cannot vectorize--unrolling instead")
@@ -199,8 +218,8 @@ def generate_vectorize_loop(codegen_state, sched_index):
     domain = kernel.get_inames_domain(iname)
 
     from loopy.isl_helpers import make_slab
-    slab = make_slab(domain.get_space(), iname,
-            lower_bound_aff, lower_bound_aff+length)
+    slab = make_slab(domain.get_space(kernel.isl_op_pool), iname,
+                     lower_bound_aff, lower_bound_aff+length, kernel.isl_op_pool)
     codegen_state = codegen_state.intersect(slab)
 
     # }}}
@@ -210,7 +229,7 @@ def generate_vectorize_loop(codegen_state, sched_index):
             vectorization_info=VectorizationInfo(
                 iname=iname,
                 length=length,
-                space=length_aff.space))
+                space=length_aff.get_space(kernel.isl_op_pool)))
 
     return build_loop_nest(new_codegen_state, sched_index+1)
 
@@ -391,6 +410,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                 moved_inames.append(das_iname)
                 dt, idx = dom_and_slab.get_var_dict(kernel.isl_op_pool)[das_iname]
                 dom_and_slab = dom_and_slab.move_dims(
+                        kernel.isl_op_pool,
                         dim_type.param, dom_and_slab.dim(kernel.isl_op_pool,
                                                          dim_type.param),
                         dt, idx, 1)
@@ -467,7 +487,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                 astb.emit_initializer(
                     codegen_state,
                     kernel.index_dtype, loop_iname,
-                    ecm(pw_aff_to_expr(lbound), PREC_NONE, "i"),
+                    ecm(pw_aff_to_expr(lbound, kernel.isl_op_pool), PREC_NONE, "i"),
                     is_const=True),
                 astb.emit_blank_line(),
                 inner,

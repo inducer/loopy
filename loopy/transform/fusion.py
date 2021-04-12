@@ -66,12 +66,12 @@ def _rename_temporaries(kernel, suffix, all_identifiers):
     return _apply_renames_in_exprs(kernel, var_renames)
 
 
-def _find_fusable_loop_domain_index(domain, other_domains):
-    my_inames = set(domain.get_var_dict(dim_type.set))
+def _find_fusable_loop_domain_index(domain, other_domains, isl_op_pool):
+    my_inames = set(domain.get_var_dict(isl_op_pool, dim_type.set))
 
     overlap_domains = []
     for i, o_dom in enumerate(other_domains):
-        o_inames = set(o_dom.get_var_dict(dim_type.set))
+        o_inames = set(o_dom.get_var_dict(isl_op_pool, dim_type.set))
         if my_inames & o_inames:
             overlap_domains.append(i)
 
@@ -129,13 +129,15 @@ def _fuse_two_kernels(kernela, kernelb):
     from loopy.kernel import KernelState
     if kernela.state != KernelState.INITIAL or kernelb.state != KernelState.INITIAL:
         raise LoopyError("can only fuse kernels in INITIAL state")
+    isl_op_pool = isl.merge_op_pools(kernela.isl_op_pool,
+                                     kernelb.isl_op_pool)
 
     # {{{ fuse domains
 
     new_domains = kernela.domains[:]
 
     for dom_b in kernelb.domains:
-        i_fuse = _find_fusable_loop_domain_index(dom_b, new_domains)
+        i_fuse = _find_fusable_loop_domain_index(dom_b, new_domains, isl_op_pool)
         if i_fuse is None:
             new_domains.append(dom_b)
         else:
@@ -143,18 +145,21 @@ def _fuse_two_kernels(kernela, kernelb):
             dom_a, dom_b = isl.align_two(dom_a, dom_b)
 
             shared_inames = list(
-                    set(dom_a.get_var_dict(dim_type.set))
+                    set(dom_a.get_var_dict(isl_op_pool, dim_type.set))
                     &
-                    set(dom_b.get_var_dict(dim_type.set)))
+                    set(dom_b.get_var_dict(isl_op_pool, dim_type.set)))
 
-            dom_a_s = dom_a.project_out_except(shared_inames, [dim_type.set])
-            dom_b_s = dom_a.project_out_except(shared_inames, [dim_type.set])
+            dom_a_s = dom_a.project_out_except(isl_op_pool,
+                                               shared_inames, [dim_type.set])
+            dom_b_s = dom_a.project_out_except(isl_op_pool,
+                                               shared_inames, [dim_type.set])
 
-            if not (dom_a_s <= dom_b_s and dom_b_s <= dom_a_s):
+            if not (dom_a_s.is_subset(isl_op_pool, dom_b_s)
+                    and dom_b_s.is_subset(isl_op_pool, dom_a_s)):
                 raise LoopyError("kernels do not agree on domain of "
                         "inames '%s'" % (",".join(shared_inames)))
 
-            new_domain = dom_a & dom_b
+            new_domain = dom_a.intersect(isl_op_pool, dom_b)
 
             new_domains[i_fuse] = new_domain
 
@@ -214,20 +219,23 @@ def _fuse_two_kernels(kernela, kernelb):
 
     assump_a = kernela.assumptions
     assump_b = kernelb.assumptions
-    assump_a, assump_b = isl.align_two(assump_a, assump_b)
+    assump_a, assump_b = isl.align_two(isl_op_pool, assump_a, assump_b)
 
     shared_param_names = list(
-            set(assump_a.get_var_dict(dim_type.set))
+            set(assump_a.get_var_dict(isl_op_pool, dim_type.set))
             &
-            set(assump_b.get_var_dict(dim_type.set)))
+            set(assump_b.get_var_dict(isl_op_pool, dim_type.set)))
 
-    assump_a_s = assump_a.project_out_except(shared_param_names, [dim_type.param])
-    assump_b_s = assump_a.project_out_except(shared_param_names, [dim_type.param])
+    assump_a_s = assump_a.project_out_except(isl_op_pool, shared_param_names,
+                                             [dim_type.param])
+    assump_b_s = assump_a.project_out_except(isl_op_pool, shared_param_names,
+                                             [dim_type.param])
 
-    if not (assump_a_s <= assump_b_s and assump_b_s <= assump_a_s):
+    if not ((assump_a_s.is_subset(isl_op_pool, assump_b_s)
+             and assump_b_s.is_subset(isl_op_pool, assump_a_s))):
         raise LoopyError("assumptions do not agree on kernels to be merged")
 
-    new_assumptions = (assump_a & assump_b).params()
+    new_assumptions = (assump_a.intersect(isl_op_pool, assump_b)).params(isl_op_pool)
 
     # }}}
 
@@ -278,6 +286,7 @@ def _fuse_two_kernels(kernela, kernelb):
                 "target",
                 kernela.target,
                 kernelb.target),
+            isl_op_pool=isl_op_pool,
             options=kernela.options), old_b_id_to_new_b_id
 
 # }}}

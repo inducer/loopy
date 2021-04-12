@@ -1447,16 +1447,17 @@ def pw_aff_to_pw_aff_implemented_by_expr(pw_aff, isl_op_pool):
 # {{{ (pw)aff_from_expr
 
 class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
-    def __init__(self, space, vars_to_zero):
+    def __init__(self, space, isl_op_pool, vars_to_zero):
+        self.isl_op_pool = isl_op_pool
         self.zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(space))
 
         context = {}
-        for name, (dt, pos) in space.get_var_dict().items():
+        for name, (dt, pos) in space.get_var_dict(isl_op_pool).items():
             if dt == dim_type.set:
                 dt = dim_type.in_
 
             context[name] = isl.PwAff.from_aff(
-                    self.zero.set_coefficient_val(dt, pos, 1))
+                    self.zero.set_coefficient_val(isl_op_pool, dt, pos, 1))
 
         for v in vars_to_zero:
             context[v] = self.zero
@@ -1474,13 +1475,13 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
     def map_min(self, expr):
         from functools import reduce
         return reduce(
-                lambda a, b: a.min(b),
+                lambda a, b: a.min(self.isl_op_pool, b),
                 (self.rec(ch) for ch in expr.children))
 
     def map_max(self, expr):
         from functools import reduce
         return reduce(
-                lambda a, b: a.max(b),
+                lambda a, b: a.max(self.isl_op_pool, b),
                 (self.rec(ch) for ch in expr.children))
 
     def map_quotient(self, expr):
@@ -1495,27 +1496,42 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
     def map_remainder(self, expr):
         num = self.rec(expr.numerator)
         denom = self.rec(expr.denominator)
-        if not denom.is_cst():
+        if not denom.is_cst(self.isl_op_pool):
             raise TypeError("modulo non-constant in '%s' not supported "
                     "for as-pwaff evaluation" % expr)
 
-        (s, denom_aff), = denom.get_pieces()
-        denom = denom_aff.get_constant_val()
+        (s, denom_aff), = denom.get_pieces(self.isl_op_pool)
+        denom = denom_aff.get_constant_val(self.isl_op_pool)
 
-        return num.mod_val(denom)
+        return num.mod_val(self.isl_op_pool, denom)
 
     def map_literal(self, expr):
         raise TypeError("literal '%s' not supported "
                         "for as-pwaff evaluation" % expr)
 
+    def map_product(self, expr):
+        from functools import reduce
+        return reduce(lambda x, y: x.mul(self.isl_op_pool,
+                                         self.rec(y)),
+                      expr.children,
+                      self.map_constant(1))
 
-def aff_from_expr(space, expr, vars_to_zero=None):
+    def map_sum(self, expr):
+        from functools import reduce
+        return reduce(lambda x, y: x.add(self.isl_op_pool,
+                                         self.rec(y)),
+                      expr.children,
+                      self.map_constant(0))
+
+
+def aff_from_expr(space, expr, isl_op_pool, vars_to_zero=None):
     if vars_to_zero is None:
         vars_to_zero = frozenset()
 
-    pwaff = pwaff_from_expr(space, expr, vars_to_zero).coalesce()
+    pwaff = pwaff_from_expr(space, expr, isl_op_pool,
+                            vars_to_zero).coalesce(isl_op_pool)
 
-    pieces = pwaff.get_pieces()
+    pieces = pwaff.get_pieces(isl_op_pool)
     if len(pieces) == 1:
         (s, aff), = pieces
         return aff
@@ -1524,8 +1540,8 @@ def aff_from_expr(space, expr, vars_to_zero=None):
                 "non-piecewise quasi-affine expression" % expr)
 
 
-def pwaff_from_expr(space, expr, vars_to_zero=None):
-    return PwAffEvaluationMapper(space, vars_to_zero)(expr)
+def pwaff_from_expr(space, expr, isl_op_pool, vars_to_zero=None):
+    return PwAffEvaluationMapper(space, isl_op_pool, vars_to_zero)(expr)
 
 
 def with_aff_conversion_guard(f, space, expr, *args):
@@ -1549,18 +1565,20 @@ def with_aff_conversion_guard(f, space, expr, *args):
                 "%s: %s" % (expr, type(err).__name__, str(err)))
 
 
-def guarded_aff_from_expr(space, expr, vars_to_zero=None):
+def guarded_aff_from_expr(space, expr, isl_op_pool, vars_to_zero=None):
     """Performs the same operation as :func:`aff_from_expr` but only raises
     :exc:`loopy.diagnostic.ExpressionToAffineConversionError`
     """
-    return with_aff_conversion_guard(aff_from_expr, space, expr, vars_to_zero)
+    return with_aff_conversion_guard(aff_from_expr, space, expr, isl_op_pool,
+                                     vars_to_zero)
 
 
-def guarded_pwaff_from_expr(space, expr, vars_to_zero=None):
+def guarded_pwaff_from_expr(space, expr, isl_op_pool, vars_to_zero=None):
     """Performs the same operation as :func:`aff_from_expr` but only raises
     :exc:`loopy.diagnostic.ExpressionToAffineConversionError`
     """
-    return with_aff_conversion_guard(pwaff_from_expr, space, expr, vars_to_zero)
+    return with_aff_conversion_guard(pwaff_from_expr, space, expr, isl_op_pool,
+                                     vars_to_zero)
 
 # }}}
 
@@ -1639,14 +1657,15 @@ def simplify_using_aff(kernel, expr):
                                 frozenset([dim_type.set])))
 
     try:
-        aff = guarded_aff_from_expr(domain.get_space(kernel.isl_op_pool), expr)
+        aff = guarded_aff_from_expr(domain.get_space(kernel.isl_op_pool), expr,
+                                    kernel.isl_op_pool)
     except ExpressionToAffineConversionError:
         return expr
 
     # FIXME: Deal with assumptions, too.
-    aff = aff.gist(domain)
+    aff = aff.gist(kernel.isl_op_pool, domain)
 
-    return aff_to_expr(aff)
+    return aff_to_expr(aff, kernel.isl_op_pool)
 
 # }}}
 
@@ -1679,7 +1698,7 @@ def qpolynomial_to_expr(qpoly):
 
 # {{{ expression/set <-> constraint conversion
 
-def constraint_to_cond_expr(cns):
+def constraint_to_cond_expr(cns, isl_op_pool):
     # Looks like this is ok after all--get_aff() performs some magic.
     # Not entirely sure though... FIXME
     #
@@ -1687,10 +1706,10 @@ def constraint_to_cond_expr(cns):
     # if ls.dim(dim_type.div):
     #     raise RuntimeError("constraint has an existentially quantified variable")
 
-    expr = aff_to_expr(cns.get_aff())
+    expr = aff_to_expr(cns.get_aff(isl_op_pool), isl_op_pool)
 
     from pymbolic.primitives import Comparison
-    if cns.is_equality():
+    if cns.is_equality(isl_op_pool):
         return Comparison(expr, "==", 0)
     else:
         return Comparison(expr, ">=", 0)
@@ -1732,8 +1751,9 @@ class AffineConditionToISLSetMapper(IdentityMapper):
     :class:`~islpy.Set`.
     """
 
-    def __init__(self, space):
+    def __init__(self, space, isl_op_pool):
         self.space = space
+        self.isl_op_pool = isl_op_pool
         super().__init__()
 
     def map_comparison(self, expr):
@@ -1756,7 +1776,8 @@ class AffineConditionToISLSetMapper(IdentityMapper):
         else:
             assert False
 
-        return isl.Set.universe(self.space).add_constraint(cnst)
+        return isl.Set.universe(self.space).add_constraint(self.isl_op_pool,
+                                                           cnst)
 
     def _map_logical_reduce(self, expr, f):
         """
@@ -1775,15 +1796,15 @@ class AffineConditionToISLSetMapper(IdentityMapper):
 
     def map_logical_not(self, expr):
         set_ = self.rec(expr.child)
-        return set_.complement()
+        return set_.complement(self.isl_op_pool)
 
 
-def isl_set_from_expr(space, expr):
+def isl_set_from_expr(space, expr, isl_op_pool):
     """
     :arg expr: An instance of :class:`pymbolic.primitives.Expression` whose
         boolean value is evaluated according to C-semantics.
     """
-    mapper = AffineConditionToISLSetMapper(space)
+    mapper = AffineConditionToISLSetMapper(space, isl_op_pool)
     expr = ConditionExpressionToBooleanOpsExpression()(expr)
     set_ = mapper(expr)
     assert isinstance(set_, isl.Set)
@@ -1791,17 +1812,16 @@ def isl_set_from_expr(space, expr):
     return set_
 
 
-def condition_to_set(space, expr):
+def condition_to_set(space, expr, isl_op_pool):
     """
     Returns an instance of :class:`islpy.Set` if *expr* can be expressed as an
     ISL-set on *space*, if not then returns *None*.
     """
     from loopy.symbolic import get_dependencies
     if get_dependencies(expr) <= frozenset(
-            space.get_var_dict()):
+            space.get_var_dict(isl_op_pool)):
         try:
-            from loopy.symbolic import isl_set_from_expr
-            return isl_set_from_expr(space, expr)
+            return isl_set_from_expr(space, expr, isl_op_pool)
         except ExpressionToAffineConversionError:
             # non-affine condition: can't do much
             return None
@@ -1814,10 +1834,10 @@ def condition_to_set(space, expr):
 
 # {{{ set_to_cond_expr
 
-def basic_set_to_cond_expr(isl_basicset):
+def basic_set_to_cond_expr(isl_basicset, isl_op_pool):
     constrs = []
-    for constr in isl_basicset.get_constraints():
-        constrs.append(constraint_to_cond_expr(constr))
+    for constr in isl_basicset.get_constraints(isl_op_pool):
+        constrs.append(constraint_to_cond_expr(constr, isl_op_pool))
 
     if len(constrs) == 0:
         raise ValueError("may not be called on universe")
@@ -1828,10 +1848,10 @@ def basic_set_to_cond_expr(isl_basicset):
         return p.LogicalAnd(tuple(constrs))
 
 
-def set_to_cond_expr(isl_set):
+def set_to_cond_expr(isl_set, isl_op_pool):
     conjs = []
-    for isl_basicset in isl_set.get_basic_sets():
-        conjs.append(basic_set_to_cond_expr(isl_basicset))
+    for isl_basicset in isl_set.get_basic_sets(isl_op_pool):
+        conjs.append(basic_set_to_cond_expr(isl_basicset, isl_op_pool))
 
     if len(conjs) == 0:
         raise ValueError("may not be called on universe")
@@ -2007,7 +2027,7 @@ def get_access_map(domain, subscript, isl_op_pool,
 
         try:
             idx_aff = guarded_aff_from_expr(access_map.get_space(isl_op_pool),
-                                            subscript[idim])
+                                            subscript[idim], isl_op_pool)
         except ExpressionToAffineConversionError as err:
             shape_aff = None
 
@@ -2049,7 +2069,7 @@ def get_access_map(domain, subscript, isl_op_pool,
                     isl_op_pool, dim_type.in_, dn+idim, -1)
 
             access_map = access_map.add_constraint(
-                    isl.Constraint.equality_from_aff(idx_aff))
+                    isl_op_pool, isl.Constraint.equality_from_aff(idx_aff))
 
     access_map_as_map = isl.Map.universe(access_map.get_space(isl_op_pool))
     access_map_as_map = access_map_as_map.intersect_range(isl_op_pool, access_map)
@@ -2090,9 +2110,10 @@ class BatchedAccessMapMapper(WalkMapper):
         if not loops_to_amaps:
             return None
 
-        import operator
         from functools import reduce
-        return reduce(operator.or_, (val.range() for val in loops_to_amaps.values()))
+        return reduce(lambda x, y: x.union(self.kernel.isl_op_pool, y),
+                      (val.range(self.kernel.isl_op_pool)
+                       for val in loops_to_amaps.values()))
 
     def map_subscript(self, expr, inames):
         domain = self.kernel.get_inames_domain(inames)
@@ -2262,7 +2283,9 @@ class AccessRangeOverlapChecker:
         if insn1_arange is True or insn2_arange is True:
             return True
 
-        return not (insn1_arange & insn2_arange).is_empty()
+        return not ((insn1_arange.intersect(self.kernel.isl_op_pool,
+                                           insn2_arange))
+                    .is_empty(self.kernel.isl_op_pool))
 
 # }}}
 

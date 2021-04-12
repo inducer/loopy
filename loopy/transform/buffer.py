@@ -103,7 +103,8 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
             ax_index = index[i]
             from loopy.isl_helpers import simplify_via_aff
             ax_index = simplify_via_aff(
-                    ax_index - abm.storage_base_indices[i])
+                    ax_index - abm.storage_base_indices[i],
+                    self.kernel.isl_op_pool)
 
             access_subscript.append(ax_index)
 

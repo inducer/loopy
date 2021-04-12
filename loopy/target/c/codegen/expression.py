@@ -306,12 +306,15 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         domain = self.kernel.get_inames_domain(iname_deps)
 
         assumption_non_param = isl.BasicSet.from_params(self.kernel.assumptions)
-        assumptions, domain = isl.align_two(assumption_non_param, domain)
-        domain = domain & assumptions
+        assumptions, domain = isl.align_two(self.kernel.isl_op_pool,
+                                            assumption_non_param, domain)
+        domain = domain.intersect(self.kernel.isl_op_pool, assumptions)
 
         from loopy.isl_helpers import is_nonnegative
-        num_nonneg = is_nonnegative(expr.numerator, domain)
-        den_nonneg = is_nonnegative(expr.denominator, domain)
+        num_nonneg = is_nonnegative(expr.numerator, domain,
+                                    self.kernel.isl_op_pool)
+        den_nonneg = is_nonnegative(expr.denominator, domain,
+                                    self.kernel.isl_op_pool)
 
         result_dtype = self.infer_type(expr)
         suffix = result_dtype.numpy_dtype.type.__name__

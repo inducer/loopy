@@ -37,27 +37,29 @@ def _add_kernel_axis(kernel, axis_name, start, stop, base_inames):
     domch = DomainChanger(kernel, base_inames)
 
     domain = domch.domain
-    new_dim_idx = domain.dim(dim_type.set)
+    new_dim_idx = domain.dim(kernel.isl_op_pool, dim_type.set)
     domain = (domain
-            .insert_dims(dim_type.set, new_dim_idx, 1)
-            .set_dim_name(dim_type.set, new_dim_idx, axis_name))
+            .insert_dims(kernel.isl_op_pool, dim_type.set, new_dim_idx, 1)
+            .set_dim_name(kernel.isl_op_pool, dim_type.set, new_dim_idx, axis_name))
 
     from loopy.symbolic import get_dependencies
     deps = get_dependencies(start) | get_dependencies(stop)
     assert deps <= kernel.all_params()
 
-    param_names = domain.get_var_names(dim_type.param)
+    param_names = domain.get_var_names(kernel.isl_op_pool, dim_type.param)
     for dep in deps:
         if dep not in param_names:
-            new_dim_idx = domain.dim(dim_type.param)
+            new_dim_idx = domain.dim(kernel.isl_op_pool, dim_type.param)
             domain = (domain
-                    .insert_dims(dim_type.param, new_dim_idx, 1)
-                    .set_dim_name(dim_type.param, new_dim_idx, dep))
+                    .insert_dims(kernel.isl_op_pool, dim_type.param, new_dim_idx, 1)
+                    .set_dim_name(kernel.isl_op_pool, dim_type.param,
+                                  new_dim_idx, dep))
 
     from loopy.isl_helpers import make_slab
-    slab = make_slab(domain.get_space(), axis_name, start, stop)
+    slab = make_slab(domain.get_space(kernel.isl_op_pool), axis_name, start,
+                     stop, kernel.isl_op_pool)
 
-    domain = domain & slab
+    domain = domain.intersect(kernel.isl_op_pool, slab)
 
     return kernel.copy(domains=domch.get_domains_with(domain))
 
@@ -345,10 +347,11 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         home_domain_index = kernel.get_home_domain_index(iname)
         domain = new_domains[home_domain_index]
 
-        dt, idx = domain.get_var_dict()[iname]
+        dt, idx = domain.get_var_dict(kernel.isl_op_pool)[iname]
         assert dt == dim_type.set
 
-        new_domains[home_domain_index] = domain.project_out(dt, idx, 1)
+        new_domains[home_domain_index] = domain.project_out(kernel.isl_op_pool,
+                                                            dt, idx, 1)
 
     new_kernel = new_kernel.copy(domains=new_domains)
 

@@ -1555,9 +1555,10 @@ def get_insn_domain(insn, kernel):
     valueargs_to_add = valueargs_to_add & insn.read_dependency_names()
 
     for arg_to_add in valueargs_to_add:
-        idim = domain.dim(isl.dim_type.param)
-        domain = domain.add_dims(isl.dim_type.param, 1)
-        domain = domain.set_dim_name(isl.dim_type.param, idim, arg_to_add)
+        idim = domain.dim(kernel.isl_op_pool, islpy.dim_type.param)
+        domain = domain.add_dims(kernel.isl_op_pool, islpy.dim_type.param, 1)
+        domain = domain.set_dim_name(kernel.isl_op_pool, islpy.dim_type.param,
+                                     idim, arg_to_add)
 
     # }}}
 
@@ -1567,7 +1568,8 @@ def get_insn_domain(insn, kernel):
 
     for predicate in insn.predicates:
         from loopy.symbolic import condition_to_set
-        predicate_as_isl_set = condition_to_set(domain.space, predicate)
+        predicate_as_isl_set = condition_to_set(domain.get_space(kernel.isl_op_pool),
+                                                predicate, kernel.isl_op_pool)
         if predicate_as_isl_set is not None:
             insn_preds_set = insn_preds_set & predicate_as_isl_set
 

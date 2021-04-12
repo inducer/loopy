@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 
 import islpy.oppool as isl
+from islpy import dim_type
 from loopy.symbolic import (get_dependencies,
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
@@ -202,7 +203,8 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                 ax_index = var(sax_source)
 
             from loopy.isl_helpers import simplify_via_aff
-            ax_index = simplify_via_aff(ax_index - sax_base_idx)
+            ax_index = simplify_via_aff(ax_index - sax_base_idx,
+                                        expn_state.kernel.isl_op_pool)
             stor_subscript.append(ax_index)
 
         new_outer_expr = var(self.temporary_name)
@@ -703,7 +705,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         check_domain = mod_domain
 
         for i, saxis in enumerate(non1_storage_axis_names):
-            var_dict = mod_domain.get_var_dict(isl.dim_type.set)
+            var_dict = mod_domain.get_var_dict(kernel.isl_op_pool,
+                                               dim_type.set)
 
             if saxis in preexisting_precompute_inames:
                 # add equality constraint between existing and new variable
@@ -715,46 +718,54 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 new_var_aff = isl.Aff.var_on_domain(mod_domain.space, dt, dim_idx)
 
                 mod_domain = mod_domain.add_constraint(
+                        kernel.isl_op_pool,
                         isl.Constraint.equality_from_aff(new_var_aff - saxis_aff))
 
                 # project out the new one
-                mod_domain = mod_domain.project_out(dt, dim_idx, 1)
+                mod_domain = mod_domain.project_out(kernel.isl_op_pool, dt,
+                                                    dim_idx, 1)
 
             else:
                 # remove the prime from the new variable
                 dt, dim_idx = var_dict[primed_non1_saxis_names[i]]
-                mod_domain = mod_domain.set_dim_name(dt, dim_idx, saxis)
+                mod_domain = mod_domain.set_dim_name(kernel.isl_op_pool, dt,
+                                                     dim_idx, saxis)
 
         def add_assumptions(d):
             assumption_non_param = isl.BasicSet.from_params(kernel.assumptions)
-            assumptions, domain = isl.align_two(assumption_non_param, d)
-            return assumptions & domain
+            assumptions, domain = isl.align_two(kernel.isl_op_pool,
+                                                assumption_non_param, d)
+            return assumptions.intersect(kernel.isl_op_pool, domain)
 
         # {{{ check that we got the desired domain
 
         check_domain = add_assumptions(
             check_domain.project_out_except(
-                primed_non1_saxis_names, [isl.dim_type.set]))
+                kernel.isl_op_pool,
+                primed_non1_saxis_names, [dim_type.set]))
 
         mod_check_domain = add_assumptions(mod_domain)
 
         # re-add the prime from the new variable
-        var_dict = mod_check_domain.get_var_dict(isl.dim_type.set)
+        var_dict = mod_check_domain.get_var_dict(kernel.isl_op_pool, dim_type.set)
 
         for saxis in non1_storage_axis_names:
             dt, dim_idx = var_dict[saxis]
-            mod_check_domain = mod_check_domain.set_dim_name(dt, dim_idx, saxis+"'")
+            mod_check_domain = mod_check_domain.set_dim_name(kernel.isl_op_pool, dt,
+                                                             dim_idx, saxis+"'")
 
         mod_check_domain = mod_check_domain.project_out_except(
-                primed_non1_saxis_names, [isl.dim_type.set])
+                kernel.isl_op_pool,
+                primed_non1_saxis_names, [dim_type.set])
 
         mod_check_domain, check_domain = isl.align_two(
+                kernel.isl_op_pool,
                 mod_check_domain, check_domain)
 
         # The modified domain can't get bigger by adding constraints
-        assert mod_check_domain <= check_domain
+        assert mod_check_domain.is_subset(kernel.isl_op_pool, check_domain)
 
-        if not check_domain <= mod_check_domain:
+        if not check_domain.is_subset(kernel.isl_op_pool, mod_check_domain):
             print(check_domain)
             print(mod_check_domain)
             raise LoopyError("domain of preexisting inames does not match "
@@ -765,20 +776,23 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         # {{{ check that we didn't shrink the original domain
 
         # project out the new names from the modified domain
-        orig_domain_inames = list(domch.domain.get_var_dict(isl.dim_type.set))
+        orig_domain_inames = list(domch.domain.get_var_dict(kernel.isl_op_pool,
+                                                            dim_type.set))
         mod_check_domain = add_assumptions(
                 mod_domain.project_out_except(
-                    orig_domain_inames, [isl.dim_type.set]))
+                    kernel.isl_op_pool,
+                    orig_domain_inames, [dim_type.set]))
 
         check_domain = add_assumptions(domch.domain)
 
         mod_check_domain, check_domain = isl.align_two(
+                kernel.isl_op_pool,
                 mod_check_domain, check_domain)
 
         # The modified domain can't get bigger by adding constraints
-        assert mod_check_domain <= check_domain
+        assert mod_check_domain.is_subset(kernel.isl_op_pool, check_domain)
 
-        if not check_domain <= mod_check_domain:
+        if not check_domain.is_subset(kernel.isl_op_pool, mod_check_domain):
             print(check_domain)
             print(mod_check_domain)
             raise LoopyError("original domain got shrunk by applying the precompute")

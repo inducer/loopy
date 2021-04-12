@@ -63,25 +63,26 @@ def to_parameters_or_project_out(param_inames, set_inames, set):
 # {{{ construct storage->sweep map
 
 def build_per_access_storage_to_domain_map(storage_axis_exprs, domain,
-        storage_axis_names,
-        prime_sweep_inames):
+                                           storage_axis_names,
+                                           prime_sweep_inames, isl_op_pool):
 
-    map_space = domain.space
+    map_space = domain.get_space(isl_op_pool)
     stor_dim = len(storage_axis_names)
-    rn = map_space.dim(dim_type.out)
+    rn = map_space.dim(isl_op_pool, dim_type.out)
 
-    map_space = map_space.add_dims(dim_type.in_, stor_dim)
+    map_space = map_space.add_dims(isl_op_pool, dim_type.in_, stor_dim)
     for i, saxis in enumerate(storage_axis_names):
         # arg names are initially primed, to be replaced with unprimed
         # base-0 versions below
 
-        map_space = map_space.set_dim_name(dim_type.in_, i, saxis+"'")
+        map_space = map_space.set_dim_name(isl_op_pool, dim_type.in_, i, saxis+"'")
 
     # map_space: [stor_axes'] -> [domain](dup_sweep_index)[dup_sweep](rn)
 
     set_space = map_space.move_dims(
+            isl_op_pool,
             dim_type.out, rn,
-            dim_type.in_, 0, stor_dim).range()
+            dim_type.in_, 0, stor_dim).range(isl_op_pool)
 
     # set_space: [domain](dup_sweep_index)[dup_sweep](rn)[stor_axes']
 
@@ -91,17 +92,18 @@ def build_per_access_storage_to_domain_map(storage_axis_exprs, domain,
 
     for saxis, sa_expr in zip(storage_axis_names, storage_axis_exprs):
         cns_expr = var(saxis+"'") - prime_sweep_inames(sa_expr)
-        cns_aff = guarded_aff_from_expr(set_space, cns_expr)
+        cns_aff = guarded_aff_from_expr(set_space, cns_expr, isl_op_pool)
         cns = isl.Constraint.equality_from_aff(cns_aff)
 
         cns_map = isl.BasicMap.from_constraint(cns)
         if stor2sweep is None:
             stor2sweep = cns_map
         else:
-            stor2sweep = stor2sweep.intersect(cns_map)
+            stor2sweep = stor2sweep.intersect(isl_op_pool, cns_map)
 
     if stor2sweep is not None:
         stor2sweep = stor2sweep.move_dims(
+                isl_op_pool,
                 dim_type.in_, 0,
                 dim_type.out, rn, stor_dim)
 
@@ -109,16 +111,17 @@ def build_per_access_storage_to_domain_map(storage_axis_exprs, domain,
     return stor2sweep
 
 
-def move_to_par_from_out(s2smap, except_inames):
+def move_to_par_from_out(s2smap, except_inames, isl_op_pool):
     while True:
-        var_dict = s2smap.get_var_dict(dim_type.out)
+        var_dict = s2smap.get_var_dict(isl_op_pool, dim_type.out)
         todo_inames = set(var_dict) - except_inames
         if todo_inames:
             iname = todo_inames.pop()
 
             _, dim_idx = var_dict[iname]
             s2smap = s2smap.move_dims(
-                    dim_type.param, s2smap.dim(dim_type.param),
+                    isl_op_pool,
+                    dim_type.param, s2smap.dim(isl_op_pool, dim_type.param),
                     dim_type.out, dim_idx, 1)
         else:
             return s2smap
@@ -138,16 +141,19 @@ def build_global_storage_to_sweep_map(kernel, access_descriptors,
         stor2sweep = build_per_access_storage_to_domain_map(
                 accdesc.storage_axis_exprs, domain_dup_sweep,
                 storage_axis_names,
-                prime_sweep_inames)
+                prime_sweep_inames,
+                kernel.isl_op_pool)
 
         if global_stor2sweep is None:
             global_stor2sweep = stor2sweep
         else:
-            global_stor2sweep = global_stor2sweep.union(stor2sweep)
+            global_stor2sweep = global_stor2sweep.union(kernel.isl_op_pool,
+                                                        stor2sweep)
 
     if isinstance(global_stor2sweep, isl.BasicMap):
         global_stor2sweep = isl.Map.from_basic_map(global_stor2sweep)
-    global_stor2sweep = global_stor2sweep.intersect_range(domain_dup_sweep)
+    global_stor2sweep = global_stor2sweep.intersect_range(kernel.isl_op_pool,
+                                                          domain_dup_sweep)
 
     # space for global_stor2sweep:
     # [stor_axes'] -> [domain](dup_sweep_index)[dup_sweep](rn)
@@ -160,10 +166,12 @@ def build_global_storage_to_sweep_map(kernel, access_descriptors,
 # {{{ compute storage bounds
 
 def find_var_base_indices_and_shape_from_inames(
-        domain, inames, cache_manager, context=None,
+        domain, inames, isl_op_pool, context=None,
         n_allowed_params_in_shape=None):
+    from loopy.kernel.tools import get_base_index_and_length
     base_indices_and_sizes = [
-            cache_manager.base_index_and_length(
+            get_base_index_and_length(
+                isl_op_pool,
                 domain, iname, context,
                 n_allowed_params_in_length=n_allowed_params_in_shape)
             for iname in inames]
@@ -174,18 +182,21 @@ def compute_bounds(kernel, domain, stor2sweep,
         primed_sweep_inames, storage_axis_names):
 
     bounds_footprint_map = move_to_par_from_out(
-            stor2sweep, except_inames=frozenset(primed_sweep_inames))
+            stor2sweep, except_inames=frozenset(primed_sweep_inames),
+            isl_op_pool=kernel.isl_op_pool)
 
     # compute bounds for each storage axis
-    storage_domain = bounds_footprint_map.domain().coalesce()
+    storage_domain = bounds_footprint_map.domain(
+        kernel.isl_op_pool).coalesce(kernel.isl_op_pool)
 
-    if not storage_domain.is_bounded():
+    if not storage_domain.is_bounded(kernel.isl_op_pool):
         raise RuntimeError("sweep did not result in a bounded storage domain")
 
     return find_var_base_indices_and_shape_from_inames(
             storage_domain, [saxis+"'" for saxis in storage_axis_names],
-            kernel.cache_manager, context=kernel.assumptions,
-            n_allowed_params_in_shape=stor2sweep.dim(isl.dim_type.param))
+            kernel.isl_op_pool, context=kernel.assumptions,
+            n_allowed_params_in_shape=stor2sweep.dim(kernel.isl_op_pool,
+                                                     dim_type.param))
 
 # }}}
 
@@ -209,10 +220,11 @@ class ArrayToBufferMap:
         self.primed_sweep_inames = [psin+"'" for psin in sweep_inames]
 
         from loopy.isl_helpers import duplicate_axes
-        dup_sweep_index = domain.space.dim(dim_type.out)
+        dup_sweep_index = domain.dim(self.kernel.isl_op_pool, dim_type.out)
         domain_dup_sweep = duplicate_axes(
                 domain, sweep_inames,
-                self.primed_sweep_inames)
+                self.primed_sweep_inames,
+                self.kernel.isl_op_pool)
 
         self.prime_sweep_inames = SubstitutionMapper(make_subst_func(
             {sin: var(psin)
@@ -251,27 +263,29 @@ class ArrayToBufferMap:
         # {{{ subtract off the base indices
         # add the new, base-0 indices as new in dimensions
 
-        sp = self.stor2sweep.get_space()
-        stor_idx = sp.dim(dim_type.out)
+        sp = self.stor2sweep.get_space(kernel.isl_op_pool)
+        stor_idx = sp.dim(kernel.isl_op_pool, dim_type.out)
 
         n_stor = storage_axis_count
         nn1_stor = len(non1_storage_shape)
 
         aug_domain = self.stor2sweep.move_dims(
+                kernel.isl_op_pool,
                 dim_type.out, stor_idx,
                 dim_type.in_, 0,
-                n_stor).range()
+                n_stor).range(kernel.isl_op_pool)
 
         # aug_domain space now:
         # [domain](dup_sweep_index)[dup_sweep](stor_idx)[stor_axes']
 
-        aug_domain = aug_domain.insert_dims(dim_type.set, stor_idx, nn1_stor)
+        aug_domain = aug_domain.insert_dims(kernel.isl_op_pool, dim_type.set,
+                                            stor_idx, nn1_stor)
 
         inew = 0
         for i, name in enumerate(storage_axis_names):
             if non1_storage_axis_flags[i]:
                 aug_domain = aug_domain.set_dim_name(
-                        dim_type.set, stor_idx + inew, name)
+                        kernel.isl_op_pool, dim_type.set, stor_idx + inew, name)
                 inew += 1
 
         # aug_domain space now:
@@ -282,19 +296,22 @@ class ArrayToBufferMap:
                 storage_shape):
             if s != 1:
                 cns = isl.Constraint.equality_from_aff(
-                        aff_from_expr(aug_domain.get_space(),
-                            var(saxis) - (var(saxis+"'") - bi)))
+                        aff_from_expr(aug_domain.get_space(kernel.isl_op_pool),
+                                      var(saxis) - (var(saxis+"'") - bi),
+                                      kernel.isl_op_pool))
 
-                aug_domain = aug_domain.add_constraint(cns)
+                aug_domain = aug_domain.add_constraint(kernel.isl_op_pool, cns)
 
         # }}}
 
         # eliminate (primed) storage axes with non-zero base indices
-        aug_domain = aug_domain.project_out(dim_type.set, stor_idx+nn1_stor, n_stor)
+        aug_domain = aug_domain.project_out(kernel.isl_op_pool, dim_type.set,
+                                            stor_idx+nn1_stor, n_stor)
 
         # eliminate duplicated sweep_inames
         nsweep = len(sweep_inames)
-        aug_domain = aug_domain.project_out(dim_type.set, dup_sweep_index, nsweep)
+        aug_domain = aug_domain.project_out(kernel.isl_op_pool, dim_type.set,
+                                            dup_sweep_index, nsweep)
 
         self.non1_storage_axis_flags = non1_storage_axis_flags
         self.aug_domain = aug_domain
@@ -305,8 +322,9 @@ class ArrayToBufferMap:
             boxify_sweep=False):
 
         renamed_aug_domain = self.aug_domain
-        first_storage_index = (renamed_aug_domain.dim(dim_type.set)
-                - len(self.non1_storage_shape))
+        first_storage_index = (renamed_aug_domain.dim(self.kernel.isl_op_pool,
+                                                      dim_type.set)
+                               - len(self.non1_storage_shape))
 
         inon1 = 0
         for i, old_name in enumerate(self.storage_axis_names):
@@ -317,25 +335,28 @@ class ArrayToBufferMap:
 
             assert (
                     renamed_aug_domain.get_dim_name(
+                        self.kernel.isl_op_pool,
                         dim_type.set, first_storage_index+inon1)
                     == old_name)
             renamed_aug_domain = renamed_aug_domain.set_dim_name(
-                    dim_type.set, first_storage_index+inon1, new_name)
+                    self.kernel.isl_op_pool, dim_type.set,
+                    first_storage_index+inon1, new_name)
 
             inon1 += 1
 
         # Order of arguments to align_two matters--'domain' should be the
         # 'guiding' ordering.
-        renamed_aug_domain, domain = isl.align_two(renamed_aug_domain, domain)
+        renamed_aug_domain, domain = isl.align_two(self.kernel.isl_op_pool,
+                                                   renamed_aug_domain, domain)
 
-        domain = domain & renamed_aug_domain
+        domain = domain.intersect(self.kernel.isl_op_pool, renamed_aug_domain)
 
         from loopy.isl_helpers import convexify, boxify
         if boxify_sweep:
-            return boxify(self.kernel.cache_manager, domain,
+            return boxify(self.kernel.isl_op_pool, domain,
                     new_non1_storage_axis_names, self.kernel.assumptions)
         else:
-            return convexify(domain)
+            return convexify(domain, self.kernel.isl_op_pool)
 
     def is_access_descriptor_in_footprint(self, accdesc):
         return self._is_access_descriptor_in_footprint_inner(
@@ -348,9 +369,11 @@ class ArrayToBufferMap:
 
         global_s2s_par_dom = move_to_par_from_out(
                 self.stor2sweep,
-                except_inames=frozenset(self.primed_sweep_inames)).domain()
+                except_inames=frozenset(self.primed_sweep_inames),
+                isl_op_pool=self.kernel.isl_op_pool).domain(self.kernel.isl_op_pool)
 
-        arg_inames = set(global_s2s_par_dom.get_var_names(dim_type.param))
+        arg_inames = set(global_s2s_par_dom.get_var_names(self.kernel.isl_op_pool,
+                                                          dim_type.param))
 
         for arg in storage_axis_exprs:
             arg_inames.update(get_dependencies(arg))
@@ -362,16 +385,20 @@ class ArrayToBufferMap:
         except CannotBranchDomainTree:
             return False
 
-        for i in range(usage_domain.dim(dim_type.set)):
-            iname = usage_domain.get_dim_name(dim_type.set, i)
+        for i in range(usage_domain.dim(self.kernel.isl_op_pool, dim_type.set)):
+            iname = usage_domain.get_dim_name(self.kernel.isl_op_pool,
+                                              dim_type.set,
+                                              i)
             if iname in self.sweep_inames:
                 usage_domain = usage_domain.set_dim_name(
+                        self.kernel.isl_op_pool,
                         dim_type.set, i, iname+"'")
 
         stor2sweep = build_per_access_storage_to_domain_map(
                 storage_axis_exprs,
                 usage_domain, self.storage_axis_names,
-                self.prime_sweep_inames)
+                self.prime_sweep_inames,
+                self.kernel.isl_op_pool)
 
         if stor2sweep is None:
             # happens if there are no indices
@@ -381,23 +408,29 @@ class ArrayToBufferMap:
         if isinstance(stor2sweep, isl.BasicMap):
             stor2sweep = isl.Map.from_basic_map(stor2sweep)
 
-        stor2sweep = stor2sweep.intersect_range(usage_domain)
+        stor2sweep = stor2sweep.intersect_range(self.kernel.isl_op_pool,
+                                                usage_domain)
 
         stor2sweep = move_to_par_from_out(stor2sweep,
-                except_inames=frozenset(self.primed_sweep_inames))
+                except_inames=frozenset(self.primed_sweep_inames),
+                isl_op_pool=self.kernel.isl_op_pool)
 
-        s2s_domain = stor2sweep.domain()
+        s2s_domain = stor2sweep.domain(self.kernel.isl_op_pool)
         s2s_domain, aligned_g_s2s_parm_dom = isl.align_two(
+                self.kernel.isl_op_pool,
                 s2s_domain, global_s2s_par_dom)
 
         arg_restrictions = (
                 aligned_g_s2s_parm_dom
-                .eliminate(dim_type.set, 0,
-                    aligned_g_s2s_parm_dom.dim(dim_type.set))
-                .remove_divs())
+                .eliminate(self.kernel.isl_op_pool, dim_type.set, 0,
+                    aligned_g_s2s_parm_dom.dim(self.kernel.isl_op_pool,
+                                               dim_type.set))
+                .remove_divs(self.kernel.isl_op_pool))
 
-        return (arg_restrictions & s2s_domain).is_subset(
-                aligned_g_s2s_parm_dom)
+        return (arg_restrictions.intersect(self.kernel.isl_op_pool,
+                                           s2s_domain)
+                .is_subset(self.kernel.isl_op_pool,
+                           aligned_g_s2s_parm_dom))
 
 
 class NoOpArrayToBufferMap:

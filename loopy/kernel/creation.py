@@ -1521,6 +1521,7 @@ def find_shapes_of_vars(knl, var_names, feed_expression):
     var_to_error = {}
 
     from loopy.diagnostic import StaticValueFindingError
+    from loopy.kernel.tools import get_base_index_and_length
 
     for var_name in var_names:
         access_range = armap.get_access_range(var_name)
@@ -1529,9 +1530,10 @@ def find_shapes_of_vars(knl, var_names, feed_expression):
         if access_range is not None:
             try:
                 base_indices, shape = list(zip(*[
-                        knl.cache_manager.base_index_and_length(
-                            access_range, i)
-                        for i in range(access_range.dim(dim_type.set))]))
+                        get_base_index_and_length(
+                            knl.isl_op_pool, access_range, i)
+                        for i in range(access_range.dim(knl.isl_op_pool,
+                                                        dim_type.set))]))
             except StaticValueFindingError as e:
                 var_to_error[var_name] = str(e)
                 continue

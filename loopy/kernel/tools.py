@@ -28,6 +28,7 @@ import sys
 from sys import intern
 
 import numpy as np
+import islpy
 import islpy.oppool as isl
 from islpy import dim_type
 from loopy.diagnostic import LoopyError, warn_with_kernel
@@ -604,7 +605,8 @@ def show_dependency_graph(*args, **kwargs):
 
 def is_domain_dependent_on_inames(kernel, domain_index, inames):
     dom = kernel.domains[domain_index]
-    dom_parameters = set(dom.get_var_names(dim_type.param))
+    dom_parameters = set(dom.get_var_names(kernel.isl_op_pool,
+                                           dim_type.param))
 
     # {{{ check for parenthood by loop bound iname
 
@@ -782,9 +784,9 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         If *axis* is None, find a suitable axis automatically.
         """
         try:
-            with isl.SuppressedWarnings(kernel.isl_context):
+            with islpy.SuppressedWarnings(kernel.isl_context):
                 desired_length = kernel.get_constant_iname_length(iname)
-        except isl.Error:
+        except islpy.Error:
             # Likely unbounded, automatic assignment is not
             # going to happen for this iname.
             new_inames = kernel.inames.copy()
@@ -908,9 +910,9 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 
             def get_iname_length(iname):
                 try:
-                    with isl.SuppressedWarnings(kernel.isl_context):
+                    with islpy.SuppressedWarnings(kernel.isl_context):
                         return kernel.get_constant_iname_length(iname)
-                except isl.Error:
+                except islpy.Error:
                     return -1
             # assign longest auto axis inames first
             auto_axis_inames.sort(
@@ -1044,13 +1046,15 @@ def guess_var_shape(kernel, var_name):
         from loopy.symbolic import pw_aff_to_expr
 
         shape = []
-        for i in range(armap.access_range.dim(dim_type.set)):
+        for i in range(armap.access_range.dim(kernel.isl_op_pool, dim_type.set)):
             try:
                 shape.append(
                         pw_aff_to_expr(static_max_of_pw_aff(
-                            kernel.cache_manager.dim_max(
-                                armap.access_range, i) + 1,
-                            constants_only=False)))
+                            armap.access_range.dim_max(kernel.isl_op_pool,
+                                                       i) + 1,
+                            constants_only=False,
+                            isl_op_pool=kernel.isl_op_pool),
+                            kernel.isl_op_pool))
             except Exception:
                 print("While trying to find shape axis %d of "
                         "variable '%s', the following "
@@ -1874,5 +1878,68 @@ def infer_arg_is_output_only(kernel):
     return kernel.copy(args=new_args)
 
 # }}}
+
+
+def get_outer_params(domains, isl_op_pool):
+    all_inames = set()
+    all_params = set()
+    for dom in domains:
+        all_inames.update(dom.get_var_names(isl_op_pool, dim_type.set))
+        all_params.update(dom.get_var_names(isl_op_pool, dim_type.param))
+
+    from loopy.tools import intern_frozenset_of_ids
+    return intern_frozenset_of_ids(all_params-all_inames)
+
+
+def get_base_index_and_length(isl_op_pool, set_, iname, context=None,
+                              n_allowed_params_in_length=None):
+    """
+    :arg n_allowed_params_in_length: Simplifies the 'length'
+        argument so that only the first that many params
+        (in the domain of *set_*) occur.
+    """
+    if not isinstance(iname, int):
+        iname_to_dim = set_.get_space(isl_op_pool).get_var_dict(isl_op_pool)
+        idx = iname_to_dim[iname][1]
+    else:
+        idx = iname
+
+    lower_bound_pw_aff = set_.dim_min(isl_op_pool, idx)
+    upper_bound_pw_aff = set_.dim_max(isl_op_pool, idx)
+
+    from loopy.diagnostic import StaticValueFindingError
+    from loopy.isl_helpers import (
+            static_max_of_pw_aff,
+            static_min_of_pw_aff,
+            static_value_of_pw_aff,
+            find_max_of_pwaff_with_params)
+    from loopy.symbolic import pw_aff_to_expr
+
+    try:
+        # first: try to find static lower bound value
+        base_index_aff = static_value_of_pw_aff(
+                lower_bound_pw_aff, constants_only=False,
+                isl_op_pool=isl_op_pool, context=context)
+    except StaticValueFindingError:
+        # if that didn't work, try finding a lower bound
+        base_index_aff = static_min_of_pw_aff(
+                lower_bound_pw_aff, constants_only=False,
+                isl_op_pool=isl_op_pool,
+                context=context)
+
+    assert base_index_aff is not None
+
+    base_index = pw_aff_to_expr(base_index_aff, isl_op_pool)
+
+    length = find_max_of_pwaff_with_params(
+            upper_bound_pw_aff.sub(isl_op_pool, base_index_aff) + 1,
+            n_allowed_params_in_length, isl_op_pool)
+    length = pw_aff_to_expr(static_max_of_pw_aff(length, constants_only=False,
+                                                 isl_op_pool=isl_op_pool,
+                                                 context=context),
+                            isl_op_pool,
+                            )
+
+    return base_index, length
 
 # vim: foldmethod=marker

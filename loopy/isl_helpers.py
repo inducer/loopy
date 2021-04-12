@@ -26,6 +26,7 @@ THE SOFTWARE.
 
 from loopy.diagnostic import StaticValueFindingError
 
+import islpy
 import islpy.oppool as isl
 from islpy import dim_type
 
@@ -111,8 +112,10 @@ def make_loop_bounds_from_pwaffs(space, iname, lbound, ubound, isl_op_pool):
 
     iname_pwaff, lbound = isl.align_two(isl_op_pool, iname_pwaff, lbound)
     iname_pwaff, ubound = isl.align_two(isl_op_pool, iname_pwaff, ubound)
-    assert iname_pwaff.get_space(isl_op_pool) == lbound.get_space(isl_op_pool)
-    assert iname_pwaff.get_space(isl_op_pool) == ubound.get_space(isl_op_pool)
+    assert iname_pwaff.get_space(isl_op_pool).is_equal(isl_op_pool,
+                                                       lbound.get_space(isl_op_pool))
+    assert iname_pwaff.get_space(isl_op_pool).is_equal(isl_op_pool,
+                                                       ubound.get_space(isl_op_pool))
 
     return (iname_pwaff.ge_set(isl_op_pool,
                                lbound).intersect(isl_op_pool,
@@ -214,9 +217,9 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what,
                     % (what, pw_aff))
         return result
 
-    from pytools import memoize, flatten
+    from pytools import flatten  #, memoize
 
-    @memoize
+    # @memoize (FIXME?)
     def is_bounded(set):
         assert set.dim(isl_op_pool, dim_type.set) == 0
         return (set
@@ -253,7 +256,8 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what,
             if constants_only and not candidate_aff.is_cst(isl_op_pool):
                 continue
 
-            if reference.is_subset(isl_op_pool, set_method(pw_aff, candidate_aff)):
+            if reference.is_subset(isl_op_pool, set_method(pw_aff, isl_op_pool,
+                                                           candidate_aff)):
                 return candidate_aff
 
     # }}}
@@ -334,18 +338,20 @@ def duplicate_axes(isl_obj, duplicate_inames, new_inames, isl_op_pool):
 # }}}
 
 
-def is_nonnegative(expr, over_set):
-    space = over_set.get_space()
+def is_nonnegative(expr, over_set, isl_op_pool):
+    space = over_set.get_space(isl_op_pool)
     from loopy.symbolic import aff_from_expr
     try:
-        with isl.SuppressedWarnings(space.get_ctx()):
-            aff = aff_from_expr(space, -expr-1)
+        with isl.SuppressedWarnings(space.get_ctx(isl_op_pool)):
+            aff = aff_from_expr(space, -expr-1, isl_op_pool)
     except Exception:
         return None
     expr_neg_set = isl.BasicSet.universe(space).add_constraint(
+            isl_op_pool,
             isl.Constraint.inequality_from_aff(aff))
 
-    return over_set.intersect(expr_neg_set).is_empty()
+    return over_set.intersect(isl_op_pool,
+                              expr_neg_set).is_empty(isl_op_pool)
 
 
 # {{{ convexify
@@ -392,27 +398,28 @@ def convexify(domain, isl_op_pool):
 # {{{ boxify
 
 def boxify(isl_op_pool, domain, box_inames, context):
-    var_dict = domain.get_var_dict(dim_type.set)
+    var_dict = domain.get_var_dict(isl_op_pool, dim_type.set)
     box_iname_indices = [var_dict[iname][1] for iname in box_inames]
     n_nonbox_inames = min(box_iname_indices)
 
     assert box_iname_indices == list(range(
-            n_nonbox_inames, domain.dim(dim_type.set)))
+            n_nonbox_inames, domain.dim(isl_op_pool, dim_type.set)))
 
-    n_old_parameters = domain.dim(dim_type.param)
+    n_old_parameters = domain.dim(isl_op_pool, dim_type.param)
     domain = domain.move_dims(
-            dim_type.param, n_old_parameters, dim_type.set, 0, n_nonbox_inames)
+            isl_op_pool, dim_type.param, n_old_parameters, dim_type.set, 0,
+            n_nonbox_inames)
 
     result = domain
-    zero = isl.Aff.zero_on_domain(result.space)
+    zero = isl.Aff.zero_on_domain(result.get_space(isl_op_pool))
 
     for i in range(len(box_iname_indices)):
-        result = result.eliminate(dim_type.set, i, 1)
+        result = result.eliminate(isl_op_pool, dim_type.set, i, 1)
 
-        iname_aff = zero.add_coefficient_val(dim_type.in_, i, 1)
+        iname_aff = zero.add_coefficient_val(isl_op_pool, dim_type.in_, i, 1)
 
         def add_in_dims(aff):
-            return aff.add_dims(dim_type.in_, len(box_inames))
+            return aff.add_dims(isl_op_pool, dim_type.in_, len(box_inames))
 
         iname_min = add_in_dims(domain.dim_min(isl_op_pool, i)).coalesce(isl_op_pool)
         iname_max = add_in_dims(domain.dim_max(isl_op_pool, i)).coalesce(isl_op_pool)
@@ -438,12 +445,12 @@ def boxify(isl_op_pool, domain, box_inames, context):
 # }}}
 
 
-def simplify_via_aff(expr):
+def simplify_via_aff(expr, isl_op_pool):
     from loopy.symbolic import aff_from_expr, aff_to_expr, get_dependencies
     deps = get_dependencies(expr)
     return aff_to_expr(aff_from_expr(
-        isl.Space.create_from_names(isl.DEFAULT_CONTEXT, list(deps)),
-        expr))
+        isl.Space.create_from_names(islpy.DEFAULT_CONTEXT, list(deps)),
+        expr, isl_op_pool), isl_op_pool)
 
 
 def project_out(set, inames):
@@ -565,23 +572,27 @@ def get_simple_strides(bset, key_by="name"):
 
 # {{{ find_max_of_pwaff_with_params
 
-def find_max_of_pwaff_with_params(pw_aff, n_allowed_params):
+def find_max_of_pwaff_with_params(pw_aff, n_allowed_params, isl_op_pool):
     if n_allowed_params is None:
         return pw_aff
 
-    extra_dim_idx = pw_aff.dim(dim_type.param,)
-    pw_aff = pw_aff.add_dims(dim_type.param, 1)
+    extra_dim_idx = pw_aff.dim(isl_op_pool, dim_type.param)
+    pw_aff = pw_aff.add_dims(isl_op_pool, dim_type.param, 1)
 
-    zero = isl.Aff.zero_on_domain(pw_aff.domain().space)
-    extra_dim = zero.set_coefficient_val(dim_type.param, extra_dim_idx, 1)
+    zero = isl.Aff.zero_on_domain(pw_aff.domain(isl_op_pool).get_space(isl_op_pool))
+    extra_dim = zero.set_coefficient_val(isl_op_pool, dim_type.param,
+                                         extra_dim_idx,
+                                         1)
 
-    pw_aff_set = pw_aff.eq_set(extra_dim)
+    pw_aff_set = pw_aff.eq_set(isl_op_pool, extra_dim)
 
     pw_aff_set = pw_aff_set.move_dims(
+            isl_op_pool,
             dim_type.set, 0, dim_type.param, n_allowed_params,
-            pw_aff_set.dim(dim_type.param) - n_allowed_params)
+            pw_aff_set.dim(isl_op_pool, dim_type.param) - n_allowed_params)
 
-    return pw_aff_set.dim_max(pw_aff_set.dim(dim_type.set)-1)
+    return pw_aff_set.dim_max(isl_op_pool,
+                              pw_aff_set.dim(isl_op_pool, dim_type.set)-1)
 
 # }}}
 

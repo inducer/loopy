@@ -875,7 +875,8 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
         from loopy.isl_helpers import duplicate_axes
         kernel = kernel.copy(
                 domains=domch.get_domains_with(
-                    duplicate_axes(domch.domain, [old_iname], [new_iname])))
+                    duplicate_axes(domch.domain, [old_iname],
+                                   [new_iname], kernel.isl_op_pool)))
 
     # }}}
 
@@ -1451,7 +1452,7 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
 
     new_domains = []
     for idom, dom in enumerate(kernel.domains):
-        dom_var_dict = dom.get_var_dict()
+        dom_var_dict = dom.get_var_dict(kernel.isl_op_pool)
         old_iname_overlap = [
                 iname
                 for iname in old_inames
@@ -1513,21 +1514,23 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
         dom_new_inames = list(dom_new_inames)
         for iname in dom_new_inames:
             dt = new_iname_dim_types[iname]
-            iname_idx = dom.dim(dt)
-            dom = dom.add_dims(dt, 1)
-            dom = dom.set_dim_name(dt, iname_idx, iname)
+            iname_idx = dom.dim(kernel.isl_op_pool, dt)
+            dom = dom.add_dims(kernel.isl_op_pool, dt, 1)
+            dom = dom.set_dim_name(kernel.isl_op_pool, dt, iname_idx, iname)
 
         # add equations
         from loopy.symbolic import aff_from_expr
         for lhs, rhs in dom_equations:
             dom = dom.add_constraint(
+                    kernel.isl_op_pool,
                     isl.Constraint.equality_from_aff(
-                        aff_from_expr(dom.space, rhs - lhs)))
+                        aff_from_expr(dom.get_space(kernel.isl_op_pool),
+                                      rhs-lhs, kernel.isl_op_pool)))
 
         # project out old inames
         for iname in dom_old_inames:
-            dt, idx = dom.get_var_dict()[iname]
-            dom = dom.project_out(dt, idx, 1)
+            dt, idx = dom.get_var_dict(kernel.isl_op_pool)[iname]
+            dom = dom.project_out(kernel.isl_op_pool, dt, idx, 1)
 
         new_domains.append(dom)
 

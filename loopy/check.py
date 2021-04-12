@@ -440,7 +440,7 @@ class _AccessCheckMapper(WalkMapper):
                     shape_domain = shape_domain.intersect(self.kernel.isl_op_pool,
                                                           slab)
 
-            if not access_range.is_subset(shape_domain):
+            if not access_range.is_subset(self.kernel.isl_op_pool, shape_domain):
                 raise LoopyError("'%s' in instruction '%s' "
                         "accesses out-of-bounds array element (could not"
                         " establish '%s' is a subset of '%s')."
@@ -1107,6 +1107,7 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
 
     last_idomains = None
     last_insn_inames = None
+    isl_op_pool = kernel.isl_op_pool
 
     for insn_id, idomains in implemented_domains.items():
         insn = kernel.id_to_insn[insn_id]
@@ -1118,7 +1119,9 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
         # {{{ if we've checked the same thing before, no need to check it again
 
         if last_idomains is not None and last_insn_inames is not None:
-            if idomains == last_idomains and insn_inames == last_insn_inames:
+            if (all(idom.is_equal(isl_op_pool, last_idom)
+                    for idom, last_idom in zip(idomains, last_idomains))
+                    and (insn_inames == last_insn_inames)):
                 continue
 
         last_idomains = idomains
@@ -1144,7 +1147,7 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
             non_lid_inames = frozenset(iname for iname in insn_inames
                 if not kernel.iname_tags_of_type(iname, LocalIndexTag))
             insn_impl_domain = insn_impl_domain.project_out_except(
-                non_lid_inames, [dim_type.set])
+                kernel.isl_op_pool, non_lid_inames, [dim_type.set])
 
         insn_domain = kernel.get_inames_domain(insn_inames)
         insn_parameters = frozenset(insn_domain.get_var_names(kernel.isl_op_pool,
@@ -1197,12 +1200,15 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                 #lines.append("point implemented: %s" % (pt_set <= insn_impl_domain))
                 #lines.append("point desired: %s" % (pt_set <= desired_domain))
 
-                iname_to_dim = pt.get_space().get_var_dict()
+                iname_to_dim = pt.get_space(kernel.isl_op_pool).get_var_dict(
+                    kernel.isl_op_pool)
                 point_axes = []
                 for iname in insn_inames | parameter_inames:
                     tp, dim = iname_to_dim[iname]
                     point_axes.append("%s=%d" % (
-                        iname, pt.get_coordinate_val(tp, dim).to_python()))
+                        iname, pt.get_coordinate_val(kernel.isl_op_pool,
+                                                     tp, dim)
+                        .to_python()))
 
                 lines.append(
                         "sample point in {} but not {}: {}".format(
