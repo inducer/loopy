@@ -663,9 +663,11 @@ def _check_variable_access_ordered_inner(kernel):
 
     def discard_dep_reqs_in_order(dep_reqs_to_vars, edges, order):
         """
-        Subtracts dependency requirements of insn_ids by all direct/indirect
-        predecessors of a directed graph of insn_ids as nodes and *edges* as
-        the connectivity.
+        Removes instruction pairs from *dep_reqs_to_vars* that have a
+        path to the first element from the second element of the pair.
+
+        :arg edges: A dictionary representing edges in a graph which
+            maps an instruction to a list of its successors in the graph.
 
         :arg order: An instance of :class:`list` of instruction ids in which the
             *edges* graph is to be traversed.
@@ -673,23 +675,37 @@ def _check_variable_access_ordered_inner(kernel):
 
         insn_to_req_deps = defaultdict(set)
         insn_to_order = dict((insn, i) for i, insn in enumerate(order))
-        for (insn_id, pred) in dep_reqs_to_vars:
-            if insn_to_order[pred] > insn_to_order[insn_id]:
+        # For each pairof (insn, pred), let us create a dictionary mapping
+        # *pred* to all its potential successors *insn*
+        for (insn, pred) in dep_reqs_to_vars:
+            # if *pred* happens after *insn*, then *insn* definitely
+            # doesn't have a path from *pred*
+            if insn_to_order[pred] > insn_to_order[insn]:
                 continue
-            insn_to_req_deps[pred].add(insn_id)
+            insn_to_req_deps[pred].add(insn)
 
         for pred, check_successors in insn_to_req_deps.items():
+            # for each *pred*, we will calculate all the direct/indirect
+            # instructions that can be reached.
             all_successors = set()
+            # first let us start with direct sucessors
             to_check = edges[pred].copy()
             while to_check:
                 successor = to_check.pop()
+                # we add this successor to the list of all successors
                 all_successors.add(successor)
+                # next we check if this successor was in *dep_reqs_to_vars*
+                # and remove the pair from there if it is
                 if successor in check_successors:
                     dep_reqs_to_vars.pop((successor, pred))
                     check_successors.remove(successor)
+                    # if there are no more successors to check, exit early
                     if not check_successors:
                         break
+                # next we iterate through the successors of successor.
                 for edge in edges[successor]:
+                    # if we have not already seen the successor, add it to
+                    # the list of instructions to check.
                     if edge not in all_successors:
                         to_check.add(edge)
 
