@@ -672,8 +672,10 @@ def _check_variable_access_ordered_inner(kernel):
         """
 
         insn_to_req_deps = defaultdict(set)
+        insn_to_order = dict((insn, i) for i, insn in enumerate(order))
         for (insn_id, pred) in dep_reqs_to_vars:
-            insn_to_req_deps[pred].add(insn_id)
+            if insn_to_order[pred] > insn_to_order[insn_id]:
+                continue
 
         for pred, check_successors in insn_to_req_deps.items():
             all_successors = set()
