@@ -1400,19 +1400,14 @@ def test_assignment_to_subst_with_dependencies():
         <>temp0 = 0.1*i {id=stmt0}
         <>tsq = temp0**2  {id=stmt1,dep=stmt0}
         a[i] = 23*tsq + 25*tsq  {id=stmt2,dep=stmt1}
-        <>temp1 = 3*tsq  {id=stmt3,dep=stmt1}
-        <>temp2 = 5.5*i {id=stmt4,dep=stmt1}
+        <>temp3 = 3*tsq  {id=stmt3,dep=stmt1}
+        <>temp4 = 5.5*i {id=stmt4,dep=stmt1}
         """)
 
-    # TODO test where 'within' for subst doesn't match all occurances?
     # TODO what if stmt2 depends on <>tsq = b[i-1]**2 and then we do
     #     assignment to subst? remove i'=i from dep?
     # TODO what if stmt3 doesn't have iname i in it?
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
-
-    print("instructions before subst")
-    for insn in knl.instructions:
-        print(insn)
 
     dep_eq = _isl_map_with_marked_dims(
         "[n] -> {{ [{0}'=0, i']->[{0}=1, i] : "
@@ -1442,6 +1437,58 @@ def test_assignment_to_subst_with_dependencies():
         _align_and_compare_maps([(dep_le, deps_found["stmt0"][0])])
 
     assert not knl.id_to_insn["stmt4"].dependencies
+
+    # Test using 'within' --------------------------------------------------
+
+    knl = lp.make_kernel(
+        "{[i]: 0 <= i < n}",
+        """
+        <>temp0 = 0.1*i {id=stmt0}
+        <>tsq = temp0**2  {id=stmt1,dep=stmt0}
+        a[i] = 23*tsq + 25*tsq  {id=stmt2,dep=stmt1}
+        <>temp3 = 3*tsq  {id=stmt3,dep=stmt1}
+        <>temp4 = 5.5*i {id=stmt4,dep=stmt1}
+        <>temp5 = 5.6*tsq*i {id=stmt5,dep=stmt1}
+        """)
+
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+
+    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", deepcopy(dep_le))
+    knl = lp.add_stmt_inst_dependency(knl, "stmt2", "stmt1", deepcopy(dep_eq))
+    knl = lp.add_stmt_inst_dependency(knl, "stmt3", "stmt1", deepcopy(dep_eq))
+    knl = lp.add_stmt_inst_dependency(knl, "stmt4", "stmt1", deepcopy(dep_eq))
+    knl = lp.add_stmt_inst_dependency(knl, "stmt5", "stmt1", deepcopy(dep_eq))
+
+    knl = lp.assignment_to_subst(knl, "tsq", within="id:stmt2 or id:stmt3")
+
+    # replacement will not be made in stmt5, so stmt1 will not be removed,
+    # which means no deps will be removed, and the statements were the replacement
+    # *was* made (stmt2 and stmt3) will still receive the deps from stmt1
+
+    for stmt_id in ["stmt2", "stmt3"]:
+        deps_found = knl.id_to_insn[stmt_id].dependencies
+
+        # Dep on stmt1 should NOT have been removed
+        # (for now? could maybe do something smarter)
+        assert set(deps_found.keys()) == set(["stmt0", "stmt1"])
+        assert len(deps_found["stmt0"]) == len(deps_found["stmt1"]) == 1
+
+        # Should now depend on stmt0
+        _align_and_compare_maps([(dep_le, deps_found["stmt0"][0])])
+
+        # Should still depend on stmt1
+        _align_and_compare_maps([(dep_eq, deps_found["stmt1"][0])])
+
+    for stmt_id in ["stmt4", "stmt5"]:
+        deps_found = knl.id_to_insn[stmt_id].dependencies
+
+        # Dep on stmt1 should NOT have been removed
+        # (for now? could maybe do something smarter)
+        assert set(deps_found.keys()) == set(["stmt1"])
+        assert len(deps_found["stmt1"]) == 1
+
+        # Should still depend on stmt1
+        _align_and_compare_maps([(dep_eq, deps_found["stmt1"][0])])
 
 
 def test_split_iname_with_dependencies():
