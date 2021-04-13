@@ -469,7 +469,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 
     # {{{ update dependencies
 
-    from loopy.transform.instruction import map_stmt_inst_dependencies
+    from loopy.transform.instruction import map_stmt_dependencies
 
     # Add dependencies from each subst_def to any statement where its
     # LHS was found and the subst was performed
@@ -492,7 +492,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
                     dep_dict.setdefault(depends_on_id, []).extend(dep_list_copy)
                 return dep_dict
 
-            kernel = map_stmt_inst_dependencies(
+            kernel = map_stmt_dependencies(
                 kernel, match_any_matched_usage_id, _add_deps_to_stmt)
 
     # }}}

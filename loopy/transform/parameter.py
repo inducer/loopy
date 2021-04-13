@@ -89,7 +89,7 @@ def _fix_parameter(kernel, name, value):
 
     # {{{ Fix parameter in deps
 
-    from loopy.transform.instruction import map_stmt_inst_dependency_maps
+    from loopy.transform.instruction import map_dependency_maps
     from loopy.schedule.checker.utils import convert_map_to_set
 
     def _fix_parameter_in_dep(dep):
@@ -111,7 +111,7 @@ def _fix_parameter(kernel, name, value):
 
         return map_from_set
 
-    kernel = map_stmt_inst_dependency_maps(kernel, "id:*", _fix_parameter_in_dep)
+    kernel = map_dependency_maps(kernel, _fix_parameter_in_dep)
 
     # }}}
 

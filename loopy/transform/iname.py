@@ -257,7 +257,7 @@ def _split_iname_backend(kernel, iname_to_split,
 
     # {{{ Split iname in dependencies
 
-    from loopy.transform.instruction import map_stmt_inst_dependency_maps
+    from loopy.transform.instruction import map_dependency_maps
     from loopy.schedule.checker.schedule import BEFORE_MARK
     from loopy.schedule.checker.utils import convert_map_to_set
 
@@ -299,7 +299,11 @@ def _split_iname_backend(kernel, iname_to_split,
 
         return map_from_set
 
-    kernel = map_stmt_inst_dependency_maps(kernel, "id:*", _split_iname_in_dep)
+    # TODO currently this gets applied to all maps
+    # instead, handle 'within'
+    kernel = map_dependency_maps(
+        kernel, _split_iname_in_dep,
+        stmt_match_depender="id:*", stmt_match_dependee="id:*")
 
     # }}}
 
@@ -893,6 +897,7 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
 
     name_gen = kernel.get_var_name_generator()
 
+    # Generate new iname names
     for i, iname in enumerate(inames):
         new_iname = new_inames[i]
 
@@ -925,6 +930,8 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
         kernel = kernel.copy(
                 domains=domch.get_domains_with(
                     duplicate_axes(domch.domain, [old_iname], [new_iname])))
+
+        # TODO For any statements matching 'within', duplicate iname in deps...?
 
     # }}}
 
@@ -1265,7 +1272,7 @@ def remove_unused_inames(kernel, inames=None):
 
     # {{{ Remove inames from deps
 
-    from loopy.transform.instruction import map_stmt_inst_dependency_maps
+    from loopy.transform.instruction import map_dependency_maps
     from loopy.schedule.checker.schedule import BEFORE_MARK
     from loopy.schedule.checker.utils import append_mark_to_strings
     unused_inames_marked = append_mark_to_strings(unused_inames, BEFORE_MARK)
@@ -1274,7 +1281,7 @@ def remove_unused_inames(kernel, inames=None):
         return remove_vars_from_set(
             remove_vars_from_set(dep, unused_inames), unused_inames_marked)
 
-    kernel = map_stmt_inst_dependency_maps(kernel, "id:*", _remove_iname_from_dep)
+    kernel = map_dependency_maps(kernel, _remove_iname_from_dep)
 
     # }}}
 

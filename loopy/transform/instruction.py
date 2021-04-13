@@ -117,10 +117,20 @@ def add_dependency(kernel, insn_match, depends_on):
 # }}}
 
 
-# {{{ map_stmt_inst_dependencies
+# {{{ map dependencies
 
-def map_stmt_inst_dependencies(kernel, stmt_match, f):
+# Terminiology:
+# stmtX.dependencies:  # <- "stmt dependencies" = full dict of deps
+# {stmt0: [dep_map00, dep_map01, ...],  # <- "one dependency"
+#  stmt1: [dep_map10, dep_map11, ...],
+#  ...}
+# one dependency includes one "dependency list", which contains "dep maps"
+
+
+def map_stmt_dependencies(kernel, stmt_match, f):
     # Set stmt.dependences = f(stmt.dependencies) for stmts matching stmt_match
+    # Only modifies dependencies for depender!
+    # Does not search for matching dependees of non-matching depender statements!
 
     def _update_deps(stmt):
         new_deps = f(stmt.dependencies)
@@ -129,17 +139,49 @@ def map_stmt_inst_dependencies(kernel, stmt_match, f):
     return map_instructions(kernel, stmt_match, _update_deps)
 
 
-def map_stmt_inst_dependency_maps(kernel, stmt_match, f):
-    # Set map = f(map) for all dep maps in stmt.dependencies.values()
-    # for statements matching stmt_match
+def map_dependency_lists(
+        kernel, f, stmt_match_depender="id:*", stmt_match_dependee="id:*"):
+    # Set dependency = f(dependency) for:
+    # All deps of stmts matching stmt_match_depender
+    # All deps ON stmts matching stmt_match_dependee
 
-    def _update_dep_map(stmt_deps):
+    from loopy.match import parse_match
+    match_depender = parse_match(stmt_match_depender)
+    match_dependee = parse_match(stmt_match_dependee)
+
+    new_stmts = []
+
+    for stmt in kernel.instructions:
         new_deps = {}
-        for dep_id, deps in stmt_deps.items():
-            new_deps[dep_id] = [f(dep) for dep in deps]
-        return new_deps
+        if match_depender(kernel, stmt):
+            # Stmt matches as depender
+            # Replace all deps
+            for dep_id, dep_maps in stmt.dependencies.items():
+                new_deps[dep_id] = f(dep_maps)
+        else:
+            # Stmt didn't match as a depender
+            # Replace deps matching dependees
+            for dep_id, dep_maps in stmt.dependencies.items():
+                if match_dependee(kernel, kernel.id_to_insn[dep_id]):
+                    new_deps[dep_id] = f(dep_maps)
+                else:
+                    new_deps[dep_id] = dep_maps
+        new_stmts.append(stmt.copy(dependencies=new_deps))
 
-    return map_stmt_inst_dependencies(kernel, stmt_match, _update_dep_map)
+    return kernel.copy(instructions=new_stmts)
+
+
+def map_dependency_maps(
+        kernel, f, stmt_match_depender="id:*", stmt_match_dependee="id:*"):
+    # Set dep_map = f(dep_map) for dep_map in:
+    # All dependencies of stmts matching stmt_match_depender
+    # All dependencies ON stmts matching stmt_match_dependee
+
+    def _update_dep_maps(dep_maps):
+        return [f(dep_map) for dep_map in dep_maps]
+
+    return map_dependency_lists(
+        kernel, _update_dep_maps, stmt_match_depender, stmt_match_dependee)
 
 # }}}
 
@@ -166,7 +208,7 @@ def add_stmt_inst_dependency(
         stmt_deps.setdefault(depends_on_id, []).append(new_dependency)
         return stmt_deps
 
-    result = map_stmt_inst_dependencies(kernel, "id:%s" % (stmt_id), _add_dep)
+    result = map_stmt_dependencies(kernel, "id:%s" % (stmt_id), _add_dep)
 
     return result
 
