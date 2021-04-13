@@ -751,10 +751,30 @@ class RuleArgument(LoopyExpressionBase):
 # }}}
 
 
+class DependencyMapperWithReductionInames(DependencyMapper):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.reduction_inames = set()
+
+    def map_reduction(self, expr, *args, **kwargs):
+        self.reduction_inames.update(expr.inames)
+        return super().map_reduction(expr, *args, **kwargs)
+
+
 @memoize
+def _get_dependencies_and_reduction_inames(expr):
+    dep_mapper = DependencyMapperWithReductionInames(composite_leaves=False)
+    deps = frozenset(dep.name for dep in dep_mapper(expr))
+    reduction_inames = dep_mapper.reduction_inames
+    return deps, reduction_inames
+
+
 def get_dependencies(expr):
-    dep_mapper = DependencyMapper(composite_leaves=False)
-    return frozenset(dep.name for dep in dep_mapper(expr))
+    return _get_dependencies_and_reduction_inames(expr)[0]
+
+
+def get_reduction_inames(expr):
+    return _get_dependencies_and_reduction_inames(expr)[1]
 
 
 # {{{ rule-aware mappers

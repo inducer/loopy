@@ -795,18 +795,8 @@ class MultiAssignmentBase(InstructionBase):
 
     @memoize_method
     def reduction_inames(self):
-        def map_reduction(expr, rec):
-            rec(expr.expr)
-            for iname in expr.inames:
-                result.add(iname)
-
-        from loopy.symbolic import ReductionCallbackMapper
-        cb_mapper = ReductionCallbackMapper(map_reduction)
-
-        result = set()
-        cb_mapper(self.expression)
-
-        return result
+        from loopy.symbolic import get_reduction_inames
+        return get_reduction_inames(self.expression)
 
 # }}}
 
