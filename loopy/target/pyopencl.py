@@ -289,7 +289,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
     def wrap_in_typecast_lazy(self, actual_type_func, needed_dtype, s):
         if needed_dtype.is_complex():
-            return self.wrap_in_typecase(self, actual_type_func(), needed_dtype, s)
+            return self.wrap_in_typecast(self, actual_type_func(), needed_dtype, s)
         else:
             return s
 
