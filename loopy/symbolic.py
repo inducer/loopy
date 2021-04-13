@@ -1031,15 +1031,16 @@ class RuleAwareIdentityMapper(IdentityMapper):
     def map_instruction(self, kernel, insn):
         return insn
 
-    def map_kernel(self, kernel):
+    def map_kernel(self, kernel, within=lambda *args: True):
         new_insns = [
-                # While subst rules are not allowed in assignees, the mapper
-                # may perform tasks entirely unrelated to subst rules, so
-                # we must map assignees, too.
-                self.map_instruction(kernel,
-                    insn.with_transformed_expressions(
-                        lambda expr: self(expr, kernel, insn)))
-                for insn in kernel.instructions]
+            # While subst rules are not allowed in assignees, the mapper
+            # may perform tasks entirely unrelated to subst rules, so
+            # we must map assignees, too.
+            insn if not kernel.substitutions and not within(kernel, insn, ()) else
+            self.map_instruction(kernel,
+                insn.with_transformed_expressions(
+                    lambda expr: self(expr, kernel, insn)))
+            for insn in kernel.instructions]
 
         from functools import partial
 
