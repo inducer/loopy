@@ -255,7 +255,7 @@ class AssignmentToSubstChanger(RuleAwareIdentityMapper):
                 expn_state.kernel,
                 expn_state.instruction,
                 expn_state.stack):
-            self.unmatched_usage_sites_found[my_def_id].add[my_insn_id]
+            self.unmatched_usage_sites_found[my_def_id].add(my_insn_id)
             return None
 
         subst_name = self.get_subst_name(my_def_id)
