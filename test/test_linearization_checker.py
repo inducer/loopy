@@ -1393,6 +1393,46 @@ def test_add_stmt_inst_dependency():
 
 # {{{ Check dependency handling during transformations
 
+def test_fix_parameters_with_dependencies():
+    knl = lp.make_kernel(
+        "{[i,j]: 0 <= i < n and 0 <= j < m}",
+        """
+        <>temp0 = 0.1*i+j {id=stmt0}
+        <>tsq = temp0**2+i+j  {id=stmt1,dep=stmt0}
+        a[i,j] = 23*tsq + 25*tsq+j  {id=stmt2,dep=stmt1}
+        """)
+
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+
+    dep_orig = _isl_map_with_marked_dims(
+        "[n,m] -> {{ [{0}'=0, i', j']->[{0}=1, i, j] : "
+        "0 <= i,i' < n and 0 <= j,j' < m "
+        "and i' = i and j' = j"
+        "}}".format(STATEMENT_VAR_NAME))
+
+    from copy import deepcopy
+    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", deepcopy(dep_orig))
+    knl = lp.add_stmt_inst_dependency(knl, "stmt2", "stmt1", deepcopy(dep_orig))
+
+    fix_val = 64
+    knl = lp.fix_parameters(knl, m=fix_val)
+
+    dep_exp = _isl_map_with_marked_dims(
+        "[n] -> {{ [{0}'=0, i', j']->[{0}=1, i, j] : "
+        "0 <= i,i' < n and 0 <= j,j' < {1} "
+        "and i' = i and j' = j"
+        "}}".format(STATEMENT_VAR_NAME, fix_val))
+
+    for stmt_id, dep_id in [("stmt1", "stmt0"), ("stmt2", "stmt1")]:
+        deps_found = knl.id_to_insn[stmt_id].dependencies
+
+        assert set(deps_found.keys()) == set([dep_id])
+        assert len(deps_found[dep_id]) == 1
+
+        # Check dep
+        _align_and_compare_maps([(dep_exp, deps_found[dep_id][0])])
+
+
 def test_assignment_to_subst_with_dependencies():
     knl = lp.make_kernel(
         "{[i]: 0 <= i < n}",
@@ -1404,9 +1444,10 @@ def test_assignment_to_subst_with_dependencies():
         <>temp4 = 5.5*i {id=stmt4,dep=stmt1}
         """)
 
+    # TODO test with multiple subst definition sites
     # TODO what if stmt2 depends on <>tsq = b[i-1]**2 and then we do
     #     assignment to subst? remove i'=i from dep?
-    # TODO what if stmt3 doesn't have iname i in it?
+    # TODO what if, e.g., stmt3 doesn't have iname i in it?
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
 
     dep_eq = _isl_map_with_marked_dims(
@@ -1430,7 +1471,7 @@ def test_assignment_to_subst_with_dependencies():
         deps_found = knl.id_to_insn[stmt_id].dependencies
 
         # Dep on stmt1 should have been removed
-        assert list(deps_found.keys()) == ["stmt0"]
+        assert set(deps_found.keys()) == set(["stmt0"])
         assert len(deps_found["stmt0"]) == 1
 
         # Should now depend on stmt0
@@ -1502,6 +1543,8 @@ def test_split_iname_with_dependencies():
         assumptions="p >= 1",
         lang_version=(2018, 2)
         )
+
+    # TODO test split_iname 'within'
 
     from copy import deepcopy
     ref_knl = deepcopy(knl)  # deepcopy necessary?
