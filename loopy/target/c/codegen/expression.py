@@ -114,7 +114,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             return RecursiveMapper.rec(self, expr, type_context)
 
         return self.wrap_in_typecast_lazy(
-                lambda : self.infer_type(expr), needed_dtype,
+                lambda: self.infer_type(expr), needed_dtype,
                 RecursiveMapper.rec(self, expr, type_context))
 
     def __call__(self, expr, prec=None, type_context=None, needed_dtype=None):
