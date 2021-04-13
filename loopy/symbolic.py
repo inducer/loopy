@@ -1051,7 +1051,8 @@ class RuleAwareIdentityMapper(IdentityMapper):
     def map_instruction(self, kernel, insn):
         return insn
 
-    def map_kernel(self, kernel, within=lambda *args: True):
+    def map_kernel(self, kernel, within=lambda *args: True,
+            map_args=True, map_tvs=True):
         new_insns = [
             # While subst rules are not allowed in assignees, the mapper
             # may perform tasks entirely unrelated to subst rules, so
@@ -1070,17 +1071,23 @@ class RuleAwareIdentityMapper(IdentityMapper):
 
         # {{{ args
 
-        new_args = [
+        if map_args:
+            new_args = [
                 arg.map_exprs(non_insn_self) if isinstance(arg, ArrayBase) else arg
                 for arg in kernel.args]
+        else:
+            new_args = tuple(kernel.args)
 
         # }}}
 
         # {{{ tvs
 
-        new_tvs = {
+        if map_tvs:
+            new_tvs = {
                 tv_name: tv.map_exprs(non_insn_self)
                 for tv_name, tv in kernel.temporary_variables.items()}
+        else:
+            new_tvs = kernel.temporary_variables.copy()
 
         # }}}
 
