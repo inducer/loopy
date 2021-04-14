@@ -785,8 +785,12 @@ def test_sios_and_schedules_with_barriers():
     # Create expected maps and compare
 
     # Iname bound strings to facilitate creation of expected maps
-    iname_bound_str = "ij_start <= i,j< ij_end"
-    iname_bound_str_p = "ij_start <= i',j'< ij_end"
+    i_bound_str = "ij_start <= i < ij_end"
+    i_bound_str_p = "ij_start <= i' < ij_end"
+    j_bound_str = "ij_start <= j < ij_end"
+    j_bound_str_p = "ij_start <= j' < ij_end"
+    ij_bound_str = i_bound_str + " and " + j_bound_str
+    ij_bound_str_p = i_bound_str_p + " and " + j_bound_str_p
     conc_iname_bound_str = "0 <= l0,l1,g0 < lg_end"
     conc_iname_bound_str_p = "0 <= l0',l1',g0' < lg_end"
 
@@ -802,7 +806,7 @@ def test_sios_and_schedules_with_barriers():
                 ["2", "i", "2", "j", "1"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 ),
-            iname_bound_str,
+            ij_bound_str,
             conc_iname_bound_str,
             )
         )
@@ -829,7 +833,7 @@ def test_sios_and_schedules_with_barriers():
         "and {4}"  # param assumptions
         "}}".format(
             STATEMENT_VAR_NAME,
-            iname_bound_str_p,
+            ij_bound_str_p,
             conc_iname_bound_str,
             conc_iname_bound_str_p,
             assumptions,
@@ -850,7 +854,7 @@ def test_sios_and_schedules_with_barriers():
                 ["1", "i", "1"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 ),
-            iname_bound_str,
+            ij_bound_str,
             conc_iname_bound_str,
             )
         )
@@ -876,7 +880,7 @@ def test_sios_and_schedules_with_barriers():
         "and {4}"  # param assumptions
         "}}".format(
             STATEMENT_VAR_NAME,
-            iname_bound_str_p,
+            ij_bound_str_p,
             conc_iname_bound_str,
             conc_iname_bound_str_p,
             assumptions,
@@ -975,7 +979,7 @@ def test_sios_and_schedules_with_barriers():
 
     sched_stmt_i0_intra_group_exp = isl.Map(
         "[ij_start, ij_end, lg_end] -> {"
-        "[%s=1, i, j, l0, l1, g0] -> [%s] : "
+        "[%s=1, i, l0, l1, g0] -> [%s] : "
         "%s and %s}"  # iname bounds
         % (
             STATEMENT_VAR_NAME,
@@ -983,21 +987,21 @@ def test_sios_and_schedules_with_barriers():
                 ["2", "i", "0", "0", "0"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 ),
-            iname_bound_str,
+            i_bound_str,
             conc_iname_bound_str,
             )
         )
 
     sio_intra_group_exp = _isl_map_with_marked_dims(
         "[ij_start, ij_end, lg_end] -> {{ "
-        "[{0}'=0, l0', l1', g0'] -> [{0}=1, i, j, l0, l1, g0] : "
+        "[{0}'=0, l0', l1', g0'] -> [{0}=1, i, l0, l1, g0] : "
         "ij_start + 1 <= i < ij_end "  # not first iteration of i
         "and g0 = g0' "  # within a single group
         "and {1} and {2} and {3} "  # iname bounds
         "and {4}"  # param assumptions
         "}}".format(
             STATEMENT_VAR_NAME,
-            iname_bound_str,
+            i_bound_str,
             conc_iname_bound_str,
             conc_iname_bound_str_p,
             assumptions,
@@ -1023,7 +1027,7 @@ def test_sios_and_schedules_with_barriers():
 
     sched_stmt_i0_global_exp = isl.Map(
         "[ij_start, ij_end, lg_end] -> {"
-        "[%s=1, i, j, l0, l1, g0] -> [%s] : "
+        "[%s=1, i, l0, l1, g0] -> [%s] : "
         "%s and %s}"  # iname bounds
         % (
             STATEMENT_VAR_NAME,
@@ -1031,20 +1035,20 @@ def test_sios_and_schedules_with_barriers():
                 ["1", "i", "0"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 ),
-            iname_bound_str,
+            i_bound_str,
             conc_iname_bound_str,
             )
         )
 
     sio_global_exp = _isl_map_with_marked_dims(
         "[ij_start, ij_end, lg_end] -> {{ "
-        "[{0}'=0, l0', l1', g0'] -> [{0}=1, i, j, l0, l1, g0] : "
+        "[{0}'=0, l0', l1', g0'] -> [{0}=1, i, l0, l1, g0] : "
         "ij_start + 1 <= i < ij_end "  # not first iteration of i
         "and {1} and {2} and {3} "  # iname bounds
         "and {4}"  # param assumptions
         "}}".format(
             STATEMENT_VAR_NAME,
-            iname_bound_str,
+            i_bound_str,
             conc_iname_bound_str,
             conc_iname_bound_str_p,
             assumptions,
@@ -1106,8 +1110,8 @@ def test_sios_and_schedules_with_vec_and_barriers():
     # Create expected maps and compare
 
     # Iname bound strings to facilitate creation of expected maps
-    iname_bound_str = "0 <= i < 4 and 0 <= j < n"
-    iname_bound_str_p = "0 <= i' < 4 and 0 <= j' < n"
+    ij_bound_str = "0 <= i < 4 and 0 <= j < n"
+    ij_bound_str_p = "0 <= i' < 4 and 0 <= j' < n"
     conc_iname_bound_str = "0 <= l0 < 32"
     conc_iname_bound_str_p = "0 <= l0' < 32"
 
@@ -1123,7 +1127,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
                 ["j", "0"],  # lex points (initial matching dim gets removed)
                 lid_inames=["l0"],
                 ),
-            iname_bound_str,
+            ij_bound_str,
             conc_iname_bound_str,
             )
         )
@@ -1138,7 +1142,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
                 ["j", "1"],  # lex points (initial matching dim gets removed)
                 lid_inames=["l0"],
                 ),
-            iname_bound_str,
+            ij_bound_str,
             conc_iname_bound_str,
             )
         )
@@ -1151,8 +1155,8 @@ def test_sios_and_schedules_with_vec_and_barriers():
         "and {1} and {2} and {3} and {4}"  # iname bounds
         "}}".format(
             STATEMENT_VAR_NAME,
-            iname_bound_str,
-            iname_bound_str_p,
+            ij_bound_str,
+            ij_bound_str_p,
             conc_iname_bound_str,
             conc_iname_bound_str_p,
             )
@@ -1176,7 +1180,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
                 ["1", "j", "0"],  # lex points
                 lid_inames=["l0"],
                 ),
-            iname_bound_str,
+            ij_bound_str,
             conc_iname_bound_str,
             )
         )
@@ -1191,7 +1195,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
                 ["1", "j", "1"],  # lex points
                 lid_inames=["l0"],
                 ),
-            iname_bound_str,
+            ij_bound_str,
             conc_iname_bound_str,
             )
         )
@@ -1203,8 +1207,8 @@ def test_sios_and_schedules_with_vec_and_barriers():
         "and {1} and {2} and {3} and {4}"  # iname bounds
         "}}".format(
             STATEMENT_VAR_NAME,
-            iname_bound_str,
-            iname_bound_str_p,
+            ij_bound_str,
+            ij_bound_str_p,
             conc_iname_bound_str,
             conc_iname_bound_str_p,
             )
@@ -1224,7 +1228,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
                 ["0"],  # lex points
                 lid_inames=["l0"],
                 ),
-            iname_bound_str,
+            ij_bound_str,
             conc_iname_bound_str,
             )
         )
@@ -1240,7 +1244,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
                 ["0"],  # lex points
                 lid_inames=["l0"],
                 ),
-            iname_bound_str,
+            ij_bound_str,
             conc_iname_bound_str,
             )
         )
@@ -1252,8 +1256,8 @@ def test_sios_and_schedules_with_vec_and_barriers():
         "and {1} and {2} and {3} and {4}"  # iname bounds
         "}}".format(
             STATEMENT_VAR_NAME,
-            iname_bound_str,
-            iname_bound_str_p,
+            ij_bound_str,
+            ij_bound_str_p,
             conc_iname_bound_str,
             conc_iname_bound_str_p,
             )

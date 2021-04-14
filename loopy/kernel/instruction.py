@@ -935,11 +935,28 @@ class Assignment(MultiAssignmentBase):
         if assignee_f is None:
             assignee_f = f
 
+        assignee = assignee_f(self.assignee)
+        expression = f(self.expression)
+        predicates = []
+        changed_predicates = False
+        for pred in self.predicates:
+            new_pred = f(pred)
+            if new_pred is not pred:
+                changed_predicates = True
+            predicates.append(new_pred)
+        if changed_predicates:
+            predicates = frozenset(predicates)
+        else:
+            predicates = self.predicates
+
+        if assignee is self.assignee and expression is self.expression and \
+                predicates is self.predicates:
+            return self
+
         return self.copy(
-                assignee=assignee_f(self.assignee),
-                expression=f(self.expression),
-                predicates=frozenset(
-                    f(pred) for pred in self.predicates))
+                assignee=assignee,
+                expression=expression,
+                predicates=predicates)
 
     # }}}
 
@@ -1086,11 +1103,31 @@ class CallInstruction(MultiAssignmentBase):
         if assignee_f is None:
             assignee_f = f
 
+        assignees = assignee_f(self.assignees)
+        expression = f(self.expression)
+        predicates = []
+        changed_predicates = False
+        for pred in self.predicates:
+            new_pred = f(pred)
+            if new_pred is not pred:
+                changed_predicates = True
+            predicates.append(new_pred)
+        if changed_predicates:
+            predicates = frozenset(predicates)
+        else:
+            predicates = self.predicates
+
+        if len(assignees) == len(self.assignees) and \
+                all(assignee is orig_assignee for assignee, orig_assignee in
+                    zip(assignees, self.assignees)) \
+                and expression is self.expression and \
+                predicates is self.predicates:
+            return self
+
         return self.copy(
-                assignees=assignee_f(self.assignees),
-                expression=f(self.expression),
-                predicates=frozenset(
-                    f(pred) for pred in self.predicates))
+                assignees=assignees,
+                expression=expression,
+                predicates=predicates)
 
     # }}}
 

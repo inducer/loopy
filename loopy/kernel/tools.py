@@ -1589,11 +1589,20 @@ def stringify_instruction_list(kernel):
 
 # {{{ global barrier order finding
 
-def _is_global_barrier(kernel, insn_id):
+def _insn_id_is_global_barrier(insn_id, kernel):
     insn = kernel.id_to_insn[insn_id]
+    return _insn_is_global_barrier(insn)
+
+
+def _insn_is_global_barrier(insn):
     from loopy.kernel.instruction import BarrierInstruction
     return isinstance(insn, BarrierInstruction) and \
         insn.synchronization_kind == "global"
+
+
+@memoize_on_first_arg
+def kernel_has_global_barriers(kernel):
+    return any(_insn_is_global_barrier(insn) for insn in kernel.instructions)
 
 
 @memoize_on_first_arg
@@ -1613,7 +1622,7 @@ def get_global_barrier_order(kernel):
 
     barriers = [
             insn_id for insn_id in order
-            if _is_global_barrier(kernel, insn_id)]
+            if _insn_id_is_global_barrier(insn_id, kernel)]
 
     del order
 
@@ -1676,7 +1685,7 @@ def find_most_recent_global_barrier(kernel, insn_id):
     if len(insn.depends_on) == 0:
         return None
 
-    if all(not _is_global_barrier(kernel, insn.id) for insn in kernel.instructions):
+    if not kernel_has_global_barriers(kernel):
         return None
 
     global_barrier_order = get_global_barrier_order(kernel)
@@ -1693,7 +1702,7 @@ def find_most_recent_global_barrier(kernel, insn_id):
                 else -1)
 
     direct_barrier_dependencies = {
-            dep for dep in insn.depends_on if _is_global_barrier(kernel, dep)}
+        dep for dep in insn.depends_on if _insn_id_is_global_barrier(dep, kernel)}
 
     if len(direct_barrier_dependencies) > 0:
         return max(direct_barrier_dependencies, key=get_barrier_ordinal)

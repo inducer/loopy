@@ -27,7 +27,7 @@ THE SOFTWARE.
 from functools import reduce
 from sys import intern
 
-from pytools import memoize, memoize_method, ImmutableRecord
+from pytools import memoize, memoize_method, memoize_on_first_arg, ImmutableRecord
 import pytools.lex
 from pytools.tag import Taggable
 
@@ -124,9 +124,13 @@ class IdentityMapperMixin:
 
             new_inames.append(new_sym_iname.name)
 
+        new_expr = self.rec(expr.expr, *args, **kwargs)
+        if new_expr is expr.expr and new_inames == expr.inames:
+            return expr
+
         return Reduction(
                 expr.operation, tuple(new_inames),
-                self.rec(expr.expr, *args, **kwargs),
+                new_expr,
                 allow_simultaneous=expr.allow_simultaneous)
 
     def map_tagged_variable(self, expr, *args, **kwargs):
@@ -357,6 +361,11 @@ class DependencyMapper(DependencyMapperBase):
 class SubstitutionRuleExpander(IdentityMapper):
     def __init__(self, rules):
         self.rules = rules
+
+    def __call__(self, expr, *args, **kwargs):
+        if not self.rules:
+            return expr
+        return super().__call__(expr, *args, **kwargs)
 
     def map_variable(self, expr):
         if expr.name in self.rules:
@@ -931,6 +940,8 @@ class SubstitutionRuleMappingContext:
 
     def finish_kernel(self, kernel):
         new_substs, renames = self._get_new_substitutions_and_renames()
+        if not renames:
+            return kernel.copy(substitutions=new_substs)
 
         new_insns = rename_subst_rules_in_instructions(kernel.instructions, renames)
 
@@ -1020,15 +1031,16 @@ class RuleAwareIdentityMapper(IdentityMapper):
     def map_instruction(self, kernel, insn):
         return insn
 
-    def map_kernel(self, kernel):
+    def map_kernel(self, kernel, within=lambda *args: True):
         new_insns = [
-                # While subst rules are not allowed in assignees, the mapper
-                # may perform tasks entirely unrelated to subst rules, so
-                # we must map assignees, too.
-                self.map_instruction(kernel,
-                    insn.with_transformed_expressions(
-                        lambda expr: self(expr, kernel, insn)))
-                for insn in kernel.instructions]
+            # While subst rules are not allowed in assignees, the mapper
+            # may perform tasks entirely unrelated to subst rules, so
+            # we must map assignees, too.
+            insn if not kernel.substitutions and not within(kernel, insn, ()) else
+            self.map_instruction(kernel,
+                insn.with_transformed_expressions(
+                    lambda expr: self(expr, kernel, insn)))
+            for insn in kernel.instructions]
 
         from functools import partial
 
@@ -1611,6 +1623,7 @@ def qpolynomial_from_expr(space, expr):
 
 # {{{ simplify using aff
 
+@memoize_on_first_arg
 def simplify_using_aff(kernel, expr):
     inames = get_dependencies(expr) & kernel.all_inames()
 
