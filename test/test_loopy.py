@@ -3074,6 +3074,40 @@ def test_deps_from_conditionals():
     print(lp.generate_code_v2(ppknl).device_code())
 
 
+def test_scalar_temporary(ctx_factory):
+    from numpy.random import default_rng
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    rng = default_rng()
+    x_in = rng.random()
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        tmp = 2*x
+        y = 2*tmp
+        """,
+        [lp.ValueArg("x", dtype=float),
+        lp.TemporaryVariable("tmp", address_space=lp.AddressSpace.GLOBAL,
+                             shape=lp.auto),
+        ...])
+    evt, (out, ) = knl(queue, x=x_in)
+    np.testing.assert_allclose(4*x_in, out.get())
+
+
+def test_cached_written_variables_doesnt_carry_over_invalidly():
+    knl = lp.make_kernel(
+            "{:}",
+            """
+            a[i] = 2*i {id=write_a}
+            b[i] = 2*i {id=write_b}
+            """)
+    from pickle import dumps, loads
+    knl2 = loads(dumps(knl))
+
+    knl2 = lp.remove_instructions(knl2, {"write_b"})
+    assert "b" not in knl2.get_written_variables()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

@@ -170,19 +170,23 @@ def remove_instructions(kernel, insn_ids):
 # {{{ replace_instruction_ids
 
 def replace_instruction_ids(kernel, replacements):
+    if not replacements:
+        return kernel
+
     new_insns = []
 
-    for insn in kernel.instructions:
+    for i, insn in enumerate(kernel.instructions):
         changed = False
-        new_depends_on = []
+        new_depends_on = list(insn.depends_on)
+        extra_depends_on = []
         new_no_sync_with = []
 
-        for dep in insn.depends_on:
+        for idep, dep in enumerate(insn.depends_on):
             if dep in replacements:
-                new_depends_on.extend(replacements[dep])
+                new_deps = list(replacements[dep])
+                new_depends_on[idep] = new_deps[0]
+                extra_depends_on.extend(new_deps[1:])
                 changed = True
-            else:
-                new_depends_on.append(dep)
 
         for insn_id, scope in insn.no_sync_with:
             if insn_id in replacements:
@@ -194,7 +198,7 @@ def replace_instruction_ids(kernel, replacements):
 
         new_insns.append(
                 insn.copy(
-                    depends_on=frozenset(new_depends_on),
+                    depends_on=frozenset(new_depends_on + extra_depends_on),
                     no_sync_with=frozenset(new_no_sync_with))
                 if changed else insn)
 
