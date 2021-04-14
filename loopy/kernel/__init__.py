@@ -797,7 +797,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         """
         Returns a :class:`frozenset` of the names of all the inames in the kernel.
         """
-        return _get_inames_from_domains(self.domains)
+        return frozenset(self.inames.keys())
 
     @memoize_method
     def all_params(self):
@@ -1618,6 +1618,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                         "LoopKernel.copy")
 
             kwargs["inames"] = None
+
+        # Avoid carrying over an invalid cache when other parts of the kernel
+        # are modified.
+        kwargs["_cached_written_variables"] = None
+
         return super().copy(**kwargs)
 
 # }}}
