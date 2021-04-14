@@ -305,7 +305,17 @@ def _split_iname_backend(kernel, iname_to_split,
     ins = _InameSplitter(rule_mapping_context, within,
             iname_to_split, outer_iname, inner_iname, new_loop_index)
 
-    kernel = ins.map_kernel(kernel)
+    from loopy.symbolic import get_dependencies, get_reduction_inames
+    from loopy.kernel.instruction import MultiAssignmentBase
+
+    def check_insn_has_iname(kernel, insn, *args):
+        return not (isinstance(insn, MultiAssignmentBase) and
+                all(iname_to_split not in get_dependencies(a)
+                    for a in insn.assignees) and
+                iname_to_split not in get_dependencies(insn.expression) and
+                iname_to_split not in get_reduction_inames(insn.expression))
+
+    kernel = ins.map_kernel(kernel, within=check_insn_has_iname)
     kernel = rule_mapping_context.finish_kernel(kernel)
 
     for existing_tag in existing_tags:
