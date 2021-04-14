@@ -1285,7 +1285,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
 
 def test_add_stmt_inst_dependency():
 
-    # Make kernel and use OLD deps to linearize correctly for now
+    # Make kernel and use OLD deps to control linearization order for now
     i_range_str = "0 <= i < pi"
     i_range_str_p = "0 <= i' < pi"
     assumptions_str = "pi >= 1"
@@ -1392,7 +1392,124 @@ def test_add_stmt_inst_dependency():
     assert not unsatisfied_deps
 
 
-# TODO create more kernels with valid/invalid linearizations to test checker
+def test_new_dependencies_finite_diff():
+
+    # Define kernel
+    knl = lp.make_kernel(
+        "[nx,nt] -> {[x, t]: 0<=x<nx and 0<=t<nt}",
+        "u[t+2,x+1] = 2*u[t+1,x+1] + dt**2/dx**2 "
+        "* (u[t+1,x+2] - 2*u[t+1,x+1] + u[t+1,x]) - u[t,x+1]  {id=stmt}")
+    knl = lp.add_dtypes(
+        knl, {"u": np.float32, "dx": np.float32, "dt": np.float32})
+
+    # Define dependency
+    xt_range_str = "0 <= x < nx and 0 <= t < nt"
+    xt_range_str_p = "0 <= x' < nx and 0 <= t' < nt"
+    dep = _isl_map_with_marked_dims(
+        "[nx,nt] -> {{ [{0}'=0, x', t'] -> [{0}=0, x, t] : "
+        "((x = x' and t = t'+2) or "
+        " (x'-1 <= x <= x'+1 and t = t' + 1)) and "
+        "{1} and {2} }}".format(
+            STATEMENT_VAR_NAME,
+            xt_range_str,
+            xt_range_str_p,
+            ))
+    knl = lp.add_stmt_inst_dependency(knl, "stmt", "stmt", dep)
+
+    ref_knl = knl
+
+    # {{{ Check with corrct loop nest order
+
+    # Prioritize loops correctly
+    knl = lp.prioritize_loops(knl, "t,x")
+
+    # Make sure deps are satisfied
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
+
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(
+        proc_knl, lin_items)
+
+    print(lp.generate_code_v2(lin_knl).device_code())
+    assert not unsatisfied_deps
+
+    # }}}
+    # {{{ Check with incorrect loop nest order
+
+    # Now prioritize loops incorrectly
+    knl = ref_knl
+    knl = lp.prioritize_loops(knl, "x,t")
+
+    # Make sure unsatisfied deps are caught
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
+
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(
+        proc_knl, lin_items)
+
+    print(lp.generate_code_v2(lin_knl).device_code())
+    assert len(unsatisfied_deps) == 1
+
+    # }}}
+    # {{{ Check with parallel x and no barrier
+
+    # Parallelize the x loop
+    knl = ref_knl
+    knl = lp.prioritize_loops(knl, "t,x")
+    knl = lp.tag_inames(knl, "x:l.0")
+
+    # Make sure unsatisfied deps are caught
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
+
+    # Without a barrier, deps not satisfied
+    # Make sure there is no barrier, and that unsatisfied deps are caught
+    from loopy.schedule import Barrier
+    print(lp.generate_code_v2(lin_knl).device_code())
+    for lin_item in lin_items:
+        assert not isinstance(lin_item, Barrier)
+
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(
+        proc_knl, lin_items)
+
+    assert len(unsatisfied_deps) == 1
+
+    # }}}
+    # {{{ Check with parallel x and included barrier
+
+    # Insert a barrier to satisfy deps
+    knl = lp.make_kernel(
+        "[nx,nt] -> {[x, t]: 0<=x<nx and 0<=t<nt}",
+        """
+        for x,t
+            ...lbarrier
+            u[t+2,x+1] = 2*u[t+1,x+1] + dt**2/dx**2 \
+                *(u[t+1,x+2] - 2*u[t+1,x+1] + u[t+1,x]) - u[t,x+1]  {id=stmt}
+        end
+        """)
+    knl = lp.add_dtypes(
+        knl, {"u": np.float32, "dx": np.float32, "dt": np.float32})
+
+    # Make sure deps are satisfied
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
+    print(lp.generate_code_v2(lin_knl).device_code())
+
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(
+        proc_knl, lin_items)
+
+    assert not unsatisfied_deps
+
+    # }}}
+
+    # Transformations to test after dep handling during transformation:
+    # knl = lp.split_iname(knl, "x", 14)
+    # knl = lp.assume(knl, "nx % 14 = 0 and nt >= 1 and nx >= 1")
+    # knl = lp.tag_inames(knl, "x_outer:g.0, x_inner:l.0")
 
 
 if __name__ == "__main__":
