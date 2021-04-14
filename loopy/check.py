@@ -30,6 +30,8 @@ from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
 from pytools import memoize_method
 
+from collections import defaultdict
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -624,6 +626,12 @@ def _check_variable_access_ordered_inner(kernel):
     # where the tuple denotes a pair of instructions IDs, and the variable
     # names are the ones that necessitate a dependency.
     #
+    # This mapping describes all the pairs of instructions (involving at least
+    # one write) that require ordering by way of a dependency.
+    # This mapping is then "whittled down" to remove pairs that have
+    # dependencies between them. E.g. a pair of writers will be contained in
+    # the mapping in both directions.
+    #
     # Note: This can be worst-case O(n^2) in the number of instructions.
     dep_reqs_to_vars = {}
 
@@ -653,14 +661,12 @@ def _check_variable_access_ordered_inner(kernel):
 
     # }}}
 
-    # depends_on: mapping from insn_ids to their dependencies
-    depends_on = {insn.id: set() for insn in
-            kernel.instructions}
-    # rev_depends: mapping from insn_ids to their reverse deps.
-    rev_depends = {insn.id: set() for insn in
-            kernel.instructions}
+    # {{{ compute rev_depends, depends_on
 
-    # {{{ populate rev_depends, depends_on
+    # depends_on: mapping from insn_ids to their dependencies
+    depends_on = {insn.id: set() for insn in kernel.instructions}
+    # rev_depends: mapping from insn_ids to their reverse deps.
+    rev_depends = {insn.id: set() for insn in kernel.instructions}
 
     for insn in kernel.instructions:
         depends_on[insn.id].update(insn.depends_on)
@@ -673,45 +679,64 @@ def _check_variable_access_ordered_inner(kernel):
 
     topological_order = _get_topological_order(kernel)
 
-    def discard_dep_reqs_in_order(dep_reqs_to_vars, edges, order):
+    def satisfy_dep_reqs_in_order(dep_reqs_to_vars, edges, order):
         """
-        Subtracts dependency requirements of insn_ids by all direct/indirect
-        predecessors of a directed graph of insn_ids as nodes and *edges* as
-        the connectivity.
-
-        :arg order: An instance of :class:`list` of instruction ids in which the
-            *edges* graph is to be traversed.
+        Considering a graph defined by *edges* (as ``key -> value``),
+        remove pairs of nodes from *dep_reqs_to_vars* for which edges
+        exist in the graph. In doing so, make use of the topological
+        order *order* (given as a sequence of *nodes*). For ``i<j``,
+        no direct or indirect edges from ``order[j]`` to ``order[i]``
+        exist. (All edges go from 'low index' to 'high index'.)
         """
-        # predecessors: mapping from insn_id to its direct/indirect
-        # predecessors
-        predecessors = {}
 
-        for insn_id in order:
-            # insn_predecessors:insn_id's direct+indirect predecessors
+        insn_to_req_deps = defaultdict(set)
+        insn_to_order = {insn: i for i, insn in enumerate(order)}
 
-            # This set of predecessors is complete because we're
-            # traversing in topological order: No predecessor
-            # can occur after the instruction itself.
-            insn_predecessors = predecessors.pop(insn_id, set())
+        # Use dep_reqs_to_vars to construct insn_to_req_deps, listing
+        # path endpoints pred -> ... -> insn to be considered for elimination.
+        for insn, pred in dep_reqs_to_vars:
+            if insn_to_order[pred] > insn_to_order[insn]:
+                # If *pred* happens after *insn*, then there is no path
+                # *pred* -> ... -> *insn*.
+                continue
 
-            for pred in insn_predecessors:
-                dep_reqs_to_vars.pop(
-                    (insn_id, pred),
-                    # don't fail if pair doesn't exist
-                    None)
+            insn_to_req_deps[pred].add(insn)
 
-            for successor in edges[insn_id]:
-                predecessors.setdefault(successor, set()).update(
-                        insn_predecessors | {insn_id})
+        for pred, check_successors in insn_to_req_deps.items():
+            # for each *pred*, we will calculate all the direct/indirect
+            # instructions that can be reached.
+            seen_successors = set()
+            # first let us start with direct sucessors
+            to_check = edges[pred].copy()
+            while to_check:
+                successor = to_check.pop()
+                seen_successors.add(successor)
+
+                # Next we check if this successor was in *dep_reqs_to_vars*
+                # and remove the pair from there if it is
+                if successor in check_successors:
+                    dep_reqs_to_vars.pop((successor, pred))
+                    check_successors.remove(successor)
+                    if not check_successors:
+                        break
+
+                # next we iterate through the successors of successor.
+                for edge in edges[successor]:
+                    if edge not in seen_successors:
+                        to_check.add(edge)
 
     # forward dep. graph traversal in reverse topological sort order
     # (proceeds "end of program" -> "beginning of program")
-    discard_dep_reqs_in_order(dep_reqs_to_vars, depends_on,
+    satisfy_dep_reqs_in_order(dep_reqs_to_vars, depends_on,
             topological_order[::-1])
+
+    # Run the same thing on the reversed graph, with the reverse topological_order.
+    # All edges above are 'low index to high index'.
+    # Reversing graph and order maintains this property.
 
     # reverse dep. graph traversal in topological sort order
     # (proceeds "beginning of program" -> "end of program")
-    discard_dep_reqs_in_order(dep_reqs_to_vars, rev_depends, topological_order)
+    satisfy_dep_reqs_in_order(dep_reqs_to_vars, rev_depends, topological_order)
 
     # }}}
 
