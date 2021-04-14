@@ -170,7 +170,7 @@ class ImmutableRecordWithoutPickingWithTargetedCopies(ImmutableRecordWithoutPick
         from functools import reduce
         return reduce(lambda obj, kwarg: getattr(obj,
                                                  f"with_{kwarg[0]}")(kwarg[1]),
-                      kwargs.items(), self)
+                      kwargs.items(), ImmutableRecordWithoutPickling.copy(self))
 
 
 class LoopKernel(ImmutableRecordWithoutPickingWithTargetedCopies, Taggable):
