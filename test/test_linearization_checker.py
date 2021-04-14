@@ -1613,7 +1613,7 @@ def test_split_iname_with_dependencies():
     # {{{ more deps that should be satisfied
 
     knl = lp.make_kernel(
-        ["{[i,j]: 0<=i,j<p}", "{[k,m]: 0<=k,m<p}"],
+        "{[i,j,k,m]: 0<=i,j,k,m<p}",
         """
         a[i,k] = 0.1  {id=stmt0}
         b[i,k] = a[i,k]  {id=stmt1,dep=stmt0}
@@ -1625,22 +1625,26 @@ def test_split_iname_with_dependencies():
         lang_version=(2018, 2)
         )
 
-    dep_inout_space_str = "[{0}'=0, i', j', k', m'] -> [{0}=1, i, j, k, m]".format(
+    dep_ik_space_str = "[{0}'=0, i', k'] -> [{0}=1, i, k]".format(
         STATEMENT_VAR_NAME)
-    iname_bounds_str = "0 <= i,j,k,m,i',j',k',m' < p"
-    dep1 = _isl_map_with_marked_dims(
+    dep_ijkm_space_str = "[{0}'=0, i', j', k', m'] -> [{0}=1, i, j, k, m]".format(
+        STATEMENT_VAR_NAME)
+    #iname_bounds_str = "0 <= i,j,k,m,i',j',k',m' < p"
+    ik_bounds_str = "0 <= i,k,i',k' < p"
+    ijkm_bounds_str = ik_bounds_str + " and 0 <= j,m,j',m' < p"
+    dep_stmt1_on_stmt0_eq = _isl_map_with_marked_dims(
         "[p] -> { %s : %s and i' = i and k' = k}"
-        % (dep_inout_space_str, iname_bounds_str))
-    dep2 = _isl_map_with_marked_dims(
+        % (dep_ik_space_str, ik_bounds_str))
+    dep_stmt1_on_stmt0_lt = _isl_map_with_marked_dims(
         "[p] -> { %s : %s and i' < i and k' < k}"
-        % (dep_inout_space_str, iname_bounds_str))
-    dep3 = _isl_map_with_marked_dims(
+        % (dep_ik_space_str, ik_bounds_str))
+    dep_stmt3_on_stmt2_eq = _isl_map_with_marked_dims(
         "[p] -> { %s : %s and i' = i and k' = k and j' = j and m' = m}"
-        % (dep_inout_space_str, iname_bounds_str))
+        % (dep_ijkm_space_str, ijkm_bounds_str))
 
-    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep1)
-    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep2)
-    knl = lp.add_stmt_inst_dependency(knl, "stmt3", "stmt2", dep3)
+    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep_stmt1_on_stmt0_eq)
+    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep_stmt1_on_stmt0_lt)
+    knl = lp.add_stmt_inst_dependency(knl, "stmt3", "stmt2", dep_stmt3_on_stmt2_eq)
 
     # Gratuitous splitting
     knl = lp.split_iname(knl, "i", 64)
