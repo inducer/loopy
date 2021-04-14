@@ -85,8 +85,8 @@ def get_pairwise_statement_orderings(
         >>> print(str(sio_dict[("stmt_a", "stmt_b")].sio_intra_thread
         ...     ).replace("{ ", "{\n").replace(" :", "\n:"))
         [pj, pk] -> {
-        [_lp_linchk_stmt_ = 0, j_, k_] -> [_lp_linchk_stmt = 1, j, k]
-        : 0 <= j_ < pj and 0 <= k_ < pk and 0 <= j < pj and 0 <= k < pk }
+        [_lp_linchk_stmt' = 0, j', k'] -> [_lp_linchk_stmt = 1, j, k]
+        : 0 <= j' < pj and 0 <= k' < pk and 0 <= j < pj and 0 <= k < pk }
 
     """
 
