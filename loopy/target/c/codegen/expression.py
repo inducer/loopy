@@ -101,12 +101,20 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     def wrap_in_typecast(self, actual_type, needed_dtype, s):
         return s
 
+    def wrap_in_typecast_lazy(self, actual_type_func, needed_dtype, s):
+        """This is similar to *wrap_in_typecast*, but takes a function for
+        the actual type argument instead of a type. This can be helpful
+        when actual type argument is expensive to calculate and is not
+        needed in some cases.
+        """
+        return s
+
     def rec(self, expr, type_context=None, needed_dtype=None):
         if needed_dtype is None:
             return RecursiveMapper.rec(self, expr, type_context)
 
-        return self.wrap_in_typecast(
-                self.infer_type(expr), needed_dtype,
+        return self.wrap_in_typecast_lazy(
+                lambda: self.infer_type(expr), needed_dtype,
                 RecursiveMapper.rec(self, expr, type_context))
 
     def __call__(self, expr, prec=None, type_context=None, needed_dtype=None):
