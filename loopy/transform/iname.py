@@ -306,11 +306,12 @@ def _split_iname_backend(kernel, iname_to_split,
             iname_to_split, outer_iname, inner_iname, new_loop_index)
 
     from loopy.symbolic import get_dependencies, get_reduction_inames
-    from loopy.kernel.instruction import Assignment
+    from loopy.kernel.instruction import MultiAssignmentBase
 
     def check_insn_has_iname(kernel, insn, *args):
-        return not (isinstance(insn, Assignment) and
-                iname_to_split not in get_dependencies(insn.assignee) and
+        return not (isinstance(insn, MultiAssignmentBase) and
+                all(iname_to_split not in get_dependencies(a)
+                    for a in insn.assignees) and
                 iname_to_split not in get_dependencies(insn.expression) and
                 iname_to_split not in get_reduction_inames(insn.expression))
 
