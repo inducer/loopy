@@ -743,10 +743,9 @@ def get_pairwise_statement_orderings_inner(
             stmt_id, lex_points, int_sid, lex_dim_names):
 
         # Get inames domain for statement instance (a BasicSet)
+        within_inames = knl.id_to_insn[stmt_id].within_inames
         dom = knl.get_inames_domain(
-            knl.id_to_insn[stmt_id].within_inames)
-        # (note that this domain may include inames that are
-        # not in stmt.within_inames)
+            within_inames).project_out_except(within_inames, [dt.set])
 
         # Create map space (an isl space in current implementation)
         # {('statement', <inames used in statement domain>) ->
