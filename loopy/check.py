@@ -475,6 +475,7 @@ def check_bounds(kernel):
     from loopy.kernel.instruction import get_insn_domain
     temp_var_names = set(kernel.temporary_variables)
     acm = _AccessCheckMapper(kernel)
+    kernel_assumptions_is_universe = kernel.assumptions.is_universe()
     for insn in kernel.instructions:
         domain = get_insn_domain(insn, kernel)
 
@@ -482,8 +483,11 @@ def check_bounds(kernel):
         if set(domain.get_var_names(dim_type.param)) & temp_var_names:
             continue
 
-        domain, assumptions = isl.align_two(domain, kernel.assumptions)
-        domain_with_assumptions = domain & assumptions
+        if kernel_assumptions_is_universe:
+            domain_with_assumptions = domain
+        else:
+            domain, assumptions = isl.align_two(domain, kernel.assumptions)
+            domain_with_assumptions = domain & assumptions
 
         def run_acm(expr):
             acm(expr, domain_with_assumptions, insn.id)
