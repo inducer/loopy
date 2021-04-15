@@ -1005,7 +1005,7 @@ def guess_var_shape(kernel, var_names):
                 "shape/strides for variables '%s'. "
                 "Specifying the shape manually should get rid of this. "
                 "The following error occurred: %s"
-                % (str(var_names), str(e)))
+                % (",".join(var_names), str(e)))
 
     result = []
     for var_name in var_names:
