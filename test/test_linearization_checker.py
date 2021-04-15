@@ -1392,6 +1392,8 @@ def test_add_stmt_inst_dependency():
     assert not unsatisfied_deps
 
 
+# {{{ test_new_dependencies_finite_diff
+
 def test_new_dependencies_finite_diff():
 
     # Define kernel
@@ -1511,8 +1513,12 @@ def test_new_dependencies_finite_diff():
     # knl = lp.assume(knl, "nx % 14 = 0 and nt >= 1 and nx >= 1")
     # knl = lp.tag_inames(knl, "x_outer:g.0, x_inner:l.0")
 
+# }}}
+
 
 # {{{ Check dependency handling during transformations
+
+# {{{ test_fix_parameters_with_dependencies
 
 def test_fix_parameters_with_dependencies():
     knl = lp.make_kernel(
@@ -1553,6 +1559,10 @@ def test_fix_parameters_with_dependencies():
         # Check dep
         _align_and_compare_maps([(dep_exp, deps_found[dep_id][0])])
 
+# }}}
+
+
+# {{{ test_assignment_to_subst_with_dependencies
 
 def test_assignment_to_subst_with_dependencies():
     knl = lp.make_kernel(
@@ -1652,6 +1662,95 @@ def test_assignment_to_subst_with_dependencies():
         # Should still depend on stmt1
         _align_and_compare_maps([(dep_eq, deps_found["stmt1"][0])])
 
+# }}}
+
+
+# {{{ test_duplicate_inames_with_dependencies
+
+def test_duplicate_inames_with_dependencies():
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0 <= i,j < n}",
+        """
+        b[i,j] = a[i,j]  {id=stmtb}
+        c[i,j] = a[i,j]  {id=stmtc,dep=stmtb}
+        """)
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+
+    dep_eq = _isl_map_with_marked_dims(
+        "[n] -> {{ [{0}'=0, i', j']->[{0}=1, i, j] : "
+        "0 <= i,i',j,j' < n and i' = i and j' = j"
+        "}}".format(STATEMENT_VAR_NAME))
+
+    # Create dep stmtb->stmtc
+    knl = lp.add_stmt_inst_dependency(knl, "stmtc", "stmtb", dep_eq)
+
+    ref_knl = knl
+
+    def _check_deps(transformed_knl, c_dep_exp):
+        b_deps = transformed_knl.id_to_insn["stmtb"].dependencies
+        c_deps = transformed_knl.id_to_insn["stmtc"].dependencies
+
+        assert not b_deps
+        assert len(c_deps) == 1
+        assert len(c_deps["stmtb"]) == 1
+        _align_and_compare_maps([(c_deps["stmtb"][0], c_dep_exp)])
+
+        # Check dep satisfaction
+        proc_knl = preprocess_kernel(transformed_knl)
+        lin_knl = get_one_linearized_kernel(proc_knl)
+        lin_items = lin_knl.linearization
+        unsatisfied_deps = lp.find_unsatisfied_dependencies(
+            proc_knl, lin_items)
+
+        assert not unsatisfied_deps
+
+    # {{{ Duplicate j within stmtc
+
+    knl = lp.duplicate_inames(knl, ["j"], within="id:stmtc", new_inames=["j_new"])
+
+    dep_exp = _isl_map_with_marked_dims(
+        "[n] -> {{ [{0}'=0, i', j']->[{0}=1, i, j_new] : "
+        "0 <= i,i',j_new,j' < n and i' = i and j' = j_new"
+        "}}".format(STATEMENT_VAR_NAME))
+
+    _check_deps(knl, dep_exp)
+
+    # }}}
+
+    # {{{ Duplicate j within stmtb
+
+    knl = ref_knl
+    knl = lp.duplicate_inames(knl, ["j"], within="id:stmtb", new_inames=["j_new"])
+
+    dep_exp = _isl_map_with_marked_dims(
+        "[n] -> {{ [{0}'=0, i', j_new']->[{0}=1, i, j] : "
+        "0 <= i,i',j,j_new' < n and i' = i and j_new' = j"
+        "}}".format(STATEMENT_VAR_NAME))
+
+    _check_deps(knl, dep_exp)
+
+    # }}}
+
+    # {{{ Duplicate j within stmtb and stmtc
+
+    knl = ref_knl
+    knl = lp.duplicate_inames(
+        knl, ["j"], within="id:stmtb or id:stmtc", new_inames=["j_new"])
+
+    dep_exp = _isl_map_with_marked_dims(
+        "[n] -> {{ [{0}'=0, i', j_new']->[{0}=1, i, j_new] : "
+        "0 <= i,i',j_new,j_new' < n and i' = i and j_new' = j_new"
+        "}}".format(STATEMENT_VAR_NAME))
+
+    _check_deps(knl, dep_exp)
+
+    # }}}
+
+# }}}
+
+
+# {{{ def test_split_iname_with_dependencies
 
 def test_split_iname_with_dependencies():
     knl = lp.make_kernel(
@@ -1788,6 +1887,8 @@ def test_split_iname_with_dependencies():
     assert not unsatisfied_deps
 
     # }}}
+
+# }}}
 
 # }}}
 
