@@ -142,10 +142,48 @@ def get_pairwise_statement_orderings(
 
 def find_unsatisfied_dependencies(
         knl,
-        linearization_items,
+        lin_items,
         ):
+    """For each statement (:class:`loopy.InstructionBase`) found in a
+    preprocessed kernel, determine which dependencies, if any, have been
+    violated by the linearization described by `lin_items`, and return these
+    dependencies.
 
-    # TODO document
+    :arg knl: A preprocessed (or linearized) :class:`loopy.kernel.LoopKernel`
+        containing the statements (:class:`loopy.InstructionBase`) whose
+        dependencies will be checked against the linearization items.
+
+    :arg lin_items: A list of :class:`loopy.schedule.ScheduleItem`
+        (to be renamed to `loopy.schedule.LinearizationItem`) containing all
+        linearization items in `knl.linearization`. To allow usage of
+        this routine during linearization, a truncated (i.e. partial)
+        linearization may be passed through this argument.
+
+    :returns: A list of unsatisfied dependencies, each described using a
+        :class:`collections.namedtuple` containing the following:
+
+        - `statement_pair`: The (before, after) pair of statement IDs involved
+          in the dependency.
+        - `dependency`: An class:`islpy.Map` from each instance of the first
+          statement to all instances of the second statement that must occur
+          later.
+        - `statement_ordering`: A statement ordering information tuple
+          resulting from `lp.get_pairwise_statement_orderings`, a
+          :class:`collections.namedtuple` containing the intra-thread
+          statement instance ordering (SIO) (`sio_intra_thread`),
+          intra-group SIO (`sio_intra_group`), and global
+          SIO (`sio_global`), each realized as an :class:`islpy.Map` from each
+          instance of the first statement to all instances of the second
+          statement that occur later, as well as the intra-thread pairwise
+          schedule (`pwsched_intra_thread`), intra-group pairwise schedule
+          (`pwsched_intra_group`), and the global pairwise schedule
+          (`pwsched_global`), each containing a pair of mappings from statement
+          instances to points in a lexicographic ordering, one for each
+          statement. Note that a pairwise schedule alone cannot be used to
+          reproduce the corresponding SIO without the corresponding (unique)
+          lexicographic order map, which is not returned.
+
+    """
 
     # {{{ make sure kernel has been preprocessed
 
@@ -182,7 +220,7 @@ def find_unsatisfied_dependencies(
 
     pworders = get_pairwise_statement_orderings(
         knl,
-        linearization_items,
+        lin_items,
         stmt_pairs_to_deps.keys(),
         )
 
