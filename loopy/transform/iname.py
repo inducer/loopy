@@ -268,6 +268,9 @@ def _split_iname_backend(kernel, iname_to_split,
         if iname_to_split not in dep.get_var_names(dt.out):
             return dep
 
+        # TODO dep in-dims may not match dep out-dims, need to check for iname
+        # in dt.in as well!!!!
+
         # Temporarily convert map to set for processing
         set_from_map, n_in_dims, n_out_dims = convert_map_to_set(dep)
 
@@ -889,7 +892,7 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
         new_inames = [iname.strip() for iname in new_inames.split(",")]
 
     from loopy.match import parse_stack_match
-    within = parse_stack_match(within)
+    within_sm = parse_stack_match(within)
 
     if new_inames is None:
         new_inames = [None] * len(inames)
@@ -922,7 +925,7 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
 
     # }}}
 
-    # {{{ duplicate the inames
+    # {{{ duplicate the inames in domains
 
     for old_iname, new_iname in zip(inames, new_inames):
         from loopy.kernel.tools import DomainChanger
@@ -933,7 +936,39 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
                 domains=domch.get_domains_with(
                     duplicate_axes(domch.domain, [old_iname], [new_iname])))
 
-        # TODO For any statements matching 'within', duplicate iname in deps...?
+        # {{{ *Rename* iname in dependencies
+
+        from loopy.transform.instruction import map_dependency_maps
+        from loopy.schedule.checker.schedule import BEFORE_MARK
+        dt = isl.dim_type
+        old_iname_p = old_iname+BEFORE_MARK
+        new_iname_p = new_iname+BEFORE_MARK
+
+        def _rename_iname_in_dep_out(dep):
+            # update iname in out-dim
+            out_idx = dep.find_dim_by_name(dt.out, old_iname)
+            if out_idx != -1:
+                dep = dep.set_dim_name(dt.out, out_idx, new_iname)
+            return dep
+
+        def _rename_iname_in_dep_in(dep):
+            # update iname in in-dim
+            in_idx = dep.find_dim_by_name(dt.in_, old_iname_p)
+            if in_idx != -1:
+                dep = dep.set_dim_name(dt.in_, in_idx, new_iname_p)
+            return dep
+
+        # TODO figure out proper way to match none
+        # TODO figure out match vs stack_match
+        false_id_match = "id:false and (not id:false)"
+        kernel = map_dependency_maps(
+            kernel, _rename_iname_in_dep_out,
+            stmt_match_depender=within, stmt_match_dependee=false_id_match)
+        kernel = map_dependency_maps(
+            kernel, _rename_iname_in_dep_in,
+            stmt_match_depender=false_id_match, stmt_match_dependee=within)
+
+        # }}}
 
     # }}}
 
@@ -943,10 +978,10 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
             kernel.substitutions, name_gen)
     indup = _InameDuplicator(rule_mapping_context,
             old_to_new=dict(list(zip(inames, new_inames))),
-            within=within)
+            within=within_sm)
 
     kernel = rule_mapping_context.finish_kernel(
-            indup.map_kernel(kernel, within=within))
+            indup.map_kernel(kernel, within=within_sm))
 
     # }}}
 
