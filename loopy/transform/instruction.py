@@ -190,8 +190,22 @@ def map_dependency_maps(
 
 def add_stmt_inst_dependency(
         kernel, stmt_id, depends_on_id, new_dependency):
-    """Add the statement instance dependency *new_dependency* to statement with
-    id *stmt_id*.
+    """Add the statement instance dependency `new_dependency` to the statement with
+    id `stmt_id`.
+
+    :arg kernel: A :class:`loopy.kernel.LoopKernel`.
+
+    :arg stmt_id: The :class:`str` statement identifier of the statement to
+        which the dependency will be added.
+
+    :arg depends_on_id: The :class:`str` identifier of the statement that is
+        depended on, i.e., the statement with statement instances that must
+        happen before those of `stmt_id`.
+
+    :arg new_dependency: An class:`islpy.Map` from each instance of the first
+        statement to all instances of the second statement that must occur
+        later.
+
     """
 
     if stmt_id not in kernel.id_to_insn:
