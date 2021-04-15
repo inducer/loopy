@@ -139,15 +139,23 @@ def map_stmt_dependencies(kernel, stmt_match, f):
     return map_instructions(kernel, stmt_match, _update_deps)
 
 
+def _parse_match_if_necessary(match_candidate):
+    from loopy.match import MatchExpressionBase
+    if not isinstance(match_candidate, MatchExpressionBase):
+        from loopy.match import parse_match
+        return parse_match(match_candidate)
+    else:
+        return match_candidate
+
+
 def map_dependency_lists(
         kernel, f, stmt_match_depender="id:*", stmt_match_dependee="id:*"):
     # Set dependency = f(dependency) for:
     # All deps of stmts matching stmt_match_depender
     # All deps ON stmts matching stmt_match_dependee
 
-    from loopy.match import parse_match
-    match_depender = parse_match(stmt_match_depender)
-    match_dependee = parse_match(stmt_match_dependee)
+    match_depender = _parse_match_if_necessary(stmt_match_depender)
+    match_dependee = _parse_match_if_necessary(stmt_match_dependee)
 
     new_stmts = []
 
