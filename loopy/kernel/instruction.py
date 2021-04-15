@@ -75,7 +75,7 @@ class UseStreamingStoreTag(Tag):
 # {{{ instructions: base class
 
 class InstructionBase(ImmutableRecord, Taggable):
-    """A base class for all types of instruction that can occur in
+    r"""A base class for all types of instruction that can occur in
     a kernel.
 
     .. attribute:: id
@@ -87,7 +87,7 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     .. attribute:: depends_on
 
-        a :class:`frozenset` of :attr:`id` values of :class:`InstructionBase`
+        A :class:`frozenset` of :attr:`id` values of :class:`InstructionBase`
         instances that *must* be executed before this one. Note that
         :func:`loopy.preprocess_kernel` (usually invoked automatically)
         augments this by adding dependencies on any writes to temporaries read
@@ -105,6 +105,15 @@ class InstructionBase(ImmutableRecord, Taggable):
           matching instructions in the kernel to :attr:`depends_on` during
           :func:`loopy.make_kernel`. Note, that this is not meant as a user-facing
           interface.
+
+    .. attribute:: dependencies
+
+        A :class:`dict` mapping :attr:`id` values of :class:`InstructionBase`
+        instances (each referring to a statement with statement instances that
+        must be executed before instances of this statement) to lists (one list
+        per key) of class:`islpy.Map`\ s mapping each instance of the dependee
+        statement to all instances of this statement that must occur later. Note
+        that this dict will eventually replace the `depends_on` attribute.
 
     .. attribute:: depends_on_is_final
 
@@ -393,7 +402,8 @@ class InstructionBase(ImmutableRecord, Taggable):
 
         if self.depends_on:
             result.append("dep="+":".join(self.depends_on))
-        # TODO something with dependencies?
+        if self.dependencies:
+            result.append("dependencies="+":".join(self.dependencies.keys()))
         if self.no_sync_with:
             result.append("nosync="+":".join(
                     "%s@%s" % entry for entry in self.no_sync_with))
