@@ -293,7 +293,14 @@ def _split_iname_backend(kernel, iname_to_split,
                 new_prio = new_prio + (prio_iname,)
         new_priorities.append(new_prio)
 
+    new_inames = kernel.inames.copy()
+    del new_inames[iname_to_split]
+    from loopy.kernel.data import Iname
+    new_inames[inner_iname] = Iname(inner_iname, frozenset())
+    new_inames[outer_iname] = Iname(outer_iname, frozenset())
+
     kernel = kernel.copy(
+            inames=new_inames,
             domains=new_domains,
             iname_slab_increments=iname_slab_increments,
             instructions=new_insns,
@@ -323,7 +330,6 @@ def _split_iname_backend(kernel, iname_to_split,
                 {outer_iname: existing_tag, inner_iname: existing_tag})
 
     kernel = tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
-    kernel = remove_unused_inames(kernel, [iname_to_split])
 
     return kernel
 
