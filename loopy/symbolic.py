@@ -1076,7 +1076,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
                 arg.map_exprs(non_insn_self) if isinstance(arg, ArrayBase) else arg
                 for arg in kernel.args]
         else:
-            new_args = tuple(kernel.args)
+            new_args = kernel.args[:]
 
         # }}}
 
