@@ -153,6 +153,7 @@ def map_dependency_lists(
     # Set dependency = f(dependency) for:
     # All deps of stmts matching stmt_match_depender
     # All deps ON stmts matching stmt_match_dependee
+    # (but doesn't call f() twice if dep matches both depender and dependee)
 
     match_depender = _parse_match_if_necessary(stmt_match_depender)
     match_dependee = _parse_match_if_necessary(stmt_match_dependee)
