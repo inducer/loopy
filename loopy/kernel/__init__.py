@@ -42,7 +42,9 @@ from loopy.library.function import (
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.diagnostic import StaticValueFindingError
 from loopy.kernel.data import filter_iname_tags_by_type, Iname
-from pyrsistent import PClass, field, pmap, pvector, PVector
+from pyrsistent import pmap, pvector, PVector, PMap
+from typing import FrozenSet
+from dataclasses import dataclass
 from warnings import warn
 
 
@@ -152,7 +154,8 @@ def _get_inames_from_domains(domains):
     return domains.set_dims
 
 
-class InameDict(PClass):
+@dataclass(frozen=True)
+class InameDict:
     """
     A mapping from iname names to corresponding instances of
     :class:`loopy.kernel.data.Iname`.
@@ -176,8 +179,8 @@ class InameDict(PClass):
     .. automethod:: remove
     .. automethod:: discard
     """
-    data = field()
-    all_inames = field()
+    data: PMap
+    all_inames: FrozenSet
 
     def copy(self, data=None, all_inames=None):
         if all_inames is None:
@@ -229,7 +232,7 @@ class InameDict(PClass):
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.
         """
-        for field_name in sorted(self._pclass_fields):
+        for field_name in sorted(self.__dataclass_fields__):
             key_builder.rec(key_hash, getattr(self, field_name))
 
 
@@ -240,7 +243,8 @@ def make_iname_dict(tagged_inames, all_inames):
     return InameDict(data=pmap(tagged_inames), all_inames=all_inames)
 
 
-class LoopKernelDomains(PClass):
+@dataclass(frozen=True)
+class LoopKernelDomains:
     """
     Records the domain information seen in a :class:`loopy.kernel.LoopKernel`.
 
@@ -264,9 +268,9 @@ class LoopKernelDomains(PClass):
     .. automethod:: swap
     .. automethod:: delete
     """
-    _domains = field()
-    param_to_idoms = field()
-    home_domain_map = field()
+    _domains: PVector
+    param_to_idoms: PMap
+    home_domain_map: PMap
 
     def __getitem__(self, key):
         return self._domains[key]
@@ -480,7 +484,7 @@ class LoopKernelDomains(PClass):
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.
         """
-        for field_name in sorted(self._pclass_fields):
+        for field_name in sorted(self.__dataclass_fields__):
             key_builder.rec(key_hash, getattr(self, field_name))
 
 
