@@ -163,11 +163,11 @@ class InameDict:
     :attr data: An instance of :class:`pyrsistent.PMap` from iname names
         to instances of :class:`~loopy.kernel.data.Iname`.
     :attr all_inames: A :class:`frozenset` of names of all inames in a
-        :class:`LoopKernel`
+        :class:`~loopy.LoopKernel`
 
     .. note::
 
-       * Inames that are not a part of :attr:`InameDict.data`, but are seen in
+       * Inames that are not a part of *data*, but are seen in
          :attr`InameDict.all_inames` are realized as instances of
          :class:`~loopy.kernel.data.Iname` with no tags.
 
@@ -246,7 +246,7 @@ def make_iname_dict(tagged_inames, all_inames):
 @dataclass(frozen=True)
 class LoopKernelDomains:
     """
-    Records the domain information seen in a :class:`loopy.kernel.LoopKernel`.
+    Records the domain information seen in a :class:`loopy.LoopKernel`.
 
     .. attribute:: _domains
 
@@ -257,16 +257,17 @@ class LoopKernelDomains:
 
         A :class:`pyrsistent.PMap` of dim names to :class:`frozenset` of
         indices of domains in which the dims appear as
-        :class:`islpy.dim_type.param`-type dims.
+        :attr:`islpy.dim_type.param`-type dims.
 
     .. attribute:: home_domain_map
 
         A :class:`pyrsistent.PMap` of dim names to the index of the domain in
-        which the dims appear as :class:`islpy.dim_type.set`-type dim.
+        which the dims appear as :attr:`islpy.dim_type.set`-type dim.
 
     .. automethod:: append
     .. automethod:: swap
     .. automethod:: delete
+    .. automethod:: insert
     """
     _domains: PVector
     param_to_idoms: PMap
@@ -421,7 +422,7 @@ class LoopKernelDomains:
     def insert(self, idom, domain):
         """
         Returns a copy of *self* with *domain* inserted at the *idom*-index in
-        :attr:`LoopKernel._domains`.
+        :attr:`LoopKernelDomains._domains`.
         """
         raise NotImplementedError
 
