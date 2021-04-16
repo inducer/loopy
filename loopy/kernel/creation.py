@@ -2404,7 +2404,8 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
         temporary_variables[tv.name] = tv
     del cse_temp_vars
 
-    domains = parse_domains(domains, defines)
+    from loopy.kernel import make_loop_kernel_domains
+    domains = make_loop_kernel_domains(parse_domains(domains, defines))
 
     # {{{ process assumptions
 

@@ -131,7 +131,12 @@ class LoopyKeyBuilder(KeyBuilderBase):
         else:
             PersistentHashWalkMapper(key_hash)(key)
 
-    update_for_PMap = update_for_dict  # noqa: N815
+    def _update_for_pyrsistent_containers(self, key_hash, key):
+        from pyrsistent import thaw
+        self.rec(key_hash, thaw(key))
+
+    update_for_PVector = _update_for_pyrsistent_containers  # noqa: N815
+    update_for_PMap = _update_for_pyrsistent_containers  # noqa: N815
 
 
 class PymbolicExpressionHashWrapper:

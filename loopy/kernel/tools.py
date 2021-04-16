@@ -475,11 +475,11 @@ class DomainChanger:
         return self.kernel.domains[self.leaf_domain_index]
 
     def get_domains_with(self, replacement):
-        result = self.kernel.domains[:]
+        result = self.kernel.domains
         if self.leaf_domain_index is not None:
-            result[self.leaf_domain_index] = replacement
+            result = result.swap(self.leaf_domain_index, replacement)
         else:
-            result.append(replacement)
+            result = result.append(replacement)
 
         return result
 

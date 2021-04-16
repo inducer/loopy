@@ -133,12 +133,12 @@ def _fuse_two_kernels(kernela, kernelb):
 
     # {{{ fuse domains
 
-    new_domains = kernela.domains[:]
+    new_domains = kernela.domains
 
     for dom_b in kernelb.domains:
         i_fuse = _find_fusable_loop_domain_index(dom_b, new_domains)
         if i_fuse is None:
-            new_domains.append(dom_b)
+            new_domains = new_domains.append(dom_b)
         else:
             dom_a = new_domains[i_fuse]
             dom_a, dom_b = isl.align_two(dom_a, dom_b)
@@ -156,8 +156,7 @@ def _fuse_two_kernels(kernela, kernelb):
                         "inames '%s'" % (",".join(shared_inames)))
 
             new_domain = dom_a & dom_b
-
-            new_domains[i_fuse] = new_domain
+            new_domains = new_domains.swap(i_fuse, new_domain)
 
     # }}}
 

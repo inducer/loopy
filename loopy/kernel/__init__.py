@@ -39,6 +39,7 @@ from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.tools import update_persistent_hash
 from loopy.diagnostic import StaticValueFindingError
 from loopy.kernel.data import filter_iname_tags_by_type, Iname
+from pyrsistent import PClass, field, pmap, pvector
 from warnings import warn
 
 
@@ -146,8 +147,154 @@ class kernel_state:  # noqa
 
 
 def _get_inames_from_domains(domains):
-    return frozenset().union(*
-            (frozenset(dom.get_var_names(dim_type.set)) for dom in domains))
+    return domains.set_dims
+
+
+class LoopKernelDomains(PClass):
+    """
+    Records the domain information seen in a :class:`loopy.kernel.LoopKernel`.
+
+    .. attribute:: _domains
+
+        A :class:`pyrsistent.PVector` of :class:`islpy.BasicSet` instances
+        representing the :ref:`domain-tree`.
+
+    .. attribute:: param_to_idoms
+
+        A :class:`pyrsistent.PMap` of dim names to :class:`frozenset` of
+        indices of domains in which the dims appear as
+        :class:`islpy.dim_type.param`-type dims.
+
+    .. attribute:: home_domain_map
+
+        A :class:`pyrsistent.PMap` of dim names to the index of the domain in
+        which the dims appear as :class:`islpy.dim_type.set`-type dim.
+
+    .. automethod:: append
+    .. automethod:: swap
+    """
+    _domains = field()
+    param_to_idoms = field()
+    home_domain_map = field()
+
+    def __getitem__(self, key):
+        return self._domains[key]
+
+    def append(self, dom):
+        """
+        Returns a copy of *self* with *dom* appended to it's domains.
+        """
+        assert dom.get_ctx() == isl.DEFAULT_CONTEXT
+
+        param_to_idoms_update = {}
+        idom = len(self._domains)
+
+        for var in dom.get_var_names(dim_type.param):
+            param_to_idoms_update[var] = (self.param_to_idoms.get(var, frozenset())
+                                          | frozenset([idom]))
+
+        hdm_update = {k: idom for k in dom.get_var_names(dim_type.set)}
+
+        return LoopKernelDomains(_domains=self._domains.append(dom),
+                                 param_to_idoms=(self.param_to_idoms
+                                                 .update(param_to_idoms_update)),
+                                 home_domain_map=(self.home_domain_map
+                                                  .update(hdm_update)
+                                                  ))
+
+    def swap(self, idom, domain):
+        """
+        Returns a copy of *self* with its *idom*-th domain replaced with
+        *domain*.
+        """
+        from functools import reduce
+
+        new_domains = self._domains.set(idom, domain)
+        hdm = reduce(lambda x, y: x.set(y, idom),
+                     domain.get_var_names(dim_type.set),
+                     reduce(lambda x, y: x.remove(y),
+                            self._domains[idom].get_var_names(dim_type.set),
+                            self.home_domain_map))
+
+        param_to_idoms = self.param_to_idoms
+        param_to_idoms_update = defaultdict(list)
+
+        # {{{ remove the params of old domains
+
+        for par in self._domains[idom].get_var_names(dim_type.param):
+            if param_to_idoms[par] == frozenset([idom]):
+                param_to_idoms = param_to_idoms.remove(par)
+            else:
+                assert idom in param_to_idoms[par]
+                param_to_idoms_update[par] = list(param_to_idoms[par]
+                                                 - frozenset([idom]))
+
+        # }}}
+
+        # {{{ add the params from new_domains
+
+        for var in domain.get_var_names(dim_type.param):
+            param_to_idoms_update[var].append(idom)
+
+        # }}}
+
+        param_to_idoms_update = {k: frozenset(v)
+                                 for k, v in param_to_idoms_update.items()}
+
+        return LoopKernelDomains(_domains=new_domains,
+                                 home_domain_map=hdm,
+                                 param_to_idoms=(param_to_idoms
+                                                 .update(param_to_idoms_update)))
+
+    def extend(self, domains):
+        from functools import reduce
+        return reduce(lambda x, y: x.append(y), domains, self)
+
+    def __add__(self, other):
+        if isinstance(other, list):
+            return self.extend(other)
+
+        return NotImplemented
+
+    def __iter__(self):
+        return iter(self._domains)
+
+    def __len__(self):
+        return len(self._domains)
+
+    def thaw(self):
+        from pyrsistent import thaw
+        return thaw(self._domains)
+
+    @property
+    def set_dims(self):
+        return frozenset(self.home_domain_map.keys())
+
+    @property
+    def param_dims(self):
+        return frozenset(self.param_to_idoms.keys())
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+        for field_name in sorted(self._pclass_fields):
+            key_builder.rec(key_hash, getattr(self, field_name))
+
+
+def make_loop_kernel_domains(domains):
+    param_to_idoms = defaultdict(frozenset)
+    for idom, dom in enumerate(domains):
+        for var in dom.get_var_names(dim_type.param):
+            param_to_idoms[var] |= frozenset([idom])
+
+    home_domain_map = pmap({iname: i_domain
+                            for i_domain, dom in enumerate(domains)
+                            for iname in dom.get_var_names(dim_type.set)})
+
+    return LoopKernelDomains(_domains=pvector(domains),
+                             param_to_idoms=pmap(param_to_idoms),
+                             home_domain_map=home_domain_map)
 
 
 class _not_provided:  # noqa: N801
@@ -166,8 +313,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
     .. attribute:: domains
 
-        a list of :class:`islpy.BasicSet` instances representing the
-        :ref:`domain-tree`.
+       an instance of :class:`loopy.kernel.LoopKernelDomains`.
 
     .. attribute:: instructions
 
@@ -337,6 +483,8 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
         assert isinstance(assumptions, isl.BasicSet)
         assert assumptions.is_params()
+
+        assert isinstance(domains, LoopKernelDomains)
 
         from loopy.types import to_loopy_type
         index_dtype = to_loopy_type(index_dtype)
@@ -589,10 +737,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
     @memoize_method
     def _get_home_domain_map(self):
-        return {
-                iname: i_domain
-                for i_domain, dom in enumerate(self.domains)
-                for iname in dom.get_var_names(dim_type.set)}
+        return self.domains.home_domain_map
 
     def get_home_domain_index(self, iname):
         return self._get_home_domain_map()[iname]

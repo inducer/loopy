@@ -24,6 +24,7 @@ THE SOFTWARE.
 from loopy.symbolic import (RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
 import islpy as isl
+from islpy import dim_type
 
 from loopy.translation_unit import for_each_kernel
 from loopy.kernel import LoopKernel
@@ -89,7 +90,11 @@ def _fix_parameter(kernel, name, value, within=None):
 
         return s
 
-    new_domains = [process_set(dom) for dom in kernel.domains]
+    new_domains = kernel.domains
+
+    for idom, dom in enumerate(kernel.domains):
+        if name in dom.get_var_names(dim_type.param):
+            new_domains = new_domains.swap(idom, process_set(dom))
 
     from pymbolic.mapper.substitutor import make_subst_func
     subst_func = make_subst_func({name: value})

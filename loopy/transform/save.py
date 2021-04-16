@@ -599,10 +599,10 @@ class TemporarySaver:
         self.updated_iname_to_tags.update(self.kernel.iname_to_tags)
         self.updated_temporary_variables.update(self.kernel.temporary_variables)
 
-        new_domains = list(self.kernel.domains)
+        new_domains = self.kernel.domains
         import islpy as isl
         if self.new_subdomain.dim(isl.dim_type.set) > 0:
-            new_domains.append(self.new_subdomain)
+            new_domains = new_domains.append(self.new_subdomain)
 
         kernel = self.kernel.copy(
             domains=new_domains,
