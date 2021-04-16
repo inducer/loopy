@@ -674,10 +674,9 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 
         return dom
 
-    new_domains = []
-    for dom in kernel.domains:
-        dom = rename_arg_in_basic_set(dom)
-        new_domains.append(dom)
+    new_domains = kernel.domains
+    for idom, dom in enumerate(kernel.domains):
+        new_domains = new_domains.swap(idom, rename_arg_in_basic_set(dom))
 
     new_assumptions = rename_arg_in_basic_set(kernel.assumptions)
 
