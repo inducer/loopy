@@ -1216,6 +1216,18 @@ def remove_unused_inames(kernel, inames=None):
     for iname in unused_inames:
         new_inames = new_inames.remove(iname)
 
+        # {{{ easy update: iname is only a set dim
+
+        if iname not in domains.param_dims:
+            idom = domains.home_domain_map[iname]
+            dom = domains[idom]
+            dt, idx = dom.get_var_dict()[iname]
+            dom = dom.project_out(dt, idx, 1)
+            domains = domains.swap(idom, dom)
+            continue
+
+        # }}}
+
         for idom, dom in enumerate(domains):
             try:
                 dt, idx = dom.get_var_dict()[iname]
