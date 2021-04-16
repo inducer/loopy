@@ -44,7 +44,7 @@ from loopy.diagnostic import StaticValueFindingError
 from loopy.kernel.data import filter_iname_tags_by_type, Iname
 from pyrsistent import pmap, pvector, PVector, PMap
 from typing import FrozenSet
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from warnings import warn
 
 
@@ -232,8 +232,8 @@ class InameDict:
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.
         """
-        for field_name in sorted(self.__dataclass_fields__):
-            key_builder.rec(key_hash, getattr(self, field_name))
+        for field in fields(self):
+            key_builder.rec(key_hash, getattr(self, field.name))
 
 
 def make_iname_dict(tagged_inames, all_inames):
@@ -485,8 +485,8 @@ class LoopKernelDomains:
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.
         """
-        for field_name in sorted(self.__dataclass_fields__):
-            key_builder.rec(key_hash, getattr(self, field_name))
+        for field in fields(self):
+            key_builder.rec(key_hash, getattr(self, field.name))
 
 
 def make_loop_kernel_domains(domains):
