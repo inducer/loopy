@@ -1283,6 +1283,8 @@ def test_sios_and_schedules_with_vec_and_barriers():
 # }}}
 
 
+# {{{ test_add_stmt_inst_dependency
+
 def test_add_stmt_inst_dependency():
 
     # Make kernel and use OLD deps to control linearization order for now
@@ -1390,6 +1392,8 @@ def test_add_stmt_inst_dependency():
         proc_knl, lin_items)
 
     assert not unsatisfied_deps
+
+# }}}
 
 
 # {{{ test_new_dependencies_finite_diff
