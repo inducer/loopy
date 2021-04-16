@@ -259,54 +259,78 @@ def _split_iname_backend(kernel, iname_to_split,
 
     from loopy.transform.instruction import map_dependency_maps
     from loopy.schedule.checker.schedule import BEFORE_MARK
-    from loopy.schedule.checker.utils import convert_map_to_set
+    from loopy.schedule.checker.utils import (
+        convert_map_to_set,
+        remove_dim_by_name,
+    )
+    dt = isl.dim_type
 
-    def _split_iname_in_dep(dep):
-        dt = isl.dim_type
+    def _split_iname_in_depender(dep):
 
         # If iname is not present in dep, return unmodified dep
         if iname_to_split not in dep.get_var_names(dt.out):
             return dep
-
-        # TODO dep in-dims may not match dep out-dims, need to check for iname
-        # in dt.in as well!!!!
 
         # Temporarily convert map to set for processing
         set_from_map, n_in_dims, n_out_dims = convert_map_to_set(dep)
 
         # Split iname
         set_from_map = _split_iname_in_set(
-            set_from_map,
-            iname_to_split,
-            inner_iname,
-            outer_iname,
-            fixed_length,
-            fixed_length_is_inner)
-        # Split iname'
-        set_from_map = _split_iname_in_set(
-            set_from_map,
-            iname_to_split+BEFORE_MARK,
-            inner_iname+BEFORE_MARK,
-            outer_iname+BEFORE_MARK,
-            fixed_length,
-            fixed_length_is_inner)
+            set_from_map, iname_to_split, inner_iname, outer_iname,
+            fixed_length, fixed_length_is_inner)
 
-        # Now set dims look like
-        # [old_inames' ..., old_inames ..., i_outer, i_inner, i_outer', i_inner']
+        # Dim order: [old_inames' ..., old_inames ..., i_outer, i_inner]
 
         # Convert set back to map
         map_from_set = isl.Map.from_domain(set_from_map)
-        # move original out dims + 2 new dims:
+        # Move original out dims + 2 new dims:
         map_from_set = map_from_set.move_dims(
             dt.out, 0, dt.in_, n_in_dims, n_out_dims+2)
 
+        # Remove iname that was split:
+        map_from_set = remove_dim_by_name(
+            map_from_set, dt.out, iname_to_split)
+
         return map_from_set
 
-    # TODO currently this gets applied to all maps
-    # instead, handle 'within'
+    def _split_iname_in_dependee(dep):
+
+        iname_to_split_marked = iname_to_split+BEFORE_MARK
+
+        # If iname is not present in dep, return unmodified dep
+        if iname_to_split_marked not in dep.get_var_names(dt.in_):
+            return dep
+
+        # Temporarily convert map to set for processing
+        set_from_map, n_in_dims, n_out_dims = convert_map_to_set(dep)
+
+        # Split iname'
+        set_from_map = _split_iname_in_set(
+            set_from_map, iname_to_split_marked,
+            inner_iname+BEFORE_MARK, outer_iname+BEFORE_MARK,
+            fixed_length, fixed_length_is_inner)
+
+        # Dim order: [old_inames' ..., old_inames ..., i_outer', i_inner']
+
+        # Convert set back to map
+        map_from_set = isl.Map.from_domain(set_from_map)
+        # Move original out dims new dims:
+        map_from_set = map_from_set.move_dims(
+            dt.out, 0, dt.in_, n_in_dims, n_out_dims)
+
+        # Remove iname that was split:
+        map_from_set = remove_dim_by_name(
+            map_from_set, dt.in_, iname_to_split_marked)
+
+        return map_from_set
+
+    false_id_match = "id:false and (not id:false)"
     kernel = map_dependency_maps(
-        kernel, _split_iname_in_dep,
-        stmt_match_depender="id:*", stmt_match_dependee="id:*")
+        kernel, _split_iname_in_depender,
+        stmt_match_depender=within, stmt_match_dependee=false_id_match)
+    kernel = map_dependency_maps(
+        kernel, _split_iname_in_dependee,
+        stmt_match_depender=false_id_match, stmt_match_dependee=within)
 
     # }}}
 
