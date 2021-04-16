@@ -39,7 +39,7 @@ from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.tools import update_persistent_hash
 from loopy.diagnostic import StaticValueFindingError
 from loopy.kernel.data import filter_iname_tags_by_type, Iname
-from pyrsistent import PClass, field, pmap, pvector
+from pyrsistent import PClass, field, pmap, pvector, PVector
 from warnings import warn
 
 
@@ -295,6 +295,10 @@ class LoopKernelDomains(PClass):
         Returns a copy of *self* with its *idom*-th domain replaced with
         *domain*.
         """
+
+        if domain is self._domains[idom]:
+            return self
+
         from functools import reduce
 
         new_domains = self._domains.set(idom, domain)
