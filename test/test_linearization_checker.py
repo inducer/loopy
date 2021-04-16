@@ -1764,19 +1764,35 @@ def test_split_iname_with_dependencies():
         lang_version=(2018, 2)
         )
 
-    # TODO test split_iname 'within'
-
     from copy import deepcopy
-    ref_knl = deepcopy(knl)  # deepcopy necessary?
+    ref_knl = deepcopy(knl)  # without deepcopy, deps get applied to ref_knl
 
-    # {{{ dep that should be satisfied
+    def _check_deps(transformed_knl, stmt1_dep_exp, len_unsatisfied_deps=0):
+        stmt0_deps = transformed_knl.id_to_insn["stmt0"].dependencies
+        stmt1_deps = transformed_knl.id_to_insn["stmt1"].dependencies
+
+        assert not stmt0_deps
+        assert len(stmt1_deps) == 1
+        assert len(stmt1_deps["stmt0"]) == 1
+        _align_and_compare_maps([(stmt1_deps["stmt0"][0], stmt1_dep_exp)])
+
+        # Check dep satisfaction
+        proc_knl = preprocess_kernel(transformed_knl)
+        lin_knl = get_one_linearized_kernel(proc_knl)
+        lin_items = lin_knl.linearization
+        unsatisfied_deps = lp.find_unsatisfied_dependencies(
+            proc_knl, lin_items)
+
+        assert len(unsatisfied_deps) == len_unsatisfied_deps
+
+    # {{{ Split iname and make sure dep is correct
 
     dep_inout_space_str = "[{0}'=0, i'] -> [{0}=1, i]".format(STATEMENT_VAR_NAME)
-    dep = _isl_map_with_marked_dims(
+    dep_satisfied = _isl_map_with_marked_dims(
         "[p] -> { %s : 0 <= i < p and i' = i }"
         % (dep_inout_space_str))
 
-    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep)
+    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep_satisfied)
     knl = lp.split_iname(knl, "i", 32)
 
     dep_exp = _isl_map_with_marked_dims(
@@ -1786,26 +1802,52 @@ def test_split_iname_with_dependencies():
         " and 0 <= 32*i_outer' + i_inner' < p"  # transformed bounds (0 <= i' < p)
         " and i_inner + 32*i_outer = 32*i_outer' + i_inner'"  # i = i'
         "}}".format(STATEMENT_VAR_NAME))
-    dep_found = knl.id_to_insn["stmt1"].dependencies["stmt0"][0]
 
-    # make sure dep is correct
-    _align_and_compare_maps([(dep_exp, dep_found)])
-
-    # Get a linearization
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
-
-    unsatisfied_deps = lp.find_unsatisfied_dependencies(
-        proc_knl, lin_items)
-
-    assert not unsatisfied_deps
+    _check_deps(knl, dep_exp)
 
     # }}}
 
-    # {{{ dep that should not be satisfied
+    # {{{ Split iname within stmt1 and make sure dep is correct
 
-    knl = ref_knl
+    knl = deepcopy(ref_knl)
+
+    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep_satisfied)
+    knl = lp.split_iname(knl, "i", 32, within="id:stmt1")
+
+    dep_exp = _isl_map_with_marked_dims(
+        "[p] -> {{ [{0}'=0, i'] -> [{0}=1, i_outer, i_inner] : "
+        "0 <= i_inner < 32"  # new bounds
+        " and 0 <= 32*i_outer + i_inner < p"  # transformed bounds (0 <= i < p)
+        " and 0 <= i' < p"  # original bounds
+        " and i_inner + 32*i_outer = i'"  # transform {i = i'}
+        "}}".format(STATEMENT_VAR_NAME))
+
+    _check_deps(knl, dep_exp)
+
+    # }}}
+
+    # {{{ Split iname within stmt0 and make sure dep is correct
+
+    knl = deepcopy(ref_knl)
+
+    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep_satisfied)
+    knl = lp.split_iname(knl, "i", 32, within="id:stmt0")
+
+    dep_exp = _isl_map_with_marked_dims(
+        "[p] -> {{ [{0}'=0, i_outer', i_inner'] -> [{0}=1, i] : "
+        "0 <= i_inner' < 32"  # new bounds
+        " and 0 <= i < p"  # original bounds
+        " and 0 <= 32*i_outer' + i_inner' < p"  # transformed bounds (0 <= i' < p)
+        " and i = 32*i_outer' + i_inner'"  # transform {i = i'}
+        "}}".format(STATEMENT_VAR_NAME))
+
+    _check_deps(knl, dep_exp)
+
+    # }}}
+
+    # {{{ Check dep that should not be satisfied
+
+    knl = deepcopy(ref_knl)
 
     dep_unsatisfied = _isl_map_with_marked_dims(
         "[p] -> { %s : 0 <= i < p and i' = i + 1 }"
@@ -1814,19 +1856,19 @@ def test_split_iname_with_dependencies():
     knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep_unsatisfied)
     knl = lp.split_iname(knl, "i", 32)
 
-    # Get a linearization
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    dep_exp = _isl_map_with_marked_dims(
+        "[p] -> {{ [{0}'=0, i_outer', i_inner'] -> [{0}=1, i_outer, i_inner] : "
+        "0 <= i_inner, i_inner' < 32"  # new bounds
+        " and 0 <= 32*i_outer + i_inner < p"  # transformed bounds (0 <= i < p)
+        " and 0 <= 32*i_outer' + i_inner' - 1 < p"  # trans. bounds (0 <= i'-1 < p)
+        " and i_inner + 32*i_outer + 1 = 32*i_outer' + i_inner'"  # i' = i + 1
+        "}}".format(STATEMENT_VAR_NAME))
 
-    unsatisfied_deps = lp.find_unsatisfied_dependencies(
-        proc_knl, lin_items)
-
-    assert len(unsatisfied_deps) == 1
+    _check_deps(knl, dep_exp, len_unsatisfied_deps=1)
 
     # }}}
 
-    # {{{ more deps that should be satisfied
+    # {{{ Deps that should be satisfied after gratuitous splitting
 
     knl = lp.make_kernel(
         "{[i,j,k,m]: 0<=i,j,k,m<p}",
