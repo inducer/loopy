@@ -743,6 +743,13 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         tree to the root.
         """
 
+        # {{{ exit early strategy: all domains are roots
+
+        if self.domains.param_dims <= self.get_unwritten_value_args():
+            return [None, ] * len(self.domains)
+
+        # }}}
+
         # The stack of iname sets records which inames are active
         # as we step through the linear list of domains. It also
         # determines the granularity of inames to be popped/decactivated
@@ -806,10 +813,18 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         Each domains nest list walks from the leaves of the nesting
         tree to the root.
         """
-        result = []
 
+        result = []
         ppd = self.parents_per_domain()
-        for parent in ppd:
+
+        # {{{ exit early strategy: all domains are roots
+
+        if set(ppd) == {None}:
+            return [[], ] * len(self.domains)
+
+        # }}}
+
+        for dom, parent in zip(self.domains, ppd):
             # keep walking up tree to find *all* parents
             dom_result = []
             while parent is not None:
