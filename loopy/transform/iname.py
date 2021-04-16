@@ -807,7 +807,7 @@ def tag_inames(kernel, iname_to_tag, force=False,
         if name not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % name)
 
-        knl_inames = knl_inames.set(name, knl_inames[iname].tagged(new_tag))
+        knl_inames = knl_inames.set(name, knl_inames[name].tagged(new_tag))
 
     return kernel.copy(inames=knl_inames)
 
