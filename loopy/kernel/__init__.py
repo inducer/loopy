@@ -260,6 +260,7 @@ class LoopKernelDomains(PClass):
 
     .. automethod:: append
     .. automethod:: swap
+    .. automethod:: delete
     """
     _domains = field()
     param_to_idoms = field()
@@ -301,42 +302,122 @@ class LoopKernelDomains(PClass):
 
         from functools import reduce
 
+        # {{{ swap dim names in home_domain_map
+
         new_domains = self._domains.set(idom, domain)
-        hdm = reduce(lambda x, y: x.set(y, idom),
+        hdm = reduce(lambda acc, y: acc.set(y, idom),
                      domain.get_var_names(dim_type.set),
-                     reduce(lambda x, y: x.remove(y),
+                     reduce(lambda acc, y: acc.remove(y),
                             self._domains[idom].get_var_names(dim_type.set),
                             self.home_domain_map))
+        # }}}
 
         param_to_idoms = self.param_to_idoms
-        param_to_idoms_update = defaultdict(list)
 
         # {{{ remove the params of old domains
+
+        param_to_idoms_update = {}
 
         for par in self._domains[idom].get_var_names(dim_type.param):
             if param_to_idoms[par] == frozenset([idom]):
                 param_to_idoms = param_to_idoms.remove(par)
             else:
                 assert idom in param_to_idoms[par]
-                param_to_idoms_update[par] = list(param_to_idoms[par]
-                                                 - frozenset([idom]))
+                param_to_idoms_update[par] = param_to_idoms[par] - frozenset([idom])
+
+        param_to_idoms = param_to_idoms.update(param_to_idoms_update)
 
         # }}}
 
         # {{{ add the params from new_domains
 
-        for var in domain.get_var_names(dim_type.param):
-            param_to_idoms_update[var].append(idom)
+        param_to_idoms_update = {}
+
+        for par in domain.get_var_names(dim_type.param):
+            param_to_idoms_update[par] = (param_to_idoms.get(par, frozenset())
+                                          | frozenset([idom]))
+
+        param_to_idoms = param_to_idoms.update(param_to_idoms_update)
 
         # }}}
 
-        param_to_idoms_update = {k: frozenset(v)
-                                 for k, v in param_to_idoms_update.items()}
+        return LoopKernelDomains(_domains=new_domains,
+                                 home_domain_map=hdm,
+                                 param_to_idoms=param_to_idoms)
+
+    def delete(self, idom):
+        """
+        Returns an instance of :class:`LoopKernelDomains` with
+        the domain at *idom* removed.
+
+        .. note::
+
+            It would be cheaper to call :meth:`LoopKernelDomains.swap` instead
+            of calling :meth:`LoopKernelDomains.delete` and
+            :meth:`LoopKernelDomains.insert`.
+        """
+        from functools import reduce
+        new_domains = self._domains.delete(idom)
+
+        param_to_idoms = self.param_to_idoms
+
+        # {{{ remove the params of old domains
+
+        param_to_idoms_update = {}
+        for par in self._domains[idom].get_var_names(dim_type.param):
+            if param_to_idoms[par] == frozenset([idom]):
+                param_to_idoms = param_to_idoms.remove(par)
+            else:
+                assert idom in param_to_idoms[par]
+                param_to_idoms_update[par] = (param_to_idoms[par]
+                                              - frozenset([idom]))
+
+        param_to_idoms = param_to_idoms.update(param_to_idoms_update)
+
+        # }}}
+
+        # {{{ update the indices of all domains in param_to_idoms for indices>idom
+
+        param_to_idoms_update = {}
+        all_params_from_idom_plus_1 = reduce(
+            lambda acc, dom: acc.union(frozenset(dom.get_var_names(dim_type.param))),
+            self._domains[idom+1:],
+            frozenset())
+        param_to_idoms_update = {par: frozenset(k if k < idom else k-1
+                                                for k in param_to_idoms[par])
+                                 for par in all_params_from_idom_plus_1}
+        param_to_idoms = param_to_idoms.update(param_to_idoms_update)
+
+        # }}}
+
+        # {{{ update the indices of all domains in home_domain_map for indices>idom
+
+        # remove all the idom's set dims
+        hdm = reduce(lambda acc, x: acc.remove(x),
+                     self._domains[idom].get_var_names(dim_type.set),
+                     self.home_domain_map)
+
+        hdm_update = {}
+        for i, dom in enumerate(self._domains[idom+1:],
+                                start=idom+1):
+            for dim_name in dom.get_var_names(dim_type.set):
+                assert self.home_domain_map[dim_name] == i
+                hdm_update[dim_name] = i-1
+
+        hdm = hdm.update(hdm_update)
+
+        # }}}
 
         return LoopKernelDomains(_domains=new_domains,
                                  home_domain_map=hdm,
-                                 param_to_idoms=(param_to_idoms
-                                                 .update(param_to_idoms_update)))
+                                 param_to_idoms=param_to_idoms)
+
+    def insert(self, idom, domain):
+        """
+        Returns a copy of *self* with *domain* inserted at the *idom*-index in
+        :attr:`LoopKernel._domains`.
+        """
+        raise NotImplementedError
 
     def extend(self, domains):
         from functools import reduce
