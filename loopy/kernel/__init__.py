@@ -346,6 +346,33 @@ class LoopKernelDomains(PClass):
 
         return NotImplemented
 
+    def __radd__(self, other):
+        if not isinstance(other, (list, PVector)):
+            return NotImplemented
+
+        if isinstance(other, list):
+            other = pvector(other)
+
+        # {{{ update all domain indices
+
+        home_domain_map = {k: v+len(other)
+                           for k, v in self.home_domain_map.items()}
+        param_to_idoms = {k: frozenset(map(lambda x: x+len(other), v))
+                         for k, v in self.param_to_idoms.items()}
+
+        # }}}
+
+        for idom, dom in enumerate(other):
+            for dim in dom.get_var_names(dim_type.set):
+                home_domain_map[dim] = idom
+
+            for dim in dom.get_var_names(dim_type.param):
+                param_to_idoms[dim] = idom
+
+        return LoopKernelDomains(_domains=other+self._domains,
+                                 param_to_idoms=pmap(param_to_idoms),
+                                 home_domain_map=pmap(home_domain_map))
+
     def __iter__(self):
         return iter(self._domains)
 
