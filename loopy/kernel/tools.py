@@ -787,11 +787,12 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         except isl.Error:
             # Likely unbounded, automatic assignment is not
             # going to happen for this iname.
-            new_inames = kernel.inames.copy()
-            new_inames[iname] = kernel.inames[iname].copy(
-                    tags=frozenset(tag
-                        for tag in kernel.inames[iname].tags
-                        if not isinstance(tag, AutoLocalIndexTagBase)))
+            new_inames = kernel.inames
+            new_inames = kernel.inames.set(iname,
+                kernel.inames[iname].copy(tags=frozenset(
+                    tag
+                    for tag in kernel.inames[iname].tags
+                    if not isinstance(tag, AutoLocalIndexTagBase))))
             return assign_automatic_axes(
                     kernel.copy(inames=new_inames),
                     axis=recursion_axis)
@@ -857,8 +858,8 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
                 frozenset(tag for tag in kernel.inames[iname].tags
                     if not isinstance(tag, AutoLocalIndexTagBase))
                 | new_tag_set)
-        new_inames = kernel.inames.copy()
-        new_inames[iname] = kernel.inames[iname].copy(tags=new_tags)
+        new_inames = kernel.inames
+        new_inames = new_inames.set(iname, kernel.inames[iname].copy(tags=new_tags))
         return assign_automatic_axes(kernel.copy(inames=new_inames),
                 axis=recursion_axis, local_size=local_size)
 

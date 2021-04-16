@@ -654,8 +654,10 @@ def untag_inames(kernel, iname_to_untag, tag_type):
     tags_to_remove = filter_iname_tags_by_type(
             kernel.inames[iname_to_untag].tags, tag_type)
     new_inames = kernel.inames.copy()
-    new_inames[iname_to_untag] = kernel.inames[iname_to_untag].without_tags(
-            tags_to_remove, verify_existence=False)
+    new_inames = new_inames.set(iname_to_untag,
+                                kernel.inames[iname_to_untag]
+                                .without_tags(tags_to_remove,
+                                              verify_existence=False))
 
     return kernel.copy(inames=new_inames)
 
@@ -773,7 +775,7 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
         if name not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % name)
 
-        knl_inames[name] = knl_inames[name].tagged(new_tag)
+        knl_inames = knl_inames.set(name, knl_inames[iname].tagged(new_tag))
 
     return kernel.copy(inames=knl_inames)
 
@@ -1210,7 +1212,9 @@ def remove_unused_inames(kernel, inames=None):
     # {{{ remove them
 
     domains = kernel.domains
+    new_inames = kernel.inames
     for iname in unused_inames:
+        new_inames = new_inames.remove(iname)
 
         for idom, dom in enumerate(domains):
             try:

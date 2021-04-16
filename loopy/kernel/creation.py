@@ -2169,10 +2169,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             raise LoopyError("assumptions must be either 'str' or BasicSet")
 
     # }}}
-    from loopy.kernel.data import Iname
-    from loopy.kernel import _get_inames_from_domains
-    inames = {name: Iname(name, frozenset())
-              for name in _get_inames_from_domains(domains)}
+    from loopy.kernel import (_get_inames_from_domains,
+                              make_loop_kernel_domains, make_iname_dict)
+    inames = make_iname_dict({}, _get_inames_from_domains(domains))
 
     arg_guesser = ArgumentGuesser(domains, instructions,
             temporary_variables, substitutions,
