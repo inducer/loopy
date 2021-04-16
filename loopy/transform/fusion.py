@@ -231,7 +231,8 @@ def _fuse_two_kernels(kernela, kernelb):
 
     # }}}
 
-    from loopy.kernel import LoopKernel
+    from loopy.kernel import LoopKernel, make_iname_dict
+    from pyrsistent import thaw
     return LoopKernel(
             domains=new_domains,
             instructions=new_instructions,
@@ -244,10 +245,10 @@ def _fuse_two_kernels(kernela, kernelb):
             local_sizes=_merge_dicts(
                 "local size", kernela.local_sizes, kernelb.local_sizes),
             temporary_variables=new_temporaries,
-            inames=_merge_dicts(
-                "inames",
-                kernela.inames,
-                kernelb.inames),
+            inames=make_iname_dict(_merge_dicts("inames",
+                                                thaw(kernela.inames.data),
+                                                thaw(kernelb.inames.data)),
+                                   new_domains.set_dims),
             substitutions=_merge_dicts(
                 "substitution",
                 kernela.substitutions,

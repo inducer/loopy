@@ -150,6 +150,94 @@ def _get_inames_from_domains(domains):
     return domains.set_dims
 
 
+class InameDict(PClass):
+    """
+    A mapping from iname names to corresponding instances of
+    :class:`loopy.kernel.data.Iname`.
+
+    :attr data: An instance of :class:`pyrsistent.PMap` from iname names
+        to instances of :class:`~loopy.kernel.data.Iname`.
+    :attr all_inames: A :class:`frozenset` of names of all inames in a
+        :class:`LoopKernel`
+
+    .. note::
+
+       * Inames that are not a part of :attr:`InameDict.data`, but are seen in
+         :attr`InameDict.all_inames` are realized as instances of
+         :class:`~loopy.kernel.data.Iname` with no tags.
+
+       * This class was introduced to cut-down the operation and storage
+         overhead that comes with maintaining default instances of
+         :class:`~loopy.kernel.data.Iname`.
+
+    .. automethod:: set
+    .. automethod:: remove
+    .. automethod:: discard
+    """
+    data = field()
+    all_inames = field()
+
+    def copy(self, data=None, all_inames=None):
+        if all_inames is None:
+            all_inames = self.all_inames
+
+        if data is None:
+            data = self.data
+
+        return InameDict(data=data, all_inames=all_inames)
+
+    def __getitem__(self, key):
+        try:
+            return self.data[key]
+        except KeyError:
+            if key in self.all_inames:
+                return Iname(key, frozenset())
+            else:
+                raise KeyError
+
+    def set(self, key, val):
+        assert isinstance(val, Iname)
+        return self.copy(self.data.set(key, val),
+                         self.all_inames | frozenset([val.name]))
+
+    def remove(self, key):
+        if key not in self.all_inames:
+            raise LoopyError(f"Cannot remove unknown iname '{key}'")
+
+        return self.copy(self.data.discard(key),
+                         self.all_inames - frozenset([key]))
+
+    def discard(self, key):
+        return self.copy(self.data.discard(key),
+                         self.all_inames - frozenset([key]))
+
+    def __iter__(self):
+        return iter(self.all_inames)
+
+    def keys(self):
+        return iter(self.all_inames)
+
+    def items(self):
+        return ((k, self[k]) for k in self.keys())
+
+    def values(self):
+        return (self[k] for k in self.keys())
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+        for field_name in sorted(self._pclass_fields):
+            key_builder.rec(key_hash, getattr(self, field_name))
+
+
+def make_iname_dict(tagged_inames, all_inames):
+    assert set(tagged_inames) <= all_inames
+    assert isinstance(tagged_inames, dict)
+    assert isinstance(all_inames, frozenset)
+    return InameDict(data=pmap(tagged_inames), all_inames=all_inames)
+
+
 class LoopKernelDomains(PClass):
     """
     Records the domain information seen in a :class:`loopy.kernel.LoopKernel`.
@@ -385,9 +473,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
     .. attribute:: inames
 
-        An instance of :class:`dict`, a mapping from the names of kernel's
-        inames to their corresponding instances of :class:`loopy.kernel.data.Iname`.
-        An entry is guaranteed to be present for each iname.
+        An instance of :class:`~loopy.kernel.InameDict`.
 
     .. automethod:: __call__
     .. automethod:: copy
@@ -470,11 +556,10 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                 raise LoopyError("Cannot provide both iname_to_tags and inames to "
                         "LoopKernel.__init__")
 
-            inames = {
-                name: inames.get(name, Iname(name, frozenset()))
-                for name in _get_inames_from_domains(domains)}
+            inames = make_iname_dict({k: Iname(v) for k, v in iname_to_tags.items()},
+                                     self.domain.set_dims)
 
-        assert isinstance(inames, dict)
+        assert isinstance(inames, InameDict)
 
         if index_dtype is None:
             index_dtype = np.int32
@@ -1763,10 +1848,9 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
             iname_to_tags = kwargs["iname_to_tags"]
             domains = kwargs.get("domains", self.domains)
-            kwargs["inames"] = {name: Iname(name,
-                                            iname_to_tags.get(name, frozenset()))
-                                for name in _get_inames_from_domains(domains)
-                                }
+            kwargs["inames"] = make_iname_dict({k: Iname(k, v)
+                                                for k, v in iname_to_tags.items()},
+                                               self.domains.set_dims)
             del kwargs["iname_to_tags"]
 
         if "domains" in kwargs:
