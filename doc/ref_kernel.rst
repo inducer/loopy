@@ -704,6 +704,10 @@ Do not create :class:`LoopKernel` objects directly. Instead, refer to
 
 .. autoclass:: LoopKernel
 
+.. autoclass:: loopy.kernel.LoopKernelDomains
+
+.. autoclass:: loopy.kernel.InameDict
+
 .. autoclass:: KernelState
     :members:
     :undoc-members:
