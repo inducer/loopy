@@ -339,7 +339,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
     # {{{ remove inames that were temporarily added by slice sweeps
 
-    new_domains = new_kernel.domains[:]
+    new_domains = new_kernel.domains
 
     for iname in inames_to_be_removed:
         home_domain_index = kernel.get_home_domain_index(iname)
@@ -347,8 +347,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
         dt, idx = domain.get_var_dict()[iname]
         assert dt == dim_type.set
-
-        new_domains[home_domain_index] = domain.project_out(dt, idx, 1)
+        new_domains = new_domains.swap(home_domain_index,
+                                       domain.project_out(dt, idx, 1))
 
     new_kernel = new_kernel.copy(domains=new_domains)
 

@@ -250,10 +250,12 @@ def _split_iname_backend(kernel, iname_to_split,
     if inner_iname is None:
         inner_iname = vng(iname_to_split+"_inner")
 
-    new_domains = [
-            _split_iname_in_set(dom, iname_to_split, inner_iname, outer_iname,
-                fixed_length, fixed_length_is_inner)
-            for dom in kernel.domains]
+    new_domains = kernel.domains
+    for idom, dom in enumerate(kernel.domains):
+        if iname_to_split in dom.get_var_dict():
+            new_domains = new_domains.swap(idom, _split_iname_in_set(
+                dom, iname_to_split, inner_iname, outer_iname, fixed_length,
+                fixed_length_is_inner))
 
     from pymbolic import var
     inner = var(inner_iname)
@@ -1209,20 +1211,19 @@ def remove_unused_inames(kernel, inames=None):
 
     domains = kernel.domains
     for iname in unused_inames:
-        new_domains = []
 
-        for dom in domains:
+        for idom, dom in enumerate(domains):
             try:
                 dt, idx = dom.get_var_dict()[iname]
             except KeyError:
                 pass
             else:
                 dom = dom.project_out(dt, idx, 1)
-            new_domains.append(dom)
 
-        domains = new_domains
+            domains = domains.swap(idom, dom)
 
-    kernel = kernel.copy(domains=domains)
+    kernel = kernel.copy(domains=domains,
+                         inames=new_inames)
 
     # }}}
 
@@ -1466,7 +1467,7 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
     new_inames_set = frozenset(new_inames)
     old_inames_set = frozenset(old_inames)
 
-    new_domains = []
+    new_domains = kernel.domains
     for idom, dom in enumerate(kernel.domains):
         dom_var_dict = dom.get_var_dict()
         old_iname_overlap = [
@@ -1475,7 +1476,6 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
                 if iname in dom_var_dict]
 
         if not old_iname_overlap:
-            new_domains.append(dom)
             continue
 
         from loopy.symbolic import get_dependencies
@@ -1546,7 +1546,7 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
             dt, idx = dom.get_var_dict()[iname]
             dom = dom.project_out(dt, idx, 1)
 
-        new_domains.append(dom)
+        new_domains = new_domains.swap(idom, dom)
 
     # }}}
 
