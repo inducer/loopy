@@ -493,6 +493,12 @@ Barrier Instructions
 
 .. autoclass:: BarrierInstruction
 
+Instruction Tags
+^^^^^^^^^^^^^^^^
+
+.. autoclass:: LegacyStringInstructionTag
+.. autoclass:: UseStreamingStoreTag
+
 .. }}}
 
 Data: Arguments and Temporaries

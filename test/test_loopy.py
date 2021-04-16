@@ -409,7 +409,7 @@ def test_arg_guessing_with_reduction(ctx_factory):
             "{[i,j]: 0<=i,j<n }",
             """
                 a = 1.5 + simul_reduce(sum, (i,j), i*j)
-                d = 1.5 + simul_reduce(sum, (i,j), b[i,j])
+                d = 1.5 + simul_reduce(sum, [i,j], b[i,j])
                 b[i, j] = i*j
                 c[i+j, j] = b[j,i]
                 """,
@@ -2524,7 +2524,7 @@ def test_preamble_with_separate_temporaries(ctx_factory):
     # create a function mangler
 
     # and finally create a test
-    n = 10
+    n = 5
     # for each entry come up with a random number of data points
     num_data = np.asarray(np.random.randint(2, 10, size=n), dtype=np.int32)
     # turn into offsets
@@ -2825,6 +2825,9 @@ def test_shape_mismatch_check(ctx_factory):
     a = np.random.rand(10, 10).astype(np.float32)
     b = np.random.rand(10).astype(np.float32)
 
+    if prg.options.skip_arg_checks:
+        pytest.skip("args checks disabled, cannot check")
+
     with pytest.raises(TypeError, match="strides mismatch"):
         prg(queue, a=a, b=b)
 
@@ -2995,8 +2998,15 @@ def test_split_iname_within(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
-@pytest.mark.parametrize("base_type,exp_type", [(np.int32, np.uint32), (np.int64,
-    np.uint64), (np.int, np.float), (np.float, np.int), (np.int, np.int),
+@pytest.mark.parametrize("base_type,exp_type", [
+    (np.int32, np.uint32), (np.int64, np.uint64),
+
+    #  It looks like numpy thinks int32**float32 should be float64, which seems
+    #  weird.
+    # (np.int32, np.float32),
+
+    (np.int32, np.float64),
+    (np.float64, np.int32), (np.int64, np.int32),
     (np.float32, np.float64), (np.float64, np.float32)])
 def test_pow(ctx_factory, base_type, exp_type):
     ctx = ctx_factory()
@@ -3035,6 +3045,67 @@ def test_pow(ctx_factory, base_type, exp_type):
     assert result.dtype == expected_result.dtype
 
     np.testing.assert_allclose(expected_result, result)
+
+
+def test_deps_from_conditionals():
+    # https://github.com/inducer/loopy/issues/231
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            """
+            <> icontaining_tgt_box = 1 {id=flagset}
+            if icontaining_tgt_box == 1
+                result = result + simul_reduce(sum, i, i*i)
+                result = result + simul_reduce(sum, i, 2*i*i)
+            end
+            """)
+    ppknl = lp.preprocess_kernel(knl)
+
+    # accumulator initializers must be dependency-less
+    assert all(not insn.depends_on
+            for insn in ppknl.instructions
+            if "init" in insn.id)
+    # accumulator initializers must not have inherited the predicates
+    assert all(not insn.predicates
+            for insn in ppknl.instructions
+            if "init" in insn.id)
+
+    # Ensure valid linearization exists: No valid linearization unless the
+    # accumulator initializers can move out of the loop.
+    print(lp.generate_code_v2(ppknl).device_code())
+
+
+def test_scalar_temporary(ctx_factory):
+    from numpy.random import default_rng
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    rng = default_rng()
+    x_in = rng.random()
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        tmp = 2*x
+        y = 2*tmp
+        """,
+        [lp.ValueArg("x", dtype=float),
+        lp.TemporaryVariable("tmp", address_space=lp.AddressSpace.GLOBAL,
+                             shape=lp.auto),
+        ...])
+    evt, (out, ) = knl(queue, x=x_in)
+    np.testing.assert_allclose(4*x_in, out.get())
+
+
+def test_cached_written_variables_doesnt_carry_over_invalidly():
+    knl = lp.make_kernel(
+            "{:}",
+            """
+            a[i] = 2*i {id=write_a}
+            b[i] = 2*i {id=write_b}
+            """)
+    from pickle import dumps, loads
+    knl2 = loads(dumps(knl))
+
+    knl2 = lp.remove_instructions(knl2, {"write_b"})
+    assert "b" not in knl2.get_written_variables()
 
 
 if __name__ == "__main__":

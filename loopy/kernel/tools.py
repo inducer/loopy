@@ -786,18 +786,13 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         except isl.Error:
             # Likely unbounded, automatic assignment is not
             # going to happen for this iname.
-            new_iname_to_tags = kernel.iname_to_tags.copy()
-            new_tags = new_iname_to_tags.get(iname, frozenset())
-            new_tags = frozenset(tag for tag in new_tags
-                    if not isinstance(tag, AutoLocalIndexTagBase))
-
-            if new_tags:
-                new_iname_to_tags[iname] = new_tags
-            else:
-                del new_iname_to_tags[iname]
-
+            new_inames = kernel.inames.copy()
+            new_inames[iname] = kernel.inames[iname].copy(
+                    tags=frozenset(tag
+                        for tag in kernel.inames[iname].tags
+                        if not isinstance(tag, AutoLocalIndexTagBase)))
             return assign_automatic_axes(
-                    kernel.copy(iname_to_tags=new_iname_to_tags),
+                    kernel.copy(inames=new_inames),
                     axis=recursion_axis)
 
         if axis is None:
@@ -857,18 +852,13 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             new_tag_set = frozenset([new_tag])
         else:
             new_tag_set = frozenset()
-        new_iname_to_tags = kernel.iname_to_tags.copy()
         new_tags = (
-                frozenset(tag for tag in new_iname_to_tags.get(iname, frozenset())
+                frozenset(tag for tag in kernel.inames[iname].tags
                     if not isinstance(tag, AutoLocalIndexTagBase))
                 | new_tag_set)
-
-        if new_tags:
-            new_iname_to_tags[iname] = new_tags
-        else:
-            del new_iname_to_tags[iname]
-
-        return assign_automatic_axes(kernel.copy(iname_to_tags=new_iname_to_tags),
+        new_inames = kernel.inames.copy()
+        new_inames[iname] = kernel.inames[iname].copy(tags=new_tags)
+        return assign_automatic_axes(kernel.copy(inames=new_inames),
                 axis=recursion_axis, local_size=local_size)
 
     # }}}
@@ -1160,7 +1150,7 @@ def get_visual_iname_order_embedding(kernel):
     # Ignore ILP tagged inames, since they do not have to form a strict loop
     # nest.
     ilp_inames = frozenset(iname
-        for iname in kernel.iname_to_tags
+        for iname in kernel.inames
         if kernel.iname_tags_of_type(iname, IlpBaseTag))
 
     iname_trie = SetTrie()
@@ -1425,6 +1415,14 @@ def draw_dependencies_as_unicode_arrows(
 
 # {{{ stringify_instruction_list
 
+def stringify_instruction_tag(tag):
+    from loopy.kernel.instruction import LegacyStringInstructionTag
+    if isinstance(tag, LegacyStringInstructionTag):
+        return f"S({tag.value})"
+    else:
+        return str(tag)
+
+
 def stringify_instruction_list(kernel):
     # {{{ topological sort
 
@@ -1539,7 +1537,8 @@ def stringify_instruction_list(kernel):
         if insn.priority:
             options.append("priority=%d" % insn.priority)
         if insn.tags:
-            options.append("tags=%s" % ":".join(insn.tags))
+            options.append("tags=%s" % ":".join(
+                stringify_instruction_tag(t) for t in insn.tags))
         if isinstance(insn, lp.Assignment) and insn.atomicity:
             options.append("atomic=%s" % ":".join(
                 str(a) for a in insn.atomicity))
@@ -1590,11 +1589,20 @@ def stringify_instruction_list(kernel):
 
 # {{{ global barrier order finding
 
-def _is_global_barrier(kernel, insn_id):
+def _insn_id_is_global_barrier(insn_id, kernel):
     insn = kernel.id_to_insn[insn_id]
+    return _insn_is_global_barrier(insn)
+
+
+def _insn_is_global_barrier(insn):
     from loopy.kernel.instruction import BarrierInstruction
     return isinstance(insn, BarrierInstruction) and \
         insn.synchronization_kind == "global"
+
+
+@memoize_on_first_arg
+def kernel_has_global_barriers(kernel):
+    return any(_insn_is_global_barrier(insn) for insn in kernel.instructions)
 
 
 @memoize_on_first_arg
@@ -1614,7 +1622,7 @@ def get_global_barrier_order(kernel):
 
     barriers = [
             insn_id for insn_id in order
-            if _is_global_barrier(kernel, insn_id)]
+            if _insn_id_is_global_barrier(insn_id, kernel)]
 
     del order
 
@@ -1672,14 +1680,17 @@ def find_most_recent_global_barrier(kernel, insn_id):
     totally ordered within the kernel.
     """
 
-    global_barrier_order = get_global_barrier_order(kernel)
-
-    if len(global_barrier_order) == 0:
-        return None
-
     insn = kernel.id_to_insn[insn_id]
 
     if len(insn.depends_on) == 0:
+        return None
+
+    if not kernel_has_global_barriers(kernel):
+        return None
+
+    global_barrier_order = get_global_barrier_order(kernel)
+
+    if len(global_barrier_order) == 0:
         return None
 
     global_barrier_to_ordinal = {
@@ -1691,7 +1702,7 @@ def find_most_recent_global_barrier(kernel, insn_id):
                 else -1)
 
     direct_barrier_dependencies = {
-            dep for dep in insn.depends_on if _is_global_barrier(kernel, dep)}
+        dep for dep in insn.depends_on if _insn_id_is_global_barrier(dep, kernel)}
 
     if len(direct_barrier_dependencies) > 0:
         return max(direct_barrier_dependencies, key=get_barrier_ordinal)

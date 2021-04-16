@@ -765,6 +765,65 @@ def test_rename_argument_with_auto_stride(ctx_factory):
     evt, (out, ) = knl(queue, x_new=np.random.rand(10))
 
 
+def test_rename_argument_with_assumptions():
+    import islpy as isl
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n_old}",
+            """
+            y[i] = 2.0f
+            """)
+    knl = lp.assume(knl, "n_old=10")
+
+    knl = lp.rename_argument(knl, "n_old", "n_new")
+
+    assert "n_old" not in knl.assumptions.get_var_dict()
+    assert "n_new" in knl.assumptions.get_var_dict()
+    assert (
+            (knl.assumptions & isl.BasicSet("[n_new]->{: n_new=10}"))
+            == knl.assumptions)
+
+
+def test_tag_iname_with_match_pattern():
+    knl = lp.make_kernel(
+            "{[i0, i1]: 0<=i0, i1<n}",
+            """
+            x[i0] = 2.0f
+            y[i1] = 2.0f
+            """)
+
+    knl = lp.tag_inames(knl, "i*:unr")
+    i0_tag, = knl.inames["i0"].tags
+    i1_tag, = knl.inames["i1"].tags
+
+    assert str(i0_tag) == "unr"
+    assert str(i1_tag) == "unr"
+
+
+def test_custom_iname_tag():
+    from pytools.tag import Tag
+
+    class ElementLoopTag(Tag):
+        def __str__(self):
+            return "iel"
+
+    class DOFLoopTag(Tag):
+        def __str__(self):
+            return "idof"
+
+    knl = lp.make_kernel(
+            "{[ifuzz0, ifuzz1]: 0<=ifuzz0<100 and 0<=ifuzz1<32}",
+            """
+            out_dofs[ifuzz0, ifuzz1] = 2*in_dofs[ifuzz0, ifuzz1]
+            """)
+    knl = lp.tag_inames(knl, {"ifuzz0": ElementLoopTag(), "ifuzz1": DOFLoopTag()})
+
+    ifuzz0_tag, = knl.inames["ifuzz0"].tags
+    ifuzz1_tag, = knl.inames["ifuzz1"].tags
+
+    assert str(ifuzz0_tag) == "iel"
+    assert str(ifuzz1_tag) == "idof"
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

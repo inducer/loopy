@@ -72,6 +72,38 @@ class UniqueName:
 # }}}
 
 
+# {{{ tag normalization
+
+def _normalize_string_tag(tag):
+    from pytools.tag import Tag
+
+    from loopy.kernel.instruction import (
+            UseStreamingStoreTag, LegacyStringInstructionTag)
+    if tag == "!streaming_store":
+        return UseStreamingStoreTag()
+    else:
+        from pytools import resolve_name
+        try:
+            tag_cls = resolve_name(tag)
+        except ImportError:
+            pass
+        except AttributeError:
+            pass
+        else:
+            if issubclass(tag_cls, Tag):
+                return tag_cls()
+
+        return LegacyStringInstructionTag(tag)
+
+
+def _normalize_tags(tags):
+    return frozenset(
+                    _normalize_string_tag(t) if isinstance(t, str) else t
+                    for t in tags)
+
+# }}}
+
+
 # {{{ expand defines
 
 WORD_RE = re.compile(r"\b([a-zA-Z0-9_]+)\b")
@@ -328,9 +360,9 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
             del new_predicates
 
         elif opt_key == "tags" and opt_value is not None:
-            result["tags"] = frozenset(
+            result["tags"] = _normalize_tags([
                     tag.strip() for tag in opt_value.split(":")
-                    if tag.strip())
+                    if tag.strip()])
 
         elif opt_key == "atomic":
             if is_with_block:
@@ -802,6 +834,10 @@ def parse_instructions(instructions, defines):
                             insn.conflicts_with_groups
                             | insn_options_stack[-1]["conflicts_with_groups"]),
                         **kwargs)
+
+            norm_tags = _normalize_tags(insn.tags)
+            if norm_tags != insn.tags:
+                insn = insn.copy(tags=norm_tags)
 
             new_instructions.append(insn)
             inames_to_dup.append([])
@@ -1461,10 +1497,12 @@ def create_temporaries(knl, default_order):
 # {{{ determine shapes of temporaries
 
 def find_shapes_of_vars(knl, var_names, feed_expression):
-    from loopy.symbolic import BatchedAccessRangeMapper, SubstitutionRuleExpander
+    if not var_names:
+        return {}, {}, {}
+    from loopy.symbolic import BatchedAccessMapMapper, SubstitutionRuleExpander
     submap = SubstitutionRuleExpander(knl.substitutions)
 
-    armap = BatchedAccessRangeMapper(knl, var_names)
+    armap = BatchedAccessMapMapper(knl, var_names)
 
     def run_through_armap(expr, inames):
         armap(submap(expr), inames)
@@ -1479,7 +1517,7 @@ def find_shapes_of_vars(knl, var_names, feed_expression):
     from loopy.diagnostic import StaticValueFindingError
 
     for var_name in var_names:
-        access_range = armap.access_ranges[var_name]
+        access_range = armap.get_access_range(var_name)
         bad_subscripts = armap.bad_subscripts[var_name]
 
         if access_range is not None:
@@ -1515,10 +1553,22 @@ def determine_shapes_of_temporaries(knl):
     import loopy as lp
 
     vars_needing_shape_inference = set()
+    scalar_vars = set()
 
     for tv in knl.temporary_variables.values():
         if tv.shape is lp.auto or tv.base_indices is lp.auto:
             vars_needing_shape_inference.add(tv.name)
+
+    from loopy.kernel.instruction import Assignment
+    from pymbolic.primitives import Variable
+    for insn in knl.instructions:
+        # If there's an assignment to a var without a subscript
+        # then assume that the variable is a scalar.
+        # This is beneficial if afterwards there's no vars
+        # needing shape inference
+        if isinstance(insn, Assignment) and isinstance(insn.assignee, Variable):
+            vars_needing_shape_inference.discard(insn.assignee.name)
+            scalar_vars.add(insn.assignee.name)
 
     def feed_all_expressions(receiver):
         for insn in knl.instructions:
@@ -1566,10 +1616,16 @@ def determine_shapes_of_temporaries(knl):
     new_temp_vars = {}
 
     for tv in knl.temporary_variables.values():
-        if tv.base_indices is lp.auto:
-            tv = tv.copy(base_indices=var_to_base_indices[tv.name])
-        if tv.shape is lp.auto:
-            tv = tv.copy(shape=var_to_shape[tv.name])
+        if tv.name in scalar_vars:
+            if tv.base_indices is lp.auto:
+                tv = tv.copy(base_indices=())
+            if tv.shape is lp.auto:
+                tv = tv.copy(shape=())
+        else:
+            if tv.base_indices is lp.auto:
+                tv = tv.copy(base_indices=var_to_base_indices[tv.name])
+            if tv.shape is lp.auto:
+                tv = tv.copy(shape=var_to_shape[tv.name])
         new_temp_vars[tv.name] = tv
 
     return knl.copy(temporary_variables=new_temp_vars)

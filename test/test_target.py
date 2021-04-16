@@ -356,7 +356,7 @@ def test_ispc_streaming_stores():
 
     knl = lp.preprocess_kernel(knl)
     knl = lp.get_one_scheduled_kernel(knl)
-    lp.generate_code_v2(knl).all_code()
+    assert "streaming_store(" in lp.generate_code_v2(knl).all_code()
 
 
 def test_cuda_short_vector():
@@ -406,6 +406,39 @@ def test_pyopencl_execution_numpy_handling(ctx_factory):
     evt, out = knl(queue, y=y, x=x)
     assert out[0] is x
     assert x[0] == 5.
+
+
+def test_opencl_support_for_bool(ctx_factory):
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        y[i] = i%2
+        """,
+        [lp.GlobalArg("y", dtype=np.bool8, shape=lp.auto)])
+
+    cl_ctx = ctx_factory()
+    evt, (out, ) = knl(cl.CommandQueue(cl_ctx))
+    out = out.get()
+
+    np.testing.assert_equal(out, np.tile(np.array([0, 1], dtype=np.bool8), 5))
+
+
+def test_nan_support(ctx_factory):
+    from loopy.symbolic import parse
+    ctx = ctx_factory()
+    knl = lp.make_kernel(
+        "{:}",
+        [lp.Assignment(parse("a"), np.nan),
+         lp.Assignment(parse("b"), parse("isnan(a)")),
+         lp.Assignment(parse("c"), parse("isnan(3.14)"))],
+        seq_dependencies=True)
+
+    knl = lp.set_options(knl, "return_dict")
+
+    evt, out_dict = knl(cl.CommandQueue(ctx))
+    assert np.isnan(out_dict["a"].get())
+    assert out_dict["b"] == 1
+    assert out_dict["c"] == 0
 
 
 if __name__ == "__main__":

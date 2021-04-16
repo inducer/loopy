@@ -68,7 +68,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
             elif type_context == "d":
                 # Keepin' the good ideas flowin' since '66.
                 return Literal(repr(float(expr))+"d")
-            elif type_context == "i":
+            elif type_context in ["i", "b"]:
                 return expr
             else:
                 from loopy.tools import is_integer
@@ -392,7 +392,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
         # {{{ handle streaming stores
 
-        if "!streaming_store" in insn.tags:
+        from loopy.kernel.instruction import UseStreamingStoreTag
+        if UseStreamingStoreTag() in insn.tags:
             ary = ecm.find_array(lhs)
 
             from loopy.kernel.array import get_access_info
@@ -442,10 +443,11 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                         continue
                 else:
                     for dep in get_dependencies(term):
-                        if filter_iname_tags_by_type(
-                                kernel.iname_to_tags.get(dep, []), LocalIndexTag):
+                        if dep in kernel.all_inames() and (
+                                filter_iname_tags_by_type(kernel.inames[dep].tags,
+                                    LocalIndexTag)):
                             tag, = filter_iname_tags_by_type(
-                                kernel.iname_to_tags.get(dep, []), LocalIndexTag, 1)
+                                kernel.inames[dep].tags, LocalIndexTag, 1)
                             if tag.axis == 0:
                                 raise LoopyError(
                                     "streaming store must have stride 1 in "
