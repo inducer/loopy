@@ -324,6 +324,7 @@ def _split_iname_backend(kernel, iname_to_split,
 
         return map_from_set
 
+    # TODO figure out proper way to create false match condition
     false_id_match = "id:false and (not id:false)"
     kernel = map_dependency_maps(
         kernel, _split_iname_in_depender,
