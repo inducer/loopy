@@ -308,8 +308,9 @@ def _split_iname_backend(kernel, iname_to_split,
     from loopy.kernel.instruction import MultiAssignmentBase
 
     def check_insn_has_iname(kernel, insn, *args):
-        return (iname_to_split in insn.dependency_names()
-                or not isinstance(insn, MultiAssignmentBase))
+        return (not isinstance(insn, MultiAssignmentBase)
+                or iname_to_split in insn.dependency_names()
+                or iname_to_split in insn.reduction_inames())
 
     kernel = ins.map_kernel(kernel, within=check_insn_has_iname,
                             map_tvs=False, map_args=False)
