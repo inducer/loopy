@@ -366,14 +366,14 @@ def get_pairwise_statement_orderings_inner(
     # name in schedules, i.e., i = lid0, j = lid1, etc.
     lid_lex_dim_names = set()
     gid_lex_dim_names = set()
-    par_iname_constraint_dicts = []
+    par_iname_constraint_dicts = {}
     for iname in knl.all_inames():
         ltag = knl.iname_tags_of_type(iname, LocalIndexTag)
         if ltag:
             assert len(ltag) == 1  # (should always be true)
             ltag_var = LTAG_VAR_NAMES[ltag.pop().axis]
             lid_lex_dim_names.add(ltag_var)
-            par_iname_constraint_dicts.append({1: 0, iname: 1, ltag_var: -1})
+            par_iname_constraint_dicts[iname] = {1: 0, iname: 1, ltag_var: -1}
 
             continue  # Shouldn't be any GroupIndexTags
 
@@ -382,7 +382,7 @@ def get_pairwise_statement_orderings_inner(
             assert len(gtag) == 1  # (should always be true)
             gtag_var = GTAG_VAR_NAMES[gtag.pop().axis]
             gid_lex_dim_names.add(gtag_var)
-            par_iname_constraint_dicts.append({1: 0, iname: 1, gtag_var: -1})
+            par_iname_constraint_dicts[iname] = {1: 0, iname: 1, gtag_var: -1}
 
     # Sort for consistent dimension ordering
     lid_lex_dim_names = sorted(lid_lex_dim_names)
@@ -786,9 +786,16 @@ def get_pairwise_statement_orderings_inner(
             )
 
         # Set inames equal to relevant gid/lid var names
-        for constraint_dict in par_iname_constraint_dicts:
-            sched_map = sched_map.add_constraint(
-                isl.Constraint.eq_from_names(sched_map.space, constraint_dict))
+        for iname, constraint_dict in par_iname_constraint_dicts.items():
+            # Even though all parallel thread dims are active throughout the
+            # whole kernel, they may be assigned (tagged) to one iname for some
+            # subset of statements and another iname for a different subset of
+            # statements (e.g., tiled, paralle. matmul).
+            # So before adding each parallel iname constraint, make sure the
+            # iname applies to this statement:
+            if iname in dom_inames_ordered:
+                sched_map = sched_map.add_constraint(
+                    isl.Constraint.eq_from_names(sched_map.space, constraint_dict))
 
         return sched_map
 
