@@ -1283,6 +1283,67 @@ def test_sios_and_schedules_with_vec_and_barriers():
 # }}}
 
 
+# {{{ test_sios_with_matmul
+
+def test_sios_with_matmul():
+    from loopy.schedule.checker import (
+        get_pairwise_statement_orderings,
+    )
+    # For now, this test just ensures all pairwise SIOs can be created
+    # for a complex parallel kernel without any errors/exceptions. Later PRs
+    # will examine this kernel's SIOs and related dependencies for accuracy.
+
+    bsize = 16
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<ell}",
+            [
+                "c[i, j] = sum(k, a[i, k]*b[k, j])"
+            ],
+            name="matmul",
+            assumptions="n,m,ell >= 1",
+            lang_version=(2018, 2),
+            )
+    knl = lp.add_and_infer_dtypes(
+        knl, dict(a=np.float32, b=np.float32))
+    knl = lp.split_iname(
+        knl, "i", bsize, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_iname(
+        knl, "j", bsize, outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_iname(knl, "k", bsize)
+    knl = lp.add_prefetch(
+        knl, "a", ["k_inner", "i_inner"], default_tag="l.auto")
+    knl = lp.add_prefetch(
+        knl, "b", ["j_inner", "k_inner"], default_tag="l.auto")
+    knl = lp.prioritize_loops(knl, "k_outer,k_inner")
+
+    proc_knl = preprocess_kernel(knl)
+
+    # Get a linearization
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    linearization_items = lin_knl.linearization
+
+    # Get ALL statement id pairs
+    from loopy.schedule import RunInstruction
+    all_stmt_ids = [
+        lin_item.insn_id for lin_item in linearization_items
+        if isinstance(lin_item, RunInstruction)]
+    from itertools import product
+    stmt_id_pairs = []
+    for idx, sid in enumerate(all_stmt_ids):
+        stmt_id_pairs.extend(product([sid], all_stmt_ids[idx+1:]))
+
+    # Generate pairwise ordering info for every pair
+    get_pairwise_statement_orderings(
+        lin_knl, linearization_items, stmt_id_pairs)
+
+# }}}
+
+
+# {{{ Dependency tests
+
+# {{{ test_add_stmt_inst_dependency
+
 def test_add_stmt_inst_dependency():
 
     # Make kernel and use OLD deps to control linearization order for now
@@ -1391,6 +1452,10 @@ def test_add_stmt_inst_dependency():
 
     assert not unsatisfied_deps
 
+# }}}
+
+
+# {{{ test_new_dependencies_finite_diff:
 
 def test_new_dependencies_finite_diff():
 
@@ -1510,6 +1575,10 @@ def test_new_dependencies_finite_diff():
     # knl = lp.split_iname(knl, "x", 14)
     # knl = lp.assume(knl, "nx % 14 = 0 and nt >= 1 and nx >= 1")
     # knl = lp.tag_inames(knl, "x_outer:g.0, x_inner:l.0")
+
+# }}}
+
+# }}}
 
 
 if __name__ == "__main__":
