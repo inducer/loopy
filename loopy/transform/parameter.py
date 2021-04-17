@@ -24,7 +24,6 @@ THE SOFTWARE.
 from loopy.symbolic import (RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
 import islpy as isl
-from islpy import dim_type
 
 __doc__ = """
 
@@ -104,8 +103,7 @@ def fix_parameters(kernel, within=None, **value_dict):
     new_domains = kernel.domains
 
     for idom, dom in enumerate(kernel.domains):
-        if set(value_dict) & set(dom.get_var_names(dim_type.param)):
-            new_domains = new_domains.swap(idom, process_set(dom))
+        new_domains = new_domains.swap(idom, process_set(dom))
 
     from pymbolic.mapper.substitutor import make_subst_func
     subst_func = make_subst_func(value_dict)
