@@ -255,6 +255,86 @@ def _split_iname_backend(kernel, iname_to_split,
                 fixed_length, fixed_length_is_inner)
             for dom in kernel.domains]
 
+    # {{{ Split iname in dependencies
+
+    from loopy.transform.instruction import map_dependency_maps
+    from loopy.schedule.checker.schedule import BEFORE_MARK
+    from loopy.schedule.checker.utils import (
+        convert_map_to_set,
+        remove_dim_by_name,
+    )
+    dt = isl.dim_type
+
+    def _split_iname_in_depender(dep):
+
+        # If iname is not present in dep, return unmodified dep
+        if iname_to_split not in dep.get_var_names(dt.out):
+            return dep
+
+        # Temporarily convert map to set for processing
+        set_from_map, n_in_dims, n_out_dims = convert_map_to_set(dep)
+
+        # Split iname
+        set_from_map = _split_iname_in_set(
+            set_from_map, iname_to_split, inner_iname, outer_iname,
+            fixed_length, fixed_length_is_inner)
+
+        # Dim order: [old_inames' ..., old_inames ..., i_outer, i_inner]
+
+        # Convert set back to map
+        map_from_set = isl.Map.from_domain(set_from_map)
+        # Move original out dims + 2 new dims:
+        map_from_set = map_from_set.move_dims(
+            dt.out, 0, dt.in_, n_in_dims, n_out_dims+2)
+
+        # Remove iname that was split:
+        map_from_set = remove_dim_by_name(
+            map_from_set, dt.out, iname_to_split)
+
+        return map_from_set
+
+    def _split_iname_in_dependee(dep):
+
+        iname_to_split_marked = iname_to_split+BEFORE_MARK
+
+        # If iname is not present in dep, return unmodified dep
+        if iname_to_split_marked not in dep.get_var_names(dt.in_):
+            return dep
+
+        # Temporarily convert map to set for processing
+        set_from_map, n_in_dims, n_out_dims = convert_map_to_set(dep)
+
+        # Split iname'
+        set_from_map = _split_iname_in_set(
+            set_from_map, iname_to_split_marked,
+            inner_iname+BEFORE_MARK, outer_iname+BEFORE_MARK,
+            fixed_length, fixed_length_is_inner)
+
+        # Dim order: [old_inames' ..., old_inames ..., i_outer', i_inner']
+
+        # Convert set back to map
+        map_from_set = isl.Map.from_domain(set_from_map)
+        # Move original out dims new dims:
+        map_from_set = map_from_set.move_dims(
+            dt.out, 0, dt.in_, n_in_dims, n_out_dims)
+
+        # Remove iname that was split:
+        map_from_set = remove_dim_by_name(
+            map_from_set, dt.in_, iname_to_split_marked)
+
+        return map_from_set
+
+    # TODO figure out proper way to create false match condition
+    false_id_match = "id:false and (not id:false)"
+    kernel = map_dependency_maps(
+        kernel, _split_iname_in_depender,
+        stmt_match_depender=within, stmt_match_dependee=false_id_match)
+    kernel = map_dependency_maps(
+        kernel, _split_iname_in_dependee,
+        stmt_match_depender=false_id_match, stmt_match_dependee=within)
+
+    # }}}
+
     from pymbolic import var
     inner = var(inner_iname)
     outer = var(outer_iname)
@@ -851,7 +931,7 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
         new_inames = [iname.strip() for iname in new_inames.split(",")]
 
     from loopy.match import parse_stack_match
-    within = parse_stack_match(within)
+    within_sm = parse_stack_match(within)
 
     if new_inames is None:
         new_inames = [None] * len(inames)
@@ -861,6 +941,7 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
 
     name_gen = kernel.get_var_name_generator()
 
+    # Generate new iname names
     for i, iname in enumerate(inames):
         new_iname = new_inames[i]
 
@@ -883,7 +964,7 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
 
     # }}}
 
-    # {{{ duplicate the inames
+    # {{{ duplicate the inames in domains
 
     for old_iname, new_iname in zip(inames, new_inames):
         from loopy.kernel.tools import DomainChanger
@@ -894,6 +975,40 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
                 domains=domch.get_domains_with(
                     duplicate_axes(domch.domain, [old_iname], [new_iname])))
 
+        # {{{ *Rename* iname in dependencies
+
+        from loopy.transform.instruction import map_dependency_maps
+        from loopy.schedule.checker.schedule import BEFORE_MARK
+        dt = isl.dim_type
+        old_iname_p = old_iname+BEFORE_MARK
+        new_iname_p = new_iname+BEFORE_MARK
+
+        def _rename_iname_in_dep_out(dep):
+            # update iname in out-dim
+            out_idx = dep.find_dim_by_name(dt.out, old_iname)
+            if out_idx != -1:
+                dep = dep.set_dim_name(dt.out, out_idx, new_iname)
+            return dep
+
+        def _rename_iname_in_dep_in(dep):
+            # update iname in in-dim
+            in_idx = dep.find_dim_by_name(dt.in_, old_iname_p)
+            if in_idx != -1:
+                dep = dep.set_dim_name(dt.in_, in_idx, new_iname_p)
+            return dep
+
+        # TODO figure out proper way to match none
+        # TODO figure out match vs stack_match
+        false_id_match = "id:false and (not id:false)"
+        kernel = map_dependency_maps(
+            kernel, _rename_iname_in_dep_out,
+            stmt_match_depender=within, stmt_match_dependee=false_id_match)
+        kernel = map_dependency_maps(
+            kernel, _rename_iname_in_dep_in,
+            stmt_match_depender=false_id_match, stmt_match_dependee=within)
+
+        # }}}
+
     # }}}
 
     # {{{ change the inames in the code
@@ -902,10 +1017,10 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
             kernel.substitutions, name_gen)
     indup = _InameDuplicator(rule_mapping_context,
             old_to_new=dict(list(zip(inames, new_inames))),
-            within=within)
+            within=within_sm)
 
     kernel = rule_mapping_context.finish_kernel(
-            indup.map_kernel(kernel, within=within))
+            indup.map_kernel(kernel, within=within_sm))
 
     # }}}
 
@@ -1184,6 +1299,19 @@ def get_used_inames(kernel):
     return used_inames
 
 
+def remove_vars_from_set(s, remove_vars):
+    from copy import deepcopy
+    new_s = deepcopy(s)
+    for var in remove_vars:
+        try:
+            dt, idx = s.get_var_dict()[var]
+        except KeyError:
+            continue
+        else:
+            new_s = new_s.project_out(dt, idx, 1)
+    return new_s
+
+
 def remove_unused_inames(kernel, inames=None):
     """Delete those among *inames* that are unused, i.e. project them
     out of the domain. If these inames pose implicit restrictions on
@@ -1210,22 +1338,26 @@ def remove_unused_inames(kernel, inames=None):
 
     # {{{ remove them
 
-    domains = kernel.domains
-    for iname in unused_inames:
-        new_domains = []
+    new_domains = []
+    for dom in kernel.domains:
+        new_domains.append(remove_vars_from_set(dom, unused_inames))
 
-        for dom in domains:
-            try:
-                dt, idx = dom.get_var_dict()[iname]
-            except KeyError:
-                pass
-            else:
-                dom = dom.project_out(dt, idx, 1)
-            new_domains.append(dom)
+    kernel = kernel.copy(domains=new_domains)
 
-        domains = new_domains
+    # }}}
 
-    kernel = kernel.copy(domains=domains)
+    # {{{ Remove inames from deps
+
+    from loopy.transform.instruction import map_dependency_maps
+    from loopy.schedule.checker.schedule import BEFORE_MARK
+    from loopy.schedule.checker.utils import append_mark_to_strings
+    unused_inames_marked = append_mark_to_strings(unused_inames, BEFORE_MARK)
+
+    def _remove_iname_from_dep(dep):
+        return remove_vars_from_set(
+            remove_vars_from_set(dep, unused_inames), unused_inames_marked)
+
+    kernel = map_dependency_maps(kernel, _remove_iname_from_dep)
 
     # }}}
 
@@ -1781,6 +1913,265 @@ def add_inames_to_insn(kernel, inames, insn_match):
             new_instructions.append(insn)
 
     return kernel.copy(instructions=new_instructions)
+
+# }}}
+
+
+# {{{ map_domain
+
+class _MapDomainMapper(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, within, new_inames, substitutions):
+        super(_MapDomainMapper, self).__init__(rule_mapping_context)
+
+        self.within = within
+
+        self.old_inames = frozenset(substitutions)
+        self.new_inames = new_inames
+
+        self.substitutions = substitutions
+
+    def map_reduction(self, expr, expn_state):
+        red_overlap = frozenset(expr.inames) & self.old_inames
+        arg_ctx_overlap = frozenset(expn_state.arg_context) & self.old_inames
+        if (red_overlap
+                and self.within(
+                    expn_state.kernel,
+                    expn_state.instruction)):
+            if len(red_overlap) != len(self.old_inames):
+                raise LoopyError("reduction '%s' involves a part "
+                        "of the map domain inames. Reductions must "
+                        "either involve all or none of the map domain "
+                        "inames." % str(expr))
+
+            if arg_ctx_overlap:
+                if arg_ctx_overlap == red_overlap:
+                    # All variables are shadowed by context, that's OK.
+                    return super(_MapDomainMapper, self).map_reduction(
+                            expr, expn_state)
+                else:
+                    raise LoopyError("reduction '%s' has"
+                            "some of the reduction variables affected "
+                            "by the map_domain shadowed by context. "
+                            "Either all or none must be shadowed."
+                            % str(expr))
+
+            new_inames = list(expr.inames)
+            for old_iname in self.old_inames:
+                new_inames.remove(old_iname)
+            new_inames.extend(self.new_inames)
+
+            from loopy.symbolic import Reduction
+            return Reduction(expr.operation, tuple(new_inames),
+                        self.rec(expr.expr, expn_state),
+                        expr.allow_simultaneous)
+        else:
+            return super(_MapDomainMapper, self).map_reduction(expr, expn_state)
+
+    def map_variable(self, expr, expn_state):
+        if (expr.name in self.old_inames
+                and expr.name not in expn_state.arg_context
+                and self.within(
+                    expn_state.kernel,
+                    expn_state.instruction)):
+            return self.substitutions[expr.name]
+        else:
+            return super(_MapDomainMapper, self).map_variable(expr, expn_state)
+
+
+def _find_aff_subst_from_map(iname, isl_map):
+    if not isinstance(isl_map, isl.BasicMap):
+        raise RuntimeError("isl_map must be a BasicMap")
+
+    dt, dim_idx = isl_map.get_var_dict()[iname]
+
+    assert dt == dim_type.in_
+
+    # Force isl to solve for only this iname on its side of the map, by
+    # projecting out all other "in" variables.
+    isl_map = isl_map.project_out(dt, dim_idx+1, isl_map.dim(dt)-(dim_idx+1))
+    isl_map = isl_map.project_out(dt, 0, dim_idx)
+    dim_idx = 0
+
+    # Convert map to set to avoid "domain of affine expression should be a set".
+    # The old "in" variable will be the last of the out_dims.
+    new_dim_idx = isl_map.dim(dim_type.out)
+    isl_map = isl_map.move_dims(
+            dim_type.out, isl_map.dim(dim_type.out),
+            dt, dim_idx, 1)
+    isl_map = isl_map.range()  # now a set
+    dt = dim_type.set
+    dim_idx = new_dim_idx
+    del new_dim_idx
+
+    for cns in isl_map.get_constraints():
+        if cns.is_equality() and cns.involves_dims(dt, dim_idx, 1):
+            coeff = cns.get_coefficient_val(dt, dim_idx)
+            cns_zeroed = cns.set_coefficient_val(dt, dim_idx, 0)
+            if cns_zeroed.involves_dims(dt, dim_idx, 1):
+                # not suitable, constraint still involves dim, perhaps in a div
+                continue
+
+            if coeff.is_one():
+                return -cns_zeroed.get_aff()
+            elif coeff.is_negone():
+                return cns_zeroed.get_aff()
+            else:
+                # not suitable, coefficient does not have unit coefficient
+                continue
+
+    raise LoopyError("no suitable equation for '%s' found" % iname)
+
+
+def map_domain(kernel, isl_map, within=None):
+    # FIXME: Express _split_iname_backend in terms of this
+    #   Missing/deleted for now:
+    #     - slab processing
+    #     - priorities processing
+    # FIXME: Process priorities
+    # FIXME: Express affine_map_inames in terms of this, deprecate
+    # FIXME: Document
+
+    # FIXME: Support within
+
+    # {{{ within processing (disabled for now)
+    if within is not None:
+        raise NotImplementedError("within")
+
+    from loopy.match import parse_match
+    within = parse_match(within)
+
+    # {{{ return the same kernel if no kernel matches
+
+    def _do_not_transform_if_no_within_matches():
+        for insn in kernel.instructions:
+            if within(kernel, insn):
+                return
+
+        return kernel
+
+    _do_not_transform_if_no_within_matches()
+
+    # }}}
+
+    # }}}
+
+    if not isl_map.is_bijective():
+        raise LoopyError("isl_map must be bijective")
+
+    new_inames = frozenset(isl_map.get_var_dict(dim_type.out))
+    old_inames = frozenset(isl_map.get_var_dict(dim_type.in_))
+
+    # {{{ solve for representation of old inames in terms of new
+
+    substitutions = {}
+    var_substitutions = {}
+    applied_iname_rewrites = kernel.applied_iname_rewrites[:]
+
+    from loopy.symbolic import aff_to_expr
+    from pymbolic import var
+    for iname in old_inames:
+        substitutions[iname] = aff_to_expr(
+                _find_aff_subst_from_map(iname, isl_map))
+        var_substitutions[var(iname)] = aff_to_expr(
+                _find_aff_subst_from_map(iname, isl_map))
+
+    applied_iname_rewrites.append(var_substitutions)
+    del var_substitutions
+
+    # }}}
+
+    def process_set(s):
+        var_dict = s.get_var_dict()
+
+        overlap = old_inames & frozenset(var_dict)
+        if overlap and len(overlap) != len(old_inames):
+            raise LoopyError("loop domain '%s' involves a part "
+                    "of the map domain inames. Domains must "
+                    "either involve all or none of the map domain "
+                    "inames." % s)
+
+        # {{{ align dims of isl_map and s
+
+        # FIXME: Make this less gross
+        # FIXME: Make an exported/documented interface of this in islpy
+        from islpy import _align_dim_type
+
+        map_with_s_domain = isl.Map.from_domain(s)
+
+        dim_types = [dim_type.param, dim_type.in_, dim_type.out]
+        s_names = [
+                map_with_s_domain.get_dim_name(dt, i)
+                for dt in dim_types
+                for i in range(map_with_s_domain.dim(dt))
+                ]
+        map_names = [
+                isl_map.get_dim_name(dt, i)
+                for dt in dim_types
+                for i in range(isl_map.dim(dt))
+                ]
+        aligned_map = _align_dim_type(
+                dim_type.param,
+                isl_map, map_with_s_domain, False,
+                map_names, s_names)
+        aligned_map = _align_dim_type(
+                dim_type.in_,
+                isl_map, map_with_s_domain, False,
+                map_names, s_names)
+        # Old code
+        """
+        aligned_map = _align_dim_type(
+                dim_type.param,
+                isl_map, map_with_s_domain, obj_bigger_ok=False,
+                obj_names=map_names, tgt_names=s_names)
+        aligned_map = _align_dim_type(
+                dim_type.in_,
+                isl_map, map_with_s_domain, obj_bigger_ok=False,
+                obj_names=map_names, tgt_names=s_names)
+        """
+        # }}}
+
+        return aligned_map.intersect_domain(s).range()
+
+        # FIXME: Revive _project_out_only_if_all_instructions_in_within
+
+    new_domains = [process_set(dom) for dom in kernel.domains]
+
+    # {{{ update within_inames
+
+    new_insns = []
+    for insn in kernel.instructions:
+        overlap = old_inames & insn.within_inames
+        if overlap and within(kernel, insn):
+            if len(overlap) != len(old_inames):
+                raise LoopyError("instruction '%s' is within only a part "
+                        "of the map domain inames. Instructions must "
+                        "either be within all or none of the map domain "
+                        "inames." % insn.id)
+
+            insn = insn.copy(
+                    within_inames=(insn.within_inames - old_inames) | new_inames)
+        else:
+            # leave insn unmodified
+            pass
+
+        new_insns.append(insn)
+
+    # }}}
+
+    kernel = kernel.copy(
+            domains=new_domains,
+            instructions=new_insns,
+            applied_iname_rewrites=applied_iname_rewrites)
+
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
+    ins = _MapDomainMapper(rule_mapping_context, within,
+            new_inames, substitutions)
+
+    kernel = ins.map_kernel(kernel)
+    kernel = rule_mapping_context.finish_kernel(kernel)
+
+    return kernel
 
 # }}}
 

@@ -84,6 +84,13 @@ def reorder_dims_by_name(
     return new_set
 
 
+def remove_dim_by_name(isl_map, dim_type, dim_name):
+    idx = isl_map.find_dim_by_name(dim_type, dim_name)
+    if idx == -1:
+        raise ValueError("Dim '%s' not found. Cannot remove dim.")
+    return isl_map.remove_dims(dim_type, idx, 1)
+
+
 def ensure_dim_names_match_and_align(obj_map, tgt_map):
 
     # first make sure names match
@@ -131,8 +138,42 @@ def append_mark_to_isl_map_var_names(old_isl_map, dim_type, mark):
     return new_map
 
 
+def make_islvars_with_mark(
+        var_names_needing_mark, other_var_names, mark, param_names=[]):
+    """Return a dictionary from variable and parameter names
+        to :class:`islpy.PwAff` instances that represent each of
+        the variables and parameters, appending mark to
+        var_names_needing_mark.
+
+    :arg var_names_needing_mark: A :class:`list` of :class:`str`
+        elements representing variable names to have marks appended.
+
+    :arg other_var_names: A :class:`list` of :class:`str`
+        elements representing variable names to be included as-is.
+
+    :arg param_names:  A :class:`list` of :class:`str` elements
+        representing parameter names.
+
+    :returns: A dictionary from variable names to :class:`islpy.PwAff`
+        instances that represent each of the variables
+        (islvars may be produced by `islpy.make_zero_and_vars`). The key
+        '0' is also include and represents a :class:`islpy.PwAff` zero constant.
+
+    """
+    # TODO update docstring
+
+    def append_mark(items, mark):
+        new_items = []
+        for item in items:
+            new_items.append(item+mark)
+        return new_items
+
+    return isl.make_zero_and_vars(
+            append_mark(var_names_needing_mark, mark)
+            + other_var_names, param_names)
+
+
 def append_mark_to_strings(strings, mark):
-    assert isinstance(strings, list)
     return [s+mark for s in strings]
 
 
@@ -147,6 +188,14 @@ def sorted_union_of_names_in_isl_sets(
 
     # Sorting is not necessary, but keeps results consistent between runs
     return sorted(inames)
+
+
+def convert_map_to_set(isl_map):
+    n_in_dims = len(isl_map.get_var_names(dt.in_))
+    n_out_dims = len(isl_map.get_var_names(dt.out))
+    return isl_map.move_dims(
+        dt.in_, n_in_dims, dt.out, 0, n_out_dims
+        ).domain(), n_in_dims, n_out_dims
 
 
 def create_symbolic_map_from_tuples(
@@ -175,6 +224,7 @@ def create_symbolic_map_from_tuples(
         on these values.
 
     """
+    # TODO clarify this with more comments
     # TODO allow None for domains
 
     space_out_names = space.get_var_names(dt.out)
@@ -250,6 +300,148 @@ def partition_inames_by_concurrency(knl):
             non_conc_inames.add(iname)
 
     return conc_inames, all_inames-conc_inames
+
+
+def get_loop_nesting_map(knl, inames=None):
+    # Create a mapping from each iname to inames that must be
+    # nested inside that iname, based on nesting constraints.
+    # Once the new nest constraint semantics are added,
+    # this function will change and may not be necessary.
+
+    if inames is None:
+        inames = knl.all_inames()
+
+    nests_outside_map = {}
+    for outside_iname in inames:
+        nested_inside_inames = set()
+        for p_tuple in knl.loop_priority:
+            if outside_iname in p_tuple:
+                nested_inside_inames.update(
+                    p_tuple[p_tuple.index(outside_iname)+1:])
+        nests_outside_map[outside_iname] = nested_inside_inames
+
+    return nests_outside_map
+
+
+def get_insn_id_from_linearization_item(linearization_item):
+    from loopy.schedule import Barrier
+    if isinstance(linearization_item, Barrier):
+        return linearization_item.originating_insn_id
+    else:
+        return linearization_item.insn_id
+
+
+def get_all_nonconcurrent_insn_iname_subsets(
+        knl, exclude_empty=False, non_conc_inames=None):
+    """Return a :class:`set` of every unique set of non-concurrent
+        inames used in a single instruction in a :class:`loopy.LoopKernel`.
+
+    :arg knl: A :class:`loopy.LoopKernel`.
+
+    :arg exclude_empty: A :class:`bool` specifying whether to
+        exclude the empty set.
+
+    :arg non_conc_inames: A :class:`set` of non-concurrent inames
+        which may be provided if already known.
+
+    :returns: A :class:`set` of every unique set of non-concurrent
+        inames used in any instruction in a :class:`loopy.LoopKernel`.
+
+    """
+
+    if non_conc_inames is None:
+        _, non_conc_inames = partition_inames_by_concurrency(knl)
+
+    iname_sets = set()
+    for insn in knl.instructions:
+        iname_sets.add(insn.within_inames & non_conc_inames)
+
+    if exclude_empty:
+        iname_sets.discard(frozenset())
+
+    return iname_sets
+
+
+def get_linearization_item_ids_within_inames(knl, inames):
+    linearization_item_ids = set()
+    for insn in knl.instructions:
+        if inames.issubset(insn.within_inames):
+            linearization_item_ids.add(insn.id)
+    return linearization_item_ids
+
+
+# TODO use yield to clean this up
+# TODO use topological sort from loopy, then find longest path in dag
+def _generate_orderings_starting_w_prefix(
+        allowed_after_dict, orderings, required_length=None,
+        start_prefix=(), return_first_found=False):
+    # alowed_after_dict = {str: set(str)}
+    # start prefix = tuple(str)
+    # orderings = set
+    if start_prefix:
+        next_items = allowed_after_dict[start_prefix[-1]]-set(start_prefix)
+    else:
+        next_items = allowed_after_dict.keys()
+
+    if required_length:
+        if len(start_prefix) == required_length:
+            orderings.add(start_prefix)
+            if return_first_found:
+                return
+    else:
+        orderings.add(start_prefix)
+        if return_first_found:
+            return
+
+    # return if no more items left
+    if not next_items:
+        return
+
+    for next_item in next_items:
+        new_prefix = start_prefix + (next_item,)
+        _generate_orderings_starting_w_prefix(
+                allowed_after_dict,
+                orderings,
+                required_length=required_length,
+                start_prefix=new_prefix,
+                return_first_found=return_first_found,
+                )
+        if return_first_found and orderings:
+            return
+    return
+
+
+def get_orderings_of_length_n(
+        allowed_after_dict, required_length, return_first_found=False):
+    """Return all orderings found in tree represented by `allowed_after_dict`.
+
+    :arg allowed_after_dict: A :class:`dict` mapping each :class:`string`
+        names to a :class:`set` of names that are allowed to come after
+        that name.
+
+    :arg required_length: A :class:`int` representing the length required
+        for all orderings. Orderings not matching the required length will
+        not be returned.
+
+    :arg return_first_found: A :class:`bool` specifying whether to return
+        the first valid ordering found.
+
+    :returns: A :class:`set` of all orderings that are *explicitly* allowed
+        by the tree represented by `allowed_after_dict`. I.e., if we know
+        a->b and c->b, we don't know enough to return a->c->b. Note that
+        if the set for a dict key is empty, nothing is allowed to come after.
+
+    """
+
+    orderings = set()
+    _generate_orderings_starting_w_prefix(
+        allowed_after_dict,
+        orderings,
+        required_length=required_length,
+        start_prefix=(),
+        return_first_found=return_first_found,
+        )
+    return orderings
 
 
 def get_EnterLoop_inames(linearization_items):

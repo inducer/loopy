@@ -211,9 +211,9 @@ class AssignmentToSubstChanger(RuleAwareIdentityMapper):
 
         self.definition_insn_id_to_subst_name = {}
 
-        self.saw_unmatched_usage_sites = {}
+        self.unmatched_usage_sites_found = {}
         for def_id in self.definition_insn_ids:
-            self.saw_unmatched_usage_sites[def_id] = False
+            self.unmatched_usage_sites_found[def_id] = set()
 
     def get_subst_name(self, def_insn_id):
         try:
@@ -255,7 +255,7 @@ class AssignmentToSubstChanger(RuleAwareIdentityMapper):
                 expn_state.kernel,
                 expn_state.instruction,
                 expn_state.stack):
-            self.saw_unmatched_usage_sites[my_def_id] = True
+            self.unmatched_usage_sites_found[my_def_id].add(my_insn_id)
             return None
 
         subst_name = self.get_subst_name(my_def_id)
@@ -338,6 +338,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         return def_id
 
     usage_to_definition = {}
+    definition_to_usage_ids = {}
 
     for insn in dep_kernel.instructions:
         if lhs_name not in insn.read_dependency_names():
@@ -350,11 +351,29 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
                     % (lhs_name, insn.id))
 
         usage_to_definition[insn.id] = def_id
+        definition_to_usage_ids.setdefault(def_id, set()).add(insn.id)
 
+    # Get deps for subst_def statements before any of them get removed
+    definition_id_to_deps = {}
+    from copy import deepcopy
     definition_insn_ids = set()
     for insn in kernel.instructions:
         if lhs_name in insn.write_dependency_names():
             definition_insn_ids.add(insn.id)
+            definition_id_to_deps[insn.id] = deepcopy(insn.dependencies)
+
+    # TODO refactor after answering question:
+    # what's the difference between definition_insn_ids and
+    # set(usage_to_definition.values())?
+    if definition_insn_ids != set(usage_to_definition.values()):
+        print("="*80)
+        print("Apparently these are not equivalent after all. James was wrong.")
+        print("definition_insn_ids:")
+        print(definition_insn_ids)
+        print("set(usage_to_definition.values()):")
+        print(set(usage_to_definition.values()))
+        print("="*80)
+        assert False
 
     # }}}
 
@@ -419,7 +438,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
     new_args = kernel.args
 
     if lhs_name in kernel.temporary_variables:
-        if not any(tts.saw_unmatched_usage_sites.values()):
+        if not any(tts.unmatched_usage_sites_found.values()):
             # All usage sites matched--they're now substitution rules.
             # We can get rid of the variable.
 
@@ -427,7 +446,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
             del new_temp_vars[lhs_name]
 
     if lhs_name in kernel.arg_dict and not force_retain_argument:
-        if not any(tts.saw_unmatched_usage_sites.values()):
+        if not any(tts.unmatched_usage_sites_found.values()):
             # All usage sites matched--they're now substitution rules.
             # We can get rid of the argument
 
@@ -440,12 +459,43 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
     # }}}
 
     import loopy as lp
+    # Remove defs if the subst expression is not still used anywhere
     kernel = lp.remove_instructions(
             kernel,
             {
                 insn_id
-                for insn_id, still_used in tts.saw_unmatched_usage_sites.items()
+                for insn_id, still_used in tts.unmatched_usage_sites_found.items()
                 if not still_used})
+
+    # {{{ update dependencies
+
+    from loopy.transform.instruction import map_stmt_dependencies
+
+    # Add dependencies from each subst_def to any statement where its
+    # LHS was found and the subst was performed
+    for subst_def_id, subst_usage_ids in definition_to_usage_ids.items():
+
+        unmatched_usage_ids = tts.unmatched_usage_sites_found[subst_def_id]
+        matched_usage_ids = subst_usage_ids - unmatched_usage_ids
+        if matched_usage_ids:
+            # Create match condition string:
+            match_any_matched_usage_id = " or ".join(
+                ["id:%s" % (usage_id) for usage_id in matched_usage_ids])
+
+            subst_def_deps_dict = definition_id_to_deps[subst_def_id]
+
+            def _add_deps_to_stmt(dep_dict):
+                # dep_dict: prev dep dict for this stmt
+                # add the deps
+                for depends_on_id, dep_list in subst_def_deps_dict.items():
+                    dep_list_copy = deepcopy(dep_list)
+                    dep_dict.setdefault(depends_on_id, []).extend(dep_list_copy)
+                return dep_dict
+
+            kernel = map_stmt_dependencies(
+                kernel, match_any_matched_usage_id, _add_deps_to_stmt)
+
+    # }}}
 
     return kernel.copy(
             substitutions=new_substs,
