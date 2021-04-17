@@ -751,10 +751,30 @@ class RuleArgument(LoopyExpressionBase):
 # }}}
 
 
+class DependencyMapperWithReductionInames(DependencyMapper):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.reduction_inames = set()
+
+    def map_reduction(self, expr, *args, **kwargs):
+        self.reduction_inames.update(expr.inames)
+        return super().map_reduction(expr, *args, **kwargs)
+
+
 @memoize
+def _get_dependencies_and_reduction_inames(expr):
+    dep_mapper = DependencyMapperWithReductionInames(composite_leaves=False)
+    deps = frozenset(dep.name for dep in dep_mapper(expr))
+    reduction_inames = dep_mapper.reduction_inames
+    return deps, reduction_inames
+
+
 def get_dependencies(expr):
-    dep_mapper = DependencyMapper(composite_leaves=False)
-    return frozenset(dep.name for dep in dep_mapper(expr))
+    return _get_dependencies_and_reduction_inames(expr)[0]
+
+
+def get_reduction_inames(expr):
+    return _get_dependencies_and_reduction_inames(expr)[1]
 
 
 # {{{ rule-aware mappers
@@ -1031,7 +1051,8 @@ class RuleAwareIdentityMapper(IdentityMapper):
     def map_instruction(self, kernel, insn):
         return insn
 
-    def map_kernel(self, kernel, within=lambda *args: True):
+    def map_kernel(self, kernel, within=lambda *args: True,
+            map_args=True, map_tvs=True):
         new_insns = [
             # While subst rules are not allowed in assignees, the mapper
             # may perform tasks entirely unrelated to subst rules, so
@@ -1050,17 +1071,23 @@ class RuleAwareIdentityMapper(IdentityMapper):
 
         # {{{ args
 
-        new_args = [
+        if map_args:
+            new_args = [
                 arg.map_exprs(non_insn_self) if isinstance(arg, ArrayBase) else arg
                 for arg in kernel.args]
+        else:
+            new_args = kernel.args[:]
 
         # }}}
 
         # {{{ tvs
 
-        new_tvs = {
+        if map_tvs:
+            new_tvs = {
                 tv_name: tv.map_exprs(non_insn_self)
                 for tv_name, tv in kernel.temporary_variables.items()}
+        else:
+            new_tvs = kernel.temporary_variables.copy()
 
         # }}}
 
