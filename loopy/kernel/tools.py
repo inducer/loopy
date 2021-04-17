@@ -982,10 +982,10 @@ class ArrayChanger:
 
 # {{{ guess_var_shape
 
-def guess_var_shape(kernel, var_name):
-    from loopy.symbolic import SubstitutionRuleExpander, AccessRangeMapper
+def guess_var_shape(kernel, var_names):
+    from loopy.symbolic import SubstitutionRuleExpander, BatchedAccessMapMapper
 
-    armap = AccessRangeMapper(kernel, var_name)
+    armap = BatchedAccessMapMapper(kernel, var_names)
 
     submap = SubstitutionRuleExpander(kernel.substitutions)
 
@@ -1002,67 +1002,72 @@ def guess_var_shape(kernel, var_name):
 
         raise LoopyError(
                 "Failed to (automatically, as requested) find "
-                "shape/strides for variable '%s'. "
+                "shape/strides for variables '%s'. "
                 "Specifying the shape manually should get rid of this. "
                 "The following error occurred: %s"
-                % (var_name, str(e)))
+                % (",".join(var_names), str(e)))
 
-    if armap.access_range is None:
-        if armap.bad_subscripts:
-            from loopy.symbolic import LinearSubscript
-            if any(isinstance(sub, LinearSubscript)
-                    for sub in armap.bad_subscripts):
-                raise LoopyError("cannot determine access range for '%s': "
-                        "linear subscript(s) in '%s'"
-                        % (var_name, ", ".join(
-                                str(i) for i in armap.bad_subscripts)))
+    result = []
+    for var_name in var_names:
+        access_range = armap.get_access_range(var_name)
+        bad_subscripts = armap.bad_subscripts[var_name]
+        if access_range is None:
+            if bad_subscripts:
+                from loopy.symbolic import LinearSubscript
+                if any(isinstance(sub, LinearSubscript)
+                        for sub in bad_subscripts):
+                    raise LoopyError("cannot determine access range for '%s': "
+                            "linear subscript(s) in '%s'"
+                            % (var_name, ", ".join(
+                                    str(i) for i in bad_subscripts)))
 
-            n_axes_in_subscripts = {
-                    len(sub.index_tuple) for sub in armap.bad_subscripts}
+                n_axes_in_subscripts = {
+                        len(sub.index_tuple) for sub in bad_subscripts}
 
-            if len(n_axes_in_subscripts) != 1:
-                raise RuntimeError("subscripts of '%s' with differing "
-                        "numbers of axes were found" % var_name)
+                if len(n_axes_in_subscripts) != 1:
+                    raise RuntimeError("subscripts of '%s' with differing "
+                            "numbers of axes were found" % var_name)
 
-            n_axes, = n_axes_in_subscripts
+                n_axes, = n_axes_in_subscripts
 
-            if n_axes == 1:
-                # Leave shape undetermined--we can live with that for 1D.
-                shape = None
+                if n_axes == 1:
+                    # Leave shape undetermined--we can live with that for 1D.
+                    shape = None
+                else:
+                    raise LoopyError("cannot determine access range for '%s': "
+                            "undetermined index in subscript(s) '%s'"
+                            % (var_name, ", ".join(
+                                    str(i) for i in bad_subscripts)))
+
             else:
-                raise LoopyError("cannot determine access range for '%s': "
-                        "undetermined index in subscript(s) '%s'"
-                        % (var_name, ", ".join(
-                                str(i) for i in armap.bad_subscripts)))
-
+                # no subscripts found, let's call it a scalar
+                shape = ()
         else:
-            # no subscripts found, let's call it a scalar
-            shape = ()
-    else:
-        from loopy.isl_helpers import static_max_of_pw_aff
-        from loopy.symbolic import pw_aff_to_expr
+            from loopy.isl_helpers import static_max_of_pw_aff
+            from loopy.symbolic import pw_aff_to_expr
 
-        shape = []
-        for i in range(armap.access_range.dim(dim_type.set)):
-            try:
-                shape.append(
-                        pw_aff_to_expr(static_max_of_pw_aff(
-                            kernel.cache_manager.dim_max(
-                                armap.access_range, i) + 1,
-                            constants_only=False)))
-            except Exception:
-                print("While trying to find shape axis %d of "
-                        "variable '%s', the following "
-                        "exception occurred:" % (i, var_name),
-                        file=sys.stderr)
-                print("*** ADVICE: You may need to manually specify the "
-                        "shape of argument '%s'." % (var_name),
-                        file=sys.stderr)
-                raise
+            shape = []
+            for i in range(access_range.dim(dim_type.set)):
+                try:
+                    shape.append(
+                            pw_aff_to_expr(static_max_of_pw_aff(
+                                kernel.cache_manager.dim_max(
+                                    access_range, i) + 1,
+                                constants_only=False)))
+                except Exception:
+                    print("While trying to find shape axis %d of "
+                            "variable '%s', the following "
+                            "exception occurred:" % (i, var_name),
+                            file=sys.stderr)
+                    print("*** ADVICE: You may need to manually specify the "
+                            "shape of argument '%s'." % (var_name),
+                            file=sys.stderr)
+                    raise
 
-        shape = tuple(shape)
+            shape = tuple(shape)
+        result.append(shape)
 
-    return shape
+    return tuple(result)
 
 # }}}
 
@@ -1589,11 +1594,20 @@ def stringify_instruction_list(kernel):
 
 # {{{ global barrier order finding
 
-def _is_global_barrier(kernel, insn_id):
+def _insn_id_is_global_barrier(insn_id, kernel):
     insn = kernel.id_to_insn[insn_id]
+    return _insn_is_global_barrier(insn)
+
+
+def _insn_is_global_barrier(insn):
     from loopy.kernel.instruction import BarrierInstruction
     return isinstance(insn, BarrierInstruction) and \
         insn.synchronization_kind == "global"
+
+
+@memoize_on_first_arg
+def kernel_has_global_barriers(kernel):
+    return any(_insn_is_global_barrier(insn) for insn in kernel.instructions)
 
 
 @memoize_on_first_arg
@@ -1613,7 +1627,7 @@ def get_global_barrier_order(kernel):
 
     barriers = [
             insn_id for insn_id in order
-            if _is_global_barrier(kernel, insn_id)]
+            if _insn_id_is_global_barrier(insn_id, kernel)]
 
     del order
 
@@ -1676,7 +1690,7 @@ def find_most_recent_global_barrier(kernel, insn_id):
     if len(insn.depends_on) == 0:
         return None
 
-    if all(not _is_global_barrier(kernel, insn.id) for insn in kernel.instructions):
+    if not kernel_has_global_barriers(kernel):
         return None
 
     global_barrier_order = get_global_barrier_order(kernel)
@@ -1693,7 +1707,7 @@ def find_most_recent_global_barrier(kernel, insn_id):
                 else -1)
 
     direct_barrier_dependencies = {
-            dep for dep in insn.depends_on if _is_global_barrier(kernel, dep)}
+        dep for dep in insn.depends_on if _insn_id_is_global_barrier(dep, kernel)}
 
     if len(direct_barrier_dependencies) > 0:
         return max(direct_barrier_dependencies, key=get_barrier_ordinal)

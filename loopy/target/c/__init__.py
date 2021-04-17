@@ -1059,8 +1059,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
             return ExpressionStatement(
                     CExpression(self.get_c_expression_to_code_mapper(), result))
 
-        result = ecm.wrap_in_typecast(
-                mangle_result.result_dtypes[0],
+        result = ecm.wrap_in_typecast_lazy(
+                lambda: mangle_result.result_dtypes[0],
                 assignee_var_descriptors[0].dtype,
                 result)
 

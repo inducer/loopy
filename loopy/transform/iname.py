@@ -254,53 +254,84 @@ def _split_iname_backend(kernel, iname_to_split,
             _split_iname_in_set(dom, iname_to_split, inner_iname, outer_iname,
                 fixed_length, fixed_length_is_inner)
             for dom in kernel.domains]
-    from loopy.transform.instruction import map_stmt_inst_dependencies
 
-    # {{{ split iname in deps
+    # {{{ Split iname in dependencies
 
+    from loopy.transform.instruction import map_dependency_maps
     from loopy.schedule.checker.schedule import BEFORE_MARK
-    from loopy.schedule.checker.utils import convert_map_to_set
+    from loopy.schedule.checker.utils import (
+        convert_map_to_set,
+        remove_dim_by_name,
+    )
+    dt = isl.dim_type
 
-    def _split_iname_in_dep(dep):
-
-        # Temporarily convert map to set for processing
-        # (TODO make generic func for this)
-        dt = isl.dim_type
+    def _split_iname_in_depender(dep):
 
         # If iname is not present in dep, return unmodified dep
         if iname_to_split not in dep.get_var_names(dt.out):
             return dep
 
+        # Temporarily convert map to set for processing
         set_from_map, n_in_dims, n_out_dims = convert_map_to_set(dep)
 
         # Split iname
-        s = _split_iname_in_set(
-            set_from_map,
-            iname_to_split,
-            inner_iname,
-            outer_iname,
-            fixed_length,
-            fixed_length_is_inner)
-        s = _split_iname_in_set(
-            s,
-            iname_to_split+BEFORE_MARK,
-            inner_iname+BEFORE_MARK,
-            outer_iname+BEFORE_MARK,
-            fixed_length,
-            fixed_length_is_inner)
+        set_from_map = _split_iname_in_set(
+            set_from_map, iname_to_split, inner_iname, outer_iname,
+            fixed_length, fixed_length_is_inner)
 
-        # now set looks like
-        # [old_inames' ..., old_inames ..., i_outer, i_inner, i_outer', i_inner']
+        # Dim order: [old_inames' ..., old_inames ..., i_outer, i_inner]
 
         # Convert set back to map
-        map_from_set = isl.Map.from_domain(s)
-        # move original out dims + 2 new dims:
+        map_from_set = isl.Map.from_domain(set_from_map)
+        # Move original out dims + 2 new dims:
         map_from_set = map_from_set.move_dims(
             dt.out, 0, dt.in_, n_in_dims, n_out_dims+2)
 
+        # Remove iname that was split:
+        map_from_set = remove_dim_by_name(
+            map_from_set, dt.out, iname_to_split)
+
         return map_from_set
 
-    kernel = map_stmt_inst_dependencies(kernel, "id:*", _split_iname_in_dep)
+    def _split_iname_in_dependee(dep):
+
+        iname_to_split_marked = iname_to_split+BEFORE_MARK
+
+        # If iname is not present in dep, return unmodified dep
+        if iname_to_split_marked not in dep.get_var_names(dt.in_):
+            return dep
+
+        # Temporarily convert map to set for processing
+        set_from_map, n_in_dims, n_out_dims = convert_map_to_set(dep)
+
+        # Split iname'
+        set_from_map = _split_iname_in_set(
+            set_from_map, iname_to_split_marked,
+            inner_iname+BEFORE_MARK, outer_iname+BEFORE_MARK,
+            fixed_length, fixed_length_is_inner)
+
+        # Dim order: [old_inames' ..., old_inames ..., i_outer', i_inner']
+
+        # Convert set back to map
+        map_from_set = isl.Map.from_domain(set_from_map)
+        # Move original out dims new dims:
+        map_from_set = map_from_set.move_dims(
+            dt.out, 0, dt.in_, n_in_dims, n_out_dims)
+
+        # Remove iname that was split:
+        map_from_set = remove_dim_by_name(
+            map_from_set, dt.in_, iname_to_split_marked)
+
+        return map_from_set
+
+    # TODO figure out proper way to create false match condition
+    false_id_match = "id:false and (not id:false)"
+    kernel = map_dependency_maps(
+        kernel, _split_iname_in_depender,
+        stmt_match_depender=within, stmt_match_dependee=false_id_match)
+    kernel = map_dependency_maps(
+        kernel, _split_iname_in_dependee,
+        stmt_match_depender=false_id_match, stmt_match_dependee=within)
 
     # }}}
 
@@ -322,10 +353,7 @@ def _split_iname_backend(kernel, iname_to_split,
                     (insn.within_inames.copy()
                     - frozenset([iname_to_split]))
                     | frozenset([outer_iname, inner_iname]))
-        else:
-            new_within_inames = insn.within_inames
-
-        insn = insn.copy(
+            insn = insn.copy(
                 within_inames=new_within_inames)
 
         new_insns.append(insn)
@@ -357,7 +385,18 @@ def _split_iname_backend(kernel, iname_to_split,
     ins = _InameSplitter(rule_mapping_context, within,
             iname_to_split, outer_iname, inner_iname, new_loop_index)
 
-    kernel = ins.map_kernel(kernel)
+    from loopy.symbolic import get_dependencies, get_reduction_inames
+    from loopy.kernel.instruction import MultiAssignmentBase
+
+    def check_insn_has_iname(kernel, insn, *args):
+        return not (isinstance(insn, MultiAssignmentBase) and
+                all(iname_to_split not in get_dependencies(a)
+                    for a in insn.assignees) and
+                iname_to_split not in get_dependencies(insn.expression) and
+                iname_to_split not in get_reduction_inames(insn.expression))
+
+    kernel = ins.map_kernel(kernel, within=check_insn_has_iname,
+                            map_tvs=False, map_args=False)
     kernel = rule_mapping_context.finish_kernel(kernel)
 
     for existing_tag in existing_tags:
@@ -551,8 +590,13 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
 
 
 def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
-    """
-    :arg inames: fastest varying last
+    """In a sense, the inverse of :func:`split_iname`. Takes in inames,
+    finds their bounds (all but the first have to be bounded), and combines
+    them into a single loop via analogs of ``new_iname = i0 * LEN(i1) + i1``.
+    The old inames are re-obtained via the appropriate division/modulo
+    operations.
+
+    :arg inames: a sequence of inames, fastest varying last
     :arg within: a stack match as understood by
         :func:`loopy.match.parse_stack_match`.
     """
@@ -731,6 +775,9 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
                 parse_kv(s) for s in iname_to_tag.split(",")
                 if s.strip()]
 
+    if not iname_to_tag:
+        return kernel
+
     # convert dict to list of tuples
     if isinstance(iname_to_tag, dict):
         iname_to_tag = list(iname_to_tag.items())
@@ -884,7 +931,7 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
         new_inames = [iname.strip() for iname in new_inames.split(",")]
 
     from loopy.match import parse_stack_match
-    within = parse_stack_match(within)
+    within_sm = parse_stack_match(within)
 
     if new_inames is None:
         new_inames = [None] * len(inames)
@@ -894,6 +941,7 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
 
     name_gen = kernel.get_var_name_generator()
 
+    # Generate new iname names
     for i, iname in enumerate(inames):
         new_iname = new_inames[i]
 
@@ -916,7 +964,7 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
 
     # }}}
 
-    # {{{ duplicate the inames
+    # {{{ duplicate the inames in domains
 
     for old_iname, new_iname in zip(inames, new_inames):
         from loopy.kernel.tools import DomainChanger
@@ -927,6 +975,40 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
                 domains=domch.get_domains_with(
                     duplicate_axes(domch.domain, [old_iname], [new_iname])))
 
+        # {{{ *Rename* iname in dependencies
+
+        from loopy.transform.instruction import map_dependency_maps
+        from loopy.schedule.checker.schedule import BEFORE_MARK
+        dt = isl.dim_type
+        old_iname_p = old_iname+BEFORE_MARK
+        new_iname_p = new_iname+BEFORE_MARK
+
+        def _rename_iname_in_dep_out(dep):
+            # update iname in out-dim
+            out_idx = dep.find_dim_by_name(dt.out, old_iname)
+            if out_idx != -1:
+                dep = dep.set_dim_name(dt.out, out_idx, new_iname)
+            return dep
+
+        def _rename_iname_in_dep_in(dep):
+            # update iname in in-dim
+            in_idx = dep.find_dim_by_name(dt.in_, old_iname_p)
+            if in_idx != -1:
+                dep = dep.set_dim_name(dt.in_, in_idx, new_iname_p)
+            return dep
+
+        # TODO figure out proper way to match none
+        # TODO figure out match vs stack_match
+        false_id_match = "id:false and (not id:false)"
+        kernel = map_dependency_maps(
+            kernel, _rename_iname_in_dep_out,
+            stmt_match_depender=within, stmt_match_dependee=false_id_match)
+        kernel = map_dependency_maps(
+            kernel, _rename_iname_in_dep_in,
+            stmt_match_depender=false_id_match, stmt_match_dependee=within)
+
+        # }}}
+
     # }}}
 
     # {{{ change the inames in the code
@@ -935,10 +1017,10 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
             kernel.substitutions, name_gen)
     indup = _InameDuplicator(rule_mapping_context,
             old_to_new=dict(list(zip(inames, new_inames))),
-            within=within)
+            within=within_sm)
 
     kernel = rule_mapping_context.finish_kernel(
-            indup.map_kernel(kernel))
+            indup.map_kernel(kernel, within=within_sm))
 
     # }}}
 
@@ -1040,7 +1122,7 @@ def get_iname_duplication_options(kernel, use_boostable_into=None):
 
     Some kernels require the duplication of inames in order to be schedulable, as the
     forced iname dependencies define an over-determined problem to the scheduler.
-    Consider the following minimal example:
+    Consider the following minimal example::
 
         knl = lp.make_kernel(["{[i,j]:0<=i,j<n}"],
                              \"\"\"
@@ -1264,9 +1346,9 @@ def remove_unused_inames(kernel, inames=None):
 
     # }}}
 
-    # {{{ remove inames from deps
+    # {{{ Remove inames from deps
 
-    from loopy.transform.instruction import map_stmt_inst_dependencies
+    from loopy.transform.instruction import map_dependency_maps
     from loopy.schedule.checker.schedule import BEFORE_MARK
     from loopy.schedule.checker.utils import append_mark_to_strings
     unused_inames_marked = append_mark_to_strings(unused_inames, BEFORE_MARK)
@@ -1275,7 +1357,7 @@ def remove_unused_inames(kernel, inames=None):
         return remove_vars_from_set(
             remove_vars_from_set(dep, unused_inames), unused_inames_marked)
 
-    kernel = map_stmt_inst_dependencies(kernel, "id:*", _remove_iname_from_dep)
+    kernel = map_dependency_maps(kernel, _remove_iname_from_dep)
 
     # }}}
 
@@ -1292,11 +1374,14 @@ def remove_any_newly_unused_inames(transformation_func):
         remove_newly_unused_inames = kwargs.pop("remove_newly_unused_inames", True)
 
         if remove_newly_unused_inames:
-            # determine which inames were already unused
-            inames_already_unused = kernel.all_inames() - get_used_inames(kernel)
-
             # call transform
             transformed_kernel = transformation_func(kernel, *args, **kwargs)
+
+            if transformed_kernel is kernel:
+                return kernel
+
+            # determine which inames were already unused
+            inames_already_unused = kernel.all_inames() - get_used_inames(kernel)
 
             # Remove inames that are unused due to transform
             return remove_unused_inames(

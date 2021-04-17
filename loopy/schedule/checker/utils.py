@@ -84,6 +84,13 @@ def reorder_dims_by_name(
     return new_set
 
 
+def remove_dim_by_name(isl_map, dim_type, dim_name):
+    idx = isl_map.find_dim_by_name(dim_type, dim_name)
+    if idx == -1:
+        raise ValueError("Dim '%s' not found. Cannot remove dim.")
+    return isl_map.remove_dims(dim_type, idx, 1)
+
+
 def ensure_dim_names_match_and_align(obj_map, tgt_map):
 
     # first make sure names match

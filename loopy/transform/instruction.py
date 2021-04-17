@@ -117,12 +117,104 @@ def add_dependency(kernel, insn_match, depends_on):
 # }}}
 
 
+# {{{ map dependencies
+
+# Terminiology:
+# stmtX.dependencies:  # <- "stmt dependencies" = full dict of deps
+# {stmt0: [dep_map00, dep_map01, ...],  # <- "one dependency"
+#  stmt1: [dep_map10, dep_map11, ...],
+#  ...}
+# one dependency includes one "dependency list", which contains "dep maps"
+
+
+def map_stmt_dependencies(kernel, stmt_match, f):
+    # Set stmt.dependences = f(stmt.dependencies) for stmts matching stmt_match
+    # Only modifies dependencies for depender!
+    # Does not search for matching dependees of non-matching depender statements!
+
+    def _update_deps(stmt):
+        new_deps = f(stmt.dependencies)
+        return stmt.copy(dependencies=new_deps)
+
+    return map_instructions(kernel, stmt_match, _update_deps)
+
+
+def _parse_match_if_necessary(match_candidate):
+    from loopy.match import MatchExpressionBase
+    if not isinstance(match_candidate, MatchExpressionBase):
+        from loopy.match import parse_match
+        return parse_match(match_candidate)
+    else:
+        return match_candidate
+
+
+def map_dependency_lists(
+        kernel, f, stmt_match_depender="id:*", stmt_match_dependee="id:*"):
+    # Set dependency = f(dependency) for:
+    # All deps of stmts matching stmt_match_depender
+    # All deps ON stmts matching stmt_match_dependee
+    # (but doesn't call f() twice if dep matches both depender and dependee)
+
+    match_depender = _parse_match_if_necessary(stmt_match_depender)
+    match_dependee = _parse_match_if_necessary(stmt_match_dependee)
+
+    new_stmts = []
+
+    for stmt in kernel.instructions:
+        new_deps = {}
+        if match_depender(kernel, stmt):
+            # Stmt matches as depender
+            # Replace all deps
+            for dep_id, dep_maps in stmt.dependencies.items():
+                new_deps[dep_id] = f(dep_maps)
+        else:
+            # Stmt didn't match as a depender
+            # Replace deps matching dependees
+            for dep_id, dep_maps in stmt.dependencies.items():
+                if match_dependee(kernel, kernel.id_to_insn[dep_id]):
+                    new_deps[dep_id] = f(dep_maps)
+                else:
+                    new_deps[dep_id] = dep_maps
+        new_stmts.append(stmt.copy(dependencies=new_deps))
+
+    return kernel.copy(instructions=new_stmts)
+
+
+def map_dependency_maps(
+        kernel, f, stmt_match_depender="id:*", stmt_match_dependee="id:*"):
+    # Set dep_map = f(dep_map) for dep_map in:
+    # All dependencies of stmts matching stmt_match_depender
+    # All dependencies ON stmts matching stmt_match_dependee
+
+    def _update_dep_maps(dep_maps):
+        return [f(dep_map) for dep_map in dep_maps]
+
+    return map_dependency_lists(
+        kernel, _update_dep_maps, stmt_match_depender, stmt_match_dependee)
+
+# }}}
+
+
 # {{{ add_stmt_inst_dependency
 
 def add_stmt_inst_dependency(
         kernel, stmt_id, depends_on_id, new_dependency):
-    """Add the statement instance dependency *new_dependency* to statement with
-    id *stmt_id*.
+    """Add the statement instance dependency `new_dependency` to the statement with
+    id `stmt_id`.
+
+    :arg kernel: A :class:`loopy.kernel.LoopKernel`.
+
+    :arg stmt_id: The :class:`str` statement identifier of the statement to
+        which the dependency will be added.
+
+    :arg depends_on_id: The :class:`str` identifier of the statement that is
+        depended on, i.e., the statement with statement instances that must
+        happen before those of `stmt_id`.
+
+    :arg new_dependency: An class:`islpy.Map` from each instance of the first
+        statement to all instances of the second statement that must occur
+        later.
+
     """
 
     if stmt_id not in kernel.id_to_insn:
@@ -134,37 +226,14 @@ def add_stmt_inst_dependency(
                 "cannot add dependency %s->%s"
                 % (depends_on_id, depends_on_id, stmt_id))
 
-    matched = [False]
+    def _add_dep(stmt_deps):
+        # stmt_deps: dict mapping depends-on ids to dep maps
+        stmt_deps.setdefault(depends_on_id, []).append(new_dependency)
+        return stmt_deps
 
-    def _add_dep(stmt):
-        new_deps_dict = stmt.dependencies  # dict mapping depends-on ids to dep maps
-        matched[0] = True
-        new_deps_dict.setdefault(depends_on_id, []).append(new_dependency)
-        return stmt.copy(dependencies=new_deps_dict)
-
-    result = map_instructions(kernel, "id:%s" % (stmt_id), _add_dep)
-
-    if not matched[0]:  # Is this possible, given check above?
-        raise LoopyError("no instructions found matching '%s' "
-                "(to which dependencies would be added)" % stmt_id)
+    result = map_stmt_dependencies(kernel, "id:%s" % (stmt_id), _add_dep)
 
     return result
-
-
-# {{{ map_stmt_inst_dependencies
-
-def map_stmt_inst_dependencies(kernel, stmt_match, f):
-
-    def _update_dep(stmt):
-        new_deps = {}
-        for dep_id, deps in stmt.dependencies.items():
-            new_deps[dep_id] = [f(dep) for dep in deps]
-
-        return stmt.copy(dependencies=new_deps)
-
-    return map_instructions(kernel, stmt_match, _update_dep)
-
-# }}}
 
 # }}}
 
@@ -204,14 +273,25 @@ def remove_instructions(kernel, insn_ids):
         for dep_id in depends_on & insn_ids:
             new_deps = new_deps | id_to_insn[dep_id].depends_on
 
+        # {{{ Remove any new-world stmt inst dependencies on removed stmts
+
+        new_dependencies = insn.dependencies
+        for removed_id in insn_ids:
+            # TODO propagate these intelligently?
+            new_dependencies.pop(removed_id, None)
+
+        # }}}
+
         # update no_sync_with
 
         new_no_sync_with = frozenset((insn_id, scope)
                 for insn_id, scope in insn.no_sync_with
                 if insn_id not in insn_ids)
 
-        new_insns.append(
-                insn.copy(depends_on=new_deps, no_sync_with=new_no_sync_with))
+        new_insns.append(insn.copy(
+            depends_on=new_deps,
+            dependencies=new_dependencies,
+            no_sync_with=new_no_sync_with))
 
     return kernel.copy(
             instructions=new_insns)
@@ -222,19 +302,23 @@ def remove_instructions(kernel, insn_ids):
 # {{{ replace_instruction_ids
 
 def replace_instruction_ids(kernel, replacements):
+    if not replacements:
+        return kernel
+
     new_insns = []
 
-    for insn in kernel.instructions:
+    for i, insn in enumerate(kernel.instructions):
         changed = False
-        new_depends_on = []
+        new_depends_on = list(insn.depends_on)
+        extra_depends_on = []
         new_no_sync_with = []
 
-        for dep in insn.depends_on:
+        for idep, dep in enumerate(insn.depends_on):
             if dep in replacements:
-                new_depends_on.extend(replacements[dep])
+                new_deps = list(replacements[dep])
+                new_depends_on[idep] = new_deps[0]
+                extra_depends_on.extend(new_deps[1:])
                 changed = True
-            else:
-                new_depends_on.append(dep)
 
         for insn_id, scope in insn.no_sync_with:
             if insn_id in replacements:
@@ -246,7 +330,7 @@ def replace_instruction_ids(kernel, replacements):
 
         new_insns.append(
                 insn.copy(
-                    depends_on=frozenset(new_depends_on),
+                    depends_on=frozenset(new_depends_on + extra_depends_on),
                     no_sync_with=frozenset(new_no_sync_with))
                 if changed else insn)
 

@@ -101,12 +101,20 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     def wrap_in_typecast(self, actual_type, needed_dtype, s):
         return s
 
+    def wrap_in_typecast_lazy(self, actual_type_func, needed_dtype, s):
+        """This is similar to *wrap_in_typecast*, but takes a function for
+        the actual type argument instead of a type. This can be helpful
+        when actual type argument is expensive to calculate and is not
+        needed in some cases.
+        """
+        return s
+
     def rec(self, expr, type_context=None, needed_dtype=None):
         if needed_dtype is None:
             return RecursiveMapper.rec(self, expr, type_context)
 
-        return self.wrap_in_typecast(
-                self.infer_type(expr), needed_dtype,
+        return self.wrap_in_typecast_lazy(
+                lambda: self.infer_type(expr), needed_dtype,
                 RecursiveMapper.rec(self, expr, type_context))
 
     def __call__(self, expr, prec=None, type_context=None, needed_dtype=None):
@@ -121,6 +129,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     # }}}
 
     def map_variable(self, expr, type_context):
+        from loopy.kernel.data import ValueArg, AddressSpace
+
         def postproc(x):
             return x
 
@@ -148,12 +158,12 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     raise RuntimeError("unsubscripted reference to array '%s'"
                             % expr.name)
 
-            from loopy.kernel.data import ValueArg
             if isinstance(arg, ValueArg) and self.fortran_abi:
                 postproc = lambda x: x[0]  # noqa
         elif expr.name in self.kernel.temporary_variables:
             temporary = self.kernel.temporary_variables[expr.name]
-            if temporary.base_storage:
+            if (temporary.base_storage
+                    or temporary.address_space == AddressSpace.GLOBAL):
                 postproc = lambda x: x[0]  # noqa
 
         result = self.kernel.mangle_symbol(self.codegen_state.ast_builder, expr.name)
@@ -408,7 +418,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 if iinfo.max > (2**31-1):
                     suffix += "l"
                 return Literal(repr(expr)+suffix)
-
+            elif isinstance(expr, np.bool_):
+                return Literal("true") if expr else Literal("false")
             else:
                 raise LoopyError("do not know how to generate code for "
                         "constant of numpy type '%s'" % type(expr).__name__)
