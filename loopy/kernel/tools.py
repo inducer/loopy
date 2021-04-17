@@ -1894,14 +1894,8 @@ def infer_arg_is_output_only(kernel):
 # {{{ get_outer_params
 
 def get_outer_params(domains):
-    all_inames = set()
-    all_params = set()
-    for dom in domains:
-        all_inames.update(dom.get_var_names(dim_type.set))
-        all_params.update(dom.get_var_names(dim_type.param))
-
     from loopy.tools import intern_frozenset_of_ids
-    return intern_frozenset_of_ids(all_params-all_inames)
+    return intern_frozenset_of_ids(domains.param_dims - domains.set_dims)
 
 # }}}
 
