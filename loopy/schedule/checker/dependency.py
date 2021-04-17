@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 import islpy as isl
 from loopy.schedule.checker.schedule import BEFORE_MARK
+dt = isl.dim_type
 
 
 class LegacyDependencyType:
@@ -95,14 +96,13 @@ def create_elementwise_comparison_conjunction_set(
 
 
 def _convert_constraint_set_to_map(constraint_set, mv_count, src_position=None):
-    dim_type = isl.dim_type
     constraint_map = isl.Map.from_domain(constraint_set)
     if src_position:
         return constraint_map.move_dims(
-            dim_type.out, 0, dim_type.in_, src_position, mv_count)
+            dt.out, 0, dt.in_, src_position, mv_count)
     else:
         return constraint_map.move_dims(
-            dim_type.out, 0, dim_type.in_, mv_count, mv_count)
+            dt.out, 0, dt.in_, mv_count, mv_count)
 
 
 def create_legacy_dependency_constraint(
@@ -150,8 +150,12 @@ def create_legacy_dependency_constraint(
     # This function uses the dependency given to create the following constraint:
     # Statement [s,i,j] comes before statement [s',i',j'] iff <constraint>
 
-    dom_before = knl.get_inames_domain(knl.id_to_insn[insn_id_before].within_inames)
-    dom_after = knl.get_inames_domain(knl.id_to_insn[insn_id_after].within_inames)
+    before_inames = knl.id_to_insn[insn_id_before].within_inames
+    after_inames = knl.id_to_insn[insn_id_after].within_inames
+    dom_before = knl.get_inames_domain(
+        before_inames).project_out_except(before_inames, [dt.set])
+    dom_after = knl.get_inames_domain(
+        after_inames).project_out_except(after_inames, [dt.set])
 
     # create some (ordered) isl vars to use, e.g., {s, i, j, s', i', j'}
     dom_inames_ordered_before = sorted_union_of_names_in_isl_sets([dom_before])
@@ -278,12 +282,12 @@ def create_legacy_dependency_constraint(
 
     # add statement variable to doms to enable intersection
     range_to_intersect = insert_and_name_isl_dims(
-        dom_after, isl.dim_type.out,
+        dom_after, dt.out,
         [STATEMENT_VAR_NAME], statement_var_idx)
     domain_constraint_set = append_mark_to_isl_map_var_names(
-        dom_before, isl.dim_type.set, mark=before_mark)
+        dom_before, dt.set, mark=before_mark)
     domain_to_intersect = insert_and_name_isl_dims(
-        domain_constraint_set, isl.dim_type.out,
+        domain_constraint_set, dt.out,
         [statement_var_name_prime], statement_var_idx)
 
     # reorder inames to enable intersection (inames should already match at
@@ -291,17 +295,17 @@ def create_legacy_dependency_constraint(
     assert set(
         append_mark_to_strings(
             [STATEMENT_VAR_NAME] + dom_inames_ordered_before, before_mark)
-        ) == set(domain_to_intersect.get_var_names(isl.dim_type.out))
+        ) == set(domain_to_intersect.get_var_names(dt.out))
     assert set(
         [STATEMENT_VAR_NAME] + dom_inames_ordered_after
-        ) == set(range_to_intersect.get_var_names(isl.dim_type.out))
+        ) == set(range_to_intersect.get_var_names(dt.out))
     domain_to_intersect = reorder_dims_by_name(
-        domain_to_intersect, isl.dim_type.out,
+        domain_to_intersect, dt.out,
         append_mark_to_strings(
             [STATEMENT_VAR_NAME] + dom_inames_ordered_before, before_mark))
     range_to_intersect = reorder_dims_by_name(
         range_to_intersect,
-        isl.dim_type.out,
+        dt.out,
         [STATEMENT_VAR_NAME] + dom_inames_ordered_after)
 
     # intersect doms
