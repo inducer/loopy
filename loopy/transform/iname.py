@@ -2176,6 +2176,8 @@ def map_domain(kernel, isl_map, within=None):
 # }}}
 
 
+# {{{ add_inames_for_unused_hw_axes
+
 def add_inames_for_unused_hw_axes(kernel, within=None):
     """
     Returns a kernel with inames added to each instruction
@@ -2284,5 +2286,7 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
         new_insns.append(insn)
 
     return kernel.copy(instructions=new_insns)
+
+# }}}
 
 # vim: foldmethod=marker
