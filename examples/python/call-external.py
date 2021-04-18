@@ -2,81 +2,78 @@ import loopy as lp
 import numpy as np
 from loopy.diagnostic import LoopyError
 from loopy.target.c import CTarget
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 # {{{ blas callable
 
-class BLASCallable(lp.ScalarCallable):
-    def with_types(self, arg_id_to_dtype, kernel, callables_table):
-        for i in range(0, 2):
-            if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
-                # the types provided aren't mature enough to specialize the
-                # callable
-                return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                        callables_table)
+class CBLASGEMV(lp.ScalarCallable):
+    def with_types(self, arg_id_to_dtype, callables_table):
+        mat_dtype = arg_id_to_dtype.get(0)
+        vec_dtype = arg_id_to_dtype.get(1)
 
-        mat_dtype = arg_id_to_dtype[0].numpy_dtype
-        vec_dtype = arg_id_to_dtype[1].numpy_dtype
+        if mat_dtype is None or vec_dtype is None:
+            # types aren't specialized enough to be resolved
+            return self, callables_table
 
         if mat_dtype != vec_dtype:
-            raise LoopyError("DGEMV should have same dtype for matrix and "
-                    "vector")
+            raise LoopyError("GEMV requires same dtypes for matrix and "
+                             "vector")
 
-        if vec_dtype == np.float32:
+        if vec_dtype.numpy_dtype == np.float32:
             name_in_target = "cblas_sgemv"
-        elif vec_dtype == np.float64:
+        elif vec_dtype. numpy_dtype == np.float64:
             name_in_target = "cblas_dgemv"
         else:
-            raise LoopyError("GEMV only supported for float32 and float64 "
-                    "types")
+            raise LoopyError("GEMV is only supported for float32 and float64 "
+                             "types")
 
-        from loopy.types import NumpyType
-        return self.copy(name_in_target=name_in_target,
-                arg_id_to_dtype={0: NumpyType(vec_dtype), 1: NumpyType(vec_dtype),
-                    -1: NumpyType(vec_dtype)}), callables_table
+        return (self.copy(name_in_target=name_in_target,
+                          arg_id_to_dtype={0: vec_dtype,
+                                           1: vec_dtype,
+                                           -1: vec_dtype}),
+                callables_table)
+
+    def with_descrs(self, arg_id_to_descr, callables_table):
+        mat_descr = arg_id_to_descr.get(0)
+        vec_descr = arg_id_to_descr.get(1)
+        res_descr = arg_id_to_descr.get(-1)
+
+        if mat_descr is None or vec_descr is None or res_descr is None:
+            # shapes aren't specialized enough to be resolved
+            return self, callables_table
+
+        assert mat_descr.shape[1] == vec_descr.shape[0]
+        assert mat_descr.shape[0] == res_descr.shape[0]
+        assert len(vec_descr.shape) == len(res_descr.shape) == 1
+        # handling only the easy case when stride == 1
+        assert vec_descr.dim_tags[0].stride == 1
+        assert mat_descr.dim_tags[1].stride == 1
+        assert res_descr.dim_tags[0].stride == 1
+
+        return self.copy(arg_id_to_descr=arg_id_to_descr), callables_table
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
-        assert self.is_ready_for_codegen()
-
-        from loopy.kernel.instruction import CallInstruction
-
-        assert isinstance(insn, CallInstruction)
-
-        parameters = insn.expression.parameters
-
-        parameters = list(parameters)
-        par_dtypes = [self.arg_id_to_dtype[i] for i, _ in enumerate(parameters)]
-
-        parameters.append(insn.assignees[0])
-        par_dtypes.append(self.arg_id_to_dtype[-1])
-
-        # no type casting in array calls.
-        from loopy.expression import dtype_to_type_context
-        from pymbolic.mapper.stringifier import PREC_NONE
-        from loopy.symbolic import SubArrayRef
         from pymbolic import var
-
         mat_descr = self.arg_id_to_descr[0]
+        m, n = mat_descr.shape
+        ecm = expression_to_code_mapper
+        mat, vec = insn.expression.parameters
+        result, = insn.assignees
 
-        c_parameters = [
-                expression_to_code_mapper(par, PREC_NONE,
-                    dtype_to_type_context(target, par_dtype),
-                    par_dtype).expr if isinstance(par, SubArrayRef) else
-                expression_to_code_mapper(par, PREC_NONE,
-                    dtype_to_type_context(target, par_dtype),
-                    par_dtype).expr
-                for par, par_dtype in zip(
-                    parameters, par_dtypes)]
-        c_parameters.insert(0, var("CblasRowMajor"))
-        c_parameters.insert(1, var("CblasNoTrans"))
-        c_parameters.insert(2, mat_descr.shape[0])
-        c_parameters.insert(3, mat_descr.shape[1])
-        c_parameters.insert(4, 1)
-        c_parameters.insert(6, 1)
-        c_parameters.insert(8, 1)
-        c_parameters.insert(10, 1)
-        return var(self.name_in_target)(*c_parameters), False
+        c_parameters = [var("CblasRowMajor"),
+                        var("CblasNoTrans"),
+                        m, n,
+                        1,
+                        ecm(mat).expr,
+                        1,
+                        ecm(vec).expr,
+                        1,
+                        ecm(result).expr,
+                        1]
+        return (var(self.name_in_target)(*c_parameters),
+                False  # cblas_gemv does not return anything
+                )
 
     def generate_preambles(self, target):
         assert isinstance(target, CTarget)
@@ -89,16 +86,14 @@ class BLASCallable(lp.ScalarCallable):
 n = 10
 
 knl = lp.make_kernel(
-        "{[i]: 0<=i<10}",
+        "{:}",
         """
         y[:] = gemv(A[:, :], x[:])
         """, [
             lp.GlobalArg("A", dtype=np.float64, shape=(n, n)),
             lp.GlobalArg("x", dtype=np.float64, shape=(n, )),
             lp.GlobalArg("y", shape=(n, )), ...],
-        target=CTarget(),
-        lang_version=(2018, 2))
+        target=CTarget())
 
-knl = lp.register_callable(knl, "gemv", BLASCallable(name="gemv"))
-
+knl = lp.register_callable(knl, "gemv", CBLASGEMV(name="gemv"))
 print(lp.generate_code_v2(knl).device_code())
