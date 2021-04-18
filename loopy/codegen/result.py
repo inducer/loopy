@@ -99,11 +99,10 @@ class CodeGenerationResult(ImmutableRecord):
     .. automethod:: device_code
     .. automethod:: all_code
 
-    .. attribute:: implemented_data_infos
+    .. attribute:: implemented_data_info
 
-        A mapping from entrypoints to a list of
-        :class:`loopy.codegen.ImplementedDataInfo` objects. Only added at the
-        very end of code generation.
+        a list of :class:`loopy.codegen.ImplementedDataInfo` objects.
+        Only added at the very end of code generation
     """
 
     @staticmethod

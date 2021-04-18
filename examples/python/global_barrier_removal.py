@@ -23,7 +23,7 @@ knl = preprocess_kernel(knl)
 
 from loopy.schedule import get_one_scheduled_kernel
 knl = knl.with_kernel(get_one_scheduled_kernel(knl["loopy_kernel"],
-    knl.callables_table))
+                                               knl.callables_table))
 
 
 # map schedule onto host or device

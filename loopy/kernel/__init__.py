@@ -162,7 +162,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     .. attribute:: domains
 
         a list of :class:`islpy.BasicSet` instances representing the
-        :ref:`domain-tree`.  May be empty.
+        :ref:`domain-tree`.
 
     .. attribute:: instructions
 
@@ -191,7 +191,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         :class:`loopy.TemporaryVariable`
         instances.
 
-    .. attribute:: function_manglers
     .. attribute:: symbol_manglers
 
     .. attribute:: substitutions
@@ -257,7 +256,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             inames=None,
             iname_to_tags=None,
             substitutions=None,
-            function_manglers=None,
             symbol_manglers=[],
 
             iname_slab_increments=None,
@@ -266,7 +264,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
             applied_iname_rewrites=None,
             cache_manager=None,
-            index_dtype=None,
+            index_dtype=np.int32,
             options=None,
 
             state=KernelState.INITIAL,
@@ -294,8 +292,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             temporary_variables = {}
         if substitutions is None:
             substitutions = {}
-        if function_manglers is None:
-            function_manglers = []
         if iname_slab_increments is None:
             iname_slab_increments = {}
 
@@ -334,7 +330,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         # {{{ process assumptions
 
-        if assumptions is None and domains:
+        if assumptions is None:
             dom0_space = domains[0].get_space()
             assumptions_space = isl.Space.params_alloc(
                     dom0_space.get_ctx(), dom0_space.dim(dim_type.param))
@@ -344,10 +340,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                         dom0_space.get_dim_name(dim_type.param, i))
             assumptions = isl.BasicSet.universe(assumptions_space)
 
-        elif assumptions is None and not domains:
-            assumptions = isl.BasicSet.read_from_str(
-                    isl.DEFAULT_CONTEXT, "[] -> { : 1 = 1}")
-
         elif isinstance(assumptions, str):
             assumptions_set_str = "[%s] -> { : %s}" \
                     % (",".join(s for s in self.outer_params(domains)),
@@ -355,7 +347,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             assumptions = isl.BasicSet.read_from_str(domains[0].get_ctx(),
                     assumptions_set_str)
 
-        # assert assumptions.is_params()
+        assert assumptions.is_params()
 
         # }}}
 
@@ -412,7 +404,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 substitutions=substitutions,
                 cache_manager=cache_manager,
                 applied_iname_rewrites=applied_iname_rewrites,
-                function_manglers=function_manglers,
                 symbol_manglers=symbol_manglers,
                 index_dtype=index_dtype,
                 options=options,
@@ -423,51 +414,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 _cached_written_variables=_cached_written_variables)
 
         self._kernel_executor_cache = {}
-
-    # }}}
-
-    # {{{ function mangling/scoping
-
-    def mangle_function(self, identifier, arg_dtypes, ast_builder=None):
-        if ast_builder is None:
-            ast_builder = self.target.get_device_ast_builder()
-
-        manglers = ast_builder.function_manglers() + self.function_manglers
-
-        for mangler in manglers:
-            mangle_result = mangler(self, identifier, arg_dtypes)
-            if mangle_result is not None:
-                from loopy.kernel.data import CallMangleInfo
-                if isinstance(mangle_result, CallMangleInfo):
-                    assert len(mangle_result.arg_dtypes) == len(arg_dtypes)
-                    return mangle_result
-
-                assert isinstance(mangle_result, tuple)
-
-                from warnings import warn
-                warn("'%s' returned a tuple instead of a CallMangleInfo instance. "
-                        "This is deprecated." % mangler.__name__,
-                        DeprecationWarning)
-
-                if len(mangle_result) == 2:
-                    result_dtype, target_name = mangle_result
-                    return CallMangleInfo(
-                            target_name=target_name,
-                            result_dtypes=(result_dtype,),
-                            arg_dtypes=None)
-
-                elif len(mangle_result) == 3:
-                    result_dtype, target_name, actual_arg_dtypes = mangle_result
-                    return CallMangleInfo(
-                            target_name=target_name,
-                            result_dtypes=(result_dtype,),
-                            arg_dtypes=actual_arg_dtypes)
-
-                else:
-                    raise ValueError("unexpected size of tuple returned by '%s'"
-                            % mangler.__name__)
-
-        return None
 
     # }}}
 
@@ -1617,7 +1563,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             # resolve hash conflicts.
 
             "preamble_generators",
-            "function_manglers",
             "symbol_manglers",
             )
 

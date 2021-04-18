@@ -103,7 +103,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
                     extra_args),
                 ])
         else:
-            # do not generate host code for callee kernels
+            # do not generate host code for non-entrypoint kernels
             return codegen_result
 
     elif isinstance(sched_item, EnterLoop):
