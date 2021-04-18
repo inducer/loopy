@@ -618,7 +618,7 @@ def find_max_of_pwaff_with_params(pw_aff, n_allowed_params):
 
 def set_dim_name(obj, dt, pos, name):
     assert isinstance(name, str)
-    if isinstance(obj, isl.PwQPolynomial):
+    if isinstance(obj, (isl.PwQPolynomial, isl.BasicSet)):
         return obj.set_dim_name(dt, pos, name)
     elif isinstance(obj, isl.PwAff):
         # work around missing isl_pw_aff_set_dim_name for now.
