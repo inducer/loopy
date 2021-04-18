@@ -618,7 +618,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         for dom in self.domains:
             return dom.get_ctx()
 
-        return isl.DEFAULT_CONTEXT
+        assert False
 
     @memoize_method
     def combine_domains(self, domains):
@@ -1047,15 +1047,12 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     @memoize_method
     def get_grid_sizes_for_insn_ids_as_dicts(self, insn_ids,
             callables_table, ignore_auto=False):
-        # FIXME: docs
-        # {{{ collecting the callee kernels in insn_ids
-
-        from loopy.kernel.tools import get_direct_callee_kernels
-        callee_kernels = get_direct_callee_kernels(self,
-                callables_table, insn_ids)
-
-        # }}}
-
+        """
+        Returns a tuple of ``(global_sizes, local_sizes)``, where
+        ``global_sizes``, ``local_sizes`` are the grid sizes that could
+        accommodate all of *insn_ids*. The grid sizes as a dict from the axis
+        index to the corresponding grid size.
+        """
         all_inames_by_insns = set()
         for insn_id in insn_ids:
             all_inames_by_insns |= self.insn_inames(insn_id)
@@ -1066,18 +1063,46 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                     % (", ".join(sorted(all_inames_by_insns)),
                         ", ".join(sorted(self.all_inames()))))
 
+        # {{{ include grid constraints due to callees
+
         global_sizes = {}
         local_sizes = {}
 
-        # updating the grid sizes from the callee_kernels.
-        for callee_kernel in callee_kernels:
-            gsize, lsize = callee_kernel.get_grid_sizes_for_insn_ids_as_dicts(
-                    frozenset(insn.id for insn in callee_kernel.instructions),
-                    callables_table, ignore_auto)
+        from loopy.kernel.data import ValueArg
+        from loopy.kernel.instruction import CallInstruction
+        from loopy.kernel.function_interface import (CallableKernel,
+                get_kw_pos_association)
+        from loopy.isl_helpers import subst_into_pwaff
 
-            # FIXME: Should assert that nothing is being overwritten
-            global_sizes.update(gsize)
-            local_sizes.update(lsize)
+        for insn in self.instructions:
+            if isinstance(insn, CallInstruction):
+                clbl = callables_table[insn.expression.function.name]
+                if isinstance(clbl, CallableKernel):
+                    _, pos_to_kw = get_kw_pos_association(clbl.subkernel)
+                    subst_dict = {
+                            pos_to_kw[i]: param
+                            for i, param in enumerate(insn.expression.parameters)
+                            if isinstance(clbl.subkernel.arg_dict[pos_to_kw[i]],
+                                          ValueArg)}
+
+                    gsize, lsize = (
+                            clbl.subkernel.get_grid_sizes_for_insn_ids_as_dicts(
+                                frozenset(insn.id
+                                          for insn in clbl.subkernel.instructions),
+                                callables_table, ignore_auto))
+
+                    for tgt_dict, tgt_size in [(global_sizes, gsize),
+                                                (local_sizes, lsize)]:
+
+                        for iaxis, size in tgt_size.items():
+                            size = subst_into_pwaff(self.assumptions.space,
+                                    size, subst_dict)
+                            if iaxis in tgt_dict:
+                                tgt_dict[iaxis] = tgt_dict[iaxis].max(size)
+                            else:
+                                tgt_dict[iaxis] = size
+
+        # }}}
 
         from loopy.kernel.data import (
                 GroupIndexTag, LocalIndexTag,
@@ -1125,13 +1150,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     @memoize_method
     def get_grid_sizes_for_insn_ids(self, insn_ids, callables_table,
             ignore_auto=False, return_dict=False):
-        # Fixme: docs
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of all instructions whose IDs are given
         in *insn_ids*.
 
         :arg insn_ids: a :class:`frozenset` of instruction IDs
-        :arg callables_table: an instance of :class:`loopy.Program.CallablesTable`
 
         *global_size* and *local_size* are :class:`islpy.PwAff` objects.
         """
@@ -1180,13 +1203,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     @memoize_method
     def get_grid_sizes_for_insn_ids_as_exprs(self, insn_ids,
             callables_table, ignore_auto=False, return_dict=False):
-        # FIXME docs
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of all instructions whose IDs are given
         in *insn_ids*.
 
         :arg insn_ids: a :class:`frozenset` of instruction IDs
-        :arg callables_table: an instance of :class:`loopy.Program.CallablesTable`
 
         *global_size* and *local_size* are :mod:`pymbolic` expressions
         """
@@ -1223,8 +1244,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             ignore_auto=False, return_dict=False):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of *all* instructions in the kernel.
-
-        :arg callables_table: an instance of :class:`loopy.Program.CallablesTable`
 
         *global_size* and *local_size* are :mod:`pymbolic` expressions
         """

@@ -467,8 +467,6 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
     :returns: a :class:`CodeGenerationResult`
 
     :param kernel: An instance of :class:`loopy.LoopKernel`.
-    :param callables_table: An instance of
-        :class:`loopy.CallablesTable`.
     """
 
     from loopy.kernel import KernelState
