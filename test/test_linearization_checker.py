@@ -1999,6 +1999,135 @@ def test_split_iname_with_dependencies():
 
 # }}}
 
+
+# {{{ test_map_domain_with_dependencies
+
+def test_map_domain_with_dependencies():
+
+    # {{{ make kernel
+
+    ref_knl = lp.make_kernel(
+        "[nx,nt] -> {[ix, it]: 1<=ix<nx-1 and 0<=it<nt}",
+        """
+        u[ix, it+2] = (
+            2*u[ix, it+1]
+            + dt**2/dx**2 * (u[ix+1, it+1] - 2*u[ix, it+1] + u[ix-1, it+1])
+            - u[ix, it])  {id=stmt}
+        """,
+        name="wave_equation",
+        #assumptions="nx,nt >= 3",  # works without these (?)
+        lang_version=(2018, 2),
+        )
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"u,dt,dx": np.float32})
+    stmt_before = stmt_after = "stmt"
+
+    # }}}
+
+    # {{{ Check deps *without* map_domain transformation
+
+    from copy import deepcopy
+    knl = deepcopy(ref_knl)  # without deepcopy, deps will be added to ref_knl
+
+    # Prioritize loops
+    knl = lp.prioritize_loops(knl, ("it", "ix"))  # valid
+    #knl = lp.prioritize_loops(knl, ("ix", "it"))  # invalid
+
+    dep_map = _isl_map_with_marked_dims(
+        "[nx, nt] -> {{"
+        "[{0}' = 0, ix', it'] -> [{0} = 0, ix, it = 1 + it'] : "
+        "0 < ix' <= -2 + nx and 0 <= it' <= -2 + nt and ix >= -1 + ix' and "
+        "0 < ix <= 1 + ix' and ix <= -2 + nx; "
+        "[statement' = 0, ix', it'] -> [statement = 0, ix = ix', it = 2 + it'] : "
+        "0 < ix' <= -2 + nx and 0 <= it' <= -3 + nt"
+        "}}".format(STATEMENT_VAR_NAME))
+
+    knl = lp.add_stmt_inst_dependency(
+        knl, stmt_after, stmt_before, dep_map)
+
+    # Get a linearization
+    proc_knl = lp.preprocess_kernel(knl)
+    lin_knl = lp.get_one_linearized_kernel(proc_knl)
+
+    # Check dependencies
+    dep_found = proc_knl.id_to_insn[stmt_after].dependencies[stmt_before][0]
+    assert dep_found.get_var_dict() == dep_map.get_var_dict()
+    assert dep_found == dep_map
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(
+        proc_knl, lin_knl.linearization)
+    assert not unsatisfied_deps
+
+    # }}}
+
+    # {{{ Check dependency after domain change mapping
+
+    knl = deepcopy(ref_knl)  # without deepcopy, deps will be added to ref_knl
+
+    # Add dependency (TODO add dep here once map_domains updates deps correctly)
+    #knl = lp.add_stmt_inst_dependency(
+    #    knl, stmt_after, stmt_before, dep_map)
+
+    # Create map_domain mapping:
+    transform_map = isl.BasicMap(
+        "[nx,nt] -> {[ix, it] -> [tx, tt, tparity, itt, itx]: "
+        "16*(tx - tt) + itx - itt = ix - it and "
+        "16*(tx + tt + tparity) + itt + itx = ix + it and "
+        "0<=tparity<2 and 0 <= itx - itt < 16 and 0 <= itt+itx < 16}")
+
+    # Call map_domain to transform kernel
+    knl = lp.map_domain(knl, transform_map)
+
+    # Prioritize loops (prio should eventually be updated in map_domain?)
+    knl = lp.prioritize_loops(knl, "tt,tparity,tx,itt,itx")
+
+    # {{{ Manually apply transform map to dependency and add it to knl
+
+    # NOTE: This will later occur inside map_domain when dependencies are updated
+    # during transformation, and this test will be updated accordingly
+
+    # Prep transform map to be applied to dependency
+    from loopy.schedule.checker.utils import (
+        insert_and_name_isl_dims,
+        add_eq_isl_constraint_from_names,
+        append_mark_to_isl_map_var_names,
+    )
+    dt = isl.dim_type
+    # Insert 'statement' dim into transform map
+    transform_map = insert_and_name_isl_dims(
+            transform_map, dt.in_, [STATEMENT_VAR_NAME+BEFORE_MARK], 0)
+    transform_map = insert_and_name_isl_dims(
+            transform_map, dt.out, [STATEMENT_VAR_NAME], 0)
+    # Add stmt = stmt' constraint
+    transform_map = add_eq_isl_constraint_from_names(
+        transform_map, STATEMENT_VAR_NAME, STATEMENT_VAR_NAME+BEFORE_MARK)
+
+    # Apply transform map to dependency
+    mapped_dep_map = dep_map.apply_range(transform_map).apply_domain(transform_map)
+    mapped_dep_map = append_mark_to_isl_map_var_names(
+        mapped_dep_map, dt.in_, BEFORE_MARK)
+
+    # Add dep to kernel
+    knl = lp.add_stmt_inst_dependency(
+        knl, stmt_after, stmt_before, mapped_dep_map)
+
+    # }}}
+
+    # Get a linearization
+    proc_knl = lp.preprocess_kernel(knl)
+    lin_knl = lp.get_one_linearized_kernel(proc_knl)
+
+    # Check dependencies
+    dep_found = proc_knl.id_to_insn[stmt_after].dependencies[stmt_before][0]
+    assert dep_found.get_var_dict() == mapped_dep_map.get_var_dict()
+    assert dep_found == mapped_dep_map
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(
+        proc_knl, lin_knl.linearization)
+
+    assert not unsatisfied_deps
+
+    # }}}
+
+# }}}
+
 # }}}
 
 # }}}
