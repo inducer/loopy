@@ -325,7 +325,7 @@ def _split_iname_backend(kernel, iname_to_split,
         return map_from_set
 
     # TODO figure out proper way to create false match condition
-    false_id_match = "id:false and (not id:false)"
+    false_id_match = "not id:*"
     kernel = map_dependency_maps(
         kernel, _split_iname_in_depender,
         stmt_match_depender=within, stmt_match_dependee=false_id_match)
@@ -999,7 +999,7 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
 
         # TODO figure out proper way to match none
         # TODO figure out match vs stack_match
-        false_id_match = "id:false and (not id:false)"
+        false_id_match = "not id:*"
         kernel = map_dependency_maps(
             kernel, _rename_iname_in_dep_out,
             stmt_match_depender=within, stmt_match_dependee=false_id_match)
@@ -2176,8 +2176,7 @@ def map_domain(kernel, isl_map, within=None):
             dep_map.apply_domain(dep_transform_map), dt.in_, BEFORE_MARK)
 
     # TODO figure out proper way to create false match condition
-    false_id_match = "id:false and (not id:false)"
-    #false_id_match = "not id:*"
+    false_id_match = "not id:*"
     kernel = map_dependency_maps(
         kernel, _apply_transform_map_to_depender,
         stmt_match_depender=within, stmt_match_dependee=false_id_match)
