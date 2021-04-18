@@ -2006,7 +2006,7 @@ def test_map_domain_with_dependencies():
 
     # {{{ make kernel
 
-    ref_knl = lp.make_kernel(
+    knl = lp.make_kernel(
         "[nx,nt] -> {[ix, it]: 1<=ix<nx-1 and 0<=it<nt}",
         """
         u[ix, it+2] = (
@@ -2018,19 +2018,12 @@ def test_map_domain_with_dependencies():
         #assumptions="nx,nt >= 3",  # works without these (?)
         lang_version=(2018, 2),
         )
-    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"u,dt,dx": np.float32})
+    knl = lp.add_and_infer_dtypes(knl, {"u,dt,dx": np.float32})
     stmt_before = stmt_after = "stmt"
 
     # }}}
 
-    # {{{ Check deps *without* map_domain transformation
-
-    from copy import deepcopy
-    knl = deepcopy(ref_knl)  # without deepcopy, deps will be added to ref_knl
-
-    # Prioritize loops
-    knl = lp.prioritize_loops(knl, ("it", "ix"))  # valid
-    #knl = lp.prioritize_loops(knl, ("ix", "it"))  # invalid
+    # {{{ add dependency
 
     dep_map = _isl_map_with_marked_dims(
         "[nx, nt] -> {{"
@@ -2043,6 +2036,16 @@ def test_map_domain_with_dependencies():
 
     knl = lp.add_stmt_inst_dependency(
         knl, stmt_after, stmt_before, dep_map)
+
+    # }}}
+
+    # {{{ Check deps *without* map_domain transformation
+
+    ref_knl = knl
+
+    # Prioritize loops
+    knl = lp.prioritize_loops(knl, ("it", "ix"))  # valid
+    #knl = lp.prioritize_loops(knl, ("ix", "it"))  # invalid
 
     # Get a linearization
     proc_knl = lp.preprocess_kernel(knl)
@@ -2060,11 +2063,7 @@ def test_map_domain_with_dependencies():
 
     # {{{ Check dependency after domain change mapping
 
-    knl = deepcopy(ref_knl)  # without deepcopy, deps will be added to ref_knl
-
-    # Add dependency (TODO add dep here once map_domains updates deps correctly)
-    #knl = lp.add_stmt_inst_dependency(
-    #    knl, stmt_after, stmt_before, dep_map)
+    knl = ref_knl  # loop priority goes away, deps stay
 
     # Create map_domain mapping:
     transform_map = isl.BasicMap(
@@ -2079,10 +2078,7 @@ def test_map_domain_with_dependencies():
     # Prioritize loops (prio should eventually be updated in map_domain?)
     knl = lp.prioritize_loops(knl, "tt,tparity,tx,itt,itx")
 
-    # {{{ Manually apply transform map to dependency and add it to knl
-
-    # NOTE: This will later occur inside map_domain when dependencies are updated
-    # during transformation, and this test will be updated accordingly
+    # {{{ Create expected dependency
 
     # Prep transform map to be applied to dependency
     from loopy.schedule.checker.utils import (
@@ -2105,10 +2101,6 @@ def test_map_domain_with_dependencies():
     mapped_dep_map = append_mark_to_isl_map_var_names(
         mapped_dep_map, dt.in_, BEFORE_MARK)
 
-    # Add dep to kernel
-    knl = lp.add_stmt_inst_dependency(
-        knl, stmt_after, stmt_before, mapped_dep_map)
-
     # }}}
 
     # Get a linearization
@@ -2124,7 +2116,7 @@ def test_map_domain_with_dependencies():
 
     assert not unsatisfied_deps
 
-    # }}}
+# }}}
 
 # }}}
 
