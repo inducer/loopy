@@ -1977,13 +1977,17 @@ def map_domain(kernel, isl_map, within=None):
                 for dt in dim_types
                 for i in range(isl_map.dim(dt))
                 ]
+        # (order doesn't matter in s_names/map_names,
+        # _align_dim_type just converts these to sets
+        # to determine which names are in both the obj and template,
+        # not sure why this isn't just handled inside _align_dim_type)
         aligned_map = _align_dim_type(
                 dim_type.param,
                 isl_map, map_with_s_domain, False,
                 map_names, s_names)
         aligned_map = _align_dim_type(
                 dim_type.in_,
-                isl_map, map_with_s_domain, False,
+                aligned_map, map_with_s_domain, False,
                 map_names, s_names)
         # Old code
         """
