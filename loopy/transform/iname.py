@@ -2140,6 +2140,53 @@ def map_domain(kernel, isl_map, within=None):
 
     new_domains = [process_set(dom) for dom in kernel.domains]
 
+    # {{{ update dependencies
+
+    # Prep transform map to be applied to dependency
+    from loopy.transform.instruction import map_dependency_maps
+    from loopy.schedule.checker.utils import (
+        insert_and_name_isl_dims,
+        add_eq_isl_constraint_from_names,
+    )
+    from loopy.schedule.checker.schedule import (
+        BEFORE_MARK,
+        STATEMENT_VAR_NAME,
+    )
+    dt = isl.dim_type
+
+    # Insert 'statement' dim into transform map
+    dep_transform_map = insert_and_name_isl_dims(
+            isl_map, dt.in_, [STATEMENT_VAR_NAME+BEFORE_MARK], 0)
+    dep_transform_map = insert_and_name_isl_dims(
+            dep_transform_map, dt.out, [STATEMENT_VAR_NAME], 0)
+    # Add stmt = stmt' constraint
+    dep_transform_map = add_eq_isl_constraint_from_names(
+        dep_transform_map, STATEMENT_VAR_NAME, STATEMENT_VAR_NAME+BEFORE_MARK)
+
+    def _apply_transform_map_to_depender(dep_map):
+        # Apply transform map to dep output dims
+        return dep_map.apply_range(dep_transform_map)
+
+    def _apply_transform_map_to_dependee(dep_map):
+        from loopy.schedule.checker.utils import (
+            append_mark_to_isl_map_var_names,
+        )
+        # Apply transform map to dep input dims (and re-insert BEFORE_MARK)
+        return append_mark_to_isl_map_var_names(
+            dep_map.apply_domain(dep_transform_map), dt.in_, BEFORE_MARK)
+
+    # TODO figure out proper way to create false match condition
+    false_id_match = "id:false and (not id:false)"
+    #false_id_match = "not id:*"
+    kernel = map_dependency_maps(
+        kernel, _apply_transform_map_to_depender,
+        stmt_match_depender=within, stmt_match_dependee=false_id_match)
+    kernel = map_dependency_maps(
+        kernel, _apply_transform_map_to_dependee,
+        stmt_match_depender=false_id_match, stmt_match_dependee=within)
+
+    # }}}
+
     # {{{ update within_inames
 
     new_insns = []
