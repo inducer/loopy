@@ -1673,12 +1673,22 @@ def guess_arg_shape_if_requested(kernel, default_order):
     from loopy.kernel.array import ArrayBase
     from loopy.kernel.tools import guess_var_shape
 
+    var_names = []
     for arg in kernel.args:
         if isinstance(arg, ArrayBase) and arg.shape is lp.auto:
-            shape = guess_var_shape(kernel, arg.name)
+            var_names.append(arg.name)
 
-            if arg.shape is lp.auto:
-                arg = arg.copy(shape=shape)
+    if var_names:
+        shapes = guess_var_shape(kernel, var_names)
+    else:
+        shapes = []
+
+    count = 0
+    for arg in kernel.args:
+        if isinstance(arg, ArrayBase) and arg.shape is lp.auto:
+            shape = shapes[count]
+            count = count + 1
+            arg = arg.copy(shape=shape)
 
         new_args.append(arg)
 

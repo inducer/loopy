@@ -891,6 +891,9 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
         # }}}
 
+    if not new_temporaries and not new_or_updated_instructions:
+        return kernel
+
     new_temporary_variables = kernel.temporary_variables.copy()
     new_temporary_variables.update(new_temporaries)
 
@@ -1939,6 +1942,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
     domains = kernel.domains[:]
 
     temp_kernel = kernel
+    changed = False
 
     import loopy as lp
     while insn_queue:
@@ -2032,14 +2036,15 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                     domains=domains)
             temp_kernel = lp.replace_instruction_ids(
                     temp_kernel, insn_id_replacements)
-
+            changed = True
         else:
             # nothing happened, we're done with insn
             assert not new_insn_add_depends_on
 
             new_insns.append(insn)
 
-    kernel = kernel.copy(
+    if changed:
+        kernel = kernel.copy(
             instructions=new_insns,
             temporary_variables=new_temporary_variables,
             domains=domains)

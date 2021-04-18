@@ -809,7 +809,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         """
         Returns a :class:`frozenset` of the names of all the inames in the kernel.
         """
-        return _get_inames_from_domains(self.domains)
+        return frozenset(self.inames.keys())
 
     @memoize_method
     def all_params(self):

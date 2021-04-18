@@ -1053,7 +1053,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
             from cgen import ExpressionStatement
             return ExpressionStatement(
                     CExpression(self.get_c_expression_to_code_mapper(),
-                    in_knl_callable_as_call))
+                                in_knl_callable_as_call))
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
             lbound, ubound, inner):
