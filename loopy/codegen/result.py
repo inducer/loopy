@@ -106,7 +106,7 @@ class CodeGenerationResult(ImmutableRecord):
     """
 
     @staticmethod
-    def new(codegen_state, insn_id, ast, implemented_domain, entrypoint=None):
+    def new(codegen_state, insn_id, ast, implemented_domain):
         prg = GeneratedProgram(
                 name=codegen_state.gen_program_name,
                 is_device_program=codegen_state.is_generating_device_code,
@@ -134,8 +134,8 @@ class CodeGenerationResult(ImmutableRecord):
         return (
                 "".join(preamble_codes)
                 + "\n"
-                + "\n\n".join(str(hp.ast) for hp in
-                    self.host_programs.values()))
+                + "\n\n".join(str(hp.ast)
+                              for hp in self.host_programs.values()))
 
     def device_code(self):
         preamble_codes = process_preambles(getattr(self, "device_preambles", []))
@@ -149,7 +149,7 @@ class CodeGenerationResult(ImmutableRecord):
         preamble_codes = process_preambles(
                 getattr(self, "host_preambles", [])
                 +
-                list(getattr(self, "device_preambles", []))
+                getattr(self, "device_preambles", [])
                 )
 
         return (
@@ -202,7 +202,6 @@ class CodeGenerationResult(ImmutableRecord):
                 host_programs[e] = program
             else:
                 host_programs[codegen_state.kernel.name] = program
-                pass
             return self.copy(
                     host_programs=host_programs)
 
