@@ -292,7 +292,9 @@ class Program(ImmutableRecord):
 
     def __getitem__(self, name):
         """
-        Look up the resolved callable with identifier *name*.
+        For the callable named *name*, return a :class:`loopy.LoopKernel` if
+        it's a :class:`~loopy.kernel.function_interface.CallableKernel`
+        otherwise return the callable itself.
         """
         result = self.callables_table[name]
         if isinstance(result, CallableKernel):

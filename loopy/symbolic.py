@@ -803,12 +803,14 @@ class RuleArgument(LoopyExpressionBase):
 class ResolvedFunction(LoopyExpressionBase):
     """
     A function invocation whose definition is known in a :mod:`loopy` program.
-    Refer ref:`func-interface`.
+    A function is said to be *known* in a :class:`~loopy.Program` if it's
+    identifier maps to  :class:`~loopy.kernel.function_interface.InKernelCallable`
+    in :attr:`loopy.Program.callables_table`. Refer to :ref:`func-interface`.
 
     .. attribute:: function
 
-        An instance of :class:`pymbolic.primitives.Variable`,
-        an instance of :class:`loopy.library.reduction.ReductionOpFunction`
+        An instance of :class:`pymbolic.primitives.Variable` or
+        :class:`loopy.library.reduction.ReductionOpFunction`.
     """
     init_arg_names = ("function", )
 
