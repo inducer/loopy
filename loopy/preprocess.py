@@ -1964,14 +1964,12 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
         # Run reduction expansion.
         from loopy.symbolic import Reduction
         if isinstance(insn.expression, Reduction) and nresults > 1:
-            # FIXME[KK]: With the new mapper emitting callables_table
-            # something should be done.
             new_expressions = cb_mapper(insn.expression,
-                    callables_table=callables_table,
+                    callables_table=cb_mapper.callables_table,
                     nresults=nresults)
         else:
             new_expressions = cb_mapper(insn.expression,
-                    callables_table=callables_table),
+                    callables_table=cb_mapper.callables_table),
 
         if generated_insns:
             # An expansion happened, so insert the generated stuff plus

@@ -25,6 +25,7 @@ from loopy.diagnostic import LoopyError
 
 from loopy.tools import update_persistent_hash
 from loopy.kernel import LoopKernel
+from loopy.kernel.array import ArrayBase
 from loopy.kernel.data import ValueArg, ArrayArg
 from loopy.symbolic import DependencyMapper, WalkMapper
 
@@ -167,7 +168,7 @@ class ExpressionIsScalarChecker(WalkMapper):
             self.rec(child)
 
     def map_variable(self, expr):
-        from loopy.kernel.data import TemporaryVariable, ArrayArg
+        from loopy.kernel.data import TemporaryVariable, ArrayArg, auto
         if expr.name in self.kernel.all_inames():
             # inames are scalar
             return
@@ -177,7 +178,7 @@ class ExpressionIsScalarChecker(WalkMapper):
 
         if var is not None:
             if isinstance(var, (ArrayArg, TemporaryVariable)) and (
-                    var.shape != ()):
+                    var.shape != () and var.shape is not auto):
                 raise LoopyError("Array regions can only passed as sub-array refs.")
 
     def map_slice(self, expr):
@@ -792,7 +793,7 @@ class CallableKernel(InKernelCallable):
 
         for arg in subkernel.args:
             kw = arg.name
-            if isinstance(arg, ArrayArg):
+            if isinstance(arg, ArrayBase):
                 arg_id_to_descr[kw] = (
                         ArrayArgDescriptor(shape=arg.shape,
                                            dim_tags=arg.dim_tags,

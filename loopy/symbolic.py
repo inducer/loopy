@@ -293,7 +293,7 @@ class StringifyMapper(StringifyMapperBase):
 
     def map_resolved_function(self, expr, prec):
         # underlining a resolved call
-        return "\u0332".join(expr.name)
+        return "\u0332".join(str(expr.function))
 
     def map_sub_array_ref(self, expr, prec):
         return "[{inames}]: {subscr}".format(

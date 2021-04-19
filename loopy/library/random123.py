@@ -167,6 +167,7 @@ class Random123Callable(ScalarCallable):
     """
     Records information about for the random123 functions.
     """
+    fields = ScalarCallable.fields | {"target"}
 
     def __init__(self, name, arg_id_to_dtype=None,
             arg_id_to_descr=None, name_in_target=None, target=None):

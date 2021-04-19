@@ -1084,6 +1084,9 @@ def parse_domains(domains, defines):
 
         result.append(dom)
 
+    if result == []:
+        result = [isl.BasicSet("{:}")]
+
     return result
 
 # }}}
@@ -2057,7 +2060,7 @@ class SliceToInameReplacer(IdentityMapper):
 
             space = space.add_dims(dim_type.param, len(args_as_params_for_domains))
             for i, arg in enumerate(args_as_params_for_domains):
-                space = space.set_dim_name(dim_type.param, i, arg.name)
+                space = space.set_dim_name(dim_type.param, i, arg)
 
             iname_set = isl.BasicSet.universe(space)
 

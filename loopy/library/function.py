@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 from loopy.kernel.function_interface import ScalarCallable
 from loopy.diagnostic import LoopyError
+from loopy.types import NumpyType
 import numpy as np
 
 
@@ -50,7 +51,7 @@ class IndexOfCallable(ScalarCallable):
         new_arg_id_to_dtype = {i: dtype
                                for i, dtype in arg_id_to_dtype.items()
                                if dtype is not None}
-        new_arg_id_to_dtype[-1] = np.int32
+        new_arg_id_to_dtype[-1] = NumpyType(np.int32)
 
         return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype),
                 callables_table)
