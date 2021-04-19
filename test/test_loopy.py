@@ -1563,8 +1563,8 @@ def test_call_with_options():
         "f() {id=init}"
         )
 
-    from library_for_test import no_ret_f_mangler
-    knl = lp.register_function_manglers(knl, [no_ret_f_mangler])
+    from library_for_test import NoRetFunction
+    knl = lp.register_callable(knl, "f", NoRetFunction("f"))
 
     print(lp.generate_code_v2(knl).device_code())
 
@@ -2826,7 +2826,7 @@ def test_shape_mismatch_check(ctx_factory):
     a = np.random.rand(10, 10).astype(np.float32)
     b = np.random.rand(10).astype(np.float32)
 
-    if prg.options.skip_arg_checks:
+    if prg["loopy_kernel"].options.skip_arg_checks:
         pytest.skip("args checks disabled, cannot check")
 
     with pytest.raises(TypeError, match="strides mismatch"):
@@ -3101,16 +3101,16 @@ def test_deps_from_conditionals():
                 result = result + simul_reduce(sum, i, i*i)
                 result = result + simul_reduce(sum, i, 2*i*i)
             end
-            """)
+            """, name="lpy_knl")
     ppknl = lp.preprocess_kernel(knl)
 
     # accumulator initializers must be dependency-less
     assert all(not insn.depends_on
-            for insn in ppknl.instructions
+            for insn in ppknl["lpy_knl"].instructions
             if "init" in insn.id)
     # accumulator initializers must not have inherited the predicates
     assert all(not insn.predicates
-            for insn in ppknl.instructions
+            for insn in ppknl["lpy_knl"].instructions
             if "init" in insn.id)
 
     # Ensure valid linearization exists: No valid linearization unless the
@@ -3149,7 +3149,7 @@ def test_cached_written_variables_doesnt_carry_over_invalidly():
     knl2 = loads(dumps(knl))
 
     knl2 = lp.remove_instructions(knl2, {"write_b"})
-    assert "b" not in knl2.get_written_variables()
+    assert "b" not in knl2["loopy_kernel"].get_written_variables()
 
 
 if __name__ == "__main__":

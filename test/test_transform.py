@@ -125,38 +125,37 @@ def test_to_batched(ctx_factory):
 def test_to_batched_temp(ctx_factory):
     ctx = ctx_factory()
 
-    prog = lp.make_kernel(
-         """ { [i,j]: 0<=i,j<n } """
+    knl = lp.make_kernel(
+         """ { [i,j]: 0<=i,j<n } """,
          """ cnst = 2.0
          out[i] = sum(j, cnst*a[i,j]*x[j])""",
          [lp.TemporaryVariable(
              "cnst",
              dtype=np.float32,
              shape=(),
-             address_space=lp.AddressSpace.PRIVATE), "..."],
-         name="test_to_batch")
-    prog = lp.add_and_infer_dtypes(prog, dict(out=np.float32,
+             address_space=lp.AddressSpace.PRIVATE), "..."])
+    knl = lp.add_and_infer_dtypes(knl, dict(out=np.float32,
                                             x=np.float32,
                                             a=np.float32))
-    ref_prog = lp.make_kernel(
+    ref_knl = lp.make_kernel(
          """ { [i,j]: 0<=i,j<n } """,
          """out[i] = sum(j, 2.0*a[i,j]*x[j])""")
-    ref_prog = lp.add_and_infer_dtypes(ref_prog, dict(out=np.float32,
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, dict(out=np.float32,
                                                     x=np.float32,
                                                     a=np.float32))
 
-    bprog = lp.to_batched(prog, "nbatches", "out,x")
-    bref_prog = lp.to_batched(ref_prog, "nbatches", "out,x")
+    bknl = lp.to_batched(knl, "nbatches", "out,x")
+    bref_knl = lp.to_batched(ref_knl, "nbatches", "out,x")
 
     # checking that cnst is not being bathced
-    assert bprog["test_to_batch"].temporary_variables["cnst"].shape == ()
+    assert bknl["loopy_kernel"].temporary_variables["cnst"].shape == ()
 
     a = np.random.randn(5, 5)
     x = np.random.randn(7, 5)
 
     # Checking that the program compiles and the logic is correct
     lp.auto_test_vs_ref(
-            bref_prog, ctx, bprog,
+            bref_knl, ctx, bknl,
             parameters=dict(a=a, x=x, n=5, nbatches=7))
 
 
@@ -671,12 +670,12 @@ def test_add_inames_for_unused_hw_axes(ctx_factory):
 
     knl = lp.add_inames_for_unused_hw_axes(knl)
 
-    assert knl.id_to_insn["init_alpha"].within_inames == frozenset(["i_inner",
-        "i_outer", "j_outer", "j_inner"])
-    assert knl.id_to_insn["a_fetch_rule"].within_inames == frozenset(["i_inner",
-        "i_outer", "j_outer", "j_inner"])
-    assert knl.id_to_insn["b_fetch_rule"].within_inames == frozenset(["i_inner",
-        "i_outer", "j_outer", "j_inner"])
+    assert (knl["rank_one"].id_to_insn["init_alpha"].within_inames
+            == frozenset(["i_inner", "i_outer", "j_outer", "j_inner"]))
+    assert (knl["rank_one"].id_to_insn["a_fetch_rule"].within_inames
+            == frozenset(["i_inner", "i_outer", "j_outer", "j_inner"]))
+    assert (knl["rank_one"].id_to_insn["b_fetch_rule"].within_inames
+            == frozenset(["i_inner", "i_outer", "j_outer", "j_inner"]))
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
             op_count=[np.dtype(dtype).itemsize*n**2/1e9], op_label=["GBytes"],
@@ -736,12 +735,13 @@ def test_rename_argument_with_assumptions():
     knl = lp.assume(knl, "n_old=10")
 
     knl = lp.rename_argument(knl, "n_old", "n_new")
+    assumptions = knl["loopy_kernel"].assumptions
 
-    assert "n_old" not in knl.assumptions.get_var_dict()
-    assert "n_new" in knl.assumptions.get_var_dict()
+    assert "n_old" not in assumptions.get_var_dict()
+    assert "n_new" in assumptions.get_var_dict()
     assert (
-            (knl.assumptions & isl.BasicSet("[n_new]->{: n_new=10}"))
-            == knl.assumptions)
+            (assumptions & isl.BasicSet("[n_new]->{: n_new=10}"))
+            == assumptions)
 
 
 def test_tag_iname_with_match_pattern():
@@ -753,6 +753,7 @@ def test_tag_iname_with_match_pattern():
             """)
 
     knl = lp.tag_inames(knl, "i*:unr")
+    knl = knl["loopy_kernel"]
     i0_tag, = knl.inames["i0"].tags
     i1_tag, = knl.inames["i1"].tags
 
@@ -778,6 +779,7 @@ def test_custom_iname_tag():
             """)
     knl = lp.tag_inames(knl, {"ifuzz0": ElementLoopTag(), "ifuzz1": DOFLoopTag()})
 
+    knl = knl["loopy_kernel"]
     ifuzz0_tag, = knl.inames["ifuzz0"].tags
     ifuzz1_tag, = knl.inames["ifuzz1"].tags
 

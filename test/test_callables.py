@@ -223,9 +223,6 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
 
     knl = lp.set_options(knl, "return_dict")
 
-    gsize, lsize = knl["caller"].get_grid_size_upper_bounds_as_exprs(
-            knl.callables_table)
-
     if inline:
         knl = lp.inline_callable_kernel(knl, "linear_combo")
 
@@ -234,8 +231,6 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
     x_host = x_dev.get()
     y_host = y_dev.get()
 
-    assert gsize == (4, 1)
-    assert lsize == (1, 4)
     assert np.linalg.norm(2*x_host+3*y_host-out["z"].get())/np.linalg.norm(
             2*x_host+3*y_host) < 1e-15
 
