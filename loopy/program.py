@@ -73,6 +73,14 @@ def find_in_knl_callable_from_identifier(
     return None
 
 
+def _is_a_reduction_op(expr):
+    if isinstance(expr, ResolvedFunction):
+        return _is_a_reduction_op(expr.function)
+
+    from loopy.library.reduction import ReductionOpFunction
+    return isinstance(expr, ReductionOpFunction)
+
+
 class CallableResolver(RuleAwareIdentityMapper):
     """
     Resolves callables in expressions and records the names of the calls
@@ -98,7 +106,14 @@ class CallableResolver(RuleAwareIdentityMapper):
 
     def map_call(self, expr, expn_state):
         from loopy.symbolic import parse_tagged_name
-        name, tag = parse_tagged_name(expr.function)
+
+        if not _is_a_reduction_op(expr.function):
+            name, tag = parse_tagged_name(expr.function)
+        else:
+            if isinstance(expr.function, ResolvedFunction):
+                name = expr.function.function
+            else:
+                name = expr.function
 
         if name in self.known_callables:
             params = tuple(self.rec(par, expn_state) for par in expr.parameters)
@@ -655,11 +670,6 @@ def make_program(kernel):
     callable kernel.
     """
 
-    # get the program from program callables info
-    #FIXME:(For KK): do we need to register the current kernel in
-    # func_id_to_in_knl_callable_mappers
-    #FIXME(For inducer): Deriving the target of this program from the kernel's
-    # target.
     program = Program(
             callables_table={
                 kernel.name: CallableKernel(kernel)},

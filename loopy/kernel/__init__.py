@@ -264,7 +264,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
             applied_iname_rewrites=None,
             cache_manager=None,
-            index_dtype=np.int32,
+            index_dtype=None,
             options=None,
 
             state=KernelState.INITIAL,
@@ -323,6 +323,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             inames = {
                 name: inames.get(name, Iname(name, frozenset()))
                 for name in _get_inames_from_domains(domains)}
+
+        if index_dtype is None:
+            index_dtype = np.int32
 
         # }}}
 
@@ -1070,9 +1073,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         from loopy.kernel.function_interface import (CallableKernel,
                 get_kw_pos_association)
         from loopy.isl_helpers import subst_into_pwaff
+        from loopy.symbolic import ResolvedFunction
 
         for insn in self.instructions:
-            if isinstance(insn, CallInstruction):
+            if isinstance(insn, CallInstruction) and isinstance(
+                    insn.expression.function, ResolvedFunction):
                 clbl = callables_table[insn.expression.function.name]
                 if isinstance(clbl, CallableKernel):
                     _, pos_to_kw = get_kw_pos_association(clbl.subkernel)
