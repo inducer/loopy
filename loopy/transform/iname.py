@@ -1890,7 +1890,7 @@ def _find_aff_subst_from_map(iname, isl_map):
     raise LoopyError("no suitable equation for '%s' found" % iname)
 
 
-def map_domain(kernel, isl_map, within=None):
+def map_domain(kernel, isl_map, within=None, rename_after={}):
     # FIXME: Express _split_iname_backend in terms of this
     #   Missing/deleted for now:
     #     - slab processing
@@ -2047,6 +2047,24 @@ def map_domain(kernel, isl_map, within=None):
 
     kernel = ins.map_kernel(kernel)
     kernel = rule_mapping_context.finish_kernel(kernel)
+
+    # {{{ Rename inames according to rename_after dict
+
+    # This is currently an option because various isl operations fail when map dim
+    # names are not unique, so even if someone wants their transformation map to keep
+    # one of the inames unchanged, they must give it a new name
+    # in their map, e.g., "[x, t] -> [x_, t_outer, t_inner] : x_ = x ..." (see
+    # test_map_domain_vs_split_iname()). Currently, they can't
+    # simply exclude that iname from the transformation map because, as stated in
+    # the error above, all domains must either involve all or none of the
+    # transform map domain inames. This renaming option lets them, e.g. switch
+    # an iname back to its original name.
+
+    # TODO come up with better solution for this
+    for old_iname, new_iname in rename_after.items():
+        kernel = rename_iname(kernel, old_iname, new_iname, within=within)
+
+    # }}}
 
     return kernel
 
