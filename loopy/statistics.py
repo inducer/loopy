@@ -185,7 +185,6 @@ class ToCountMap:
     .. automethod:: group_by
     .. automethod:: to_bytes
     .. automethod:: sum
-    .. automethod:: eval_and_sum
 
     """
 
@@ -463,7 +462,9 @@ class ToCountMap:
 
 class ToCountPolynomialMap(ToCountMap):
     """Maps any type of key to a :class:`islpy.PwQPolynomial` or a
-    :class:`GuardedPwQPolynomial`.
+    :class:`~loopy.statistics.GuardedPwQPolynomial`.
+
+    .. automethod:: eval_and_sum
     """
 
     def __init__(self, space, count_map=None):
