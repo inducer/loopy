@@ -628,7 +628,8 @@ def test_incomplete_entrypoint_raises_type_inf_failure():
 
 
 def test_callees_with_gbarriers_are_inlined(ctx_factory):
-    queue = cl.CommandQueue(ctx_factory())
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
 
     ones_and_zeros = lp.make_function(
             "{[i, j]: 0<=i<6 and 0<=j<3}",
@@ -655,7 +656,8 @@ def test_callees_with_gbarriers_are_inlined(ctx_factory):
 
 
 def test_inlining_with_indirections(ctx_factory):
-    queue = cl.CommandQueue(ctx_factory())
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
 
     ones_and_zeros = lp.make_function(
             "{[i, j]: 0<=i<6 and 0<=j<3}",
@@ -686,7 +688,8 @@ def test_inlining_with_indirections(ctx_factory):
 
 
 def test_inlining_with_callee_domain_param(ctx_factory):
-    queue = cl.CommandQueue(ctx_factory())
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
 
     fill2 = lp.make_function(
             "{[i]: 0<=i<n}",
