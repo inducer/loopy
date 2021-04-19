@@ -803,8 +803,8 @@ class RuleArgument(LoopyExpressionBase):
 class ResolvedFunction(LoopyExpressionBase):
     """
     A function invocation whose definition is known in a :mod:`loopy` program.
-    A function is said to be *known* in a :class:`~loopy.Program` if it's
-    identifier maps to  :class:`~loopy.kernel.function_interface.InKernelCallable`
+    A function is said to be *known* in a :class:`~loopy.Program` if its
+    identifier maps to  an :class:`~loopy.kernel.function_interface.InKernelCallable`
     in :attr:`loopy.Program.callables_table`. Refer to :ref:`func-interface`.
 
     .. attribute:: function
