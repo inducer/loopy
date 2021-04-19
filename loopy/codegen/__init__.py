@@ -687,10 +687,10 @@ def generate_code_v2(program):
 
     for name, clbl in program.callables_table.items():
         if isinstance(clbl, CallableKernel):
-            from loopy.schedule import get_one_scheduled_kernel
+            from loopy.schedule import get_one_linearized_kernel
             knl = clbl.subkernel
             if knl.schedule is None:
-                knl = get_one_scheduled_kernel(
+                knl = get_one_linearized_kernel(
                             knl, program.callables_table)
             new_callables[name] = clbl.copy(subkernel=knl)
         elif isinstance(clbl, ScalarCallable):

@@ -2141,7 +2141,7 @@ def get_one_scheduled_kernel(kernel, callables_table):
         kernel, "get_one_scheduled_kernel_deprecated",
         "get_one_scheduled_kernel is deprecated. "
         "Use get_one_linearized_kernel instead.",
-        DeprecationWarning)
+        DeprecationWarning, stacklevel=2)
     return get_one_linearized_kernel(kernel, callables_table)
 
 

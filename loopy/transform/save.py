@@ -751,8 +751,8 @@ def save_and_reload_temporaries(program, entrypoint=None):
 
     if not knl.schedule:
         program = lp.preprocess_program(program)
-        from loopy.schedule import get_one_scheduled_kernel
-        knl = get_one_scheduled_kernel(program[entrypoint],
+        from loopy.schedule import get_one_linearized_kernel
+        knl = get_one_linearized_kernel(program[entrypoint],
                 program.callables_table)
 
     assert knl.schedule is not None
