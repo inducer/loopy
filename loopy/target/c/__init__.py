@@ -423,10 +423,10 @@ class CFamilyTarget(TargetBase):
         return self.get_dtype_registry().dtype_to_ctype(dtype)
 
     def get_kernel_executor_cache_key(self, *args, **kwargs):
-        return None  # TODO: ???
+        raise NotImplementedError
 
     def get_kernel_executor(self, knl, *args, **kwargs):
-        raise NotImplementedError()
+        raise NotImplementedError
 
     # }}}
 
@@ -1205,9 +1205,14 @@ class ExecutableCTarget(CTarget):
         from loopy.target.c.c_execution import CCompiler
         self.compiler = compiler or CCompiler()
 
-    def get_kernel_executor(self, knl, *args, **kwargs):
+    def get_kernel_executor_cache_key(self, *args, **kwargs):
+        # This is for things like the context in OpenCL. There is no such
+        # thing that CPU JIT is specific to.
+        return None
+
+    def get_kernel_executor(self, prg, *args, **kwargs):
         from loopy.target.c.c_execution import CKernelExecutor
-        return CKernelExecutor(knl, entrypoint=kwargs.pop("entrypoint"),
+        return CKernelExecutor(prg, entrypoint=kwargs.pop("entrypoint"),
                 compiler=self.compiler)
 
     def get_host_ast_builder(self):
