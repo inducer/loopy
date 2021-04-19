@@ -472,14 +472,17 @@ class CMathCallable(ScalarCallable):
         # {{{ (abs|max|min) -> (fabs|fmax|fmin)
 
         if name in ["abs", "min", "max"]:
-            name = "f" + name
+            dtype = np.find_common_type(
+                [], [dtype.numpy_dtype for dtype in arg_id_to_dtype.values()])
+            if dtype.kind == "f":
+                name = "f" + name
 
         # }}}
 
         # unary functions
         if name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
                     "tan", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor",
-                    "erf", "erfc"]:
+                    "erf", "erfc", "abs", "real", "imag"]:
 
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 0:
@@ -510,6 +513,12 @@ class CMathCallable(ScalarCallable):
             else:
                 raise LoopyTypeError("{} does not support type {}".format(name,
                     dtype))
+
+            if dtype.kind == "c":
+                name = "c" + name
+
+            if name in ["abs", "real", "imag"]:
+                dtype = real_dtype
 
             return (
                     self.copy(name_in_target=name,
@@ -589,7 +598,7 @@ def get_c_callables():
     cmath_ids = ["abs", "acos", "asin", "atan", "cos", "cosh", "sin",
                  "sinh", "pow", "atan2", "tanh", "exp", "log", "log10",
                  "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
-                 "fabs", "tan", "erf", "erfc", "isnan"]
+                 "fabs", "tan", "erf", "erfc", "isnan", "real", "imag"]
 
     return {id_: CMathCallable(id_) for id_ in cmath_ids}
 
