@@ -116,6 +116,7 @@ intersphinx_mapping = {
     "https://documen.tician.de/cgen": None,
     "https://documen.tician.de/pymbolic": None,
     "https://documen.tician.de/pytools": None,
+    "https://pyrsistent.readthedocs.io/en/latest/": None,
     }
 
 autoclass_content = "class"
