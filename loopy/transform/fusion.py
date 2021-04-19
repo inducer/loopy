@@ -256,9 +256,6 @@ def _fuse_two_kernels(kernela, kernelb):
                 "substitution",
                 kernela.substitutions,
                 kernelb.substitutions),
-            function_manglers=_ordered_merge_lists(
-                kernela.function_manglers,
-                kernelb.function_manglers),
             symbol_manglers=_ordered_merge_lists(
                 kernela.symbol_manglers,
                 kernelb.symbol_manglers),

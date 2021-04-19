@@ -303,8 +303,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if cache_manager is None:
             from loopy.kernel.tools import SetOperationCacheManager
             cache_manager = SetOperationCacheManager()
-        if index_dtype is None:
-            index_dtype = np.int32
 
         if iname_to_tags is not None:
             warn("Providing iname_to_tags is deprecated, pass inames instead. "
@@ -1048,10 +1046,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     def get_grid_sizes_for_insn_ids_as_dicts(self, insn_ids,
             callables_table, ignore_auto=False):
         """
-        Returns a tuple of ``(global_sizes, local_sizes)``, where
-        ``global_sizes``, ``local_sizes`` are the grid sizes that could
-        accommodate all of *insn_ids*. The grid sizes as a dict from the axis
-        index to the corresponding grid size.
+        Returns a tuple of (global_sizes, local_sizes), where global_sizes,
+        local_sizes are the grid sizes accommodating all of *insn_ids*. The grid
+        sizes are a dict from the axis index to the corresponding grid size.
         """
         all_inames_by_insns = set()
         for insn_id in insn_ids:
