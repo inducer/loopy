@@ -45,6 +45,8 @@ __doc__ = """
 .. autoclass:: MaxReductionOperation
 
 .. autoclass:: MinReductionOperation
+
+.. autoclass:: ReductionOpFunction
 """
 
 

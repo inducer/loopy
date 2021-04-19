@@ -49,6 +49,7 @@ __doc__ = """
 .. autoclass:: Program
 
 .. autofunction:: make_program
+
 .. autofunction:: iterate_over_kernels_if_given_program
 
 """
@@ -158,11 +159,17 @@ class Program(ImmutableRecord):
         A :class:`frozenset` of the names of the kernels which
         could be called from the host.
 
+    .. attribute:: default_entrypoint
+
+        The :class:`~loopy.LoopKernel` representing the main entrypoint
+        of the program, if defined. Currently, this attribute may only be
+        accessed if there is exactly one entrypoint in the program.
+
     .. attribute:: callables_table
 
         An instance of :class:`pyrsistent.PMap` mapping the function
         identifiers in a kernel to their associated instances of
-        :class:`loopy.kernel.function_interface.InKernelCallable`.
+        :class:`~loopy.kernel.function_interface.InKernelCallable`.
 
     .. attribute:: target
 
@@ -174,17 +181,16 @@ class Program(ImmutableRecord):
         TargetBase, function_indentifier: str)`` that would return an instance
         of :class:`loopy.kernel.function_interface.InKernelCallable` or *None*.
 
+    .. automethod:: copy
+    .. automethod:: __getitem__
+
     .. note::
 
         - To create an instance of :class:`loopy.Program`, it is recommended to
-            go through :method:`loopy.make_kernel`.
+           go through :func:`loopy.make_kernel`.
         - This data structure and its attributes should be considered
-          immutable, any modifications should be done through :method:`copy`.
+          immutable, any modifications should be done through :meth:`~Program.copy`.
 
-    .. automethod:: __init__
-    .. method:: __getitem__
-
-        Look up the resolved callable with identifier *name*.
     """
     def __init__(self,
             entrypoints=frozenset(),
@@ -291,11 +297,25 @@ class Program(ImmutableRecord):
             return self.copy(callables_table=new_callables)
 
     def __getitem__(self, name):
+        """
+        For the callable named *name*, return a :class:`loopy.LoopKernel` if
+        it's a :class:`~loopy.kernel.function_interface.CallableKernel`
+        otherwise return the callable itself.
+        """
         result = self.callables_table[name]
         if isinstance(result, CallableKernel):
             return result.subkernel
         else:
             return result
+
+    @property
+    def default_entrypoint(self):
+        if len(self.entrypoints) == 1:
+            entrypoint, = self.entrypoints
+            return self[entrypoint]
+        else:
+            raise ValueError("Program has multiple possible entrypoints. The "
+                    "default entry point kernel is not uniquely determined.")
 
     def __call__(self, *args, **kwargs):
         entrypoint = kwargs.get("entrypoint", None)
@@ -303,15 +323,18 @@ class Program(ImmutableRecord):
         if entrypoint is None:
             # did not receive an entrypoint for the program to execute
             if len(self.entrypoints) == 1:
-                entrypoint, = list(self.entrypoints)
+                entrypoint, = self.entrypoints
             else:
                 raise TypeError("Program.__call__() missing 1 required"
-                        " keyword argument: 'entrypoint'")
+                        " keyword argument: 'entrypoint'. "
+                        "(Multiple possible entrypoints are present in the "
+                        "program.)")
 
         if entrypoint not in self.entrypoints:
-            raise LoopyError("'{}' not in list possible entrypoints supplied to"
-                    " the program. Maybe you want to invoke 'with_entrypoints'"
-                    " before calling the program.".format(entrypoint))
+            raise LoopyError(f"'{entrypoint}' not in list of possible entrypoints "
+                    "for the program. "
+                    "Maybe you want to invoke 'with_entrypoints' before "
+                    "calling the program?")
 
         kwargs["entrypoint"] = entrypoint
 
