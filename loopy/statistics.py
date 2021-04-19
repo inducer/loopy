@@ -185,7 +185,6 @@ class ToCountMap:
     .. automethod:: group_by
     .. automethod:: to_bytes
     .. automethod:: sum
-    .. automethod:: eval_and_sum
 
     """
 
@@ -463,7 +462,9 @@ class ToCountMap:
 
 class ToCountPolynomialMap(ToCountMap):
     """Maps any type of key to a :class:`islpy.PwQPolynomial` or a
-    :class:`GuardedPwQPolynomial`.
+    :class:`~loopy.statistics.GuardedPwQPolynomial`.
+
+    .. automethod:: eval_and_sum
     """
 
     def __init__(self, space, count_map=None):
@@ -2028,7 +2029,7 @@ def get_mem_access_map(program, numpy_types=None, count_redundant_work=False,
 def _get_synchronization_map_for_single_kernel(knl, callables_table,
         subgroup_size=None):
 
-    knl = lp.get_one_scheduled_kernel(knl, callables_table)
+    knl = lp.get_one_linearized_kernel(knl, callables_table)
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier,
             CallKernel, ReturnFromKernel, RunInstruction)

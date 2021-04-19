@@ -49,6 +49,7 @@ __doc__ = """
 .. autoclass:: Program
 
 .. autofunction:: make_program
+
 .. autofunction:: iterate_over_kernels_if_given_program
 
 """
@@ -168,7 +169,7 @@ class Program(ImmutableRecord):
 
         An instance of :class:`pyrsistent.PMap` mapping the function
         identifiers in a kernel to their associated instances of
-        :class:`loopy.kernel.function_interface.InKernelCallable`.
+        :class:`~loopy.kernel.function_interface.InKernelCallable`.
 
     .. attribute:: target
 
@@ -180,17 +181,16 @@ class Program(ImmutableRecord):
         TargetBase, function_indentifier: str)`` that would return an instance
         of :class:`loopy.kernel.function_interface.InKernelCallable` or *None*.
 
+    .. automethod:: copy
+    .. automethod:: __getitem__
+
     .. note::
 
         - To create an instance of :class:`loopy.Program`, it is recommended to
-            go through :method:`loopy.make_kernel`.
+           go through :func:`loopy.make_kernel`.
         - This data structure and its attributes should be considered
-          immutable, any modifications should be done through :method:`copy`.
+          immutable, any modifications should be done through :meth:`~Program.copy`.
 
-    .. automethod:: __init__
-    .. method:: __getitem__
-
-        Look up the resolved callable with identifier *name*.
     """
     def __init__(self,
             entrypoints=frozenset(),
@@ -297,6 +297,11 @@ class Program(ImmutableRecord):
             return self.copy(callables_table=new_callables)
 
     def __getitem__(self, name):
+        """
+        For the callable named *name*, return a :class:`loopy.LoopKernel` if
+        it's a :class:`~loopy.kernel.function_interface.CallableKernel`
+        otherwise return the callable itself.
+        """
         result = self.callables_table[name]
         if isinstance(result, CallableKernel):
             return result.subkernel
