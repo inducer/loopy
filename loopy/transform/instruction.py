@@ -145,6 +145,7 @@ def add_dependency(kernel, insn_match, depends_on):
 
 # {{{ remove_instructions
 
+@iterate_over_kernels_if_given_program
 def remove_instructions(kernel, insn_ids):
     """Return a new kernel with instructions in *insn_ids* removed.
 
