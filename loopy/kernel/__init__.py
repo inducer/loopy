@@ -1643,11 +1643,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return super().copy(**kwargs)
 
-    # forward compatibility with kernel callables
-    @property
-    def default_entrypoint(self):
-        return self
-
 # }}}
 
 # vim: foldmethod=marker
