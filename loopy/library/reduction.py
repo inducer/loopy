@@ -511,8 +511,14 @@ def parse_reduction_op(name):
 
     red_op_match = re.match(r"^([a-z]+)_([a-z0-9_]+)$", name)
     if red_op_match:
-        raise NotImplementedError("reductions with specified types are no longer "
-                "supported")
+        op_name = red_op_match.group(1)
+
+        if op_name in _REDUCTION_OPS:
+            from warnings import warn
+            warn("Reductions with forced result types are no longer supported. "
+                    f"Encountered '{name}', which might be one.",
+                    DeprecationWarning)
+            return None
 
     if name in _REDUCTION_OPS:
         return _REDUCTION_OPS[name]()
