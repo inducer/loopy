@@ -1607,7 +1607,7 @@ One way to evaluate these polynomials is with :meth:`islpy.PwQPolynomial.eval_wi
 grouping, and evaluating subsets of the counts. Suppose we want to know the
 total number of 32-bit operations of any kind. We can easily count these
 using functions :func:`loopy.ToCountMap.filter_by` and
-:func:`loopy.ToCountMap.eval_and_sum`:
+:func:`loopy.ToCountPolynomialMap.eval_and_sum`:
 
 .. doctest::
 

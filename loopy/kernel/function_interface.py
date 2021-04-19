@@ -30,15 +30,17 @@ from loopy.kernel.data import ValueArg, ArrayArg
 from loopy.symbolic import DependencyMapper, WalkMapper
 
 __doc__ = """
-
-.. currentmodule:: loopy
+.. currentmodule:: loopy.kernel.function_interface
 
 .. autoclass:: ValueArgDescriptor
-.. autoclass:: ArrayArgDescriptor
-.. autoclass:: InKernelCallable
-.. autoclass:: CallableKernel
-.. autoclass:: ScalarCallable
 
+.. autoclass:: ArrayArgDescriptor
+
+.. autoclass:: InKernelCallable
+
+.. autoclass:: CallableKernel
+
+.. autoclass:: ScalarCallable
 """
 
 
@@ -60,7 +62,7 @@ class ArrayArgDescriptor(ImmutableRecord):
     """
     Records information about an array argument to an in-kernel callable. To be
     passed to and returned from
-    :meth:`loopy.kernel.function_interface.InKernelCallable.with_descrs`, used for
+    :meth:`InKernelCallable.with_descrs`, used for
     matching shape and address space of caller and callee kernels.
 
     ..attribute:: shape
@@ -69,7 +71,7 @@ class ArrayArgDescriptor(ImmutableRecord):
 
     .. attribute:: address_space
 
-        An attribute of :class:`loopy.kernel.data.AddressSpace`.
+        An attribute of :class:`loopy.AddressSpace`.
 
     .. attribute:: dim_tags
 
@@ -332,14 +334,6 @@ class InKernelCallable(ImmutableRecord):
         A mapping which gives indicates the argument shape and ``dim_tags`` it
         would be responsible for generating code.
 
-    .. note::
-        - "``arg_id`` can either be an instance of :class:`int` integer
-          corresponding to the position of the argument or an instance of
-          :class:`str` corresponding to the name of keyword argument accepted
-          by the function.
-
-        - Negative "arg_id" values ``-i`` in the mapping attributes indicate
-        return value with (0-based) index *i*.
 
     .. automethod:: __init__
     .. automethod:: with_types
@@ -350,6 +344,17 @@ class InKernelCallable(ImmutableRecord):
     .. automethod:: emit_call
     .. automethod:: emit_call_insn
     .. automethod:: is_ready_for_codegen
+
+    .. note::
+
+        * "``arg_id`` can either be an instance of :class:`int` integer
+          corresponding to the position of the argument or an instance of
+          :class:`str` corresponding to the name of keyword argument accepted
+          by the function.
+
+        * Negative "arg_id" values ``-i`` in the mapping attributes indicate
+          return value with (0-based) index *i*.
+
     """
 
     fields = {"arg_id_to_dtype", "arg_id_to_descr"}
@@ -390,7 +395,7 @@ class InKernelCallable(ImmutableRecord):
         """
         :arg arg_id_to_descr: a mapping from argument identifiers (integers for
             positional arguments, names for keyword arguments) to
-            :class:`loopy.ArrayArgDescriptor` instances.  Unspecified/unknown
+            :class:`ArrayArgDescriptor` instances.  Unspecified/unknown
             descriptors are not represented in *arg_id_to_descr*.
 
             All the expressions in arg_id_to_descr must have variables that belong
@@ -411,8 +416,7 @@ class InKernelCallable(ImmutableRecord):
     def with_target(self, target):
         """
         Returns a copy of *self* with all the ``dtypes`` in
-        ``in_knl_callable.arg_id_to_dtype`` associated with the *target*. Refer
-        :meth:`loopy.types.LoopyType.with_target`.
+        ``in_knl_callable.arg_id_to_dtype`` associated with the *target*.
 
         :arg target: An instance of :class:`loopy.target.TargetBase`.
         """
@@ -498,6 +502,10 @@ class InKernelCallable(ImmutableRecord):
 class ScalarCallable(InKernelCallable):
     """
     An abstract interface the to a scalar callable encountered in a kernel.
+
+    .. automethod:: with_types
+
+    .. automethod:: with_descrs
 
     .. note::
 
@@ -654,21 +662,25 @@ class CallableKernel(InKernelCallable):
     """
     Records informations about a callee kernel. Also provides interface through
     member methods to make the callee kernel compatible to be called from a
-    caller kernel. The :meth:`loopy.register_callable_kernel` should be called
-    in order to initiate association between a function in caller kernel and
-    the callee kernel.
+    caller kernel.
 
     :meth:`CallableKernel.with_types` should be called in order to match
     the ``dtypes`` of the arguments that are shared between the caller and the
     callee kernel.
 
     :meth:`CallableKernel.with_descrs` should be called in order to match
-    :attr:`ArrayArgDescriptor.dim_tags`, :attr:`ArrayArgDescriptor.shape`,
-    :attr:`ArrayArgDescriptor.address_space`` of the arguments shared between the
-    caller and the callee kernel.
+    the arguments' shapes/strides across the caller and the callee kernel.
 
-    :meth:`CallableKernel.with_hw_axes` should be called to set the grid
-    sizes for the :attr:`subkernel` of the callable.
+    :meth:`CallableKernel.with_hw_axes_sizes` should be called to set the grid
+    sizes for the :attr:`CallableKernel.subkernel` of the callable.
+
+    .. attribute:: subkernel
+
+        :class:`~loopy.LoopKernel` which is being called.
+
+    .. automethod:: with_descrs
+    .. automethod:: with_types
+    .. automethod:: with_hw_axes_sizes
     """
 
     fields = {"subkernel", "arg_id_to_dtype", "arg_id_to_descr"}

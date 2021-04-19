@@ -763,10 +763,10 @@ class KernelExecutorBase:
             from loopy.preprocess import preprocess_program
             program = preprocess_program(program)
 
-            from loopy.schedule import get_one_scheduled_kernel
+            from loopy.schedule import get_one_linearized_kernel
             for e in program.entrypoints:
                 program = program.with_kernel(
-                    get_one_scheduled_kernel(program[e], program.callables_table))
+                    get_one_linearized_kernel(program[e], program.callables_table))
 
         return program
 
