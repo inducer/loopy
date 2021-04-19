@@ -1569,6 +1569,7 @@ class LoopyParser(ParserBase):
                     self.parse_expression(pstate, _PREC_UNARY))
 
         elif pstate.is_next(_openbracket):
+            rollback_pstate = pstate.copy()
             pstate.advance()
             pstate.expect_not_end()
             if pstate.is_next(_closebracket):
@@ -1578,11 +1579,14 @@ class LoopyParser(ParserBase):
 
             pstate.expect(_closebracket)
             pstate.advance()
-            pstate.expect(_colon)
-            pstate.advance()
-            subscript = self.parse_expression(pstate, _PREC_UNARY)
-            return SubArrayRef(swept_inames, subscript)
-
+            if pstate.is_next(_colon):
+                # pstate.expect(_colon):
+                pstate.advance()
+                subscript = self.parse_expression(pstate, _PREC_UNARY)
+                return SubArrayRef(swept_inames, subscript)
+            else:
+                pstate = rollback_pstate
+                return super().parse_prefix(rollback_pstate)
         else:
             return super().parse_prefix(pstate)
 
