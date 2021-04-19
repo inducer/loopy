@@ -2520,66 +2520,6 @@ def test_wildcard_dep_matching():
             {"insn1", "insn5"})
 
 
-def test_preamble_with_separate_temporaries(ctx_factory):
-    # create a function mangler
-
-    # and finally create a test
-    n = 5
-    # for each entry come up with a random number of data points
-    num_data = np.asarray(np.random.randint(2, 10, size=n), dtype=np.int32)
-    # turn into offsets
-    offsets = np.asarray(np.hstack(([0], np.cumsum(num_data))), dtype=np.int32)
-    # create lookup data
-    lookup = np.empty(0)
-    for i in num_data:
-        lookup = np.hstack((lookup, np.arange(i)))
-    lookup = np.asarray(lookup, dtype=np.int32)
-    # and create data array
-    data = np.random.rand(np.product(num_data))
-
-    # make kernel
-    kernel = lp.make_kernel("{[i]: 0 <= i < n}",
-    """
-    for i
-        <>ind = indirect(offsets[i], offsets[i + 1], 1)
-        out[i] = data[ind]
-    end
-    """,
-    [lp.GlobalArg("out", shape=("n",)),
-     lp.TemporaryVariable(
-        "offsets", shape=(offsets.size,), initializer=offsets,
-        address_space=lp.AddressSpace.GLOBAL,
-        read_only=True),
-     lp.GlobalArg("data", shape=(data.size,), dtype=np.float64)],
-    )
-
-    # fixt params, and add manglers / preamble
-    from testlib import (
-            SeparateTemporariesPreambleTestMangler,
-            SeparateTemporariesPreambleTestPreambleGenerator,
-            )
-    func_info = dict(
-            func_name="indirect",
-            func_arg_dtypes=(np.int32, np.int32, np.int32),
-            func_result_dtypes=(np.int32,),
-            arr=lookup
-            )
-
-    kernel = lp.fix_parameters(kernel, **{"n": n})
-    kernel = lp.register_preamble_generators(
-            kernel, [SeparateTemporariesPreambleTestPreambleGenerator(**func_info)])
-    kernel = lp.register_function_manglers(
-            kernel, [SeparateTemporariesPreambleTestMangler(**func_info)])
-
-    print(lp.generate_code(kernel)[0])
-    # and call (functionality unimportant, more that it compiles)
-    ctx = cl.create_some_context()
-    queue = cl.CommandQueue(ctx)
-    # check that it actually performs the lookup correctly
-    assert np.allclose(kernel(
-        queue, data=data.flatten("C"))[1][0], data[offsets[:-1] + 1])
-
-
 def test_arg_inference_for_predicates():
     prog = lp.make_kernel("{[i]: 0 <= i < 10}",
             """
