@@ -1547,9 +1547,8 @@ def test_call_with_no_returned_value(ctx_factory):
         [lp.CallInstruction((), p.Call(p.Variable("f"), ()))]
         )
 
-    from library_for_test import no_ret_f_mangler, no_ret_f_preamble_gen
-    knl = lp.register_function_manglers(knl, [no_ret_f_mangler])
-    knl = lp.register_preamble_generators(knl, [no_ret_f_preamble_gen])
+    from library_for_test import NoRetFunction
+    knl = lp.register_callable(knl, "f", NoRetFunction("f"))
 
     evt, _ = knl(queue)
 
