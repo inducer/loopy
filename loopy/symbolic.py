@@ -89,6 +89,8 @@ __doc__ = """
 .. autoclass:: ExpansionState
 
 .. autoclass:: RuleAwareIdentityMapper
+
+.. autoclass:: ResolvedFunction
 """
 
 
@@ -800,19 +802,13 @@ class RuleArgument(LoopyExpressionBase):
 
 class ResolvedFunction(LoopyExpressionBase):
     """
-    A function invocation whose definition is known in a :mod:`loopy` kernel.
-    Each instance of :class:`loopy.symbolic.ResolvedFunction` in an expression
-    points to an instance of
-    :class:`loopy.kernel.function_interface.InKernelCallable` through the
-    mapping :attr:`loopy.kernel.LoopKernel.scoped_functions`. Refer
-    :ref:`ref_scoped_function` for a slightly detailed explanation on scoped
-    functions.
+    A function invocation whose definition is known in a :mod:`loopy` program.
+    Refer ref:`func-interface`.
 
     .. attribute:: function
 
         An instance of :class:`pymbolic.primitives.Variable`,
-        :class:`loopy.library.reduction.ArgExtOp` or
-        :class:`loopy.library.reduction.SegmentedOp`.
+        an instance of :class:`loopy.library.reduction.ReductionOpFunction`
     """
     init_arg_names = ("function", )
 
