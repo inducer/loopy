@@ -152,7 +152,10 @@ class VectorizationInfo:
 
 
 class SeenFunction(ImmutableRecord):
-    """
+    """This is used to track functions that emerge late during code generation,
+    e.g. C functions to realize arithmetic. No connection with
+    :class:`~loopy.kernel.function_interface.InKernelCallable`.
+
     .. attribute:: name
     .. attribute:: c_name
     .. attribute:: arg_dtypes
