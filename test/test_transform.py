@@ -567,6 +567,84 @@ def test_nested_substs_in_insns(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
+# {{{ test_map_domain_vs_split_iname
+
+def test_map_domain_vs_split_iname():
+
+    # {{{ Make kernel
+
+    knl = lp.make_kernel(
+        [
+            "[nx,nt] -> {[x, t]: 0 <= x < nx and 0 <= t < nt}",
+            "[ni] -> {[i]: 0 <= i < ni}",
+        ],
+        """
+        a[x,t] = b[x,t]  {id=stmta}
+        c[x,t] = d[x,t]  {id=stmtc}
+        e[i] = f[i]
+        """,
+        name="wave_equation",
+        lang_version=(2018, 2),
+        )
+    knl = lp.add_and_infer_dtypes(knl, {"b,d,f": np.float32})
+    ref_knl = knl
+
+    # }}}
+
+    # {{{ Apply domain change mapping
+
+    knl_map_dom = ref_knl  # loop priority goes away, deps stay
+
+    # Create map_domain mapping:
+    import islpy as isl
+    transform_map = isl.BasicMap(
+        "[nx,nt] -> {[x, t] -> [x_, t_outer, t_inner]: "
+        "x = x_ and "
+        "0 <= t_inner < 32 and "
+        "32*t_outer + t_inner = t and "
+        "0 <= 32*t_outer + t_inner < nt}")
+
+    # Call map_domain to transform kernel
+    knl_map_dom = lp.map_domain(knl_map_dom, transform_map, rename_after={"x_": "x"})
+
+    # Prioritize loops (prio should eventually be updated in map_domain?)
+    knl_map_dom = lp.prioritize_loops(knl_map_dom, "x, t_outer, t_inner")
+
+    # Get a linearization
+    proc_knl_map_dom = lp.preprocess_kernel(knl_map_dom)
+    lin_knl_map_dom = lp.get_one_linearized_kernel(proc_knl_map_dom)
+
+    # }}}
+
+    # {{{ Split iname and see if we get the same result
+
+    knl_split_iname = ref_knl
+    knl_split_iname = lp.split_iname(knl_split_iname, "t", 32)
+    knl_split_iname = lp.prioritize_loops(knl_split_iname, "x, t_outer, t_inner")
+    proc_knl_split_iname = lp.preprocess_kernel(knl_split_iname)
+    lin_knl_split_iname = lp.get_one_linearized_kernel(proc_knl_split_iname)
+
+    from loopy.schedule.checker.utils import (
+        ensure_dim_names_match_and_align,
+    )
+    for d_map_domain, d_split_iname in zip(
+            knl_map_dom.domains, knl_split_iname.domains):
+        d_map_domain_aligned = ensure_dim_names_match_and_align(
+            d_map_domain, d_split_iname)
+        assert d_map_domain_aligned == d_split_iname
+
+    for litem_map_domain, litem_split_iname in zip(
+            lin_knl_map_dom.linearization, lin_knl_split_iname.linearization):
+        assert litem_map_domain == litem_split_iname
+
+    # Can't easily compare instructions because equivalent subscript
+    # expressions may have different orders
+
+    # }}}
+
+# }}}
+
+
 def test_diamond_tiling(ctx_factory, interactive=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
