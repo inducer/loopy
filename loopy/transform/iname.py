@@ -1952,7 +1952,12 @@ def map_domain(kernel, isl_map, within=None):
         var_dict = s.get_var_dict()
 
         overlap = old_inames & frozenset(var_dict)
-        if overlap and len(overlap) != len(old_inames):
+
+        if not overlap:
+            # inames in s are not present in transform map, don't change s
+            return s
+
+        if len(overlap) != len(old_inames):
             raise LoopyError("loop domain '%s' involves a part "
                     "of the map domain inames. Domains must "
                     "either involve all or none of the map domain "
