@@ -416,6 +416,11 @@ class TypeInferenceMapper(CombineMapper):
             kw_parameters = {}
 
         identifier = expr.function
+
+        if not isinstance(identifier, ResolvedFunction):
+            # function not resolved => exit
+            return []
+
         if isinstance(identifier, (Variable, ResolvedFunction)):
             identifier = identifier.name
 
