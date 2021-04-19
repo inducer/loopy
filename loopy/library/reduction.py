@@ -100,41 +100,24 @@ class ReductionOperation:
 
 
 class ScalarReductionOperation(ReductionOperation):
-    def __init__(self, forced_result_type=None):
-        """
-        :arg forced_result_type: Force the reduction result to be of this type.
-            May be a string identifying the type for the backend under
-            consideration.
-        """
-        self.forced_result_type = forced_result_type
-
     @property
     def arg_count(self):
         return 1
 
     def result_dtypes(self, arg_dtype):
-        if self.forced_result_type is not None:
-            raise NotImplementedError()
-            # return (self.parse_result_type(
-            #         kernel.target, self.forced_result_type),)
-
         if arg_dtype is None:
             return None
 
         return (arg_dtype,)
 
     def __hash__(self):
-        return hash((type(self), self.forced_result_type))
+        return hash((type(self),))
 
     def __eq__(self, other):
-        return (type(self) == type(other)
-                and self.forced_result_type == other.forced_result_type)
+        return type(self) == type(other)
 
     def __str__(self):
         result = type(self).__name__.replace("ReductionOperation", "").lower()
-
-        if self.forced_result_type is not None:
-            result = "{}<{}>".format(result, str(self.forced_result_type))
 
         return result
 
@@ -529,10 +512,13 @@ def parse_reduction_op(name):
     red_op_match = re.match(r"^([a-z]+)_([a-z0-9_]+)$", name)
     if red_op_match:
         op_name = red_op_match.group(1)
-        op_type = red_op_match.group(2)
 
         if op_name in _REDUCTION_OPS:
-            return _REDUCTION_OPS[op_name](op_type)
+            from warnings import warn
+            warn("Reductions with forced result types are no longer supported. "
+                    f"Encountered '{name}', which might be one.",
+                    DeprecationWarning)
+            return None
 
     if name in _REDUCTION_OPS:
         return _REDUCTION_OPS[name]()

@@ -103,13 +103,6 @@ class ExpressionToPythonMapper(StringifyMapper):
 
         str_parameters = [self.rec(par, PREC_NONE) for par in expr.parameters]
 
-        from loopy.codegen import SeenFunction
-        self.codegen_state.seen_functions.add(
-                SeenFunction(clbl.name,
-                             clbl.name_in_target,
-                             clbl.input_dtypes,
-                             clbl.result_dtypes))
-
         return "{}({})".format(clbl.name_in_target,
                                ", ".join(str_parameters))
 
