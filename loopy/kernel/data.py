@@ -475,8 +475,19 @@ class ConstantArg(ArrayBase, KernelArgument):
 
 class ImageArg(ArrayBase, KernelArgument):
     __doc__ = ArrayBase.__doc__
+
+    def __init__(self, *args, **kwargs):
+        if kwargs.pop("address_space", AddressSpace.GLOBAL) != AddressSpace.GLOBAL:
+            raise LoopyError("'address_space' for ImageArg must be GLOBAL.")
+        super().__init__(*args, **kwargs)
+
     min_target_axes = 1
     max_target_axes = 3
+
+    # Image Arg cannot be an output
+    is_output = False
+    is_input = True
+    address_space = AddressSpace.GLOBAL
 
     @property
     def dimensions(self):
