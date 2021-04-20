@@ -2298,7 +2298,7 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
 
     # {{{ Rename inames according to rename_after dict
 
-    # This is currently an option because various isl operations fail when map dim
+    # This renaming option exists because various isl operations fail when map dim
     # names are not unique, so even if someone wants their transformation map to keep
     # one of the inames unchanged, they must give it a new name
     # in their map, e.g., "[x, t] -> [x_, t_outer, t_inner] : x_ = x ..." (see
