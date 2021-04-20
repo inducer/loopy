@@ -395,6 +395,7 @@ def add_prefetch(program, *args, **kwargs):
 
 # {{{ change variable kinds
 
+@iterate_over_kernels_if_given_program
 def change_arg_to_image(kernel, name):
     new_args = []
     for arg in kernel.args:
