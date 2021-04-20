@@ -59,3 +59,13 @@ class SingleArgNoRetFunction(lp.ScalarCallable):
                     printf("Hi!\n");
                 }
                 """)
+
+
+def symbol_x(knl, name):
+    if name == "X":
+        from loopy.types import to_loopy_type
+        return to_loopy_type(np.float32), "X"
+
+
+def preamble_for_x(preamble_info):
+    yield("preamble_ten", r"#define X 10.0")

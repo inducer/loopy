@@ -73,6 +73,9 @@ def test_fp_prec_comparison():
 
 
 def test_assign_double_precision_scalar(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
     fortran_src = """
         subroutine assign_scalar(a)
           real*8 a(1)
@@ -84,7 +87,6 @@ def test_assign_double_precision_scalar(ctx_factory):
     prg = lp.parse_fortran(fortran_src)
     print(lp.generate_code_v2(prg).device_code())
     assert "1.1;" in lp.generate_code_v2(prg).device_code()
-    queue = cl.CommandQueue(ctx_factory())
 
     a_dev = cl.array.empty(queue, 1, dtype=np.float64, order="F")
     prg(queue, a=a_dev)
@@ -94,6 +96,9 @@ def test_assign_double_precision_scalar(ctx_factory):
 
 
 def test_assign_double_precision_scalar_as_rational(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
     fortran_src = """
         subroutine assign_scalar(a)
           real*8 a(1)
@@ -104,7 +109,6 @@ def test_assign_double_precision_scalar_as_rational(ctx_factory):
         """
 
     prg = lp.parse_fortran(fortran_src)
-    queue = cl.CommandQueue(ctx_factory())
 
     a_dev = cl.array.empty(queue, 1, dtype=np.float64, order="F")
     prg(queue, a=a_dev)
@@ -114,6 +118,9 @@ def test_assign_double_precision_scalar_as_rational(ctx_factory):
 
 
 def test_assign_single_precision_scalar(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
     fortran_src = """
         subroutine assign_scalar(a)
           real*8 a(1)
@@ -124,7 +131,6 @@ def test_assign_single_precision_scalar(ctx_factory):
 
     prg = lp.parse_fortran(fortran_src)
     assert "1.1f" in lp.generate_code_v2(prg).device_code()
-    queue = cl.CommandQueue(ctx_factory())
 
     a_dev = cl.array.empty(queue, 1, dtype=np.float64, order="F")
     prg(queue, a=a_dev)

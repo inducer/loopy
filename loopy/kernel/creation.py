@@ -2028,7 +2028,7 @@ class SliceToInameReplacer(IdentityMapper):
                             array_arg_shape = (
                                     self.knl.arg_dict[arg.name].shape)
                 else:
-                    assert arg.name in self.knl.all_inames()
+                    # arg could be either an iname or a "mangled symbol"
                     array_arg_shape = ()
 
                 if array_arg_shape != ():
