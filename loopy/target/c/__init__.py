@@ -93,7 +93,8 @@ def c99_preamble_generator(preamble_info):
     if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
         yield("10_stdint", "#include <stdint.h>")
     if any(dtype.numpy_dtype == np.dtype("bool")
-           for dtype in preamble_info.seen_dtypes):
+           for dtype in preamble_info.seen_dtypes
+           if isinstance(dtype, NumpyType)):
         yield("10_stdbool", "#include <stdbool.h>")
     if any(dtype.is_complex() for dtype in preamble_info.seen_dtypes):
         yield("10_complex", "#include <complex.h>")
