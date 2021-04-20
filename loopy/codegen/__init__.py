@@ -770,7 +770,8 @@ def generate_code(kernel, device=None):
         raise LoopyError("kernel passed to generate_code yielded multiple "
                 "host programs. Use generate_code_v2.")
 
-    _, implemented_data_info = codegen_result.implemented_data_infos.popitem()
+    assert len(codegen_result.implemented_data_infos) == 1
+    implemented_data_info, = codegen_result.implemented_data_infos.values()
 
     return codegen_result.device_code(), implemented_data_info
 
