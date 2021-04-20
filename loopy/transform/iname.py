@@ -2080,20 +2080,25 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
 
     # }}}
 
-    def process_set(s):
+    def _check_overlap_condition_for_domain(s, transform_map_in_names):
         var_dict = s.get_var_dict()
 
-        overlap = old_inames & frozenset(var_dict)
+        overlap = transform_map_in_names & frozenset(var_dict)
 
-        if not overlap:
-            # inames in s are not present in transform map, don't change s
-            return s
-
-        if len(overlap) != len(old_inames):
+        if overlap and len(overlap) != len(transform_map_in_names):
             raise LoopyError("loop domain '%s' involves a part "
                     "of the map domain inames. Domains must "
                     "either involve all or none of the map domain "
                     "inames." % s)
+
+        return overlap
+
+    def process_set(s):
+
+        overlap = _check_overlap_condition_for_domain(s, old_inames)
+        if not overlap:
+            # inames in s are not present in transform map, don't change s
+            return s
 
         # {{{ align dims of isl_map and s
 
@@ -2159,26 +2164,91 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
     )
     dt = isl.dim_type
 
-    # Insert 'statement' dim into transform map
-    dep_transform_map = insert_and_name_isl_dims(
-            isl_map, dt.in_, [STATEMENT_VAR_NAME+BEFORE_MARK], 0)
-    dep_transform_map = insert_and_name_isl_dims(
-            dep_transform_map, dt.out, [STATEMENT_VAR_NAME], 0)
+    # Create version of transform map with before marks
+    # (for aligning when applying map to domains of dependees)
+    from loopy.schedule.checker.utils import (
+        append_mark_to_isl_map_var_names,
+    )
+    dep_transform_map_marked = append_mark_to_isl_map_var_names(
+        isl_map, dt.in_, BEFORE_MARK)
+
+    # Insert 'statement' dim into transform maps (mark the 'in' statement in BOTH cases)
+
+    # NOTE: dims must all be named correctly for the alignment to work, but dim names
+    # must also be unique, so the output statement var name can't match the input
+    # statement var name, which means in order to have the map keep the statement
+    # dim unchanged, (map statement_var -> statement_var), we have to change its
+    # name and then change it back afterward.
+
+    # (TODO: create a function that makes it easier to apply a transform map
+    # (tgt.apply_domain/tgt.apply_range) when the input dims of the transform map
+    # are a *subset* of the domain/range of the tgt, in which case the extra dims
+    # remain unchanged.)
+
+    dep_transform_map_marked = insert_and_name_isl_dims(
+        dep_transform_map_marked, dt.in_, [STATEMENT_VAR_NAME+BEFORE_MARK], 0)
+    dep_transform_map_marked = insert_and_name_isl_dims(
+       dep_transform_map_marked, dt.out, [STATEMENT_VAR_NAME], 0)
     # Add stmt = stmt' constraint
+    dep_transform_map_marked = add_eq_isl_constraint_from_names(
+        dep_transform_map_marked, STATEMENT_VAR_NAME, STATEMENT_VAR_NAME+BEFORE_MARK)
+
+    # Temporarily rename stmt in 'out' dim for reason described above
+    temp_stmt_var = STATEMENT_VAR_NAME+"__"
+    dep_transform_map = insert_and_name_isl_dims(
+        isl_map, dt.in_, [STATEMENT_VAR_NAME], 0)
+    dep_transform_map = insert_and_name_isl_dims(
+       dep_transform_map, dt.out, [temp_stmt_var], 0)
+    # Add stmt = temp_stmt_var constraint
     dep_transform_map = add_eq_isl_constraint_from_names(
-        dep_transform_map, STATEMENT_VAR_NAME, STATEMENT_VAR_NAME+BEFORE_MARK)
+        dep_transform_map, STATEMENT_VAR_NAME, temp_stmt_var)
 
     def _apply_transform_map_to_depender(dep_map):
-        # Apply transform map to dep output dims
-        return dep_map.apply_range(dep_transform_map)
+
+        # Check overlap condition
+        overlap = _check_overlap_condition_for_domain(dep_map.range(), old_inames)
+
+        if not overlap:
+            # Inames in s are not present in depender, don't change dep_map
+            return dep_map
+        else:
+
+            # Align 'in_' dim of transform map with 'out' dim of dep
+            # (since 'out' dim of dep is unmarked, use unmarked dep_transform_map)
+            from loopy.schedule.checker.utils import reorder_dims_by_name
+            dep_transform_map_aligned = reorder_dims_by_name(
+                dep_transform_map, dt.in_, dep_map.get_var_names(dt.out))
+
+            # Apply transform map to dep output dims
+            transformed_dep_map = dep_map.apply_range(dep_transform_map_aligned)
+
+            # Now we've renamed statement var, so fix it (assume statement dim is 0)
+            return transformed_dep_map.set_dim_name(dt.out, 0, STATEMENT_VAR_NAME)
+
+    old_inames_marked = frozenset(old_iname+BEFORE_MARK for old_iname in old_inames)
 
     def _apply_transform_map_to_dependee(dep_map):
-        from loopy.schedule.checker.utils import (
-            append_mark_to_isl_map_var_names,
-        )
-        # Apply transform map to dep input dims (and re-insert BEFORE_MARK)
-        return append_mark_to_isl_map_var_names(
-            dep_map.apply_domain(dep_transform_map), dt.in_, BEFORE_MARK)
+
+        # Check overlap condition
+        overlap = _check_overlap_condition_for_domain(
+            dep_map.domain(), old_inames_marked)
+
+        if not overlap:
+            # Inames in s are not present in dependee, don't change dep_map
+            return dep_map
+        else:
+
+            # Align 'in_' dim of transform map with 'in_' dim of dep
+            # (since 'in_' dim of dep is marked, use dep_transform_map_marked)
+            from loopy.schedule.checker.utils import reorder_dims_by_name
+            dep_transform_map_aligned = reorder_dims_by_name(
+                dep_transform_map_marked, dt.in_, dep_map.get_var_names(dt.in_))
+
+            # Apply transform map to dep input dims (and re-insert BEFORE_MARK)
+            transformed_dep_map = dep_map.apply_domain(dep_transform_map_aligned)
+
+            # Now re-add the before marks
+            return append_mark_to_isl_map_var_names(transformed_dep_map, dt.in_, BEFORE_MARK)
 
     # TODO figure out proper way to create false match condition
     false_id_match = "not id:*"
