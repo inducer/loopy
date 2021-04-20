@@ -21,7 +21,6 @@ THE SOFTWARE.
 """
 
 from pytools import ImmutableRecord
-from collections import OrderedDict
 
 
 def process_preambles(preambles):
@@ -77,11 +76,7 @@ class GeneratedProgram(ImmutableRecord):
 
 class CodeGenerationResult(ImmutableRecord):
     """
-    .. attribute:: host_programs
-
-        A mapping from entrypoints of a translation unit to instances of
-        :class:`GeneratedProgram` intended to be run on host.
-
+    .. attribute:: host_program
     .. attribute:: device_programs
 
         A list of :class:`GeneratedProgram` instances
@@ -102,7 +97,7 @@ class CodeGenerationResult(ImmutableRecord):
     .. attribute:: implemented_data_info
 
         a list of :class:`loopy.codegen.ImplementedDataInfo` objects.
-        Only added at the very end of code generation
+        Only added at the very end of code generation.
     """
 
     @staticmethod
@@ -114,12 +109,12 @@ class CodeGenerationResult(ImmutableRecord):
 
         if codegen_state.is_generating_device_code:
             kwargs = {
+                    "host_program": None,
                     "device_programs": [prg],
-                    "host_programs": OrderedDict()
                     }
         else:
             kwargs = {
-                    "host_programs": OrderedDict({codegen_state.kernel.name: prg}),
+                    "host_program": prg,
                     "device_programs": [],
                     }
 
@@ -133,9 +128,8 @@ class CodeGenerationResult(ImmutableRecord):
 
         return (
                 "".join(preamble_codes)
-                + "\n"
-                + "\n\n".join(str(hp.ast)
-                              for hp in self.host_programs.values()))
+                +
+                str(self.host_program.ast))
 
     def device_code(self):
         preamble_codes = process_preambles(getattr(self, "device_preambles", []))
@@ -157,8 +151,7 @@ class CodeGenerationResult(ImmutableRecord):
                 + "\n"
                 + "\n\n".join(str(dp.ast) for dp in self.device_programs)
                 + "\n\n"
-                + "\n\n".join(str(hp.ast) for hp in
-                    self.host_programs.values()))
+                + str(self.host_program.ast))
 
     def current_program(self, codegen_state):
         if codegen_state.is_generating_device_code:
@@ -167,11 +160,7 @@ class CodeGenerationResult(ImmutableRecord):
             else:
                 result = None
         else:
-            if self.host_programs:
-                host_programs = self.host_programs.copy()
-                _, result = host_programs.popitem()
-            else:
-                result = None
+            result = self.host_program
 
         if result is None:
             ast = codegen_state.ast_builder.ast_block_class([])
@@ -195,15 +184,7 @@ class CodeGenerationResult(ImmutableRecord):
         else:
             assert program.name == codegen_state.gen_program_name
             assert not program.is_device_program
-            host_programs = self.host_programs.copy()
-            if host_programs:
-                e, _ = host_programs.popitem()
-                assert codegen_state.kernel.name == e
-                host_programs[e] = program
-            else:
-                host_programs[codegen_state.kernel.name] = program
-            return self.copy(
-                    host_programs=host_programs)
+            return self.copy(host_program=program)
 
     def current_ast(self, codegen_state):
         return self.current_program(codegen_state).ast
@@ -224,7 +205,7 @@ def merge_codegen_results(codegen_state, elements, collapse=True):
 
     if not elements:
         return CodeGenerationResult(
-                host_programs=OrderedDict(),
+                host_program=None,
                 device_programs=[],
                 implemented_domains={},
                 implemented_data_info=codegen_state.implemented_data_info)
@@ -321,8 +302,8 @@ def generate_host_or_device_program(codegen_state, schedule_index):
     else:
         codegen_result = build_loop_nest(codegen_state, schedule_index)
 
-    if (codegen_state.is_generating_device_code) or (
-            codegen_state.is_entrypoint):
+    if (codegen_state.is_generating_device_code
+            or codegen_state.is_entrypoint):
         codegen_result = merge_codegen_results(
                 codegen_state,
                 ast_builder.generate_top_of_body(codegen_state)
@@ -344,12 +325,7 @@ def generate_host_or_device_program(codegen_state, schedule_index):
                 cur_prog.copy(
                     ast=ast_builder.process_ast(fdef_ast),
                     body_ast=ast_builder.process_ast(body_ast)))
-    else:
-        codegen_result = codegen_result.copy(
-                host_programs=OrderedDict())
 
     return codegen_result
 
 # }}}
-
-# vim: foldmethod=marker
