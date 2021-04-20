@@ -1342,6 +1342,45 @@ def test_sios_with_matmul():
 
 # {{{ Dependency tests
 
+# {{{ Helper functions
+
+
+def _compare_dependencies(knl, deps_expected, return_unsatisfied=False):
+
+    deps_found = {}
+    for stmt in knl.instructions:
+        if hasattr(stmt, "dependencies") and stmt.dependencies:
+            deps_found[stmt.id] = stmt.dependencies
+
+    assert deps_found.keys() == deps_expected.keys()
+
+    for stmt_id_after, dep_dict_found in deps_found.items():
+
+        dep_dict_expected = deps_expected[stmt_id_after]
+
+        # Ensure deps for stmt_id_after match
+        assert dep_dict_found.keys() == dep_dict_expected.keys()
+
+        for stmt_id_before, dep_list_found in dep_dict_found.items():
+
+            # Ensure deps from (stmt_id_before -> stmt_id_after) match
+            dep_list_expected = dep_dict_expected[stmt_id_before]
+            assert len(dep_list_found) == len(dep_list_expected)
+            _align_and_compare_maps(zip(dep_list_found, dep_list_expected))
+
+    if not return_unsatisfied:
+        return
+
+    # Get unsatisfied deps
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
+    return lp.find_unsatisfied_dependencies(proc_knl, lin_items)
+
+
+# }}}
+
+
 # {{{ Dependency creation and checking (without transformations)
 
 # {{{ test_add_stmt_inst_dependency
@@ -1381,13 +1420,10 @@ def test_add_stmt_inst_dependency():
 
     knl = lp.add_stmt_inst_dependency(knl, "stmt_b", "stmt_a", dep_b_on_a)
 
-    for stmt in knl.instructions:
-        if stmt.id == "stmt_b":
-            assert stmt.dependencies == {
-                "stmt_a": [dep_b_on_a, ],
-                }
-        else:
-            assert not stmt.dependencies
+    _compare_dependencies(
+        knl,
+        {"stmt_b": {
+            "stmt_a": [dep_b_on_a, ]}})
 
     # Add a second dependency to stmt_b
     dep_b_on_a_2 = _isl_map_with_marked_dims(
@@ -1401,13 +1437,10 @@ def test_add_stmt_inst_dependency():
 
     knl = lp.add_stmt_inst_dependency(knl, "stmt_b", "stmt_a", dep_b_on_a_2)
 
-    for stmt in knl.instructions:
-        if stmt.id == "stmt_b":
-            assert stmt.dependencies == {
-                "stmt_a": [dep_b_on_a, dep_b_on_a_2],
-                }
-        else:
-            assert not stmt.dependencies
+    _compare_dependencies(
+        knl,
+        {"stmt_b": {
+            "stmt_a": [dep_b_on_a, dep_b_on_a_2]}})
 
     # Add dependencies to stmt_c
 
@@ -1431,30 +1464,20 @@ def test_add_stmt_inst_dependency():
     knl = lp.add_stmt_inst_dependency(knl, "stmt_c", "stmt_a", dep_c_on_a)
     knl = lp.add_stmt_inst_dependency(knl, "stmt_c", "stmt_b", dep_c_on_b)
 
-    for stmt in knl.instructions:
-        if stmt.id == "stmt_b":
-            assert stmt.dependencies == {
-                "stmt_a": [dep_b_on_a, dep_b_on_a_2],
-                }
-        elif stmt.id == "stmt_c":
-            assert stmt.dependencies == {
-                "stmt_a": [dep_c_on_a, ],
-                "stmt_b": [dep_c_on_b, ],
-                }
-        else:
-            assert not stmt.dependencies
-
-    # Now make sure deps are satisfied
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
-
-    unsatisfied_deps = lp.find_unsatisfied_dependencies(
-        proc_knl, lin_items)
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {
+            "stmt_b": {
+                "stmt_a": [dep_b_on_a, dep_b_on_a_2]},
+            "stmt_c": {
+                "stmt_a": [dep_c_on_a, ], "stmt_b": [dep_c_on_b, ]},
+        },
+        return_unsatisfied=True)
 
     assert not unsatisfied_deps
 
-# }}}
+    # }}}
 
 
 # {{{ test_new_dependencies_finite_diff
@@ -1490,15 +1513,12 @@ def test_new_dependencies_finite_diff():
     # Prioritize loops correctly
     knl = lp.prioritize_loops(knl, "t,x")
 
-    # Make sure deps are satisfied
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {"stmt": {"stmt": [dep, ]}, },
+        return_unsatisfied=True)
 
-    unsatisfied_deps = lp.find_unsatisfied_dependencies(
-        proc_knl, lin_items)
-
-    print(lp.generate_code_v2(lin_knl).device_code())
     assert not unsatisfied_deps
 
     # }}}
@@ -1508,15 +1528,12 @@ def test_new_dependencies_finite_diff():
     knl = ref_knl
     knl = lp.prioritize_loops(knl, "x,t")
 
-    # Make sure unsatisfied deps are caught
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    # Compare deps and make sure unsatisfied deps are caught
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {"stmt": {"stmt": [dep, ]}, },
+        return_unsatisfied=True)
 
-    unsatisfied_deps = lp.find_unsatisfied_dependencies(
-        proc_knl, lin_items)
-
-    print(lp.generate_code_v2(lin_knl).device_code())
     assert len(unsatisfied_deps) == 1
 
     # }}}
@@ -1560,14 +1577,16 @@ def test_new_dependencies_finite_diff():
     knl = lp.add_dtypes(
         knl, {"u": np.float32, "dx": np.float32, "dt": np.float32})
 
-    # Make sure deps are satisfied
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
-    print(lp.generate_code_v2(lin_knl).device_code())
+    knl = lp.add_stmt_inst_dependency(knl, "stmt", "stmt", dep)
 
-    unsatisfied_deps = lp.find_unsatisfied_dependencies(
-        proc_knl, lin_items)
+    knl = lp.prioritize_loops(knl, "t,x")
+    knl = lp.tag_inames(knl, "x:l.0")
+
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {"stmt": {"stmt": [dep, ]}, },
+        return_unsatisfied=True)
 
     assert not unsatisfied_deps
 
@@ -1617,14 +1636,16 @@ def test_fix_parameters_with_dependencies():
         "and i' = i and j' = j"
         "}}".format(STATEMENT_VAR_NAME, fix_val))
 
-    for stmt_id, dep_id in [("stmt1", "stmt0"), ("stmt2", "stmt1")]:
-        deps_found = knl.id_to_insn[stmt_id].dependencies
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {
+            "stmt1": {"stmt0": [dep_exp, ]},
+            "stmt2": {"stmt1": [dep_exp, ]},
+        },
+        return_unsatisfied=True)
 
-        assert set(deps_found.keys()) == set([dep_id])
-        assert len(deps_found[dep_id]) == 1
-
-        # Check dep
-        _align_and_compare_maps([(dep_exp, deps_found[dep_id][0])])
+    assert not unsatisfied_deps
 
 # }}}
 
@@ -1665,17 +1686,19 @@ def test_assignment_to_subst_with_dependencies():
 
     knl = lp.assignment_to_subst(knl, "tsq")
 
-    for stmt_id in ["stmt2", "stmt3"]:
-        deps_found = knl.id_to_insn[stmt_id].dependencies
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {
+            "stmt2": {"stmt0": [dep_le, ]},
+            "stmt3": {"stmt0": [dep_le, ]},
+        },
+        return_unsatisfied=True)
+    # (stmt4 dep was removed because dependee was removed, but dependee's
+    # deps were not added to stmt4 because the substitution was not made
+    # in stmt4) TODO this behavior will change when we propagate deps properly
 
-        # Dep on stmt1 should have been removed
-        assert set(deps_found.keys()) == set(["stmt0"])
-        assert len(deps_found["stmt0"]) == 1
-
-        # Should now depend on stmt0
-        _align_and_compare_maps([(dep_le, deps_found["stmt0"][0])])
-
-    assert not knl.id_to_insn["stmt4"].dependencies
+    assert not unsatisfied_deps
 
     # Test using 'within' --------------------------------------------------
 
@@ -1700,34 +1723,26 @@ def test_assignment_to_subst_with_dependencies():
 
     knl = lp.assignment_to_subst(knl, "tsq", within="id:stmt2 or id:stmt3")
 
-    # replacement will not be made in stmt5, so stmt1 will not be removed,
-    # which means no deps will be removed, and the statements were the replacement
+    # Replacement will not be made in stmt5, so stmt1 will not be removed,
+    # which means no deps will be removed, and the statements where the replacement
     # *was* made (stmt2 and stmt3) will still receive the deps from stmt1
+    # TODO this behavior may change when we propagate deps properly
 
-    for stmt_id in ["stmt2", "stmt3"]:
-        deps_found = knl.id_to_insn[stmt_id].dependencies
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {
+            "stmt1": {"stmt0": [dep_le, ]},
+            "stmt2": {
+                "stmt0": [dep_le, ], "stmt1": [dep_eq, ]},
+            "stmt3": {
+                "stmt0": [dep_le, ], "stmt1": [dep_eq, ]},
+            "stmt4": {"stmt1": [dep_eq, ]},
+            "stmt5": {"stmt1": [dep_eq, ]},
+        },
+        return_unsatisfied=True)
 
-        # Dep on stmt1 should NOT have been removed
-        # (for now? could maybe do something smarter)
-        assert set(deps_found.keys()) == set(["stmt0", "stmt1"])
-        assert len(deps_found["stmt0"]) == len(deps_found["stmt1"]) == 1
-
-        # Should now depend on stmt0
-        _align_and_compare_maps([(dep_le, deps_found["stmt0"][0])])
-
-        # Should still depend on stmt1
-        _align_and_compare_maps([(dep_eq, deps_found["stmt1"][0])])
-
-    for stmt_id in ["stmt4", "stmt5"]:
-        deps_found = knl.id_to_insn[stmt_id].dependencies
-
-        # Dep on stmt1 should NOT have been removed
-        # (for now? could maybe do something smarter)
-        assert set(deps_found.keys()) == set(["stmt1"])
-        assert len(deps_found["stmt1"]) == 1
-
-        # Should still depend on stmt1
-        _align_and_compare_maps([(dep_eq, deps_found["stmt1"][0])])
+    assert not unsatisfied_deps
 
 # }}}
 
@@ -1754,24 +1769,6 @@ def test_duplicate_inames_with_dependencies():
 
     ref_knl = knl
 
-    def _check_deps(transformed_knl, c_dep_exp):
-        b_deps = transformed_knl.id_to_insn["stmtb"].dependencies
-        c_deps = transformed_knl.id_to_insn["stmtc"].dependencies
-
-        assert not b_deps
-        assert len(c_deps) == 1
-        assert len(c_deps["stmtb"]) == 1
-        _align_and_compare_maps([(c_deps["stmtb"][0], c_dep_exp)])
-
-        # Check dep satisfaction
-        proc_knl = preprocess_kernel(transformed_knl)
-        lin_knl = get_one_linearized_kernel(proc_knl)
-        lin_items = lin_knl.linearization
-        unsatisfied_deps = lp.find_unsatisfied_dependencies(
-            proc_knl, lin_items)
-
-        assert not unsatisfied_deps
-
     # {{{ Duplicate j within stmtc
 
     knl = lp.duplicate_inames(knl, ["j"], within="id:stmtc", new_inames=["j_new"])
@@ -1781,7 +1778,13 @@ def test_duplicate_inames_with_dependencies():
         "0 <= i,i',j_new,j' < n and i' = i and j' = j_new"
         "}}".format(STATEMENT_VAR_NAME))
 
-    _check_deps(knl, dep_exp)
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {"stmtc": {"stmtb": [dep_exp, ]}},
+        return_unsatisfied=True)
+
+    assert not unsatisfied_deps
 
     # }}}
 
@@ -1795,7 +1798,13 @@ def test_duplicate_inames_with_dependencies():
         "0 <= i,i',j,j_new' < n and i' = i and j_new' = j"
         "}}".format(STATEMENT_VAR_NAME))
 
-    _check_deps(knl, dep_exp)
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {"stmtc": {"stmtb": [dep_exp, ]}},
+        return_unsatisfied=True)
+
+    assert not unsatisfied_deps
 
     # }}}
 
@@ -1810,7 +1819,13 @@ def test_duplicate_inames_with_dependencies():
         "0 <= i,i',j_new,j_new' < n and i' = i and j_new' = j_new"
         "}}".format(STATEMENT_VAR_NAME))
 
-    _check_deps(knl, dep_exp)
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {"stmtc": {"stmtb": [dep_exp, ]}},
+        return_unsatisfied=True)
+
+    assert not unsatisfied_deps
 
     # }}}
 
@@ -1834,24 +1849,6 @@ def test_split_iname_with_dependencies():
     from copy import deepcopy
     ref_knl = deepcopy(knl)  # without deepcopy, deps get applied to ref_knl
 
-    def _check_deps(transformed_knl, stmt1_dep_exp, len_unsatisfied_deps=0):
-        stmt0_deps = transformed_knl.id_to_insn["stmt0"].dependencies
-        stmt1_deps = transformed_knl.id_to_insn["stmt1"].dependencies
-
-        assert not stmt0_deps
-        assert len(stmt1_deps) == 1
-        assert len(stmt1_deps["stmt0"]) == 1
-        _align_and_compare_maps([(stmt1_deps["stmt0"][0], stmt1_dep_exp)])
-
-        # Check dep satisfaction
-        proc_knl = preprocess_kernel(transformed_knl)
-        lin_knl = get_one_linearized_kernel(proc_knl)
-        lin_items = lin_knl.linearization
-        unsatisfied_deps = lp.find_unsatisfied_dependencies(
-            proc_knl, lin_items)
-
-        assert len(unsatisfied_deps) == len_unsatisfied_deps
-
     # {{{ Split iname and make sure dep is correct
 
     dep_inout_space_str = "[{0}'=0, i'] -> [{0}=1, i]".format(STATEMENT_VAR_NAME)
@@ -1870,7 +1867,13 @@ def test_split_iname_with_dependencies():
         " and i_inner + 32*i_outer = 32*i_outer' + i_inner'"  # i = i'
         "}}".format(STATEMENT_VAR_NAME))
 
-    _check_deps(knl, dep_exp)
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {"stmt1": {"stmt0": [dep_exp, ]}},
+        return_unsatisfied=True)
+
+    assert not unsatisfied_deps
 
     # }}}
 
@@ -1889,7 +1892,13 @@ def test_split_iname_with_dependencies():
         " and i_inner + 32*i_outer = i'"  # transform {i = i'}
         "}}".format(STATEMENT_VAR_NAME))
 
-    _check_deps(knl, dep_exp)
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {"stmt1": {"stmt0": [dep_exp, ]}},
+        return_unsatisfied=True)
+
+    assert not unsatisfied_deps
 
     # }}}
 
@@ -1908,7 +1917,13 @@ def test_split_iname_with_dependencies():
         " and i = 32*i_outer' + i_inner'"  # transform {i = i'}
         "}}".format(STATEMENT_VAR_NAME))
 
-    _check_deps(knl, dep_exp)
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {"stmt1": {"stmt0": [dep_exp, ]}},
+        return_unsatisfied=True)
+
+    assert not unsatisfied_deps
 
     # }}}
 
@@ -1931,7 +1946,13 @@ def test_split_iname_with_dependencies():
         " and i_inner + 32*i_outer + 1 = 32*i_outer' + i_inner'"  # i' = i + 1
         "}}".format(STATEMENT_VAR_NAME))
 
-    _check_deps(knl, dep_exp, len_unsatisfied_deps=1)
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {"stmt1": {"stmt0": [dep_exp, ]}},
+        return_unsatisfied=True)
+
+    assert len(unsatisfied_deps) == 1
 
     # }}}
 
@@ -2081,8 +2102,8 @@ def test_map_domain_with_only_partial_dep_pair_affected():
         "0 <= t_inner,t_inner' < 32 and "  # new bounds
         "0 <= 32*t_outer + t_inner < nt and "  # new bounds
         "0 <= 32*t_outer' + t_inner' < nt and "  # new bounds
-        "32*t_outer' + t_inner' <= 32*t_outer + t_inner and "  # new constraint t' <= t
-        "x' <= x" # old constraint
+        "32*t_outer' + t_inner' <= 32*t_outer + t_inner and "  # new constraint t'<=t
+        "x' <= x"  # old constraint
         "}}".format(STATEMENT_VAR_NAME))
 
     dep_e_on_c_exp = _isl_map_with_marked_dims(
@@ -2095,35 +2116,24 @@ def test_map_domain_with_only_partial_dep_pair_affected():
 
     # }}}
 
-    # {{{ Make sure expected deps match found deps
+    # {{{ Make sure deps are correct and satisfied
 
-    # TODO make func for comparing deps
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {
+            "stmtc": {
+                "stmta": [dep_c_on_a_exp, ]},
+            "stmte": {
+                "stmtc": [dep_e_on_c_exp, ]},
+        },
+        return_unsatisfied=True)
 
-    deps_c_found = knl.id_to_insn["stmtc"].dependencies
-    assert len(deps_c_found) == 1
-    deps_c_on_a_found = deps_c_found["stmta"]
-    assert len(deps_c_on_a_found) == 1
-
-    deps_e_found = knl.id_to_insn["stmte"].dependencies
-    assert len(deps_e_found) == 1
-    deps_e_on_c_found = deps_e_found["stmtc"]
-    assert len(deps_e_on_c_found) == 1
-
-    _align_and_compare_maps([
-        (dep_c_on_a_exp, deps_c_on_a_found[0]),
-        (dep_e_on_c_exp, deps_e_on_c_found[0]),
-        ])
-
-    # }}}
-
-    # Make sure deps are satisfied
-    proc_knl = lp.preprocess_kernel(knl)
-    lin_knl = lp.get_one_linearized_kernel(proc_knl)
-    unsatisfied_deps = lp.find_unsatisfied_dependencies(
-        proc_knl, lin_knl.linearization)
     assert not unsatisfied_deps
 
     # }}}
+
+# }}}
 
 
 # {{{ test_map_domain_with_stencil_dependencies
@@ -2173,16 +2183,12 @@ def test_map_domain_with_stencil_dependencies():
     knl = lp.prioritize_loops(knl, ("it", "ix"))  # valid
     #knl = lp.prioritize_loops(knl, ("ix", "it"))  # invalid
 
-    # Get a linearization
-    proc_knl = lp.preprocess_kernel(knl)
-    lin_knl = lp.get_one_linearized_kernel(proc_knl)
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {"stmt": {"stmt": [dep_map, ]}},
+        return_unsatisfied=True)
 
-    # Check dependencies
-    dep_found = proc_knl.id_to_insn[stmt_after].dependencies[stmt_before][0]
-    assert dep_found.get_var_dict() == dep_map.get_var_dict()
-    assert dep_found == dep_map
-    unsatisfied_deps = lp.find_unsatisfied_dependencies(
-        proc_knl, lin_knl.linearization)
     assert not unsatisfied_deps
 
     # }}}
@@ -2229,16 +2235,11 @@ def test_map_domain_with_stencil_dependencies():
 
     # }}}
 
-    # Get a linearization
-    proc_knl = lp.preprocess_kernel(knl)
-    lin_knl = lp.get_one_linearized_kernel(proc_knl)
-
-    # Check dependencies
-    dep_found = proc_knl.id_to_insn[stmt_after].dependencies[stmt_before][0]
-    assert dep_found.get_var_dict() == mapped_dep_map.get_var_dict()
-    assert dep_found == mapped_dep_map
-    unsatisfied_deps = lp.find_unsatisfied_dependencies(
-        proc_knl, lin_knl.linearization)
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {"stmt": {"stmt": [mapped_dep_map, ]}},
+        return_unsatisfied=True)
 
     assert not unsatisfied_deps
 
