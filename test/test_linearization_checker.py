@@ -1817,7 +1817,7 @@ def test_duplicate_inames_with_dependencies():
 # }}}
 
 
-# {{{ def test_split_iname_with_dependencies
+# {{{ test_split_iname_with_dependencies
 
 def test_split_iname_with_dependencies():
     knl = lp.make_kernel(
@@ -2000,11 +2000,137 @@ def test_split_iname_with_dependencies():
 # }}}
 
 
-# {{{ test_map_domain_with_dependencies
+# {{{ test map domain with dependencies
 
-def test_map_domain_with_dependencies():
+# {{{ test_map_domain_with_only_partial_dep_pair_affected
 
-    # {{{ make kernel
+def test_map_domain_with_only_partial_dep_pair_affected():
+
+    # Split an iname using map_domain, and have (misaligned) deps
+    # where only the dependee uses the split iname
+
+    # {{{ Make kernel
+
+    knl = lp.make_kernel(
+        [
+            "[nx,nt] -> {[x, t]: 0 <= x < nx and 0 <= t < nt}",
+            "[ni] -> {[i]: 0 <= i < ni}",
+        ],
+        """
+        a[x,t] = b[x,t]  {id=stmta}
+        c[x,t] = d[x,t]  {id=stmtc,dep=stmta}
+        e[i] = f[i]  {id=stmte,dep=stmtc}
+        """,
+        name="wave_equation",
+        lang_version=(2018, 2),
+        )
+    knl = lp.add_and_infer_dtypes(knl, {"b,d,f": np.float32})
+
+    # }}}
+
+    # {{{ Add dependencies
+
+    dep_c_on_a = _isl_map_with_marked_dims(
+        "[nx, nt] -> {{"
+        "[{0}' = 0, x', t'] -> [{0} = 1, x, t] : "
+        "0 <= x,x' < nx and 0 <= t,t' < nt and "
+        "t' <= t and x' <= x"
+        "}}".format(STATEMENT_VAR_NAME))
+
+    knl = lp.add_stmt_inst_dependency(
+        knl, "stmtc", "stmta", dep_c_on_a)
+
+    # Intentionally make order of x and t different from transform_map below
+    # to test alignment steps in map_domain
+    dep_e_on_c = _isl_map_with_marked_dims(
+        "[nx, nt, ni] -> {{"
+        "[{0}' = 0, t', x'] -> [{0} = 1, i] : "
+        "0 <= x' < nx and 0 <= t' < nt and 0 <= i < ni"
+        "}}".format(STATEMENT_VAR_NAME))
+
+    knl = lp.add_stmt_inst_dependency(
+        knl, "stmte", "stmtc", dep_e_on_c)
+
+    # }}}
+
+    # {{{ Apply domain change mapping
+
+    # Create map_domain mapping:
+    import islpy as isl
+    transform_map = isl.BasicMap(
+        "[nx,nt] -> {[x, t] -> [x_, t_outer, t_inner]: "
+        "x = x_ and "
+        "0 <= t_inner < 32 and "
+        "32*t_outer + t_inner = t and "
+        "0 <= 32*t_outer + t_inner < nt}")
+
+    # Call map_domain to transform kernel
+    knl = lp.map_domain(knl, transform_map, rename_after={"x_": "x"})
+
+    # Prioritize loops (prio should eventually be updated in map_domain?)
+    knl = lp.prioritize_loops(knl, "x, t_outer, t_inner")
+
+    # }}}
+
+    # {{{ Create expected dependencies
+
+    dep_c_on_a_exp = _isl_map_with_marked_dims(
+        "[nx, nt] -> {{"
+        "[{0}' = 0, x', t_outer', t_inner'] -> [{0} = 1, x, t_outer, t_inner] : "
+        "0 <= x,x' < nx and "  # old bounds
+        "0 <= t_inner,t_inner' < 32 and "  # new bounds
+        "0 <= 32*t_outer + t_inner < nt and "  # new bounds
+        "0 <= 32*t_outer' + t_inner' < nt and "  # new bounds
+        "32*t_outer' + t_inner' <= 32*t_outer + t_inner and "  # new constraint t' <= t
+        "x' <= x" # old constraint
+        "}}".format(STATEMENT_VAR_NAME))
+
+    dep_e_on_c_exp = _isl_map_with_marked_dims(
+        "[nx, nt, ni] -> {{"
+        "[{0}' = 0, x', t_outer', t_inner'] -> [{0} = 1, i] : "
+        "0 <= x' < nx and 0 <= i < ni and "  # old bounds
+        "0 <= t_inner' < 32 and "  # new bounds
+        "0 <= 32*t_outer' + t_inner' < nt"  # new bounds
+        "}}".format(STATEMENT_VAR_NAME))
+
+    # }}}
+
+    # {{{ Make sure expected deps match found deps
+
+    # TODO make func for comparing deps
+
+    deps_c_found = knl.id_to_insn["stmtc"].dependencies
+    assert len(deps_c_found) == 1
+    deps_c_on_a_found = deps_c_found["stmta"]
+    assert len(deps_c_on_a_found) == 1
+
+    deps_e_found = knl.id_to_insn["stmte"].dependencies
+    assert len(deps_e_found) == 1
+    deps_e_on_c_found = deps_e_found["stmtc"]
+    assert len(deps_e_on_c_found) == 1
+
+    _align_and_compare_maps([
+        (dep_c_on_a_exp, deps_c_on_a_found[0]),
+        (dep_e_on_c_exp, deps_e_on_c_found[0]),
+        ])
+
+    # }}}
+
+    # Make sure deps are satisfied
+    proc_knl = lp.preprocess_kernel(knl)
+    lin_knl = lp.get_one_linearized_kernel(proc_knl)
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(
+        proc_knl, lin_knl.linearization)
+    assert not unsatisfied_deps
+
+    # }}}
+
+
+# {{{ test_map_domain_with_stencil_dependencies
+
+def test_map_domain_with_stencil_dependencies():
+
+    # {{{ Make kernel
 
     knl = lp.make_kernel(
         "[nx,nt] -> {[ix, it]: 1<=ix<nx-1 and 0<=it<nt}",
@@ -2023,7 +2149,7 @@ def test_map_domain_with_dependencies():
 
     # }}}
 
-    # {{{ add dependency
+    # {{{ Add dependency
 
     dep_map = _isl_map_with_marked_dims(
         "[nx, nt] -> {{"
@@ -2115,6 +2241,8 @@ def test_map_domain_with_dependencies():
         proc_knl, lin_knl.linearization)
 
     assert not unsatisfied_deps
+
+    # }}}
 
 # }}}
 
