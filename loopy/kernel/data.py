@@ -484,7 +484,7 @@ class ImageArg(ArrayBase, KernelArgument):
     min_target_axes = 1
     max_target_axes = 3
 
-    # Image Arg cannot be an output
+    # ImageArg cannot be an output (for now)
     is_output = False
     is_input = True
     address_space = AddressSpace.GLOBAL
