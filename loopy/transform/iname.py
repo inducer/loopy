@@ -1900,6 +1900,8 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
     # FIXME: Document
 
     # FIXME: Support within
+    # FIXME: Right now, this requires all inames in a domain (or none) to
+    # be mapped. That makes this awkward to use.
 
     # {{{ within processing (disabled for now)
     if within is not None:
