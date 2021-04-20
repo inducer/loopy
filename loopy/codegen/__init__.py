@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 import islpy as isl
 
-from collections import OrderedDict
 from loopy.diagnostic import LoopyError, warn
 from pytools import ImmutableRecord
 
@@ -53,6 +52,8 @@ __doc__ = """
 .. autoclass:: SeenFunction
 
 .. autoclass:: CodeGenerationState
+
+.. autoclass:: TranslationUnitCodeGenerationResult
 
 .. automodule:: loopy.codegen.result
 
@@ -639,6 +640,67 @@ def diverge_callee_entrypoints(program):
     return program.copy(callables_table=new_callables)
 
 
+class TranslationUnitCodeGenerationResult(ImmutableRecord):
+    """
+    .. attribute:: host_program
+
+        A mapping from names of entrypoints to their host
+        :class:`~loopy.codegen.result.GeneratedProgram`.
+
+    .. attribute:: device_programs
+
+        A list of :class:`~loopy.codegen.result.GeneratedProgram` instances
+        intended to run on the compute device.
+
+    .. attribute:: host_preambles
+    .. attribute:: device_preambles
+
+    .. attribute:: implemented_data_infos
+
+        A mapping from names of entrypoints to their
+        list of :class:`ImplementedDataInfo` objects.
+
+    .. automethod:: host_code
+    .. automethod:: device_code
+    .. automethod:: all_code
+
+    """
+    def host_code(self):
+        from loopy.codegen.result import process_preambles
+        preamble_codes = process_preambles(getattr(self, "host_preambles", []))
+
+        return (
+                "".join(preamble_codes)
+                + "\n"
+                + "\n\n".join(str(hp.ast)
+                              for hp in self.host_programs.values()))
+
+    def device_code(self):
+        from loopy.codegen.result import process_preambles
+        preamble_codes = process_preambles(getattr(self, "device_preambles", []))
+
+        return (
+                "".join(preamble_codes)
+                + "\n"
+                + "\n\n".join(str(dp.ast) for dp in self.device_programs))
+
+    def all_code(self):
+        from loopy.codegen.result import process_preambles
+        preamble_codes = process_preambles(
+                getattr(self, "host_preambles", [])
+                +
+                getattr(self, "device_preambles", [])
+                )
+
+        return (
+                "".join(preamble_codes)
+                + "\n"
+                + "\n\n".join(str(dp.ast) for dp in self.device_programs)
+                + "\n\n"
+                + "\n\n".join(str(hp.ast) for hp in
+                    self.host_programs.values()))
+
+
 @memoize_method
 def generate_code_v2(program):
     """
@@ -649,7 +711,6 @@ def generate_code_v2(program):
 
     from loopy.kernel import LoopKernel
     from loopy.program import make_program
-    from loopy.codegen.result import CodeGenerationResult
 
     # {{{ cache retrieval
 
@@ -702,11 +763,11 @@ def generate_code_v2(program):
 
     program = diverge_callee_entrypoints(program)
 
-    host_programs = OrderedDict()
+    host_programs = {}
     device_programs = []
     device_preambles = []
     callee_fdecls = []
-    implemented_data_infos = OrderedDict()
+    implemented_data_infos = {}
 
     for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
@@ -718,8 +779,7 @@ def generate_code_v2(program):
                         program.callables_table, program.target, func_id in
                         program.entrypoints)
             if func_id in program.entrypoints:
-                assert len(cgr.host_programs) == 1
-                host_programs[func_id] = cgr.host_programs[func_id]
+                host_programs[func_id] = cgr.host_program
                 implemented_data_infos[func_id] = cgr.implemented_data_info
             else:
                 # FIXME: This assertion should be valid
@@ -743,7 +803,7 @@ def generate_code_v2(program):
             ast=program.target.get_device_ast_builder().ast_module.Collection(
                 callee_fdecls+[device_programs[0].ast]))] +
             device_programs[1:])
-    cgr = CodeGenerationResult(
+    cgr = TranslationUnitCodeGenerationResult(
             host_programs=host_programs,
             device_programs=device_programs,
             device_preambles=device_preambles,
@@ -770,7 +830,8 @@ def generate_code(kernel, device=None):
         raise LoopyError("kernel passed to generate_code yielded multiple "
                 "host programs. Use generate_code_v2.")
 
-    _, implemented_data_info = codegen_result.implemented_data_infos.popitem()
+    assert len(codegen_result.implemented_data_infos) == 1
+    implemented_data_info, = codegen_result.implemented_data_infos.values()
 
     return codegen_result.device_code(), implemented_data_info
 

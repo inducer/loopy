@@ -767,6 +767,27 @@ def test_passing_and_getting_scalar_in_clbl_knl(ctx_factory, inline):
     evt, (out,) = knl(cq, real_x=np.asarray(3.0, dtype=float))
 
 
+def test_symbol_mangler_in_call(ctx_factory):
+    from library_for_test import (symbol_x,
+                                  preamble_for_x)
+    ctx = cl.create_some_context()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        y = sin(X)
+        """,
+        [lp.GlobalArg("y", shape=lp.auto)])
+
+    knl = lp.register_symbol_manglers(knl, [symbol_x])
+
+    knl = lp.register_preamble_generators(knl, [preamble_for_x])
+
+    evt, (out,) = knl(cq)
+    np.testing.assert_allclose(out.get(), np.sin(10))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
