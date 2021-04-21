@@ -456,13 +456,19 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
 
 def _inline_single_callable_kernel(caller_kernel, callee_kernel,
         callables_table):
+    from loopy.symbolic import ResolvedFunction
+
+    # sub-array refs might be removed during inlining
+    # => remove their swept inames from domains
+    inames_to_remove = frozenset()
+
     for insn in caller_kernel.instructions:
-        if isinstance(insn, CallInstruction):
-            # FIXME This seems to use identifiers across namespaces. Why not
-            # check whether the function is a scoped function first? ~AK
+        if (isinstance(insn, CallInstruction)
+                and isinstance(insn.expression.function, ResolvedFunction)):
             if insn.expression.function.name == callee_kernel.name:
                 caller_kernel = _inline_call_instruction(
                         caller_kernel, callee_kernel, insn)
+                inames_to_remove |= insn.sub_array_ref_inames()
         elif isinstance(insn, (MultiAssignmentBase, CInstruction,
                 _DataObliviousInstruction)):
             pass
@@ -472,9 +478,7 @@ def _inline_single_callable_kernel(caller_kernel, callee_kernel,
                     % type(insn).__name__)
 
     from loopy.transform.iname import remove_unused_inames
-    # sub-array refs might have been removed during inlining
-    # => remove their swept inames from domains
-    return remove_unused_inames(caller_kernel)
+    return remove_unused_inames(caller_kernel, inames_to_remove)
 
 
 # FIXME This should take a 'within' parameter to be able to only inline
