@@ -324,6 +324,9 @@ class InstructionBase(ImmutableRecord, Taggable):
     def reduction_inames(self):
         raise NotImplementedError
 
+    def sub_array_ref_inames(self):
+        raise NotImplementedError
+
     def assignee_var_names(self):
         """Return a tuple of assignee variable names, one
         for each quantity being assigned to.
@@ -807,6 +810,11 @@ class MultiAssignmentBase(InstructionBase):
     def reduction_inames(self):
         from loopy.symbolic import get_reduction_inames
         return get_reduction_inames(self.expression)
+
+    @memoize_method
+    def sub_array_ref_inames(self):
+        from loopy.symbolic import get_sub_array_ref_swept_inames
+        return get_sub_array_ref_swept_inames((self.assignees, self.expression))
 
 # }}}
 
@@ -1401,6 +1409,9 @@ class CInstruction(InstructionBase):
     def reduction_inames(self):
         return set()
 
+    def sub_array_ref_inames(self):
+        return frozenset()
+
     def assignee_var_names(self):
         return tuple(_get_assignee_var_name(expr) for expr in self.assignees)
 
@@ -1446,6 +1457,9 @@ class _DataObliviousInstruction(InstructionBase):
     # read_dependency_names inherited
 
     def reduction_inames(self):
+        return frozenset()
+
+    def sub_array_ref_inames(self):
         return frozenset()
 
     def assignee_var_names(self):
