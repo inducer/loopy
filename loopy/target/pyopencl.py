@@ -254,10 +254,10 @@ class PyOpenCLCallable(ScalarCallable):
                             arg_id_to_dtype={0: dtype, -1: dtype}),
                         callables_table)
             else:
-                # function calls for floating parameters.
+                # function calls for floating-point parameters.
                 numpy_dtype = dtype.numpy_dtype
                 if numpy_dtype.kind in ("u", "i"):
-                    dtype = dtype.copy(numpy_dtype=np.float32)
+                    dtype = NumpyType(np.float32)
                 if name == "abs":
                     name = "fabs"
                 return (
