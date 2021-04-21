@@ -896,10 +896,6 @@ class CounterBase(CombineMapper):
         else:
             raise NotImplementedError()
 
-    def map_call_with_kwargs(self, expr):
-        # FIXME
-        raise NotImplementedError()
-
     def map_sum(self, expr):
         if expr.children:
             return sum(self.rec(child) for child in expr.children)

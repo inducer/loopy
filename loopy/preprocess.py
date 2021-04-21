@@ -2157,33 +2157,30 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         self.clbl_inf_ctx = clbl_inf_ctx
 
     def map_call(self, expr, expn_state, assignees=None):
-        from pymbolic.primitives import Call, CallWithKwargs, Variable
+        from pymbolic.primitives import Call, Variable
         from loopy.kernel.function_interface import ValueArgDescriptor
         from loopy.symbolic import ResolvedFunction
         from loopy.kernel.array import ArrayBase
         from loopy.kernel.data import ValueArg
         from pymbolic.mapper.substitutor import make_subst_func
         from loopy.symbolic import SubstitutionMapper
+        from loopy.kernel.function_interface import get_arg_descriptor_for_expression
 
         if not isinstance(expr.function, ResolvedFunction):
             # ignore if the call is not to a ResolvedFunction
             return super().map_call(expr, expn_state)
 
         arg_id_to_val = dict(enumerate(expr.parameters))
-        if isinstance(expr, CallWithKwargs):
-            arg_id_to_val.update(expr.kw_parameters)
 
         if assignees is not None:
             # If supplied with assignees then this is a CallInstruction
             for i, arg in enumerate(assignees):
                 arg_id_to_val[-i-1] = arg
 
-        from loopy.kernel.function_interface import get_arg_descriptor_for_expression
         arg_id_to_descr = {
-                arg_id: get_arg_descriptor_for_expression(
-                    self.caller_kernel, arg)
-                for arg_id, arg in arg_id_to_val.items()}
-        in_knl_callable = self.clbl_inf_ctx[expr.function.name]
+            arg_id: get_arg_descriptor_for_expression(self.caller_kernel, arg)
+            for arg_id, arg in arg_id_to_val.items()}
+        clbl = self.clbl_inf_ctx[expr.function.name]
 
         # {{{ translating descriptor expressions to the callable's namespace
 
@@ -2196,16 +2193,17 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         assert deps <= self.caller_kernel.all_variable_names()
 
         for dep in deps:
-            caller_arg = self.caller_kernel.arg_dict.get(dep, None)
-            caller_arg = self.caller_kernel.temporary_variables.get(dep, caller_arg)
-
-            if not (isinstance(caller_arg, ValueArg) or (isinstance(caller_arg,
-                    ArrayBase) and caller_arg.shape == ())):
+            caller_arg = self.caller_kernel.arg_dict.get(dep, (self.caller_kernel
+                                                               .temporary_variables
+                                                               .get(dep)))
+            if not (isinstance(caller_arg, ValueArg)
+                    or (isinstance(caller_arg, ArrayBase)
+                        and caller_arg.shape == ())):
                 raise NotImplementedError(f"Obtained '{dep}' as a dependency for"
                         f" call '{expr.function.name}' which is not a scalar.")
 
-            in_knl_callable, callee_name = in_knl_callable.with_added_arg(
-                    caller_arg.dtype, ValueArgDescriptor())
+            clbl, callee_name = clbl.with_added_arg(caller_arg.dtype,
+                                                    ValueArgDescriptor())
 
             subst_map[dep] = Variable(callee_name)
             deps_as_params.append(Variable(dep))
@@ -2217,36 +2215,17 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         # }}}
 
         # specializing the function according to the parameter description
-        new_in_knl_callable, self.clbl_inf_ctx = (
-                in_knl_callable.with_descrs(
-                    arg_id_to_descr, self.clbl_inf_ctx))
+        new_clbl, self.clbl_inf_ctx = clbl.with_descrs(arg_id_to_descr,
+                                                       self.clbl_inf_ctx)
 
-        # find the deps of the new in kernel callablen and add those arguments to
+        self.clbl_inf_ctx, new_func_id = (self.clbl_inf_ctx
+                                          .with_callable(expr.function.function,
+                                                         new_clbl))
 
-        self.clbl_inf_ctx, new_func_id = (
-                self.clbl_inf_ctx.with_callable(
-                    expr.function.function,
-                    new_in_knl_callable))
-
-        if isinstance(expr, Call):
-            return Call(
-                    ResolvedFunction(new_func_id),
+        return Call(ResolvedFunction(new_func_id),
                     tuple(self.rec(child, expn_state)
                           for child in expr.parameters)
                     + tuple(deps_as_params))
-        else:
-            # FIXME: Order for vars when kwargs are present?
-            assert isinstance(expr, CallWithKwargs)
-            return CallWithKwargs(
-                    ResolvedFunction(new_func_id),
-                    tuple(self.rec(child, expn_state)
-                        for child in expr.parameters),
-                    {
-                        key: self.rec(val, expn_state)
-                        for key, val in expr.kw_parameters.items()}
-                    )
-
-    map_call_with_kwargs = map_call
 
     def __call__(self, expr, kernel, insn, assignees=None):
         from loopy.kernel.data import InstructionBase

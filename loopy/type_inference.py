@@ -99,21 +99,6 @@ class FunctionNameChanger(RuleAwareIdentityMapper):
         else:
             return self.map_substitution(name, tag, expr.parameters, expn_state)
 
-    def map_call_with_kwargs(self, expr, expn_state):
-
-        if expr in self.calls_to_new_names:
-            return type(expr)(
-                ResolvedFunction(self.calls_to_new_names[expr]),
-                tuple(self.rec(child, expn_state)
-                    for child in expr.parameters),
-                {
-                    key: self.rec(val, expn_state)
-                    for key, val in expr.kw_parameters.items()}
-                    )
-        else:
-            return super().map_call_with_kwargs(
-                    expr, expn_state)
-
 
 def change_names_of_pymbolic_calls(kernel, pymbolic_calls_to_new_names):
     """
@@ -407,13 +392,7 @@ class TypeInferenceMapper(CombineMapper):
 
     def map_call(self, expr, return_tuple=False):
 
-        from pymbolic.primitives import Variable, CallWithKwargs, Call
-
-        if isinstance(expr, CallWithKwargs):
-            kw_parameters = expr.kw_parameters
-        else:
-            assert isinstance(expr, Call)
-            kw_parameters = {}
+        from pymbolic.primitives import Variable
 
         identifier = expr.function
 
@@ -431,8 +410,8 @@ class TypeInferenceMapper(CombineMapper):
             else:
                 return None
 
-        arg_id_to_dtype = {i: none_if_empty(self.rec(par)) for (i, par) in
-                tuple(enumerate(expr.parameters)) + tuple(kw_parameters.items())}
+        arg_id_to_dtype = {i: none_if_empty(self.rec(par))
+                           for (i, par) in enumerate(expr.parameters)}
 
         # specializing the known function wrt type
         in_knl_callable = self.clbl_inf_ctx[expr.function.name]
@@ -450,11 +429,7 @@ class TypeInferenceMapper(CombineMapper):
                     expr.function.function,
                     in_knl_callable))
 
-        if isinstance(expr, Call):
-            self.old_calls_to_new_calls[expr] = new_function_id
-        else:
-            assert isinstance(expr, CallWithKwargs)
-            self.old_calls_to_new_calls[expr] = new_function_id
+        self.old_calls_to_new_calls[expr] = new_function_id
 
         new_arg_id_to_dtype = in_knl_callable.arg_id_to_dtype
 
@@ -469,8 +444,6 @@ class TypeInferenceMapper(CombineMapper):
                 return [new_arg_id_to_dtype[-1]]
 
         return []
-
-    map_call_with_kwargs = map_call
 
     def map_variable(self, expr):
         if expr.name in self.kernel.all_inames():
@@ -681,8 +654,6 @@ class TypeReader(TypeInferenceMapper):
         else:
             raise RuntimeError("unexpected type inference "
                     "object type for '%s'" % expr.name)
-
-    map_call_with_kwargs = map_call
 
 # }}}
 

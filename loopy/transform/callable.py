@@ -307,18 +307,8 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     assignees = call_insn.assignees  # writes
     parameters = call_insn.expression.parameters  # reads
 
-    # add keyword parameters
-    from pymbolic.primitives import CallWithKwargs
-
     from loopy.kernel.function_interface import get_kw_pos_association
     kw_to_pos, pos_to_kw = get_kw_pos_association(callee_knl)
-    if isinstance(call_insn.expression, CallWithKwargs):
-        kw_parameters = call_insn.expression.kw_parameters
-    else:
-        kw_parameters = {}
-
-    for kw, par in kw_parameters.items():
-        arg_map[kw] = par
 
     for i, par in enumerate(parameters):
         arg_map[pos_to_kw[i]] = par
