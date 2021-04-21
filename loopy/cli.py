@@ -159,7 +159,7 @@ def main():
             raise RuntimeError("loopy-lang requires 'lp_knl' "
                     "to be defined on exit")
 
-        prg = [kernel]
+        t_unit = [kernel]
 
     elif lang in ["fortran", "floopy", "fpp"]:
         pre_transform_code = None
@@ -176,7 +176,7 @@ def main():
                         defines_to_python_code(defines_fd.read())
                         + pre_transform_code)
 
-        prg = lp.parse_transformed_fortran(
+        t_unit = lp.parse_transformed_fortran(
                 infile_content, pre_transform_code=pre_transform_code,
                 filename=args.infile)
 
@@ -184,16 +184,16 @@ def main():
         raise RuntimeError("unknown language: '%s'"
                 % args.lang)
 
-    if not isinstance(prg, lp.TranslationUnit):
+    if not isinstance(t_unit, lp.TranslationUnit):
         # FIXME
-        assert isinstance(prg, list)  # of kernels
+        assert isinstance(t_unit, list)  # of kernels
         raise NotImplementedError("convert list of kernels to TranslationUnit")
 
     if args.print_ir:
-        print(prg, file=sys.stderr)
+        print(t_unit, file=sys.stderr)
 
-    prg = lp.preprocess_kernel(prg)
-    cgr = lp.generate_code_v2(prg)
+    t_unit = lp.preprocess_kernel(t_unit)
+    cgr = lp.generate_code_v2(t_unit)
 
     if args.outfile is not None:
         outfile = args.outfile

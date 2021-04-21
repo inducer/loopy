@@ -1257,9 +1257,9 @@ class ExecutableCTarget(CTarget):
         # thing that CPU JIT is specific to.
         return None
 
-    def get_kernel_executor(self, prg, *args, **kwargs):
+    def get_kernel_executor(self, t_unit, *args, **kwargs):
         from loopy.target.c.c_execution import CKernelExecutor
-        return CKernelExecutor(prg, entrypoint=kwargs.pop("entrypoint"),
+        return CKernelExecutor(t_unit, entrypoint=kwargs.pop("entrypoint"),
                 compiler=self.compiler)
 
     def get_host_ast_builder(self):

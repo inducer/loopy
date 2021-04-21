@@ -84,12 +84,12 @@ def test_assign_double_precision_scalar(ctx_factory):
         end
         """
 
-    prg = lp.parse_fortran(fortran_src)
-    print(lp.generate_code_v2(prg).device_code())
-    assert "1.1;" in lp.generate_code_v2(prg).device_code()
+    t_unit = lp.parse_fortran(fortran_src)
+    print(lp.generate_code_v2(t_unit).device_code())
+    assert "1.1;" in lp.generate_code_v2(t_unit).device_code()
 
     a_dev = cl.array.empty(queue, 1, dtype=np.float64, order="F")
-    prg(queue, a=a_dev)
+    t_unit(queue, a=a_dev)
 
     abs_err = abs(a_dev.get()[0] - 1.1)
     assert abs_err < 1e-15
@@ -108,10 +108,10 @@ def test_assign_double_precision_scalar_as_rational(ctx_factory):
         end
         """
 
-    prg = lp.parse_fortran(fortran_src)
+    t_unit = lp.parse_fortran(fortran_src)
 
     a_dev = cl.array.empty(queue, 1, dtype=np.float64, order="F")
-    prg(queue, a=a_dev)
+    t_unit(queue, a=a_dev)
 
     abs_err = abs(a_dev.get()[0] - 1.1)
     assert abs_err < 1e-15
@@ -129,11 +129,11 @@ def test_assign_single_precision_scalar(ctx_factory):
         end
         """
 
-    prg = lp.parse_fortran(fortran_src)
-    assert "1.1f" in lp.generate_code_v2(prg).device_code()
+    t_unit = lp.parse_fortran(fortran_src)
+    assert "1.1f" in lp.generate_code_v2(t_unit).device_code()
 
     a_dev = cl.array.empty(queue, 1, dtype=np.float64, order="F")
-    prg(queue, a=a_dev)
+    t_unit(queue, a=a_dev)
 
     abs_err = abs(a_dev.get()[0] - 1.1)
     assert abs_err > 1e-15
@@ -547,9 +547,9 @@ def test_parse_and_fuse_two_kernels():
 
         !$loopy begin
         !
-        ! prg = lp.parse_fortran(SOURCE)
-        ! fill = prg["fill"]
-        ! twice = prg["twice"]
+        ! t_unit = lp.parse_fortran(SOURCE)
+        ! fill = t_unit["fill"]
+        ! twice = t_unit["twice"]
         ! knl = lp.fuse_kernels((fill, twice))
         ! print(knl)
         ! RESULT = knl
@@ -628,8 +628,8 @@ def test_fortran_subroutines():
           call twice(n, a(i, 1:n))
         end subroutine
         """
-    prg = lp.parse_fortran(fortran_src).with_entrypoints("twice_cross")
-    print(lp.generate_code_v2(prg).device_code())
+    t_unit = lp.parse_fortran(fortran_src).with_entrypoints("twice_cross")
+    print(lp.generate_code_v2(t_unit).device_code())
 
 
 def test_domain_fusion_imperfectly_nested():
@@ -648,10 +648,10 @@ def test_domain_fusion_imperfectly_nested():
         end subroutine
         """
 
-    prg = lp.parse_fortran(fortran_src)
+    t_unit = lp.parse_fortran(fortran_src)
     # If n > 0 and m == 0, a single domain would be empty,
     # leading (incorrectly) to no assignments to 'a'.
-    assert len(prg["imperfect"].domains) > 1
+    assert len(t_unit["imperfect"].domains) > 1
 
 
 if __name__ == "__main__":

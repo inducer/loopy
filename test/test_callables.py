@@ -647,14 +647,14 @@ def test_callees_with_gbarriers_are_inlined(ctx_factory):
             seq_dependencies=True,
             name="ones_and_zeros")
 
-    prg = lp.make_kernel(
+    t_unit = lp.make_kernel(
             "{ : }",
             """
             y[:] = ones_and_zeros()
             """, [lp.GlobalArg("y", shape=6, dtype=lp.auto)])
 
-    prg = lp.merge([prg, ones_and_zeros])
-    evt, (out,) = prg(queue)
+    t_unit = lp.merge([t_unit, ones_and_zeros])
+    evt, (out,) = t_unit(queue)
 
     expected_out = np.array([1, 1, 1, 0, 0, 0]).astype(np.float32)
 
@@ -675,19 +675,19 @@ def test_inlining_with_indirections(ctx_factory):
             seq_dependencies=True,
             name="ones_and_zeros")
 
-    prg = lp.make_kernel(
+    t_unit = lp.make_kernel(
             "{ : }",
             """
             y[:] = ones_and_zeros(map[:])
             """, [lp.GlobalArg("y", shape=6, dtype=lp.auto),
                   lp.GlobalArg("map", dtype=np.int32, shape=3)])
 
-    prg = lp.merge([prg, ones_and_zeros])
-    prg = lp.inline_callable_kernel(prg, "ones_and_zeros")
+    t_unit = lp.merge([t_unit, ones_and_zeros])
+    t_unit = lp.inline_callable_kernel(t_unit, "ones_and_zeros")
 
     map_in = np.arange(3).astype(np.int32)
 
-    evt, (out, ) = prg(queue, map=map_in)
+    evt, (out, ) = t_unit(queue, map=map_in)
 
     expected_out = np.array([1, 1, 1, 0, 0, 0]).astype(np.float32)
     assert (expected_out == out).all()

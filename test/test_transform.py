@@ -572,12 +572,12 @@ def test_nested_substs_in_insns(ctx_factory):
         """
     )
 
-    prg = lp.expand_subst(ref_prg)
+    t_unit = lp.expand_subst(ref_prg)
     assert not any(
             cknl.subkernel.substitutions
-            for cknl in prg.callables_table.values())
+            for cknl in t_unit.callables_table.values())
 
-    lp.auto_test_vs_ref(ref_prg, ctx, prg)
+    lp.auto_test_vs_ref(ref_prg, ctx, t_unit)
 
 
 def test_extract_subst_with_iname_deps_in_templ(ctx_factory):
