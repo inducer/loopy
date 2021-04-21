@@ -374,15 +374,7 @@ class DependencyMapper(DependencyMapperBase):
     def map_call(self, expr, *args, **kwargs):
         # Loopy does not have first-class functions. Do not descend
         # into 'function' attribute of Call.
-        return self.combine(
-                self.rec(child, *args, **kwargs) for child in expr.parameters)
-
-    def map_call_with_kwargs(self, expr, *args):
-        # Loopy does not have first-class functions. Do not descend
-        # into 'function' attribute of Call.
-        return self.combine(
-                self.rec(child, *args) for child in expr.parameters+tuple(
-                    expr.kw_parameters.values()))
+        return self.rec(expr.parameters, *args, **kwargs)
 
     def map_reduction(self, expr, *args, **kwargs):
         deps = self.rec(expr.expr, *args, **kwargs)
@@ -1529,14 +1521,6 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
             else:
                 return IdentityMapper.map_call(self, expr)
-
-    def map_call_with_kwargs(self, expr):
-        for par in expr.kw_parameters.values():
-            if not isinstance(par, SubArrayRef):
-                raise LoopyError("Keyword Arguments is only supported for"
-                        " array arguments--use positional order to specify"
-                        " the order of the arguments in the call.")
-        return IdentityMapper.map_call_with_kwargs(self, expr)
 
 
 # {{{ customization to pymbolic parser

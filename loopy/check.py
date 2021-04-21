@@ -91,13 +91,12 @@ def check_identifiers_in_subst_rules(knl):
                        ", ".join(deps-rule_allowed_identifiers)))
 
 
-class UnscopedCallCollector(CombineMapper):
+class UnresolvedCallCollector(CombineMapper):
     """
-    Collects all the unscoped calls within a kernel.
+    Collects all the unresolved calls within a kernel.
 
     :returns:
-        An :class:`frozenset` of function names that are not scoped in
-        the kernel.
+        An :class:`frozenset` of function names that are not resolved.
     """
 
     def combine(self, values):
@@ -105,19 +104,10 @@ class UnscopedCallCollector(CombineMapper):
         return reduce(operator.or_, values, frozenset())
 
     def map_call(self, expr):
-        from pymbolic.primitives import CallWithKwargs
-        return self.rec(CallWithKwargs(
-            function=expr.function, parameters=expr.parameters,
-            kw_parameters={}))
-
-    def map_call_with_kwargs(self, expr):
         if not isinstance(expr.function, ResolvedFunction):
-            return (frozenset([expr.function.name]) |
-                    self.combine(self.rec(child) for child in expr.parameters
-                        + tuple(expr.kw_parameters.values())))
+            return frozenset([expr.function.name]) | self.rec(expr.parameters)
         else:
-            return self.combine(self.rec(child) for child in
-                expr.parameters+tuple(expr.kw_parameters.values()))
+            return self.rec(expr.parameters)
 
     def map_constant(self, expr):
         return frozenset()
@@ -137,17 +127,16 @@ def check_functions_are_resolved(kernel):
 
     for insn in kernel.instructions:
         if isinstance(insn, MultiAssignmentBase):
-            unscoped_calls = UnscopedCallCollector()(subst_expander(
-                insn.expression))
-            if unscoped_calls:
+            unresolved_calls = UnresolvedCallCollector()(subst_expander(insn
+                                                                        .expression))
+            if unresolved_calls:
                 raise LoopyError("Unknown function '%s' -- register a "
                                  "callable corresponding to it." %
-                                 set(unscoped_calls).pop())
+                                 set(unresolved_calls).pop())
         elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
             pass
         else:
-            raise NotImplementedError(
-                    "Unsupported instruction type %s." % type(insn).__name__)
+            raise NotImplementedError(type(insn))
 
 # }}}
 
