@@ -47,7 +47,7 @@ from loopy.kernel.data import (
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
 from loopy.program import (
-        Program, make_program)
+        TranslationUnit, Program,  make_program)
 
 from loopy.kernel import LoopKernel, KernelState, kernel_state
 from loopy.kernel.tools import (
@@ -175,7 +175,7 @@ __all__ = [
 
         "ScalarCallable", "CallableKernel",
 
-        "Program", "make_program",
+        "TranslationUnit", "make_program", "Program",
 
         "KernelArgument",
         "ValueArg", "ArrayArg", "GlobalArg", "ConstantArg", "ImageArg",
@@ -461,7 +461,7 @@ class CacheMode:
 # {{{ make copy kernel
 
 def make_copy_kernel(new_dim_tags, old_dim_tags=None):
-    """Returns a :class:`loopy.Program` that changes the data layout
+    """Returns a :class:`loopy.TranslationUnit` that changes the data layout
     of a variable (called "input") to the new layout specified by
     *new_dim_tags* from the one specified by *old_dim_tags*.
     *old_dim_tags* defaults to an all-C layout of the same rank

@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import CallInstruction
-from loopy.program import Program
+from loopy.program import TranslationUnit
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.symbolic import SubArrayRef
@@ -317,7 +317,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
 
 
 def pack_and_unpack_args_for_call(program, *args, **kwargs):
-    assert isinstance(program, Program)
+    assert isinstance(program, TranslationUnit)
 
     new_callables = {}
     for func_id, in_knl_callable in program.callables_table.items():

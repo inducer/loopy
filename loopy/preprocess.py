@@ -42,7 +42,7 @@ from loopy.symbolic import RuleAwareIdentityMapper, ReductionCallbackMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
 from loopy.kernel import LoopKernel
-from loopy.program import Program
+from loopy.program import TranslationUnit
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 from pytools import ProcessLogger
@@ -87,7 +87,7 @@ def prepare_for_caching(program):
     if isinstance(program, LoopKernel):
         return prepare_for_caching_inner(program)
 
-    assert isinstance(program, Program)
+    assert isinstance(program, TranslationUnit)
     tgt = program.target
 
     new_clbls = {}
@@ -2060,7 +2060,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
 
 def realize_reduction(program, *args, **kwargs):
-    assert isinstance(program, Program)
+    assert isinstance(program, TranslationUnit)
 
     callables_table = dict(program.callables_table)
     kernels_to_scan = [in_knl_callable.subkernel

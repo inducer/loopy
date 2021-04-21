@@ -46,7 +46,7 @@ __doc__ = """
 
 .. currentmodule:: loopy
 
-.. autoclass:: Program
+.. autoclass:: TranslationUnit
 
 .. autofunction:: make_program
 
@@ -150,9 +150,13 @@ class CallableResolver(RuleAwareIdentityMapper):
 
 # {{{ program
 
-class Program(ImmutableRecord):
+class TranslationUnit(ImmutableRecord):
     """
     Records the information about all the callables in a :mod:`loopy` program.
+
+    An instance of :class:`TranslationUnit` is the object that gets lowered
+    for a :class:`loopy.target.TargetBase`.
+
 
     .. attribute:: entrypoints
 
@@ -181,15 +185,18 @@ class Program(ImmutableRecord):
         TargetBase, function_indentifier: str)`` that would return an instance
         of :class:`loopy.kernel.function_interface.InKernelCallable` or *None*.
 
+    .. automethod:: __call__
     .. automethod:: copy
     .. automethod:: __getitem__
+    .. automethod:: with_kernel
 
     .. note::
 
-        - To create an instance of :class:`loopy.Program`, it is recommended to
-           go through :func:`loopy.make_kernel`.
+        - To create an instance of :class:`loopy.TranslationUnit`, it is
+          recommended to go through :func:`loopy.make_kernel`.
         - This data structure and its attributes should be considered
-          immutable, any modifications should be done through :meth:`~Program.copy`.
+          immutable, any modifications should be done through
+          :meth:`~TranslationUnit.copy`.
 
     """
     def __init__(self,
@@ -270,9 +277,9 @@ class Program(ImmutableRecord):
     @property
     def state(self):
         """ Returns an instance of :class:`loopy.kernel.KernelState`. """
-        return min(callable_knl.subkernel.state for callable_knl in
-                self.callables_table.values() if
-                isinstance(callable_knl, CallableKernel))
+        return min(callable_knl.subkernel.state
+                   for callable_knl in self.callables_table.values()
+                   if isinstance(callable_knl, CallableKernel))
 
     def with_kernel(self, kernel):
         """
@@ -314,10 +321,17 @@ class Program(ImmutableRecord):
             entrypoint, = self.entrypoints
             return self[entrypoint]
         else:
-            raise ValueError("Program has multiple possible entrypoints. The "
-                    "default entry point kernel is not uniquely determined.")
+            raise ValueError("TranslationUnit has multiple possible entrypoints."
+                             " The default entry point kernel is not uniquely"
+                             " determined.")
 
     def __call__(self, *args, **kwargs):
+        """
+        Builds and calls the *entrypoint* kernel, if
+        :attr:`TranslationUnit.target` is an executable target.
+
+        :arg entrypoint: The entrypoint which is to be called
+        """
         entrypoint = kwargs.get("entrypoint", None)
 
         if entrypoint is None:
@@ -325,7 +339,7 @@ class Program(ImmutableRecord):
             if len(self.entrypoints) == 1:
                 entrypoint, = self.entrypoints
             else:
-                raise TypeError("Program.__call__() missing 1 required"
+                raise TypeError("TranslationUnit.__call__() missing 1 required"
                         " keyword argument: 'entrypoint'. "
                         "(Multiple possible entrypoints are present in the "
                         "program.)")
@@ -369,6 +383,9 @@ class Program(ImmutableRecord):
         key_hash = new_hash()
         self.update_persistent_hash(key_hash, LoopyKeyBuilder())
         return hash(key_hash.digest())
+
+
+Program = TranslationUnit
 
 # }}}
 
@@ -689,11 +706,11 @@ class CallablesInferenceContext(ImmutableRecord):
 
 def make_program(kernel):
     """
-    Returns an instance of :class:`loopy.Program` with *kernel* as the only
+    Returns an instance of :class:`loopy.TranslationUnit` with *kernel* as the only
     callable kernel.
     """
 
-    program = Program(
+    program = TranslationUnit(
             callables_table={
                 kernel.name: CallableKernel(kernel)},
             target=kernel.target)
@@ -706,7 +723,7 @@ def iterate_over_kernels_if_given_program(transform_for_single_kernel):
     Function wrapper for transformations of the type ``transform(kernel:
     LoopKernel, *args, **kwargs): LoopKernel``. Returns a function with the
     ``transform`` being implemented on all of the callable kernels in a
-    :class:`loopy.Program`.
+    :class:`loopy.TranslationUnit`.
     """
     def _collective_transform(*args, **kwargs):
         if "program" in kwargs:
@@ -717,7 +734,7 @@ def iterate_over_kernels_if_given_program(transform_for_single_kernel):
             program_or_kernel = args[0]
             args = args[1:]
 
-        if isinstance(program_or_kernel, Program):
+        if isinstance(program_or_kernel, TranslationUnit):
             program = program_or_kernel
             new_callables = {}
             for func_id, in_knl_callable in program.callables_table.items():
@@ -763,7 +780,7 @@ def update_table(callables_table, clbl_id, clbl):
 
 def resolve_callables(program):
     """
-    Returns a :class:`Program` with known :class:`pymbolic.primitives.Call`
+    Returns a :class:`TranslationUnit` with known :class:`pymbolic.primitives.Call`
     expression nodes converted to :class:`loopy.symbolic.ResolvedFunction`.
     """
     from loopy.library.function import get_loopy_callables

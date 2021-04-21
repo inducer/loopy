@@ -26,7 +26,7 @@ from islpy import dim_type
 from loopy.kernel.data import ImageArg
 
 from pytools import MovedFunctionDeprecationWrapper
-from loopy.program import Program, iterate_over_kernels_if_given_program
+from loopy.program import TranslationUnit, iterate_over_kernels_if_given_program
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
@@ -369,7 +369,7 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
 
 
 def add_prefetch(program, *args, **kwargs):
-    assert isinstance(program, Program)
+    assert isinstance(program, TranslationUnit)
 
     new_callables = {}
     for func_id, in_knl_callable in program.callables_table.items():

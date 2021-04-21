@@ -27,7 +27,7 @@ from loopy.symbolic import (get_dependencies,
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
 from pymbolic.mapper.substitutor import make_subst_func
-from loopy.program import Program
+from loopy.program import TranslationUnit
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 import numpy as np
 
@@ -354,7 +354,7 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
     Trivial storage axes (i.e. axes of length 1 with respect to the sweep) are
     eliminated.
     """
-    if isinstance(kernel, Program):
+    if isinstance(kernel, TranslationUnit):
         kernel_names = [i for i, clbl in
                 kernel.callables_table.items() if isinstance(clbl,
                     CallableKernel)]
@@ -1057,7 +1057,7 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
 
 def precompute(program, *args, **kwargs):
-    assert isinstance(program, Program)
+    assert isinstance(program, TranslationUnit)
     new_callables = {}
 
     for func_id, clbl in program.callables_table.items():

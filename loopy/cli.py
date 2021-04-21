@@ -184,10 +184,10 @@ def main():
         raise RuntimeError("unknown language: '%s'"
                 % args.lang)
 
-    if not isinstance(prg, lp.Program):
+    if not isinstance(prg, lp.TranslationUnit):
         # FIXME
         assert isinstance(prg, list)  # of kernels
-        raise NotImplementedError("convert list of kernels to Program")
+        raise NotImplementedError("convert list of kernels to TranslationUnit")
 
     if args.print_ir:
         print(prg, file=sys.stderr)

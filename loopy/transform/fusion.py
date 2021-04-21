@@ -28,7 +28,7 @@ from loopy.diagnostic import LoopyError
 from pymbolic import var
 
 from loopy.kernel import LoopKernel
-from loopy.program import Program
+from loopy.program import TranslationUnit
 from loopy.kernel.function_interface import CallableKernel
 
 
@@ -333,7 +333,7 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
     # namespace, otherwise the kernel names should be uniquified.
     # We should also somehow be able to know that callables like "sin"/"cos"
     # belong to the global namespace and need not be uniquified.
-    if all(isinstance(kernel, Program) for kernel in kernels):
+    if all(isinstance(kernel, TranslationUnit) for kernel in kernels):
         new_kernels = []
         for knl in kernels:
             kernel_names = [i for i, clbl in

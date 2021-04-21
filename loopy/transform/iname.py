@@ -29,7 +29,7 @@ from loopy.symbolic import (
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
 
-from loopy.program import Program, iterate_over_kernels_if_given_program
+from loopy.program import TranslationUnit, iterate_over_kernels_if_given_program
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
 
@@ -1038,7 +1038,7 @@ def get_iname_duplication_options(kernel, use_boostable_into=False):
     Use :func:`has_schedulable_iname_nesting` to decide whether an iname needs to be
     duplicated in a given kernel.
     """
-    if isinstance(kernel, Program):
+    if isinstance(kernel, TranslationUnit):
         if len([clbl for clbl in kernel.callables_table.values() if
                 isinstance(clbl, CallableKernel)]) == 1:
             kernel = kernel[list(kernel.entrypoints)[0]]
@@ -1092,7 +1092,7 @@ def has_schedulable_iname_nesting(kernel):
     :returns: a :class:`bool` indicating whether this kernel needs
         an iname duplication in order to be schedulable.
     """
-    if isinstance(kernel, Program):
+    if isinstance(kernel, TranslationUnit):
         if len([clbl for clbl in kernel.callables_table.values() if
                 isinstance(clbl, CallableKernel)]) == 1:
             kernel = kernel[list(kernel.entrypoints)[0]]

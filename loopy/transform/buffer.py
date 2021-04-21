@@ -31,7 +31,7 @@ from loopy.tools import LoopyKeyBuilder, PymbolicExpressionHashWrapper
 from loopy.version import DATA_MODEL_VERSION
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
-from loopy.program import Program
+from loopy.program import TranslationUnit
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 from pymbolic import var
@@ -169,7 +169,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
         fetched.
     """
 
-    if isinstance(kernel, Program):
+    if isinstance(kernel, TranslationUnit):
         kernel_names = [i for i, clbl in
                 kernel.callables_table.items() if isinstance(clbl,
                     CallableKernel)]
@@ -554,7 +554,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
 
 
 def buffer_array(program, *args, **kwargs):
-    assert isinstance(program, Program)
+    assert isinstance(program, TranslationUnit)
 
     new_callables = {}
 

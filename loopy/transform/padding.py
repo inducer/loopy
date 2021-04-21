@@ -24,7 +24,7 @@ THE SOFTWARE.
 from pytools import MovedFunctionDeprecationWrapper
 from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 
-from loopy.program import iterate_over_kernels_if_given_program, Program
+from loopy.program import iterate_over_kernels_if_given_program, TranslationUnit
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
 from loopy.diagnostic import LoopyError
@@ -409,7 +409,7 @@ def split_array_axis(kernel, array_names, axis_nr, count,
 # {{{ find_padding_multiple
 
 def find_padding_multiple(kernel, variable, axis, align_bytes, allowed_waste=0.1):
-    if isinstance(kernel, Program):
+    if isinstance(kernel, TranslationUnit):
         kernel_names = [i for i, clbl in kernel.callables_table.items()
                 if isinstance(clbl, CallableKernel)]
         if len(kernel_names) > 1:

@@ -706,7 +706,7 @@ def generate_code_v2(program):
     """
     Returns an instance of :class:`CodeGenerationResult`.
 
-    :param program: An instance of :class:`loopy.Program`.
+    :param program: An instance of :class:`loopy.TranslationUnit`.
     """
 
     from loopy.kernel import LoopKernel
@@ -721,7 +721,7 @@ def generate_code_v2(program):
         input_program = prepare_for_caching(program)
         try:
             result = code_gen_cache[input_program]
-            logger.debug(f"Program with entrypoints {program.entrypoints}:"
+            logger.debug(f"TranslationUnit with entrypoints {program.entrypoints}:"
                          " code generation cache hit")
             return result
         except KeyError:

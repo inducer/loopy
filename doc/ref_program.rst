@@ -1,6 +1,6 @@
 .. currentmodule:: loopy
 
-Program
+TranslationUnit
 =======
 
-.. autoclass:: Program
+.. autoclass:: TranslationUnit
