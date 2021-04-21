@@ -471,7 +471,10 @@ def _inline_single_callable_kernel(caller_kernel, callee_kernel,
                     "Unknown instruction type %s"
                     % type(insn).__name__)
 
-    return caller_kernel
+    from loopy.transform.iname import remove_unused_inames
+    # sub-array refs might have been removed during inlining
+    # => remove their swept inames from domains
+    return remove_unused_inames(caller_kernel)
 
 
 # FIXME This should take a 'within' parameter to be able to only inline
