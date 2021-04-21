@@ -287,7 +287,7 @@ class TranslationUnit(ImmutableRecord):
         subkernel and returns a copy of *self*. Else records a new callable
         kernel with *kernel* as its subkernel.
 
-        :arg kernel: An instance of :class:`loopy.kernel.LoopKernel`.
+        :arg kernel: An instance of :class:`loopy.LoopKernel`.
         :returns: Copy of *self* with updated callable kernels.
         """
         if kernel.name in self.callables_table:
