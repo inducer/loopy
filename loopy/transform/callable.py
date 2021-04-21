@@ -611,7 +611,7 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
 
         new_args = [arg if not isinstance(arg, ArrayBase)
                     else arg.copy(shape=arg_id_to_shape[arg.name],
-                                  dim_tags=None, strides=auto)
+                                  dim_tags=None, strides=auto, order="C")
                     for arg in callee_knl.args]
 
         # subkernel with instructions adjusted according to the new dimensions
