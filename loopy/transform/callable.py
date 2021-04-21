@@ -560,6 +560,7 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
         dimensions required by *caller_knl*.
     """
     from loopy.kernel.array import ArrayBase
+    from loopy.kernel.data import auto
 
     for insn in caller_knl.instructions:
         if not isinstance(insn, CallInstruction) or (
@@ -609,7 +610,8 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
                         type(insn))
 
         new_args = [arg if not isinstance(arg, ArrayBase)
-                    else arg.copy(shape=arg_id_to_shape[arg.name], dim_tags=None)
+                    else arg.copy(shape=arg_id_to_shape[arg.name],
+                                  dim_tags=None, strides=auto)
                     for arg in callee_knl.args]
 
         # subkernel with instructions adjusted according to the new dimensions
