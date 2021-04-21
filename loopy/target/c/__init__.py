@@ -483,7 +483,7 @@ class CMathCallable(ScalarCallable):
         # unary functions
         if name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
                     "tan", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor",
-                    "erf", "erfc", "abs", "real", "imag"]:
+                    "erf", "erfc", "abs", "real", "imag", "conj"]:
 
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 0:
@@ -516,7 +516,8 @@ class CMathCallable(ScalarCallable):
                     dtype))
 
             if dtype.kind == "c":
-                name = "c" + name
+                if name != "conj":
+                    name = "c" + name
 
             if name in ["abs", "real", "imag"]:
                 dtype = real_dtype
@@ -599,7 +600,8 @@ def get_c_callables():
     cmath_ids = ["abs", "acos", "asin", "atan", "cos", "cosh", "sin",
                  "sinh", "pow", "atan2", "tanh", "exp", "log", "log10",
                  "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
-                 "fabs", "tan", "erf", "erfc", "isnan", "real", "imag"]
+                 "fabs", "tan", "erf", "erfc", "isnan", "real", "imag",
+                 "conj"]
 
     return {id_: CMathCallable(id_) for id_ in cmath_ids}
 
