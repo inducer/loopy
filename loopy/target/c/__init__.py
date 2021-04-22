@@ -515,12 +515,12 @@ class CMathCallable(ScalarCallable):
                 raise LoopyTypeError("{} does not support type {}".format(name,
                     dtype))
 
-            if dtype.kind == "c":
-                if name != "conj":
-                    name = "c" + name
-
             if name in ["abs", "real", "imag"]:
                 dtype = real_dtype
+
+            if dtype.kind == "c" or name in ["real", "imag"]:
+                if name != "conj":
+                    name = "c" + name
 
             return (
                     self.copy(name_in_target=name,
