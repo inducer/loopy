@@ -34,7 +34,7 @@ from loopy.symbolic import (
 from loopy.isl_helpers import simplify_via_aff
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
-from loopy.program import Program
+from loopy.translation_unit import TranslationUnit
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -48,7 +48,7 @@ __doc__ = """
 def register_callable(translation_unit, function_identifier, callable_,
         redefining_not_ok=True):
     """
-    :param translation_unit: A :class:`loopy.Program`.
+    :param translation_unit: A :class:`loopy.TranslationUnit`.
     :param callable_: A :class:`loopy.InKernelCallable`.
     """
 
@@ -73,9 +73,9 @@ def register_callable(translation_unit, function_identifier, callable_,
 
 def merge(translation_units):
     """
-    :param translation_units: A list of :class:`loopy.Program`.
+    :param translation_units: A list of :class:`loopy.TranslationUnit`.
 
-    :returns: An instance of :class:`loopy.Program` which contains all the
+    :returns: An instance of :class:`loopy.TranslationUnit` which contains all the
         callables from each of the *translation_units.
     """
 
@@ -104,7 +104,7 @@ def merge(translation_units):
     for trans_unit in translation_units:
         callables_table.update(trans_unit.callables_table.copy())
 
-    return Program(
+    return TranslationUnit(
             entrypoints=frozenset().union(*(
                 t.entrypoints or frozenset() for t in translation_units)),
             callables_table=callables_table,
@@ -489,7 +489,7 @@ def inline_callable_kernel(program, function_name):
     (scoped) name *function_name* inlined.
     """
     from loopy.preprocess import infer_arg_descr
-    from loopy.program import resolve_callables
+    from loopy.translation_unit import resolve_callables
     program = resolve_callables(program)
     program = infer_arg_descr(program)
     callables_table = program.callables_table
@@ -672,7 +672,7 @@ def _match_caller_callee_argument_dimension_(program, callee_function_name):
 
     # {{{  sanity checks
 
-    assert isinstance(program, Program)
+    assert isinstance(program, TranslationUnit)
     assert isinstance(callee_function_name, str)
     assert callee_function_name not in program.entrypoints
     assert callee_function_name in program.callables_table
@@ -700,7 +700,7 @@ def _match_caller_callee_argument_dimension_(program, callee_function_name):
 
 def rename_callable(program, old_name, new_name=None, existing_ok=False):
     """
-    :arg program: An instance of :class:`loopy.Program`
+    :arg program: An instance of :class:`loopy.TranslationUnit`
     :arg old_name: The callable to be renamed
     :arg new_name: New name for the callable to be renamed
     :arg existing_ok: An instance of :class:`bool`
@@ -710,7 +710,7 @@ def rename_callable(program, old_name, new_name=None, existing_ok=False):
             SubstitutionRuleMappingContext)
     from pymbolic import var
 
-    assert isinstance(program, Program)
+    assert isinstance(program, TranslationUnit)
     assert isinstance(old_name, str)
 
     if (new_name in program.callables_table) and not existing_ok:

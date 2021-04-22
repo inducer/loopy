@@ -2758,7 +2758,7 @@ def test_shape_mismatch_check(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    prg = lp.make_kernel(
+    t_unit = lp.make_kernel(
             "{[i,j]: 0 <= i < n and 0 <= j < m}",
             "c[i] = sum(j, a[i,j]*b[j])",
             default_order="F")
@@ -2766,11 +2766,11 @@ def test_shape_mismatch_check(ctx_factory):
     a = np.random.rand(10, 10).astype(np.float32)
     b = np.random.rand(10).astype(np.float32)
 
-    if prg["loopy_kernel"].options.skip_arg_checks:
+    if t_unit["loopy_kernel"].options.skip_arg_checks:
         pytest.skip("args checks disabled, cannot check")
 
     with pytest.raises(TypeError, match="strides mismatch"):
-        prg(queue, a=a, b=b)
+        t_unit(queue, a=a, b=b)
 
 
 def test_array_arg_extra_kwargs_persis_hash():
@@ -2846,7 +2846,7 @@ def test_empty_domain(ctx_factory, tag):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    prg = lp.make_kernel(
+    t_unit = lp.make_kernel(
             "{[i,j]: 0 <= i < n}",
             """
             for i
@@ -2855,15 +2855,15 @@ def test_empty_domain(ctx_factory, tag):
             """)
 
     if tag == "fixed":
-        prg = lp.fix_parameters(prg, n=0)
+        t_unit = lp.fix_parameters(t_unit, n=0)
         kwargs = {}
     else:
-        prg = lp.tag_inames(prg, {"i": tag})
+        t_unit = lp.tag_inames(t_unit, {"i": tag})
         kwargs = {"n": 0}
 
-    prg = lp.set_options(prg, write_code=True)
+    t_unit = lp.set_options(t_unit, write_code=True)
     c = cl.array.zeros(queue, (), dtype=np.int32)
-    prg(queue, c=c, **kwargs)
+    t_unit(queue, c=c, **kwargs)
 
     assert (c.get() == 0).all()
 

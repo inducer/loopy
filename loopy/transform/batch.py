@@ -25,7 +25,7 @@ from loopy.symbolic import (RuleAwareIdentityMapper, SubstitutionRuleMappingCont
 from loopy.kernel.data import ValueArg, ArrayArg
 import islpy as isl
 
-from loopy.program import iterate_over_kernels_if_given_program
+from loopy.translation_unit import iterate_over_kernels_if_given_program
 
 
 __doc__ = """

@@ -42,7 +42,7 @@ from loopy.symbolic import RuleAwareIdentityMapper, ReductionCallbackMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
 from loopy.kernel import LoopKernel
-from loopy.program import Program
+from loopy.translation_unit import TranslationUnit
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 from pytools import ProcessLogger
@@ -87,7 +87,7 @@ def prepare_for_caching(program):
     if isinstance(program, LoopKernel):
         return prepare_for_caching_inner(program)
 
-    assert isinstance(program, Program)
+    assert isinstance(program, TranslationUnit)
     tgt = program.target
 
     new_clbls = {}
@@ -2060,7 +2060,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
 
 def realize_reduction(program, *args, **kwargs):
-    assert isinstance(program, Program)
+    assert isinstance(program, TranslationUnit)
 
     callables_table = dict(program.callables_table)
     kernels_to_scan = [in_knl_callable.subkernel
@@ -2315,7 +2315,7 @@ def infer_arg_descr(program):
     :attr:`loopy.InKernelCallable.arg_id_to_descr` inferred for all the
     callables.
     """
-    from loopy.program import make_clbl_inf_ctx, resolve_callables
+    from loopy.translation_unit import make_clbl_inf_ctx, resolve_callables
     from loopy.kernel.array import ArrayBase
     from loopy.kernel.function_interface import (ArrayArgDescriptor,
             ValueArgDescriptor)
@@ -2467,7 +2467,7 @@ def preprocess_program(program, device=None):
     if not program.entrypoints:
         raise LoopyError("Translation unit did not receive any entrypoints")
 
-    from loopy.program import resolve_callables
+    from loopy.translation_unit import resolve_callables
     program = resolve_callables(program)
 
     if device is not None:

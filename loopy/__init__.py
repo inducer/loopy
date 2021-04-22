@@ -24,7 +24,7 @@ THE SOFTWARE.
 from loopy.symbolic import (
         TaggedVariable, Reduction, LinearSubscript, TypeCast)
 from loopy.diagnostic import LoopyError, LoopyWarning
-from loopy.program import iterate_over_kernels_if_given_program
+from loopy.translation_unit import iterate_over_kernels_if_given_program
 
 # {{{ imported user interface
 
@@ -46,8 +46,8 @@ from loopy.kernel.data import (
         CallMangleInfo)
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
-from loopy.program import (
-        Program, make_program)
+from loopy.translation_unit import (
+        TranslationUnit, Program,  make_program)
 
 from loopy.kernel import LoopKernel, KernelState, kernel_state
 from loopy.kernel.tools import (
@@ -175,7 +175,7 @@ __all__ = [
 
         "ScalarCallable", "CallableKernel",
 
-        "Program", "make_program",
+        "TranslationUnit", "make_program", "Program",
 
         "KernelArgument",
         "ValueArg", "ArrayArg", "GlobalArg", "ConstantArg", "ImageArg",
@@ -461,7 +461,7 @@ class CacheMode:
 # {{{ make copy kernel
 
 def make_copy_kernel(new_dim_tags, old_dim_tags=None):
-    """Returns a :class:`loopy.Program` that changes the data layout
+    """Returns a :class:`loopy.TranslationUnit` that changes the data layout
     of a variable (called "input") to the new layout specified by
     *new_dim_tags* from the one specified by *old_dim_tags*.
     *old_dim_tags* defaults to an all-C layout of the same rank
