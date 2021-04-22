@@ -504,9 +504,11 @@ def test_complex_support(ctx_factory, target):
             complex_div_complex[i] = (2jf + 7*in1[i])/(32jf + 37*in1[i])
             complex_div_real[i] = (2jf + 7*in1[i])/in1[i]
             real_div_complex[i] = in1[i]/(2jf + 7*in1[i])
-            tmp_sum[0] = sum(i1, 1.0*i1 + i1*1jf)*sum(i2, 1.0*i2 + i2*1jf)
+            out_sum = sum(i1, 1.0*i1 + i1*1jf)*sum(i2, 1.0*i2 + i2*1jf)
+            conj_out_sum = conj(out_sum)
             """,
-            target=target())
+            target=target(),
+            seq_dependencies=True)
     knl = lp.set_options(knl, "return_dict")
 
     n = 10
@@ -534,7 +536,9 @@ def test_complex_support(ctx_factory, target):
     np.testing.assert_allclose(out["complex_div_complex"], (2j+7*in1)/(32j+37*in1))
     np.testing.assert_allclose(out["complex_div_real"], (2j + 7*in1)/in1)
     np.testing.assert_allclose(out["real_div_complex"], in1/(2j + 7*in1))
-    np.testing.assert_allclose(out["tmp_sum"], (0.5*n*(n-1) + 0.5*n*(n-1)*1j) ** 2)
+    np.testing.assert_allclose(out["out_sum"], (0.5*n*(n-1) + 0.5*n*(n-1)*1j) ** 2)
+    np.testing.assert_allclose(out["conj_out_sum"],
+                               (0.5*n*(n-1) - 0.5*n*(n-1)*1j) ** 2)
 
 
 def test_bool_type_context(ctx_factory):
