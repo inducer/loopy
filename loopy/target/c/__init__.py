@@ -576,7 +576,7 @@ class CMathCallable(ScalarCallable):
 
             if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
                     arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
-                # the types provided aren't mature enough to specialize the
+                # the types provided aren't resolved enough to specialize the
                 # callable
                 return (
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
@@ -586,6 +586,7 @@ class CMathCallable(ScalarCallable):
                 [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
                      if id >= 0])
             if dtype.kind not in "iu":
+                # only support integers for now to avoid having to deal with NaNs
                 raise LoopyError(f"{name} does not support '{dtype}' arguments.")
 
             return (
