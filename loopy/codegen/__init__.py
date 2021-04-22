@@ -605,37 +605,34 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
 
 def diverge_callee_entrypoints(program):
     """
-    If a kernel is both an entrypoint and a callee, then rename the callee.
+    If a :class:`loopy.kernel.function_interface.CallableKernel` is both an
+    entrypoint and a callee, then rename the callee.
     """
-    from loopy.translation_unit import _get_callable_ids
+    from loopy.translation_unit import (_get_callable_ids,
+                                        rename_resolved_functions_in_a_single_kernel)
     from pytools import UniqueNameGenerator
     callable_ids = _get_callable_ids(program.callables_table,
-            program.entrypoints)
+                                     program.entrypoints)
 
     new_callables = {}
-    renames = {}
+    todo_renames = {}
 
     vng = UniqueNameGenerator(set(program.callables_table.keys()))
 
     for clbl_id in callable_ids & program.entrypoints:
-        renames[clbl_id] = vng(based_on=clbl_id)
+        todo_renames[clbl_id] = vng(based_on=clbl_id)
 
     for name, clbl in program.callables_table.items():
-        if isinstance(clbl, CallableKernel):
-            from loopy.translation_unit import (
-                    rename_resolved_functions_in_a_single_kernel)
-            knl = rename_resolved_functions_in_a_single_kernel(
-                    clbl.subkernel, renames)
-            new_callables[name] = clbl.copy(subkernel=knl)
-        elif isinstance(clbl, ScalarCallable):
-            new_callables[name] = clbl
-        else:
-            raise NotImplementedError(type(clbl))
+        if name in todo_renames:
+            name = todo_renames[name]
 
-    for clbl_id in callable_ids & program.entrypoints:
-        knl = new_callables[clbl_id].subkernel.copy(name=renames[clbl_id])
-        new_callables[renames[clbl_id]] = new_callables[clbl_id].copy(
-                subkernel=knl)
+        if isinstance(clbl, CallableKernel):
+            knl = rename_resolved_functions_in_a_single_kernel(clbl.subkernel,
+                                                               todo_renames)
+            knl = knl.copy(name=name)
+            clbl = clbl.copy(subkernel=knl)
+
+        new_callables[name] = clbl
 
     return program.copy(callables_table=new_callables)
 
@@ -769,34 +766,32 @@ def generate_code_v2(program):
     callee_fdecls = []
     implemented_data_infos = {}
 
-    for func_id, in_knl_callable in program.callables_table.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            #FIXME:
-            # 1. Diverge the kernels which are both entrypoint and callees at this
-            #    point. By diverge we should rename the callees in kernels.
-            # 2. Then pass the callee versions by saying is_entrypoint=False
-            cgr = generate_code_for_a_single_kernel(in_knl_callable.subkernel,
-                        program.callables_table, program.target, func_id in
-                        program.entrypoints)
-            if func_id in program.entrypoints:
-                host_programs[func_id] = cgr.host_program
-                implemented_data_infos[func_id] = cgr.implemented_data_info
-            else:
-                # FIXME: This assertion should be valid
-                # assert cgr.host_programs == []
-                assert len(cgr.device_programs) == 1
-                #FIXME:
-                # if isinstance(callee_prog_ast, Collection):
-                #     for entry in callee_prog_ast.contents:
-                #         if isinstance(entry, FunctionBody):
-                #             callee_fdecls.append(entry.fdecl)
-                callee_fdecls.append(cgr.device_programs[0].ast.fdecl)
+    # {{{ collect host/device programs
 
-            device_programs.extend(cgr.device_programs)
-            device_preambles.extend(cgr.device_preambles)
+    for func_id in sorted(key for key, val in program.callables_table.items()
+                          if isinstance(val, CallableKernel)):
+        cgr = generate_code_for_a_single_kernel(program[func_id],
+                                                program.callables_table,
+                                                program.target,
+                                                func_id in program.entrypoints)
+        if func_id in program.entrypoints:
+            host_programs[func_id] = cgr.host_program
+            implemented_data_infos[func_id] = cgr.implemented_data_info
+        else:
+            assert len(cgr.device_programs) == 1
+            callee_fdecls.append(cgr.device_programs[0].ast.fdecl)
 
-        device_preambles.extend(list(in_knl_callable.generate_preambles(
-            program.target)))
+        device_programs.extend(cgr.device_programs)
+        device_preambles.extend(cgr.device_preambles)
+
+    # }}}
+
+    # {{{ collect preambles
+
+    for func_id, clbl in program.callables_table.items():
+        device_preambles.extend(list(clbl.generate_preambles(program.target)))
+
+    # }}}
 
     # adding the callee fdecls to the device_programs
     device_programs = ([device_programs[0].copy(
