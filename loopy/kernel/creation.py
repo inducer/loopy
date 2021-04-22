@@ -2152,12 +2152,16 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     kwargs["substitutions"] = substitutions
 
+    from pytools.tag import normalize_tags, check_tag_uniqueness
+    tags = check_tag_uniqueness(normalize_tags(kwargs.pop("tags", frozenset())))
+
     from loopy.kernel import LoopKernel
     knl = LoopKernel(domains, instructions, kernel_args,
             temporary_variables=temporary_variables,
             silenced_warnings=silenced_warnings,
             options=options,
             target=target,
+            tags=tags,
             **kwargs)
 
     from loopy.transform.instruction import uniquify_instruction_ids

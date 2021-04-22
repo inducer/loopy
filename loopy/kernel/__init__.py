@@ -28,6 +28,7 @@ from collections import defaultdict
 
 import numpy as np
 from pytools import ImmutableRecordWithoutPickling, ImmutableRecord, memoize_method
+from pytools.tag import Taggable
 import islpy as isl
 from islpy import dim_type
 import re
@@ -151,7 +152,11 @@ def _get_inames_from_domains(domains):
             (frozenset(dom.get_var_names(dim_type.set)) for dom in domains))
 
 
-class LoopKernel(ImmutableRecordWithoutPickling):
+class _not_provided:
+    pass
+
+
+class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
     """These correspond more or less directly to arguments of
     :func:`loopy.make_kernel`.
 
@@ -243,6 +248,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     .. automethod:: __call__
     .. automethod:: copy
+
+    .. automethod:: tagged
+    .. automethod:: without_tags
     """
 
     # {{{ constructor
@@ -275,7 +283,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             target=None,
 
             overridden_get_grid_sizes_for_insn_ids=None,
-            _cached_written_variables=None):
+            _cached_written_variables=None,
+            tags=frozenset()):
         """
         :arg overridden_get_grid_sizes_for_insn_ids: A callable. When kernels get
             intersected in slab decomposition, their grid sizes shouldn't
@@ -423,7 +432,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 target=target,
                 overridden_get_grid_sizes_for_insn_ids=(
                     overridden_get_grid_sizes_for_insn_ids),
-                _cached_written_variables=_cached_written_variables)
+                _cached_written_variables=_cached_written_variables,
+                tags=tags)
 
         self._kernel_executor_cache = {}
 
@@ -1622,6 +1632,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         # Avoid carrying over an invalid cache when other parts of the kernel
         # are modified.
         kwargs["_cached_written_variables"] = None
+
+        from pytools.tag import normalize_tags, check_tag_uniqueness
+        tags = kwargs.pop("tags", _not_provided)
+        if tags is not _not_provided:
+            kwargs["tags"] = check_tag_uniqueness(normalize_tags(tags))
 
         return super().copy(**kwargs)
 
