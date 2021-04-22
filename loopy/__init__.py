@@ -464,7 +464,7 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
             f"0<={ind}<{shape_i}"
             for ind, shape_i in zip(indices, shape))
 
-    set_str = "{{[{}]: {}}}".format(
+    set_str = "{{[{}]: {} }}".format(
                 commad_indices,
                 bounds
                 )
@@ -483,6 +483,44 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
             result = tag_inames(result, {indices[i]: "unr"})
 
     return result
+
+# }}}
+
+
+# {{{ einsum
+
+def make_einsum(spec, knl_creation_kwargs=None):
+    arg_spec, out_spec = spec.split("->")
+    arg_specs = arg_spec.split(",")
+
+    out_indices = set(out_spec)
+
+    all_indices = set(
+        idx
+        for argsp in arg_specs
+        for idx in argsp) | out_indices
+
+    sum_indices = all_indices - out_indices
+
+    from pymbolic import var
+    lhs = var("out")[tuple(var(i) for i in out_spec)]
+
+    rhs = 1
+    for i, argsp in enumerate(arg_specs):
+        rhs = rhs * var("arg%d" % i)[tuple(var(i) for i in argsp)]
+
+    if sum_indices:
+        rhs = Reduction("sum", tuple(var(idx) for idx in sum_indices), rhs)
+
+    constraints = " and ".join(
+        "0 <= %s < N%s" % (idx, idx)
+        for idx in all_indices
+        )
+
+    domain = "{[%s]: %s}" % (",".join(all_indices), constraints)
+    knl = make_kernel(domain, [Assignment(lhs, rhs)])
+
+    return knl
 
 # }}}
 
