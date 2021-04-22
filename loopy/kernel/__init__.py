@@ -152,7 +152,7 @@ def _get_inames_from_domains(domains):
             (frozenset(dom.get_var_names(dim_type.set)) for dom in domains))
 
 
-class _not_provided:
+class _not_provided:  # noqa: N801
     pass
 
 
