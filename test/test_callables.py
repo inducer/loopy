@@ -788,6 +788,27 @@ def test_symbol_mangler_in_call(ctx_factory):
     np.testing.assert_allclose(out.get(), np.sin(10))
 
 
+@pytest.mark.parametrize("which", ["max", "min"])
+def test_int_max_min_c_target(ctx_factory, which):
+    from numpy.random import default_rng
+    from pymbolic import parse
+    rng = default_rng()
+
+    n = 100
+    arr1 = rng.integers(-100, 100, n)
+    arr2 = rng.integers(-100, 100, n)
+    np_func = getattr(np, f"{which}imum")
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<100}",
+        [lp.Assignment(parse("out[i]"),
+                       parse(f"{which}(arr1[i], arr2[i])"))],
+        target=lp.ExecutableCTarget())
+
+    _, (out,) = knl(arr1=arr1, arr2=arr2)
+    np.testing.assert_allclose(np_func(arr1, arr2), out)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
