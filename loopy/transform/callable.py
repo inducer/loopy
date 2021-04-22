@@ -632,6 +632,9 @@ class _FunctionCalledChecker(CombineMapper):
     def map_constant(self, expr):
         return False
 
+    def map_type_cast(self, expr):
+        return False
+
     def map_algebraic_leaf(self, expr):
         return False
 
