@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 
 import islpy as isl
-from loopy.program import iterate_over_kernels_if_given_program
+from loopy.translation_unit import iterate_over_kernels_if_given_program
 
 
 def potential_loop_nest_map(kernel):

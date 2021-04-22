@@ -157,7 +157,7 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
     * ``FILENAME``: the file name of the code being processed
 
     The transform code must define ``RESULT``, conventionally a list of kernels
-    or a :class:`loopy.Program`, which is returned from this function
+    or a :class:`loopy.TranslationUnit`, which is returned from this function
     unmodified.
 
     An example of *source* may look as follows::

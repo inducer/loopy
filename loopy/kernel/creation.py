@@ -34,7 +34,7 @@ from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
         SubstitutionRule, AddressSpace, ValueArg)
-from loopy.program import iterate_over_kernels_if_given_program
+from loopy.translation_unit import iterate_over_kernels_if_given_program
 from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
 from islpy import dim_type
@@ -2442,7 +2442,7 @@ def make_function(domains, instructions, kernel_data=["..."], **kwargs):
 
     creation_plog.done()
 
-    from loopy.program import make_program
+    from loopy.translation_unit import make_program
     return make_program(knl)
 
 

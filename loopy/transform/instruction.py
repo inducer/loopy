@@ -23,7 +23,8 @@ THE SOFTWARE.
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import (ScalarCallable, CallableKernel)
-from loopy.program import Program, iterate_over_kernels_if_given_program
+from loopy.translation_unit import (TranslationUnit,
+                                    iterate_over_kernels_if_given_program)
 
 
 # {{{ find_instructions
@@ -39,7 +40,7 @@ def find_instructions(program, insn_match):
     if isinstance(program, LoopKernel):
         return find_instructions_in_single_kernel(program, insn_match)
 
-    assert isinstance(program, Program)
+    assert isinstance(program, TranslationUnit)
     insns = []
     for in_knl_callable in program.callables_table.values():
         if isinstance(in_knl_callable, CallableKernel):

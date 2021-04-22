@@ -739,7 +739,7 @@ class KernelExecutorBase:
     def get_typed_and_scheduled_program_uncached(self, entrypoint, arg_to_dtype_set):
         from loopy.kernel.tools import add_dtypes
         from loopy.kernel import KernelState
-        from loopy.program import resolve_callables
+        from loopy.translation_unit import resolve_callables
 
         program = resolve_callables(self.program)
 

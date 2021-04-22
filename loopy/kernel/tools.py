@@ -33,7 +33,8 @@ from islpy import dim_type
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from pytools import memoize_on_first_arg, natsorted
 from loopy.kernel import LoopKernel
-from loopy.program import Program, iterate_over_kernels_if_given_program
+from loopy.translation_unit import (TranslationUnit,
+                                    iterate_over_kernels_if_given_program)
 from loopy.kernel.function_interface import CallableKernel
 import logging
 logger = logging.getLogger(__name__)
@@ -47,13 +48,13 @@ def add_dtypes(prog_or_kernel, dtype_dict):
     :arg dtype_dict: a mapping from variable names to :class:`numpy.dtype`
         instances
     """
-    if isinstance(prog_or_kernel, Program):
+    if isinstance(prog_or_kernel, TranslationUnit):
         kernel_names = [clbl.subkernel.name for clbl in
                 prog_or_kernel.callables_table.values() if isinstance(clbl,
                     CallableKernel)]
         if len(kernel_names) != 1:
-            raise LoopyError("add_dtypes may not take a Program with more than"
-                    " one callable kernels. Please provide individual kernels"
+            raise LoopyError("add_dtypes may not take a TranslationUnit with more"
+                    " than one callable kernels. Please provide individual kernels"
                     " instead.")
 
         kernel_name, = kernel_names
@@ -124,7 +125,7 @@ def get_arguments_with_incomplete_dtype(kernel):
 
 def add_and_infer_dtypes(prog, dtype_dict, expect_completion=False,
         kernel_name=None):
-    assert isinstance(prog, Program)
+    assert isinstance(prog, TranslationUnit)
     if kernel_name is None:
         kernel_names = [clbl.subkernel.name for clbl in
                 prog.callables_table.values() if isinstance(clbl,

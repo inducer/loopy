@@ -10,7 +10,7 @@ Function Interface
 Resolving and specialization
 ----------------------------
 
-In :mod:`loopy`, a :class:`loopy.Program` is a collection of callables
+In :mod:`loopy`, a :class:`loopy.TranslationUnit` is a collection of callables
 and entrypoints. Callable are of type
 :class`:loopy.kernel.function_interface.InKernelCallable`. Any expression node
 which has a callable corresponding to it appears as
@@ -18,7 +18,7 @@ which has a callable corresponding to it appears as
 a :class:`~loopy.kernel.function_interface.InKernelCallable` is referred to as resolving.
 
 
-During code-generation process for a :class:`~loopy.Program`, a callable
+During code-generation process for a :class:`~loopy.TranslationUnit`, a callable
 is *specialized* depending on the types and shapes of the arguments passed at a
 call site. For example, a call to ``sin(x)`` in :mod:`loopy` is type-generic to
 begin with, but it later specialized to either ``sinf``, ``sin`` or ``sinl``
@@ -31,7 +31,7 @@ or shape specialization is encoded via
 Registering callables
 ---------------------
 
-A user can *register* callables within a  :class:`~loopy.Program` to
+A user can *register* callables within a  :class:`~loopy.TranslationUnit` to
 allow loopy to resolve calls not pre-defined in :mod:`loopy`. In :mod:`loopy`,
 we typically aim to expose all the standard math functions defined for
 a :class:`~loopy.target.TargetBase`. Other foreign functions could be invoked by

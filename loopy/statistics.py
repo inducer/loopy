@@ -35,7 +35,7 @@ from loopy.diagnostic import warn_with_kernel, LoopyError
 from loopy.symbolic import CoefficientCollector
 from pytools import ImmutableRecord, memoize_method
 from loopy.kernel.function_interface import CallableKernel
-from loopy.program import Program
+from loopy.translation_unit import TranslationUnit
 from functools import partial
 
 
@@ -1435,7 +1435,7 @@ def add_assumptions_guard(kernel, pwqpolynomial):
 
 
 def count(kernel, set, space=None):
-    if isinstance(kernel, Program):
+    if isinstance(kernel, TranslationUnit):
         kernel_names = [i for i, clbl in kernel.callables_table.items()
                 if isinstance(clbl, CallableKernel)]
         if len(kernel_names) > 1:

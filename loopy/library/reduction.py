@@ -203,7 +203,7 @@ class MaxReductionOperation(ScalarReductionOperation):
 
     def __call__(self, dtype, operand1, operand2, callables_table, target):
         dtype, = dtype
-        from loopy.program import update_table
+        from loopy.translation_unit import update_table
 
         # getting the callable 'max' from target
         max_scalar_callable = target.get_device_ast_builder().known_callables["max"]
@@ -225,7 +225,7 @@ class MinReductionOperation(ScalarReductionOperation):
 
     def __call__(self, dtype, operand1, operand2, callables_table, target):
         dtype, = dtype
-        from loopy.program import update_table
+        from loopy.translation_unit import update_table
 
         # getting the callable 'min' from target
         min_scalar_callable = target.get_device_ast_builder().known_callables["min"]
@@ -300,7 +300,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
     def neutral_element(self, scalar_dtype, segment_flag_dtype,
             callables_table, target):
         from loopy.library.function import MakeTupleCallable
-        from loopy.program import update_table
+        from loopy.translation_unit import update_table
 
         scalar_neutral_element, calables_table = (
                 self.inner_reduction.neutral_element(
@@ -344,7 +344,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
                     callables_table))
 
         # populate callables_table
-        from loopy.program import update_table
+        from loopy.translation_unit import update_table
         func_id, callables_table = update_table(
                 callables_table, SegmentedOp(self), segmented_scalar_callable)
 
@@ -410,7 +410,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         scalar_neutral_element = scalar_neutral_func(scalar_dtype)
 
         from loopy.library.function import MakeTupleCallable
-        from loopy.program import update_table
+        from loopy.translation_unit import update_table
         make_tuple_callable = MakeTupleCallable(
                 name="make_tuple")
 
@@ -448,7 +448,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
                     callables_table))
 
         # populate callables_table
-        from loopy.program import update_table
+        from loopy.translation_unit import update_table
         func_id, callables_table = update_table(
                 callables_table, ArgExtOp(self), arg_ext_scalar_callable)
 
