@@ -489,7 +489,7 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
 
 # {{{ einsum
 
-def make_einsum(spec, knl_creation_kwargs=None):
+def make_einsum(spec, arg_names, knl_creation_kwargs=None):
     arg_spec, out_spec = spec.split("->")
     arg_specs = arg_spec.split(",")
 
@@ -507,7 +507,7 @@ def make_einsum(spec, knl_creation_kwargs=None):
 
     rhs = 1
     for i, argsp in enumerate(arg_specs):
-        rhs = rhs * var("arg%d" % i)[tuple(var(i) for i in argsp)]
+        rhs = rhs * var(arg_names[i])[tuple(var(i) for i in argsp)]
 
     if sum_indices:
         rhs = Reduction("sum", tuple(var(idx) for idx in sum_indices), rhs)
@@ -517,10 +517,14 @@ def make_einsum(spec, knl_creation_kwargs=None):
         for idx in all_indices
         )
 
-    domain = "{[%s]: %s}" % (",".join(all_indices), constraints)
-    knl = make_kernel(domain, [Assignment(lhs, rhs)])
+    if "name" not in knl_creation_kwargs:
+        knl_creation_kwargs["name"] = "einsum%dto%d_kernel" % (
+                len(all_indices), len(out_indices))
 
-    return knl
+    domain = "{[%s]: %s}" % (",".join(all_indices), constraints)
+    insns = [Assignment(lhs, rhs)]
+    return make_kernel(domain, insns,
+            **knl_creation_kwargs)
 
 # }}}
 
