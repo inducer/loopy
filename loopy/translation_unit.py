@@ -330,7 +330,8 @@ class TranslationUnit(ImmutableRecord):
         Builds and calls the *entrypoint* kernel, if
         :attr:`TranslationUnit.target` is an executable target.
 
-        :arg entrypoint: The entrypoint which is to be called
+        :arg entrypoint: The name of the entrypoint callable to be called.
+            Defaults to *the* entrypoint if there is only one.
         """
         entrypoint = kwargs.get("entrypoint", None)
 
