@@ -24,7 +24,8 @@ THE SOFTWARE.
 from pytools import MovedFunctionDeprecationWrapper
 from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 
-from loopy.program import iterate_over_kernels_if_given_program, TranslationUnit
+from loopy.translation_unit import (iterate_over_kernels_if_given_program,
+                                    TranslationUnit)
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
 from loopy.diagnostic import LoopyError

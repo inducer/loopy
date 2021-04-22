@@ -34,7 +34,7 @@ from loopy.symbolic import (
 from loopy.isl_helpers import simplify_via_aff
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
-from loopy.program import TranslationUnit
+from loopy.translation_unit import TranslationUnit
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -489,7 +489,7 @@ def inline_callable_kernel(program, function_name):
     (scoped) name *function_name* inlined.
     """
     from loopy.preprocess import infer_arg_descr
-    from loopy.program import resolve_callables
+    from loopy.translation_unit import resolve_callables
     program = resolve_callables(program)
     program = infer_arg_descr(program)
     callables_table = program.callables_table

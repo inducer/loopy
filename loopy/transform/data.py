@@ -26,7 +26,8 @@ from islpy import dim_type
 from loopy.kernel.data import ImageArg
 
 from pytools import MovedFunctionDeprecationWrapper
-from loopy.program import TranslationUnit, iterate_over_kernels_if_given_program
+from loopy.translation_unit import (TranslationUnit,
+                                    iterate_over_kernels_if_given_program)
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 

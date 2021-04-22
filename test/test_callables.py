@@ -718,7 +718,7 @@ def test_inlining_with_callee_domain_param(ctx_factory):
 
 
 def test_double_resolving():
-    from loopy.program import resolve_callables
+    from loopy.translation_unit import resolve_callables
     from loopy.kernel import KernelState
     from loopy.symbolic import ResolvedFunction
 

@@ -24,7 +24,7 @@ THE SOFTWARE.
 from loopy.symbolic import (
         TaggedVariable, Reduction, LinearSubscript, TypeCast)
 from loopy.diagnostic import LoopyError, LoopyWarning
-from loopy.program import iterate_over_kernels_if_given_program
+from loopy.translation_unit import iterate_over_kernels_if_given_program
 
 # {{{ imported user interface
 
@@ -46,7 +46,7 @@ from loopy.kernel.data import (
         CallMangleInfo)
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
-from loopy.program import (
+from loopy.translation_unit import (
         TranslationUnit, Program,  make_program)
 
 from loopy.kernel import LoopKernel, KernelState, kernel_state

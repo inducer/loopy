@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import CallInstruction
-from loopy.program import TranslationUnit
+from loopy.translation_unit import TranslationUnit
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.symbolic import SubArrayRef

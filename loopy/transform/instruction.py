@@ -23,7 +23,8 @@ THE SOFTWARE.
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import (ScalarCallable, CallableKernel)
-from loopy.program import TranslationUnit, iterate_over_kernels_if_given_program
+from loopy.translation_unit import (TranslationUnit,
+                                    iterate_over_kernels_if_given_program)
 
 
 # {{{ find_instructions

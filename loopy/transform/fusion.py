@@ -28,7 +28,7 @@ from loopy.diagnostic import LoopyError
 from pymbolic import var
 
 from loopy.kernel import LoopKernel
-from loopy.program import TranslationUnit
+from loopy.translation_unit import TranslationUnit
 from loopy.kernel.function_interface import CallableKernel
 
 
@@ -425,7 +425,7 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
 
     # }}}
 
-    from loopy.program import make_program
+    from loopy.translation_unit import make_program
     return make_program(result).with_entrypoints(result.name)
 
 # vim: foldmethod=marker

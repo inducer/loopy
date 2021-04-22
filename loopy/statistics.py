@@ -35,7 +35,7 @@ from loopy.diagnostic import warn_with_kernel, LoopyError
 from loopy.symbolic import CoefficientCollector
 from pytools import ImmutableRecord, memoize_method
 from loopy.kernel.function_interface import CallableKernel
-from loopy.program import TranslationUnit
+from loopy.translation_unit import TranslationUnit
 from functools import partial
 
 

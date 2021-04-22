@@ -28,7 +28,8 @@ from loopy.transform.iname import remove_any_newly_unused_inames
 from pytools import ImmutableRecord
 from pymbolic import var
 
-from loopy.program import iterate_over_kernels_if_given_program, TranslationUnit
+from loopy.translation_unit import (iterate_over_kernels_if_given_program,
+                                    TranslationUnit)
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 import logging

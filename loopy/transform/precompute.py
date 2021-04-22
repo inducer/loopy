@@ -27,7 +27,7 @@ from loopy.symbolic import (get_dependencies,
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
 from pymbolic.mapper.substitutor import make_subst_func
-from loopy.program import TranslationUnit
+from loopy.translation_unit import TranslationUnit
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 import numpy as np
 

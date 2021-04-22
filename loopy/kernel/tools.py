@@ -33,7 +33,8 @@ from islpy import dim_type
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from pytools import memoize_on_first_arg, natsorted
 from loopy.kernel import LoopKernel
-from loopy.program import TranslationUnit, iterate_over_kernels_if_given_program
+from loopy.translation_unit import (TranslationUnit,
+                                    iterate_over_kernels_if_given_program)
 from loopy.kernel.function_interface import CallableKernel
 import logging
 logger = logging.getLogger(__name__)

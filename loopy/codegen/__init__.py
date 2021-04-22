@@ -607,7 +607,7 @@ def diverge_callee_entrypoints(program):
     """
     If a kernel is both an entrypoint and a callee, then rename the callee.
     """
-    from loopy.program import _get_callable_ids
+    from loopy.translation_unit import _get_callable_ids
     from pytools import UniqueNameGenerator
     callable_ids = _get_callable_ids(program.callables_table,
             program.entrypoints)
@@ -622,7 +622,7 @@ def diverge_callee_entrypoints(program):
 
     for name, clbl in program.callables_table.items():
         if isinstance(clbl, CallableKernel):
-            from loopy.program import (
+            from loopy.translation_unit import (
                     rename_resolved_functions_in_a_single_kernel)
             knl = rename_resolved_functions_in_a_single_kernel(
                     clbl.subkernel, renames)
@@ -710,7 +710,7 @@ def generate_code_v2(program):
     """
 
     from loopy.kernel import LoopKernel
-    from loopy.program import make_program
+    from loopy.translation_unit import make_program
 
     # {{{ cache retrieval
 

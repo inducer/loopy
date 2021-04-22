@@ -1485,7 +1485,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         """
         warn("Calling a LoopKernel is deprecated, call a TranslationUnit "
                 "instead.", DeprecationWarning, stacklevel=2)
-        from loopy.program import make_program
+        from loopy.translation_unit import make_program
         program = make_program(self)
         return program(*args, **kwargs)
 

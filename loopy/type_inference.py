@@ -36,7 +36,7 @@ from loopy.symbolic import (
         SubstitutionRuleExpander, ResolvedFunction,
         SubstitutionRuleMappingContext, SubArrayRef)
 from pymbolic.primitives import Variable, Subscript, Lookup
-from loopy.program import CallablesInferenceContext, make_clbl_inf_ctx
+from loopy.translation_unit import CallablesInferenceContext, make_clbl_inf_ctx
 
 import logging
 logger = logging.getLogger(__name__)
@@ -1011,7 +1011,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
 def infer_unknown_types(program, expect_completion=False):
     """Infer types on temporaries and arguments."""
     from loopy.kernel.data import auto
-    from loopy.program import resolve_callables
+    from loopy.translation_unit import resolve_callables
 
     program = resolve_callables(program)
 

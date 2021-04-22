@@ -31,7 +31,7 @@ from loopy.tools import LoopyKeyBuilder, PymbolicExpressionHashWrapper
 from loopy.version import DATA_MODEL_VERSION
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
-from loopy.program import TranslationUnit
+from loopy.translation_unit import TranslationUnit
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 from pymbolic import var
