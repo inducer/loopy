@@ -988,6 +988,28 @@ def get_reduction_inames(expr):
     return _get_dependencies_and_reduction_inames(expr)[1]
 
 
+class SubArrayRefSweptInamesCollector(CombineMapper):
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, frozenset())
+
+    def map_sub_array_ref(self, expr):
+        return frozenset({iname.name for iname in expr.swept_inames})
+
+    def map_constant(self, expr):
+        return frozenset()
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
+    map_tagged_variable = map_constant
+    map_type_cast = map_constant
+    map_resolved_function = map_constant
+
+
+def get_sub_array_ref_swept_inames(expr):
+    return SubArrayRefSweptInamesCollector()(expr)
+
+
 # {{{ rule-aware mappers
 
 def parse_tagged_name(expr):

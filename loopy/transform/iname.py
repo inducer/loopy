@@ -1204,7 +1204,8 @@ def get_used_inames(kernel):
     for insn in exp_kernel.instructions:
         used_inames.update(
                 insn.within_inames
-                | insn.reduction_inames())
+                | insn.reduction_inames()
+                | insn.sub_array_ref_inames())
 
     return used_inames
 

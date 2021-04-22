@@ -456,13 +456,19 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
 
 def _inline_single_callable_kernel(caller_kernel, callee_kernel,
         callables_table):
+    from loopy.symbolic import ResolvedFunction
+
+    # sub-array refs might be removed during inlining
+    # => remove their swept inames from domains
+    inames_to_remove = frozenset()
+
     for insn in caller_kernel.instructions:
-        if isinstance(insn, CallInstruction):
-            # FIXME This seems to use identifiers across namespaces. Why not
-            # check whether the function is a scoped function first? ~AK
+        if (isinstance(insn, CallInstruction)
+                and isinstance(insn.expression.function, ResolvedFunction)):
             if insn.expression.function.name == callee_kernel.name:
                 caller_kernel = _inline_call_instruction(
                         caller_kernel, callee_kernel, insn)
+                inames_to_remove |= insn.sub_array_ref_inames()
         elif isinstance(insn, (MultiAssignmentBase, CInstruction,
                 _DataObliviousInstruction)):
             pass
@@ -471,7 +477,8 @@ def _inline_single_callable_kernel(caller_kernel, callee_kernel,
                     "Unknown instruction type %s"
                     % type(insn).__name__)
 
-    return caller_kernel
+    from loopy.transform.iname import remove_unused_inames
+    return remove_unused_inames(caller_kernel, inames_to_remove)
 
 
 # FIXME This should take a 'within' parameter to be able to only inline
@@ -598,9 +605,8 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
         new_callee_insns = []
         for callee_insn in callee_knl.instructions:
             if isinstance(callee_insn, MultiAssignmentBase):
-                new_callee_insns.append(callee_insn.copy(expression=dim_changer(
-                    callee_insn.expression),
-                    assignee=dim_changer(callee_insn.assignee)))
+                new_callee_insns.append(callee_insn
+                        .with_transformed_expressions(dim_changer))
 
             elif isinstance(callee_insn, (CInstruction,
                     _DataObliviousInstruction)):
