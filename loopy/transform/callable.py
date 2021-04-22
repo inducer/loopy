@@ -566,6 +566,9 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
         *callee_function_name* in the *caller_knl* aligned with the argument
         dimensions required by *caller_knl*.
     """
+    from loopy.kernel.array import ArrayBase
+    from loopy.kernel.data import auto
+
     for insn in caller_knl.instructions:
         if not isinstance(insn, CallInstruction) or (
                 insn.expression.function.name !=
@@ -602,9 +605,8 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
         new_callee_insns = []
         for callee_insn in callee_knl.instructions:
             if isinstance(callee_insn, MultiAssignmentBase):
-                new_callee_insns.append(callee_insn.copy(expression=dim_changer(
-                    callee_insn.expression),
-                    assignee=dim_changer(callee_insn.assignee)))
+                new_callee_insns.append(callee_insn
+                        .with_transformed_expressions(dim_changer))
 
             elif isinstance(callee_insn, (CInstruction,
                     _DataObliviousInstruction)):
@@ -613,8 +615,14 @@ def _match_caller_callee_argument_dimension_for_single_kernel(
                 raise NotImplementedError("Unknown instruction %s." %
                         type(insn))
 
+        new_args = [arg if not isinstance(arg, ArrayBase)
+                    else arg.copy(shape=arg_id_to_shape[arg.name],
+                                  dim_tags=None, strides=auto, order="C")
+                    for arg in callee_knl.args]
+
         # subkernel with instructions adjusted according to the new dimensions
-        new_callee_knl = callee_knl.copy(instructions=new_callee_insns)
+        new_callee_knl = callee_knl.copy(instructions=new_callee_insns,
+                                         args=new_args)
 
         return new_callee_knl
 

@@ -483,7 +483,7 @@ class CMathCallable(ScalarCallable):
         # unary functions
         if name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
                     "tan", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor",
-                    "erf", "erfc", "abs", "real", "imag"]:
+                    "erf", "erfc", "abs", "real", "imag", "conj"]:
 
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 0:
@@ -516,7 +516,8 @@ class CMathCallable(ScalarCallable):
                     dtype))
 
             if dtype.kind == "c":
-                name = "c" + name
+                if name != "conj":
+                    name = "c" + name
 
             if name in ["abs", "real", "imag"]:
                 dtype = real_dtype
@@ -568,7 +569,33 @@ class CMathCallable(ScalarCallable):
                     self.copy(name_in_target=name,
                         arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
                     callables_table)
+        elif name in ["max", "min"]:
 
+            for id in arg_id_to_dtype:
+                if not -1 <= id <= 1:
+                    raise LoopyError("%s can take only two arguments." % name)
+
+            if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
+                    arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
+                # the types provided aren't resolved enough to specialize the
+                # callable
+                return (
+                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        callables_table)
+
+            dtype = np.find_common_type(
+                [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                     if id >= 0])
+            if dtype.kind not in "iu":
+                # only support integers for now to avoid having to deal with NaNs
+                raise LoopyError(f"{name} does not support '{dtype}' arguments.")
+
+            return (
+                    self.copy(name_in_target=f"lpy_{name}_{dtype.name}",
+                              arg_id_to_dtype={-1: NumpyType(dtype),
+                                               0: NumpyType(dtype),
+                                               1: NumpyType(dtype)}),
+                    callables_table)
         elif name == "isnan":
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 0:
@@ -590,6 +617,24 @@ class CMathCallable(ScalarCallable):
                             -1: NumpyType(np.int32)}),
                     callables_table)
 
+    def generate_preambles(self, target):
+        if self.name_in_target.startswith("lpy_max"):
+            dtype = self.arg_id_to_dtype[-1]
+            ctype = target.dtype_to_typename(dtype)
+
+            yield ("40_lpy_max", f"""
+            static inline {ctype} {self.name_in_target}({ctype} a, {ctype} b) {{
+              return (a > b ? a : b);
+            }}""")
+
+        if self.name_in_target.startswith("lpy_min"):
+            dtype = self.arg_id_to_dtype[-1]
+            ctype = target.dtype_to_typename(dtype)
+            yield ("40_lpy_min", f"""
+            static inline {ctype} {self.name_in_target}({ctype} a, {ctype} b) {{
+              return (a < b ? a : b);
+            }}""")
+
 
 def get_c_callables():
     """
@@ -599,7 +644,8 @@ def get_c_callables():
     cmath_ids = ["abs", "acos", "asin", "atan", "cos", "cosh", "sin",
                  "sinh", "pow", "atan2", "tanh", "exp", "log", "log10",
                  "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
-                 "fabs", "tan", "erf", "erfc", "isnan", "real", "imag"]
+                 "fabs", "tan", "erf", "erfc", "isnan", "real", "imag",
+                 "conj"]
 
     return {id_: CMathCallable(id_) for id_ in cmath_ids}
 

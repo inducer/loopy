@@ -391,46 +391,52 @@ def test_packing_unpacking(ctx_factory, inline):
             3*x2.get()) < 1e-15
 
 
-def test_non_sub_array_refs_arguments(ctx_factory):
+@pytest.mark.parametrize("inline", [False, True])
+def test_non_sub_array_refs_arguments(ctx_factory, inline):
     from loopy.transform.callable import _match_caller_callee_argument_dimension_
+    ctx = ctx_factory()
 
     callee = lp.make_function("{[i] : 0 <= i < 6}", "a[i] = a[i] + j",
             [lp.GlobalArg("a", dtype="double", shape=(6,), is_output=True,
                 is_input=True),
-                lp.ValueArg("j", dtype="int")], name="callee",
-            target=lp.CTarget())
+                lp.ValueArg("j", dtype="int")], name="callee")
     caller1 = lp.make_kernel("{[j] : 0 <= j < 2}", "a[:] = callee(a[:], b[0])",
             [lp.GlobalArg("a", dtype="double", shape=(6, ), is_output=False),
             lp.GlobalArg("b", dtype="double", shape=(1, ), is_output=False)],
-            name="caller", target=lp.CTarget())
+            name="caller")
 
     caller2 = lp.make_kernel("{[j] : 0 <= j < 2}", "a[:]=callee(a[:], 3.1415926)",
             [lp.GlobalArg("a", dtype="double", shape=(6, ),
                 is_output=False)],
-            name="caller", target=lp.CTarget())
+            name="caller")
 
     caller3 = lp.make_kernel("{[j] : 0 <= j < 2}", "a[:]=callee(a[:], kappa)",
             [lp.GlobalArg("a", dtype="double", shape=(6, ),
-                is_output=False), ...],
-            name="caller", target=lp.CTarget())
+                is_output=False),
+             lp.ValueArg("kappa", dtype=np.float64), ...],
+            name="caller")
 
     registered = lp.merge([caller1, callee])
-    inlined = _match_caller_callee_argument_dimension_(registered, "callee")
-    inlined = lp.inline_callable_kernel(inlined, "callee")
+    knl = _match_caller_callee_argument_dimension_(registered, "callee")
 
-    print(inlined)
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "callee")
+
+    lp.auto_test_vs_ref(knl, ctx)
 
     registered = lp.merge([caller2, callee])
-    inlined = _match_caller_callee_argument_dimension_(registered, "callee")
-    inlined = lp.inline_callable_kernel(inlined, "callee")
+    knl = _match_caller_callee_argument_dimension_(registered, "callee")
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "callee")
 
-    print(inlined)
+    lp.auto_test_vs_ref(knl, ctx)
 
     registered = lp.merge([caller3, callee])
-    inlined = _match_caller_callee_argument_dimension_(registered, "callee")
-    inlined = lp.inline_callable_kernel(inlined, "callee")
+    knl = _match_caller_callee_argument_dimension_(registered, "callee")
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "callee")
 
-    print(inlined)
+    lp.auto_test_vs_ref(knl, ctx, parameters={"kappa": 42.0})
 
 
 @pytest.mark.parametrize("inline", [False, True])
@@ -780,6 +786,27 @@ def test_symbol_mangler_in_call(ctx_factory):
 
     evt, (out,) = knl(cq)
     np.testing.assert_allclose(out.get(), np.sin(10))
+
+
+@pytest.mark.parametrize("which", ["max", "min"])
+def test_int_max_min_c_target(ctx_factory, which):
+    from numpy.random import default_rng
+    from pymbolic import parse
+    rng = default_rng()
+
+    n = 100
+    arr1 = rng.integers(-100, 100, n)
+    arr2 = rng.integers(-100, 100, n)
+    np_func = getattr(np, f"{which}imum")
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<100}",
+        [lp.Assignment(parse("out[i]"),
+                       parse(f"{which}(arr1[i], arr2[i])"))],
+        target=lp.ExecutableCTarget())
+
+    _, (out,) = knl(arr1=arr1, arr2=arr2)
+    np.testing.assert_allclose(np_func(arr1, arr2), out)
 
 
 if __name__ == "__main__":
