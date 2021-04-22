@@ -385,7 +385,12 @@ class TranslationUnit(ImmutableRecord):
         return hash(key_hash.digest())
 
 
-Program = TranslationUnit
+class Program(TranslationUnit):
+    def __init__(self, *args, **kwargs):
+        from warnings import warn
+        warn("Program is deprecated, use TranslationUnit instead, "
+             "will be removed in 2022", DeprecationWarning, stacklevel=2)
+        super().__init__(*args, **kwargs)
 
 # }}}
 
