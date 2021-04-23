@@ -96,7 +96,7 @@ class UnresolvedCallCollector(CombineMapper):
     Collects all the unresolved calls within a kernel.
 
     :returns:
-        An :class:`frozenset` of function names that are not resolved.
+        A :class:`frozenset` of function names that are not resolved.
     """
 
     def combine(self, values):
