@@ -499,7 +499,7 @@ def _inline_single_callable_kernel(caller_kernel, callee_kernel):
 # *some* calls to a kernel, but not others.
 def inline_callable_kernel(translation_unit, function_name):
     """
-    Returns an copy of *translation_unit* with the callable kernel
+    Returns a copy of *translation_unit* with the callable kernel
     named *function_name* inlined at all call-sites.
     """
     from loopy.preprocess import infer_arg_descr
