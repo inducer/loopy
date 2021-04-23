@@ -44,9 +44,11 @@ from pyrsistent import pmap, PMap
 
 __doc__ = """
 
-.. currentmodule:: loopy.translation_unit
+.. currentmodule:: loopy
 
 .. autoclass:: TranslationUnit
+
+.. currentmodule:: loopy.translation_unit
 
 .. autoclass:: CallablesInferenceContext
 
