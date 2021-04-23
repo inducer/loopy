@@ -31,6 +31,11 @@ from pyopencl.tools import \
     pytest_generate_tests_for_pyopencl as pytest_generate_tests  # noqa
 
 
+def test_make_einsum_error_handling():
+    with pytest.raises(ValueError):
+        lp.make_einsum("ij,j->j", ("a",))
+
+
 @pytest.mark.parametrize("spec", [
     "ij->ij",  # identity
     "ij->ji",  # transpose
