@@ -507,6 +507,13 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
     arg_spec, out_spec = spec.split("->")
     arg_specs = arg_spec.split(",")
 
+    if len(arg_names) != len(arg_specs):
+        raise ValueError(
+            f"Number of arg names ({arg_names}) should match the number "
+            f"of arg specs: {arg_specs}. Length of arg names is {len(arg_names)}; "
+            f"expecting {len(arg_specs)} arg names."
+        )
+
     out_indices = set(out_spec)
 
     all_indices = set(
