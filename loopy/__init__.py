@@ -489,7 +489,7 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
 
 # {{{ einsum
 
-def make_einsum(spec, arg_names, knl_creation_kwargs=None):
+def make_einsum(spec, arg_names, **knl_creation_kwargs):
     arg_spec, out_spec = spec.split("->")
     arg_specs = arg_spec.split(",")
 
