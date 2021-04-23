@@ -54,24 +54,7 @@ __doc__ = """
 """
 
 
-def find_in_knl_callable_from_identifier(
-        function_id_to_in_knl_callable_mappers, target, identifier):
-    """
-    Returns an instance of
-    :class:`loopy.kernel.function_interface.InKernelCallable` if the
-    :arg:`identifier` is known to any kernel function scoper, otherwise returns
-    *None*.
-    """
-    for func_id_to_in_knl_callable_mapper in (
-            function_id_to_in_knl_callable_mappers):
-        # fixme: do we really need to given target for the function
-        in_knl_callable = func_id_to_in_knl_callable_mapper(
-                target, identifier)
-        if in_knl_callable is not None:
-            return in_knl_callable
-
-    return None
-
+# {{{ CallableResolver
 
 def _is_a_reduction_op(expr):
     if isinstance(expr, ResolvedFunction):
@@ -139,8 +122,10 @@ class CallableResolver(RuleAwareIdentityMapper):
         # See https://github.com/inducer/loopy/pull/323
         raise NotImplementedError
 
+# }}}
 
-# {{{ program
+
+# {{{ translation unit
 
 class TranslationUnit(ImmutableRecord):
     """
@@ -388,6 +373,8 @@ class Program(TranslationUnit):
 # }}}
 
 
+# {{{ next_indexed_function_id
+
 def next_indexed_function_id(function_id):
     """
     Returns an instance of :class:`str` with the next indexed-name in the
@@ -417,6 +404,10 @@ def next_indexed_function_id(function_id):
     return "{alpha}_{num}".format(alpha=match.group("alpha"),
             num=int(match.group("num"))+1)
 
+# }}}
+
+
+# {{{ rename_resolved_functions_in_a_single_kernel
 
 class ResolvedFunctionRenamer(RuleAwareIdentityMapper):
     """
@@ -451,6 +442,10 @@ def rename_resolved_functions_in_a_single_kernel(kernel,
             rule_mapping_context.finish_kernel(
                 resolved_function_renamer.map_kernel(kernel)))
 
+# }}}
+
+
+# {{{ CallablesIDCollector
 
 class CallablesIDCollector(CombineMapper):
     """
@@ -506,6 +501,10 @@ def _get_callable_ids(callables, entrypoints):
         _get_callable_ids_for_knl(callables[e].subkernel, callables)
         for e in entrypoints))
 
+# }}}
+
+
+# {{{ CallablesInferenceContext
 
 def make_clbl_inf_ctx(callables, entrypoints):
     return CallablesInferenceContext(callables)
@@ -545,8 +544,6 @@ class CallablesInferenceContext(ImmutableRecord):
         super().__init__(callables=callables,
                          renames=renames,
                          new_entrypoints=new_entrypoints)
-
-    # {{{ interface to perform edits on callables
 
     def with_callable(self, old_function_id, new_clbl,
                       is_entrypoint=False):
@@ -707,11 +704,11 @@ class CallablesInferenceContext(ImmutableRecord):
 
         return program.copy(callables_table=new_callables)
 
-    # }}}
-
     def __getitem__(self, name):
         result = self.callables[name]
         return result
+
+# }}}
 
 
 # {{{ helper functions
@@ -790,6 +787,8 @@ def update_table(callables_table, clbl_id, clbl):
 # }}}
 
 
+# {{{ resolve_callables
+
 def resolve_callables(program):
     """
     Returns a :class:`TranslationUnit` with known :class:`pymbolic.primitives.Call`
@@ -840,6 +839,8 @@ def resolve_callables(program):
             raise NotImplementedError(f"{type(clbl)}")
 
     return program.copy(callables_table=callables_table)
+
+# }}}
 
 
 # vim: foldmethod=marker
