@@ -109,6 +109,10 @@ class UnresolvedCallCollector(CombineMapper):
         else:
             return self.rec(expr.parameters)
 
+    def map_call_with_kwargs(self, expr):
+        # See: https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
+
     def map_constant(self, expr):
         return frozenset()
 

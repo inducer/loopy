@@ -99,6 +99,10 @@ class FunctionNameChanger(RuleAwareIdentityMapper):
         else:
             return self.map_substitution(name, tag, expr.parameters, expn_state)
 
+    def map_call_with_kwargs(self, expr):
+        # See https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
+
 
 def change_names_of_pymbolic_calls(kernel, pymbolic_calls_to_new_names):
     """
@@ -445,6 +449,10 @@ class TypeInferenceMapper(CombineMapper):
 
         return []
 
+    def map_call_with_kwargs(self, expr):
+        # See https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
+
     def map_variable(self, expr):
         if expr.name in self.kernel.all_inames():
             return [self.kernel.index_dtype]
@@ -654,6 +662,10 @@ class TypeReader(TypeInferenceMapper):
         else:
             raise RuntimeError("unexpected type inference "
                     "object type for '%s'" % expr.name)
+
+    def map_call_with_kwargs(self, expr):
+        # See https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
 
 # }}}
 

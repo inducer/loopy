@@ -135,6 +135,10 @@ class CallableResolver(RuleAwareIdentityMapper):
 
         return super().map_call(expr, expn_state)
 
+    def map_call_with_kwargs(self, expr):
+        # See https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
+
 
 # {{{ program
 

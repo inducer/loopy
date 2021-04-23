@@ -2227,6 +2227,10 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
                           for child in expr.parameters)
                     + tuple(deps_as_params))
 
+    def map_call_with_kwargs(self, expr):
+        # See https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
+
     def __call__(self, expr, kernel, insn, assignees=None):
         from loopy.kernel.data import InstructionBase
         from loopy.symbolic import IdentityMapper, ExpansionState
