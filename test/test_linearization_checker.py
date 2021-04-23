@@ -1383,9 +1383,9 @@ def _compare_dependencies(knl, deps_expected, return_unsatisfied=False):
 
 # {{{ Dependency creation and checking (without transformations)
 
-# {{{ test_add_stmt_inst_dependency
+# {{{ test_add_dependency_v2
 
-def test_add_stmt_inst_dependency():
+def test_add_dependency_v2():
 
     # Make kernel and use OLD deps to control linearization order for now
     i_range_str = "0 <= i < pi"
@@ -1418,7 +1418,7 @@ def test_add_stmt_inst_dependency():
             assumptions_str,
             ))
 
-    knl = lp.add_stmt_inst_dependency(knl, "stmt_b", "stmt_a", dep_b_on_a)
+    knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a)
 
     _compare_dependencies(
         knl,
@@ -1435,7 +1435,7 @@ def test_add_stmt_inst_dependency():
             assumptions_str,
             ))
 
-    knl = lp.add_stmt_inst_dependency(knl, "stmt_b", "stmt_a", dep_b_on_a_2)
+    knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a_2)
 
     _compare_dependencies(
         knl,
@@ -1461,8 +1461,8 @@ def test_add_stmt_inst_dependency():
             assumptions_str,
             ))
 
-    knl = lp.add_stmt_inst_dependency(knl, "stmt_c", "stmt_a", dep_c_on_a)
-    knl = lp.add_stmt_inst_dependency(knl, "stmt_c", "stmt_b", dep_c_on_b)
+    knl = lp.add_dependency_v2(knl, "stmt_c", "stmt_a", dep_c_on_a)
+    knl = lp.add_dependency_v2(knl, "stmt_c", "stmt_b", dep_c_on_b)
 
     # Compare deps and make sure they are satisfied
     unsatisfied_deps = _compare_dependencies(
@@ -1504,7 +1504,7 @@ def test_new_dependencies_finite_diff():
             xt_range_str,
             xt_range_str_p,
             ))
-    knl = lp.add_stmt_inst_dependency(knl, "stmt", "stmt", dep)
+    knl = lp.add_dependency_v2(knl, "stmt", "stmt", dep)
 
     ref_knl = knl
 
@@ -1577,7 +1577,7 @@ def test_new_dependencies_finite_diff():
     knl = lp.add_dtypes(
         knl, {"u": np.float32, "dx": np.float32, "dt": np.float32})
 
-    knl = lp.add_stmt_inst_dependency(knl, "stmt", "stmt", dep)
+    knl = lp.add_dependency_v2(knl, "stmt", "stmt", dep)
 
     knl = lp.prioritize_loops(knl, "t,x")
     knl = lp.tag_inames(knl, "x:l.0")
@@ -1624,8 +1624,8 @@ def test_fix_parameters_with_dependencies():
         "}}".format(STATEMENT_VAR_NAME))
 
     from copy import deepcopy
-    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", deepcopy(dep_orig))
-    knl = lp.add_stmt_inst_dependency(knl, "stmt2", "stmt1", deepcopy(dep_orig))
+    knl = lp.add_dependency_v2(knl, "stmt1", "stmt0", deepcopy(dep_orig))
+    knl = lp.add_dependency_v2(knl, "stmt2", "stmt1", deepcopy(dep_orig))
 
     fix_val = 64
     knl = lp.fix_parameters(knl, m=fix_val)
@@ -1679,10 +1679,10 @@ def test_assignment_to_subst_with_dependencies():
         "}}".format(STATEMENT_VAR_NAME))
 
     from copy import deepcopy
-    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", deepcopy(dep_le))
-    knl = lp.add_stmt_inst_dependency(knl, "stmt2", "stmt1", deepcopy(dep_eq))
-    knl = lp.add_stmt_inst_dependency(knl, "stmt3", "stmt1", deepcopy(dep_eq))
-    knl = lp.add_stmt_inst_dependency(knl, "stmt4", "stmt1", deepcopy(dep_eq))
+    knl = lp.add_dependency_v2(knl, "stmt1", "stmt0", deepcopy(dep_le))
+    knl = lp.add_dependency_v2(knl, "stmt2", "stmt1", deepcopy(dep_eq))
+    knl = lp.add_dependency_v2(knl, "stmt3", "stmt1", deepcopy(dep_eq))
+    knl = lp.add_dependency_v2(knl, "stmt4", "stmt1", deepcopy(dep_eq))
 
     knl = lp.assignment_to_subst(knl, "tsq")
 
@@ -1715,11 +1715,11 @@ def test_assignment_to_subst_with_dependencies():
 
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
 
-    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", deepcopy(dep_le))
-    knl = lp.add_stmt_inst_dependency(knl, "stmt2", "stmt1", deepcopy(dep_eq))
-    knl = lp.add_stmt_inst_dependency(knl, "stmt3", "stmt1", deepcopy(dep_eq))
-    knl = lp.add_stmt_inst_dependency(knl, "stmt4", "stmt1", deepcopy(dep_eq))
-    knl = lp.add_stmt_inst_dependency(knl, "stmt5", "stmt1", deepcopy(dep_eq))
+    knl = lp.add_dependency_v2(knl, "stmt1", "stmt0", deepcopy(dep_le))
+    knl = lp.add_dependency_v2(knl, "stmt2", "stmt1", deepcopy(dep_eq))
+    knl = lp.add_dependency_v2(knl, "stmt3", "stmt1", deepcopy(dep_eq))
+    knl = lp.add_dependency_v2(knl, "stmt4", "stmt1", deepcopy(dep_eq))
+    knl = lp.add_dependency_v2(knl, "stmt5", "stmt1", deepcopy(dep_eq))
 
     knl = lp.assignment_to_subst(knl, "tsq", within="id:stmt2 or id:stmt3")
 
@@ -1765,7 +1765,7 @@ def test_duplicate_inames_with_dependencies():
         "}}".format(STATEMENT_VAR_NAME))
 
     # Create dep stmtb->stmtc
-    knl = lp.add_stmt_inst_dependency(knl, "stmtc", "stmtb", dep_eq)
+    knl = lp.add_dependency_v2(knl, "stmtc", "stmtb", dep_eq)
 
     ref_knl = knl
 
@@ -1856,7 +1856,7 @@ def test_split_iname_with_dependencies():
         "[p] -> { %s : 0 <= i < p and i' = i }"
         % (dep_inout_space_str))
 
-    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep_satisfied)
+    knl = lp.add_dependency_v2(knl, "stmt1", "stmt0", dep_satisfied)
     knl = lp.split_iname(knl, "i", 32)
 
     dep_exp = _isl_map_with_marked_dims(
@@ -1881,7 +1881,7 @@ def test_split_iname_with_dependencies():
 
     knl = deepcopy(ref_knl)
 
-    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep_satisfied)
+    knl = lp.add_dependency_v2(knl, "stmt1", "stmt0", dep_satisfied)
     knl = lp.split_iname(knl, "i", 32, within="id:stmt1")
 
     dep_exp = _isl_map_with_marked_dims(
@@ -1906,7 +1906,7 @@ def test_split_iname_with_dependencies():
 
     knl = deepcopy(ref_knl)
 
-    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep_satisfied)
+    knl = lp.add_dependency_v2(knl, "stmt1", "stmt0", dep_satisfied)
     knl = lp.split_iname(knl, "i", 32, within="id:stmt0")
 
     dep_exp = _isl_map_with_marked_dims(
@@ -1935,7 +1935,7 @@ def test_split_iname_with_dependencies():
         "[p] -> { %s : 0 <= i < p and i' = i + 1 }"
         % (dep_inout_space_str))
 
-    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep_unsatisfied)
+    knl = lp.add_dependency_v2(knl, "stmt1", "stmt0", dep_unsatisfied)
     knl = lp.split_iname(knl, "i", 32)
 
     dep_exp = _isl_map_with_marked_dims(
@@ -1988,9 +1988,9 @@ def test_split_iname_with_dependencies():
         "[p] -> { %s : %s and i' = i and k' = k and j' = j and m' = m}"
         % (dep_ijkm_space_str, ijkm_bounds_str))
 
-    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep_stmt1_on_stmt0_eq)
-    knl = lp.add_stmt_inst_dependency(knl, "stmt1", "stmt0", dep_stmt1_on_stmt0_lt)
-    knl = lp.add_stmt_inst_dependency(knl, "stmt3", "stmt2", dep_stmt3_on_stmt2_eq)
+    knl = lp.add_dependency_v2(knl, "stmt1", "stmt0", dep_stmt1_on_stmt0_eq)
+    knl = lp.add_dependency_v2(knl, "stmt1", "stmt0", dep_stmt1_on_stmt0_lt)
+    knl = lp.add_dependency_v2(knl, "stmt3", "stmt2", dep_stmt3_on_stmt2_eq)
 
     # Gratuitous splitting
     knl = lp.split_iname(knl, "i", 64)
@@ -2058,7 +2058,7 @@ def test_map_domain_with_only_partial_dep_pair_affected():
         "t' <= t and x' <= x"
         "}}".format(STATEMENT_VAR_NAME))
 
-    knl = lp.add_stmt_inst_dependency(
+    knl = lp.add_dependency_v2(
         knl, "stmtc", "stmta", dep_c_on_a)
 
     # Intentionally make order of x and t different from transform_map below
@@ -2069,7 +2069,7 @@ def test_map_domain_with_only_partial_dep_pair_affected():
         "0 <= x' < nx and 0 <= t' < nt and 0 <= i < ni"
         "}}".format(STATEMENT_VAR_NAME))
 
-    knl = lp.add_stmt_inst_dependency(
+    knl = lp.add_dependency_v2(
         knl, "stmte", "stmtc", dep_e_on_c)
 
     # }}}
@@ -2170,7 +2170,7 @@ def test_map_domain_with_stencil_dependencies():
         "0 < ix' <= -2 + nx and 0 <= it' <= -3 + nt"
         "}}".format(STATEMENT_VAR_NAME))
 
-    knl = lp.add_stmt_inst_dependency(
+    knl = lp.add_dependency_v2(
         knl, stmt_after, stmt_before, dep_map)
 
     # }}}
