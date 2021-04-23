@@ -305,15 +305,12 @@ def _split_iname_backend(kernel, iname_to_split,
     ins = _InameSplitter(rule_mapping_context, within,
             iname_to_split, outer_iname, inner_iname, new_loop_index)
 
-    from loopy.symbolic import get_dependencies, get_reduction_inames
     from loopy.kernel.instruction import MultiAssignmentBase
 
     def check_insn_has_iname(kernel, insn, *args):
-        return not (isinstance(insn, MultiAssignmentBase) and
-                all(iname_to_split not in get_dependencies(a)
-                    for a in insn.assignees) and
-                iname_to_split not in get_dependencies(insn.expression) and
-                iname_to_split not in get_reduction_inames(insn.expression))
+        return (not isinstance(insn, MultiAssignmentBase)
+                or iname_to_split in insn.dependency_names()
+                or iname_to_split in insn.reduction_inames())
 
     kernel = ins.map_kernel(kernel, within=check_insn_has_iname,
                             map_tvs=False, map_args=False)
@@ -1178,7 +1175,7 @@ def get_used_inames(kernel):
     used_inames = set()
     for insn in exp_kernel.instructions:
         used_inames.update(
-                exp_kernel.insn_inames(insn.id)
+                insn.within_inames
                 | insn.reduction_inames())
 
     return used_inames
