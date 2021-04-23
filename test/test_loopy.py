@@ -3092,6 +3092,37 @@ def test_cached_written_variables_doesnt_carry_over_invalidly():
     assert "b" not in knl2["loopy_kernel"].get_written_variables()
 
 
+def test_kernel_tagging():
+    from pytools.tag import Tag
+
+    class LessInformativeTag(Tag):
+        pass
+
+    class SuperInformativeTag(Tag):
+        pass
+
+    class SuperDuperInformativeTag(SuperInformativeTag):
+        pass
+
+    t1 = SuperInformativeTag()
+    t2 = LessInformativeTag()
+    knl1 = lp.make_kernel(
+        "{:}",
+        "y = 0",
+        tags=frozenset((t1, t2)))
+
+    assert knl1.tags == frozenset((t1, t2))
+
+    t3 = SuperDuperInformativeTag()
+    knl2 = knl1.tagged(tags=frozenset((t3,)))
+    assert knl2.tags == frozenset((t1, t2, t3))
+
+    knl3 = knl2.without_tags(tags=frozenset((t2,)))
+
+    assert knl3.tags == frozenset((t1, t3))
+    assert knl3.copy().tags == knl3.tags
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
