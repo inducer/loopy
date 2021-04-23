@@ -758,6 +758,11 @@ def generate_code_v2(program):
 
     program = program.copy(callables_table=new_callables)
 
+    # Why diverge? Generated code for a non-entrypoint kernel and an entrypoint
+    # kernel isn't same for a general loopy target. For example in OpenCL, a
+    # kernel callable from host and the one supposed to be callable from device
+    # have different function signatures. To generate correct code, each
+    # callable should be exclusively an entrypoint or a non-entrypoint kernel.
     program = diverge_callee_entrypoints(program)
 
     host_programs = {}
