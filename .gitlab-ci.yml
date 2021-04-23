@@ -158,7 +158,7 @@ Flake8:
 Benchmarks:
   stage: test
   script:
-  - CONDA_ENVIRONMENT=.test-conda-env.yml
+  - CONDA_ENVIRONMENT=.test-conda-env-py3.yml
   - PROJECT=loopy
   - PYOPENCL_TEST=portable:pthread
   - export LOOPY_NO_CACHE=1
