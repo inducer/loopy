@@ -2171,7 +2171,8 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
     dep_transform_map_marked = append_mark_to_isl_map_var_names(
         isl_map, dt.in_, BEFORE_MARK)
 
-    # Insert 'statement' dim into transform maps (mark the 'in' statement in BOTH cases)
+    # Insert 'statement' dim into transform maps
+    # (mark the 'in' statement in BOTH cases)
 
     # NOTE: dims must all be named correctly for the alignment to work, but dim names
     # must also be unique, so the output statement var name can't match the input
@@ -2187,7 +2188,7 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
     dep_transform_map_marked = insert_and_name_isl_dims(
         dep_transform_map_marked, dt.in_, [STATEMENT_VAR_NAME+BEFORE_MARK], 0)
     dep_transform_map_marked = insert_and_name_isl_dims(
-       dep_transform_map_marked, dt.out, [STATEMENT_VAR_NAME], 0)
+        dep_transform_map_marked, dt.out, [STATEMENT_VAR_NAME], 0)
     # Add stmt = stmt' constraint
     dep_transform_map_marked = add_eq_isl_constraint_from_names(
         dep_transform_map_marked, STATEMENT_VAR_NAME, STATEMENT_VAR_NAME+BEFORE_MARK)
@@ -2197,7 +2198,7 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
     dep_transform_map = insert_and_name_isl_dims(
         isl_map, dt.in_, [STATEMENT_VAR_NAME], 0)
     dep_transform_map = insert_and_name_isl_dims(
-       dep_transform_map, dt.out, [temp_stmt_var], 0)
+        dep_transform_map, dt.out, [temp_stmt_var], 0)
     # Add stmt = temp_stmt_var constraint
     dep_transform_map = add_eq_isl_constraint_from_names(
         dep_transform_map, STATEMENT_VAR_NAME, temp_stmt_var)
@@ -2247,7 +2248,8 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
             transformed_dep_map = dep_map.apply_domain(dep_transform_map_aligned)
 
             # Now re-add the before marks
-            return append_mark_to_isl_map_var_names(transformed_dep_map, dt.in_, BEFORE_MARK)
+            return append_mark_to_isl_map_var_names(
+                transformed_dep_map, dt.in_, BEFORE_MARK)
 
     # TODO figure out proper way to create false match condition
     false_id_match = "not id:*"
