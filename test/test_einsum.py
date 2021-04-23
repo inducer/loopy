@@ -21,13 +21,14 @@ THE SOFTWARE.
 """
 
 
+import sys
 import pytest
 import loopy as lp
 import numpy as np
 import pyopencl as cl
 
 from pyopencl.tools import \
-    pytest_generate_tests_for_pyopencl as pytest_generate_tests
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests  # noqa
 
 
 @pytest.mark.parametrize("spec", [
@@ -40,12 +41,12 @@ def test_einsum_array_manipulation(ctx_factory, spec):
     queue = cl.CommandQueue(ctx)
 
     n = 4
-    A = np.random.rand(n, n)
-    arg_names = ("A",)
+    a = np.random.rand(n, n)
+    arg_names = ("a",)
 
     knl = lp.make_einsum(spec, arg_names)
-    evt, (out,) = knl(queue, A=A)
-    ans = np.einsum(spec, A)
+    evt, (out,) = knl(queue, a=a)
+    ans = np.einsum(spec, a)
 
     assert np.linalg.norm(out - ans) <= 1e-15
 
@@ -58,13 +59,13 @@ def test_einsum_array_matvec(ctx_factory, spec):
     queue = cl.CommandQueue(ctx)
 
     n = 4
-    A = np.random.rand(n, n)
-    B = np.random.rand(n)
-    arg_names = ("A", "B")
+    a = np.random.rand(n, n)
+    b = np.random.rand(n)
+    arg_names = ("a", "b")
 
     knl = lp.make_einsum(spec, arg_names)
-    evt, (out,) = knl(queue, A=A, B=B)
-    ans = np.einsum(spec, A, B)
+    evt, (out,) = knl(queue, a=a, b=b)
+    ans = np.einsum(spec, a, b)
 
     assert np.linalg.norm(out - ans) <= 1e-15
 
@@ -79,13 +80,13 @@ def test_einsum_array_ops_same_dims(ctx_factory, spec):
     queue = cl.CommandQueue(ctx)
 
     n = 4
-    A = np.random.rand(n, n)
-    B = np.random.rand(n, n)
-    arg_names = ("A", "B")
+    a = np.random.rand(n, n)
+    b = np.random.rand(n, n)
+    arg_names = ("a", "b")
 
     knl = lp.make_einsum(spec, arg_names)
-    evt, (out,) = knl(queue, A=A, B=B)
-    ans = np.einsum(spec, A, B)
+    evt, (out,) = knl(queue, a=a, b=b)
+    ans = np.einsum(spec, a, b)
 
     assert np.linalg.norm(out - ans) <= 1e-15
 
@@ -100,33 +101,33 @@ def test_einsum_array_ops_diff_dims(ctx_factory, spec):
     n = 4
     m = 3
     o = 5
-    A = np.random.rand(n, m)
-    B = np.random.rand(m, o)
-    arg_names = ("A", "B")
+    a = np.random.rand(n, m)
+    b = np.random.rand(m, o)
+    arg_names = ("a", "b")
 
     knl = lp.make_einsum(spec, arg_names)
-    evt, (out,) = knl(queue, A=A, B=B)
-    ans = np.einsum(spec, A, B)
+    evt, (out,) = knl(queue, a=a, b=b)
+    ans = np.einsum(spec, a, b)
 
     assert np.linalg.norm(out - ans) <= 1e-15
 
 
 @pytest.mark.parametrize("spec", [
-    "ia,aj,ka->ijk",  # X[i,j,k] = \sum_a A[i,a] B[a,j] C[k,a]
+    "im,mj,km->ijk",
 ])
 def test_einsum_array_ops_triple_prod(ctx_factory, spec):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
     n = 3
-    A = np.random.rand(n, n)
-    B = np.random.rand(n, n)
-    C = np.random.rand(n, n)
-    arg_names = ("A", "B", "C")
+    a = np.random.rand(n, n)
+    b = np.random.rand(n, n)
+    c = np.random.rand(n, n)
+    arg_names = ("a", "b", "c")
 
     knl = lp.make_einsum(spec, arg_names)
-    evt, (out,) = knl(queue, A=A, B=B, C=C)
-    ans = np.einsum(spec, A, B, C)
+    evt, (out,) = knl(queue, a=a, b=b, c=c)
+    ans = np.einsum(spec, a, b, c)
 
     assert np.linalg.norm(out - ans) <= 1e-15
 
