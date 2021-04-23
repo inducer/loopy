@@ -96,7 +96,7 @@ class CallableResolver(RuleAwareIdentityMapper):
 
     .. attribute:: calls_resolved
 
-        An :class:`set` of calls that were resolved. Updated during an
+        A :class:`set` of calls that were resolved. Updated during an
         expression traversal.
     """
     def __init__(self, rule_mapping_context, known_callables):
