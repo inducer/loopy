@@ -392,7 +392,7 @@ class InKernelCallable(ImmutableRecord):
 
         .. note::
 
-            If then :class:`InKernelCallable` does not contain any
+            If the :class:`InKernelCallable` does not contain any
             other callables within it, then *clbl_inf_ctx* is returned as is.
         """
 
@@ -420,7 +420,7 @@ class InKernelCallable(ImmutableRecord):
 
         .. note::
 
-            If then :class:`InKernelCallable` does not contain any
+            If the :class:`InKernelCallable` does not contain any
             other callables within it, then *clbl_inf_ctx* is returned as is.
         """
 
