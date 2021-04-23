@@ -798,9 +798,9 @@ class RuleArgument(LoopyExpressionBase):
 
 class ResolvedFunction(LoopyExpressionBase):
     """
-    A function invocation whose definition is known in a :mod:`loopy` program.
+    A function identifier whose definition is known in a :mod:`loopy` program.
     A function is said to be *known* in a :class:`~loopy.TranslationUnit` if its
-    identifier maps to  an :class:`~loopy.kernel.function_interface.InKernelCallable`
+    name maps to  an :class:`~loopy.kernel.function_interface.InKernelCallable`
     in :attr:`loopy.TranslationUnit.callables_table`. Refer to :ref:`func-interface`.
 
     .. attribute:: function
