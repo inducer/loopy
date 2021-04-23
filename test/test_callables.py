@@ -392,54 +392,6 @@ def test_packing_unpacking(ctx_factory, inline):
 
 
 @pytest.mark.parametrize("inline", [False, True])
-def test_non_sub_array_refs_arguments(ctx_factory, inline):
-    from loopy.transform.callable import _match_caller_callee_argument_dimension_
-    ctx = ctx_factory()
-
-    callee = lp.make_function("{[i] : 0 <= i < 6}", "a[i] = a[i] + j",
-            [lp.GlobalArg("a", dtype="double", shape=(6,), is_output=True,
-                is_input=True),
-                lp.ValueArg("j", dtype="int")], name="callee")
-    caller1 = lp.make_kernel("{[j] : 0 <= j < 2}", "a[:] = callee(a[:], b[0])",
-            [lp.GlobalArg("a", dtype="double", shape=(6, ), is_output=False),
-            lp.GlobalArg("b", dtype="double", shape=(1, ), is_output=False)],
-            name="caller")
-
-    caller2 = lp.make_kernel("{[j] : 0 <= j < 2}", "a[:]=callee(a[:], 3.1415926)",
-            [lp.GlobalArg("a", dtype="double", shape=(6, ),
-                is_output=False)],
-            name="caller")
-
-    caller3 = lp.make_kernel("{[j] : 0 <= j < 2}", "a[:]=callee(a[:], kappa)",
-            [lp.GlobalArg("a", dtype="double", shape=(6, ),
-                is_output=False),
-             lp.ValueArg("kappa", dtype=np.float64), ...],
-            name="caller")
-
-    registered = lp.merge([caller1, callee])
-    knl = _match_caller_callee_argument_dimension_(registered, "callee")
-
-    if inline:
-        knl = lp.inline_callable_kernel(knl, "callee")
-
-    lp.auto_test_vs_ref(knl, ctx)
-
-    registered = lp.merge([caller2, callee])
-    knl = _match_caller_callee_argument_dimension_(registered, "callee")
-    if inline:
-        knl = lp.inline_callable_kernel(knl, "callee")
-
-    lp.auto_test_vs_ref(knl, ctx)
-
-    registered = lp.merge([caller3, callee])
-    knl = _match_caller_callee_argument_dimension_(registered, "callee")
-    if inline:
-        knl = lp.inline_callable_kernel(knl, "callee")
-
-    lp.auto_test_vs_ref(knl, ctx, parameters={"kappa": 42.0})
-
-
-@pytest.mark.parametrize("inline", [False, True])
 def test_empty_sub_array_refs(ctx_factory, inline):
     # See: https://github.com/OP2/PyOP2/pull/559#discussion_r272208618
     ctx = ctx_factory()

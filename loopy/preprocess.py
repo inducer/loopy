@@ -2151,12 +2151,10 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
     Infers the :attr:`loopy`
     """
 
-    def __init__(self, rule_mapping_context, caller_kernel,
-            callables_table):
-        super().__init__(
-                rule_mapping_context)
+    def __init__(self, rule_mapping_context, caller_kernel, clbl_inf_ctx):
+        super().__init__(rule_mapping_context)
         self.caller_kernel = caller_kernel
-        self.callables_table = callables_table
+        self.clbl_inf_ctx = clbl_inf_ctx
 
     def map_call(self, expr, expn_state, assignees=None):
         from pymbolic.primitives import Call, CallWithKwargs, Variable
@@ -2185,7 +2183,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
                 arg_id: get_arg_descriptor_for_expression(
                     self.caller_kernel, arg)
                 for arg_id, arg in arg_id_to_val.items()}
-        in_knl_callable = self.callables_table[expr.function.name]
+        in_knl_callable = self.clbl_inf_ctx[expr.function.name]
 
         # {{{ translating descriptor expressions to the callable's namespace
 
@@ -2219,14 +2217,14 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         # }}}
 
         # specializing the function according to the parameter description
-        new_in_knl_callable, self.callables_table = (
+        new_in_knl_callable, self.clbl_inf_ctx = (
                 in_knl_callable.with_descrs(
-                    arg_id_to_descr, self.callables_table))
+                    arg_id_to_descr, self.clbl_inf_ctx))
 
         # find the deps of the new in kernel callablen and add those arguments to
 
-        self.callables_table, new_func_id = (
-                self.callables_table.with_callable(
+        self.clbl_inf_ctx, new_func_id = (
+                self.clbl_inf_ctx.with_callable(
                     expr.function.function,
                     new_in_knl_callable))
 
@@ -2306,7 +2304,7 @@ def traverse_to_infer_arg_descr(kernel, callables_table):
     descr_inferred_kernel = rule_mapping_context.finish_kernel(
             arg_descr_inf_mapper.map_kernel(kernel))
 
-    return descr_inferred_kernel, arg_descr_inf_mapper.callables_table
+    return descr_inferred_kernel, arg_descr_inf_mapper.clbl_inf_ctx
 
 
 def infer_arg_descr(program):
@@ -2324,9 +2322,7 @@ def infer_arg_descr(program):
     program = resolve_callables(program)
 
     clbl_inf_ctx = make_clbl_inf_ctx(program.callables_table,
-            program.entrypoints)
-
-    renamed_entrypoints = set()
+                                     program.entrypoints)
 
     for e in program.entrypoints:
         def _tuple_or_None(s):
@@ -2350,10 +2346,10 @@ def infer_arg_descr(program):
                 raise NotImplementedError()
         new_callable, clbl_inf_ctx = program.callables_table[e].with_descrs(
                 arg_id_to_descr, clbl_inf_ctx)
-        clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable)
-        renamed_entrypoints.add(new_name.name)
+        clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable,
+                                                            is_entrypoint=True)
 
-    return clbl_inf_ctx.finish_program(program, renamed_entrypoints)
+    return clbl_inf_ctx.finish_program(program)
 
 # }}}
 

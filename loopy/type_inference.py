@@ -1018,17 +1018,14 @@ def infer_unknown_types(program, expect_completion=False):
     clbl_inf_ctx = make_clbl_inf_ctx(program.callables_table,
             program.entrypoints)
 
-    renamed_entrypoints = set()
-
     for e in program.entrypoints:
         logger.debug(f"Entering entrypoint: {e}")
         arg_id_to_dtype = {arg.name: arg.dtype for arg in
                 program[e].args if arg.dtype not in (None, auto)}
         new_callable, clbl_inf_ctx = program.callables_table[e].with_types(
                 arg_id_to_dtype, clbl_inf_ctx)
-        clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable)
-        renamed_entrypoints.add(new_name.name)
-
+        clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable,
+                                                            is_entrypoint=True)
         if expect_completion:
             from loopy.types import LoopyType
             new_knl = new_callable.subkernel
@@ -1048,7 +1045,7 @@ def infer_unknown_types(program, expect_completion=False):
                     raise LoopyError("could not determine type of"
                             f" '{vars_not_inferred.pop()}' of kernel '{e}'.")
 
-    return clbl_inf_ctx.finish_program(program, renamed_entrypoints)
+    return clbl_inf_ctx.finish_program(program)
 
 # }}}
 
