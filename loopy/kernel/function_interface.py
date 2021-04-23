@@ -501,8 +501,8 @@ class ScalarCallable(InKernelCallable):
     .. attribute:: name_in_target
 
         A :class:`str` to denote the name of the function in a
-        :class:`loopy.target.TargetBase` for which the callable is specialized
-        for. *None* if the callable is not specialized enough to know its name
+        :class:`loopy.target.TargetBase` for which the callable is specialized.
+        *None* if the callable is not specialized enough to know its name
         in target.
 
     .. automethod:: with_types
