@@ -506,8 +506,8 @@ def make_einsum(spec, arg_names, knl_creation_kwargs=None):
     lhs = var("out")[tuple(var(i) for i in out_spec)]
 
     rhs = 1
-    for i, argsp in enumerate(arg_specs):
-        rhs = rhs * var(arg_names[i])[tuple(var(i) for i in argsp)]
+    for arg_name, argsp in zip(arg_names, arg_specs):
+        rhs = rhs * var(arg_name)[tuple(var(i) for i in argsp)]
 
     if sum_indices:
         rhs = Reduction("sum", tuple(var(idx) for idx in sum_indices), rhs)
