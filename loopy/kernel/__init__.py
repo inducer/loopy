@@ -406,7 +406,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
 
-        ImmutableRecordWithoutPickling.__init__(self,
+        super().__init__(
                 domains=domains,
                 instructions=instructions,
                 args=args,
