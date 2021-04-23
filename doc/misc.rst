@@ -486,3 +486,12 @@ Cross-References to Other Documentation
 .. class:: complex128
 
     See :class:`numpy.generic`.
+
+Type Variables
+--------------
+
+.. currentmodule:: loopy
+
+.. class:: T_co
+
+    A covariant type variable used in, e.g. :meth:`pytools.tag.Taggable.copy`.
