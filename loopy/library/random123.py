@@ -168,15 +168,14 @@ class Random123Callable(ScalarCallable):
     Records information about for the random123 functions.
     """
     fields = ScalarCallable.fields | {"target"}
+    hash_fields = ScalarCallable.hash_fields + ("target",)
 
     def __init__(self, name, arg_id_to_dtype=None,
-            arg_id_to_descr=None, name_in_target=None, target=None):
-
-        super().__init__(
-                name=name,
-                arg_id_to_dtype=arg_id_to_dtype,
-                arg_id_to_descr=arg_id_to_descr,
-                name_in_target=name_in_target)
+                 arg_id_to_descr=None, name_in_target=None, target=None):
+        super().__init__(name=name,
+                         arg_id_to_dtype=arg_id_to_dtype,
+                         arg_id_to_descr=arg_id_to_descr,
+                         name_in_target=name_in_target)
 
         self.target = target
 

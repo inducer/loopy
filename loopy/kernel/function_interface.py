@@ -357,17 +357,13 @@ class InKernelCallable(ImmutableRecord):
 
     """
 
-    fields = {"arg_id_to_dtype", "arg_id_to_descr"}
-    init_arg_names = ("arg_id_to_dtype", "arg_id_to_descr")
+    hash_fields = ("name", "arg_id_to_dtype", "arg_id_to_descr")
 
-    def __init__(self, arg_id_to_dtype=None, arg_id_to_descr=None):
+    def __init__(self, name, arg_id_to_dtype=None, arg_id_to_descr=None):
 
-        super().__init__(
-                arg_id_to_dtype=arg_id_to_dtype,
-                arg_id_to_descr=arg_id_to_descr)
-
-    def __getinitargs__(self):
-        return (self.arg_id_to_dtype, self.arg_id_to_descr)
+        super().__init__(name=name,
+                         arg_id_to_dtype=arg_id_to_dtype,
+                         arg_id_to_descr=arg_id_to_descr)
 
     update_persistent_hash = update_persistent_hash
 
@@ -497,8 +493,7 @@ class InKernelCallable(ImmutableRecord):
         raise NotImplementedError()
 
     def __hash__(self):
-
-        return hash(tuple(self.fields))
+        return hash(self.hash_fields)
 
     def with_added_arg(self, arg_dtype, arg_descr):
         """
@@ -516,6 +511,13 @@ class ScalarCallable(InKernelCallable):
     """
     An abstract interface the to a scalar callable encountered in a kernel.
 
+    .. attribute:: name_in_target
+
+        A :class:`str` to denote the name of the function in a
+        :class:`loopy.target.TargetBase` for which the callable is specialized.
+        *None* if the callable is not specialized enough to know its name
+        in target.
+
     .. automethod:: with_types
 
     .. automethod:: with_descrs
@@ -525,25 +527,15 @@ class ScalarCallable(InKernelCallable):
         The :meth:`ScalarCallable.with_types` is intended to assist with type
         specialization of the function and sub-classes must define it.
     """
-
     fields = {"name", "arg_id_to_dtype", "arg_id_to_descr", "name_in_target"}
-    init_arg_names = ("name", "arg_id_to_dtype", "arg_id_to_descr",
-            "name_in_target")
-    hash_fields = ("name", "arg_id_to_dtype", "arg_id_to_descr", "name_in_target")
+    hash_fields = InKernelCallable.hash_fields + ("name_in_target",)
 
     def __init__(self, name, arg_id_to_dtype=None,
-            arg_id_to_descr=None, name_in_target=None):
-
-        super().__init__(
-                arg_id_to_dtype=arg_id_to_dtype,
-                arg_id_to_descr=arg_id_to_descr)
-
-        self.name = name
+                 arg_id_to_descr=None, name_in_target=None):
+        super().__init__(name=name,
+                         arg_id_to_dtype=arg_id_to_dtype,
+                         arg_id_to_descr=arg_id_to_descr)
         self.name_in_target = name_in_target
-
-    def __getinitargs__(self):
-        return (self.arg_id_to_dtype, self.arg_id_to_descr,
-                self.name_in_target)
 
     def with_types(self, arg_id_to_dtype, callables_table):
         raise LoopyError("No type inference information present for "
@@ -695,26 +687,26 @@ class CallableKernel(InKernelCallable):
     """
 
     fields = {"subkernel", "arg_id_to_dtype", "arg_id_to_descr"}
-    init_arg_names = ("subkernel", "arg_id_to_dtype", "arg_id_to_descr")
     hash_fields = ("subkernel", "arg_id_to_dtype", "arg_id_to_descr")
 
     def __init__(self, subkernel, arg_id_to_dtype=None,
-            arg_id_to_descr=None):
+                 arg_id_to_descr=None):
         assert isinstance(subkernel, LoopKernel)
-
-        super().__init__(
-                arg_id_to_dtype=arg_id_to_dtype,
-                arg_id_to_descr=arg_id_to_descr)
-
+        super().__init__(name=subkernel.name,
+                         arg_id_to_dtype=arg_id_to_dtype,
+                         arg_id_to_descr=arg_id_to_descr)
         self.subkernel = subkernel
 
-    def __getinitargs__(self):
-        return (self.subkernel, self.arg_id_to_dtype,
-                self.arg_id_to_descr)
+    def copy(self, subkernel=None, arg_id_to_dtype=None,
+             arg_id_to_descr=None):
+        if subkernel is None:
+            subkernel = self.subkernel
+        if arg_id_to_descr is None:
+            arg_id_to_descr = self.arg_id_to_descr
+        if arg_id_to_dtype is None:
+            arg_id_to_dtype = self.arg_id_to_dtype
 
-    @property
-    def name(self):
-        return self.subkernel.name
+        return CallableKernel(subkernel, arg_id_to_dtype, arg_id_to_descr)
 
     def with_types(self, arg_id_to_dtype, callables_table):
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
@@ -889,8 +881,8 @@ class CallableKernel(InKernelCallable):
                         GridOverrideForCalleeKernel(gsize, lsize))))
 
     def is_ready_for_codegen(self):
-        return (self.arg_id_to_dtype is not None and
-                self.arg_id_to_descr is not None)
+        return (self.arg_id_to_dtype is not None
+                and self.arg_id_to_descr is not None)
 
     def generate_preambles(self, target):
         """ Yields the *target* specific preambles.
