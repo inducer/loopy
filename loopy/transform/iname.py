@@ -385,15 +385,12 @@ def _split_iname_backend(kernel, iname_to_split,
     ins = _InameSplitter(rule_mapping_context, within,
             iname_to_split, outer_iname, inner_iname, new_loop_index)
 
-    from loopy.symbolic import get_dependencies, get_reduction_inames
     from loopy.kernel.instruction import MultiAssignmentBase
 
     def check_insn_has_iname(kernel, insn, *args):
-        return not (isinstance(insn, MultiAssignmentBase) and
-                all(iname_to_split not in get_dependencies(a)
-                    for a in insn.assignees) and
-                iname_to_split not in get_dependencies(insn.expression) and
-                iname_to_split not in get_reduction_inames(insn.expression))
+        return (not isinstance(insn, MultiAssignmentBase)
+                or iname_to_split in insn.dependency_names()
+                or iname_to_split in insn.reduction_inames())
 
     kernel = ins.map_kernel(kernel, within=check_insn_has_iname,
                             map_tvs=False, map_args=False)
@@ -1293,7 +1290,7 @@ def get_used_inames(kernel):
     used_inames = set()
     for insn in exp_kernel.instructions:
         used_inames.update(
-                exp_kernel.insn_inames(insn.id)
+                insn.within_inames
                 | insn.reduction_inames())
 
     return used_inames
@@ -2032,6 +2029,8 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
     # FIXME: Document
 
     # FIXME: Support within
+    # FIXME: Right now, this requires all inames in a domain (or none) to
+    # be mapped. That makes this awkward to use.
 
     # {{{ within processing (disabled for now)
     if within is not None:
@@ -2298,13 +2297,13 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
 
     # {{{ Rename inames according to rename_after dict
 
-    # This renaming option exists because various isl operations fail when map dim
-    # names are not unique, so even if someone wants their transformation map to keep
-    # one of the inames unchanged, they must give it a new name
+    # This renaming option exists because various isl operations fail when map
+    # dim names are not unique, so even if someone wants their transformation
+    # map to keep one of the inames unchanged, they must give it a new name
     # in their map, e.g., "[x, t] -> [x_, t_outer, t_inner] : x_ = x ..." (see
     # test_map_domain_vs_split_iname()). Currently, they can't
-    # simply exclude that iname from the transformation map because, as stated in
-    # the error above, all domains must either involve all or none of the
+    # simply exclude that iname from the transformation map because, as stated
+    # in the error above, all domains must either involve all or none of the
     # transform map domain inames. This renaming option lets them, e.g. switch
     # an iname back to its original name.
 
