@@ -496,12 +496,12 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
     keyword arguments for kernel creation will be carried through
     to :func:`make_kernel`.
 
-    :param spec: a :class:`String` denoting the subscripts for
+    :param spec: a string denoting the subscripts for
         summation as a comma-separated list of subscript labels.
         This follows the usual :func:`numpy.einsum` convention.
         Note that the explicit indicator `->` for the precise output
         form is required.
-    :param arg_names: an iterable of :class:`String` types denoting
+    :param arg_names: an iterable of string types denoting
         the names of the array operands.
     """
     arg_spec, out_spec = spec.split("->")
