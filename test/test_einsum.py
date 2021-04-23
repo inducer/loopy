@@ -34,7 +34,7 @@ from pyopencl.tools import \
 @pytest.mark.parametrize("spec", [
     "ij->ij",  # identity
     "ij->ji",  # transpose
-    "ii->i",   # diagonalization
+    "ii->i",   # extract diagonal
 ])
 def test_einsum_array_manipulation(ctx_factory, spec):
     ctx = ctx_factory()
