@@ -645,9 +645,9 @@ class CallablesInferenceContext(ImmutableRecord):
         Returns a copy of *program* with rollback renaming of the callables
         done whenever possible.
 
-        For example: If all the ``sin`` function ids got diverged as
+        For example: If all the ``sin`` function ids diverged as
         ``sin_0``, ``sin_1``, then all the renaming is done such that one of
-        flavors of the callable is renamed back to ``sin``.
+        the flavors of the callable is renamed back to ``sin``.
         """
         # FIXME: Generalize this if an inference happens over a proper subgraph
         # of the callgraph (the following assert should be removed)
