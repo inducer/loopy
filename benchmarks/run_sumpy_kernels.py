@@ -1,30 +1,32 @@
+import loopy as lp
 import numpy as np
-
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
-
+import pyopencl as cl
 import logging
+
 logger = logging.getLogger(__name__)
 
-import loopy as lp
 
 def _sumpy_kernel_init(dim, order):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx, properties=cl.command_queue_properties.PROFILING_ENABLE)
+    from sumpy.expansion.multipole import (
+        LaplaceConformingVolumeTaylorMultipoleExpansion,
+    )
+    from sumpy.expansion.local import LaplaceConformingVolumeTaylorLocalExpansion
+    from sumpy.kernel import LaplaceKernel
+    from sumpy import E2EFromCSR
 
+    ctx = cl.create_some_context()
     np.random.seed(17)
 
     knl = LaplaceKernel(dim)
     local_expn_class = LaplaceConformingVolumeTaylorLocalExpansion
     mpole_expn_class = LaplaceConformingVolumeTaylorMultipoleExpansion
-    target_kernels = [knl]
     m_expn = mpole_expn_class(knl, order=order)
     l_expn = local_expn_class(knl, order=order)
 
-    from sumpy import P2EFromSingleBox, E2PFromSingleBox, P2P, E2EFromCSR
     m2l = E2EFromCSR(ctx, m_expn, l_expn)
     m2l.get_translation_loopy_insns()
     return m2l
+
 
 def _sumpy_kernel_make(m2l):
     loopy_knl = m2l.get_optimized_kernel()
@@ -48,11 +50,9 @@ def _sumpy_kernel_make(m2l):
 
 class SumpyBenchmarkSuite:
 
-    params = [
-        ("m2l", 3, 6)
-    ]
+    params = [("m2l", 3, 6)]
 
-    param_names = ['test_name']
+    param_names = ["test_name"]
 
     version = 1
 
@@ -76,7 +76,7 @@ class SumpyBenchmarkSuite:
         np.random.seed(17)
 
     def time_instantiate(self, data, param):
-        create_knl = _sumpy_kernel_make(data[param]["setup"])
+        _sumpy_kernel_make(data[param]["setup"])
 
     def time_preprocess(self, data, param):
         lp.preprocess_kernel(data[param]["instantiated"])
@@ -107,4 +107,3 @@ class SumpyBenchmarkSuite:
     peakmem_preprocess = time_preprocess
     peakmem_schedule = time_schedule
     peakmem_generate_code = time_generate_code
-
