@@ -761,6 +761,31 @@ def test_int_max_min_c_target(ctx_factory, which):
     np.testing.assert_allclose(np_func(arr1, arr2), out)
 
 
+def test_valueargs_being_mapped_in_inling(ctx_factory):
+    doublify = lp.make_function(
+            "{[i]: 0<=i<n}",
+            """
+            y[i] = n*x[i]
+            """,
+            [lp.ValueArg("n", dtype=np.int32), ...],
+            name="doublify",
+            )
+
+    knl = lp.make_kernel(
+            "{[i, j]: 0<=i, j<10}",
+            """
+            [i]: bar[i] = doublify(10, [j]: foo[j])
+            """,
+            [
+                lp.GlobalArg("foo", dtype=float, shape=lp.auto),
+                ...],
+            )
+    knl = lp.merge([knl, doublify])
+    knl = lp.inline_callable_kernel(knl, "doublify")
+
+    lp.auto_test_vs_ref(knl, ctx_factory(), knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
