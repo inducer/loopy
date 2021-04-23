@@ -1342,9 +1342,9 @@ def test_sios_with_matmul():
 
 # {{{ Dependency tests
 
-# {{{ test_add_stmt_inst_dependency
+# {{{ test_add_dependency_v2
 
-def test_add_stmt_inst_dependency():
+def test_add_dependency_v2():
 
     # Make kernel and use OLD deps to control linearization order for now
     i_range_str = "0 <= i < pi"
@@ -1377,7 +1377,7 @@ def test_add_stmt_inst_dependency():
             assumptions_str,
             ))
 
-    knl = lp.add_stmt_inst_dependency(knl, "stmt_b", "stmt_a", dep_b_on_a)
+    knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a)
 
     for stmt in knl.instructions:
         if stmt.id == "stmt_b":
@@ -1397,7 +1397,7 @@ def test_add_stmt_inst_dependency():
             assumptions_str,
             ))
 
-    knl = lp.add_stmt_inst_dependency(knl, "stmt_b", "stmt_a", dep_b_on_a_2)
+    knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a_2)
 
     for stmt in knl.instructions:
         if stmt.id == "stmt_b":
@@ -1426,8 +1426,8 @@ def test_add_stmt_inst_dependency():
             assumptions_str,
             ))
 
-    knl = lp.add_stmt_inst_dependency(knl, "stmt_c", "stmt_a", dep_c_on_a)
-    knl = lp.add_stmt_inst_dependency(knl, "stmt_c", "stmt_b", dep_c_on_b)
+    knl = lp.add_dependency_v2(knl, "stmt_c", "stmt_a", dep_c_on_a)
+    knl = lp.add_dependency_v2(knl, "stmt_c", "stmt_b", dep_c_on_b)
 
     for stmt in knl.instructions:
         if stmt.id == "stmt_b":
@@ -1479,7 +1479,7 @@ def test_new_dependencies_finite_diff():
             xt_range_str,
             xt_range_str_p,
             ))
-    knl = lp.add_stmt_inst_dependency(knl, "stmt", "stmt", dep)
+    knl = lp.add_dependency_v2(knl, "stmt", "stmt", dep)
 
     ref_knl = knl
 
