@@ -29,17 +29,20 @@ from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
         Assignment, CInstruction, _DataObliviousInstruction)
 from loopy.symbolic import (
-            RuleAwareSubstitutionMapper,
+            RuleAwareSubstitutionMapper, RuleAwareIdentityMapper,
             SubstitutionRuleMappingContext, CombineMapper, IdentityMapper)
 from loopy.isl_helpers import simplify_via_aff
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
-from loopy.translation_unit import TranslationUnit
+from loopy.translation_unit import (TranslationUnit,
+                                    iterate_over_kernels_if_given_program)
 
 __doc__ = """
 .. currentmodule:: loopy
 
 .. autofunction:: register_callable
+
+.. autofunction:: inline_callable_kernel
 
 .. autofunction:: merge
 """
@@ -92,8 +95,9 @@ def merge(translation_units):
                               & set(prg_j.callables_table)):
                 if (prg_i.callables_table[clbl_name]
                         != prg_j.callables_table[clbl_name]):
-                    # FIXME: generate unique names + rename for the colliding
-                    # callables
+                    # TODO: generate unique names + rename for the colliding
+                    # callables (if entrypoints are colliding that shuold still
+                    # be an error)
                     raise NotImplementedError("Translation units to be merged"
                                               " must have different callable names"
                                               " for now.")
@@ -113,10 +117,10 @@ def merge(translation_units):
 
 # {{{ kernel inliner mapper
 
-class KernelInliner(RuleAwareSubstitutionMapper):
-    def __init__(self, rule_mapping_context, subst_func, caller_knl,
-            callee_knl, callee_arg_to_call_param):
-        super().__init__(rule_mapping_context, subst_func, lambda *args: True)
+class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, caller_knl,
+                 callee_knl, callee_arg_to_call_param):
+        super().__init__(rule_mapping_context)
         self.caller_knl = caller_knl
         self.callee_knl = callee_knl
         self.callee_arg_to_call_param = callee_arg_to_call_param
@@ -136,9 +140,6 @@ class KernelInliner(RuleAwareSubstitutionMapper):
                 caller_arg = self.caller_knl.temporary_variables[
                         sar.subscript.aggregate.name]
 
-            # map inner inames to outer inames.
-            outer_indices = self.map_tuple(expr.index_tuple, expn_state)
-
             flatten_index = 0
             for i, idx in enumerate(get_start_subscript_from_sar(sar,
                     self.caller_knl).index_tuple):
@@ -146,7 +147,7 @@ class KernelInliner(RuleAwareSubstitutionMapper):
 
             flatten_index += sum(
                 idx * tag.stride
-                for idx, tag in zip(outer_indices, callee_arg.dim_tags))
+                for idx, tag in zip(expr.index_tuple, callee_arg.dim_tags))
 
             flatten_index = simplify_via_aff(flatten_index)
 
@@ -160,7 +161,6 @@ class KernelInliner(RuleAwareSubstitutionMapper):
 
             return Subscript(Variable(sar.subscript.aggregate.name), new_indices)
         else:
-            assert expr.aggregate.name in self.callee_knl.temporary_variables
             return super().map_subscript(expr, expn_state)
 
     def map_variable(self, expr, expn_state):
@@ -176,7 +176,6 @@ class KernelInliner(RuleAwareSubstitutionMapper):
             else:
                 assert isinstance(arg, ValueArg)
                 return par
-
         else:
             return super().map_variable(expr, expn_state)
 
@@ -247,6 +246,9 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     """
     Returns a copy of *caller_knl* with the *call_insn* in the *kernel*
     replaced by inlining *callee_knl* into it within it.
+
+
+    :arg call_insn: An instance of `loopy.CallInstruction` of the call-site.
     """
     import pymbolic.primitives as prim
     from pymbolic.mapper.substitutor import make_subst_func
@@ -280,11 +282,12 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
 
     # {{{ iname_to_tags
 
-    # new_iname_to_tags: caller's iname_to_tags post inlining
-    new_iname_to_tags = caller_knl.iname_to_tags
+    # new_inames: caller's inames post inlining
+    new_inames = caller_knl.inames
 
-    for old_name, tags in callee_knl.iname_to_tags.items():
-        new_iname_to_tags[name_map[old_name]] = tags
+    for old_name, callee_iname in callee_knl.inames.items():
+        new_name = name_map[old_name]
+        new_inames[new_name] = callee_iname.copy(name=new_name)
 
     # }}}
 
@@ -326,15 +329,16 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
 
     # }}}
 
-    # {{{ domains/assumptions
+    # {{{ process domains/assumptions
 
+    # rename inames
     new_domains = callee_knl.domains.copy()
     for old_iname in callee_knl.all_inames():
         new_domains = [rename_iname(dom, old_iname, name_map[old_iname])
                        for dom in new_domains]
 
+    # realize domains' dim params in terms of caller's variables
     new_assumptions = callee_knl.assumptions
-
     for callee_arg_name, param_expr in arg_map.items():
         if isinstance(callee_knl.arg_dict[callee_arg_name],
                       ValueArg):
@@ -352,17 +356,29 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
 
     # }}}
 
+    # {{{ rename inames/temporaries in the program
+
+    rule_mapping_context = SubstitutionRuleMappingContext(callee_knl.substitutions,
+                                                          vng)
+    subst_func = make_subst_func({old_name: prim.Variable(new_name)
+                                  for old_name, new_name in name_map.items()})
+    inames_temps_renamer = RuleAwareSubstitutionMapper(rule_mapping_context,
+                                                       subst_func,
+                                                       within=lambda *args: True)
+
+    callee_knl = rule_mapping_context.finish_kernel(inames_temps_renamer
+                                                    .map_kernel(callee_knl))
+
+    # }}}
+
     # {{{ map callee's expressions to get expressions after inlining
 
-    rule_mapping_context = SubstitutionRuleMappingContext(
-            callee_knl.substitutions, vng)
-    smap = KernelInliner(rule_mapping_context,
-            make_subst_func({old_name: prim.Variable(new_name)
-                             for old_name, new_name in name_map.items()}),
-            caller_knl, callee_knl, arg_map)
+    rule_mapping_context = SubstitutionRuleMappingContext(callee_knl.substitutions,
+                                                          vng)
+    smap = KernelArgumentSubstitutor(rule_mapping_context, caller_knl,
+                                     callee_knl, arg_map)
 
-    callee_knl = rule_mapping_context.finish_kernel(smap.map_kernel(
-        callee_knl))
+    callee_knl = rule_mapping_context.finish_kernel(smap.map_kernel(callee_knl))
 
     # }}}
 
@@ -397,18 +413,17 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
 
     for insn in callee_knl.instructions:
         new_within_inames = (frozenset(name_map[iname]
-                             for iname in insn.within_inames)
-                | call_insn.within_inames)
+                                       for iname in insn.within_inames)
+                             | call_insn.within_inames)
         new_depends_on = (frozenset(insn_id_map[dep] for dep in insn.depends_on)
-                      | {noop_start.id})
+                          | {noop_start.id})
         new_no_sync_with = frozenset((insn_id_map[id], scope)
-                                 for id, scope in insn.no_sync_with)
+                                     for id, scope in insn.no_sync_with)
         new_id = insn_id_map[insn.id]
 
         if isinstance(insn, Assignment):
-            new_atomicity = tuple(
-                    type(atomicity)(name_map[atomicity.var_name])
-                    for atomicity in insn.atomicity)
+            new_atomicity = tuple(type(atomicity)(name_map[atomicity.var_name])
+                                  for atomicity in insn.atomicity)
             insn = insn.copy(
                 id=insn_id_map[insn.id],
                 within_inames=new_within_inames,
@@ -444,18 +459,19 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
             caller_knl.assumptions, new_assumptions)
 
     return caller_knl.copy(instructions=new_insns,
-            temporary_variables=new_temps,
-            domains=caller_knl.domains+new_domains,
-            assumptions=old_assumptions.params() & new_assumptions.params(),
-            iname_to_tags=new_iname_to_tags)
+                           temporary_variables=new_temps,
+                           domains=caller_knl.domains+new_domains,
+                           assumptions=(old_assumptions.params()
+                                        & new_assumptions.params()),
+                           inames=new_inames)
 
 # }}}
 
 
 # {{{ inline callable kernel
 
-def _inline_single_callable_kernel(caller_kernel, callee_kernel,
-        callables_table):
+@iterate_over_kernels_if_given_program
+def _inline_single_callable_kernel(caller_kernel, callee_kernel):
     from loopy.symbolic import ResolvedFunction
 
     # sub-array refs might be removed during inlining
@@ -466,16 +482,14 @@ def _inline_single_callable_kernel(caller_kernel, callee_kernel,
         if (isinstance(insn, CallInstruction)
                 and isinstance(insn.expression.function, ResolvedFunction)):
             if insn.expression.function.name == callee_kernel.name:
-                caller_kernel = _inline_call_instruction(
-                        caller_kernel, callee_kernel, insn)
+                caller_kernel = _inline_call_instruction(caller_kernel,
+                                                         callee_kernel, insn)
                 inames_to_remove |= insn.sub_array_ref_inames()
         elif isinstance(insn, (MultiAssignmentBase, CInstruction,
-                _DataObliviousInstruction)):
+                               _DataObliviousInstruction)):
             pass
         else:
-            raise NotImplementedError(
-                    "Unknown instruction type %s"
-                    % type(insn).__name__)
+            raise NotImplementedError(type(insn))
 
     from loopy.transform.iname import remove_unused_inames
     return remove_unused_inames(caller_kernel, inames_to_remove)
@@ -483,33 +497,24 @@ def _inline_single_callable_kernel(caller_kernel, callee_kernel,
 
 # FIXME This should take a 'within' parameter to be able to only inline
 # *some* calls to a kernel, but not others.
-def inline_callable_kernel(program, function_name):
+def inline_callable_kernel(translation_unit, function_name):
     """
-    Returns a copy of *kernel* with the callable kernel addressed by
-    (scoped) name *function_name* inlined.
+    Returns an copy of *translation_unit* with the callable kernel
+    named *function_name* inlined at all call-sites.
     """
     from loopy.preprocess import infer_arg_descr
     from loopy.translation_unit import resolve_callables
-    program = resolve_callables(program)
-    program = infer_arg_descr(program)
-    callables_table = program.callables_table
-    new_callables = {}
-    callee = program[function_name]
 
-    for func_id, in_knl_callable in callables_table.items():
-        if isinstance(in_knl_callable, CallableKernel):
-            caller = in_knl_callable.subkernel
-            in_knl_callable = in_knl_callable.copy(
-                    subkernel=_inline_single_callable_kernel(caller,
-                        callee, program.callables_table))
-        elif isinstance(in_knl_callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError()
+    # {{{ must have argument shape information at call sites to inline
 
-        new_callables[func_id] = in_knl_callable
+    translation_unit = resolve_callables(translation_unit)
+    translation_unit = infer_arg_descr(translation_unit)
 
-    return program.copy(callables_table=new_callables)
+    # }}}
+
+    callee = translation_unit[function_name]
+
+    return _inline_single_callable_kernel(translation_unit, callee)
 
 # }}}
 
