@@ -896,6 +896,10 @@ class CounterBase(CombineMapper):
         else:
             raise NotImplementedError()
 
+    def map_call_with_kwargs(self, expr):
+        # See https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
+
     def map_sum(self, expr):
         if expr.children:
             return sum(self.rec(child) for child in expr.children)

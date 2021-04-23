@@ -401,6 +401,10 @@ class DependencyMapper(DependencyMapperBase):
     def map_literal(self, expr):
         return set()
 
+    def map_call_with_kwargs(self, expr):
+        # See https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
+
 
 class SubstitutionRuleExpander(IdentityMapper):
     def __init__(self, rules):

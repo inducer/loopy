@@ -181,6 +181,10 @@ class ExpressionIsScalarChecker(WalkMapper):
     def map_slice(self, expr):
         raise LoopyError("Array regions can only passed as sub-array refs.")
 
+    def map_call_with_kwargs(self, expr):
+        # See https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
+
 
 def get_arg_descriptor_for_expression(kernel, expr):
     """

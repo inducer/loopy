@@ -2036,6 +2036,10 @@ class SliceToInameReplacer(IdentityMapper):
                     tuple(self.rec(_convert_array_to_slices(par))
                           for par in expr.parameters))
 
+    def map_call_with_kwargs(self, expr):
+        # See: https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
+
     def get_iname_domain_as_isl_set(self):
         """
         Returns the extra domain constraints imposed by the slice inames,
