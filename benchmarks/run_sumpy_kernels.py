@@ -85,8 +85,8 @@ def cached_data(params):
 class SumpyBenchmarkSuite:
 
     params = [
-        Param("m2l", dim=3, order=6)
-        Param("m2l", dim=3, order=12)
+        Param("m2l", dim=3, order=6),
+        Param("m2l", dim=3, order=12),
     ]
 
     param_names = ["test_name"]
