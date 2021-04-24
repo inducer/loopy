@@ -2294,6 +2294,8 @@ def test_filtering_deps_by_same():
 
     dep_s5_on_s4_1 = _dep_with_condition("i' <  i")
 
+    dep_s5_on_s2_1 = _dep_with_condition("i' =  i")
+
     knl = lp.add_dependency_v2(knl, "s2", "s1", dep_s2_on_s1_1)
     knl = lp.add_dependency_v2(knl, "s2", "s1", dep_s2_on_s1_2)
 
@@ -2308,23 +2310,25 @@ def test_filtering_deps_by_same():
 
     knl = lp.add_dependency_v2(knl, "s5", "s4", dep_s5_on_s4_1)
 
+    knl = lp.add_dependency_v2(knl, "s5", "s2", dep_s5_on_s2_1)
+
     # Filter deps by intersection with SAME
 
     from loopy.schedule.checker.dependency import (
         filter_deps_by_intersection_with_SAME,
     )
-    dep_edges_filtered = filter_deps_by_intersection_with_SAME(knl)
+    filtered_depends_on_dict = filter_deps_by_intersection_with_SAME(knl)
 
     # Make sure filtered edges are correct
 
     # (m is concurrent so shouldn't matter)
-    dep_edges_expected = set([
-        ("s1", "s2"),
-        ("s2", "s2"),
-        ("s3", "s4"),
-        ])
+    depends_on_dict_expected = {
+        "s2": set(["s1", "s2"]),
+        "s4": set(["s3"]),
+        "s5": set(["s2"]),
+        }
 
-    assert dep_edges_filtered == dep_edges_expected
+    assert filtered_depends_on_dict == depends_on_dict_expected
 
 # }}}
 

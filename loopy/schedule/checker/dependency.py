@@ -77,14 +77,21 @@ def filter_deps_by_intersection_with_SAME(knl):
     )
     _, non_conc_inames = partition_inames_by_concurrency(knl)
 
-    deps_filtered = set()
+    # NOTE: deps filtered will map depender->dependee
+    deps_filtered = {}
     for stmt in knl.instructions:
+
         if hasattr(stmt, "dependencies") and stmt.dependencies:
+
             depender_id = stmt.id
+
             for dependee_id, dep_maps in stmt.dependencies.items():
+
                 # Continue if we already have this pair
-                if (dependee_id, depender_id) in deps_filtered:
+                if dependee_id in deps_filtered.keys() and (
+                        depender_id in deps_filtered[dependee_id]):
                     continue
+
                 for dep_map in dep_maps:
                     # Create isl map representing "SAME" dep for these two insns
 
@@ -116,7 +123,7 @@ def filter_deps_by_intersection_with_SAME(knl):
                     intersect_not_empty = not bool(intersect_dep_and_same.is_empty())
 
                     if intersect_not_empty:
-                        deps_filtered.add((dependee_id, depender_id))
+                        deps_filtered.setdefault(depender_id, set()).add(dependee_id)
                         break  # No need to check any more deps for this pair
 
     return deps_filtered
