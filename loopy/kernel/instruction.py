@@ -1052,9 +1052,9 @@ class CallInstruction(MultiAssignmentBase):
                 predicates=predicates,
                 tags=tags)
 
-        from pymbolic.primitives import Call, CallWithKwargs
+        from pymbolic.primitives import Call
         from loopy.symbolic import Reduction
-        if not isinstance(expression, (Call, CallWithKwargs, Reduction)) and (
+        if not isinstance(expression, (Call, Reduction)) and (
                 expression is not None):
             raise LoopyError("'expression' argument to CallInstruction "
                     "must be a function call")
@@ -1145,15 +1145,10 @@ class CallInstruction(MultiAssignmentBase):
 
     def arg_id_to_val(self):
         """:returns: a :class:`dict` mapping argument identifiers (non-negative numbers
-            for positional arguments, strings for keyword args, and negative numbers
+            for positional arguments and negative numbers
             for assignees) to their respective values
         """
-
-        from pymbolic.primitives import CallWithKwargs
         arg_id_to_val = dict(enumerate(self.expression.parameters))
-        if isinstance(self.expression, CallWithKwargs):
-            for kw, val in self.expression.kw_parameters.items():
-                arg_id_to_val[kw] = val
         for i, arg in enumerate(self.assignees):
             arg_id_to_val[-i-1] = arg
 
@@ -1186,10 +1181,10 @@ def is_array_call(assignees, expression):
     the arguemnts or assignees to the function is an array,
     :meth:`is_array_call` will return *True*.
     """
-    from pymbolic.primitives import Call, CallWithKwargs, Subscript
+    from pymbolic.primitives import Call, Subscript
     from loopy.symbolic import SubArrayRef
 
-    if not isinstance(expression, (Call, CallWithKwargs)):
+    if not isinstance(expression, Call):
         return False
 
     for par in expression.parameters+assignees:
@@ -1236,9 +1231,9 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
             raise LoopyError("atomic operations with more than one "
                     "left-hand side not supported")
 
-        from pymbolic.primitives import Call, CallWithKwargs
+        from pymbolic.primitives import Call
         from loopy.symbolic import Reduction
-        if not isinstance(expression, (Call, CallWithKwargs, Reduction)):
+        if not isinstance(expression, (Call, Reduction)):
             raise LoopyError("right-hand side in multiple assignment must be "
                     "function call or reduction, got: '%s'" % expression)
 

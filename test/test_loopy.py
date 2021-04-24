@@ -3110,6 +3110,7 @@ def test_kernel_tagging():
         "{:}",
         "y = 0",
         tags=frozenset((t1, t2)))
+    knl1 = knl1.default_entrypoint
 
     assert knl1.tags == frozenset((t1, t2))
 

@@ -38,7 +38,7 @@ from loopy.library.reduction import ReductionOpFunction
 
 from loopy.kernel import LoopKernel
 from loopy.tools import update_persistent_hash
-from pymbolic.primitives import Call, CallWithKwargs
+from pymbolic.primitives import Call
 from functools import reduce
 from pyrsistent import pmap, PMap
 
@@ -76,6 +76,11 @@ class CallableResolver(RuleAwareIdentityMapper):
     .. attribute:: rule_mapping_context
 
         An instance of :class:`loopy.symbolic.RuleMappingContext`.
+
+    .. attribute:: calls_resolved
+
+        A :class:`set` of calls that were resolved. Updated during an
+        expression traversal.
     """
     def __init__(self, rule_mapping_context, known_callables):
         assert isinstance(known_callables, frozenset)
@@ -113,21 +118,9 @@ class CallableResolver(RuleAwareIdentityMapper):
 
         return super().map_call(expr, expn_state)
 
-    def map_call_with_kwargs(self, expr, expn_state):
-        from loopy.symbolic import parse_tagged_name
-        name, tag = parse_tagged_name(expr.function)
-
-        if name in self.known_callables:
-            params = tuple(self.rec(par, expn_state) for par in expr.parameters)
-            kw_params = {kw: self.rec(par, expn_state)
-                         for kw, par in expr.kw_parameters.items()}
-
-            # record that we resolved a call
-            self.calls_resolved.add(name)
-
-            return CallWithKwargs(ResolvedFunction(expr.function), params, kw_params)
-
-        return super().map_call_with_kwargs(expr, expn_state)
+    def map_call_with_kwargs(self, expr):
+        # See https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
 
 # }}}
 

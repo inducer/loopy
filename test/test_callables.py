@@ -143,57 +143,6 @@ def test_slices_with_negative_step(ctx_factory, inline):
 
 
 @pytest.mark.parametrize("inline", [False, True])
-def test_register_knl_with_call_with_kwargs(ctx_factory, inline):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-
-    n = 4
-
-    a_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float32)
-    b_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float32)
-    c_dev = cl.clrandom.rand(queue, (n, n, n, n, n), np.float64)
-
-    callee_knl = lp.make_function(
-            "{[i, j]:0<=i, j < %d}" % n,
-            """
-            h[i, j] = 2 * e[i, j] + 3*f[i, j] + 4*g[i, j]
-            <>f1[i, j] = 2*f[i, j]
-            p[i, j] = 7 * e[i, j] + 4*f1[i, j] + 2*g[i, j]
-            """,
-            [
-                lp.GlobalArg("f, e, h, g"), ...],
-            name="linear_combo")
-
-    caller_knl = lp.make_kernel(
-            "{[i, j, k, l, m]: 0<=i, j, k, l, m<%d}" % n,
-            """
-            <> d[i, j, k, l, m] = 2*b[i, j, k, l, m]
-            [j, l]: x[i, j, k, l, m], [j, l]: y[i, j, k, l, m]  = linear_combo(
-                                                     f=[j, l]: a[i, j, k, l, m],
-                                                     g=[j, l]: d[i, j, k, l, m],
-                                                     e=[j, l]: c[i, j, k, l, m])
-            """)
-
-    knl = lp.merge([caller_knl, callee_knl])
-    if inline:
-        knl = lp.inline_callable_kernel(knl, "linear_combo")
-
-    evt, (out1, out2, ) = knl(queue, a=a_dev, b=b_dev, c=c_dev)
-
-    a = a_dev.get()
-    b = b_dev.get()
-    c = c_dev.get()
-
-    h = out1.get()  # h = 2c + 3a +  8b
-    p = out2.get()  # p = 7c + 8a + 4b
-    h_exact = 3*a + 8*b + 2*c
-    p_exact = 8*a + 4*b + 7*c
-
-    assert np.linalg.norm(h-h_exact)/np.linalg.norm(h_exact) < 1e-7
-    assert np.linalg.norm(p-p_exact)/np.linalg.norm(p_exact) < 1e-7
-
-
-@pytest.mark.parametrize("inline", [False, True])
 def test_register_knl_with_hw_axes(ctx_factory, inline):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)

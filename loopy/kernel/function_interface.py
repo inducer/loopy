@@ -158,12 +158,7 @@ class ExpressionIsScalarChecker(WalkMapper):
                 f" or assignees. '{expr}'violates this.")
 
     def map_call(self, expr):
-        for child in expr.parameters:
-            self.rec(child)
-
-    def map_call_with_kwargs(self, expr):
-        for child in expr.parameters + tuple(expr.kw_parameters.values()):
-            self.rec(child)
+        self.rec(expr.parameters)
 
     def map_subscript(self, expr):
         for child in expr.index_tuple:
@@ -185,6 +180,10 @@ class ExpressionIsScalarChecker(WalkMapper):
 
     def map_slice(self, expr):
         raise LoopyError("Array regions can only passed as sub-array refs.")
+
+    def map_call_with_kwargs(self, expr):
+        # See https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
 
 
 def get_arg_descriptor_for_expression(kernel, expr):
@@ -887,8 +886,6 @@ class CallableKernel(InKernelCallable):
     def generate_preambles(self, target):
         """ Yields the *target* specific preambles.
         """
-        # FIXME Check that this is correct.
-
         return
         yield
 
@@ -898,25 +895,17 @@ class CallableKernel(InKernelCallable):
             raise NotImplementedError()
 
         from loopy.kernel.instruction import CallInstruction
-        from pymbolic.primitives import CallWithKwargs
 
         assert self.is_ready_for_codegen()
         assert isinstance(insn, CallInstruction)
 
         ecm = expression_to_code_mapper
         parameters = insn.expression.parameters
-        kw_parameters = {}
-        if isinstance(insn.expression, CallWithKwargs):
-            kw_parameters = insn.expression.kw_parameters
-
         assignees = insn.assignees
 
         parameters = list(parameters)
         par_dtypes = [self.arg_id_to_dtype[i] for i, _ in enumerate(parameters)]
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
-        for i in range(len(parameters), len(parameters)+len(kw_parameters)):
-            parameters.append(kw_parameters[pos_to_kw[i]])
-            par_dtypes.append(self.arg_id_to_dtype[pos_to_kw[i]])
 
         # insert the assignees at the required positions
         assignee_write_count = -1
