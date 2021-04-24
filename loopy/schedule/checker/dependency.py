@@ -79,7 +79,7 @@ def filter_deps_by_intersection_with_SAME(knl):
 
     deps_filtered = set()
     for stmt in knl.instructions:
-        if hasattr(stmt, 'dependencies') and stmt.dependencies:
+        if hasattr(stmt, "dependencies") and stmt.dependencies:
             depender_id = stmt.id
             for dependee_id, dep_maps in stmt.dependencies:
                 # Continue if we already have this pair
