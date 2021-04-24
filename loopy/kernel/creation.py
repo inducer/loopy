@@ -1993,11 +1993,7 @@ class SliceToInameReplacer(IdentityMapper):
         return result
 
     def map_call(self, expr):
-        from pymbolic.primitives import CallWithKwargs
-        new_expr = self.rec(CallWithKwargs(expr.function, expr.parameters, {}))
-        return Call(new_expr.function, new_expr.parameters)
 
-    def map_call_with_kwargs(self, expr):
         def _convert_array_to_slices(arg):
             # FIXME: We do not support something like A[1] should point to the
             # second row if 'A' is 3 x 3 array.
@@ -2036,12 +2032,13 @@ class SliceToInameReplacer(IdentityMapper):
                                                 for _ in array_arg_shape))
             return arg
 
-        from pymbolic.primitives import CallWithKwargs
-        return CallWithKwargs(expr.function,
-                tuple(self.rec(_convert_array_to_slices(par))
-                      for par in expr.parameters),
-                {kw: self.rec(_convert_array_to_slices(par))
-                 for kw, par in expr.kw_parameters.items()})
+        return Call(expr.function,
+                    tuple(self.rec(_convert_array_to_slices(par))
+                          for par in expr.parameters))
+
+    def map_call_with_kwargs(self, expr):
+        # See: https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
 
     def get_iname_domain_as_isl_set(self):
         """
