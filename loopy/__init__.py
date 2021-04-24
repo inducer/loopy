@@ -516,6 +516,10 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
         )
 
     out_indices = set(out_spec)
+    if len(out_indices) != len(out_spec):
+        raise ValueError(
+            f"Output subscripts '{out_spec}' does not contain all unique indices."
+        )
 
     all_indices = set(
         idx
