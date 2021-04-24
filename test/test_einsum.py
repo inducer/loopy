@@ -35,6 +35,9 @@ def test_make_einsum_error_handling():
     with pytest.raises(ValueError):
         lp.make_einsum("ij,j->j", ("a",))
 
+    with pytest.raises(ValueError):
+        lp.make_einsum("ij,j->jj", ("a", "b"))
+
 
 @pytest.mark.parametrize("spec", [
     "ij->ij",  # identity
