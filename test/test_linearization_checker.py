@@ -1099,11 +1099,11 @@ def test_sios_and_schedules_with_vec_and_barriers():
     # Get a linearization
     proc_knl = preprocess_kernel(knl)
     lin_knl = get_one_linearized_kernel(proc_knl)
-    linearization_items = lin_knl.linearization
+    lin_items = lin_knl.linearization
 
     stmt_id_pairs = [("stmt_1", "stmt_2")]
     pworders = get_pairwise_statement_orderings(
-        lin_knl, linearization_items, stmt_id_pairs)
+        lin_knl, lin_items, stmt_id_pairs)
 
     # {{{ Relationship between stmt_1 and stmt_2
 
@@ -1321,12 +1321,12 @@ def test_sios_with_matmul():
     # Get a linearization
     proc_knl = preprocess_kernel(knl)
     lin_knl = get_one_linearized_kernel(proc_knl)
-    linearization_items = lin_knl.linearization
+    lin_items = lin_knl.linearization
 
     # Get ALL statement id pairs
     from loopy.schedule import RunInstruction
     all_stmt_ids = [
-        lin_item.insn_id for lin_item in linearization_items
+        lin_item.insn_id for lin_item in lin_items
         if isinstance(lin_item, RunInstruction)]
     from itertools import product
     stmt_id_pairs = []
@@ -1335,7 +1335,7 @@ def test_sios_with_matmul():
 
     # Generate pairwise ordering info for every pair
     get_pairwise_statement_orderings(
-        lin_knl, linearization_items, stmt_id_pairs)
+        lin_knl, lin_items, stmt_id_pairs)
 
 # }}}
 
@@ -2262,11 +2262,11 @@ def test_filtering_deps_by_same():
     knl = lp.make_kernel(
         "{[i,j,k,m] : 0 <= i,j,k,m < n}",
         """
-        a[i,j,k,m] = 1 {id=s1}
-        a[i,j,k,m] = 2 {id=s2}
-        a[i,j,k,m] = 3 {id=s3}
-        a[i,j,k,m] = 4 {id=s4}
         a[i,j,k,m] = 5 {id=s5}
+        a[i,j,k,m] = 4 {id=s4}
+        a[i,j,k,m] = 3 {id=s3}
+        a[i,j,k,m] = 2 {id=s2}
+        a[i,j,k,m] = 1 {id=s1}
         """)
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
     knl = lp.tag_inames(knl, "m:l.0")
@@ -2329,6 +2329,113 @@ def test_filtering_deps_by_same():
         }
 
     assert filtered_depends_on_dict == depends_on_dict_expected
+
+# }}}
+
+
+# {{{ test_find_loop_insn_dep_map_using_cartoon_dep_graph
+
+def test_find_loop_insn_dep_map_using_cartoon_dep_graph():
+    # Test use of cartoon dep graph inside find_loop_insn_dep_map(),
+    # which is called during linearization, and should cause
+    # linearization process to order the x loops below sequentially
+
+    # Make a kernel
+    knl = lp.make_kernel(
+        "{[i,j,k,m,x1,x2,x3,x4,x5] : 0 <= i,j,k,m,x1,x2,x3,x4,x5 < n}",
+        """
+        for i,j,k,m
+            for x5
+                <>t5 = 5 {id=s5}
+            end
+            for x3
+                <>t3 = 3 {id=s3}
+            end
+            for x4
+                <>t4 = 4 {id=s4}
+            end
+            for x1
+                <>t1 = 1 {id=s1}
+            end
+            for x2
+                <>t2 = 2 {id=s2}
+            end
+        end
+        """)
+    knl = lp.tag_inames(knl, "m:l.0")
+
+    # Make some deps
+
+    def _dep_with_condition(xloop_after, xloop_before, cond):
+        sid_after = 0 if xloop_before == xloop_after else 1
+        return _isl_map_with_marked_dims(
+            "[n] -> {{"
+            "[{0}'=0, i', j', k', m', x{1}'] -> [{0}={3}, i, j, k, m, x{2}] : "
+            "0 <= i,j,k,m,x{2},i',j',k',m',x{1}' < n and {4}"
+            "}}".format(
+                STATEMENT_VAR_NAME, xloop_before, xloop_after, sid_after, cond))
+
+    # Should NOT create an edge:
+    dep_s2_on_s1_1 = _dep_with_condition(2, 1, "i'< i and j'<=j and k' =k and m'=m")
+    # Should create an edge:
+    dep_s2_on_s1_2 = _dep_with_condition(2, 1, "i'<=i and j'<=j and k' =k and m'=m")
+    # Should NOT create an edge:
+    dep_s2_on_s2_1 = _dep_with_condition(2, 2, "i'< i and j'<=j and k' =k and m'=m")
+    # Should NOT create an edge:
+    dep_s2_on_s2_2 = _dep_with_condition(2, 2, "i'<=i and j'<=j and k'< k and m'=m")
+    # Should create an edge:
+    dep_s3_on_s2_1 = _dep_with_condition(3, 2, "i'<=i and j'<=j and k' =k and m'=m")
+    # Should create an edge:
+    dep_s4_on_s3_1 = _dep_with_condition(4, 3, "i'<=i and j'<=j and k' =k and m'=m")
+    # Should create an edge:
+    dep_s5_on_s4_1 = _dep_with_condition(5, 4, "i' =i and j' =j and k' =k and m'=m")
+
+    knl = lp.add_dependency_v2(knl, "s2", "s1", dep_s2_on_s1_1)
+    knl = lp.add_dependency_v2(knl, "s2", "s1", dep_s2_on_s1_2)
+    knl = lp.add_dependency_v2(knl, "s2", "s2", dep_s2_on_s2_1)
+    knl = lp.add_dependency_v2(knl, "s2", "s2", dep_s2_on_s2_2)
+    knl = lp.add_dependency_v2(knl, "s3", "s2", dep_s3_on_s2_1)
+    knl = lp.add_dependency_v2(knl, "s4", "s3", dep_s4_on_s3_1)
+    knl = lp.add_dependency_v2(knl, "s5", "s4", dep_s5_on_s4_1)
+
+    # Test filteringn of deps by intersection with SAME
+
+    from loopy.schedule.checker.dependency import (
+        filter_deps_by_intersection_with_SAME,
+    )
+    filtered_depends_on_dict = filter_deps_by_intersection_with_SAME(knl)
+
+    # Make sure filtered edges are correct
+
+    # (m is concurrent so shouldn't matter)
+    depends_on_dict_expected = {
+        "s2": set(["s1"]),
+        "s3": set(["s2"]),
+        "s4": set(["s3"]),
+        "s5": set(["s4"]),
+        }
+
+    assert filtered_depends_on_dict == depends_on_dict_expected
+
+    # Get a linearization
+    knl = lp.set_options(knl, use_dependencies_v2=True)
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
+
+    # Check stmt order
+    from loopy.schedule import RunInstruction
+    stmt_ids_ordered = [
+        lin_item.insn_id for lin_item in lin_items
+        if isinstance(lin_item, RunInstruction)]
+
+    stmt_ids_ordered_expected = ["s1", "s2", "s3", "s4", "s5"]
+
+    assert stmt_ids_ordered == stmt_ids_ordered_expected
+
+    # Check dep satisfaction
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(proc_knl, lin_items)
+    assert not unsatisfied_deps
 
 # }}}
 
