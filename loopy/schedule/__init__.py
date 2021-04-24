@@ -1984,13 +1984,35 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
     loop_nest_with_map = find_loop_nest_with_map(kernel)
     loop_nest_around_map = find_loop_nest_around_map(kernel)
+
+    # {{{  create dependency graph with edges from depender* to dependee*
+    # iff intersection (SAME_map & DEP_map) is not empty
+
+    from loopy.schedule.checker.dependency import (
+        filter_deps_by_intersection_with_SAME,
+    )
+    from loopy.schedule.checker.utils import (
+        create_graph_from_pairs,
+    )
+
+    # Get dep graph edges with edges from depender->dependee
+    dep_graph_pairs = filter_deps_by_intersection_with_SAME(kernel)
+
+    # Create dep graph from edges
+    insn_depends_on_graph = create_graph_from_pairs(dep_graph_pairs)
+    # TODO create ^this func
+
+    # }}}
+
     sched_state = SchedulerState(
             kernel=kernel,
             loop_nest_around_map=loop_nest_around_map,
             loop_insn_dep_map=find_loop_insn_dep_map(
                 kernel,
                 loop_nest_with_map=loop_nest_with_map,
-                loop_nest_around_map=loop_nest_around_map),
+                loop_nest_around_map=loop_nest_around_map,
+                insn_depends_on_graph=insn_depends_on_graph),  # TODO deal with this
+            insn_depends_on_graph=insn_depends_on_graph,  # TODO deal with this
             breakable_inames=ilp_inames,
             ilp_inames=ilp_inames,
             vec_inames=vec_inames,
