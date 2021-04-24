@@ -447,7 +447,7 @@ class CallablesIDCollector(CombineMapper):
         return callables_in_insn
 
     def map_type_cast(self, expr):
-        return self.rec(expr)
+        return self.rec(expr.child)
 
     map_variable = map_constant
     map_function_symbol = map_constant
