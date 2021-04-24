@@ -231,6 +231,7 @@ class Options(ImmutableRecord):
                 disable_global_barriers=kwargs.get("disable_global_barriers",
                     False),
                 check_dep_resolution=kwargs.get("check_dep_resolution", True),
+                use_dependencies_v2=kwargs.get("use_dependencies_v2", False),
 
                 enforce_variable_access_ordered=kwargs.get(
                     "enforce_variable_access_ordered", True),
