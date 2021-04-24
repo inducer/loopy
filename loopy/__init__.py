@@ -491,18 +491,19 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
 # {{{ einsum
 
 def make_einsum(spec, arg_names, **knl_creation_kwargs):
-    """Returns a :class:`LoopKernel` for evaluating array-based
-    operations using Einstein summation convention. Any
-    keyword arguments for kernel creation will be carried through
-    to :func:`make_kernel`.
+    r"""Returns a :class:`LoopKernel` for evaluating array-based
+    operations using Einstein summation convention.
 
     :param spec: a string denoting the subscripts for
         summation as a comma-separated list of subscript labels.
         This follows the usual :func:`numpy.einsum` convention.
         Note that the explicit indicator `->` for the precise output
         form is required.
-    :param arg_names: an iterable of string types denoting
+    :param arg_names: a sequence of string types denoting
         the names of the array operands.
+    :param \**knl_creation_kwargs: keyword arguments for kernel creation.
+        See :func:`make_kernel` for a list of acceptable keyword
+        parameters.
     """
     arg_spec, out_spec = spec.split("->")
     arg_specs = arg_spec.split(",")
