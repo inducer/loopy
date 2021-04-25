@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 
 import islpy as isl
-from loopy.translation_unit import iterate_over_kernels_if_given_program
+from loopy.translation_unit import for_each_kernel
 
 
 def potential_loop_nest_map(kernel):
@@ -54,7 +54,7 @@ def potential_loop_nest_map(kernel):
     return result
 
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def merge_loop_domains(kernel):
     # FIXME: This should be moved to loopy.transforms.iname
     from loopy.kernel.tools import is_domain_dependent_on_inames

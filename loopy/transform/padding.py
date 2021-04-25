@@ -24,7 +24,7 @@ THE SOFTWARE.
 from pytools import MovedFunctionDeprecationWrapper
 from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 
-from loopy.translation_unit import (iterate_over_kernels_if_given_program,
+from loopy.translation_unit import (for_each_kernel,
                                     TranslationUnit)
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
@@ -46,7 +46,7 @@ class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
 
 # {{{ split_array_dim (deprecated since June 2016)
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def split_array_dim(kernel, arrays_and_axes, count,
         auto_split_inames=True,
         split_kwargs=None):
@@ -374,7 +374,7 @@ def _split_array_axis_inner(kernel, array_name, axis_nr, count, order="C"):
     return kernel
 
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def split_array_axis(kernel, array_names, axis_nr, count,
         order="C"):
     """
@@ -456,7 +456,7 @@ def find_padding_multiple(kernel, variable, axis, align_bytes, allowed_waste=0.1
 
 # {{{ add_padding
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def add_padding(kernel, variable, axis, align_bytes):
     arg_to_idx = {arg.name: i for i, arg in enumerate(kernel.args)}
     arg_idx = arg_to_idx[variable]

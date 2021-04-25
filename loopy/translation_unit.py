@@ -49,7 +49,7 @@ __doc__ = """
 
 .. autofunction:: make_program
 
-.. autofunction:: iterate_over_kernels_if_given_program
+.. autofunction:: for_each_kernel
 
 """
 
@@ -727,7 +727,7 @@ def make_program(kernel):
     return program
 
 
-def iterate_over_kernels_if_given_program(transform_for_single_kernel):
+def for_each_kernel(transform_for_single_kernel):
     """
     Function wrapper for transformations of the type ``transform(kernel:
     LoopKernel, *args, **kwargs): LoopKernel``. Returns a function with the
