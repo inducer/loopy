@@ -236,8 +236,10 @@ class Scope:
                                    for insn in self.instructions))
 
     def read_vars(self):
-        return frozenset().union(*(insn.read_dependency_names()
+        return (frozenset().union(*(insn.read_dependency_names()
                                    for insn in self.instructions))
+                | frozenset().union(*(frozenset(bset.get_var_names(dim_type.param))
+                                      for bset in self.index_sets)))
 
 # }}}
 
