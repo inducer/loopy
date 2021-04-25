@@ -505,7 +505,7 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
         See :func:`make_kernel` for a list of acceptable keyword
         parameters.
     .. note::
-    
+
         No attempt is being made to reduce the complexity
         of the resulting expression. This should be dealt with
         as part of a separate transformation.
