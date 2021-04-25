@@ -372,16 +372,24 @@ def group_insn_counts(kernel):
     return result
 
 
-def gen_dependencies_except(kernel, insn_id, except_insn_ids):
-    insn = kernel.id_to_insn[insn_id]
-    for dep_id in insn.depends_on:
+def gen_dependencies_except(
+        kernel, insn_id, except_insn_ids, cartoon_depends_on_dict):
+
+    # Get dependee IDs
+    if kernel.options.use_dependencies_v2:
+        dependee_ids = cartoon_depends_on_dict.get(insn_id, set())
+    else:
+        dependee_ids = kernel.id_to_insn[insn_id].depends_on
+
+    for dep_id in dependee_ids:
 
         if dep_id in except_insn_ids:
             continue
 
         yield dep_id
 
-        yield from gen_dependencies_except(kernel, dep_id, except_insn_ids)
+        yield from gen_dependencies_except(
+            kernel, dep_id, except_insn_ids, cartoon_depends_on_dict)
 
 
 def get_priority_tiers(wanted, priorities):
@@ -664,6 +672,8 @@ class SchedulerState(ImmutableRecord):
         A list of loopy :class:`Instruction` objects in topologically sorted
         order with instruction priorities as tie breaker.
     """
+
+    # TODO document cartoon_depends_on_dict
 
     @property
     def last_entered_loop(self):
@@ -971,7 +981,13 @@ def generate_loop_schedules_internal(
     for insn_id in insn_ids_to_try:
         insn = kernel.id_to_insn[insn_id]
 
-        is_ready = insn.depends_on <= sched_state.scheduled_insn_ids
+        # make sure dependees have been scheduled
+        if kernel.options.use_dependencies_v2:
+            dependee_ids = sched_state.cartoon_depends_on_dict.get(insn.id, set())
+        else:
+            dependee_ids = insn.depends_on
+
+        is_ready = dependee_ids <= sched_state.scheduled_insn_ids
 
         if not is_ready:
             continue
@@ -1150,8 +1166,10 @@ def generate_loop_schedules_internal(
 
                         # check if there's a dependency of insn that needs to be
                         # outside of last_entered_loop.
-                        for subdep_id in gen_dependencies_except(kernel, insn_id,
-                                sched_state.scheduled_insn_ids):
+                        for subdep_id in gen_dependencies_except(
+                                kernel, insn_id,
+                                sched_state.scheduled_insn_ids,
+                                sched_state.cartoon_depends_on_dict):
                             want = (kernel.insn_inames(subdep_id)
                                     - sched_state.parallel_inames)
                             if (
@@ -2049,7 +2067,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
                 loop_nest_around_map=loop_nest_around_map,
                 cartoon_depends_on_dict=cartoon_depends_on_dict,
                 ),
-            #insn_depends_on_graph=insn_depends_on_graph,  # TODO deal with this
+            cartoon_depends_on_dict=cartoon_depends_on_dict,
             breakable_inames=ilp_inames,
             ilp_inames=ilp_inames,
             vec_inames=vec_inames,
