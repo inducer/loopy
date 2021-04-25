@@ -254,7 +254,7 @@ def find_loop_nest_around_map(kernel):
 
 def find_loop_insn_dep_map(
         kernel, loop_nest_with_map, loop_nest_around_map,
-        cartoon_depends_on_dict, use_dependencies_v2=False,
+        simplified_depends_on_graph, use_dependencies_v2=False,
         ):
     """Returns a dictionary mapping inames to other instruction ids that need to
     be scheduled before the iname should be eligible for scheduling.
@@ -292,7 +292,7 @@ def find_loop_insn_dep_map(
             # and determine whether dep_insn must be schedued before
             # iname, in which case add its id to iname_dep (result[iname])
             if kernel.options.use_dependencies_v2:
-                dependee_ids = cartoon_depends_on_dict.get(insn.id, set())
+                dependee_ids = simplified_depends_on_graph.get(insn.id, set())
             else:
                 dependee_ids = insn.depends_on
 
@@ -373,11 +373,11 @@ def group_insn_counts(kernel):
 
 
 def gen_dependencies_except(
-        kernel, insn_id, except_insn_ids, cartoon_depends_on_dict):
+        kernel, insn_id, except_insn_ids, simplified_depends_on_graph):
 
     # Get dependee IDs
     if kernel.options.use_dependencies_v2:
-        dependee_ids = cartoon_depends_on_dict.get(insn_id, set())
+        dependee_ids = simplified_depends_on_graph.get(insn_id, set())
     else:
         dependee_ids = kernel.id_to_insn[insn_id].depends_on
 
@@ -389,7 +389,7 @@ def gen_dependencies_except(
         yield dep_id
 
         yield from gen_dependencies_except(
-            kernel, dep_id, except_insn_ids, cartoon_depends_on_dict)
+            kernel, dep_id, except_insn_ids, simplified_depends_on_graph)
 
 
 def get_priority_tiers(wanted, priorities):
@@ -673,7 +673,7 @@ class SchedulerState(ImmutableRecord):
         order with instruction priorities as tie breaker.
     """
 
-    # TODO document cartoon_depends_on_dict
+    # TODO document simplified_depends_on_graph
 
     @property
     def last_entered_loop(self):
@@ -983,7 +983,8 @@ def generate_loop_schedules_internal(
 
         # make sure dependees have been scheduled
         if kernel.options.use_dependencies_v2:
-            dependee_ids = sched_state.cartoon_depends_on_dict.get(insn.id, set())
+            dependee_ids = sched_state.simplified_depends_on_graph.get(
+                insn.id, set())
         else:
             dependee_ids = insn.depends_on
 
@@ -1169,7 +1170,7 @@ def generate_loop_schedules_internal(
                         for subdep_id in gen_dependencies_except(
                                 kernel, insn_id,
                                 sched_state.scheduled_insn_ids,
-                                sched_state.cartoon_depends_on_dict):
+                                sched_state.simplified_depends_on_graph):
                             want = (kernel.insn_inames(subdep_id)
                                     - sched_state.parallel_inames)
                             if (
@@ -2043,7 +2044,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
     loop_nest_with_map = find_loop_nest_with_map(kernel)
     loop_nest_around_map = find_loop_nest_around_map(kernel)
 
-    # {{{  create cartoon dependency graph with edge from depender* to
+    # {{{  create simplified dependency graph with edge from depender* to
     # dependee* iff intersection (SAME_map & DEP_map) is not empty
 
     if kernel.options.use_dependencies_v2:
@@ -2052,9 +2053,9 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
         )
 
         # Get dep graph edges with edges FROM depender TO dependee
-        cartoon_depends_on_dict = filter_deps_by_intersection_with_SAME(kernel)
+        simplified_depends_on_graph = filter_deps_by_intersection_with_SAME(kernel)
     else:
-        cartoon_depends_on_dict = None
+        simplified_depends_on_graph = None
 
     # }}}
 
@@ -2065,9 +2066,9 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
                 kernel,
                 loop_nest_with_map=loop_nest_with_map,
                 loop_nest_around_map=loop_nest_around_map,
-                cartoon_depends_on_dict=cartoon_depends_on_dict,
+                simplified_depends_on_graph=simplified_depends_on_graph,
                 ),
-            cartoon_depends_on_dict=cartoon_depends_on_dict,
+            simplified_depends_on_graph=simplified_depends_on_graph,
             breakable_inames=ilp_inames,
             ilp_inames=ilp_inames,
             vec_inames=vec_inames,
