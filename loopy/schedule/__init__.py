@@ -254,8 +254,7 @@ def find_loop_nest_around_map(kernel):
 
 def find_loop_insn_dep_map(
         kernel, loop_nest_with_map, loop_nest_around_map,
-        simplified_depends_on_graph, use_dependencies_v2=False,
-        ):
+        simplified_depends_on_graph):
     """Returns a dictionary mapping inames to other instruction ids that need to
     be scheduled before the iname should be eligible for scheduling.
 
@@ -265,6 +264,13 @@ def find_loop_insn_dep_map(
 
     :arg loop_nest_around_map: Dictionary mapping iname1 to a set containing
         iname2 iff iname2 nests around iname1
+
+    :arg simplified_depends_on_graph: Dictionary mapping depender statement IDs
+        to sets of dependee statement IDs, as produced by
+        `loopy.schedule.checker.dependency.filter_deps_by_intersection_with_SAME`,
+        which will be used to acquire depndee statement ids if
+        `kernel.options.use_dependencies_v2` is 'True' (otherwise old
+        dependencies in insn.depends_on will be used).
 
     """
 
@@ -685,12 +691,20 @@ class SchedulerState(ImmutableRecord):
 # }}}
 
 
-def get_insns_in_topologically_sorted_order(kernel):
+def get_insns_in_topologically_sorted_order(
+        kernel, simplified_depends_on_graph):
     from pytools.graph import compute_topological_order
 
     rev_dep_map = {insn.id: set() for insn in kernel.instructions}
     for insn in kernel.instructions:
-        for dep in insn.depends_on:
+
+        if kernel.options.use_dependencies_v2:
+            dependee_ids = simplified_depends_on_graph.get(
+                insn.id, set())
+        else:
+            dependee_ids = insn.depends_on
+
+        for dep in dependee_ids:
             rev_dep_map[dep].add(insn.id)
 
     # For breaking ties, we compare the features of an intruction
@@ -724,7 +738,8 @@ def get_insns_in_topologically_sorted_order(kernel):
 
 # {{{ schedule_as_many_run_insns_as_possible
 
-def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
+def schedule_as_many_run_insns_as_possible(
+        sched_state, template_insn, use_dependencies_v2):
     """
     Returns an instance of :class:`loopy.schedule.SchedulerState`, by appending
     all reachable instructions that are similar to *template_insn*. We define
@@ -792,7 +807,14 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
 
         if is_similar_to_template(insn):
             # check reachability
-            if not (insn.depends_on & ignored_unscheduled_insn_ids):
+
+            if use_dependencies_v2:
+                dependee_ids = sched_state.simplified_depends_on_graph.get(
+                    insn.id, set())
+            else:
+                dependee_ids = insn.depends_on
+
+            if not (dependee_ids & ignored_unscheduled_insn_ids):
                 if insn.id in sched_state.prescheduled_insn_ids:
                     if next_preschedule_insn_id() == insn.id:
                         preschedule.pop(0)
@@ -1119,8 +1141,8 @@ def generate_loop_schedules_internal(
                     insns_in_topologically_sorted_order=new_toposorted_insns,
                     )
 
-            new_sched_state = schedule_as_many_run_insns_as_possible(new_sched_state,
-                    insn)
+            new_sched_state = schedule_as_many_run_insns_as_possible(
+                new_sched_state, insn, kernel.options.use_dependencies_v2)
 
             # Don't be eager about entering/leaving loops--if progress has been
             # made, revert to top of scheduler and see if more progress can be
@@ -2098,7 +2120,8 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             active_group_counts={},
 
             insns_in_topologically_sorted_order=(
-                get_insns_in_topologically_sorted_order(kernel)),
+                get_insns_in_topologically_sorted_order(
+                    kernel, simplified_depends_on_graph)),
     )
 
     schedule_gen_kwargs = {}
