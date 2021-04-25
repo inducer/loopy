@@ -138,6 +138,13 @@ def _check_orderings_for_stmt_pair(
     maps_to_compare = [(m1, m2) for m1, m2 in map_candidates if m1 is not None]
     _align_and_compare_maps(maps_to_compare)
 
+
+def _get_runinstruction_ids_from_linearization(lin_items):
+    from loopy.schedule import RunInstruction
+    return [
+        lin_item.insn_id for lin_item in lin_items
+        if isinstance(lin_item, RunInstruction)]
+
 # }}}
 
 
@@ -1316,18 +1323,13 @@ def test_sios_with_matmul():
         knl, "b", ["j_inner", "k_inner"], default_tag="l.auto")
     knl = lp.prioritize_loops(knl, "k_outer,k_inner")
 
-    proc_knl = preprocess_kernel(knl)
-
     # Get a linearization
     proc_knl = preprocess_kernel(knl)
     lin_knl = get_one_linearized_kernel(proc_knl)
     lin_items = lin_knl.linearization
 
     # Get ALL statement id pairs
-    from loopy.schedule import RunInstruction
-    all_stmt_ids = [
-        lin_item.insn_id for lin_item in lin_items
-        if isinstance(lin_item, RunInstruction)]
+    all_stmt_ids = _get_runinstruction_ids_from_linearization(lin_items)
     from itertools import product
     stmt_id_pairs = []
     for idx, sid in enumerate(all_stmt_ids):
@@ -2273,28 +2275,30 @@ def test_filtering_deps_by_same():
 
     # Make some deps
 
-    def _dep_with_condition(cond):
+    def _dep_with_condition(stmt_before, stmt_after, cond):
+        sid_after = 0 if stmt_before == stmt_after else 1
         return _isl_map_with_marked_dims(
             "[n] -> {{"
-            "[{0}'=0, i', j', k', m'] -> [{0}=0, i, j, k, m] : "
-            "0 <= i,j,k,m,i',j',k',m' < n and {1}"
-            "}}".format(STATEMENT_VAR_NAME, cond))
+            "[{0}'=0, i', j', k', m'] -> [{0}={1}, i, j, k, m] : "
+            "0 <= i,j,k,m,i',j',k',m' < n and {2}"
+            "}}".format(
+                STATEMENT_VAR_NAME, sid_after, cond))
 
-    dep_s2_on_s1_1 = _dep_with_condition("i' <  i and j' <= j and k' = k and m' < m")
-    dep_s2_on_s1_2 = _dep_with_condition("i' <= i and j' <= j and k' = k and m' < m")
+    dep_s2_on_s1_1 = _dep_with_condition(2, 1, "i'< i and j'<=j and k'=k and m'<m")
+    dep_s2_on_s1_2 = _dep_with_condition(2, 1, "i'<=i and j'<=j and k'=k and m'<m")
 
-    dep_s2_on_s2_1 = _dep_with_condition("i' <  i and j' <= j and k' = k and m' < m")
-    dep_s2_on_s2_2 = _dep_with_condition("i' <= i and j' <= j and k' = k and m' < m")
+    dep_s2_on_s2_1 = _dep_with_condition(2, 2, "i'< i and j'<=j and k'=k and m'<m")
+    dep_s2_on_s2_2 = _dep_with_condition(2, 2, "i'<=i and j'<=j and k'=k and m'<m")
 
-    dep_s3_on_s2_1 = _dep_with_condition("i' <  i and j' <  j and k' = k and m' < m")
-    dep_s3_on_s2_2 = _dep_with_condition("i' =  i and j' =  j and k' < k and m' < m")
+    dep_s3_on_s2_1 = _dep_with_condition(3, 2, "i'< i and j'< j and k'=k and m'<m")
+    dep_s3_on_s2_2 = _dep_with_condition(3, 2, "i' =i and j'= j and k'<k and m'<m")
 
-    dep_s4_on_s3_1 = _dep_with_condition("i' <= i and j' <= j and k' = k")
-    dep_s4_on_s3_2 = _dep_with_condition("i' <= i")
+    dep_s4_on_s3_1 = _dep_with_condition(4, 3, "i'<=i and j'<=j and k'=k")
+    dep_s4_on_s3_2 = _dep_with_condition(4, 3, "i'<=i")
 
-    dep_s5_on_s4_1 = _dep_with_condition("i' <  i")
+    dep_s5_on_s4_1 = _dep_with_condition(5, 4, "i'< i")
 
-    dep_s5_on_s2_1 = _dep_with_condition("i' =  i")
+    dep_s5_on_s2_1 = _dep_with_condition(5, 2, "i'= i")
 
     knl = lp.add_dependency_v2(knl, "s2", "s1", dep_s2_on_s1_1)
     knl = lp.add_dependency_v2(knl, "s2", "s1", dep_s2_on_s1_2)
@@ -2333,47 +2337,38 @@ def test_filtering_deps_by_same():
 # }}}
 
 
-# {{{ test_find_loop_insn_dep_map_using_cartoon_dep_graph
+# {{{ test_linearization_using_simplified_dep_graph
 
-def test_find_loop_insn_dep_map_using_cartoon_dep_graph():
-    # Test use of cartoon dep graph inside find_loop_insn_dep_map(),
-    # which is called during linearization, and should cause
-    # linearization process to order the x loops below sequentially
+def test_linearization_using_simplified_dep_graph():
+    # Test use of simplified dep graph inside find_loop_insn_dep_map(),
+    # which is called during linearization.
+    # The deps created below should yield a simplified dep graph that causes the
+    # linearization process to order assignments below in numerical order
 
     # Make a kernel
     knl = lp.make_kernel(
-        "{[i,j,k,m,x1,x2,x3,x4,x5] : 0 <= i,j,k,m,x1,x2,x3,x4,x5 < n}",
+        "{[i,j,k,m] : 0 <= i,j,k,m < n}",
         """
         for i,j,k,m
-            for x5
-                <>t5 = 5 {id=s5}
-            end
-            for x3
-                <>t3 = 3 {id=s3}
-            end
-            for x4
-                <>t4 = 4 {id=s4}
-            end
-            for x1
-                <>t1 = 1 {id=s1}
-            end
-            for x2
-                <>t2 = 2 {id=s2}
-            end
+            <>t5 = 5 {id=s5}
+            <>t3 = 3 {id=s3}
+            <>t4 = 4 {id=s4}
+            <>t1 = 1 {id=s1}
+            <>t2 = 2 {id=s2}
         end
         """)
     knl = lp.tag_inames(knl, "m:l.0")
 
     # Make some deps
 
-    def _dep_with_condition(xloop_after, xloop_before, cond):
-        sid_after = 0 if xloop_before == xloop_after else 1
+    def _dep_with_condition(stmt_before, stmt_after, cond):
+        sid_after = 0 if stmt_before == stmt_after else 1
         return _isl_map_with_marked_dims(
             "[n] -> {{"
-            "[{0}'=0, i', j', k', m', x{1}'] -> [{0}={3}, i, j, k, m, x{2}] : "
-            "0 <= i,j,k,m,x{2},i',j',k',m',x{1}' < n and {4}"
+            "[{0}'=0, i', j', k', m'] -> [{0}={1}, i, j, k, m] : "
+            "0 <= i,j,k,m,i',j',k',m' < n and {2}"
             "}}".format(
-                STATEMENT_VAR_NAME, xloop_before, xloop_after, sid_after, cond))
+                STATEMENT_VAR_NAME, sid_after, cond))
 
     # Should NOT create an edge:
     dep_s2_on_s1_1 = _dep_with_condition(2, 1, "i'< i and j'<=j and k' =k and m'=m")
@@ -2417,25 +2412,40 @@ def test_find_loop_insn_dep_map_using_cartoon_dep_graph():
 
     assert filtered_depends_on_dict == depends_on_dict_expected
 
-    # Get a linearization
+    stmt_ids_ordered_desired = ["s1", "s2", "s3", "s4", "s5"]
+
+    # {{{ Get a linearization WITHOUT using the simplified dep graph
+
+    knl = lp.set_options(knl, use_dependencies_v2=False)
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    lin_items = lin_knl.linearization
+
+    # Check stmt order
+    stmt_ids_ordered = _get_runinstruction_ids_from_linearization(lin_items)
+    assert stmt_ids_ordered != stmt_ids_ordered_desired
+
+    # Check dep satisfaction
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(proc_knl, lin_items)
+    assert unsatisfied_deps
+
+    # }}}
+
+    # {{{ Get a linearization using the simplified dep graph
     knl = lp.set_options(knl, use_dependencies_v2=True)
     proc_knl = preprocess_kernel(knl)
     lin_knl = get_one_linearized_kernel(proc_knl)
     lin_items = lin_knl.linearization
 
     # Check stmt order
-    from loopy.schedule import RunInstruction
-    stmt_ids_ordered = [
-        lin_item.insn_id for lin_item in lin_items
-        if isinstance(lin_item, RunInstruction)]
-
-    stmt_ids_ordered_expected = ["s1", "s2", "s3", "s4", "s5"]
-
-    assert stmt_ids_ordered == stmt_ids_ordered_expected
+    stmt_ids_ordered = _get_runinstruction_ids_from_linearization(lin_items)
+    assert stmt_ids_ordered == stmt_ids_ordered_desired
 
     # Check dep satisfaction
     unsatisfied_deps = lp.find_unsatisfied_dependencies(proc_knl, lin_items)
     assert not unsatisfied_deps
+
+    # }}}
 
 # }}}
 
