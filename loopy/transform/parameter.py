@@ -25,7 +25,7 @@ from loopy.symbolic import (RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
 import islpy as isl
 
-from loopy.translation_unit import iterate_over_kernels_if_given_program
+from loopy.translation_unit import for_each_kernel
 from loopy.kernel import LoopKernel
 
 __doc__ = """
@@ -40,7 +40,7 @@ __doc__ = """
 
 # {{{ assume
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def assume(kernel, assumptions):
     """Include an assumption about :ref:`domain-parameters` in the kernel, e.g.
     `n mod 4 = 0`.
@@ -134,7 +134,7 @@ def _fix_parameter(kernel, name, value, remove_argument, within=None):
                 ))
 
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def fix_parameters(kernel, **value_dict):
     """Fix the values of the arguments to specific constants.
 

@@ -27,7 +27,7 @@ from loopy.kernel.data import ImageArg
 
 from pytools import MovedFunctionDeprecationWrapper
 from loopy.translation_unit import (TranslationUnit,
-                                    iterate_over_kernels_if_given_program)
+                                    for_each_kernel)
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
@@ -396,7 +396,7 @@ def add_prefetch(program, *args, **kwargs):
 
 # {{{ change variable kinds
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def change_arg_to_image(kernel, name):
     new_args = []
     for arg in kernel.args:
@@ -414,7 +414,7 @@ def change_arg_to_image(kernel, name):
 
 # {{{ tag array axes
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def tag_array_axes(kernel, ary_names, dim_tags):
     """
     :arg dim_tags: a tuple of
@@ -461,7 +461,7 @@ tag_data_axes = (
 
 # {{{ set_array_axis_names
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def set_array_axis_names(kernel, ary_names, dim_names):
     """
     .. versionchanged:: 2016.2
@@ -494,7 +494,7 @@ set_array_dim_names = (MovedFunctionDeprecationWrapper(
 
 # {{{ remove_unused_arguments
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def remove_unused_arguments(kernel):
     new_args = []
 
@@ -536,7 +536,7 @@ def remove_unused_arguments(kernel):
 
 # {{{ alias_temporaries
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def alias_temporaries(kernel, names, base_name_prefix=None,
         synchronize_for_exclusive_use=True):
     """Sets all temporaries given by *names* to be backed by a single piece of
@@ -621,7 +621,7 @@ def alias_temporaries(kernel, names, base_name_prefix=None,
 
 # {{{ set argument order
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def set_argument_order(kernel, arg_names):
     """
     :arg arg_names: A list (or comma-separated string) or argument
@@ -657,7 +657,7 @@ def set_argument_order(kernel, arg_names):
 
 # {{{ rename argument
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def rename_argument(kernel, old_name, new_name, existing_ok=False):
     """
     .. versionadded:: 2016.2
@@ -731,7 +731,7 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 
 # {{{ set temporary scope
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def set_temporary_scope(kernel, temp_var_names, scope):
     """
     :arg temp_var_names: a container with membership checking,
@@ -773,7 +773,7 @@ def set_temporary_scope(kernel, temp_var_names, scope):
 
 # {{{ reduction_arg_to_subst_rule
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def reduction_arg_to_subst_rule(
         kernel, inames, insn_match=None, subst_rule_name=None):
     if isinstance(inames, str):

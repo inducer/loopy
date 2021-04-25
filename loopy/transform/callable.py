@@ -34,7 +34,7 @@ from loopy.symbolic import (
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
 from loopy.translation_unit import (TranslationUnit,
-                                    iterate_over_kernels_if_given_program)
+                                    for_each_kernel)
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -459,7 +459,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
 
 # {{{ inline callable kernel
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def _inline_single_callable_kernel(caller_kernel, callee_kernel):
     from loopy.symbolic import ResolvedFunction
 

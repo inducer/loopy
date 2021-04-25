@@ -28,7 +28,7 @@ from loopy.transform.iname import remove_any_newly_unused_inames
 from pytools import ImmutableRecord
 from pymbolic import var
 
-from loopy.translation_unit import (iterate_over_kernels_if_given_program,
+from loopy.translation_unit import (for_each_kernel,
                                     TranslationUnit)
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
@@ -289,7 +289,7 @@ class AssignmentToSubstChanger(RuleAwareIdentityMapper):
             return var(subst_name)(*index)
 
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 @remove_any_newly_unused_inames
 def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         force_retain_argument=False):
@@ -473,7 +473,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 
 # {{{ expand_subst
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def expand_subst(kernel, within=None):
     """
     Returns an instance of :class:`loopy.LoopKernel` with the substitutions

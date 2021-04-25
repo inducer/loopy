@@ -34,7 +34,7 @@ from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
         SubstitutionRule, AddressSpace, ValueArg)
-from loopy.translation_unit import iterate_over_kernels_if_given_program
+from loopy.translation_unit import for_each_kernel
 from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
 from islpy import dim_type
@@ -1820,7 +1820,7 @@ def add_inferred_inames(knl):
 
 # {{{ apply single-writer heuristic
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
     logger.debug("%s: default deps" % kernel.name)
 

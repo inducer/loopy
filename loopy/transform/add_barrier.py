@@ -24,7 +24,7 @@ THE SOFTWARE.
 from loopy.kernel.instruction import BarrierInstruction
 from loopy.match import parse_match
 from loopy.transform.instruction import add_dependency
-from loopy.translation_unit import iterate_over_kernels_if_given_program
+from loopy.translation_unit import for_each_kernel
 from loopy.kernel import LoopKernel
 
 __doc__ = """
@@ -36,7 +36,7 @@ __doc__ = """
 
 # {{{ add_barrier
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
                 tags=None, synchronization_kind="global", mem_kind=None):
     """Takes in a kernel that needs to be added a barrier and returns a kernel
