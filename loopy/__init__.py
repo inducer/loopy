@@ -24,7 +24,7 @@ THE SOFTWARE.
 from loopy.symbolic import (
         TaggedVariable, Reduction, LinearSubscript, TypeCast)
 from loopy.diagnostic import LoopyError, LoopyWarning
-from loopy.translation_unit import iterate_over_kernels_if_given_program
+from loopy.translation_unit import for_each_kernel
 
 # {{{ imported user interface
 
@@ -313,7 +313,7 @@ __all__ = [
 
 # {{{ set_options
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def set_options(kernel, *args, **kwargs):
     """Return a new kernel with the options given as keyword arguments, or from
     a string representation passed in as the first (and only) positional
@@ -353,7 +353,7 @@ def set_options(kernel, *args, **kwargs):
 
 # {{{ library registration
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def register_preamble_generators(kernel, preamble_generators):
     """
     :arg manglers: list of functions of signature ``(preamble_info)``
@@ -378,7 +378,7 @@ def register_preamble_generators(kernel, preamble_generators):
     return kernel.copy(preamble_generators=new_pgens)
 
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def register_symbol_manglers(kernel, manglers):
     from loopy.tools import unpickles_equally
 
@@ -396,7 +396,7 @@ def register_symbol_manglers(kernel, manglers):
     return kernel.copy(symbol_manglers=new_manglers)
 
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def register_function_manglers(kernel, manglers):
     """
     :arg manglers: list of functions of signature ``(kernel, name, arg_dtypes)``

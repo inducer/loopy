@@ -24,7 +24,7 @@ from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import (ScalarCallable, CallableKernel)
 from loopy.translation_unit import (TranslationUnit,
-                                    iterate_over_kernels_if_given_program)
+                                    for_each_kernel)
 
 
 # {{{ find_instructions
@@ -78,7 +78,7 @@ def map_instructions(kernel, insn_match, f):
 
 # {{{ set_instruction_priority
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def set_instruction_priority(kernel, insn_match, priority):
     """Set the priority of instructions matching *insn_match* to *priority*.
 
@@ -96,7 +96,7 @@ def set_instruction_priority(kernel, insn_match, priority):
 
 # {{{ add_dependency
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def add_dependency(kernel, insn_match, depends_on):
     """Add the instruction dependency *dependency* to the instructions matched
     by *insn_match*.
@@ -146,7 +146,7 @@ def add_dependency(kernel, insn_match, depends_on):
 
 # {{{ remove_instructions
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def remove_instructions(kernel, insn_ids):
     """Return a new kernel with instructions in *insn_ids* removed.
 
@@ -237,7 +237,7 @@ def replace_instruction_ids(kernel, replacements):
 
 # {{{ tag_instructions
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def tag_instructions(kernel, new_tag, within=None):
     from loopy.match import parse_match
     within = parse_match(within)
@@ -260,7 +260,7 @@ def tag_instructions(kernel, new_tag, within=None):
 
 # {{{ add nosync
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
         empty_ok=False):
     """Add a *no_sync_with* directive between *source* and *sink*.
@@ -360,7 +360,7 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
 
 # {{{ uniquify_instruction_ids
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def uniquify_instruction_ids(kernel):
     """Converts any ids that are :class:`loopy.UniqueName` or *None* into unique
     strings.

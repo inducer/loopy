@@ -23,13 +23,13 @@ THE SOFTWARE.
 
 from loopy.diagnostic import LoopyError
 
-from loopy.translation_unit import iterate_over_kernels_if_given_program
+from loopy.translation_unit import for_each_kernel
 from loopy.kernel import LoopKernel
 
 
 # {{{ fold constants
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def fold_constants(kernel):
     from loopy.symbolic import ConstantFoldingMapper
     cfm = ConstantFoldingMapper()
@@ -53,7 +53,7 @@ def fold_constants(kernel):
 # {{{ collect_common_factors_on_increment
 
 # thus far undocumented
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
     assert isinstance(kernel, LoopKernel)
     # FIXME: Does not understand subst rules for now

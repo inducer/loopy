@@ -34,7 +34,7 @@ from loopy.diagnostic import LoopyError, warn_with_kernel
 from pytools import memoize_on_first_arg, natsorted
 from loopy.kernel import LoopKernel
 from loopy.translation_unit import (TranslationUnit,
-                                    iterate_over_kernels_if_given_program)
+                                    for_each_kernel)
 from loopy.kernel.function_interface import CallableKernel
 import logging
 logger = logging.getLogger(__name__)
@@ -494,7 +494,7 @@ class DomainChanger:
 
 # {{{ graphviz / dot export
 
-@iterate_over_kernels_if_given_program
+@for_each_kernel
 def get_dot_dependency_graph(kernel, callables_table, iname_cluster=True,
         use_insn_id=False):
     """Return a string in the `dot <https://graphviz.org/>`_ language depicting

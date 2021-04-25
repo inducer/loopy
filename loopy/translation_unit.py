@@ -49,7 +49,7 @@ __doc__ = """
 
 .. autofunction:: make_program
 
-.. autofunction:: iterate_over_kernels_if_given_program
+.. autofunction:: for_each_kernel
 
 """
 
@@ -727,46 +727,42 @@ def make_program(kernel):
     return program
 
 
-def iterate_over_kernels_if_given_program(transform_for_single_kernel):
+def for_each_kernel(transform):
     """
     Function wrapper for transformations of the type ``transform(kernel:
-    LoopKernel, *args, **kwargs): LoopKernel``. Returns a function with the
-    ``transform`` being implemented on all of the callable kernels in a
-    :class:`loopy.TranslationUnit`.
+    LoopKernel, *args, **kwargs) -> LoopKernel``. Returns a function that would
+    apply *transform* to all callable kernels in a :class:`loopy.TranslationUnit`.
     """
     def _collective_transform(*args, **kwargs):
-        if "program" in kwargs:
-            program_or_kernel = kwargs.pop("program")
+        if "translation_unit" in kwargs:
+            t_unit_or_kernel = kwargs.pop("translation_unit")
         elif "kernel" in kwargs:
-            program_or_kernel = kwargs.pop("kernel")
+            t_unit_or_kernel = kwargs.pop("kernel")
         else:
-            program_or_kernel = args[0]
+            t_unit_or_kernel = args[0]
             args = args[1:]
 
-        if isinstance(program_or_kernel, TranslationUnit):
-            program = program_or_kernel
+        if isinstance(t_unit_or_kernel, TranslationUnit):
+            t_unit = t_unit_or_kernel
             new_callables = {}
-            for func_id, in_knl_callable in program.callables_table.items():
-                if isinstance(in_knl_callable, CallableKernel):
-                    new_subkernel = transform_for_single_kernel(
-                            in_knl_callable.subkernel, *args, **kwargs)
-                    in_knl_callable = in_knl_callable.copy(
-                            subkernel=new_subkernel)
-                elif isinstance(in_knl_callable, ScalarCallable):
+            for func_id, clbl in t_unit.callables_table.items():
+                if isinstance(clbl, CallableKernel):
+                    new_subkernel = transform(clbl.subkernel, *args, **kwargs)
+                    clbl = clbl.copy(subkernel=new_subkernel)
+                elif isinstance(clbl, ScalarCallable):
                     pass
                 else:
-                    raise NotImplementedError("Unknown type of callable %s." % (
-                        type(in_knl_callable).__name__))
+                    raise NotImplementedError(f"{type(clbl)}")
 
-                new_callables[func_id] = in_knl_callable
+                new_callables[func_id] = clbl
 
-            return program.copy(callables_table=new_callables)
+            return t_unit.copy(callables_table=new_callables)
         else:
-            assert isinstance(program_or_kernel, LoopKernel)
-            kernel = program_or_kernel
-            return transform_for_single_kernel(kernel, *args, **kwargs)
+            assert isinstance(t_unit_or_kernel, LoopKernel)
+            kernel = t_unit_or_kernel
+            return transform(kernel, *args, **kwargs)
 
-    return wraps(transform_for_single_kernel)(_collective_transform)
+    return wraps(transform)(_collective_transform)
 
 
 def update_table(callables_table, clbl_id, clbl):
