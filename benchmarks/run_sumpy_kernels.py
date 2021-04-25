@@ -102,7 +102,7 @@ class SumpyBenchmarkSuite:
         lp.preprocess_kernel(knl)
 
     def time_schedule(self, data, param):
-        knl = data["param"]["instantiated"]
+        knl = data[param]["instantiated"]
         knl.with_kernel(lp.get_one_scheduled_kernel(knl["loopy_kernel"],
                                                     knl.callables_table))
 
