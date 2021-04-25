@@ -55,4 +55,5 @@ Places on the web related to Loopy:
 * `Documentation <https://documen.tician.de/loopy>`_ (read how things work)
 * `Github <https://github.com/inducer/loopy>`_ (get latest source code, file bugs)
 * `Homepage <https://mathema.tician.de/software/loopy>`_
+* `Benchmarks <https://documen.tician.de/loopy/benchmarks>`_
 
