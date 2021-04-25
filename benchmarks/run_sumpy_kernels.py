@@ -31,7 +31,7 @@ def _sumpy_kernel_init(param):
     m_expn = mpole_expn_class(knl, order=order)
     l_expn = local_expn_class(knl, order=order)
 
-    m2l = E2EFromCSR(ctx, m_expn, l_expn)
+    m2l = E2EFromCSR(ctx, m_expn, l_expn, name="loopy_kernel")
     m2l.get_translation_loopy_insns()
     m2l.ctx = None
     m2l.device = None
@@ -77,7 +77,8 @@ def cached_data(params):
         knl = _sumpy_kernel_make(expn, param)
         knl = lp.preprocess_kernel(knl)
         data[param]["instantiated"] = knl
-        scheduled = lp.get_one_scheduled_kernel(knl)
+        scheduled = knl.with_kernel(lp.get_one_scheduled_kernel(knl["loopy_kernel"],
+                                               knl.callables_table))
         data[param]["scheduled"] = scheduled
     return data
 
@@ -101,7 +102,9 @@ class SumpyBenchmarkSuite:
         lp.preprocess_kernel(knl)
 
     def time_schedule(self, data, param):
-        lp.get_one_scheduled_kernel(data[param]["instantiated"])
+        knl = data["param"]["instantiated"]
+        knl.with_kernel(lp.get_one_scheduled_kernel(knl["loopy_kernel"],
+                                                    knl.callables_table))
 
     def time_generate_code(self, data, param):
         lp.generate_code_v2(data[param]["scheduled"])
