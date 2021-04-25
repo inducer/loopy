@@ -479,7 +479,6 @@ def _get_reachable_callable_ids(callables, entrypoints):
 
 # {{{ CallablesInferenceContext
 
-
 def get_all_subst_names(callables):
     """
     Returns a :class:`set` of all substitution rule names in the callable
@@ -493,12 +492,15 @@ def get_all_subst_names(callables):
                          if isinstance(clbl, CallableKernel)))
 
 
-def make_clbl_inf_ctx(callables, entrypoints):
+def make_callable_name_generator(callables):
     from pytools import UniqueNameGenerator
     all_substs = get_all_subst_names(callables)
-    ung = UniqueNameGenerator(set(callables.keys()) | all_substs)
+    return UniqueNameGenerator(set(callables.keys()) | all_substs)
 
-    return CallablesInferenceContext(callables, ung)
+
+def make_clbl_inf_ctx(callables, entrypoints):
+    name_gen = make_callable_name_generator(callables)
+    return CallablesInferenceContext(callables, name_gen)
 
 
 class CallablesInferenceContext(ImmutableRecord):
@@ -751,8 +753,12 @@ def update_table(callables_table, clbl_id, clbl):
     """
     Returns a tuple ``new_clbl_id, new_callables_table`` where
     *new_callables_table* is a copy of *callables_table* with *clbl* in its
-    namespace. *clbl* is referred in *new_callables_table*'s namespace by
+    namespace. *clbl* is referred to in *new_callables_table*'s namespace by
     *new_clbl_id*.
+
+    :arg clbl_id: An instance of :class:`str` or
+        :class:`~loopy.library.reduction.ReductionOpFunction` based on which
+        the unique identifier, *new_clbl_id* , is to be chosen.
     """
     from loopy.kernel.function_interface import InKernelCallable
     assert isinstance(clbl, InKernelCallable)
@@ -765,9 +771,7 @@ def update_table(callables_table, clbl_id, clbl):
         new_clbl_id = clbl_id.copy()
     else:
         assert isinstance(clbl_id, str)
-        from pytools import UniqueNameGenerator
-        all_substs = get_all_subst_names(callables_table)
-        ung = UniqueNameGenerator(set(callables_table.keys()) | all_substs)
+        ung = make_callable_name_generator(callables_table)
         new_clbl_id = ung(clbl_id)
 
     new_callables_table = callables_table.copy()
