@@ -138,6 +138,14 @@ def _check_orderings_for_stmt_pair(
     maps_to_compare = [(m1, m2) for m1, m2 in map_candidates if m1 is not None]
     _align_and_compare_maps(maps_to_compare)
 
+
+def _process_and_linearize(knl):
+    # Return linearization items along with the preprocessed kernel and
+    # linearized kernel
+    proc_knl = preprocess_kernel(knl)
+    lin_knl = get_one_linearized_kernel(proc_knl)
+    return lin_knl.linearization, proc_knl, lin_knl
+
 # }}}
 
 
@@ -182,9 +190,7 @@ def test_intra_thread_pairwise_schedule_creation():
     knl = lp.prioritize_loops(knl, "i,j")
 
     # Get a linearization
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     stmt_id_pairs = [
         ("stmt_a", "stmt_b"),
@@ -406,9 +412,7 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
     knl = lp.tag_inames(knl, {"j": "l.1", "jj": "l.0", "i": "g.0"})
 
     # Get a linearization
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     stmt_id_pairs = [
         ("stmt_a", "stmt_b"),
@@ -544,9 +548,7 @@ def test_intra_thread_statement_instance_ordering():
     knl = lp.prioritize_loops(knl, "i,j")
 
     # Get a linearization
-    knl = preprocess_kernel(knl)
-    knl = get_one_linearized_kernel(knl)
-    lin_items = knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     # Get pairwise schedules
     stmt_id_pairs = [
@@ -558,7 +560,7 @@ def test_intra_thread_statement_instance_ordering():
         ("stmt_c", "stmt_d"),
         ]
     pworders = get_pairwise_statement_orderings(
-        knl,
+        proc_knl,
         lin_items,
         stmt_id_pairs,
         )
@@ -688,9 +690,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
     knl = lp.tag_inames(knl, {"j": "l.1", "jj": "l.0", "i": "g.0"})
 
     # Get a linearization
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     # Get pairwise schedules
     stmt_id_pairs = [
@@ -772,9 +772,7 @@ def test_sios_and_schedules_with_barriers():
     knl = lp.tag_inames(knl, {"l0": "l.0", "l1": "l.1", "g0": "g.0"})
 
     # Get a linearization
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     stmt_id_pairs = [("stmt_j1", "stmt_2"), ("stmt_1", "stmt_i0")]
     pworders = get_pairwise_statement_orderings(
@@ -1097,13 +1095,11 @@ def test_sios_and_schedules_with_vec_and_barriers():
     knl = lp.tag_inames(knl, {"i": "vec", "l0": "l.0"})
 
     # Get a linearization
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    linearization_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     stmt_id_pairs = [("stmt_1", "stmt_2")]
     pworders = get_pairwise_statement_orderings(
-        lin_knl, linearization_items, stmt_id_pairs)
+        lin_knl, lin_items, stmt_id_pairs)
 
     # {{{ Relationship between stmt_1 and stmt_2
 
@@ -1316,17 +1312,13 @@ def test_sios_with_matmul():
         knl, "b", ["j_inner", "k_inner"], default_tag="l.auto")
     knl = lp.prioritize_loops(knl, "k_outer,k_inner")
 
-    proc_knl = preprocess_kernel(knl)
-
     # Get a linearization
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    linearization_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     # Get ALL statement id pairs
     from loopy.schedule import RunInstruction
     all_stmt_ids = [
-        lin_item.insn_id for lin_item in linearization_items
+        lin_item.insn_id for lin_item in lin_items
         if isinstance(lin_item, RunInstruction)]
     from itertools import product
     stmt_id_pairs = []
@@ -1335,7 +1327,7 @@ def test_sios_with_matmul():
 
     # Generate pairwise ordering info for every pair
     get_pairwise_statement_orderings(
-        lin_knl, linearization_items, stmt_id_pairs)
+        lin_knl, lin_items, stmt_id_pairs)
 
 # }}}
 
@@ -1443,9 +1435,7 @@ def test_add_dependency_v2():
             assert not stmt.dependencies
 
     # Now make sure deps are satisfied
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
         proc_knl, lin_items)
@@ -1489,9 +1479,7 @@ def test_new_dependencies_finite_diff():
     knl = lp.prioritize_loops(knl, "t,x")
 
     # Make sure deps are satisfied
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
         proc_knl, lin_items)
@@ -1507,9 +1495,7 @@ def test_new_dependencies_finite_diff():
     knl = lp.prioritize_loops(knl, "x,t")
 
     # Make sure unsatisfied deps are caught
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
         proc_knl, lin_items)
@@ -1526,9 +1512,7 @@ def test_new_dependencies_finite_diff():
     knl = lp.tag_inames(knl, "x:l.0")
 
     # Make sure unsatisfied deps are caught
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     # Without a barrier, deps not satisfied
     # Make sure there is no barrier, and that unsatisfied deps are caught
@@ -1559,9 +1543,7 @@ def test_new_dependencies_finite_diff():
         knl, {"u": np.float32, "dx": np.float32, "dt": np.float32})
 
     # Make sure deps are satisfied
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
     print(lp.generate_code_v2(lin_knl).device_code())
 
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
