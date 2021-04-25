@@ -791,6 +791,7 @@ def resolve_callables(program):
     expression nodes converted to :class:`loopy.symbolic.ResolvedFunction`.
     """
     from loopy.library.function import get_loopy_callables
+    from loopy.check import validate_kernel_call_sites
     from loopy.kernel import KernelState
 
     if program.state >= KernelState.CALLS_RESOLVED:
@@ -834,7 +835,11 @@ def resolve_callables(program):
         else:
             raise NotImplementedError(f"{type(clbl)}")
 
-    return program.copy(callables_table=callables_table)
+    program = program.copy(callables_table=callables_table)
+
+    validate_kernel_call_sites(program)
+
+    return program
 
 # }}}
 

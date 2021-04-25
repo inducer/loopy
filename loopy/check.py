@@ -1207,6 +1207,124 @@ def check_that_shapes_and_strides_are_arguments(kernel):
 # }}}
 
 
+# {{{ validate_kernel_call_sites
+
+def _are_sub_array_refs_equal(sar1, sar2, caller):
+    if len(sar1.swept_inames) != len(sar2.swept_inames):
+        return False
+
+    if sar1.subscript.aggregate.name != sar2.subscript.aggregate.name:
+        return False
+
+    if len(sar1.subscript.index_tuple) != len(sar2.subscript.index_tuple):
+        return False
+
+    from loopy.symbolic import SubstitutionMapper
+    from pymbolic.mapper.substitutor import make_subst_func
+    from pymbolic.mapper.distributor import distribute
+    subst_func = make_subst_func({iname1.name:  iname2
+                                  for iname1, iname2 in zip(sar1.swept_inames,
+                                                            sar2.swept_inames)
+                                  })
+
+    for sweep1, sweep2 in zip(sar1.swept_inames, sar2.swept_inames):
+        sweep1_bounds = caller.get_iname_bounds(sweep1.name)
+        sweep2_bounds = caller.get_iname_bounds(sweep2.name)
+        if (sweep1_bounds.lower_bound_pw_aff != sweep2_bounds.lower_bound_pw_aff):
+            return False
+
+        if (sweep1_bounds.upper_bound_pw_aff != sweep2_bounds.upper_bound_pw_aff):
+            return False
+
+    # subst_mapper: maps swept inames from sar1 to sar2
+    subst_mapper = SubstitutionMapper(subst_func)
+
+    for idx1, idx2 in zip(sar1.subscript.index_tuple,
+                          sar2.subscript.index_tuple):
+        if distribute(subst_mapper(idx1) - idx2) != 0:
+            return False
+    return True
+
+
+def _validate_kernel_call_insn(caller, call_insn, callee):
+    assert call_insn.expression.function.name == callee.name
+    from loopy.symbolic import SubArrayRef
+    from loopy.kernel.array import ArrayBase
+
+    arg_id_to_val = call_insn.arg_id_to_val()
+
+    ipar = 0
+    iassignee = -1
+
+    for arg in callee.args:
+        if arg.is_input:
+            if ipar not in arg_id_to_val:
+                raise LoopyError(f"Call to '{callee.name}' in '{call_insn}' expects"
+                                 f" a {ipar+1}-th positional argument corresponding"
+                                 f" to '{arg.name}'in the callee.")
+            in_val = arg_id_to_val[ipar]
+            ipar += 1
+            if isinstance(arg, ArrayBase):
+                if not isinstance(in_val, SubArrayRef):
+                    raise LoopyError(f"Call to '{callee.name}' in '{call_insn}'"
+                                     f" expects a sub-array-ref for '{arg.name}'"
+                                     f" (got {in_val}).")
+            else:
+                if isinstance(in_val, SubArrayRef):
+                    raise LoopyError(f"Call to '{callee.name}' in '{call_insn}'"
+                                     f" expects a value argument for '{arg.name}'"
+                                     f" (got {in_val}).")
+        if arg.is_output:
+            if iassignee not in arg_id_to_val:
+                raise LoopyError(f"Call to '{callee.name}' in '{call_insn}' expects"
+                                 f" a {-iassignee}-th positional assignee"
+                                 f" corresponding to '{arg.name}'in the callee.")
+
+            out_val = arg_id_to_val[iassignee]
+            iassignee -= 1
+            assert isinstance(arg, ArrayBase)
+            if not isinstance(out_val, SubArrayRef):
+                raise LoopyError(f"Call to '{callee.name}' in '{call_insn}'"
+                                 f" expects a sub-array-ref for '{arg.name}'"
+                                 f" (got {out_val}).")
+
+        if arg.is_input and arg.is_output:
+            if not _are_sub_array_refs_equal(in_val, out_val, caller):
+                raise LoopyError(f"Call to '{callee.name}' in '{call_insn}' expects"
+                                 f" equivalent sub-array-refs for '{arg.name}'"
+                                 f" (got {in_val}, {out_val}).")
+
+
+def _validate_kernel_call_sites_inner(kernel, callables):
+    from pymbolic.primitives import Call
+    from loopy.kernel.function_interface import CallableKernel
+
+    for insn in kernel.instructions:
+        if (isinstance(insn, CallInstruction)
+                and isinstance(insn.expression, Call)
+                and isinstance(insn.expression.function, ResolvedFunction)):
+            clbl = callables[insn.expression.function.name]
+            if isinstance(clbl, CallableKernel):
+                _validate_kernel_call_insn(kernel, insn, clbl.subkernel)
+        elif isinstance(insn, (MultiAssignmentBase, CInstruction,
+                               _DataObliviousInstruction)):
+            pass
+        else:
+            raise NotImplementedError(type(insn))
+
+
+def validate_kernel_call_sites(translation_unit):
+    from loopy import LoopKernel
+
+    for name in translation_unit.callables_table:
+        clbl = translation_unit[name]
+        if isinstance(clbl, LoopKernel):
+            _validate_kernel_call_sites_inner(clbl, translation_unit.callables_table)
+
+
+# }}}
+
+
 def pre_codegen_checks(kernel, callables_table):
     try:
         logger.debug("pre-codegen check %s: start" % kernel.name)
