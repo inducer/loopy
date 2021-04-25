@@ -98,16 +98,16 @@ class SumpyBenchmarkSuite:
         return cached_data(self.params)
 
     def time_instantiate(self, data, param):
-        knl = _sumpy_kernel_make(data[param]["setup"], param)
+        knl = _sumpy_kernel_make(data[param]["setup"].copy(), param)
         lp.preprocess_kernel(knl)
 
     def time_schedule(self, data, param):
-        knl = data[param]["instantiated"]
+        knl = data[param]["instantiated"].copy()
         knl.with_kernel(lp.get_one_scheduled_kernel(knl["loopy_kernel"],
                                                     knl.callables_table))
 
     def time_generate_code(self, data, param):
-        lp.generate_code_v2(data[param]["scheduled"])
+        lp.generate_code_v2(data[param]["scheduled"].copy())
 
     time_instantiate.timeout = 600.0
     time_schedule.timeout = 600.0
@@ -126,3 +126,13 @@ class SumpyBenchmarkSuite:
     peakmem_instantiate = time_instantiate
     peakmem_schedule = time_schedule
     peakmem_generate_code = time_generate_code
+
+
+if __name__ == "__main__":
+    suite = SumpyBenchmarkSuite()
+    data = suite.setup_cache()
+    from time import time
+    suite.time_generate_code(data, suite.params[0])
+    start = time()
+    suite.time_generate_code(data, suite.params[0])
+    print(time()-start)
