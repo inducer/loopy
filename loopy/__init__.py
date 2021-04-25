@@ -521,10 +521,10 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
             f"Output subscripts '{out_spec}' does not contain all unique indices."
         )
 
-    all_indices = set(
+    all_indices = {
         idx
         for argsp in arg_specs
-        for idx in argsp) | out_indices
+        for idx in argsp} | out_indices
 
     sum_indices = all_indices - out_indices
 
