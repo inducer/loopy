@@ -2329,8 +2329,7 @@ def test_filtering_deps_by_same():
 # {{{ test_linearization_using_simplified_dep_graph
 
 def test_linearization_using_simplified_dep_graph():
-    # Test use of simplified dep graph inside find_loop_insn_dep_map(),
-    # which is called during linearization.
+    # Test use of simplified dep graph during linearization.
     # The deps created below should yield a simplified dep graph that causes the
     # linearization process to order assignments below in numerical order
 
