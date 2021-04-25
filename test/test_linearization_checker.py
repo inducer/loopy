@@ -2348,7 +2348,9 @@ def test_linearization_using_simplified_dep_graph():
         """)
     knl = lp.tag_inames(knl, "m:l.0")
 
-    # Make some deps
+    stmt_ids_ordered_desired = ["s1", "s2", "s3", "s4", "s5"]
+
+    # {{{ Add some deps
 
     def _dep_with_condition(stmt_before, stmt_after, cond):
         sid_after = 0 if stmt_before == stmt_after else 1
@@ -2382,7 +2384,9 @@ def test_linearization_using_simplified_dep_graph():
     knl = lp.add_dependency_v2(knl, "s4", "s3", dep_s4_on_s3_1)
     knl = lp.add_dependency_v2(knl, "s5", "s4", dep_s5_on_s4_1)
 
-    # Test filteringn of deps by intersection with SAME
+    # }}}
+
+    # {{{ Test filteringn of deps by intersection with SAME
 
     from loopy.schedule.checker.dependency import (
         filter_deps_by_intersection_with_SAME,
@@ -2401,30 +2405,27 @@ def test_linearization_using_simplified_dep_graph():
 
     assert filtered_depends_on_dict == depends_on_dict_expected
 
-    stmt_ids_ordered_desired = ["s1", "s2", "s3", "s4", "s5"]
+    # }}}
 
     # {{{ Get a linearization WITHOUT using the simplified dep graph
 
     knl = lp.set_options(knl, use_dependencies_v2=False)
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
-    # Check stmt order
+    # Check stmt order (should be wrong)
     stmt_ids_ordered = _get_runinstruction_ids_from_linearization(lin_items)
     assert stmt_ids_ordered != stmt_ids_ordered_desired
 
-    # Check dep satisfaction
+    # Check dep satisfaction (should not all be satisfied)
     unsatisfied_deps = lp.find_unsatisfied_dependencies(proc_knl, lin_items)
     assert unsatisfied_deps
 
     # }}}
 
     # {{{ Get a linearization using the simplified dep graph
+
     knl = lp.set_options(knl, use_dependencies_v2=True)
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     # Check stmt order
     stmt_ids_ordered = _get_runinstruction_ids_from_linearization(lin_items)
