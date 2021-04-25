@@ -504,6 +504,7 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
     :param \**knl_creation_kwargs: keyword arguments for kernel creation.
         See :func:`make_kernel` for a list of acceptable keyword
         parameters.
+
     .. note::
 
         No attempt is being made to reduce the complexity
