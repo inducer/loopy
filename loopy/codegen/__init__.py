@@ -38,7 +38,7 @@ from functools import reduce
 
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
-from pytools import ProcessLogger, memoize_method
+from pytools import ProcessLogger
 
 __doc__ = """
 .. currentmodule:: loopy.codegen
@@ -698,7 +698,6 @@ class TranslationUnitCodeGenerationResult(ImmutableRecord):
                     self.host_programs.values()))
 
 
-@memoize_method
 def generate_code_v2(program):
     """
     Returns an instance of :class:`CodeGenerationResult`.
