@@ -1435,9 +1435,7 @@ def test_add_dependency_v2():
             assert not stmt.dependencies
 
     # Now make sure deps are satisfied
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
         proc_knl, lin_items)
@@ -1481,9 +1479,7 @@ def test_new_dependencies_finite_diff():
     knl = lp.prioritize_loops(knl, "t,x")
 
     # Make sure deps are satisfied
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
         proc_knl, lin_items)
@@ -1499,9 +1495,7 @@ def test_new_dependencies_finite_diff():
     knl = lp.prioritize_loops(knl, "x,t")
 
     # Make sure unsatisfied deps are caught
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
         proc_knl, lin_items)
@@ -1518,9 +1512,7 @@ def test_new_dependencies_finite_diff():
     knl = lp.tag_inames(knl, "x:l.0")
 
     # Make sure unsatisfied deps are caught
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     # Without a barrier, deps not satisfied
     # Make sure there is no barrier, and that unsatisfied deps are caught
@@ -1551,9 +1543,7 @@ def test_new_dependencies_finite_diff():
         knl, {"u": np.float32, "dx": np.float32, "dt": np.float32})
 
     # Make sure deps are satisfied
-    proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    lin_items = lin_knl.linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
     print(lp.generate_code_v2(lin_knl).device_code())
 
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
