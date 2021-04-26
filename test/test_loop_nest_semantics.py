@@ -46,7 +46,9 @@ __all__ = [
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
-def test_loop_constraint_strings_validity_check():
+# {{{ test_loop_constraint_string_parsing
+
+def test_loop_constraint_string_parsing():
     ref_knl = lp.make_kernel(
             "{ [g,h,i,j,k,xx]: 0<=g,h,i,j,k,xx<n }",
             "out[g,h,i,j,k,xx] = 2*a[g,h,i,j,k,xx]",
@@ -186,6 +188,96 @@ def test_loop_constraint_strings_validity_check():
         assert False
     except ValueError as e:
         assert "Found 0 inames" in str(e)
+
+# }}}
+
+
+# {{{ test_loop_nest_constraints_satisfied
+
+def test_loop_nest_constraints_satisfied():
+    from loopy.transform.iname import (
+        process_loop_nest_specification,
+        loop_nest_constraints_satisfied,
+    )
+
+    all_inames = frozenset(["g", "h", "i", "j", "k"])
+
+    must_nest_constraints = [
+        process_loop_nest_specification(
+            nesting=("{g,h}", "~{g,h}"),
+            complement_sets_allowed=True),
+        ]
+    must_not_nest_constraints = [
+        process_loop_nest_specification(
+            nesting="k,~k",
+            complement_sets_allowed=True),
+        ]
+
+    loop_nests = set([("g", "h", "i", "j", "k"), ])
+    valid = loop_nest_constraints_satisfied(
+        loop_nests, must_nest_constraints, must_not_nest_constraints, all_inames)
+    assert valid
+
+    loop_nests = set([("g", "i", "h", "j", "k"), ])
+    valid = loop_nest_constraints_satisfied(
+        loop_nests, must_nest_constraints, must_not_nest_constraints, all_inames)
+    assert not valid
+
+    loop_nests = set([("g", "h", "i", "k", "j"), ])
+    valid = loop_nest_constraints_satisfied(
+        loop_nests, must_nest_constraints, must_not_nest_constraints, all_inames)
+    assert not valid
+
+    # now j, k must be innermost
+    must_not_nest_constraints = [
+        process_loop_nest_specification(("{k,j}", "~{k,j}")),
+        ]
+    loop_nests = set([("g", "i", "h", "j", "k"), ])
+    valid = loop_nest_constraints_satisfied(
+        loop_nests, None, must_not_nest_constraints, all_inames)
+    assert valid
+
+    loop_nests = set([("g", "h", "i", "k", "j"), ])
+    valid = loop_nest_constraints_satisfied(
+        loop_nests, None, must_not_nest_constraints, all_inames)
+    assert valid
+
+    loop_nests = set([("g", "i", "j", "h", "k"), ])
+    valid = loop_nest_constraints_satisfied(
+        loop_nests, None, must_not_nest_constraints, all_inames)
+    assert not valid
+
+    loop_nests = set([("g", "h", "j", "k", "i"), ])
+    valid = loop_nest_constraints_satisfied(
+        loop_nests, None, must_not_nest_constraints, all_inames)
+    assert not valid
+
+    loop_nests = set([("j", "k"), ])
+    valid = loop_nest_constraints_satisfied(
+        loop_nests, None, must_not_nest_constraints, all_inames)
+    assert valid
+
+    loop_nests = set([("g", "k"), ])  # j not present
+    valid = loop_nest_constraints_satisfied(
+        loop_nests, None, must_not_nest_constraints, all_inames)
+    assert valid
+
+    loop_nests = set([("g", "i"), ])  # j, k not present
+    valid = loop_nest_constraints_satisfied(
+        loop_nests, None, must_not_nest_constraints, all_inames)
+    assert valid
+
+    loop_nests = set([("k",), ])  # only k present
+    valid = loop_nest_constraints_satisfied(
+        loop_nests, None, must_not_nest_constraints, all_inames)
+    assert valid
+
+    loop_nests = set([("i",), ])
+    valid = loop_nest_constraints_satisfied(
+        loop_nests, None, must_not_nest_constraints, all_inames)
+    assert valid
+
+# }}}
 
 
 if __name__ == "__main__":
