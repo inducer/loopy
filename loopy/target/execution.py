@@ -293,8 +293,9 @@ class ExecutionWrapperGeneratorBase:
                                 % (stride_impl_axis, impl_array_name))
                         gen("del _lpy_remdr")
                     else:
-                        gen("%s = _lpy_offset // %d"
-                                % (arg.name, base_arg.dtype.itemsize))
+                        gen("%s = %s.strides[%d] // %d"
+                                % (arg.name,  impl_array_name, stride_impl_axis,
+                                    base_arg.dtype.itemsize))
 
         gen("# }}}")
         gen("")
@@ -353,7 +354,7 @@ class ExecutionWrapperGeneratorBase:
         # argument. Arguments should be sequences of strings.
         return " and ".join(
                 "(%s == 1 or %s == %s)" % elem
-                for elem in zip(shape, strides, sym_strides))
+                for elem in zip(shape, strides, sym_strides)) or "True"
 
     # {{{ arg setup
 

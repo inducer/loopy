@@ -259,21 +259,24 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
     # }}}
 
-    # {{{ fish out tag
+    # {{{ fish out tags
 
     from loopy.symbolic import TaggedVariable
     if isinstance(parsed_var_name, TaggedVariable):
         var_name = parsed_var_name.name
-        tag = parsed_var_name.tag
+        tags = parsed_var_name.tags
     else:
         var_name = parsed_var_name.name
-        tag = None
+        tags = ()
 
     # }}}
 
     c_name = var_name
-    if tag is not None:
-        c_name = c_name + "_" + tag
+    from loopy.kernel.instruction import LegacyStringInstructionTag
+    tag_suffix = "_".join(tag.value for tag in tags
+            if isinstance(tag, LegacyStringInstructionTag))
+    if tag_suffix:
+        c_name = c_name + "_" + tag_suffix
 
     var_name_gen = kernel.get_var_name_generator()
 
@@ -663,20 +666,27 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 
     # }}}
 
-    # {{{ domain
+    # {{{ domain/assumptions
 
-    new_domains = []
-    for dom in kernel.domains:
+    def rename_arg_in_basic_set(dom):
         dom_var_dict = dom.get_var_dict()
         if old_name in dom_var_dict:
             dt, pos = dom_var_dict[old_name]
             dom = dom.set_dim_name(dt, pos, new_name)
 
+        return dom
+
+    new_domains = []
+    for dom in kernel.domains:
+        dom = rename_arg_in_basic_set(dom)
         new_domains.append(dom)
+
+    new_assumptions = rename_arg_in_basic_set(kernel.assumptions)
 
     # }}}
 
-    return kernel.copy(domains=new_domains, args=new_args)
+    return kernel.copy(domains=new_domains, args=new_args,
+            assumptions=new_assumptions)
 
 # }}}
 

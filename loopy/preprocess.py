@@ -32,6 +32,7 @@ from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment, filter_iname_tags_by_type
+from loopy.kernel.tools import kernel_has_global_barriers
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
 from loopy.transform.iname import remove_any_newly_unused_inames
@@ -853,6 +854,9 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
         # }}}
 
+    if not new_temporaries and not new_or_updated_instructions:
+        return kernel
+
     new_temporary_variables = kernel.temporary_variables.copy()
     new_temporary_variables.update(new_temporaries)
 
@@ -1015,10 +1019,17 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         init_insn_depends_on = frozenset()
 
-        global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
+        # check first that the original kernel had global barriers
+        # if not, we don't need to check. Since the function
+        # kernel_has_global_barriers is cached, we don't do
+        # extra work compared to not checking.
+        # FIXME: Explain why we care about global barriers her
+        if kernel_has_global_barriers(kernel):
+            global_barrier = lp.find_most_recent_global_barrier(temp_kernel,
+                    insn.id)
 
-        if global_barrier is not None:
-            init_insn_depends_on |= frozenset([global_barrier])
+            if global_barrier is not None:
+                init_insn_depends_on |= frozenset([global_barrier])
 
         from pymbolic import var
         acc_vars = tuple(var(n) for n in acc_var_names)
@@ -1032,8 +1043,17 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 within_inames=outer_insn_inames - frozenset(expr.inames),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=init_insn_depends_on,
-                expression=expr.operation.neutral_element(*arg_dtypes),
-                predicates=insn.predicates,)
+                expression=expr.operation.neutral_element(*arg_dtypes)
+
+                # Do not inherit predicates: Those might read variables
+                # that may not yet be set, and we don't have a great way
+                # of figuring out what the dependencies of the accumulator
+                # initializer should be.
+
+                # This way, we may initialize a few too many accumulators,
+                # but that's better than being incorrect.
+                # https://github.com/inducer/loopy/issues/231
+                )
 
         generated_insns.append(init_insn)
 
@@ -1181,7 +1201,14 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 within_inames=base_iname_deps | frozenset([base_exec_iname]),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=frozenset(),
-                predicates=insn.predicates,
+                # Do not inherit predicates: Those might read variables
+                # that may not yet be set, and we don't have a great way
+                # of figuring out what the dependencies of the accumulator
+                # initializer should be.
+
+                # This way, we may initialize a few too many accumulators,
+                # but that's better than being incorrect.
+                # https://github.com/inducer/loopy/issues/231
                 )
         generated_insns.append(init_insn)
 
@@ -1389,10 +1416,12 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         init_insn_depends_on = frozenset()
 
-        global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
+        # FIXME: Explain why we care about global barriers here
+        if kernel_has_global_barriers(kernel):
+            global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
 
-        if global_barrier is not None:
-            init_insn_depends_on |= frozenset([global_barrier])
+            if global_barrier is not None:
+                init_insn_depends_on |= frozenset([global_barrier])
 
         init_insn = make_assignment(
                 id=init_id,
@@ -1402,7 +1431,14 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=init_insn_depends_on,
                 expression=expr.operation.neutral_element(*arg_dtypes),
-                predicates=insn.predicates,
+                # Do not inherit predicates: Those might read variables
+                # that may not yet be set, and we don't have a great way
+                # of figuring out what the dependencies of the accumulator
+                # initializer should be.
+
+                # This way, we may initialize a few too many accumulators,
+                # but that's better than being incorrect.
+                # https://github.com/inducer/loopy/issues/231
                 )
 
         generated_insns.append(init_insn)
@@ -1520,10 +1556,12 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         init_insn_depends_on = insn.depends_on
 
-        global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
+        # FIXME: Explain why we care about global barriers here
+        if kernel_has_global_barriers(kernel):
+            global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
 
-        if global_barrier is not None:
-            init_insn_depends_on |= frozenset([global_barrier])
+            if global_barrier is not None:
+                init_insn_depends_on |= frozenset([global_barrier])
 
         init_id = insn_id_gen(f"{insn.id}_{scan_iname}_init")
         init_insn = make_assignment(
@@ -1535,7 +1573,14 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 within_inames=base_iname_deps | frozenset([base_exec_iname]),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=init_insn_depends_on,
-                predicates=insn.predicates,
+                # Do not inherit predicates: Those might read variables
+                # that may not yet be set, and we don't have a great way
+                # of figuring out what the dependencies of the accumulator
+                # initializer should be.
+
+                # This way, we may initialize a few too many accumulators,
+                # but that's better than being incorrect.
+                # https://github.com/inducer/loopy/issues/231
                 )
         generated_insns.append(init_insn)
 
@@ -1818,6 +1863,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
     domains = kernel.domains[:]
 
     temp_kernel = kernel
+    changed = False
 
     import loopy as lp
     while insn_queue:
@@ -1880,19 +1926,20 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                         for i, (assignee, new_expr) in enumerate(zip(
                             insn.assignees, new_expressions))]
 
+                insn_id_replacements[insn.id] = [
+                    rinsn.id for rinsn in replacement_insns]
             else:
                 new_expr, = new_expressions
+                # since we are replacing the instruction with
+                # only one instruction, there's no need to replace id
                 replacement_insns = [
                         make_assignment(
-                            id=insn_id_gen(insn.id),
+                            id=insn.id,
                             depends_on=result_assignment_dep_on,
                             assignees=insn.assignees,
                             expression=new_expr,
                             **kwargs)
                         ]
-
-            insn_id_replacements[insn.id] = [
-                    rinsn.id for rinsn in replacement_insns]
 
             insn_queue = generated_insns + replacement_insns + insn_queue
 
@@ -1905,14 +1952,15 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     domains=domains)
             temp_kernel = lp.replace_instruction_ids(
                     temp_kernel, insn_id_replacements)
-
+            changed = True
         else:
             # nothing happened, we're done with insn
             assert not new_insn_add_depends_on
 
             new_insns.append(insn)
 
-    kernel = kernel.copy(
+    if changed:
+        kernel = kernel.copy(
             instructions=new_insns,
             temporary_variables=new_temporary_variables,
             domains=domains)
@@ -1939,9 +1987,12 @@ def realize_ilp(kernel):
                                    filter_iname_tags_by_type)
 
     privatizing_inames = frozenset(
-        iname for iname, tags in kernel.iname_to_tags.items()
-        if filter_iname_tags_by_type(tags, (IlpBaseTag, VectorizeTag))
+        name for name, iname in kernel.inames.items()
+        if filter_iname_tags_by_type(iname.tags, (IlpBaseTag, VectorizeTag))
     )
+
+    if not privatizing_inames:
+        return kernel
 
     from loopy.transform.privatize import privatize_temporaries_with_inames
     return privatize_temporaries_with_inames(kernel, privatizing_inames)
@@ -2030,9 +2081,9 @@ def preprocess_kernel(kernel, device=None):
     # {{{ check that there are no l.auto-tagged inames
 
     from loopy.kernel.data import AutoLocalIndexTagBase
-    for iname, tags in kernel.iname_to_tags.items():
-        if (filter_iname_tags_by_type(tags, AutoLocalIndexTagBase)
-                 and iname in kernel.all_inames()):
+    for name, iname in kernel.inames.items():
+        if (filter_iname_tags_by_type(iname.tags, AutoLocalIndexTagBase)
+                 and name in kernel.all_inames()):
             raise LoopyError("kernel with automatically-assigned "
                     "local axes passed to preprocessing")
 

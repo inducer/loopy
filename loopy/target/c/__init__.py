@@ -463,26 +463,38 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
     if not isinstance(name, str):
         return None
 
+    # {{{ (abs|max|min) -> (fabs|fmax|fmin)
+
     if name in ["abs", "min", "max"]:
-        name = "f" + name
+        dtype = np.find_common_type(
+            [], [dtype.numpy_dtype for dtype in arg_dtypes])
+        if dtype.kind == "f":
+            name = "f" + name
+
+    # }}}
 
     # unitary functions
     if (name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
                  "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor"]
             and len(arg_dtypes) == 1
-            and arg_dtypes[0].numpy_dtype.kind == "f"):
+            and arg_dtypes[0].numpy_dtype.kind in "fc"):
 
         dtype = arg_dtypes[0].numpy_dtype
+        real_dtype = np.empty(0, dtype=dtype).real.dtype
 
         if modify_name:
-            if dtype == np.float64:
+            if real_dtype == np.float64:
                 pass  # fabs
-            elif dtype == np.float32:
+            elif real_dtype == np.float32:
                 name = name + "f"  # fabsf
-            elif dtype == np.float128:  # pylint:disable=no-member
+            elif (hasattr(np, "float128")
+                    and real_dtype == np.float128):  # pylint:disable=no-member
                 name = name + "l"  # fabsl
             else:
-                raise LoopyTypeError(f"{name} does not support type {dtype}")
+                raise LoopyTypeError(f"{name} does not support type {real_dtype}")
+
+            if dtype.kind == "c":
+                name = "c" + name
 
         return CallMangleInfo(
                 target_name=name,
@@ -495,27 +507,64 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
 
         dtype = np.find_common_type(
             [], [dtype.numpy_dtype for dtype in arg_dtypes])
+        real_dtype = np.empty(0, dtype=dtype).real.dtype
 
-        if dtype.kind == "c":
+        if name in ["fmax", "fmin", "copysign"] and dtype.kind == "c":
             raise LoopyTypeError(f"{name} does not support complex numbers")
 
-        elif dtype.kind == "f":
+        elif real_dtype.kind in "fc":
             if modify_name:
-                if dtype == np.float64:
+                if real_dtype == np.float64:
                     pass  # fmin
-                elif dtype == np.float32:
+                elif real_dtype == np.float32:
                     name = name + "f"  # fminf
-                elif dtype == np.float128:  # pylint:disable=no-member
+                elif (hasattr(np, "float128")
+                        and real_dtype == np.float128):  # pylint:disable=no-member
                     name = name + "l"  # fminl
                 else:
                     raise LoopyTypeError("%s does not support type %s"
-                                         % (name, dtype))
+                                         % (name, real_dtype))
+
+                if dtype.kind == "c":
+                    name = "c" + name  # cpow
 
             result_dtype = NumpyType(dtype)
             return CallMangleInfo(
                     target_name=name,
                     result_dtypes=(result_dtype,),
                     arg_dtypes=2*(result_dtype,))
+
+    # complex functions
+    if (name in ["abs", "real", "imag"]
+            and len(arg_dtypes) == 1
+            and arg_dtypes[0].numpy_dtype.kind == "c"):
+        dtype = arg_dtypes[0].numpy_dtype
+        real_dtype = np.empty(0, dtype=dtype).real.dtype
+
+        if modify_name:
+            if real_dtype == np.float64:
+                pass  # fabs
+            elif real_dtype == np.float32:
+                name = name + "f"  # fabsf
+            elif (hasattr(np, "float128")
+                    and real_dtype == np.float128):  # pylint:disable=no-member
+                name = name + "l"  # fabsl
+            else:
+                raise LoopyTypeError(f"{name} does not support type {real_dtype}")
+
+            name = "c" + name
+
+        return CallMangleInfo(
+                target_name=name,
+                result_dtypes=(NumpyType(real_dtype),),
+                arg_dtypes=arg_dtypes)
+
+    if (name == "isnan" and len(arg_dtypes) == 1
+            and arg_dtypes[0].numpy_dtype.kind == "f"):
+        return CallMangleInfo(
+                target_name=name,
+                result_dtypes=(NumpyType(np.int32),),
+                arg_dtypes=arg_dtypes)
 
     return None
 
@@ -1010,8 +1059,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
             return ExpressionStatement(
                     CExpression(self.get_c_expression_to_code_mapper(), result))
 
-        result = ecm.wrap_in_typecast(
-                mangle_result.result_dtypes[0],
+        result = ecm.wrap_in_typecast_lazy(
+                lambda: mangle_result.result_dtypes[0],
                 assignee_var_descriptors[0].dtype,
                 result)
 

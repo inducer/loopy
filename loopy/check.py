@@ -28,7 +28,9 @@ from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_ke
 from loopy.type_inference import TypeInferenceMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
         CInstruction, _DataObliviousInstruction)
-from warnings import warn
+from pytools import memoize_method
+
+from collections import defaultdict
 
 import logging
 logger = logging.getLogger(__name__)
@@ -199,11 +201,11 @@ def check_multiple_tags_allowed(kernel):
         (GroupIndexTag, LocalIndexTag, VectorizeTag, UnrollTag, ForceSequentialTag),
         (IlpBaseTag, ForceSequentialTag)
     ]
-    for iname, tags in kernel.iname_to_tags.items():
+    for iname in kernel.inames.values():
         for comb in illegal_combinations:
-            if len(filter_iname_tags_by_type(tags, comb)) > 1:
+            if len(filter_iname_tags_by_type(iname.tags, comb)) > 1:
                 raise LoopyError("iname {} has illegal combination of "
-                                 "tags: {}".format(iname, tags))
+                                 "tags: {}".format(iname.name, iname.tags))
 
 
 def check_for_double_use_of_hw_axes(kernel):
@@ -334,8 +336,8 @@ def check_for_orphaned_user_hardware_axes(kernel):
     from loopy.kernel.data import LocalIndexTag
     for axis in kernel.local_sizes:
         found = False
-        for tags in kernel.iname_to_tags.values():
-            for tag in tags:
+        for iname in kernel.inames.values():
+            for tag in iname.tags:
                 if isinstance(tag, LocalIndexTag) and tag.axis == axis:
                     found = True
                     break
@@ -375,12 +377,24 @@ def check_for_data_dependent_parallel_bounds(kernel):
 # {{{ check access bounds
 
 class _AccessCheckMapper(WalkMapper):
-    def __init__(self, kernel, insn_id):
+    def __init__(self, kernel):
         self.kernel = kernel
-        self.insn_id = insn_id
 
-    def map_subscript(self, expr, domain):
-        WalkMapper.map_subscript(self, expr, domain)
+    @memoize_method
+    def _make_slab(self, space, iname, start, stop):
+        from loopy.isl_helpers import make_slab
+        return make_slab(space, iname, start, stop)
+
+    @memoize_method
+    def _get_access_range(self, domain, subscript):
+        from loopy.symbolic import (get_access_range, UnableToDetermineAccessRange)
+        try:
+            return get_access_range(domain, subscript)
+        except UnableToDetermineAccessRange:
+            return None
+
+    def map_subscript(self, expr, domain, insn_id):
+        WalkMapper.map_subscript(self, expr, domain, insn_id)
 
         from pymbolic.primitives import Variable
         from pymbolic.mapper.evaluator import UnknownVariableError
@@ -401,8 +415,7 @@ class _AccessCheckMapper(WalkMapper):
             if not isinstance(subscript, tuple):
                 subscript = (subscript,)
 
-            from loopy.symbolic import (get_dependencies, get_access_range,
-                    UnableToDetermineAccessRange)
+            from loopy.symbolic import get_dependencies
 
             available_vars = set(domain.get_var_dict())
             shape_deps = set()
@@ -422,7 +435,7 @@ class _AccessCheckMapper(WalkMapper):
 
             # apply predicates
             access_range = domain
-            insn = self.kernel.id_to_insn[self.insn_id]
+            insn = self.kernel.id_to_insn[insn_id]
             possible_warns = []
             if insn.predicates:
                 from loopy.symbolic import constraints_from_expr
@@ -444,10 +457,8 @@ class _AccessCheckMapper(WalkMapper):
                                 # data dependent bounds
                                 pass
 
-            try:
-                access_range = get_access_range(access_range, subscript,
-                        self.kernel.assumptions)
-            except UnableToDetermineAccessRange:
+            access_range = self._get_access_range(domain, subscript)
+            if access_range is None:
                 # Likely: index was non-affine, nothing we can do.
                 return
 
@@ -456,8 +467,7 @@ class _AccessCheckMapper(WalkMapper):
                 shape_axis = shape[idim]
 
                 if shape_axis is not None:
-                    from loopy.isl_helpers import make_slab
-                    slab = make_slab(
+                    slab = self._make_slab(
                             shape_domain.get_space(), (dim_type.in_, idim),
                             0, shape_axis)
 
@@ -474,9 +484,9 @@ class _AccessCheckMapper(WalkMapper):
                 raise LoopyError("'%s' in instruction '%s' "
                         "accesses out-of-bounds array element (could not"
                         " establish '%s' is a subset of '%s')."
-                        % (expr, self.insn_id, access_range, shape_domain))
+                        % (expr, insn_id, access_range, shape_domain))
 
-    def map_if(self, expr, domain):
+    def map_if(self, expr, domain, insn_id):
         from loopy.symbolic import condition_to_set
         then_set = condition_to_set(domain.space, expr.condition)
         if then_set is None:
@@ -486,8 +496,8 @@ class _AccessCheckMapper(WalkMapper):
         else:
             else_set = then_set.complement()
 
-        self.rec(expr.then, domain & then_set)
-        self.rec(expr.else_, domain & else_set)
+        self.rec(expr.then, domain & then_set, insn_id)
+        self.rec(expr.else_, domain & else_set, insn_id)
 
 
 def check_bounds(kernel):
@@ -496,6 +506,8 @@ def check_bounds(kernel):
     """
     from loopy.kernel.instruction import get_insn_domain
     temp_var_names = set(kernel.temporary_variables)
+    acm = _AccessCheckMapper(kernel)
+    kernel_assumptions_is_universe = kernel.assumptions.is_universe()
     for insn in kernel.instructions:
         domain = get_insn_domain(insn, kernel)
 
@@ -503,12 +515,14 @@ def check_bounds(kernel):
         if set(domain.get_var_names(dim_type.param)) & temp_var_names:
             continue
 
-        acm = _AccessCheckMapper(kernel, insn.id)
-        domain, assumptions = isl.align_two(domain, kernel.assumptions)
-        domain_with_assumptions = domain & assumptions
+        if kernel_assumptions_is_universe:
+            domain_with_assumptions = domain
+        else:
+            domain, assumptions = isl.align_two(domain, kernel.assumptions)
+            domain_with_assumptions = domain & assumptions
 
         def run_acm(expr):
-            acm(expr, domain_with_assumptions)
+            acm(expr, domain_with_assumptions, insn.id)
             return expr
 
         insn.with_transformed_expressions(run_acm)
@@ -644,6 +658,12 @@ def _check_variable_access_ordered_inner(kernel):
     # where the tuple denotes a pair of instructions IDs, and the variable
     # names are the ones that necessitate a dependency.
     #
+    # This mapping describes all the pairs of instructions (involving at least
+    # one write) that require ordering by way of a dependency.
+    # This mapping is then "whittled down" to remove pairs that have
+    # dependencies between them. E.g. a pair of writers will be contained in
+    # the mapping in both directions.
+    #
     # Note: This can be worst-case O(n^2) in the number of instructions.
     dep_reqs_to_vars = {}
 
@@ -673,14 +693,12 @@ def _check_variable_access_ordered_inner(kernel):
 
     # }}}
 
-    # depends_on: mapping from insn_ids to their dependencies
-    depends_on = {insn.id: set() for insn in
-            kernel.instructions}
-    # rev_depends: mapping from insn_ids to their reverse deps.
-    rev_depends = {insn.id: set() for insn in
-            kernel.instructions}
+    # {{{ compute rev_depends, depends_on
 
-    # {{{ populate rev_depends, depends_on
+    # depends_on: mapping from insn_ids to their dependencies
+    depends_on = {insn.id: set() for insn in kernel.instructions}
+    # rev_depends: mapping from insn_ids to their reverse deps.
+    rev_depends = {insn.id: set() for insn in kernel.instructions}
 
     for insn in kernel.instructions:
         depends_on[insn.id].update(insn.depends_on)
@@ -693,45 +711,64 @@ def _check_variable_access_ordered_inner(kernel):
 
     topological_order = _get_topological_order(kernel)
 
-    def discard_dep_reqs_in_order(dep_reqs_to_vars, edges, order):
+    def satisfy_dep_reqs_in_order(dep_reqs_to_vars, edges, order):
         """
-        Subtracts dependency requirements of insn_ids by all direct/indirect
-        predecessors of a directed graph of insn_ids as nodes and *edges* as
-        the connectivity.
-
-        :arg order: An instance of :class:`list` of instruction ids in which the
-            *edges* graph is to be traversed.
+        Considering a graph defined by *edges* (as ``key -> value``),
+        remove pairs of nodes from *dep_reqs_to_vars* for which edges
+        exist in the graph. In doing so, make use of the topological
+        order *order* (given as a sequence of *nodes*). For ``i<j``,
+        no direct or indirect edges from ``order[j]`` to ``order[i]``
+        exist. (All edges go from 'low index' to 'high index'.)
         """
-        # predecessors: mapping from insn_id to its direct/indirect
-        # predecessors
-        predecessors = {}
 
-        for insn_id in order:
-            # insn_predecessors:insn_id's direct+indirect predecessors
+        insn_to_req_deps = defaultdict(set)
+        insn_to_order = {insn: i for i, insn in enumerate(order)}
 
-            # This set of predecessors is complete because we're
-            # traversing in topological order: No predecessor
-            # can occur after the instruction itself.
-            insn_predecessors = predecessors.pop(insn_id, set())
+        # Use dep_reqs_to_vars to construct insn_to_req_deps, listing
+        # path endpoints pred -> ... -> insn to be considered for elimination.
+        for insn, pred in dep_reqs_to_vars:
+            if insn_to_order[pred] > insn_to_order[insn]:
+                # If *pred* happens after *insn*, then there is no path
+                # *pred* -> ... -> *insn*.
+                continue
 
-            for pred in insn_predecessors:
-                dep_reqs_to_vars.pop(
-                    (insn_id, pred),
-                    # don't fail if pair doesn't exist
-                    None)
+            insn_to_req_deps[pred].add(insn)
 
-            for successor in edges[insn_id]:
-                predecessors.setdefault(successor, set()).update(
-                        insn_predecessors | {insn_id})
+        for pred, check_successors in insn_to_req_deps.items():
+            # for each *pred*, we will calculate all the direct/indirect
+            # instructions that can be reached.
+            seen_successors = set()
+            # first let us start with direct sucessors
+            to_check = edges[pred].copy()
+            while to_check:
+                successor = to_check.pop()
+                seen_successors.add(successor)
+
+                # Next we check if this successor was in *dep_reqs_to_vars*
+                # and remove the pair from there if it is
+                if successor in check_successors:
+                    dep_reqs_to_vars.pop((successor, pred))
+                    check_successors.remove(successor)
+                    if not check_successors:
+                        break
+
+                # next we iterate through the successors of successor.
+                for edge in edges[successor]:
+                    if edge not in seen_successors:
+                        to_check.add(edge)
 
     # forward dep. graph traversal in reverse topological sort order
     # (proceeds "end of program" -> "beginning of program")
-    discard_dep_reqs_in_order(dep_reqs_to_vars, depends_on,
+    satisfy_dep_reqs_in_order(dep_reqs_to_vars, depends_on,
             topological_order[::-1])
+
+    # Run the same thing on the reversed graph, with the reverse topological_order.
+    # All edges above are 'low index to high index'.
+    # Reversing graph and order maintains this property.
 
     # reverse dep. graph traversal in topological sort order
     # (proceeds "beginning of program" -> "end of program")
-    discard_dep_reqs_in_order(dep_reqs_to_vars, rev_depends, topological_order)
+    satisfy_dep_reqs_in_order(dep_reqs_to_vars, rev_depends, topological_order)
 
     # }}}
 
@@ -865,73 +902,10 @@ def pre_schedule_checks(kernel):
 
 # {{{ check for unused hw axes
 
-# {{{ find boostable insn ids
-
-def _find_boostable_insn_ids(kernel):
-    """There used to exist a broken heuristic called "boostability" that allowed
-    instructions to be pushed into hardware-parallel loops. This function survives
-    of that, for now, to provide a thin veneer of compatibility.
-    """
-    logger.debug("%s: idempotence" % kernel.name)
-
-    writer_map = kernel.writer_map()
-
-    arg_names = {arg.name for arg in kernel.args}
-
-    var_names = arg_names | set(kernel.temporary_variables.keys())
-
-    reads_map = {
-            insn.id: insn.read_dependency_names() & var_names
-            for insn in kernel.instructions}
-
-    from collections import defaultdict
-    dep_graph = defaultdict(set)
-
-    for insn in kernel.instructions:
-        dep_graph[insn.id] = {writer_id
-                for var in reads_map[insn.id]
-                for writer_id in writer_map.get(var, set())}
-
-    # Find SCCs of dep_graph. These are used for checking if the instruction is
-    # in a dependency cycle.
-    from pytools.graph import compute_sccs
-
-    sccs = {item: scc
-            for scc in compute_sccs(dep_graph)
-            for item in scc}
-
-    non_idempotently_updated_vars = set()
-    boostable_insn_ids = set()
-
-    for insn in kernel.instructions:
-        boostable = len(sccs[insn.id]) == 1 and insn.id not in dep_graph[insn.id]
-
-        if boostable:
-            boostable_insn_ids.add(insn.id)
-        else:
-            non_idempotently_updated_vars.update(
-                    insn.assignee_var_names())
-
-    # {{{ remove boostability from isns that access non-idempotently updated vars
-
-    for insn_id in boostable_insn_ids.copy():
-        insn = kernel.id_to_insn[insn_id]
-        if bool(non_idempotently_updated_vars & insn.dependency_names()):
-            boostable_insn_ids.remove(insn_id)
-
-    # }}}
-
-    return boostable_insn_ids
-
-# }}}
-
-
 def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
     from loopy.schedule import (CallKernel, RunInstruction,
             Barrier, EnterLoop, LeaveLoop, ReturnFromKernel,
             get_insn_ids_for_block_at, gather_schedule_block)
-
-    boostable_insn_ids = _find_boostable_insn_ids(kernel)
 
     if sched_index is None:
         group_axes = set()
@@ -985,44 +959,24 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
                     raise LoopyError("auto local tag encountered")
 
             if group_axes != group_axes_used:
-                if insn.id in boostable_insn_ids:
-                    warn("instruction '%s' does not use all group hw axes"
-                            " (available: %s used:%s). Loopy will generate code"
-                            " with the instruction executed along all the"
-                            " missing hw axes. This will result in an"
-                            " error from 2021.x onwards, calling"
-                            " loopy.add_inames_for_unused_hw_axes(...)"
-                            " might help in the transition."
-                            % (insn.id,
-                                ",".join(str(i) for i in group_axes),
-                                ",".join(str(i) for i in group_axes_used)),
-                            DeprecationWarning, stacklevel=2)
-                else:
-                    raise LoopyError("instruction '%s' does not use all group"
-                            " hw axes (available: %s used:%s)"
-                            % (insn.id,
-                                ",".join(str(i) for i in group_axes),
-                                ",".join(str(i) for i in group_axes_used)))
+                raise LoopyError(
+                        f"instruction '{insn.id}' does not use all group hw axes "
+                        "(available: %s used: %s). "
+                        "Calling loopy.add_inames_for_unused_hw_axes(...) "
+                        "might help."
+                        % (
+                            ",".join(str(i) for i in group_axes),
+                            ",".join(str(i) for i in group_axes_used)))
 
             if local_axes != local_axes_used:
-                if insn.id in boostable_insn_ids:
-                    warn("instruction '%s' does not use all local hw axes"
-                            " (available: %s used:%s). Loopy will generate code"
-                            " with the instruction executed along all the"
-                            " missing hw axes. This will result in an"
-                            " error from 2021.x onwards, calling"
-                            " loopy.add_inames_for_unused_hw_axes(...)"
-                            " might help in the transition."
-                            % (insn.id,
-                                ",".join(str(i) for i in local_axes),
-                                ",".join(str(i) for i in local_axes_used)),
-                            DeprecationWarning, stacklevel=2)
-                else:
-                    raise LoopyError("instruction '%s' does not use all local"
-                            " hw axes (available: %s used:%s)"
-                            % (insn.id,
-                                ",".join(str(i) for i in local_axes),
-                                ",".join(str(i) for i in local_axes_used)))
+                raise LoopyError(
+                        f"instruction '{insn.id}' does not use all local hw axes "
+                        "(available: %s used: %s). "
+                        "Calling loopy.add_inames_for_unused_hw_axes(...) "
+                        "might help."
+                        % (
+                            ",".join(str(i) for i in local_axes),
+                            ",".join(str(i) for i in local_axes_used)))
 
         elif isinstance(sched_item, (Barrier, EnterLoop, LeaveLoop)):
             i += 1

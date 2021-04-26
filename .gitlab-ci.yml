@@ -1,10 +1,34 @@
+stages:
+  - test
+  - deploy
+
 Python 3 POCL:
+  stage: test
   script:
   - export PY_EXE=python3
   - export PYOPENCL_TEST=portable:pthread
   - export EXTRA_INSTALL="pybind11 numpy mako"
   - export LOOPY_NO_CACHE=1
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  tags:
+  - python3
+  - pocl
+  except:
+  - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
+
+Python 3 POCL without arg check:
+  stage: test
+  script:
+  - export PY_EXE=python3
+  - export PYOPENCL_TEST=portable:pthread
+  - export EXTRA_INSTALL="pybind11 numpy mako"
+  - export LOOPY_NO_CACHE=1
+  - export _LOOPY_SKIP_ARG_CHECKS=1
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
   - python3
@@ -16,6 +40,7 @@ Python 3 POCL:
       junit: test/pytest.xml
 
 Python 3 Intel:
+  stage: test
   script:
   - export PY_EXE=python3
   - export PYOPENCL_TEST=intel
@@ -23,7 +48,7 @@ Python 3 Intel:
   - export LOOPY_NO_CACHE=1
   - export LOOPY_INTEL_CL_OK_FOR_TEST_REF=1
   - source /opt/enable-intel-cl.sh
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
   - python3
@@ -36,11 +61,12 @@ Python 3 Intel:
 
 
 Python 3 POCL Twice With Cache:
+  stage: test
   script: |
     export PY_EXE=python3
     export PYOPENCL_TEST=portable:pthread
     export EXTRA_INSTALL="pybind11 numpy mako"
-    curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+    curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
     . ./ci-support.sh
     build_py_project_in_venv
     ( test_py_project )
@@ -60,7 +86,7 @@ Python 3 POCL Twice With Cache:
 #   - export PY_EXE=pypy
 #   - export PYOPENCL_TEST=portable:pthread
 #   - export EXTRA_INSTALL="pybind11 numpy mako"
-#   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+#   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
 #   - ". ./build-and-test-py-project.sh"
 #   tags:
 #   - pypy
@@ -69,12 +95,13 @@ Python 3 POCL Twice With Cache:
 #   - tags
 
 Python 3 POCL Examples:
+  stage: test
   script: |
     export PY_EXE=python3
     export PYOPENCL_TEST=portable:pthread
     export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipykernel nbconvert"
 
-    curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/ci-support.sh
+    curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
     . ./ci-support.sh
     build_py_project_in_venv
 
@@ -95,12 +122,13 @@ Python 3 POCL Examples:
   - tags
 
 Pylint:
+  stage: test
   script:
   # Needed to avoid name shadowing issues when running from source directory.
   - PROJECT_INSTALL_FLAGS="--editable"
   - export PY_EXE=python3
   - EXTRA_INSTALL="pybind11 numpy mako matplotlib ipykernel ply fparser"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-pylint.sh
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-pylint.sh
   - . ./prepare-and-run-pylint.sh "$CI_PROJECT_NAME" test/test_*.py
   tags:
   - python3
@@ -108,18 +136,37 @@ Pylint:
   - tags
 
 Documentation:
+  stage: deploy
   script:
+  - PROJECT=loopy
   - EXTRA_INSTALL="pybind11 numpy"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-docs.sh
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-docs.sh
   - ". ./build-docs.sh"
   tags:
   - python3
 
 Flake8:
+  stage: test
   script:
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-flake8.sh
   - . ./prepare-and-run-flake8.sh "$CI_PROJECT_NAME" test examples
   tags:
   - python3
+  except:
+  - tags
+
+Benchmarks:
+  stage: test
+  script:
+  - CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+  - PROJECT=loopy
+  - PYOPENCL_TEST=portable:pthread
+  - export LOOPY_NO_CACHE=1
+  - export ASV_FACTOR=1.5
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-benchmark-py-project.sh
+  - ". ./build-and-benchmark-py-project.sh"
+  tags:
+  - linux
+  - benchmark
   except:
   - tags

@@ -56,6 +56,17 @@ __doc__ = """
 """
 
 
+def get_kernel_parameter_space(kernel):
+    return isl.Space.create_from_names(kernel.isl_context,
+            set=[], params=sorted(list(kernel.outer_params()))).params()
+
+
+def get_kernel_zero_pwqpolynomial(kernel):
+    space = get_kernel_parameter_space(kernel)
+    space = space.insert_dims(dim_type.out, 0, 1)
+    return isl.PwQPolynomial.zero(space)
+
+
 # {{{ GuardedPwQPolynomial
 
 class GuardedPwQPolynomial:
@@ -578,10 +589,11 @@ class MemAccess(Record):
        A :class:`str` that specifies the variable name of the data
        accessed.
 
-    .. attribute:: variable_tag
+    .. attribute:: variable_tags
 
-       A :class:`str` that specifies the variable tag of a
-       :class:`loopy.symbolic.TaggedVariable`.
+       A :class:`frozenset` of subclasses of :class:`~pytools.tag.Tag`
+       that reflects :attr:`~loopy.symbolic.TaggedVariable.tags` of
+       an accessed variable.
 
     .. attribute:: count_granularity
 
@@ -599,7 +611,8 @@ class MemAccess(Record):
     """
 
     def __init__(self, mtype=None, dtype=None, lid_strides=None, gid_strides=None,
-                 direction=None, variable=None, variable_tag=None,
+                 direction=None, variable=None,
+                 *, variable_tags=None, variable_tag=None,
                  count_granularity=None):
 
         if count_granularity not in CountGranularity.ALL+[None]:
@@ -607,18 +620,50 @@ class MemAccess(Record):
                     "not allowed. count_granularity options: %s"
                     % (count_granularity, CountGranularity.ALL+[None]))
 
+        # {{{ normalize variable_tags
+
+        if variable_tags is not None and variable_tag is not None:
+            raise TypeError(
+                    "may not specify both 'variable_tags' and 'variable_tag'")
+        if variable_tag is not None:
+            from loopy.kernel.creation import _normalize_string_tag
+            variable_tags = frozenset({_normalize_string_tag(variable_tag)})
+
+            from warnings import warn
+            warn("Passing 'variable_tag' to MemAccess is deprecated and will "
+                    "stop working in 2022. Pass variable_tags instead.")
+
+        if variable_tags is None:
+            variable_tags = frozenset()
+
+        # }}}
+
         if dtype is None:
             Record.__init__(self, mtype=mtype, dtype=dtype, lid_strides=lid_strides,
                             gid_strides=gid_strides, direction=direction,
-                            variable=variable, variable_tag=variable_tag,
+                            variable=variable, variable_tags=variable_tags,
                             count_granularity=count_granularity)
         else:
             from loopy.types import to_loopy_type
             Record.__init__(self, mtype=mtype, dtype=to_loopy_type(dtype),
                             lid_strides=lid_strides, gid_strides=gid_strides,
                             direction=direction, variable=variable,
-                            variable_tag=variable_tag,
+                            variable_tags=variable_tags,
                             count_granularity=count_granularity)
+
+    @property
+    def variable_tag(self):
+        from warnings import warn
+        warn("Accessing MemAccess.variable_tag is deprecated and will stop working "
+                "in 2022. Use MemAccess.variable_tags instead.", DeprecationWarning,
+                stacklevel=2)
+
+        if len(self.variable_tags) != 1:
+            raise ValueError("cannot access MemAccess.variable_tag: access has "
+                    f"{len(self.variable_tags)} tags")
+
+        tag, = self.variable_tags
+        return tag
 
     def __hash__(self):
         # Note that this means lid_strides and gid_strides must be sorted
@@ -636,7 +681,7 @@ class MemAccess(Record):
                 sorted(self.gid_strides.items())),
             self.direction,
             self.variable,
-            self.variable_tag,
+            self.variable_tags,
             self.count_granularity)
 
 # }}}
@@ -1020,9 +1065,9 @@ class GlobalMemAccessCounter(MemAccessCounter):
     def map_subscript(self, expr):
         name = expr.aggregate.name
         try:
-            var_tag = expr.aggregate.tag
+            var_tags = expr.aggregate.tags
         except AttributeError:
-            var_tag = None
+            var_tags = frozenset()
 
         if name in self.knl.arg_dict:
             array = self.knl.arg_dict[name]
@@ -1051,7 +1096,7 @@ class GlobalMemAccessCounter(MemAccessCounter):
                             lid_strides=dict(sorted(lid_strides.items())),
                             gid_strides=dict(sorted(gid_strides.items())),
                             variable=name,
-                            variable_tag=var_tag,
+                            variable_tags=var_tags,
                             count_granularity=count_granularity
                             ): 1}
                           ) + self.rec(expr.index_tuple)
@@ -1231,7 +1276,7 @@ def count(kernel, set, space=None):
     return add_assumptions_guard(kernel, count)
 
 
-def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
+def get_unused_hw_axes_factor(knl, insn, disregard_local_axes):
     # FIXME: Multi-kernel support
     gsize, lsize = knl.get_grid_size_upper_bounds()
 
@@ -1250,12 +1295,12 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
                 g_used.add(tag.axis)
 
     def mult_grid_factor(used_axes, size):
-        result = 1
+        result = get_kernel_zero_pwqpolynomial(knl) + 1
+
         for iaxis, size in enumerate(size):
             if iaxis not in used_axes:
                 if not isinstance(size, int):
-                    if space is not None:
-                        size = size.align_params(space)
+                    size = size.align_params(result.space)
 
                     size = isl.PwQPolynomial.from_pw_aff(size)
 
@@ -1271,6 +1316,17 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
     return add_assumptions_guard(knl, result)
 
 
+def count_inames_domain(knl, inames):
+    space = get_kernel_parameter_space(knl)
+    if not inames:
+        return add_assumptions_guard(knl,
+                get_kernel_zero_pwqpolynomial(knl) + 1)
+
+    inames_domain = knl.get_inames_domain(inames)
+    domain = inames_domain.project_out_except(inames, [dim_type.set])
+    return count(knl, domain, space=space)
+
+
 def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False):
 
     insn_inames = insn.within_inames
@@ -1281,19 +1337,11 @@ def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False)
                 for iname in insn_inames
                 if not knl.iname_tags_of_type(iname, LocalIndexTag)]
 
-    inames_domain = knl.get_inames_domain(insn_inames)
-    domain = (inames_domain.project_out_except(
-                            insn_inames, [dim_type.set]))
-
-    space = isl.Space.create_from_names(isl.DEFAULT_CONTEXT,
-            set=[], params=knl.outer_params())
-
-    c = count(knl, domain, space=space)
+    c = count_inames_domain(knl, insn_inames)
 
     if count_redundant_work:
         unused_fac = get_unused_hw_axes_factor(knl, insn,
-                        disregard_local_axes=disregard_local_axes,
-                        space=space)
+                        disregard_local_axes=disregard_local_axes)
         return c * unused_fac
     else:
         return c
@@ -1329,7 +1377,16 @@ def _get_insn_count(knl, insn_id, subgroup_size, count_redundant_work,
         workgroup_size = 1
         if local_size:
             for size in local_size:
-                s = aff_to_expr(size)
+                if size.n_piece() != 1:
+                    raise LoopyError("Workgroup size found to be genuinely "
+                        "piecewise defined, which is not allowed in stats gathering")
+
+                (valid_set, aff), = size.get_pieces()
+
+                assert ((valid_set.n_basic_set() == 1)
+                        and (valid_set.get_basic_sets()[0].is_universe()))
+
+                s = aff_to_expr(aff)
                 if not isinstance(s, int):
                     raise LoopyError("Cannot count insn with %s granularity, "
                                      "work-group size is not integer: %s"
@@ -1621,34 +1678,24 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
 
     for insn in knl.instructions:
         if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
-            access_expr = (
+            insn_access_map = (
                     access_counter_g(insn.expression)
                     + access_counter_l(insn.expression)
                     ).with_set_attributes(direction="load")
 
-            access_assignee = (
-                    access_counter_g(insn.assignee)
-                    + access_counter_l(insn.assignee)
-                    ).with_set_attributes(direction="store")
+            for assignee in insn.assignees:
+                insn_access_map += (
+                        access_counter_g(assignee)
+                        + access_counter_l(assignee)
+                        ).with_set_attributes(direction="store")
 
-            for key, val in access_expr.count_map.items():
-
+            for key, val in insn_access_map.count_map.items():
                 access_map = (
                         access_map
                         + ToCountMap({key: val})
                         * _get_insn_count(knl, insn.id, subgroup_size,
                                           count_redundant_work,
                                           key.count_granularity))
-
-            for key, val in access_assignee.count_map.items():
-
-                access_map = (
-                        access_map
-                        + ToCountMap({key: val})
-                        * _get_insn_count(knl, insn.id, subgroup_size,
-                                          count_redundant_work,
-                                          key.count_granularity))
-
         elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
             pass
         else:
@@ -1665,7 +1712,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                             gid_strides=mem_access.gid_strides,
                             direction=mem_access.direction,
                             variable=mem_access.variable,
-                            variable_tag=mem_access.variable_tag,
+                            variable_tags=mem_access.variable_tags,
                             count_granularity=mem_access.count_granularity):
                         ct
                         for mem_access, ct in access_map.count_map.items()},

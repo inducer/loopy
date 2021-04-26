@@ -226,14 +226,8 @@ def _split_iname_backend(kernel, iname_to_split,
 
     # {{{ return the same kernel if no kernel matches
 
-    def _do_not_transform_if_no_within_matches():
-        for insn in kernel.instructions:
-            if within(kernel, insn):
-                return
-
+    if not any(within(kernel, insn) for insn in kernel.instructions):
         return kernel
-
-    _do_not_transform_if_no_within_matches()
 
     # }}}
 
@@ -279,10 +273,7 @@ def _split_iname_backend(kernel, iname_to_split,
                     (insn.within_inames.copy()
                     - frozenset([iname_to_split]))
                     | frozenset([outer_iname, inner_iname]))
-        else:
-            new_within_inames = insn.within_inames
-
-        insn = insn.copy(
+            insn = insn.copy(
                 within_inames=new_within_inames)
 
         new_insns.append(insn)
@@ -314,7 +305,15 @@ def _split_iname_backend(kernel, iname_to_split,
     ins = _InameSplitter(rule_mapping_context, within,
             iname_to_split, outer_iname, inner_iname, new_loop_index)
 
-    kernel = ins.map_kernel(kernel)
+    from loopy.kernel.instruction import MultiAssignmentBase
+
+    def check_insn_has_iname(kernel, insn, *args):
+        return (not isinstance(insn, MultiAssignmentBase)
+                or iname_to_split in insn.dependency_names()
+                or iname_to_split in insn.reduction_inames())
+
+    kernel = ins.map_kernel(kernel, within=check_insn_has_iname,
+                            map_tvs=False, map_args=False)
     kernel = rule_mapping_context.finish_kernel(kernel)
 
     for existing_tag in existing_tags:
@@ -508,11 +507,26 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
 
 
 def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
-    """
-    :arg inames: fastest varying last
+    """In a sense, the inverse of :func:`split_iname`. Takes in inames,
+    finds their bounds (all but the first have to be bounded), and combines
+    them into a single loop via analogs of ``new_iname = i0 * LEN(i1) + i1``.
+    The old inames are re-obtained via the appropriate division/modulo
+    operations.
+
+    :arg inames: a sequence of inames, fastest varying last
     :arg within: a stack match as understood by
         :func:`loopy.match.parse_stack_match`.
     """
+
+    from loopy.match import parse_match
+    within = parse_match(within)
+
+    # {{{ return the same kernel if no kernel matches
+
+    if not any(within(kernel, insn) for insn in kernel.instructions):
+        return kernel
+
+    # }}}
 
     # now fastest varying first
     inames = inames[::-1]
@@ -634,17 +648,14 @@ def untag_inames(kernel, iname_to_untag, tag_type):
 
     .. versionadded:: 2018.1
     """
+    from loopy.kernel.data import filter_iname_tags_by_type
+    tags_to_remove = filter_iname_tags_by_type(
+            kernel.inames[iname_to_untag].tags, tag_type)
+    new_inames = kernel.inames.copy()
+    new_inames[iname_to_untag] = kernel.inames[iname_to_untag].without_tags(
+            tags_to_remove, verify_existence=False)
 
-    knl_iname_to_tags = kernel.iname_to_tags.copy()
-    old_tags = knl_iname_to_tags.get(iname_to_untag, frozenset())
-    old_tags = {tag for tag in old_tags if not isinstance(tag, tag_type)}
-
-    if old_tags:
-        knl_iname_to_tags[iname_to_untag] = old_tags
-    else:
-        del knl_iname_to_tags[iname_to_untag]
-
-    return kernel.copy(iname_to_tags=knl_iname_to_tags)
+    return kernel.copy(inames=new_inames)
 
 # }}}
 
@@ -680,6 +691,9 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
         iname_to_tag = [
                 parse_kv(s) for s in iname_to_tag.split(",")
                 if s.strip()]
+
+    if not iname_to_tag:
+        return kernel
 
     # convert dict to list of tuples
     if isinstance(iname_to_tag, dict):
@@ -722,9 +736,6 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
     iname_to_tag = [(iname, parse_tag(tag)) for iname, tag in iname_to_tag]
 
-    from loopy.kernel.data import (ConcurrentTag, ForceSequentialTag,
-                                   filter_iname_tags_by_type)
-
     # {{{ globbing
 
     all_inames = kernel.all_inames()
@@ -752,31 +763,17 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
     # }}}
 
-    knl_iname_to_tags = kernel.iname_to_tags.copy()
-    for iname, new_tag in iname_to_tag.items():
+    knl_inames = kernel.inames.copy()
+    for name, new_tag in iname_to_tag.items():
         if not new_tag:
             continue
 
-        old_tags = kernel.iname_tags(iname)
+        if name not in kernel.all_inames():
+            raise ValueError("cannot tag '%s'--not known" % name)
 
-        if iname not in kernel.all_inames():
-            raise ValueError("cannot tag '%s'--not known" % iname)
+        knl_inames[name] = knl_inames[name].tagged(new_tag)
 
-        if (isinstance(new_tag, ConcurrentTag)
-                and filter_iname_tags_by_type(old_tags, ForceSequentialTag)):
-            raise ValueError("cannot tag '%s' as parallel--"
-                    "iname requires sequential execution" % iname)
-
-        if (isinstance(new_tag, ForceSequentialTag)
-                and filter_iname_tags_by_type(old_tags, ConcurrentTag)):
-            raise ValueError("'%s' is already tagged as parallel, "
-                    "but is now prohibited from being parallel "
-                    "(likely because of participation in a precompute or "
-                    "a reduction)" % iname)
-
-        knl_iname_to_tags[iname] = old_tags | frozenset([new_tag])
-
-    return kernel.copy(iname_to_tags=knl_iname_to_tags)
+    return kernel.copy(inames=knl_inames)
 
 # }}}
 
@@ -905,7 +902,7 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
             within=within)
 
     kernel = rule_mapping_context.finish_kernel(
-            indup.map_kernel(kernel))
+            indup.map_kernel(kernel, within=within))
 
     # }}}
 
@@ -1007,7 +1004,7 @@ def get_iname_duplication_options(kernel, use_boostable_into=None):
 
     Some kernels require the duplication of inames in order to be schedulable, as the
     forced iname dependencies define an over-determined problem to the scheduler.
-    Consider the following minimal example:
+    Consider the following minimal example::
 
         knl = lp.make_kernel(["{[i,j]:0<=i,j<n}"],
                              \"\"\"
@@ -1052,8 +1049,7 @@ def get_iname_duplication_options(kernel, use_boostable_into=None):
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_iname_sets):
         # Check whether this iname has a parallel tag and discard it if so
-        if (iname in kernel.iname_to_tags
-                and kernel.iname_tags_of_type(iname, ConcurrentTag)):
+        if kernel.iname_tags_of_type(iname, ConcurrentTag):
             continue
 
         # Reconstruct an object that may be passed to the within parameter of
@@ -1179,7 +1175,7 @@ def get_used_inames(kernel):
     used_inames = set()
     for insn in exp_kernel.instructions:
         used_inames.update(
-                exp_kernel.insn_inames(insn.id)
+                insn.within_inames
                 | insn.reduction_inames())
 
     return used_inames
@@ -1243,11 +1239,14 @@ def remove_any_newly_unused_inames(transformation_func):
         remove_newly_unused_inames = kwargs.pop("remove_newly_unused_inames", True)
 
         if remove_newly_unused_inames:
-            # determine which inames were already unused
-            inames_already_unused = kernel.all_inames() - get_used_inames(kernel)
-
             # call transform
             transformed_kernel = transformation_func(kernel, *args, **kwargs)
+
+            if transformed_kernel is kernel:
+                return kernel
+
+            # determine which inames were already unused
+            inames_already_unused = kernel.all_inames() - get_used_inames(kernel)
 
             # Remove inames that are unused due to transform
             return remove_unused_inames(
@@ -1804,20 +1803,20 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
             AutoFitLocalIndexTag)
 
     n_local_axes = max([tag.axis
-        for tags in kernel.iname_to_tags.values()
-        for tag in tags
+        for iname in kernel.inames.values()
+        for tag in iname.tags
         if isinstance(tag, LocalIndexTag)],
         default=-1) + 1
 
     n_group_axes = max([tag.axis
-        for tags in kernel.iname_to_tags.values()
-        for tag in tags
+        for iname in kernel.inames.values()
+        for tag in iname.tags
         if isinstance(tag, GroupIndexTag)],
         default=-1) + 1
 
     contains_auto_local_tag = any([isinstance(tag, AutoFitLocalIndexTag)
-        for tags in kernel.iname_to_tags
-        for tag in tags])
+        for iname in kernel.inames.values()
+        for tag in iname.tags])
 
     if contains_auto_local_tag:
         raise LoopyError("Kernels containing l.auto tags are invalid"
@@ -1834,9 +1833,9 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
 
     for i in range(n_local_axes):
         ith_local_axes_tag = LocalIndexTag(i)
-        inames = [iname
-                for iname, tags in kernel.iname_to_tags.items()
-                if ith_local_axes_tag in tags]
+        inames = [name
+                for name, iname in kernel.inames.items()
+                if ith_local_axes_tag in iname.tags]
         if not inames:
             raise LoopyError(f"Unused local hw axes {i}.")
 
@@ -1844,9 +1843,9 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
 
     for i in range(n_group_axes):
         ith_group_axes_tag = GroupIndexTag(i)
-        inames = [iname
-                for iname, tags in kernel.iname_to_tags.items()
-                if ith_group_axes_tag in tags]
+        inames = [name
+                for name, iname in kernel.inames.items()
+                if ith_group_axes_tag in iname.tags]
         if not inames:
             raise LoopyError(f"Unused group hw axes {i}.")
 
@@ -1861,8 +1860,8 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
 
     for insn in kernel.instructions:
         if within(kernel, insn):
-            within_tags = frozenset().union(*(kernel.iname_to_tags.get(iname,
-                frozenset()) for iname in insn.within_inames))
+            within_tags = frozenset().union(*(kernel.inames[iname].tags
+                for iname in insn.within_inames))
             missing_local_axes = [i for i in range(n_local_axes)
                     if LocalIndexTag(i) not in within_tags]
             missing_group_axes = [i for i in range(n_group_axes)
