@@ -118,10 +118,6 @@ class SumpyBenchmarkSuite:
     time_schedule.warmup_time = 0
     time_generate_code.warmup_time = 0
 
-    # These are expensive operations. Run only once
-    time_schedule.number = 1
-    time_generate_code.number = 1
-
     # Run memory benchmarks as well
     peakmem_instantiate = time_instantiate
     peakmem_schedule = time_schedule
