@@ -286,7 +286,7 @@ def test_loop_nest_constraints_satisfied():
 def test_adding_multiple_nest_constraints_to_knl():
     ref_knl = lp.make_kernel(
             "{ [g,h,i,j,k,x,y,z]: 0<=g,h,i,j,k,x,y,z<n }",
-            '''
+            """
             out[g,h,i,j,k] = 2*a[g,h,i,j,k]
             for x,y
                 out2[x,y] = 2*a2[x,y]
@@ -294,7 +294,7 @@ def test_adding_multiple_nest_constraints_to_knl():
                     out3[x,y,z] = 2*a3[x,y,z]
                 end
             end
-            ''',
+            """,
             assumptions="n >= 1",
             )
     ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a,a2,a3": np.dtype(np.float32)})
