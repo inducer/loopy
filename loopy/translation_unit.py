@@ -749,7 +749,7 @@ def for_each_kernel(transform):
     return wraps(transform)(_collective_transform)
 
 
-def update_table(callables_table, clbl_id, clbl):
+def add_callable_to_table(callables_table, clbl_id, clbl):
     """
     Returns a tuple ``new_clbl_id, new_callables_table`` where
     *new_callables_table* is a copy of *callables_table* with *clbl* in its
