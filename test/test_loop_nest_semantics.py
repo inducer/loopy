@@ -471,6 +471,168 @@ def test_vec_innermost():
 # }}}
 
 
+# {{{ test_linearization_with_nesting_constraints
+
+def test_linearization_with_nesting_constraints():
+
+    def loop_order(linearization_items):
+        from loopy.schedule import EnterLoop
+        order = []
+        for linearization_item in linearization_items:
+            if isinstance(linearization_item, EnterLoop):
+                order.append(linearization_item.iname)
+        return order
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
+            '''
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]
+            ''',
+            assumptions="n >= 1",
+            )
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a": np.dtype(np.float32)})
+
+    # must_nest constraints
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "j", "h", "k", "g"),
+        )
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert loop_order(knl_linearized.linearization) == ["i", "j", "h", "k", "g"]
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("k", "{g, h, i, j}"),
+        )
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert loop_order(knl_linearized.linearization)[0] == "k"
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{g, h, i, j}", "k"),
+        )
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert loop_order(knl_linearized.linearization)[-1] == "k"
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{g, h, i}", "{j, k}"),
+        )
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert set(loop_order(knl_linearized.linearization)[-2:]) == set(["j", "k"])
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{g, h, i}", "{j, k}"),
+        )
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h}"),
+        )
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert set(loop_order(knl_linearized.linearization)[3:]) == set(["j", "k"])
+    assert set(loop_order(knl_linearized.linearization)[1:3]) == set(["g", "h"])
+    assert loop_order(knl_linearized.linearization)[0] == "i"
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h}", "{j, k}"),
+        )
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert set(loop_order(knl_linearized.linearization)[3:]) == set(["j", "k"])
+    assert set(loop_order(knl_linearized.linearization)[1:3]) == set(["g", "h"])
+    assert loop_order(knl_linearized.linearization)[0] == "i"
+
+    # must_not_nest constraints
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_not_nest=("~k", "k"),
+        )
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert loop_order(knl_linearized.linearization)[0] == "k"
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_not_nest=("k", "~k"),
+        )
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert loop_order(knl_linearized.linearization)[-1] == "k"
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_not_nest=("{j, k}", "~{j, k}"),
+        )
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert set(loop_order(knl_linearized.linearization)[-2:]) == set(["j", "k"])
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_not_nest=("{j, k}", "~{j, k}"),
+        )
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h}"),
+        )
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert set(loop_order(knl_linearized.linearization)[3:]) == set(["j", "k"])
+    assert set(loop_order(knl_linearized.linearization)[1:3]) == set(["g", "h"])
+    assert loop_order(knl_linearized.linearization)[0] == "i"
+
+    # must_nest + must_not_nest
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{g, h, i}", "{j, k}"),
+        must_not_nest=("i", "{g, h}"),
+        )
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert set(loop_order(knl_linearized.linearization)[3:]) == set(["j", "k"])
+    assert set(loop_order(knl_linearized.linearization)[0:2]) == set(["g", "h"])
+    assert loop_order(knl_linearized.linearization)[2] == "i"
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_not_nest=("i", "~i"),
+        )
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert loop_order(knl_linearized.linearization)[-1] == "i"
+
+    # contradictory must_not_nest
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_not_nest=("~k", "k"),
+        )
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_not_nest=("k", "h"),
+        )
+
+    try:
+        lp.get_one_linearized_kernel(
+            lp.preprocess_kernel(knl),
+            debug_args={"interactive": False},
+            )
+        assert False
+    except RuntimeError as e:
+        assert "no valid schedules found" in str(e)
+
+# }}}
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
