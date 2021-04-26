@@ -1669,10 +1669,32 @@ def generate_loop_schedules_internal(
         if inp:
             raise ScheduleDebugInput(inp)
 
+    # {{{ make sure ALL must_nest_constraints are satisfied
+
+    # (the check above avoids contradicting some must_nest constraints,
+    # but we don't know if all required nestings are present)
+    # TODO is this the only place we need to check all must_nest constraints?
+    must_constraints_satisfied = True
+    if sched_state.kernel.loop_nest_constraints:
+        from loopy.transform.iname import (
+            get_iname_nestings,
+            loop_nest_constraints_satisfied,
+        )
+        must_nest_constraints = sched_state.kernel.loop_nest_constraints.must_nest
+        if must_nest_constraints:
+            sched_tiers = get_iname_nestings(sched_state.schedule)
+            must_constraints_satisfied = loop_nest_constraints_satisfied(
+                sched_tiers, must_nest_constraints,
+                must_not_nest_constraints=None,  # (checked upon loop creation)
+                all_inames=kernel.all_inames())
+
+    # }}}
+
     if (
             not sched_state.active_inames
             and not sched_state.unscheduled_insn_ids
-            and not sched_state.preschedule):
+            and not sched_state.preschedule
+            and must_constraints_satisfied):
         # if done, yield result
         debug.log_success(sched_state.schedule)
 
