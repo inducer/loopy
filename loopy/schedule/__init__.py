@@ -1017,20 +1017,20 @@ def generate_loop_schedules_internal(
             continue
 
         nonconc_insn_inames_wanted = insn.within_inames - sched_state.parallel_inames
-        have = active_inames_set - sched_state.parallel_inames
+        nonconc_active_inames = active_inames_set - sched_state.parallel_inames
 
-        if nonconc_insn_inames_wanted != have:
+        if nonconc_insn_inames_wanted != nonconc_active_inames:
             is_ready = False
 
             if debug_mode:
-                if nonconc_insn_inames_wanted-have:
+                if nonconc_insn_inames_wanted-nonconc_active_inames:
                     print("instruction '%s' is missing inames '%s'"
                         % (format_insn(kernel, insn.id), ",".join(
-                            nonconc_insn_inames_wanted-have)))
-                if have-nonconc_insn_inames_wanted:
+                            nonconc_insn_inames_wanted-nonconc_active_inames)))
+                if nonconc_active_inames-nonconc_insn_inames_wanted:
                     print("instruction '%s' won't work under inames '%s'"
                         % (format_insn(kernel, insn.id), ",".join(
-                            have-nonconc_insn_inames_wanted)))
+                            nonconc_active_inames-nonconc_insn_inames_wanted)))
 
         # {{{ check if scheduling this insn is compatible with preschedule
 
@@ -1084,7 +1084,7 @@ def generate_loop_schedules_internal(
 
         # {{{ determine reachability
 
-        if (not is_ready and have <= nonconc_insn_inames_wanted):
+        if (not is_ready and nonconc_active_inames <= nonconc_insn_inames_wanted):
             reachable_insn_ids.add(insn_id)
 
         # }}}
