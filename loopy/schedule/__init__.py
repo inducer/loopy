@@ -1317,11 +1317,11 @@ def generate_loop_schedules_internal(
     # {{{ see if any loop can be entered now
 
     # Find inames that are being referenced by as yet unscheduled instructions.
-    needed_inames = set()
+    unscheduled_nonconc_insn_inames_needed = set()
     for insn_id in sched_state.unscheduled_insn_ids:
-        needed_inames.update(kernel.insn_inames(insn_id))
+        unscheduled_nonconc_insn_inames_needed.update(kernel.insn_inames(insn_id))
 
-    needed_inames = (needed_inames
+    unscheduled_nonconc_insn_inames_needed = (unscheduled_nonconc_insn_inames_needed
             # There's no notion of 'entering' a parallel loop
             - sched_state.parallel_inames
 
@@ -1330,7 +1330,8 @@ def generate_loop_schedules_internal(
 
     if debug_mode:
         print(75*"-")
-        print("inames still needed :", ",".join(needed_inames))
+        print("inames still needed :", ",".join(
+            unscheduled_nonconc_insn_inames_needed))
         print("active inames :", ",".join(sched_state.active_inames))
         print("inames entered so far :", ",".join(sched_state.entered_inames))
         print("reachable insns:", ",".join(reachable_insn_ids))
@@ -1339,10 +1340,10 @@ def generate_loop_schedules_internal(
             for grp, c in sched_state.active_group_counts.items()))
         print(75*"-")
 
-    if needed_inames:
+    if unscheduled_nonconc_insn_inames_needed:
         iname_to_usefulness = {}
 
-        for iname in needed_inames:
+        for iname in unscheduled_nonconc_insn_inames_needed:
 
             # {{{ check if scheduling this iname now is allowed/plausible
 
