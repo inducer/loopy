@@ -538,7 +538,7 @@ def update_must_nest_graph(must_nest_graph, must_nest, all_inames):
     from pytools.graph import contains_cycle
     if contains_cycle(new_graph_closure):
         raise ValueError(
-            "update_must_nest_graph: Loop priority cycle detected. "
+            "update_must_nest_graph: Nest constraint cycle detected. "
             "must_nest constraints %s inconsistent with existing "
             "must_nest constraints %s."
             % (must_nest, must_nest_graph))
