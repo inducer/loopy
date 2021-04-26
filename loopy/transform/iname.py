@@ -221,14 +221,15 @@ def process_loop_nest_specification(
 
     def raise_loop_nest_input_error(msg):
         valid_prio_rules = (
-            'Valid `must_nest` description formats: '
-            '"iname, iname, ..." or (str, str, str, ...), '
-            'where str can be of form '
-            '"iname" or "{iname, iname, ...}". No set complements allowed.\n'
-            'Valid `must_not_nest` description tuples must have len <= 2: '
-            '"iname, iname", "iname, ~iname", or '
-            '(str, str), where str can be of form '
-            '"iname", "~iname", "{iname, iname, ...}", or "~{iname, iname, ...}".'
+            "Valid `must_nest` description formats: "
+            "\"iname, iname, ...\" or (str, str, str, ...), "
+            "where str can be of form "
+            "\"iname\" or \"{iname, iname, ...}\". No set complements allowed.\n"
+            "Valid `must_not_nest` description tuples must have len <= 2: "
+            "\"iname, iname\", \"iname, ~iname\", or "
+            "(str, str), where str can be of form "
+            "\"iname\", \"~iname\", \"{iname, iname, ...}\", or "
+            "\"~{iname, iname, ...}\"."
             )
         raise ValueError(
                 "Invalid loop nest prioritization: %s\n"
@@ -276,10 +277,10 @@ def process_loop_nest_specification(
         iname_set_str_stripped = iname_set_str_stripped.strip("~{} ")
 
         # should be no remaining special characters besides comma and space
-        _error_on_regex_match(r'([^,\w ])', iname_set_str_stripped)
+        _error_on_regex_match(r"([^,\w ])", iname_set_str_stripped)
 
         # split by commas or spaces to get inames
-        inames = re.findall(r'([\w]+)(?:[ |,]*|$)', iname_set_str_stripped)
+        inames = re.findall(r"([\w]+)(?:[ |,]*|$)", iname_set_str_stripped)
 
         # make sure iname count matches what we expect from comma count
         if len(inames) != iname_set_str_stripped.count(",") + 1:
@@ -299,7 +300,7 @@ def process_loop_nest_specification(
         # Check for any special characters besides comma, space, and tilde.
         # E.g., curly braces would indicate that an iname set was NOT
         # passed as a tuple, which is not allowed.
-        _error_on_regex_match(r'([^,\w~ ])', nesting)
+        _error_on_regex_match(r"([^,\w~ ])", nesting)
 
         # Split by comma and process each tier
         nesting_as_tuple = tuple(
