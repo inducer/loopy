@@ -693,9 +693,8 @@ def check_must_not_nest_against_must_nest_graph(
 # }}}
 
 
-# {{{ get_iname_nestings (TODO copied in from old branch, not yet enabled)
+# {{{ get_iname_nestings
 
-"""
 def get_iname_nestings(outline):
     from loopy.schedule import EnterLoop, LeaveLoop
     # return a list of tuples representing deepest nestings
@@ -712,7 +711,6 @@ def get_iname_nestings(outline):
                 already_exiting_loops = True
             del current_tiers[-1]
     return nestings
-"""
 
 # }}}
 
