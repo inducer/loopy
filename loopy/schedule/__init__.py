@@ -363,6 +363,7 @@ def find_loop_insn_dep_map(
                 # If at least one of the three cases above succeeds for every
                 # dep_insn_iname, we can add dep_insn to iname's set of insns
                 # in result dict.
+                # (means dep_insn must be scheduled before entering iname loop)
                 iname_dep.add(dep_insn_id)
 
     return result
@@ -682,7 +683,7 @@ class SchedulerState(ImmutableRecord):
     # TODO document simplified_depends_on_graph
 
     @property
-    def last_entered_loop(self):
+    def deepest_active_iname(self):
         if self.active_inames:
             return self.active_inames[-1]
         else:
@@ -1161,34 +1162,34 @@ def generate_loop_schedules_internal(
 
     # {{{ see if we're ready to leave the innermost loop
 
-    last_entered_loop = sched_state.last_entered_loop
+    deepest_active_iname = sched_state.deepest_active_iname
 
-    if last_entered_loop is not None:
+    if deepest_active_iname is not None:
         can_leave = True
 
         if (
-                last_entered_loop in sched_state.prescheduled_inames
+                deepest_active_iname in sched_state.prescheduled_inames
                 and not (
                     isinstance(next_preschedule_item, LeaveLoop)
-                    and next_preschedule_item.iname == last_entered_loop)):
+                    and next_preschedule_item.iname == deepest_active_iname)):
             # A prescheduled loop can only be left if the preschedule agrees.
             if debug_mode:
                 print("cannot leave '%s' because of preschedule constraints"
-                      % last_entered_loop)
+                      % deepest_active_iname)
             can_leave = False
-        elif last_entered_loop not in sched_state.breakable_inames:
+        elif deepest_active_iname not in sched_state.breakable_inames:
             # If the iname is not breakable, then check that we've
             # scheduled all the instructions that require it.
 
             for insn_id in sched_state.unscheduled_insn_ids:
                 insn = kernel.id_to_insn[insn_id]
-                if last_entered_loop in insn.within_inames:
+                if deepest_active_iname in insn.within_inames:
                     if debug_mode:
                         print("cannot leave '%s' because '%s' still depends on it"
-                                % (last_entered_loop, format_insn(kernel, insn.id)))
+                            % (deepest_active_iname, format_insn(kernel, insn.id)))
 
                         # check if there's a dependency of insn that needs to be
-                        # outside of last_entered_loop.
+                        # outside of deepest_active_iname.
                         for subdep_id in gen_dependencies_except(
                                 kernel, insn_id,
                                 sched_state.scheduled_insn_ids,
@@ -1196,7 +1197,7 @@ def generate_loop_schedules_internal(
                             want = (kernel.insn_inames(subdep_id)
                                     - sched_state.parallel_inames)
                             if (
-                                    last_entered_loop not in want):
+                                    deepest_active_iname not in want):
                                 print(
                                     "%(warn)swarning:%(reset_all)s '%(iname)s', "
                                     "which the schedule is "
@@ -1210,7 +1211,7 @@ def generate_loop_schedules_internal(
                                     % {
                                         "warn": Fore.RED + Style.BRIGHT,
                                         "reset_all": Style.RESET_ALL,
-                                        "iname": last_entered_loop,
+                                        "iname": deepest_active_iname,
                                         "subdep": format_insn_id(kernel, subdep_id),
                                         "dep": format_insn_id(kernel, insn_id),
                                         "subdep_i": format_insn(kernel, subdep_id),
@@ -1237,7 +1238,7 @@ def generate_loop_schedules_internal(
                     if ignore_count:
                         ignore_count -= 1
                     else:
-                        assert sched_item.iname == last_entered_loop
+                        assert sched_item.iname == deepest_active_iname
                         if seen_an_insn:
                             can_leave = True
                         break
@@ -1248,12 +1249,12 @@ def generate_loop_schedules_internal(
                         sched_state.copy(
                             schedule=(
                                 sched_state.schedule
-                                + (LeaveLoop(iname=last_entered_loop),)),
+                                + (LeaveLoop(iname=deepest_active_iname),)),
                             active_inames=sched_state.active_inames[:-1],
                             insn_ids_to_try=insn_ids_to_try,
                             preschedule=(
                                 sched_state.preschedule
-                                if last_entered_loop
+                                if deepest_active_iname
                                 not in sched_state.prescheduled_inames
                                 else sched_state.preschedule[1:]),
                         ),
