@@ -585,9 +585,8 @@ def _expand_iname_sets_in_tuple(
 
 # {{{ checking constraints
 
-# {{{ check_must_nest (TODO copied in from old branch, not yet enabled)
+# {{{ check_must_nest
 
-"""
 def check_must_nest(all_loop_nests, must_nest, all_inames):
     # in order to make sure must_nest is satisfied, we
     # need to expand all must_nest tiers
@@ -607,7 +606,6 @@ def check_must_nest(all_loop_nests, must_nest, all_inames):
         if not found:
             return False
     return True
-"""
 
 # }}}
 
@@ -645,35 +643,29 @@ def check_all_must_not_nests(all_loop_nests, must_not_nests):
 # }}}
 
 
-# {{{ is_loop_nesting_valid (TODO copied in from old branch, not yet enabled)
+# {{{ loop_nest_constraints_satisfied
 
-"""
-def is_loop_nesting_valid(
+def loop_nest_constraints_satisfied(
         all_loop_nests,
         must_nest_constraints,
         must_not_nest_constraints,
         all_inames):
 
     # check must-nest constraints
-    must_nest_valid = True
     if must_nest_constraints:
         for must_nest in must_nest_constraints:
             if not check_must_nest(
                     all_loop_nests, must_nest, all_inames):
-                must_nest_valid = False
-                break
+                return False
 
     # check must-not-nest constraints
-    must_not_nest_valid = True
     if must_not_nest_constraints is not None:
         for must_not_nest in must_not_nest_constraints:
             if not check_must_not_nest(
                     all_loop_nests, must_not_nest):
-                must_not_nest_valid = False
-                break
+                return False
 
-    return must_nest_valid and must_not_nest_valid
-"""
+    return True
 
 # }}}
 
