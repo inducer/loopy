@@ -630,16 +630,14 @@ def check_must_not_nest(all_loop_nests, must_not_nest):
 # }}}
 
 
-# {{{ check_all_must_not_nests (TODO copied in from old branch, not yet enabled)
+# {{{ check_all_must_not_nests
 
-"""
 def check_all_must_not_nests(all_loop_nests, must_not_nests):
     # recall that must_not_nest may only contain two tiers
     for must_not_nest in must_not_nests:
         if not check_must_not_nest(all_loop_nests, must_not_nest):
             return False
     return True
-"""
 
 # }}}
 
