@@ -714,6 +714,17 @@ def get_iname_nestings(outline):
 
 # }}}
 
+
+# {{{ get graph sources
+
+def get_graph_sources(graph):
+    sources = set(graph.keys())
+    for non_sources in graph.values():
+        sources -= non_sources
+    return sources
+
+# }}}
+
 # }}}
 
 # }}}

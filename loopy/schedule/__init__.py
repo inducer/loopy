@@ -1468,8 +1468,6 @@ def generate_loop_schedules_internal(
 
             from loopy.transform.iname import (
                 check_all_must_not_nests,
-            )
-            from loopy.tools import (
                 get_graph_sources,
             )
             from pytools.graph import compute_induced_subgraph
