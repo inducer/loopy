@@ -1346,6 +1346,9 @@ def generate_loop_schedules_internal(
         for iname in unscheduled_nonconc_insn_inames_needed:
 
             # {{{ check if scheduling this iname now is allowed/plausible
+            # based on preschedule constraints, loop_nest_around_map,
+            # loop_insn_dep_map, and data dependencies;
+            # if not, continue
 
             if (
                     iname in sched_state.prescheduled_inames
@@ -1359,6 +1362,9 @@ def generate_loop_schedules_internal(
 
             currently_accessible_inames = (
                     active_inames_set | sched_state.parallel_inames)
+
+            # check loop_nest_around_map to determine whether inames that must
+            # nest around iname are available
             if (
                     not sched_state.loop_nest_around_map[iname]
                     <= currently_accessible_inames):
@@ -1366,6 +1372,9 @@ def generate_loop_schedules_internal(
                     print("scheduling %s prohibited by loop nest-around map" % iname)
                 continue
 
+            # loop_insn_dep_map: dict mapping inames to other insn ids that need to
+            # be scheduled before the iname should be eligible for scheduling.
+            # If loop dependency map prohibits scheduling of iname, continue
             if (
                     not sched_state.loop_insn_dep_map.get(iname, set())
                     <= sched_state.scheduled_insn_ids):
@@ -1415,11 +1424,18 @@ def generate_loop_schedules_internal(
 
             # }}}
 
+            # so far, scheduling of iname is allowed/plausible
+
             # {{{ determine if that gets us closer to being able to schedule an insn
 
             usefulness = None  # highest insn priority enabled by iname
 
+            # suppose we were to activate this iname...
+            # would that get us closer to scheduling an insn?
+
             hypothetically_active_loops = active_inames_set | {iname}
+            # loop over reachable_insn_ids (reachable insn: no active inames
+            # conflict w/insn, but may need more inames)
             for insn_id in reachable_insn_ids:
                 insn = kernel.id_to_insn[insn_id]
 
@@ -1432,6 +1448,7 @@ def generate_loop_schedules_internal(
                         usefulness = max(usefulness, insn.priority)
 
             if usefulness is None:
+                # iname won't get us closer to scheduling insn
                 if debug_mode:
                     print("iname '%s' deemed not useful" % iname)
                 continue
@@ -1439,6 +1456,9 @@ def generate_loop_schedules_internal(
             iname_to_usefulness[iname] = usefulness
 
             # }}}
+
+        # keys of iname_to_usefulness are now inames that get us closer to
+        # scheduling an insn
 
         # {{{ tier building
 
