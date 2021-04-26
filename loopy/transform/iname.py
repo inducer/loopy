@@ -248,6 +248,11 @@ def process_loop_nest_specification(
         # remove leading/trailing whitespace
         iname_set_str_stripped = iname_set_str.strip()
 
+        if not iname_set_str_stripped:
+            raise_loop_nest_input_error(
+                "Found 0 inames in string %s."
+                % (iname_set_str))
+
         if iname_set_str_stripped[0] == "~":
             # Make sure compelement is allowed
             if not complement_sets_allowed:
@@ -260,10 +265,17 @@ def process_loop_nest_specification(
                     "please contact the Loo.py maintainers."
                     % (iname_set_str))
 
+            # remove tilde
+            iname_set_str_stripped = iname_set_str_stripped[1:]
+            if "~" in iname_set_str_stripped:
+                raise_loop_nest_input_error(
+                    "Multiple complement symbols found in iname set string %s"
+                    % (iname_set_str))
+
             # Make sure that braces are included if multiple inames present
-            if "," in iname_set_str and not (
-                    iname_set_str.startswith("~{") and
-                    iname_set_str.endswith("}")):
+            if "," in iname_set_str_stripped and not (
+                    iname_set_str_stripped.startswith("{") and
+                    iname_set_str_stripped.endswith("}")):
                 raise_loop_nest_input_error(
                     "Complements of sets containing multiple inames must "
                     "enclose inames in braces: %s is not valid."
@@ -273,8 +285,21 @@ def process_loop_nest_specification(
         else:
             complement = False
 
-        # remove leading/trailing tilde, braces, and space
-        iname_set_str_stripped = iname_set_str_stripped.strip("~{} ")
+        # remove leading/trailing spaces
+        iname_set_str_stripped = iname_set_str_stripped.strip(" ")
+
+        # make sure braces are valid and strip them
+        if iname_set_str_stripped[0] == "{":
+            if not iname_set_str_stripped[-1] == "}":
+                raise_loop_nest_input_error(
+                    "Invalid braces: %s" % (iname_set_str))
+            else:
+                # remove enclosing braces
+                iname_set_str_stripped = iname_set_str_stripped[1:-1]
+        # if there are dangling braces around, they will be caught next
+
+        # remove any more spaces
+        iname_set_str_stripped = iname_set_str_stripped.strip()
 
         # should be no remaining special characters besides comma and space
         _error_on_regex_match(r"([^,\w ])", iname_set_str_stripped)
@@ -287,7 +312,12 @@ def process_loop_nest_specification(
             raise_loop_nest_input_error(
                 "Found %d inames but expected %d in string %s."
                 % (len(inames), iname_set_str_stripped.count(",") + 1,
-                   iname_set_str_stripped))
+                   iname_set_str))
+
+        if len(inames) == 0:
+            raise_loop_nest_input_error(
+                "Found empty set in string %s."
+                % (iname_set_str))
 
         return UnexpandedInameSet(
             set([s.strip() for s in iname_set_str_stripped.split(",")]),
