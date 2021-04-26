@@ -91,6 +91,8 @@ __doc__ = """
 .. autoclass:: RuleAwareIdentityMapper
 
 .. autoclass:: ResolvedFunction
+
+.. autoclass:: SubArrayRef
 """
 
 
@@ -910,12 +912,14 @@ class SubArrayRef(LoopyExpressionBase):
     .. attribute:: swept_inames
 
         An instance of :class:`tuple` denoting the axes to which the sub array
-        is supposed to be mapper to.
+        is supposed to be mapped to.
 
     .. attribute:: subscript
 
         An instance of :class:`pymbolic.primitives.Subscript` denoting the
         array in the kernel.
+
+    .. automethod:: is_equal
     """
 
     init_arg_names = ("swept_inames", "subscript")
@@ -946,6 +950,9 @@ class SubArrayRef(LoopyExpressionBase):
         return hash((self.__class__, self.swept_inames, self.subscript))
 
     def is_equal(self, other):
+        """
+        Returns *True* iff the sub-array refs have identical expressions.
+        """
         return (other.__class__ == self.__class__
                 and other.subscript == self.subscript
                 and other.swept_inames == self.swept_inames)

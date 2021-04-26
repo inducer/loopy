@@ -1209,7 +1209,18 @@ def check_that_shapes_and_strides_are_arguments(kernel):
 
 # {{{ validate_kernel_call_sites
 
-def _are_sub_array_refs_equal(sar1, sar2, caller):
+def _are_sub_array_refs_equivalent(sar1, sar2, caller):
+    """
+    Returns *True* iff *sar1* and *sar2* are equivalent
+    :class:`loopy.SubArrayRef`s.
+
+    Two sub-array-refs are said to be equivalent iff they point to the same
+    array sub-regions. This equivalence check is less stricter than
+    :meth:`~loopy.SubArrayRef.is_equal`.
+
+    :arg caller: An instance of :class:`loopy.LoopKernel` in which they are
+         referenced.
+    """
     if len(sar1.swept_inames) != len(sar2.swept_inames):
         return False
 
@@ -1289,7 +1300,7 @@ def _validate_kernel_call_insn(caller, call_insn, callee):
                                  f" (got {out_val}).")
 
         if arg.is_input and arg.is_output:
-            if not _are_sub_array_refs_equal(in_val, out_val, caller):
+            if not _are_sub_array_refs_equivalent(in_val, out_val, caller):
                 raise LoopyError(f"Call to '{callee.name}' in '{call_insn}' expects"
                                  f" equivalent sub-array-refs for '{arg.name}'"
                                  f" (got {in_val}, {out_val}).")
