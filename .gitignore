@@ -28,3 +28,5 @@ loopy/_git_rev.py
 virtualenv-[0-9]*[0-9]
 
 *.so
+
+.asv

@@ -290,6 +290,7 @@ __all__ = [
         "set_caching_enabled",
         "CacheMode",
         "make_copy_kernel",
+        "make_einsum",
 
         # }}}
         ]
@@ -469,7 +470,7 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
             f"0<={ind}<{shape_i}"
             for ind, shape_i in zip(indices, shape))
 
-    set_str = "{{[{}]: {}}}".format(
+    set_str = "{{[{}]: {} }}".format(
                 commad_indices,
                 bounds
                 )
@@ -488,6 +489,78 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
             result = tag_inames(result, {indices[i]: "unr"})
 
     return result
+
+# }}}
+
+
+# {{{ einsum
+
+def make_einsum(spec, arg_names, **knl_creation_kwargs):
+    r"""Returns a :class:`LoopKernel` for evaluating array-based
+    operations using Einstein summation convention.
+
+    :param spec: a string denoting the subscripts for
+        summation as a comma-separated list of subscript labels.
+        This follows the usual :func:`numpy.einsum` convention.
+        Note that the explicit indicator `->` for the precise output
+        form is required.
+    :param arg_names: a sequence of string types denoting
+        the names of the array operands.
+    :param \**knl_creation_kwargs: keyword arguments for kernel creation.
+        See :func:`make_kernel` for a list of acceptable keyword
+        parameters.
+
+    .. note::
+
+        No attempt is being made to reduce the complexity
+        of the resulting expression. This should be dealt with
+        as part of a separate transformation.
+    """
+    arg_spec, out_spec = spec.split("->")
+    arg_specs = arg_spec.split(",")
+
+    if len(arg_names) != len(arg_specs):
+        raise ValueError(
+            f"Number of arg names ({arg_names}) should match the number "
+            f"of arg specs: {arg_specs}. Length of arg names is {len(arg_names)}; "
+            f"expecting {len(arg_specs)} arg names."
+        )
+
+    out_indices = set(out_spec)
+    if len(out_indices) != len(out_spec):
+        raise ValueError(
+            f"Output subscripts '{out_spec}' does not contain all unique indices."
+        )
+
+    all_indices = {
+        idx
+        for argsp in arg_specs
+        for idx in argsp} | out_indices
+
+    sum_indices = all_indices - out_indices
+
+    from pymbolic import var
+    lhs = var("out")[tuple(var(i) for i in out_spec)]
+
+    rhs = 1
+    for arg_name, argsp in zip(arg_names, arg_specs):
+        rhs = rhs * var(arg_name)[tuple(var(i) for i in argsp)]
+
+    if sum_indices:
+        rhs = Reduction("sum", tuple(var(idx) for idx in sum_indices), rhs)
+
+    constraints = " and ".join(
+        "0 <= %s < N%s" % (idx, idx)
+        for idx in all_indices
+        )
+
+    if "name" not in knl_creation_kwargs:
+        knl_creation_kwargs["name"] = "einsum%dto%d_kernel" % (
+                len(all_indices), len(out_indices))
+
+    return make_kernel("{[%s]: %s}" % (",".join(all_indices), constraints),
+                       [Assignment(lhs, rhs)],
+                       **knl_creation_kwargs)
 
 # }}}
 

@@ -1,4 +1,9 @@
+stages:
+  - test
+  - deploy
+
 Python 3 POCL:
+  stage: test
   script:
   - export PY_EXE=python3
   - export PYOPENCL_TEST=portable:pthread
@@ -16,6 +21,7 @@ Python 3 POCL:
       junit: test/pytest.xml
 
 Python 3 POCL without arg check:
+  stage: test
   script:
   - export PY_EXE=python3
   - export PYOPENCL_TEST=portable:pthread
@@ -34,6 +40,7 @@ Python 3 POCL without arg check:
       junit: test/pytest.xml
 
 Python 3 Intel:
+  stage: test
   script:
   - export PY_EXE=python3
   - export PYOPENCL_TEST=intel
@@ -54,6 +61,7 @@ Python 3 Intel:
 
 
 Python 3 POCL Twice With Cache:
+  stage: test
   script: |
     export PY_EXE=python3
     export PYOPENCL_TEST=portable:pthread
@@ -87,6 +95,7 @@ Python 3 POCL Twice With Cache:
 #   - tags
 
 Python 3 POCL Examples:
+  stage: test
   script: |
     export PY_EXE=python3
     export PYOPENCL_TEST=portable:pthread
@@ -113,6 +122,7 @@ Python 3 POCL Examples:
   - tags
 
 Pylint:
+  stage: test
   script:
   # Needed to avoid name shadowing issues when running from source directory.
   - PROJECT_INSTALL_FLAGS="--editable"
@@ -126,7 +136,9 @@ Pylint:
   - tags
 
 Documentation:
+  stage: deploy
   script:
+  - PROJECT=loopy
   - EXTRA_INSTALL="pybind11 numpy"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-docs.sh
   - ". ./build-docs.sh"
@@ -134,10 +146,27 @@ Documentation:
   - python3
 
 Flake8:
+  stage: test
   script:
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-flake8.sh
   - . ./prepare-and-run-flake8.sh "$CI_PROJECT_NAME" test examples
   tags:
   - python3
+  except:
+  - tags
+
+Benchmarks:
+  stage: test
+  script:
+  - CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+  - PROJECT=loopy
+  - PYOPENCL_TEST=portable:pthread
+  - export LOOPY_NO_CACHE=1
+  - export ASV_FACTOR=1.5
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-benchmark-py-project.sh
+  - ". ./build-and-benchmark-py-project.sh"
+  tags:
+  - linux
+  - benchmark
   except:
   - tags
