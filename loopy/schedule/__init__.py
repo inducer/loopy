@@ -1016,19 +1016,21 @@ def generate_loop_schedules_internal(
         if not is_ready:
             continue
 
-        want = insn.within_inames - sched_state.parallel_inames
+        nonconc_insn_inames_wanted = insn.within_inames - sched_state.parallel_inames
         have = active_inames_set - sched_state.parallel_inames
 
-        if want != have:
+        if nonconc_insn_inames_wanted != have:
             is_ready = False
 
             if debug_mode:
-                if want-have:
+                if nonconc_insn_inames_wanted-have:
                     print("instruction '%s' is missing inames '%s'"
-                            % (format_insn(kernel, insn.id), ",".join(want-have)))
-                if have-want:
+                        % (format_insn(kernel, insn.id), ",".join(
+                            nonconc_insn_inames_wanted-have)))
+                if have-nonconc_insn_inames_wanted:
                     print("instruction '%s' won't work under inames '%s'"
-                            % (format_insn(kernel, insn.id), ",".join(have-want)))
+                        % (format_insn(kernel, insn.id), ",".join(
+                            have-nonconc_insn_inames_wanted)))
 
         # {{{ check if scheduling this insn is compatible with preschedule
 
@@ -1082,7 +1084,7 @@ def generate_loop_schedules_internal(
 
         # {{{ determine reachability
 
-        if (not is_ready and have <= want):
+        if (not is_ready and have <= nonconc_insn_inames_wanted):
             reachable_insn_ids.add(insn_id)
 
         # }}}
@@ -1194,10 +1196,11 @@ def generate_loop_schedules_internal(
                                 kernel, insn_id,
                                 sched_state.scheduled_insn_ids,
                                 sched_state.simplified_depends_on_graph):
-                            want = (kernel.insn_inames(subdep_id)
+                            nonconc_subdep_insn_inames_wanted = (
+                                    kernel.insn_inames(subdep_id)
                                     - sched_state.parallel_inames)
-                            if (
-                                    deepest_active_iname not in want):
+                            if (deepest_active_iname
+                                    not in nonconc_subdep_insn_inames_wanted):
                                 print(
                                     "%(warn)swarning:%(reset_all)s '%(iname)s', "
                                     "which the schedule is "
@@ -1373,9 +1376,9 @@ def generate_loop_schedules_internal(
             for insn_id in reachable_insn_ids:
                 insn = kernel.id_to_insn[insn_id]
 
-                want = insn.within_inames
+                wanted_insn_inames = insn.within_inames
 
-                if hypothetically_active_loops <= want:
+                if hypothetically_active_loops <= wanted_insn_inames:
                     if usefulness is None:
                         usefulness = insn.priority
                     else:
