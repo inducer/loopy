@@ -340,7 +340,7 @@ def test_adding_multiple_nest_constraints_to_knl():
 def test_incompatible_nest_constraints():
     ref_knl = lp.make_kernel(
             "{ [g,h,i,j,k,x,y,z]: 0<=g,h,i,j,k,x,y,z<n }",
-            '''
+            """
             out[g,h,i,j,k] = 2*a[g,h,i,j,k]
             for x,y
                 out2[x,y] = 2*a2[x,y]
@@ -348,7 +348,7 @@ def test_incompatible_nest_constraints():
                     out3[x,y,z] = 2*a3[x,y,z]
                 end
             end
-            ''',
+            """,
             assumptions="n >= 1",
             )
     ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a,a2,a3": np.dtype(np.float32)})
@@ -409,9 +409,9 @@ def test_vec_innermost():
 
     ref_knl = lp.make_kernel(
             "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
-            '''
+            """
             out[g,h,i,j,k] = 2*a[g,h,i,j,k]
-            ''',
+            """,
             assumptions="n >= 1",
             )
     ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a": np.dtype(np.float32)})
@@ -485,9 +485,9 @@ def test_linearization_with_nesting_constraints():
 
     ref_knl = lp.make_kernel(
             "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
-            '''
+            """
             out[g,h,i,j,k] = 2*a[g,h,i,j,k]
-            ''',
+            """,
             assumptions="n >= 1",
             )
     ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a": np.dtype(np.float32)})
