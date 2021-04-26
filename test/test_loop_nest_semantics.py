@@ -335,7 +335,7 @@ def test_adding_multiple_nest_constraints_to_knl():
 # }}}
 
 
-# {{{
+# {{{ test_incompatible_nest_constraints
 
 def test_incompatible_nest_constraints():
     ref_knl = lp.make_kernel(
@@ -373,6 +373,100 @@ def test_incompatible_nest_constraints():
         assert False
     except ValueError as e:
         assert "Nest constraint cycle detected" in str(e)
+
+# }}}
+
+
+# {{{ test_vec_innermost:
+
+def test_vec_innermost():
+
+    def is_innermost(iname, linearization_items):
+        from loopy.schedule import (EnterLoop, LeaveLoop)
+
+        # find EnterLoop(iname) in linearization
+        enter_iname_idx = None
+        for i, linearization_item in enumerate(linearization_items):
+            if isinstance(linearization_item, EnterLoop) and (
+                    linearization_item.iname == iname):
+                enter_iname_idx = i
+                break
+        else:
+            # iname not found
+            return False
+
+        # now go through remaining linearization items after EnterLoop(iname)
+        for linearization_item in linearization_items[enter_iname_idx+1:]:
+            if isinstance(linearization_item, LeaveLoop):
+                # Break as soon as we find a LeaveLoop
+                # If this happens before we find an EnterLoop, iname is innermost
+                break
+            elif isinstance(linearization_item, EnterLoop):
+                # we found an EnterLoop inside iname
+                return False
+
+        return True
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
+            '''
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]
+            ''',
+            assumptions="n >= 1",
+            )
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a": np.dtype(np.float32)})
+
+    knl = ref_knl
+    knl = lp.tag_inames(knl, {"h": "vec"})
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert is_innermost("h", knl_linearized.linearization)
+
+    knl = ref_knl
+    knl = lp.tag_inames(knl, {"h": "vec", "g": "l.1", "i": "l.0"})
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert is_innermost("h", knl_linearized.linearization)
+
+    knl = ref_knl
+    knl = lp.tag_inames(
+        knl, {"h": "vec", "g": "l.1", "i": "l.0", "k": "unr"})
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert is_innermost("h", knl_linearized.linearization)
+
+    knl = ref_knl
+    knl = lp.tag_inames(knl, {"h": "vec"})
+    knl = lp.constrain_loop_nesting(knl, must_nest=("k", "i"))
+    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert is_innermost("h", knl_linearized.linearization)
+    lp.set_caching_enabled(True)
+
+    # try adding a must_nest constraint that conflicts with a vec tag
+    knl = ref_knl
+    knl = lp.tag_inames(knl, {"h": "vec"})
+    try:
+        lp.constrain_loop_nesting(knl, must_nest=("{g,h,i,j}", "{k}"))
+        assert False
+    except ValueError as e:
+        assert (
+            "iname h tagged with ConcurrentTag, "
+            "cannot use iname in must-nest constraint" in str(e))
+
+    # try adding a vec tag that conflicts with a must_nest constraint
+    # TODO uncomment after implemented in tag_inames
+    """
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(knl, must_nest=("{g,h,i,j}", "{k}"))
+    try:
+        lp.tag_inames(knl, {"h": "vec"})
+        assert False
+    except ValueError as e:
+        assert (
+            "cannot tag 'h' as concurrent--iname involved "
+            "in must-nest constraint" in str(e))
+    """
+
+    # TODO try adding a vec tag forcing h to be innermost, but
+    # also add a must-not-nest constraint preventing h
+    # from nesting inside j
 
 # }}}
 
