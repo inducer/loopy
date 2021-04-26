@@ -281,9 +281,9 @@ def test_loop_nest_constraints_satisfied():
 # }}}
 
 
-# {{{ test_multiple_nest_constraints
+# {{{ test_adding_multiple_nest_constraints_to_knl
 
-def test_multiple_nest_constraints():
+def test_adding_multiple_nest_constraints_to_knl():
     ref_knl = lp.make_kernel(
             "{ [g,h,i,j,k,x,y,z]: 0<=g,h,i,j,k,x,y,z<n }",
             '''
@@ -331,6 +331,48 @@ def test_multiple_nest_constraints():
             complement=True)),
         ])
     assert must_not_nest_knl == must_not_nest_expected
+
+# }}}
+
+
+# {{{
+
+def test_incompatible_nest_constraints():
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k,x,y,z]: 0<=g,h,i,j,k,x,y,z<n }",
+            '''
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]
+            for x,y
+                out2[x,y] = 2*a2[x,y]
+                for z
+                    out3[x,y,z] = 2*a3[x,y,z]
+                end
+            end
+            ''',
+            assumptions="n >= 1",
+            )
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a,a2,a3": np.dtype(np.float32)})
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl, must_not_nest=("{k,i}", "~{k,i}"))
+
+    try:
+        knl = lp.constrain_loop_nesting(
+            knl, must_nest=("k", "h"))  # (should fail)
+        assert False
+    except ValueError as e:
+        assert "Nest constraint conflict detected" in str(e)
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl, must_nest=("g", "j", "k"))
+
+    try:
+        knl = lp.constrain_loop_nesting(
+            knl, must_nest=("j", "g"))  # (should fail)
+        assert False
+    except ValueError as e:
+        assert "Nest constraint cycle detected" in str(e)
 
 # }}}
 
