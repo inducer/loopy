@@ -1020,6 +1020,7 @@ def generate_loop_schedules_internal(
         nonconc_active_inames = active_inames_set - sched_state.parallel_inames
 
         if nonconc_insn_inames_wanted != nonconc_active_inames:
+            # We don't have the inames we need, may need to open more loops
             is_ready = False
 
             if debug_mode:
@@ -1082,7 +1083,8 @@ def generate_loop_schedules_internal(
 
         # }}}
 
-        # {{{ determine reachability
+        # {{{ determine reachability (no active inames conflict w/insn, but
+        # may need more inames)
 
         if (not is_ready and nonconc_active_inames <= nonconc_insn_inames_wanted):
             reachable_insn_ids.add(insn_id)
@@ -1092,7 +1094,13 @@ def generate_loop_schedules_internal(
         if is_ready and debug_mode:
             print("ready to schedule '%s'" % format_insn(kernel, insn.id))
 
+        # (if we wanted, we could check to see whether adding insn would
+        # violate dependencies_v2 here, as done in old in-progress branch:
+        # https://gitlab.tiker.net/jdsteve2/loopy/-/merge_requests/15/diffs)
+
         if is_ready and not debug_mode:
+            # schedule this instruction and recurse
+
             iid_set = frozenset([insn.id])
 
             # {{{ update active group counts for added instruction
@@ -1162,6 +1170,9 @@ def generate_loop_schedules_internal(
 
     # }}}
 
+    # No insns are ready to be scheduled now, but some may be reachable
+    # reachable_insn_ids = no active inames conflict w/insn, but may need more inames
+
     # {{{ see if we're ready to leave the innermost loop
 
     deepest_active_iname = sched_state.deepest_active_iname
@@ -1186,6 +1197,7 @@ def generate_loop_schedules_internal(
             for insn_id in sched_state.unscheduled_insn_ids:
                 insn = kernel.id_to_insn[insn_id]
                 if deepest_active_iname in insn.within_inames:
+                    # cannot leave deepest_active_iname; insn still depends on it
                     if debug_mode:
                         print("cannot leave '%s' because '%s' still depends on it"
                             % (deepest_active_iname, format_insn(kernel, insn.id)))
