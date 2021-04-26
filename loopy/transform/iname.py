@@ -221,15 +221,16 @@ def process_loop_nest_specification(
 
     def raise_loop_nest_input_error(msg):
         valid_prio_rules = (
-            "Valid `must_nest` description formats: "
-            "\"iname, iname, ...\" or (str, str, str, ...), "
-            "where str can be of form "
-            "\"iname\" or \"{iname, iname, ...}\". No set complements allowed.\n"
-            "Valid `must_not_nest` description tuples must have len <= 2: "
-            "\"iname, iname\", \"iname, ~iname\", or "
-            "(str, str), where str can be of form "
-            "\"iname\", \"~iname\", \"{iname, iname, ...}\", or "
-            "\"~{iname, iname, ...}\"."
+            "Valid `must_nest` description formats: "  # noqa
+            "\"iname, iname, ...\" or (str, str, str, ...), "  # noqa
+            "where str can be of form "  # noqa
+            "\"iname\" or \"{iname, iname, ...}\". "  # noqa
+            "No set complements allowed.\n"  # noqa
+            "Valid `must_not_nest` description tuples must have len <= 2: "  # noqa
+            "\"iname, iname\", \"iname, ~iname\", or "  # noqa
+            "(str, str), where str can be of form "  # noqa
+            "\"iname\", \"~iname\", \"{iname, iname, ...}\", or "  # noqa
+            "\"~{iname, iname, ...}\"."  # noqa
             )
         raise ValueError(
                 "Invalid loop nest prioritization: %s\n"
