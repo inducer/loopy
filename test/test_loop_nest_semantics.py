@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 import sys
 import loopy as lp
+import numpy as np
 import pyopencl as cl
 
 import logging
@@ -276,6 +277,60 @@ def test_loop_nest_constraints_satisfied():
     valid = loop_nest_constraints_satisfied(
         loop_nests, None, must_not_nest_constraints, all_inames)
     assert valid
+
+# }}}
+
+
+# {{{ test_multiple_nest_constraints
+
+def test_multiple_nest_constraints():
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k,x,y,z]: 0<=g,h,i,j,k,x,y,z<n }",
+            '''
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]
+            for x,y
+                out2[x,y] = 2*a2[x,y]
+                for z
+                    out3[x,y,z] = 2*a3[x,y,z]
+                end
+            end
+            ''',
+            assumptions="n >= 1",
+            )
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a,a2,a3": np.dtype(np.float32)})
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl, must_not_nest=("{k,i}", "~{k,i}"))
+    knl = lp.constrain_loop_nesting(
+        knl, must_nest=("g", "h,i"))
+    knl = lp.constrain_loop_nesting(
+        knl, must_nest=("g", "j", "k"))
+    knl = lp.constrain_loop_nesting(
+        knl, must_nest=("g", "j", "h"))
+    knl = lp.constrain_loop_nesting(
+        knl, must_nest=("i", "k"))
+    knl = lp.constrain_loop_nesting(
+        knl, must_nest=("x", "y"))
+
+    must_nest_knl = knl.loop_nest_constraints.must_nest
+    from loopy.transform.iname import UnexpandedInameSet
+    must_nest_expected = set([
+        (UnexpandedInameSet(set(["g"], )), UnexpandedInameSet(set(["h", "i"], ))),
+        (UnexpandedInameSet(set(["g"], )), UnexpandedInameSet(set(["j"], )),
+            UnexpandedInameSet(set(["k"], ))),
+        (UnexpandedInameSet(set(["g"], )), UnexpandedInameSet(set(["j"], )),
+            UnexpandedInameSet(set(["h"], ))),
+        (UnexpandedInameSet(set(["i"], )), UnexpandedInameSet(set(["k"], ))),
+        (UnexpandedInameSet(set(["x"], )), UnexpandedInameSet(set(["y"], ))),
+        ])
+    assert must_nest_knl == must_nest_expected
+
+    must_not_nest_knl = knl.loop_nest_constraints.must_not_nest
+    must_not_nest_expected = set([
+        (UnexpandedInameSet(set(["k", "i"], )), UnexpandedInameSet(set(["k", "i"], ),
+            complement=True)),
+        ])
+    assert must_not_nest_knl == must_not_nest_expected
 
 # }}}
 
