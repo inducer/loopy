@@ -1258,6 +1258,40 @@ def generate_loop_schedules_internal(
                             can_leave = True
                         break
 
+            # {{{ don't leave if doing so would violate must_nest constraints
+
+            # don't leave if must_nest constraints require that
+            # additional inames be nested inside the current iname
+            if can_leave:
+                must_nest_graph = (
+                    sched_state.kernel.loop_nest_constraints.must_nest_graph
+                    if sched_state.kernel.loop_nest_constraints else None)
+
+                if must_nest_graph:
+                    # get inames that must nest inside the current iname
+                    must_nest_inside = must_nest_graph[deepest_active_iname]
+
+                    if must_nest_inside:
+                        # get scheduled inames that are nested inside current iname
+                        within_deepest_active_iname = False
+                        actually_nested_inside = set()
+                        for sched_item in sched_state.schedule:
+                            if isinstance(sched_item, EnterLoop):
+                                if within_deepest_active_iname:
+                                    actually_nested_inside.add(sched_item.iname)
+                                elif sched_item.iname == deepest_active_iname:
+                                    within_deepest_active_iname = True
+                            elif (isinstance(sched_item, LeaveLoop) and
+                                    sched_item.iname == deepest_active_iname):
+                                break
+
+                        # don't leave if must_nest constraints require that
+                        # additional inames be nested inside the current iname
+                        if not must_nest_inside.issubset(actually_nested_inside):
+                            can_leave = False
+
+            # }}}
+
             if can_leave and not debug_mode:
 
                 for sub_sched in generate_loop_schedules_internal(
