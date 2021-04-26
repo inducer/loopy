@@ -28,6 +28,11 @@ To Copy between Data Formats
 
 .. autofunction:: make_copy_kernel
 
+Einstein summation convention kernels
+-------------------------------------
+
+.. autofunction:: make_einsum
+
 .. automodule:: loopy.version
 
 .. vim: tw=75:spell:fdm=marker
