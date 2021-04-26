@@ -172,8 +172,6 @@ class Options(ImmutableRecord):
         If equal to ``"no_check"``, then no check is performed.
     """
 
-    # TODO document use_loop_nest_constraints
-
     _legacy_options_map = {
             "cl_build_options": ("build_options", None),
             "write_cl": ("write_code", None),
@@ -234,8 +232,6 @@ class Options(ImmutableRecord):
                     False),
                 check_dep_resolution=kwargs.get("check_dep_resolution", True),
                 use_dependencies_v2=kwargs.get("use_dependencies_v2", False),
-                use_loop_nest_constraints=kwargs.get(
-                    "use_loop_nest_constraints", False),
 
                 enforce_variable_access_ordered=kwargs.get(
                     "enforce_variable_access_ordered", True),
