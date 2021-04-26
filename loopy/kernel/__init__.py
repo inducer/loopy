@@ -252,6 +252,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
     .. automethod:: tagged
     .. automethod:: without_tags
     """
+    # TODO document loop_nest_constraints attribute
 
     # {{{ constructor
 
@@ -272,6 +273,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
             iname_slab_increments=None,
             loop_priority=frozenset(),
+            loop_nest_constraints=None,
             silenced_warnings=None,
 
             applied_iname_rewrites=None,
@@ -417,6 +419,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                 assumptions=assumptions,
                 iname_slab_increments=iname_slab_increments,
                 loop_priority=loop_priority,
+                loop_nest_constraints=loop_nest_constraints,
                 silenced_warnings=silenced_warnings,
                 temporary_variables=temporary_variables,
                 local_sizes=local_sizes,
@@ -1550,6 +1553,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             "substitutions",
             "iname_slab_increments",
             "loop_priority",
+            "loop_nest_constraints",
             "silenced_warnings",
             "options",
             "state",
