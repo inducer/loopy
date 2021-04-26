@@ -2418,7 +2418,7 @@ schedule_cache = WriteOncePersistentDict(
         key_builder=LoopyKeyBuilder())
 
 
-def _get_one_scheduled_kernel_inner(kernel):
+def _get_one_scheduled_kernel_inner(kernel, debug_args={}):
     # This helper function exists to ensure that the generator chain is fully
     # out of scope after the function returns. This allows it to be
     # garbage-collected in the exit handler of the
@@ -2428,7 +2428,7 @@ def _get_one_scheduled_kernel_inner(kernel):
     #
     # See https://gitlab.tiker.net/inducer/sumpy/issues/31 for context.
 
-    return next(iter(generate_loop_schedules(kernel)))
+    return next(iter(generate_loop_schedules(kernel, debug_args=debug_args)))
 
 
 def get_one_scheduled_kernel(kernel):
@@ -2440,7 +2440,7 @@ def get_one_scheduled_kernel(kernel):
     return get_one_linearized_kernel(kernel)
 
 
-def get_one_linearized_kernel(kernel):
+def get_one_linearized_kernel(kernel, debug_args={}):
     from loopy import CACHING_ENABLED
 
     sched_cache_key = kernel
@@ -2458,7 +2458,7 @@ def get_one_linearized_kernel(kernel):
     if not from_cache:
         with ProcessLogger(logger, "%s: schedule" % kernel.name):
             with MinRecursionLimitForScheduling(kernel):
-                result = _get_one_scheduled_kernel_inner(kernel)
+                result = _get_one_scheduled_kernel_inner(kernel, debug_args)
 
     if CACHING_ENABLED and not from_cache:
         schedule_cache.store_if_not_present(sched_cache_key, result)
