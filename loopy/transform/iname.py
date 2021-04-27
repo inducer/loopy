@@ -113,7 +113,7 @@ def prioritize_loops(kernel, loop_priority):
 # }}}
 
 
-# {{{ loop nest constraints
+# {{{ handle loop nest constraints
 
 # {{{ classes to house loop nest constraints
 
@@ -727,6 +727,287 @@ def get_graph_sources(graph):
 
 # }}}
 
+
+# {{{ updating constraints during transformation
+
+# {{{ replace_inames_in_nest_constraints
+
+def replace_inames_in_nest_constraints(
+        inames_to_replace, replacement_inames, old_constraints,
+        coalesce_duplicate_replacement_inames=False):
+    """
+    :arg inames_to_replace: A set of inames that may exist in
+        `old_constraints`, each of which is to be replaced with all inames
+        in `replacement_inames`.
+
+    :arg replacement_inames: A set of inames, all of which will repalce each
+        iname in `inames_to_replace` in `old_constraints`.
+
+    :arg old_constraints: An iterable of tuples containing one or more
+        :class:`UnexpandedInameSet` objects.
+    """
+
+    # replace each iname in inames_to_replace
+    # with *all* inames in replacement_inames
+
+    # loop through old_constraints and handle each nesting independently
+    new_constraints = set()
+    for old_nesting in old_constraints:
+        # loop through each iname_set in this nesting and perform replacement
+        new_nesting = []
+        for iname_set in old_nesting:
+
+            # find inames to be replaced
+            inames_found = inames_to_replace & iname_set.inames
+
+            # create the new set of inames with the replacements
+            if inames_found:
+                new_inames = iname_set.inames - inames_found
+                new_inames.update(replacement_inames)
+            else:
+                new_inames = iname_set.inames.copy()
+
+            new_nesting.append(
+                UnexpandedInameSet(new_inames, iname_set.complement))
+
+        # if we've removed things, new_nesting might only contain 1 item,
+        # in which case it's meaningless and we should just remove it
+        if len(new_nesting) > 1:
+            new_constraints.add(tuple(new_nesting))
+
+    # When joining inames, we may need to coalesce:
+    # e.g., if we join `i` and `j` into `ij`, and old_nesting was
+    # [{i, k}, {j, h}], at this point we have [{ij, k}, {ij, h}]
+    # which contains a cycle. If coalescing is enabled, change this
+    # to [{k}, ij, {h}] to remove the cycle.
+    if coalesce_duplicate_replacement_inames:
+
+        def coalesce_duplicate_inames_in_nesting(nesting, iname_candidates):
+            # TODO would like this to be fully generic, but for now, assumes
+            # all UnexpandedInameSets have complement=False, which works if
+            # we're only using this for must_nest constraints since they cannot
+            # have complements
+            for iname_set in nesting:
+                assert not iname_set.complement
+
+            import copy
+            # copy and convert nesting to list so we can modify
+            coalesced_nesting = list(copy.deepcopy(nesting))
+
+            # repeat coalescing step until we don't find any adjacent pairs
+            # containing duplicates (among iname_candidates)
+            found_duplicates = True
+            while found_duplicates:
+                found_duplicates = False
+                # loop through each iname_set in nesting and coalesce
+                # (assume new_nesting has at least 2 items)
+                i = 0
+                while i < len(coalesced_nesting)-1:
+                    iname_set_before = coalesced_nesting[i]
+                    iname_set_after = coalesced_nesting[i+1]
+                    # coalesce for each iname candidate
+                    for iname in iname_candidates:
+                        if (iname_set_before.inames == set([iname, ]) and
+                                iname_set_after.inames == set([iname, ])):
+                            # before/after contain single iname to be coalesced,
+                            # -> remove iname_set_after
+                            del coalesced_nesting[i+1]
+                            found_duplicates = True
+                        elif (iname_set_before.inames == set([iname, ]) and
+                                iname in iname_set_after.inames):
+                            # before contains single iname to be coalesced,
+                            # after contains iname along with others,
+                            # -> remove iname from iname_set_after.inames
+                            coalesced_nesting[i+1] = UnexpandedInameSet(
+                                inames=iname_set_after.inames - set([iname, ]),
+                                complement=iname_set_after.complement,
+                                )
+                            found_duplicates = True
+                        elif (iname in iname_set_before.inames and
+                                iname_set_after.inames == set([iname, ])):
+                            # after contains single iname to be coalesced,
+                            # before contains iname along with others,
+                            # -> remove iname from iname_set_before.inames
+                            coalesced_nesting[i] = UnexpandedInameSet(
+                                inames=iname_set_before.inames - set([iname, ]),
+                                complement=iname_set_before.complement,
+                                )
+                            found_duplicates = True
+                        elif (iname in iname_set_before.inames and
+                                iname in iname_set_after.inames):
+                            # before and after contain iname along with others,
+                            # -> remove iname from iname_set_{before,after}.inames
+                            # and insert it in between them
+                            coalesced_nesting[i] = UnexpandedInameSet(
+                                inames=iname_set_before.inames - set([iname, ]),
+                                complement=iname_set_before.complement,
+                                )
+                            coalesced_nesting[i+1] = UnexpandedInameSet(
+                                inames=iname_set_after.inames - set([iname, ]),
+                                complement=iname_set_after.complement,
+                                )
+                            coalesced_nesting.insert(i+1, UnexpandedInameSet(
+                                inames=set([iname, ]),
+                                complement=False,
+                                ))
+                            found_duplicates = True
+                        # else, iname was not found in both sets, so do nothing
+                    i = i + 1
+
+            return tuple(coalesced_nesting)
+
+        # loop through new_constraints; handle each nesting independently
+        coalesced_constraints = set()
+        for new_nesting in new_constraints:
+            coalesced_constraints.add(
+                coalesce_duplicate_inames_in_nesting(
+                    new_nesting, replacement_inames))
+
+        return coalesced_constraints
+    else:
+        return new_constraints
+
+# }}}
+
+
+# {{{ replace_inames_in_graph
+
+def replace_inames_in_graph(
+        inames_to_replace, replacement_inames, old_graph):
+    # replace each iname in inames_to_replace with all inames in replacement_inames
+
+    new_graph = {}
+    iname_to_replace_found_as_key = False
+    union_of_inames_after_for_replaced_keys = set()
+    for iname, inames_after in old_graph.items():
+        # create new inames_after
+        new_inames_after = inames_after.copy()
+        inames_found = inames_to_replace & new_inames_after
+
+        if inames_found:
+            new_inames_after -= inames_found
+            new_inames_after.update(replacement_inames)
+
+        # update dict
+        if iname in inames_to_replace:
+            iname_to_replace_found_as_key = True
+            union_of_inames_after_for_replaced_keys = \
+                union_of_inames_after_for_replaced_keys | new_inames_after
+            # don't add this iname as a key in new graph,
+            # its replacements will be added below
+        else:
+            new_graph[iname] = new_inames_after
+
+    # add replacement iname keys
+    if iname_to_replace_found_as_key:
+        for new_key in replacement_inames:
+            new_graph[new_key] = union_of_inames_after_for_replaced_keys.copy()
+
+    # check for cycle
+    from pytools.graph import contains_cycle
+    if contains_cycle(new_graph):
+        raise ValueError(
+            "replace_inames_in_graph: Loop priority cycle detected. "
+            "Cannot replace inames %s with inames %s."
+            % (inames_to_replace, replacement_inames))
+
+    return new_graph
+
+# }}}
+
+
+# {{{ replace_inames_in_all_nest_constraints
+
+def replace_inames_in_all_nest_constraints(
+        kernel, old_inames, new_inames,
+        coalesce_duplicate_replacement_inames=False,
+        pairs_that_must_not_voilate_constraints=set(),
+        ):
+    # replace each iname in old_inames with all inames in new_inames
+    # TODO What was pairs_that_must_not_voilate_constraints used for???
+    # TODO handle case where we want to keep old inames around
+
+    # get old must_nest and must_not_nest
+    # (must_nest_graph will be rebuilt)
+    if kernel.loop_nest_constraints:
+        old_must_nest = kernel.loop_nest_constraints.must_nest
+        old_must_not_nest = kernel.loop_nest_constraints.must_not_nest
+        # (these could still be None)
+    else:
+        old_must_nest = None
+        old_must_not_nest = None
+
+    if old_must_nest:
+        # check to make sure special pairs don't conflict with constraints
+        for iname_before, iname_after in pairs_that_must_not_voilate_constraints:
+            if iname_before in kernel.loop_nest_constraints.must_nest_graph[
+                    iname_after]:
+                raise ValueError(
+                    "Implied nestings violate existing must-nest constraints."
+                    "\nimplied nestings: %s\nmust-nest constraints: %s"
+                    % (pairs_that_must_not_voilate_constraints, old_must_nest))
+
+        new_must_nest = replace_inames_in_nest_constraints(
+            old_inames, new_inames, old_must_nest,
+            coalesce_duplicate_replacement_inames,
+            )
+    else:
+        new_must_nest = None
+
+    if old_must_not_nest:
+        # check to make sure special pairs don't conflict with constraints
+        if not check_all_must_not_nests(
+                pairs_that_must_not_voilate_constraints, old_must_not_nest):
+            raise ValueError(
+                "Implied nestings violate existing must-not-nest constraints."
+                "\nimplied nestings: %s\nmust-not-nest constraints: %s"
+                % (pairs_that_must_not_voilate_constraints, old_must_not_nest))
+
+        new_must_not_nest = replace_inames_in_nest_constraints(
+            old_inames, new_inames, old_must_not_nest,
+            coalesce_duplicate_replacement_inames=False,
+            # (for now, never coalesce must-not-nest constraints)
+            )
+        # each must not nest constraint may only contain two tiers
+        # TODO coalesce_duplicate_replacement_inames?
+    else:
+        new_must_not_nest = None
+
+    # Rebuild must_nest graph
+    if new_must_nest:
+        new_must_nest_graph = {}
+        new_all_inames = (
+            kernel.all_inames() - set(old_inames)) | set(new_inames)
+        from pytools.graph import CycleError
+        for must_nest_tuple in new_must_nest:
+            try:
+                new_must_nest_graph = update_must_nest_graph(
+                    new_must_nest_graph, must_nest_tuple, new_all_inames)
+            except CycleError:
+                raise ValueError(
+                    "Loop priority cycle detected when replacing inames %s "
+                    "with inames %s. Previous must_nest constraints: %s"
+                    % (old_inames, new_inames, old_must_nest))
+
+        # make sure none of the must_nest constraints violate must_not_nest
+        # this may not catch all problems
+        check_must_not_nest_against_must_nest_graph(
+            new_must_not_nest, new_must_nest_graph)
+    else:
+        new_must_nest_graph = None
+
+    return kernel.copy(
+            loop_nest_constraints=LoopNestConstraints(
+                must_nest=new_must_nest,
+                must_not_nest=new_must_not_nest,
+                must_nest_graph=new_must_nest_graph,
+                )
+            )
+
+# }}}
+
+# }}}
+
 # }}}
 
 
@@ -991,6 +1272,24 @@ def _split_iname_backend(kernel, iname_to_split,
                 new_prio = new_prio + (prio_iname,)
         new_priorities.append(new_prio)
 
+    # {{{ update nest constraints
+
+    # TODO remove this
+    if within != parse_match(None):
+        raise NotImplementedError("within")
+
+    # TODO due to 'within', should do this instead:
+    # Duplicate each constraint tuple containing split_iname,
+    # replace split_iname with (inner,outer) in the copy, while still keeping
+    # the original around. Then let remove_unused_inames handle removal of
+    # the old iname if necessary
+
+    # update must_nest, must_not_nest, and must_nest_graph
+    kernel = replace_inames_in_all_nest_constraints(
+        kernel, set([iname_to_split, ]), [inner_iname, outer_iname])
+
+    # }}}
+
     kernel = kernel.copy(
             domains=new_domains,
             iname_slab_increments=iname_slab_increments,
@@ -1219,7 +1518,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
     from loopy.match import parse_match
     within = parse_match(within)
 
-    # {{{ return the same kernel if no kernel matches
+    # {{{ return the same kernel if no insn matches
 
     if not any(within(kernel, insn) for insn in kernel.instructions):
         return kernel
