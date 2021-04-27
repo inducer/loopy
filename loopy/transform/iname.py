@@ -2144,6 +2144,16 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
                 "--cannot rename" % new_iname)
 
     if does_exist:
+
+        # TODO implement this
+        if kernel.loop_nest_constraints and (
+                kernel.loop_nest_constraints.must_nest or
+                kernel.loop_nest_constraints.must_not_nest or
+                kernel.loop_nest_constraints.must_nest_graph):
+            raise NotImplementedError(
+                "rename_iname() does not yet handle new loop nest "
+                "constraints when does_exist=True.")
+
         # {{{ check that the domains match up
 
         dom = kernel.get_inames_domain(frozenset((old_iname, new_iname)))
