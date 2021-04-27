@@ -748,7 +748,7 @@ def test_constraint_updating_split_iname():
 # }}}
 
 
-# {{{
+# {{{ test_constraint_updating_duplicate_inames
 
 def test_constraint_updating_duplicate_inames():
 
@@ -839,6 +839,43 @@ def test_constraint_updating_duplicate_inames():
     nesting_for_insn, nesting_for_insn0 = _linearize_and_get_nestings(knl)
 
     assert nesting_for_insn[0] == nesting_for_insn0[0] == "i"
+
+# }}}
+
+
+# {{{ test_constraint_updating_rename_iname
+
+def test_constraint_updating_rename_iname():
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
+            """
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn}
+            """,
+            assumptions="n >= 1",
+            )
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a": np.dtype(np.float32)})
+
+    # Test rename_iname (+ remove_unused_inames) where new iname does not exist
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h, j, k}"),
+        must_not_nest=("h", "g"),
+        )
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{g, h, i}", "{j, k}"),
+        )
+    knl = lp.rename_iname(knl, "g", "g_new")
+    knl = lp.rename_iname(knl, "h", "h_new")
+    knl = lp.rename_iname(knl, "i", "i_new")
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "i_new"
+    assert loop_nesting[1:3] == ("g_new", "h_new")
+    assert set(loop_nesting[3:]) == set(["j", "k"])
+
+    # TODO Test rename_iname where new iname DOES not exist (once implemented)
 
 # }}}
 
