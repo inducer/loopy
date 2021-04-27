@@ -1786,7 +1786,7 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
     # }}}
 
-    from loopy.kernel.data import ConcurrentTag
+    from loopy.kernel.data import ConcurrentTag, VectorizeTag
     knl_inames = kernel.inames.copy()
     for name, new_tag in iname_to_tag.items():
         if not new_tag:
@@ -1797,10 +1797,24 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
         knl_inames[name] = knl_inames[name].tagged(new_tag)
 
-        # {{{ Don't allow tagging of must_nest iname as concurrent
-        # TODO ...but what about 'vec'?
+        # {{{ loop nest constraint handling
 
-        if isinstance(new_tag, ConcurrentTag) and kernel.loop_nest_constraints:
+        if isinstance(new_tag, VectorizeTag):
+            # {{{ vec_inames will be nested innermost, check whether this
+            # conflicts with must-nest constraints
+            must_nest_graph = (kernel.loop_nest_constraints.must_nest_graph
+                if kernel.loop_nest_constraints else None)
+            if must_nest_graph and must_nest_graph.get(iname, set()):
+                # iname is not a leaf
+                raise ValueError(
+                    "Loop priorities provided specify that iname %s nest "
+                    "outside of inames %s, but vectorized inames "
+                    "must nest innermost. Cannot tag %s with 'vec' tag."
+                    % (iname, must_nest_graph.get(iname, set()), iname))
+            # }}}
+
+        elif isinstance(new_tag, ConcurrentTag) and kernel.loop_nest_constraints:
+            # {{{ Don't allow tagging of must_nest iname as concurrent
             must_nest = kernel.loop_nest_constraints.must_nest
             if must_nest:
                 for nesting in must_nest:
@@ -1809,6 +1823,7 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
                             raise ValueError("cannot tag '%s' as concurrent--"
                                     "iname involved in must-nest constraint %s."
                                     % (iname, nesting))
+            # }}}
 
         # }}}
 
