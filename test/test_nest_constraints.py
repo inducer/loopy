@@ -879,6 +879,39 @@ def test_constraint_updating_rename_iname():
 
 # }}}
 
+
+# {{{ test_constraint_handling_tag_inames
+
+def test_constraint_handling_tag_inames():
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
+            """
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn}
+            """,
+            assumptions="n >= 1",
+            )
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a": np.dtype(np.float32)})
+
+    # should error when constrained inames are tagged as concurrent
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{j, k}"),
+        must_not_nest=("h", "g"),
+        )
+    try:
+        lp.tag_inames(knl, {"i": "l.0"})
+        assert False
+    except ValueError as e:
+        assert (
+            "cannot tag 'i' as concurrent--iname involved in must-nest constraint"
+            in str(e))
+
+    # Need to test anything else here...?
+
+# }}}
+
 # TODO make standalone test for constraint updating functions that
 # doesn't bother with transforms/linearization
 
