@@ -641,32 +641,30 @@ def test_constraint_updating_split_iname():
 
     from loopy.transform.iname import get_iname_nestings
 
-    def loop_order(linearization_items):
-        from loopy.schedule import EnterLoop
-        order = []
-        for linearization_item in linearization_items:
-            if isinstance(linearization_item, EnterLoop):
-                order.append(linearization_item.iname)
-        return order
+    def linearize_and_get_nestings(unlinearized_knl):
+        knl_linearized = lp.get_one_linearized_kernel(
+            lp.preprocess_kernel(unlinearized_knl))
+        return get_iname_nestings(knl_linearized.linearization)
 
     ref_knl = lp.make_kernel(
             "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
-            '''
+            """
             out[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn}
-            ''',
+            """,
             assumptions="n >= 1",
             )
     ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a": np.dtype(np.float32)})
 
-    # split_iname
+    # Test split_iname where 'within'=None
+
     knl = ref_knl
     knl = lp.constrain_loop_nesting(
         knl,
         must_nest=("k", "{g, h, i, j}"),
         )
     knl = lp.split_iname(knl, "j", 4)
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert loop_order(knl_linearized.linearization)[0] == "k"
+    loop_nesting = linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "k"
 
     knl = ref_knl
     knl = lp.constrain_loop_nesting(
@@ -674,8 +672,8 @@ def test_constraint_updating_split_iname():
         must_nest=("{g, h, i, j}", "k"),
         )
     knl = lp.split_iname(knl, "j", 4)
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert loop_order(knl_linearized.linearization)[-1] == "k"
+    loop_nesting = linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[-1] == "k"
 
     knl = ref_knl
     knl = lp.constrain_loop_nesting(
@@ -689,12 +687,10 @@ def test_constraint_updating_split_iname():
         )
     knl = lp.split_iname(knl, "g", 4)
     knl = lp.split_iname(knl, "j", 4)
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert loop_order(knl_linearized.linearization)[0] == "i"
-    assert set(loop_order(knl_linearized.linearization)[1:4]) == set(
-        ["g_outer", "g_inner", "h"])
-    assert set(loop_order(knl_linearized.linearization)[4:]) == set(
-        ["j_outer", "j_inner", "k"])
+    loop_nesting = linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "i"
+    assert set(loop_nesting[1:4]) == set(["g_outer", "g_inner", "h"])
+    assert set(loop_nesting[4:]) == set(["j_outer", "j_inner", "k"])
 
     knl = ref_knl
     knl = lp.constrain_loop_nesting(
@@ -707,11 +703,10 @@ def test_constraint_updating_split_iname():
         must_nest=("{g, h, i}", "{j, k}"),
         )
     knl = lp.split_iname(knl, "g", 4)
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert loop_order(knl_linearized.linearization)[0] == "i"
-    assert loop_order(knl_linearized.linearization)[1:4] == [
-        "g_outer", "g_inner", "h"]
-    assert set(loop_order(knl_linearized.linearization)[4:]) == set(["j", "k"])
+    loop_nesting = linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "i"
+    assert loop_nesting[1:4] == ("g_outer", "g_inner", "h")
+    assert set(loop_nesting[4:]) == set(["j", "k"])
 
     # Testing split_iname with 'within'
 
@@ -733,19 +728,17 @@ def test_constraint_updating_split_iname():
 
     knl = ref_knl
     knl = lp.split_iname(knl, "j", 4, within="id:insn1")
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    nestings_found = get_iname_nestings(knl_linearized.linearization)
-    assert ("k", "i", "j_outer", "j_inner", "h", "g") in nestings_found
-    assert ("k", "i", "j") in nestings_found
-    assert len(nestings_found) == 2
+    loop_nestings = linearize_and_get_nestings(knl)
+    assert ("k", "i", "j_outer", "j_inner", "h", "g") in loop_nestings
+    assert ("k", "i", "j") in loop_nestings
+    assert len(loop_nestings) == 2
 
     knl = ref_knl
     knl = lp.split_iname(knl, "j", 4, within="id:insn2")
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    nestings_found = get_iname_nestings(knl_linearized.linearization)
-    assert ("k", "i", "j", "h", "g") in nestings_found
-    assert ("k", "i", "j_outer", "j_inner") in nestings_found
-    assert len(nestings_found) == 2
+    loop_nestings = linearize_and_get_nestings(knl)
+    assert ("k", "i", "j", "h", "g") in loop_nestings
+    assert ("k", "i", "j_outer", "j_inner") in loop_nestings
+    assert len(loop_nestings) == 2
 
 # }}}
 
