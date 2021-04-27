@@ -1880,10 +1880,13 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
         from loopy.kernel.tools import DomainChanger
         domch = DomainChanger(kernel, frozenset([old_iname]))
 
-        # update must_nest, must_not_nest, and must_nest_graph
+        # # {{{ update nest constraints
+
         # (don't remove any unused inames yet, that happens later)
-        #knl = replace_inames_in_all_nest_constraints(
-        #    knl, set([old_iname, ]), [old_iname, new_iname])
+        kernel = replace_inames_in_all_nest_constraints(
+            kernel, set([old_iname, ]), [old_iname, new_iname])
+
+        # }}}
 
         from loopy.isl_helpers import duplicate_axes
         kernel = kernel.copy(
@@ -1945,6 +1948,18 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
         new_tag = tags.get(old_iname)
         if new_tag is not None:
             kernel = tag_inames(kernel, {new_iname: new_tag})
+
+    # }}}
+
+    # TODO why isn't remove_unused_inames called on kernel here?
+
+    # {{{ if there are any now unused inames, remove from nest constraints
+
+    now_unused_inames = (set(inames) - get_used_inames(kernel)) & set(inames)
+    kernel = replace_inames_in_all_nest_constraints(
+        kernel, old_inames=now_unused_inames, new_inames=[],
+        coalesce_new_iname_duplicates=False,
+        )
 
     # }}}
 
@@ -2276,12 +2291,11 @@ def remove_unused_inames(kernel, inames=None):
 
     # }}}
 
-    # # {{{ Remove inames from loop nest constraints
+    # {{{ Remove inames from loop nest constraints
 
     kernel = replace_inames_in_all_nest_constraints(
         kernel, old_inames=unused_inames, new_inames=[],
         coalesce_new_iname_duplicates=False,
-        pairs_that_must_not_voilate_constraints=set(),
         )
 
     # }}}
