@@ -381,14 +381,14 @@ def test_incompatible_nest_constraints():
 
 def test_vec_innermost():
 
-    def is_innermost(iname, linearization_items):
+    def is_innermost(iname, lin_items):
         from loopy.schedule import (EnterLoop, LeaveLoop)
 
         # find EnterLoop(iname) in linearization
         enter_iname_idx = None
-        for i, linearization_item in enumerate(linearization_items):
-            if isinstance(linearization_item, EnterLoop) and (
-                    linearization_item.iname == iname):
+        for i, lin_item in enumerate(lin_items):
+            if isinstance(lin_item, EnterLoop) and (
+                    lin_item.iname == iname):
                 enter_iname_idx = i
                 break
         else:
@@ -396,12 +396,12 @@ def test_vec_innermost():
             return False
 
         # now go through remaining linearization items after EnterLoop(iname)
-        for linearization_item in linearization_items[enter_iname_idx+1:]:
-            if isinstance(linearization_item, LeaveLoop):
+        for lin_item in lin_items[enter_iname_idx+1:]:
+            if isinstance(lin_item, LeaveLoop):
                 # Break as soon as we find a LeaveLoop
                 # If this happens before we find an EnterLoop, iname is innermost
                 break
-            elif isinstance(linearization_item, EnterLoop):
+            elif isinstance(lin_item, EnterLoop):
                 # we found an EnterLoop inside iname
                 return False
 
@@ -418,25 +418,25 @@ def test_vec_innermost():
 
     knl = ref_knl
     knl = lp.tag_inames(knl, {"h": "vec"})
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert is_innermost("h", knl_linearized.linearization)
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert is_innermost("h", lin_knl.linearization)
 
     knl = ref_knl
     knl = lp.tag_inames(knl, {"h": "vec", "g": "l.1", "i": "l.0"})
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert is_innermost("h", knl_linearized.linearization)
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert is_innermost("h", lin_knl.linearization)
 
     knl = ref_knl
     knl = lp.tag_inames(
         knl, {"h": "vec", "g": "l.1", "i": "l.0", "k": "unr"})
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert is_innermost("h", knl_linearized.linearization)
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert is_innermost("h", lin_knl.linearization)
 
     knl = ref_knl
     knl = lp.tag_inames(knl, {"h": "vec"})
     knl = lp.constrain_loop_nesting(knl, must_nest=("k", "i"))
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert is_innermost("h", knl_linearized.linearization)
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert is_innermost("h", lin_knl.linearization)
     lp.set_caching_enabled(True)
 
     # try adding a must_nest constraint that conflicts with a vec tag
@@ -475,12 +475,12 @@ def test_vec_innermost():
 
 def test_linearization_with_nesting_constraints():
 
-    def loop_order(linearization_items):
+    def loop_order(lin_items):
         from loopy.schedule import EnterLoop
         order = []
-        for linearization_item in linearization_items:
-            if isinstance(linearization_item, EnterLoop):
-                order.append(linearization_item.iname)
+        for lin_item in lin_items:
+            if isinstance(lin_item, EnterLoop):
+                order.append(lin_item.iname)
         return order
 
     ref_knl = lp.make_kernel(
@@ -498,32 +498,32 @@ def test_linearization_with_nesting_constraints():
         knl,
         must_nest=("i", "j", "h", "k", "g"),
         )
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert loop_order(knl_linearized.linearization) == ["i", "j", "h", "k", "g"]
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert loop_order(lin_knl.linearization) == ["i", "j", "h", "k", "g"]
 
     knl = ref_knl
     knl = lp.constrain_loop_nesting(
         knl,
         must_nest=("k", "{g, h, i, j}"),
         )
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert loop_order(knl_linearized.linearization)[0] == "k"
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert loop_order(lin_knl.linearization)[0] == "k"
 
     knl = ref_knl
     knl = lp.constrain_loop_nesting(
         knl,
         must_nest=("{g, h, i, j}", "k"),
         )
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert loop_order(knl_linearized.linearization)[-1] == "k"
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert loop_order(lin_knl.linearization)[-1] == "k"
 
     knl = ref_knl
     knl = lp.constrain_loop_nesting(
         knl,
         must_nest=("{g, h, i}", "{j, k}"),
         )
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert set(loop_order(knl_linearized.linearization)[-2:]) == set(["j", "k"])
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert set(loop_order(lin_knl.linearization)[-2:]) == set(["j", "k"])
 
     knl = ref_knl
     knl = lp.constrain_loop_nesting(
@@ -534,20 +534,20 @@ def test_linearization_with_nesting_constraints():
         knl,
         must_nest=("i", "{g, h}"),
         )
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert set(loop_order(knl_linearized.linearization)[3:]) == set(["j", "k"])
-    assert set(loop_order(knl_linearized.linearization)[1:3]) == set(["g", "h"])
-    assert loop_order(knl_linearized.linearization)[0] == "i"
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert set(loop_order(lin_knl.linearization)[3:]) == set(["j", "k"])
+    assert set(loop_order(lin_knl.linearization)[1:3]) == set(["g", "h"])
+    assert loop_order(lin_knl.linearization)[0] == "i"
 
     knl = ref_knl
     knl = lp.constrain_loop_nesting(
         knl,
         must_nest=("i", "{g, h}", "{j, k}"),
         )
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert set(loop_order(knl_linearized.linearization)[3:]) == set(["j", "k"])
-    assert set(loop_order(knl_linearized.linearization)[1:3]) == set(["g", "h"])
-    assert loop_order(knl_linearized.linearization)[0] == "i"
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert set(loop_order(lin_knl.linearization)[3:]) == set(["j", "k"])
+    assert set(loop_order(lin_knl.linearization)[1:3]) == set(["g", "h"])
+    assert loop_order(lin_knl.linearization)[0] == "i"
 
     # must_not_nest constraints
 
@@ -556,24 +556,24 @@ def test_linearization_with_nesting_constraints():
         knl,
         must_not_nest=("~k", "k"),
         )
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert loop_order(knl_linearized.linearization)[0] == "k"
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert loop_order(lin_knl.linearization)[0] == "k"
 
     knl = ref_knl
     knl = lp.constrain_loop_nesting(
         knl,
         must_not_nest=("k", "~k"),
         )
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert loop_order(knl_linearized.linearization)[-1] == "k"
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert loop_order(lin_knl.linearization)[-1] == "k"
 
     knl = ref_knl
     knl = lp.constrain_loop_nesting(
         knl,
         must_not_nest=("{j, k}", "~{j, k}"),
         )
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert set(loop_order(knl_linearized.linearization)[-2:]) == set(["j", "k"])
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert set(loop_order(lin_knl.linearization)[-2:]) == set(["j", "k"])
 
     knl = ref_knl
     knl = lp.constrain_loop_nesting(
@@ -584,10 +584,10 @@ def test_linearization_with_nesting_constraints():
         knl,
         must_nest=("i", "{g, h}"),
         )
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert set(loop_order(knl_linearized.linearization)[3:]) == set(["j", "k"])
-    assert set(loop_order(knl_linearized.linearization)[1:3]) == set(["g", "h"])
-    assert loop_order(knl_linearized.linearization)[0] == "i"
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert set(loop_order(lin_knl.linearization)[3:]) == set(["j", "k"])
+    assert set(loop_order(lin_knl.linearization)[1:3]) == set(["g", "h"])
+    assert loop_order(lin_knl.linearization)[0] == "i"
 
     # must_nest + must_not_nest
     knl = ref_knl
@@ -596,18 +596,18 @@ def test_linearization_with_nesting_constraints():
         must_nest=("{g, h, i}", "{j, k}"),
         must_not_nest=("i", "{g, h}"),
         )
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert set(loop_order(knl_linearized.linearization)[3:]) == set(["j", "k"])
-    assert set(loop_order(knl_linearized.linearization)[0:2]) == set(["g", "h"])
-    assert loop_order(knl_linearized.linearization)[2] == "i"
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert set(loop_order(lin_knl.linearization)[3:]) == set(["j", "k"])
+    assert set(loop_order(lin_knl.linearization)[0:2]) == set(["g", "h"])
+    assert loop_order(lin_knl.linearization)[2] == "i"
 
     knl = ref_knl
     knl = lp.constrain_loop_nesting(
         knl,
         must_not_nest=("i", "~i"),
         )
-    knl_linearized = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
-    assert loop_order(knl_linearized.linearization)[-1] == "i"
+    lin_knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+    assert loop_order(lin_knl.linearization)[-1] == "i"
 
     # contradictory must_not_nest
 
@@ -642,9 +642,9 @@ def test_constraint_updating_split_iname():
     from loopy.transform.iname import get_iname_nestings
 
     def linearize_and_get_nestings(unlinearized_knl):
-        knl_linearized = lp.get_one_linearized_kernel(
+        lin_knl = lp.get_one_linearized_kernel(
             lp.preprocess_kernel(unlinearized_knl))
-        return get_iname_nestings(knl_linearized.linearization)
+        return get_iname_nestings(lin_knl.linearization)
 
     ref_knl = lp.make_kernel(
             "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
