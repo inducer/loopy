@@ -1756,6 +1756,7 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
     # }}}
 
+    from loopy.kernel.data import ConcurrentTag
     knl_inames = kernel.inames.copy()
     for name, new_tag in iname_to_tag.items():
         if not new_tag:
@@ -1765,6 +1766,21 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
             raise ValueError("cannot tag '%s'--not known" % name)
 
         knl_inames[name] = knl_inames[name].tagged(new_tag)
+
+        # {{{ Don't allow tagging of must_nest iname as concurrent
+        # TODO ...but what about 'vec'?
+
+        if isinstance(new_tag, ConcurrentTag) and kernel.loop_nest_constraints:
+            must_nest = kernel.loop_nest_constraints.must_nest
+            if must_nest:
+                for nesting in must_nest:
+                    for iname_set in nesting:
+                        if iname in iname_set.inames:
+                            raise ValueError("cannot tag '%s' as concurrent--"
+                                    "iname involved in must-nest constraint %s."
+                                    % (iname, nesting))
+
+        # }}}
 
     return kernel.copy(inames=knl_inames)
 
