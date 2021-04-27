@@ -734,7 +734,7 @@ def get_graph_sources(graph):
 
 def replace_inames_in_nest_constraints(
         inames_to_replace, replacement_inames, old_constraints,
-        coalesce_duplicate_replacement_inames=False,
+        coalesce_new_iname_duplicates=False,
         keep_old_inames=False,
         ):
     """
@@ -786,7 +786,7 @@ def replace_inames_in_nest_constraints(
     # [{i, k}, {j, h}], at this point we have [{ij, k}, {ij, h}]
     # which contains a cycle. If coalescing is enabled, change this
     # to [{k}, ij, {h}] to remove the cycle.
-    if coalesce_duplicate_replacement_inames:
+    if coalesce_new_iname_duplicates:
 
         def coalesce_duplicate_inames_in_nesting(nesting, coalesce_candidates):
             # TODO would like this to be fully generic, but for now, assumes
@@ -926,13 +926,12 @@ def replace_inames_in_graph(
 
 def replace_inames_in_all_nest_constraints(
         kernel, old_inames, new_inames,
-        coalesce_duplicate_replacement_inames=False,
+        coalesce_new_iname_duplicates=False,
         pairs_that_must_not_voilate_constraints=set(),
         keep_old_inames=False,
         ):
     # replace each iname in old_inames with all inames in new_inames
     # TODO What was pairs_that_must_not_voilate_constraints used for???
-    # TODO handle case where we want to keep old inames around
 
     # get old must_nest and must_not_nest
     # (must_nest_graph will be rebuilt)
@@ -956,7 +955,7 @@ def replace_inames_in_all_nest_constraints(
 
         new_must_nest = replace_inames_in_nest_constraints(
             old_inames, new_inames, old_must_nest,
-            coalesce_duplicate_replacement_inames=coalesce_duplicate_replacement_inames,
+            coalesce_new_iname_duplicates=coalesce_new_iname_duplicates,
             keep_old_inames=keep_old_inames,
             )
     else:
@@ -973,12 +972,12 @@ def replace_inames_in_all_nest_constraints(
 
         new_must_not_nest = replace_inames_in_nest_constraints(
             old_inames, new_inames, old_must_not_nest,
-            coalesce_duplicate_replacement_inames=False,
+            coalesce_new_iname_duplicates=False,
             # (for now, never coalesce must-not-nest constraints)
             keep_old_inames=keep_old_inames,
             )
         # each must not nest constraint may only contain two tiers
-        # TODO coalesce_duplicate_replacement_inames?
+        # TODO coalesce_new_iname_duplicates?
     else:
         new_must_not_nest = None
 
@@ -2287,7 +2286,7 @@ def remove_unused_inames(kernel, inames=None):
 
     kernel = replace_inames_in_all_nest_constraints(
         kernel, old_inames=unused_inames, new_inames=[],
-        coalesce_duplicate_replacement_inames=False,
+        coalesce_new_iname_duplicates=False,
         pairs_that_must_not_voilate_constraints=set(),
         keep_old_inames=False,
         )
