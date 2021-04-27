@@ -712,10 +712,10 @@ def test_constraint_updating_split_iname():
 
     ref_knl = lp.make_kernel(
             "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
-            '''
+            """
             out1[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn1}
             out2[i,j,k] = 2+i+j+k  {id=insn2}
-            ''',
+            """,
             assumptions="n >= 1",
             )
     ref_knl = lp.add_and_infer_dtypes(
