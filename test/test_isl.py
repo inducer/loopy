@@ -87,6 +87,16 @@ def test_subst_into_pwaff():
     assert result == expected
 
 
+def test_simplify_via_aff_reproducibility():
+    # See https://github.com/inducer/loopy/pull/349
+    from loopy.symbolic import parse
+    from loopy.isl_helpers import simplify_via_aff
+
+    expr = parse("i+i_0")
+
+    assert simplify_via_aff(expr) == expr
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:

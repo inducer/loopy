@@ -428,7 +428,7 @@ def boxify(cache_manager, domain, box_inames, context):
 
 def simplify_via_aff(expr):
     from loopy.symbolic import aff_from_expr, aff_to_expr, get_dependencies
-    deps = get_dependencies(expr)
+    deps = sorted(get_dependencies(expr))
     return aff_to_expr(aff_from_expr(
         isl.Space.create_from_names(isl.DEFAULT_CONTEXT, list(deps)),
         expr))
