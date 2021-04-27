@@ -735,7 +735,6 @@ def get_graph_sources(graph):
 def replace_inames_in_nest_constraints(
         inames_to_replace, replacement_inames, old_constraints,
         coalesce_new_iname_duplicates=False,
-        keep_old_inames=False,
         ):
     """
     :arg inames_to_replace: A set of inames that may exist in
@@ -764,11 +763,7 @@ def replace_inames_in_nest_constraints(
 
             # create the new set of inames with the replacements
             if inames_found:
-                if keep_old_inames:
-                    # TODO is copy necessary?
-                    new_inames = iname_set.inames.copy()
-                else:
-                    new_inames = iname_set.inames - inames_found
+                new_inames = iname_set.inames - inames_found
                 new_inames.update(replacement_inames)
             else:
                 new_inames = iname_set.inames.copy()
@@ -928,7 +923,6 @@ def replace_inames_in_all_nest_constraints(
         kernel, old_inames, new_inames,
         coalesce_new_iname_duplicates=False,
         pairs_that_must_not_voilate_constraints=set(),
-        keep_old_inames=False,
         ):
     # replace each iname in old_inames with all inames in new_inames
     # TODO What was pairs_that_must_not_voilate_constraints used for???
@@ -956,7 +950,6 @@ def replace_inames_in_all_nest_constraints(
         new_must_nest = replace_inames_in_nest_constraints(
             old_inames, new_inames, old_must_nest,
             coalesce_new_iname_duplicates=coalesce_new_iname_duplicates,
-            keep_old_inames=keep_old_inames,
             )
     else:
         new_must_nest = None
@@ -974,7 +967,6 @@ def replace_inames_in_all_nest_constraints(
             old_inames, new_inames, old_must_not_nest,
             coalesce_new_iname_duplicates=False,
             # (for now, never coalesce must-not-nest constraints)
-            keep_old_inames=keep_old_inames,
             )
         # each must not nest constraint may only contain two tiers
         # TODO coalesce_new_iname_duplicates?
@@ -984,11 +976,8 @@ def replace_inames_in_all_nest_constraints(
     # Rebuild must_nest graph
     if new_must_nest:
         new_must_nest_graph = {}
-        if keep_old_inames:
-            new_all_inames = kernel.all_inames() | set(new_inames)
-        else:
-            new_all_inames = (
-                kernel.all_inames() - set(old_inames)) | set(new_inames)
+        new_all_inames = (
+            kernel.all_inames() - set(old_inames)) | set(new_inames)
         from pytools.graph import CycleError
         for must_nest_tuple in new_must_nest:
             try:
@@ -1291,8 +1280,8 @@ def _split_iname_backend(kernel, iname_to_split,
 
     # update must_nest, must_not_nest, and must_nest_graph
     kernel = replace_inames_in_all_nest_constraints(
-        kernel, set([iname_to_split, ]), [inner_iname, outer_iname],
-        keep_old_inames=True,
+        kernel,
+        set([iname_to_split, ]), [iname_to_split, inner_iname, outer_iname],
         )
 
     # }}}
@@ -1891,6 +1880,11 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
         from loopy.kernel.tools import DomainChanger
         domch = DomainChanger(kernel, frozenset([old_iname]))
 
+        # update must_nest, must_not_nest, and must_nest_graph
+        # (don't remove any unused inames yet, that happens later)
+        #knl = replace_inames_in_all_nest_constraints(
+        #    knl, set([old_iname, ]), [old_iname, new_iname])
+
         from loopy.isl_helpers import duplicate_axes
         kernel = kernel.copy(
                 domains=domch.get_domains_with(
@@ -2288,7 +2282,6 @@ def remove_unused_inames(kernel, inames=None):
         kernel, old_inames=unused_inames, new_inames=[],
         coalesce_new_iname_duplicates=False,
         pairs_that_must_not_voilate_constraints=set(),
-        keep_old_inames=False,
         )
 
     # }}}
