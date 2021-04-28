@@ -92,6 +92,7 @@ setup(name="loopy",
           "codepy>=2017.1",
           "colorama",
           "Mako",
+          "treelib",
           ],
 
       extras_require={
