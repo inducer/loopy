@@ -128,17 +128,14 @@ def pullout_loop_nest(tree, loop_nests, inames_to_pull_out):
 
     # {{{ sanity check to ensure the loop nest *inames_to_pull_out* is possible
 
-    err = LoopyError(f"Cannot schedule loop nest {inames_to_pull_out} "
-                     f" in the nesting tree:\n{tree}")
-
     loop_nests = sorted(loop_nests, key=lambda nest: tree.depth(nest))
 
     for outer, inner in zip(loop_nests[:-1], loop_nests[1:]):
         if outer != tree.parent(inner).identifier:
-            raise err
+            raise LoopyError(f"Cannot schedule loop nest {inames_to_pull_out} "
+                             f" in the nesting tree:\n{tree}")
 
-    if tree.depth(loop_nests[0]) != 0:
-        raise err
+    assert tree.depth(loop_nests[0]) == 0
 
     # }}}
 
