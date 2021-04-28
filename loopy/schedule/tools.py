@@ -114,7 +114,7 @@ class _not_seen:  # noqa: N801
     pass
 
 
-def pullout_loop_nest(tree, loop_nests, inames_to_pull_out):
+def pull_out_loop_nest(tree, loop_nests, inames_to_pull_out):
     """
     Updates *tree* to make *inames_to_pull_out* a loop nesting level in
     *loop_nests*
@@ -220,9 +220,9 @@ def get_loop_nest_tree(kernel):
 
         all_nests = {iname_to_tree_node_id[iname] for iname in seen_inames}
 
-        outer_loop, inner_loop = pullout_loop_nest(tree,
-                                                   (all_nests | {frozenset()}),
-                                                   seen_inames)
+        outer_loop, inner_loop = pull_out_loop_nest(tree,
+                                                    (all_nests | {frozenset()}),
+                                                    seen_inames)
         if not_seen_inames:
             add_inner_loops(tree, outer_loop, not_seen_inames)
 
@@ -246,9 +246,9 @@ def get_loop_nest_tree(kernel):
         for ilp_iname in (ilp_inames & iname_chains):
             # pull out other loops so that ilp_iname is the innermost
             all_nests = {iname_to_tree_node_id[iname] for iname in seen_inames}
-            outer_loop, inner_loop = pullout_loop_nest(tree,
-                                                       (all_nests | {frozenset()}),
-                                                       iname_chain - {ilp_iname})
+            outer_loop, inner_loop = pull_out_loop_nest(tree,
+                                                        (all_nests | {frozenset()}),
+                                                        iname_chain - {ilp_iname})
 
             for iname in outer_loop:
                 iname_to_tree_node_id[iname] = outer_loop
