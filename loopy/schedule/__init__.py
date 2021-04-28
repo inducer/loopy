@@ -195,12 +195,11 @@ def find_loop_nest_with_map(kernel):
     """
     result = {}
 
-    from loopy.kernel.data import ConcurrentTag, IlpBaseTag
+    from loopy.kernel.data import ConcurrentTag
 
     all_nonpar_inames = {
             iname for iname in kernel.all_inames()
-            if not kernel.iname_tags_of_type(iname,
-                    (ConcurrentTag, IlpBaseTag))}
+            if not kernel.iname_tags_of_type(iname, ConcurrentTag)}
 
     iname_to_insns = kernel.iname_to_insns()
 
