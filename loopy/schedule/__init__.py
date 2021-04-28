@@ -215,30 +215,27 @@ def find_loop_nest_around_map(kernel):
     """Returns a dictionary mapping inames to other inames that are
     always nested around them.
     """
-    result = {}
+    from functools import reduce
+    from collections import defaultdict
+    from loopy.schedule.tools import get_loop_nest_tree
+
+    tree = get_loop_nest_tree(kernel)
+
+    loop_nest_around_map = defaultdict(frozenset)
+
+    for node in tree.all_nodes_itr():
+        nest = node.identifier
+        depth = tree.depth(nest)
+        all_ancestors = reduce(frozenset.union, (tree.ancestor(nest, d).identifier
+                                                for d in range(depth)),
+                               frozenset())
+
+        for iname in nest:
+            loop_nest_around_map[iname] = all_ancestors
+
+    # {{{ impose constraints by the domain tree
 
     all_inames = kernel.all_inames()
-
-    iname_to_insns = kernel.iname_to_insns()
-
-    # examine pairs of all inames--O(n**2), I know.
-    from loopy.kernel.data import IlpBaseTag
-    for inner_iname in all_inames:
-        result[inner_iname] = set()
-        for outer_iname in all_inames:
-            if inner_iname == outer_iname:
-                continue
-
-            if kernel.iname_tags_of_type(outer_iname, IlpBaseTag):
-                # ILP tags are special because they are parallel tags
-                # and therefore 'in principle' nest around everything.
-                # But they're realized by the scheduler as a loop
-                # at the innermost level, so we'll cut them some
-                # slack here.
-                continue
-
-            if iname_to_insns[inner_iname] < iname_to_insns[outer_iname]:
-                result[inner_iname].add(outer_iname)
 
     for dom_idx, dom in enumerate(kernel.domains):
         for outer_iname in dom.get_var_names(isl.dim_type.param):
@@ -246,9 +243,11 @@ def find_loop_nest_around_map(kernel):
                 continue
 
             for inner_iname in dom.get_var_names(isl.dim_type.set):
-                result[inner_iname].add(outer_iname)
+                loop_nest_around_map[inner_iname] |= {outer_iname}
 
-    return result
+    # }}}
+
+    return loop_nest_around_map
 
 
 def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
