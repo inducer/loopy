@@ -1209,13 +1209,20 @@ def check_that_shapes_and_strides_are_arguments(kernel):
 
 # {{{ validate_kernel_call_sites
 
+def _get_sub_array_ref_swept_range(kernel, sar):
+    from loopy.symbolic import get_access_map
+    domain = kernel.get_inames_domain({iname_var.name
+                                       for iname_var in sar.swept_inames})
+    return get_access_map(domain, sar.swept_inames, kernel.assumptions).range()
+
+
 def _are_sub_array_refs_equivalent(sar1, sar2, caller):
     """
     Returns *True* iff *sar1* and *sar2* are equivalent
     :class:`loopy.SubArrayRef`s.
 
     Two sub-array-refs are said to be equivalent iff they point to the same
-    array sub-regions. This equivalence check is less stricter than
+    array sub-regions. This equivalence check is less strict than
     :meth:`~loopy.SubArrayRef.is_equal`.
 
     :arg caller: An instance of :class:`loopy.LoopKernel` in which they are
@@ -1230,6 +1237,10 @@ def _are_sub_array_refs_equivalent(sar1, sar2, caller):
     if len(sar1.subscript.index_tuple) != len(sar2.subscript.index_tuple):
         return False
 
+    if (_get_sub_array_ref_swept_range(caller, sar1)
+            != _get_sub_array_ref_swept_range(caller, sar2)):
+        return False
+
     from loopy.symbolic import SubstitutionMapper
     from pymbolic.mapper.substitutor import make_subst_func
     from pymbolic.mapper.distributor import distribute
@@ -1237,15 +1248,6 @@ def _are_sub_array_refs_equivalent(sar1, sar2, caller):
                                   for iname1, iname2 in zip(sar1.swept_inames,
                                                             sar2.swept_inames)
                                   })
-
-    for sweep1, sweep2 in zip(sar1.swept_inames, sar2.swept_inames):
-        sweep1_bounds = caller.get_iname_bounds(sweep1.name)
-        sweep2_bounds = caller.get_iname_bounds(sweep2.name)
-        if (sweep1_bounds.lower_bound_pw_aff != sweep2_bounds.lower_bound_pw_aff):
-            return False
-
-        if (sweep1_bounds.upper_bound_pw_aff != sweep2_bounds.upper_bound_pw_aff):
-            return False
 
     # subst_mapper: maps swept inames from sar1 to sar2
     subst_mapper = SubstitutionMapper(subst_func)
