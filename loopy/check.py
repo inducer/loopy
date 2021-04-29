@@ -196,13 +196,13 @@ def check_sub_array_ref_inames_not_within_or_redn_inames(kernel):
                                          for insn in kernel.instructions))
 
     if all_sar_inames & all_within_inames:
-        sample = (all_sar_inames & all_within_inames).pop()
+        sample = next(iter(all_sar_inames & all_within_inames))
         raise LoopyError(f"Iname '{sample}' used as a sub-array ref's sweep"
                          " iname and an instruction's within inames. Such usage"
                          " is illegal.")
 
     if all_sar_inames & all_redn_inames:
-        sample = (all_sar_inames & all_redn_inames).pop()
+        sample = next(iter(all_sar_inames & all_within_inames))
         raise LoopyError(f"Iname '{sample}' used as a sub-array ref's sweep"
                          " iname and a reduction iname. Such usage is"
                          " illegal.")
