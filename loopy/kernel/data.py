@@ -68,6 +68,8 @@ __doc__ = """
 .. autoclass:: UnrollTag
 
 .. autoclass:: Iname
+
+.. autoclass:: KernelArgument
 """
 
 
