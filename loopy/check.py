@@ -956,8 +956,7 @@ def pre_schedule_checks(kernel, callables_table):
         check_functions_are_resolved(kernel)
         # Ordering restriction:
         # check_sub_array_ref_inames_not_within_or_redn_inames should be done
-        # before check_bounds. check_bounds involves certain assertions
-        # triggering this restriction.
+        # before check_bounds. See: BatchedAccessMapMapper.map_sub_array_ref.
         check_sub_array_ref_inames_not_within_or_redn_inames(kernel)
         check_for_duplicate_insn_ids(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
