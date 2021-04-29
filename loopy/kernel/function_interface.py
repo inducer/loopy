@@ -313,6 +313,7 @@ class InKernelCallable(ImmutableRecord):
     .. automethod:: is_ready_for_codegen
     .. automethod:: get_hw_axes_sizes
     .. automethod:: get_used_hw_axes
+    .. automethod:: get_called_callables
 
     .. note::
 
@@ -481,6 +482,16 @@ class InKernelCallable(ImmutableRecord):
         """
         raise NotImplementedError()
 
+    def get_called_callables(self, callables_table):
+        """
+        Returns a :class:`frozenset` of callable ids called by *self* that are
+        resolved via *callables_table*.
+
+        :arg callables_table: Similar to
+            :attr:`loopy.TranslationUnit.callables_table`.
+        """
+        raise NotImplementedError
+
 # }}}
 
 
@@ -637,6 +648,12 @@ class ScalarCallable(InKernelCallable):
 
     def with_added_arg(self, arg_dtype, arg_descr):
         raise LoopyError("Cannot add args to scalar callables.")
+
+    def get_called_callables(self, callables_table):
+        """
+        Returns a :class:`frozenset` of callable ids called by *self*.
+        """
+        return frozenset()
 
 # }}}
 
@@ -926,6 +943,11 @@ class CallableKernel(InKernelCallable):
                           for par, par_dtype in zip(parameters, par_dtypes)]
 
         return var(self.subkernel.name)(*tgt_parameters), False
+
+    def get_called_callables(self, callables_table):
+        from loopy.kernel.tools import get_resolved_callable_ids_called_by_knl
+        return get_resolved_callable_ids_called_by_knl(self.subkernel,
+                                                       callables_table)
 
 # }}}
 

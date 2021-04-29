@@ -2363,9 +2363,10 @@ def inline_kernels_with_gbarriers(program):
 
 
 def filter_reachable_callables(t_unit):
-    from loopy.translation_unit import _get_reachable_callable_ids
-    reachable_function_ids = _get_reachable_callable_ids(t_unit.callables_table,
-                                               t_unit.entrypoints)
+    from loopy.translation_unit import get_reachable_resolved_callable_ids
+    reachable_function_ids = get_reachable_resolved_callable_ids(t_unit
+                                                                 .callables_table,
+                                                                 t_unit.entrypoints)
     new_callables = {name: clbl for name, clbl in t_unit.callables_table.items()
                      if name in (reachable_function_ids | t_unit.entrypoints)}
     return t_unit.copy(callables_table=new_callables)
