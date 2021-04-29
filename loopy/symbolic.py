@@ -2434,8 +2434,31 @@ class BatchedAccessMapMapper(WalkMapper):
         return self.rec(expr.child, inames)
 
     def map_sub_array_ref(self, expr, inames):
+        arg_name = expr.subscript.aggregate.name
+        if arg_name not in self._var_names:
+            return
+
+        if arg_name in self.bad_subscripts:
+            return
+
         total_inames = inames | {iname.name for iname in expr.swept_inames}
-        return self.rec(expr.subscript, total_inames)
+        assert total_inames not in self.access_maps[arg_name]
+
+        self.rec(expr.subscript, total_inames)
+
+        # {{{ project out swept_inames as within inames they are swept locally
+
+        amap = self.access_maps[arg_name].pop(total_inames)
+        for iname in expr.swept_inames:
+            dt, pos = amap.get_var_dict()[iname.name]
+            amap = amap.project_out(dt, pos, 1)
+
+        # }}}
+
+        if self.access_maps[arg_name][inames] is None:
+            self.access_maps[arg_name][inames] = amap
+        else:
+            self.access_maps[arg_name][inames] |= amap
 
 
 class AccessRangeMapper:
