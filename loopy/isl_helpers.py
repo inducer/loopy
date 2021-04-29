@@ -465,7 +465,7 @@ def simplify_via_aff(expr):
     from loopy.symbolic import aff_to_expr, guarded_aff_from_expr, get_dependencies
     from loopy.diagnostic import ExpressionToAffineConversionError
 
-    deps = get_dependencies(expr)
+    deps = sorted(get_dependencies(expr))
     try:
         return aff_to_expr(guarded_aff_from_expr(
             isl.Space.create_from_names(isl.DEFAULT_CONTEXT, list(deps)),
