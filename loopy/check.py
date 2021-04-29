@@ -1211,8 +1211,8 @@ def check_that_shapes_and_strides_are_arguments(kernel):
 
 def _get_sub_array_ref_swept_range(kernel, sar):
     from loopy.symbolic import get_access_map
-    domain = kernel.get_inames_domain({iname_var.name
-                                       for iname_var in sar.swept_inames})
+    domain = kernel.get_inames_domain(frozenset({iname_var.name
+                                                 for iname_var in sar.swept_inames}))
     return get_access_map(domain, sar.swept_inames, kernel.assumptions).range()
 
 
