@@ -28,7 +28,8 @@ from loopy.diagnostic import (LoopyError, WriteRaceConditionWarning,
         warn_with_kernel)
 from loopy.type_inference import TypeReader
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
-        CInstruction, _DataObliviousInstruction)
+                                      CInstruction, _DataObliviousInstruction,
+                                      NoOpInstruction)
 from pytools import memoize_method
 
 from collections import defaultdict
@@ -981,10 +982,10 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, callables_table,
         _, past_end_i = gather_schedule_block(kernel.schedule, sched_index)
         group_size, local_size = kernel.get_grid_sizes_for_insn_ids_as_exprs(
                 get_insn_ids_for_block_at(kernel.schedule, sched_index),
-                callables_table)
+                callables_table, return_dict=True)
 
-        group_axes = {ax for ax, length in enumerate(group_size)}
-        local_axes = {ax for ax, length in enumerate(local_size)}
+        group_axes = set(group_size.keys())
+        local_axes = set(local_size.keys())
 
         i = sched_index + 1
         assert isinstance(kernel.schedule[past_end_i - 1], ReturnFromKernel)
@@ -1005,6 +1006,9 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, callables_table,
             insn = kernel.id_to_insn[sched_item.insn_id]
             i += 1
 
+            if isinstance(insn, NoOpInstruction):
+                continue
+
             group_axes_used = set()
             local_axes_used = set()
 
@@ -1022,6 +1026,19 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, callables_table,
                     group_axes_used.add(tag.axis)
                 elif altags:
                     raise LoopyError("auto local tag encountered")
+
+            # {{{ account for any hw axes due to a callable
+
+            if isinstance(insn, CallInstruction):
+                assert isinstance(insn.expression.function, ResolvedFunction)
+                clbl = callables_table[insn.expression.function.name]
+                clbl_g_axes, clbl_l_axes = clbl.get_used_hw_axes(callables_table)
+                assert len(group_axes_used & clbl_g_axes) == 0
+                assert len(local_axes_used & clbl_l_axes) == 0
+                group_axes_used |= clbl_g_axes
+                local_axes_used |= clbl_l_axes
+
+            # }}}
 
             if group_axes != group_axes_used:
                 raise LoopyError(
@@ -1210,7 +1227,6 @@ def check_that_shapes_and_strides_are_arguments(kernel):
 def pre_codegen_entrypoint_checks(kernel, callables_table):
     logger.debug("pre-codegen (entrypoint) check %s: start" % kernel.name)
 
-    check_for_unused_hw_axes_in_insns(kernel, callables_table)
     kernel.target.pre_codegen_entrypoint_check(kernel, callables_table)
 
     logger.debug("pre-codegen (entrypoint) check %s: done" % kernel.name)
@@ -1219,6 +1235,7 @@ def pre_codegen_entrypoint_checks(kernel, callables_table):
 def pre_codegen_callee_checks(kernel, callables_table):
     logger.debug("pre-codegen (callee) check %s: start" % kernel.name)
 
+    check_for_unused_hw_axes_in_insns(kernel, callables_table)
     check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
     check_that_temporaries_are_defined_in_subkernels_where_used(kernel)
     check_that_all_insns_are_scheduled(kernel)
