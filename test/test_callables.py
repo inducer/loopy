@@ -763,6 +763,35 @@ def test_unused_hw_axes_in_callee(ctx_factory, inline):
     lp.auto_test_vs_ref(knl, ctx, knl)
 
 
+@pytest.mark.parametrize("inline", [True, False])
+def test_double_hw_axes_used_in_knl_call(inline):
+    from loopy.diagnostic import LoopyError
+
+    twice = lp.make_function(
+            "{[i]: 0<=i<10}",
+            """
+            y[i] = 2*x[i]
+            """, name="twice")
+
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<10}",
+            """
+            y[:, i] = twice(x[:, i])
+            """, [lp.GlobalArg("x", shape=(10, 10), dtype=float),
+                lp.GlobalArg("y", shape=(10, 10))],
+            name="outer")
+
+    twice = lp.tag_inames(twice, {"i": "l.0"})
+    knl = lp.tag_inames(knl, {"i": "l.0"})
+    knl = lp.merge([knl, twice])
+
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "twice")
+
+    with pytest.raises(LoopyError):
+        lp.generate_code_v2(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
