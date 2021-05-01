@@ -620,7 +620,7 @@ class PyOpenCLTarget(OpenCLTarget):
             kernel = adjust_local_temp_var_storage(kernel, self.device)
         return kernel
 
-    def pre_codegen_check(self, kernel, callables_table):
+    def pre_codegen_entrypoint_check(self, kernel, callables_table):
         check_sizes(kernel, callables_table, self.device)
 
     def get_host_ast_builder(self):

@@ -1157,6 +1157,12 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
             tgt_dict[tag.axis] = size
 
+        # {{{ override local_sizes with self.local_sizes
+
+        local_sizes.update(self.local_sizes)
+
+        # }}}
+
         return global_sizes, local_sizes
 
     @memoize_method
@@ -1183,21 +1189,15 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         if return_dict:
             return global_sizes, local_sizes
 
-        def to_dim_tuple(size_dict, which, forced_sizes={}):
-            forced_sizes = forced_sizes.copy()
-
+        def to_dim_tuple(size_dict, which):
             size_list = []
             sorted_axes = sorted(size_dict.keys())
 
-            while sorted_axes or forced_sizes:
+            while sorted_axes:
                 if sorted_axes:
                     cur_axis = sorted_axes.pop(0)
                 else:
                     cur_axis = None
-
-                if len(size_list) in forced_sizes:
-                    size_list.append(forced_sizes.pop(len(size_list)))
-                    continue
 
                 assert cur_axis is not None
 
@@ -1210,7 +1210,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             return tuple(size_list)
 
         return (to_dim_tuple(global_sizes, "global"),
-                to_dim_tuple(local_sizes, "local", forced_sizes=self.local_sizes))
+                to_dim_tuple(local_sizes, "local"))
 
     @memoize_method
     def get_grid_sizes_for_insn_ids_as_exprs(self, insn_ids,
@@ -1250,7 +1250,8 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         """
         return self.get_grid_sizes_for_insn_ids(
                 frozenset(insn.id for insn in self.instructions),
-                callables_table, ignore_auto=ignore_auto)
+                callables_table, ignore_auto=ignore_auto,
+                return_dict=return_dict)
 
     def get_grid_size_upper_bounds_as_exprs(self, callables_table,
             ignore_auto=False, return_dict=False):
