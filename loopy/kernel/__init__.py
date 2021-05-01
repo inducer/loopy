@@ -1082,8 +1082,12 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         from loopy.symbolic import ResolvedFunction
 
         for insn in self.instructions:
-            if isinstance(insn, CallInstruction):
-                assert isinstance(insn.expression.function, ResolvedFunction)
+            # TODO: This might be unsafe as call-sites must be resolved to get
+            # any hardware axes size constraints they might impose. However,
+            # transforms like 'precompute' use this method and callables might
+            # not be resolved by then.
+            if (isinstance(insn, CallInstruction)
+                    and isinstance(insn.expression.function, ResolvedFunction)):
 
                 clbl = callables_table[insn.expression.function.name]
                 gsize, lsize = clbl.get_hw_axes_sizes(insn.arg_id_to_val(),
