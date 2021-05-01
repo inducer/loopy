@@ -1232,27 +1232,42 @@ def check_that_shapes_and_strides_are_arguments(kernel):
 # }}}
 
 
-def pre_codegen_checks(kernel, callables_table):
+def pre_codegen_entrypoint_checks(kernel, callables_table):
+    logger.debug("pre-codegen (entrypoint) check %s: start" % kernel.name)
+
+    check_for_unused_hw_axes_in_insns(kernel, callables_table)
+    kernel.target.pre_codegen_entrypoint_check(kernel, callables_table)
+
+    logger.debug("pre-codegen (entrypoint) check %s: done" % kernel.name)
+
+
+def pre_codegen_callee_checks(kernel, callables_table):
+    logger.debug("pre-codegen (callee) check %s: start" % kernel.name)
+
+    check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
+    check_that_temporaries_are_defined_in_subkernels_where_used(kernel)
+    check_that_all_insns_are_scheduled(kernel)
+    kernel.target.pre_codegen_callee_check(kernel, callables_table)
+    check_that_shapes_and_strides_are_arguments(kernel)
+
+    logger.debug("pre-codegen (callee) check %s: done" % kernel.name)
+
+
+def pre_codegen_checks(t_unit):
+    from loopy.kernel.function_interface import CallableKernel
+
     try:
-        logger.debug("pre-codegen check %s: start" % kernel.name)
+        for e in t_unit.entrypoints:
+            pre_codegen_entrypoint_checks(t_unit[e], t_unit.callables_table)
 
-        # FIXME `check_for_unused_hw_axes_in_insns` currently flags a problem
-        # in the callee if a caller kernel, at a call site, uses hardware axes
-        # (say `g.0` and `g.1`). It does not seem that that knowledge is
-        # propagated to the callee.
-        # check_for_unused_hw_axes_in_insns(kernel, callables_table)
-        check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
-        check_that_temporaries_are_defined_in_subkernels_where_used(kernel)
-        check_that_all_insns_are_scheduled(kernel)
-        kernel.target.pre_codegen_check(kernel, callables_table)
-        check_that_shapes_and_strides_are_arguments(kernel)
-
-        logger.debug("pre-codegen check %s: done" % kernel.name)
+        for name, clbl in t_unit.callables_table.items():
+            if isinstance(clbl, CallableKernel):
+                pre_codegen_callee_checks(clbl.subkernel, t_unit.callables_table)
     except Exception:
         print(75*"=")
-        print("failing kernel during pre-schedule check:")
+        print("failing kernel during pre-codegen check:")
         print(75*"=")
-        print(kernel)
+        print(t_unit)
         print(75*"=")
         raise
 

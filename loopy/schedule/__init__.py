@@ -2065,8 +2065,8 @@ def generate_loop_schedules_inner(kernel, callables_table, debug_args={}):
             gen_sched = convert_barrier_instructions_to_barriers(
                     kernel, gen_sched)
 
-            gsize, lsize = (
-                    kernel.get_grid_size_upper_bounds(callables_table))
+            gsize, lsize = kernel.get_grid_size_upper_bounds(callables_table,
+                                                             return_dict=True)
 
             if (gsize or lsize):
                 if not kernel.options.disable_global_barriers:

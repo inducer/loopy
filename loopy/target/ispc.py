@@ -171,7 +171,7 @@ class ISPCTarget(CFamilyTarget):
     host_program_name_suffix = ""
     device_program_name_suffix = "_inner"
 
-    def pre_codegen_check(self, kernel, callables_table):
+    def pre_codegen_entrypoint_check(self, kernel, callables_table):
         gsize, lsize = kernel.get_grid_size_upper_bounds_as_exprs(
                 callables_table)
         if len(lsize) > 1:
