@@ -268,19 +268,6 @@ def check_loop_priority_inames_known(kernel):
                 raise LoopyError("unknown iname '%s' in loop priorities" % iname)
 
 
-def _get_all_unique_iname_tags(kernel):
-    """Returns an instance of :class:`set` of all the iname tags used in
-    *kernel* that inherit from :class:`loopy.kernel.data.UniqueTag`.
-    """
-    from loopy.kernel.data import UniqueTag
-    from itertools import chain
-    iname_tags = list(chain(*(kernel.iname_to_tags.get(iname, []) for iname in
-                              kernel.all_inames())))
-    return {
-            tag for tag in iname_tags if
-            isinstance(tag, UniqueTag)}
-
-
 def check_multiple_tags_allowed(kernel):
     """
     Checks if a multiple tags of an iname are compatible.
