@@ -767,26 +767,26 @@ def test_unused_hw_axes_in_callee(ctx_factory, inline):
 def test_double_hw_axes_used_in_knl_call(inline):
     from loopy.diagnostic import LoopyError
 
-    twice = lp.make_function(
+    thrice = lp.make_function(
             "{[i]: 0<=i<10}",
             """
             y[i] = 2*x[i]
-            """, name="twice")
+            """, name="thrice")
 
     knl = lp.make_kernel(
             "{[i]: 0<=i<10}",
             """
-            y[:, i] = twice(x[:, i])
+            y[:, i] = thrice(x[:, i])
             """, [lp.GlobalArg("x", shape=(10, 10), dtype=float),
                 lp.GlobalArg("y", shape=(10, 10))],
             name="outer")
 
-    twice = lp.tag_inames(twice, {"i": "l.0"})
+    thrice = lp.tag_inames(thrice, {"i": "l.0"})
     knl = lp.tag_inames(knl, {"i": "l.0"})
-    knl = lp.merge([knl, twice])
+    knl = lp.merge([knl, thrice])
 
     if inline:
-        knl = lp.inline_callable_kernel(knl, "twice")
+        knl = lp.inline_callable_kernel(knl, "thrice")
 
     with pytest.raises(LoopyError):
         lp.generate_code_v2(knl)
