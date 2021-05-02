@@ -282,12 +282,19 @@ def check_for_double_use_of_hw_axes(kernel, callables_table):
     Check if any instruction of *kernel* is within multiple inames tagged with
     the same hw axis tag.
     """
-    from loopy.kernel.data import UniqueTag
+    from loopy.kernel.data import UniqueTag, GroupIndexTag, LocalIndexTag
     from loopy.kernel.instruction import CallInstruction
-    from loopy.kernel.function_interface import CallableKernel
+    from loopy.symbolic import ResolvedFunction
 
     for insn in kernel.instructions:
         insn_tag_keys = set()
+        if isinstance(insn, CallInstruction):
+            assert isinstance(insn.expression.function, ResolvedFunction)
+            clbl = callables_table[insn.expression.function.name]
+            gsize, lsize = clbl.get_used_hw_axes(callables_table)
+            insn_tag_keys |= {GroupIndexTag(i).key for i in gsize}
+            insn_tag_keys |= {LocalIndexTag(i).key for i in lsize}
+
         for iname in insn.within_inames:
             for tag in kernel.iname_tags_of_type(iname, UniqueTag):
                 key = tag.key
@@ -296,21 +303,6 @@ def check_for_double_use_of_hw_axes(kernel, callables_table):
                             "inames tagged '%s'" % (insn.id, tag))
 
                 insn_tag_keys.add(key)
-
-        # check usage of iname tags in the callee kernel
-        if isinstance(insn, CallInstruction):
-            in_knl_callable = callables_table[
-                    insn.expression.function.name]
-            if isinstance(in_knl_callable, CallableKernel):
-                # check for collision in iname_tag keys in the instruction
-                # due to the callee kernel
-                common_iname_tags = [tag for tag in
-                        _get_all_unique_iname_tags(in_knl_callable.subkernel)
-                        if tag.key in insn_tag_keys]
-                if common_iname_tags:
-                    raise LoopyError("instruction '%s' has multiple "
-                            "inames tagged '%s'" % (insn.id,
-                                common_iname_tags.pop()))
 
 
 def check_for_inactive_iname_access(kernel):
