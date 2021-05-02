@@ -188,6 +188,27 @@ def check_for_integer_subscript_indices(kernel, callables_table):
                 type(insn).__name__))
 
 
+def check_sub_array_ref_inames_not_within_or_redn_inames(kernel):
+    all_within_inames = frozenset().union(*(insn.within_inames
+                                            for insn in kernel.instructions))
+    all_redn_inames = frozenset().union(*(insn.reduction_inames()
+                                          for insn in kernel.instructions))
+    all_sar_inames = frozenset().union(*(insn.sub_array_ref_inames()
+                                         for insn in kernel.instructions))
+
+    if all_sar_inames & all_within_inames:
+        sample = next(iter(all_sar_inames & all_within_inames))
+        raise LoopyError(f"Iname '{sample}' used as a sub-array ref's sweep"
+                         " iname and an instruction's within inames. Such usage"
+                         " is illegal.")
+
+    if all_sar_inames & all_redn_inames:
+        sample = next(iter(all_sar_inames & all_within_inames))
+        raise LoopyError(f"Iname '{sample}' used as a sub-array ref's sweep"
+                         " iname and a reduction iname. Such usage is"
+                         " illegal.")
+
+
 def check_insn_attributes(kernel):
     """
     Check for legality of attributes of every instruction in *kernel*.
@@ -926,6 +947,10 @@ def pre_schedule_checks(kernel, callables_table):
             check_for_integer_subscript_indices(kernel, callables_table)
 
         check_functions_are_resolved(kernel)
+        # Ordering restriction:
+        # check_sub_array_ref_inames_not_within_or_redn_inames should be done
+        # before check_bounds. See: BatchedAccessMapMapper.map_sub_array_ref.
+        check_sub_array_ref_inames_not_within_or_redn_inames(kernel)
         check_for_duplicate_insn_ids(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel, callables_table)
