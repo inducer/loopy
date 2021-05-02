@@ -632,8 +632,6 @@ class ExecutionWrapperGeneratorBase:
         """
 
         options = program[entrypoint].options
-        #FIXME: endswith is ugly maybe make
-        # codegen_result.implemented_data_infos a dict?
         implemented_data_info = codegen_result.implemented_data_infos[entrypoint]
 
         from loopy.kernel.data import KernelArgument

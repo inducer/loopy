@@ -2148,7 +2148,8 @@ def check_atomic_loads(kernel):
 
 class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
     """
-    Infers the :attr:`loopy`
+    Infers :attr:`~loopy.kernel.function_interface.arg_id_to_descr` of
+    callables visited in an expression.
     """
 
     def __init__(self, rule_mapping_context, caller_kernel, clbl_inf_ctx):
@@ -2339,7 +2340,6 @@ def infer_arg_descr(program):
 
 # {{{  inline_kernels_with_gbarriers
 
-
 def inline_kernels_with_gbarriers(program):
     from loopy.kernel.instruction import BarrierInstruction
     from loopy.transform.callable import inline_callable_kernel
@@ -2349,6 +2349,7 @@ def inline_kernels_with_gbarriers(program):
                     and insn.synchronization_kind == "global")
                    for insn in knl.instructions)
 
+    # FIXME: should traverse in call-graph's topological sort order
     callees_to_inline = [name for name, knl_clbl in program.callables_table.items()
                          if (isinstance(knl_clbl, CallableKernel)
                              and has_gbarrier(knl_clbl.subkernel))]
@@ -2357,7 +2358,6 @@ def inline_kernels_with_gbarriers(program):
         program = inline_callable_kernel(program, callee_to_inline)
 
     return program
-
 
 # }}}
 
@@ -2377,7 +2377,7 @@ preprocess_cache = WriteOncePersistentDict(
         key_builder=LoopyKeyBuilder())
 
 
-def preprocess_single_kernel(kernel, callables_table, device=None):
+def _preprocess_single_kernel(kernel, callables_table, device=None):
     from loopy.kernel import KernelState
 
     prepro_logger = ProcessLogger(logger, "%s: preprocess" % kernel.name)
@@ -2498,7 +2498,7 @@ def preprocess_program(program, device=None):
     new_callables = {}
     for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
-            new_subkernel = preprocess_single_kernel(
+            new_subkernel = _preprocess_single_kernel(
                     in_knl_callable.subkernel, program.callables_table,
                     device)
             in_knl_callable = in_knl_callable.copy(
@@ -2520,7 +2520,6 @@ def preprocess_program(program, device=None):
 
     # Ordering restriction:
     # callees with gbarrier in them must be inlined after inferrring arg_descr.
-    # inline_kernels_with_gbarriers does not recursively inline the callees.
     program = inline_kernels_with_gbarriers(program)
 
     # {{{ prepare for caching
