@@ -28,7 +28,8 @@ from loopy.diagnostic import (LoopyError, WriteRaceConditionWarning,
         warn_with_kernel)
 from loopy.type_inference import TypeReader
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
-        CInstruction, _DataObliviousInstruction)
+                                      CInstruction, _DataObliviousInstruction,
+                                      NoOpInstruction)
 from pytools import memoize_method
 
 from collections import defaultdict
@@ -267,19 +268,6 @@ def check_loop_priority_inames_known(kernel):
                 raise LoopyError("unknown iname '%s' in loop priorities" % iname)
 
 
-def _get_all_unique_iname_tags(kernel):
-    """Returns an instance of :class:`set` of all the iname tags used in
-    *kernel* that inherit from :class:`loopy.kernel.data.UniqueTag`.
-    """
-    from loopy.kernel.data import UniqueTag
-    from itertools import chain
-    iname_tags = list(chain(*(kernel.iname_to_tags.get(iname, []) for iname in
-                              kernel.all_inames())))
-    return {
-            tag for tag in iname_tags if
-            isinstance(tag, UniqueTag)}
-
-
 def check_multiple_tags_allowed(kernel):
     """
     Checks if a multiple tags of an iname are compatible.
@@ -302,12 +290,19 @@ def check_for_double_use_of_hw_axes(kernel, callables_table):
     Check if any instruction of *kernel* is within multiple inames tagged with
     the same hw axis tag.
     """
-    from loopy.kernel.data import UniqueTag
+    from loopy.kernel.data import UniqueTag, GroupIndexTag, LocalIndexTag
     from loopy.kernel.instruction import CallInstruction
-    from loopy.kernel.function_interface import CallableKernel
+    from loopy.symbolic import ResolvedFunction
 
     for insn in kernel.instructions:
         insn_tag_keys = set()
+        if isinstance(insn, CallInstruction):
+            assert isinstance(insn.expression.function, ResolvedFunction)
+            clbl = callables_table[insn.expression.function.name]
+            gsize, lsize = clbl.get_used_hw_axes(callables_table)
+            insn_tag_keys |= {GroupIndexTag(i).key for i in gsize}
+            insn_tag_keys |= {LocalIndexTag(i).key for i in lsize}
+
         for iname in insn.within_inames:
             for tag in kernel.iname_tags_of_type(iname, UniqueTag):
                 key = tag.key
@@ -316,21 +311,6 @@ def check_for_double_use_of_hw_axes(kernel, callables_table):
                             "inames tagged '%s'" % (insn.id, tag))
 
                 insn_tag_keys.add(key)
-
-        # check usage of iname tags in the callee kernel
-        if isinstance(insn, CallInstruction):
-            in_knl_callable = callables_table[
-                    insn.expression.function.name]
-            if isinstance(in_knl_callable, CallableKernel):
-                # check for collision in iname_tag keys in the instruction
-                # due to the callee kernel
-                common_iname_tags = [tag for tag in
-                        _get_all_unique_iname_tags(in_knl_callable.subkernel)
-                        if tag.key in insn_tag_keys]
-                if common_iname_tags:
-                    raise LoopyError("instruction '%s' has multiple "
-                            "inames tagged '%s'" % (insn.id,
-                                common_iname_tags.pop()))
 
 
 def check_for_inactive_iname_access(kernel):
@@ -1006,10 +986,10 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, callables_table,
         _, past_end_i = gather_schedule_block(kernel.schedule, sched_index)
         group_size, local_size = kernel.get_grid_sizes_for_insn_ids_as_exprs(
                 get_insn_ids_for_block_at(kernel.schedule, sched_index),
-                callables_table)
+                callables_table, return_dict=True)
 
-        group_axes = {ax for ax, length in enumerate(group_size)}
-        local_axes = {ax for ax, length in enumerate(local_size)}
+        group_axes = set(group_size.keys())
+        local_axes = set(local_size.keys())
 
         i = sched_index + 1
         assert isinstance(kernel.schedule[past_end_i - 1], ReturnFromKernel)
@@ -1030,6 +1010,9 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, callables_table,
             insn = kernel.id_to_insn[sched_item.insn_id]
             i += 1
 
+            if isinstance(insn, NoOpInstruction):
+                continue
+
             group_axes_used = set()
             local_axes_used = set()
 
@@ -1047,6 +1030,19 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, callables_table,
                     group_axes_used.add(tag.axis)
                 elif altags:
                     raise LoopyError("auto local tag encountered")
+
+            # {{{ account for any hw axes due to a callable
+
+            if isinstance(insn, CallInstruction):
+                assert isinstance(insn.expression.function, ResolvedFunction)
+                clbl = callables_table[insn.expression.function.name]
+                clbl_g_axes, clbl_l_axes = clbl.get_used_hw_axes(callables_table)
+                assert len(group_axes_used & clbl_g_axes) == 0
+                assert len(local_axes_used & clbl_l_axes) == 0
+                group_axes_used |= clbl_g_axes
+                local_axes_used |= clbl_l_axes
+
+            # }}}
 
             if group_axes != group_axes_used:
                 raise LoopyError(
@@ -1232,27 +1228,42 @@ def check_that_shapes_and_strides_are_arguments(kernel):
 # }}}
 
 
-def pre_codegen_checks(kernel, callables_table):
+def pre_codegen_entrypoint_checks(kernel, callables_table):
+    logger.debug("pre-codegen entrypoint check %s: start" % kernel.name)
+
+    kernel.target.pre_codegen_entrypoint_check(kernel, callables_table)
+
+    logger.debug("pre-codegen entrypoint check %s: done" % kernel.name)
+
+
+def pre_codegen_callable_checks(kernel, callables_table):
+    logger.debug("pre-codegen callable check %s: start" % kernel.name)
+
+    check_for_unused_hw_axes_in_insns(kernel, callables_table)
+    check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
+    check_that_temporaries_are_defined_in_subkernels_where_used(kernel)
+    check_that_all_insns_are_scheduled(kernel)
+    kernel.target.pre_codegen_callable_check(kernel, callables_table)
+    check_that_shapes_and_strides_are_arguments(kernel)
+
+    logger.debug("pre-codegen callable check %s: done" % kernel.name)
+
+
+def pre_codegen_checks(t_unit):
+    from loopy.kernel.function_interface import CallableKernel
+
     try:
-        logger.debug("pre-codegen check %s: start" % kernel.name)
+        for e in t_unit.entrypoints:
+            pre_codegen_entrypoint_checks(t_unit[e], t_unit.callables_table)
 
-        # FIXME `check_for_unused_hw_axes_in_insns` currently flags a problem
-        # in the callee if a caller kernel, at a call site, uses hardware axes
-        # (say `g.0` and `g.1`). It does not seem that that knowledge is
-        # propagated to the callee.
-        # check_for_unused_hw_axes_in_insns(kernel, callables_table)
-        check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
-        check_that_temporaries_are_defined_in_subkernels_where_used(kernel)
-        check_that_all_insns_are_scheduled(kernel)
-        kernel.target.pre_codegen_check(kernel, callables_table)
-        check_that_shapes_and_strides_are_arguments(kernel)
-
-        logger.debug("pre-codegen check %s: done" % kernel.name)
+        for name, clbl in t_unit.callables_table.items():
+            if isinstance(clbl, CallableKernel):
+                pre_codegen_callable_checks(clbl.subkernel, t_unit.callables_table)
     except Exception:
         print(75*"=")
-        print("failing kernel during pre-schedule check:")
+        print("failing kernel during pre-codegen check:")
         print(75*"=")
-        print(kernel)
+        print(t_unit)
         print(75*"=")
         raise
 
