@@ -149,7 +149,8 @@ jobs:
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
                 . ./ci-support.sh
 
-                if [[ "$DOWNSTREAM_PROJECT" = "grudge" ]] && [[ "$GITHUB_HEAD_REF" = "kernel_callables_v3-edit2" || "$GITHUB_HEAD_REF" = "kcv3-grudge-downstream-ci" ]]; then
+                # Use "special grudge" for kcv3 and branches targeting it.
+                if [[ "$DOWNSTREAM_PROJECT" = "grudge" ]] && [[ "$GITHUB_HEAD_REF" = "kernel_callables_v3-edit2" || "$GITHUB_BASE_REF" = "kernel_callables_v3-edit2" ]]; then
                   with_echo git clone "https://github.com/kaushikcfd/$DOWNSTREAM_PROJECT.git" -b "kcv3-e2-compat"
                 else
                   with_echo git clone "https://github.com/inducer/$DOWNSTREAM_PROJECT.git"
