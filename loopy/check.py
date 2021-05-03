@@ -1229,24 +1229,24 @@ def check_that_shapes_and_strides_are_arguments(kernel):
 
 
 def pre_codegen_entrypoint_checks(kernel, callables_table):
-    logger.debug("pre-codegen (entrypoint) check %s: start" % kernel.name)
+    logger.debug("pre-codegen entrypoint check %s: start" % kernel.name)
 
     kernel.target.pre_codegen_entrypoint_check(kernel, callables_table)
 
-    logger.debug("pre-codegen (entrypoint) check %s: done" % kernel.name)
+    logger.debug("pre-codegen entrypoint check %s: done" % kernel.name)
 
 
-def pre_codegen_callee_checks(kernel, callables_table):
-    logger.debug("pre-codegen (callee) check %s: start" % kernel.name)
+def pre_codegen_callable_checks(kernel, callables_table):
+    logger.debug("pre-codegen callable check %s: start" % kernel.name)
 
     check_for_unused_hw_axes_in_insns(kernel, callables_table)
     check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
     check_that_temporaries_are_defined_in_subkernels_where_used(kernel)
     check_that_all_insns_are_scheduled(kernel)
-    kernel.target.pre_codegen_callee_check(kernel, callables_table)
+    kernel.target.pre_codegen_callable_check(kernel, callables_table)
     check_that_shapes_and_strides_are_arguments(kernel)
 
-    logger.debug("pre-codegen (callee) check %s: done" % kernel.name)
+    logger.debug("pre-codegen callable check %s: done" % kernel.name)
 
 
 def pre_codegen_checks(t_unit):
@@ -1258,7 +1258,7 @@ def pre_codegen_checks(t_unit):
 
         for name, clbl in t_unit.callables_table.items():
             if isinstance(clbl, CallableKernel):
-                pre_codegen_callee_checks(clbl.subkernel, t_unit.callables_table)
+                pre_codegen_callable_checks(clbl.subkernel, t_unit.callables_table)
     except Exception:
         print(75*"=")
         print("failing kernel during pre-codegen check:")
