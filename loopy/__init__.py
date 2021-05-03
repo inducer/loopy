@@ -298,7 +298,6 @@ __all__ = [
 
         "register_preamble_generators",
         "register_symbol_manglers",
-        "register_function_manglers",
 
         "set_caching_enabled",
         "CacheMode",
@@ -394,29 +393,6 @@ def register_symbol_manglers(kernel, manglers):
             new_manglers.insert(0, m)
 
     return kernel.copy(symbol_manglers=new_manglers)
-
-
-@for_each_kernel
-def register_function_manglers(kernel, manglers):
-    """
-    :arg manglers: list of functions of signature ``(kernel, name, arg_dtypes)``
-        returning a :class:`loopy.CallMangleInfo`.
-    :returns: *kernel* with *manglers* registered
-    """
-    from loopy.tools import unpickles_equally
-
-    new_manglers = kernel.function_manglers[:]
-    for m in manglers:
-        if m not in new_manglers:
-            if not unpickles_equally(m):
-                raise LoopyError("mangler '%s' does not "
-                        "compare equally after being upickled "
-                        "and would disrupt loopy's caches"
-                        % m)
-
-            new_manglers.insert(0, m)
-
-    return kernel.copy(function_manglers=new_manglers)
 
 # }}}
 

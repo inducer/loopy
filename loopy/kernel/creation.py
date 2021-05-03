@@ -2144,9 +2144,6 @@ def make_function(domains, instructions, kernel_data=["..."], **kwargs):
     :arg default_offset: 0 or :class:`loopy.auto`. The default value of
         *offset* in :attr:`ArrayArg` for guessed arguments.
         Defaults to 0.
-    :arg function_manglers: list of functions of signature
-        ``(target, name, arg_dtypes)``
-        returning a :class:`loopy.CallMangleInfo`.
     :arg symbol_manglers: list of functions of signature (name) returning
         a tuple (result_dtype, c_name), where c_name is the C-level symbol to
         be evaluated.
