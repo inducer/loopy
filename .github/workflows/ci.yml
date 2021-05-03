@@ -146,10 +146,14 @@ jobs:
             env:
                 DOWNSTREAM_PROJECT: ${{ matrix.downstream_project }}
             run: |
+                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
+                . ./ci-support.sh
+
+                echo "$GITHUB_HEAD_REF"
                 if [[ "$DOWNSTREAM_PROJECT" = "grudge" ]] && [[ "$GITHUB_HEAD_REF" = "kernel_callables_v3-edit2" ]]; then
-                  git clone "https://github.com/kaushikcfd/$DOWNSTREAM_PROJECT.git" -b "kcv3-e2-compat"
+                  with_echo git clone "https://github.com/kaushikcfd/$DOWNSTREAM_PROJECT.git" -b "kcv3-e2-compat"
                 else
-                  git clone "https://github.com/inducer/$DOWNSTREAM_PROJECT.git"
+                  with_echo git clone "https://github.com/inducer/$DOWNSTREAM_PROJECT.git"
                 fi
                 cd "$DOWNSTREAM_PROJECT"
                 echo "*** $DOWNSTREAM_PROJECT version: $(git rev-parse --short HEAD)"
@@ -163,8 +167,6 @@ jobs:
 
                 sed -i "/mpi4py/ d" requirements.txt
 
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
-                . ./ci-support.sh
                 build_py_project_in_conda_env
                 test_py_project
 
