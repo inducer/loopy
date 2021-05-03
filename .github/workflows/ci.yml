@@ -146,7 +146,11 @@ jobs:
             env:
                 DOWNSTREAM_PROJECT: ${{ matrix.downstream_project }}
             run: |
-                git clone "https://github.com/inducer/$DOWNSTREAM_PROJECT.git"
+                if [[ "$DOWNSTREAM_PROJECT" = "grudge" ]] && [[ "$GITHUB_HEAD_REF" = "kernel_callables_v3-edit2" ]]; then
+                  git clone "https://github.com/kaushikcfd/$DOWNSTREAM_PROJECT.git" -b "kcv3-e2-compat"
+                else
+                  git clone "https://github.com/inducer/$DOWNSTREAM_PROJECT.git"
+                fi
                 cd "$DOWNSTREAM_PROJECT"
                 echo "*** $DOWNSTREAM_PROJECT version: $(git rev-parse --short HEAD)"
 
