@@ -90,7 +90,7 @@ class TargetBase:
     def pre_codegen_entrypoint_check(self, kernel, callables_table):
         pass
 
-    def pre_codegen_callee_check(self, kernel, callables_table):
+    def pre_codegen_callable_check(self, kernel, callables_table):
         pass
 
     # }}}
