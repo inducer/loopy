@@ -866,24 +866,26 @@ def generate_loop_schedules_v2(kernel):
             dag[LeaveLoop(iname=inner_loop)] |= {LeaveLoop(iname=outer_loop)}
 
     for insn in kernel.instructions:
+        insn_loop_inames = insn.within_inames & loop_inames
         for dep_id in insn.depends_on:
             dep = kernel.id_to_insn[dep_id]
+            dep_loop_inames = dep.within_inames & loop_inames
             dag[RunInstruction(insn_id=dep_id)] |= {RunInstruction(insn_id=insn.id)}
-            if dep.within_inames < insn.within_inames:
-                for iname in insn.within_inames - dep.within_inames:
+            if dep_loop_inames < insn_loop_inames:
+                for iname in insn_loop_inames - dep_loop_inames:
                     dag[RunInstruction(insn_id=dep.id)] |= {EnterLoop(iname=iname)}
-            elif insn.within_inames < dep.within_inames:
-                for iname in dep.within_inames - insn.within_inames:
+            elif insn_loop_inames < dep_loop_inames:
+                for iname in dep_loop_inames - insn_loop_inames:
                     dag[LeaveLoop(iname=iname)] |= {RunInstruction(insn_id=insn.id)}
-            elif dep.within_inames != insn.within_inames:
+            elif dep_loop_inames != insn_loop_inames:
                 insn_iname, dep_iname = _get_dep_equivalent_nests(loop_nest_tree,
-                                                                  insn.within_inames,
-                                                                  dep.within_inames)
+                                                                  insn_loop_inames,
+                                                                  dep_loop_inames)
                 dag[LeaveLoop(iname=dep_iname)] |= {EnterLoop(iname=insn_iname)}
             else:
                 pass
 
-        for iname in insn.within_inames:
+        for iname in insn_loop_inames:
             dag[EnterLoop(iname=iname)] |= {RunInstruction(insn_id=insn.id)}
             dag[RunInstruction(insn_id=insn.id)] |= {LeaveLoop(iname=iname)}
 
@@ -894,7 +896,7 @@ def generate_loop_schedules_v2(kernel):
 
     def key(x):
         if isinstance(x, RunInstruction):
-            iname = max(kernel.id_to_insn[x.insn_id].within_inames,
+            iname = max((kernel.id_to_insn[x.insn_id].within_inames & loop_inames),
                         key=lambda k: loop_nest_tree.depth(k),
                         default="")
             result = (iname_key(iname), x.insn_id)
