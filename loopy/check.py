@@ -1287,17 +1287,18 @@ def _validate_kernel_call_insn(caller, call_insn, callee):
 
     arg_id_to_val = call_insn.arg_id_to_val()
 
-    ipar = 0
-    iassignee = -1
+    next_iarg_input = 0
+    next_iarg_output = -1
 
     for arg in callee.args:
         if arg.is_input:
-            if ipar not in arg_id_to_val:
+            if next_iarg_input not in arg_id_to_val:
                 raise LoopyError(f"Call to '{callee.name}' in '{call_insn}' expects"
-                                 f" a {ipar+1}-th positional argument corresponding"
+                                 f" a {next_iarg_input+1}-th positional "
+                                 "argument corresponding"
                                  f" to '{arg.name}'in the callee.")
-            in_val = arg_id_to_val[ipar]
-            ipar += 1
+            in_val = arg_id_to_val[next_iarg_input]
+            next_iarg_input += 1
             if isinstance(arg, ArrayBase):
                 if not isinstance(in_val, SubArrayRef):
                     raise LoopyError(f"Call to '{callee.name}' in '{call_insn}'"
@@ -1309,13 +1310,13 @@ def _validate_kernel_call_insn(caller, call_insn, callee):
                                      f" expects a value argument for '{arg.name}'"
                                      f" (got {in_val}).")
         if arg.is_output:
-            if iassignee not in arg_id_to_val:
+            if next_iarg_output not in arg_id_to_val:
                 raise LoopyError(f"Call to '{callee.name}' in '{call_insn}' expects"
-                                 f" a {-iassignee}-th positional assignee"
+                                 f" a {-next_iarg_output}-th positional assignee"
                                  f" corresponding to '{arg.name}'in the callee.")
 
-            out_val = arg_id_to_val[iassignee]
-            iassignee -= 1
+            out_val = arg_id_to_val[next_iarg_output]
+            next_iarg_output -= 1
             assert isinstance(arg, ArrayBase)
             if not isinstance(out_val, SubArrayRef):
                 raise LoopyError(f"Call to '{callee.name}' in '{call_insn}'"
