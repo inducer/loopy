@@ -41,6 +41,18 @@ An example demonstrating registering a CBlasGemv as a loopy callable:
 
 .. literalinclude:: ../examples/python/call-external.py
 
+
+Call Instruction for a kernel call
+----------------------------------
+
+At a call-site involving a call to a :class:`loopy.LoopKernel`, the arguments to
+the call must be ordered by the order of input arguments of the callee kernel.
+Similarly, the assignees must be ordered by the order of callee kernel's output
+arguments. Since a :class:`~loopy.kernel.data.KernelArgument` can be both an
+input and an output, such arguments would be a part of the call instruction's
+assignees as well as the call expression node's parameters.
+
+
 Reference
 ---------
 

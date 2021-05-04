@@ -23,8 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
-
 from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import StringifyMapper
 from loopy.type_inference import TypeReader
@@ -131,21 +129,6 @@ class ExpressionToPythonMapper(StringifyMapper):
 
 
 # {{{ ast builder
-
-def _numpy_single_arg_function_mangler(kernel, name, arg_dtypes):
-    if (not isinstance(name, str)
-            or not hasattr(np, name)
-            or len(arg_dtypes) != 1):
-        return None
-
-    arg_dtype, = arg_dtypes
-
-    from loopy.kernel.data import CallMangleInfo
-    return CallMangleInfo(
-            target_name="_lpy_np."+name,
-            result_dtypes=(arg_dtype,),
-            arg_dtypes=arg_dtypes)
-
 
 def _base_python_preamble_generator(preamble_info):
     yield ("00_future", "from __future__ import division, print_function\n")
