@@ -802,8 +802,109 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
 
 # {{{ scheduling algorithm
 
-def generate_loop_schedules_internal(
-        sched_state, debug=None):
+def _get_dep_equivalent_nests(tree, within1, within2):
+    common_ancestors = (within1 & within2) | {""}
+
+    innermost_parent = max(common_ancestors,
+                           key=lambda k: tree.depth(k))
+    iname1, = [iname.identifier
+               for iname in tree.children(innermost_parent)
+               if iname.identifier in within1]
+
+    iname2, = [iname.identifier
+               for iname in tree.children(innermost_parent)
+               if iname.identifier in within2]
+
+    return iname1, iname2
+
+
+def no_recurse_schedule(kernel):
+    from loopy.schedule.tools import get_loop_nest_tree
+    from functools import reduce
+    from pytools.graph import compute_topological_order
+    from loopy.kernel.data import (filter_iname_tags_by_type,
+                                   ConcurrentTag)
+
+    if any(insn.priority != 0 for insn in kernel.instructions):
+        raise NotImplementedError
+
+    parallel_inames = {name
+                       for name, iname in kernel.inames.items()
+                       if filter_iname_tags_by_type(iname.tags, ConcurrentTag)}
+
+    # the first step is to figure out the loop nest trees
+    # I would rather get the loop nest tree first
+    loop_nest_tree = get_loop_nest_tree(kernel)
+
+    # loop_inames: inames that are realized as loops. Concurrent inames aren't
+    # realized as a loop in the generated code for a loopy.TargetBase.
+    loop_inames = (reduce(frozenset.union, (insn.within_inames
+                                            for insn in kernel.instructions),
+                          frozenset())
+                   - parallel_inames)
+
+    dag = {}
+    dag.update({EnterLoop(iname=iname): frozenset({LeaveLoop(iname=iname)})
+                for iname in loop_inames})
+    dag.update({LeaveLoop(iname=iname): frozenset()
+                for iname in loop_inames})
+    dag.update({RunInstruction(insn_id=insn.id): frozenset()
+                for insn in kernel.instructions})
+
+    for parent in loop_nest_tree.all_nodes_itr():
+        outer_loop = parent.identifier
+        if outer_loop == "":
+            continue
+
+        for child in loop_nest_tree.children(outer_loop):
+            inner_loop = child.identifier
+            dag[EnterLoop(iname=outer_loop)] |= {EnterLoop(iname=inner_loop)}
+            dag[LeaveLoop(iname=inner_loop)] |= {LeaveLoop(iname=outer_loop)}
+
+    for insn in kernel.instructions:
+        for dep_id in insn.depends_on:
+            dep = kernel.id_to_insn[dep_id]
+            dag[RunInstruction(insn_id=dep_id)] |= {RunInstruction(insn_id=insn.id)}
+            if dep.within_inames < insn.within_inames:
+                for iname in insn.within_inames - dep.within_inames:
+                    dag[RunInstruction(insn_id=dep.id)] |= {EnterLoop(iname=iname)}
+            elif insn.within_inames < dep.within_inames:
+                for iname in dep.within_inames - insn.within_inames:
+                    dag[LeaveLoop(iname=iname)] |= {RunInstruction(insn_id=insn.id)}
+            elif dep.within_inames != insn.within_inames:
+                insn_iname, dep_iname = _get_dep_equivalent_nests(loop_nest_tree,
+                                                                  insn.within_inames,
+                                                                  dep.within_inames)
+                dag[LeaveLoop(iname=dep_iname)] |= {EnterLoop(iname=insn_iname)}
+            else:
+                pass
+
+        for iname in insn.within_inames:
+            dag[EnterLoop(iname=iname)] |= {RunInstruction(insn_id=insn.id)}
+            dag[RunInstruction(insn_id=insn.id)] |= {LeaveLoop(iname=iname)}
+
+    def iname_key(iname):
+        all_ancestors = [loop_nest_tree.ancestor(iname, i).identifier
+                         for i in range(1, loop_nest_tree.depth(iname))]
+        return ",".join(all_ancestors+[iname])
+
+    def key(x):
+        if isinstance(x, RunInstruction):
+            iname = max(kernel.id_to_insn[x.insn_id].within_inames,
+                        key=lambda k: loop_nest_tree.depth(k),
+                        default="")
+            result = (iname_key(iname), x.insn_id)
+        elif isinstance(x, (EnterLoop, LeaveLoop)):
+            result = (iname_key(x.iname),)
+        else:
+            raise NotImplementedError
+
+        return result
+
+    return compute_topological_order(dag, key=key)
+
+
+def generate_loop_schedules_internal(sched_state, debug=None):
     # allow_insn is set to False initially and after entering each loop
     # to give loops containing high-priority instructions a chance.
     kernel = sched_state.kernel

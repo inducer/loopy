@@ -189,6 +189,7 @@ def get_loop_nest_tree(kernel):
         include the nesting constraints imposed by the dependencies between the
         instructions and the dependencies imposed by the kernel's domain tree.
     """
+    from islpy import dim_type
     from loopy.kernel.data import ConcurrentTag, IlpBaseTag
 
     concurrent_inames = {iname for iname in kernel.all_inames()
@@ -259,4 +260,69 @@ def get_loop_nest_tree(kernel):
 
     # }}}
 
-    return tree
+    loop_priorities = kernel.loop_priority.copy()
+
+    # {{{ impose constraints by the domain tree
+
+    all_inames = kernel.all_inames()
+
+    for dom_idx, dom in enumerate(kernel.domains):
+        for outer_iname in dom.get_var_names(dim_type.param):
+            if outer_iname not in all_inames:
+                continue
+
+            for inner_iname in dom.get_var_names(dim_type.set):
+                # either outer_iname and inner_iname should belong to the same
+                # loop nest level or outer should be strictly outside inner
+                # iname
+
+                inner_iname_nest = iname_to_tree_node_id[inner_iname]
+                outer_iname_nest = iname_to_tree_node_id[outer_iname]
+
+                if inner_iname_nest == outer_iname_nest:
+                    loop_priorities |= {(outer_iname, inner_iname)}
+                else:
+                    ancestors_of_inner_iname = {
+                        tree.ancestor(inner_iname_nest, k)
+                        for k in range(tree.depth(inner_iname_nest))}
+                    if outer_iname_nest not in ancestors_of_inner_iname:
+                        raise LoopyError(f"Loop '{outer_iname}' cannot be nested"
+                                         f" outside '{inner_iname}'.")
+
+    # }}}
+
+    if loop_priorities:
+        raise NotImplementedError
+
+    # {{{ just choose one of the possible loop nestings
+
+    # Either all of these loop nestings would be valid or all would invalid =>
+    # we aren't marking any schedulable kernel as unschedulable.
+
+    new_tree = Tree()
+
+    old_to_new_parent = {}
+
+    new_tree.create_node(identifier="")
+    old_to_new_parent[root] = ""
+
+    # traversing 'tree' in an BFS fashion to create 'new_tree'
+    queue = [node.identifier for node in tree.children(root)]
+
+    while queue:
+        current_node = queue.pop(0)
+
+        sorted_inames = sorted(current_node)
+        new_tree.create_node(identifier=sorted_inames[0],
+                             parent=old_to_new_parent[tree.parent(current_node)
+                                                      .identifier])
+        for new_parent, new_child in zip(sorted_inames[:-1], sorted_inames[1:]):
+            new_tree.create_node(identifier=new_child, parent=new_parent)
+
+        old_to_new_parent[current_node] = sorted_inames[-1]
+
+        queue.extend([child.identifier for child in tree.children(current_node)])
+
+    # }}}
+
+    return new_tree
