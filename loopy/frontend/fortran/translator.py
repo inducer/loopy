@@ -231,6 +231,16 @@ class Scope:
 
         return expr
 
+    def written_vars(self):
+        return frozenset().union(*(insn.write_dependency_names()
+                                   for insn in self.instructions))
+
+    def read_vars(self):
+        return (frozenset().union(*(insn.read_dependency_names()
+                                   for insn in self.instructions))
+                | frozenset().union(*(frozenset(bset.get_var_names(dim_type.param))
+                                      for bset in self.index_sets)))
+
 # }}}
 
 
@@ -493,16 +503,40 @@ class F2LoopyTranslator(FTreeWalkerBase):
         raise NotImplementedError("goto")
 
     def map_Call(self, node):
+        from loopy.kernel.instruction import _get_assignee_var_name
         scope = self.scope_stack[-1]
 
         new_id = self.get_insn_id()
+
+        # {{{ comply with loopy's kernel call requirements
+
+        callee, = (knl for knl in self.kernels
+                   if knl.subprogram_name == node.designator)
+        call_params = [scope.process_expression_for_loopy(self.parse_expr(node,
+                                                                          item))
+                       for item in node.items]
+        callee_read_vars = callee.read_vars()
+        callee_written_vars = callee.written_vars()
+
+        lpy_params = []
+        lpy_assignees = []
+        for param in call_params:
+            name = _get_assignee_var_name(param)
+            if name in callee_read_vars:
+                lpy_params.append(param)
+            if name in callee_written_vars:
+                lpy_assignees.append(param)
+            if name not in (callee_read_vars | callee_written_vars):
+                lpy_params.append(param)
+
+        # }}}
 
         from pymbolic import var
 
         from loopy.kernel.data import CallInstruction
         insn = CallInstruction(
-                (), var(node.designator)(*(scope.process_expression_for_loopy(
-                    self.parse_expr(node, item)) for item in node.items)),
+                tuple(lpy_assignees),
+                var(node.designator)(*lpy_params),
                 within_inames=frozenset(
                     scope.active_loopy_inames),
                 id=new_id,
