@@ -818,7 +818,7 @@ def _get_dep_equivalent_nests(tree, within1, within2):
     return iname1, iname2
 
 
-def no_recurse_schedule(kernel):
+def generate_loop_schedules_v2(kernel):
     from loopy.schedule.tools import get_loop_nest_tree
     from functools import reduce
     from pytools.graph import compute_topological_order
@@ -826,6 +826,10 @@ def no_recurse_schedule(kernel):
                                    ConcurrentTag)
 
     if any(insn.priority != 0 for insn in kernel.instructions):
+        raise NotImplementedError
+
+    if kernel.schedule is not None:
+        # handle preschedule ??
         raise NotImplementedError
 
     parallel_inames = {name
@@ -2041,6 +2045,38 @@ def generate_loop_schedules(kernel, debug_args={}):
         yield from generate_loop_schedules_inner(kernel, debug_args=debug_args)
 
 
+def postprocess_schedule(kernel, gen_sched):
+    from loopy.kernel import KernelState
+    gen_sched = convert_barrier_instructions_to_barriers(
+            kernel, gen_sched)
+
+    gsize, lsize = kernel.get_grid_size_upper_bounds()
+
+    if (gsize or lsize):
+        if not kernel.options.disable_global_barriers:
+            logger.debug("%s: barrier insertion: global" % kernel.name)
+            gen_sched = insert_barriers(kernel, gen_sched,
+                    synchronization_kind="global", verify_only=True)
+
+        logger.debug("%s: barrier insertion: local" % kernel.name)
+        gen_sched = insert_barriers(kernel, gen_sched,
+            synchronization_kind="local", verify_only=False)
+        logger.debug("%s: barrier insertion: done" % kernel.name)
+
+    new_kernel = kernel.copy(
+            schedule=gen_sched,
+            state=KernelState.LINEARIZED)
+
+    from loopy.schedule.device_mapping import \
+            map_schedule_onto_host_or_device
+    if kernel.state != KernelState.LINEARIZED:
+        # Device mapper only gets run once.
+        new_kernel = map_schedule_onto_host_or_device(new_kernel)
+
+    from loopy.schedule.tools import add_extra_args_to_schedule
+    return add_extra_args_to_schedule(new_kernel)
+
+
 def generate_loop_schedules_inner(kernel, debug_args={}):
     from loopy.kernel import KernelState
     if kernel.state not in (KernelState.PREPROCESSED, KernelState.LINEARIZED):
@@ -2050,162 +2086,146 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
     from loopy.check import pre_schedule_checks
     pre_schedule_checks(kernel)
 
-    schedule_count = 0
+    can_v2_scheduler_handle = (  # v2-scheduler cannot handle insn groups
+                              all(len(insn.conflicts_with_groups) == 0
+                                  for insn in kernel.instructions))
+    if can_v2_scheduler_handle:
+        gen_sched = generate_loop_schedules_v2(kernel)
+        yield postprocess_schedule(kernel, gen_sched)
+    else:
+        schedule_count = 0
 
-    debug = ScheduleDebugger(**debug_args)
+        debug = ScheduleDebugger(**debug_args)
 
-    preschedule = kernel.schedule if kernel.state == KernelState.LINEARIZED else ()
+        preschedule = (kernel.schedule
 
-    prescheduled_inames = {
-            insn.iname
-            for insn in preschedule
-            if isinstance(insn, EnterLoop)}
+                       if kernel.state == KernelState.LINEARIZED
 
-    prescheduled_insn_ids = {
-        insn_id
-        for item in preschedule
-        for insn_id in sched_item_to_insn_id(item)}
+                       else ())
 
-    from loopy.kernel.data import (IlpBaseTag, ConcurrentTag, VectorizeTag,
-                                   filter_iname_tags_by_type)
-    ilp_inames = {
-            name
-            for name, iname in kernel.inames.items()
-            if filter_iname_tags_by_type(iname.tags, IlpBaseTag)}
-    vec_inames = {
-            name
-            for name, iname in kernel.inames.items()
-            if filter_iname_tags_by_type(iname.tags, VectorizeTag)}
-    parallel_inames = {
-            name
-            for name, iname in kernel.inames.items()
-            if filter_iname_tags_by_type(iname.tags, ConcurrentTag)}
+        prescheduled_inames = {
+                insn.iname
+                for insn in preschedule
+                if isinstance(insn, EnterLoop)}
 
-    loop_nest_with_map = find_loop_nest_with_map(kernel)
-    loop_nest_around_map = find_loop_nest_around_map(kernel)
-    sched_state = SchedulerState(
-            kernel=kernel,
-            loop_nest_around_map=loop_nest_around_map,
-            loop_insn_dep_map=find_loop_insn_dep_map(
-                kernel,
-                loop_nest_with_map=loop_nest_with_map,
-                loop_nest_around_map=loop_nest_around_map),
-            breakable_inames=ilp_inames,
-            ilp_inames=ilp_inames,
-            vec_inames=vec_inames,
+        prescheduled_insn_ids = {
+            insn_id
+            for item in preschedule
+            for insn_id in sched_item_to_insn_id(item)}
 
-            prescheduled_inames=prescheduled_inames,
-            prescheduled_insn_ids=prescheduled_insn_ids,
+        from loopy.kernel.data import (IlpBaseTag, ConcurrentTag, VectorizeTag,
+                                    filter_iname_tags_by_type)
+        ilp_inames = {
+                name
+                for name, iname in kernel.inames.items()
+                if filter_iname_tags_by_type(iname.tags, IlpBaseTag)}
+        vec_inames = {
+                name
+                for name, iname in kernel.inames.items()
+                if filter_iname_tags_by_type(iname.tags, VectorizeTag)}
+        parallel_inames = {
+                name
+                for name, iname in kernel.inames.items()
+                if filter_iname_tags_by_type(iname.tags, ConcurrentTag)}
 
-            # time-varying part
-            active_inames=(),
-            entered_inames=frozenset(),
-            enclosing_subkernel_inames=(),
+        loop_nest_with_map = find_loop_nest_with_map(kernel)
+        loop_nest_around_map = find_loop_nest_around_map(kernel)
+        sched_state = SchedulerState(
+                kernel=kernel,
+                loop_nest_around_map=loop_nest_around_map,
+                loop_insn_dep_map=find_loop_insn_dep_map(
+                    kernel,
+                    loop_nest_with_map=loop_nest_with_map,
+                    loop_nest_around_map=loop_nest_around_map),
+                breakable_inames=ilp_inames,
+                ilp_inames=ilp_inames,
+                vec_inames=vec_inames,
 
-            schedule=(),
+                prescheduled_inames=prescheduled_inames,
+                prescheduled_insn_ids=prescheduled_insn_ids,
 
-            unscheduled_insn_ids={insn.id for insn in kernel.instructions},
-            scheduled_insn_ids=frozenset(),
-            within_subkernel=kernel.state != KernelState.LINEARIZED,
-            may_schedule_global_barriers=True,
+                # time-varying part
+                active_inames=(),
+                entered_inames=frozenset(),
+                enclosing_subkernel_inames=(),
 
-            preschedule=preschedule,
-            insn_ids_to_try=None,
+                schedule=(),
 
-            # ilp and vec are not parallel for the purposes of the scheduler
-            parallel_inames=parallel_inames - ilp_inames - vec_inames,
+                unscheduled_insn_ids={insn.id for insn in kernel.instructions},
+                scheduled_insn_ids=frozenset(),
+                within_subkernel=kernel.state != KernelState.LINEARIZED,
+                may_schedule_global_barriers=True,
 
-            group_insn_counts=group_insn_counts(kernel),
-            active_group_counts={},
+                preschedule=preschedule,
+                insn_ids_to_try=None,
 
-            insns_in_topologically_sorted_order=(
-                get_insns_in_topologically_sorted_order(kernel)),
-    )
+                # ilp and vec are not parallel for the purposes of the scheduler
+                parallel_inames=parallel_inames - ilp_inames - vec_inames,
 
-    schedule_gen_kwargs = {}
+                group_insn_counts=group_insn_counts(kernel),
+                active_group_counts={},
 
-    def print_longest_dead_end():
-        if debug.interactive:
-            print("Loopy will now show you the scheduler state at the point")
-            print("where the longest (dead-end) schedule was generated, in the")
-            print("the hope that some of this makes sense and helps you find")
-            print("the issue.")
+                insns_in_topologically_sorted_order=(
+                    get_insns_in_topologically_sorted_order(kernel)),
+        )
+
+        schedule_gen_kwargs = {}
+
+        def print_longest_dead_end():
+            if debug.interactive:
+                print("Loopy will now show you the scheduler state at the point")
+                print("where the longest (dead-end) schedule was generated, in the")
+                print("the hope that some of this makes sense and helps you find")
+                print("the issue.")
+                print()
+                print("To disable this interactive behavior, pass")
+                print("  debug_args=dict(interactive=False)")
+                print("to generate_loop_schedules().")
+                print(75*"-")
+                input("Enter:")
+                print()
+                print()
+
+                debug.debug_length = len(debug.longest_rejected_schedule)
+                while True:
+                    try:
+                        for _ in generate_loop_schedules_internal(
+                                sched_state, debug=debug, **schedule_gen_kwargs):
+                            pass
+
+                    except ScheduleDebugInput as e:
+                        debug.debug_length = int(str(e))
+                        continue
+
+                    break
+
+        try:
+            for gen_sched in generate_loop_schedules_internal(
+                    sched_state, debug=debug, **schedule_gen_kwargs):
+                debug.stop()
+
+                new_kernel = postprocess_schedule(kernel, gen_sched)
+                yield new_kernel
+
+                debug.start()
+
+                schedule_count += 1
+
+        except KeyboardInterrupt:
             print()
-            print("To disable this interactive behavior, pass")
-            print("  debug_args=dict(interactive=False)")
-            print("to generate_loop_schedules().")
             print(75*"-")
-            input("Enter:")
-            print()
-            print()
+            print("Interrupted during scheduling")
+            print(75*"-")
+            print_longest_dead_end()
+            raise
 
-            debug.debug_length = len(debug.longest_rejected_schedule)
-            while True:
-                try:
-                    for _ in generate_loop_schedules_internal(
-                            sched_state, debug=debug, **schedule_gen_kwargs):
-                        pass
-
-                except ScheduleDebugInput as e:
-                    debug.debug_length = int(str(e))
-                    continue
-
-                break
-
-    try:
-        for gen_sched in generate_loop_schedules_internal(
-                sched_state, debug=debug, **schedule_gen_kwargs):
-            debug.stop()
-
-            gen_sched = convert_barrier_instructions_to_barriers(
-                    kernel, gen_sched)
-
-            gsize, lsize = kernel.get_grid_size_upper_bounds()
-
-            if (gsize or lsize):
-                if not kernel.options.disable_global_barriers:
-                    logger.debug("%s: barrier insertion: global" % kernel.name)
-                    gen_sched = insert_barriers(kernel, gen_sched,
-                            synchronization_kind="global", verify_only=True)
-
-                logger.debug("%s: barrier insertion: local" % kernel.name)
-                gen_sched = insert_barriers(kernel, gen_sched,
-                    synchronization_kind="local", verify_only=False)
-                logger.debug("%s: barrier insertion: done" % kernel.name)
-
-            new_kernel = kernel.copy(
-                    schedule=gen_sched,
-                    state=KernelState.LINEARIZED)
-
-            from loopy.schedule.device_mapping import \
-                    map_schedule_onto_host_or_device
-            if kernel.state != KernelState.LINEARIZED:
-                # Device mapper only gets run once.
-                new_kernel = map_schedule_onto_host_or_device(new_kernel)
-
-            from loopy.schedule.tools import add_extra_args_to_schedule
-            new_kernel = add_extra_args_to_schedule(new_kernel)
-            yield new_kernel
-
-            debug.start()
-
-            schedule_count += 1
-
-    except KeyboardInterrupt:
-        print()
-        print(75*"-")
-        print("Interrupted during scheduling")
-        print(75*"-")
-        print_longest_dead_end()
-        raise
-
-    debug.done_scheduling()
-    if not schedule_count:
-        print(75*"-")
-        print("ERROR: Sorry--loopy did not find a schedule for your kernel.")
-        print(75*"-")
-        print_longest_dead_end()
-        raise RuntimeError("no valid schedules found")
+        debug.done_scheduling()
+        if not schedule_count:
+            print(75*"-")
+            print("ERROR: Sorry--loopy did not find a schedule for your kernel.")
+            print(75*"-")
+            print_longest_dead_end()
+            raise RuntimeError("no valid schedules found")
 
     logger.info("%s: schedule done" % kernel.name)
 
