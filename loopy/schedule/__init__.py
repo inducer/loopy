@@ -23,7 +23,6 @@ THE SOFTWARE.
 
 from pytools import ImmutableRecord
 import sys
-import islpy as isl
 from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
 from pytools import MinRecursionLimit, ProcessLogger
@@ -215,7 +214,6 @@ def find_loop_nest_around_map(kernel):
     """Returns a dictionary mapping inames to other inames that are
     always nested around them.
     """
-    from functools import reduce
     from collections import defaultdict
     from loopy.schedule.tools import get_loop_nest_tree
 
@@ -224,28 +222,14 @@ def find_loop_nest_around_map(kernel):
     loop_nest_around_map = defaultdict(frozenset)
 
     for node in tree.all_nodes_itr():
-        nest = node.identifier
-        depth = tree.depth(nest)
-        all_ancestors = reduce(frozenset.union, (tree.ancestor(nest, d).identifier
-                                                for d in range(depth)),
-                               frozenset())
+        if node.identifier == tree.root:
+            continue
+        iname = node.identifier
+        depth = tree.depth(iname)
+        all_ancestors = frozenset(tree.ancestor(iname, d).identifier
+                                  for d in range(1, depth))
 
-        for iname in nest:
-            loop_nest_around_map[iname] = all_ancestors
-
-    # {{{ impose constraints by the domain tree
-
-    all_inames = kernel.all_inames()
-
-    for dom_idx, dom in enumerate(kernel.domains):
-        for outer_iname in dom.get_var_names(isl.dim_type.param):
-            if outer_iname not in all_inames:
-                continue
-
-            for inner_iname in dom.get_var_names(isl.dim_type.set):
-                loop_nest_around_map[inner_iname] |= {outer_iname}
-
-    # }}}
+        loop_nest_around_map[iname] = all_ancestors
 
     return loop_nest_around_map
 
@@ -822,19 +806,21 @@ def generate_loop_schedules_v2(kernel):
     from loopy.schedule.tools import get_loop_nest_tree
     from functools import reduce
     from pytools.graph import compute_topological_order
-    from loopy.kernel.data import (filter_iname_tags_by_type,
-                                   ConcurrentTag)
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
 
     if any(insn.priority != 0 for insn in kernel.instructions):
         raise NotImplementedError
 
     if kernel.schedule is not None:
-        # handle preschedule ??
         raise NotImplementedError
 
-    parallel_inames = {name
-                       for name, iname in kernel.inames.items()
-                       if filter_iname_tags_by_type(iname.tags, ConcurrentTag)}
+    concurrent_inames = {iname for iname in kernel.all_inames()
+                         if kernel.iname_tags_of_type(iname, ConcurrentTag)}
+    ilp_inames = {iname for iname in kernel.all_inames()
+                  if kernel.iname_tags_of_type(iname, IlpBaseTag)}
+    vec_inames = {iname for iname in kernel.all_inames()
+                  if kernel.iname_tags_of_type(iname, VectorizeTag)}
+    parallel_inames = (concurrent_inames - ilp_inames - vec_inames)
 
     # the first step is to figure out the loop nest trees
     # I would rather get the loop nest tree first
@@ -2088,9 +2074,17 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
     from loopy.check import pre_schedule_checks
     pre_schedule_checks(kernel)
 
-    can_v2_scheduler_handle = (  # v2-scheduler cannot handle insn groups
-                              all(len(insn.conflicts_with_groups) == 0
-                                  for insn in kernel.instructions))
+    can_v2_scheduler_handle = (
+                               # v2-scheduler cannot handle insn groups
+                               all(len(insn.conflicts_with_groups) == 0
+                                   for insn in kernel.instructions)
+                               # v2-scheduler cannot handle prescheduled kernel
+                               and (not kernel.schedule)
+                               # v2-scheduler cannot handle instruction priorities
+                               and all(insn.priority == 0
+                                       for insn in kernel.instructions)
+                              )
+
     if can_v2_scheduler_handle:
         gen_sched = generate_loop_schedules_v2(kernel)
         yield postprocess_schedule(kernel, gen_sched)

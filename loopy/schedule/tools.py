@@ -172,6 +172,106 @@ def add_inner_loops(tree, outer_loop_nest, inner_loop_nest):
     tree.create_node(identifier=inner_loop_nest, parent=outer_loop_nest)
 
 
+def _order_loop_nests(loop_nest_tree,
+                      strict_priorities,
+                      relaxed_priorities,
+                      iname_to_tree_node_id):
+    """
+    Returns a loop nest where all nodes in the tree are instances of
+    :class:`str` denoting inames. Unlike *loop_nest_tree* which corresponds to
+    multiple loop nesting, this routine returns a unique loop nest that is
+    obtained after constraining *loop_nest_tree* with the constraints enforced
+    by *priorities*.
+    """
+    from pytools.graph import compute_topological_order as toposort
+    from warnings import warn
+
+    loop_nests = set(iname_to_tree_node_id.values())
+
+    flow_requirements = {loop_nest: {iname: frozenset()
+                                     for iname in loop_nest}
+                         for loop_nest in loop_nests}
+
+    def _update_flow_requirements(priorities, cannot_satisfy_callback):
+        for priority in priorities:
+            for outer_iname, inner_iname in zip(priority[:-1], priority[1:]):
+                inner_iname_nest = iname_to_tree_node_id[inner_iname]
+                outer_iname_nest = iname_to_tree_node_id[outer_iname]
+                if inner_iname_nest == outer_iname_nest:
+                    flow_requirements[inner_iname_nest][outer_iname] |= {inner_iname}
+                else:
+                    ancestors_of_inner_iname = reduce(
+                        frozenset.union,
+                        (loop_nest_tree.ancestor(inner_iname_nest, k).identifier
+                        for k in range(loop_nest_tree.depth(inner_iname_nest))),
+                        frozenset())
+                    ancestors_of_outer_iname = reduce(
+                        frozenset.union,
+                        (loop_nest_tree.ancestor(outer_iname_nest, k).identifier
+                        for k in range(loop_nest_tree.depth(outer_iname_nest))),
+                        frozenset())
+                    if outer_iname in ancestors_of_inner_iname:
+                        # constraint already satisfied => do nothing
+                        pass
+                    elif inner_iname in ancestors_of_outer_iname:
+                        cannot_satisfy_callback("Cannot satisfy constraint that"
+                                                f" iname '{inner_iname}' must be"
+                                                f" nested within '{outer_iname}''.")
+                    else:
+                        # inner iname and outer iname are indirect family members
+                        # => must be realized via dependencies in the linearization
+                        # phase
+                        raise NotImplementedError
+
+    def _raise_loopy_err(x):
+        raise LoopyError(x)
+
+    _update_flow_requirements(strict_priorities, _raise_loopy_err)
+    _update_flow_requirements(relaxed_priorities, warn)
+
+    ordered_loop_nests = {unordered_nest: toposort(flow,
+                                         key=lambda x: x)
+                          for unordered_nest, flow in flow_requirements.items()}
+
+    # {{{ just choose one of the possible loop nestings
+
+    assert loop_nest_tree.root == frozenset()
+
+    # Either all of these loop nestings would be valid or all would invalid =>
+    # we aren't marking any schedulable kernel as unschedulable.
+
+    new_tree = Tree()
+
+    old_to_new_parent = {}
+
+    new_tree.create_node(identifier="")
+    old_to_new_parent[loop_nest_tree.root] = ""
+
+    # traversing 'tree' in an BFS fashion to create 'new_tree'
+    queue = [node.identifier
+             for node in loop_nest_tree.children(loop_nest_tree.root)]
+
+    while queue:
+        current_nest = queue.pop(0)
+
+        ordered_nest = ordered_loop_nests[current_nest]
+        new_tree.create_node(identifier=ordered_nest[0],
+                             parent=old_to_new_parent[loop_nest_tree
+                                                      .parent(current_nest)
+                                                      .identifier])
+        for new_parent, new_child in zip(ordered_nest[:-1], ordered_nest[1:]):
+            new_tree.create_node(identifier=new_child, parent=new_parent)
+
+        old_to_new_parent[current_nest] = ordered_nest[-1]
+
+        queue.extend([child.identifier
+                      for child in loop_nest_tree.children(current_nest)])
+
+    # }}}
+
+    return new_tree
+
+
 def get_loop_nest_tree(kernel):
     """
     Returns an instance of :class:`treelib.Tree` denoting the kernel's loop
@@ -190,16 +290,19 @@ def get_loop_nest_tree(kernel):
         instructions and the dependencies imposed by the kernel's domain tree.
     """
     from islpy import dim_type
-    from loopy.kernel.data import ConcurrentTag, IlpBaseTag
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
 
     concurrent_inames = {iname for iname in kernel.all_inames()
                          if kernel.iname_tags_of_type(iname, ConcurrentTag)}
     ilp_inames = {iname for iname in kernel.all_inames()
                   if kernel.iname_tags_of_type(iname, IlpBaseTag)}
+    vec_inames = {iname for iname in kernel.all_inames()
+                  if kernel.iname_tags_of_type(iname, VectorizeTag)}
+    parallel_inames = (concurrent_inames - ilp_inames - vec_inames)
 
     # figuring the possible loop nestings minus the concurrent_inames as they
     # are never realized as actual loops
-    iname_chains = {insn.within_inames - concurrent_inames
+    iname_chains = {insn.within_inames - parallel_inames
                      for insn in kernel.instructions}
 
     tree = Tree()
@@ -260,15 +363,15 @@ def get_loop_nest_tree(kernel):
 
     # }}}
 
-    loop_priorities = kernel.loop_priority.copy()
+    strict_loop_priorities = frozenset()
 
     # {{{ impose constraints by the domain tree
 
-    all_inames = kernel.all_inames()
+    loop_inames = kernel.all_inames() - parallel_inames
 
     for dom_idx, dom in enumerate(kernel.domains):
-        for outer_iname in dom.get_var_names(dim_type.param):
-            if outer_iname not in all_inames:
+        for outer_iname in set(dom.get_var_names(dim_type.param)):
+            if outer_iname not in loop_inames:
                 continue
 
             for inner_iname in dom.get_var_names(dim_type.set):
@@ -280,7 +383,7 @@ def get_loop_nest_tree(kernel):
                 outer_iname_nest = iname_to_tree_node_id[outer_iname]
 
                 if inner_iname_nest == outer_iname_nest:
-                    loop_priorities |= {(outer_iname, inner_iname)}
+                    strict_loop_priorities |= {(outer_iname, inner_iname)}
                 else:
                     ancestors_of_inner_iname = {
                         tree.ancestor(inner_iname_nest, k)
@@ -291,38 +394,7 @@ def get_loop_nest_tree(kernel):
 
     # }}}
 
-    if loop_priorities:
-        raise NotImplementedError
-
-    # {{{ just choose one of the possible loop nestings
-
-    # Either all of these loop nestings would be valid or all would invalid =>
-    # we aren't marking any schedulable kernel as unschedulable.
-
-    new_tree = Tree()
-
-    old_to_new_parent = {}
-
-    new_tree.create_node(identifier="")
-    old_to_new_parent[root] = ""
-
-    # traversing 'tree' in an BFS fashion to create 'new_tree'
-    queue = [node.identifier for node in tree.children(root)]
-
-    while queue:
-        current_node = queue.pop(0)
-
-        sorted_inames = sorted(current_node)
-        new_tree.create_node(identifier=sorted_inames[0],
-                             parent=old_to_new_parent[tree.parent(current_node)
-                                                      .identifier])
-        for new_parent, new_child in zip(sorted_inames[:-1], sorted_inames[1:]):
-            new_tree.create_node(identifier=new_child, parent=new_parent)
-
-        old_to_new_parent[current_node] = sorted_inames[-1]
-
-        queue.extend([child.identifier for child in tree.children(current_node)])
-
-    # }}}
-
-    return new_tree
+    return _order_loop_nests(tree,
+                             strict_loop_priorities,
+                             kernel.loop_priority,
+                             iname_to_tree_node_id)
