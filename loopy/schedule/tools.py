@@ -375,10 +375,12 @@ def get_loop_nest_tree(kernel):
                 continue
 
             for inner_iname in dom.get_var_names(dim_type.set):
+                if inner_iname not in loop_inames:
+                    continue
+
                 # either outer_iname and inner_iname should belong to the same
                 # loop nest level or outer should be strictly outside inner
                 # iname
-
                 inner_iname_nest = iname_to_tree_node_id[inner_iname]
                 outer_iname_nest = iname_to_tree_node_id[outer_iname]
 
@@ -386,7 +388,7 @@ def get_loop_nest_tree(kernel):
                     strict_loop_priorities |= {(outer_iname, inner_iname)}
                 else:
                     ancestors_of_inner_iname = {
-                        tree.ancestor(inner_iname_nest, k)
+                        tree.ancestor(inner_iname_nest, k).identifier
                         for k in range(tree.depth(inner_iname_nest))}
                     if outer_iname_nest not in ancestors_of_inner_iname:
                         raise LoopyError(f"Loop '{outer_iname}' cannot be nested"
