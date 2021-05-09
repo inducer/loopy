@@ -28,6 +28,7 @@ from loopy.symbolic import (
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
+from pytools import Record
 
 
 __doc__ = """
@@ -108,6 +109,675 @@ def prioritize_loops(kernel, loop_priority):
     loop_priority = tuple(loop_priority)
 
     return kernel.copy(loop_priority=kernel.loop_priority.union([loop_priority]))
+
+# }}}
+
+
+# {{{ Handle loop nest constraints
+
+# {{{ Classes to house loop nest constraints
+
+# {{{ UnexpandedInameSet
+
+class UnexpandedInameSet(Record):
+    def __init__(self, inames, complement=False):
+        Record.__init__(
+            self,
+            inames=inames,
+            complement=complement,
+            )
+
+    def contains(self, inames):
+        if isinstance(inames, set):
+            return (not (inames & self.inames) if self.complement
+                else inames.issubset(self.inames))
+        else:
+            return (inames not in self.inames if self.complement
+                else inames in self.inames)
+
+    def get_inames_represented(self, iname_universe=None):
+        """Return the set of inames represented by the UnexpandedInameSet
+        """
+        if self.complement:
+            if not iname_universe:
+                raise ValueError(
+                    "Cannot expand UnexpandedInameSet %s without "
+                    "iname_universe." % (self))
+            return iname_universe-self.inames
+        else:
+            return self.inames.copy()
+
+    def __lt__(self, other):
+        # FIXME is this function really necessary? If so, what should it return?
+        return self.__hash__() < other.__hash__()
+
+    def __hash__(self):
+        return hash(repr(self))
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+
+        key_builder.rec(key_hash, self.inames)
+        key_builder.rec(key_hash, self.complement)
+
+    def __str__(self):
+        return "%s{%s}" % ("~" if self.complement else "",
+            ",".join(i for i in sorted(self.inames)))
+
+# }}}
+
+
+# {{{ LoopNestConstraints
+
+class LoopNestConstraints(Record):
+    def __init__(self, must_nest=None, must_not_nest=None,
+                 must_nest_graph=None):
+        Record.__init__(
+            self,
+            must_nest=must_nest,
+            must_not_nest=must_not_nest,
+            must_nest_graph=must_nest_graph,
+            )
+
+    def __hash__(self):
+        return hash(repr(self))
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+
+        key_builder.rec(key_hash, self.must_nest)
+        key_builder.rec(key_hash, self.must_not_nest)
+        key_builder.rec(key_hash, self.must_nest_graph)
+
+    def __str__(self):
+        return "LoopNestConstraints(\n" \
+            "    must_nest = " + str(self.must_nest) + "\n" \
+            "    must_not_nest = " + str(self.must_not_nest) + "\n" \
+            "    must_nest_graph = " + str(self.must_nest_graph) + "\n" \
+            ")"
+
+# }}}
+
+# }}}
+
+
+# {{{ Initial loop nest constraint creation
+
+# {{{ process_loop_nest_specification
+
+def process_loop_nest_specification(
+        nesting,
+        max_tuple_size=None,
+        complement_sets_allowed=True,
+        ):
+
+    # Ensure that user-supplied nesting conforms to syntax rules, and
+    # convert string representations of nestings to tuple of UnexpandedInameSets
+
+    import re
+
+    def _raise_loop_nest_input_error(msg):
+        valid_prio_rules = (
+            "Valid `must_nest` description formats: "  # noqa
+            "\"iname, iname, ...\" or (str, str, str, ...), "  # noqa
+            "where str can be of form "  # noqa
+            "\"iname\" or \"{iname, iname, ...}\". "  # noqa
+            "No set complements allowed.\n"  # noqa
+            "Valid `must_not_nest` description tuples must have length 2: "  # noqa
+            "\"iname, iname\", \"iname, ~iname\", or "  # noqa
+            "(str, str), where str can be of form "  # noqa
+            "\"iname\", \"~iname\", \"{iname, iname, ...}\", or "  # noqa
+            "\"~{iname, iname, ...}\"."  # noqa
+            )
+        raise ValueError(
+                "Invalid loop nest prioritization: %s\n"
+                "Loop nest prioritization formatting rules:\n%s"
+                % (msg, valid_prio_rules))
+
+    def _error_on_regex_match(match_str, target_str):
+        if re.findall(match_str, target_str):
+            _raise_loop_nest_input_error(
+                "Unrecognized character(s) %s in nest string %s"
+                % (re.findall(match_str, target_str), target_str))
+
+    def _process_iname_set_str(iname_set_str):
+        # Convert something like ~{i,j} or ~i or "i,j" to an UnexpandedInameSet
+
+        # Remove leading/trailing whitespace
+        iname_set_str_stripped = iname_set_str.strip()
+
+        if not iname_set_str_stripped:
+            _raise_loop_nest_input_error(
+                "Found 0 inames in string %s."
+                % (iname_set_str))
+
+        # Process complement sets
+        if iname_set_str_stripped[0] == "~":
+            # Make sure compelement is allowed
+            if not complement_sets_allowed:
+                _raise_loop_nest_input_error(
+                    "Complement (~) not allowed in this loop nest string %s. "
+                    "If you have a use-case where allowing a currently "
+                    "disallowed set complement would be helpful, and the "
+                    "desired nesting constraint cannot easily be expressed "
+                    "another way, "
+                    "please contact the Loo.py maintainers."
+                    % (iname_set_str))
+
+            # Remove tilde
+            iname_set_str_stripped = iname_set_str_stripped[1:]
+            if "~" in iname_set_str_stripped:
+                _raise_loop_nest_input_error(
+                    "Multiple complement symbols found in iname set string %s"
+                    % (iname_set_str))
+
+            # Make sure that braces are included if multiple inames present
+            if "," in iname_set_str_stripped and not (
+                    iname_set_str_stripped.startswith("{") and
+                    iname_set_str_stripped.endswith("}")):
+                _raise_loop_nest_input_error(
+                    "Complements of sets containing multiple inames must "
+                    "enclose inames in braces: %s is not valid."
+                    % (iname_set_str))
+
+            complement = True
+        else:
+            complement = False
+
+        # Remove leading/trailing spaces
+        iname_set_str_stripped = iname_set_str_stripped.strip(" ")
+
+        # Make sure braces are valid and strip them
+        if iname_set_str_stripped[0] == "{":
+            if not iname_set_str_stripped[-1] == "}":
+                _raise_loop_nest_input_error(
+                    "Invalid braces: %s" % (iname_set_str))
+            else:
+                # Remove enclosing braces
+                iname_set_str_stripped = iname_set_str_stripped[1:-1]
+        # (If there are dangling braces around, they will be caught next)
+
+        # Remove any more spaces
+        iname_set_str_stripped = iname_set_str_stripped.strip()
+
+        # Should be no remaining special characters besides comma and space
+        _error_on_regex_match(r"([^,\w ])", iname_set_str_stripped)
+
+        # Split by commas or spaces to get inames
+        inames = re.findall(r"([\w]+)(?:[ |,]*|$)", iname_set_str_stripped)
+
+        # Make sure iname count matches what we expect from comma count
+        if len(inames) != iname_set_str_stripped.count(",") + 1:
+            _raise_loop_nest_input_error(
+                "Found %d inames but expected %d in string %s."
+                % (len(inames), iname_set_str_stripped.count(",") + 1,
+                   iname_set_str))
+
+        if len(inames) == 0:
+            _raise_loop_nest_input_error(
+                "Found empty set in string %s."
+                % (iname_set_str))
+
+        # NOTE this won't catch certain cases of bad syntax, e.g., ("{h i j,,}", "k")
+
+        return UnexpandedInameSet(
+            set([s.strip() for s in iname_set_str_stripped.split(",")]),
+            complement=complement)
+
+    if isinstance(nesting, str):
+        # Enforce that constraints involving iname sets be passed as tuple.
+        # Iname sets defined negatively with a *single* iname are allowed here.
+
+        # Check for any special characters besides comma, space, and tilde.
+        # E.g., curly braces would indicate that an iname set was NOT
+        # passed as a tuple, which is not allowed.
+        _error_on_regex_match(r"([^,\w~ ])", nesting)
+
+        # Split by comma and process each tier
+        nesting_as_tuple = tuple(
+            _process_iname_set_str(set_str) for set_str in nesting.split(","))
+    else:
+        assert isinstance(nesting, (tuple, list))
+        # Process each tier
+        nesting_as_tuple = tuple(
+            _process_iname_set_str(set_str) for set_str in nesting)
+
+    # Check max_tuple_size
+    if max_tuple_size and len(nesting_as_tuple) > max_tuple_size:
+        _raise_loop_nest_input_error(
+            "Loop nest prioritization tuple %s exceeds max tuple size %d."
+            % (nesting_as_tuple))
+
+    # Make sure nesting has len > 1
+    if len(nesting_as_tuple) <= 1:
+        _raise_loop_nest_input_error(
+            "Loop nest prioritization tuple %s must have length > 1."
+            % (nesting_as_tuple))
+
+    # Return tuple of UnexpandedInameSets
+    return nesting_as_tuple
+
+# }}}
+
+
+# {{{ constrain_loop_nesting
+
+def constrain_loop_nesting(
+        kernel, must_nest=None, must_not_nest=None):
+    r"""Add the provided constraints to the kernel.
+
+    :arg must_nest: A tuple or comma-separated string representing
+        an ordering of loop nesting tiers that must appear in the
+        linearized kernel. Each item in the tuple represents a
+        :class:`UnexpandedInameSet`\ s.
+
+    :arg must_not_nest: A two-tuple or comma-separated string representing
+        an ordering of loop nesting tiers that must not appear in the
+        linearized kernel. Each item in the tuple represents a
+        :class:`UnexpandedInameSet`\ s.
+    """
+
+    # {{{ Get any current constraints, if they exist
+    if kernel.loop_nest_constraints:
+        if kernel.loop_nest_constraints.must_nest:
+            must_nest_constraints_old = kernel.loop_nest_constraints.must_nest
+        else:
+            must_nest_constraints_old = set()
+
+        if kernel.loop_nest_constraints.must_not_nest:
+            must_not_nest_constraints_old = \
+                kernel.loop_nest_constraints.must_not_nest
+        else:
+            must_not_nest_constraints_old = set()
+
+        if kernel.loop_nest_constraints.must_nest_graph:
+            must_nest_graph_old = kernel.loop_nest_constraints.must_nest_graph
+        else:
+            must_nest_graph_old = {}
+    else:
+        must_nest_constraints_old = set()
+        must_not_nest_constraints_old = set()
+        must_nest_graph_old = {}
+
+    # }}}
+
+    # {{{ Process must_nest
+
+    if must_nest:
+        # {{{ Parse must_nest, check for conflicts, combine with old constraints
+
+        # {{{ Parse must_nest (no complements allowed)
+        must_nest_tuple = process_loop_nest_specification(
+            must_nest, complement_sets_allowed=False)
+        # }}}
+
+        # {{{ Error if someone prioritizes concurrent iname
+
+        from loopy.kernel.data import ConcurrentTag
+        for iname_set in must_nest_tuple:
+            for iname in iname_set.inames:
+                if kernel.iname_tags_of_type(iname, ConcurrentTag):
+                    raise ValueError(
+                        "iname %s tagged with ConcurrentTag, "
+                        "cannot use iname in must-nest constraint %s."
+                        % (iname, must_nest_tuple))
+
+        # }}}
+
+        # {{{ Update must_nest graph (and check for cycles)
+
+        must_nest_graph_new = update_must_nest_graph(
+            must_nest_graph_old, must_nest_tuple, kernel.all_inames())
+
+        # }}}
+
+        # {{{ Make sure must_nest constraints don't violate must_not_nest
+        # (this may not catch all problems)
+        check_must_not_nest_against_must_nest_graph(
+            must_not_nest_constraints_old, must_nest_graph_new)
+        # }}}
+
+        # {{{ Check for conflicts with inames tagged 'vec' (must be innermost)
+
+        from loopy.kernel.data import VectorizeTag
+        for iname in kernel.all_inames():
+            if kernel.iname_tags_of_type(iname, VectorizeTag) and (
+                    must_nest_graph_new.get(iname, set())):
+                # Must-nest graph doesn't allow iname to be a leaf, error
+                raise ValueError(
+                    "Iname %s tagged as 'vec', but loop nest constraints "
+                    "%s require that iname %s nest outside of inames %s. "
+                    "Vectorized inames must nest innermost; cannot "
+                    "impose loop nest specification."
+                    % (iname, must_nest, iname,
+                    must_nest_graph_new.get(iname, set())))
+
+        # }}}
+
+        # {{{ Add new must_nest constraints to existing must_nest constraints
+        must_nest_constraints_new = must_nest_constraints_old | set(
+            [must_nest_tuple, ])
+        # }}}
+
+        # }}}
+    else:
+        # {{{ No new must_nest constraints, just keep the old ones
+
+        must_nest_constraints_new = must_nest_constraints_old
+        must_nest_graph_new = must_nest_graph_old
+
+        # }}}
+
+    # }}}
+
+    # {{{ Process must_not_nest
+
+    if must_not_nest:
+        # {{{ Parse must_not_nest, check for conflicts, combine with old constraints
+
+        # {{{ Parse must_not_nest; complements allowed; max_tuple_size=2
+
+        must_not_nest_tuple = process_loop_nest_specification(
+            must_not_nest, max_tuple_size=2)
+
+        # }}}
+
+        # {{{ Make sure must_not_nest constraints don't violate must_nest
+
+        # (cycles are allowed in must_not_nest constraints)
+        import itertools
+        must_pairs = []
+        for iname_before, inames_after in must_nest_graph_new.items():
+            must_pairs.extend(list(itertools.product([iname_before], inames_after)))
+
+        if not check_must_not_nest(must_pairs, must_not_nest_tuple):
+            raise ValueError(
+                "constrain_loop_nesting: nest constraint conflict detected. "
+                "must_not_nest constraints %s inconsistent with "
+                "must_nest constraints %s."
+                % (must_not_nest_tuple, must_nest_constraints_new))
+
+        # }}}
+
+        # {{{ Add new must_not_nest constraints to exisitng must_not_nest constraints
+        must_not_nest_constraints_new = must_not_nest_constraints_old | set([
+            must_not_nest_tuple, ])
+        # }}}
+
+        # }}}
+    else:
+        # {{{ No new must_not_nest constraints, just keep the old ones
+
+        must_not_nest_constraints_new = must_not_nest_constraints_old
+
+        # }}}
+
+    # }}}
+
+    nest_constraints = LoopNestConstraints(
+        must_nest=must_nest_constraints_new,
+        must_not_nest=must_not_nest_constraints_new,
+        must_nest_graph=must_nest_graph_new,
+        )
+
+    return kernel.copy(loop_nest_constraints=nest_constraints)
+
+# }}}
+
+
+# {{{ update_must_nest_graph
+
+def update_must_nest_graph(must_nest_graph, must_nest, all_inames):
+    # Note: there should *not* be any complements in the must_nest tuples
+
+    from copy import deepcopy
+    new_graph = deepcopy(must_nest_graph)
+
+    # First, each iname must be a node in the graph
+    for missing_iname in all_inames - new_graph.keys():
+        new_graph[missing_iname] = set()
+
+    # Expand must_nest into (before, after) pairs
+    must_nest_expanded = _expand_iname_sets_in_tuple(must_nest, all_inames)
+
+    # Update must_nest_graph with new pairs
+    for before, after in must_nest_expanded:
+        new_graph[before].add(after)
+
+    # Compute transitive closure
+    from pytools.graph import compute_transitive_closure, contains_cycle
+    new_graph_closure = compute_transitive_closure(new_graph)
+    # Note: compute_transitive_closure now allows cycles, will not error
+
+    # Check for inconsistent must_nest constraints by checking for cycle:
+    if contains_cycle(new_graph_closure):
+        raise ValueError(
+            "update_must_nest_graph: Nest constraint cycle detected. "
+            "must_nest constraints %s inconsistent with existing "
+            "must_nest constraints %s."
+            % (must_nest, must_nest_graph))
+
+    return new_graph_closure
+
+# }}}
+
+
+# {{{ _expand_iname_sets_in_tuple
+
+def _expand_iname_sets_in_tuple(
+        iname_sets_tuple,
+        iname_universe=None,
+        ):
+
+    # First convert UnexpandedInameSets to sets.
+    # Note that must_nest constraints cannot be negatively defined.
+    positively_defined_iname_sets = [
+        iname_set.get_inames_represented(iname_universe)
+        for iname_set in iname_sets_tuple]
+
+    # Now expand all priority tuples into (before, after) pairs using
+    # Cartesian product of all pairs of sets
+    # (Assumes prio_sets length > 1)
+    import itertools
+    loop_priority_pairs = set()
+    for i, before_set in enumerate(positively_defined_iname_sets[:-1]):
+        for after_set in positively_defined_iname_sets[i+1:]:
+            loop_priority_pairs.update(
+                list(itertools.product(before_set, after_set)))
+
+    # Make sure no priority tuple contains an iname twice
+    for prio_tuple in loop_priority_pairs:
+        if len(set(prio_tuple)) != len(prio_tuple):
+            raise ValueError(
+                "Loop nesting %s contains cycle: %s. "
+                % (iname_sets_tuple, prio_tuple))
+
+    return loop_priority_pairs
+
+# }}}
+
+# }}}
+
+
+# {{{ Checking constraints
+
+# {{{ check_must_nest
+
+def check_must_nest(all_loop_nests, must_nest, all_inames):
+    r"""Determine whether must_nest constraint is satisfied by
+    all_loop_nests
+
+    :arg all_loop_nests: A list of lists of inames, each representing
+        the nesting order of nested loops.
+
+    :arg must_nest: A tuple of :class:`UnexpandedInameSet`\ s describing
+        nestings that must appear in all_loop_nests.
+
+    :returns: A :class:`bool` indicating whether the must nest constraints
+        are satisfied by the provided loop nesting.
+    """
+
+    # In order to make sure must_nest is satisfied, we
+    # need to expand all must_nest tiers
+
+    # FIXME instead of expanding tiers into all pairs up front,
+    # create these pairs one at a time so that we can stop as soon as we fail
+
+    must_nest_expanded = _expand_iname_sets_in_tuple(must_nest)
+
+    # must_nest_expanded contains pairs
+    for before, after in must_nest_expanded:
+        found = False
+        for nesting in all_loop_nests:
+            if before in nesting and after in nesting and (
+                    nesting.index(before) < nesting.index(after)):
+                found = True
+                break
+        if not found:
+            return False
+    return True
+
+# }}}
+
+
+# {{{ check_must_not_nest
+
+def check_must_not_nest(all_loop_nests, must_not_nest):
+    r"""Determine whether must_not_nest constraint is satisfied by
+    all_loop_nests
+
+    :arg all_loop_nests: A list of lists of inames, each representing
+        the nesting order of nested loops.
+
+    :arg must_not_nest: A two-tuple of :class:`UnexpandedInameSet`\ s
+        describing nestings that must not appear in all_loop_nests.
+
+    :returns: A :class:`bool` indicating whether the must_not_nest constraints
+        are satisfied by the provided loop nesting.
+    """
+
+    # Note that must_not_nest may only contain two tiers
+
+    for nesting in all_loop_nests:
+
+        # Go through each pair in all_loop_nests
+        for i, iname_before in enumerate(nesting):
+            for iname_after in nesting[i+1:]:
+
+                # Check whether it violates must not nest
+                if (must_not_nest[0].contains(iname_before)
+                        and must_not_nest[1].contains(iname_after)):
+                    # Stop as soon as we fail
+                    return False
+    return True
+
+# }}}
+
+
+# {{{ loop_nest_constraints_satisfied
+
+def loop_nest_constraints_satisfied(
+        all_loop_nests,
+        must_nest_constraints=None,
+        must_not_nest_constraints=None,
+        all_inames=None):
+    r"""Determine whether must_not_nest constraint is satisfied by
+    all_loop_nests
+
+    :arg all_loop_nests: A set of lists of inames, each representing
+        the nesting order of loops.
+
+    :arg must_nest_constraints: An iterable of tuples of
+        :class:`UnexpandedInameSet`\ s, each describing nestings that must
+        appear in all_loop_nests.
+
+    :arg must_not_nest_constraints: An iterable of two-tuples of
+        :class:`UnexpandedInameSet`\ s, each describing nestings that must not
+        appear in all_loop_nests.
+
+    :returns: A :class:`bool` indicating whether the constraints
+        are satisfied by the provided loop nesting.
+    """
+
+    # Check must-nest constraints
+    if must_nest_constraints:
+        for must_nest in must_nest_constraints:
+            if not check_must_nest(
+                    all_loop_nests, must_nest, all_inames):
+                return False
+
+    # Check must-not-nest constraints
+    if must_not_nest_constraints:
+        for must_not_nest in must_not_nest_constraints:
+            if not check_must_not_nest(
+                    all_loop_nests, must_not_nest):
+                return False
+
+    return True
+
+# }}}
+
+
+# {{{ check_must_not_nest_against_must_nest_graph
+
+def check_must_not_nest_against_must_nest_graph(
+        must_not_nest_constraints, must_nest_graph):
+    r"""Ensure none of the must_not_nest constraints are violated by
+    nestings represented in the must_nest_graph
+
+    :arg must_not_nest_constraints: A set of two-tuples of
+        :class:`UnexpandedInameSet`\ s describing nestings that must not appear
+        in loop nestings.
+
+    :arg must_nest_graph: A :class:`dict` mapping each iname to other inames
+        that must be nested inside it.
+    """
+
+    if must_not_nest_constraints and must_nest_graph:
+        import itertools
+        must_pairs = []
+        for iname_before, inames_after in must_nest_graph.items():
+            must_pairs.extend(
+                list(itertools.product([iname_before], inames_after)))
+        if any(not check_must_not_nest(must_pairs, must_not_nest_tuple)
+                for must_not_nest_tuple in must_not_nest_constraints):
+            raise ValueError(
+                "Nest constraint conflict detected. "
+                "must_not_nest constraints %s inconsistent with "
+                "must_nest relationships (must_nest graph: %s)."
+                % (must_not_nest_constraints, must_nest_graph))
+
+# }}}
+
+
+# {{{ get_iname_nestings
+
+def get_iname_nestings(linearization):
+    """Return a list of iname tuples representing the deepest loop nestings
+    in a kernel linearization.
+    """
+    from loopy.schedule import EnterLoop, LeaveLoop
+    nestings = []
+    current_tiers = []
+    already_exiting_loops = False
+    for lin_item in linearization:
+        if isinstance(lin_item, EnterLoop):
+            already_exiting_loops = False
+            current_tiers.append(lin_item.iname)
+        elif isinstance(lin_item, LeaveLoop):
+            if not already_exiting_loops:
+                nestings.append(tuple(current_tiers))
+                already_exiting_loops = True
+            del current_tiers[-1]
+    return nestings
+
+# }}}
+
+# }}}
 
 # }}}
 
