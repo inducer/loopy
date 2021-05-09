@@ -3054,14 +3054,8 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
 
     # {{{ return the same kernel if no kernel matches
 
-    def _do_not_transform_if_no_within_matches():
-        for insn in kernel.instructions:
-            if within(kernel, insn):
-                return
-
+    if not any(within(kernel, insn) for insn in kernel.instructions):
         return kernel
-
-    _do_not_transform_if_no_within_matches()
 
     # }}}
 
