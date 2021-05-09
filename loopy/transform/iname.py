@@ -369,10 +369,12 @@ def process_loop_nest_specification(
 def constrain_loop_nesting(
         kernel, must_nest=None, must_not_nest=None):
     r"""Add the provided constraints to the kernel.
+
     :arg must_nest: A tuple or comma-separated string representing
         an ordering of loop nesting tiers that must appear in the
         linearized kernel. Each item in the tuple represents a
         :class:`UnexpandedInameSet`\ s.
+
     :arg must_not_nest: A two-tuple or comma-separated string representing
         an ordering of loop nesting tiers that must not appear in the
         linearized kernel. Each item in the tuple represents a
@@ -595,6 +597,183 @@ def _expand_iname_sets_in_tuple(
                 % (iname_sets_tuple, prio_tuple))
 
     return loop_priority_pairs
+
+# }}}
+
+# }}}
+
+
+# {{{ Checking constraints
+
+# {{{ check_must_nest
+
+def check_must_nest(all_loop_nests, must_nest, all_inames):
+    r"""Determine whether must_nest constraint is satisfied by
+    all_loop_nests
+
+    :arg all_loop_nests: A list of lists of inames, each representing
+        the nesting order of nested loops.
+
+    :arg must_nest: A tuple of :class:`UnexpandedInameSet`\ s describing
+        nestings that must appear in all_loop_nests.
+
+    :returns: A :class:`bool` indicating whether the must nest constraints
+        are satisfied by the provided loop nesting.
+    """
+
+    # In order to make sure must_nest is satisfied, we
+    # need to expand all must_nest tiers
+
+    # FIXME instead of expanding tiers into all pairs up front,
+    # create these pairs one at a time so that we can stop as soon as we fail
+
+    must_nest_expanded = _expand_iname_sets_in_tuple(must_nest)
+
+    # must_nest_expanded contains pairs
+    for before, after in must_nest_expanded:
+        found = False
+        for nesting in all_loop_nests:
+            if before in nesting and after in nesting and (
+                    nesting.index(before) < nesting.index(after)):
+                found = True
+                break
+        if not found:
+            return False
+    return True
+
+# }}}
+
+
+# {{{ check_must_not_nest
+
+def check_must_not_nest(all_loop_nests, must_not_nest):
+    r"""Determine whether must_not_nest constraint is satisfied by
+    all_loop_nests
+
+    :arg all_loop_nests: A list of lists of inames, each representing
+        the nesting order of nested loops.
+
+    :arg must_not_nest: A two-tuple of :class:`UnexpandedInameSet`\ s
+        describing nestings that must not appear in all_loop_nests.
+
+    :returns: A :class:`bool` indicating whether the must_not_nest constraints
+        are satisfied by the provided loop nesting.
+    """
+
+    # Note that must_not_nest may only contain two tiers
+
+    for nesting in all_loop_nests:
+
+        # Go through each pair in all_loop_nests
+        for i, iname_before in enumerate(nesting):
+            for iname_after in nesting[i+1:]:
+
+                # Check whether it violates must not nest
+                if (must_not_nest[0].contains(iname_before)
+                        and must_not_nest[1].contains(iname_after)):
+                    # Stop as soon as we fail
+                    return False
+    return True
+
+# }}}
+
+
+# {{{ loop_nest_constraints_satisfied
+
+def loop_nest_constraints_satisfied(
+        all_loop_nests,
+        must_nest_constraints=None,
+        must_not_nest_constraints=None,
+        all_inames=None):
+    r"""Determine whether must_not_nest constraint is satisfied by
+    all_loop_nests
+
+    :arg all_loop_nests: A set of lists of inames, each representing
+        the nesting order of loops.
+
+    :arg must_nest_constraints: An iterable of tuples of
+        :class:`UnexpandedInameSet`\ s, each describing nestings that must
+        appear in all_loop_nests.
+
+    :arg must_not_nest_constraints: An iterable of two-tuples of
+        :class:`UnexpandedInameSet`\ s, each describing nestings that must not
+        appear in all_loop_nests.
+
+    :returns: A :class:`bool` indicating whether the constraints
+        are satisfied by the provided loop nesting.
+    """
+
+    # Check must-nest constraints
+    if must_nest_constraints:
+        for must_nest in must_nest_constraints:
+            if not check_must_nest(
+                    all_loop_nests, must_nest, all_inames):
+                return False
+
+    # Check must-not-nest constraints
+    if must_not_nest_constraints:
+        for must_not_nest in must_not_nest_constraints:
+            if not check_must_not_nest(
+                    all_loop_nests, must_not_nest):
+                return False
+
+    return True
+
+# }}}
+
+
+# {{{ check_must_not_nest_against_must_nest_graph
+
+def check_must_not_nest_against_must_nest_graph(
+        must_not_nest_constraints, must_nest_graph):
+    r"""Ensure none of the must_not_nest constraints are violated by
+    nestings represented in the must_nest_graph
+
+    :arg must_not_nest_constraints: A set of two-tuples of
+        :class:`UnexpandedInameSet`\ s describing nestings that must not appear
+        in loop nestings.
+
+    :arg must_nest_graph: A :class:`dict` mapping each iname to other inames
+        that must be nested inside it.
+    """
+
+    if must_not_nest_constraints and must_nest_graph:
+        import itertools
+        must_pairs = []
+        for iname_before, inames_after in must_nest_graph.items():
+            must_pairs.extend(
+                list(itertools.product([iname_before], inames_after)))
+        if any(not check_must_not_nest(must_pairs, must_not_nest_tuple)
+                for must_not_nest_tuple in must_not_nest_constraints):
+            raise ValueError(
+                "Nest constraint conflict detected. "
+                "must_not_nest constraints %s inconsistent with "
+                "must_nest relationships (must_nest graph: %s)."
+                % (must_not_nest_constraints, must_nest_graph))
+
+# }}}
+
+
+# {{{ get_iname_nestings
+
+def get_iname_nestings(linearization):
+    """Return a list of iname tuples representing the deepest loop nestings
+    in a kernel linearization.
+    """
+    from loopy.schedule import EnterLoop, LeaveLoop
+    nestings = []
+    current_tiers = []
+    already_exiting_loops = False
+    for lin_item in linearization:
+        if isinstance(lin_item, EnterLoop):
+            already_exiting_loops = False
+            current_tiers.append(lin_item.iname)
+        elif isinstance(lin_item, LeaveLoop):
+            if not already_exiting_loops:
+                nestings.append(tuple(current_tiers))
+                already_exiting_loops = True
+            del current_tiers[-1]
+    return nestings
 
 # }}}
 
