@@ -346,7 +346,7 @@ def process_loop_nest_specification(
         nesting_as_tuple = tuple(
             _process_iname_set_str(set_str) for set_str in nesting)
 
-    # Check max_inames_per_set
+    # Check max_tuple_size
     if max_tuple_size and len(nesting_as_tuple) > max_tuple_size:
         _raise_loop_nest_input_error(
             "Loop nest prioritization tuple %s exceeds max tuple size %d."
