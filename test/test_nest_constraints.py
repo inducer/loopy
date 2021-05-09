@@ -153,17 +153,7 @@ def test_loop_constraint_string_parsing():
             "Unrecognized character(s) [\'}\'] in nest string h}"
             ) in str(e)
 
-    # TODO these should pass
-    """
-    try:
-        lp.constrain_loop_nesting(ref_knl, must_nest=("{h i j,,}", "k"))
-        assert False
-    except ValueError as e:
-        assert("Unrecognized character(s) [\'{\', \'}\'] in nest string {h i j,,}"
-            ) in str(e)
-    """
-
-    # valid syntax
+    # Valid syntax
     lp.constrain_loop_nesting(ref_knl, must_not_nest=("~{j,i}", "{j,i}"))
     lp.constrain_loop_nesting(ref_knl, must_not_nest=("{h}", "{j,i}"))
     lp.constrain_loop_nesting(ref_knl, must_not_nest=("h", "{j,i}"))
@@ -172,7 +162,7 @@ def test_loop_constraint_string_parsing():
     lp.constrain_loop_nesting(ref_knl, must_not_nest="~j,j")
     lp.constrain_loop_nesting(ref_knl, must_nest="k,h,j")
 
-    # handling spaces
+    # Handling spaces
     knl = lp.constrain_loop_nesting(ref_knl, must_nest=("k", "{h }", " { j , i } "))
     assert list(knl.loop_nest_constraints.must_nest)[0][0].inames == set("k")
     assert list(knl.loop_nest_constraints.must_nest)[0][1].inames == set("h")
@@ -205,7 +195,7 @@ def test_loop_nest_constraints_satisfied():
 
     must_nest_constraints = [
         process_loop_nest_specification(
-            nesting=("{g,h}", "~{g,h}"),
+            nesting=("{g,h}", "{i,j,k}"),
             complement_sets_allowed=True),
         ]
     must_not_nest_constraints = [
@@ -351,7 +341,6 @@ def test_incompatible_nest_constraints():
             """,
             assumptions="n >= 1",
             )
-    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a,a2,a3": np.dtype(np.float32)})
     knl = ref_knl
     knl = lp.constrain_loop_nesting(
         knl, must_not_nest=("{k,i}", "~{k,i}"))
