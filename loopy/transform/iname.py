@@ -28,6 +28,7 @@ from loopy.symbolic import (
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
+from pytools import Record
 
 
 __doc__ = """
@@ -108,6 +109,100 @@ def prioritize_loops(kernel, loop_priority):
     loop_priority = tuple(loop_priority)
 
     return kernel.copy(loop_priority=kernel.loop_priority.union([loop_priority]))
+
+# }}}
+
+
+# {{{ Handle loop nest constraints
+
+# {{{ Classes to house loop nest constraints
+
+# {{{ UnexpandedInameSet
+
+class UnexpandedInameSet(Record):
+    def __init__(self, inames, complement=False):
+        Record.__init__(
+            self,
+            inames=inames,
+            complement=complement,
+            )
+
+    def contains(self, inames):
+        if isinstance(inames, set):
+            return (not (inames & self.inames) if self.complement
+                else inames.issubset(self.inames))
+        else:
+            return (inames not in self.inames if self.complement
+                else inames in self.inames)
+
+    def get_inames_represented(self, iname_universe=None):
+        """Return the set of inames represented by the UnexpandedInameSet
+        """
+        if self.complement:
+            if not iname_universe:
+                raise ValueError(
+                    "Cannot expand UnexpandedInameSet %s without "
+                    "iname_universe." % (self))
+            return iname_universe-self.inames
+        else:
+            return self.inames.copy()
+
+    def __lt__(self, other):
+        # FIXME is this function really necessary? If so, what should it return?
+        return self.__hash__() < other.__hash__()
+
+    def __hash__(self):
+        return hash(repr(self))
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+
+        key_builder.rec(key_hash, self.inames)
+        key_builder.rec(key_hash, self.complement)
+
+    def __str__(self):
+        return "%s{%s}" % ("~" if self.complement else "",
+            ",".join(i for i in sorted(self.inames)))
+
+# }}}
+
+
+# {{{ LoopNestConstraints
+
+class LoopNestConstraints(Record):
+    def __init__(self, must_nest=None, must_not_nest=None,
+                 must_nest_graph=None):
+        Record.__init__(
+            self,
+            must_nest=must_nest,
+            must_not_nest=must_not_nest,
+            must_nest_graph=must_nest_graph,
+            )
+
+    def __hash__(self):
+        return hash(repr(self))
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+
+        key_builder.rec(key_hash, self.must_nest)
+        key_builder.rec(key_hash, self.must_not_nest)
+        key_builder.rec(key_hash, self.must_nest_graph)
+
+    def __str__(self):
+        return "LoopNestConstraints(\n" \
+            "    must_nest = " + str(self.must_nest) + "\n" \
+            "    must_not_nest = " + str(self.must_not_nest) + "\n" \
+            "    must_nest_graph = " + str(self.must_nest_graph) + "\n" \
+            ")"
+
+# }}}
+
+# }}}
 
 # }}}
 
