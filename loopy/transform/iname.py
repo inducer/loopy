@@ -129,8 +129,8 @@ class UnexpandedInameSet(Record):
 
     def contains(self, inames):
         if isinstance(inames, set):
-            return (not (iname_set & self.inames) if self.complement
-                else iname_set.issubset(self.inames))
+            return (not (inames & self.inames) if self.complement
+                else inames.issubset(self.inames))
         else:
             return (inames not in self.inames if self.complement
                 else inames in self.inames)
@@ -368,7 +368,7 @@ def process_loop_nest_specification(
 
 def constrain_loop_nesting(
         kernel, must_nest=None, must_not_nest=None):
-    """Add the provided constraints to the kernel.
+    r"""Add the provided constraints to the kernel.
 
     :arg must_nest: A tuple or comma-separated string representing
         an ordering of loop nesting tiers that must appear in the
@@ -609,7 +609,7 @@ def _expand_iname_sets_in_tuple(
 # {{{ check_must_nest
 
 def check_must_nest(all_loop_nests, must_nest, all_inames):
-    """Determine whether must_nest constraint is satisfied by
+    r"""Determine whether must_nest constraint is satisfied by
     all_loop_nests
 
     :arg all_loop_nests: A list of lists of inames, each representing
@@ -649,7 +649,7 @@ def check_must_nest(all_loop_nests, must_nest, all_inames):
 # {{{ check_must_not_nest
 
 def check_must_not_nest(all_loop_nests, must_not_nest):
-    """Determine whether must_not_nest constraint is satisfied by
+    r"""Determine whether must_not_nest constraint is satisfied by
     all_loop_nests
 
     :arg all_loop_nests: A list of lists of inames, each representing
@@ -684,7 +684,7 @@ def check_must_not_nest(all_loop_nests, must_not_nest):
 # {{{ check_all_must_not_nests
 
 def check_all_must_not_nests(all_loop_nests, must_not_nests):
-    """Determine whether all must_not_nest constraints are satisfied by
+    r"""Determine whether all must_not_nest constraints are satisfied by
     all_loop_nests
 
     :arg all_loop_nests: A list of lists of inames, each representing
@@ -713,7 +713,7 @@ def loop_nest_constraints_satisfied(
         must_nest_constraints=None,
         must_not_nest_constraints=None,
         all_inames=None):
-    """Determine whether must_not_nest constraint is satisfied by
+    r"""Determine whether must_not_nest constraint is satisfied by
     all_loop_nests
 
     :arg all_loop_nests: A set of lists of inames, each representing
@@ -755,7 +755,7 @@ def loop_nest_constraints_satisfied(
 
 def check_must_not_nest_against_must_nest_graph(
         must_not_nest_constraints, must_nest_graph):
-    """Ensure none of the must_not_nest constraints are violated by
+    r"""Ensure none of the must_not_nest constraints are violated by
     nestings represented in the must_nest_graph
 
     :arg must_not_nest_constraints: A set of two-tuples of
