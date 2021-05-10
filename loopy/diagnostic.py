@@ -70,6 +70,10 @@ class LoopyError(RuntimeError):
     pass
 
 
+class LoopyIndexError(LoopyError):
+    pass
+
+
 class CannotBranchDomainTree(LoopyError):
     pass
 
