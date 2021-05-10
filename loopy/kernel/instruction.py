@@ -380,6 +380,7 @@ class InstructionBase(ImmutableRecord, Taggable):
 
         return result
 
+    @memoize_method
     def dependency_names(self):
         return self.read_dependency_names() | self.write_dependency_names()
 
