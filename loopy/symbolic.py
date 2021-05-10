@@ -1543,7 +1543,8 @@ def aff_from_expr(space, expr, vars_to_zero=None):
         (s, aff), = pieces
         return aff
     else:
-        raise RuntimeError("expression '%s' could not be converted to a "
+        from loopy.diagnostic import ExpressionNotAffineError
+        raise ExpressionNotAffineError("expression '%s' could not be converted to a "
                 "non-piecewise quasi-affine expression" % expr)
 
 
@@ -1554,6 +1555,7 @@ def pwaff_from_expr(space, expr, vars_to_zero=None):
 def with_aff_conversion_guard(f, space, expr, *args):
     import islpy as isl
     from pymbolic.mapper.evaluator import UnknownVariableError
+    from loopy.diagnostic import ExpressionNotAffineError
 
     err = None
     with isl.SuppressedWarnings(space.get_ctx()):
@@ -1564,6 +1566,8 @@ def with_aff_conversion_guard(f, space, expr, *args):
         except isl.Error as e:
             err = e
         except UnknownVariableError as e:
+            err = e
+        except ExpressionNotAffineError as e:
             err = e
 
         assert err is not None
