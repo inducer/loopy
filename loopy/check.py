@@ -519,7 +519,7 @@ def check_bounds(kernel):
                 _check_bounds_inner(kernel)
             except LoopyIndexError as e:
                 from loopy.diagnostic import warn_with_kernel
-                warn_with_kernel(kernel, "array_access_within_bounds", str(e))
+                warn_with_kernel(kernel, "array_access_out_of_bounds", str(e))
 
 # }}}
 
