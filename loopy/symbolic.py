@@ -371,7 +371,6 @@ class DependencyMapper(DependencyMapperBase):
     def map_literal(self, expr):
         return set()
 
-
     map_fortran_division = DependencyMapperBase.map_quotient
 
 
