@@ -197,7 +197,21 @@ class Scope:
 # }}}
 
 
-# {{{ fortran division specializer
+# {{{ fortran division specializers
+
+class FortranDivisionToFloorDiv(IdentityMapper):
+    def map_fortran_division(self, expr, *args):
+        from warnings import warn
+        from loopy.diagnostic import LoopyWarning
+        warn(
+                "Integer division in Fortran do loop bound. "
+                "Loopy currently forces this to integers and gets it wrong for "
+                "negative arguments.", LoopyWarning)
+        from pymbolic.primitives import FloorDiv
+        return FloorDiv(
+                self.rec(expr.numerator, *args),
+                self.rec(expr.denominator, *args))
+
 
 class FortranDivisionSpecializer(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, kernel):
@@ -639,7 +653,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     isl.Constraint.inequality_from_aff(
                         iname_rel_aff(space,
                             loopy_loop_var, "<=",
-                            aff_from_expr(space, stop-start)))))
+                            aff_from_expr(space, FortranDivisionToFloorDiv()(
+                                stop-start))))))
 
         from pymbolic import var
         scope.active_iname_aliases[loop_var] = \
