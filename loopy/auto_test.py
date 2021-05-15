@@ -41,15 +41,30 @@ def is_dtype_supported(dtype):
     return dtype.kind in "biufc"
 
 
-def evaluate_shape(shape, context):
-    from pymbolic import evaluate
+def evaluate_and_cast_floats_representing_ints_to_ints(shape, params):
+    # Evaluate shape dims. If any resulting dims have type float but
+    # represent an integer (e.g., 64.0), cast these dims to ints.
 
+    from pymbolic import evaluate
+    eval_result = evaluate(shape, params)
+
+    def _cast_to_int_if_float_is_integer(f):
+        return int(f) if isinstance(f, float) and f.is_integer() else f
+
+    if isinstance(eval_result, tuple):
+        return tuple(_cast_to_int_if_float_is_integer(v) for v in eval_result)
+    else:
+        return _cast_to_int_if_float_is_integer(eval_result)
+
+
+def evaluate_shape(shape, context):
     result = []
     for saxis in shape:
         if saxis is None:
             result.append(saxis)
         else:
-            result.append(evaluate(saxis, context))
+            result.append(
+                evaluate_and_cast_floats_representing_ints_to_ints(saxis, context))
 
     return tuple(result)
 
@@ -79,8 +94,6 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
 
     from loopy.kernel.data import ValueArg, ArrayArg, ImageArg, \
             TemporaryVariable, ConstantArg
-
-    from pymbolic import evaluate
 
     ref_args = {}
     ref_arg_data = []
@@ -124,7 +137,8 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
                 alloc_size = None
                 strides = None
             else:
-                strides = evaluate(arg.unvec_strides, parameters)
+                strides = evaluate_and_cast_floats_representing_ints_to_ints(
+                        arg.unvec_strides, parameters)
 
                 alloc_size = sum(astrd*(alen-1) if astrd != 0 else alen-1
                         for alen, astrd in zip(shape, strides)) + 1
@@ -197,8 +211,6 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
     from loopy.kernel.data import ValueArg, ArrayArg, ImageArg,\
             TemporaryVariable, ConstantArg
 
-    from pymbolic import evaluate
-
     args = {}
     for arg, arg_desc in zip(impl_arg_info, ref_arg_data):
         kernel_arg = kernel.impl_arg_to_arg.get(arg.name)
@@ -230,8 +242,10 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
 
         elif arg.arg_class is ArrayArg or\
                 arg.arg_class is ConstantArg:
-            shape = evaluate(arg.unvec_shape, parameters)
-            strides = evaluate(arg.unvec_strides, parameters)
+            shape = evaluate_and_cast_floats_representing_ints_to_ints(
+                    arg.unvec_shape, parameters)
+            strides = evaluate_and_cast_floats_representing_ints_to_ints(
+                    arg.unvec_strides, parameters)
 
             dtype = kernel_arg.dtype
             itemsize = dtype.itemsize
