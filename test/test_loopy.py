@@ -842,6 +842,81 @@ def test_auto_test_zero_warmup_rounds(ctx_factory):
             warmup_rounds=0)
 
 
+def test_auto_test_allows_int_shape_dims_represented_as_float_vars(ctx_factory):
+    # Arrays with integer shape dims should be allowed even if
+    # the variable resulting from pymbolic.evaluate has type float
+    # (e.g., dim shapes evaluating to float 64.0 should be allowed)
+
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    # {{{ Arrays with integer shape dims should be allowed
+
+    # {{{ Create knl args
+
+    dim_size = 63
+    n = dim_size - 2
+
+    v = cl.array.empty(queue, (int(dim_size/2*2),), dtype=np.float32)
+    cl.clrandom.fill_rand(v)
+
+    knl_arg_dict = {"v": v, "dim_size": dim_size, "n": n}
+
+    # }}}
+
+    # {{{ Make kernel with integer v shape
+
+    knl = lp.make_kernel(
+        "[n] -> { [i] : 1 <= i < n }",
+        "v[i] = 3.14",
+        [
+            lp.GlobalArg("v", dtype=np.float32, shape=("dim_size/2*2")),
+            lp.ValueArg("n", dtype=np.int32),
+            lp.ValueArg("dim_size", dtype=np.int32),
+        ],
+        )
+
+    # }}}
+
+    # This should work because v's shape is an integer
+    # (even though it has type float when evaluated):
+    ref_knl = knl
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=knl_arg_dict)
+
+    # }}}
+
+    # {{{ Arrays with non-integer shape dims should not be allowed
+
+    # {{{ Make kernel with non-integer v shape
+
+    v = cl.array.empty(queue, (int(dim_size/5*6),), dtype=np.float32)
+    cl.clrandom.fill_rand(v)
+
+    knl_arg_dict = {"v": v, "dim_size": dim_size, "n": n}
+
+    knl = lp.make_kernel(
+        "[n] -> { [i] : 1 <= i < n }",
+        "v[i] = 3.14",
+        [
+            lp.GlobalArg("v", dtype=np.float32, shape=("dim_size/5*6")),
+            lp.ValueArg("n", dtype=np.int32),
+            lp.ValueArg("dim_size", dtype=np.int32),
+        ],
+        )
+
+    # }}}
+
+    # This should fail because v's shape is not an integer:
+    ref_knl = knl
+    try:
+        lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=knl_arg_dict)
+        assert False
+    except TypeError as e:
+        assert str(e) == "shape must either be iterable or castable to an integer"
+
+    # }}}
+
+
 def test_variable_size_temporary():
     knl = lp.make_kernel(
          """{ [i,j]: 0<=i,j<n }""",
