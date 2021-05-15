@@ -365,7 +365,9 @@ class F2LoopyTranslator(FTreeWalkerBase):
         for name, data in node.stmts:
             name, = name
             assert name not in scope.data
-            scope.data[name] = [self.parse_expr(node, i) for i in data]
+            scope.data[name] = [
+                    scope.process_expression_for_loopy(
+                        self.parse_expr(node, i)) for i in data]
 
         return []
 
@@ -461,7 +463,9 @@ class F2LoopyTranslator(FTreeWalkerBase):
         cond_var = var(cond_name)
 
         self.add_expression_instruction(
-                cond_var, self.parse_expr(node, node.expr))
+                cond_var,
+                scope.process_expression_for_loopy(
+                    self.parse_expr(node, node.expr)))
 
         cond_expr = cond_var
         if context_cond is not None:
@@ -531,9 +535,10 @@ class F2LoopyTranslator(FTreeWalkerBase):
                         % (loop_var, iname_dtype, self.index_dtype))
 
         scope.use_name(loop_var)
-        loop_bounds = self.parse_expr(
-                node,
-                loop_bounds, min_precedence=self.expr_parser._PREC_FUNC_ARGS)
+        loop_bounds = scope.process_expression_for_loopy(
+                self.parse_expr(
+                    node,
+                    loop_bounds, min_precedence=self.expr_parser._PREC_FUNC_ARGS))
 
         if len(loop_bounds) == 2:
             start, stop = loop_bounds
