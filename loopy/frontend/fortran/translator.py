@@ -80,7 +80,9 @@ class SubscriptIndexBaseShifter(IdentityMapper):
 # {{{ scope
 
 class Scope:
-    def __init__(self, subprogram_name, arg_names=set()):
+    def __init__(self, subprogram_name, arg_names=None):
+        if arg_names is None:
+            arg_names = set()
         self.subprogram_name = subprogram_name
 
         # map name to data
