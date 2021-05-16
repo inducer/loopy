@@ -240,16 +240,23 @@ class FortranDivisionSpecializer(RuleAwareIdentityMapper):
                     self.rec(expr.numerator, *args),
                     self.rec(expr.denominator, *args))
 
+
+def specialize_fortran_division(knl):
+    rmc = SubstitutionRuleMappingContext(
+            knl.substitutions, knl.get_var_name_generator())
+    return FortranDivisionSpecializer(rmc, knl).map_kernel(knl)
+
 # }}}
 
 
 # {{{ translator
 
 class F2LoopyTranslator(FTreeWalkerBase):
-    def __init__(self, filename, target=None):
+    def __init__(self, filename, target=None, all_names_known=True):
         FTreeWalkerBase.__init__(self, filename)
 
         self.target = target
+        self.all_names_known = all_names_known
 
         self.scope_stack = []
 
@@ -773,9 +780,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     lang_version=MOST_RECENT_LANGUAGE_VERSION
                     )
 
-            rmc = SubstitutionRuleMappingContext(
-                    knl.substitutions, knl.get_var_name_generator())
-            knl = FortranDivisionSpecializer(rmc, knl).map_kernel(knl)
+            if self.all_names_known:
+                knl = specialize_fortran_division(knl)
 
             from loopy.loop import fuse_loop_domains
             knl = fuse_loop_domains(knl)
