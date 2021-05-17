@@ -645,6 +645,97 @@ def test_map_domain_vs_split_iname():
 # }}}
 
 
+# {{{ test_map_domain_with_transform_map_missing_dims
+
+def test_map_domain_with_transform_map_missing_dims():
+    # Make sure map_domain works correctly when the mapping doesn't include
+    # all the dims in the domain.
+
+    # {{{ Make kernel
+
+    knl = lp.make_kernel(
+        [
+            "[nx,nt] -> {[x, y, z, t]: 0 <= x,y,z < nx and 0 <= t < nt}",
+        ],
+        """
+        a[y,x,t,z] = b[y,x,t,z]  {id=stmta}
+        """,
+        lang_version=(2018, 2),
+        )
+    knl = lp.add_and_infer_dtypes(knl, {"b": np.float32})
+    ref_knl = knl
+
+    # }}}
+
+    # {{{ Apply domain change mapping
+
+    knl_map_dom = ref_knl  # loop priority goes away, deps stay
+
+    # Create map_domain mapping that only includes t and y
+    # (x and z should be unaffected)
+    import islpy as isl
+    transform_map = isl.BasicMap(
+        "[nx,nt] -> {[t, y] -> [t_outer, t_inner, y_new]: "
+        "0 <= t_inner < 32 and "
+        "32*t_outer + t_inner = t and "
+        "0 <= 32*t_outer + t_inner < nt and "
+        "y = y_new"
+        "}")
+
+    # Call map_domain to transform kernel
+    knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
+
+    # Prioritize loops (prio should eventually be updated in map_domain?)
+    try:
+        # Use constrain_loop_nesting if it's available
+        desired_prio = "x, t_outer, t_inner, z, y_new"
+        knl_map_dom = lp.constrain_loop_nesting(knl_map_dom, desired_prio)
+    except AttributeError:
+        # For some reason, prioritize_loops can't handle the ordering above
+        # when linearizing knl_split_iname below
+        desired_prio = "z, y_new, x, t_outer, t_inner"
+        knl_map_dom = lp.prioritize_loops(knl_map_dom, desired_prio)
+
+    # Get a linearization
+    proc_knl_map_dom = lp.preprocess_kernel(knl_map_dom)
+    lin_knl_map_dom = lp.get_one_linearized_kernel(proc_knl_map_dom)
+
+    # }}}
+
+    # {{{ Split iname and see if we get the same result
+
+    knl_split_iname = ref_knl
+    knl_split_iname = lp.split_iname(knl_split_iname, "t", 32)
+    knl_split_iname = lp.rename_iname(knl_split_iname, "y", "y_new")
+    try:
+        # Use constrain_loop_nesting if it's available
+        knl_split_iname = lp.constrain_loop_nesting(knl_split_iname, desired_prio)
+    except AttributeError:
+        knl_split_iname = lp.prioritize_loops(knl_split_iname, desired_prio)
+    proc_knl_split_iname = lp.preprocess_kernel(knl_split_iname)
+    lin_knl_split_iname = lp.get_one_linearized_kernel(proc_knl_split_iname)
+
+    from loopy.schedule.checker.utils import (
+        ensure_dim_names_match_and_align,
+    )
+    for d_map_domain, d_split_iname in zip(
+            knl_map_dom.domains, knl_split_iname.domains):
+        d_map_domain_aligned = ensure_dim_names_match_and_align(
+            d_map_domain, d_split_iname)
+        assert d_map_domain_aligned == d_split_iname
+
+    for litem_map_domain, litem_split_iname in zip(
+            lin_knl_map_dom.linearization, lin_knl_split_iname.linearization):
+        assert litem_map_domain == litem_split_iname
+
+    # Can't easily compare instructions because equivalent subscript
+    # expressions may have different orders
+
+    # }}}
+
+# }}}
+
+
 def test_diamond_tiling(ctx_factory, interactive=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
