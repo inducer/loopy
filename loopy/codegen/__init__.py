@@ -478,7 +478,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
         raise LoopyError("cannot generate code for a kernel that has not been "
                 "scheduled")
 
-    # {{{ make_schedule_a_tree
+    # {{{ make_schedule_tree
 
     from loopy.schedule.tree import make_schedule_tree
     sched_tree = make_schedule_tree(kernel)

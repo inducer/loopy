@@ -439,6 +439,14 @@ def format_insn(kernel, insn_id):
 
 
 def dump_schedule(kernel, schedule):
+
+    from loopy.schedule.tree import Schedule
+    if isinstance(schedule, Schedule):
+        from loopy.schedule.tree import StringifyMapper
+        return StringifyMapper(kernel)(schedule)
+
+    assert isinstance(schedule, list)
+
     lines = []
     indent = ""
 

@@ -15,7 +15,7 @@ class ScheduleNode:
 
 @dataclass
 class RunInstruction(ScheduleNode):
-    id: str
+    insn_id: str
 
     mapper_method: str = field(default="map_run_instruction", repr=False, init=False)
 
@@ -89,6 +89,8 @@ class Function(ScheduleNode):
     extra_inames: List[str]
     children: List[Union[InstructionBlock, Loop]]
 
+    mapper_method: str = field(default="map_function", repr=False, init=False)
+
 
 @dataclass
 class Schedule(ScheduleNode):
@@ -96,6 +98,8 @@ class Schedule(ScheduleNode):
     Top-level schedule description.
     """
     children: List[Union[Loop, InstructionBlock, Function]]
+
+    mapper_method: str = field(default="map_schedule", repr=False, init=False)
 
 
 @dataclass
@@ -239,3 +243,63 @@ class IdentityMapper(Mapper):
 
     def map_run_instruction(self, expr, *args, **kwargs):
         return RunInstruction(expr.insn_id)
+
+
+class CombineMapper(Mapper):
+    def combine(self, values):
+        raise NotImplementedError
+
+    def map_schedule(self, expr, *args, **kwargs):
+        return self.combine([self.rec(child, *args, **kwargs)
+                             for child in expr.children])
+
+    def map_instruction_block(self, expr, *args, **kwargs):
+        return self.combine([self.rec(child, *args, **kwargs)
+                             for child in expr.children])
+
+    def map_function(self, expr, *args, **kwargs):
+        return self.combine([self.rec(child, *args, **kwargs)
+                             for child in expr.children])
+
+    def map_loop(self, expr, *args, **kwargs):
+        return self.combine([self.rec(child, *args, **kwargs)
+                             for child in expr.children])
+
+    def map_barrier(self, expr, *args, **kwargs):
+        raise NotImplementedError
+
+    def map_run_instruction(self, expr, *args, **kwargs):
+        raise NotImplementedError
+
+
+class StringifyMapper(CombineMapper):
+    SHIFTWIDTH = 2
+
+    def __init__(self, kernel):
+        self.kernel = kernel
+
+    def combine(self, values):
+        return "\n".join(values)
+
+    def _indent(self, level):
+        return level*self.SHIFTWIDTH*" "
+
+    def map_function(self, expr, level=0):
+        return self.combine([(f"{self._indent(level)}CALL KERNEL {expr.name}("
+                              f"extra_args={expr.extra_args}, "
+                              f"extra_inames={expr.extra_inames})"),
+                             super().map_function(expr, level+1),
+                             f"{self._indent(level)}RETURN FROM KERNEL {expr.name}"])
+
+    def map_run_instruction(self, expr, level=0):
+        from loopy.schedule import format_insn
+        return (f"{self._indent(level)}"
+                f"{format_insn(self.kernel, expr.insn_id)}")
+
+    def map_barrier(self, expr, level=0):
+        return (f"{self._indent(level)}... {expr.kind[0]}barrier")
+
+    def map_loop(self, expr, level=0):
+        return self.combine([f"{self._indent(level)}for {expr.iname}",
+                             super().map_function(expr, level+1),
+                             f"{self._indent(level)}end {expr.iname}"])
