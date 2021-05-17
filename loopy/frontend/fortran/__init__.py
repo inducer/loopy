@@ -235,8 +235,13 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
 
 
 def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
-        seq_dependencies=None, auto_dependencies=None, target=None):
+        seq_dependencies=None, auto_dependencies=None, target=None,
+        all_names_known=True):
     """
+    :arg all_names_known: if set to *False*, enter an undocumented mode
+        in which Fortran parsing will try to tolerate unknown names.
+        If used, ``loopy.frontend.fortran.translator.specialize_fortran_division``
+        must be called as soon as all names are known.
     :returns: a list of :class:`loopy.LoopKernel` objects
     """
 
@@ -268,7 +273,8 @@ def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
                 "and returned invalid data (Sorry!)")
 
     from loopy.frontend.fortran.translator import F2LoopyTranslator
-    f2loopy = F2LoopyTranslator(filename, target=target)
+    f2loopy = F2LoopyTranslator(
+            filename, target=target, all_names_known=all_names_known)
     f2loopy(tree)
 
     return f2loopy.make_kernels(seq_dependencies=seq_dependencies)
