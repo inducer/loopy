@@ -68,6 +68,8 @@ __doc__ = """
 
 .. autofunction:: add_inames_to_insn
 
+.. autofunction:: map_domain
+
 .. autofunction:: add_inames_for_unused_hw_axes
 
 """
@@ -3125,6 +3127,8 @@ def _find_aff_subst_from_map(iname, isl_map):
     raise LoopyError("no suitable equation for '%s' found" % iname)
 
 
+# TODO swap dt and dim_type
+
 def map_domain(kernel, isl_map, within=None, rename_after={}):
     # FIXME: Express _split_iname_backend in terms of this
     #   Missing/deleted for now:
@@ -3192,12 +3196,21 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
 
         return overlap
 
+    from loopy.schedule.checker.utils import (
+        add_and_name_isl_dims,
+    )
+
     def process_set(s):
 
         overlap = _check_overlap_condition_for_domain(s, old_inames)
         if not overlap:
             # inames in s are not present in transform map, don't change s
             return s
+
+        from loopy.schedule.checker.utils import (
+            find_and_rename_dim,
+            add_eq_isl_constraint_from_names,
+        )
 
         # {{{ align dims of isl_map and s
 
@@ -3207,6 +3220,40 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
 
         map_with_s_domain = isl.Map.from_domain(s)
 
+        # {{{ deal with dims missing from transform map (isl_map)
+
+        # If dims in s are missing from transform map, they need to be added
+        # so that intersect_domain doesn't remove them.
+        # Order doesn't matter here because dims will be aligned in the next step.
+        dims_missing_from_transform_map = list(
+            set(s.get_var_names(dim_type.set)) -
+            set(isl_map.get_var_names(dim_type.in_)))
+        augmented_isl_map = add_and_name_isl_dims(
+            isl_map, dim_type.in_, dims_missing_from_transform_map)
+
+        # We want these missing inames to map to themselves so that the transform
+        # has no effect on them. Unfortunatley isl will break if the
+        # names of the out dims aren't unique, so we will temporariliy rename them
+        # and then change the names back afterward.
+
+        # FIXME: need better way to make sure proxy dim names are unique
+        dims_missing_from_transform_map_proxies = [
+            d+"__prox" for d in dims_missing_from_transform_map]
+        assert not set(dims_missing_from_transform_map_proxies) & set(
+            augmented_isl_map.get_var_dict().keys())
+
+        augmented_isl_map = add_and_name_isl_dims(
+            augmented_isl_map, dim_type.out, dims_missing_from_transform_map_proxies)
+
+        # Set proxy iname equal to real iname
+        for proxy_iname, real_iname in zip(
+                dims_missing_from_transform_map_proxies,
+                dims_missing_from_transform_map):
+            augmented_isl_map = add_eq_isl_constraint_from_names(
+                augmented_isl_map, proxy_iname, real_iname)
+
+        # }}}
+
         dim_types = [dim_type.param, dim_type.in_, dim_type.out]
         s_names = [
                 map_with_s_domain.get_dim_name(dt, i)
@@ -3214,36 +3261,36 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
                 for i in range(map_with_s_domain.dim(dt))
                 ]
         map_names = [
-                isl_map.get_dim_name(dt, i)
+                augmented_isl_map.get_dim_name(dt, i)
                 for dt in dim_types
-                for i in range(isl_map.dim(dt))
+                for i in range(augmented_isl_map.dim(dt))
                 ]
+
         # (order doesn't matter in s_names/map_names,
         # _align_dim_type just converts these to sets
         # to determine which names are in both the obj and template,
         # not sure why this isn't just handled inside _align_dim_type)
         aligned_map = _align_dim_type(
                 dim_type.param,
-                isl_map, map_with_s_domain, False,
+                augmented_isl_map, map_with_s_domain, False,
                 map_names, s_names)
         aligned_map = _align_dim_type(
                 dim_type.in_,
                 aligned_map, map_with_s_domain, False,
                 map_names, s_names)
-        # Old code
-        """
-        aligned_map = _align_dim_type(
-                dim_type.param,
-                isl_map, map_with_s_domain, obj_bigger_ok=False,
-                obj_names=map_names, tgt_names=s_names)
-        aligned_map = _align_dim_type(
-                dim_type.in_,
-                isl_map, map_with_s_domain, obj_bigger_ok=False,
-                obj_names=map_names, tgt_names=s_names)
-        """
+
         # }}}
 
-        return aligned_map.intersect_domain(s).range()
+        new_s = aligned_map.intersect_domain(s).range()
+
+        # Now rename the proxy dims back to their original names
+        for proxy_iname, real_iname in zip(
+                dims_missing_from_transform_map_proxies,
+                dims_missing_from_transform_map):
+            new_s = find_and_rename_dim(
+                new_s, [dim_type.set], proxy_iname, real_iname)
+
+        return new_s
 
         # FIXME: Revive _project_out_only_if_all_instructions_in_within
 
