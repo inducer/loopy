@@ -84,6 +84,48 @@ def reorder_dims_by_name(
     return new_set
 
 
+def move_dim_to_index(
+        isl_map, dim_name, dim_type, destination_idx):
+    """Return an isl map with the specified dimension moved to
+    the specified index.
+
+    :arg isl_map: A :class:`islpy.Map`.
+
+    :arg dim_name: A :class:`str` specifying the name of the dimension
+        to be moved.
+
+    :arg dim_type: A :class:`islpy.dim_type`, i.e., an :class:`int`,
+        specifying the type of dimension to be reordered.
+
+    :arg destination_idx: A :class:`int` specifying the desired dimension
+        index of the dimention to be moved.
+
+    :returns: An :class:`islpy.Map` matching `isl_map` with the
+        specified dimension moved to the specified index.
+
+    """
+
+    assert dim_type != dt.param
+
+    layover_dim_type = dt.param
+    layover_dim_len = len(isl_map.get_var_names(layover_dim_type))
+
+    current_idx = isl_map.find_dim_by_name(dim_type, dim_name)
+    if current_idx == -1:
+        raise ValueError("Dimension name %s not found in dim type %s of %s"
+            % (dim_name, dim_type, isl_map))
+
+    if current_idx != destination_idx:
+        # First move to other dim because isl is stupid
+        new_map = isl_map.move_dims(
+            layover_dim_type, layover_dim_len, dim_type, current_idx, 1)
+        # Now move it where we actually want it
+        new_map = new_map.move_dims(
+            dim_type, destination_idx, layover_dim_type, layover_dim_len, 1)
+
+    return new_map
+
+
 def remove_dim_by_name(isl_map, dim_type, dim_name):
     idx = isl_map.find_dim_by_name(dim_type, dim_name)
     if idx == -1:
