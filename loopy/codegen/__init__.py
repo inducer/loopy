@@ -478,6 +478,16 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
         raise LoopyError("cannot generate code for a kernel that has not been "
                 "scheduled")
 
+    # {{{ make_schedule_a_tree
+
+    from loopy.schedule.tree import make_schedule_tree
+    sched_tree = make_schedule_tree(kernel)
+    kernel = kernel.copy(schedule=sched_tree)
+    print(kernel)
+    1/0
+
+    # }}}
+
     codegen_plog = ProcessLogger(logger, f"{kernel.name}: generate code")
 
     # {{{ pre-codegen-process of non-entrypoint kernel
