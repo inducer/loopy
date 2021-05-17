@@ -2077,12 +2077,25 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
 
     # }}}
 
+    from loopy.schedule.checker.schedule import (
+        BEFORE_MARK,
+        STATEMENT_VAR_NAME,
+    )
+
     def _check_overlap_condition_for_domain(s, transform_map_in_names):
+
+        names_to_ignore = set([STATEMENT_VAR_NAME, STATEMENT_VAR_NAME+BEFORE_MARK])
+        transform_map_in_inames = transform_map_in_names - names_to_ignore
+
         var_dict = s.get_var_dict()
 
-        overlap = transform_map_in_names & frozenset(var_dict)
+        overlap = transform_map_in_inames & frozenset(var_dict)
 
-        if overlap and len(overlap) != len(transform_map_in_names):
+        # If there is any overlap in the inames in the transform map and s
+        # (note that we're ignoring the statement var name, which may have been
+        # added to a transform map or s), all of the transform map inames must be in
+        # the overlap.
+        if overlap and len(overlap) != len(transform_map_in_inames):
             raise LoopyError("loop domain '%s' involves a part "
                     "of the map domain inames. Domains must "
                     "either involve all or none of the map domain "
@@ -2197,10 +2210,6 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
     from loopy.schedule.checker.utils import (
         insert_and_name_isl_dims,
         add_eq_isl_constraint_from_names,
-    )
-    from loopy.schedule.checker.schedule import (
-        BEFORE_MARK,
-        STATEMENT_VAR_NAME,
     )
     dt = isl.dim_type
 
