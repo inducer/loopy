@@ -146,14 +146,6 @@ def append_mark_to_isl_map_var_names(old_isl_map, dim_type, mark):
     return new_map
 
 
-def find_and_rename_dim(old_map, dim_types, old_name, new_name):
-    new_map = old_map.copy()
-    for dim_type in dim_types:
-        new_map = new_map.set_dim_name(
-            dim_type, new_map.find_dim_by_name(dim_type, old_name), new_name)
-    return new_map
-
-
 def append_mark_to_strings(strings, mark):
     return [s+mark for s in strings]
 
