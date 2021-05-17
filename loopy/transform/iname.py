@@ -1985,7 +1985,8 @@ def _find_aff_subst_from_map(iname, isl_map):
 
     # Force isl to solve for only this iname on its side of the map, by
     # projecting out all other "in" variables.
-    isl_map = isl_map.project_out(dim_type, dim_idx+1, isl_map.dim(dim_type)-(dim_idx+1))
+    isl_map = isl_map.project_out(
+        dim_type, dim_idx+1, isl_map.dim(dim_type)-(dim_idx+1))
     isl_map = isl_map.project_out(dim_type, 0, dim_idx)
     dim_idx = 0
 
