@@ -2127,6 +2127,89 @@ def test_map_domain_with_only_partial_dep_pair_affected():
 # }}}
 
 
+# {{{ test_map_domain_with_inames_missing_in_transform_map
+
+def test_map_domain_with_inames_missing_in_transform_map():
+
+    # Make sure map_domain updates deps correctly when the mapping doesn't
+    # include all the dims in the domain.
+
+    # {{{ Make kernel
+
+    knl = lp.make_kernel(
+        "[nx,nt] -> {[x, y, z, t]: 0 <= x,y,z < nx and 0 <= t < nt}",
+        """
+        a[y,x,t,z] = b[y,x,t,z]  {id=stmta}
+        """,
+        lang_version=(2018, 2),
+        )
+    knl = lp.add_and_infer_dtypes(knl, {"b": np.float32})
+
+    # }}}
+
+    # {{{ Create dependency
+
+    dep = _isl_map_with_marked_dims(
+        "[nx, nt] -> {{"
+        "[{0}' = 0, x', y', z', t'] -> [{0} = 0, x, y, z, t] : "
+        "0 <= x,y,z,x',y',z' < nx and 0 <= t,t' < nt and "
+        "t' < t and x' < x and y' < y and z' < z"
+        "}}".format(STATEMENT_VAR_NAME))
+
+    knl = lp.add_dependency_v2(knl, "stmta", "stmta", dep)
+
+    # }}}
+
+    # {{{ Apply domain change mapping
+
+    # Create map_domain mapping that only includes t and y
+    # (x and z should be unaffected)
+    transform_map = isl.BasicMap(
+        "[nx,nt] -> {[t, y] -> [t_outer, t_inner, y_new]: "
+        "0 <= t_inner < 32 and "
+        "32*t_outer + t_inner = t and "
+        "0 <= 32*t_outer + t_inner < nt and "
+        "y = y_new"
+        "}")
+
+    # Call map_domain to transform kernel
+    knl = lp.map_domain(knl, transform_map)
+
+    # }}}
+
+    # {{{ Create expected dependency after transformation
+
+    dep_exp = _isl_map_with_marked_dims(
+        "[nx, nt] -> {{"
+        "[{0}' = 0, x', y_new', z', t_outer', t_inner'] -> "
+        "[{0} = 0, x, y_new, z, t_outer, t_inner] : "
+        "0 <= x,z,x',z' < nx "  # old bounds
+        "and 0 <= t_inner,t_inner' < 32 and 0 <= y_new,y_new' < nx "  # new bounds
+        "and 0 <= 32*t_outer + t_inner < nt "  # new bounds
+        "and 0 <= 32*t_outer' + t_inner' < nt "  # new bounds
+        "and x' < x and z' < z "  # old constraints
+        "and y_new' < y_new "  # new constraint
+        "and 32*t_outer' + t_inner' < 32*t_outer + t_inner"  # new constraint
+        "}}".format(STATEMENT_VAR_NAME))
+
+    # }}}
+
+    # {{{ Make sure deps are correct and satisfied
+
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {"stmta": {"stmta": [dep_exp, ]}},
+        return_unsatisfied=True)
+
+    assert not unsatisfied_deps
+
+    # }}}
+
+
+# }}}
+
+
 # {{{ test_map_domain_with_stencil_dependencies
 
 def test_map_domain_with_stencil_dependencies():
