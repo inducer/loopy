@@ -3183,12 +3183,25 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
 
     # }}}
 
+    from loopy.schedule.checker.schedule import (
+        BEFORE_MARK,
+        STATEMENT_VAR_NAME,
+    )
+
     def _check_overlap_condition_for_domain(s, transform_map_in_names):
+
+        names_to_ignore = set([STATEMENT_VAR_NAME, STATEMENT_VAR_NAME+BEFORE_MARK])
+        transform_map_in_inames = transform_map_in_names - names_to_ignore
+
         var_dict = s.get_var_dict()
 
-        overlap = transform_map_in_names & frozenset(var_dict)
+        overlap = transform_map_in_inames & frozenset(var_dict)
 
-        if overlap and len(overlap) != len(transform_map_in_names):
+        # If there is any overlap in the inames in the transform map and s
+        # (note that we're ignoring the statement var name, which may have been
+        # added to a transform map or s), all of the transform map inames must be in
+        # the overlap.
+        if overlap and len(overlap) != len(transform_map_in_inames):
             raise LoopyError("loop domain '%s' involves a part "
                     "of the map domain inames. Domains must "
                     "either involve all or none of the map domain "
@@ -3304,10 +3317,6 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
         insert_and_name_isl_dims,
         add_eq_isl_constraint_from_names,
     )
-    from loopy.schedule.checker.schedule import (
-        BEFORE_MARK,
-        STATEMENT_VAR_NAME,
-    )
     dt = isl.dim_type
 
     # Create version of transform map with before marks
@@ -3353,7 +3362,8 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
     def _apply_transform_map_to_depender(dep_map):
 
         # Check overlap condition
-        overlap = _check_overlap_condition_for_domain(dep_map.range(), old_inames)
+        overlap = _check_overlap_condition_for_domain(
+            dep_map.range(), set(dep_transform_map.get_var_names(dt.in_)))
 
         if not overlap:
             # Inames in s are not present in depender, don't change dep_map
@@ -3372,13 +3382,11 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
             # Now we've renamed statement var, so fix it (assume statement dim is 0)
             return transformed_dep_map.set_dim_name(dt.out, 0, STATEMENT_VAR_NAME)
 
-    old_inames_marked = frozenset(old_iname+BEFORE_MARK for old_iname in old_inames)
-
     def _apply_transform_map_to_dependee(dep_map):
 
         # Check overlap condition
         overlap = _check_overlap_condition_for_domain(
-            dep_map.domain(), old_inames_marked)
+            dep_map.domain(), set(dep_transform_map_marked.get_var_names(dt.in_)))
 
         if not overlap:
             # Inames in s are not present in dependee, don't change dep_map
