@@ -1,11 +1,12 @@
 import pymbolic.primitives as prim
 import loopy.schedule as schedule
-from loopy.diagnostic import LoopyError
+import islpy as isl
 from typing import List, Union, Any, Optional, Tuple
 from dataclasses import dataclass, field
-import islpy as isl
-from islpy import dim_type
 from functools import reduce
+from islpy import dim_type
+from loopy.diagnostic import LoopyError
+from loopy.kernel import KernelState
 
 
 # {{{ LoopKernel.schedule a tree
@@ -96,17 +97,23 @@ class Function(ScheduleNode):
     mapper_method: str = field(default="map_function", repr=False, init=False)
 
 
+@dataclass
 class For(Loop):
     iname: str
-    upper_bound: Union[int, prim.Expression]
     lower_bound: Union[int, prim.Expression]
+    upper_bound: Union[int, prim.Expression]
     step: int
+    children: List[Union[InstructionBlock, Loop, "If"]]
 
-    mapper_method: str = field(default="map_resolved_for", repr=False, init=False)
+    mapper_method: str = field(default="map_for", repr=False, init=False)
 
 
+@dataclass
 class If(ScheduleNode):
     condition: Union[int, bool, prim.Expression]
+    children: List[Union[Loop, InstructionBlock, Function]]
+
+    mapper_method: str = field(default="map_if", repr=False, init=False)
 
 
 @dataclass
@@ -215,7 +222,7 @@ def make_schedule_tree(kernel):
         else:
             raise NotImplementedError(type(sched_item))
 
-    return bob.exit()
+    return kernel.copy(schedule=bob.exit())
 
 # }}}
 
@@ -282,6 +289,14 @@ class CombineMapper(Mapper):
         return self.combine([self.rec(child, *args, **kwargs)
                              for child in expr.children])
 
+    def map_for(self, expr, *args, **kwargs):
+        return self.combine([self.rec(child, *args, **kwargs)
+                             for child in expr.children])
+
+    def map_if(self, expr, *args, **kwargs):
+        return self.combine([self.rec(child, *args, **kwargs)
+                             for child in expr.children])
+
     def map_barrier(self, expr, *args, **kwargs):
         raise NotImplementedError
 
@@ -318,8 +333,20 @@ class StringifyMapper(CombineMapper):
 
     def map_loop(self, expr, level=0):
         return self.combine([f"{self._indent(level)}for {expr.iname}",
-                             super().map_function(expr, level+1),
+                             super().map_loop(expr, level+1),
                              f"{self._indent(level)}end {expr.iname}"])
+
+    def map_for(self, expr, level=0):
+        return self.combine([f"{self._indent(level)}For({expr.iname}, "
+                             f"{expr.lower_bound}, {expr.upper_bound}, "
+                             f"{expr.step})",
+                             super().map_for(expr, level+1),
+                             f"{self._indent(level)}end {expr.iname}"])
+
+    def map_if(self, expr, level=0):
+        return self.combine([f"{self._indent(level)}If({expr.condition})",
+                             super().map_if(expr, level+1),
+                             f"{self._indent(level)}Endif"])
 
 
 def _align_and_intersect(d1, d2):
@@ -328,10 +355,11 @@ def _align_and_intersect(d1, d2):
 
 
 def _wrap_in_if(cond, nodes):
+    from loopy.symbolic import set_to_cond_expr
     if cond.is_universe():
         return nodes
     else:
-        return If(cond, nodes)
+        return [If(set_to_cond_expr(cond), nodes)]
 
 
 @dataclass(frozen=True)
@@ -353,21 +381,22 @@ class PredicateInsertionContext:
         return PredicateInsertionContext(implemented_domain, gsize, lsize)
 
 
-class PredicateInsertion(IdentityMapper):
+class PredicateInsertionMapper(IdentityMapper):
     def __init__(self, kernel):
         self.kernel = kernel
 
     def map_schedule(self, expr):
-        universe = isl.BasicSet(isl.Space.create_from_names(self.kernel.isl_context,
-                                                            []))
+        universe = isl.BasicSet.universe(isl.Space.create_from_names(self.kernel
+                                                                     .isl_context,
+                                                                     []))
 
         return super().map_schedule(expr, PredicateInsertionContext(universe))
 
     def map_function(self, expr, context):
         # get the implemented domain for the insn ids in this kernel
         # Shouldn't be difficult to write a combine mapper for it.
-        gsize, lsize = self.kernel.get_grid_sizes_for_insns_ids(
-            gather_insn_ids_for_kernel(expr.name))
+        gsize, lsize = self.kernel.get_grid_sizes_for_insn_ids(
+            InstructionGatherer()(expr))
         return super().map_function(expr, context.copy(gsize=gsize, lsize=lsize))
 
     def map_run_instruction(self, expr, context):
@@ -394,12 +423,12 @@ class PredicateInsertion(IdentityMapper):
                                      for child in expr.children])
 
     def map_loop(self, expr, context):
-        from loopy.symbolic import aff_to_expr, set_to_cond_expr
+        from loopy.symbolic import pw_aff_to_expr
 
         implemented_domain = context.implemented_domain
         assert implemented_domain.dim(dim_type.set) == 0
 
-        domain = self.kernel.get_iname_domain(expr.iname)
+        domain = self.kernel.get_inames_domain(expr.iname)
 
         # {{{ make already implemented loops as parallel; project out inner loops
 
@@ -412,7 +441,7 @@ class PredicateInsertion(IdentityMapper):
                 domain = domain.move_dims(dim_type.param,
                                           domain.dim(dim_type.param),
                                           dt, pos, 1)
-            elif set_dim != expr.name:
+            elif set_dim != expr.iname:
                 domain = domain.project_out(dt, pos, 1)
             else:
                 pass
@@ -433,13 +462,11 @@ class PredicateInsertion(IdentityMapper):
                                                             0, 1),
                                                  implemented_domain)
 
-        outer_condition = isl.align_space(domain.project_out(dim_type.set, 0),
-                                          downstream_domain).gist(downstream_domain)
+        outer_condition = isl.align_spaces(domain.project_out(dim_type.set, 0, 1),
+                                           downstream_domain).gist(downstream_domain)
 
-        min_affs = [aff for set, aff in domain.dim_min(0)]
-        max_affs = [aff for set, aff in domain.dim_max(0)]
-        lower_bound = reduce(isl.Aff.min, min_affs, min_affs[0])
-        upper_bound = reduce(isl.Aff.max, max_affs, max_affs[0])
+        lower_bound = domain.dim_min(0)
+        upper_bound = domain.dim_max(0)
 
         inner_condition = domain.affine_hull()
         step = 1  # TODO: from inner_condition try to guess the step
@@ -449,39 +476,34 @@ class PredicateInsertion(IdentityMapper):
                     for child in expr.children]
 
         return _wrap_in_if(outer_condition,
-                           For(aff_to_expr(lower_bound),
-                               aff_to_expr(upper_bound),
-                               step,
-                               _wrap_in_if(set_to_cond_expr(inner_condition),
-                                           children)))
+                           For(iname=expr.iname,
+                               lower_bound=pw_aff_to_expr(lower_bound),
+                               upper_bound=pw_aff_to_expr(upper_bound),
+                               step=step,
+                               children=_wrap_in_if(inner_condition,
+                                                    children)))
 
 
 class InstructionGatherer(CombineMapper):
     """
-    Mapper to gather all insn ids a :class:`Function`.
+    Mapper to gather all insn ids.
     """
-    def __init__(self, function_name):
-        self.function_name = function_name
-
     def combine(self, values):
-        assert all(isinstance(value, list) for value in values)
-        return sum(values, [])
-
-    def map_function(self, expr):
-        if expr.name == self.function_name:
-            return super().map_function(expr)
-        else:
-            return []
+        assert all(isinstance(value, frozenset) for value in values)
+        return reduce(frozenset.union, values, frozenset())
 
     def map_run_instruction(self, expr):
-        return [expr.insn_id]
+        return frozenset([expr.insn_id])
 
     def map_barrier(self, expr):
         if expr.originating_insn_id is not None:
-            return [expr.originating_insn_id]
+            return frozenset([expr.originating_insn_id])
         else:
-            return []
+            return frozenset()
 
 
-def gather_insn_ids_for_kernel(schedule, kernel_name):
-    return InstructionGatherer(kernel_name)(schedule)
+def insert_predicates_into_schedule(kernel):
+    assert kernel.state >= KernelState.LINEARIZED
+    assert isinstance(kernel.schedule, Schedule)
+    new_schedule = PredicateInsertionMapper(kernel)(kernel.schedule)
+    return kernel.copy(schedule=new_schedule)

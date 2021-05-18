@@ -480,9 +480,10 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
 
     # {{{ make_schedule_tree
 
-    from loopy.schedule.tree import make_schedule_tree
-    sched_tree = make_schedule_tree(kernel)
-    kernel = kernel.copy(schedule=sched_tree)
+    from loopy.schedule.tree import (make_schedule_tree,
+                                     insert_predicates_into_schedule)
+    kernel = make_schedule_tree(kernel)
+    kernel = insert_predicates_into_schedule(kernel)
     print(kernel)
     1/0
 
