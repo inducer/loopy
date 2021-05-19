@@ -696,7 +696,7 @@ typed_and_scheduled_cache = WriteOncePersistentDict(
 
 
 invoker_cache = WriteOncePersistentDict(
-        "loopy-invoker-cache-v1-"+DATA_MODEL_VERSION,
+        "loopy-invoker-cache-v10-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
 
