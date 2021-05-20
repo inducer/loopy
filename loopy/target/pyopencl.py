@@ -661,18 +661,18 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
     # {{{ code generation guts
 
-    def get_function_definition(self, codegen_state, codegen_result,
-            schedule_index, function_decl, function_body):
+    def get_function_definition(self, kernel, name, implemented_data_info,
+                                function_decl, function_body):
         from loopy.kernel.data import TemporaryVariable
         args = (
                 ["_lpy_cl_kernels", "queue"]
-                + [idi.name for idi in codegen_state.implemented_data_info
+                + [idi.name for idi in implemented_data_info
                     if not issubclass(idi.arg_class, TemporaryVariable)]
                 + ["wait_for=None", "allocator=None"])
 
         from genpy import (For, Function, Suite, Return, Line, Statement as S)
         return Function(
-                codegen_result.current_program(codegen_state).name,
+                name,
                 args,
                 Suite([
                     Line(),
@@ -684,22 +684,22 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                         For("_tv", "_global_temporaries",
                             # free global temporaries
                             S("_tv.release()"))
-                        ] if self._get_global_temporaries(codegen_state) else []
+                        ] if self._get_global_temporaries(kernel) else []
                     ) + [
                     Line(),
                     Return("_lpy_evt"),
                     ]))
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+    def get_function_declaration(self, kernel, name, implemented_data_info,
+                                 is_generating_device_code):
         # no such thing in Python
         return None
 
-    def _get_global_temporaries(self, codegen_state):
+    def _get_global_temporaries(self, kernel):
         from loopy.kernel.data import AddressSpace
 
         return sorted(
-            (tv for tv in codegen_state.kernel.temporary_variables.values()
+            (tv for tv in kernel.temporary_variables.values()
             if tv.address_space == AddressSpace.GLOBAL),
             key=lambda tv: tv.name)
 
@@ -766,22 +766,26 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
         return code_lines
 
-    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
-        ecm = self.get_expression_to_code_mapper(codegen_state)
+    def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
+        ecm = self.get_expression_to_code_mapper(kernel)
+
+        from loopy.schedule.tree import get_insns_in_function
+        gsize, lsize = kernel.get_grid_sizes_for_insn_ids_as_exprs(
+            get_insns_in_function(kernel, name))
 
         if not gsize:
             gsize = (1,)
         if not lsize:
             lsize = (1,)
 
-        all_args = codegen_state.implemented_data_info + extra_args
+        all_args = implemented_data_info + extra_args
 
         value_arg_code, arg_idx_to_cl_arg_idx, cl_arg_count = \
             generate_value_arg_setup(
-                    codegen_state.kernel,
+                    kernel,
                     all_args)
         arry_arg_code = generate_array_arg_setup(
-            codegen_state.kernel,
+            kernel,
             all_args,
             arg_idx_to_cl_arg_idx)
 
@@ -855,7 +859,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     # }}}
 
     def get_expression_to_c_expression_mapper(self, codegen_state):
-        return ExpressionToPyOpenCLCExpressionMapper(codegen_state)
+        return ExpressionToPyOpenCLCExpressionMapper(codegen_state, self)
 
 
 # }}}

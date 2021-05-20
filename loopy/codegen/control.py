@@ -23,7 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from loopy.codegen.result import merge_codegen_results, wrap_in_if
 import islpy as isl
 from loopy.schedule import (
         EnterLoop, LeaveLoop, RunInstruction, Barrier, CallKernel,
@@ -31,16 +30,17 @@ from loopy.schedule import (
 from loopy.diagnostic import LoopyError
 
 
-def synthesize_idis_for_extra_args(kernel, schedule_index):
+def synthesize_idis_for_extra_args(kernel, sched_item):
     """
+    :arg kernel: An instance of :class:`loopy.LoopKernel`.
+    :arg sched_item: An instance of :class:`loopy.schedule.tree.Function`.
     :returns: A list of :class:`loopy.codegen.ImplementedDataInfo`
     """
-    sched_item = kernel.linearization[schedule_index]
-
     from loopy.codegen import ImplementedDataInfo
     from loopy.kernel.data import InameArg, AddressSpace
+    from loopy.schedule.tree import Function
 
-    assert isinstance(sched_item, CallKernel)
+    assert isinstance(sched_item, Function)
 
     idis = []
 

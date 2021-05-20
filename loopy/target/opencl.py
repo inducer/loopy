@@ -599,14 +599,18 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     # {{{ top-level codegen
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
-        fdecl = super().get_function_declaration(
-                codegen_state, codegen_result, schedule_index)
+    def get_function_declaration(self, kernel, callables_table, name,
+                                 implemented_data_info,
+                                 is_generating_device_code, is_entrypoint):
+        assert is_generating_device_code
+
+        fdecl = super().get_function_declaration(kernel, name,
+                                                 implemented_data_info,
+                                                 is_generating_device_code)
 
         from loopy.target.c import FunctionDeclarationWrapper
         assert isinstance(fdecl, FunctionDeclarationWrapper)
-        if not codegen_state.is_entrypoint:
+        if not is_entrypoint:
             # auxiliary kernels need not mention opencl speicific qualifiers
             # for a functions signature
             return fdecl
@@ -616,11 +620,9 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         from cgen.opencl import CLKernel, CLRequiredWorkGroupSize
         fdecl = CLKernel(fdecl)
 
-        from loopy.schedule import get_insn_ids_for_block_at
-        _, local_sizes = codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
-                get_insn_ids_for_block_at(
-                    codegen_state.kernel.linearization, schedule_index),
-                codegen_state.callables_table)
+        from loopy.schedule.tree import get_insns_in_function
+        _, local_sizes = kernel.get_grid_sizes_for_insn_ids_as_exprs(
+            get_insns_in_function(kernel, name), callables_table)
 
         from loopy.symbolic import get_dependencies
         if not get_dependencies(local_sizes):

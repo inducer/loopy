@@ -722,58 +722,11 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
     # {{{ code generation
 
-    def get_function_definition(self, codegen_state, codegen_result,
-            schedule_index,
-            function_decl, function_body):
-        kernel = codegen_state.kernel
-
-        from cgen import (
-                FunctionBody,
-
-                # Post-mid-2016 cgens have 'Collection', too.
-                Module as Collection,
-                Initializer,
-                Line)
-
-        result = []
-
-        from loopy.kernel.data import AddressSpace
-        from loopy.schedule import CallKernel
-        # We only need to write declarations for global variables with
-        # the first device program. `is_first_dev_prog` determines
-        # whether this is the first device program in the schedule.
-        is_first_dev_prog = codegen_state.is_generating_device_code
-        for i in range(schedule_index):
-            if isinstance(kernel.linearization[i], CallKernel):
-                is_first_dev_prog = False
-                break
-        if is_first_dev_prog:
-            for tv in sorted(
-                    kernel.temporary_variables.values(),
-                    key=lambda tv: tv.name):
-
-                if tv.address_space == AddressSpace.GLOBAL and (
-                        tv.initializer is not None):
-                    assert tv.read_only
-
-                    decl_info, = tv.decl_info(self.target,
-                                    index_dtype=kernel.index_dtype)
-                    decl = self.wrap_global_constant(
-                            self.get_temporary_decl(
-                                codegen_state, schedule_index, tv,
-                                decl_info))
-
-                    if tv.initializer is not None:
-                        decl = Initializer(decl, generate_array_literal(
-                            codegen_state, tv, tv.initializer))
-
-                    result.append(decl)
-
+    def get_function_definition(self, kernel, name, implemented_data_info,
+                                function_decl, function_body):
+        from cgen import FunctionBody
         fbody = FunctionBody(function_decl, function_body)
-        if not result:
-            return fbody
-        else:
-            return Collection(result+[Line(), fbody])
+        return fbody
 
     def idi_to_cgen_declarator(self, kernel, idi):
         from loopy.kernel.data import InameArg
@@ -796,25 +749,25 @@ class CFamilyASTBuilder(ASTBuilderBase):
             else:
                 return var_descr.get_arg_decl(self)
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+    def get_function_declaration(self, kernel, callables_table, name,
+                                 implemented_data_info,
+                                 is_generating_device_code, is_entrypoint):
         from cgen import FunctionDeclaration, Value
 
-        name = codegen_result.current_program(codegen_state).name
         if self.target.fortran_abi:
             name += "_"
 
-        if codegen_state.is_entrypoint:
+        if is_entrypoint:
             name = Value("void", name)
         else:
             name = Value("static void", name)
         return FunctionDeclarationWrapper(
                 FunctionDeclaration(
                     name,
-                    [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
-                        for idi in codegen_state.implemented_data_info]))
+                    [self.idi_to_cgen_declarator(kernel, idi)
+                     for idi in implemented_data_info]))
 
-    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+    def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
         return None
 
     def get_temporary_decls(self, codegen_state, schedule_index):
@@ -953,9 +906,24 @@ class CFamilyASTBuilder(ASTBuilderBase):
         return result
 
     @property
+    def ast_base_class(self):
+        from cgen import Generable
+        return Generable
+
+    @property
     def ast_block_class(self):
         from cgen import Block
         return Block
+
+    @property
+    def ast_for_class(self):
+        from cgen import For
+        return For
+
+    @property
+    def ast_if_class(self):
+        from cgen import If
+        return If
 
     @property
     def ast_block_scope_class(self):
@@ -970,13 +938,14 @@ class CFamilyASTBuilder(ASTBuilderBase):
         import cgen
         return cgen
 
-    def get_expression_to_code_mapper(self, codegen_state):
-        return self.get_expression_to_c_expression_mapper(codegen_state)
+    def get_expression_to_code_mapper(self, kernel, callables_table):
+        return self.get_expression_to_c_expression_mapper(kernel,
+                                                          callables_table)
 
-    def get_expression_to_c_expression_mapper(self, codegen_state):
+    def get_expression_to_c_expression_mapper(self, kernel, callables_table):
         from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
         return ExpressionToCExpressionMapper(
-                codegen_state, fortran_abi=self.target.fortran_abi)
+                kernel, callables_table, self, fortran_abi=self.target.fortran_abi)
 
     def get_c_expression_to_code_mapper(self):
         from loopy.target.c.codegen.expression import CExpressionToCodeMapper
@@ -1053,13 +1022,13 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
         return arg_decl
 
-    def emit_assignment(self, codegen_state, insn):
-        kernel = codegen_state.kernel
-        ecm = codegen_state.expression_to_code_mapper
+    def emit_assignment(self, kernel, insn):
+
+        ecm = self.get_expression_to_code_mapper(kernel)
 
         assignee_var_name, = insn.assignee_var_names()
 
-        lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
+        lhs_var = kernel.get_var_descriptor(assignee_var_name)
         lhs_dtype = lhs_var.dtype
 
         if insn.atomicity is not None:
@@ -1087,15 +1056,15 @@ class CFamilyASTBuilder(ASTBuilderBase):
                         needed_dtype=lhs_dtype))
 
         elif isinstance(lhs_atomicity, AtomicInit):
-            codegen_state.seen_atomic_dtypes.add(lhs_dtype)
-            return codegen_state.ast_builder.emit_atomic_init(
+            self.seen_atomic_dtypes.add(lhs_dtype)
+            return self.emit_atomic_init(
                     codegen_state, lhs_atomicity, lhs_var,
                     insn.assignee, insn.expression,
                     lhs_dtype, rhs_type_context)
 
         elif isinstance(lhs_atomicity, AtomicUpdate):
-            codegen_state.seen_atomic_dtypes.add(lhs_dtype)
-            return codegen_state.ast_builder.emit_atomic_update(
+            self.seen_atomic_dtypes.add(lhs_dtype)
+            return self.emit_atomic_update(
                     codegen_state, lhs_atomicity, lhs_var,
                     insn.assignee, insn.expression,
                     lhs_dtype, rhs_type_context)
@@ -1160,9 +1129,9 @@ class CFamilyASTBuilder(ASTBuilderBase):
                     CExpression(self.get_c_expression_to_code_mapper(),
                                 in_knl_callable_as_call))
 
-    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner):
-        ecm = codegen_state.expression_to_code_mapper
+    def emit_sequential_loop(self, kernel, iname, iname_dtype, lbound, ubound,
+                             inner):
+        ecm = self.get_expression_to_code_mapper(kernel)
 
         from pymbolic import var
         from pymbolic.primitives import Comparison

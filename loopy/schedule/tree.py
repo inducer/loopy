@@ -507,3 +507,9 @@ def insert_predicates_into_schedule(kernel):
     assert isinstance(kernel.schedule, Schedule)
     new_schedule = PredicateInsertionMapper(kernel)(kernel.schedule)
     return kernel.copy(schedule=new_schedule)
+
+
+def get_insns_in_function(kernel, name):
+    function, = [child for child in kernel.schedule.children
+                 if isinstance(child, Function) and child.name == name]
+    return InstructionGatherer()(function)

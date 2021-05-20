@@ -47,28 +47,32 @@ class NumbaBaseASTBuilder(PythonASTBuilderBase):
                     _base_numba_preamble_generator
                     ])
 
-    def get_function_definition(self, codegen_state, codegen_result,
-            schedule_index,
-            function_decl, function_body):
+    def get_function_definition(self, kernel, name, implemented_data_info,
+                                function_decl, function_body):
 
         assert function_decl is None
 
         from genpy import Function
         return Function(
-                codegen_result.current_program(codegen_state).name,
-                [idi.name for idi in codegen_state.implemented_data_info],
+                name,
+                [idi.name for idi in implemented_data_info],
                 function_body,
                 decorators=self.get_python_function_decorators())
 
     def get_python_function_decorators(self):
         return ()
 
-    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+    def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
+        ecm = self.get_expression_to_code_mapper(kernel)
         from pymbolic.mapper.stringifier import PREC_NONE
         from genpy import Statement
 
-        ecm = self.get_expression_to_code_mapper(codegen_state)
-        implemented_data_info = codegen_state.implemented_data_info
+        ecm = self.get_expression_to_code_mapper(kernel)
+        implemented_data_info = implemented_data_info
+
+        from loopy.schedule.tree import get_insns_in_function
+        gsize, lsize = kernel.get_grid_sizes_for_insn_ids_as_exprs(
+            get_insns_in_function(kernel, name))
 
         return Statement(
             "{}[{}, {}]({})".format(

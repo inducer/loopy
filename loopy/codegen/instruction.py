@@ -104,20 +104,16 @@ def generate_instruction_code(codegen_state, insn):
             ast)
 
 
-def generate_assignment_instruction_code(codegen_state, insn):
-    kernel = codegen_state.kernel
-
-    ecm = codegen_state.expression_to_code_mapper
-
+def generate_assignment_instruction_code(kernel, insn, ast_builder, vinfo):
+    ecm = ast_builder.get_expression_to_code_mapper(kernel)
     from loopy.expression import VectorizabilityChecker
 
     # {{{ vectorization handling
 
-    if codegen_state.vectorization_info:
+    if vinfo is not None:
         if insn.atomicity:
             raise UnvectorizableError("atomic operation")
 
-        vinfo = codegen_state.vectorization_info
         vcheck = VectorizabilityChecker(
                 kernel, vinfo.iname, vinfo.length)
         lhs_is_vector = vcheck(insn.assignee)
@@ -158,22 +154,22 @@ def generate_assignment_instruction_code(codegen_state, insn):
 
     del lhs
 
-    result = codegen_state.ast_builder.emit_assignment(codegen_state, insn)
+    result = ast_builder.emit_assignment(kernel, insn)
 
     # {{{ tracing
 
-    lhs_dtype = codegen_state.kernel.get_var_descriptor(assignee_var_name).dtype
+    lhs_dtype = kernel.get_var_descriptor(assignee_var_name).dtype
 
     if kernel.options.trace_assignments or kernel.options.trace_assignment_values:
-        if codegen_state.vectorization_info and is_vector:
+        if vinfo and is_vector:
             raise UnvectorizableError("tracing does not support vectorization")
 
         from pymbolic.mapper.stringifier import PREC_NONE
-        lhs_code = codegen_state.expression_to_code_mapper(insn.assignee, PREC_NONE)
+        lhs_code = ecm(insn.assignee, PREC_NONE)
 
         from cgen import Statement as S  # noqa
 
-        gs, ls = kernel.get_grid_size_upper_bounds(codegen_state.callables_table)
+        gs, ls = kernel.get_grid_size_upper_bounds(callables_table)
 
         printf_format = "{}.{}[{}][{}]: {}".format(
                 kernel.name,

@@ -201,12 +201,12 @@ class ISPCTarget(CFamilyTarget):
 
 
 class ISPCASTBuilder(CFamilyASTBuilder):
-    def _arg_names_and_decls(self, codegen_state):
-        implemented_data_info = codegen_state.implemented_data_info
+    def _arg_names_and_decls(self, kernel, implemented_data_info):
+        implemented_data_info = implemented_data_info
         arg_names = [iai.name for iai in implemented_data_info]
 
         arg_decls = [
-                self.idi_to_cgen_declarator(codegen_state.kernel, idi)
+                self.idi_to_cgen_declarator(kernel, idi)
                 for idi in implemented_data_info]
 
         # {{{ occa compatibility hackery
@@ -230,16 +230,14 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # {{{ top-level codegen
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
-        name = codegen_result.current_program(codegen_state).name
-
+    def get_function_declaration(self, name, kernel, implemented_data_info,
+                                 is_generating_device_code):
         from cgen import (FunctionDeclaration, Value)
         from cgen.ispc import ISPCExport, ISPCTask
 
-        arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
+        arg_names, arg_decls = self._arg_names_and_decls(kernel)
 
-        if codegen_state.is_generating_device_code:
+        if is_generating_device_code:
             result = ISPCTask(
                         FunctionDeclaration(
                             Value("void", name),
@@ -255,19 +253,24 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # }}}
 
-    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
-        ecm = self.get_expression_to_code_mapper(codegen_state)
+    def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
+        ecm = self.get_expression_to_code_mapper(kernel)
 
+        from loopy.schedule.tree import get_insns_in_function
         from pymbolic.mapper.stringifier import PREC_NONE
-        result = []
         from cgen import Statement as S, Block
+
+        gsize, lsize = kernel.get_grid_sizes_for_insn_ids_as_exprs(
+            get_insns_in_function(kernel, name))
+
+        result = []
         if lsize:
             result.append(
                     S(
                         "assert(programCount == (%s))"
                         % ecm(lsize[0], PREC_NONE)))
 
-        arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
+        arg_names, arg_decls = self._arg_names_and_decls(kernel)
 
         from cgen.ispc import ISPCLaunch
         result.append(
@@ -283,7 +286,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
     # {{{ code generation guts
 
     def get_expression_to_c_expression_mapper(self, codegen_state):
-        return ExprToISPCExprMapper(codegen_state)
+        return ExprToISPCExprMapper(codegen_state, self)
 
     def add_vector_access(self, access_expr, index):
         return access_expr[index]
@@ -485,16 +488,14 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         from cgen import Assign
         return Assign(ecm(lhs, prec=PREC_NONE, type_context=None), rhs_code)
 
-    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner):
-        ecm = codegen_state.expression_to_code_mapper
-
+    def emit_sequential_loop(self, kernel, iname, iname_dtype,
+                             lbound, ubound, inner):
         from loopy.target.c import POD
-
         from pymbolic.mapper.stringifier import PREC_NONE
         from cgen import For, InlineInitializer
-
         from cgen.ispc import ISPCUniform
+
+        ecm = self.get_expression_to_code_mapper(kernel)
 
         return For(
                 InlineInitializer(

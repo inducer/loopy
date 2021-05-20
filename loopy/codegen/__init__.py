@@ -23,9 +23,8 @@ THE SOFTWARE.
 import logging
 logger = logging.getLogger(__name__)
 
-import islpy as isl
+from loopy.diagnostic import LoopyError
 
-from loopy.diagnostic import LoopyError, warn
 from pytools import ImmutableRecord
 
 from pytools.persistent_dict import WriteOncePersistentDict
@@ -133,8 +132,6 @@ class ImplementedDataInfo(ImmutableRecord):
 # }}}
 
 
-# {{{ code generation state
-
 class UnvectorizableError(Exception):
     pass
 
@@ -176,252 +173,6 @@ class SeenFunction(ImmutableRecord):
                 result_dtypes=result_dtypes)
 
 
-class CodeGenerationState:
-    """
-    .. attribute:: kernel
-    .. attribute:: target
-    .. attribute:: implemented_data_info
-
-        a list of :class:`ImplementedDataInfo` objects.
-
-    .. attribute:: implemented_domain
-
-        The entire implemented domain (as an :class:`islpy.Set`)
-        i.e. all constraints that have been enforced so far.
-
-    .. attribute:: implemented_predicates
-
-        A :class:`frozenset` of predicates for which checks have been
-        implemented.
-
-    .. attribute:: seen_dtypes
-
-        set of dtypes that were encountered
-
-    .. attribute:: seen_functions
-
-        set of :class:`SeenFunction` instances
-
-    .. attribute:: seen_atomic_dtypes
-
-    .. attribute:: var_subst_map
-
-    .. attribute:: allow_complex
-
-    .. attribute:: vectorization_info
-
-        None or an instance of :class:`VectorizationInfo`
-
-    .. attribute:: is_generating_device_code
-
-    .. attribute:: gen_program_name
-
-        None (indicating that host code is being generated)
-        or the name of the device program currently being
-        generated.
-
-    .. attribute:: schedule_index_end
-
-    .. attribute:: callables_table
-
-        A mapping from callable names to instances of
-        :class:`loopy.kernel.function_interface.InKernelCallable`.
-
-    .. attribute:: is_entrypoint
-
-        A :class:`bool` to indicate if the code is being generated for an
-        entrypoint kernel
-
-    .. attribute:: codegen_cache_manager
-
-        An instance of :class:`loopy.codegen.tools.CodegenOperationCacheManager`.
-    """
-
-    def __init__(self, kernel, target,
-            implemented_data_info, implemented_domain, implemented_predicates,
-            seen_dtypes, seen_functions, seen_atomic_dtypes, var_subst_map,
-            allow_complex,
-            callables_table,
-            is_entrypoint,
-            vectorization_info=None, var_name_generator=None,
-            is_generating_device_code=None,
-            gen_program_name=None,
-            schedule_index_end=None,
-            codegen_cachemanager=None):
-        self.kernel = kernel
-        self.target = target
-        self.implemented_data_info = implemented_data_info
-        self.implemented_domain = implemented_domain
-        self.implemented_predicates = implemented_predicates
-        self.seen_dtypes = seen_dtypes
-        self.seen_functions = seen_functions
-        self.seen_atomic_dtypes = seen_atomic_dtypes
-        self.var_subst_map = var_subst_map.copy()
-        self.allow_complex = allow_complex
-        self.callables_table = callables_table
-        self.is_entrypoint = is_entrypoint
-        self.vectorization_info = vectorization_info
-        self.var_name_generator = var_name_generator
-        self.is_generating_device_code = is_generating_device_code
-        self.gen_program_name = gen_program_name
-        self.schedule_index_end = schedule_index_end
-        self.codegen_cachemanager = codegen_cachemanager
-
-    # {{{ copy helpers
-
-    def copy(self, kernel=None, target=None, implemented_data_info=None,
-            implemented_domain=None, implemented_predicates=frozenset(),
-            var_subst_map=None, is_entrypoint=None, vectorization_info=None,
-            is_generating_device_code=None, gen_program_name=None,
-            schedule_index_end=None):
-
-        if kernel is None:
-            kernel = self.kernel
-
-        if target is None:
-            target = self.target
-
-        if implemented_data_info is None:
-            implemented_data_info = self.implemented_data_info
-
-        if is_entrypoint is None:
-            is_entrypoint = self.is_entrypoint
-
-        if vectorization_info is False:
-            vectorization_info = None
-
-        elif vectorization_info is None:
-            vectorization_info = self.vectorization_info
-
-        if is_generating_device_code is None:
-            is_generating_device_code = self.is_generating_device_code
-
-        if gen_program_name is None:
-            gen_program_name = self.gen_program_name
-
-        if schedule_index_end is None:
-            schedule_index_end = self.schedule_index_end
-
-        return CodeGenerationState(
-                kernel=kernel,
-                target=target,
-                implemented_data_info=implemented_data_info,
-                implemented_domain=implemented_domain or self.implemented_domain,
-                implemented_predicates=(
-                    implemented_predicates or self.implemented_predicates),
-                seen_dtypes=self.seen_dtypes,
-                seen_functions=self.seen_functions,
-                seen_atomic_dtypes=self.seen_atomic_dtypes,
-                var_subst_map=var_subst_map or self.var_subst_map,
-                allow_complex=self.allow_complex,
-                callables_table=self.callables_table,
-                is_entrypoint=is_entrypoint,
-                vectorization_info=vectorization_info,
-                var_name_generator=self.var_name_generator,
-                is_generating_device_code=is_generating_device_code,
-                gen_program_name=gen_program_name,
-                schedule_index_end=schedule_index_end,
-                codegen_cachemanager=self.codegen_cachemanager.with_kernel(kernel),
-                )
-
-    def copy_and_assign(self, name, value):
-        """Make a copy of self with variable *name* fixed to *value*."""
-        var_subst_map = self.var_subst_map.copy()
-        var_subst_map[name] = value
-        return self.copy(var_subst_map=var_subst_map)
-
-    def copy_and_assign_many(self, assignments):
-        """Make a copy of self with *assignments* included."""
-
-        var_subst_map = self.var_subst_map.copy()
-        var_subst_map.update(assignments)
-        return self.copy(var_subst_map=var_subst_map)
-
-    # }}}
-
-    @property
-    def expression_to_code_mapper(self):
-        return self.ast_builder.get_expression_to_code_mapper(self)
-
-    def intersect(self, other):
-        new_impl, new_other = isl.align_two(self.implemented_domain, other)
-        return self.copy(implemented_domain=new_impl & new_other)
-
-    def fix(self, iname, aff):
-        new_impl_domain = self.implemented_domain
-
-        impl_space = self.implemented_domain.get_space()
-        if iname not in impl_space.get_var_dict():
-            new_impl_domain = (new_impl_domain
-                    .add_dims(isl.dim_type.set, 1)
-                    .set_dim_name(
-                        isl.dim_type.set,
-                        new_impl_domain.dim(isl.dim_type.set),
-                        iname))
-            impl_space = new_impl_domain.get_space()
-
-        from loopy.isl_helpers import iname_rel_aff
-        iname_plus_lb_aff = iname_rel_aff(impl_space, iname, "==", aff)
-
-        from loopy.symbolic import pw_aff_to_expr
-        cns = isl.Constraint.equality_from_aff(iname_plus_lb_aff)
-        expr = pw_aff_to_expr(aff)
-
-        new_impl_domain = new_impl_domain.add_constraint(cns)
-        return self.copy_and_assign(iname, expr).copy(
-                implemented_domain=new_impl_domain)
-
-    def try_vectorized(self, what, func):
-        """If *self* is in a vectorizing state (:attr:`vectorization_info` is
-        not None), tries to call func (which must be a callable accepting a
-        single :class:`CodeGenerationState` argument). If this fails with
-        :exc:`UnvectorizableError`, it unrolls the vectorized loop instead.
-
-        *func* should return a :class:`GeneratedCode` instance.
-
-        :returns: :class:`GeneratedCode`
-        """
-
-        if self.vectorization_info is None:
-            return func(self)
-
-        try:
-            return func(self)
-        except UnvectorizableError as e:
-            warn(self.kernel, "vectorize_failed",
-                    "Vectorization of '%s' failed because '%s'"
-                    % (what, e))
-
-            return self.unvectorize(func)
-
-    def unvectorize(self, func):
-        vinf = self.vectorization_info
-        result = []
-        novec_self = self.copy(vectorization_info=False)
-
-        for i in range(vinf.length):
-            idx_aff = isl.Aff.zero_on_domain(vinf.space.params()) + i
-            new_codegen_state = novec_self.fix(vinf.iname, idx_aff)
-            generated = func(new_codegen_state)
-
-            if isinstance(generated, list):
-                result.extend(generated)
-            else:
-                result.append(generated)
-
-        from loopy.codegen.result import merge_codegen_results
-        return merge_codegen_results(self, result)
-
-    @property
-    def ast_builder(self):
-        if self.is_generating_device_code:
-            return self.kernel.target.get_device_ast_builder()
-        else:
-            return self.kernel.target.get_host_ast_builder()
-
-# }}}
-
-
 code_gen_cache = WriteOncePersistentDict(
          "loopy-code-gen-cache-v3-"+DATA_MODEL_VERSION,
          key_builder=LoopyKeyBuilder())
@@ -459,7 +210,6 @@ class PreambleInfo(ImmutableRecord):
     .. attribute:: seen_dtypes
     .. attribute:: seen_functions
     .. attribute:: seen_atomic_dtypes
-    .. attribute:: codegen_state
     """
 
 
@@ -478,17 +228,6 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
         raise LoopyError("cannot generate code for a kernel that has not been "
                 "scheduled")
 
-    # {{{ make_schedule_tree
-
-    from loopy.schedule.tree import (make_schedule_tree,
-                                     insert_predicates_into_schedule)
-    kernel = make_schedule_tree(kernel)
-    kernel = insert_predicates_into_schedule(kernel)
-    print(kernel)
-    1/0
-
-    # }}}
-
     codegen_plog = ProcessLogger(logger, f"{kernel.name}: generate code")
 
     # {{{ pre-codegen-process of non-entrypoint kernel
@@ -505,86 +244,36 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
 
     # }}}
 
-    # {{{ examine arg list
+    # {{{ make_schedule_tree
 
-    from loopy.kernel.data import ValueArg
-    from loopy.kernel.array import ArrayBase
-
-    implemented_data_info = []
-
-    for arg in kernel.args:
-        is_written = arg.name in kernel.get_written_variables()
-        if isinstance(arg, ArrayBase):
-            implemented_data_info.extend(
-                    arg.decl_info(
-                        target,
-                        is_written=is_written,
-                        index_dtype=kernel.index_dtype))
-
-        elif isinstance(arg, ValueArg):
-            implemented_data_info.append(ImplementedDataInfo(
-                target=target,
-                name=arg.name,
-                dtype=arg.dtype,
-                arg_class=ValueArg,
-                is_written=is_written))
-
-        else:
-            raise ValueError("argument type not understood: '%s'" % type(arg))
-
-    allow_complex = False
-    for var in kernel.args + list(kernel.temporary_variables.values()):
-        if var.dtype.involves_complex():
-            allow_complex = True
+    from loopy.schedule.tree import (make_schedule_tree,
+                                     insert_predicates_into_schedule)
+    kernel = make_schedule_tree(kernel)
+    kernel = insert_predicates_into_schedule(kernel)
 
     # }}}
 
-    seen_dtypes = set()
-    seen_functions = set()
-    seen_atomic_dtypes = set()
+    from loopy.codegen.result import get_idis_for_kernel, CodeGenMapper
+    codegen_mapper = CodeGenMapper(kernel)
 
-    initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
+    codegen_result = codegen_mapper(kernel.schedule)
 
-    from loopy.codegen.tools import CodegenOperationCacheManager
+    seen_dtypes = (codegen_mapper.device_ast_builder.seen_dtypes
+                   | codegen_mapper.host_ast_builder.seen_dtypes)
+    seen_atomic_dtypes = (codegen_mapper.device_ast_builder.seen_atomic_dtypes
+                          | codegen_mapper.host_ast_builder.seen_atomic_dtypes)
+    seen_functions = (codegen_mapper.device_ast_builder.seen_functions
+                      | codegen_mapper.host_ast_builder.seen_functions)
 
-    codegen_state = CodeGenerationState(
-            kernel=kernel,
-            target=target,
-            implemented_data_info=implemented_data_info,
-            implemented_domain=initial_implemented_domain,
-            implemented_predicates=frozenset(),
-            seen_dtypes=seen_dtypes,
-            seen_functions=seen_functions,
-            seen_atomic_dtypes=seen_atomic_dtypes,
-            var_subst_map={},
-            allow_complex=allow_complex,
-            var_name_generator=kernel.get_var_name_generator(),
-            is_generating_device_code=False,
-            gen_program_name=(
-                target.host_program_name_prefix
-                + kernel.name
-                + kernel.target.host_program_name_suffix),
-            schedule_index_end=len(kernel.linearization),
-            callables_table=callables_table,
-            is_entrypoint=is_entrypoint,
-            codegen_cachemanager=CodegenOperationCacheManager.from_kernel(kernel),
-            )
-
-    from loopy.codegen.result import generate_host_or_device_program
-
-    codegen_result = generate_host_or_device_program(
-            codegen_state,
-            schedule_index=0)
-
-    device_code_str = codegen_result.device_code()
-
-    from loopy.check import check_implemented_domains
-    assert check_implemented_domains(kernel, codegen_result.implemented_domains,
-            device_code_str)
+    # FIXME: Fix this!!!
+    # from loopy.check import check_implemented_domains
+    # assert check_implemented_domains(kernel,
+    #                                  codegen_result.implemented_domains,
+    #                                  codegen_result.device_code())
 
     # {{{ handle preambles
 
-    for idi in codegen_state.implemented_data_info:
+    for idi in get_idis_for_kernel(kernel):
         seen_dtypes.add(idi.dtype)
 
     for tv in kernel.temporary_variables.values():
@@ -602,7 +291,6 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
             seen_functions=seen_functions,
             # a set of LoopyTypes (!)
             seen_atomic_dtypes=seen_atomic_dtypes,
-            codegen_state=codegen_state
             )
 
     preamble_generators = (kernel.preamble_generators
@@ -613,12 +301,6 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
     codegen_result = codegen_result.copy(device_preambles=preambles)
 
     # }}}
-
-    # For faster unpickling in the common case when implemented_domains isn't needed.
-    from loopy.tools import LazilyUnpicklingDict
-    codegen_result = codegen_result.copy(
-            implemented_domains=LazilyUnpicklingDict(
-                    codegen_result.implemented_domains))
 
     codegen_plog.done()
 

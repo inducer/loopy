@@ -20,6 +20,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from loopy.codegen import VectorizationInfo
+from loopy.schedule.tree import CombineMapper
+from dataclasses import dataclass
+from typing import Optional, Any, List, Union
 from pytools import ImmutableRecord
 
 
@@ -46,10 +50,6 @@ __doc__ = """
 .. autoclass:: GeneratedProgram
 
 .. autoclass:: CodeGenerationResult
-
-.. autofunction:: merge_codegen_results
-
-.. autofunction:: generate_host_or_device_program
 """
 
 
@@ -65,12 +65,6 @@ class GeneratedProgram(ImmutableRecord):
 
         Once generated, this captures the AST of the overall function
         definition, including the body.
-
-    .. attribute:: body_ast
-
-        Once generated, this captures the AST of the operative function
-        body (including declaration of necessary temporaries), but not
-        the overall function definition.
     """
 
 
@@ -81,11 +75,6 @@ class CodeGenerationResult(ImmutableRecord):
 
         A list of :class:`GeneratedProgram` instances
         intended to run on the compute device.
-
-    .. attribute:: implemented_domains
-
-        A mapping from instruction ID to a list of :class:`islpy.Set`
-        objects.
 
     .. attribute:: host_preambles
     .. attribute:: device_preambles
@@ -99,29 +88,12 @@ class CodeGenerationResult(ImmutableRecord):
         a list of :class:`loopy.codegen.ImplementedDataInfo` objects.
         Only added at the very end of code generation.
     """
-
-    @staticmethod
-    def new(codegen_state, insn_id, ast, implemented_domain):
-        prg = GeneratedProgram(
-                name=codegen_state.gen_program_name,
-                is_device_program=codegen_state.is_generating_device_code,
-                ast=ast)
-
-        if codegen_state.is_generating_device_code:
-            kwargs = {
-                    "host_program": None,
-                    "device_programs": [prg],
-                    }
-        else:
-            kwargs = {
-                    "host_program": prg,
-                    "device_programs": [],
-                    }
-
-        return CodeGenerationResult(
-                implemented_data_info=codegen_state.implemented_data_info,
-                implemented_domains={insn_id: [implemented_domain]},
-                **kwargs)
+    def __init__(self, host_program, device_programs, host_preambles=[],
+                 device_preambles=[]):
+        super().__init__(host_program=host_program,
+                         device_programs=device_programs,
+                         host_preambles=host_preambles,
+                         device_preambles=device_preambles)
 
     def host_code(self):
         preamble_codes = process_preambles(getattr(self, "host_preambles", []))
@@ -153,180 +125,328 @@ class CodeGenerationResult(ImmutableRecord):
                 + "\n\n"
                 + str(self.host_program.ast))
 
-    def current_program(self, codegen_state):
-        if codegen_state.is_generating_device_code:
-            if self.device_programs:
-                result = self.device_programs[-1]
-            else:
-                result = None
-        else:
-            result = self.host_program
-
-        if result is None:
-            ast = codegen_state.ast_builder.ast_block_class([])
-            result = GeneratedProgram(
-                    name=codegen_state.gen_program_name,
-                    is_device_program=codegen_state.is_generating_device_code,
-                    ast=ast)
-
-        assert result.name == codegen_state.gen_program_name
-        return result
-
-    def with_new_program(self, codegen_state, program):
-        if codegen_state.is_generating_device_code:
-            assert program.name == codegen_state.gen_program_name
-            assert program.is_device_program
-            return self.copy(
-                    device_programs=(
-                        self.device_programs[:-1]
-                        +
-                        [program]))
-        else:
-            assert program.name == codegen_state.gen_program_name
-            assert not program.is_device_program
-            return self.copy(host_program=program)
-
-    def current_ast(self, codegen_state):
-        return self.current_program(codegen_state).ast
-
-    def with_new_ast(self, codegen_state, new_ast):
-        return self.with_new_program(
-                codegen_state,
-                self.current_program(codegen_state).copy(
-                    ast=new_ast))
-
 # }}}
 
 
-# {{{ support code for AST merging
+def get_idis_for_kernel(kernel):
+    """
+    Returns a :class:`list` of :class:`~loopy.codegen.ImplementedDataInfo` for
+    *kernel*.
 
-def merge_codegen_results(codegen_state, elements, collapse=True):
-    elements = [el for el in elements if el is not None]
+    :arg kernel: An instance of :class:`loopy.LoopKernel`.
+    """
+    from loopy.kernel.data import ValueArg
+    from loopy.kernel.array import ArrayBase
+    from loopy.codegen import ImplementedDataInfo
 
-    if not elements:
-        return CodeGenerationResult(
-                host_program=None,
-                device_programs=[],
-                implemented_domains={},
-                implemented_data_info=codegen_state.implemented_data_info)
+    implemented_data_info = []
 
-    ast_els = []
-    new_device_programs = []
-    dev_program_names = set()
-    implemented_domains = {}
-    codegen_result = None
-
-    block_cls = codegen_state.ast_builder.ast_block_class
-    block_scope_cls = codegen_state.ast_builder.ast_block_scope_class
-
-    for el in elements:
-        if isinstance(el, CodeGenerationResult):
-            if codegen_result is None:
-                codegen_result = el
-            else:
-                assert (
-                        el.current_program(codegen_state).name
-                        == codegen_result.current_program(codegen_state).name)
-
-            for insn_id, idoms in el.implemented_domains.items():
-                implemented_domains.setdefault(insn_id, []).extend(idoms)
-
-            if not codegen_state.is_generating_device_code:
-                for dp in el.device_programs:
-                    if dp.name not in dev_program_names:
-                        new_device_programs.append(dp)
-                        dev_program_names.add(dp.name)
-
-            cur_ast = el.current_ast(codegen_state)
-            if (isinstance(cur_ast, block_cls)
-                    and not isinstance(cur_ast, block_scope_cls)):
-                ast_els.extend(cur_ast.contents)
-            else:
-                ast_els.append(cur_ast)
-
+    for arg in kernel.args:
+        is_written = arg.name in kernel.get_written_variables()
+        if isinstance(arg, ArrayBase):
+            implemented_data_info.extend(
+                    arg.decl_info(
+                        kernel.target,
+                        is_written=is_written,
+                        index_dtype=kernel.index_dtype))
+        elif isinstance(arg, ValueArg):
+            implemented_data_info.append(ImplementedDataInfo(
+                target=kernel.target,
+                name=arg.name,
+                dtype=arg.dtype,
+                arg_class=ValueArg,
+                is_written=is_written))
         else:
-            ast_els.append(el)
+            raise ValueError("argument type not understood: '%s'" % type(arg))
 
-    if collapse and len(ast_els) == 1:
-        ast, = ast_els
-    else:
-        ast = block_cls(ast_els)
-
-    kwargs = {}
-    if not codegen_state.is_generating_device_code:
-        kwargs["device_programs"] = new_device_programs
-
-    return (codegen_result
-            .with_new_ast(codegen_state, ast)
-            .copy(
-                implemented_domains=implemented_domains,
-                implemented_data_info=codegen_state.implemented_data_info,
-                **kwargs))
+    return implemented_data_info
 
 
-def wrap_in_if(codegen_state, condition_exprs, inner):
-    if condition_exprs:
-        from pymbolic.primitives import LogicalAnd
-        from pymbolic.mapper.stringifier import PREC_NONE
-        cur_ast = inner.current_ast(codegen_state)
-        return inner.with_new_ast(
-                codegen_state,
-                codegen_state.ast_builder.emit_if(
-                    codegen_state.expression_to_code_mapper(
-                        LogicalAnd(tuple(condition_exprs)), PREC_NONE),
-                    cur_ast))
+@dataclass(frozen=True)
+class CodeGenerationContext:
+    """
+    A context passed around while traversing the schedule tree to generate the
+    target AST.
+    """
+    in_device: bool
+    vectorization_info: Optional[VectorizationInfo] = None
 
-    return inner
+    def copy(self, *, in_device=None, vectorization_info=None):
+        if in_device is None:
+            in_device = self.in_device
 
-# }}}
+        if vectorization_info is None:
+            vectorization_info = self.vectorization_info
+
+        return CodeGenerationContext(
+            in_device=in_device,
+            vectorization_info=vectorization_info)
 
 
 # {{{ program generation top-level
 
-def generate_host_or_device_program(codegen_state, schedule_index):
-    ast_builder = codegen_state.ast_builder
-    temp_decls = ast_builder.get_temporary_decls(codegen_state, schedule_index)
+@dataclass(frozen=True)
+class CodeGenMapperAccumulator:
+    host_ast: List[Union[Any]]
+    device_ast: List[Union[GeneratedProgram, Any]]
 
-    from functools import partial
 
-    from loopy.codegen.control import build_loop_nest
-    if codegen_state.is_generating_device_code:
-        from loopy.schedule import CallKernel
-        assert isinstance(codegen_state.kernel.linearization[schedule_index],
-                          CallKernel)
+class CodeGenMapper(CombineMapper):
+    def __init__(self, kernel):
+        self.kernel = kernel
+        self.host_ast_builder = kernel.target.get_host_ast_builder()
+        self.device_ast_builder = kernel.target.get_device_ast_builder()
 
-        from loopy.codegen.loop import set_up_hw_parallel_loops
-        codegen_result = set_up_hw_parallel_loops(
-                codegen_state, schedule_index,
-                next_func=partial(build_loop_nest,
-                    schedule_index=schedule_index + 1))
-    else:
-        codegen_result = build_loop_nest(codegen_state, schedule_index)
+    def combine(self, accumulators):
 
-    if (codegen_state.is_generating_device_code
-            or codegen_state.is_entrypoint):
-        codegen_result = merge_codegen_results(
-                codegen_state,
-                ast_builder.generate_top_of_body(codegen_state)
-                + temp_decls
-                + [codegen_result],
-                collapse=False)
+        def _is_a_list_of_generated_program(ast):
+            return (isinstance(ast, list) and all(isinstance(el, GeneratedProgram)
+                                                for el in ast))
 
-        cur_prog = codegen_result.current_program(codegen_state)
-        body_ast = cur_prog.ast
-        fdecl_ast = ast_builder.get_function_declaration(
-                codegen_state, codegen_result, schedule_index)
+        def _is_a_list_of_ast_nodes(astb, ast):
+            return (isinstance(ast, list) and all(isinstance(el, astb.ast_base_class)
+                                                  for el in ast))
 
-        fdef_ast = ast_builder.get_function_definition(
-                codegen_state, codegen_result,
-                schedule_index, fdecl_ast, body_ast)
+        # either all of them are programs or all of them are ASTs
+        assert (all(_is_a_list_of_generated_program(acc.device_ast)
+                    for acc in accumulators)
+                or all(_is_a_list_of_ast_nodes(self.device_ast_builder,
+                                               acc.device_ast)
+                    for acc in accumulators))
 
-        codegen_result = codegen_result.with_new_program(
-                codegen_state,
-                cur_prog.copy(
-                    ast=ast_builder.process_ast(fdef_ast),
-                    body_ast=ast_builder.process_ast(body_ast)))
+        # for each accumulator
+        assert all(_is_a_list_of_ast_nodes(self.host_ast_builder, acc.host_ast)
+                   for acc in accumulators)
 
-    return codegen_result
+        host_components = []
+        dev_components = []
+
+        for acc in accumulators:
+            if acc.host_ast is not None:
+                host_components.extend(acc.host_ast)
+
+            if acc.device_ast is not None:
+                dev_components.extend(acc.device_ast)
+
+        return CodeGenMapperAccumulator(host_components,
+                                        dev_components)
+
+    def map_schedule(self, expr):
+        from loopy.kernel.data import AddressSpace
+
+        children_res = self.combine([self.rec(child, CodeGenerationContext(False))
+                                     for child in expr.children])
+
+        for tv in self.kernel.temporary_variables.items():
+            if tv.address_space == AddressSpace.GLOBAL and (
+                    tv.initializer is not None):
+                # prepend the initializer atop the code.
+                raise NotImplementedError
+
+        """
+            for tv in sorted(
+                    kernel.temporary_variables.values(),
+                    key=lambda tv: tv.name):
+
+                if tv.address_space == AddressSpace.GLOBAL and (
+                        tv.initializer is not None):
+                    assert tv.read_only
+
+                    decl_info, = tv.decl_info(self.target,
+                                    index_dtype=kernel.index_dtype)
+                    decl = self.wrap_global_constant(
+                            self.get_temporary_decl(
+                                codegen_state, schedule_index, tv,
+                                decl_info))
+
+                    if tv.initializer is not None:
+                        decl = Initializer(decl, generate_array_literal(
+                            codegen_state, tv, tv.initializer))
+
+                    result.append(decl)
+        """
+        assert all(isinstance(el, GeneratedProgram)
+                   for el in children_res.device_ast)
+
+        host_fn_body_ast = self.host_ast_builder.ast_block_class(children_res
+                                                                 .host_ast)
+
+        idis = get_idis_for_kernel(self.kernel)
+        host_fn_name = (self.kernel.target.host_program_name_prefix
+                        + self.kernel.name
+                        + self.kernel.target.host_program_name_suffix)
+        host_fn_decl = (self
+                        .host_ast_builder
+                        .get_function_declaration(self.kernel, host_fn_name, idis,
+                                                  is_generating_device_code=True))
+        host_fn_ast = (self
+                      .host_ast_builder
+                      .get_function_definition(self.kernel, host_fn_name, idis,
+                                               host_fn_decl, host_fn_body_ast))
+
+        host_prog = GeneratedProgram(name=host_fn_name, is_device_program=False,
+                                     ast=host_fn_ast)
+
+        return CodeGenerationResult(host_prog, children_res.device_ast)
+
+    def map_function(self, expr, context):
+        from loopy.codegen.control import synthesize_idis_for_extra_args
+        assert not context.in_device
+
+        # {{{ Host-side: call the kernel
+
+        from loopy.schedule.tree import InstructionGatherer
+        gsize, lsize = self.kernel.get_grid_sizes_for_insn_ids_as_exprs(
+            InstructionGatherer()(expr))
+        idis = (get_idis_for_kernel(self.kernel)
+                + synthesize_idis_for_extra_args(self.kernel, expr))
+
+        dev_fn_decl = (self
+                       .device_ast_builder
+                       .get_function_declaration(self.kernel, expr.name, idis,
+                                                 is_generating_device_code=True))
+        host_ast = self.host_ast_builder.get_kernel_call(self.kernel,
+                                                         expr.name, idis,
+                                                         expr.extra_args)
+
+        # }}}
+
+        # {{{ Device side: Define the kernel
+
+        dwnstrm_ctx = context.copy(in_device=True)
+
+        dev_fn_decl = (self
+                       .device_ast_builder
+                       .get_function_declaration(self.kernel, expr.name, idis,
+                                                 is_generating_device_code=True))
+        children_res = self.combine([self.rec(child, dwnstrm_ctx)
+                                     for child in expr.children])
+        dev_fn_body_ast = self.device_ast_builder.ast_block_class(children_res
+                                                                  .device_ast)
+        assert children_res.host_ast == []
+
+        dev_fn_ast = (self
+                      .device_ast_builder
+                      .get_function_definition(self.kernel, expr.name, idis,
+                                               dev_fn_decl, dev_fn_body_ast))
+
+        dev_prog = GeneratedProgram(name=expr.name, is_device_program=True,
+                                    ast=dev_fn_ast)
+
+        # }}}
+
+        return CodeGenMapperAccumulator([host_ast], [dev_prog])
+
+    # {{{ for loop
+
+    def map_for(self, expr, context):
+        from loopy.kernel.data import (UnrolledIlpTag, UnrollTag,
+                                       VectorizeTag, LoopedIlpTag,
+                                       ForceSequentialTag,
+                                       InOrderSequentialSequentialTag)
+
+        unr_tags = (UnrolledIlpTag, UnrollTag)
+        vec_tags = (VectorizeTag, )
+        seq_tags = (LoopedIlpTag, ForceSequentialTag,
+                    InOrderSequentialSequentialTag)
+        ast_builder = self.device_ast_builder if context.in_device else self.host_ast_builder  # noqa: E501
+
+        if self.kernel.iname_tags_of_type(expr.iname, unr_tags):
+            dwnstrm_ctx = 1/0
+            raise NotImplementedError
+        elif self.kernel.iname_tags_of_type(expr.iname, vec_tags):
+            dwnstrm_ctx = 1/0
+            raise NotImplementedError
+        else:
+            assert (len(self.kernel.inames[expr.iname].tags) == 0
+                    or self.kernel.iname_tags_of_type(expr.iname,
+                                                      seq_tags))
+
+            dwnstrm_ctx = context.copy(vectorization_info=None)
+            children_res = self.combine([self.rec(child, dwnstrm_ctx)
+                                         for child in expr.children])
+            loop_body = ast_builder.ast_block_class(children_res.device_ast
+                                                    if context.in_device
+                                                    else children_res.host_ast)
+            assert expr.step == 1
+            loop_ast = ast_builder.emit_sequential_loop(self.kernel, expr.iname,
+                                                        self.kernel.index_dtype,
+                                                        expr.lower_bound,
+                                                        expr.upper_bound,
+                                                        loop_body
+                                                        )
+            if context.in_device:
+                return CodeGenMapperAccumulator(host_ast=children_res.host_ast,
+                                                device_ast=[loop_ast])
+            else:
+                return CodeGenMapperAccumulator(host_ast=[loop_ast],
+                                                device_ast=children_res.device_ast)
+
+    # }}}
+
+    # {{{ If
+
+    def map_if(self, expr, context):
+        ast_builder = self.device_ast_builder if context.in_device else self.host_ast_builder  # noqa: E501
+        children_res = self.combine([self.rec(child, context)
+                                     for child in expr.children])
+
+        if_body = ast_builder.ast_block_class(children_res.device_ast
+                                              if context.in_device
+                                              else children_res.host_ast)
+
+        if_ast = ast_builder.emit_if(expr.condition,
+                                     if_body)
+
+        if context.in_device:
+            return CodeGenMapperAccumulator(host_ast=children_res.host_ast,
+                                            device_ast=[if_ast])
+        else:
+            return CodeGenMapperAccumulator(host_ast=[if_ast],
+                                            device_ast=children_res.device_ast)
+
+    # }}}
+
+    def map_barrier(self, expr, context):
+        # ast_builder = self.device_ast_builder if context.in_device else self.host_ast_builder  # noqa: E501
+        raise NotImplementedError
+
+    # {{{ instruction
+
+    def map_run_instruction(self, expr, context):
+        from loopy.kernel.instruction import (CallInstruction, Assignment,
+                                              CInstruction, NoOpInstruction)
+        from loopy.codegen.instruction import generate_assignment_instruction_code
+
+        ast_builder = self.device_ast_builder if context.in_device else self.host_ast_builder  # noqa: E501
+
+        insn = self.kernel.id_to_insn[expr.insn_id]
+
+        if isinstance(insn, CallInstruction):
+            raise NotImplementedError
+        elif isinstance(insn, Assignment):
+            insn_ast = generate_assignment_instruction_code(self.kernel, insn,
+                                                            ast_builder,
+                                                            (context
+                                                             .vectorization_info))
+        elif isinstance(insn, CInstruction):
+            raise NotImplementedError
+        elif isinstance(insn, NoOpInstruction):
+            raise NotImplementedError
+        else:
+            raise NotImplementedError
+
+        if context.in_device:
+            return CodeGenMapperAccumulator(host_ast=[],
+                                            device_ast=[insn_ast])
+        else:
+            return CodeGenMapperAccumulator(host_ast=[insn_ast],
+                                            device_ast=[])
+
+    # }}}
+
+    def map_loop(self, expr, context):
+        raise RuntimeError("Cannot handle loops. At this point every loop"
+                           " should have been resolved as 'For' nodes.")
 
 # }}}
