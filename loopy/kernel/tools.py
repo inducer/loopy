@@ -2064,4 +2064,23 @@ def get_outer_params(domains):
 # }}}
 
 
+def get_all_hw_inames(kernel):
+    """
+    Returns :class:`frozenset` of all iname traversing across the target
+    hardware's execution grid.
+    """
+    from loopy.kernel.data import (filter_iname_tags_by_type, HardwareConcurrentTag)
+    return frozenset(iname.name
+                     for iname in kernel.inames.values()
+                     if filter_iname_tags_by_type(iname.tags, HardwareConcurrentTag))
+
+
+@memoize_on_first_arg
+def has_complex_dtyped_var(kernel):
+    """
+    Returns *True* if any variable in *kernel* is complex dtyped.
+    """
+    return any(var.dtype.involves_complex()
+               for var in kernel.args + list(kernel.temporary_variables.values()))
+
 # vim: foldmethod=marker

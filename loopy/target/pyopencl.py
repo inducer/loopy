@@ -189,6 +189,11 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
         else:
             raise RuntimeError
 
+    @property
+    def allow_complex(self):
+        from loopy.kernel.tools import has_complex_dtyped_var
+        return has_complex_dtyped_var(self.kernel)
+
     def wrap_in_typecast_lazy(self, actual_type_func, needed_dtype, s):
         if needed_dtype.is_complex():
             return self.wrap_in_typecast(actual_type_func(), needed_dtype, s)
@@ -767,7 +772,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         return code_lines
 
     def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
-        ecm = self.get_expression_to_code_mapper(kernel)
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={})
 
         from loopy.schedule.tree import get_insns_in_function
         gsize, lsize = kernel.get_grid_sizes_for_insn_ids_as_exprs(
@@ -858,9 +863,8 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
     # }}}
 
-    def get_expression_to_c_expression_mapper(self, codegen_state):
-        return ExpressionToPyOpenCLCExpressionMapper(codegen_state, self)
-
+    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map):
+        return ExpressionToPyOpenCLCExpressionMapper(kernel, self, var_subst_map)
 
 # }}}
 
@@ -868,10 +872,11 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 # {{{ volatile mem acccess target
 
 class VolatileMemPyOpenCLCASTBuilder(PyOpenCLCASTBuilder):
-    def get_expression_to_c_expression_mapper(self, codegen_state):
+    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map):
         from loopy.target.opencl import \
                 VolatileMemExpressionToOpenCLCExpressionMapper
-        return VolatileMemExpressionToOpenCLCExpressionMapper(codegen_state)
+        return VolatileMemExpressionToOpenCLCExpressionMapper(kernel, self,
+                                                              var_subst_map)
 
 
 class VolatileMemPyOpenCLTarget(PyOpenCLTarget):

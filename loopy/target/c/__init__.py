@@ -938,14 +938,17 @@ class CFamilyASTBuilder(ASTBuilderBase):
         import cgen
         return cgen
 
-    def get_expression_to_code_mapper(self, kernel, callables_table):
+    def get_expression_to_code_mapper(self, kernel, callables_table, var_subst_map):
         return self.get_expression_to_c_expression_mapper(kernel,
-                                                          callables_table)
+                                                          callables_table,
+                                                          var_subst_map)
 
-    def get_expression_to_c_expression_mapper(self, kernel, callables_table):
+    def get_expression_to_c_expression_mapper(self, kernel, callables_table,
+                                              var_subst_map):
         from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
         return ExpressionToCExpressionMapper(
-                kernel, callables_table, self, fortran_abi=self.target.fortran_abi)
+                kernel, callables_table, self, var_subst_map,
+                fortran_abi=self.target.fortran_abi)
 
     def get_c_expression_to_code_mapper(self):
         from loopy.target.c.codegen.expression import CExpressionToCodeMapper
@@ -1022,9 +1025,9 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
         return arg_decl
 
-    def emit_assignment(self, kernel, insn):
+    def emit_assignment(self, kernel, insn, var_subst_map):
 
-        ecm = self.get_expression_to_code_mapper(kernel)
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map)
 
         assignee_var_name, = insn.assignee_var_names()
 
@@ -1130,8 +1133,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
                                 in_knl_callable_as_call))
 
     def emit_sequential_loop(self, kernel, iname, iname_dtype, lbound, ubound,
-                             inner):
-        ecm = self.get_expression_to_code_mapper(kernel)
+                             inner, var_subst_map):
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map)
 
         from pymbolic import var
         from pymbolic.primitives import Comparison
@@ -1173,9 +1176,10 @@ class CFamilyASTBuilder(ASTBuilderBase):
     def can_implement_conditionals(self):
         return True
 
-    def emit_if(self, condition_str, ast):
+    def emit_if(self, kernel, condition, ast, var_subst_map):
         from cgen import If
-        return If(condition_str, ast)
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map)
+        return If(ecm(condition), ast)
 
     # }}}
 

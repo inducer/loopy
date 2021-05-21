@@ -35,8 +35,10 @@ from genpy import Suite, Collection
 # {{{ expression to code
 
 class ExpressionToPythonMapper(StringifyMapper):
-    def __init__(self, kernel, type_inf_mapper=None):
+    def __init__(self, kernel, ast_builder, var_subst_map, type_inf_mapper=None):
         self.kernel = kernel
+        self.ast_builder = ast_builder
+        self.var_subst_map = var_subst_map
 
         if type_inf_mapper is None:
             type_inf_mapper = TypeReader(self.kernel,
@@ -199,8 +201,8 @@ class PythonASTBuilderBase(ASTBuilderBase):
 
         return result
 
-    def get_expression_to_code_mapper(self, kernel):
-        return ExpressionToPythonMapper(kernel)
+    def get_expression_to_code_mapper(self, kernel, var_subst_map):
+        return ExpressionToPythonMapper(kernel, self, var_subst_map)
 
     @property
     def ast_base_class(self):
@@ -229,8 +231,8 @@ class PythonASTBuilderBase(ASTBuilderBase):
         return Collection
 
     def emit_sequential_loop(self, kernel, iname, iname_dtype,
-                             lbound, ubound, inner):
-        ecm = self.get_expression_to_code_mapper(kernel)
+                             lbound, ubound, inner, var_subst_map):
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map)
 
         from pymbolic.mapper.stringifier import PREC_NONE, PREC_SUM
         from genpy import For
@@ -260,9 +262,10 @@ class PythonASTBuilderBase(ASTBuilderBase):
     def can_implement_conditionals(self):
         return True
 
-    def emit_if(self, condition_str, ast):
+    def emit_if(self, kernel, condition, ast, var_subst_map):
         from genpy import If
-        return If(condition_str, ast)
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map)
+        return If(ecm(condition), ast)
 
     def emit_assignment(self, codegen_state, insn):
         ecm = codegen_state.expression_to_code_mapper

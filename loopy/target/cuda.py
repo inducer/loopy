@@ -364,8 +364,8 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
     # {{{ code generation guts
 
-    def get_expression_to_c_expression_mapper(self, codegen_state):
-        return ExpressionToCudaCExpressionMapper(codegen_state)
+    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map):
+        return ExpressionToCudaCExpressionMapper(kernel, self, var_subst_map)
 
     _VEC_AXES = "xyzw"
 

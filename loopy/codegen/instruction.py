@@ -104,8 +104,9 @@ def generate_instruction_code(codegen_state, insn):
             ast)
 
 
-def generate_assignment_instruction_code(kernel, insn, ast_builder, vinfo):
-    ecm = ast_builder.get_expression_to_code_mapper(kernel)
+def generate_assignment_instruction_code(kernel, insn, ast_builder,
+                                         hw_inames_expr, vinfo):
+    ecm = ast_builder.get_expression_to_code_mapper(kernel, hw_inames_expr)
     from loopy.expression import VectorizabilityChecker
 
     # {{{ vectorization handling
@@ -154,7 +155,7 @@ def generate_assignment_instruction_code(kernel, insn, ast_builder, vinfo):
 
     del lhs
 
-    result = ast_builder.emit_assignment(kernel, insn)
+    result = ast_builder.emit_assignment(kernel, insn, hw_inames_expr)
 
     # {{{ tracing
 

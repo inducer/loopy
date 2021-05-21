@@ -20,10 +20,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import pymbolic.primitives as prim
 from loopy.codegen import VectorizationInfo
 from loopy.schedule.tree import CombineMapper
 from dataclasses import dataclass
-from typing import Optional, Any, List, Union
+from typing import Optional, Any, List, Union, Mapping
 from pytools import ImmutableRecord
 
 
@@ -169,17 +170,23 @@ class CodeGenerationContext:
     target AST.
     """
     in_device: bool
+    hw_iname_exprs: Mapping[str, prim.Expression]
     vectorization_info: Optional[VectorizationInfo] = None
 
-    def copy(self, *, in_device=None, vectorization_info=None):
+    def copy(self, *, in_device=None, hw_iname_exprs=None,
+             vectorization_info=None):
         if in_device is None:
             in_device = self.in_device
+
+        if hw_iname_exprs is None:
+            hw_iname_exprs = self.hw_iname_exprs
 
         if vectorization_info is None:
             vectorization_info = self.vectorization_info
 
         return CodeGenerationContext(
             in_device=in_device,
+            hw_iname_exprs=hw_iname_exprs,
             vectorization_info=vectorization_info)
 
 
@@ -234,7 +241,8 @@ class CodeGenMapper(CombineMapper):
     def map_schedule(self, expr):
         from loopy.kernel.data import AddressSpace
 
-        children_res = self.combine([self.rec(child, CodeGenerationContext(False))
+        children_res = self.combine([self.rec(child,
+                                              CodeGenerationContext(False, {}))
                                      for child in expr.children])
 
         for tv in self.kernel.temporary_variables.items():
@@ -313,7 +321,42 @@ class CodeGenMapper(CombineMapper):
 
         # {{{ Device side: Define the kernel
 
-        dwnstrm_ctx = context.copy(in_device=True)
+        # {{{ record the hw_iname_exprs for downstream elements
+
+        from functools import reduce
+        from loopy.kernel.data import (HardwareConcurrentTag, GroupIndexTag,
+                                       LocalIndexTag)
+        from loopy.isl_helpers import static_min_of_pw_aff
+        from loopy.symbolic import (GroupHardwareAxisIndex,
+                                    LocalHardwareAxisIndex,
+                                    pw_aff_to_expr)
+
+        all_inames = reduce(frozenset.union,
+                            (self.kernel.id_to_insn[id].within_inames
+                             for id in InstructionGatherer()(expr)),
+                            frozenset())
+
+        def _hw_iname_expr(iname):
+            tag, = self.kernel.iname_tags_of_type(iname, HardwareConcurrentTag)
+            assert isinstance(tag, (GroupIndexTag, LocalIndexTag))
+            lbound = static_min_of_pw_aff(self
+                                          .kernel.get_iname_bounds(iname)
+                                          .lower_bound_pw_aff,
+                                          constants_only=False)
+
+            return pw_aff_to_expr(lbound) + (GroupHardwareAxisIndex(tag.axis)
+                                             if isinstance(tag, GroupIndexTag)
+                                             else
+                                             LocalHardwareAxisIndex(tag.axis))
+
+        hw_iname_exprs = {iname: _hw_iname_expr(iname)
+                          for iname in all_inames
+                          if self.kernel.iname_tags_of_type(iname,
+                                                            HardwareConcurrentTag)}
+
+        # }}}
+
+        dwnstrm_ctx = context.copy(in_device=True, hw_iname_exprs=hw_iname_exprs)
 
         dev_fn_decl = (self
                        .device_ast_builder
@@ -373,7 +416,8 @@ class CodeGenMapper(CombineMapper):
                                                         self.kernel.index_dtype,
                                                         expr.lower_bound,
                                                         expr.upper_bound,
-                                                        loop_body
+                                                        loop_body,
+                                                        context.hw_iname_exprs
                                                         )
             if context.in_device:
                 return CodeGenMapperAccumulator(host_ast=children_res.host_ast,
@@ -395,8 +439,8 @@ class CodeGenMapper(CombineMapper):
                                               if context.in_device
                                               else children_res.host_ast)
 
-        if_ast = ast_builder.emit_if(expr.condition,
-                                     if_body)
+        if_ast = ast_builder.emit_if(self.kernel, expr.condition, if_body,
+                                     context.hw_iname_exprs)
 
         if context.in_device:
             return CodeGenMapperAccumulator(host_ast=children_res.host_ast,
@@ -427,6 +471,8 @@ class CodeGenMapper(CombineMapper):
         elif isinstance(insn, Assignment):
             insn_ast = generate_assignment_instruction_code(self.kernel, insn,
                                                             ast_builder,
+                                                            (context
+                                                             .hw_iname_exprs),
                                                             (context
                                                              .vectorization_info))
         elif isinstance(insn, CInstruction):

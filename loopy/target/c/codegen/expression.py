@@ -56,13 +56,19 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     """
     Mapper that converts a loopy-semantic expression to a C-semantic expression
     with typecasts, appropriate arithmetic semantic mapping, etc.
+
+    .. attribute:: var_subst_map
+
+        A mapping from variable name to expression it is to be substituted
+        with. A caller might set this to map iname to hardware iname expressions.
     """
-    def __init__(self, kernel, callables_table, ast_builder,
+    def __init__(self, kernel, callables_table, ast_builder, var_subst_map,
                  vectorization_info=None, fortran_abi=False,
                  type_inf_mapper=None):
         self.kernel = kernel
         self.callables_table = callables_table
         self.ast_builder = ast_builder
+        self.var_subst_map = var_subst_map
 
         if type_inf_mapper is None:
             type_inf_mapper = TypeReader(self.kernel,
@@ -80,7 +86,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
     def with_assignments(self, names_to_vars):
         type_inf_mapper = self.type_inf_mapper.with_assignments(names_to_vars)
-        return type(self)(self.kernel, self.vectorization_info,
+        return type(self)(self.kernel, self.callables_table, self.ast_builder,
+                          self.var_subst_map, self.vectorization_info,
                           self.fortran_abi, type_inf_mapper)
 
     def infer_type(self, expr):
@@ -142,7 +149,17 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         def postproc(x):
             return x
 
-        if expr.name in self.kernel.arg_dict:
+        if expr.name in self.var_subst_map:
+            if self.kernel.options.annotate_inames:
+                return var(
+                        "/* {} */ {}".format(
+                            expr.name,
+                            self.rec(self.var_subst_map[expr.name],
+                                     type_context)))
+            else:
+                return self.rec(self.var_subst_map[expr.name],
+                                type_context)
+        elif expr.name in self.kernel.arg_dict:
             arg = self.kernel.arg_dict[expr.name]
             from loopy.kernel.array import ArrayBase
             if isinstance(arg, ArrayBase):

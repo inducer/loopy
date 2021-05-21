@@ -63,12 +63,11 @@ class NumbaBaseASTBuilder(PythonASTBuilderBase):
         return ()
 
     def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
-        ecm = self.get_expression_to_code_mapper(kernel)
         from pymbolic.mapper.stringifier import PREC_NONE
         from genpy import Statement
 
-        ecm = self.get_expression_to_code_mapper(kernel)
         implemented_data_info = implemented_data_info
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={})
 
         from loopy.schedule.tree import get_insns_in_function
         gsize, lsize = kernel.get_grid_sizes_for_insn_ids_as_exprs(
@@ -165,8 +164,8 @@ class NumbaCudaASTBuilder(NumbaBaseASTBuilder):
     def get_python_function_decorators(self):
         return ("@_lpy_ncu.jit",)
 
-    def get_expression_to_code_mapper(self, codegen_state):
-        return NumbaCudaExpressionToPythonMapper(codegen_state)
+    def get_expression_to_code_mapper(self, kernel, var_subst_map):
+        return NumbaCudaExpressionToPythonMapper(kernel, self, var_subst_map)
 
 
 class NumbaCudaTarget(TargetBase):

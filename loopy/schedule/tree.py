@@ -7,6 +7,7 @@ from functools import reduce
 from islpy import dim_type
 from loopy.diagnostic import LoopyError
 from loopy.kernel import KernelState
+from loopy.kernel.tools import get_all_hw_inames
 
 
 # {{{ LoopKernel.schedule a tree
@@ -148,6 +149,10 @@ class ScheduleTreeBuilder:
         self._build_stack.append(node)
 
     def make_and_enter_function(self, name, extra_args, extra_inames):
+        if isinstance(self.current_node, InstructionBlock):
+            # end of instruction block
+            self._build_stack.pop()
+
         assert isinstance(self.current_node, Schedule)
         new_function = Function(name, extra_args, extra_inames, [])
         self.current_node.children.append(new_function)
@@ -160,6 +165,10 @@ class ScheduleTreeBuilder:
         self.make_current_node(new_block)
 
     def make_and_enter_loop(self, iname):
+        if isinstance(self.current_node, InstructionBlock):
+            # end of instruction block
+            self._build_stack.pop()
+
         assert isinstance(self.current_node, (Schedule, Function, Loop))
         new_loop = Loop(iname, [])
         self.current_node.children.append(new_loop)
@@ -180,6 +189,7 @@ class ScheduleTreeBuilder:
     def exit_function(self):
         if isinstance(self.current_node, InstructionBlock):
             self._build_stack.pop()
+
         assert isinstance(self.current_node, Function)
         return self._build_stack.pop()
 
@@ -354,19 +364,78 @@ def _align_and_intersect(d1, d2):
     return d1 & d2
 
 
+def _align_and_gist(d1, d2):
+    d1, d2 = isl.align_two(d1, d2)
+    return d1.gist(d2)
+
+
 def _wrap_in_if(cond, nodes):
     from loopy.symbolic import set_to_cond_expr
     if cond.is_universe():
         return nodes
     else:
-        return [If(set_to_cond_expr(cond), nodes)]
+        return If(set_to_cond_expr(cond), nodes)
+
+
+def _implement_hw_axes_in_domains(implemented_domain, domain,
+                                  kernel, gsize, lsize):
+    """
+    If *domain* contains any inames going along hardware inames account for
+    those in *implemented_domain*.
+
+    :arg gsize: A tuple of :class:`isl.PwAff` denoting the size of the
+
+    :returns: An instance of :class:`isl.BasicSet` that includes constraints
+        from *implemented_domain* and constraints arising from constraining
+        hardware inames in *domain* to their corresponding
+    """
+    from loopy.kernel.data import HardwareConcurrentTag, GroupIndexTag, LocalIndexTag
+    from loopy.isl_helpers import make_slab, static_min_of_pw_aff
+
+    all_hw_inames = get_all_hw_inames(kernel)
+
+    for dim_name in domain.get_var_dict():
+        if dim_name in all_hw_inames:
+            if dim_name in implemented_domain.get_var_dict():
+                # this hardware dim is already implemented => ignore
+                continue
+
+            tag, = kernel.iname_tags_of_type(dim_name, HardwareConcurrentTag)
+            assert isinstance(tag, (GroupIndexTag, LocalIndexTag))
+
+            lbound = static_min_of_pw_aff(kernel
+                                          .get_iname_bounds(dim_name)
+                                          .lower_bound_pw_aff, constants_only=False)
+            size = (gsize[tag.axis]
+
+                    if isinstance(tag, GroupIndexTag)
+
+                    else
+
+                    lsize[tag.axis])
+
+            if not isinstance(size, int):
+                lbound, size = isl.align_two(lbound, size)
+
+            implemented_domain = (implemented_domain
+                                  .add_dims(dim_type.param, 1)
+                                  .set_dim_name(dim_type.param,
+                                                implemented_domain
+                                                .dim(dim_type.param),
+                                                dim_name))
+
+            implemented_domain = (implemented_domain
+                                  & make_slab(implemented_domain.space, dim_name,
+                                              lbound, lbound + size))
+
+    return implemented_domain
 
 
 @dataclass(frozen=True)
 class PredicateInsertionContext:
     implemented_domain: isl.BasicSet
-    gsize: Optional[Tuple[isl.PwAff, ...]] = None
-    lsize: Optional[Tuple[isl.PwAff, ...]] = None
+    gsize: Optional[Tuple[prim.Expression, ...]] = None
+    lsize: Optional[Tuple[prim.Expression, ...]] = None
 
     def copy(self, *, implemented_domain=None, gsize=None, lsize=None):
         if implemented_domain is None:
@@ -386,16 +455,13 @@ class PredicateInsertionMapper(IdentityMapper):
         self.kernel = kernel
 
     def map_schedule(self, expr):
-        universe = isl.BasicSet.universe(isl.Space.create_from_names(self.kernel
-                                                                     .isl_context,
-                                                                     []))
-
-        return super().map_schedule(expr, PredicateInsertionContext(universe))
+        impl_domain = self.kernel.assumptions
+        return super().map_schedule(expr, PredicateInsertionContext(impl_domain))
 
     def map_function(self, expr, context):
         # get the implemented domain for the insn ids in this kernel
         # Shouldn't be difficult to write a combine mapper for it.
-        gsize, lsize = self.kernel.get_grid_sizes_for_insn_ids(
+        gsize, lsize = self.kernel.get_grid_sizes_for_insn_ids_as_exprs(
             InstructionGatherer()(expr))
         return super().map_function(expr, context.copy(gsize=gsize, lsize=lsize))
 
@@ -406,17 +472,53 @@ class PredicateInsertionMapper(IdentityMapper):
         return expr
 
     def map_instruction_block(self, expr, context):
+        from loopy.symbolic import set_to_cond_expr
+
         if all(isinstance(child, RunInstruction) for child in expr.children):
-            # need to add a predicate for the hardware axes usage.
             assert len({self.kernel.id_to_insn[child.insn_id].within_inames
                         for child in expr.children}) == 1
-            inames = self.kernel.id_to_insn[expr.children[0].insn_id].within_inames
-            hw_inames = inames - set(context.implemented_domain.get_var_dict())
-            if hw_inames:
-                raise NotImplementedError
+            assert len({self.kernel.id_to_insn[child.insn_id].predicates
+                        for child in expr.children}) == 1
 
-            return InstructionBlock([self.rec(child, context)
-                                     for child in expr.children])
+            inames, = {self.kernel.id_to_insn[child.insn_id].within_inames
+                       for child in expr.children}
+            predicates, = {self.kernel.id_to_insn[child.insn_id].predicates
+                           for child in expr.children}
+
+            # {{{ compute the predicates due to the hardware inames
+
+            hw_inames = inames & get_all_hw_inames(self.kernel)
+
+            if hw_inames:
+
+                impl_domain = context.implemented_domain
+                domain = (self.kernel.get_inames_domain(hw_inames)
+                          .project_out_except(types=[dim_type.set],
+                                              names=hw_inames))
+                impl_domain = _implement_hw_axes_in_domains(impl_domain,
+                                                                   domain,
+                                                                   self.kernel,
+                                                                   context.gsize,
+                                                                   context.lsize)
+                domain = (domain
+                          .move_dims(dim_type.param, domain.dim(dim_type.param),
+                                     dim_type.set, 0, domain.dim(dim_type.set)))
+                unimplemented_domain = (isl.align_spaces(domain, impl_domain)
+                                        .gist(impl_domain))
+
+                if not unimplemented_domain.is_universe():
+                    predicates |= {set_to_cond_expr(unimplemented_domain)}
+
+            # }}}
+
+            new_insn_block = InstructionBlock([self.rec(child, context)
+                                               for child in expr.children])
+
+            if predicates:
+                from pymbolic.primitives import LogicalAnd
+                return If(LogicalAnd(tuple(predicates)), [new_insn_block])
+            else:
+                return new_insn_block
         else:
             assert all(isinstance(child, Barrier) for child in expr.childre)
             return InstructionBlock([self.rec(child, context)
@@ -424,13 +526,20 @@ class PredicateInsertionMapper(IdentityMapper):
 
     def map_loop(self, expr, context):
         from loopy.symbolic import pw_aff_to_expr
+        from loopy.isl_helpers import make_slab
 
         implemented_domain = context.implemented_domain
         assert implemented_domain.dim(dim_type.set) == 0
 
         domain = self.kernel.get_inames_domain(expr.iname)
 
-        # {{{ make already implemented loops as parallel; project out inner loops
+        implemented_domain = _implement_hw_axes_in_domains(implemented_domain,
+                                                           domain,
+                                                           self.kernel,
+                                                           context.gsize,
+                                                           context.lsize)
+
+        # {{{ make already implemented loops as parameters; project out inner loops
 
         for set_dim in domain.get_var_names(dim_type.set):
             dt, pos = domain.get_var_dict()[set_dim]
@@ -450,9 +559,10 @@ class PredicateInsertionMapper(IdentityMapper):
 
         assert domain.dim(dim_type.set) == 1
 
-        domain, implemented_domain = isl.align_two(domain,
-                                                   implemented_domain)
-        domain = domain.gist(implemented_domain)
+        domain = _align_and_gist(domain, implemented_domain)
+
+        lower_bound = domain.dim_min(0)
+        upper_bound = domain.dim_max(0)
 
         downstream_domain = _align_and_intersect(domain
                                                  .move_dims(dim_type.param,
@@ -460,13 +570,11 @@ class PredicateInsertionMapper(IdentityMapper):
                                                                        .param),
                                                             dim_type.set,
                                                             0, 1),
-                                                 implemented_domain)
-
-        outer_condition = isl.align_spaces(domain.project_out(dim_type.set, 0, 1),
-                                           downstream_domain).gist(downstream_domain)
-
-        lower_bound = domain.dim_min(0)
-        upper_bound = domain.dim_max(0)
+                                                 implemented_domain
+                                                 )
+        set_implemented_in_loop = make_slab(domain.space, expr.iname,
+                                            lower_bound, upper_bound+1)
+        outer_condition = domain.gist(set_implemented_in_loop)
 
         inner_condition = domain.affine_hull()
         step = 1  # TODO: from inner_condition try to guess the step
@@ -475,13 +583,18 @@ class PredicateInsertionMapper(IdentityMapper):
                                      .copy(implemented_domain=downstream_domain)))
                     for child in expr.children]
 
-        return _wrap_in_if(outer_condition,
-                           For(iname=expr.iname,
-                               lower_bound=pw_aff_to_expr(lower_bound),
-                               upper_bound=pw_aff_to_expr(upper_bound),
-                               step=step,
-                               children=_wrap_in_if(inner_condition,
-                                                    children)))
+        for_ = For(iname=expr.iname,
+                   lower_bound=pw_aff_to_expr(lower_bound),
+                   upper_bound=pw_aff_to_expr(upper_bound),
+                   step=step,
+                   children=_wrap_in_if(inner_condition,
+                                        children))
+
+        if outer_condition.is_universe():
+            return for_
+        else:
+            from loopy.symbolic import set_to_cond_expr
+            return If(set_to_cond_expr(outer_condition), [for_])
 
 
 class InstructionGatherer(CombineMapper):

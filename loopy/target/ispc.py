@@ -254,7 +254,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
     # }}}
 
     def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
-        ecm = self.get_expression_to_code_mapper(kernel)
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={})
 
         from loopy.schedule.tree import get_insns_in_function
         from pymbolic.mapper.stringifier import PREC_NONE
@@ -285,8 +285,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # {{{ code generation guts
 
-    def get_expression_to_c_expression_mapper(self, codegen_state):
-        return ExprToISPCExprMapper(codegen_state, self)
+    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map):
+        return ExprToISPCExprMapper(kernel, self, var_subst_map)
 
     def add_vector_access(self, access_expr, index):
         return access_expr[index]
@@ -489,13 +489,13 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         return Assign(ecm(lhs, prec=PREC_NONE, type_context=None), rhs_code)
 
     def emit_sequential_loop(self, kernel, iname, iname_dtype,
-                             lbound, ubound, inner):
+                             lbound, ubound, inner, var_subst_map):
         from loopy.target.c import POD
         from pymbolic.mapper.stringifier import PREC_NONE
         from cgen import For, InlineInitializer
         from cgen.ispc import ISPCUniform
 
-        ecm = self.get_expression_to_code_mapper(kernel)
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map)
 
         return For(
                 InlineInitializer(
