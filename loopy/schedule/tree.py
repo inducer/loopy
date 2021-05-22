@@ -57,10 +57,8 @@ class InstructionBlock(ScheduleNode):
     block cannot contain other blocks or loops.
 
     .. attribute:: children
-
-        A list of instruction ids contained in the block.
     """
-    children: List[Union[Barrier, RunInstruction]]
+    children: List[Union[RunInstruction]]
 
     mapper_method: str = field(default="map_instruction_block", repr=False,
                                init=False)
@@ -72,9 +70,15 @@ class Loop(ScheduleNode):
     A loop with the induction variable *iname*.
     """
     iname: str
-    children: List[Union[InstructionBlock, "Loop"]]
+    children: List[Union[InstructionBlock, "Loop", Barrier]]
 
     mapper_method: str = field(default="map_loop", repr=False, init=False)
+
+    def with_children(self, children):
+        """
+        Returns a copy of *self* with *children* as its new children.
+        """
+        return Loop(self.iname, children)
 
 
 @dataclass
@@ -93,9 +97,15 @@ class Function(ScheduleNode):
     name: str
     extra_args: List[Any]
     extra_inames: List[str]
-    children: List[Union[InstructionBlock, Loop]]
+    children: List[Union[InstructionBlock, Loop, Barrier]]
 
     mapper_method: str = field(default="map_function", repr=False, init=False)
+
+    def with_children(self, children):
+        """
+        Returns a copy of *self* with *children* as its new children.
+        """
+        return Function(self.name, self.extra_args, self.extra_inames, children)
 
 
 @dataclass
@@ -104,7 +114,7 @@ class For(Loop):
     lower_bound: Union[int, prim.Expression]
     upper_bound: Union[int, prim.Expression]
     step: int
-    children: List[Union[InstructionBlock, Loop, "If"]]
+    children: List[Union[InstructionBlock, Loop, "If", Barrier]]
 
     mapper_method: str = field(default="map_for", repr=False, init=False)
 
@@ -122,9 +132,15 @@ class Schedule(ScheduleNode):
     """
     Top-level schedule description.
     """
-    children: List[Union[Loop, InstructionBlock, Function]]
+    children: List[Union[Loop, InstructionBlock, Function, Barrier]]
 
     mapper_method: str = field(default="map_schedule", repr=False, init=False)
+
+    def with_children(self, children):
+        """
+        Returns a copy of *self* with *children* as its new children.
+        """
+        return Schedule(children)
 
 
 @dataclass
@@ -181,9 +197,10 @@ class ScheduleTreeBuilder:
         self.current_node.children.append(RunInstruction(insn_id))
 
     def add_barrier(self, comment, kind, insn_id):
-        if not isinstance(self.current_node, InstructionBlock):
-            self.make_instruction_block()
+        if isinstance(self.current_node, InstructionBlock):
+            self._build_stack.pop()
 
+        assert isinstance(self.current_node, (Schedule, Function, Loop))
         self.current_node.children.append(Barrier(comment, kind, insn_id))
 
     def exit_function(self):
@@ -232,7 +249,8 @@ def make_schedule_tree(kernel):
         else:
             raise NotImplementedError(type(sched_item))
 
-    return kernel.copy(schedule=bob.exit())
+    kernel = kernel.copy(schedule=bob.exit())
+    return kernel
 
 # }}}
 
@@ -474,55 +492,50 @@ class PredicateInsertionMapper(IdentityMapper):
     def map_instruction_block(self, expr, context):
         from loopy.symbolic import set_to_cond_expr
 
-        if all(isinstance(child, RunInstruction) for child in expr.children):
-            assert len({self.kernel.id_to_insn[child.insn_id].within_inames
-                        for child in expr.children}) == 1
-            assert len({self.kernel.id_to_insn[child.insn_id].predicates
-                        for child in expr.children}) == 1
+        assert len({self.kernel.id_to_insn[child.insn_id].within_inames
+                    for child in expr.children}) == 1
+        assert len({self.kernel.id_to_insn[child.insn_id].predicates
+                    for child in expr.children}) == 1
 
-            inames, = {self.kernel.id_to_insn[child.insn_id].within_inames
-                       for child in expr.children}
-            predicates, = {self.kernel.id_to_insn[child.insn_id].predicates
-                           for child in expr.children}
+        inames, = {self.kernel.id_to_insn[child.insn_id].within_inames
+                    for child in expr.children}
+        predicates, = {self.kernel.id_to_insn[child.insn_id].predicates
+                        for child in expr.children}
 
-            # {{{ compute the predicates due to the hardware inames
+        # {{{ compute the predicates due to the hardware inames
 
-            hw_inames = inames & get_all_hw_inames(self.kernel)
+        hw_inames = inames & get_all_hw_inames(self.kernel)
 
-            if hw_inames:
+        if hw_inames:
 
-                impl_domain = context.implemented_domain
-                domain = (self.kernel.get_inames_domain(hw_inames)
-                          .project_out_except(types=[dim_type.set],
-                                              names=hw_inames))
-                impl_domain = _implement_hw_axes_in_domains(impl_domain,
-                                                                   domain,
-                                                                   self.kernel,
-                                                                   context.gsize,
-                                                                   context.lsize)
-                domain = (domain
-                          .move_dims(dim_type.param, domain.dim(dim_type.param),
-                                     dim_type.set, 0, domain.dim(dim_type.set)))
-                unimplemented_domain = (isl.align_spaces(domain, impl_domain)
-                                        .gist(impl_domain))
+            impl_domain = context.implemented_domain
+            domain = (self.kernel.get_inames_domain(hw_inames)
+                        .project_out_except(types=[dim_type.set],
+                                            names=hw_inames))
+            impl_domain = _implement_hw_axes_in_domains(impl_domain,
+                                                                domain,
+                                                                self.kernel,
+                                                                context.gsize,
+                                                                context.lsize)
+            domain = (domain
+                        .move_dims(dim_type.param, domain.dim(dim_type.param),
+                                    dim_type.set, 0, domain.dim(dim_type.set)))
+            unimplemented_domain = (isl.align_spaces(domain, impl_domain)
+                                    .gist(impl_domain))
 
-                if not unimplemented_domain.is_universe():
-                    predicates |= {set_to_cond_expr(unimplemented_domain)}
+            if not unimplemented_domain.is_universe():
+                predicates |= {set_to_cond_expr(unimplemented_domain)}
 
-            # }}}
+        # }}}
 
-            new_insn_block = InstructionBlock([self.rec(child, context)
-                                               for child in expr.children])
+        new_insn_block = InstructionBlock([self.rec(child, context)
+                                            for child in expr.children])
 
-            if predicates:
-                from pymbolic.primitives import LogicalAnd
-                return If(LogicalAnd(tuple(predicates)), [new_insn_block])
-            else:
-                return new_insn_block
+        if predicates:
+            from pymbolic.primitives import LogicalAnd
+            return If(LogicalAnd(tuple(predicates)), [new_insn_block])
         else:
-            assert all(isinstance(child, Barrier) for child in expr.childre)
-            return InstructionBlock([self.rec(child, context)
-                                     for child in expr.children])
+            return new_insn_block
 
     def map_loop(self, expr, context):
         from loopy.symbolic import pw_aff_to_expr
@@ -615,7 +628,81 @@ class InstructionGatherer(CombineMapper):
             return frozenset()
 
 
+class InstructionBlockHomogenizer(IdentityMapper):
+    """
+    Splits instruction blocks into multiple instruction blocks into multiple
+    instruction blocks so that all the instruction blocks
+    """
+    def __init__(self, kernel):
+        self.kernel = kernel
+
+    def _are_insns_similar(self, insn1_id, insn2_id):
+        insn1 = self.kernel.id_to_insn[insn1_id]
+        insn2 = self.kernel.id_to_insn[insn2_id]
+        return (insn1.within_inames == insn2.within_inames
+                and insn1.predicates == insn2.predicates)
+
+    def _map_insn_block_parent(self, expr):
+        new_children = []
+
+        for child in expr.children:
+            if isinstance(child, InstructionBlock):
+                # {{{ add instruction blocks containing similar run instructions
+                similar_run_insns = []
+
+                for run_insn in child.children:
+                    if similar_run_insns:
+                        if self._are_insns_similar(similar_run_insns[-1].insn_id,
+                                                   run_insn.insn_id):
+                            similar_run_insns.append(run_insn)
+                        else:
+                            new_children.append(InstructionBlock(similar_run_insns))
+                            similar_run_insns = [run_insn]
+                    else:
+                        similar_run_insns.append(run_insn)
+
+                new_children.append(InstructionBlock(similar_run_insns))
+
+                # }}}
+            else:
+                new_children.append(self.rec(child))
+
+        return expr.with_children(new_children)
+
+    map_loop = _map_insn_block_parent
+    map_function = _map_insn_block_parent
+    map_schedule = _map_insn_block_parent
+    map_for = _map_insn_block_parent
+    map_if = _map_insn_block_parent
+
+
+def homogenize_instruction_blocks(kernel):
+    """
+    Returns a copy of *kernel* by splitting each instruction blocks in the
+    kernel's schedule into multiple instruction blocks so that all the
+    instructions in the updated instruction blocks have same predicates and
+    within_inames.
+
+    .. note::
+
+        This might be a helpful transformation if the caller intends to operate
+        on instruction blocks with the assumption that all instructions in an
+        instruction block are homogenous under some criterion.
+    """
+    # TODO: Could be generalized by taking the homogenization criterion as an
+    # argument.
+
+    new_schedule = InstructionBlockHomogenizer(kernel)(kernel.schedule)
+    return kernel.copy(schedule=new_schedule)
+
+
 def insert_predicates_into_schedule(kernel):
+    # {{{ preprocessing before beginning the predicate insertion.
+
+    kernel = homogenize_instruction_blocks(kernel)
+
+    # }}}
+
     assert kernel.state >= KernelState.LINEARIZED
     assert isinstance(kernel.schedule, Schedule)
     new_schedule = PredicateInsertionMapper(kernel)(kernel.schedule)
