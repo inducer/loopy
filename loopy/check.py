@@ -25,7 +25,7 @@ from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper, CombineMapper, ResolvedFunction
 from loopy.diagnostic import (LoopyError, WriteRaceConditionWarning,
-        warn_with_kernel)
+        warn_with_kernel, LoopyIndexError)
 from loopy.type_inference import TypeReader
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
                                       CInstruction, _DataObliviousInstruction,
@@ -537,7 +537,7 @@ class _AccessCheckMapper(WalkMapper):
                     shape_domain = shape_domain.intersect(slab)
 
             if not access_range.is_subset(shape_domain):
-                raise LoopyError("'%s' in instruction '%s' "
+                raise LoopyIndexError("'%s' in instruction '%s' "
                         "accesses out-of-bounds array element (could not"
                         " establish '%s' is a subset of '%s')."
                         % (expr, insn_id, access_range, shape_domain))
@@ -556,10 +556,7 @@ class _AccessCheckMapper(WalkMapper):
         self.rec(expr.else_, domain & else_set, insn_id)
 
 
-def check_bounds(kernel):
-    """
-    Performs out-of-bound check for every array access.
-    """
+def _check_bounds_inner(kernel):
     from loopy.kernel.instruction import get_insn_domain
     temp_var_names = set(kernel.temporary_variables)
     acm = _AccessCheckMapper(kernel)
@@ -582,6 +579,34 @@ def check_bounds(kernel):
             return expr
 
         insn.with_transformed_expressions(run_acm)
+
+
+def check_bounds(kernel):
+    """
+    Performs out-of-bound check for every array access.
+    """
+    if kernel.options.enforce_array_accesses_within_bounds not in [
+            "no_check",
+            True,
+            False]:
+        raise LoopyError("invalid value for option "
+                "'enforce_array_accesses_within_bounds': %s"
+                % kernel.options.enforce_array_accesses_within_bounds)
+
+    if kernel.options.enforce_array_accesses_within_bounds == "no_check":
+        return
+
+    from pytools import ProcessLogger
+    with ProcessLogger(logger, "%s: check array access within bounds" % kernel.name):
+        if kernel.options.enforce_array_accesses_within_bounds:
+            _check_bounds_inner(kernel)
+        else:
+            from loopy.diagnostic import LoopyIndexError
+            try:
+                _check_bounds_inner(kernel)
+            except LoopyIndexError as e:
+                from loopy.diagnostic import warn_with_kernel
+                warn_with_kernel(kernel, "array_access_out_of_bounds", str(e))
 
 # }}}
 

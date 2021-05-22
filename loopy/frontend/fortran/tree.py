@@ -23,6 +23,14 @@ THE SOFTWARE.
 import re
 
 from loopy.diagnostic import LoopyError
+from loopy.symbolic import IdentityMapper, FortranDivision
+
+
+class DivisionToFortranDivisionMapper(IdentityMapper):
+    def map_quotient(self, expr):
+        return FortranDivision(
+                self.rec(expr.numerator),
+                self.rec(expr.denominator))
 
 
 class FTreeWalkerBase:
@@ -110,7 +118,8 @@ class FTreeWalkerBase:
 
     def parse_expr(self, node, expr_str, **kwargs):
         try:
-            return self.expr_parser(expr_str, **kwargs)
+            return DivisionToFortranDivisionMapper()(
+                    self.expr_parser(expr_str, **kwargs))
         except Exception as e:
             raise LoopyError(
                     "Error parsing expression '%s' on line %d of '%s': %s"

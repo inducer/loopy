@@ -48,6 +48,8 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             "out_host=None"
             ]
         super().__init__(system_args)
+        from pytools import UniqueNameGenerator
+        self.dtype_name_generator = UniqueNameGenerator(forced_prefix="_lpy_dtype_")
 
     def python_dtype_str(self, dtype):
         import pyopencl.tools as cl_tools
@@ -90,47 +92,46 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         from pymbolic import var
 
         num_axes = len(arg.strides)
-        for i in range(num_axes):
-            gen("_lpy_shape_%d = %s" % (i, strify(arg.unvec_shape[i])))
 
         itemsize = kernel_arg.dtype.numpy_dtype.itemsize
         for i in range(num_axes):
-            gen("_lpy_strides_%d = %s" % (i, strify(
-                itemsize*arg.unvec_strides[i])))
+            gen("_lpy_ustrides_%d = %s" % (i, strify(
+                arg.unvec_strides[i])))
 
         if not skip_arg_checks:
             for i in range(num_axes):
-                gen("assert _lpy_strides_%d > 0, "
+                gen("assert _lpy_ustrides_%d > 0, "
                         "\"'%s' has negative stride in axis %d\""
                         % (i, arg.name, i))
 
-        sym_strides = tuple(
-                var("_lpy_strides_%d" % i)
+        sym_ustrides = tuple(
+                var("_lpy_ustrides_%d" % i)
                 for i in range(num_axes))
         sym_shape = tuple(
-                var("_lpy_shape_%d" % i)
+                arg.unvec_shape[i]
                 for i in range(num_axes))
 
-        alloc_size_expr = (sum(astrd*(alen-1)
-            for alen, astrd in zip(sym_shape, sym_strides))
-            + itemsize)
+        size_expr = (sum(astrd*(alen-1)
+            for alen, astrd in zip(sym_shape, sym_ustrides))
+            + 1)
 
-        gen("_lpy_alloc_size = %s" % strify(alloc_size_expr))
-        gen("%(name)s = _lpy_cl_array.Array(queue, %(shape)s, "
-                "%(dtype)s, strides=%(strides)s, "
-                "data=allocator(_lpy_alloc_size), allocator=allocator)"
-                % dict(
-                    name=arg.name,
-                    shape=strify(sym_shape),
-                    strides=strify(sym_strides),
-                    dtype=self.python_dtype_str(kernel_arg.dtype.numpy_dtype)))
+        gen("_lpy_size = %s" % strify(size_expr))
+        sym_strides = tuple(itemsize*s_i for s_i in sym_ustrides)
+        dtype_str = self.python_dtype_str(kernel_arg.dtype.numpy_dtype)
 
-        if not skip_arg_checks:
-            for i in range(num_axes):
-                gen("del _lpy_shape_%d" % i)
-                gen("del _lpy_strides_%d" % i)
-            gen("del _lpy_alloc_size")
-            gen("")
+        dtype_name = self.dtype_name_generator()
+        gen.add_to_preamble(f"{dtype_name} = _lpy_np.dtype({dtype_str})")
+        gen(f"{arg.name} = _lpy_cl_array.Array(None, {strify(sym_shape)}, "
+                f"{dtype_name}, strides={strify(sym_strides)}, "
+                f"data=allocator({strify(itemsize * var('_lpy_size'))}), "
+                "allocator=allocator, "
+                "_fast=True, _size=_lpy_size, "
+                "_context=queue.context, _queue=queue)")
+
+        for i in range(num_axes):
+            gen("del _lpy_ustrides_%d" % i)
+        gen("del _lpy_size")
+        gen("")
 
     # }}}
 

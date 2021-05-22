@@ -157,6 +157,11 @@ class IdentityMapperMixin:
 
     map_rule_argument = map_group_hw_index
 
+    def map_fortran_division(self, expr, *args, **kwargs):
+        return type(expr)(
+                self.rec(expr.numerator, *args, **kwargs),
+                self.rec(expr.denominator, *args, **kwargs))
+
 
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
     pass
@@ -221,6 +226,8 @@ class WalkMapper(WalkMapperBase):
 
         self.rec(expr.function, *args)
 
+    map_fortran_division = WalkMapperBase.map_quotient
+
 
 class CallbackMapper(CallbackMapperBase, IdentityMapper):
     map_reduction = CallbackMapperBase.map_constant
@@ -237,6 +244,8 @@ class CombineMapper(CombineMapperBase):
             self.combine(tuple(self.rec(idx) for idx in expr.swept_inames))))
 
     map_linear_subscript = CombineMapperBase.map_subscript
+
+    map_fortran_division = CombineMapperBase.map_quotient
 
 
 class SubstitutionMapper(
@@ -304,6 +313,11 @@ class StringifyMapper(StringifyMapperBase):
                 inames=",".join(self.rec(iname, prec) for iname in
                     expr.swept_inames),
                 subscr=self.rec(expr.subscript, prec))
+
+    def map_fortran_division(self, expr, enclosing_prec):
+        from pymbolic.mapper.stringifier import PREC_NONE
+        result = self.map_quotient(expr, PREC_NONE)
+        return f"[FORTRANDIV]({result})"
 
 
 class EqualityPreservingStringifyMapper(StringifyMapperBase):
@@ -406,6 +420,8 @@ class DependencyMapper(DependencyMapperBase):
     def map_call_with_kwargs(self, expr):
         # See https://github.com/inducer/loopy/pull/323
         raise NotImplementedError
+
+    map_fortran_division = DependencyMapperBase.map_quotient
 
 
 class SubstitutionRuleExpander(IdentityMapper):
@@ -961,6 +977,20 @@ class SubArrayRef(LoopyExpressionBase):
         return StringifyMapper()
 
     mapper_method = intern("map_sub_array_ref")
+
+
+class FortranDivision(p.QuotientBase, LoopyExpressionBase):
+    """This exists for the benefit of the Fortran frontend, which specializes
+    to floating point division for floating point inputs and round-to-zero
+    division for integer inputs. Despite the name, this would also be usable
+    for C semantics. (:mod:`loopy` division semantics match Python's.)
+
+    .. note::
+
+        This is not a documented expression node type. It may disappear
+        at any moment.
+    """
+    mapper_method = "map_fortran_division"
 
 # }}}
 
@@ -1810,7 +1840,8 @@ def aff_from_expr(space, expr, vars_to_zero=None):
         (s, aff), = pieces
         return aff
     else:
-        raise RuntimeError("expression '%s' could not be converted to a "
+        from loopy.diagnostic import ExpressionNotAffineError
+        raise ExpressionNotAffineError("expression '%s' could not be converted to a "
                 "non-piecewise quasi-affine expression" % expr)
 
 
@@ -1821,6 +1852,7 @@ def pwaff_from_expr(space, expr, vars_to_zero=None):
 def with_aff_conversion_guard(f, space, expr, *args):
     import islpy as isl
     from pymbolic.mapper.evaluator import UnknownVariableError
+    from loopy.diagnostic import ExpressionNotAffineError
 
     err = None
     with isl.SuppressedWarnings(space.get_ctx()):
@@ -1831,6 +1863,8 @@ def with_aff_conversion_guard(f, space, expr, *args):
         except isl.Error as e:
             err = e
         except UnknownVariableError as e:
+            err = e
+        except ExpressionNotAffineError as e:
             err = e
 
         assert err is not None

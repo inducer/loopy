@@ -654,6 +654,28 @@ def test_domain_fusion_imperfectly_nested():
     assert len(t_unit["imperfect"].domains) > 1
 
 
+def test_division_in_shapes(ctx_factory):
+    fortran_src = """
+        subroutine halve(m, a)
+            implicit none
+            integer m, i, j
+            real*8 a(m/2,m/2)
+            do i = 1,m/2
+                do j = 1,m/2
+                    a(i, j) = 2*a(i, j)
+                end do
+            end do
+        end subroutine
+        """
+    knl, = lp.parse_fortran(fortran_src)
+    ref_knl = knl
+
+    print(knl)
+
+    ctx = ctx_factory()
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(m=128))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

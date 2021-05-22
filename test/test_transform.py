@@ -50,7 +50,8 @@ __all__ = [
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
-def test_chunk_iname(ctx_factory):
+@pytest.mark.parametrize("fix_parameters", (True, False))
+def test_chunk_iname(ctx_factory, fix_parameters):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -65,7 +66,13 @@ def test_chunk_iname(ctx_factory):
     ref_knl = knl
     knl = lp.chunk_iname(knl, "i", 3, inner_tag="l.0")
     knl = lp.prioritize_loops(knl, "i_outer, i_inner")
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=130))
+
+    if fix_parameters:
+        ref_knl = lp.fix_parameters(ref_knl, n=130)
+        knl = lp.fix_parameters(knl, n=130)
+        lp.auto_test_vs_ref(ref_knl, ctx, knl)
+    else:
+        lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"n": 130})
 
 
 def test_collect_common_factors(ctx_factory):
