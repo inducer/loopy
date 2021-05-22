@@ -356,6 +356,9 @@ def parse_fortran(source, filename="<floopy code>", free_form=None, strict=None,
         # guesssing in the case of only one function
         prog = prog.with_entrypoints(all_kernels[0].name)
 
+    from loopy.frontend.fortran.translator import specialize_fortran_division
+    prog = specialize_fortran_division(prog)
+
     parse_plog.done()
 
     return prog
