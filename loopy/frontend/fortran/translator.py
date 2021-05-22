@@ -31,6 +31,7 @@ from loopy.frontend.fortran.tree import FTreeWalkerBase
 from loopy.diagnostic import warn_with_kernel
 from loopy.frontend.fortran.diagnostic import (
         TranslationError, TranslatorWarning)
+from loopy.translation_unit import for_each_kernel
 import islpy as isl
 from islpy import dim_type
 from loopy.symbolic import (IdentityMapper, RuleAwareIdentityMapper,
@@ -268,7 +269,7 @@ class FortranDivisionSpecializer(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, kernel):
         super().__init__(rule_mapping_context)
         from loopy.type_inference import TypeInferenceMapper
-        self.infer_type = TypeInferenceMapper(kernel)
+        self.infer_type = TypeInferenceMapper(kernel, None)
         self.kernel = kernel
 
     def map_fortran_division(self, expr, *args):
@@ -292,6 +293,7 @@ class FortranDivisionSpecializer(RuleAwareIdentityMapper):
                     self.rec(expr.denominator, *args))
 
 
+@for_each_kernel
 def specialize_fortran_division(knl):
     rmc = SubstitutionRuleMappingContext(
             knl.substitutions, knl.get_var_name_generator())

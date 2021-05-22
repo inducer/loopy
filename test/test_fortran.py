@@ -667,13 +667,13 @@ def test_division_in_shapes(ctx_factory):
             end do
         end subroutine
         """
-    knl, = lp.parse_fortran(fortran_src)
-    ref_knl = knl
+    t_unit = lp.parse_fortran(fortran_src)
+    ref_t_unit = t_unit
 
-    print(knl)
+    print(t_unit)
 
     ctx = ctx_factory()
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(m=128))
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit, parameters=dict(m=128))
 
 
 if __name__ == "__main__":

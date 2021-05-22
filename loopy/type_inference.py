@@ -191,7 +191,13 @@ class TypeInferenceMapper(CombineMapper):
             instances
         """
         self.kernel = kernel
-        assert isinstance(clbl_inf_ctx, CallablesInferenceContext)
+        assert (
+                # FIXME: HACK
+                # only used in kernel-local type inference for division
+                # specialization in Fortran
+                clbl_inf_ctx is None
+
+                or isinstance(clbl_inf_ctx, CallablesInferenceContext))
         if new_assignments is None:
             new_assignments = {}
         self.new_assignments = new_assignments
@@ -416,6 +422,10 @@ class TypeInferenceMapper(CombineMapper):
 
         arg_id_to_dtype = {i: none_if_empty(self.rec(par))
                            for (i, par) in enumerate(expr.parameters)}
+
+        if self.clbl_inf_ctx is None:
+            raise LoopyError("TypeInferenceMapper was created without a "
+                    "CallablesInferenceContext, but encountered a function call")
 
         # specializing the known function wrt type
         in_knl_callable = self.clbl_inf_ctx[expr.function.name]
