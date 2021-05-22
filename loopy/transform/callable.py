@@ -491,7 +491,7 @@ def inline_callable_kernel(translation_unit, function_name):
     Returns a copy of *translation_unit* with the callable kernel
     named *function_name* inlined at all call-sites.
     """
-    from loopy.preprocess import infer_arg_descr
+    from loopy.preprocess import infer_arg_descr, filter_reachable_callables
     from loopy.translation_unit import resolve_callables
 
     # {{{ must have argument shape information at call sites to inline
@@ -503,7 +503,9 @@ def inline_callable_kernel(translation_unit, function_name):
 
     callee = translation_unit[function_name]
 
-    return _inline_single_callable_kernel(translation_unit, callee)
+    return filter_reachable_callables(
+        _inline_single_callable_kernel(translation_unit,
+                                       callee))
 
 # }}}
 

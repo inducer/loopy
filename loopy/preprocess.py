@@ -2362,6 +2362,15 @@ def inline_kernels_with_gbarriers(program):
 # }}}
 
 
+def filter_reachable_callables(t_unit):
+    from loopy.translation_unit import _get_callable_ids
+    reachable_function_ids = _get_callable_ids(t_unit.callables_table,
+                                               t_unit.entrypoints)
+    new_callables = {name: clbl for name, clbl in t_unit.callables_table.items()
+                     if name in (reachable_function_ids | t_unit.entrypoints)}
+    return t_unit.copy(callables_table=new_callables)
+
+
 preprocess_cache = WriteOncePersistentDict(
         "loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
@@ -2448,6 +2457,8 @@ def preprocess_program(program, device=None):
 
     from loopy.translation_unit import resolve_callables
     program = resolve_callables(program)
+
+    program = filter_reachable_callables(program)
 
     if device is not None:
         # FIXME: Time to remove this? (Git blame shows 5 years ago)
