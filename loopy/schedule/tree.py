@@ -109,6 +109,15 @@ class Function(ScheduleNode):
 
 
 @dataclass
+class PolyhedralLoop(Loop):
+    iname: str
+    domain: isl.BasicSet
+    children: List[Union[InstructionBlock, Loop, "If", Barrier]]
+
+    mapper_method: str = field(default="map_polyhedral_loop", repr=False, init=False)
+
+
+@dataclass
 class For(Loop):
     iname: str
     lower_bound: Union[int, prim.Expression]
@@ -475,7 +484,7 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
 
 
 @dataclass(frozen=True)
-class PredicateInsertionContext:
+class PolyhedronLoopifierContext:
     implemented_domain: isl.BasicSet
     gsize: Optional[Tuple[prim.Expression, ...]] = None
     lsize: Optional[Tuple[prim.Expression, ...]] = None
@@ -490,82 +499,29 @@ class PredicateInsertionContext:
         if lsize is None:
             lsize = self.lsize
 
-        return PredicateInsertionContext(implemented_domain, gsize, lsize)
+        return PolyhedronLoopifierContext(implemented_domain, gsize, lsize)
 
 
-class PredicateInsertionMapper(IdentityMapper):
+class PolyhedronLoopifier(IdentityMapper):
     def __init__(self, kernel):
         self.kernel = kernel
 
     def map_schedule(self, expr):
         impl_domain = self.kernel.assumptions
-        return super().map_schedule(expr, PredicateInsertionContext(impl_domain))
+        return super().map_schedule(expr,
+                                    PolyhedronLoopifierContext(impl_domain))
 
     def map_function(self, expr, context):
         # get the implemented domain for the insn ids in this kernel
         # Shouldn't be difficult to write a combine mapper for it.
         gsize, lsize = self.kernel.get_grid_sizes_for_insn_ids_as_exprs(
             InstructionGatherer()(expr))
-        return super().map_function(expr, context.copy(gsize=gsize, lsize=lsize))
-
-    def map_run_instruction(self, expr, context):
-        return expr
-
-    def map_barrier(self, expr, context):
-        return expr
-
-    def map_instruction_block(self, expr, context):
-        from loopy.symbolic import set_to_cond_expr
-
-        assert len({self.kernel.id_to_insn[child.insn_id].within_inames
-                    for child in expr.children}) == 1
-        assert len({self.kernel.id_to_insn[child.insn_id].predicates
-                    for child in expr.children}) == 1
-
-        inames, = {self.kernel.id_to_insn[child.insn_id].within_inames
-                    for child in expr.children}
-        predicates, = {self.kernel.id_to_insn[child.insn_id].predicates
-                        for child in expr.children}
-
-        # {{{ compute the predicates due to the hardware inames
-
-        hw_inames = inames & get_all_hw_inames(self.kernel)
-
-        if hw_inames:
-
-            impl_domain = context.implemented_domain
-            domain = (self.kernel.get_inames_domain(hw_inames)
-                        .project_out_except(types=[dim_type.set],
-                                            names=hw_inames))
-            impl_domain = _implement_hw_axes_in_domains(impl_domain,
-                                                                domain,
-                                                                self.kernel,
-                                                                context.gsize,
-                                                                context.lsize)
-            domain = (domain
-                        .move_dims(dim_type.param, domain.dim(dim_type.param),
-                                    dim_type.set, 0, domain.dim(dim_type.set)))
-            unimplemented_domain = (isl.align_spaces(domain, impl_domain)
-                                    .gist(impl_domain))
-
-            if not unimplemented_domain.is_universe():
-                predicates |= {set_to_cond_expr(unimplemented_domain)}
-
-        # }}}
-
-        new_insn_block = InstructionBlock([self.rec(child, context)
-                                            for child in expr.children])
-
-        if predicates:
-            from pymbolic.primitives import LogicalAnd
-            return If(LogicalAnd(tuple(predicates)), [new_insn_block])
-        else:
-            return new_insn_block
+        # FIXME: Somehow we need to get rid of allowing the hardware inames to
+        # be slabbed.
+        return super().map_function(expr, context.copy(gsize=gsize,
+                                                       lsize=lsize))
 
     def map_loop(self, expr, context):
-        from loopy.symbolic import pw_aff_to_expr
-        from loopy.isl_helpers import make_slab
-
         implemented_domain = context.implemented_domain
         assert implemented_domain.dim(dim_type.set) == 0
 
@@ -599,9 +555,6 @@ class PredicateInsertionMapper(IdentityMapper):
 
         domain = _align_and_gist(domain, implemented_domain)
 
-        lower_bound = domain.dim_min(0)
-        upper_bound = domain.dim_max(0)
-
         downstream_domain = _align_and_intersect(domain
                                                  .move_dims(dim_type.param,
                                                             domain.dim(dim_type
@@ -610,23 +563,148 @@ class PredicateInsertionMapper(IdentityMapper):
                                                             0, 1),
                                                  implemented_domain
                                                  )
-        set_implemented_in_loop = make_slab(domain.space, expr.iname,
-                                            lower_bound, upper_bound+1)
-        outer_condition = domain.gist(set_implemented_in_loop)
-
-        inner_condition = domain.affine_hull()
-        step = 1  # TODO: from inner_condition try to guess the step
-
         children = [self.rec(child, (context
                                      .copy(implemented_domain=downstream_domain)))
                     for child in expr.children]
 
+        return PolyhedralLoop(iname=expr.iname,
+                              children=self.combine(children),
+                              domain=domain)
+
+    def map_polyhedral_loop(self, expr, context):
+        domain = _align_and_gist(expr.domain, context.implemented_domain)
+        downstream_domain = _align_and_intersect(domain,
+                                                 context.implemented_domain)
+        children = [self.rec(child, (context
+                                     .copy(implemented_domain=downstream_domain)))
+                    for child in expr.children]
+
+        return PolyhedralLoop(iname=expr.iname,
+                              children=self.combine(children), domain=domain)
+
+
+class Unroller(PolyhedronLoopifier):
+
+    def map_polyhedral_loop(self, expr, context):
+        from loopy.kernel.data import UnrollTag, UnrolledIlpTag
+        from loopy.isl_helpers import (make_slab, static_max_of_pw_aff,
+                                       static_min_of_pw_aff)
+
+        if self.kernel.iname_tags_of_type(expr.iname, (UnrolledIlpTag,
+                                                       UnrollTag)):
+            domain = _align_and_gist(expr.domain, context.implemented_domain)
+            ubound = static_max_of_pw_aff(domain.dim_max(0), constants_only=False)
+            lbound = static_min_of_pw_aff(domain.dim_min(0),
+                                          constants_only=False)
+            # FIXME: Write a better error message o'er here that the loop
+            # cannot be unrolled.
+            size = static_max_of_pw_aff(ubound-lbound+1, constants_only=True)
+            assert size.is_cst()
+
+            result = []
+            for i in range(size.get_constant_val().to_python()):
+                unrll_dom = make_slab(domain.space, expr.iname, lbound+i,
+                                      lbound+i+1) & domain
+                if unrll_dom.is_empty():
+                    continue
+
+                dwnstrm_dom = _align_and_intersect(unrll_dom,
+                                                   context.implemented_domain)
+                children = [self.rec(child, (context
+                                            .copy(implemented_domain=dwnstrm_dom)))
+                            for child in expr.children]
+
+                result.append(PolyhedralLoop(iname=expr.iname,
+                                             children=self.combine(children),
+                                             domain=unrll_dom))
+
+            return GroupedChildren(contents=result)
+        else:
+            return super().map_polyhedral_loop(expr, context)
+
+    def map_loop(self, expr, context):
+        raise RuntimeError("At this point, all loops should have resolved as"
+                           " polyhedral loops.")
+
+
+class PredicateInsertionMapper(PolyhedronLoopifier):
+    def map_instruction_block(self, expr, context):
+        from loopy.symbolic import set_to_cond_expr
+
+        assert len({self.kernel.id_to_insn[child.insn_id].within_inames
+                    for child in expr.children}) == 1
+        assert len({self.kernel.id_to_insn[child.insn_id].predicates
+                    for child in expr.children}) == 1
+
+        inames, = {self.kernel.id_to_insn[child.insn_id].within_inames
+                    for child in expr.children}
+        predicates, = {self.kernel.id_to_insn[child.insn_id].predicates
+                        for child in expr.children}
+
+        # {{{ compute the predicates due to the hardware inames
+
+        hw_inames = inames & get_all_hw_inames(self.kernel)
+
+        if hw_inames:
+
+            impl_domain = context.implemented_domain
+            domain = (self.kernel.get_inames_domain(hw_inames)
+                        .project_out_except(types=[dim_type.set],
+                                            names=hw_inames))
+            impl_domain = _implement_hw_axes_in_domains(impl_domain,
+                                                        domain,
+                                                        self.kernel,
+                                                        context.gsize,
+                                                        context.lsize)
+            domain = (domain
+                        .move_dims(dim_type.param, domain.dim(dim_type.param),
+                                    dim_type.set, 0, domain.dim(dim_type.set)))
+            unimplemented_domain = (isl.align_spaces(domain, impl_domain)
+                                    .gist(impl_domain))
+
+            if not unimplemented_domain.is_universe():
+                predicates |= {set_to_cond_expr(unimplemented_domain)}
+
+        # }}}
+
+        new_insn_block = InstructionBlock([self.rec(child, context)
+                                            for child in expr.children])
+
+        if predicates:
+            from pymbolic.primitives import LogicalAnd
+            return If(LogicalAnd(tuple(predicates)), [new_insn_block])
+        else:
+            return new_insn_block
+
+    def map_polyhedral_loop(self, expr, context):
+        from loopy.symbolic import pw_aff_to_expr
+        from loopy.isl_helpers import (static_min_of_pw_aff,
+                                       static_max_of_pw_aff, make_slab)
+
+        lb = static_min_of_pw_aff(expr.domain.dim_min(0).gist(context
+                                                              .implemented_domain),
+                                  constants_only=False)
+        ub = static_max_of_pw_aff(expr.domain.dim_max(0).gist(context
+                                                              .implemented_domain),
+                                  constants_only=False)
+        set_implemented_in_loop = make_slab(expr.domain.space, expr.iname, lb, ub+1)
+
+        outer_condition = _align_and_gist(expr.domain.project_out(dim_type.set,
+                                                                  0, 1),
+                                          set_implemented_in_loop)
+        inner_condition = _align_and_gist(expr.domain.affine_hull(),
+                                          set_implemented_in_loop)
+
+        step = 1  # TODO: from inner_condition try to guess the step
+
         for_ = For(iname=expr.iname,
-                   lower_bound=pw_aff_to_expr(lower_bound),
-                   upper_bound=pw_aff_to_expr(upper_bound),
+                   lower_bound=pw_aff_to_expr(lb),
+                   upper_bound=pw_aff_to_expr(ub),
                    step=step,
                    children=_wrap_in_if(inner_condition,
-                                        children))
+                                        (super()
+                                         .map_polyhedral_loop(expr, context)
+                                         .children)))
 
         if outer_condition.is_universe():
             return for_

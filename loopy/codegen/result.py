@@ -350,9 +350,9 @@ class CodeGenMapper(CombineMapper):
                                              LocalHardwareAxisIndex(tag.axis))
 
         iname_exprs = {iname: _hw_iname_expr(iname)
-                          for iname in all_inames
-                          if self.kernel.iname_tags_of_type(iname,
-                                                            HardwareConcurrentTag)}
+                       for iname in all_inames
+                       if self.kernel.iname_tags_of_type(iname,
+                                                         HardwareConcurrentTag)}
 
         # }}}
 
@@ -394,36 +394,45 @@ class CodeGenMapper(CombineMapper):
                     InOrderSequentialSequentialTag)
         ast_builder = self.device_ast_builder if context.in_device else self.host_ast_builder  # noqa: E501
 
-        if self.kernel.iname_tags_of_type(expr.iname, unr_tags):
-            dwnstrm_ctx = 1/0
-            raise NotImplementedError
-        elif self.kernel.iname_tags_of_type(expr.iname, vec_tags):
-            dwnstrm_ctx = 1/0
+        if self.kernel.iname_tags_of_type(expr.iname, vec_tags):
             raise NotImplementedError
         else:
             assert (len(self.kernel.inames[expr.iname].tags) == 0
                     or self.kernel.iname_tags_of_type(expr.iname,
-                                                      seq_tags))
+                                                      seq_tags+unr_tags))
+            assert expr.step == 1
 
-            dwnstrm_ctx = context.copy(vectorization_info=None)
+            if expr.upper_bound != expr.lower_bound:
+                dwnstrm_ctx = context.copy(vectorization_info=None)
+            else:
+                # special case: if ubound == lbound => unroll
+                new_iname_exprs = context.iname_exprs.copy()
+                new_iname_exprs[expr.iname] = expr.upper_bound
+                dwnstrm_ctx = context.copy(vectorization_info=None,
+                                           iname_exprs=new_iname_exprs)
+
             children_res = self.combine([self.rec(child, dwnstrm_ctx)
                                          for child in expr.children])
-            loop_body = ast_builder.ast_block_class(children_res.device_ast
-                                                    if context.in_device
-                                                    else children_res.host_ast)
-            assert expr.step == 1
-            loop_ast = ast_builder.emit_sequential_loop(self.kernel, expr.iname,
-                                                        self.kernel.index_dtype,
-                                                        expr.lower_bound,
-                                                        expr.upper_bound,
-                                                        loop_body,
-                                                        context.iname_exprs
-                                                        )
+            body_ast = (children_res.device_ast
+                        if context.in_device
+                        else children_res.host_ast)
+
+            if expr.upper_bound != expr.lower_bound:
+                loop_body = ast_builder.ast_block_class(body_ast)
+                loop_ast = [ast_builder.emit_sequential_loop(self.kernel, expr.iname,
+                                                            self.kernel.index_dtype,
+                                                            expr.lower_bound,
+                                                            expr.upper_bound,
+                                                            loop_body,
+                                                            context.iname_exprs)]
+            else:
+                loop_ast = body_ast
+
             if context.in_device:
                 return CodeGenMapperAccumulator(host_ast=children_res.host_ast,
-                                                device_ast=[loop_ast])
+                                                device_ast=loop_ast)
             else:
-                return CodeGenMapperAccumulator(host_ast=[loop_ast],
+                return CodeGenMapperAccumulator(host_ast=loop_ast,
                                                 device_ast=children_res.device_ast)
 
     # }}}
