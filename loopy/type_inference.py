@@ -578,8 +578,7 @@ class TypeInferenceMapper(CombineMapper):
     def map_sub_array_ref(self, expr):
         return self.rec(expr.subscript)
 
-    def map_fortran_division(self, expr):
-        return []
+    map_fortran_division = map_quotient
 
 # }}}
 

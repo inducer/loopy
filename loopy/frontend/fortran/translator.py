@@ -273,8 +273,13 @@ class FortranDivisionSpecializer(RuleAwareIdentityMapper):
 
     def map_fortran_division(self, expr, *args):
         # We remove all these before type inference ever sees them.
-        num_dtype = self.infer_type(expr.numerator).numpy_dtype
-        den_dtype = self.infer_type(expr.denominator).numpy_dtype
+        from loopy.type_inference import TypeInferenceFailure
+
+        try:
+            num_dtype = self.infer_type(expr.numerator).numpy_dtype
+            den_dtype = self.infer_type(expr.denominator).numpy_dtype
+        except TypeInferenceFailure:
+            return super().map_fortran_division(expr, *args)
 
         from pymbolic.primitives import Quotient, FloorDiv
         if num_dtype.kind in "iub" and den_dtype.kind in "iub":
