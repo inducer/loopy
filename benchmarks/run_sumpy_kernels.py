@@ -3,6 +3,7 @@ import numpy as np
 import pyopencl as cl
 import logging
 from dataclasses import dataclass
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,11 @@ class SumpyBenchmarkSuite:
     time_instantiate.timeout = 600.0
     time_schedule.timeout = 600.0
     time_generate_code.timeout = 600.0
+
+    # Use CPU time as the timer
+    time_instantiate.timer = time.process_time
+    time_schedule.timer = time.process_time
+    time_generate_code.timer = time.process_time
 
     # No warmup is needed
     time_instantiate.warmup_time = 0
