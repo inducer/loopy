@@ -13,6 +13,6 @@ dependencies:
 - islpy
 
 # Only needed to make pylint succeed
-- matplotlib
+- matplotlib-base
 - ipykernel
 - ply

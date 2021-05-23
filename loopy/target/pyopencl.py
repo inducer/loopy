@@ -493,9 +493,9 @@ class PyOpenCLTarget(OpenCLTarget):
             use_int8_for_bool=use_int8_for_bool)
 
         import pyopencl.version
-        if pyopencl.version.VERSION < (2021, 1):
+        if pyopencl.version.VERSION < (2021, 2):
             raise RuntimeError("The version of loopy you have installed "
-                    "generates invoker code that requires PyOpenCL 2021.1 "
+                    "generates invoker code that requires PyOpenCL 2021.2 "
                     "or newer.")
 
         self.device = device

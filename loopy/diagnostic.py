@@ -70,6 +70,10 @@ class LoopyError(RuntimeError):
     pass
 
 
+class LoopyIndexError(LoopyError):
+    pass
+
+
 class CannotBranchDomainTree(LoopyError):
     pass
 
@@ -111,6 +115,11 @@ class LoopyTypeError(LoopyError):
 
 
 class ExpressionNotAffineError(LoopyError):
+    """
+    Raised when an expression is not quasi-affine. See
+    `ISL manual <http://isl.gforge.inria.fr//user.html#Primitive-Functions>`_
+    for then definition of a quasi-affine expression.
+    """
     pass
 
 
