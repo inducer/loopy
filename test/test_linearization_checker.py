@@ -45,6 +45,7 @@ from loopy.schedule.checker.schedule import (
 )
 from loopy.schedule.checker.utils import (
     ensure_dim_names_match_and_align,
+    make_dep_map,
 )
 
 logger = logging.getLogger(__name__)
@@ -1399,14 +1400,14 @@ def test_add_dependency_v2():
         assert not stmt.dependencies
 
     # Add a dependency to stmt_b
-    dep_b_on_a = _isl_map_with_marked_dims(
-        "[pi] -> {{ [{0}'=0, i'] -> [{0}=1, i] : i > i' "
-        "and {1} and {2} and {3} }}".format(
-            STATEMENT_VAR_NAME,
+    dep_b_on_a = make_dep_map(
+        "[pi] -> {{ [i'] -> [i] : i > i' "
+        "and {0} and {1} and {2} }}".format(
             i_range_str,
             i_range_str_p,
             assumptions_str,
-            ))
+            ),
+        self_dep=False)
 
     knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a)
 
@@ -1416,14 +1417,14 @@ def test_add_dependency_v2():
             "stmt_a": [dep_b_on_a, ]}})
 
     # Add a second dependency to stmt_b
-    dep_b_on_a_2 = _isl_map_with_marked_dims(
-        "[pi] -> {{ [{0}'=0, i'] -> [{0}=1, i] : i = i' "
-        "and {1} and {2} and {3} }}".format(
-            STATEMENT_VAR_NAME,
+    dep_b_on_a_2 = make_dep_map(
+        "[pi] -> {{ [i'] -> [i] : i = i' "
+        "and {0} and {1} and {2} }}".format(
             i_range_str,
             i_range_str_p,
             assumptions_str,
-            ))
+            ),
+        self_dep=False)
 
     knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a_2)
 
@@ -1433,6 +1434,7 @@ def test_add_dependency_v2():
             "stmt_a": [dep_b_on_a, dep_b_on_a_2]}})
 
     # Add dependencies to stmt_c
+    # TODO use make_dep_map instead of _isl_map_with_marked_dims where possible
 
     dep_c_on_a = _isl_map_with_marked_dims(
         "[pi] -> {{ [{0}'=0, i'] -> [{0}=1, i] : i >= i' "
@@ -1485,15 +1487,16 @@ def test_new_dependencies_finite_diff():
     # Define dependency
     xt_range_str = "0 <= x < nx and 0 <= t < nt"
     xt_range_str_p = "0 <= x' < nx and 0 <= t' < nt"
-    dep = _isl_map_with_marked_dims(
-        "[nx,nt] -> {{ [{0}'=0, x', t'] -> [{0}=0, x, t] : "
+    dep = make_dep_map(
+        "[nx,nt] -> {{ [x', t'] -> [x, t] : "
         "((x = x' and t = t'+2) or "
         " (x'-1 <= x <= x'+1 and t = t' + 1)) and "
-        "{1} and {2} }}".format(
-            STATEMENT_VAR_NAME,
+        "{0} and {1} }}".format(
             xt_range_str,
             xt_range_str_p,
-            ))
+            ),
+        self_dep=True)
+
     knl = lp.add_dependency_v2(knl, "stmt", "stmt", dep)
 
     ref_knl = knl
