@@ -58,7 +58,9 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     source = source.replace("datafloat", "real*4")
 
     hsv_r, hsv_s = [
-           knl for knl in lp.parse_fortran(source, filename, seq_dependencies=False)
+           knl for knl in lp.parse_fortran(
+               source, filename, seq_dependencies=False,
+               all_names_known=False)
            if "KernelR" in knl.name or "KernelS" in knl.name
            ]
     hsv_r = lp.tag_instructions(hsv_r, "rknl")
@@ -77,6 +79,9 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     hsv = lp.assume(hsv, "elements >= 1")
 
     hsv = fix_euler_parameters(hsv, p_p0=1, p_Gamma=1.4, p_R=1)
+    from loopy.frontend.fortran.translator import specialize_fortran_division
+    hsv = specialize_fortran_division(hsv)
+
     for name in ["Q", "rhsQ"]:
         hsv = set_q_storage_format(hsv, name)
 

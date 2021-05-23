@@ -170,6 +170,14 @@ class Options(ImmutableRecord):
         to variables.
 
         If equal to ``"no_check"``, then no check is performed.
+
+    .. attribute:: enforce_array_accesses_within_bounds
+
+        If *True*, require that :func:`~loopy.check.check_bounds` passes. If
+        *False*, then :func:`~loopy.check.check_bounds` raises a warning for
+        any out-of-bounds accesses.
+
+        If equal to ``"no_check"``, then no check is performed.
     """
 
     _legacy_options_map = {
@@ -234,6 +242,8 @@ class Options(ImmutableRecord):
 
                 enforce_variable_access_ordered=kwargs.get(
                     "enforce_variable_access_ordered", True),
+                enforce_array_accesses_within_bounds=kwargs.get(
+                    "enforce_array_accesses_within_bounds", True),
                 )
 
     # {{{ legacy compatibility

@@ -303,7 +303,7 @@ def _split_iname_backend(kernel, iname_to_split,
             loop_priority=frozenset(new_priorities))
 
     rule_mapping_context = SubstitutionRuleMappingContext(
-            kernel.substitutions, kernel.get_var_name_generator())
+            kernel.substitutions, vng)
     ins = _InameSplitter(rule_mapping_context, within,
             iname_to_split, outer_iname, inner_iname, new_loop_index)
 

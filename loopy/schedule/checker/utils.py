@@ -144,6 +144,51 @@ def append_mark_to_strings(strings, mark):
     return [s+mark for s in strings]
 
 
+# {{{ make_dep_map
+
+def make_dep_map(s, self_dep=False):
+
+    # TODO put this function in the right place
+
+    from loopy.schedule.checker.schedule import (
+        BEFORE_MARK,
+        STATEMENT_VAR_NAME,
+    )
+
+    map_init = isl.Map(s)
+
+    # TODO something smarter than this assert
+    for dim_name in map_init.get_var_names(dt.in_):
+        assert BEFORE_MARK not in dim_name
+
+    # append BEFORE_MARK to in-vars
+    map_marked = append_mark_to_isl_map_var_names(
+        map_init, dt.in_, BEFORE_MARK)
+
+    # insert statement dims:
+    map_with_stmts = insert_and_name_isl_dims(
+        map_marked, dt.in_, [STATEMENT_VAR_NAME+BEFORE_MARK], 0)
+    map_with_stmts = insert_and_name_isl_dims(
+        map_with_stmts, dt.out, [STATEMENT_VAR_NAME], 0)
+
+    # assign values 0 or 1 to statement dims
+    sid_after = 0 if self_dep else 1
+
+    map_with_stmts = map_with_stmts.add_constraint(
+        isl.Constraint.eq_from_names(
+            map_with_stmts.space,
+            {1: 0, STATEMENT_VAR_NAME+BEFORE_MARK: -1}))
+
+    map_with_stmts = map_with_stmts.add_constraint(
+        isl.Constraint.eq_from_names(
+            map_with_stmts.space,
+            {1: sid_after, STATEMENT_VAR_NAME: -1}))
+
+    return map_with_stmts
+
+# }}}
+
+
 def sorted_union_of_names_in_isl_sets(
         isl_sets,
         set_dim=dt.set):
