@@ -28,11 +28,13 @@ import loopy as lp
 import numpy as np
 from warnings import warn
 from loopy.frontend.fortran.tree import FTreeWalkerBase
+from loopy.diagnostic import warn_with_kernel
 from loopy.frontend.fortran.diagnostic import (
         TranslationError, TranslatorWarning)
 import islpy as isl
 from islpy import dim_type
-from loopy.symbolic import IdentityMapper
+from loopy.symbolic import (IdentityMapper, RuleAwareIdentityMapper,
+        SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import LegacyStringInstructionTag
 from pymbolic.primitives import Wildcard
@@ -80,7 +82,9 @@ class SubscriptIndexBaseShifter(IdentityMapper):
 # {{{ scope
 
 class Scope:
-    def __init__(self, subprogram_name, arg_names=set()):
+    def __init__(self, subprogram_name, arg_names=None):
+        if arg_names is None:
+            arg_names = set()
         self.subprogram_name = subprogram_name
 
         # map name to data
@@ -193,13 +197,66 @@ class Scope:
 # }}}
 
 
+# {{{ fortran division specializers
+
+class FortranDivisionToFloorDiv(IdentityMapper):
+    def map_fortran_division(self, expr, *args):
+        from warnings import warn
+        from loopy.diagnostic import LoopyWarning
+        warn(
+                "Integer division in Fortran do loop bound. "
+                "Loopy currently forces this to integers and gets it wrong for "
+                "negative arguments.", LoopyWarning)
+        from pymbolic.primitives import FloorDiv
+        return FloorDiv(
+                self.rec(expr.numerator, *args),
+                self.rec(expr.denominator, *args))
+
+
+class FortranDivisionSpecializer(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, kernel):
+        super().__init__(rule_mapping_context)
+        from loopy.type_inference import TypeInferenceMapper
+        self.infer_type = TypeInferenceMapper(kernel)
+        self.kernel = kernel
+
+    def map_fortran_division(self, expr, *args):
+        # We remove all these before type inference ever sees them.
+        num_dtype = self.infer_type(expr.numerator).numpy_dtype
+        den_dtype = self.infer_type(expr.denominator).numpy_dtype
+
+        from pymbolic.primitives import Quotient, FloorDiv
+        if num_dtype.kind in "iub" and den_dtype.kind in "iub":
+            warn_with_kernel(self.kernel,
+                    "fortran_int_div",
+                    "Integer division in Fortran code. Loopy currently gets this "
+                    "wrong for negative arguments.")
+            return FloorDiv(
+                    self.rec(expr.numerator, *args),
+                    self.rec(expr.denominator, *args))
+
+        else:
+            return Quotient(
+                    self.rec(expr.numerator, *args),
+                    self.rec(expr.denominator, *args))
+
+
+def specialize_fortran_division(knl):
+    rmc = SubstitutionRuleMappingContext(
+            knl.substitutions, knl.get_var_name_generator())
+    return FortranDivisionSpecializer(rmc, knl).map_kernel(knl)
+
+# }}}
+
+
 # {{{ translator
 
 class F2LoopyTranslator(FTreeWalkerBase):
-    def __init__(self, filename, target=None):
+    def __init__(self, filename, target=None, all_names_known=True):
         FTreeWalkerBase.__init__(self, filename)
 
         self.target = target
+        self.all_names_known = all_names_known
 
         self.scope_stack = []
 
@@ -365,7 +422,9 @@ class F2LoopyTranslator(FTreeWalkerBase):
         for name, data in node.stmts:
             name, = name
             assert name not in scope.data
-            scope.data[name] = [self.parse_expr(node, i) for i in data]
+            scope.data[name] = [
+                    scope.process_expression_for_loopy(
+                        self.parse_expr(node, i)) for i in data]
 
         return []
 
@@ -461,7 +520,9 @@ class F2LoopyTranslator(FTreeWalkerBase):
         cond_var = var(cond_name)
 
         self.add_expression_instruction(
-                cond_var, self.parse_expr(node, node.expr))
+                cond_var,
+                scope.process_expression_for_loopy(
+                    self.parse_expr(node, node.expr)))
 
         cond_expr = cond_var
         if context_cond is not None:
@@ -531,9 +592,10 @@ class F2LoopyTranslator(FTreeWalkerBase):
                         % (loop_var, iname_dtype, self.index_dtype))
 
         scope.use_name(loop_var)
-        loop_bounds = self.parse_expr(
-                node,
-                loop_bounds, min_precedence=self.expr_parser._PREC_FUNC_ARGS)
+        loop_bounds = scope.process_expression_for_loopy(
+                self.parse_expr(
+                    node,
+                    loop_bounds, min_precedence=self.expr_parser._PREC_FUNC_ARGS))
 
         if len(loop_bounds) == 2:
             start, stop = loop_bounds
@@ -598,7 +660,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     isl.Constraint.inequality_from_aff(
                         iname_rel_aff(space,
                             loopy_loop_var, "<=",
-                            aff_from_expr(space, stop-start)))))
+                            aff_from_expr(space, FortranDivisionToFloorDiv()(
+                                stop-start))))))
 
         from pymbolic import var
         scope.active_iname_aliases[loop_var] = \
@@ -716,6 +779,9 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     seq_dependencies=seq_dependencies,
                     lang_version=MOST_RECENT_LANGUAGE_VERSION
                     )
+
+            if self.all_names_known:
+                knl = specialize_fortran_division(knl)
 
             from loopy.loop import fuse_loop_domains
             knl = fuse_loop_domains(knl)
