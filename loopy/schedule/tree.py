@@ -255,6 +255,11 @@ def make_schedule_tree(kernel):
 # }}}
 
 
+@dataclass
+class GroupedChildren:
+    contents: List[ScheduleNode]
+
+
 class Mapper:
     def __call__(self, expr, *args, **kwargs):
         try:
@@ -269,25 +274,36 @@ class Mapper:
 
 
 class IdentityMapper(Mapper):
+    def combine(self, values):
+        result = []
+        for val in values:
+            if isinstance(val, GroupedChildren):
+                result.extend(val.contents)
+            else:
+                assert isinstance(val, ScheduleNode)
+                result.append(val)
+
+        return result
+
     def map_schedule(self, expr, *args, **kwargs):
-        return Schedule([self.rec(child, *args, **kwargs)
-                         for child in expr.children])
+        return Schedule(self.combine([self.rec(child, *args, **kwargs)
+                                      for child in expr.children]))
 
     def map_instruction_block(self, expr, *args, **kwargs):
-        return InstructionBlock([self.rec(child, *args, **kwargs)
-                                 for child in expr.children])
+        return InstructionBlock(self.combine([self.rec(child, *args, **kwargs)
+                                              for child in expr.children]))
 
     def map_function(self, expr, *args, **kwargs):
         return Function(expr.name,
                         expr.extra_args,
                         expr.extra_inames,
-                        [self.rec(child, *args, **kwargs)
-                         for child in expr.children])
+                        self.combine([self.rec(child, *args, **kwargs)
+                                      for child in expr.children]))
 
     def map_loop(self, expr, *args, **kwargs):
         return Loop(expr.iname,
-                    [self.rec(child, *args, **kwargs)
-                     for child in expr.children])
+                    self.combine([self.rec(child, *args, **kwargs)
+                                  for child in expr.children]))
 
     def map_barrier(self, expr, *args, **kwargs):
         return Barrier(expr.comment, expr.synchronization_kind,
@@ -314,6 +330,10 @@ class CombineMapper(Mapper):
                              for child in expr.children])
 
     def map_loop(self, expr, *args, **kwargs):
+        return self.combine([self.rec(child, *args, **kwargs)
+                             for child in expr.children])
+
+    def map_polyhedral_loop(self, expr, *args, **kwargs):
         return self.combine([self.rec(child, *args, **kwargs)
                              for child in expr.children])
 
@@ -364,6 +384,11 @@ class StringifyMapper(CombineMapper):
                              super().map_loop(expr, level+1),
                              f"{self._indent(level)}end {expr.iname}"])
 
+    def map_polyhedral_loop(self, expr, level=0):
+        return self.combine([f"{self._indent(level)}PolyhedralFor({expr.domain})",
+                             super().map_polyhedral_loop(expr, level+1),
+                             f"{self._indent(level)}end {expr.iname}"])
+
     def map_for(self, expr, level=0):
         return self.combine([f"{self._indent(level)}For({expr.iname}, "
                              f"{expr.lower_bound}, {expr.upper_bound}, "
@@ -392,7 +417,7 @@ def _wrap_in_if(cond, nodes):
     if cond.is_universe():
         return nodes
     else:
-        return If(set_to_cond_expr(cond), nodes)
+        return [If(set_to_cond_expr(cond), nodes)]
 
 
 def _implement_hw_axes_in_domains(implemented_domain, domain,
@@ -642,38 +667,25 @@ class InstructionBlockHomogenizer(IdentityMapper):
         return (insn1.within_inames == insn2.within_inames
                 and insn1.predicates == insn2.predicates)
 
-    def _map_insn_block_parent(self, expr):
-        new_children = []
+    def map_instruction_block(self, expr):
+        insn_blocks = []
 
-        for child in expr.children:
-            if isinstance(child, InstructionBlock):
-                # {{{ add instruction blocks containing similar run instructions
-                similar_run_insns = []
+        similar_run_insns = []
 
-                for run_insn in child.children:
-                    if similar_run_insns:
-                        if self._are_insns_similar(similar_run_insns[-1].insn_id,
-                                                   run_insn.insn_id):
-                            similar_run_insns.append(run_insn)
-                        else:
-                            new_children.append(InstructionBlock(similar_run_insns))
-                            similar_run_insns = [run_insn]
-                    else:
-                        similar_run_insns.append(run_insn)
-
-                new_children.append(InstructionBlock(similar_run_insns))
-
-                # }}}
+        for run_insn in expr.children:
+            if similar_run_insns:
+                if self._are_insns_similar(similar_run_insns[-1].insn_id,
+                                            run_insn.insn_id):
+                    similar_run_insns.append(run_insn)
+                else:
+                    insn_blocks.append(InstructionBlock(similar_run_insns))
+                    similar_run_insns = [run_insn]
             else:
-                new_children.append(self.rec(child))
+                similar_run_insns.append(run_insn)
 
-        return expr.with_children(new_children)
+        insn_blocks.append(InstructionBlock(similar_run_insns))
 
-    map_loop = _map_insn_block_parent
-    map_function = _map_insn_block_parent
-    map_schedule = _map_insn_block_parent
-    map_for = _map_insn_block_parent
-    map_if = _map_insn_block_parent
+        return GroupedChildren(insn_blocks)
 
 
 def homogenize_instruction_blocks(kernel):
@@ -697,16 +709,20 @@ def homogenize_instruction_blocks(kernel):
 
 
 def insert_predicates_into_schedule(kernel):
+    assert kernel.state >= KernelState.LINEARIZED
+    assert isinstance(kernel.schedule, Schedule)
+
     # {{{ preprocessing before beginning the predicate insertion.
 
     kernel = homogenize_instruction_blocks(kernel)
 
     # }}}
 
-    assert kernel.state >= KernelState.LINEARIZED
-    assert isinstance(kernel.schedule, Schedule)
-    new_schedule = PredicateInsertionMapper(kernel)(kernel.schedule)
-    return kernel.copy(schedule=new_schedule)
+    schedule = PolyhedronLoopifier(kernel)(kernel.schedule)
+    schedule = Unroller(kernel)(schedule)
+    schedule = PredicateInsertionMapper(kernel)(schedule)
+
+    return kernel.copy(schedule=schedule)
 
 
 def get_insns_in_function(kernel, name):
