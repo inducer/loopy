@@ -922,6 +922,9 @@ def homogenize_instruction_blocks(kernel):
 
 
 def insert_predicates_into_schedule(kernel):
+    if kernel.iname_slab_increments:
+        raise NotImplementedError
+
     assert kernel.state >= KernelState.LINEARIZED
     assert isinstance(kernel.schedule, Schedule)
 
