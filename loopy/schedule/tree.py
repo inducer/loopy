@@ -45,6 +45,7 @@ class Barrier(ScheduleNode):
     """
     comment: str
     synchronization_kind: str
+    mem_kind: str
     originating_insn_id: Optional[str]
 
     mapper_method: str = field(default="map_barrier", repr=False, init=False)
@@ -205,12 +206,13 @@ class ScheduleTreeBuilder:
 
         self.current_node.children.append(RunInstruction(insn_id))
 
-    def add_barrier(self, comment, kind, insn_id):
+    def add_barrier(self, comment, sync_kind, mem_kind, insn_id):
         if isinstance(self.current_node, InstructionBlock):
             self._build_stack.pop()
 
         assert isinstance(self.current_node, (Schedule, Function, Loop))
-        self.current_node.children.append(Barrier(comment, kind, insn_id))
+        self.current_node.children.append(Barrier(comment, sync_kind, mem_kind,
+                                                  insn_id))
 
     def exit_function(self):
         if isinstance(self.current_node, InstructionBlock):
@@ -254,6 +256,7 @@ def make_schedule_tree(kernel):
         elif isinstance(sched_item, schedule.Barrier):
             bob.add_barrier(sched_item.comment,
                             sched_item.synchronization_kind,
+                            sched_item.mem_kind,
                             sched_item.originating_insn_id)
         else:
             raise NotImplementedError(type(sched_item))
@@ -316,7 +319,7 @@ class IdentityMapper(Mapper):
 
     def map_barrier(self, expr, *args, **kwargs):
         return Barrier(expr.comment, expr.synchronization_kind,
-                       expr.originating_insn_id)
+                       expr.mem_kind, expr.originating_insn_id)
 
     def map_run_instruction(self, expr, *args, **kwargs):
         return RunInstruction(expr.insn_id)
