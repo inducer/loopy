@@ -938,17 +938,20 @@ class CFamilyASTBuilder(ASTBuilderBase):
         import cgen
         return cgen
 
-    def get_expression_to_code_mapper(self, kernel, callables_table, var_subst_map):
+    def get_expression_to_code_mapper(self, kernel, callables_table,
+                                      var_subst_map, vectorization_info):
         return self.get_expression_to_c_expression_mapper(kernel,
                                                           callables_table,
-                                                          var_subst_map)
+                                                          var_subst_map,
+                                                          vectorization_info)
 
     def get_expression_to_c_expression_mapper(self, kernel, callables_table,
-                                              var_subst_map):
+                                              var_subst_map,
+                                              vectorization_info):
         from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-        return ExpressionToCExpressionMapper(
-                kernel, callables_table, self, var_subst_map,
-                fortran_abi=self.target.fortran_abi)
+        return ExpressionToCExpressionMapper(kernel, callables_table, self,
+                                             var_subst_map, vectorization_info,
+                                             fortran_abi=self.target.fortran_abi)
 
     def get_c_expression_to_code_mapper(self):
         from loopy.target.c.codegen.expression import CExpressionToCodeMapper
@@ -1025,9 +1028,10 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
         return arg_decl
 
-    def emit_assignment(self, kernel, insn, var_subst_map):
+    def emit_assignment(self, kernel, insn, var_subst_map, vectorization_info):
 
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map)
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+                                                 vectorization_info)
 
         assignee_var_name, = insn.assignee_var_names()
 
@@ -1134,7 +1138,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
     def emit_sequential_loop(self, kernel, iname, iname_dtype, lbound, ubound,
                              inner, var_subst_map):
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map)
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+                                                 vectorization_info=None)
 
         from pymbolic import var
         from pymbolic.primitives import Comparison
@@ -1176,9 +1181,11 @@ class CFamilyASTBuilder(ASTBuilderBase):
     def can_implement_conditionals(self):
         return True
 
-    def emit_if(self, kernel, condition, ast, var_subst_map):
+    def emit_if(self, kernel, condition, ast, var_subst_map, vectorization_info):
+        assert vectorization_info is None, "cannot be vectorizable if we see an if"
         from cgen import If
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map)
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+                                                 vectorization_info=None)
         return If(ecm(condition), ast)
 
     # }}}

@@ -107,7 +107,8 @@ def generate_instruction_code(codegen_state, insn):
 
 def generate_assignment_instruction_code(kernel, insn, ast_builder,
                                          hw_inames_expr, vinfo):
-    ecm = ast_builder.get_expression_to_code_mapper(kernel, hw_inames_expr)
+    ecm = ast_builder.get_expression_to_code_mapper(kernel, hw_inames_expr,
+                                                    vinfo)
 
     from pymbolic.primitives import Variable, Subscript, Lookup
     from loopy.symbolic import LinearSubscript

@@ -649,8 +649,10 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     # {{{ code generation guts
 
-    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map):
-        return ExpressionToOpenCLCExpressionMapper(kernel, self, var_subst_map)
+    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map,
+                                              vectorization_info):
+        return ExpressionToOpenCLCExpressionMapper(kernel, self, var_subst_map,
+                                                   vectorization_info)
 
     def add_vector_access(self, access_expr, index):
         # The 'int' avoids an 'L' suffix for long ints.
@@ -893,9 +895,11 @@ class VolatileMemExpressionToOpenCLCExpressionMapper(
 
 
 class VolatileMemOpenCLCASTBuilder(OpenCLCASTBuilder):
-    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map):
+    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map,
+                                              vectorization_info):
         return VolatileMemExpressionToOpenCLCExpressionMapper(kernel, self,
-                                                              var_subst_map)
+                                                              var_subst_map,
+                                                              vectorization_info)
 
 
 class VolatileMemOpenCLTarget(OpenCLTarget):

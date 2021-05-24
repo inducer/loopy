@@ -140,13 +140,11 @@ class VectorizationInfo:
     """
     .. attribute:: iname
     .. attribute:: length
-    .. attribute:: space
     """
 
-    def __init__(self, iname, length, space):
+    def __init__(self, iname, length):
         self.iname = iname
         self.length = length
-        self.space = space
 
 
 class SeenFunction(ImmutableRecord):

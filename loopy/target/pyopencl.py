@@ -772,7 +772,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         return code_lines
 
     def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={})
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},
+                                                 vectorization_info=None)
 
         from loopy.schedule.tree import get_insns_in_function
         gsize, lsize = kernel.get_grid_sizes_for_insn_ids_as_exprs(
@@ -863,20 +864,23 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
     # }}}
 
-    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map):
-        return ExpressionToPyOpenCLCExpressionMapper(kernel, self, var_subst_map)
-
+    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map,
+                                              vectorization_info):
+        return ExpressionToPyOpenCLCExpressionMapper(kernel, self, var_subst_map,
+                                                     vectorization_info)
 # }}}
 
 
 # {{{ volatile mem acccess target
 
 class VolatileMemPyOpenCLCASTBuilder(PyOpenCLCASTBuilder):
-    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map):
+    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map,
+                                              vectorization_info):
         from loopy.target.opencl import \
                 VolatileMemExpressionToOpenCLCExpressionMapper
         return VolatileMemExpressionToOpenCLCExpressionMapper(kernel, self,
-                                                              var_subst_map)
+                                                              var_subst_map,
+                                                              vectorization_info)
 
 
 class VolatileMemPyOpenCLTarget(PyOpenCLTarget):

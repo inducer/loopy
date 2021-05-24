@@ -35,10 +35,16 @@ from genpy import Suite, Collection
 # {{{ expression to code
 
 class ExpressionToPythonMapper(StringifyMapper):
-    def __init__(self, kernel, ast_builder, var_subst_map, type_inf_mapper=None):
+    def __init__(self, kernel, ast_builder, var_subst_map, vectorization_info,
+                 type_inf_mapper=None):
         self.kernel = kernel
         self.ast_builder = ast_builder
         self.var_subst_map = var_subst_map
+
+        if vectorization_info:
+            raise NotImplementedError("vectorization not implemented")
+
+        self.vectorization_info = vectorization_info
 
         if type_inf_mapper is None:
             type_inf_mapper = TypeReader(self.kernel,
@@ -201,8 +207,10 @@ class PythonASTBuilderBase(ASTBuilderBase):
 
         return result
 
-    def get_expression_to_code_mapper(self, kernel, var_subst_map):
-        return ExpressionToPythonMapper(kernel, self, var_subst_map)
+    def get_expression_to_code_mapper(self, kernel, var_subst_map,
+                                      vectorization_info):
+        return ExpressionToPythonMapper(kernel, self, var_subst_map,
+                                        vectorization_info)
 
     @property
     def ast_base_class(self):
@@ -262,19 +270,24 @@ class PythonASTBuilderBase(ASTBuilderBase):
     def can_implement_conditionals(self):
         return True
 
-    def emit_if(self, kernel, condition, ast, var_subst_map):
+    def emit_if(self, kernel, condition, ast, var_subst_map, vectorization_info):
+        assert vectorization_info is None
         from genpy import If
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map)
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+                                                 vectorization_info)
         return If(ecm(condition), ast)
 
-    def emit_assignment(self, codegen_state, insn):
-        ecm = codegen_state.expression_to_code_mapper
-
+    def emit_assignment(self, kernel, insn, var_subst_map, vectorization_info):
         if insn.atomicity:
             raise NotImplementedError("atomic ops in Python")
 
+        if vectorization_info:
+            raise NotImplementedError("vectorized assignments in Python")
+
         from pymbolic.mapper.stringifier import PREC_NONE
         from genpy import Assign
+
+        ecm = self.expression_to_code_mapper(kernel, var_subst_map)
 
         return Assign(
                 ecm(insn.assignee, prec=PREC_NONE, type_context=None),

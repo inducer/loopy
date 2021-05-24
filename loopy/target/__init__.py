@@ -221,7 +221,8 @@ class ASTBuilderBase:
     def ast_if_class(self):
         raise NotImplementedError()
 
-    def get_expression_to_code_mapper(self, kernel, var_subst_map):
+    def get_expression_to_code_mapper(self, kernel, var_subst_map,
+                                      vectorization_info):
         raise NotImplementedError()
 
     def add_vector_access(self, access_expr, index):
@@ -243,7 +244,7 @@ class ASTBuilderBase:
     def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
         raise NotImplementedError()
 
-    def emit_assignment(self, codegen_state, insn):
+    def emit_assignment(self, kernel, insn, var_subst_map, vectorization_info):
         raise NotImplementedError()
 
     def emit_multiple_assignment(self, codegen_state, insn):
@@ -257,7 +258,7 @@ class ASTBuilderBase:
     def can_implement_conditionals(self):
         return False
 
-    def emit_if(self, condition_str, ast):
+    def emit_if(self, kernel, condition, ast, var_subst_map, vectorization_info):
         raise NotImplementedError()
 
     def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
@@ -307,7 +308,8 @@ class DummyHostASTBuilder(ASTBuilderBase):
     def get_temporary_decls(self, codegen_state, schedule_index):
         return []
 
-    def get_expression_to_code_mapper(self, kernel, var_subst_map):
+    def get_expression_to_code_mapper(self, kernel, var_subst_map,
+                                      vectorization_info):
         return _DummyExpressionToCodeMapper()
 
     def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):

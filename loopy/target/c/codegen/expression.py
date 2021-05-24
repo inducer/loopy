@@ -63,23 +63,18 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         with. A caller might set this to map iname to hardware iname expressions.
     """
     def __init__(self, kernel, callables_table, ast_builder, var_subst_map,
-                 vectorization_info=None, fortran_abi=False,
-                 type_inf_mapper=None):
+                 vectorization_info, fortran_abi=False, type_inf_mapper=None):
         self.kernel = kernel
         self.callables_table = callables_table
         self.ast_builder = ast_builder
         self.var_subst_map = var_subst_map
+        self.vectorization_info = vectorization_info
 
         if type_inf_mapper is None:
             type_inf_mapper = TypeReader(self.kernel,
                                          callables_table)
 
         self.type_inf_mapper = type_inf_mapper
-
-        # TODO: rewire mapper methods so that we don't store vectorization_info
-        # as a state, but instead pass it as an argument to each mapper method
-        self.vectorization_info = vectorization_info
-
         self.fortran_abi = fortran_abi
 
     # {{{ helpers

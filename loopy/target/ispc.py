@@ -285,8 +285,9 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # {{{ code generation guts
 
-    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map):
-        return ExprToISPCExprMapper(kernel, self, var_subst_map)
+    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map,
+                                              vectorization_info):
+        return ExprToISPCExprMapper(kernel, self, var_subst_map, vectorization_info)
 
     def add_vector_access(self, access_expr, index):
         return access_expr[index]
@@ -372,13 +373,14 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         from cgen.ispc import ISPCUniform
         return ISPCUniform(result)
 
-    def emit_assignment(self, codegen_state, insn):
-        kernel = codegen_state.kernel
-        ecm = codegen_state.expression_to_code_mapper
+    def emit_assignment(self, kernel, insn, var_subst_map, vectorization_info):
+        raise NotImplementedError
+        ecm = self.expression_to_code_mapper(kernel, var_subst_map,
+                                             vectorization_info)
 
         assignee_var_name, = insn.assignee_var_names()
 
-        lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
+        lhs_var = kernel.get_var_descriptor(assignee_var_name)
         lhs_dtype = lhs_var.dtype
 
         if insn.atomicity:
@@ -408,8 +410,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                     simplify_using_aff(kernel, idx) for idx in lhs.index_tuple)
 
             access_info = get_access_info(kernel.target, ary, index_tuple,
-                    lambda expr: evaluate(expr, codegen_state.var_subst_map),
-                    codegen_state.vectorization_info)
+                    lambda expr: evaluate(expr, var_subst_map),
+                    vectorization_info)
 
             from loopy.kernel.data import ArrayArg, TemporaryVariable
 

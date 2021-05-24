@@ -457,7 +457,8 @@ class CodeGenMapper(CombineMapper):
                                               else children_res.host_ast)
 
         if_ast = ast_builder.emit_if(self.kernel, expr.condition, if_body,
-                                     context.iname_exprs)
+                                     context.iname_exprs,
+                                     context.vectorization_info)
 
         if context.in_device:
             return CodeGenMapperAccumulator(host_ast=children_res.host_ast,
