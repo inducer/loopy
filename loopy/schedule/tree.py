@@ -578,9 +578,15 @@ class PolyhedronLoopifier(IdentityMapper):
         assert expr.domain.dim(dim_type.set) == 1
         assert context.implemented_domain.dim(dim_type.set) == 0
 
-        domain = _align_and_gist(expr.domain, context.implemented_domain)
-        downstream_domain = _align_and_intersect(domain,
-                                                 context.implemented_domain)
+        implemented_domain = _implement_hw_axes_in_domains(context
+                                                           .implemented_domain,
+                                                           expr.domain,
+                                                           self.kernel,
+                                                           context.gsize,
+                                                           context.lsize)
+
+        domain = _align_and_gist(expr.domain, implemented_domain)
+        downstream_domain = _align_and_intersect(domain, implemented_domain)
         downstream_domain = downstream_domain.move_dims(dim_type.param,
                                                         (downstream_domain
                                                          .dim(dim_type.param)),
