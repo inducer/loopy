@@ -7,7 +7,7 @@ from functools import reduce
 from islpy import dim_type
 from loopy.diagnostic import LoopyError
 from loopy.kernel import KernelState
-from loopy.kernel.tools import get_all_hw_inames
+from loopy.kernel.tools import get_all_inames_tagged_with
 
 
 # {{{ LoopKernel.schedule a tree
@@ -441,10 +441,10 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
         from *implemented_domain* and constraints arising from constraining
         hardware inames in *domain* to their corresponding
     """
-    from loopy.kernel.data import HardwareConcurrentTag, GroupIndexTag, LocalIndexTag
+    from loopy.kernel.data import AxisTag, GroupIndexTag, LocalIndexTag
     from loopy.isl_helpers import make_slab, static_min_of_pw_aff
 
-    all_hw_inames = get_all_hw_inames(kernel)
+    all_hw_inames = get_all_inames_tagged_with(kernel, AxisTag)
 
     for dim_name in domain.get_var_dict():
         if dim_name in all_hw_inames:
@@ -452,7 +452,7 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
                 # this hardware dim is already implemented => ignore
                 continue
 
-            tag, = kernel.iname_tags_of_type(dim_name, HardwareConcurrentTag)
+            tag, = kernel.iname_tags_of_type(dim_name, AxisTag)
             assert isinstance(tag, (GroupIndexTag, LocalIndexTag))
 
             lbound = static_min_of_pw_aff(kernel
@@ -480,7 +480,7 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
                                   & make_slab(implemented_domain.space, dim_name,
                                               lbound, lbound + size))
 
-    return implemented_domain
+    return implemented_domain.params()
 
 
 @dataclass(frozen=True)
@@ -562,7 +562,7 @@ class PolyhedronLoopifier(IdentityMapper):
                                                             dim_type.set,
                                                             0, 1),
                                                  implemented_domain
-                                                 )
+                                                 ).params()
         children = [self.rec(child, (context
                                      .copy(implemented_domain=downstream_domain)))
                     for child in expr.children]
@@ -572,9 +572,16 @@ class PolyhedronLoopifier(IdentityMapper):
                               domain=domain)
 
     def map_polyhedral_loop(self, expr, context):
+        assert expr.domain.dim(dim_type.set) == 1
+        assert context.implemented_domain.dim(dim_type.set) == 0
+
         domain = _align_and_gist(expr.domain, context.implemented_domain)
         downstream_domain = _align_and_intersect(domain,
                                                  context.implemented_domain)
+        downstream_domain = downstream_domain.move_dims(dim_type.param,
+                                                        (downstream_domain
+                                                         .dim(dim_type.param)),
+                                                        dim_type.set, 0, 1).params()
         children = [self.rec(child, (context
                                      .copy(implemented_domain=downstream_domain)))
                     for child in expr.children]
@@ -583,19 +590,137 @@ class PolyhedronLoopifier(IdentityMapper):
                               children=self.combine(children), domain=domain)
 
 
+class UnvectorizableInamesCollector(CombineMapper):
+    """
+    Mapper to gather all insn ids.
+    """
+    def __init__(self, kernel):
+        self.kernel = kernel
+
+    def combine(self, values):
+        assert all(isinstance(value, frozenset) for value in values)
+        return reduce(frozenset.union, values, frozenset())
+
+    def map_polyhedral_loop(self, expr):
+        from loopy.kernel.data import VectorizeTag
+        from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
+        from loopy.diagnostic import warn
+        from loopy.symbolic import pw_aff_to_expr
+        from loopy.expression import VectorizabilityChecker
+        from loopy.codegen import Unvectorizable
+        from loopy.kernel.instruction import MultiAssignmentBase
+
+        if self.kernel.iname_tags_of_type(expr.iname, VectorizeTag):
+            # FIXME: also assert that all children are just instruction blocks..
+            bounds = self.kernel.get_iname_bounds(expr.iname, constants_only=True)
+
+            length_aff = static_max_of_pw_aff(bounds.size, constants_only=True)
+
+            if not length_aff.is_cst():
+                warn(self.kernel, "vec_upper_not_const",
+                     f"upper bound for vectorized loop '{expr.iname}' is not"
+                     " a constant, cannot vectorize.")
+                return frozenset([expr.iname])
+
+            length = int(pw_aff_to_expr(length_aff))
+
+            lower_bound_aff = static_value_of_pw_aff(bounds
+                                                     .lower_bound_pw_aff
+                                                     .coalesce(),
+                                                     constants_only=False)
+
+            if not lower_bound_aff.plain_is_zero():
+                warn(self.kernel, "vec_lower_not_0",
+                     f"lower bound for vectorized loop '{expr.iname}' is not zero,"
+                     "cannot vectorize.")
+                return frozenset([expr.iname])
+
+            # {{{ validate the vectorizability of instructions within the
+
+            for child in expr.children:
+                if not isinstance(child, InstructionBlock):
+                    warn(self.kernel, "vec_loop_complex_control_flow",
+                         f"loop nest of vectorized loop '{expr.iname}' contains"
+                         " other loops or barriers => unvectorizable.")
+                    return frozenset([expr.iname])
+
+                assert isinstance(child, InstructionBlock)
+                for run_insn in child.children:
+                    insn = self.kernel.id_to_insn[run_insn.insn_id]
+
+                    if not isinstance(insn, MultiAssignmentBase):
+                        warn(self.kernel, "vec_loop_contains_non_assignment_insn",
+                             f"loop nest of vectorized loop '{expr.iname}' contains"
+                             f" instruction of type {type(insn)} that cannot be"
+                             " vectorized.")
+                        return frozenset([expr.iname])
+
+                    if insn.predicates:
+                        warn(self.kernel, "vec_loop_contains_predicates",
+                             f"loop nest of vectorized loop '{expr.iname}' contains"
+                             "predicates => masking instances of vectorized"
+                             "loop not yet supported.")
+                        return frozenset([expr.iname])
+
+                    if insn.atomicity:
+                        warn(self.kernel, "vec_loop_contains_atomic_insns",
+                             f"loop nest of vectorized loop '{expr.iname}' contains"
+                             "atomic instructions => unvectorizable.")
+                        return frozenset([expr.iname])
+
+                    vcheck = VectorizabilityChecker(
+                            self.kernel, expr.iname, length)
+
+                    try:
+                        lhs_is_vector = vcheck(insn.assignee)
+                        rhs_is_vector = vcheck(insn.expression)
+                    except Unvectorizable as e:
+                        warn(self.kernel, "vectorize_failed",
+                             f"Vectorization of '{expr.iname}' failed due to '{e}'"
+                             f" in '{insn.id}'.")
+                        return frozenset([expr.iname])
+                    else:
+                        if not lhs_is_vector and rhs_is_vector:
+                            warn(self.kernel, "vectorize_failed",
+                                 f"Vectorization of '{expr.iname}' failed in'"
+                                 f" '{insn.id}' as LHS is scalar, RHS is vector,"
+                                 " cannot assign")
+                            return frozenset([expr.iname])
+
+            # }}}
+
+        return super().map_polyhedral_loop(expr)
+
+    def map_run_instruction(self, expr):
+        return frozenset()
+
+    def map_barrier(self, expr):
+        return frozenset()
+
+
 class Unroller(PolyhedronLoopifier):
+    """
+    .. attribute extra_unroll_inames::
+
+        A :class:`frozenset` of inames that are to be unrolled other than the
+        usual suspects tagged with 'unr`. One use-case could be unrolling could
+        be a fallback implementation for other iname implementations.
+    """
+    def __init__(self, kernel, extra_unroll_inames):
+        super().__init__(kernel)
+        self.extra_unroll_inames = extra_unroll_inames
 
     def map_polyhedral_loop(self, expr, context):
         from loopy.kernel.data import UnrollTag, UnrolledIlpTag
         from loopy.isl_helpers import (make_slab, static_max_of_pw_aff,
                                        static_min_of_pw_aff)
 
-        if self.kernel.iname_tags_of_type(expr.iname, (UnrolledIlpTag,
-                                                       UnrollTag)):
+        if (self.kernel.iname_tags_of_type(expr.iname, (UnrolledIlpTag,
+                                                        UnrollTag))
+                or expr.iname in self.extra_unroll_inames):
             domain = _align_and_gist(expr.domain, context.implemented_domain)
             ubound = static_max_of_pw_aff(domain.dim_max(0), constants_only=False)
-            lbound = static_min_of_pw_aff(domain.dim_min(0),
-                                          constants_only=False)
+            lbound = static_min_of_pw_aff(domain.dim_min(0), constants_only=False)
             # FIXME: Write a better error message o'er here that the loop
             # cannot be unrolled.
             size = static_max_of_pw_aff(ubound-lbound+1, constants_only=True)
@@ -610,6 +735,11 @@ class Unroller(PolyhedronLoopifier):
 
                 dwnstrm_dom = _align_and_intersect(unrll_dom,
                                                    context.implemented_domain)
+
+                dwnstrm_dom = dwnstrm_dom.move_dims(dim_type.param,
+                                                    (dwnstrm_dom
+                                                     .dim(dim_type.param)),
+                                                    dim_type.set, 0, 1).params()
                 children = [self.rec(child, (context
                                             .copy(implemented_domain=dwnstrm_dom)))
                             for child in expr.children]
@@ -643,7 +773,8 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
 
         # {{{ compute the predicates due to the hardware inames
 
-        hw_inames = inames & get_all_hw_inames(self.kernel)
+        from loopy.kernel.data import AxisTag
+        hw_inames = inames & get_all_inames_tagged_with(self.kernel, AxisTag)
 
         if hw_inames:
 
@@ -681,6 +812,7 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
         from loopy.isl_helpers import (static_min_of_pw_aff,
                                        static_max_of_pw_aff, make_slab)
 
+        assert expr.domain.dim(dim_type.set) == 1
         lb = static_min_of_pw_aff(expr.domain.dim_min(0).gist(context
                                                               .implemented_domain),
                                   constants_only=False)
@@ -797,8 +929,13 @@ def insert_predicates_into_schedule(kernel):
     # }}}
 
     schedule = PolyhedronLoopifier(kernel)(kernel.schedule)
-    schedule = Unroller(kernel)(schedule)
+    unvectorizable_inames = UnvectorizableInamesCollector(kernel)(schedule)
+    # FIXME: (For now) unvectorizable inames always fallback to unrolling this
+    # should be selected based on the target.
+    schedule = Unroller(kernel, unvectorizable_inames)(schedule)
     schedule = PredicateInsertionMapper(kernel)(schedule)
+
+    kernel = kernel.copy(schedule=schedule)
 
     return kernel.copy(schedule=schedule)
 
