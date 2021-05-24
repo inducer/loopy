@@ -434,6 +434,7 @@ class CodeGenMapper(CombineMapper):
                                                             loop_body,
                                                             context.iname_exprs)]
             else:
+                # special case: if ubound == lbound => just have the body
                 loop_ast = body_ast
 
             if context.in_device:
@@ -470,8 +471,20 @@ class CodeGenMapper(CombineMapper):
     # }}}
 
     def map_barrier(self, expr, context):
-        # ast_builder = self.device_ast_builder if context.in_device else self.host_ast_builder  # noqa: E501
-        raise NotImplementedError
+        if context.in_device:
+            ast_builder = self.device_ast_builder
+            barrier_ast = ast_builder.emit_barrier(expr.synchronization_kind,
+                                                   expr.mem_kind, expr.comment)
+            return CodeGenMapperAccumulator(device_ast=[barrier_ast],
+                                            host_ast=[])
+        else:
+            if expr.synchronization_kind in ["global", "local"]:
+                return CodeGenMapperAccumulator(host_ast=[self
+                                                          .host_ast_builder
+                                                          .emit_blank_line()],
+                                                device_ast=[])
+            else:
+                raise NotImplementedError(f"Host barrier for {expr}.")
 
     # {{{ instruction
 
