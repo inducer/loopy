@@ -517,7 +517,7 @@ class PolyhedronLoopifier(IdentityMapper):
     def map_function(self, expr, context):
         # get the implemented domain for the insn ids in this kernel
         # Shouldn't be difficult to write a combine mapper for it.
-        gsize, lsize = self.kernel.get_grid_sizes_for_insn_ids_as_exprs(
+        gsize, lsize = self.kernel.get_grid_sizes_for_insn_ids(
             InstructionGatherer()(expr))
         # FIXME: Somehow we need to get rid of allowing the hardware inames to
         # be slabbed.
@@ -922,7 +922,8 @@ def homogenize_instruction_blocks(kernel):
 
 
 def insert_predicates_into_schedule(kernel):
-    if kernel.iname_slab_increments:
+    if (kernel.iname_slab_increments
+            and (set(kernel.iname_slab_increments.values()) != {(0, 0)})):
         raise NotImplementedError
 
     assert kernel.state >= KernelState.LINEARIZED
