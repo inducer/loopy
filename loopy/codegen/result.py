@@ -324,8 +324,7 @@ class CodeGenMapper(CombineMapper):
         # {{{ record the iname_exprs for downstream elements
 
         from functools import reduce
-        from loopy.kernel.data import (HardwareConcurrentTag, GroupIndexTag,
-                                       LocalIndexTag)
+        from loopy.kernel.data import GroupIndexTag, LocalIndexTag
         from loopy.isl_helpers import static_min_of_pw_aff
         from loopy.symbolic import (GroupHardwareAxisIndex,
                                     LocalHardwareAxisIndex,
@@ -337,8 +336,8 @@ class CodeGenMapper(CombineMapper):
                             frozenset())
 
         def _hw_iname_expr(iname):
-            tag, = self.kernel.iname_tags_of_type(iname, HardwareConcurrentTag)
-            assert isinstance(tag, (GroupIndexTag, LocalIndexTag))
+            tag, = self.kernel.iname_tags_of_type(iname, (GroupIndexTag,
+                                                          LocalIndexTag))
             lbound = static_min_of_pw_aff(self
                                           .kernel.get_iname_bounds(iname)
                                           .lower_bound_pw_aff,
@@ -352,7 +351,8 @@ class CodeGenMapper(CombineMapper):
         iname_exprs = {iname: _hw_iname_expr(iname)
                        for iname in all_inames
                        if self.kernel.iname_tags_of_type(iname,
-                                                         HardwareConcurrentTag)}
+                                                         (LocalIndexTag,
+                                                          GroupIndexTag))}
 
         # }}}
 
@@ -395,7 +395,15 @@ class CodeGenMapper(CombineMapper):
         ast_builder = self.device_ast_builder if context.in_device else self.host_ast_builder  # noqa: E501
 
         if self.kernel.iname_tags_of_type(expr.iname, vec_tags):
-            raise NotImplementedError
+            assert isinstance(expr.lower_bound, int)
+            assert isinstance(expr.upper_bound, int)
+            assert expr.step == 1
+            length = expr.upper_bound - expr.lower_bound + 1
+            dwnstrm_ctx = context.copy(
+                vectorization_info=VectorizationInfo(iname=expr.iname,
+                                                     length=length))
+            return self.combine([self.rec(child, dwnstrm_ctx)
+                                 for child in expr.children])
         else:
             assert (len(self.kernel.inames[expr.iname].tags) == 0
                     or self.kernel.iname_tags_of_type(expr.iname,

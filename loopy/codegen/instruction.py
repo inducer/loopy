@@ -28,6 +28,7 @@ import islpy as isl
 dim_type = isl.dim_type
 from loopy.codegen import UnvectorizableError
 from loopy.codegen.result import CodeGenerationResult
+from loopy.diagnostic import LoopyError
 from pymbolic.mapper.stringifier import PREC_NONE
 from pytools import memoize_on_first_arg
 
@@ -107,29 +108,6 @@ def generate_instruction_code(codegen_state, insn):
 def generate_assignment_instruction_code(kernel, insn, ast_builder,
                                          hw_inames_expr, vinfo):
     ecm = ast_builder.get_expression_to_code_mapper(kernel, hw_inames_expr)
-    from loopy.expression import VectorizabilityChecker
-
-    # {{{ vectorization handling
-
-    if vinfo is not None:
-        if insn.atomicity:
-            raise UnvectorizableError("atomic operation")
-
-        vcheck = VectorizabilityChecker(
-                kernel, vinfo.iname, vinfo.length)
-        lhs_is_vector = vcheck(insn.assignee)
-        rhs_is_vector = vcheck(insn.expression)
-
-        if not lhs_is_vector and rhs_is_vector:
-            raise UnvectorizableError(
-                    "LHS is scalar, RHS is vector, cannot assign")
-
-        is_vector = lhs_is_vector
-
-        del lhs_is_vector
-        del rhs_is_vector
-
-    # }}}
 
     from pymbolic.primitives import Variable, Subscript, Lookup
     from loopy.symbolic import LinearSubscript
@@ -155,15 +133,15 @@ def generate_assignment_instruction_code(kernel, insn, ast_builder,
 
     del lhs
 
-    result = ast_builder.emit_assignment(kernel, insn, hw_inames_expr)
+    result = ast_builder.emit_assignment(kernel, insn, hw_inames_expr, vinfo)
 
     # {{{ tracing
 
     lhs_dtype = kernel.get_var_descriptor(assignee_var_name).dtype
 
     if kernel.options.trace_assignments or kernel.options.trace_assignment_values:
-        if vinfo and is_vector:
-            raise UnvectorizableError("tracing does not support vectorization")
+        if vinfo:
+            raise LoopyError("tracing does not support vectorization")
 
         from pymbolic.mapper.stringifier import PREC_NONE
         lhs_code = ecm(insn.assignee, PREC_NONE)
