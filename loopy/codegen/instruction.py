@@ -24,85 +24,9 @@ THE SOFTWARE.
 """
 
 
-import islpy as isl
-dim_type = isl.dim_type
 from loopy.codegen import UnvectorizableError
-from loopy.codegen.result import CodeGenerationResult
 from loopy.diagnostic import LoopyError
 from pymbolic.mapper.stringifier import PREC_NONE
-from pytools import memoize_on_first_arg
-
-
-@memoize_on_first_arg
-def _get_new_implemented_domain(kernel, chk_domain, implemented_domain):
-
-    chk_domain, implemented_domain = isl.align_two(
-            chk_domain, implemented_domain)
-    chk_domain = chk_domain.gist(implemented_domain)
-
-    new_implemented_domain = implemented_domain & chk_domain
-    return chk_domain, new_implemented_domain
-
-
-def to_codegen_result(
-        codegen_state, insn_id, domain, check_inames, required_preds, ast):
-    chk_domain = isl.Set.from_basic_set(domain)
-    chk_domain = chk_domain.remove_redundancies()
-    chk_domain = codegen_state.kernel.cache_manager.eliminate_except(chk_domain,
-            check_inames, (dim_type.set,))
-
-    chk_domain, new_implemented_domain = _get_new_implemented_domain(
-            codegen_state.kernel, chk_domain, codegen_state.implemented_domain)
-
-    if chk_domain.is_empty():
-        return None
-
-    condition_exprs = []
-    if not chk_domain.plain_is_universe():
-        from loopy.symbolic import set_to_cond_expr
-        condition_exprs.append(set_to_cond_expr(chk_domain))
-
-    condition_exprs.extend(
-            required_preds - codegen_state.implemented_predicates)
-
-    if condition_exprs:
-        from pymbolic.primitives import LogicalAnd
-        from pymbolic.mapper.stringifier import PREC_NONE
-        ast = codegen_state.ast_builder.emit_if(
-                codegen_state.expression_to_code_mapper(
-                    LogicalAnd(tuple(condition_exprs)), PREC_NONE),
-                ast)
-
-    return CodeGenerationResult.new(
-            codegen_state, insn_id, ast, new_implemented_domain)
-
-
-def generate_instruction_code(codegen_state, insn):
-    kernel = codegen_state.kernel
-
-    from loopy.kernel.instruction import (
-        Assignment, CallInstruction, CInstruction, NoOpInstruction
-    )
-
-    if isinstance(insn, Assignment):
-        ast = generate_assignment_instruction_code(codegen_state, insn)
-    elif isinstance(insn, CallInstruction):
-        ast = generate_call_code(codegen_state, insn)
-    elif isinstance(insn, CInstruction):
-        ast = generate_c_instruction_code(codegen_state, insn)
-    elif isinstance(insn, NoOpInstruction):
-        ast = generate_nop_instruction_code(codegen_state, insn)
-    else:
-        raise RuntimeError("unexpected instruction type")
-
-    insn_inames = insn.within_inames
-
-    return to_codegen_result(
-            codegen_state,
-            insn.id,
-            kernel.get_inames_domain(insn_inames), insn_inames,
-            insn.predicates,
-            ast)
 
 
 def generate_assignment_instruction_code(kernel, insn, ast_builder,
