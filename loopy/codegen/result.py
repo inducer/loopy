@@ -245,7 +245,7 @@ class CodeGenMapper(CombineMapper):
                                               CodeGenerationContext(False, {}))
                                      for child in expr.children])
 
-        for tv in self.kernel.temporary_variables.items():
+        for tv in self.kernel.temporary_variables.values():
             if tv.address_space == AddressSpace.GLOBAL and (
                     tv.initializer is not None):
                 # prepend the initializer atop the code.
@@ -491,7 +491,8 @@ class CodeGenMapper(CombineMapper):
     def map_run_instruction(self, expr, context):
         from loopy.kernel.instruction import (CallInstruction, Assignment,
                                               CInstruction, NoOpInstruction)
-        from loopy.codegen.instruction import generate_assignment_instruction_code
+        from loopy.codegen.instruction import (generate_assignment_instruction_code,
+                                               generate_c_instruction_code)
 
         ast_builder = self.device_ast_builder if context.in_device else self.host_ast_builder  # noqa: E501
 
@@ -507,7 +508,11 @@ class CodeGenMapper(CombineMapper):
                                                             (context
                                                              .vectorization_info))
         elif isinstance(insn, CInstruction):
-            raise NotImplementedError
+            insn_ast = generate_c_instruction_code(self.kernel, insn,
+                                                   ast_builder,
+                                                   context.iname_exprs,
+                                                   (context
+                                                    .vectorization_info))
         elif isinstance(insn, NoOpInstruction):
             raise NotImplementedError
         else:

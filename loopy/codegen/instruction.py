@@ -227,10 +227,12 @@ def generate_call_code(codegen_state, insn):
     return result
 
 
-def generate_c_instruction_code(codegen_state, insn):
-    kernel = codegen_state.kernel
+def generate_c_instruction_code(kernel, insn, ast_builder,
+                                hw_inames_expr, vinfo):
+    ecm = ast_builder.get_expression_to_code_mapper(kernel, hw_inames_expr,
+                                                    vinfo)
 
-    if codegen_state.vectorization_info is not None:
+    if vinfo is not None:
         raise UnvectorizableError("C instructions cannot be vectorized")
 
     body = []
@@ -241,15 +243,14 @@ def generate_c_instruction_code(codegen_state, insn):
     from pymbolic.primitives import Variable
     for name, iname_expr in insn.iname_exprs:
         if (isinstance(iname_expr, Variable)
-                and name not in codegen_state.var_subst_map):
+                and name not in hw_inames_expr):
             # No need, the bare symbol will work
             continue
 
         body.append(
                 Initializer(
-                    POD(codegen_state.ast_builder, kernel.index_dtype, name),
-                    codegen_state.expression_to_code_mapper(
-                        iname_expr, prec=PREC_NONE, type_context="i")))
+                    POD(ast_builder, kernel.index_dtype, name),
+                    ecm(iname_expr, prec=PREC_NONE, type_context="i")))
 
     if body:
         body.append(Line())
