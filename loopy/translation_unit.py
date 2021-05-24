@@ -488,19 +488,19 @@ class CallablesIDCollector(CombineMapper):
     map_type_cast = map_constant
 
 
-def _get_callable_ids_for_knl(knl, callables):
+def _get_reachable_callable_ids_for_knl(knl, callables):
     clbl_id_collector = CallablesIDCollector()
 
     return frozenset().union(*(
-        _get_callable_ids_for_knl(callables[clbl].subkernel, callables) |
+        _get_reachable_callable_ids_for_knl(callables[clbl].subkernel, callables) |
         frozenset([clbl]) if isinstance(callables[clbl], CallableKernel) else
         frozenset([clbl])
         for clbl in clbl_id_collector.map_kernel(knl)))
 
 
-def _get_callable_ids(callables, entrypoints):
+def _get_reachable_callable_ids(callables, entrypoints):
     return frozenset().union(*(
-        _get_callable_ids_for_knl(callables[e].subkernel, callables)
+        _get_reachable_callable_ids_for_knl(callables[e].subkernel, callables)
         for e in entrypoints))
 
 # }}}
@@ -645,7 +645,8 @@ class CallablesInferenceContext(ImmutableRecord):
         # {{{ get all the callables reachable from the new entrypoints.
 
         # get the names of all callables reachable from the new entrypoints
-        new_callable_ids = _get_callable_ids(self.callables, self.new_entrypoints)
+        new_callable_ids = _get_reachable_callable_ids(
+                self.callables, self.new_entrypoints)
 
         # get the history of function ids from the performed renames:
         history = {}

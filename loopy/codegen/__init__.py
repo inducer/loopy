@@ -605,10 +605,10 @@ def diverge_callee_entrypoints(program):
     If a :class:`loopy.kernel.function_interface.CallableKernel` is both an
     entrypoint and a callee, then rename the callee.
     """
-    from loopy.translation_unit import (_get_callable_ids,
+    from loopy.translation_unit import (_get_reachable_callable_ids,
                                         rename_resolved_functions_in_a_single_kernel)
     from pytools import UniqueNameGenerator
-    callable_ids = _get_callable_ids(program.callables_table,
+    callable_ids = _get_reachable_callable_ids(program.callables_table,
                                      program.entrypoints)
 
     new_callables = {}
