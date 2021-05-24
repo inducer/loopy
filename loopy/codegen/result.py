@@ -496,14 +496,19 @@ class CodeGenMapper(CombineMapper):
                                               CInstruction, NoOpInstruction)
         from loopy.codegen.instruction import (generate_assignment_instruction_code,
                                                generate_c_instruction_code,
-                                               generate_nop_instruction_code)
+                                               generate_nop_instruction_code,
+                                               generate_call_code)
 
         ast_builder = self.device_ast_builder if context.in_device else self.host_ast_builder  # noqa: E501
 
         insn = self.kernel.id_to_insn[expr.insn_id]
 
         if isinstance(insn, CallInstruction):
-            raise NotImplementedError
+            insn_ast = generate_call_code(self.kernel, insn,
+                                          ast_builder,
+                                          context.iname_exprs,
+                                          (context
+                                           .vectorization_info))
         elif isinstance(insn, Assignment):
             insn_ast = generate_assignment_instruction_code(self.kernel, insn,
                                                             ast_builder,

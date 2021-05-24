@@ -203,19 +203,18 @@ def generate_assignment_instruction_code(kernel, insn, ast_builder,
     return result
 
 
-def generate_call_code(codegen_state, insn):
-    kernel = codegen_state.kernel
+def generate_call_code(kernel, insn, ast_builder,
+                       hw_inames_expr, vinfo):
+    result = ast_builder.emit_multiple_assignment(kernel, insn, hw_inames_expr,
+                                                  vinfo)
 
     # {{{ vectorization handling
 
-    if codegen_state.vectorization_info:
+    if vinfo:
         if insn.atomicity:
             raise UnvectorizableError("atomic operation")
 
     # }}}
-
-    result = codegen_state.ast_builder.emit_multiple_assignment(
-            codegen_state, insn)
 
     # {{{ tracing
 

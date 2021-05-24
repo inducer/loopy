@@ -1080,8 +1080,11 @@ class CFamilyASTBuilder(ASTBuilderBase):
             lhs_expr, rhs_expr, lhs_dtype):
         raise NotImplementedError("atomic updates in %s" % type(self).__name__)
 
-    def emit_tuple_assignment(self, codegen_state, insn):
-        ecm = codegen_state.expression_to_code_mapper
+    def emit_tuple_assignment(self, kernel, callables_table, insn,
+                              var_subst_map, vectorization_info):
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map,
+                                                 vectorization_info)
 
         from cgen import Assign, block_if_necessary
         assignments = []
@@ -1090,12 +1093,12 @@ class CFamilyASTBuilder(ASTBuilderBase):
                 zip(insn.assignees, insn.expression.parameters)):
             lhs_code = ecm(assignee, prec=PREC_NONE, type_context=None)
             assignee_var_name = insn.assignee_var_names()[i]
-            lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
+            lhs_var = kernel.get_var_descriptor(assignee_var_name)
             lhs_dtype = lhs_var.dtype
 
             from loopy.expression import dtype_to_type_context
             rhs_type_context = dtype_to_type_context(
-                    codegen_state.kernel.target, lhs_dtype)
+                    kernel.target, lhs_dtype)
             rhs_code = ecm(parameter, prec=PREC_NONE,
                     type_context=rhs_type_context, needed_dtype=lhs_dtype)
 
@@ -1103,15 +1106,18 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
         return block_if_necessary(assignments)
 
-    def emit_multiple_assignment(self, codegen_state, insn):
+    def emit_multiple_assignment(self, kernel, callables_table, insn,
+                                 var_subst_map, vectorization_info):
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+                                                 vectorization_info)
 
-        ecm = codegen_state.expression_to_code_mapper
         func_id = insn.expression.function.name
-        in_knl_callable = codegen_state.callables_table[func_id]
+        in_knl_callable = callables_table[func_id]
 
         if isinstance(in_knl_callable, ScalarCallable) and (
                 in_knl_callable.name_in_target == "loopy_make_tuple"):
-            return self.emit_tuple_assignment(codegen_state, insn)
+            return self.emit_tuple_assignment(kernel, callables_table, insn,
+                                              var_subst_map, vectorization_info)
 
         # takes "is_returned" to infer whether insn.assignees[0] is a part of
         # LHS.

@@ -247,7 +247,8 @@ class ASTBuilderBase:
     def emit_assignment(self, kernel, insn, var_subst_map, vectorization_info):
         raise NotImplementedError()
 
-    def emit_multiple_assignment(self, codegen_state, insn):
+    def emit_multiple_assignment(self, kernel, insn, var_subst_map,
+                                 vectorization_info):
         raise NotImplementedError()
 
     def emit_sequential_loop(self, kernel, iname, iname_dtype,
