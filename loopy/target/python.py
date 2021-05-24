@@ -180,9 +180,8 @@ class PythonASTBuilderBase(ASTBuilderBase):
                 [idi.name for idi in implemented_data_info],
                 function_body)
 
-    def get_temporary_decls(self, codegen_state, schedule_index):
-        kernel = codegen_state.kernel
-        ecm = codegen_state.expression_to_code_mapper
+    def get_temporary_decls(self, kernel, subkernel_name):
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={})
 
         result = []
 

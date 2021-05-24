@@ -232,8 +232,7 @@ def generate_c_instruction_code(kernel, insn, ast_builder,
     ecm = ast_builder.get_expression_to_code_mapper(kernel, hw_inames_expr,
                                                     vinfo)
 
-    if vinfo is not None:
-        raise UnvectorizableError("C instructions cannot be vectorized")
+    assert vinfo is None
 
     body = []
 
@@ -260,10 +259,9 @@ def generate_c_instruction_code(kernel, insn, ast_builder,
     return Block(body)
 
 
-def generate_nop_instruction_code(codegen_state, insn):
-    if codegen_state.vectorization_info is not None:
-        raise UnvectorizableError("C instructions cannot be vectorized")
-    return codegen_state.ast_builder.emit_comment(
-        "no-op (insn=%s)" % (insn.id))
+def generate_nop_instruction_code(kernel, insn, ast_builder,
+                                  hw_inames_expr, vinfo):
+    assert vinfo is None
+    return ast_builder.emit_comment("no-op (insn=%s)" % (insn.id))
 
 # vim: foldmethod=marker

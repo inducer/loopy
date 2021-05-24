@@ -199,7 +199,7 @@ class ASTBuilderBase:
     def generate_top_of_body(self, codegen_state):
         return []
 
-    def get_temporary_decls(self, codegen_state, schedule_index):
+    def get_temporary_decls(self, kernel, subkernel_name):
         raise NotImplementedError
 
     def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
@@ -305,7 +305,7 @@ class DummyHostASTBuilder(ASTBuilderBase):
                                  is_generating_device_code):
         return None
 
-    def get_temporary_decls(self, codegen_state, schedule_index):
+    def get_temporary_decls(self, kernel, subkernel_name):
         return []
 
     def get_expression_to_code_mapper(self, kernel, var_subst_map,

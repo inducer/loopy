@@ -333,17 +333,15 @@ def generate_linearized_array(array, value):
     return data
 
 
-def generate_array_literal(codegen_state, array, value):
+def generate_array_literal(kernel, ecm, ast_builder, array, value):
     data = generate_linearized_array(array, value)
-
-    ecm = codegen_state.expression_to_code_mapper
 
     from loopy.expression import dtype_to_type_context
     from loopy.symbolic import ArrayLiteral
 
-    type_context = dtype_to_type_context(codegen_state.kernel.target, array.dtype)
+    type_context = dtype_to_type_context(kernel.target, array.dtype)
     return CExpression(
-            codegen_state.ast_builder.get_c_expression_to_code_mapper(),
+            ast_builder.get_c_expression_to_code_mapper(),
             ArrayLiteral(
                 tuple(
                     ecm.map_constant(d_i, type_context)
@@ -770,11 +768,11 @@ class CFamilyASTBuilder(ASTBuilderBase):
     def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
         return None
 
-    def get_temporary_decls(self, codegen_state, schedule_index):
+    def get_temporary_decls(self, kernel, subkernel_name):
         from loopy.kernel.data import AddressSpace
 
-        kernel = codegen_state.kernel
-
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},
+                                                 vectorization_info=None)
         base_storage_decls = []
         temp_decls = []
 
@@ -790,10 +788,9 @@ class CFamilyASTBuilder(ASTBuilderBase):
         from loopy.schedule.tools import (
                 temporaries_read_in_subkernel,
                 temporaries_written_in_subkernel)
-        subkernel = kernel.linearization[schedule_index].kernel_name
         sub_knl_temps = (
-                temporaries_read_in_subkernel(kernel, subkernel)
-                | temporaries_written_in_subkernel(kernel, subkernel))
+                temporaries_read_in_subkernel(kernel, subkernel_name)
+                | temporaries_written_in_subkernel(kernel, subkernel_name))
 
         for tv in sorted(
                 kernel.temporary_variables.values(),
@@ -807,13 +804,13 @@ class CFamilyASTBuilder(ASTBuilderBase):
                             tv.name in sub_knl_temps):
                         decl = self.wrap_temporary_decl(
                                 self.get_temporary_decl(
-                                    codegen_state, schedule_index, tv, idi),
+                                    kernel, tv, idi),
                                 tv.address_space)
 
                         if tv.initializer is not None:
                             assert tv.read_only
                             decl = Initializer(decl, generate_array_literal(
-                                codegen_state, tv, tv.initializer))
+                                kernel, ecm, self, tv, tv.initializer))
 
                         temp_decls.append(decl)
 
@@ -874,8 +871,6 @@ class CFamilyASTBuilder(ASTBuilderBase):
                     offset += (
                             idi.dtype.itemsize
                             * product(si for si in idi.shape))
-
-        ecm = self.get_expression_to_code_mapper(codegen_state)
 
         for bs_name, bs_sizes in sorted(base_storage_sizes.items()):
             bs_var_decl = Value("char", bs_name)
@@ -957,7 +952,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
         from loopy.target.c.codegen.expression import CExpressionToCodeMapper
         return CExpressionToCodeMapper()
 
-    def get_temporary_decl(self, codegen_state, schedule_index, temp_var, decl_info):
+    def get_temporary_decl(self, kernel, temp_var, decl_info):
         temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
 
         if temp_var.read_only:
@@ -966,7 +961,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
         if decl_info.shape:
             from cgen import ArrayOf
-            ecm = self.get_expression_to_code_mapper(codegen_state)
+            ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},
+                                                     vectorization_info=None)
             temp_var_decl = ArrayOf(temp_var_decl,
                     ecm(p.flattened_product(decl_info.shape),
                         prec=PREC_NONE, type_context="i"))

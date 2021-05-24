@@ -55,7 +55,14 @@ def get_block_boundaries(schedule):
 
 def temporaries_read_in_subkernel(kernel, subkernel):
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
-    insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel]
+    from loopy.schedule.tree import Schedule, get_insns_in_function
+
+    if isinstance(kernel.schedule, Schedule):
+        insn_ids = get_insns_in_function(kernel, subkernel)
+    else:
+        assert isinstance(kernel.schedule, list)
+        insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel]
+
     return frozenset(tv
             for insn_id in insn_ids
             for tv in kernel.id_to_insn[insn_id].read_dependency_names()
@@ -64,7 +71,14 @@ def temporaries_read_in_subkernel(kernel, subkernel):
 
 def temporaries_written_in_subkernel(kernel, subkernel):
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
-    insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel]
+    from loopy.schedule.tree import Schedule, get_insns_in_function
+
+    if isinstance(kernel.schedule, Schedule):
+        insn_ids = get_insns_in_function(kernel, subkernel)
+    else:
+        assert isinstance(kernel.schedule, list)
+        insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel]
+
     return frozenset(tv
             for insn_id in insn_ids
             for tv in kernel.id_to_insn[insn_id].write_dependency_names()

@@ -306,7 +306,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         else:
             raise LoopyError("unknown barrier kind")
 
-    def get_temporary_decl(self, codegen_state, sched_index, temp_var, decl_info):
+    def get_temporary_decl(self, kernel, temp_var, decl_info):
         from loopy.target.c import POD  # uses the correct complex type
         temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
 
@@ -316,12 +316,12 @@ class ISPCASTBuilder(CFamilyASTBuilder):
             # FIXME: This is a pretty coarse way of deciding what
             # private temporaries get duplicated. Refine? (See also
             # above in expr to code mapper)
-            _, lsize = codegen_state.kernel.get_grid_size_upper_bounds_as_exprs()
+            _, lsize = kernel.get_grid_size_upper_bounds_as_exprs()
             shape = lsize + shape
 
         if shape:
             from cgen import ArrayOf
-            ecm = self.get_expression_to_code_mapper(codegen_state)
+            ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={})
             temp_var_decl = ArrayOf(
                     temp_var_decl,
                     ecm(p.flattened_product(shape),

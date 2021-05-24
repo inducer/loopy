@@ -362,10 +362,12 @@ class CodeGenMapper(CombineMapper):
                        .device_ast_builder
                        .get_function_declaration(self.kernel, expr.name, idis,
                                                  is_generating_device_code=True))
+        temp_decls_asts = self.device_ast_builder.get_temporary_decls(self.kernel, expr.name)
         children_res = self.combine([self.rec(child, dwnstrm_ctx)
                                      for child in expr.children])
-        dev_fn_body_ast = self.device_ast_builder.ast_block_class(children_res
-                                                                  .device_ast)
+        dev_fn_body_ast = self.device_ast_builder.ast_block_class(temp_decls_asts
+                                                                  + (children_res
+                                                                     .device_ast))
         assert children_res.host_ast == []
 
         dev_fn_ast = (self
@@ -492,7 +494,8 @@ class CodeGenMapper(CombineMapper):
         from loopy.kernel.instruction import (CallInstruction, Assignment,
                                               CInstruction, NoOpInstruction)
         from loopy.codegen.instruction import (generate_assignment_instruction_code,
-                                               generate_c_instruction_code)
+                                               generate_c_instruction_code,
+                                               generate_nop_instruction_code)
 
         ast_builder = self.device_ast_builder if context.in_device else self.host_ast_builder  # noqa: E501
 
@@ -514,9 +517,13 @@ class CodeGenMapper(CombineMapper):
                                                    (context
                                                     .vectorization_info))
         elif isinstance(insn, NoOpInstruction):
-            raise NotImplementedError
+            insn_ast = generate_nop_instruction_code(self.kernel, insn,
+                                                     ast_builder,
+                                                     context.iname_exprs,
+                                                     (context
+                                                      .vectorization_info))
         else:
-            raise NotImplementedError
+            raise NotImplementedError(type(insn))
 
         if context.in_device:
             return CodeGenMapperAccumulator(host_ast=[],
