@@ -163,6 +163,14 @@ def get_idis_for_kernel(kernel):
     return implemented_data_info
 
 
+# {{{ program generation top-level
+
+@dataclass(frozen=True)
+class CodeGenMapperAccumulator:
+    host_ast: List[Union[Any]]
+    device_ast: List[Union[GeneratedProgram, Any]]
+
+
 @dataclass(frozen=True)
 class CodeGenerationContext:
     """
@@ -188,14 +196,6 @@ class CodeGenerationContext:
             in_device=in_device,
             iname_exprs=iname_exprs,
             vectorization_info=vectorization_info)
-
-
-# {{{ program generation top-level
-
-@dataclass(frozen=True)
-class CodeGenMapperAccumulator:
-    host_ast: List[Union[Any]]
-    device_ast: List[Union[GeneratedProgram, Any]]
 
 
 class CodeGenMapper(CombineMapper):
