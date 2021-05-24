@@ -89,10 +89,11 @@ class CodeGenerationResult(ImmutableRecord):
         a list of :class:`loopy.codegen.ImplementedDataInfo` objects.
         Only added at the very end of code generation.
     """
-    def __init__(self, host_program, device_programs, host_preambles=[],
-                 device_preambles=[]):
+    def __init__(self, host_program, device_programs, implemented_data_info,
+                 host_preambles=[], device_preambles=[]):
         super().__init__(host_program=host_program,
                          device_programs=device_programs,
+                         implemented_data_info=implemented_data_info,
                          host_preambles=host_preambles,
                          device_preambles=device_preambles)
 
@@ -295,7 +296,7 @@ class CodeGenMapper(CombineMapper):
         host_prog = GeneratedProgram(name=host_fn_name, is_device_program=False,
                                      ast=host_fn_ast)
 
-        return CodeGenerationResult(host_prog, children_res.device_ast)
+        return CodeGenerationResult(host_prog, children_res.device_ast, idis)
 
     def map_function(self, expr, context):
         from loopy.codegen.control import synthesize_idis_for_extra_args
