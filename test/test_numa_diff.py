@@ -57,8 +57,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
 
     source = source.replace("datafloat", "real*4")
 
-    program = lp.parse_fortran(source, filename, seq_dependencies=False,
-               all_names_known=False)
+    program = lp.parse_fortran(source, filename, seq_dependencies=False)
 
     hsv_r, hsv_s = program["strongVolumeKernelR"], program["strongVolumeKernelS"]
 

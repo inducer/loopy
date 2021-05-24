@@ -329,11 +329,10 @@ def specialize_fortran_division(t_unit):
 # {{{ translator
 
 class F2LoopyTranslator(FTreeWalkerBase):
-    def __init__(self, filename, target=None, all_names_known=True):
+    def __init__(self, filename, target=None):
         FTreeWalkerBase.__init__(self, filename)
 
         self.target = target
-        self.all_names_known = all_names_known
 
         self.scope_stack = []
 
