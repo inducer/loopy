@@ -765,6 +765,25 @@ class CFamilyASTBuilder(ASTBuilderBase):
                     [self.idi_to_cgen_declarator(kernel, idi)
                      for idi in implemented_data_info]))
 
+    def emit_array_literal(self, kernel, array, value):
+        """
+        :arg ary: An instance of :class:`loopy.kernel.array.ArrayBase`.
+        """
+        data = generate_linearized_array(array, value)
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},
+                                                 vectorization_info=None)
+
+        from loopy.expression import dtype_to_type_context
+        from loopy.symbolic import ArrayLiteral
+
+        type_context = dtype_to_type_context(kernel.target, array.dtype)
+        return CExpression(
+                self.get_c_expression_to_code_mapper(),
+                ArrayLiteral(
+                    tuple(
+                        ecm.map_constant(d_i, type_context)
+                        for d_i in data)))
+
     def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
         return None
 
@@ -809,8 +828,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
                         if tv.initializer is not None:
                             assert tv.read_only
-                            decl = Initializer(decl, generate_array_literal(
-                                kernel, ecm, self, tv, tv.initializer))
+                            decl = Initializer(decl, self.emit_array_literal(
+                                kernel, ecm, tv, tv.initializer))
 
                         temp_decls.append(decl)
 
@@ -1161,15 +1180,9 @@ class CFamilyASTBuilder(ASTBuilderBase):
                 "++%s" % iname,
                 inner)
 
-    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
-        decl = POD(self, dtype, name)
-
-        from cgen import Initializer, Const
-
-        if is_const:
-            decl = Const(decl)
-
-        return Initializer(decl, val_str)
+    def emit_initializer(self, decl, val):
+        from cgen import Initializer
+        return Initializer(decl, val)
 
     def emit_blank_line(self):
         from cgen import Line

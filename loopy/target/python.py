@@ -251,9 +251,9 @@ class PythonASTBuilderBase(ASTBuilderBase):
                     ),
                 inner)
 
-    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
+    def emit_initializer(self, decl, val):
         from genpy import Assign
-        return Assign(name, val_str)
+        return Assign(decl, val)
 
     def emit_blank_line(self):
         from genpy import Line

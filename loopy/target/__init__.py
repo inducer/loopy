@@ -244,6 +244,12 @@ class ASTBuilderBase:
     def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
         raise NotImplementedError()
 
+    def emit_array_literal(self, kernel, array, value):
+        """
+        :arg ary: An instance of :class:`loopy.kernel.array.ArrayBase`.
+        """
+        raise NotImplementedError
+
     def emit_assignment(self, kernel, insn, var_subst_map, vectorization_info):
         raise NotImplementedError()
 
@@ -262,7 +268,7 @@ class ASTBuilderBase:
     def emit_if(self, kernel, condition, ast, var_subst_map, vectorization_info):
         raise NotImplementedError()
 
-    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
+    def emit_initializer(self, decl, val):
         raise NotImplementedError()
 
     def emit_declaration_scope(self, codegen_state, inner):
