@@ -232,9 +232,7 @@ class PythonASTBuilderBase(ASTBuilderBase):
 
     @property
     def ast_block_scope_class(self):
-        # Once a new version of genpy is released, switch to this:
-        # from genpy import Collection
-        # and delete the implementation above.
+        from genpy import Collection
         return Collection
 
     def emit_sequential_loop(self, kernel, iname, iname_dtype,
