@@ -257,7 +257,8 @@ class POD(Declarator):
         from loopy.types import LoopyType
         assert isinstance(dtype, LoopyType)
 
-        self.ast_builder = ast_builder
+        # TODO: just pass 'ctype' instead of ast_builder.
+
         self.ctype = ast_builder.target.dtype_to_typename(dtype)
         self.dtype = dtype
         self.name = name
@@ -270,9 +271,6 @@ class POD(Declarator):
 
     def struct_format(self):
         return self.dtype.char
-
-    def alignment_requirement(self):
-        return self.ast_builder.target.alignment_requirement(self)
 
     def default_value(self):
         return 0
