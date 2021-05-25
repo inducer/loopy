@@ -260,6 +260,7 @@ class CodeGenMapper(CombineMapper):
                    for el in downstream_asts.device_ast)
         device_programs = downstream_asts.device_ast
         host_ast = downstream_asts.host_ast
+        host_tgt_prelude = self.host_ast_builder.generate_top_of_body(self.kernel)
 
         # {{{ emit global temporary declarations/initializations
 
@@ -295,8 +296,9 @@ class CodeGenMapper(CombineMapper):
 
         # }}}
 
-        host_fn_body_ast = self.host_ast_builder.ast_block_class(host_ast
-                                                                 + tv_init_host_asts)
+        host_fn_body_ast = self.host_ast_builder.ast_block_class(host_tgt_prelude
+                                                                 + tv_init_host_asts
+                                                                 + host_ast)
 
         idis = get_idis_for_kernel(self.kernel)
         host_fn_name = (self.kernel.target.host_program_name_prefix
@@ -381,11 +383,14 @@ class CodeGenMapper(CombineMapper):
                        .device_ast_builder
                        .get_function_declaration(self.kernel, expr.name, idis,
                                                  is_generating_device_code=True))
+
+        tgt_prelude = self.device_ast_builder.generate_top_of_body(self.kernel)
         temp_decls_asts = self.device_ast_builder.get_temporary_decls(self.kernel,
                                                                       expr.name)
         children_res = self.combine([self.rec(child, dwnstrm_ctx)
                                      for child in expr.children])
-        dev_fn_body_ast = self.device_ast_builder.ast_block_class(temp_decls_asts
+        dev_fn_body_ast = self.device_ast_builder.ast_block_class(tgt_prelude
+                                                                  + temp_decls_asts
                                                                   + (children_res
                                                                      .device_ast))
         assert children_res.host_ast == []

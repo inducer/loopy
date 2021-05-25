@@ -1080,14 +1080,14 @@ class CFamilyASTBuilder(ASTBuilderBase):
         elif isinstance(lhs_atomicity, AtomicInit):
             self.seen_atomic_dtypes.add(lhs_dtype)
             return self.emit_atomic_init(
-                    codegen_state, lhs_atomicity, lhs_var,
+                    kernel, var_subst_map, lhs_atomicity, lhs_var,
                     insn.assignee, insn.expression,
                     lhs_dtype, rhs_type_context)
 
         elif isinstance(lhs_atomicity, AtomicUpdate):
             self.seen_atomic_dtypes.add(lhs_dtype)
             return self.emit_atomic_update(
-                    codegen_state, lhs_atomicity, lhs_var,
+                    kernel, var_subst_map, lhs_atomicity, lhs_var,
                     insn.assignee, insn.expression,
                     lhs_dtype, rhs_type_context)
 
@@ -1095,8 +1095,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
             raise ValueError("unexpected lhs atomicity type: %s"
                     % type(lhs_atomicity).__name__)
 
-    def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
-            lhs_expr, rhs_expr, lhs_dtype):
+    def emit_atomic_update(self, kernel, var_subst_map, lhs_atomicity, lhs_var,
+                           lhs_expr, rhs_expr, lhs_dtype):
         raise NotImplementedError("atomic updates in %s" % type(self).__name__)
 
     def emit_tuple_assignment(self, kernel, callables_table, insn,

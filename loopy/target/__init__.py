@@ -196,7 +196,7 @@ class ASTBuilderBase:
                                  is_generating_device_code):
         raise NotImplementedError
 
-    def generate_top_of_body(self, codegen_state):
+    def generate_top_of_body(self, kernel):
         return []
 
     def get_temporary_decls(self, kernel, subkernel_name):
@@ -269,9 +269,6 @@ class ASTBuilderBase:
         raise NotImplementedError()
 
     def emit_initializer(self, decl, val):
-        raise NotImplementedError()
-
-    def emit_declaration_scope(self, codegen_state, inner):
         raise NotImplementedError()
 
     def emit_blank_line(self):

@@ -27,7 +27,7 @@ import numpy as np
 
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from pytools import memoize_method
+from pytools import memoize_method, UniqueNameGenerator
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.types import NumpyType
 from loopy.target.c import DTypeRegistryWrapper
@@ -575,6 +575,10 @@ class OpenCLTarget(CFamilyTarget):
 # {{{ ast builder
 
 class OpenCLCASTBuilder(CFamilyASTBuilder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.var_name_generator = UniqueNameGenerator()
+
     # {{{ library
 
     @property
@@ -633,9 +637,9 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
         return FunctionDeclarationWrapper(fdecl)
 
-    def generate_top_of_body(self, codegen_state):
+    def generate_top_of_body(self, kernel):
         from loopy.kernel.data import ImageArg
-        if any(isinstance(arg, ImageArg) for arg in codegen_state.kernel.args):
+        if any(isinstance(arg, ImageArg) for arg in kernel.args):
             from cgen import Value, Const, Initializer
             return [
                     Initializer(Const(Value("sampler_t", "loopy_sampler")),
@@ -739,21 +743,25 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     # {{{
 
-    def emit_atomic_init(self, codegen_state, lhs_atomicity, lhs_var,
+    def emit_atomic_init(self, kernel, var_subst_map, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
         # for the CL1 flavor, this is as simple as a regular update with whatever
         # the RHS value is...
 
-        return self.emit_atomic_update(codegen_state, lhs_atomicity, lhs_var,
+        return self.emit_atomic_update(kernel, var_subst_map, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context)
 
     # }}}
 
     # {{{ code generation for atomic update
 
-    def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
+    def emit_atomic_update(self, kernel, var_subst_map, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
         from pymbolic.mapper.stringifier import PREC_NONE
+
+        ecm = self.get_expression_to_code_mapper(kernel,
+                                                 var_subst_map=var_subst_map,
+                                                 vectorization_info=None)
 
         # FIXME: Could detect operations, generate atomic_{add,...} when
         # appropriate.
@@ -762,11 +770,11 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 np.int32, np.int64, np.float32, np.float64]:
             from cgen import Block, DoWhile, Assign
             from loopy.target.c import POD
-            old_val_var = codegen_state.var_name_generator("loopy_old_val")
-            new_val_var = codegen_state.var_name_generator("loopy_new_val")
+            old_val_var = self.var_name_generator("_lp_old_val")
+            new_val_var = self.var_name_generator("_lp_new_val")
 
             from loopy.kernel.data import TemporaryVariable, AddressSpace
-            ecm = codegen_state.expression_to_code_mapper.with_assignments(
+            ecm = ecm.with_assignments(
                     {
                         old_val_var: TemporaryVariable(old_val_var, lhs_dtype,
                             shape=()),
@@ -872,7 +880,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 class VolatileMemExpressionToOpenCLCExpressionMapper(
         ExpressionToOpenCLCExpressionMapper):
     def make_subscript(self, array, base_expr, subscript):
-        registry = self.codegen_state.ast_builder.target.get_dtype_registry()
+        registry = self.ast_builder.target.get_dtype_registry()
 
         from loopy.kernel.data import AddressSpace
         if array.address_space == AddressSpace.GLOBAL:

@@ -111,8 +111,8 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
                 from pymbolic import evaluate
 
                 access_info = get_access_info(self.kernel.target, ary, expr.index,
-                    lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
-                    self.codegen_state.vectorization_info)
+                    lambda expr: evaluate(expr, self.var_subst_map),
+                    self.vectorization_info)
 
                 subscript, = access_info.subscripts
                 result = var(access_info.array_name)[
