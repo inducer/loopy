@@ -69,6 +69,17 @@ class GeneratedProgram(ImmutableRecord):
     """
 
 
+def prepend_code(prog, code, astb):
+    """
+    Prepends *code* to :attr:`GeneratedProgram.ast`.
+
+    :arg astb: An instance of :class:`loopy.target.ASTBuilderBase`.
+    :arg ast: AST within *astb*.
+    """
+    new_ast = astb.emit_collection(code + [prog.ast])
+    return prog.copy(ast=new_ast)
+
+
 class CodeGenerationResult(ImmutableRecord):
     """
     .. attribute:: host_program
@@ -242,43 +253,50 @@ class CodeGenMapper(CombineMapper):
     def map_schedule(self, expr):
         from loopy.kernel.data import AddressSpace
 
-        children_res = self.combine([self.rec(child,
-                                              CodeGenerationContext(False, {}))
-                                     for child in expr.children])
-
-        for tv in self.kernel.temporary_variables.values():
-            if tv.address_space == AddressSpace.GLOBAL and (
-                    tv.initializer is not None):
-                # prepend the initializer atop the code.
-                raise NotImplementedError
-
-        """
-            for tv in sorted(
-                    kernel.temporary_variables.values(),
-                    key=lambda tv: tv.name):
-
-                if tv.address_space == AddressSpace.GLOBAL and (
-                        tv.initializer is not None):
-                    assert tv.read_only
-
-                    decl_info, = tv.decl_info(self.target,
-                                    index_dtype=kernel.index_dtype)
-                    decl = self.wrap_global_constant(
-                            self.get_temporary_decl(
-                                codegen_state, schedule_index, tv,
-                                decl_info))
-
-                    if tv.initializer is not None:
-                        decl = Initializer(decl, generate_array_literal(
-                            codegen_state, tv, tv.initializer))
-
-                    result.append(decl)
-        """
+        downstream_asts = self.combine([self.rec(child,
+                                                 CodeGenerationContext(False, {}))
+                                        for child in expr.children])
         assert all(isinstance(el, GeneratedProgram)
-                   for el in children_res.device_ast)
+                   for el in downstream_asts.device_ast)
+        device_programs = downstream_asts.device_ast
+        host_ast = downstream_asts.host_ast
 
-        host_fn_body_ast = self.host_ast_builder.ast_block_class(children_res
-                                                                 .host_ast)
+        # {{{ emit global temporary declarations/initializations
+
+        tv_init_host_asts = self.host_ast_builder.get_temporary_decls(
+            self.kernel, subkernel_name=None)
+
+        tv_init_device_asts = []
+        for tv in sorted((tv for tv in self.kernel.temporary_variables.values()
+                          if tv.address_space == AddressSpace.GLOBAL),
+                         key=lambda tv: tv.name):
+            if tv.initializer is not None:
+                assert tv.read_only
+
+                decl_info, = tv.decl_info(self.kernel.target,
+                                          index_dtype=self.kernel.index_dtype)
+                decl = self.device_ast_builder.wrap_global_constant(
+                    self.device_ast_builder.get_temporary_decl(self.kernel, tv,
+                                                               decl_info))
+                rhs = self.device_ast_builder.emit_array_literal(self.kernel,
+                                                                 tv,
+                                                                 tv.initializer)
+                init_ast = self.device_ast_builder.emit_initializer(decl, rhs)
+
+                tv_init_device_asts.append(init_ast)
+
+        if tv_init_device_asts:
+            tv_init_device_asts.append(self.device_ast_builder.emit_blank_line())
+
+        # prepend the tv inits to the first device program
+        device_programs = ([prepend_code(device_programs[0], tv_init_device_asts,
+                                       self.device_ast_builder)]
+                           + device_programs[1:])
+
+        # }}}
+
+        host_fn_body_ast = self.host_ast_builder.ast_block_class(host_ast
+                                                                 + tv_init_host_asts)
 
         idis = get_idis_for_kernel(self.kernel)
         host_fn_name = (self.kernel.target.host_program_name_prefix
@@ -296,7 +314,7 @@ class CodeGenMapper(CombineMapper):
         host_prog = GeneratedProgram(name=host_fn_name, is_device_program=False,
                                      ast=host_fn_ast)
 
-        return CodeGenerationResult(host_prog, children_res.device_ast, idis)
+        return CodeGenerationResult(host_prog, device_programs, idis)
 
     def map_function(self, expr, context):
         from loopy.codegen.control import synthesize_idis_for_extra_args
@@ -363,7 +381,8 @@ class CodeGenMapper(CombineMapper):
                        .device_ast_builder
                        .get_function_declaration(self.kernel, expr.name, idis,
                                                  is_generating_device_code=True))
-        temp_decls_asts = self.device_ast_builder.get_temporary_decls(self.kernel, expr.name)
+        temp_decls_asts = self.device_ast_builder.get_temporary_decls(self.kernel,
+                                                                      expr.name)
         children_res = self.combine([self.rec(child, dwnstrm_ctx)
                                      for child in expr.children])
         dev_fn_body_ast = self.device_ast_builder.ast_block_class(temp_decls_asts
