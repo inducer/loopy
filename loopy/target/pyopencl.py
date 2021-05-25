@@ -720,7 +720,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             return tv.dtype.numpy_dtype.itemsize * reduce(mul, tv.shape, 1)
 
         from pymbolic.mapper.stringifier import PREC_NONE
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={})
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},
+                                                 vectorization_info=None)
 
         global_temporaries = self._get_global_temporaries(kernel)
         if not global_temporaries:

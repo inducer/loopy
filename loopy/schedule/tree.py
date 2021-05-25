@@ -389,7 +389,7 @@ class StringifyMapper(CombineMapper):
                 f"{format_insn(self.kernel, expr.insn_id)}")
 
     def map_barrier(self, expr, level=0):
-        return (f"{self._indent(level)}... {expr.kind[0]}barrier")
+        return (f"{self._indent(level)}... {expr.synchronization_kind[0]}barrier")
 
     def map_loop(self, expr, level=0):
         return self.combine([f"{self._indent(level)}for {expr.iname}",
