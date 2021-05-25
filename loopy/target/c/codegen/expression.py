@@ -218,13 +218,16 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         ary = self.find_array(expr)
 
         from loopy.kernel.array import get_access_info
+        from pymbolic import evaluate
 
         from loopy.symbolic import simplify_using_aff
         index_tuple = tuple(
                 simplify_using_aff(self.kernel, idx) for idx in expr.index_tuple)
 
         access_info = get_access_info(self.kernel.target, ary, index_tuple,
-                                      expr, self.vectorization_info)
+                                      lambda expr: evaluate(expr,
+                                                            self.var_subst_map),
+                                      self.vectorization_info)
 
         from loopy.kernel.data import (
                 ImageArg, ArrayArg, TemporaryVariable, ConstantArg)
