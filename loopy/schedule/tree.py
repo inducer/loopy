@@ -830,8 +830,12 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
                                   constants_only=False)
         set_implemented_in_loop = make_slab(expr.domain.space, expr.iname, lb, ub+1)
 
-        outer_condition = _align_and_gist(expr.domain.project_out(dim_type.set,
-                                                                  0, 1),
+        # Removing divs because all we want is a projection, with no remaining
+        # constraints from the eliminated variables.
+        outer_condition = _align_and_gist(expr.domain
+                                          .project_out(dim_type.set,
+                                                       0, 1)
+                                          .remove_divs(),
                                           set_implemented_in_loop)
         inner_condition = _align_and_gist(expr.domain.affine_hull(),
                                           set_implemented_in_loop)
