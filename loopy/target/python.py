@@ -263,6 +263,13 @@ class PythonASTBuilderBase(ASTBuilderBase):
         from genpy import Comment
         return Comment(s)
 
+    def emit_collection(self, asts):
+        """
+        :arg asts: A sequence of AST objects.
+        """
+        from genpy import Collection
+        return Collection(asts)
+
     @property
     def can_implement_conditionals(self):
         return True

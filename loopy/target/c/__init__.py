@@ -1179,6 +1179,13 @@ class CFamilyASTBuilder(ASTBuilderBase):
         from cgen import Comment
         return Comment(s)
 
+    def emit_collection(self, asts):
+        """
+        :arg asts: A sequence of AST objects.
+        """
+        from cgen import Collection
+        return Collection(asts)
+
     @property
     def can_implement_conditionals(self):
         return True

@@ -274,6 +274,12 @@ class ASTBuilderBase:
     def emit_comment(self, s):
         raise NotImplementedError()
 
+    def emit_collection(self, asts):
+        """
+        :arg asts: A sequence of AST objects.
+        """
+        raise NotImplementedError
+
     # }}}
 
     def process_ast(self, node):
