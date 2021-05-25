@@ -556,7 +556,7 @@ class PolyhedronLoopifier(IdentityMapper):
 
         assert domain.dim(dim_type.set) == 1
 
-        domain = _align_and_gist(domain, implemented_domain)
+        domain = _align_and_intersect(domain, implemented_domain)
 
         downstream_domain = _align_and_intersect(domain
                                                  .move_dims(dim_type.param,
@@ -585,7 +585,7 @@ class PolyhedronLoopifier(IdentityMapper):
                                                            context.gsize,
                                                            context.lsize)
 
-        domain = _align_and_gist(expr.domain, implemented_domain)
+        domain = _align_and_intersect(expr.domain, implemented_domain)
         downstream_domain = _align_and_intersect(domain, implemented_domain)
         downstream_domain = downstream_domain.move_dims(dim_type.param,
                                                         (downstream_domain
@@ -727,7 +727,7 @@ class Unroller(PolyhedronLoopifier):
         if (self.kernel.iname_tags_of_type(expr.iname, (UnrolledIlpTag,
                                                         UnrollTag))
                 or expr.iname in self.extra_unroll_inames):
-            domain = _align_and_gist(expr.domain, context.implemented_domain)
+            domain = _align_and_intersect(expr.domain, context.implemented_domain)
             ubound = static_max_of_pw_aff(domain.dim_max(0), constants_only=False)
             lbound = static_min_of_pw_aff(domain.dim_min(0), constants_only=False)
             # FIXME: Write a better error message o'er here that the loop
@@ -786,11 +786,10 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
         hw_inames = inames & get_all_inames_tagged_with(self.kernel, AxisTag)
 
         if hw_inames:
-
             impl_domain = context.implemented_domain
             domain = (self.kernel.get_inames_domain(hw_inames)
-                        .project_out_except(types=[dim_type.set],
-                                            names=hw_inames))
+                      .project_out_except(types=[dim_type.set],
+                                          names=hw_inames))
             impl_domain = _implement_hw_axes_in_domains(impl_domain,
                                                         domain,
                                                         self.kernel,
@@ -822,22 +821,23 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
                                        static_max_of_pw_aff, make_slab)
 
         assert expr.domain.dim(dim_type.set) == 1
-        lb = static_min_of_pw_aff(expr.domain.dim_min(0).gist(context
-                                                              .implemented_domain),
-                                  constants_only=False)
-        ub = static_max_of_pw_aff(expr.domain.dim_max(0).gist(context
-                                                              .implemented_domain),
-                                  constants_only=False)
-        set_implemented_in_loop = make_slab(expr.domain.space, expr.iname, lb, ub+1)
+        domain = _align_and_intersect(expr.domain, context.implemented_domain)
+        lb = domain.dim_min(0)
+        ub = domain.dim_max(0)
+        set_implemented_in_loop = make_slab(expr.domain.space, expr.iname,
+                                            static_min_of_pw_aff(lb, False),
+                                            static_max_of_pw_aff(ub, False)+1)
 
         # Removing divs because all we want is a projection, with no remaining
         # constraints from the eliminated variables.
-        outer_condition = _align_and_gist(expr.domain
+        outer_condition = _align_and_gist(domain
                                           .project_out(dim_type.set,
                                                        0, 1)
                                           .remove_divs(),
-                                          set_implemented_in_loop)
-        inner_condition = _align_and_gist(expr.domain.affine_hull(),
+                                          _align_and_intersect(
+                                              set_implemented_in_loop,
+                                              context.implemented_domain))
+        inner_condition = _align_and_gist(domain.affine_hull(),
                                           set_implemented_in_loop)
 
         step = 1  # TODO: from inner_condition try to guess the step
@@ -946,14 +946,12 @@ def insert_predicates_into_schedule(kernel):
     # }}}
 
     schedule = PolyhedronLoopifier(kernel)(kernel.schedule)
+
     unvectorizable_inames = UnvectorizableInamesCollector(kernel)(schedule)
     # FIXME: (For now) unvectorizable inames always fallback to unrolling this
     # should be selected based on the target.
     schedule = Unroller(kernel, unvectorizable_inames)(schedule)
     schedule = PredicateInsertionMapper(kernel)(schedule)
-
-    kernel = kernel.copy(schedule=schedule)
-
     return kernel.copy(schedule=schedule)
 
 
