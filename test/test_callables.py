@@ -562,6 +562,41 @@ def test_callees_with_gbarriers_are_inlined(ctx_factory):
     assert (expected_out == out.get()).all()
 
 
+def test_callees_with_gbarriers_are_inlined_with_nested_calls(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    ones_and_zeros = lp.make_function(
+            "{[i, j]: 0<=i<6 and 0<=j<3}",
+            """
+            x[i] = 0.0f
+            ...gbarrier
+            x[j] = 1.0f
+            """,
+            seq_dependencies=True,
+            name="ones_and_zeros")
+
+    dummy_ones_and_zeros = lp.make_function(
+            "{[i]: 0<=i<6}",
+            """
+            [i]: y[i] = ones_and_zeros()
+            """,
+            name="dummy_ones_and_zeros")
+
+    t_unit = lp.make_kernel(
+            "{ : }",
+            """
+            y[:] = dummy_ones_and_zeros()
+            """, [lp.GlobalArg("y", shape=6, dtype=lp.auto)])
+
+    t_unit = lp.merge([t_unit, dummy_ones_and_zeros, ones_and_zeros])
+    evt, (out,) = t_unit(queue)
+
+    expected_out = np.array([1, 1, 1, 0, 0, 0]).astype(np.float32)
+
+    assert (expected_out == out.get()).all()
+
+
 def test_inlining_with_indirections(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
