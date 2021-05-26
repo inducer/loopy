@@ -2343,19 +2343,26 @@ def infer_arg_descr(program):
 def inline_kernels_with_gbarriers(program):
     from loopy.kernel.instruction import BarrierInstruction
     from loopy.transform.callable import inline_callable_kernel
+    from loopy.kernel.tools import get_call_graph
+    from pytools.graph import compute_topological_order
 
     def has_gbarrier(knl):
         return any((isinstance(insn, BarrierInstruction)
                     and insn.synchronization_kind == "global")
                    for insn in knl.instructions)
 
-    # FIXME: should traverse in call-graph's topological sort order
-    callees_to_inline = [name for name, knl_clbl in program.callables_table.items()
-                         if (isinstance(knl_clbl, CallableKernel)
-                             and has_gbarrier(knl_clbl.subkernel))]
+    call_graph = get_call_graph(program, only_kernel_callables=True)
 
-    for callee_to_inline in callees_to_inline:
-        program = inline_callable_kernel(program, callee_to_inline)
+    # traverse the kernel calls in a reverse topological sort so that barriers
+    # are rightly passed to the entrypoints.
+    toposort = compute_topological_order(call_graph,
+                                         # pass key to have deterministic codegen
+                                         key=lambda x: x
+                                         )
+
+    for name in toposort[::-1]:
+        if has_gbarrier(program[name]):
+            program = inline_callable_kernel(program, name)
 
     return program
 
