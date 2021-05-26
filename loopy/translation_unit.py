@@ -715,7 +715,7 @@ def add_callable_to_table(callables_table, clbl_id, clbl):
         new_clbl_id = ung(clbl_id)
 
     new_callables_table = callables_table.copy()
-    new_callables_table[new_clbl_id] = clbl
+    new_callables_table[new_clbl_id] = clbl.with_name(new_clbl_id)
 
     return new_clbl_id, new_callables_table
 
