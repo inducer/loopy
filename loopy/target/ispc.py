@@ -308,7 +308,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     def get_temporary_decl(self, kernel, temp_var, decl_info):
         from loopy.target.c import POD  # uses the correct complex type
-        temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
+        temp_var_decl = POD(self.target.dtype_to_typename(decl_info.dtype),
+                            decl_info.dtype, decl_info.name)
 
         shape = decl_info.shape
 
@@ -338,7 +339,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         from cgen import Const
         from cgen.ispc import ISPCUniformPointer, ISPCUniform
 
-        arg_decl = ISPCUniformPointer(POD(self, dtype, name))
+        arg_decl = ISPCUniformPointer(POD(self.target.dtype_to_typename(dtype),
+                                          dtype, name))
 
         if not is_written:
             arg_decl = Const(arg_decl)
@@ -501,7 +503,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
         return For(
                 InlineInitializer(
-                    ISPCUniform(POD(self, iname_dtype, iname)),
+                    ISPCUniform(POD(self.target.dtype_to_typename(iname_dtype),
+                                    iname_dtype, iname)),
                     ecm(lbound, PREC_NONE, "i")),
                 ecm(
                     p.Comparison(var(iname), "<=", ubound),

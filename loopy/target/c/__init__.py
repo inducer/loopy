@@ -253,13 +253,11 @@ class POD(Declarator):
     and the *name* is given as a string.
     """
 
-    def __init__(self, ast_builder, dtype, name):
+    def __init__(self, ctype, dtype, name):
         from loopy.types import LoopyType
         assert isinstance(dtype, LoopyType)
 
-        # TODO: just pass 'ctype' instead of ast_builder.
-
-        self.ctype = ast_builder.target.dtype_to_typename(dtype)
+        self.ctype = ctype
         self.dtype = dtype
         self.name = name
 
@@ -352,7 +350,7 @@ def generate_array_literal(kernel, ecm, ast_builder, array, value):
 
 class CASTIdentityMapper(CASTIdentityMapperBase):
     def map_loopy_pod(self, node, *args, **kwargs):
-        return type(node)(node.ast_builder, node.dtype, node.name)
+        return type(node)(node.ctype, node.dtype, node.name)
 
     def map_function_decl_wrapper(self, node, *args, **kwargs):
         return FunctionDeclarationWrapper(
@@ -730,7 +728,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
                 or idi.stride_for_name_and_axis is not None):
             assert not idi.is_written
             from cgen import Const
-            return Const(POD(self, idi.dtype, idi.name))
+            return Const(POD(self.target.dtype_to_typename(idi.dtype),
+                             idi.dtype, idi.name))
         elif issubclass(idi.arg_class, InameArg):
             return InameArg(idi.name, idi.dtype).get_arg_decl(self)
         else:
@@ -827,7 +826,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
                         if tv.initializer is not None:
                             assert tv.read_only
                             decl = Initializer(decl, self.emit_array_literal(
-                                kernel, ecm, tv, tv.initializer))
+                                kernel, tv, tv.initializer))
 
                         temp_decls.append(decl)
 
@@ -855,8 +854,10 @@ class CFamilyASTBuilder(ASTBuilderBase):
                         align_size)
 
                 for idi in decl_info:
-                    cast_decl = POD(self, idi.dtype, "")
-                    temp_var_decl = POD(self, idi.dtype, idi.name)
+                    cast_decl = POD(self.target.dtype_to_typename(idi.dtype),
+                                    idi.dtype, "")
+                    temp_var_decl = POD(self.target.dtype_to_typename(idi.dtype),
+                                        idi.dtype, idi.name)
 
                     cast_decl = self.wrap_temporary_decl(cast_decl, tv.address_space)
                     temp_var_decl = self.wrap_temporary_decl(
@@ -970,7 +971,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
         return CExpressionToCodeMapper()
 
     def get_temporary_decl(self, kernel, temp_var, decl_info):
-        temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
+        temp_var_decl = POD(self.target.dtype_to_typename(decl_info.dtype),
+                            decl_info.dtype, decl_info.name)
 
         if temp_var.read_only:
             from cgen import Const
@@ -1000,7 +1002,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
     def get_value_arg_decl(self, name, shape, dtype, is_written):
         assert shape == ()
 
-        result = POD(self, dtype, name)
+        result = POD(self.target.dtype_to_typename(dtype), dtype, name)
 
         if not is_written:
             from cgen import Const
@@ -1015,7 +1017,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
     def get_array_arg_decl(self, name, mem_address_space, shape, dtype, is_written):
         from cgen import RestrictPointer, Const
 
-        arg_decl = RestrictPointer(POD(self, dtype, name))
+        arg_decl = RestrictPointer(POD(self.target.dtype_to_typename(dtype),
+                                       dtype, name))
 
         if not is_written:
             arg_decl = Const(arg_decl)
@@ -1034,7 +1037,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
         from loopy.target.c import POD  # uses the correct complex type
         from cgen import RestrictPointer, Const
 
-        arg_decl = RestrictPointer(POD(self, dtype, name))
+        arg_decl = RestrictPointer(POD(self.target.dtype_to_typename(dtype),
+                                       dtype, name))
 
         if not is_written:
             arg_decl = Const(arg_decl)
@@ -1167,7 +1171,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
         return For(
                 InlineInitializer(
-                    POD(self, iname_dtype, iname),
+                    POD(self.target.dtype_to_typename(iname_dtype),
+                        iname_dtype, iname),
                     ecm(lbound, PREC_NONE, "i")),
                 ecm(
                     Comparison(

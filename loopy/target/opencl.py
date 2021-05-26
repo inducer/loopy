@@ -734,7 +734,8 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         from cgen import RestrictPointer, Const
         from cgen.opencl import CLConstant
 
-        arg_decl = RestrictPointer(POD(self, dtype, name))
+        arg_decl = RestrictPointer(POD(self.target.dtype_to_typename(dtype),
+                                       dtype, name))
 
         if not is_written:
             arg_decl = Const(arg_decl)
@@ -841,11 +842,13 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 new_val = "*(%s *) &" % ctype + new_val
                 cast_str = f"({var_kind} {ctype} *) "
 
+            lhs_dtype = NumpyType(lhs_dtype.dtype)
+
             return Block([
-                POD(self, NumpyType(lhs_dtype.dtype),
-                    old_val_var),
-                POD(self, NumpyType(lhs_dtype.dtype),
-                    new_val_var),
+                POD(self.target.dtype_to_typename(lhs_dtype),
+                    lhs_dtype, old_val_var),
+                POD(self.target.dtype_to_typename(lhs_dtype),
+                    lhs_dtype, new_val_var),
                 DoWhile(
                     "%(func_name)s("
                     "%(cast_str)s&(%(lhs_expr)s), "

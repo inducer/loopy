@@ -298,7 +298,11 @@ class _DummyExpressionToCodeMapper:
     __call__ = rec
 
 
-class _DummyASTBlock:
+class _DummyAST:
+    pass
+
+
+class _DummyASTBlock(_DummyAST):
     def __init__(self, arg):
         self.contents = []
 
@@ -323,7 +327,11 @@ class DummyHostASTBuilder(ASTBuilderBase):
         return _DummyExpressionToCodeMapper()
 
     def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
-        return None
+        return _DummyASTBlock([])
+
+    @property
+    def ast_base_class(self):
+        return _DummyAST
 
     @property
     def ast_block_class(self):

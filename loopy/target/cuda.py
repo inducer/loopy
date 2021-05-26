@@ -410,7 +410,8 @@ class CUDACASTBuilder(CFamilyASTBuilder):
         from cgen import Const
         from cgen.cuda import CudaRestrictPointer
 
-        arg_decl = CudaRestrictPointer(POD(self, dtype, name))
+        arg_decl = CudaRestrictPointer(POD(self.target.dtype_to_typename(dtype),
+                                           dtype, name))
 
         if not is_written:
             arg_decl = Const(arg_decl)
@@ -432,7 +433,8 @@ class CUDACASTBuilder(CFamilyASTBuilder):
         from cgen import RestrictPointer, Const
         from cgen.cuda import CudaConstant
 
-        arg_decl = RestrictPointer(POD(self, dtype, name))
+        arg_decl = RestrictPointer(POD(self.target.dtype_to_typename(dtype),
+                                       dtype, name))
 
         if not is_written:
             arg_decl = Const(arg_decl)
