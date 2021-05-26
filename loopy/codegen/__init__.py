@@ -606,15 +606,15 @@ def diverge_callee_entrypoints(program):
     entrypoint and a callee, then rename the callee.
     """
     from loopy.translation_unit import (get_reachable_resolved_callable_ids,
-                                        rename_resolved_functions_in_a_single_kernel)
-    from pytools import UniqueNameGenerator
+                                        rename_resolved_functions_in_a_single_kernel,
+                                        make_callable_name_generator)
     callable_ids = get_reachable_resolved_callable_ids(program.callables_table,
                                                        program.entrypoints)
 
     new_callables = {}
     todo_renames = {}
 
-    vng = UniqueNameGenerator(set(program.callables_table.keys()))
+    vng = make_callable_name_generator(program.callables_table)
 
     for clbl_id in callable_ids & program.entrypoints:
         todo_renames[clbl_id] = vng(based_on=clbl_id)
