@@ -708,7 +708,7 @@ def add_callable_to_table(callables_table, clbl_id, clbl):
             return i, callables_table
 
     if isinstance(clbl_id, ReductionOpFunction):
-        new_clbl_id = clbl_id.copy()
+        new_clbl_id = clbl_id
     else:
         assert isinstance(clbl_id, str)
         ung = make_callable_name_generator(callables_table)
