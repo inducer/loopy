@@ -1995,9 +1995,14 @@ class CallablesIDCollector(CombineMapper):
     map_tagged_variable = map_constant
 
 
-def get_resolved_callable_ids_called_by_knl(knl, callables):
+def get_resolved_callable_ids_called_by_knl(knl, callables, recursive=True):
     clbl_id_collector = CallablesIDCollector()
     callables_called_by_kernel = clbl_id_collector.map_kernel(knl)
+
+    if not recursive:
+        # => do not recurse into the callees
+        return callables_called_by_kernel
+
     callables_called_by_called_callables = frozenset().union(*(
         callables[clbl_id].get_called_callables(callables)
         for clbl_id in callables_called_by_kernel))
