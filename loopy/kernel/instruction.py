@@ -1144,16 +1144,16 @@ class CallInstruction(MultiAssignmentBase):
             result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
         return result
 
-    def arg_id_to_val(self):
+    def arg_id_to_arg(self):
         """:returns: a :class:`dict` mapping argument identifiers (non-negative numbers
             for positional arguments and negative numbers
             for assignees) to their respective values
         """
-        arg_id_to_val = dict(enumerate(self.expression.parameters))
+        arg_id_to_arg = dict(enumerate(self.expression.parameters))
         for i, arg in enumerate(self.assignees):
-            arg_id_to_val[-i-1] = arg
+            arg_id_to_arg[-i-1] = arg
 
-        return arg_id_to_val
+        return arg_id_to_arg
 
     @property
     def atomicity(self):

@@ -426,14 +426,14 @@ class InKernelCallable(ImmutableRecord):
         return (self.arg_id_to_dtype is not None and
                 self.arg_id_to_descr is not None)
 
-    def get_hw_axes_sizes(self, arg_id_to_val, space, callables_table):
+    def get_hw_axes_sizes(self, arg_id_to_arg, space, callables_table):
         """
         Returns ``gsizes, lsizes``, where *gsizes* and *lsizes* are mappings
         from axis indices to corresponding group or local hw axis sizes. The hw
         axes sizes are represented as instances of :class:`islpy.PwAff` on the
         given *space*.
 
-        :arg arg_id_to_val: A mapping from the passed argument *id* to the
+        :arg arg_id_to_arg: A mapping from the passed argument *id* to the
             arguments at a call-site.
         :arg space: An instance of :class:`islpy.Space`.
         """
@@ -548,7 +548,7 @@ class ScalarCallable(InKernelCallable):
         return (self.copy(arg_id_to_descr=arg_id_to_descr),
                 clbl_inf_ctx)
 
-    def get_hw_axes_sizes(self, arg_id_to_val, space, callables_table):
+    def get_hw_axes_sizes(self, arg_id_to_arg, space, callables_table):
         return {}, {}
 
     def get_used_hw_axes(self, callables_table):
@@ -889,14 +889,14 @@ class CallableKernel(InKernelCallable):
 
         return frozenset(gsize.keys()), frozenset(lsize.keys())
 
-    def get_hw_axes_sizes(self, arg_id_to_val, space, callables_table):
+    def get_hw_axes_sizes(self, arg_id_to_arg, space, callables_table):
         from loopy.isl_helpers import subst_into_pwaff
         _, pos_to_kw = get_kw_pos_association(self.subkernel)
         gsize, lsize = self.subkernel.get_grid_size_upper_bounds(callables_table,
                                                                  return_dict=True)
 
         subst_dict = {i: val
-                      for i, val in arg_id_to_val.items()
+                      for i, val in arg_id_to_arg.items()
                       if isinstance(self.subkernel.arg_dict[pos_to_kw[i]],
                                     ValueArg)}
 

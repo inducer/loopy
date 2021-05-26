@@ -2171,16 +2171,16 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
             # ignore if the call is not to a ResolvedFunction
             return super().map_call(expr, expn_state)
 
-        arg_id_to_val = dict(enumerate(expr.parameters))
+        arg_id_to_arg = dict(enumerate(expr.parameters))
 
         if assignees is not None:
             # If supplied with assignees then this is a CallInstruction
             for i, arg in enumerate(assignees):
-                arg_id_to_val[-i-1] = arg
+                arg_id_to_arg[-i-1] = arg
 
         arg_id_to_descr = {
             arg_id: get_arg_descriptor_for_expression(self.caller_kernel, arg)
-            for arg_id, arg in arg_id_to_val.items()}
+            for arg_id, arg in arg_id_to_arg.items()}
         clbl = self.clbl_inf_ctx[expr.function.name]
 
         # {{{ translating descriptor expressions to the callable's namespace
