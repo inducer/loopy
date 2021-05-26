@@ -707,6 +707,16 @@ class UnvectorizableInamesCollector(CombineMapper):
         return frozenset()
 
 
+def _max_val_on_pwaff_for_unrolling(bset, pwaff, iname_to_unr):
+    max_vals = [(bset & set_i).max_val(aff_i)
+                for set_i, aff_i in pwaff.get_pieces()]
+
+    if any(max_val.is_infty() for max_val in max_vals):
+        raise LoopyError(f"{iname_to_unr} doesn't have an integral loop length"
+                         " => cannot unroll.")
+    return max(max_val.to_python() for max_val in max_vals)
+
+
 class Unroller(PolyhedronLoopifier):
     """
     .. attribute extra_unroll_inames::
@@ -721,45 +731,51 @@ class Unroller(PolyhedronLoopifier):
 
     def map_polyhedral_loop(self, expr, context):
         from loopy.kernel.data import UnrollTag, UnrolledIlpTag
-        from loopy.isl_helpers import (make_slab, static_max_of_pw_aff,
-                                       static_min_of_pw_aff)
+        from loopy.isl_helpers import make_slab
 
-        if (self.kernel.iname_tags_of_type(expr.iname, (UnrolledIlpTag,
+        if not (self.kernel.iname_tags_of_type(expr.iname, (UnrolledIlpTag,
                                                         UnrollTag))
                 or expr.iname in self.extra_unroll_inames):
-            domain = _align_and_intersect(expr.domain, context.implemented_domain)
-            ubound = static_max_of_pw_aff(domain.dim_max(0), constants_only=False)
-            lbound = static_min_of_pw_aff(domain.dim_min(0), constants_only=False)
-            # FIXME: Write a better error message o'er here that the loop
-            # cannot be unrolled.
-            size = static_max_of_pw_aff(ubound-lbound+1, constants_only=True)
-            assert size.is_cst()
-
-            result = []
-            for i in range(size.get_constant_val().to_python()):
-                unrll_dom = make_slab(domain.space, expr.iname, lbound+i,
-                                      lbound+i+1) & domain
-                if unrll_dom.is_empty():
-                    continue
-
-                dwnstrm_dom = _align_and_intersect(unrll_dom,
-                                                   context.implemented_domain)
-
-                dwnstrm_dom = dwnstrm_dom.move_dims(dim_type.param,
-                                                    (dwnstrm_dom
-                                                     .dim(dim_type.param)),
-                                                    dim_type.set, 0, 1).params()
-                children = [self.rec(child, (context
-                                            .copy(implemented_domain=dwnstrm_dom)))
-                            for child in expr.children]
-
-                result.append(PolyhedralLoop(iname=expr.iname,
-                                             children=self.combine(children),
-                                             domain=unrll_dom))
-
-            return GroupedChildren(contents=result)
-        else:
             return super().map_polyhedral_loop(expr, context)
+
+        implemented_domain = _implement_hw_axes_in_domains(context
+                                                            .implemented_domain,
+                                                            expr.domain,
+                                                            self.kernel,
+                                                            context.gsize,
+                                                            context.lsize)
+
+        domain = _align_and_intersect(expr.domain, implemented_domain)
+
+        lbound = domain.dim_min(0)
+        loop_length_pw_aff = domain.dim_max(0) - lbound + 1
+        loop_length = _max_val_on_pwaff_for_unrolling(implemented_domain,
+                                                        loop_length_pw_aff,
+                                                        expr.iname)
+
+        result = []
+        for i in range(loop_length):
+            unrll_dom = make_slab(domain.space, expr.iname, lbound+i,
+                                    lbound+i+1) & domain
+            if unrll_dom.is_empty():
+                continue
+
+            dwnstrm_dom = _align_and_intersect(unrll_dom,
+                                                implemented_domain)
+
+            dwnstrm_dom = dwnstrm_dom.move_dims(dim_type.param,
+                                                (dwnstrm_dom
+                                                    .dim(dim_type.param)),
+                                                dim_type.set, 0, 1).params()
+            children = [self.rec(child, (context
+                                        .copy(implemented_domain=dwnstrm_dom)))
+                        for child in expr.children]
+
+            result.append(PolyhedralLoop(iname=expr.iname,
+                                            children=self.combine(children),
+                                            domain=unrll_dom))
+
+        return GroupedChildren(contents=result)
 
     def map_loop(self, expr, context):
         raise RuntimeError("At this point, all loops should have resolved as"
