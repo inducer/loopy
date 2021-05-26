@@ -2148,7 +2148,9 @@ def get_one_scheduled_kernel(kernel, callables_table):
 def get_one_linearized_kernel(kernel, callables_table):
     from loopy import CACHING_ENABLED
 
-    sched_cache_key = kernel
+    # must include *callables_table* within the cache key as the preschedule
+    # checks depend on it.
+    sched_cache_key = (kernel, callables_table)
     from_cache = False
 
     if CACHING_ENABLED:
