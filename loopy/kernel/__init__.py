@@ -1090,7 +1090,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                     and isinstance(insn.expression.function, ResolvedFunction)):
 
                 clbl = callables_table[insn.expression.function.name]
-                gsize, lsize = clbl.get_hw_axes_sizes(insn.arg_id_to_val(),
+                gsize, lsize = clbl.get_hw_axes_sizes(insn.arg_id_to_arg(),
                                                       self.assumptions.space,
                                                       callables_table)
 
