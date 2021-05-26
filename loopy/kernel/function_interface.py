@@ -483,13 +483,16 @@ class InKernelCallable(ImmutableRecord):
         """
         raise NotImplementedError()
 
-    def get_called_callables(self, callables_table):
+    def get_called_callables(self, callables_table, recursive=True):
         """
         Returns a :class:`frozenset` of callable ids called by *self* that are
         resolved via *callables_table*.
 
         :arg callables_table: Similar to
             :attr:`loopy.TranslationUnit.callables_table`.
+        :arg recursive: If *True* recursively searches for all the called
+            callables, else only returns the callables directly called by
+            *self*.
         """
         raise NotImplementedError
 
@@ -657,7 +660,7 @@ class ScalarCallable(InKernelCallable):
     def with_added_arg(self, arg_dtype, arg_descr):
         raise LoopyError("Cannot add args to scalar callables.")
 
-    def get_called_callables(self, callables_table):
+    def get_called_callables(self, callables_table, recursive=True):
         """
         Returns a :class:`frozenset` of callable ids called by *self*.
         """
@@ -955,10 +958,11 @@ class CallableKernel(InKernelCallable):
 
         return var(self.subkernel.name)(*tgt_parameters), False
 
-    def get_called_callables(self, callables_table):
+    def get_called_callables(self, callables_table, recursive=True):
         from loopy.kernel.tools import get_resolved_callable_ids_called_by_knl
         return get_resolved_callable_ids_called_by_knl(self.subkernel,
-                                                       callables_table)
+                                                       callables_table,
+                                                       recursive=recursive)
 
     def with_name(self, name):
         new_knl = self.subkernel.copy(name=name)
