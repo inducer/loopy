@@ -314,6 +314,7 @@ class InKernelCallable(ImmutableRecord):
     .. automethod:: get_hw_axes_sizes
     .. automethod:: get_used_hw_axes
     .. automethod:: get_called_callables
+    .. automethod:: with_name
 
     .. note::
 
@@ -492,6 +493,13 @@ class InKernelCallable(ImmutableRecord):
         """
         raise NotImplementedError
 
+    def with_name(self, name):
+        """
+        Returns a copy of *self* so that it could be referred by *name*
+        in a :attr:`loopy.TranslationUnit.callables_table`'s namespace.
+        """
+        raise NotImplementedError
+
 # }}}
 
 
@@ -654,6 +662,9 @@ class ScalarCallable(InKernelCallable):
         Returns a :class:`frozenset` of callable ids called by *self*.
         """
         return frozenset()
+
+    def with_name(self, name):
+        return self
 
 # }}}
 
@@ -948,6 +959,10 @@ class CallableKernel(InKernelCallable):
         from loopy.kernel.tools import get_resolved_callable_ids_called_by_knl
         return get_resolved_callable_ids_called_by_knl(self.subkernel,
                                                        callables_table)
+
+    def with_name(self, name):
+        new_knl = self.subkernel.copy(name=name)
+        return self.copy(subkernel=new_knl)
 
 # }}}
 
