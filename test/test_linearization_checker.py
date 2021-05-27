@@ -1366,8 +1366,13 @@ def _compare_dependencies(knl, deps_expected, return_unsatisfied=False):
 
     # Get unsatisfied deps
     lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
-    return lp.find_unsatisfied_dependencies(proc_knl, lin_items)
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(proc_knl, lin_items)
 
+    # Make sure dep checking also works with just linearized kernel
+    unsatisfied_deps_2 = lp.find_unsatisfied_dependencies(lin_knl)
+    assert len(unsatisfied_deps) == len(unsatisfied_deps_2)
+
+    return unsatisfied_deps
 
 # }}}
 
