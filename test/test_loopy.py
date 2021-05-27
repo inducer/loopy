@@ -2040,12 +2040,18 @@ def test_tight_loop_bounds_codegen():
     cgr = lp.generate_code_v2(knl)
     #print(cgr.device_code())
 
-    for_loop = \
+    for_loop1 = \
         "for (int j = " \
         "(gid(0) == 0 && lid(0) == 0 ? 0 : -2 + 2 * lid(0) + 10 * gid(0)); " \
         "j <= (-1 + gid(0) == 0 && lid(0) == 0 ? 9 : 2 * lid(0)); ++j)"
 
-    assert for_loop in cgr.device_code()
+    for_loop2 = \
+        "for (int j = " \
+        "(lid(0) == 0 && gid(0) == 0 ? 0 : -2 + 10 * gid(0) + 2 * lid(0)); " \
+        "j <= (gid(0) == 0 && lid(0) >= 0 && 4 + -1 * lid(0) >= 0 ?" \
+        " 10 * gid(0) + 2 * lid(0) : 9); ++j)"
+
+    assert (for_loop1 in cgr.device_code() or for_loop2 in cgr.device_code())
 
 
 def test_unscheduled_insn_detection():
