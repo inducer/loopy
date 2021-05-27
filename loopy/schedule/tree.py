@@ -604,6 +604,17 @@ class PolyhedronLoopifier(IdentityMapper):
                               children=self.combine(children), domain=domain)
 
 
+class EmptyLoopRemover(PolyhedronLoopifier):
+    """
+    Mapper to remove any loops with empty domain.
+    """
+    def map_polyhedral_loop(self, expr, context):
+        if expr.domain.is_empty():
+            return GroupedChildren([])
+
+        return super().map_polyhedral_loop(expr, context)
+
+
 class UnvectorizableInamesCollector(CombineMapper):
     """
     Mapper to gather all insn ids.
@@ -973,6 +984,7 @@ def insert_predicates_into_schedule(kernel):
     # }}}
 
     schedule = PolyhedronLoopifier(kernel)(kernel.schedule)
+    schedule = EmptyLoopRemover(kernel)(schedule)
 
     unvectorizable_inames = UnvectorizableInamesCollector(kernel)(schedule)
     # TODO: (For now) unvectorizable inames always fallback to unrolling this
