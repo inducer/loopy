@@ -1469,7 +1469,7 @@ def test_add_dependency_v2():
 
     assert not unsatisfied_deps
 
-    # }}}
+# }}}
 
 
 # {{{ test_new_dependencies_finite_diff

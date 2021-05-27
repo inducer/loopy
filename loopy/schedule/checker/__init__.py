@@ -142,7 +142,7 @@ def get_pairwise_statement_orderings(
 
 def find_unsatisfied_dependencies(
         knl,
-        lin_items,
+        lin_items=None,
         ):
     """For each statement (:class:`loopy.InstructionBase`) found in a
     preprocessed kernel, determine which dependencies, if any, have been
@@ -157,7 +157,8 @@ def find_unsatisfied_dependencies(
         (to be renamed to `loopy.schedule.LinearizationItem`) containing all
         linearization items in `knl.linearization`. To allow usage of
         this routine during linearization, a truncated (i.e. partial)
-        linearization may be passed through this argument.
+        linearization may be passed through this argument. If not provided,
+        `knl.linearization` will be used.
 
     :returns: A list of unsatisfied dependencies, each described using a
         :class:`collections.namedtuple` containing the following:
@@ -185,13 +186,17 @@ def find_unsatisfied_dependencies(
 
     """
 
-    # {{{ make sure kernel has been preprocessed
+    # {{{ Handle lin_items=None and make sure kernel has been preprocessed
 
-    # Note: kernels must always be preprocessed before scheduling
     from loopy.kernel import KernelState
-    assert knl.state in [
-            KernelState.PREPROCESSED,
-            KernelState.LINEARIZED]
+    if lin_items is None:
+        assert knl.state == KernelState.LINEARIZED
+        lin_items = knl.linearization
+    else:
+        # Note: kernels must always be preprocessed before scheduling
+        assert knl.state in [
+                KernelState.PREPROCESSED,
+                KernelState.LINEARIZED]
 
     # }}}
 
