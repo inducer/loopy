@@ -1444,6 +1444,11 @@ def test_add_dependency_v2():
 
     assert not unsatisfied_deps
 
+    # Make sure dep checking also works with just linearized kernel
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(lin_knl)
+
+    assert not unsatisfied_deps
+
 # }}}
 
 
@@ -1488,6 +1493,11 @@ def test_new_dependencies_finite_diff():
         proc_knl, lin_items)
 
     print(lp.generate_code_v2(lin_knl).device_code())
+    assert not unsatisfied_deps
+
+    # Make sure dep checking also works with just linearized kernel
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(lin_knl)
+
     assert not unsatisfied_deps
 
     # }}}
