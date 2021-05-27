@@ -247,12 +247,12 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
     from loopy.schedule.tree import (make_schedule_tree,
                                      insert_predicates_into_schedule)
     kernel = make_schedule_tree(kernel)
-    kernel = insert_predicates_into_schedule(kernel)
+    kernel, unvectorizable_inames = insert_predicates_into_schedule(kernel)
 
     # }}}
 
     from loopy.codegen.result import get_idis_for_kernel, CodeGenMapper
-    codegen_mapper = CodeGenMapper(kernel)
+    codegen_mapper = CodeGenMapper(kernel, unvectorizable_inames)
 
     codegen_result = codegen_mapper(kernel.schedule)
 

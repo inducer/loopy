@@ -991,7 +991,7 @@ def insert_predicates_into_schedule(kernel):
     # should be selected based on the target.
     schedule = Unroller(kernel, unvectorizable_inames)(schedule)
     schedule = PredicateInsertionMapper(kernel)(schedule)
-    return kernel.copy(schedule=schedule)
+    return kernel.copy(schedule=schedule), unvectorizable_inames
 
 
 def get_insns_in_function(kernel, name):

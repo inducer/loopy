@@ -211,8 +211,9 @@ class CodeGenerationContext:
 
 
 class CodeGenMapper(CombineMapper):
-    def __init__(self, kernel):
+    def __init__(self, kernel, unvectorizable_inames):
         self.kernel = kernel
+        self.unvectorizable_inames = unvectorizable_inames
         self.host_ast_builder = kernel.target.get_host_ast_builder()
         self.device_ast_builder = kernel.target.get_device_ast_builder()
 
@@ -423,7 +424,8 @@ class CodeGenMapper(CombineMapper):
                     InOrderSequentialSequentialTag)
         ast_builder = self.device_ast_builder if context.in_device else self.host_ast_builder  # noqa: E501
 
-        if self.kernel.iname_tags_of_type(expr.iname, vec_tags):
+        if (self.kernel.iname_tags_of_type(expr.iname, vec_tags)
+                and expr.iname not in self.unvectorizable_inames):
             assert isinstance(expr.lower_bound, int)
             assert isinstance(expr.upper_bound, int)
             assert expr.step == 1
@@ -436,7 +438,7 @@ class CodeGenMapper(CombineMapper):
         else:
             assert (len(self.kernel.inames[expr.iname].tags) == 0
                     or self.kernel.iname_tags_of_type(expr.iname,
-                                                      seq_tags+unr_tags))
+                                                      seq_tags+unr_tags+vec_tags))
             assert expr.step == 1
 
             if expr.upper_bound != expr.lower_bound:
