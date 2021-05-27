@@ -287,6 +287,12 @@ class Mapper:
 
 class IdentityMapper(Mapper):
     def combine(self, values):
+        """
+        Mapper methods might want to split a node into multiple nodes, in which
+        case they return an instance of :class:`GroupedChildren`. This method
+        "flattens" the contents of any such grouped of schedule nodes with
+        their corresponding siblings.
+        """
         result = []
         for val in values:
             if isinstance(val, GroupedChildren):
@@ -483,6 +489,7 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
                                   & make_slab(implemented_domain.space, dim_name,
                                               lbound, lbound + size))
 
+    assert implemented_domain.dim(dim_type.set) == 0
     return implemented_domain.params()
 
 
@@ -586,11 +593,9 @@ class PolyhedronLoopifier(IdentityMapper):
                                                            context.lsize)
 
         domain = _align_and_intersect(expr.domain, implemented_domain)
-        downstream_domain = _align_and_intersect(domain, implemented_domain)
-        downstream_domain = downstream_domain.move_dims(dim_type.param,
-                                                        (downstream_domain
-                                                         .dim(dim_type.param)),
-                                                        dim_type.set, 0, 1).params()
+        downstream_domain = domain.move_dims(dim_type.param,
+                                             domain.dim(dim_type.param),
+                                             dim_type.set, 0, 1).params()
         children = [self.rec(child, (context
                                      .copy(implemented_domain=downstream_domain)))
                     for child in expr.children]
@@ -711,10 +716,12 @@ def _max_val_on_pwaff_for_unrolling(bset, pwaff, iname_to_unr):
     max_vals = [(bset & set_i).max_val(aff_i)
                 for set_i, aff_i in pwaff.get_pieces()]
 
-    if any(max_val.is_infty() for max_val in max_vals):
+    if any((max_val.is_infty() or max_val.is_neginfty() or max_val.is_nan())
+           for max_val in max_vals):
         raise LoopyError(f"{iname_to_unr} doesn't have an integral loop length"
                          " => cannot unroll.")
-    return max(max_val.to_python() for max_val in max_vals)
+    from math import ceil
+    return ceil(max(max_val.to_python() for max_val in max_vals))
 
 
 class Unroller(PolyhedronLoopifier):
@@ -739,19 +746,19 @@ class Unroller(PolyhedronLoopifier):
             return super().map_polyhedral_loop(expr, context)
 
         implemented_domain = _implement_hw_axes_in_domains(context
-                                                            .implemented_domain,
-                                                            expr.domain,
-                                                            self.kernel,
-                                                            context.gsize,
-                                                            context.lsize)
+                                                           .implemented_domain,
+                                                           expr.domain,
+                                                           self.kernel,
+                                                           context.gsize,
+                                                           context.lsize)
 
         domain = _align_and_intersect(expr.domain, implemented_domain)
 
         lbound = domain.dim_min(0)
         loop_length_pw_aff = domain.dim_max(0) - lbound + 1
         loop_length = _max_val_on_pwaff_for_unrolling(implemented_domain,
-                                                        loop_length_pw_aff,
-                                                        expr.iname)
+                                                      loop_length_pw_aff,
+                                                      expr.iname)
 
         result = []
         for i in range(loop_length):
@@ -761,14 +768,14 @@ class Unroller(PolyhedronLoopifier):
                 continue
 
             dwnstrm_dom = _align_and_intersect(unrll_dom,
-                                                implemented_domain)
+                                               implemented_domain)
 
             dwnstrm_dom = dwnstrm_dom.move_dims(dim_type.param,
                                                 (dwnstrm_dom
                                                     .dim(dim_type.param)),
                                                 dim_type.set, 0, 1).params()
             children = [self.rec(child, (context
-                                        .copy(implemented_domain=dwnstrm_dom)))
+                                         .copy(implemented_domain=dwnstrm_dom)))
                         for child in expr.children]
 
             result.append(PolyhedralLoop(iname=expr.iname,
@@ -792,9 +799,9 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
                     for child in expr.children}) == 1
 
         inames, = {self.kernel.id_to_insn[child.insn_id].within_inames
-                    for child in expr.children}
+                   for child in expr.children}
         predicates, = {self.kernel.id_to_insn[child.insn_id].predicates
-                        for child in expr.children}
+                       for child in expr.children}
 
         # {{{ compute the predicates due to the hardware inames
 
@@ -812,10 +819,9 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
                                                         context.gsize,
                                                         context.lsize)
             domain = (domain
-                        .move_dims(dim_type.param, domain.dim(dim_type.param),
-                                    dim_type.set, 0, domain.dim(dim_type.set)))
-            unimplemented_domain = (isl.align_spaces(domain, impl_domain)
-                                    .gist(impl_domain))
+                      .move_dims(dim_type.param, domain.dim(dim_type.param),
+                                 dim_type.set, 0, domain.dim(dim_type.set)))
+            unimplemented_domain = _align_and_gist(domain, impl_domain)
 
             if not unimplemented_domain.is_universe():
                 predicates |= {set_to_cond_expr(unimplemented_domain)}
@@ -833,16 +839,23 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
 
     def map_polyhedral_loop(self, expr, context):
         from loopy.symbolic import pw_aff_to_expr
-        from loopy.isl_helpers import (static_min_of_pw_aff,
-                                       static_max_of_pw_aff, make_slab)
+        from loopy.isl_helpers import (make_slab, static_min_of_pw_aff,
+                                       static_max_of_pw_aff)
 
+        base_poly_loop = super().map_polyhedral_loop(expr, context)
         assert expr.domain.dim(dim_type.set) == 1
-        domain = _align_and_intersect(expr.domain, context.implemented_domain)
+        domain = base_poly_loop.domain
+        impl_domain = _implement_hw_axes_in_domains(context.implemented_domain,
+                                                    domain,
+                                                    self.kernel,
+                                                    context.gsize,
+                                                    context.lsize)
+
         lb = domain.dim_min(0)
         ub = domain.dim_max(0)
         set_implemented_in_loop = make_slab(expr.domain.space, expr.iname,
                                             static_min_of_pw_aff(lb, False),
-                                            static_max_of_pw_aff(ub, False)+1)
+                                            static_max_of_pw_aff(ub, False) + 1)
 
         # Removing divs because all we want is a projection, with no remaining
         # constraints from the eliminated variables.
@@ -852,7 +865,7 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
                                           .remove_divs(),
                                           _align_and_intersect(
                                               set_implemented_in_loop,
-                                              context.implemented_domain))
+                                              impl_domain))
         inner_condition = _align_and_gist(domain.affine_hull(),
                                           set_implemented_in_loop)
 
@@ -863,9 +876,7 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
                    upper_bound=pw_aff_to_expr(ub),
                    step=step,
                    children=_wrap_in_if(inner_condition,
-                                        (super()
-                                         .map_polyhedral_loop(expr, context)
-                                         .children)))
+                                        base_poly_loop.children))
 
         if outer_condition.is_universe():
             return for_
@@ -964,7 +975,7 @@ def insert_predicates_into_schedule(kernel):
     schedule = PolyhedronLoopifier(kernel)(kernel.schedule)
 
     unvectorizable_inames = UnvectorizableInamesCollector(kernel)(schedule)
-    # FIXME: (For now) unvectorizable inames always fallback to unrolling this
+    # TODO: (For now) unvectorizable inames always fallback to unrolling this
     # should be selected based on the target.
     schedule = Unroller(kernel, unvectorizable_inames)(schedule)
     schedule = PredicateInsertionMapper(kernel)(schedule)
