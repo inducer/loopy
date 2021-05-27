@@ -336,7 +336,9 @@ class CodeGenMapper(CombineMapper):
                                                  is_generating_device_code=True))
         host_ast = self.host_ast_builder.get_kernel_call(self.kernel,
                                                          expr.name, idis,
-                                                         expr.extra_args)
+                                                         # 'idis' include the
+                                                         # "extra_args"
+                                                         extra_args=[])
 
         # }}}
 
