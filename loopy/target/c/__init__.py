@@ -782,9 +782,13 @@ class CFamilyASTBuilder(ASTBuilderBase):
                         for d_i in data)))
 
     def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
-        return None
+        return self.emit_blank_line()
 
     def get_temporary_decls(self, kernel, subkernel_name):
+        if subkernel_name is None:
+            # => host program => no temp dels
+            return []
+
         from loopy.kernel.data import AddressSpace
 
         ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},

@@ -181,7 +181,8 @@ class PythonASTBuilderBase(ASTBuilderBase):
                 function_body)
 
     def get_temporary_decls(self, kernel, subkernel_name):
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={})
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},
+                                                 vectorization_info=None)
 
         result = []
 
@@ -294,7 +295,8 @@ class PythonASTBuilderBase(ASTBuilderBase):
         from pymbolic.mapper.stringifier import PREC_NONE
         from genpy import Assign
 
-        ecm = self.expression_to_code_mapper(kernel, var_subst_map)
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+                                                 vectorization_info)
 
         return Assign(
                 ecm(insn.assignee, prec=PREC_NONE, type_context=None),

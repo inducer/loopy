@@ -230,12 +230,13 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # {{{ top-level codegen
 
-    def get_function_declaration(self, name, kernel, implemented_data_info,
+    def get_function_declaration(self, kernel, name, implemented_data_info,
                                  is_generating_device_code):
         from cgen import (FunctionDeclaration, Value)
         from cgen.ispc import ISPCExport, ISPCTask
 
-        arg_names, arg_decls = self._arg_names_and_decls(kernel)
+        arg_names, arg_decls = self._arg_names_and_decls(kernel,
+                                                         implemented_data_info)
 
         if is_generating_device_code:
             result = ISPCTask(
@@ -254,7 +255,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
     # }}}
 
     def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={})
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},
+                                                 vectorization_info=None)
 
         from loopy.schedule.tree import get_insns_in_function
         from pymbolic.mapper.stringifier import PREC_NONE
@@ -270,7 +272,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                         "assert(programCount == (%s))"
                         % ecm(lsize[0], PREC_NONE)))
 
-        arg_names, arg_decls = self._arg_names_and_decls(kernel)
+        arg_names, arg_decls = self._arg_names_and_decls(kernel,
+                                                         implemented_data_info)
 
         from cgen.ispc import ISPCLaunch
         result.append(
@@ -322,7 +325,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
         if shape:
             from cgen import ArrayOf
-            ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={})
+            ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},
+                                                     vectorization_info=None)
             temp_var_decl = ArrayOf(
                     temp_var_decl,
                     ecm(p.flattened_product(shape),
@@ -376,9 +380,9 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         return ISPCUniform(result)
 
     def emit_assignment(self, kernel, insn, var_subst_map, vectorization_info):
-        raise NotImplementedError
-        ecm = self.expression_to_code_mapper(kernel, var_subst_map,
-                                             vectorization_info)
+
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+                                                 vectorization_info)
 
         assignee_var_name, = insn.assignee_var_names()
 
@@ -499,7 +503,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         from cgen import For, InlineInitializer
         from cgen.ispc import ISPCUniform
 
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map)
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+                                                 vectorization_info=None)
 
         return For(
                 InlineInitializer(
