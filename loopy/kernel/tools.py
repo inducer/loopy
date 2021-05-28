@@ -2065,18 +2065,6 @@ def get_outer_params(domains):
 
 
 @memoize_on_first_arg
-def get_all_inames_tagged_with(kernel, tag_type):
-    """
-    Returns :class:`frozenset` of all iname traversing across the target
-    hardware's execution grid.
-    """
-    from loopy.kernel.data import filter_iname_tags_by_type
-    return frozenset(iname.name
-                     for iname in kernel.inames.values()
-                     if filter_iname_tags_by_type(iname.tags, tag_type))
-
-
-@memoize_on_first_arg
 def has_complex_dtyped_var(kernel):
     """
     Returns *True* if any variable in *kernel* is complex dtyped.

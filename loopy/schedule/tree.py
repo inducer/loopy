@@ -1,13 +1,13 @@
 import pymbolic.primitives as prim
 import loopy.schedule as schedule
 import islpy as isl
-from typing import List, Union, Any, Optional, Tuple
+from typing import List, Union, Any, Optional, Tuple, FrozenSet
 from dataclasses import dataclass, field
 from functools import reduce
 from islpy import dim_type
+from pytools import memoize_on_first_arg
 from loopy.diagnostic import LoopyError
 from loopy.kernel import KernelState
-from loopy.kernel.tools import get_all_inames_tagged_with
 
 
 # {{{ LoopKernel.schedule a tree
@@ -179,7 +179,7 @@ class ScheduleTreeBuilder:
             # end of instruction block
             self._build_stack.pop()
 
-        assert isinstance(self.current_node, Schedule)
+        assert isinstance(self.current_node, (Schedule, Loop))
         new_function = Function(name, extra_args, extra_inames, [])
         self.current_node.children.append(new_function)
         self.make_current_node(new_function)
@@ -439,7 +439,7 @@ def _wrap_in_if(cond, nodes):
 
 
 def _implement_hw_axes_in_domains(implemented_domain, domain,
-                                  kernel, gsize, lsize):
+                                  kernel, hw_inames, gsize, lsize):
     """
     If *domain* contains any inames going along hardware inames account for
     those in *implemented_domain*.
@@ -453,10 +453,8 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
     from loopy.kernel.data import AxisTag, GroupIndexTag, LocalIndexTag
     from loopy.isl_helpers import make_slab, static_min_of_pw_aff
 
-    all_hw_inames = get_all_inames_tagged_with(kernel, AxisTag)
-
     for dim_name in domain.get_var_dict():
-        if dim_name in all_hw_inames:
+        if dim_name in hw_inames:
             if dim_name in implemented_domain.get_var_dict():
                 # this hardware dim is already implemented => ignore
                 continue
@@ -496,12 +494,17 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
 @dataclass(frozen=True)
 class PolyhedronLoopifierContext:
     implemented_domain: isl.BasicSet
+    hw_inames: FrozenSet[str]
     gsize: Optional[Tuple[prim.Expression, ...]] = None
     lsize: Optional[Tuple[prim.Expression, ...]] = None
 
-    def copy(self, *, implemented_domain=None, gsize=None, lsize=None):
+    def copy(self, *, implemented_domain=None, hw_inames=None, gsize=None,
+             lsize=None):
         if implemented_domain is None:
             implemented_domain = self.implemented_domain
+
+        if hw_inames is None:
+            hw_inames = self.hw_inames
 
         if gsize is None:
             gsize = self.gsize
@@ -509,7 +512,8 @@ class PolyhedronLoopifierContext:
         if lsize is None:
             lsize = self.lsize
 
-        return PolyhedronLoopifierContext(implemented_domain, gsize, lsize)
+        return PolyhedronLoopifierContext(implemented_domain,
+                                          hw_inames, gsize, lsize)
 
 
 class PolyhedronLoopifier(IdentityMapper):
@@ -519,17 +523,22 @@ class PolyhedronLoopifier(IdentityMapper):
     def map_schedule(self, expr):
         impl_domain = self.kernel.assumptions
         return super().map_schedule(expr,
-                                    PolyhedronLoopifierContext(impl_domain))
+                                    PolyhedronLoopifierContext(impl_domain,
+                                                               hw_inames=frozenset()
+                                                               ))
 
     def map_function(self, expr, context):
+        from loopy.kernel.data import AxisTag
         # get the implemented domain for the insn ids in this kernel
         # Shouldn't be difficult to write a combine mapper for it.
         gsize, lsize = self.kernel.get_grid_sizes_for_insn_ids(
             InstructionGatherer()(expr))
-        # FIXME: Somehow we need to get rid of allowing the hardware inames to
-        # be slabbed.
+
+        hw_inames = get_all_inames_tagged_with(self.kernel, expr.name, AxisTag)
+
         return super().map_function(expr, context.copy(gsize=gsize,
-                                                       lsize=lsize))
+                                                       lsize=lsize,
+                                                       hw_inames=hw_inames))
 
     def map_loop(self, expr, context):
         implemented_domain = context.implemented_domain
@@ -540,6 +549,7 @@ class PolyhedronLoopifier(IdentityMapper):
         implemented_domain = _implement_hw_axes_in_domains(implemented_domain,
                                                            domain,
                                                            self.kernel,
+                                                           context.hw_inames,
                                                            context.gsize,
                                                            context.lsize)
 
@@ -589,6 +599,7 @@ class PolyhedronLoopifier(IdentityMapper):
                                                            .implemented_domain,
                                                            expr.domain,
                                                            self.kernel,
+                                                           context.hw_inames,
                                                            context.gsize,
                                                            context.lsize)
 
@@ -760,6 +771,7 @@ class Unroller(PolyhedronLoopifier):
                                                            .implemented_domain,
                                                            expr.domain,
                                                            self.kernel,
+                                                           context.hw_inames,
                                                            context.gsize,
                                                            context.lsize)
 
@@ -800,7 +812,31 @@ class Unroller(PolyhedronLoopifier):
                            " polyhedral loops.")
 
 
+class BarrieredLoopsCollector(CombineMapper):
+
+    def __call__(self, expr):
+        return super().__call__(expr, frozenset())
+
+    def combine(self, values):
+        assert all(isinstance(value, frozenset) for value in values)
+        return reduce(frozenset.union, values, frozenset())
+
+    def map_polyhedral_loop(self, expr, loop_nesting):
+        return self.combine([self.rec(child, loop_nesting | {expr.iname})
+                             for child in expr.children])
+
+    def map_instruction_block(self, expr, loop_nesting):
+        return frozenset()
+
+    def map_barrier(self, expr, loop_nesting):
+        return loop_nesting
+
+
 class PredicateInsertionMapper(PolyhedronLoopifier):
+    def __init__(self, kernel, loops_containing_barrier):
+        super().__init__(kernel)
+        self.loops_containing_barriers = loops_containing_barrier
+
     def map_instruction_block(self, expr, context):
         from loopy.symbolic import set_to_cond_expr
 
@@ -814,30 +850,22 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
         predicates, = {self.kernel.id_to_insn[child.insn_id].predicates
                        for child in expr.children}
 
-        # {{{ compute the predicates due to the hardware inames
+        impl_domain = context.implemented_domain
+        domain = self.kernel.get_inames_domain(inames)
+        impl_domain = _implement_hw_axes_in_domains(impl_domain,
+                                                    domain,
+                                                    self.kernel,
+                                                    context.hw_inames,
+                                                    context.gsize,
+                                                    context.lsize)
+        domain = domain.project_out_except(names=inames, types=[dim_type.set])
+        domain = domain.move_dims(dim_type.param, domain.dim(dim_type.param),
+                                  dim_type.set, 0, domain.dim(dim_type.set))
 
-        from loopy.kernel.data import AxisTag
-        hw_inames = inames & get_all_inames_tagged_with(self.kernel, AxisTag)
+        unimplemented_domain = _align_and_gist(domain, impl_domain)
 
-        if hw_inames:
-            impl_domain = context.implemented_domain
-            domain = (self.kernel.get_inames_domain(hw_inames)
-                      .project_out_except(types=[dim_type.set],
-                                          names=hw_inames))
-            impl_domain = _implement_hw_axes_in_domains(impl_domain,
-                                                        domain,
-                                                        self.kernel,
-                                                        context.gsize,
-                                                        context.lsize)
-            domain = (domain
-                      .move_dims(dim_type.param, domain.dim(dim_type.param),
-                                 dim_type.set, 0, domain.dim(dim_type.set)))
-            unimplemented_domain = _align_and_gist(domain, impl_domain)
-
-            if not unimplemented_domain.is_universe():
-                predicates |= {set_to_cond_expr(unimplemented_domain)}
-
-        # }}}
+        if not unimplemented_domain.is_universe():
+            predicates |= {set_to_cond_expr(unimplemented_domain)}
 
         new_insn_block = InstructionBlock([self.rec(child, context)
                                             for child in expr.children])
@@ -852,15 +880,33 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
         from loopy.symbolic import pw_aff_to_expr
         from loopy.isl_helpers import (make_slab, static_min_of_pw_aff,
                                        static_max_of_pw_aff)
-
-        base_poly_loop = super().map_polyhedral_loop(expr, context)
         assert expr.domain.dim(dim_type.set) == 1
-        domain = base_poly_loop.domain
-        impl_domain = _implement_hw_axes_in_domains(context.implemented_domain,
+        assert context.implemented_domain.dim(dim_type.set) == 0
+        domain = expr.domain
+
+        impl_domain = _implement_hw_axes_in_domains(context
+                                                    .implemented_domain,
                                                     domain,
                                                     self.kernel,
+                                                    context.hw_inames,
                                                     context.gsize,
                                                     context.lsize)
+
+        if expr.iname in self.loops_containing_barriers:
+            hw_inames = (set(domain.get_var_dict())
+                         & context.hw_inames)
+            while hw_inames:
+                hw_iname = hw_inames.pop()
+                dt, pos = domain.get_var_dict()[hw_iname]
+                domain = domain.project_out(dt, pos, 1)
+
+        domain = _align_and_intersect(domain, impl_domain)
+        downstream_domain = domain.move_dims(dim_type.param,
+                                             domain.dim(dim_type.param),
+                                             dim_type.set, 0, 1).params()
+        children = [self.rec(child, (context
+                                     .copy(implemented_domain=downstream_domain)))
+                    for child in expr.children]
 
         lb = domain.dim_min(0)
         ub = domain.dim_max(0)
@@ -887,13 +933,31 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
                    upper_bound=pw_aff_to_expr(ub),
                    step=step,
                    children=_wrap_in_if(inner_condition,
-                                        base_poly_loop.children))
+                                        children))
 
         if outer_condition.is_universe():
             return for_
         else:
             from loopy.symbolic import set_to_cond_expr
             return If(set_to_cond_expr(outer_condition), [for_])
+
+
+class FunctionCollector(CombineMapper):
+    """
+    Mapper to gather all functions in a :class:`ScheduleNode`.
+    """
+    def combine(self, values):
+        assert all(isinstance(value, list) for value in values)
+        return sum(values, start=[])
+
+    def map_function(self, expr):
+        return [expr]
+
+    def map_run_instruction(self, expr):
+        return []
+
+    def map_barrier(self, expr):
+        return []
 
 
 class InstructionGatherer(CombineMapper):
@@ -990,11 +1054,33 @@ def insert_predicates_into_schedule(kernel):
     # TODO: (For now) unvectorizable inames always fallback to unrolling this
     # should be selected based on the target.
     schedule = Unroller(kernel, unvectorizable_inames)(schedule)
-    schedule = PredicateInsertionMapper(kernel)(schedule)
+    loops_containing_barrier = BarrieredLoopsCollector()(schedule)
+    schedule = PredicateInsertionMapper(kernel, loops_containing_barrier)(schedule)
     return kernel.copy(schedule=schedule), unvectorizable_inames
 
 
+@memoize_on_first_arg
 def get_insns_in_function(kernel, name):
-    function, = [child for child in kernel.schedule.children
-                 if isinstance(child, Function) and child.name == name]
+    function, = [fn
+                 for fn in FunctionCollector()(kernel.schedule)
+                 if fn.name == name]
     return InstructionGatherer()(function)
+
+
+@memoize_on_first_arg
+def get_all_inames_tagged_with(kernel, func_name, tag_type):
+    """
+    Returns :class:`frozenset` of all iname traversing across the target
+    hardware's execution grid.
+
+    :arg func_name: name of the function within which the inames are to be considered
+    """
+    from loopy.schedule.tree import get_insns_in_function
+
+    insn_ids = get_insns_in_function(kernel, func_name)
+    all_inames = reduce(frozenset.union, (kernel.id_to_insn[id_].within_inames
+                                          for id_ in insn_ids),
+                        frozenset())
+    return frozenset(iname
+                     for iname in all_inames
+                     if kernel.iname_tags_of_type(iname, tag_type))

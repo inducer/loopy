@@ -237,7 +237,8 @@ class PythonASTBuilderBase(ASTBuilderBase):
 
     def emit_sequential_loop(self, kernel, iname, iname_dtype,
                              lbound, ubound, inner, var_subst_map):
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map)
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+                                                 vectorization_info=None)
 
         from pymbolic.mapper.stringifier import PREC_NONE, PREC_SUM
         from genpy import For
@@ -277,9 +278,11 @@ class PythonASTBuilderBase(ASTBuilderBase):
     def emit_if(self, kernel, condition, ast, var_subst_map, vectorization_info):
         assert vectorization_info is None
         from genpy import If
+        from pymbolic.mapper.stringifier import PREC_NONE
+
         ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
                                                  vectorization_info)
-        return If(ecm(condition), ast)
+        return If(ecm(condition, prec=PREC_NONE), ast)
 
     def emit_assignment(self, kernel, insn, var_subst_map, vectorization_info):
         if insn.atomicity:
