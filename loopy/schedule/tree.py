@@ -451,7 +451,7 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
         hardware inames in *domain* to their corresponding
     """
     from loopy.kernel.data import AxisTag, GroupIndexTag, LocalIndexTag
-    from loopy.isl_helpers import make_slab, static_min_of_pw_aff
+    from loopy.isl_helpers import make_slab
 
     for dim_name in domain.get_var_dict():
         if dim_name in hw_inames:
@@ -462,9 +462,7 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
             tag, = kernel.iname_tags_of_type(dim_name, AxisTag)
             assert isinstance(tag, (GroupIndexTag, LocalIndexTag))
 
-            lbound = static_min_of_pw_aff(kernel
-                                          .get_iname_bounds(dim_name)
-                                          .lower_bound_pw_aff, constants_only=False)
+            lbound = kernel.get_iname_bounds(dim_name).lower_bound_pw_aff
             size = (gsize[tag.axis]
 
                     if isinstance(tag, GroupIndexTag)
@@ -855,7 +853,8 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
         impl_domain = _implement_hw_axes_in_domains(impl_domain,
                                                     domain,
                                                     self.kernel,
-                                                    context.hw_inames,
+                                                    (context.hw_inames
+                                                     & inames),
                                                     context.gsize,
                                                     context.lsize)
         domain = domain.project_out_except(names=inames, types=[dim_type.set])
@@ -923,6 +922,12 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
                                           _align_and_intersect(
                                               set_implemented_in_loop,
                                               impl_domain))
+
+        lb = _align_and_gist(lb, _align_and_intersect(outer_condition,
+                                                      impl_domain).params())
+        ub = _align_and_gist(ub, _align_and_intersect(outer_condition,
+                                                      impl_domain).params())
+
         inner_condition = _align_and_gist(domain.affine_hull(),
                                           _align_and_intersect(
                                               set_implemented_in_loop,
