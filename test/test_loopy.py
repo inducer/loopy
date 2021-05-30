@@ -2048,8 +2048,7 @@ def test_tight_loop_bounds_codegen():
     for_loop2 = \
         "for (int j = " \
         "(lid(0) == 0 && gid(0) == 0 ? 0 : -2 + 10 * gid(0) + 2 * lid(0)); " \
-        "j <= (gid(0) == 0 && lid(0) >= 0 && 4 + -1 * lid(0) >= 0 ?" \
-        " 10 * gid(0) + 2 * lid(0) : 9); ++j)"
+        "j <= (gid(0) == 0 ? 2 * lid(0) : 9); ++j)"
 
     assert (for_loop1 in cgr.device_code() or for_loop2 in cgr.device_code())
 
