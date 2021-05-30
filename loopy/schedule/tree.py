@@ -935,10 +935,12 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
         ub = _align_and_gist(ub, _align_and_intersect(outer_condition,
                                                       impl_domain).params())
 
-        inner_condition = _align_and_gist(domain.affine_hull(),
-                                          _align_and_intersect(
-                                              set_implemented_in_loop,
-                                              impl_domain))
+        inner_condition = _align_and_gist(
+            domain,
+            _align_and_intersect(
+                _align_and_intersect(set_implemented_in_loop,
+                                     impl_domain),
+                outer_condition))
 
         step = 1  # TODO: from inner_condition try to guess the step
 
