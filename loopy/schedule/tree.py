@@ -471,11 +471,11 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
 
                     lsize[tag.axis])
 
-            implemented_domain, lbound = isl.align_two(implemented_domain,
-                                                       lbound)
             if not isinstance(size, int):
                 lbound, size = isl.align_two(lbound, size)
 
+            implemented_domain, lbound = isl.align_two(implemented_domain,
+                                                       lbound)
             implemented_domain = (implemented_domain
                                   .add_dims(dim_type.param, 1)
                                   .set_dim_name(dim_type.param,
