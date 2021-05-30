@@ -50,8 +50,6 @@ __doc__ = """
 
 .. autoclass:: SeenFunction
 
-.. autoclass:: CodeGenerationState
-
 .. autoclass:: TranslationUnitCodeGenerationResult
 
 .. automodule:: loopy.codegen.result

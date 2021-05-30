@@ -228,7 +228,7 @@ class PythonASTBuilderBase(ASTBuilderBase):
 
     @property
     def ast_if_class(self):
-        from genpyt import If
+        from genpy import If
         return If
 
     @property

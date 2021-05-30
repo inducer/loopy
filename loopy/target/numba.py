@@ -67,7 +67,8 @@ class NumbaBaseASTBuilder(PythonASTBuilderBase):
         from genpy import Statement
 
         implemented_data_info = implemented_data_info
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={})
+        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},
+                                                 vectorization_info=None)
 
         from loopy.schedule.tree import get_insns_in_function
         gsize, lsize = kernel.get_grid_sizes_for_insn_ids_as_exprs(

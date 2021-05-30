@@ -277,8 +277,7 @@ class POD(Declarator):
 
 
 class ScopingBlock(Block):
-    """A block that is mandatory for scoping and may not be simplified away
-    by :func:`loopy.codegen.result.merge_codegen_results`.
+    """A block that is mandatory for scoping.
     """
 
 
@@ -1101,8 +1100,12 @@ class CFamilyASTBuilder(ASTBuilderBase):
             raise ValueError("unexpected lhs atomicity type: %s"
                     % type(lhs_atomicity).__name__)
 
+    def emit_atomic_init(self, kernel, var_subst_map, lhs_atomicity, lhs_var,
+                           lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
+        raise NotImplementedError("atomic updates in %s" % type(self).__name__)
+
     def emit_atomic_update(self, kernel, var_subst_map, lhs_atomicity, lhs_var,
-                           lhs_expr, rhs_expr, lhs_dtype):
+                           lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
         raise NotImplementedError("atomic updates in %s" % type(self).__name__)
 
     def emit_tuple_assignment(self, kernel, callables_table, insn,
