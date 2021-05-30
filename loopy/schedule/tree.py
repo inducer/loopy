@@ -474,6 +474,8 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
             if not isinstance(size, int):
                 lbound, size = isl.align_two(lbound, size)
 
+            ubound = lbound + size
+
             implemented_domain, lbound = isl.align_two(implemented_domain,
                                                        lbound)
             implemented_domain = (implemented_domain
@@ -485,7 +487,7 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
 
             implemented_domain = (implemented_domain
                                   & make_slab(implemented_domain.space, dim_name,
-                                              lbound, lbound + size))
+                                              lbound, ubound))
 
     assert implemented_domain.dim(dim_type.set) == 0
     return implemented_domain.params()
