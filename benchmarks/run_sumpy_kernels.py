@@ -17,9 +17,9 @@ def _sumpy_kernel_init(param):
     # TODO: add other kernels
     assert name == "m2l"
     from sumpy.expansion.multipole import (
-        LaplaceConformingVolumeTaylorMultipoleExpansion,
+        LinearPDEConformingVolumeTaylorMultipoleExpansion,
     )
-    from sumpy.expansion.local import LaplaceConformingVolumeTaylorLocalExpansion
+    from sumpy.expansion.local import LinearPDEConformingVolumeTaylorLocalExpansion
     from sumpy.kernel import LaplaceKernel
     from sumpy import E2EFromCSR
 
@@ -27,8 +27,8 @@ def _sumpy_kernel_init(param):
     np.random.seed(17)
 
     knl = LaplaceKernel(dim)
-    local_expn_class = LaplaceConformingVolumeTaylorLocalExpansion
-    mpole_expn_class = LaplaceConformingVolumeTaylorMultipoleExpansion
+    local_expn_class = LinearPDEConformingVolumeTaylorLocalExpansion
+    mpole_expn_class = LinearPDEConformingVolumeTaylorMultipoleExpansion
     m_expn = mpole_expn_class(knl, order=order)
     l_expn = local_expn_class(knl, order=order)
 

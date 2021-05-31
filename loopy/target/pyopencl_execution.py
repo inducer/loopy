@@ -48,13 +48,14 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             "out_host=None"
             ]
         super().__init__(system_args)
-        from pytools import UniqueNameGenerator
-        self.dtype_name_generator = UniqueNameGenerator(forced_prefix="_lpy_dtype_")
 
-    def python_dtype_str(self, dtype):
+    def python_dtype_str_inner(self, dtype):
         import pyopencl.tools as cl_tools
         if dtype.isbuiltin:
-            return "_lpy_np."+dtype.name
+            name = dtype.name
+            if dtype.name == "bool":
+                name = "bool8"
+            return f"_lpy_np.dtype(_lpy_np.{name})"
         else:
             return ('_lpy_cl_tools.get_or_register_dtype("%s")'
                     % cl_tools.dtype_to_ctype(dtype))
@@ -117,10 +118,8 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         gen("_lpy_size = %s" % strify(size_expr))
         sym_strides = tuple(itemsize*s_i for s_i in sym_ustrides)
-        dtype_str = self.python_dtype_str(kernel_arg.dtype.numpy_dtype)
 
-        dtype_name = self.dtype_name_generator()
-        gen.add_to_preamble(f"{dtype_name} = _lpy_np.dtype({dtype_str})")
+        dtype_name = self.python_dtype_str(gen, kernel_arg.dtype.numpy_dtype)
         gen(f"{arg.name} = _lpy_cl_array.Array(None, {strify(sym_shape)}, "
                 f"{dtype_name}, strides={strify(sym_strides)}, "
                 f"data=allocator({strify(itemsize * var('_lpy_size'))}), "

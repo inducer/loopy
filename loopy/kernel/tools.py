@@ -68,8 +68,16 @@ def add_dtypes(prog_or_kernel, dtype_dict):
 
     assert isinstance(prog_or_kernel, LoopKernel)
 
+    processed_dtype_dict = {}
+
+    for k, v in dtype_dict.items():
+        for subkey in k.split(","):
+            subkey = subkey.strip()
+            if subkey:
+                processed_dtype_dict[subkey] = v
+
     dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(
-            prog_or_kernel, dtype_dict)
+            prog_or_kernel, processed_dtype_dict)
 
     if dtype_dict_remainder:
         raise RuntimeError("unused argument dtypes: %s"
@@ -139,15 +147,7 @@ def add_and_infer_dtypes(prog, dtype_dict, expect_completion=False,
 
         kernel_name, = kernel_names
 
-    processed_dtype_dict = {}
-
-    for k, v in dtype_dict.items():
-        for subkey in k.split(","):
-            subkey = subkey.strip()
-            if subkey:
-                processed_dtype_dict[subkey] = v
-
-    prog = prog.with_kernel(add_dtypes(prog[kernel_name], processed_dtype_dict))
+    prog = prog.with_kernel(add_dtypes(prog[kernel_name], dtype_dict))
 
     from loopy.type_inference import infer_unknown_types
     return infer_unknown_types(prog, expect_completion=expect_completion)

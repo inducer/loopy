@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 
 import numpy as np
+from abc import ABC, abstractmethod
 from pytools import ImmutableRecord, memoize_method
 from loopy.diagnostic import LoopyError
 from pytools.py_codegen import (
@@ -121,7 +122,7 @@ class SeparateArrayPackingController:
 
 # {{{ ExecutionWrapperGeneratorBase
 
-class ExecutionWrapperGeneratorBase:
+class ExecutionWrapperGeneratorBase(ABC):
     """
     A set of common methods for generating a wrapper
     for execution
@@ -131,8 +132,25 @@ class ExecutionWrapperGeneratorBase:
     def __init__(self, system_args):
         self.system_args = system_args[:]
 
-    def python_dtype_str(self, dtype):
-        raise NotImplementedError()
+        from pytools import UniqueNameGenerator
+        self.dtype_name_generator = UniqueNameGenerator(forced_prefix="_lpy_dtype_")
+        self.dtype_str_to_name = {}
+
+    @abstractmethod
+    def python_dtype_str_inner(self, dtype):
+        pass
+
+    def python_dtype_str(self, gen, numpy_dtype):
+        dtype_str = self.python_dtype_str_inner(numpy_dtype)
+        try:
+            return self.dtype_str_to_name[dtype_str]
+        except KeyError:
+            pass
+
+        dtype_name = self.dtype_name_generator()
+        gen.add_to_preamble(f"{dtype_name} = _lpy_np.dtype({dtype_str})")
+        self.dtype_str_to_name[dtype_str] = dtype_name
+        return dtype_name
 
     # {{{ invoker generation
 
@@ -384,7 +402,7 @@ class ExecutionWrapperGeneratorBase:
 
         expect_no_more_arguments = False
 
-        for arg_idx, arg in enumerate(implemented_data_info):
+        for arg in implemented_data_info:
             is_written = arg.base_name in kernel.get_written_variables()
             kernel_arg = kernel.impl_arg_to_arg.get(arg.name)
 
@@ -466,7 +484,7 @@ class ExecutionWrapperGeneratorBase:
                 with Indentation(gen):
                     gen("if %s.dtype != %s:"
                             % (arg.name, self.python_dtype_str(
-                                kernel_arg.dtype.numpy_dtype)))
+                                gen, kernel_arg.dtype.numpy_dtype)))
                     with Indentation(gen):
                         gen("raise TypeError(\"dtype mismatch on argument '%s' "
                                 '(got: %%s, expected: %s)" %% %s.dtype)'

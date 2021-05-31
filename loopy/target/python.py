@@ -196,7 +196,10 @@ class PythonASTBuilderBase(ASTBuilderBase):
                             "_lpy_np.empty(%s, dtype=%s)"
                             % (
                                 ecm(tv.shape, PREC_NONE, "i"),
-                                "_lpy_np."+tv.dtype.numpy_dtype.name
+                                "_lpy_np."+(
+                                    tv.dtype.numpy_dtype.name
+                                    if tv.dtype.numpy_dtype.name != "bool"
+                                    else "bool8")
                                 )))
 
         return result

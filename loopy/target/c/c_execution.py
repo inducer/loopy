@@ -48,9 +48,12 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         system_args = ["_lpy_c_kernels"]
         super().__init__(system_args)
 
-    def python_dtype_str(self, dtype):
+    def python_dtype_str_inner(self, dtype):
         if np.dtype(str(dtype)).isbuiltin:
-            return "_lpy_np."+dtype.name
+            name = dtype.name
+            if dtype.name == "bool":
+                name = "bool8"
+            return f"_lpy_np.dtype(_lpy_np.{name})"
         raise Exception(f"dtype: {dtype} not recognized")
 
     # {{{ handle non numpy arguements
@@ -100,7 +103,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                     name=arg.name,
                     shape=strify(sym_shape),
                     dtype=self.python_dtype_str(
-                        kernel_arg.dtype.numpy_dtype),
+                        gen, kernel_arg.dtype.numpy_dtype),
                     order=order))
 
         expected_strides = tuple(
