@@ -68,7 +68,7 @@ def assume(kernel, assumptions):
 
 # {{{ fix_parameter
 
-def _fix_parameter(kernel, name, value, remove_argument, within=None):
+def _fix_parameter(kernel, name, value, within=None):
     def process_set(s):
         var_dict = s.get_var_dict()
 
@@ -104,7 +104,8 @@ def _fix_parameter(kernel, name, value, remove_argument, within=None):
     from loopy.kernel.array import ArrayBase
     new_args = []
     for arg in kernel.args:
-        if arg.name == name and remove_argument:
+        if arg.name == name:
+            # remove from argument list
             continue
 
         if not isinstance(arg, ArrayBase):
@@ -144,16 +145,10 @@ def fix_parameters(kernel, **value_dict):
     """
     assert isinstance(kernel, LoopKernel)
 
-    # FIXME: Parameter / argument terminology?
-
-    # FIXME: Is _remove the right approach? (I'm not sure it is.) Because of
-    # the potential namespace conflict. If yes, document. If no, fix.
-
-    remove_arg = value_dict.pop("_remove", True)
     within = value_dict.pop("within", None)
 
     for name, value in value_dict.items():
-        kernel = _fix_parameter(kernel, name, value, remove_arg, within)
+        kernel = _fix_parameter(kernel, name, value, within)
 
     return kernel
 
