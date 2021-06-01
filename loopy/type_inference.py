@@ -915,9 +915,6 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
 
     # }}}
 
-    # FIXME: copy the explanation from make_function_ready_for_codegen
-    # here.
-
     # {{{ check if insn missed during type inference
 
     def _instruction_missed_during_inference(insn):
