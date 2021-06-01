@@ -408,7 +408,9 @@ def test_array_inputs_to_callee_kernels(ctx_factory, inline):
         np.linalg.norm(2*x+3*y))) < 1e-15
 
 
-def test_stride_depending_on_args():
+def test_stride_depending_on_args(ctx_factory):
+    ctx = ctx_factory()
+
     twice = lp.make_function(
             "{[i, j]: 0<=i, j < n}",
             """
@@ -436,11 +438,12 @@ def test_stride_depending_on_args():
     prog = lp.merge([prog, twice])
     prog = lp.merge([prog, thrice])
 
-    # FIXME: actually test something
-    print(lp.generate_code_v2(prog).device_code())
+    lp.auto_test_vs_ref(prog, ctx, prog, parameters={"N": 4})
 
 
-def test_unknown_stride_to_callee():
+def test_unknown_stride_to_callee(ctx_factory):
+    ctx = ctx_factory()
+
     twice = lp.make_function(
             "{[i, j]: 0<=i, j < n}",
             """
@@ -459,8 +462,7 @@ def test_unknown_stride_to_callee():
 
     prog = lp.merge([prog, twice])
 
-    # FIXME: actually test something
-    print(lp.generate_code_v2(prog).device_code())
+    lp.auto_test_vs_ref(prog, ctx, prog, parameters={"N": 4, "Nvar": 5})
 
 
 def test_argument_matching_for_inplace_update(ctx_factory):
