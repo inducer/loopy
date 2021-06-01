@@ -1000,6 +1000,16 @@ def infer_unknown_types(program, expect_completion=False):
 
     program = resolve_callables(program)
 
+    # {{{ early-exit criterion
+
+    if all(clbl.is_type_specialized()
+           for clbl in program.callables_table.values()):
+        # all the callables including the kernels have inferred their types
+        # => no need for type inference
+        return program
+
+    # }}}
+
     clbl_inf_ctx = make_clbl_inf_ctx(program.callables_table,
             program.entrypoints)
 
