@@ -315,6 +315,7 @@ class InKernelCallable(ImmutableRecord):
     .. automethod:: get_used_hw_axes
     .. automethod:: get_called_callables
     .. automethod:: with_name
+    .. automethod:: is_type_specialized
 
     .. note::
 
@@ -503,6 +504,13 @@ class InKernelCallable(ImmutableRecord):
         """
         raise NotImplementedError
 
+    def is_type_specialized(self):
+        """
+        Returns *True* iff *self*'s type signature is known, else returns
+        *False*.
+        """
+        raise NotImplementedError
+
 # }}}
 
 
@@ -668,6 +676,11 @@ class ScalarCallable(InKernelCallable):
 
     def with_name(self, name):
         return self
+
+    def is_type_specialized(self):
+        return (self.arg_id_to_dtype is not None
+                and all(dtype is not None
+                        for dtype in self.arg_id_to_dtype.values()))
 
 # }}}
 
@@ -967,6 +980,14 @@ class CallableKernel(InKernelCallable):
     def with_name(self, name):
         new_knl = self.subkernel.copy(name=name)
         return self.copy(subkernel=new_knl)
+
+    def is_type_specialized(self):
+        from loopy.kernel.data import auto
+        return (self.arg_id_to_dtype is not None
+                and all(arg.dtype not in [None, auto]
+                        for arg in self.subkernel.args)
+                and all(tv.dtype not in [None, auto]
+                        for tv in self.subkernel.temporary_variables.values()))
 
 # }}}
 
