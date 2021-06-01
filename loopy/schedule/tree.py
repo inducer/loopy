@@ -483,7 +483,7 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
                                   .set_dim_name(dim_type.param,
                                                 implemented_domain
                                                 .dim(dim_type.param),
-                                                dim_name))
+                                                dim_name)).params()
 
             implemented_domain = (implemented_domain
                                   & make_slab(implemented_domain.space, dim_name,
