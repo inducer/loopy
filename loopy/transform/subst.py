@@ -362,18 +362,10 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
             definition_insn_ids.add(insn.id)
             definition_id_to_deps[insn.id] = deepcopy(insn.dependencies)
 
-    # TODO refactor after answering question:
-    # what's the difference between definition_insn_ids and
-    # set(usage_to_definition.values())?
-    if definition_insn_ids != set(usage_to_definition.values()):
-        print("="*80)
-        print("Apparently these are not equivalent after all. James was wrong.")
-        print("definition_insn_ids:")
-        print(definition_insn_ids)
-        print("set(usage_to_definition.values()):")
-        print(set(usage_to_definition.values()))
-        print("="*80)
-        assert False
+    # usage_to_definition maps each usage to the most recent assignment to the var,
+    # (most recent "definition"),
+    # so set(usage_to_definition.values()) is a subset of definition_insn_ids,
+    # which contains ALL the insns where the var is assigned
 
     # }}}
 
