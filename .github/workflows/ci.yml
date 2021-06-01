@@ -158,6 +158,9 @@ jobs:
                 cd "$DOWNSTREAM_PROJECT"
                 echo "*** $DOWNSTREAM_PROJECT version: $(git rev-parse --short HEAD)"
 
+                if [[ "$DOWNSTREAM_PROJECT" = "pytential" ]] && [[ "$GITHUB_HEAD_REF" = "kernel_callables_v3-edit2" || "$GITHUB_BASE_REF" = "kernel_callables_v3-edit2" ]]; then
+                  sed -i "/egg=sumpy/ c git+https://github.com/inducer/sumpy.git@loopy-callables#egg=sumpy" requirements.txt
+                fi
                 sed -i "/egg=loopy/ c git+file://$(readlink -f ..)#egg=loopy" requirements.txt
 
                 export CONDA_ENVIRONMENT=.test-conda-env-py3.yml
