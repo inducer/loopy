@@ -45,7 +45,7 @@ def map_schedule_onto_host_or_device(kernel):
                         extra_inames=[])] +
             list(kernel.schedule) +
             [ReturnFromKernel(kernel_name=kernel.name)])
-        kernel = kernel.copy(schedule=new_schedule)
+        kernel = kernel.copy(linearization=new_schedule)
     else:
         kernel = map_schedule_onto_host_or_device_impl(
                 kernel, device_prog_name_gen)
@@ -160,6 +160,6 @@ def map_schedule_onto_host_or_device_impl(kernel, device_prog_name_gen):
         elif isinstance(sched_item, LeaveLoop):
             inames.pop()
 
-    new_kernel = kernel.copy(schedule=new_schedule)
+    new_kernel = kernel.copy(linearization=new_schedule)
 
     return new_kernel

@@ -379,19 +379,19 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         # `linearization` is replacing `schedule`, but we're not changing
         # this under the hood yet, so for now, store it inside `schedule`
         # and raise deprecation warning anyway
-        if schedule is not None:
-            if linearization is not None:
+        if linearization is not None:
+            if schedule is not None:
                 # these should not both be present
                 raise ValueError(
                     "received both `schedule` and `linearization` args, "
                     "'LoopKernel.schedule' is deprecated. "
                     "Use 'LoopKernel.linearization'.")
+        elif schedule is not None:
             warn(
                 "'LoopKernel.schedule' is deprecated. "
                 "Use 'LoopKernel.linearization'.",
                 DeprecationWarning, stacklevel=2)
-        elif linearization is not None:
-            schedule = linearization
+            linearization = schedule
 
         assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
@@ -400,7 +400,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                 domains=domains,
                 instructions=instructions,
                 args=args,
-                schedule=schedule,
+                linearization=linearization,
                 name=name,
                 preambles=preambles,
                 preamble_generators=preamble_generators,
@@ -726,6 +726,15 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         return self.combine_domains(tuple(sorted(domain_indices)))
 
     # }}}
+
+    @property
+    def schedule(self):
+        warn(
+                "LoopKernel.schedule is deprecated. "
+                "Call LoopKernel.linearization instead, "
+                "will be unsupported in 2022.",
+                DeprecationWarning, stacklevel=2)
+        return self.linearization
 
     # {{{ iname wrangling
 
@@ -1480,14 +1489,6 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
     # }}}
 
-    # {{{ handle linearization variable that doesn't yet exist
-
-    @property
-    def linearization(self):
-        return self.schedule
-
-    # }}}
-
     # {{{ direct execution
 
     def __call__(self, *args, **kwargs):
@@ -1647,6 +1648,13 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                         "LoopKernel.copy")
 
             kwargs["inames"] = None
+
+        if "schedule" in kwargs:
+            if "linearization" in kwargs:
+                raise LoopyError("Cannot pass both `schedule` and "
+                                 "`linearization` to LoopKernel.copy")
+
+            kwargs["linearization"] = None
 
         # Avoid carrying over an invalid cache when other parts of the kernel
         # are modified.

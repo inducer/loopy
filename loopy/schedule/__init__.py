@@ -2080,7 +2080,7 @@ def generate_loop_schedules_inner(kernel, callables_table, debug_args={}):
                 logger.debug("%s: barrier insertion: done" % kernel.name)
 
             new_kernel = kernel.copy(
-                    schedule=gen_sched,
+                    linearization=gen_sched,
                     state=KernelState.LINEARIZED)
 
             from loopy.schedule.device_mapping import \
