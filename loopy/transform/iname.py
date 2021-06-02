@@ -1009,7 +1009,7 @@ def _get_iname_duplication_options(insn_iname_sets, old_common_inames=frozenset(
     # If partitioning was empty, we have recursed successfully and yield nothing
 
 
-def get_iname_duplication_options(kernel, use_boostable_into=False):
+def get_iname_duplication_options(kernel, use_boostable_into=None):
     """List options for duplication of inames, if necessary for schedulability
 
     :returns: a generator listing all options to duplicate inames, if duplication
