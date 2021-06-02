@@ -1891,10 +1891,11 @@ def test_rename_inames_with_dependencies():
     # rename_iname is called and the new iname already exists.
 
     knl = lp.make_kernel(
-        "{[i,j,m]: 0 <= i,j,m < n}",
+        "{[i,j,m,j_new]: 0 <= i,j,m,j_new < n}",
         """
         b[i,j] = a[i,j]  {id=stmtb}
         c[i,j] = a[i,j]  {id=stmtc,dep=stmtb}
+        e[i,j_new] = 1.1
         d[m] = 5.5  {id=stmtd,dep=stmtc}
         """)
     knl = lp.add_and_infer_dtypes(knl, {"a,d": np.float32})
@@ -1914,7 +1915,7 @@ def test_rename_inames_with_dependencies():
     knl = lp.add_dependency_v2(knl, "stmtc", "stmtc", dep_c_on_c)
     knl = lp.add_dependency_v2(knl, "stmtd", "stmtc", dep_d_on_c)
 
-    # {{{ Duplicate j within stmtc
+    # Rename j within stmtc
 
     knl = lp.rename_iname(
         knl, "j", "j_new", within="id:stmtc", existing_ok=True)
@@ -1941,8 +1942,6 @@ def test_rename_inames_with_dependencies():
         return_unsatisfied=True)
 
     assert not unsatisfied_deps
-
-    # }}}
 
 # }}}
 
