@@ -773,8 +773,8 @@ class KernelExecutorBase:
             from loopy.preprocess import preprocess_kernel
             kernel = preprocess_kernel(kernel)
 
-            from loopy.schedule import get_one_scheduled_kernel
-            kernel = get_one_scheduled_kernel(kernel)
+            from loopy.schedule import get_one_linearized_kernel
+            kernel = get_one_linearized_kernel(kernel)
 
         return kernel
 

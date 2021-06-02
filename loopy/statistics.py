@@ -1770,7 +1770,7 @@ def get_synchronization_map(knl, subgroup_size=None):
     from operator import mul
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
+    knl = lp.get_one_linearized_kernel(knl)
     iname_list = []
 
     result = ToCountMap()
