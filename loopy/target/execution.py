@@ -775,7 +775,7 @@ class KernelExecutorBase:
             from loopy.type_inference import infer_unknown_types
             program = infer_unknown_types(program, expect_completion=True)
 
-        if program.state < KernelState.SCHEDULED:
+        if program.state < KernelState.LINEARIZED:
             from loopy.preprocess import preprocess_program
             program = preprocess_program(program)
 
