@@ -138,6 +138,8 @@ def add_dependency_v2(
         later.
 
     """
+    # TODO make this accept multiple deps and/or multiple stmts so that
+    # these can be added in fewer passes through the instructions
 
     if stmt_id not in kernel.id_to_insn:
         raise LoopyError("no instructions found matching '%s',"
