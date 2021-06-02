@@ -1413,12 +1413,19 @@ def test_add_dependency_v2():
     # Add a dependency to stmt_b
     dep_b_on_a = make_dep_map(
         "[pi] -> {{ [i'] -> [i] : i > i' "
+        "and {0} }}".format(assumptions_str),
+        self_dep=False, knl_with_domains=knl)
+
+    # test make_dep_map while we're here:
+    dep_b_on_a_test = _isl_map_with_marked_dims(
+        "[pi] -> {{ [{3}'=0, i'] -> [{3}=1, i] : i > i' "
         "and {0} and {1} and {2} }}".format(
             i_range_str,
             i_range_str_p,
             assumptions_str,
-            ),
-        self_dep=False)
+            STATEMENT_VAR_NAME,
+            ))
+    _align_and_compare_maps([(dep_b_on_a, dep_b_on_a_test)])
 
     knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a)
 
@@ -1430,12 +1437,19 @@ def test_add_dependency_v2():
     # Add a second dependency to stmt_b
     dep_b_on_a_2 = make_dep_map(
         "[pi] -> {{ [i'] -> [i] : i = i' "
+        "and {0}}}".format(assumptions_str),
+        self_dep=False, knl_with_domains=knl)
+
+    # test make_dep_map while we're here:
+    dep_b_on_a_2_test = _isl_map_with_marked_dims(
+        "[pi] -> {{ [{3}'=0, i'] -> [{3}=1, i] : i = i' "
         "and {0} and {1} and {2} }}".format(
             i_range_str,
             i_range_str_p,
             assumptions_str,
-            ),
-        self_dep=False)
+            STATEMENT_VAR_NAME,
+            ))
+    _align_and_compare_maps([(dep_b_on_a_2, dep_b_on_a_2_test)])
 
     knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a_2)
 
@@ -1882,10 +1896,11 @@ def test_rename_inames_with_dependencies():
     # rename_iname is called and the new iname already exists.
 
     knl = lp.make_kernel(
-        "{[i,j,m]: 0 <= i,j,m < n}",
+        "{[i,j,m,j_new]: 0 <= i,j,m,j_new < n}",
         """
         b[i,j] = a[i,j]  {id=stmtb}
         c[i,j] = a[i,j]  {id=stmtc,dep=stmtb}
+        e[i,j_new] = 1.1
         d[m] = 5.5  {id=stmtd,dep=stmtc}
         """)
     knl = lp.add_and_infer_dtypes(knl, {"a,d": np.float32})
@@ -1905,7 +1920,7 @@ def test_rename_inames_with_dependencies():
     knl = lp.add_dependency_v2(knl, "stmtc", "stmtc", dep_c_on_c)
     knl = lp.add_dependency_v2(knl, "stmtd", "stmtc", dep_d_on_c)
 
-    # {{{ Duplicate j within stmtc
+    # Rename j within stmtc
 
     knl = lp.rename_iname(
         knl, "j", "j_new", within="id:stmtc", existing_ok=True)
@@ -1932,8 +1947,6 @@ def test_rename_inames_with_dependencies():
         return_unsatisfied=True)
 
     assert not unsatisfied_deps
-
-    # }}}
 
 # }}}
 
