@@ -474,7 +474,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
     """
 
     from loopy.kernel import KernelState
-    if kernel.state != KernelState.SCHEDULED:
+    if kernel.state != KernelState.LINEARIZED:
         raise LoopyError("cannot generate code for a kernel that has not been "
                 "scheduled")
 
