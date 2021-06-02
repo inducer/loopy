@@ -975,7 +975,7 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
 
         # {{{ *Rename* iname in dependencies
 
-        # TODO use find_and_rename_dims for simpler code
+        # TODO use find_and_rename_dim for simpler code
         # (see example in rename_iname)
         from loopy.transform.instruction import map_dependency_maps
         from loopy.schedule.checker.schedule import BEFORE_MARK
@@ -1277,7 +1277,7 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
         from loopy.transform.instruction import map_dependency_maps
         from loopy.schedule.checker.schedule import BEFORE_MARK
         from loopy.schedule.checker.utils import (
-            find_and_rename_dims,
+            find_and_rename_dim,
         )
         old_iname_p = old_iname+BEFORE_MARK
         new_iname_p = new_iname+BEFORE_MARK
@@ -1287,7 +1287,7 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
 
             # For now, out_idx should not be -1 because this will only
             # be called on dependers
-            return find_and_rename_dims(
+            return find_and_rename_dim(
                 dep, [dt.out], old_iname, new_iname, must_exist=True)
 
         def _rename_iname_in_dim_in(dep):
@@ -1295,7 +1295,7 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
 
             # For now, out_idx should not be -1 because this will only
             # be called on dependees
-            return find_and_rename_dims(
+            return find_and_rename_dim(
                 dep, [dt.in_], old_iname_p, new_iname_p, must_exist=True)
 
         # TODO figure out proper way to match none
