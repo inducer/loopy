@@ -698,6 +698,24 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
         change_inames = expanding_inames | preexisting_precompute_inames
 
+        # {{{ combine domains containing *change_inames*
+
+        # Why combine?
+        # Downstream logic in DomainChanger requires the domain to be
+        # manipulated to be a single domain.
+
+        domain_indices = tuple(sorted({kernel.get_home_domain_index(i)
+                                       for i in change_inames}, reverse=True))
+
+        combined_domain = kernel.combine_domains(domain_indices)
+        domains_after_combining = [dom
+                                   for idom, dom in enumerate(kernel.domains)
+                                   if idom not in domain_indices]
+        domains_after_combining.insert(domain_indices[-1], combined_domain)
+        kernel = kernel.copy(domains=domains_after_combining)
+
+        # }}}
+
         from loopy.kernel.tools import DomainChanger
         domch = DomainChanger(kernel, change_inames)
 
