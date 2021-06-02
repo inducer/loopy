@@ -1630,6 +1630,13 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
             kwargs["inames"] = None
 
+        if "schedule" in kwargs:
+            if "linearization" in kwargs:
+                raise LoopyError("Cannot pass both `schedule` and "
+                                 "`linearization` to LoopKernel.copy")
+
+            kwargs["linearization"] = None
+
         # Avoid carrying over an invalid cache when other parts of the kernel
         # are modified.
         kwargs["_cached_written_variables"] = None
