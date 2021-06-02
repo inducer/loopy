@@ -1873,6 +1873,71 @@ def test_duplicate_inames_with_dependencies():
 # }}}
 
 
+# {{{ test_rename_inames_with_dependencies
+
+def test_rename_inames_with_dependencies():
+    # When rename_iname is called and the new iname
+    # *doesn't* already exist, then duplicate_inames is called,
+    # and we test that elsewhere. Here we test the case where
+    # rename_iname is called and the new iname already exists.
+
+    knl = lp.make_kernel(
+        "{[i,j,m]: 0 <= i,j,m < n}",
+        """
+        b[i,j] = a[i,j]  {id=stmtb}
+        c[i,j] = a[i,j]  {id=stmtc,dep=stmtb}
+        d[m] = 5.5  {id=stmtd,dep=stmtc}
+        """)
+    knl = lp.add_and_infer_dtypes(knl, {"a,d": np.float32})
+
+    dep_c_on_b = make_dep_map(
+        "[n] -> { [i', j']->[i, j] : 0 <= i,i',j,j' < n and i' = i and j' = j }",
+        self_dep=False)
+    dep_c_on_c = make_dep_map(
+        "[n] -> { [i', j']->[i, j] : 0 <= i,i',j,j' < n and i' < i and j' < j }",
+        self_dep=True)
+    dep_d_on_c = make_dep_map(
+        "[n] -> { [i', j']->[m] : 0 <= m,i',j' < n }",
+        self_dep=False)
+
+    # Create dep stmtb->stmtc
+    knl = lp.add_dependency_v2(knl, "stmtc", "stmtb", dep_c_on_b)
+    knl = lp.add_dependency_v2(knl, "stmtc", "stmtc", dep_c_on_c)
+    knl = lp.add_dependency_v2(knl, "stmtd", "stmtc", dep_d_on_c)
+
+    # {{{ Duplicate j within stmtc
+
+    knl = lp.rename_iname(
+        knl, "j", "j_new", within="id:stmtc", existing_ok=True)
+
+    dep_c_on_b_exp = make_dep_map(
+        "[n] -> { [i', j']->[i, j_new] : "
+        "0 <= i,i',j_new,j' < n and i' = i and j' = j_new}",
+        self_dep=False)
+    dep_c_on_c_exp = make_dep_map(
+        "[n] -> { [i', j_new']->[i, j_new] : "
+        "0 <= i,i',j_new,j_new' < n and i' < i and j_new' < j_new }",
+        self_dep=True)
+    dep_d_on_c_exp = make_dep_map(
+        "[n] -> { [i', j_new']->[m] : 0 <= m,i',j_new' < n }",
+        self_dep=False)
+
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {
+            "stmtc": {"stmtb": [dep_c_on_b_exp, ], "stmtc": [dep_c_on_c_exp, ]},
+            "stmtd": {"stmtc": [dep_d_on_c_exp, ]},
+        },
+        return_unsatisfied=True)
+
+    assert not unsatisfied_deps
+
+    # }}}
+
+# }}}
+
+
 # {{{ test_split_iname_with_dependencies
 
 def test_split_iname_with_dependencies():
