@@ -39,7 +39,7 @@ from loopy.library.function import (
         default_function_mangler,
         single_arg_function_mangler)
 
-from loopy.diagnostic import CannotBranchDomainTree, LoopyError
+from loopy.diagnostic import LoopyError
 from loopy.diagnostic import StaticValueFindingError
 from loopy.kernel.data import filter_iname_tags_by_type, Iname
 from pyrsistent import pmap, pvector, PVector, PMap
@@ -924,57 +924,43 @@ class LoopKernel(ImmutableRecordWithoutPickingWithTargetedCopies, Taggable):
 
         # }}}
 
-        # The stack of iname sets records which inames are active
-        # as we step through the linear list of domains. It also
-        # determines the granularity of inames to be popped/decactivated
-        # if we ascend a level.
-
-        iname_set_stack = []
         result = []
+        hdm = self._get_home_domain_map()
 
-        from loopy.kernel.tools import is_domain_dependent_on_inames
+        for idom, dom in enumerate(self.domains):
+            idom_param_vars = (frozenset(dom.get_var_names(dim_type.param))
+                               - self.get_unwritten_value_args())
+            if len(idom_param_vars) == 0:
+                # idom doesn't depend on any inames/variables
+                # => doesn't impose any nesting criteria
+                result.append(None)
+                continue
 
-        for dom_idx, dom in enumerate(self.domains):
-            inames = set(dom.get_var_names(dim_type.set))
+            # outer_inames: inames that must be nested outside the 'set dims'
+            # of 'dom'
+            outer_inames = set()
+            for var in idom_param_vars:
+                if var in self.all_inames():
+                    outer_inames.add(var)
+                else:
+                    writer_insns = self.writer_map()[var]
+                    if len(writer_insns) > 1:
+                        raise RuntimeError(f"loop bound '{var}' "
+                                           "may only be written to once")
 
-            # This next domain may be nested inside the previous domain.
-            # Or it may not, in which case we need to figure out how many
-            # levels of parents we need to discard in order to find the
-            # true parent.
+                    writer_insn, = writer_insns
+                    outer_inames.update(self.insn_inames(writer_insn))
 
-            discard_level_count = 0
-            while discard_level_count < len(iname_set_stack):
-                last_inames = (
-                        iname_set_stack[-1-discard_level_count])
-                if discard_level_count + 1 < len(iname_set_stack):
-                    last_inames = (
-                            last_inames - iname_set_stack[-2-discard_level_count])
+            parent_idoms = {hdm[iname] for iname in outer_inames}
 
-                if is_domain_dependent_on_inames(self, dom_idx, last_inames):
-                    break
-
-                discard_level_count += 1
-
-            if discard_level_count:
-                iname_set_stack = iname_set_stack[:-discard_level_count]
-
-            if result:
-                parent = len(result)-1
+            if len(parent_idoms) == 0:
+                result.append(None)
+            elif len(parent_idoms) > 1:
+                raise NotImplementedError("Only one parent per domain supported"
+                                          " for now.")
             else:
-                parent = None
-
-            for i in range(discard_level_count):
-                assert parent is not None
-                parent = result[parent]
-
-            # found this domain's parent
-            result.append(parent)
-
-            if iname_set_stack:
-                parent_inames = iname_set_stack[-1]
-            else:
-                parent_inames = set()
-            iname_set_stack.append(parent_inames | inames)
+                parent_idom, = parent_idoms
+                result.append(parent_idom)
 
         return result
 
@@ -1002,6 +988,7 @@ class LoopKernel(ImmutableRecordWithoutPickingWithTargetedCopies, Taggable):
             # keep walking up tree to find *all* parents
             dom_result = []
             while parent is not None:
+                import pudb; pu.db
                 dom_result.insert(0, parent)
                 parent = ppd[parent]
 
@@ -1064,49 +1051,12 @@ class LoopKernel(ImmutableRecordWithoutPickingWithTargetedCopies, Taggable):
 
     @memoize_method
     def get_leaf_domain_indices(self, inames):
-        """Find the leaves of the domain tree needed to cover all inames.
+        """Find the leaves of the domain tree needed to cover *inames*.
 
         :arg inames: a non-mutable iterable
         """
-
         hdm = self._get_home_domain_map()
-        ppd = self.all_parents_per_domain()
-
-        domain_indices = set()
-
-        # map root -> leaf
-        root_to_leaf = {}
-
-        for iname in inames:
-            home_domain_index = hdm[iname]
-            if home_domain_index in domain_indices:
-                # nothin' new
-                continue
-
-            domain_path_to_root = [home_domain_index] + ppd[home_domain_index]
-            current_root = domain_path_to_root[-1]
-            previous_leaf = root_to_leaf.get(current_root)
-
-            if previous_leaf is not None:
-                # Check that we don't branch the domain tree.
-                #
-                # Branching the domain tree is dangerous/ill-formed because
-                # it can introduce artificial restrictions on variables
-                # further up the tree.
-
-                prev_path_to_root = set([previous_leaf] + ppd[previous_leaf])
-                if not prev_path_to_root <= set(domain_path_to_root):
-                    raise CannotBranchDomainTree("iname set '%s' requires "
-                            "branch in domain tree (when adding '%s')"
-                            % (", ".join(inames), iname))
-            else:
-                # We're adding a new root. That's fine.
-                pass
-
-            root_to_leaf[current_root] = home_domain_index
-            domain_indices.update(domain_path_to_root)
-
-        return list(root_to_leaf.values())
+        return frozenset(hdm[iname] for iname in inames)
 
     @memoize_method
     def _get_inames_domain_backend(self, inames):
