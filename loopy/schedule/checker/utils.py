@@ -156,11 +156,18 @@ def add_eq_isl_constraint_from_names(isl_map, var1, var2):
                    {1: 0, var1: 1, var2: -1}))
 
 
-def find_and_rename_dim(old_map, dim_types, old_name, new_name):
+def find_and_rename_dim(old_map, dim_types, old_name, new_name, must_exist=False):
     new_map = old_map.copy()
     for dim_type in dim_types:
-        new_map = new_map.set_dim_name(
-            dim_type, new_map.find_dim_by_name(dim_type, old_name), new_name)
+        idx = new_map.find_dim_by_name(dim_type, old_name)
+        if idx == -1:
+            if must_exist:
+                raise ValueError(
+                    "must_exist=True but did not find old_name %s in %s"
+                    % (old_name, old_map))
+            else:
+                continue
+        new_map = new_map.set_dim_name(dim_type, idx, new_name)
     return new_map
 
 
