@@ -1142,11 +1142,11 @@ class AccessFootprintGatherer(CombineMapper):
         if not isinstance(subscript, tuple):
             subscript = (subscript,)
 
-        from loopy.symbolic import get_access_range
+        from loopy.symbolic import get_access_map
 
         try:
-            access_range = get_access_range(self.domain, subscript,
-                    self.kernel.assumptions)
+            access_range = get_access_map(self.domain, subscript,
+                    self.kernel.assumptions).range()
         except isl.Error:
             # Likely: index was non-linear, nothing we can do.
             if self.ignore_uncountable:
