@@ -353,6 +353,11 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         usage_to_definition[insn.id] = def_id
         definition_to_usage_ids.setdefault(def_id, set()).add(insn.id)
 
+    # these insns may be removed so can't get within_inames later
+    definition_to_within_inames = {}
+    for def_id in definition_to_usage_ids.keys():
+        definition_to_within_inames[def_id] = kernel.id_to_insn[def_id].within_inames
+
     # Get deps for subst_def statements before any of them get removed
     definition_id_to_deps = {}
     from copy import deepcopy
@@ -470,19 +475,77 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         unmatched_usage_ids = tts.unmatched_usage_sites_found[subst_def_id]
         matched_usage_ids = subst_usage_ids - unmatched_usage_ids
         if matched_usage_ids:
+            import islpy as isl
+            dt = isl.dim_type
             # Create match condition string:
             match_any_matched_usage_id = " or ".join(
                 ["id:%s" % (usage_id) for usage_id in matched_usage_ids])
 
             subst_def_deps_dict = definition_id_to_deps[subst_def_id]
+            old_dep_out_inames = definition_to_within_inames[subst_def_id]
 
-            def _add_deps_to_stmt(dep_dict):
-                # dep_dict: prev dep dict for this stmt
-                # add the deps
-                for depends_on_id, dep_list in subst_def_deps_dict.items():
-                    dep_list_copy = deepcopy(dep_list)
-                    dep_dict.setdefault(depends_on_id, []).extend(dep_list_copy)
-                return dep_dict
+            def _add_deps_to_stmt(old_dep_dict, stmt):
+                # old_dep_dict: prev dep dict for this stmt
+
+                # want to add old dep from def stmt to usage stmt,
+                # but if inames of def stmt don't match inames of usage stmt,
+                # need to get rid of unwanted inames in old dep out dims and add
+                # any missing inames (inames from usage stmt not present in def stmt)
+                new_dep_out_inames = stmt.within_inames
+                out_inames_to_project_out = old_dep_out_inames - new_dep_out_inames
+                out_inames_to_add = new_dep_out_inames - old_dep_out_inames
+                # inames_domain for new inames to add
+                dom_for_new_inames = kernel.get_inames_domain(
+                    out_inames_to_add
+                    ).project_out_except(out_inames_to_add, [dt.set])
+
+                # process and add the old deps
+                for depends_on_id, old_dep_list in subst_def_deps_dict.items():
+                    # pu.db
+
+                    new_dep_list = []
+                    for old_dep in old_dep_list:
+                        # TODO figure out when copies are necessary
+                        new_dep = deepcopy(old_dep)
+
+                        # project out inames from old dep (out dim) that don't apply
+                        # to this statement
+                        for old_iname in out_inames_to_project_out:
+                            idx_of_old_iname = old_dep.find_dim_by_name(
+                                dt.out, old_iname)
+                            assert idx_of_old_iname != -1
+                            new_dep = new_dep.project_out(
+                                dt.out, idx_of_old_iname, 1)
+
+                        # add inames from this stmt that were not present in old dep
+                        from loopy.schedule.checker.utils import (
+                            add_and_name_isl_dims,
+                        )
+                        new_dep = add_and_name_isl_dims(
+                            new_dep, dt.out, out_inames_to_add)
+
+                        # add inames domain for new inames
+                        """
+                        # insert stmt dim
+                        from loopy.schedule.checker.utils import (
+                            reorder_dims_by_name,
+                            insert_and_name_isl_dims,
+                        )
+                        from loopy.schedule.checker.schedule import (
+                            STATEMENT_VAR_NAME,
+                        )
+                        dom_for_new_iname = insert_and_name_isl_dims(
+                            dom_for_new_iname, dt.set, [STATEMENT_VAR_NAME], 0)
+                        """
+                        dom_aligned = isl.align_spaces(
+                            dom_for_new_inames, new_dep.range())
+
+                        # Intersect domain with dep
+                        new_dep = new_dep.intersect_range(dom_aligned)
+                        new_dep_list.append(new_dep)
+
+                    old_dep_dict.setdefault(depends_on_id, []).extend(new_dep_list)
+                return old_dep_dict
 
             kernel = map_stmt_dependencies(
                 kernel, match_any_matched_usage_id, _add_deps_to_stmt)
