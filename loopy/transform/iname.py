@@ -2050,19 +2050,21 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
 
         # {{{ *Rename* iname in dependencies
 
+        # TODO use find_and_rename_dims for simpler code
+        # (see example in rename_iname)
         from loopy.transform.instruction import map_dependency_maps
         from loopy.schedule.checker.schedule import BEFORE_MARK
         old_iname_p = old_iname+BEFORE_MARK
         new_iname_p = new_iname+BEFORE_MARK
 
-        def _rename_iname_in_dep_out(dep):
+        def _rename_iname_in_dim_out(dep):
             # update iname in out-dim
             out_idx = dep.find_dim_by_name(dt.out, old_iname)
             if out_idx != -1:
                 dep = dep.set_dim_name(dt.out, out_idx, new_iname)
             return dep
 
-        def _rename_iname_in_dep_in(dep):
+        def _rename_iname_in_dim_in(dep):
             # update iname in in-dim
             in_idx = dep.find_dim_by_name(dt.in_, old_iname_p)
             if in_idx != -1:
@@ -2073,10 +2075,10 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
         # TODO figure out match vs stack_match
         false_id_match = "not id:*"
         kernel = map_dependency_maps(
-            kernel, _rename_iname_in_dep_out,
+            kernel, _rename_iname_in_dim_out,
             stmt_match_depender=within, stmt_match_dependee=false_id_match)
         kernel = map_dependency_maps(
-            kernel, _rename_iname_in_dep_in,
+            kernel, _rename_iname_in_dim_in,
             stmt_match_depender=false_id_match, stmt_match_dependee=within)
 
         # }}}
@@ -2366,6 +2368,44 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
             new_instructions.append(insn)
 
         kernel = kernel.copy(instructions=new_instructions)
+
+        # {{{ Rename iname in dependencies
+
+        from loopy.transform.instruction import map_dependency_maps
+        from loopy.schedule.checker.schedule import BEFORE_MARK
+        from loopy.schedule.checker.utils import (
+            find_and_rename_dims,
+        )
+        old_iname_p = old_iname+BEFORE_MARK
+        new_iname_p = new_iname+BEFORE_MARK
+
+        def _rename_iname_in_dim_out(dep):
+            # Update iname in out-dim (depender dim).
+
+            # For now, out_idx should not be -1 because this will only
+            # be called on dependers
+            return find_and_rename_dims(
+                dep, [dt.out], old_iname, new_iname, must_exist=True)
+
+        def _rename_iname_in_dim_in(dep):
+            # Update iname in in-dim (dependee dim).
+
+            # For now, out_idx should not be -1 because this will only
+            # be called on dependees
+            return find_and_rename_dims(
+                dep, [dt.in_], old_iname_p, new_iname_p, must_exist=True)
+
+        # TODO figure out proper way to match none
+        # TODO figure out match vs stack_match
+        false_id_match = "not id:*"
+        kernel = map_dependency_maps(
+            kernel, _rename_iname_in_dim_out,
+            stmt_match_depender=within, stmt_match_dependee=false_id_match)
+        kernel = map_dependency_maps(
+            kernel, _rename_iname_in_dim_in,
+            stmt_match_depender=false_id_match, stmt_match_dependee=within)
+
+        # }}}
 
     else:
         kernel = duplicate_inames(
