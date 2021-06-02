@@ -120,9 +120,11 @@ def extract_subst(kernel, subst_name, template, parameters=()):
             CallbackMapper, WalkMapper, IdentityMapper)
     dfmapper = CallbackMapper(gather_exprs, WalkMapper())
 
+    from loopy.kernel.instruction import MultiAssignmentBase
     for insn in kernel.instructions:
-        dfmapper(insn.assignees)
-        dfmapper(insn.expression)
+        if isinstance(insn, MultiAssignmentBase):
+            dfmapper(insn.assignees)
+            dfmapper(insn.expression)
 
     for sr in kernel.substitutions.values():
         dfmapper(sr.expression)

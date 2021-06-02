@@ -3124,6 +3124,20 @@ def test_kernel_tagging():
     assert knl3.copy().tags == knl3.tags
 
 
+def test_split_iname_with_multiple_dim_params(ctx_factory):
+    ctx = ctx_factory()
+
+    ref_knl = lp.make_kernel(
+        ["{[i, j]: 0<=i,j<16}",
+        "[i,j] -> {[k]: 0<=k<=4}"],
+        """
+        foo[i, j, k] = i+j+k
+        """)
+    knl = lp.split_iname(ref_knl, "i", 4)
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
