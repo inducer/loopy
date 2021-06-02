@@ -475,9 +475,9 @@ class _AccessCheckMapper(WalkMapper):
 
     @memoize_method
     def _get_access_range(self, domain, subscript):
-        from loopy.symbolic import (get_access_range, UnableToDetermineAccessRange)
+        from loopy.symbolic import (get_access_map, UnableToDetermineAccessRange)
         try:
-            return get_access_range(domain, subscript)
+            return get_access_map(domain, subscript).range()
         except UnableToDetermineAccessRange:
             return None
 
