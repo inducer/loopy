@@ -1408,12 +1408,19 @@ def test_add_dependency_v2():
     # Add a dependency to stmt_b
     dep_b_on_a = make_dep_map(
         "[pi] -> {{ [i'] -> [i] : i > i' "
+        "and {0} }}".format(assumptions_str),
+        self_dep=False, knl_with_domains=knl)
+
+    # test make_dep_map while we're here:
+    dep_b_on_a_test = _isl_map_with_marked_dims(
+        "[pi] -> {{ [{3}'=0, i'] -> [{3}=1, i] : i > i' "
         "and {0} and {1} and {2} }}".format(
             i_range_str,
             i_range_str_p,
             assumptions_str,
-            ),
-        self_dep=False)
+            STATEMENT_VAR_NAME,
+            ))
+    _align_and_compare_maps([(dep_b_on_a, dep_b_on_a_test)])
 
     knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a)
 
@@ -1425,12 +1432,19 @@ def test_add_dependency_v2():
     # Add a second dependency to stmt_b
     dep_b_on_a_2 = make_dep_map(
         "[pi] -> {{ [i'] -> [i] : i = i' "
+        "and {0}}}".format(assumptions_str),
+        self_dep=False, knl_with_domains=knl)
+
+    # test make_dep_map while we're here:
+    dep_b_on_a_2_test = _isl_map_with_marked_dims(
+        "[pi] -> {{ [{3}'=0, i'] -> [{3}=1, i] : i = i' "
         "and {0} and {1} and {2} }}".format(
             i_range_str,
             i_range_str_p,
             assumptions_str,
-            ),
-        self_dep=False)
+            STATEMENT_VAR_NAME,
+            ))
+    _align_and_compare_maps([(dep_b_on_a_2, dep_b_on_a_2_test)])
 
     knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a_2)
 

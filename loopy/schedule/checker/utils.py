@@ -201,7 +201,7 @@ def append_mark_to_strings(strings, mark):
 
 # {{{ make_dep_map
 
-def make_dep_map(s, self_dep=False):
+def make_dep_map(s, self_dep=False, knl_with_domains=None):
 
     # TODO put this function in the right place
 
@@ -238,6 +238,23 @@ def make_dep_map(s, self_dep=False):
         isl.Constraint.eq_from_names(
             map_with_stmts.space,
             {1: sid_after, STATEMENT_VAR_NAME: -1}))
+
+    if knl_with_domains is not None:
+        # intersect map with knl domains
+        inames = map_init.get_var_names(dt.out)
+        inames_dom = knl_with_domains.get_inames_domain(
+            inames).project_out_except(inames, [dt.set])
+        inames_dom_marked = append_mark_to_isl_map_var_names(
+            inames_dom, dt.set, BEFORE_MARK)
+
+        inames_dom_aligned = isl.align_spaces(
+            inames_dom, map_with_stmts.range())
+        inames_dom_marked_aligned = isl.align_spaces(
+            inames_dom_marked, map_with_stmts.domain())
+
+        map_with_stmts = map_with_stmts.intersect_range(
+            inames_dom_aligned
+            ).intersect_domain(inames_dom_marked_aligned)
 
     return map_with_stmts
 
