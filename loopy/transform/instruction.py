@@ -141,9 +141,15 @@ def map_stmt_dependencies(kernel, stmt_match, f):
 
 
 def _parse_match_if_necessary(match_candidate):
-    from loopy.match import MatchExpressionBase
-    if not isinstance(match_candidate, MatchExpressionBase):
+    from loopy.match import (
+        MatchExpressionBase,
+        StackMatch,
+    )
+    if not isinstance(
+            match_candidate, (MatchExpressionBase, StackMatch)):
         from loopy.match import parse_match
+        # TODO assumes StackMatches are already parsed
+        # TODO determine when to use parse_stack_match (AKQ)
         return parse_match(match_candidate)
     else:
         return match_candidate
@@ -155,15 +161,28 @@ def map_dependency_lists(
     # All deps of stmts matching stmt_match_depender
     # All deps ON stmts matching stmt_match_dependee
     # (but doesn't call f() twice if dep matches both depender and dependee)
+    from loopy.match import (
+        StackMatch,
+    )
 
     match_depender = _parse_match_if_necessary(stmt_match_depender)
     match_dependee = _parse_match_if_necessary(stmt_match_dependee)
 
-    new_stmts = []
+    # TODO figure out right way to simultaneously handle
+    # both MatchExpressionBase and StackMatch
+    if isinstance(match_depender, StackMatch):
+        extra_match_depender_args = [()]
+    else:
+        extra_match_depender_args = []
+    if isinstance(match_dependee, StackMatch):
+        extra_match_dependee_args = [()]
+    else:
+        extra_match_dependee_args = []
 
+    new_stmts = []
     for stmt in kernel.instructions:
         new_deps = {}
-        if match_depender(kernel, stmt):
+        if match_depender(kernel, stmt, *extra_match_depender_args):
             # Stmt matches as depender
             # Replace all deps
             for dep_id, dep_maps in stmt.dependencies.items():
@@ -172,7 +191,9 @@ def map_dependency_lists(
             # Stmt didn't match as a depender
             # Replace deps matching dependees
             for dep_id, dep_maps in stmt.dependencies.items():
-                if match_dependee(kernel, kernel.id_to_insn[dep_id]):
+                if match_dependee(
+                        kernel, kernel.id_to_insn[dep_id],
+                        *extra_match_dependee_args):
                     new_deps[dep_id] = f(dep_maps)
                 else:
                     new_deps[dep_id] = dep_maps
