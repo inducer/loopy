@@ -525,18 +525,6 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
                             new_dep, dt.out, out_inames_to_add)
 
                         # add inames domain for new inames
-                        """
-                        # insert stmt dim
-                        from loopy.schedule.checker.utils import (
-                            reorder_dims_by_name,
-                            insert_and_name_isl_dims,
-                        )
-                        from loopy.schedule.checker.schedule import (
-                            STATEMENT_VAR_NAME,
-                        )
-                        dom_for_new_iname = insert_and_name_isl_dims(
-                            dom_for_new_iname, dt.set, [STATEMENT_VAR_NAME], 0)
-                        """
                         dom_aligned = isl.align_spaces(
                             dom_for_new_inames, new_dep.range())
 
