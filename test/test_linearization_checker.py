@@ -150,6 +150,49 @@ def _process_and_linearize(knl):
 # }}}
 
 
+# {{{ Helper functions for dependency tests
+
+
+def _compare_dependencies(knl, deps_expected, return_unsatisfied=False):
+
+    deps_found = {}
+    for stmt in knl.instructions:
+        if hasattr(stmt, "dependencies") and stmt.dependencies:
+            deps_found[stmt.id] = stmt.dependencies
+
+    assert deps_found.keys() == deps_expected.keys()
+
+    for stmt_id_after, dep_dict_found in deps_found.items():
+
+        dep_dict_expected = deps_expected[stmt_id_after]
+
+        # Ensure deps for stmt_id_after match
+        assert dep_dict_found.keys() == dep_dict_expected.keys()
+
+        for stmt_id_before, dep_list_found in dep_dict_found.items():
+
+            # Ensure deps from (stmt_id_before -> stmt_id_after) match
+            dep_list_expected = dep_dict_expected[stmt_id_before]
+            print("comparing deps %s->%s" % (stmt_id_before, stmt_id_after))
+            assert len(dep_list_found) == len(dep_list_expected)
+            _align_and_compare_maps(zip(dep_list_found, dep_list_expected))
+
+    if not return_unsatisfied:
+        return
+
+    # Get unsatisfied deps
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
+    unsatisfied_deps = lp.find_unsatisfied_dependencies(proc_knl, lin_items)
+
+    # Make sure dep checking also works with just linearized kernel
+    unsatisfied_deps_2 = lp.find_unsatisfied_dependencies(lin_knl)
+    assert len(unsatisfied_deps) == len(unsatisfied_deps_2)
+
+    return unsatisfied_deps
+
+# }}}
+
+
 # {{{ test_intra_thread_pairwise_schedule_creation()
 
 def test_intra_thread_pairwise_schedule_creation():
@@ -1335,48 +1378,6 @@ def test_sios_with_matmul():
 
 # {{{ Dependency tests
 
-# {{{ Helper functions
-
-
-def _compare_dependencies(knl, deps_expected, return_unsatisfied=False):
-
-    deps_found = {}
-    for stmt in knl.instructions:
-        if hasattr(stmt, "dependencies") and stmt.dependencies:
-            deps_found[stmt.id] = stmt.dependencies
-
-    assert deps_found.keys() == deps_expected.keys()
-
-    for stmt_id_after, dep_dict_found in deps_found.items():
-
-        dep_dict_expected = deps_expected[stmt_id_after]
-
-        # Ensure deps for stmt_id_after match
-        assert dep_dict_found.keys() == dep_dict_expected.keys()
-
-        for stmt_id_before, dep_list_found in dep_dict_found.items():
-
-            # Ensure deps from (stmt_id_before -> stmt_id_after) match
-            dep_list_expected = dep_dict_expected[stmt_id_before]
-            assert len(dep_list_found) == len(dep_list_expected)
-            _align_and_compare_maps(zip(dep_list_found, dep_list_expected))
-
-    if not return_unsatisfied:
-        return
-
-    # Get unsatisfied deps
-    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
-    unsatisfied_deps = lp.find_unsatisfied_dependencies(proc_knl, lin_items)
-
-    # Make sure dep checking also works with just linearized kernel
-    unsatisfied_deps_2 = lp.find_unsatisfied_dependencies(lin_knl)
-    assert len(unsatisfied_deps) == len(unsatisfied_deps_2)
-
-    return unsatisfied_deps
-
-# }}}
-
-
 # {{{ Dependency creation and checking (without transformations)
 
 # {{{ test_add_dependency_v2
@@ -1660,9 +1661,6 @@ def test_assignment_to_subst_with_dependencies():
         """)
 
     # TODO test with multiple subst definition sites
-    # TODO what if stmt2 depends on <>tsq = b[i-1]**2 and then we do
-    #     assignment to subst? remove i'=i from dep?
-    # TODO what if, e.g., stmt3 doesn't have iname i in it?
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
 
     dep_eq = _isl_map_with_marked_dims(
@@ -1735,6 +1733,48 @@ def test_assignment_to_subst_with_dependencies():
                 "stmt0": [dep_le, ], "stmt1": [dep_eq, ]},
             "stmt4": {"stmt1": [dep_eq, ]},
             "stmt5": {"stmt1": [dep_eq, ]},
+        },
+        return_unsatisfied=True)
+
+    assert not unsatisfied_deps
+
+    # test case where subst def is removed, has deps, and
+    # inames of subst_def don't match subst usage
+
+    knl = lp.make_kernel(
+        "{[i,j,k,m]: 0 <= i,j,k,m < n}",
+        """
+        for i,j
+            <>temp0 = 0.1*i {id=stmt0}
+        end
+        for k
+            <>tsq = temp0**2  {id=stmt1,dep=stmt0}
+        end
+        for m
+            <>res = 23*tsq + 25*tsq  {id=stmt2,dep=stmt1}
+        end
+        """)
+    knl = lp.add_and_infer_dtypes(knl, {"temp0,tsq,res": np.float32})
+
+    dep_1_on_0 = make_dep_map(
+        "[n] -> { [i', j']->[k] : 0 <= i',j',k < n }", self_dep=False)
+    dep_2_on_1 = make_dep_map(
+        "[n] -> { [k']->[m] : 0 <= k',m < n }", self_dep=False)
+
+    from copy import deepcopy
+    knl = lp.add_dependency_v2(knl, "stmt1", "stmt0", deepcopy(dep_1_on_0))
+    knl = lp.add_dependency_v2(knl, "stmt2", "stmt1", deepcopy(dep_2_on_1))
+
+    knl = lp.assignment_to_subst(knl, "tsq")
+
+    dep_exp = make_dep_map(
+        "[n] -> { [i', j']->[m] : 0 <= i',j',m < n }", self_dep=False)
+
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {
+            "stmt2": {"stmt0": [dep_exp, ]},
         },
         return_unsatisfied=True)
 
