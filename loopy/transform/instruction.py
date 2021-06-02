@@ -133,7 +133,8 @@ def map_stmt_dependencies(kernel, stmt_match, f):
     # Does not search for matching dependees of non-matching depender statements!
 
     def _update_deps(stmt):
-        new_deps = f(stmt.dependencies)
+        # pass stmt to f because might need info
+        new_deps = f(stmt.dependencies, stmt)
         return stmt.copy(dependencies=new_deps)
 
     return map_instructions(kernel, stmt_match, _update_deps)
@@ -226,7 +227,7 @@ def add_dependency_v2(
                 "cannot add dependency %s->%s"
                 % (depends_on_id, depends_on_id, stmt_id))
 
-    def _add_dep(stmt_deps):
+    def _add_dep(stmt_deps, stmt):
         # stmt_deps: dict mapping depends-on ids to dep maps
         stmt_deps.setdefault(depends_on_id, []).append(new_dependency)
         return stmt_deps
