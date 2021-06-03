@@ -292,7 +292,8 @@ def generate_host_or_device_program(codegen_state, schedule_index):
     from loopy.codegen.control import build_loop_nest
     if codegen_state.is_generating_device_code:
         from loopy.schedule import CallKernel
-        assert isinstance(codegen_state.kernel.linearization[schedule_index], CallKernel)
+        assert isinstance(codegen_state.kernel.linearization[schedule_index],
+                          CallKernel)
 
         from loopy.codegen.loop import set_up_hw_parallel_loops
         codegen_result = set_up_hw_parallel_loops(

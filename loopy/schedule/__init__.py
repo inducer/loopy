@@ -1955,7 +1955,9 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
     debug = ScheduleDebugger(**debug_args)
 
-    preschedule = kernel.linearization if kernel.state == KernelState.LINEARIZED else ()
+    preschedule = (kernel.linearization
+                   if kernel.state == KernelState.LINEARIZED
+                   else ())
 
     prescheduled_inames = {
             insn.iname

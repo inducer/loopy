@@ -236,7 +236,8 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
                 LocalIndexTag, GroupIndexTag, VectorizeTag)
 
     from loopy.schedule import get_insn_ids_for_block_at
-    insn_ids_for_block = get_insn_ids_for_block_at(kernel.linearization, schedule_index)
+    insn_ids_for_block = get_insn_ids_for_block_at(kernel.linearization,
+                                                   schedule_index)
 
     if hw_inames_left is None:
         all_inames_by_insns = set()
