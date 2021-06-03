@@ -712,7 +712,10 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
                                    for idom, dom in enumerate(kernel.domains)
                                    if idom not in domain_indices]
         domains_after_combining.insert(domain_indices[-1], combined_domain)
-        kernel = kernel.copy(domains=domains_after_combining)
+
+        from loopy.kernel import make_loop_kernel_domains
+        kernel = (kernel
+                  .copy(domains=make_loop_kernel_domains(domains_after_combining)))
 
         # }}}
 
