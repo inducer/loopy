@@ -419,7 +419,7 @@ def test_parallel_multi_output_reduction(ctx_factory):
         assert max_index == np.argmax(np.abs(a))
 
 
-def test_reduction_with_conditional():
+def test_reduction_with_conditional(ctx_factory):
     # The purpose of the 'l' iname is to force the entire kernel (including the
     # predicate) into device code.
 
@@ -429,16 +429,14 @@ def test_reduction_with_conditional():
                 if l > 0
                     b[l] = sum(i, l*a[i])
                 end
-                """,
-                [lp.ValueArg("n", dtype=np.int32), "..."])
-
-    knl = lp.tag_inames(knl, "l:g.0")
+                """)
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+    ref_knl = knl
+    knl = lp.tag_inames(knl, "l:g.0")
     code = lp.generate_code_v2(knl).device_code()
     print(code)
 
-    # Check that the if appears before the loop that realizes the reduction.
-    assert code.index("if") < code.index("for")
+    lp.auto_test_vs_ref(ref_knl, ctx_factory(), knl)
 
 
 def test_any_all(ctx_factory):
