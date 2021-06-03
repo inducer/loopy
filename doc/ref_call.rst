@@ -11,14 +11,16 @@ Resolving and specialization
 ----------------------------
 
 In :mod:`loopy`, a :class:`loopy.TranslationUnit` is a collection of callables
-and entrypoints. Callable are of type
-:class`:loopy.kernel.function_interface.InKernelCallable`. Any expression node
-which has a callable corresponding to it appears as
-:class:`~loopy.symbolic.ResolvedFunction`. The process of realizing a function as
-a :class:`~loopy.kernel.function_interface.InKernelCallable` is referred to as resolving.
+and entrypoints. Callables are of type
+:class`:loopy.kernel.function_interface.InKernelCallable`. Functions start life
+as simple :class:`pymbolic.primitives.Call` nodes. Call resolution turns the function
+identifiers in those calls into :class:`~loopy.symbolic.ResolvedFunction` objects.
+Each resolved function has an entry in :attr:`TranslationUnit.callables_table`.
+The process of realizing a function as a
+:class:`~loopy.kernel.function_interface.InKernelCallable` is referred to as
+resolving.
 
-
-During code-generation process for a :class:`~loopy.TranslationUnit`, a callable
+During code generation for a :class:`~loopy.TranslationUnit`, a (resolved) callable
 is *specialized* depending on the types and shapes of the arguments passed at a
 call site. For example, a call to ``sin(x)`` in :mod:`loopy` is type-generic to
 begin with, but it later specialized to either ``sinf``, ``sin`` or ``sinl``
@@ -37,10 +39,9 @@ we typically aim to expose all the standard math functions defined for
 a :class:`~loopy.target.TargetBase`. Other foreign functions could be invoked by
 *registering* them.
 
-An example demonstrating registering a CBlasGemv as a loopy callable:
+An example demonstrating registering a ``CBlasGemv`` as a loopy callable:
 
 .. literalinclude:: ../examples/python/call-external.py
-
 
 Call Instruction for a kernel call
 ----------------------------------
@@ -52,6 +53,12 @@ arguments. Since a :class:`~loopy.kernel.data.KernelArgument` can be both an
 input and an output, such arguments would be a part of the call instruction's
 assignees as well as the call expression node's parameters.
 
+Entry points
+------------
+
+Only callables in :attr:`loopy.TranslationUnit.entrypoints` can be called from
+the outside. All other callables are only visible from within the translation
+unit, similar to C's ``static`` functions.
 
 Reference
 ---------
