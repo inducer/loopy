@@ -196,7 +196,7 @@ def test_dependent_loop_bounds_3(ctx_factory):
             target=lp.PyOpenCLTarget(ctx.devices[0]),
             name="loopy_kernel")
 
-    assert knl["loopy_kernel"].parents_per_domain()[1] == 0
+    assert knl["loopy_kernel"].parents_per_domain()[1] == frozenset({0})
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0",
             inner_tag="l.0")
@@ -270,7 +270,7 @@ def test_independent_multi_domain(ctx_factory):
             inner_tag="l.0")
     knl = lp.split_iname(knl, "j", 16, outer_tag="g.0",
             inner_tag="l.0")
-    assert knl["loopy_kernel"].parents_per_domain() == 2*[None]
+    assert knl["loopy_kernel"].parents_per_domain() == 2*[frozenset()]
 
     n = 50
     evt, (a, b) = knl(queue, n=n, out_host=True)
