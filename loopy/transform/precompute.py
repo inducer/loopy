@@ -890,6 +890,8 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
         new_kernel_domains = new_kernel_domains + [new_inames_domain
                                                    .drop_unused_params()]
 
+        new_domain_added_idx = len(new_kernel_domains) - 1
+
         # }}}
 
     else:
@@ -898,6 +900,7 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
         non1_storage_axis_names = []
         abm = NoOpArrayToBufferMap()
+        new_domain_added_idx = None
 
     kernel = kernel.copy(domains=new_kernel_domains)
 
@@ -1044,7 +1047,22 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
         precompute_outer_inames = precompute_outer_inames \
                 | frozenset(non1_storage_axis_names)
 
+    if new_domain_added_idx:
+        parent_domains = kernel.all_parents_per_domain()[new_domain_added_idx]
+        old_domain = kernel.combine_domains(tuple(sorted(parent_domains))
+                                            + (new_domain_added_idx, ))
+
+        updated_added_domain = (old_domain
+                                .project_out_except(
+                                    types=[isl.dim_type.param, isl.dim_type.set],
+                                    names=(precompute_outer_inames
+                                           | kernel.get_unwritten_value_args())))
+        new_domains = kernel.domains.swap(new_domain_added_idx, updated_added_domain)
+    else:
+        new_domains = kernel.domains
+
     kernel = kernel.copy(
+            domains=new_domains,
             instructions=[
                 insn.copy(within_inames=precompute_outer_inames)
                 if insn.id == compute_insn_id
