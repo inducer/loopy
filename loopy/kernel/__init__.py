@@ -988,7 +988,6 @@ class LoopKernel(ImmutableRecordWithoutPickingWithTargetedCopies, Taggable):
             # keep walking up tree to find *all* parents
             dom_result = []
             while parent is not None:
-                import pudb; pu.db
                 dom_result.insert(0, parent)
                 parent = ppd[parent]
 
@@ -1952,7 +1951,7 @@ class LoopKernel(ImmutableRecordWithoutPickingWithTargetedCopies, Taggable):
         warn("Providing schedule is deprecated, pass linearization instead. "
              "Will be unsupported in 2022.", DeprecationWarning, stacklevel=2)
 
-        return ImmutableRecordWithoutPickling.copy(self, lineariation=schedule)
+        return ImmutableRecordWithoutPickling.copy(self, linearization=schedule)
 
     # }}}
 
