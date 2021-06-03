@@ -35,7 +35,8 @@ __doc__ = """
 # {{{ add_barrier
 
 def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
-                tags=None, synchronization_kind="global", mem_kind=None):
+                tags=None, synchronization_kind="global", mem_kind=None,
+                within_inames=None):
     """Takes in a kernel that needs to be added a barrier and returns a kernel
     which has a barrier inserted into it. It takes input of 2 instructions and
     then adds a barrier in between those 2 instructions. The expressions can
@@ -49,8 +50,11 @@ def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
     :arg tags: The tag of the group to which the barrier must be added
     :arg synchronization_kind: Kind of barrier to be added. May be "global" or
         "local"
-    :arg kind: Type of memory to be synchronied. May be "global" or "local". Ignored
-        for "global" bariers.  If not supplied, defaults to *synchronization_kind*
+    :arg kind: Type of memory to be synchronized. May be "global" or "local". Ignored
+        for "global" barriers. If not supplied, defaults to *synchronization_kind*
+    :arg within_inames: A :class:`frozenset` of inames identifying the loops
+        within which the barrier will be executed.
+
     """
 
     if mem_kind is None:
@@ -64,11 +68,12 @@ def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
 
     match = parse_match(insn_before)
     insn_before_list = [insn.id for insn in kernel.instructions if match(kernel,
-                        insn)]
+        insn)]
 
     barrier_to_add = BarrierInstruction(depends_on=frozenset(insn_before_list),
                                         depends_on_is_final=True,
                                         id=id,
+                                        within_inames=within_inames,
                                         tags=tags,
                                         synchronization_kind=synchronization_kind,
                                         mem_kind=mem_kind)
