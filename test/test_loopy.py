@@ -2589,6 +2589,7 @@ def test_check_for_variable_access_ordering_with_aliasing():
             [
                 lp.TemporaryVariable("a", shape="n+1", base_storage="tmp"),
                 lp.TemporaryVariable("b", shape="n+1", base_storage="tmp"),
+                ...
                 ])
 
     from loopy.diagnostic import VariableAccessNotOrdered
