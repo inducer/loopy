@@ -73,7 +73,7 @@ class KernelProxyForCodegenOperationCacheManager:
         # relevant to CodegenOperationCacheManager
         return (self.inames == other.inames
                 and self.instructions == other.instructions
-                and self.schedule == other.schedule)
+                and self.schedule == other.linearization)
 
 
 class CodegenOperationCacheManager:
@@ -96,7 +96,7 @@ class CodegenOperationCacheManager:
         assert isinstance(kernel, LoopKernel)
         return CodegenOperationCacheManager(
                 KernelProxyForCodegenOperationCacheManager(kernel.instructions,
-                            kernel.schedule,
+                            kernel.linearization,
                             kernel.inames))
 
     def with_kernel(self, kernel):

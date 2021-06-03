@@ -121,7 +121,7 @@ def get_slab_decomposition(kernel, iname):
 def generate_unroll_loop(codegen_state, sched_index):
     kernel = codegen_state.kernel
 
-    iname = kernel.schedule[sched_index].iname
+    iname = kernel.linearization[sched_index].iname
 
     bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
@@ -163,7 +163,7 @@ def generate_unroll_loop(codegen_state, sched_index):
 def generate_vectorize_loop(codegen_state, sched_index):
     kernel = codegen_state.kernel
 
-    iname = kernel.schedule[sched_index].iname
+    iname = kernel.linearization[sched_index].iname
 
     bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
@@ -236,7 +236,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
                 LocalIndexTag, GroupIndexTag, VectorizeTag)
 
     from loopy.schedule import get_insn_ids_for_block_at
-    insn_ids_for_block = get_insn_ids_for_block_at(kernel.schedule, schedule_index)
+    insn_ids_for_block = get_insn_ids_for_block_at(kernel.linearization, schedule_index)
 
     if hw_inames_left is None:
         all_inames_by_insns = set()
@@ -348,7 +348,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
     kernel = codegen_state.kernel
 
     ecm = codegen_state.expression_to_code_mapper
-    loop_iname = kernel.schedule[sched_index].iname
+    loop_iname = kernel.linearization[sched_index].iname
 
     slabs = get_slab_decomposition(kernel, loop_iname)
 

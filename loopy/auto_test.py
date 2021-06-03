@@ -529,7 +529,7 @@ def auto_test_vs_ref(
 
         test_knl = lp.preprocess_kernel(test_knl)
 
-    if not test_knl.schedule:
+    if not test_knl.linearization:
         test_kernels = lp.generate_loop_schedules(test_knl)
     else:
         test_kernels = [test_knl]

@@ -394,11 +394,11 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                 # these should not both be present
                 raise ValueError(
                     "received both `schedule` and `linearization` args, "
-                    "'LoopKernel.schedule' is deprecated. "
+                    "'LoopKernel.linearization' is deprecated. "
                     "Use 'LoopKernel.linearization'.")
         elif schedule is not None:
             warn(
-                "'LoopKernel.schedule' is deprecated. "
+                "'LoopKernel.linearization' is deprecated. "
                 "Use 'LoopKernel.linearization'.",
                 DeprecationWarning, stacklevel=2)
             linearization = schedule
@@ -771,7 +771,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
     @property
     def schedule(self):
         warn(
-                "LoopKernel.schedule is deprecated. "
+                "LoopKernel.linearization is deprecated. "
                 "Call LoopKernel.linearization instead, "
                 "will be unsupported in 2022.",
                 DeprecationWarning, stacklevel=2)
@@ -1410,12 +1410,12 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                         "(use loopy.show_dependency_graph to visualize)")
             lines.extend(dep_lines)
 
-        if "schedule" in what and kernel.schedule is not None:
+        if "schedule" in what and kernel.linearization is not None:
             lines.extend(sep)
             if show_labels:
                 lines.append("LINEARIZATION:")
             from loopy.schedule import dump_schedule
-            lines.append(dump_schedule(kernel, kernel.schedule))
+            lines.append(dump_schedule(kernel, kernel.linearization))
 
         lines.extend(sep)
 
@@ -1541,7 +1541,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             "domains",
             "instructions",
             "args",
-            "schedule",
+            "linearization",
             "name",
             "preambles",
             "assumptions",

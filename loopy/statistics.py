@@ -1787,7 +1787,7 @@ def get_synchronization_map(knl, subgroup_size=None):
         else:
             return one
 
-    for sched_item in knl.schedule:
+    for sched_item in knl.linearization:
         if isinstance(sched_item, EnterLoop):
             if sched_item.iname:  # (if not empty)
                 iname_list.append(sched_item.iname)

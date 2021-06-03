@@ -906,18 +906,18 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
         local_axes = set()
 
         i = 0
-        loop_end_i = past_end_i = len(kernel.schedule)
+        loop_end_i = past_end_i = len(kernel.linearization)
     else:
-        assert isinstance(kernel.schedule[sched_index], CallKernel)
-        _, past_end_i = gather_schedule_block(kernel.schedule, sched_index)
+        assert isinstance(kernel.linearization[sched_index], CallKernel)
+        _, past_end_i = gather_schedule_block(kernel.linearization, sched_index)
         group_size, local_size = kernel.get_grid_sizes_for_insn_ids_as_exprs(
-                get_insn_ids_for_block_at(kernel.schedule, sched_index))
+                get_insn_ids_for_block_at(kernel.linearization, sched_index))
 
         group_axes = {ax for ax, length in enumerate(group_size)}
         local_axes = {ax for ax, length in enumerate(local_size)}
 
         i = sched_index + 1
-        assert isinstance(kernel.schedule[past_end_i - 1], ReturnFromKernel)
+        assert isinstance(kernel.linearization[past_end_i - 1], ReturnFromKernel)
         loop_end_i = past_end_i - 1
 
     # alternative: just disregard length-1 dimensions?
@@ -926,7 +926,7 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
                         GroupIndexTag)
 
     while i < loop_end_i:
-        sched_item = kernel.schedule[i]
+        sched_item = kernel.linearization[i]
         if isinstance(sched_item, CallKernel):
             i = _check_for_unused_hw_axes_in_kernel_chunk(kernel, i)
 
@@ -984,7 +984,7 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
 
 
 def check_for_unused_hw_axes_in_insns(kernel):
-    if kernel.schedule:
+    if kernel.linearization:
         _check_for_unused_hw_axes_in_kernel_chunk(kernel)
 
 # }}}
@@ -1077,7 +1077,7 @@ def check_that_all_insns_are_scheduled(kernel):
     from loopy.schedule import sched_item_to_insn_id
     scheduled_insns = {
         insn_id
-        for sched_item in kernel.schedule
+        for sched_item in kernel.linearization
         for insn_id in sched_item_to_insn_id(sched_item)}
 
     assert scheduled_insns <= all_schedulable_insns

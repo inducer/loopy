@@ -411,7 +411,7 @@ def generate_code_v2(kernel):
         from loopy.preprocess import preprocess_kernel
         kernel = preprocess_kernel(kernel)
 
-    if kernel.schedule is None:
+    if kernel.linearization is None:
         from loopy.schedule import get_one_linearized_kernel
         kernel = get_one_linearized_kernel(kernel)
 
@@ -500,7 +500,7 @@ def generate_code_v2(kernel):
                 kernel.target.host_program_name_prefix
                 + kernel.name
                 + kernel.target.host_program_name_suffix),
-            schedule_index_end=len(kernel.schedule),
+            schedule_index_end=len(kernel.linearization),
             codegen_cachemanager=CodegenOperationCacheManager.from_kernel(kernel),
             )
 

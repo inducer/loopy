@@ -271,7 +271,7 @@ def test_vectorize(ctx_factory):
     knl = lp.tag_inames(knl, {"i_inner": "vec"})
 
     knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
+    knl = lp.get_one_linearized_kernel(knl)
     code, inf = lp.generate_code(knl)
 
     lp.auto_test_vs_ref(

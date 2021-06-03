@@ -769,7 +769,7 @@ class KernelExecutorBase:
             from loopy.type_inference import infer_unknown_types
             kernel = infer_unknown_types(kernel, expect_completion=True)
 
-        if kernel.schedule is None:
+        if kernel.linearization is None:
             from loopy.preprocess import preprocess_kernel
             kernel = preprocess_kernel(kernel)
 

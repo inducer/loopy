@@ -618,7 +618,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
         # whether this is the first device program in the schedule.
         is_first_dev_prog = codegen_state.is_generating_device_code
         for i in range(schedule_index):
-            if isinstance(kernel.schedule[i], CallKernel):
+            if isinstance(kernel.linearization[i], CallKernel):
                 is_first_dev_prog = False
                 break
         if is_first_dev_prog:
@@ -707,7 +707,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
         from loopy.schedule.tools import (
                 temporaries_read_in_subkernel,
                 temporaries_written_in_subkernel)
-        subkernel = kernel.schedule[schedule_index].kernel_name
+        subkernel = kernel.linearization[schedule_index].kernel_name
         sub_knl_temps = (
                 temporaries_read_in_subkernel(kernel, subkernel) |
                 temporaries_written_in_subkernel(kernel, subkernel))

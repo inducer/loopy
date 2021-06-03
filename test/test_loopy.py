@@ -1060,8 +1060,8 @@ def test_kernel_splitting(ctx_factory):
     from loopy.preprocess import preprocess_kernel
     knl = preprocess_kernel(knl)
 
-    from loopy.schedule import get_one_scheduled_kernel
-    knl = get_one_scheduled_kernel(knl)
+    from loopy.schedule import get_one_linearized_kernel
+    knl = get_one_linearized_kernel(knl)
 
     # map schedule onto host or device
     print(knl)
@@ -1101,8 +1101,8 @@ def test_kernel_splitting_with_loop(ctx_factory):
     from loopy.preprocess import preprocess_kernel
     knl = preprocess_kernel(knl)
 
-    from loopy.schedule import get_one_scheduled_kernel
-    knl = get_one_scheduled_kernel(knl)
+    from loopy.schedule import get_one_linearized_kernel
+    knl = get_one_linearized_kernel(knl)
 
     # map schedule onto host or device
     print(knl)
@@ -1119,14 +1119,14 @@ def test_kernel_splitting_with_loop(ctx_factory):
 
 def save_and_reload_temporaries_test(queue, knl, out_expect, debug=False):
     from loopy.preprocess import preprocess_kernel
-    from loopy.schedule import get_one_scheduled_kernel
+    from loopy.schedule import get_one_linearized_kernel
 
     knl = preprocess_kernel(knl)
-    knl = get_one_scheduled_kernel(knl)
+    knl = get_one_linearized_kernel(knl)
 
     from loopy.transform.save import save_and_reload_temporaries
     knl = save_and_reload_temporaries(knl)
-    knl = get_one_scheduled_kernel(knl)
+    knl = get_one_linearized_kernel(knl)
 
     if debug:
         print(knl)
@@ -1390,7 +1390,7 @@ def test_save_ambiguous_storage_requirements():
     knl = lp.set_temporary_scope(knl, "a", "local")
 
     knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
+    knl = lp.get_one_linearized_kernel(knl)
 
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
@@ -1747,7 +1747,7 @@ def test_missing_global_barrier():
 
     from loopy.diagnostic import MissingBarrierError
     with pytest.raises(MissingBarrierError):
-        lp.get_one_scheduled_kernel(knl)
+        lp.get_one_linearized_kernel(knl)
 
 
 def test_index_cse(ctx_factory):
@@ -1879,7 +1879,7 @@ def test_const_temp_with_initializer_not_saved():
         seq_dependencies=True)
 
     knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
+    knl = lp.get_one_linearized_kernel(knl)
     knl = lp.save_and_reload_temporaries(knl)
 
     # This ensures no save slot was added.
@@ -2085,7 +2085,7 @@ def test_unscheduled_insn_detection():
         """,
         "...")
 
-    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+    knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
     insn1, = lp.find_instructions(knl, "id:insn1")
     knl.instructions.append(insn1.copy(id="insn2"))
 
@@ -2210,7 +2210,7 @@ def barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
     seen_barrier = False
     loop_level = 0
 
-    for sched_item in knl.schedule:
+    for sched_item in knl.linearization:
         if isinstance(sched_item, RunInstruction):
             if sched_item.insn_id == id1:
                 watch_for_barrier = True
@@ -2250,7 +2250,7 @@ def test_barrier_insertion_near_top_of_loop():
     knl = lp.tag_inames(knl, dict(i="l.0"))
     knl = lp.set_temporary_scope(knl, "a", "local")
     knl = lp.set_temporary_scope(knl, "b", "local")
-    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+    knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
 
     print(knl)
 
@@ -2277,7 +2277,7 @@ def test_barrier_insertion_near_bottom_of_loop():
     knl = lp.tag_inames(knl, dict(i="l.0"))
     knl = lp.set_temporary_scope(knl, "a", "local")
     knl = lp.set_temporary_scope(knl, "b", "local")
-    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+    knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
 
     print(knl)
 
@@ -2646,7 +2646,7 @@ def test_check_for_variable_access_ordering():
 
     from loopy.diagnostic import VariableAccessNotOrdered
     with pytest.raises(VariableAccessNotOrdered):
-        lp.get_one_scheduled_kernel(knl)
+        lp.get_one_linearized_kernel(knl)
 
 
 def test_check_for_variable_access_ordering_with_aliasing():
@@ -2665,7 +2665,7 @@ def test_check_for_variable_access_ordering_with_aliasing():
 
     from loopy.diagnostic import VariableAccessNotOrdered
     with pytest.raises(VariableAccessNotOrdered):
-        lp.get_one_scheduled_kernel(knl)
+        lp.get_one_linearized_kernel(knl)
 
 
 @pytest.mark.parametrize(("second_index", "expect_barrier"),
@@ -2688,7 +2688,7 @@ def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
     knl = lp.tag_inames(knl, "i:l.0")
 
     knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
+    knl = lp.get_one_linearized_kernel(knl)
 
     assert barrier_between(knl, "first", "second") == expect_barrier
 
