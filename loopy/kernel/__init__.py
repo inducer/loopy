@@ -853,7 +853,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
     @memoize_method
     def parents_per_domain(self):
         """Return a list corresponding to self.domains (by index)
-        containing domain indices which are nested around this
+        containing a list of domain indices which are nested around this
         domain.
 
         Each domains nest list walks from the leaves of the nesting
@@ -863,7 +863,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         # {{{ exit early strategy: all domains are roots
 
         if self.domains.param_dims <= self.get_unwritten_value_args():
-            return [None, ] * len(self.domains)
+            return [frozenset(), ] * len(self.domains)
 
         # }}}
 
@@ -873,12 +873,6 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         for idom, dom in enumerate(self.domains):
             idom_param_vars = (frozenset(dom.get_var_names(dim_type.param))
                                - self.get_unwritten_value_args())
-            if len(idom_param_vars) == 0:
-                # idom doesn't depend on any inames/variables
-                # => doesn't impose any nesting criteria
-                result.append(None)
-                continue
-
             # outer_inames: inames that must be nested outside the 'set dims'
             # of 'dom'
             outer_inames = set()
@@ -894,16 +888,9 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                     writer_insn, = writer_insns
                     outer_inames.update(self.insn_inames(writer_insn))
 
-            parent_idoms = {hdm[iname] for iname in outer_inames}
+            parent_idoms = frozenset({hdm[iname] for iname in outer_inames})
 
-            if len(parent_idoms) == 0:
-                result.append(None)
-            elif len(parent_idoms) > 1:
-                raise NotImplementedError("Only one parent per domain supported"
-                                          " for now.")
-            else:
-                parent_idom, = parent_idoms
-                result.append(parent_idom)
+            result.append(parent_idoms)
 
         return result
 
@@ -916,27 +903,19 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         Each domains nest list walks from the leaves of the nesting
         tree to the root.
         """
-
-        result = []
         ppd = self.parents_per_domain()
 
         # {{{ exit early strategy: all domains are roots
 
-        if set(ppd) == {None}:
-            return [[], ] * len(self.domains)
+        if set(ppd) == {frozenset()}:
+            return [frozenset(), ] * len(self.domains)
 
         # }}}
 
-        for dom, parent in zip(self.domains, ppd):
-            # keep walking up tree to find *all* parents
-            dom_result = []
-            while parent is not None:
-                dom_result.insert(0, parent)
-                parent = ppd[parent]
+        from pytools.graph import compute_transitive_closure
 
-            result.append(dom_result)
-
-        return result
+        all_ppd = compute_transitive_closure(dict(enumerate(ppd)))
+        return [all_ppd[i] for i in range(len(all_ppd))]
 
     @memoize_method
     def _get_home_domain_map(self):
