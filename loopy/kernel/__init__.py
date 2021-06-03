@@ -914,8 +914,9 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
         from pytools.graph import compute_transitive_closure
 
-        all_ppd = compute_transitive_closure(dict(enumerate(ppd)))
-        return [all_ppd[i] for i in range(len(all_ppd))]
+        all_ppd = compute_transitive_closure({i: set(p)
+                                              for i, p in enumerate(ppd)})
+        return [frozenset(all_ppd[i]) for i in range(len(all_ppd))]
 
     @memoize_method
     def _get_home_domain_map(self):
