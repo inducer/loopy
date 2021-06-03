@@ -619,7 +619,7 @@ def test_poisson_fem(ctx_factory):
                 parameters=dict(n=5, nels=15, nbf=5, sdim=2, nqp=7))
 
 
-def test_domain_tree_nesting():
+def test_domain_tree_nesting(ctx_factory):
     # From https://github.com/inducer/loopy/issues/78
 
     AS = lp.AddressSpace        # noqa
@@ -632,7 +632,7 @@ def test_domain_tree_nesting():
 
     TV = lp.TemporaryVariable  # noqa
 
-    knl = lp.make_kernel(["{[i]: 0 <= i < 12}",
+    knl = lp.make_kernel(["{[i]: 0 <= i < 2}",
                     "{[j]: 0 <= j < 100}",
                     "{[a_count]: 0 <= a_count < a_end}",
                     "{[b_count]: 0 <= b_count < b_end}"],
@@ -647,7 +647,7 @@ def test_domain_tree_nesting():
             for b_count
                 <>val = vals[offset + b_count] {dep=offset}
             end
-            b_sum = exp(b_sum) {id=b_final}
+            b_sum = b_sum**2 {id=b_final}
 
             out[j,i] =  b_sum {dep=b_final}
         end
@@ -661,20 +661,9 @@ def test_domain_tree_nesting():
            address_space=AS.PRIVATE),
         TV("num_vals_offset", initializer=num_vals_offset, read_only=True,
            address_space=AS.PRIVATE),
-        lp.GlobalArg("B", shape=(100, 31), dtype=np.float64),
-        lp.GlobalArg("out", shape=(100, 12), dtype=np.float64)],
-        name="nested_domain")
+        ...], seq_dependencies=True, name="nested_domain")
 
-    parents_per_domain = knl["nested_domain"].parents_per_domain()
-
-    def depth(i):
-        if parents_per_domain[i] is None:
-            return 0
-        else:
-            return 1 + depth(parents_per_domain[i])
-
-    for i in range(len(parents_per_domain)):
-        assert depth(i) < 2
+    lp.auto_test_vs_ref(knl, ctx_factory(), knl)
 
 
 def test_prefetch_through_indirect_access():
