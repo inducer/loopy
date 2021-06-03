@@ -38,22 +38,28 @@ __doc__ = """
 
 @for_each_kernel
 def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
-                tags=None, synchronization_kind="global", mem_kind=None):
+                tags=None, synchronization_kind="global", mem_kind=None,
+                within_inames=None):
     """Takes in a kernel that needs to be added a barrier and returns a kernel
     which has a barrier inserted into it. It takes input of 2 instructions and
     then adds a barrier in between those 2 instructions. The expressions can
     be any inputs that are understood by :func:`loopy.match.parse_match`.
 
     :arg insn_before: String expression that specifies the instruction(s)
-        before the barrier which is to be added
+        before the barrier which is to be added. If None, no dependencies will
+        be added to barrier.
     :arg insn_after: String expression that specifies the instruction(s) after
-        the barrier which is to be added
+        the barrier which is to be added. If None, no dependencies on the barrier
+        will be added.
     :arg id: String on which the id of the barrier would be based on.
     :arg tags: The tag of the group to which the barrier must be added
     :arg synchronization_kind: Kind of barrier to be added. May be "global" or
         "local"
-    :arg kind: Type of memory to be synchronied. May be "global" or "local". Ignored
-        for "global" bariers.  If not supplied, defaults to *synchronization_kind*
+    :arg kind: Type of memory to be synchronized. May be "global" or "local". Ignored
+        for "global" barriers. If not supplied, defaults to *synchronization_kind*
+    :arg within_inames: A :class:`frozenset` of inames identifying the loops
+        within which the barrier will be executed.
+
     """
 
     assert isinstance(kernel, LoopKernel)
@@ -67,21 +73,26 @@ def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
     else:
         id = kernel.make_unique_instruction_id(based_on=id_based_on)
 
-    match = parse_match(insn_before)
-    insn_before_list = [insn.id for insn in kernel.instructions if match(kernel,
-                        insn)]
+    if insn_before is not None:
+        match = parse_match(insn_before)
+        insns_before = frozenset(
+            [insn.id for insn in kernel.instructions if match(kernel, insn)])
+    else:
+        insns_before = None
 
-    barrier_to_add = BarrierInstruction(depends_on=frozenset(insn_before_list),
+    barrier_to_add = BarrierInstruction(depends_on=insns_before,
                                         depends_on_is_final=True,
                                         id=id,
+                                        within_inames=within_inames,
                                         tags=tags,
                                         synchronization_kind=synchronization_kind,
                                         mem_kind=mem_kind)
 
     new_kernel = kernel.copy(instructions=kernel.instructions + [barrier_to_add])
-    new_kernel = add_dependency(kernel=new_kernel,
-                             insn_match=insn_after,
-                             depends_on="id:"+id)
+    if insn_after is not None:
+        new_kernel = add_dependency(kernel=new_kernel,
+                                 insn_match=insn_after,
+                                 depends_on="id:"+id)
 
     return new_kernel
 
