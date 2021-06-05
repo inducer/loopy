@@ -1899,6 +1899,8 @@ def normalize_slice_params(slice, dimension_length):
     :arg dimension_length: Length of the axis being sliced.
     """
     from pymbolic.primitives import Slice
+    from numbers import Integral
+
     assert isinstance(slice, Slice)
     start, stop, step = slice.start, slice.stop, slice.step
 
@@ -1924,8 +1926,9 @@ def normalize_slice_params(slice, dimension_length):
 
     # }}}
 
-    if not isinstance(step, int):
-        raise NotImplementedError("Only integral step sizes supported for now")
+    if not isinstance(step, Integral):
+        raise LoopyError("Non-integral step sizes lead to non-affine domains =>"
+                         " not supported")
 
     return start, stop, step
 
