@@ -855,6 +855,57 @@ def test_kc_with_floor_div_in_expr(ctx_factory, inline):
     lp.auto_test_vs_ref(knl, ctx, knl)
 
 
+@pytest.mark.parametrize("start", [5, 6, 7])
+@pytest.mark.parametrize("inline", [True, False])
+def test_non1_step_slices(ctx_factory, start, inline):
+    # See https://github.com/inducer/loopy/pull/222#discussion_r645905188
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    callee = lp.make_function(
+            "{[i]: 0<=i<n}",
+            """
+            y[i] = i**2
+            """,
+            [lp.ValueArg("n"), ...],
+            name="squared_arange")
+
+    t_unit = lp.make_kernel(
+            "{[i_init, j_init]: 0<=i_init, j_init<40}",
+            f"""
+            X[i_init] = 42
+            X[{start}:40:3] = squared_arange({len(range(start, 40, 3))})
+
+            Y[j_init] = 1729
+            Y[39:{start}:-3] = squared_arange({len(range(39, start, -3))})
+            """,
+            [lp.GlobalArg("X,Y", shape=40)],
+            seq_dependencies=True)
+
+    expected_out1 = 42*np.ones(40, dtype=np.int64)
+    expected_out1[start:40:3] = np.arange(len(range(start, 40, 3)))**2
+
+    expected_out2 = 1729*np.ones(40, dtype=np.int64)
+    expected_out2[39:start:-3] = np.arange(len(range(39, start, -3)))**2
+
+    t_unit = lp.merge([t_unit, callee])
+
+    t_unit = lp.set_options(t_unit, "return_dict")
+
+    # check_bounds isn't smart enough to pass assumptions from caller to callee
+    # during check_bounds
+    t_unit = lp.set_options(t_unit, enforce_array_accesses_within_bounds="no_check")
+
+    if inline:
+        t_unit = lp.inline_callable_kernel(t_unit, "squared_arange")
+
+    evt, out_dict = t_unit(cq)
+
+    np.testing.assert_allclose(out_dict["X"].get(), expected_out1)
+    np.testing.assert_allclose(out_dict["Y"].get(), expected_out2)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

@@ -60,29 +60,34 @@ def dump_space(ls):
 
 # {{{ make_slab
 
-def make_slab(space, iname, start, stop, step=1):
+def make_slab(space, iname, start, stop, iname_multiplier=1):
     """
     Returns an instance of :class:`islpy._isl.BasicSet`, which satisfies the
-    constraint ``start <= step*iname < stop``.
+    constraint ``start <= iname_multiplier*iname < stop``.
 
     :arg space: An instance of :class:`islpy._isl.Space`.
 
     :arg iname:
+
         Either an instance of :class:`str` as a name of the ``iname`` or a
         tuple of ``(iname_dt, iname_dx)`` indicating the *iname* in the space.
 
     :arg start:
+
         An instance of :class:`int`  or an instance of
         :class:`islpy._isl.Aff` indicating the lower bound of
-        ``step*iname``(inclusive).
+        ``iname_multiplier*iname``(inclusive).
 
     :arg stop:
+
         An instance of :class:`int`  or an instance of
         :class:`islpy._isl.Aff` indicating the upper bound of
-        ``step*iname``.
+        ``iname_multiplier*iname``.
 
-    :arg step:
-        An instance of :class:`int`.
+    :arg iname_multiplier:
+
+        A strictly positive :class:`int` denoting *iname*'s coefficient in the
+        above inequality expression.
     """
     zero = isl.Aff.zero_on_domain(space)
 
@@ -112,25 +117,16 @@ def make_slab(space, iname, start, stop, step=1):
 
     iname_aff = zero.add_coefficient_val(iname_dt, iname_idx, 1)
 
-    if step > 0:
+    if iname_multiplier > 0:
         result = (isl.BasicSet.universe(space)
-                # start <= step*iname
+                # start <= iname_multiplier*iname
                 .add_constraint(isl.Constraint.inequality_from_aff(
-                    step*iname_aff - start))
-                # step*iname < stop
+                    iname_multiplier*iname_aff - start))
+                # iname_multiplier*iname < stop
                 .add_constraint(isl.Constraint.inequality_from_aff(
-                    stop-1 - step*iname_aff)))
-    elif step < 0:
-        result = (isl.BasicSet.universe(space)
-                # start >= (-step)*iname
-                .add_constraint(isl.Constraint.inequality_from_aff(
-                    step*iname_aff + start))
-                # (-step)*iname > stop
-                .add_constraint(isl.Constraint.inequality_from_aff(
-                    -stop-1 - step*iname_aff)))
+                    stop-1 - iname_multiplier*iname_aff)))
     else:
-        # step = 0
-        raise LoopyError("0 step not allowed in make_slab.")
+        raise LoopyError("iname_multiplier must be strictly positive")
 
     return result
 
