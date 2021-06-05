@@ -83,6 +83,14 @@ def make_slab(space, iname, start, stop, step=1):
 
     :arg step:
         An instance of :class:`int`.
+
+
+    .. note::
+
+        Not to be confused with the access map of the slice
+        ``[start:stop:step]``. This routine simply creates a basic set as
+        advertised above. One could however mimic the access pattern of the
+        corresponding ``slice`` by accessing into an array as ``step * iname``.
     """
     zero = isl.Aff.zero_on_domain(space)
 
