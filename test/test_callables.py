@@ -855,6 +855,41 @@ def test_kc_with_floor_div_in_expr(ctx_factory, inline):
     lp.auto_test_vs_ref(knl, ctx, knl)
 
 
+@pytest.mark.parametrize("inline", [True, False])
+def test_non1_step_slices(ctx_factory, inline):
+    # See https://github.com/inducer/loopy/pull/222#discussion_r645905188
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    callee = lp.make_function(
+            "{[i]: 0<=i<=13}",
+            """
+            y[i] = i**2
+            """, name="squared_arange")
+
+    knl = lp.make_kernel(
+            "{[i_init]: 0<=i_init<40}",
+            """
+            Y[i_init] = 1729
+            Y[0:40:3] = squared_arange()
+            """,
+            [lp.GlobalArg("Y", shape=40)],
+            seq_dependencies=True)
+
+    expected_out = 1729*np.ones(40)
+    expected_out[::3] = np.arange(14)**2
+
+    knl = lp.merge([knl, callee])
+
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "squared_arange")
+
+    evt, (out,) = knl(cq)
+
+    np.testing.assert_allclose(out.get(), expected_out)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
