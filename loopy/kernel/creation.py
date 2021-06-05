@@ -2073,8 +2073,8 @@ class SliceToInameReplacer(IdentityMapper):
                     iname_set = iname_set & make_slab(space, iname, 0,
                                                       stop-start, step)
                 else:
-                    iname_set = iname_set & make_slab(space, iname, start-stop,
-                                                      -1, step)
+                    iname_set = iname_set & make_slab(space, iname, 0,
+                                                      start-stop, -step)
 
             subarray_ref_domains.append(iname_set)
 
