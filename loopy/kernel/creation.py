@@ -1924,6 +1924,9 @@ def normalize_slice_params(slice, dimension_length):
 
     # }}}
 
+    if not isinstance(step, int):
+        raise NotImplementedError("Only integral step sizes supported for now")
+
     return start, stop, step
 
 
@@ -2063,7 +2066,12 @@ class SliceToInameReplacer(IdentityMapper):
 
             from loopy.isl_helpers import make_slab
             for iname, (start, stop, step) in sar_bounds.items():
-                iname_set = iname_set & make_slab(space, iname, start, stop, step)
+                if step > 0:
+                    iname_set = iname_set & make_slab(space, iname, 0,
+                                                      stop-start, step)
+                else:
+                    iname_set = iname_set & make_slab(space, iname, start-stop,
+                                                      -1, step)
 
             subarray_ref_domains.append(iname_set)
 

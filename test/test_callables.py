@@ -863,31 +863,39 @@ def test_non1_step_slices(ctx_factory, inline):
     cq = cl.CommandQueue(ctx)
 
     callee = lp.make_function(
-            "{[i]: 0<=i<=13}",
+            "{[i]: 0<=i<12}",
             """
             y[i] = i**2
             """, name="squared_arange")
 
-    knl = lp.make_kernel(
-            "{[i_init]: 0<=i_init<40}",
+    t_unit = lp.make_kernel(
+            "{[i_init, j_init]: 0<=i_init, j_init<40}",
             """
-            Y[i_init] = 1729
-            Y[0:40:3] = squared_arange()
+            X[i_init] = 42
+            X[5:40:3] = squared_arange()
+
+            Y[j_init] = 1729
+            Y[39:3:-3] = squared_arange()
             """,
-            [lp.GlobalArg("Y", shape=40)],
+            [lp.GlobalArg("X,Y", shape=40)],
             seq_dependencies=True)
 
-    expected_out = 1729*np.ones(40)
-    expected_out[::3] = np.arange(14)**2
+    expected_out1 = 42*np.ones(40, dtype=np.int64)
+    expected_out1[5:40:3] = np.arange(12)**2
 
-    knl = lp.merge([knl, callee])
+    expected_out2 = 1729*np.ones(40, dtype=np.int64)
+    expected_out2[39:3:-3] = np.arange(12)**2
+
+    t_unit = lp.merge([t_unit, callee])
+    t_unit = lp.set_options(t_unit, "return_dict")
 
     if inline:
-        knl = lp.inline_callable_kernel(knl, "squared_arange")
+        t_unit = lp.inline_callable_kernel(t_unit, "squared_arange")
 
-    evt, (out,) = knl(cq)
+    evt, out_dict = t_unit(cq)
 
-    np.testing.assert_allclose(out.get(), expected_out)
+    np.testing.assert_allclose(out_dict["X"].get(), expected_out1)
+    np.testing.assert_allclose(out_dict["Y"].get(), expected_out2)
 
 
 if __name__ == "__main__":
