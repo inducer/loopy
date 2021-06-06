@@ -441,6 +441,37 @@ def test_nan_support(ctx_factory):
     assert out_dict["c"] == 0
 
 
+@pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
+def test_opencl_emits_ternary_operators_correctly(ctx_factory, target):
+    # See: https://github.com/inducer/loopy/issues/390
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{:}",
+            """
+            <> tmp1 = 3.1416
+            <> tmp2 = 0.000
+            y1 = 1729 if tmp1 else 1.414
+            y2 = 42   if 2.7183 else 13
+            y3 = 127 if tmp2 else 128
+            """, seq_dependencies=True,
+            target=target())
+
+    knl = lp.set_options(knl, "return_dict")
+
+    if target == lp.PyOpenCLTarget:
+        evt, out_dict = knl(queue)
+    elif target == lp.ExecutableCTarget:
+        evt, out_dict = knl()
+    else:
+        raise NotImplementedError("unsupported target")
+
+    assert out_dict["y1"] == 1729
+    assert out_dict["y2"] == 42
+    assert out_dict["y3"] == 128
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

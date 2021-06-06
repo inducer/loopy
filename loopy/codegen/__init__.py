@@ -412,8 +412,8 @@ def generate_code_v2(kernel):
         kernel = preprocess_kernel(kernel)
 
     if kernel.schedule is None:
-        from loopy.schedule import get_one_scheduled_kernel
-        kernel = get_one_scheduled_kernel(kernel)
+        from loopy.schedule import get_one_linearized_kernel
+        kernel = get_one_linearized_kernel(kernel)
 
     if kernel.state != KernelState.LINEARIZED:
         raise LoopyError("cannot generate code for a kernel that has not been "
