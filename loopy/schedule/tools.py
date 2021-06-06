@@ -101,6 +101,6 @@ def add_extra_args_to_schedule(kernel):
         else:
             new_schedule.append(sched_item)
 
-    return kernel.copy(schedule=new_schedule)
+    return kernel.copy(linearization=new_schedule)
 
 # }}}

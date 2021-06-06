@@ -475,8 +475,8 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
 
     if iname_cluster and not kernel.schedule:
         try:
-            from loopy.schedule import get_one_scheduled_kernel
-            kernel = get_one_scheduled_kernel(kernel)
+            from loopy.schedule import get_one_linearized_kernel
+            kernel = get_one_linearized_kernel(kernel)
         except RuntimeError as e:
             iname_cluster = False
             from warnings import warn
