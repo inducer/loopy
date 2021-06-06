@@ -129,7 +129,14 @@ class NumpyType(LoopyType):
     def __setstate__(self, state):
         target, name, dtype = state
         self.target = target
-        self.dtype = self.target.get_or_register_dtype([name], NumpyType(dtype))
+
+        if dtype == np.bool8:
+            # Bools are mapped to chars because OpenCL doesn't have them, so
+            # get_or_register_dtype will complain about duplicate registration.
+            # FIXME Tehcnically, this is OpenCL-specific.
+            self.dtype = np.dtype(dtype)
+        else:
+            self.dtype = self.target.get_or_register_dtype([name], NumpyType(dtype))
 
     def with_target(self, target):
         return type(self)(self.dtype, target)

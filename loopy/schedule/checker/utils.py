@@ -241,20 +241,26 @@ def make_dep_map(s, self_dep=False, knl_with_domains=None):
 
     if knl_with_domains is not None:
         # intersect map with knl domains
-        inames = map_init.get_var_names(dt.out)
-        inames_dom = knl_with_domains.get_inames_domain(
-            inames).project_out_except(inames, [dt.set])
-        inames_dom_marked = append_mark_to_isl_map_var_names(
-            inames_dom, dt.set, BEFORE_MARK)
+        inames_in = map_init.get_var_names(dt.in_)
+        inames_out = map_init.get_var_names(dt.out)
 
-        inames_dom_aligned = isl.align_spaces(
-            inames_dom, map_with_stmts.range())
-        inames_dom_marked_aligned = isl.align_spaces(
-            inames_dom_marked, map_with_stmts.domain())
+        inames_in_dom = knl_with_domains.get_inames_domain(
+            inames_in).project_out_except(inames_in, [dt.set])
+        inames_out_dom = knl_with_domains.get_inames_domain(
+            inames_out).project_out_except(inames_out, [dt.set])
+
+        # mark dependee inames
+        inames_in_dom_marked = append_mark_to_isl_map_var_names(
+            inames_in_dom, dt.set, BEFORE_MARK)
+
+        inames_in_dom_marked_aligned = isl.align_spaces(
+            inames_in_dom_marked, map_with_stmts.domain())
+        inames_out_dom_aligned = isl.align_spaces(
+            inames_out_dom, map_with_stmts.range())
 
         map_with_stmts = map_with_stmts.intersect_range(
-            inames_dom_aligned
-            ).intersect_domain(inames_dom_marked_aligned)
+            inames_out_dom_aligned
+            ).intersect_domain(inames_in_dom_marked_aligned)
 
     return map_with_stmts
 
