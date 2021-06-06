@@ -1497,7 +1497,57 @@ def test_add_dependency_v2():
 # }}}
 
 
-# {{{ test_new_dependencies_finite_diff
+# {{{ test_make_dep_map
+
+def test_make_dep_map():
+    # This is also tested inside other test functions, but
+    # here we specifically test case where the statement inames
+    # don't match
+
+    # Make kernel and use OLD deps to control linearization order for now
+    i_range_str = "0 <= i < n"
+    i_range_str_p = "0 <= i' < n"
+    j_range_str = "0 <= j < n"
+    j_range_str_p = "0 <= j' < n"
+    k_range_str = "0 <= k < n"
+    # k_range_str_p = "0 <= k' < n"  # (not used)
+    knl = lp.make_kernel(
+        "{[i,j,k]: %s}" % (" and ".join([i_range_str, j_range_str, k_range_str])),
+        """
+        a[i,j] = 3.14  {id=stmt_a}
+        b[k] = a[i,k]  {id=stmt_b, dep=stmt_a}
+        """,
+        name="example",
+        lang_version=(2018, 2)
+        )
+    knl = lp.add_and_infer_dtypes(knl, {"a,b": np.float32})
+
+    for stmt in knl.instructions:
+        assert not stmt.dependencies
+
+    # Add a dependency to stmt_b
+    dep_b_on_a = make_dep_map(
+        "[n] -> { [i',j'] -> [i,k] : i > i' and j' < k}",
+        self_dep=False, knl_with_domains=knl)
+
+    # Create expected dep
+    dep_b_on_a_test = _isl_map_with_marked_dims(
+        "[n] -> {{ [{0}'=0, i', j'] -> [{0}=1, i, k] : i > i' and j' < k"
+        " and {1} }}".format(
+            STATEMENT_VAR_NAME,
+            " and ".join([
+                i_range_str,
+                i_range_str_p,
+                j_range_str_p,
+                k_range_str,
+                ])
+            ))
+    _align_and_compare_maps([(dep_b_on_a, dep_b_on_a_test)])
+
+# }}}
+
+
+# {{{ test_new_dependencies_finite_diff:
 
 def test_new_dependencies_finite_diff():
 

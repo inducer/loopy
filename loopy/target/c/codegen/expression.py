@@ -363,9 +363,12 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 "loopy_mod", operator.mod, expr, type_context)
 
     def map_if(self, expr, type_context):
+        from loopy.types import to_loopy_type
         result_type = self.infer_type(expr)
         return type(expr)(
-                self.rec(expr.condition, "i"),
+                self.rec(expr.condition, type_context,
+                         to_loopy_type(np.bool8,
+                                       target=self.kernel.target)),
                 self.rec(expr.then, type_context, result_type),
                 self.rec(expr.else_, type_context, result_type),
                 )
