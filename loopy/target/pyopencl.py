@@ -256,22 +256,6 @@ def pyopencl_preamble_generator(preamble_info):
 # }}}
 
 
-# {{{ pyopencl tools
-
-class _LegacyTypeRegistryStub:
-    """Adapts legacy PyOpenCL type registry to be usable with PyOpenCLTarget."""
-
-    def get_or_register_dtype(self, names, dtype=None):
-        from pyopencl.compyte.dtypes import get_or_register_dtype
-        return get_or_register_dtype(names, dtype)
-
-    def dtype_to_ctype(self, dtype):
-        from pyopencl.compyte.dtypes import dtype_to_ctype
-        return dtype_to_ctype(dtype)
-
-# }}}
-
-
 # {{{ expression mapper
 
 class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper):
@@ -291,7 +275,8 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
         if needed_dtype.is_complex():
             return self.wrap_in_typecast(actual_type_func(), needed_dtype, s)
         else:
-            return s
+            return super().wrap_in_typecast_lazy(actual_type_func,
+                                                 needed_dtype, s)
 
     def wrap_in_typecast(self, actual_type, needed_dtype, s):
         if (actual_type.is_complex() and needed_dtype.is_complex()
@@ -301,7 +286,8 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             return p.Variable("%s_fromreal" % self.complex_type_name(needed_dtype))(
                     s)
         else:
-            return s
+            return super().wrap_in_typecast_lazy(actual_type,
+                                                 needed_dtype, s)
 
     def map_sum(self, expr, type_context):
         # I've added 'type_context == "i"' because of the following
@@ -581,23 +567,18 @@ class PyOpenCLTarget(OpenCLTarget):
     # {{{ types
 
     def get_dtype_registry(self):
-        try:
-            from pyopencl.compyte.dtypes import TYPE_REGISTRY
-        except ImportError:
-            result = _LegacyTypeRegistryStub()
-        else:
-            result = TYPE_REGISTRY
+        from pyopencl.compyte.dtypes import TYPE_REGISTRY
+        result = TYPE_REGISTRY
 
-        from loopy.target.opencl import (DTypeRegistryWrapperWithCL1Atomics,
-                                         DTypeRegistryWrapperWithInt8ForBool)
+        from loopy.target.opencl import (
+                DTypeRegistryWrapperWithCL1Atomics,
+                DTypeRegistryWrapperWithInt8ForBool)
 
+        result = DTypeRegistryWrapperWithInt8ForBool(result)
         if self.atomics_flavor == "cl1":
             result = DTypeRegistryWrapperWithCL1Atomics(result)
         else:
             raise NotImplementedError("atomics flavor: %s" % self.atomics_flavor)
-
-        if self.use_int8_for_bool:
-            result = DTypeRegistryWrapperWithInt8ForBool(result)
 
         return result
 

@@ -1142,11 +1142,11 @@ class AccessFootprintGatherer(CombineMapper):
         if not isinstance(subscript, tuple):
             subscript = (subscript,)
 
-        from loopy.symbolic import get_access_range
+        from loopy.symbolic import get_access_map
 
         try:
-            access_range = get_access_range(self.domain, subscript,
-                    self.kernel.assumptions)
+            access_range = get_access_map(self.domain, subscript,
+                    self.kernel.assumptions).range()
         except isl.Error:
             # Likely: index was non-linear, nothing we can do.
             if self.ignore_uncountable:
@@ -1770,7 +1770,7 @@ def get_synchronization_map(knl, subgroup_size=None):
     from operator import mul
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
+    knl = lp.get_one_linearized_kernel(knl)
     iname_list = []
 
     result = ToCountMap()
