@@ -273,6 +273,21 @@ def static_value_of_pw_aff(pw_aff, constants_only, context=None):
 # {{{ duplicate_axes
 
 def duplicate_axes(isl_obj, duplicate_inames, new_inames):
+    """
+    Duplicates dim names in *duplicate_inames* with corresponding names in
+    *new_inames*.
+
+    .. testsetup::
+
+        >>> import islpy as isl
+        >>> from loopy.isl_helpers import duplicate_axes
+
+    .. doctest::
+
+        >>> bset = isl.BasicSet("{[i, j]: 0<=i<10 and 0<=j<30}")
+        >>> duplicate_axes(bset, ("i",), ("i'",))
+        BasicSet("{ [i, j, i'] : 0 <= i <= 9 and 0 <= j <= 29 and 0 <= i' <= 9 }")
+    """
     if isinstance(isl_obj, list):
         return [
                 duplicate_axes(i, duplicate_inames, new_inames)
@@ -281,43 +296,20 @@ def duplicate_axes(isl_obj, duplicate_inames, new_inames):
     if not duplicate_inames:
         return isl_obj
 
-    # {{{ add dims
+    def _align_and_intersect(d1, d2):
+        d1, d2 = isl.align_two(d1, d2)
+        return d1 & d2
 
-    start_idx = isl_obj.dim(dim_type.set)
-    more_dims = isl_obj.insert_dims(
-            dim_type.set, start_idx,
-            len(duplicate_inames))
+    old_name_to_new_name = dict(zip(duplicate_inames, new_inames))
 
-    for i, iname in enumerate(new_inames):
-        new_idx = start_idx+i
-        more_dims = more_dims.set_dim_name(
-                dim_type.set, new_idx, iname)
+    dup_isl_obj = isl_obj
 
-    # }}}
+    for old_name, (dt, pos) in isl_obj.get_var_dict().items():
+        dup_isl_obj = dup_isl_obj.set_dim_name(dt, pos,
+                                               old_name_to_new_name.get(old_name,
+                                                                        old_name))
 
-    iname_to_dim = more_dims.get_space().get_var_dict()
-
-    moved_dims = isl_obj.copy()
-
-    for old_iname, new_iname in zip(duplicate_inames, new_inames):
-        old_dt, old_idx = iname_to_dim[old_iname]
-        new_dt, new_idx = iname_to_dim[new_iname]
-
-        moved_dims = moved_dims.set_dim_name(
-                old_dt, old_idx, new_iname)
-        moved_dims = (moved_dims
-                .move_dims(
-                    dim_type.param, 0,
-                    old_dt, old_idx, 1)
-                .move_dims(
-                    new_dt, new_idx-1,
-                    dim_type.param, 0, 1))
-
-        moved_dims = moved_dims.insert_dims(old_dt, old_idx, 1)
-        moved_dims = moved_dims.set_dim_name(
-                old_dt, old_idx, old_iname)
-
-    return moved_dims.intersect(more_dims)
+    return _align_and_intersect(dup_isl_obj, isl_obj)
 
 # }}}
 
