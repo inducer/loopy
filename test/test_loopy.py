@@ -2199,7 +2199,7 @@ def barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
     seen_barrier = False
     loop_level = 0
 
-    for sched_item in knl.schedule:
+    for sched_item in knl.linearization:
         if isinstance(sched_item, RunInstruction):
             if sched_item.insn_id == id1:
                 watch_for_barrier = True

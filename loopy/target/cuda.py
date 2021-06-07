@@ -338,7 +338,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
         _, local_grid_size = \
                 codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
                         get_insn_ids_for_block_at(
-                            codegen_state.kernel.schedule, schedule_index),
+                            codegen_state.kernel.linearization, schedule_index),
                         codegen_state.callables_table)
 
         from loopy.symbolic import get_dependencies

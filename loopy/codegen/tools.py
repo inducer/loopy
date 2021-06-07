@@ -96,7 +96,7 @@ class CodegenOperationCacheManager:
         assert isinstance(kernel, LoopKernel)
         return CodegenOperationCacheManager(
                 KernelProxyForCodegenOperationCacheManager(kernel.instructions,
-                            kernel.schedule,
+                            kernel.linearization,
                             kernel.inames))
 
     def with_kernel(self, kernel):

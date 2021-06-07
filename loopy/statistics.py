@@ -2043,7 +2043,7 @@ def _get_synchronization_map_for_single_kernel(knl, callables_table,
 
     iname_list = []
 
-    for sched_item in knl.schedule:
+    for sched_item in knl.linearization:
         if isinstance(sched_item, EnterLoop):
             if sched_item.iname:  # (if not empty)
                 iname_list.append(sched_item.iname)

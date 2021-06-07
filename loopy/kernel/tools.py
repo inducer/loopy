@@ -509,7 +509,7 @@ def get_dot_dependency_graph(kernel, callables_table, iname_cluster=True,
     from loopy.kernel.creation import apply_single_writer_depencency_heuristic
     kernel = apply_single_writer_depencency_heuristic(kernel, warn_if_used=False)
 
-    if iname_cluster and not kernel.schedule:
+    if iname_cluster and not kernel.linearization:
         try:
             from loopy.schedule import get_one_linearized_kernel
             kernel = get_one_linearized_kernel(kernel, callables_table)
@@ -586,7 +586,7 @@ def get_dot_dependency_graph(kernel, callables_table, iname_cluster=True,
                 EnterLoop, LeaveLoop, RunInstruction, Barrier,
                 CallKernel, ReturnFromKernel)
 
-        for sched_item in kernel.schedule:
+        for sched_item in kernel.linearization:
             if isinstance(sched_item, EnterLoop):
                 lines.append('subgraph cluster_%s { label="%s"'
                         % (sched_item.iname, sched_item.iname))
@@ -1776,7 +1776,7 @@ def get_subkernels(kernel):
     from loopy.schedule import CallKernel
 
     return tuple(sched_item.kernel_name
-            for sched_item in kernel.schedule
+            for sched_item in kernel.linearization
             if isinstance(sched_item, CallKernel))
 
 
@@ -1796,7 +1796,7 @@ def get_subkernel_to_insn_id_map(kernel):
     subkernel = None
     result = {}
 
-    for sched_item in kernel.schedule:
+    for sched_item in kernel.linearization:
         if isinstance(sched_item, CallKernel):
             subkernel = sched_item.kernel_name
             result[subkernel] = set()
