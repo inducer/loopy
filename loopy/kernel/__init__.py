@@ -376,9 +376,6 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                 ]:
             raise ValueError("invalid value for 'state'")
 
-        # `linearization` is replacing `schedule`, but we're not changing
-        # this under the hood yet, so for now, store it inside `schedule`
-        # and raise deprecation warning anyway
         if linearization is not None:
             if schedule is not None:
                 # these should not both be present
@@ -1337,7 +1334,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             "rules",
             "instructions",
             "Dependencies",
-            "schedule",
+            "linearization",
             }
 
         first_letter_to_what = {
@@ -1440,7 +1437,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                         "(use loopy.show_dependency_graph to visualize)")
             lines.extend(dep_lines)
 
-        if "schedule" in what and kernel.linearization is not None:
+        if "linearization" in what and kernel.linearization is not None:
             lines.extend(sep)
             if show_labels:
                 lines.append("LINEARIZATION:")
@@ -1568,7 +1565,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             "domains",
             "instructions",
             "args",
-            "schedule",
+            "linearization",
             "name",
             "preambles",
             "assumptions",
