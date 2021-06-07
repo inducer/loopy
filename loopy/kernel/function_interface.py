@@ -155,7 +155,7 @@ class ExpressionIsScalarChecker(WalkMapper):
 
     def map_sub_array_ref(self, expr):
         raise LoopyError("Sub-array refs can only be used as call's parameters"
-                f" or assignees. '{expr}'violates this.")
+                f" or assignees. '{expr}' violates this.")
 
     def map_call(self, expr):
         self.rec(expr.parameters)
@@ -211,12 +211,7 @@ def get_arg_descriptor_for_expression(kernel, expr):
         sub_dim_tags = []
         sub_shape = []
 
-        # FIXME This blindly assumes that dim_tag has a stride and
-        # will not work for non-stride dim tags (e.g. vec or sep).
-
-        # (AK) FIXME: This will almost always be nonlinear--when does this
-        # actually help? Maybe remove this?
-        # (KK) Reply: This helps in identifying identities like
+        # This helps in identifying identities like
         # "2*(i//2) + i%2" := "i"
         # See the kernel in
         # test_callables.py::test_shape_translation_through_sub_array_refs

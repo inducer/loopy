@@ -139,7 +139,7 @@ class TranslationUnit(ImmutableRecord):
 
         The :class:`~loopy.LoopKernel` representing the main entrypoint
         of the program, if defined. Currently, this attribute may only be
-        accessed if there is exactly one entrypoint in the program.
+        accessed if there is exactly one entrypoint in the translation unit.
 
     .. attribute:: callables_table
 
@@ -154,7 +154,7 @@ class TranslationUnit(ImmutableRecord):
     .. attribute:: func_id_to_in_knl_callables_mappers
 
         A :class:`frozenset` of functions of the signature ``(target:
-        TargetBase, function_indentifier: str)`` that would return an instance
+        TargetBase, function_indentifier: str)`` that returns an instance
         of :class:`loopy.kernel.function_interface.InKernelCallable` or *None*.
 
     .. automethod:: __call__
@@ -305,19 +305,11 @@ class TranslationUnit(ImmutableRecord):
         :attr:`TranslationUnit.target` is an executable target.
 
         :arg entrypoint: The name of the entrypoint callable to be called.
-            Defaults to *the* entrypoint if there is only one.
+            Defaults to :attr:`default_entrypoint`.
         """
         entrypoint = kwargs.get("entrypoint", None)
-
         if entrypoint is None:
-            # did not receive an entrypoint for the program to execute
-            if len(self.entrypoints) == 1:
-                entrypoint, = self.entrypoints
-            else:
-                raise TypeError("TranslationUnit.__call__() missing 1 required"
-                        " keyword argument: 'entrypoint'. "
-                        "(Multiple possible entrypoints are present in the "
-                        "program.)")
+            entrypoint = self.default_entrypoint.name
 
         if entrypoint not in self.entrypoints:
             raise LoopyError(f"'{entrypoint}' not in list of possible entrypoints "

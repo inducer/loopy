@@ -75,7 +75,7 @@ def register_callable(translation_unit, function_identifier, callable_,
 
 def merge(translation_units):
     """
-    :param translation_units: A list of :class:`loopy.TranslationUnit`.
+    :param translation_units: A sequence of :class:`loopy.TranslationUnit`.
 
     :returns: An instance of :class:`loopy.TranslationUnit` which contains all the
         callables from each of the *translation_units.
@@ -245,7 +245,6 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     """
     Returns a copy of *caller_knl* with the *call_insn* in the *kernel*
     replaced by inlining *callee_knl* into it within it.
-
 
     :arg call_insn: An instance of `loopy.CallInstruction` of the call-site.
     """
@@ -510,6 +509,8 @@ def inline_callable_kernel(translation_unit, function_name):
 # }}}
 
 
+# {{{ rename_callable
+
 def rename_callable(program, old_name, new_name=None, existing_ok=False):
     """
     :arg program: An instance of :class:`loopy.TranslationUnit`
@@ -564,5 +565,6 @@ def rename_callable(program, old_name, new_name=None, existing_ok=False):
     return program.copy(callables_table=new_callables_table,
                         entrypoints=new_entrypoints)
 
+# }}}
 
 # vim: foldmethod=marker
