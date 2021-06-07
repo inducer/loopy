@@ -1049,8 +1049,9 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
     if new_domain_added_idx:
         parent_domains = kernel.all_parents_per_domain()[new_domain_added_idx]
-        old_domain = kernel.combine_domains(tuple(sorted(parent_domains))
-                                            + (new_domain_added_idx, ))
+        old_domain = kernel.combine_domains((new_domain_added_idx, )
+                                            + tuple(sorted(parent_domains,
+                                                           reverse=True)))
 
         updated_added_domain = (old_domain
                                 .project_out_except(
