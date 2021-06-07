@@ -23,7 +23,7 @@ THE SOFTWARE.
 
 import numpy as np
 from abc import ABC, abstractmethod
-from pytools import ImmutableRecord, memoize_method
+from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 from pytools.py_codegen import (
         Indentation, PythonFunctionGenerator)
@@ -752,7 +752,8 @@ class KernelExecutorBase:
                 arg.dtype is None
                 for arg in program[entrypoint].args)
 
-    def get_typed_and_scheduled_program_uncached(self, entrypoint, arg_to_dtype_set):
+    def get_typed_and_scheduled_translation_unit_uncached(
+            self, entrypoint, arg_to_dtype_set):
         from loopy.kernel.tools import add_dtypes
         from loopy.kernel import KernelState
         from loopy.translation_unit import resolve_callables
@@ -786,7 +787,7 @@ class KernelExecutorBase:
 
         return program
 
-    def get_typed_and_scheduled_program(self, entrypoint, arg_to_dtype_set):
+    def get_typed_and_scheduled_translation_unit(self, entrypoint, arg_to_dtype_set):
         from loopy import CACHING_ENABLED
 
         from loopy.preprocess import prepare_for_caching
@@ -804,7 +805,7 @@ class KernelExecutorBase:
         logger.debug("%s: typed-and-scheduled cache miss" %
                 self.program.entrypoints)
 
-        kernel = self.get_typed_and_scheduled_program_uncached(entrypoint,
+        kernel = self.get_typed_and_scheduled_translation_unit_uncached(entrypoint,
                 arg_to_dtype_set)
 
         if CACHING_ENABLED:
@@ -817,9 +818,7 @@ class KernelExecutorBase:
         if not self.has_runtime_typed_args:
             return None
 
-        entrypoint = kwargs.pop("entrypoint")
-
-        impl_arg_to_arg = self.program[entrypoint].impl_arg_to_arg
+        impl_arg_to_arg = self.program[self.entrypoint].impl_arg_to_arg
         arg_to_dtype = {}
         for arg_name, val in kwargs.items():
             arg = impl_arg_to_arg.get(arg_name, None)
@@ -859,7 +858,8 @@ class KernelExecutorBase:
             arg_to_dtype = frozenset(
                     (k, process_dtype(v)) for k, v in arg_to_dtype.items())
 
-        kernel = self.get_typed_and_scheduled_program(entrypoint, arg_to_dtype)
+        kernel = self.get_typed_and_scheduled_translation_unit(
+                entrypoint, arg_to_dtype)
 
         from loopy.codegen import generate_code_v2
         code = generate_code_v2(kernel)
@@ -891,10 +891,6 @@ class KernelExecutorBase:
     # }}}
 
     # {{{ call and info generator
-
-    @memoize_method
-    def kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
-        raise NotImplementedError()
 
     def __call__(self, queue, **kwargs):
         raise NotImplementedError()
