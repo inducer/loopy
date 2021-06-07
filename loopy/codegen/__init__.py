@@ -539,7 +539,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
                 target.host_program_name_prefix
                 + kernel.name
                 + kernel.target.host_program_name_suffix),
-            schedule_index_end=len(kernel.schedule),
+            schedule_index_end=len(kernel.linearization),
             callables_table=callables_table,
             is_entrypoint=is_entrypoint,
             codegen_cachemanager=CodegenOperationCacheManager.from_kernel(kernel),
@@ -743,7 +743,7 @@ def generate_code_v2(program):
         if isinstance(clbl, CallableKernel):
             from loopy.schedule import get_one_linearized_kernel
             knl = clbl.subkernel
-            if knl.schedule is None:
+            if knl.linearization is None:
                 knl = get_one_linearized_kernel(
                             knl, program.callables_table)
             new_callables[name] = clbl.copy(subkernel=knl)

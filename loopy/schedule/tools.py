@@ -78,7 +78,7 @@ def add_extra_args_to_schedule(kernel):
     new_schedule = []
     from loopy.schedule import CallKernel
 
-    for sched_item in kernel.schedule:
+    for sched_item in kernel.linearization:
         if isinstance(sched_item, CallKernel):
             subkernel = sched_item.kernel_name
 

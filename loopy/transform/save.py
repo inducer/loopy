@@ -61,12 +61,12 @@ class LivenessAnalysis:
 
     def __init__(self, kernel):
         self.kernel = kernel
-        self.schedule = kernel.schedule
+        self.schedule = kernel.linearization
 
     @memoize_method
     def get_successor_relation(self):
         successors = {}
-        block_bounds = get_block_boundaries(self.kernel.schedule)
+        block_bounds = get_block_boundaries(self.kernel.linearization)
 
         for idx, (item, next_item) in enumerate(zip(
                 reversed(self.schedule),
@@ -314,7 +314,7 @@ class TemporarySaver:
     def subkernel_to_slice_indices(self):
         result = {}
 
-        for sched_item_idx, sched_item in enumerate(self.kernel.schedule):
+        for sched_item_idx, sched_item in enumerate(self.kernel.linearization):
             if isinstance(sched_item, CallKernel):
                 start_idx = sched_item_idx
             elif isinstance(sched_item, ReturnFromKernel):
@@ -329,7 +329,7 @@ class TemporarySaver:
         within_subkernel = False
         result = {}
 
-        for sched_item_idx, sched_item in enumerate(self.kernel.schedule):
+        for sched_item_idx, sched_item in enumerate(self.kernel.linearization):
             if isinstance(sched_item, CallKernel):
                 within_subkernel = True
                 result[sched_item.kernel_name] = frozenset(current_outer_inames)
@@ -354,14 +354,14 @@ class TemporarySaver:
 
         try:
             pre_barrier = next(item for item in
-                self.kernel.schedule[subkernel_start::-1]
+                self.kernel.linearization[subkernel_start::-1]
                 if is_global_barrier(item)).originating_insn_id
         except StopIteration:
             pre_barrier = None
 
         try:
             post_barrier = next(item for item in
-                self.kernel.schedule[subkernel_end:]
+                self.kernel.linearization[subkernel_end:]
                 if is_global_barrier(item)).originating_insn_id
         except StopIteration:
             post_barrier = None
@@ -749,13 +749,13 @@ def save_and_reload_temporaries(program, entrypoint=None):
 
     knl = program[entrypoint]
 
-    if not knl.schedule:
+    if not knl.linearization:
         program = lp.preprocess_program(program)
         from loopy.schedule import get_one_linearized_kernel
         knl = get_one_linearized_kernel(program[entrypoint],
                 program.callables_table)
 
-    assert knl.schedule is not None
+    assert knl.linearization is not None
 
     liveness = LivenessAnalysis(knl)
     saver = TemporarySaver(knl, program.callables_table)
@@ -763,7 +763,7 @@ def save_and_reload_temporaries(program, entrypoint=None):
     from loopy.schedule.tools import (
         temporaries_read_in_subkernel, temporaries_written_in_subkernel)
 
-    for sched_idx, sched_item in enumerate(knl.schedule):
+    for sched_idx, sched_item in enumerate(knl.linearization):
 
         if isinstance(sched_item, CallKernel):
             # Any written temporary that is live-out needs to be read into
@@ -784,7 +784,7 @@ def save_and_reload_temporaries(program, entrypoint=None):
                 saver.reload(temporary, sched_item.kernel_name)
 
         elif isinstance(sched_item, ReturnFromKernel):
-            if sched_idx == len(knl.schedule) - 1:
+            if sched_idx == len(knl.linearization) - 1:
                 # Kernel exit: nothing live
                 interesting_temporaries = set()
             else:

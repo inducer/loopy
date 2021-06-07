@@ -169,11 +169,11 @@ def get_insn_ids_for_block_at(schedule, start_idx):
 
 
 def find_used_inames_within(kernel, sched_index):
-    sched_item = kernel.schedule[sched_index]
+    sched_item = kernel.linearization[sched_index]
 
     if isinstance(sched_item, BeginBlockItem):
         loop_contents, _ = gather_schedule_block(
-                kernel.schedule, sched_index)
+                kernel.linearization, sched_index)
         run_insns = [subsched_item
                 for subsched_item in loop_contents
                 if isinstance(subsched_item, RunInstruction)]
@@ -1959,7 +1959,9 @@ def generate_loop_schedules_inner(kernel, callables_table, debug_args={}):
 
     debug = ScheduleDebugger(**debug_args)
 
-    preschedule = kernel.schedule if kernel.state == KernelState.LINEARIZED else ()
+    preschedule = (kernel.linearization
+                   if kernel.state == KernelState.LINEARIZED
+                   else ())
 
     prescheduled_inames = {
             insn.iname
