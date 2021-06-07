@@ -1107,7 +1107,7 @@ def save_and_reload_temporaries_test(queue, prog, out_expect, debug=False):
 
     from loopy.transform.save import save_and_reload_temporaries
     prog = save_and_reload_temporaries(prog)
-    prog = prog.with_kernel(lp.get_one_scheduled_kernel(prog["loopy_kernel"],
+    prog = prog.with_kernel(lp.get_one_linearized_kernel(prog["loopy_kernel"],
         prog.callables_table))
 
     if debug:
@@ -2071,7 +2071,7 @@ def test_unscheduled_insn_detection():
         "...")
 
     prog = lp.preprocess_kernel(prog)
-    knl = lp.get_one_scheduled_kernel(prog["loopy_kernel"], prog.callables_table)
+    knl = lp.get_one_linearized_kernel(prog["loopy_kernel"], prog.callables_table)
     prog = prog.with_kernel(knl)
     insn1, = lp.find_instructions(prog, "id:insn1")
     insns = prog["loopy_kernel"].instructions[:]
@@ -2240,7 +2240,7 @@ def test_barrier_insertion_near_top_of_loop():
     prog = lp.set_temporary_scope(prog, "a", "local")
     prog = lp.set_temporary_scope(prog, "b", "local")
     prog = lp.preprocess_kernel(prog)
-    knl = lp.get_one_scheduled_kernel(prog["loopy_kernel"], prog.callables_table)
+    knl = lp.get_one_linearized_kernel(prog["loopy_kernel"], prog.callables_table)
 
     print(knl)
 
@@ -2268,7 +2268,7 @@ def test_barrier_insertion_near_bottom_of_loop():
     prog = lp.set_temporary_scope(prog, "a", "local")
     prog = lp.set_temporary_scope(prog, "b", "local")
     prog = lp.preprocess_kernel(prog)
-    knl = lp.get_one_scheduled_kernel(prog["loopy_kernel"], prog.callables_table)
+    knl = lp.get_one_linearized_kernel(prog["loopy_kernel"], prog.callables_table)
 
     print(knl)
 
@@ -2626,7 +2626,7 @@ def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
     prog = lp.tag_inames(prog, "i:l.0")
     prog = lp.preprocess_kernel(prog)
 
-    knl = lp.get_one_scheduled_kernel(prog["loopy_kernel"],
+    knl = lp.get_one_linearized_kernel(prog["loopy_kernel"],
             prog.callables_table)
 
     assert barrier_between(knl, "first", "second") == expect_barrier
