@@ -25,13 +25,13 @@ THE SOFTWARE.
 import numpy as np
 import pymbolic.primitives as p
 
-from loopy.kernel.data import CallMangleInfo
 from loopy.target.opencl import (OpenCLTarget, OpenCLCASTBuilder,
         ExpressionToOpenCLCExpressionMapper)
 from loopy.target.python import PythonASTBuilderBase
 from loopy.types import NumpyType
-from loopy.diagnostic import LoopyError, warn_with_kernel
+from loopy.diagnostic import LoopyError, warn_with_kernel, LoopyTypeError
 from warnings import warn
+from loopy.kernel.function_interface import ScalarCallable
 
 import logging
 logger = logging.getLogger(__name__)
@@ -130,7 +130,7 @@ def adjust_local_temp_var_storage(kernel, device):
 
 # {{{ check sizes against device properties
 
-def check_sizes(kernel, device):
+def check_sizes(kernel, callables_table, device):
     import loopy as lp
 
     from loopy.diagnostic import LoopyAdvisory, LoopyError
@@ -147,7 +147,8 @@ def check_sizes(kernel, device):
         if isinstance(arg, lp.ValueArg) and arg.approximately is not None:
             parameters[arg.name] = arg.approximately
 
-    glens, llens = kernel.get_grid_size_upper_bounds_as_exprs()
+    glens, llens = (
+            kernel.get_grid_size_upper_bounds_as_exprs(callables_table))
 
     if (max(len(glens), len(llens))
             > device.max_work_item_dimensions):
@@ -195,36 +196,86 @@ def check_sizes(kernel, device):
 # }}}
 
 
-def pyopencl_function_mangler(target, name, arg_dtypes):
-    if len(arg_dtypes) == 1 and isinstance(name, str):
-        arg_dtype, = arg_dtypes
+# {{{ pyopencl function scopers
 
-        if arg_dtype.is_complex():
-            if arg_dtype.numpy_dtype == np.complex64:
-                tpname = "cfloat"
-            elif arg_dtype.numpy_dtype == np.complex128:
-                tpname = "cdouble"
+class PyOpenCLCallable(ScalarCallable):
+    """
+    Records information about the callables which are not covered by
+    :class:`loopy.target.opencl.OpenCLCallable`
+    """
+    def with_types(self, arg_id_to_dtype, callables_table):
+
+        name = self.name
+
+        for id in arg_id_to_dtype:
+            # since all the below functions are single arg.
+            if not -1 <= id <= 0:
+                raise LoopyError("%s can only take one argument." % name)
+
+        if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
+            # the types provided aren't mature enough to specialize the
+            # callable
+            return (
+                    self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                    callables_table)
+
+        dtype = arg_id_to_dtype[0]
+
+        if name in ["real", "imag", "abs"]:
+            if dtype.is_complex():
+                if dtype.numpy_dtype == np.complex64:
+                    tpname = "cfloat"
+                elif dtype.numpy_dtype == np.complex128:
+                    tpname = "cdouble"
+                else:
+                    raise LoopyTypeError("unexpected complex type '%s'" % dtype)
+
+                return (
+                        self.copy(name_in_target=f"{tpname}_{name}",
+                            arg_id_to_dtype={0: dtype, -1: NumpyType(
+                                np.dtype(dtype.numpy_dtype.type(0).real))}),
+                        callables_table)
+
+        if name in ["sqrt", "exp", "log",
+                "sin", "cos", "tan",
+                "sinh", "cosh", "tanh",
+                "conj", "abs"]:
+            if dtype.is_complex():
+                # function parameters are complex.
+                if dtype.numpy_dtype == np.complex64:
+                    tpname = "cfloat"
+                elif dtype.numpy_dtype == np.complex128:
+                    tpname = "cdouble"
+                else:
+                    raise LoopyTypeError("unexpected complex type '%s'" % dtype)
+
+                return (
+                        self.copy(name_in_target=f"{tpname}_{name}",
+                            arg_id_to_dtype={0: dtype, -1: dtype}),
+                        callables_table)
             else:
-                raise RuntimeError("unexpected complex type '%s'" % arg_dtype)
+                # function calls for floating-point parameters.
+                numpy_dtype = dtype.numpy_dtype
+                if numpy_dtype.kind in ("u", "i"):
+                    dtype = NumpyType(np.float32)
+                if name == "abs":
+                    name = "fabs"
+                return (
+                        self.copy(name_in_target=name,
+                            arg_id_to_dtype={0: dtype, -1: dtype}),
+                        callables_table)
 
-            if name in ["sqrt", "exp", "log",
-                    "sin", "cos", "tan",
-                    "sinh", "cosh", "tanh",
-                    "conj"]:
-                return CallMangleInfo(
-                        target_name=f"{tpname}_{name}",
-                        result_dtypes=(arg_dtype,),
-                        arg_dtypes=(arg_dtype,))
+        return (
+                self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                callables_table)
 
-            if name in ["real", "imag", "abs"]:
-                return CallMangleInfo(
-                        target_name=f"{tpname}_{name}",
-                        result_dtypes=(NumpyType(
-                            np.dtype(arg_dtype.numpy_dtype.type(0).real)),
-                            ),
-                        arg_dtypes=(arg_dtype,))
 
-    return None
+def get_pyopencl_callables():
+    pyopencl_ids = ["sqrt", "exp", "log", "sin", "cos", "tan", "sinh", "cosh",
+            "tanh", "conj", "real", "imag", "abs"]
+    return {id_: PyOpenCLCallable(name=id_) for id_ in pyopencl_ids}
+
+# }}}
 
 
 # {{{ preamble generator
@@ -555,8 +606,8 @@ class PyOpenCLTarget(OpenCLTarget):
             kernel = adjust_local_temp_var_storage(kernel, self.device)
         return kernel
 
-    def pre_codegen_check(self, kernel):
-        check_sizes(kernel, self.device)
+    def pre_codegen_entrypoint_check(self, kernel, callables_table):
+        check_sizes(kernel, callables_table, self.device)
 
     def get_host_ast_builder(self):
         return PyOpenCLPythonASTBuilder(self)
@@ -619,9 +670,10 @@ class PyOpenCLTarget(OpenCLTarget):
     def get_kernel_executor_cache_key(self, queue, **kwargs):
         return queue.context
 
-    def get_kernel_executor(self, kernel, queue, **kwargs):
+    def get_kernel_executor(self, program, queue, **kwargs):
         from loopy.target.pyopencl_execution import PyOpenCLKernelExecutor
-        return PyOpenCLKernelExecutor(queue.context, kernel)
+        return PyOpenCLKernelExecutor(queue.context, program,
+                entrypoint=kwargs.pop("entrypoint"))
 
     def with_device(self, device):
         return type(self)(device)
@@ -954,21 +1006,20 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
     # {{{ library
 
-    def function_manglers(self):
-        from loopy.library.random123 import random123_function_mangler
-        return (
-                [
-                    pyopencl_function_mangler,
-                    random123_function_mangler
-                    # order matters: e.g. prefer our abs() over that of the
-                    # superclass
-                    ] + super().function_manglers())
+    @property
+    def known_callables(self):
+        from loopy.library.random123 import get_random123_callables
+
+        # order matters: e.g. prefer our abs() over that of the
+        # superclass
+        callables = super().known_callables
+        callables.update(get_pyopencl_callables())
+        callables.update(get_random123_callables(self.target))
+        return callables
 
     def preamble_generators(self):
-        from loopy.library.random123 import random123_preamble_generator
         return ([
             pyopencl_preamble_generator,
-            random123_preamble_generator,
             ] + super().preamble_generators())
 
     # }}}

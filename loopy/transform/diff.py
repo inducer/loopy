@@ -31,6 +31,7 @@ import loopy as lp
 from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 from loopy.isl_helpers import make_slab
 from loopy.diagnostic import LoopyError
+from loopy.kernel import LoopKernel
 
 
 # {{{ diff mapper
@@ -348,6 +349,8 @@ class DifferentiationContext:
                     arg.dtype,
                     shape=shape,
                     dim_tags=dim_tags,
+                    is_input=arg.is_input,
+                    is_output=arg.is_output
                 ))
 
         elif var_name in self.kernel.temporary_variables:
@@ -376,6 +379,8 @@ def diff_kernel(kernel, diff_outputs, by, diff_iname_prefix="diff_i",
         holding the derivative of *var_name* by the desired
         *diff_context.by_name*, or *None* if no dependency exists.
     """
+
+    assert isinstance(kernel, LoopKernel)
 
     from loopy.kernel.creation import apply_single_writer_depencency_heuristic
     kernel = apply_single_writer_depencency_heuristic(kernel, warn_if_used=True)

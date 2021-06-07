@@ -35,6 +35,17 @@ def is_integer(obj):
     return isinstance(obj, (int, np.integer))
 
 
+def update_persistent_hash(obj, key_hash, key_builder):
+    """
+    Custom hash computation function for use with
+    :class:`pytools.persistent_dict.PersistentDict`.
+
+    Only works in conjunction with :class:`loopy.tools.KeyBuilder`.
+    """
+    for field_name in obj.hash_fields:
+        key_builder.rec(key_hash, getattr(obj, field_name))
+
+
 # {{{ custom KeyBuilder subclass
 
 class PersistentHashWalkMapper(LoopyWalkMapper, PersistentHashWalkMapperBase):
@@ -51,6 +62,13 @@ class PersistentHashWalkMapper(LoopyWalkMapper, PersistentHashWalkMapperBase):
 
         self.key_hash.update(type(expr.operation).__name__.encode("utf-8"))
         self.rec(expr.expr, *args)
+
+    def map_foreign(self, expr, *args, **kwargs):
+        """Mapper method dispatch for non-:mod:`pymbolic` objects."""
+        if expr is None:
+            self.key_hash.update(b"<None>")
+        else:
+            PersistentHashWalkMapperBase.map_foreign(self, expr, *args, **kwargs)
 
 
 class LoopyKeyBuilder(KeyBuilderBase):
@@ -71,6 +89,11 @@ class LoopyKeyBuilder(KeyBuilderBase):
                 for k, v in key.items()))
 
     update_for_defaultdict = update_for_dict
+
+    def update_for_frozenset(self, key_hash, key):
+        for set_key in sorted(key,
+                key=lambda obj: type(obj).__name__ + str(obj)):
+            self.rec(key_hash, set_key)
 
     def update_for_BasicSet(self, key_hash, key):  # noqa
         from islpy import Printer
@@ -98,6 +121,8 @@ class LoopyKeyBuilder(KeyBuilderBase):
             self.update_for_NoneType(key_hash, key)
         else:
             PersistentHashWalkMapper(key_hash)(key)
+
+    update_for_PMap = update_for_dict  # noqa: N815
 
 
 class PymbolicExpressionHashWrapper:

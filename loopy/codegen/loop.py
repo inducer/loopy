@@ -251,7 +251,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
         return next_func(codegen_state)
 
     global_size, local_size = kernel.get_grid_sizes_for_insn_ids(
-            insn_ids_for_block)
+            insn_ids_for_block, codegen_state.callables_table, return_dict=True)
 
     hw_inames_left = hw_inames_left[:]
     iname = hw_inames_left.pop()

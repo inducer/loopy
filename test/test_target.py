@@ -70,9 +70,7 @@ def test_ispc_target(occa_mode=False):
     knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"],
             default_tag="l.auto")
 
-    codegen_result = lp.generate_code_v2(
-                lp.get_one_scheduled_kernel(
-                    lp.preprocess_kernel(knl)))
+    codegen_result = lp.generate_code_v2(knl)
 
     print(codegen_result.device_code())
     print(codegen_result.host_code())
@@ -96,9 +94,8 @@ def test_cuda_target():
             default_tag="l.auto")
 
     print(
-            lp.generate_code(
-                lp.get_one_scheduled_kernel(
-                    lp.preprocess_kernel(knl)))[0])
+            lp.generate_code_v2(
+                knl).device_code())
 
 
 def test_generate_c_snippet():
@@ -138,10 +135,7 @@ def test_generate_c_snippet():
 
     knl = lp.split_iname(knl, "k", 4, inner_tag="unr", slabs=(0, 1))
     knl = lp.prioritize_loops(knl, "I,k_outer,k_inner")
-
-    knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
-    print(lp.generate_body(knl))
+    print(lp.generate_code_v2(knl))
 
 
 @pytest.mark.parametrize("target", [CTarget, OpenCLTarget])
@@ -354,8 +348,7 @@ def test_ispc_streaming_stores():
 
     knl = lp.set_argument_order(knl, vars + ["n"])
 
-    knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
+    lp.generate_code_v2(knl).all_code()
     assert "streaming_store(" in lp.generate_code_v2(knl).all_code()
 
 

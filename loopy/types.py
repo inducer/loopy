@@ -200,6 +200,45 @@ class AtomicNumpyType(NumpyType, AtomicType):
 # }}}
 
 
+# {{{
+
+class OpaqueType(LoopyType):
+    """An opaque data type is truly opaque - it has no allocations, no
+    temporaries of that type, etc. The only thing allowed is to be pass in
+    through one ValueArg and go out to another. It is introduced to accomodate
+    functional calls to external libraries.
+    """
+    def __init__(self, name):
+        assert isinstance(name, str)
+        self.name = name
+        self.target = None
+
+    def is_integral(self):
+        return False
+
+    def is_complex(self):
+        return False
+
+    def involves_complex(self):
+        return False
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, self.name)
+
+    def __hash__(self):
+        return hash(self.name)
+
+    def __eq__(self, other):
+        return (
+                type(self) == type(other)
+                and self.name == other.name)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+# }}}
+
+
 def to_loopy_type(dtype, allow_auto=False, allow_none=False, for_atomic=False,
         target=None):
     from loopy.kernel.data import auto

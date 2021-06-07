@@ -111,11 +111,12 @@ def test_c_target_strides_nonsquare():
                     lp.GlobalArg("a", np.float32, shape=sizes, order=order),
                     "..."
                     ],
-                target=ExecutableCTarget())
+                target=ExecutableCTarget(),
+                name="nonsquare_strides")
 
     # test with C-order
     knl = __get_kernel("C")
-    a_lp = next(x for x in knl.args if x.name == "a")
+    a_lp = next(x for x in knl["nonsquare_strides"].args if x.name == "a")
     a_np = np.reshape(np.arange(np.product(a_lp.shape), dtype=np.float32),
                       a_lp.shape,
                       order="C")
@@ -125,7 +126,7 @@ def test_c_target_strides_nonsquare():
 
     # test with F-order
     knl = __get_kernel("F")
-    a_lp = next(x for x in knl.args if x.name == "a")
+    a_lp = next(x for x in knl["nonsquare_strides"].args if x.name == "a")
     a_np = np.reshape(np.arange(np.product(a_lp.shape), dtype=np.float32),
                       a_lp.shape,
                       order="F")

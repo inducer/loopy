@@ -29,10 +29,11 @@ from pytools import memoize_method
 
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.types import NumpyType
 from loopy.kernel.data import AddressSpace
 from pymbolic import var
+from loopy.kernel.function_interface import ScalarCallable
 
 
 # {{{ vector types
@@ -110,43 +111,82 @@ def _register_vector_types(dtype_registry):
 # }}}
 
 
-# {{{ function mangler
+# {{{ function scoper
 
-def cuda_function_mangler(kernel, name, arg_dtypes):
-    if not isinstance(name, str):
-        return None
+_CUDA_SPECIFIC_FUNCTIONS = {
+        "rsqrt": 1,
+        "atan2": 2,
+        }
 
-    if name in ["max", "min"] and len(arg_dtypes) == 2:
-        dtype = np.find_common_type([], arg_dtypes)
 
-        if dtype.kind == "c":
-            raise RuntimeError("min/max do not support complex numbers")
+class CudaCallable(ScalarCallable):
 
-        if dtype.kind == "f":
-            name = "f" + name
+    def cuda_with_types(self, arg_id_to_dtype, callables_table):
 
-        return dtype, name
+        name = self.name
 
-    if name in ["pow"] and len(arg_dtypes) == 2:
-        dtype = np.find_common_type([], arg_dtypes)
+        if name in _CUDA_SPECIFIC_FUNCTIONS:
+            num_args = _CUDA_SPECIFIC_FUNCTIONS[name]
 
-        if dtype == np.float64:
-            pass  # pow
-        elif dtype == np.float32:
-            name = name + "f"  # powf
-        else:
-            raise RuntimeError(f"{name} does not support type {dtype}")
+            # {{{ sanity checks
 
-        return dtype, name
+            for id, dtype in arg_id_to_dtype.items():
+                if not -1 <= id < num_args:
+                    raise LoopyError("%s can take only %d arguments." % (name,
+                            num_args))
 
-    if name in "atan2" and len(arg_dtypes) == 2:
-        return arg_dtypes[0], name
+                if dtype is not None and dtype.kind == "c":
+                    raise LoopyTypeError(
+                        f"'{name}' does not support complex arguments.")
 
-    if name == "dot":
-        scalar_dtype, offset, field_name = arg_dtypes[0].fields["x"]
-        return scalar_dtype, name
+            # }}}
 
-    return None
+            for i in range(num_args):
+                if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
+                    # the types provided aren't mature enough to specialize the
+                    # callable
+                    return (
+                            self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                            callables_table)
+
+            dtype = np.find_common_type(
+                    [], [dtype.numpy_dtype for id, dtype in
+                        arg_id_to_dtype.items() if id >= 0])
+
+            updated_arg_id_to_dtype = {id: NumpyType(dtype)
+                    for id in range(-1, num_args)}
+
+            return (
+                    self.copy(name_in_target=name,
+                        arg_id_to_dtype=updated_arg_id_to_dtype),
+                    callables_table)
+
+        if name == "dot":
+            # CUDA dot function:
+            # Performs dot product. Input types: vector and return type: scalar.
+            for i in range(2):
+                if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
+                    # the types provided aren't mature enough to specialize the
+                    # callable
+                    return (
+                            self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                            callables_table)
+
+            input_dtype = arg_id_to_dtype[0]
+
+            scalar_dtype, offset, field_name = input_dtype.fields["x"]
+            return_dtype = scalar_dtype
+            return self.copy(arg_id_to_dtype={0: input_dtype, 1: input_dtype,
+                                              -1: return_dtype})
+
+        return (
+                self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                callables_table)
+
+
+def get_cuda_callables():
+    cuda_func_ids = {"dot"} | set(_CUDA_SPECIFIC_FUNCTIONS)
+    return {id_: CudaCallable(name=id_) for id_ in cuda_func_ids}
 
 # }}}
 
@@ -192,6 +232,9 @@ class CudaTarget(CFamilyTarget):
 
         super().__init__()
 
+    def split_kernel_at_global_barriers(self):
+        return True
+
     def get_device_ast_builder(self):
         return CUDACASTBuilder(self)
 
@@ -225,16 +268,51 @@ class CudaTarget(CFamilyTarget):
 # }}}
 
 
+# {{{ preamable generator
+
+def cuda_preamble_generator(preamble_info):
+    from loopy.types import AtomicNumpyType
+    seen_64_bit_atomics = any(
+            isinstance(dtype, AtomicNumpyType) and dtype.numpy_dtype.itemsize == 8
+            for dtype in preamble_info.seen_atomic_dtypes)
+
+    if seen_64_bit_atomics:
+        # Source:
+        # docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#atomic-functions
+        yield ("00_enable_64bit_atomics", """
+            #if __CUDA_ARCH__ < 600
+            __device__ double atomicAdd(double* address, double val)
+            {
+                unsigned long long int* address_as_ull =
+                                          (unsigned long long int*)address;
+                unsigned long long int old = *address_as_ull, assumed;
+
+                do {
+                    assumed = old;
+                    old = atomicCAS(address_as_ull, assumed,
+                                    __double_as_longlong(val +
+                                           __longlong_as_double(assumed)));
+
+                } while (assumed != old);
+
+                return __longlong_as_double(old);
+            }
+            #endif
+            """)
+
+# }}}
+
+
 # {{{ ast builder
 
 class CUDACASTBuilder(CFamilyASTBuilder):
     # {{{ library
 
-    def function_manglers(self):
-        return (
-                super().function_manglers() + [
-                    cuda_function_mangler
-                    ])
+    @property
+    def known_callables(self):
+        callables = super().known_callables
+        callables.update(get_cuda_callables())
+        return callables
 
     # }}}
 
@@ -260,7 +338,8 @@ class CUDACASTBuilder(CFamilyASTBuilder):
         _, local_grid_size = \
                 codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
                         get_insn_ids_for_block_at(
-                            codegen_state.kernel.schedule, schedule_index))
+                            codegen_state.kernel.schedule, schedule_index),
+                        codegen_state.callables_table)
 
         from loopy.symbolic import get_dependencies
         if not get_dependencies(local_grid_size):
@@ -272,6 +351,12 @@ class CUDACASTBuilder(CFamilyASTBuilder):
             fdecl = CudaLaunchBounds(nthreads, fdecl)
 
         return FunctionDeclarationWrapper(fdecl)
+
+    def preamble_generators(self):
+
+        return (
+                super().preamble_generators() + [
+                    cuda_preamble_generator])
 
     # }}}
 
@@ -349,6 +434,97 @@ class CUDACASTBuilder(CFamilyASTBuilder):
             arg_decl = Const(arg_decl)
 
         return CudaConstant(arg_decl)
+
+    # {{{ code generation for atomic update
+
+    def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
+            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
+
+        from pymbolic.primitives import Sum
+        from cgen import Statement
+        from pymbolic.mapper.stringifier import PREC_NONE
+
+        if isinstance(lhs_dtype, NumpyType) and lhs_dtype.numpy_dtype in [
+                np.int32, np.int64, np.float32, np.float64]:
+            # atomicAdd
+            if isinstance(rhs_expr, Sum):
+                ecm = self.get_expression_to_code_mapper(codegen_state)
+
+                new_rhs_expr = Sum(tuple(c for c in rhs_expr.children
+                                         if c != lhs_expr))
+                lhs_expr_code = ecm(lhs_expr)
+                rhs_expr_code = ecm(new_rhs_expr)
+
+                return Statement("atomicAdd(&{}, {})".format(
+                    lhs_expr_code, rhs_expr_code))
+            else:
+                from cgen import Block, DoWhile, Assign
+                from loopy.target.c import POD
+                old_val_var = codegen_state.var_name_generator("loopy_old_val")
+                new_val_var = codegen_state.var_name_generator("loopy_new_val")
+
+                from loopy.kernel.data import TemporaryVariable
+                ecm = codegen_state.expression_to_code_mapper.with_assignments(
+                        {
+                            old_val_var: TemporaryVariable(old_val_var, lhs_dtype),
+                            new_val_var: TemporaryVariable(new_val_var, lhs_dtype),
+                            })
+
+                lhs_expr_code = ecm(lhs_expr, prec=PREC_NONE, type_context=None)
+
+                from pymbolic.mapper.substitutor import make_subst_func
+                from pymbolic import var
+                from loopy.symbolic import SubstitutionMapper
+
+                subst = SubstitutionMapper(
+                        make_subst_func({lhs_expr: var(old_val_var)}))
+                rhs_expr_code = ecm(subst(rhs_expr), prec=PREC_NONE,
+                        type_context=rhs_type_context,
+                        needed_dtype=lhs_dtype)
+
+                cast_str = ""
+                old_val = old_val_var
+                new_val = new_val_var
+
+                if lhs_dtype.numpy_dtype.kind == "f":
+                    if lhs_dtype.numpy_dtype == np.float32:
+                        ctype = "int"
+                    elif lhs_dtype.numpy_dtype == np.float64:
+                        ctype = "long"
+                    else:
+                        assert False
+
+                    old_val = "*(%s *) &" % ctype + old_val
+                    new_val = "*(%s *) &" % ctype + new_val
+                    cast_str = "(%s *) " % (ctype)
+
+                return Block([
+                    POD(self, NumpyType(lhs_dtype.dtype, target=self.target),
+                        old_val_var),
+                    POD(self, NumpyType(lhs_dtype.dtype, target=self.target),
+                        new_val_var),
+                    DoWhile(
+                        "atomicCAS("
+                        "%(cast_str)s&(%(lhs_expr)s), "
+                        "%(old_val)s, "
+                        "%(new_val)s"
+                        ") != %(old_val)s"
+                        % {
+                            "cast_str": cast_str,
+                            "lhs_expr": lhs_expr_code,
+                            "old_val": old_val,
+                            "new_val": new_val,
+                            },
+                        Block([
+                            Assign(old_val_var, lhs_expr_code),
+                            Assign(new_val_var, rhs_expr_code),
+                            ])
+                        )
+                    ])
+        else:
+            raise NotImplementedError("atomic update for '%s'" % lhs_dtype)
+
+    # }}}
 
     # }}}
 

@@ -23,15 +23,18 @@ THE SOFTWARE.
 
 from islpy import dim_type
 import islpy as isl
-from loopy.symbolic import WalkMapper
+from loopy.symbolic import WalkMapper, CombineMapper, ResolvedFunction
 from loopy.diagnostic import (LoopyError, WriteRaceConditionWarning,
-                              warn_with_kernel, LoopyIndexError)
-from loopy.type_inference import TypeInferenceMapper
+        warn_with_kernel, LoopyIndexError)
+from loopy.type_inference import TypeReader
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
-        CInstruction, _DataObliviousInstruction)
+                                      CInstruction, _DataObliviousInstruction,
+                                      NoOpInstruction)
 from pytools import memoize_method
 
 from collections import defaultdict
+
+from functools import reduce
 
 import logging
 logger = logging.getLogger(__name__)
@@ -88,6 +91,58 @@ def check_identifiers_in_subst_rules(knl):
                     % (knl.name, rule.name,
                        ", ".join(deps-rule_allowed_identifiers)))
 
+
+class UnresolvedCallCollector(CombineMapper):
+    """
+    Collects all the unresolved calls within a kernel.
+
+    :returns:
+        A :class:`frozenset` of function names that are not resolved.
+    """
+
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, frozenset())
+
+    def map_call(self, expr):
+        if not isinstance(expr.function, ResolvedFunction):
+            return frozenset([expr.function.name]) | self.rec(expr.parameters)
+        else:
+            return self.rec(expr.parameters)
+
+    def map_call_with_kwargs(self, expr):
+        # See: https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
+
+    def map_constant(self, expr):
+        return frozenset()
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
+    map_tagged_variable = map_constant
+    map_type_cast = map_constant
+
+
+def check_functions_are_resolved(kernel):
+    """ Checks if all call nodes in the *kernel* expression have been
+    resolved.
+    """
+    from loopy.symbolic import SubstitutionRuleExpander
+    subst_expander = SubstitutionRuleExpander(kernel.substitutions)
+
+    for insn in kernel.instructions:
+        if isinstance(insn, MultiAssignmentBase):
+            unresolved_calls = UnresolvedCallCollector()(subst_expander(insn
+                                                                        .expression))
+            if unresolved_calls:
+                raise LoopyError("Unknown function '%s' -- register a "
+                                 "callable corresponding to it." %
+                                 set(unresolved_calls).pop())
+        elif isinstance(insn, (CInstruction, _DataObliviousInstruction)):
+            pass
+        else:
+            raise NotImplementedError(type(insn))
+
 # }}}
 
 
@@ -98,7 +153,7 @@ def check_identifiers_in_subst_rules(knl):
 VALID_NOSYNC_SCOPES = frozenset(["local", "global", "any"])
 
 
-class SubscriptIndicesIsIntChecker(TypeInferenceMapper):
+class SubscriptIndicesIsIntChecker(TypeReader):
     def map_subscript(self, expr):
         for idx in expr.index_tuple:
             type_inf_result = self.rec(idx)
@@ -114,12 +169,12 @@ class SubscriptIndicesIsIntChecker(TypeInferenceMapper):
         return self.rec(expr.aggregate)
 
 
-def check_for_integer_subscript_indices(kernel):
+def check_for_integer_subscript_indices(kernel, callables_table):
     """
     Checks is every array access is of type :class:`int`.
     """
     from pymbolic.primitives import Subscript
-    idx_int_checker = SubscriptIndicesIsIntChecker(kernel)
+    idx_int_checker = SubscriptIndicesIsIntChecker(kernel, callables_table)
     for insn in kernel.instructions:
         if isinstance(insn, MultiAssignmentBase):
             idx_int_checker(insn.expression, return_tuple=isinstance(insn,
@@ -131,6 +186,27 @@ def check_for_integer_subscript_indices(kernel):
         else:
             raise NotImplementedError("Unknown insn type %s." % (
                 type(insn).__name__))
+
+
+def check_sub_array_ref_inames_not_within_or_redn_inames(kernel):
+    all_within_inames = frozenset().union(*(insn.within_inames
+                                            for insn in kernel.instructions))
+    all_redn_inames = frozenset().union(*(insn.reduction_inames()
+                                          for insn in kernel.instructions))
+    all_sar_inames = frozenset().union(*(insn.sub_array_ref_inames()
+                                         for insn in kernel.instructions))
+
+    if all_sar_inames & all_within_inames:
+        sample = next(iter(all_sar_inames & all_within_inames))
+        raise LoopyError(f"Iname '{sample}' used as a sub-array ref's sweep"
+                         " iname and an instruction's within inames. Such usage"
+                         " is illegal.")
+
+    if all_sar_inames & all_redn_inames:
+        sample = next(iter(all_sar_inames & all_within_inames))
+        raise LoopyError(f"Iname '{sample}' used as a sub-array ref's sweep"
+                         " iname and a reduction iname. Such usage is"
+                         " illegal.")
 
 
 def check_insn_attributes(kernel):
@@ -209,15 +285,24 @@ def check_multiple_tags_allowed(kernel):
                                  "tags: {}".format(iname.name, iname.tags))
 
 
-def check_for_double_use_of_hw_axes(kernel):
+def check_for_double_use_of_hw_axes(kernel, callables_table):
     """
     Check if any instruction of *kernel* is within multiple inames tagged with
     the same hw axis tag.
     """
-    from loopy.kernel.data import UniqueTag
+    from loopy.kernel.data import UniqueTag, GroupIndexTag, LocalIndexTag
+    from loopy.kernel.instruction import CallInstruction
+    from loopy.symbolic import ResolvedFunction
 
     for insn in kernel.instructions:
         insn_tag_keys = set()
+        if isinstance(insn, CallInstruction):
+            assert isinstance(insn.expression.function, ResolvedFunction)
+            clbl = callables_table[insn.expression.function.name]
+            gsize, lsize = clbl.get_used_hw_axes(callables_table)
+            insn_tag_keys |= {GroupIndexTag(i).key for i in gsize}
+            insn_tag_keys |= {LocalIndexTag(i).key for i in lsize}
+
         for iname in insn.within_inames:
             for tag in kernel.iname_tags_of_type(iname, UniqueTag):
                 key = tag.key
@@ -238,9 +323,11 @@ def check_for_inactive_iname_access(kernel):
         if not expression_inames <= insn.within_inames:
             raise LoopyError(
                     "instruction '%s' references "
-                    "inames '%s' that the instruction does not depend on"
+                    "inames '%s' that the instruction does not depend on in "
+                    "the kernel '%s'"
                     % (insn.id,
-                        ", ".join(expression_inames - insn.within_inames)))
+                        ", ".join(expression_inames
+                                  - insn.within_inames), kernel.name))
 
 
 def check_for_unused_inames(kernel):
@@ -555,7 +642,7 @@ def check_write_destinations(kernel):
 
 def check_has_schedulable_iname_nesting(kernel):
     from loopy.transform.iname import (has_schedulable_iname_nesting,
-                                       get_iname_duplication_options)
+            get_iname_duplication_options)
     if not has_schedulable_iname_nesting(kernel):
         import itertools as it
         opt = get_iname_duplication_options(kernel)
@@ -860,14 +947,25 @@ def check_variable_access_ordered(kernel):
 # }}}
 
 
-def pre_schedule_checks(kernel):
+def pre_schedule_checks(kernel, callables_table):
     try:
         logger.debug("%s: pre-schedule check: start" % kernel.name)
 
-        check_for_integer_subscript_indices(kernel)
+        from loopy.kernel.data import auto
+        if all(arg.dtype not in [None, auto] for arg in kernel.args) and (
+                all(tv.dtype not in [None, auto] for tv in
+                    kernel.temporary_variables.values())):
+            # only check if all types are known
+            check_for_integer_subscript_indices(kernel, callables_table)
+
+        check_functions_are_resolved(kernel)
+        # Ordering restriction:
+        # check_sub_array_ref_inames_not_within_or_redn_inames should be done
+        # before check_bounds. See: BatchedAccessMapMapper.map_sub_array_ref.
+        check_sub_array_ref_inames_not_within_or_redn_inames(kernel)
         check_for_duplicate_insn_ids(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
-        check_for_double_use_of_hw_axes(kernel)
+        check_for_double_use_of_hw_axes(kernel, callables_table)
         check_insn_attributes(kernel)
         check_loop_priority_inames_known(kernel)
         check_multiple_tags_allowed(kernel)
@@ -896,7 +994,8 @@ def pre_schedule_checks(kernel):
 
 # {{{ check for unused hw axes
 
-def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
+def _check_for_unused_hw_axes_in_kernel_chunk(kernel, callables_table,
+        sched_index=None):
     from loopy.schedule import (CallKernel, RunInstruction,
             Barrier, EnterLoop, LeaveLoop, ReturnFromKernel,
             get_insn_ids_for_block_at, gather_schedule_block)
@@ -911,10 +1010,11 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
         assert isinstance(kernel.schedule[sched_index], CallKernel)
         _, past_end_i = gather_schedule_block(kernel.schedule, sched_index)
         group_size, local_size = kernel.get_grid_sizes_for_insn_ids_as_exprs(
-                get_insn_ids_for_block_at(kernel.schedule, sched_index))
+                get_insn_ids_for_block_at(kernel.schedule, sched_index),
+                callables_table, return_dict=True)
 
-        group_axes = {ax for ax, length in enumerate(group_size)}
-        local_axes = {ax for ax, length in enumerate(local_size)}
+        group_axes = set(group_size.keys())
+        local_axes = set(local_size.keys())
 
         i = sched_index + 1
         assert isinstance(kernel.schedule[past_end_i - 1], ReturnFromKernel)
@@ -928,11 +1028,15 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
     while i < loop_end_i:
         sched_item = kernel.schedule[i]
         if isinstance(sched_item, CallKernel):
-            i = _check_for_unused_hw_axes_in_kernel_chunk(kernel, i)
+            i = _check_for_unused_hw_axes_in_kernel_chunk(kernel,
+                    callables_table, i)
 
         elif isinstance(sched_item, RunInstruction):
             insn = kernel.id_to_insn[sched_item.insn_id]
             i += 1
+
+            if isinstance(insn, NoOpInstruction):
+                continue
 
             group_axes_used = set()
             local_axes_used = set()
@@ -951,6 +1055,19 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
                     group_axes_used.add(tag.axis)
                 elif altags:
                     raise LoopyError("auto local tag encountered")
+
+            # {{{ account for any hw axes due to a callable
+
+            if isinstance(insn, CallInstruction):
+                assert isinstance(insn.expression.function, ResolvedFunction)
+                clbl = callables_table[insn.expression.function.name]
+                clbl_g_axes, clbl_l_axes = clbl.get_used_hw_axes(callables_table)
+                assert len(group_axes_used & clbl_g_axes) == 0
+                assert len(local_axes_used & clbl_l_axes) == 0
+                group_axes_used |= clbl_g_axes
+                local_axes_used |= clbl_l_axes
+
+            # }}}
 
             if group_axes != group_axes_used:
                 raise LoopyError(
@@ -983,9 +1100,10 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
     return past_end_i
 
 
-def check_for_unused_hw_axes_in_insns(kernel):
+def check_for_unused_hw_axes_in_insns(kernel, callables_table):
     if kernel.schedule:
-        _check_for_unused_hw_axes_in_kernel_chunk(kernel)
+        _check_for_unused_hw_axes_in_kernel_chunk(kernel,
+                callables_table)
 
 # }}}
 
@@ -1135,23 +1253,174 @@ def check_that_shapes_and_strides_are_arguments(kernel):
 # }}}
 
 
-def pre_codegen_checks(kernel):
+# {{{ validate_kernel_call_sites
+
+def _get_sub_array_ref_swept_range(kernel, sar):
+    from loopy.symbolic import get_access_map
+    domain = kernel.get_inames_domain(frozenset({iname_var.name
+                                                 for iname_var in sar.swept_inames}))
+    return get_access_map(domain, sar.swept_inames, kernel.assumptions).range()
+
+
+def _are_sub_array_refs_equivalent(sar1, sar2, caller):
+    """
+    Returns *True* iff *sar1* and *sar2* are equivalent
+    :class:`loopy.SubArrayRef`s.
+
+    Two sub-array-refs are said to be equivalent iff they point to the same
+    array sub-regions. This equivalence check is less strict than
+    :meth:`~loopy.SubArrayRef.is_equal`.
+
+    :arg caller: An instance of :class:`loopy.LoopKernel` in which they are
+         referenced.
+    """
+    if len(sar1.swept_inames) != len(sar2.swept_inames):
+        return False
+
+    if sar1.subscript.aggregate.name != sar2.subscript.aggregate.name:
+        return False
+
+    if len(sar1.subscript.index_tuple) != len(sar2.subscript.index_tuple):
+        return False
+
+    if (_get_sub_array_ref_swept_range(caller, sar1)
+            != _get_sub_array_ref_swept_range(caller, sar2)):
+        return False
+
+    from loopy.symbolic import SubstitutionMapper
+    from pymbolic.mapper.substitutor import make_subst_func
+    from loopy.isl_helpers import simplify_via_aff
+    subst_func = make_subst_func({iname1.name:  iname2
+                                  for iname1, iname2 in zip(sar1.swept_inames,
+                                                            sar2.swept_inames)
+                                  })
+
+    # subst_mapper: maps swept inames from sar1 to sar2
+    subst_mapper = SubstitutionMapper(subst_func)
+
+    for idx1, idx2 in zip(sar1.subscript.index_tuple,
+                          sar2.subscript.index_tuple):
+        if simplify_via_aff(subst_mapper(idx1) - idx2) != 0:
+            return False
+    return True
+
+
+def _validate_kernel_call_insn(caller, call_insn, callee):
+    assert call_insn.expression.function.name == callee.name
+    from loopy.symbolic import SubArrayRef
+    from loopy.kernel.array import ArrayBase
+
+    arg_id_to_arg = call_insn.arg_id_to_arg()
+
+    next_iarg_input = 0
+    next_iarg_output = -1
+
+    for arg in callee.args:
+        if arg.is_input:
+            if next_iarg_input not in arg_id_to_arg:
+                raise LoopyError(f"Call to '{callee.name}' in '{call_insn}' expects"
+                                 f" a {next_iarg_input+1}-th positional "
+                                 "argument corresponding"
+                                 f" to '{arg.name}'in the callee.")
+            in_val = arg_id_to_arg[next_iarg_input]
+            next_iarg_input += 1
+            if isinstance(arg, ArrayBase):
+                if not isinstance(in_val, SubArrayRef):
+                    raise LoopyError(f"Call to '{callee.name}' in '{call_insn}'"
+                                     f" expects a sub-array-ref for '{arg.name}'"
+                                     f" (got {in_val}).")
+            else:
+                if isinstance(in_val, SubArrayRef):
+                    raise LoopyError(f"Call to '{callee.name}' in '{call_insn}'"
+                                     f" expects a value argument for '{arg.name}'"
+                                     f" (got {in_val}).")
+        if arg.is_output:
+            if next_iarg_output not in arg_id_to_arg:
+                raise LoopyError(f"Call to '{callee.name}' in '{call_insn}' expects"
+                                 f" a {-next_iarg_output}-th positional assignee"
+                                 f" corresponding to '{arg.name}'in the callee.")
+
+            out_val = arg_id_to_arg[next_iarg_output]
+            next_iarg_output -= 1
+            assert isinstance(arg, ArrayBase)
+            if not isinstance(out_val, SubArrayRef):
+                raise LoopyError(f"Call to '{callee.name}' in '{call_insn}'"
+                                 f" expects a sub-array-ref for '{arg.name}'"
+                                 f" (got {out_val}).")
+
+        if arg.is_input and arg.is_output:
+            if not _are_sub_array_refs_equivalent(in_val, out_val, caller):
+                raise LoopyError(f"Call to '{callee.name}' in '{call_insn}' expects"
+                                 f" equivalent sub-array-refs for '{arg.name}'"
+                                 f" (got {in_val}, {out_val}).")
+
+
+def _validate_kernel_call_sites_inner(kernel, callables):
+    from pymbolic.primitives import Call
+    from loopy.kernel.function_interface import CallableKernel
+
+    for insn in kernel.instructions:
+        if (isinstance(insn, CallInstruction)
+                and isinstance(insn.expression, Call)
+                and isinstance(insn.expression.function, ResolvedFunction)):
+            clbl = callables[insn.expression.function.name]
+            if isinstance(clbl, CallableKernel):
+                _validate_kernel_call_insn(kernel, insn, clbl.subkernel)
+        elif isinstance(insn, (MultiAssignmentBase, CInstruction,
+                               _DataObliviousInstruction)):
+            pass
+        else:
+            raise NotImplementedError(type(insn))
+
+
+def validate_kernel_call_sites(translation_unit):
+    from loopy import LoopKernel
+
+    for name in translation_unit.callables_table:
+        clbl = translation_unit[name]
+        if isinstance(clbl, LoopKernel):
+            _validate_kernel_call_sites_inner(clbl, translation_unit.callables_table)
+
+
+# }}}
+
+
+def pre_codegen_entrypoint_checks(kernel, callables_table):
+    logger.debug("pre-codegen entrypoint check %s: start" % kernel.name)
+
+    kernel.target.pre_codegen_entrypoint_check(kernel, callables_table)
+
+    logger.debug("pre-codegen entrypoint check %s: done" % kernel.name)
+
+
+def pre_codegen_callable_checks(kernel, callables_table):
+    logger.debug("pre-codegen callable check %s: start" % kernel.name)
+
+    check_for_unused_hw_axes_in_insns(kernel, callables_table)
+    check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
+    check_that_temporaries_are_defined_in_subkernels_where_used(kernel)
+    check_that_all_insns_are_scheduled(kernel)
+    kernel.target.pre_codegen_callable_check(kernel, callables_table)
+    check_that_shapes_and_strides_are_arguments(kernel)
+
+    logger.debug("pre-codegen callable check %s: done" % kernel.name)
+
+
+def pre_codegen_checks(t_unit):
+    from loopy.kernel.function_interface import CallableKernel
+
     try:
-        logger.debug("pre-codegen check %s: start" % kernel.name)
+        for e in t_unit.entrypoints:
+            pre_codegen_entrypoint_checks(t_unit[e], t_unit.callables_table)
 
-        check_for_unused_hw_axes_in_insns(kernel)
-        check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
-        check_that_temporaries_are_defined_in_subkernels_where_used(kernel)
-        check_that_all_insns_are_scheduled(kernel)
-        kernel.target.pre_codegen_check(kernel)
-        check_that_shapes_and_strides_are_arguments(kernel)
-
-        logger.debug("pre-codegen check %s: done" % kernel.name)
+        for name, clbl in t_unit.callables_table.items():
+            if isinstance(clbl, CallableKernel):
+                pre_codegen_callable_checks(clbl.subkernel, t_unit.callables_table)
     except Exception:
         print(75*"=")
-        print("failing kernel during pre-schedule check:")
+        print("failing kernel during pre-codegen check:")
         print(75*"=")
-        print(kernel)
+        print(t_unit)
         print(75*"=")
         raise
 

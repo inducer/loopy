@@ -68,6 +68,8 @@ __doc__ = """
 .. autoclass:: UnrollTag
 
 .. autoclass:: Iname
+
+.. autoclass:: KernelArgument
 """
 
 
@@ -363,6 +365,8 @@ class KernelArgument(ImmutableRecord):
 
             dtype = None
         kwargs["dtype"] = dtype
+        kwargs["is_output"] = kwargs.pop("is_output", None)
+        kwargs["is_input"] = kwargs.pop("is_input", None)
 
         ImmutableRecord.__init__(self, **kwargs)
 
@@ -375,21 +379,39 @@ class ArrayArg(ArrayBase, KernelArgument):
             An attribute of :class:`AddressSpace` defining the address
             space in which the array resides.
 
-        .. attribute:: is_output_only
+        .. attribute:: is_output
 
-            An instance of :class:`bool`. If set to *True*, recorded to be
-            returned from the kernel.
+            An instance of :class:`bool`. If set to *True*, the array is used to
+            return information to the caller. If set to *False*, the callee does not
+            write to the array during a call.
+
+        .. attribute:: is_input
+
+            An instance of :class:`bool`. If set to *True*, expected to be provided
+            by the caller. If *False*, the callee does not depend on the array
+            at kernel entry.
         """)
 
     allowed_extra_kwargs = [
             "address_space",
-            "is_output_only",
+            "is_output",
+            "is_input",
             "tags"]
 
     def __init__(self, *args, **kwargs):
         if "address_space" not in kwargs:
             raise TypeError("'address_space' must be specified")
-        kwargs["is_output_only"] = kwargs.pop("is_output_only", False)
+
+        is_output_only = kwargs.pop("is_output_only", None)
+        if is_output_only is not None:
+            warn("'is_output_only' is deprecated. Use 'is_output', 'is_input'"
+                    " instead.", DeprecationWarning, stacklevel=2)
+            kwargs["is_output"] = is_output_only
+            kwargs["is_input"] = not is_output_only
+        else:
+            kwargs["is_output"] = kwargs.pop("is_output", None)
+            kwargs["is_input"] = kwargs.pop("is_input", None)
+
         super().__init__(*args, **kwargs)
 
     min_target_axes = 0
@@ -416,7 +438,8 @@ class ArrayArg(ArrayBase, KernelArgument):
         """
         super().update_persistent_hash(key_hash, key_builder)
         key_builder.rec(key_hash, self.address_space)
-        key_builder.rec(key_hash, self.is_output_only)
+        key_builder.rec(key_hash, self.is_output)
+        key_builder.rec(key_hash, self.is_input)
 
 
 # Making this a function prevents incorrect use in isinstance.
@@ -433,6 +456,17 @@ def GlobalArg(*args, **kwargs):
 
 class ConstantArg(ArrayBase, KernelArgument):
     __doc__ = ArrayBase.__doc__
+
+    def __init__(self, *args, **kwargs):
+        if kwargs.pop("address_space", AddressSpace.GLOBAL) != AddressSpace.GLOBAL:
+            raise LoopyError("'address_space' for ConstantArg must be GLOBAL.")
+        super().__init__(*args, **kwargs)
+
+    # Constant Arg cannot be an output
+    is_output = False
+    is_input = True
+    address_space = AddressSpace.GLOBAL
+
     min_target_axes = 0
     max_target_axes = 1
 
@@ -443,8 +477,19 @@ class ConstantArg(ArrayBase, KernelArgument):
 
 class ImageArg(ArrayBase, KernelArgument):
     __doc__ = ArrayBase.__doc__
+
+    def __init__(self, *args, **kwargs):
+        if kwargs.pop("address_space", AddressSpace.GLOBAL) != AddressSpace.GLOBAL:
+            raise LoopyError("'address_space' for ImageArg must be GLOBAL.")
+        super().__init__(*args, **kwargs)
+
     min_target_axes = 1
     max_target_axes = 3
+
+    # ImageArg cannot be an output (for now)
+    is_output = False
+    is_input = True
+    address_space = AddressSpace.GLOBAL
 
     @property
     def dimensions(self):
@@ -466,7 +511,7 @@ class ImageArg(ArrayBase, KernelArgument):
 
 class ValueArg(KernelArgument, Taggable):
     def __init__(self, name, dtype=None, approximately=1000, target=None,
-            is_output_only=False, tags=None):
+            is_output=False, is_input=True, tags=None):
         """
         :arg tags: A an instance of or Iterable of instances of
             :class:`pytools.tag.Tag` intended for consumption by an
@@ -477,7 +522,9 @@ class ValueArg(KernelArgument, Taggable):
                 dtype=dtype,
                 approximately=approximately,
                 target=target,
-                is_output_only=is_output_only, tags=tags)
+                is_output=is_output,
+                is_input=is_input,
+                tags=tags)
 
     def __str__(self):
         import loopy as lp

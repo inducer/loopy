@@ -104,11 +104,13 @@ man_pages = [
 intersphinx_mapping = {
     "https://docs.python.org/3": None,
     "https://numpy.org/doc/stable/": None,
+    "https://documen.tician.de/pytools": None,
     "https://documen.tician.de/islpy": None,
     "https://documen.tician.de/pyopencl": None,
     "https://documen.tician.de/cgen": None,
     "https://documen.tician.de/pymbolic": None,
     "https://documen.tician.de/pytools": None,
+    "https://pyrsistent.readthedocs.io/en/latest/": None,
     }
 
 autoclass_content = "class"

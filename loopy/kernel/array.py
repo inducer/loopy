@@ -88,6 +88,9 @@ class _StrideArrayDimTagBase(ArrayDimImplementationTag):
         :class:`ComputedStrideArrayDimTag` instances may occur.
     """
 
+    def depends_on(self):
+        raise NotImplementedError()
+
 
 class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
     """An arg dimension implementation tag for a fixed (potentially
@@ -145,6 +148,14 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
 
         return self.copy(stride=mapper(self.stride))
 
+    def depends_on(self):
+        from loopy.kernel.data import auto
+        from loopy.symbolic import DependencyMapper
+        if self.stride is auto:
+            return frozenset()
+
+        return DependencyMapper(composite_leaves=auto)(self.stride)
+
 
 class ComputedStrideArrayDimTag(_StrideArrayDimTagBase):
     """
@@ -179,6 +190,9 @@ class ComputedStrideArrayDimTag(_StrideArrayDimTagBase):
     def map_expr(self, mapper):
         return self
 
+    def depends_on(self):
+        return frozenset()
+
 
 class SeparateArrayArrayDimTag(ArrayDimImplementationTag):
     def stringify(self, include_target_axis):
@@ -190,6 +204,9 @@ class SeparateArrayArrayDimTag(ArrayDimImplementationTag):
     def map_expr(self, mapper):
         return self
 
+    def depends_on(self):
+        return frozenset()
+
 
 class VectorArrayDimTag(ArrayDimImplementationTag):
     def stringify(self, include_target_axis):
@@ -200,6 +217,9 @@ class VectorArrayDimTag(ArrayDimImplementationTag):
 
     def map_expr(self, mapper):
         return self
+
+    def depends_on(self):
+        return frozenset()
 
 
 NESTING_LEVEL_RE = re.compile(r"^N([-0-9]+)(?::(.*)|)$")
@@ -864,6 +884,7 @@ class ArrayBase(ImmutableRecord, Taggable):
                 order=order,
                 alignment=alignment,
                 for_atomic=for_atomic,
+                target=target,
                 tags=tags,
                 **kwargs)
 

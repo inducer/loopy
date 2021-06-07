@@ -61,7 +61,7 @@ class LivenessAnalysis:
 
     def __init__(self, kernel):
         self.kernel = kernel
-        self.schedule = self.kernel.schedule
+        self.schedule = kernel.schedule
 
     @memoize_method
     def get_successor_relation(self):
@@ -232,8 +232,9 @@ class TemporarySaver:
         def new_shape(self):
             return self.hw_dims + self.non_hw_dims
 
-    def __init__(self, kernel):
+    def __init__(self, kernel, callables_table):
         self.kernel = kernel
+        self.callables_table = callables_table
         self.var_name_gen = kernel.get_var_name_generator()
         self.insn_name_gen = kernel.get_instruction_id_generator()
 
@@ -436,7 +437,8 @@ class TemporarySaver:
             return (), ()
 
         group_sizes, local_sizes = (
-            self.kernel.get_grid_sizes_for_insn_ids_as_exprs(accessor_insn_ids))
+            self.kernel.get_grid_sizes_for_insn_ids_as_exprs(accessor_insn_ids,
+                self.callables_table))
 
         if temporary.address_space == lp.AddressSpace.LOCAL:
             # Elide local axes in the save slot for local temporaries.
@@ -623,7 +625,7 @@ class TemporarySaver:
                     kernel = lp.add_nosync(kernel, "global", source, sink)
 
         from loopy.kernel.tools import assign_automatic_axes
-        return assign_automatic_axes(kernel)
+        return assign_automatic_axes(kernel, self.callables_table)
 
     def save(self, temporary, subkernel):
         self.save_or_reload_impl(temporary, subkernel, "save")
@@ -717,7 +719,7 @@ class TemporarySaver:
 
 # {{{ auto save and reload across kernel calls
 
-def save_and_reload_temporaries(kernel):
+def save_and_reload_temporaries(program, entrypoint=None):
     """
     Add instructions to save and reload temporary variables that are live
     across kernel calls.
@@ -740,13 +742,28 @@ def save_and_reload_temporaries(kernel):
 
     :returns: The resulting kernel
     """
-    liveness = LivenessAnalysis(kernel)
-    saver = TemporarySaver(kernel)
+    if entrypoint is None:
+        if len(program.entrypoints) != 1:
+            raise LoopyError("Missing argument 'entrypoint'.")
+        entrypoint = list(program.entrypoints)[0]
+
+    knl = program[entrypoint]
+
+    if not knl.schedule:
+        program = lp.preprocess_program(program)
+        from loopy.schedule import get_one_linearized_kernel
+        knl = get_one_linearized_kernel(program[entrypoint],
+                program.callables_table)
+
+    assert knl.schedule is not None
+
+    liveness = LivenessAnalysis(knl)
+    saver = TemporarySaver(knl, program.callables_table)
 
     from loopy.schedule.tools import (
         temporaries_read_in_subkernel, temporaries_written_in_subkernel)
 
-    for sched_idx, sched_item in enumerate(kernel.schedule):
+    for sched_idx, sched_item in enumerate(knl.schedule):
 
         if isinstance(sched_item, CallKernel):
             # Any written temporary that is live-out needs to be read into
@@ -757,8 +774,9 @@ def save_and_reload_temporaries(kernel):
             else:
                 subkernel = sched_item.kernel_name
                 interesting_temporaries = (
-                    temporaries_read_in_subkernel(kernel, subkernel)
-                    | temporaries_written_in_subkernel(kernel, subkernel))
+                    temporaries_read_in_subkernel(knl, subkernel)
+                    | temporaries_written_in_subkernel(knl,
+                                                       subkernel))
 
             for temporary in liveness[sched_idx].live_out & interesting_temporaries:
                 logger.info("reloading {} at entry of {}"
@@ -766,20 +784,20 @@ def save_and_reload_temporaries(kernel):
                 saver.reload(temporary, sched_item.kernel_name)
 
         elif isinstance(sched_item, ReturnFromKernel):
-            if sched_idx == len(kernel.schedule) - 1:
+            if sched_idx == len(knl.schedule) - 1:
                 # Kernel exit: nothing live
                 interesting_temporaries = set()
             else:
                 subkernel = sched_item.kernel_name
                 interesting_temporaries = (
-                    temporaries_written_in_subkernel(kernel, subkernel))
+                    temporaries_written_in_subkernel(knl, subkernel))
 
             for temporary in liveness[sched_idx].live_in & interesting_temporaries:
                 logger.info("saving {} before return of {}"
                         .format(temporary, sched_item.kernel_name))
                 saver.save(temporary, sched_item.kernel_name)
 
-    return saver.finish()
+    return program.with_kernel(saver.finish())
 
 # }}}
 

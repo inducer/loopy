@@ -146,21 +146,31 @@ jobs:
             env:
                 DOWNSTREAM_PROJECT: ${{ matrix.downstream_project }}
             run: |
-                git clone "https://github.com/inducer/$DOWNSTREAM_PROJECT.git"
+                curl -L -O https://tiker.net/ci-support-v0
+                . ./ci-support-v0
+
+                # Use "special grudge" for kcv3 and branches targeting it.
+                if [[ "$DOWNSTREAM_PROJECT" = "grudge" ]] && [[ "$GITHUB_HEAD_REF" = "kernel_callables_v3-edit2" || "$GITHUB_BASE_REF" = "kernel_callables_v3-edit2" ]]; then
+                  with_echo git clone "https://github.com/kaushikcfd/$DOWNSTREAM_PROJECT.git" -b "kcv3-e2-compat"
+                else
+                  with_echo git clone "https://github.com/inducer/$DOWNSTREAM_PROJECT.git"
+                fi
                 cd "$DOWNSTREAM_PROJECT"
                 echo "*** $DOWNSTREAM_PROJECT version: $(git rev-parse --short HEAD)"
 
+                if [[ "$DOWNSTREAM_PROJECT" = "pytential" ]] && [[ "$GITHUB_HEAD_REF" = "kernel_callables_v3-edit2" || "$GITHUB_BASE_REF" = "kernel_callables_v3-edit2" ]]; then
+                  sed -i "/egg=sumpy/ c git+https://github.com/inducer/sumpy.git@loopy-callables#egg=sumpy" requirements.txt
+                fi
+                
+                transfer_requirements_git_urls ../requirements.txt ./requirements.txt
                 sed -i "/egg=loopy/ c git+file://$(readlink -f ..)#egg=loopy" requirements.txt
+                sed -i "/mpi4py/ d" requirements.txt
 
                 export CONDA_ENVIRONMENT=.test-conda-env-py3.yml
 
                 # Avoid slow or complicated tests in downstream projects
                 export PYTEST_ADDOPTS="-k 'not (slowtest or octave or mpi)'"
 
-                sed -i "/mpi4py/ d" requirements.txt
-
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
-                . ./ci-support.sh
                 build_py_project_in_conda_env
                 test_py_project
 

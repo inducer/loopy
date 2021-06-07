@@ -257,7 +257,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
     .. automethod:: __call__
     """
 
-    def __init__(self, context, kernel):
+    def __init__(self, context, program, entrypoint):
         """
         :arg context: a :class:`pyopencl.Context`
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
@@ -266,62 +266,69 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
             specific arguments.
         """
 
-        super().__init__(kernel)
+        super().__init__(program, entrypoint)
 
         self.context = context
 
         from loopy.target.pyopencl import PyOpenCLTarget
-        if isinstance(kernel.target, PyOpenCLTarget):
-            self.kernel = kernel.copy(target=(
-                kernel.target.with_device(context.devices[0])))
+        if isinstance(program.target, PyOpenCLTarget):
+            self.program = program.copy(target=(
+                program.target.with_device(context.devices[0])))
 
-    def get_invoker_uncached(self, kernel, codegen_result):
+    def get_invoker_uncached(self, program, entrypoint, codegen_result):
         generator = PyOpenCLExecutionWrapperGenerator()
-        return generator(kernel, codegen_result)
+        return generator(program, entrypoint, codegen_result)
 
     def get_wrapper_generator(self):
         return PyOpenCLExecutionWrapperGenerator()
 
     @memoize_method
-    def kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
-        kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype_set)
+    def program_info(self, entrypoint, arg_to_dtype_set=frozenset(),
+            all_kwargs=None):
+        program = self.get_typed_and_scheduled_program(entrypoint,
+                arg_to_dtype_set)
 
+        # FIXME: now just need to add the types to the arguments
         from loopy.codegen import generate_code_v2
         from loopy.target.execution import get_highlighted_code
-        codegen_result = generate_code_v2(kernel)
+        codegen_result = generate_code_v2(program)
 
         dev_code = codegen_result.device_code()
 
-        if self.kernel.options.write_cl:
+        if program[entrypoint].options.write_cl:
+            #FIXME: redirect to "translation unit" level option as well.
             output = dev_code
-            if self.kernel.options.highlight_cl:
+            if self.program[entrypoint].options.highlight_cl:
                 output = get_highlighted_code(output)
 
-            if self.kernel.options.write_cl is True:
+            if self.program[entrypoint].options.write_cl is True:
                 print(output)
             else:
-                with open(self.kernel.options.write_cl, "w") as outf:
+                with open(self.program[entrypoint].options.write_cl, "w") as outf:
                     outf.write(output)
 
-        if self.kernel.options.edit_cl:
+        if program[entrypoint].options.edit_cl:
+            #FIXME: redirect to "translation unit" level option as well.
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.cl")
 
         import pyopencl as cl
 
+        #FIXME: redirect to "translation unit" level option as well.
         cl_program = (
                 cl.Program(self.context, dev_code)
-                .build(options=kernel.options.cl_build_options))
+                .build(options=program[entrypoint].options.cl_build_options))
 
         cl_kernels = _Kernels()
-        for dp in codegen_result.device_programs:
-            setattr(cl_kernels, dp.name, getattr(cl_program, dp.name))
+        for dp in cl_program.kernel_names.split(";"):
+            setattr(cl_kernels, dp, getattr(cl_program, dp))
 
         return _KernelInfo(
-                kernel=kernel,
+                program=program,
                 cl_kernels=cl_kernels,
-                implemented_data_info=codegen_result.implemented_data_info,
-                invoker=self.get_invoker(kernel, codegen_result))
+                implemented_data_info=codegen_result.implemented_data_infos[
+                    entrypoint],
+                invoker=self.get_invoker(program, entrypoint, codegen_result))
 
     def __call__(self, queue, **kwargs):
         """
@@ -356,10 +363,12 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         kwargs = self.packing_controller.unpack(kwargs)
 
-        kernel_info = self.kernel_info(self.arg_to_dtype_set(kwargs))
+        program_info = self.program_info(kwargs["entrypoint"],
+                self.arg_to_dtype_set(kwargs))
+        kwargs.pop("entrypoint")
 
-        return kernel_info.invoker(
-                kernel_info.cl_kernels, queue, allocator, wait_for,
+        return program_info.invoker(
+                program_info.cl_kernels, queue, allocator, wait_for,
                 out_host, **kwargs)
 
 # }}}

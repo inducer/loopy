@@ -88,18 +88,22 @@ def generate_code_for_sched_index(codegen_state, sched_index):
         codegen_result = generate_host_or_device_program(
                 new_codegen_state, sched_index)
 
-        glob_grid, loc_grid = kernel.get_grid_sizes_for_insn_ids_as_exprs(
-                get_insn_ids_for_block_at(kernel.schedule, sched_index))
+        if codegen_state.is_entrypoint:
+            glob_grid, loc_grid = kernel.get_grid_sizes_for_insn_ids_as_exprs(
+                    get_insn_ids_for_block_at(kernel.schedule, sched_index),
+                    codegen_state.callables_table)
+            return merge_codegen_results(codegen_state, [
+                codegen_result,
 
-        return merge_codegen_results(codegen_state, [
-            codegen_result,
-
-            codegen_state.ast_builder.get_kernel_call(
-                codegen_state,
-                sched_item.kernel_name,
-                glob_grid, loc_grid,
-                extra_args),
-            ])
+                codegen_state.ast_builder.get_kernel_call(
+                    codegen_state,
+                    sched_item.kernel_name,
+                    glob_grid, loc_grid,
+                    extra_args),
+                ])
+        else:
+            # do not generate host code for non-entrypoint kernels
+            return codegen_result
 
     elif isinstance(sched_item, EnterLoop):
         tags = kernel.iname_tags(sched_item.iname)

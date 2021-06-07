@@ -29,6 +29,14 @@ from loopy.types import NumpyType
 from loopy.diagnostic import (
         LoopyError,
         TypeInferenceFailure, DependencyTypeInferenceFailure)
+from loopy.kernel.instruction import _DataObliviousInstruction
+
+from loopy.symbolic import (
+        LinearSubscript, parse_tagged_name, RuleAwareIdentityMapper,
+        SubstitutionRuleExpander, ResolvedFunction,
+        SubstitutionRuleMappingContext, SubArrayRef)
+from pymbolic.primitives import Variable, Subscript, Lookup
+from loopy.translation_unit import CallablesInferenceContext, make_clbl_inf_ctx
 
 import logging
 logger = logging.getLogger(__name__)
@@ -40,10 +48,141 @@ def _debug(kernel, s, *args):
         logger.debug(f"{kernel.name}: {logstr}")
 
 
+def get_return_types_as_tuple(arg_id_to_dtype):
+    """Returns the types of arguments in  a tuple format.
+
+    :arg arg_id_to_dtype: An instance of :class:`dict` which denotes a
+                            mapping from the arguments to their inferred types.
+    """
+    return_arg_id_to_dtype = {id: dtype for id, dtype in
+            arg_id_to_dtype.items() if (isinstance(id, int) and id < 0)}
+    return_arg_pos = sorted(return_arg_id_to_dtype.keys(), reverse=True)
+
+    return tuple(return_arg_id_to_dtype[id] for id in return_arg_pos)
+
+
+# {{{ renaming helpers
+
+class FunctionNameChanger(RuleAwareIdentityMapper):
+    """
+    Changes the names of scoped functions in calls of expressions according to
+    the mapping ``calls_to_new_functions``
+    """
+
+    def __init__(self, rule_mapping_context, calls_to_new_names,
+            subst_expander):
+        super().__init__(rule_mapping_context)
+        self.calls_to_new_names = calls_to_new_names
+        self.subst_expander = subst_expander
+
+    def map_call(self, expr, expn_state):
+        name, tag = parse_tagged_name(expr.function)
+
+        if name not in self.rule_mapping_context.old_subst_rules:
+            expanded_expr = self.subst_expander(expr)
+            if expr in self.calls_to_new_names:
+                return type(expr)(
+                        ResolvedFunction(self.calls_to_new_names[expr]),
+                        tuple(self.rec(child, expn_state)
+                            for child in expr.parameters))
+            elif expanded_expr in self.calls_to_new_names:
+                # FIXME: This is killing the substitution.
+                # Maybe using a RuleAwareIdentityMapper for TypeInferenceMapper
+                # would help.
+                return type(expr)(
+                        ResolvedFunction(self.calls_to_new_names[expanded_expr]),
+                        tuple(self.rec(child, expn_state)
+                            for child in expanded_expr.parameters))
+            else:
+                return super().map_call(
+                        expr, expn_state)
+        else:
+            return self.map_substitution(name, tag, expr.parameters, expn_state)
+
+    def map_call_with_kwargs(self, expr):
+        # See https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
+
+
+def change_names_of_pymbolic_calls(kernel, pymbolic_calls_to_new_names):
+    """
+    Returns a copy of *kernel* with the names of pymbolic calls changed
+    according to the mapping given by *pymbolic_calls_new_names*.
+
+    :arg pymbolic_calls_to_new_names: A mapping from instances of
+        :class:`pymbolic.primitives.Call` to :class:`str`.
+
+    **Example: **
+
+        - Given a *kernel* --
+
+        .. code::
+
+            -------------------------------------------------------------
+            KERNEL: loopy_kernel
+            -------------------------------------------------------------
+            ARGUMENTS:
+            x: type: <auto/runtime>, shape: (10), dim_tags: (N0:stride:1)
+            y: type: <auto/runtime>, shape: (10), dim_tags: (N0:stride:1)
+            -------------------------------------------------------------
+            DOMAINS:
+            { [i] : 0 <= i <= 9 }
+            -------------------------------------------------------------
+            INAME IMPLEMENTATION TAGS:
+            i: None
+            -------------------------------------------------------------
+            INSTRUCTIONS:
+            for i
+                y[i] = ResolvedFunction('sin')(x[i])
+            end i
+            -------------------------------------------------------------
+
+        - And given a *pymbolic_calls_to_new_names* --
+
+        .. code::
+
+            {Call(ResolvedFunction(Variable('sin')), (Subscript(Variable('x'),
+            Variable('i')),))": 'sin_1'}
+
+        - The following *kernel* is returned --
+
+        .. code::
+
+            -------------------------------------------------------------
+            KERNEL: loopy_kernel
+            -------------------------------------------------------------
+            ARGUMENTS:
+            x: type: <auto/runtime>, shape: (10), dim_tags: (N0:stride:1)
+            y: type: <auto/runtime>, shape: (10), dim_tags: (N0:stride:1)
+            -------------------------------------------------------------
+            DOMAINS:
+            { [i] : 0 <= i <= 9 }
+            -------------------------------------------------------------
+            INAME IMPLEMENTATION TAGS:
+            i: None
+            -------------------------------------------------------------
+            INSTRUCTIONS:
+            for i
+                y[i] = ResolvedFunction('sin_1')(x[i])
+            end i
+            -------------------------------------------------------------
+    """
+    rule_mapping_context = SubstitutionRuleMappingContext(
+                    kernel.substitutions, kernel.get_var_name_generator())
+    subst_expander = SubstitutionRuleExpander(kernel.substitutions)
+    name_changer = FunctionNameChanger(rule_mapping_context,
+            pymbolic_calls_to_new_names, subst_expander)
+
+    return rule_mapping_context.finish_kernel(
+            name_changer.map_kernel(kernel))
+
+# }}}
+
+
 # {{{ type inference mapper
 
 class TypeInferenceMapper(CombineMapper):
-    def __init__(self, kernel, new_assignments=None):
+    def __init__(self, kernel, clbl_inf_ctx, new_assignments=None):
         """
         :arg new_assignments: mapping from names to either
             :class:`loopy.kernel.data.TemporaryVariable`
@@ -52,10 +191,13 @@ class TypeInferenceMapper(CombineMapper):
             instances
         """
         self.kernel = kernel
+        assert isinstance(clbl_inf_ctx, CallablesInferenceContext)
         if new_assignments is None:
             new_assignments = {}
         self.new_assignments = new_assignments
         self.symbols_with_unknown_types = set()
+        self.clbl_inf_ctx = clbl_inf_ctx
+        self.old_calls_to_new_calls = {}
 
     def __call__(self, expr, return_tuple=False, return_dtype_set=False):
         kwargs = {}
@@ -88,13 +230,16 @@ class TypeInferenceMapper(CombineMapper):
     # /!\ Introduce caches with care--numpy.float32(x) and numpy.float64(x)
     # are Python-equal (for many common constants such as integers).
 
-    def copy(self):
-        return type(self)(self.kernel, self.new_assignments)
+    def copy(self, clbl_inf_ctx=None):
+        if clbl_inf_ctx is None:
+            clbl_inf_ctx = self.clbl_inf_ctx
+        return type(self)(self.kernel, clbl_inf_ctx,
+                self.new_assignments)
 
     def with_assignments(self, names_to_vars):
         new_ass = self.new_assignments.copy()
         new_ass.update(names_to_vars)
-        return type(self)(self.kernel, new_ass)
+        return type(self)(self.kernel, self.clbl_inf_ctx, new_ass)
 
     @staticmethod
     def combine(dtype_sets):
@@ -250,14 +395,17 @@ class TypeInferenceMapper(CombineMapper):
         return self.rec(expr.aggregate)
 
     def map_call(self, expr, return_tuple=False):
+
         from pymbolic.primitives import Variable
 
         identifier = expr.function
-        if isinstance(identifier, Variable):
-            identifier = identifier.name
 
-        if identifier in ["indexof", "indexof_vec"]:
-            return [self.kernel.index_dtype]
+        if not isinstance(identifier, ResolvedFunction):
+            # function not resolved => exit
+            return []
+
+        if isinstance(identifier, (Variable, ResolvedFunction)):
+            identifier = identifier.name
 
         def none_if_empty(d):
             if d:
@@ -266,25 +414,44 @@ class TypeInferenceMapper(CombineMapper):
             else:
                 return None
 
-        arg_dtypes = tuple(none_if_empty(self.rec(par)) for par in expr.parameters)
-        if None in arg_dtypes:
+        arg_id_to_dtype = {i: none_if_empty(self.rec(par))
+                           for (i, par) in enumerate(expr.parameters)}
+
+        # specializing the known function wrt type
+        in_knl_callable = self.clbl_inf_ctx[expr.function.name]
+
+        in_knl_callable, self.clbl_inf_ctx = (in_knl_callable
+                                              .with_types(arg_id_to_dtype,
+                                                          self.clbl_inf_ctx))
+
+        in_knl_callable = in_knl_callable.with_target(self.kernel.target)
+
+        # storing the type specialized function so that it can be used for
+        # later use
+        self.clbl_inf_ctx, new_function_id = (
+                self.clbl_inf_ctx.with_callable(
+                    expr.function.function,
+                    in_knl_callable))
+
+        self.old_calls_to_new_calls[expr] = new_function_id
+
+        new_arg_id_to_dtype = in_knl_callable.arg_id_to_dtype
+
+        if new_arg_id_to_dtype is None:
             return []
 
-        mangle_result = self.kernel.mangle_function(identifier, arg_dtypes)
-        if return_tuple:
-            if mangle_result is not None:
-                return [mangle_result.result_dtypes]
-        else:
-            if mangle_result is not None:
-                if len(mangle_result.result_dtypes) != 1 and not return_tuple:
-                    raise LoopyError("functions with more or fewer than one "
-                            "return value may only be used in direct assignments")
+        # collecting result dtypes in order of the assignees
+        if -1 in new_arg_id_to_dtype and new_arg_id_to_dtype[-1] is not None:
+            if return_tuple:
+                return [get_return_types_as_tuple(new_arg_id_to_dtype)]
+            else:
+                return [new_arg_id_to_dtype[-1]]
 
-                return [mangle_result.result_dtypes[0]]
+        return []
 
-        raise RuntimeError("unable to resolve "
-                "function '%s' with %d given arguments"
-                % (identifier, len(arg_dtypes)))
+    def map_call_with_kwargs(self, expr):
+        # See https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
 
     def map_variable(self, expr):
         if expr.name in self.kernel.all_inames():
@@ -352,11 +519,20 @@ class TypeInferenceMapper(CombineMapper):
     def map_comparison(self, expr):
         # "bool" is unusable because OpenCL's bool has indeterminate memory
         # format.
+        self(expr.left, return_tuple=False, return_dtype_set=False)
+        self(expr.right, return_tuple=False, return_dtype_set=False)
         return [NumpyType(np.dtype(np.int32))]
 
-    map_logical_not = map_comparison
-    map_logical_and = map_comparison
-    map_logical_or = map_comparison
+    def map_logical_not(self, expr):
+        return [NumpyType(np.dtype(np.int32))]
+
+    def map_logical_and(self, expr):
+        for child in expr.children:
+            self.rec(child)
+
+        return [NumpyType(np.dtype(np.int32))]
+
+    map_logical_or = map_logical_and
 
     def map_group_hw_index(self, expr, *args):
         return [self.kernel.index_dtype]
@@ -393,11 +569,105 @@ class TypeInferenceMapper(CombineMapper):
                 rec_results = self.rec(expr.expr)
 
         if return_tuple:
-            return [expr.operation.result_dtypes(self.kernel, *rec_result)
+            return [expr.operation.result_dtypes(*rec_result)
                     for rec_result in rec_results]
         else:
-            return [expr.operation.result_dtypes(self.kernel, rec_result)[0]
+            return [expr.operation.result_dtypes(rec_result)[0]
                     for rec_result in rec_results]
+
+    def map_sub_array_ref(self, expr):
+        return self.rec(expr.subscript)
+
+    map_fortran_division = map_quotient
+
+# }}}
+
+
+# {{{ TypeReader
+
+class TypeReader(TypeInferenceMapper):
+    def __init__(self, kernel, callables, new_assignments={}):
+        self.kernel = kernel
+        self.callables = callables
+        self.new_assignments = new_assignments
+
+    # {{{ disabled interface
+
+    def copy(self, *args, **kwargs):
+        raise ValueError("Not allowed in TypeReader")
+
+    # }}}
+
+    def with_assignments(self, names_to_vars):
+        new_ass = self.new_assignments.copy()
+        new_ass.update(names_to_vars)
+        return type(self)(self.kernel, self.callables, new_ass)
+
+    def map_call(self, expr, return_tuple=False):
+        identifier = expr.function
+        if isinstance(identifier, (Variable, ResolvedFunction)):
+            identifier = identifier.name
+
+        # specializing the known function wrt type
+        if isinstance(expr.function, ResolvedFunction):
+            in_knl_callable = self.callables[expr.function.name]
+
+            arg_id_to_dtype = in_knl_callable.arg_id_to_dtype
+
+            if arg_id_to_dtype is None:
+                return []
+
+            # collecting result dtypes in order of the assignees
+            if -1 in arg_id_to_dtype and arg_id_to_dtype[-1] is not None:
+                if return_tuple:
+                    return [get_return_types_as_tuple(arg_id_to_dtype)]
+                else:
+                    return [arg_id_to_dtype[-1]]
+
+        return []
+
+    def map_variable(self, expr):
+        if expr.name in self.kernel.all_inames():
+            return [self.kernel.index_dtype]
+
+        result = self.kernel.mangle_symbol(
+                self.kernel.target.get_device_ast_builder(),
+                expr.name)
+
+        if result is not None:
+            result_dtype, _ = result
+            return [result_dtype]
+
+        obj = self.new_assignments.get(expr.name)
+
+        if obj is None:
+            obj = self.kernel.arg_dict.get(expr.name)
+
+        if obj is None:
+            obj = self.kernel.temporary_variables.get(expr.name)
+
+        if obj is None:
+            raise TypeInferenceFailure("name not known in type inference: %s"
+                    % expr.name)
+
+        from loopy.kernel.data import TemporaryVariable, KernelArgument
+        import loopy as lp
+        if isinstance(obj, (KernelArgument, TemporaryVariable)):
+            assert obj.dtype is not lp.auto
+            result = [obj.dtype]
+            if result[0] is None:
+                raise DependencyTypeInferenceFailure(
+                        ", ".join(sorted(expr.name)))
+            else:
+                return result
+
+        else:
+            raise RuntimeError("unexpected type inference "
+                    "object type for '%s'" % expr.name)
+
+    def map_call_with_kwargs(self, expr):
+        # See https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
 
 # }}}
 
@@ -405,8 +675,10 @@ class TypeInferenceMapper(CombineMapper):
 # {{{ infer single variable
 
 def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
+
     if var_name in kernel.all_params():
-        return [kernel.index_dtype], []
+        return [kernel.index_dtype], [], {}, (
+                type_inf_mapper.clbl_inf_ctx)
 
     from functools import partial
     debug = partial(_debug, kernel)
@@ -451,11 +723,15 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         dtype_sets.append(result)
 
     if not dtype_sets:
-        return None, type_inf_mapper.symbols_with_unknown_types
+        return (
+                None, type_inf_mapper.symbols_with_unknown_types, None,
+                type_inf_mapper.clbl_inf_ctx)
 
     result = type_inf_mapper.combine(dtype_sets)
 
-    return result, type_inf_mapper.symbols_with_unknown_types
+    return (result, type_inf_mapper.symbols_with_unknown_types,
+            type_inf_mapper.old_calls_to_new_calls,
+            type_inf_mapper.clbl_inf_ctx)
 
 # }}}
 
@@ -482,7 +758,7 @@ class _DictUnionView:
 
 # {{{ infer_unknown_types
 
-def infer_unknown_types(kernel, expect_completion=False):
+def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
     """Infer types on temporaries and arguments."""
 
     logger.debug("%s: infer types" % kernel.name)
@@ -544,7 +820,8 @@ def infer_unknown_types(kernel, expect_completion=False):
             new_temp_vars,
             new_arg_dict
             ])
-    type_inf_mapper = TypeInferenceMapper(kernel, item_lookup)
+    type_inf_mapper = TypeInferenceMapper(kernel, clbl_inf_ctx,
+            item_lookup)
 
     from loopy.symbolic import SubstitutionRuleExpander
     subst_expander = SubstitutionRuleExpander(kernel.substitutions)
@@ -552,6 +829,8 @@ def infer_unknown_types(kernel, expect_completion=False):
     # {{{ work on type inference queue
 
     from loopy.kernel.data import TemporaryVariable, KernelArgument
+
+    old_calls_to_new_calls = {}
 
     for var_chain in sccs:
         changed_during_last_queue_run = False
@@ -575,10 +854,15 @@ def infer_unknown_types(kernel, expect_completion=False):
             item = item_lookup[name]
 
             debug("inferring type for %s %s", type(item).__name__, item.name)
-
-            result, symbols_with_unavailable_types = (
-                    _infer_var_type(
-                            kernel, item.name, type_inf_mapper, subst_expander))
+            try:
+                (result, symbols_with_unavailable_types,
+                        new_old_calls_to_new_calls, clbl_inf_ctx) = (
+                        _infer_var_type(
+                                kernel, item.name, type_inf_mapper, subst_expander))
+            except DependencyTypeInferenceFailure:
+                result = tuple()
+            type_inf_mapper = type_inf_mapper.copy(
+                    clbl_inf_ctx=clbl_inf_ctx)
 
             failed = not result
             if not failed:
@@ -597,6 +881,7 @@ def infer_unknown_types(kernel, expect_completion=False):
                         new_arg_dict[name] = item.copy(dtype=new_dtype)
                     else:
                         raise LoopyError("unexpected item type in type inference")
+                old_calls_to_new_calls.update(new_old_calls_to_new_calls)
             else:
                 debug("     failure")
 
@@ -609,14 +894,10 @@ def infer_unknown_types(kernel, expect_completion=False):
                                 " (need type of '%s'--check for missing arguments)"
                                 % ", ".join(symbols_with_unavailable_types))
 
-                    if expect_completion:
-                        raise LoopyError(
-                                "could not determine type of '%s'%s"
-                                % (item.name, advice))
-
-                    else:
-                        # We're done here.
-                        break
+                    debug("could not determine type of '%s'%s"
+                           % (item.name, advice))
+                    # We're done here
+                    break
 
                 # remember that this item failed
                 failed_names.add(item.name)
@@ -624,7 +905,6 @@ def infer_unknown_types(kernel, expect_completion=False):
                 if set(queue) == failed_names:
                     # We did what we could...
                     print(queue, failed_names, item.name)
-                    assert not expect_completion
                     break
 
                 # can't infer type yet, put back into queue
@@ -635,14 +915,129 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     # }}}
 
+    # {{{ check if insn missed during type inference
+
+    def _instruction_missed_during_inference(insn):
+        for assignee in insn.assignees:
+            if isinstance(assignee, Lookup):
+                assignee = assignee.aggregate
+
+            if isinstance(assignee, Variable):
+                if assignee.name in kernel.arg_dict:
+                    if kernel.arg_dict[assignee.name].dtype is None:
+                        return False
+                else:
+                    assert assignee.name in kernel.temporary_variables
+                    if kernel.temporary_variables[assignee.name].dtype is None:
+                        return False
+
+            elif isinstance(assignee, (Subscript, LinearSubscript)):
+                if assignee.aggregate.name in kernel.arg_dict:
+                    if kernel.arg_dict[assignee.aggregate.name].dtype is None:
+                        return False
+                else:
+                    assert assignee.aggregate.name in kernel.temporary_variables
+                    if kernel.temporary_variables[
+                            assignee.aggregate.name].dtype is None:
+                        return False
+            else:
+                assert isinstance(assignee, SubArrayRef)
+                if assignee.subscript.aggregate.name in kernel.arg_dict:
+                    if kernel.arg_dict[
+                            assignee.subscript.aggregate.name].dtype is None:
+                        return False
+                else:
+                    assert assignee.subscript.aggregate.name in (
+                            kernel.temporary_variables)
+                    if kernel.temporary_variables[
+                            assignee.subscript.aggregate.name] is None:
+                        return False
+
+        return True
+
+    # }}}
+
+    for insn in kernel.instructions:
+        if isinstance(insn, lp.MultiAssignmentBase):
+            # just a dummy run over the expression, to pass over all the
+            # functions
+            if _instruction_missed_during_inference(insn):
+                type_inf_mapper(insn.expression,
+                        return_tuple=len(insn.assignees) != 1,
+                        return_dtype_set=True)
+        elif isinstance(insn, (_DataObliviousInstruction,
+                lp.CInstruction)):
+            pass
+        else:
+            raise NotImplementedError("Unknown instructions type %s." % (
+                type(insn).__name__))
+
+    clbl_inf_ctx = type_inf_mapper.clbl_inf_ctx
+    old_calls_to_new_calls.update(type_inf_mapper.old_calls_to_new_calls)
+
     end_time = time.time()
     logger.debug("type inference took {dur:.2f} seconds".format(
             dur=end_time - start_time))
 
-    return unexpanded_kernel.copy(
+    pre_type_specialized_knl = unexpanded_kernel.copy(
             temporary_variables=new_temp_vars,
             args=[new_arg_dict[arg.name] for arg in kernel.args],
             )
+
+    type_specialized_kernel = change_names_of_pymbolic_calls(
+            pre_type_specialized_knl, old_calls_to_new_calls)
+
+    return type_specialized_kernel, clbl_inf_ctx
+
+
+def infer_unknown_types(program, expect_completion=False):
+    """Infer types on temporaries and arguments."""
+    from loopy.kernel.data import auto
+    from loopy.translation_unit import resolve_callables
+
+    program = resolve_callables(program)
+
+    # {{{ early-exit criterion
+
+    if all(clbl.is_type_specialized()
+           for clbl in program.callables_table.values()):
+        # all the callables including the kernels have inferred their types
+        # => no need for type inference
+        return program
+
+    # }}}
+
+    clbl_inf_ctx = make_clbl_inf_ctx(program.callables_table,
+            program.entrypoints)
+
+    for e in program.entrypoints:
+        logger.debug(f"Entering entrypoint: {e}")
+        arg_id_to_dtype = {arg.name: arg.dtype for arg in
+                program[e].args if arg.dtype not in (None, auto)}
+        new_callable, clbl_inf_ctx = program.callables_table[e].with_types(
+                arg_id_to_dtype, clbl_inf_ctx)
+        clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable,
+                                                            is_entrypoint=True)
+        if expect_completion:
+            from loopy.types import LoopyType
+            new_knl = new_callable.subkernel
+
+            args_not_inferred = {arg.name
+                                 for arg in new_knl.args
+                                 if not isinstance(arg.dtype, LoopyType)}
+
+            tvs_not_inferred = {tv.name
+                                for tv in new_knl.temporary_variables.values()
+                                if not isinstance(tv.dtype, LoopyType)}
+
+            vars_not_inferred = tvs_not_inferred | args_not_inferred
+
+            if vars_not_inferred:
+                if expect_completion:
+                    raise LoopyError("could not determine type of"
+                            f" '{vars_not_inferred.pop()}' of kernel '{e}'.")
+
+    return clbl_inf_ctx.finish_program(program)
 
 # }}}
 
@@ -650,8 +1045,8 @@ def infer_unknown_types(kernel, expect_completion=False):
 # {{{ reduction expression helper
 
 def infer_arg_and_reduction_dtypes_for_reduction_expression(
-        kernel, expr, unknown_types_ok):
-    type_inf_mapper = TypeInferenceMapper(kernel)
+        kernel, expr, callables_table, unknown_types_ok):
+    type_inf_mapper = TypeReader(kernel, callables_table)
     import loopy as lp
 
     if expr.is_tuple_typed:
@@ -676,7 +1071,7 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
                 raise LoopyError("failed to determine type of accumulator for "
                         "reduction '%s'" % expr)
 
-    reduction_dtypes = expr.operation.result_dtypes(kernel, *arg_dtypes)
+    reduction_dtypes = expr.operation.result_dtypes(*arg_dtypes)
     reduction_dtypes = tuple(
             dt.with_target(kernel.target)
             if dt is not lp.auto else dt

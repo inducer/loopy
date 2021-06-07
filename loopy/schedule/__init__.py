@@ -1748,16 +1748,17 @@ def _insn_ids_reaching_end(schedule, kind, reverse):
     return insn_ids_alive_at_scope[-1]
 
 
-def append_barrier_or_raise_error(schedule, dep, verify_only):
+def append_barrier_or_raise_error(kernel_name, schedule, dep, verify_only):
     if verify_only:
         from loopy.diagnostic import MissingBarrierError
         raise MissingBarrierError(
-                "Dependency '%s' (for variable '%s') "
+                "%s: Dependency '%s' (for variable '%s') "
                 "requires synchronization "
                 "by a %s barrier (add a 'no_sync_with' "
                 "instruction option to state that no "
                 "synchronization is needed)"
                 % (
+                    kernel_name,
                     dep.dep_descr.format(
                         tgt=dep.target.id, src=dep.source.id),
                     dep.variable,
@@ -1828,7 +1829,8 @@ def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0
                 for dep in chain.from_iterable(
                         dep_tracker.gen_dependencies_with_target_at(insn)
                         for insn in loop_head):
-                    append_barrier_or_raise_error(result, dep, verify_only)
+                    append_barrier_or_raise_error(
+                            kernel.name, result, dep, verify_only)
                     # This barrier gets inserted outside the loop, hence it is
                     # executed unconditionally and so kills all sources before
                     # the loop.
@@ -1860,7 +1862,8 @@ def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0
             elif isinstance(sched_item, RunInstruction):
                 for dep in dep_tracker.gen_dependencies_with_target_at(
                         sched_item.insn_id):
-                    append_barrier_or_raise_error(result, dep, verify_only)
+                    append_barrier_or_raise_error(
+                            kernel.name, result, dep, verify_only)
                     dep_tracker.discard_all_sources()
                     break
                 result.append(sched_item)
@@ -1926,7 +1929,7 @@ class MinRecursionLimitForScheduling(MinRecursionLimit):
 
 # {{{ main scheduling entrypoint
 
-def generate_loop_schedules(kernel, debug_args={}):
+def generate_loop_schedules(kernel, callables_table, debug_args={}):
     """
     .. warning::
 
@@ -1939,17 +1942,18 @@ def generate_loop_schedules(kernel, debug_args={}):
     """
 
     with MinRecursionLimitForScheduling(kernel):
-        yield from generate_loop_schedules_inner(kernel, debug_args=debug_args)
+        yield from generate_loop_schedules_inner(kernel,
+                callables_table, debug_args=debug_args)
 
 
-def generate_loop_schedules_inner(kernel, debug_args={}):
+def generate_loop_schedules_inner(kernel, callables_table, debug_args={}):
     from loopy.kernel import KernelState
     if kernel.state not in (KernelState.PREPROCESSED, KernelState.LINEARIZED):
         raise LoopyError("cannot schedule a kernel that has not been "
                 "preprocessed")
 
     from loopy.check import pre_schedule_checks
-    pre_schedule_checks(kernel)
+    pre_schedule_checks(kernel, callables_table)
 
     schedule_count = 0
 
@@ -2061,7 +2065,8 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             gen_sched = convert_barrier_instructions_to_barriers(
                     kernel, gen_sched)
 
-            gsize, lsize = kernel.get_grid_size_upper_bounds()
+            gsize, lsize = kernel.get_grid_size_upper_bounds(callables_table,
+                                                             return_dict=True)
 
             if (gsize or lsize):
                 if not kernel.options.disable_global_barriers:
@@ -2118,7 +2123,7 @@ schedule_cache = WriteOncePersistentDict(
         key_builder=LoopyKeyBuilder())
 
 
-def _get_one_scheduled_kernel_inner(kernel):
+def _get_one_scheduled_kernel_inner(kernel, callables_table):
     # This helper function exists to ensure that the generator chain is fully
     # out of scope after the function returns. This allows it to be
     # garbage-collected in the exit handler of the
@@ -2128,22 +2133,24 @@ def _get_one_scheduled_kernel_inner(kernel):
     #
     # See https://gitlab.tiker.net/inducer/sumpy/issues/31 for context.
 
-    return next(iter(generate_loop_schedules(kernel)))
+    return next(iter(generate_loop_schedules(kernel, callables_table)))
 
 
-def get_one_scheduled_kernel(kernel):
+def get_one_scheduled_kernel(kernel, callables_table):
     warn_with_kernel(
         kernel, "get_one_scheduled_kernel_deprecated",
         "get_one_scheduled_kernel is deprecated. "
         "Use get_one_linearized_kernel instead.",
-        DeprecationWarning)
-    return get_one_linearized_kernel(kernel)
+        DeprecationWarning, stacklevel=2)
+    return get_one_linearized_kernel(kernel, callables_table)
 
 
-def get_one_linearized_kernel(kernel):
+def get_one_linearized_kernel(kernel, callables_table):
     from loopy import CACHING_ENABLED
 
-    sched_cache_key = kernel
+    # must include *callables_table* within the cache key as the preschedule
+    # checks depend on it.
+    sched_cache_key = (kernel, callables_table)
     from_cache = False
 
     if CACHING_ENABLED:
@@ -2158,7 +2165,8 @@ def get_one_linearized_kernel(kernel):
     if not from_cache:
         with ProcessLogger(logger, "%s: schedule" % kernel.name):
             with MinRecursionLimitForScheduling(kernel):
-                result = _get_one_scheduled_kernel_inner(kernel)
+                result = _get_one_scheduled_kernel_inner(kernel,
+                        callables_table)
 
     if CACHING_ENABLED and not from_cache:
         schedule_cache.store_if_not_present(sched_cache_key, result)

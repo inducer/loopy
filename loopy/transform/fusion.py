@@ -27,6 +27,10 @@ from islpy import dim_type
 from loopy.diagnostic import LoopyError
 from pymbolic import var
 
+from loopy.kernel import LoopKernel
+from loopy.translation_unit import TranslationUnit
+from loopy.kernel.function_interface import CallableKernel
+
 
 def _apply_renames_in_exprs(kernel, var_renames):
     from loopy.symbolic import (
@@ -126,9 +130,6 @@ def _merge_values(item_name, val_a, val_b):
 # {{{ two-kernel fusion
 
 def _fuse_two_kernels(kernela, kernelb):
-    from loopy.kernel import KernelState
-    if kernela.state != KernelState.INITIAL or kernelb.state != KernelState.INITIAL:
-        raise LoopyError("can only fuse kernels in INITIAL state")
 
     # {{{ fuse domains
 
@@ -252,9 +253,6 @@ def _fuse_two_kernels(kernela, kernelb):
                 "substitution",
                 kernela.substitutions,
                 kernelb.substitutions),
-            function_manglers=_ordered_merge_lists(
-                kernela.function_manglers,
-                kernelb.function_manglers),
             symbol_manglers=_ordered_merge_lists(
                 kernela.symbol_manglers,
                 kernelb.symbol_manglers),
@@ -327,6 +325,47 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
 
         *data_flow* was added in version 2016.2
     """
+    # FIXME: This should take in inputs as (prog1, knlname1) and (prog2,
+    # knlname2). if prog1 == prog2 then the callable names belong to the same
+    # namespace, otherwise the kernel names should be uniquified.
+    # We should also somehow be able to know that callables like "sin"/"cos"
+    # belong to the global namespace and need not be uniquified.
+
+    if all(isinstance(kernel, TranslationUnit) for kernel in kernels):
+        # {{{ sanity checks
+
+        for knl in kernels:
+            nkernels = len([i for i, clbl in knl.callables_table.items()
+                            if isinstance(clbl, CallableKernel)])
+            if nkernels != 1:
+                raise NotImplementedError("Translation unit with more than one"
+                        " callable kernel not allowed for now.")
+
+        # }}}
+
+        # {{{ "merge" the callable namespace
+
+        from loopy.transform.callable import rename_callable
+        loop_kernels_to_be_fused = []
+        new_callables = {}
+
+        for t_unit in kernels:
+            for name in set(t_unit.callables_table) & set(new_callables):
+                t_unit = rename_callable(t_unit, name)
+
+            for name, clbl in t_unit.callables_table.items():
+                if isinstance(clbl, CallableKernel):
+                    loop_kernels_to_be_fused.append(clbl.subkernel)
+                else:
+                    new_callables[name] = clbl
+
+        # }}}
+
+        kernels = loop_kernels_to_be_fused[:]
+    else:
+        assert all(isinstance(knl, LoopKernel) for knl in kernels)
+        new_callables = {}
+
     kernels = list(kernels)
 
     if data_flow is None:
@@ -405,6 +444,11 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
 
     # }}}
 
-    return result
+    new_callables[result.name] = CallableKernel(result)
+
+    return TranslationUnit(callables_table=new_callables,
+                           target=result.target,
+                           entrypoints=frozenset([result.name]))
+
 
 # vim: foldmethod=marker
