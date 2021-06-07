@@ -283,10 +283,10 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
         return PyOpenCLExecutionWrapperGenerator()
 
     @memoize_method
-    def program_info(self, entrypoint, arg_to_dtype_set=frozenset(),
+    def translation_unit_info(self, entrypoint, arg_to_dtype_set=frozenset(),
             all_kwargs=None):
-        program = self.get_typed_and_scheduled_program(entrypoint,
-                arg_to_dtype_set)
+        program = self.get_typed_and_scheduled_translation_unit(
+                entrypoint, arg_to_dtype_set)
 
         # FIXME: now just need to add the types to the arguments
         from loopy.codegen import generate_code_v2
@@ -363,12 +363,12 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         kwargs = self.packing_controller.unpack(kwargs)
 
-        program_info = self.program_info(kwargs["entrypoint"],
+        translation_unit_info = self.translation_unit_info(kwargs["entrypoint"],
                 self.arg_to_dtype_set(kwargs))
         kwargs.pop("entrypoint")
 
-        return program_info.invoker(
-                program_info.cl_kernels, queue, allocator, wait_for,
+        return translation_unit_info.invoker(
+                translation_unit_info.cl_kernels, queue, allocator, wait_for,
                 out_host, **kwargs)
 
 # }}}

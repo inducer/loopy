@@ -429,7 +429,8 @@ class CKernelExecutor(KernelExecutorBase):
     @memoize_method
     def program_info(self, entrypoint, arg_to_dtype_set=frozenset(),
             all_kwargs=None):
-        program = self.get_typed_and_scheduled_program(entrypoint, arg_to_dtype_set)
+        program = self.get_typed_and_scheduled_translation_unit(
+                entrypoint, arg_to_dtype_set)
 
         from loopy.codegen import generate_code_v2
         codegen_result = generate_code_v2(program)
