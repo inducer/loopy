@@ -318,14 +318,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                     "Will be unsupported in 2022.",
                     DeprecationWarning, stacklevel=2)
 
-        if inames is None:
-            if iname_to_tags is None:
-                iname_to_tags = {}
-
-            inames = {name: Iname(name, iname_to_tags.get(name, frozenset()))
-                      for name in _get_inames_from_domains(domains)}
-        else:
-            if iname_to_tags is not None:
+            if inames is not None:
                 raise LoopyError("Cannot provide both iname_to_tags and inames to "
                         "LoopKernel.__init__")
 
@@ -333,33 +326,15 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                 name: inames.get(name, Iname(name, frozenset()))
                 for name in _get_inames_from_domains(domains)}
 
+        assert isinstance(inames, dict)
+
         if index_dtype is None:
             index_dtype = np.int32
 
         # }}}
 
-        # {{{ process assumptions
-
-        if assumptions is None:
-            dom0_space = domains[0].get_space()
-            assumptions_space = isl.Space.params_alloc(
-                    dom0_space.get_ctx(), dom0_space.dim(dim_type.param))
-            for i in range(dom0_space.dim(dim_type.param)):
-                assumptions_space = assumptions_space.set_dim_name(
-                        dim_type.param, i,
-                        dom0_space.get_dim_name(dim_type.param, i))
-            assumptions = isl.BasicSet.universe(assumptions_space)
-
-        elif isinstance(assumptions, str):
-            assumptions_set_str = "[%s] -> { : %s}" \
-                    % (",".join(s for s in self.outer_params(domains)),
-                        assumptions)
-            assumptions = isl.BasicSet.read_from_str(domains[0].get_ctx(),
-                    assumptions_set_str)
-
+        assert isinstance(assumptions, isl.BasicSet)
         assert assumptions.is_params()
-
-        # }}}
 
         from loopy.types import to_loopy_type
         index_dtype = to_loopy_type(index_dtype, target=target)
@@ -390,7 +365,6 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                 DeprecationWarning, stacklevel=2)
             linearization = schedule
 
-        assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
 
         super().__init__(
@@ -1634,8 +1608,21 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             if "inames" in kwargs:
                 raise LoopyError("Cannot pass both `inames` and `iname_to_tags` to "
                         "LoopKernel.copy")
+            iname_to_tags = kwargs["iname_to_tags"]
+            domains = kwargs.get("domains", self.domains)
+            kwargs["inames"] = {name: Iname(name,
+                                            iname_to_tags.get(name, frozenset()))
+                                for name in _get_inames_from_domains(domains)
+                                }
+            del kwargs["iname_to_tags"]
 
-            kwargs["inames"] = None
+        if "domains" in kwargs:
+            inames = kwargs.get("inames", self.inames)
+            domains = kwargs["domains"]
+            kwargs["inames"] = {name: inames.get(name, Iname(name, frozenset()))
+                                for name in _get_inames_from_domains(domains)}
+
+            assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
 
         if "schedule" in kwargs:
             if "linearization" in kwargs:
@@ -1644,9 +1631,10 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
             kwargs["linearization"] = None
 
-        # Avoid carrying over an invalid cache when other parts of the kernel
-        # are modified.
-        kwargs["_cached_written_variables"] = None
+        if "instructions" in kwargs:
+            # Avoid carrying over an invalid cache when instructions are
+            # modified.
+            kwargs["_cached_written_variables"] = None
 
         from pytools.tag import normalize_tags, check_tag_uniqueness
         tags = kwargs.pop("tags", _not_provided)

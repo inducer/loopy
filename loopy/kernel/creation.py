@@ -2224,6 +2224,7 @@ def make_function(domains, instructions, kernel_data=["..."], **kwargs):
     target = kwargs.pop("target", None)
     seq_dependencies = kwargs.pop("seq_dependencies", False)
     fixed_parameters = kwargs.pop("fixed_parameters", {})
+    assumptions = kwargs.pop("assumptions", None)
 
     if defines:
         from warnings import warn
@@ -2361,6 +2362,36 @@ def make_function(domains, instructions, kernel_data=["..."], **kwargs):
 
     domains = parse_domains(domains, defines)
 
+    # {{{ process assumptions
+
+    from loopy.kernel.tools import get_outer_params
+
+    if assumptions is None:
+        dom0_space = domains[0].get_space()
+        assumptions_space = isl.Space.params_alloc(
+                dom0_space.get_ctx(), dom0_space.dim(dim_type.param))
+        for i in range(dom0_space.dim(dim_type.param)):
+            assumptions_space = assumptions_space.set_dim_name(
+                    dim_type.param, i,
+                    dom0_space.get_dim_name(dim_type.param, i))
+        assumptions = isl.BasicSet.universe(assumptions_space)
+    elif isinstance(assumptions, str):
+        assumptions_set_str = "[%s] -> { : %s}" \
+                % (",".join(s for s in get_outer_params(domains)),
+                    assumptions)
+        assumptions = isl.BasicSet.read_from_str(domains[0].get_ctx(),
+                                                 assumptions_set_str)
+    else:
+        if not isinstance(assumptions, isl.BasicSet):
+            raise LoopyError("assumptions must be either 'str' or BasicSet")
+
+    # }}}
+
+    from loopy.kernel.data import Iname
+    from loopy.kernel import _get_inames_from_domains
+    inames = {name: Iname(name, frozenset())
+              for name in _get_inames_from_domains(domains)}
+
     arg_guesser = ArgumentGuesser(domains, instructions,
             temporary_variables, substitutions,
             default_offset)
@@ -2380,6 +2411,8 @@ def make_function(domains, instructions, kernel_data=["..."], **kwargs):
             options=options,
             target=target,
             tags=tags,
+            inames=inames,
+            assumptions=assumptions,
             **kwargs)
 
     from loopy.transform.instruction import uniquify_instruction_ids
