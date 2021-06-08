@@ -785,18 +785,9 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         from loopy.tools import intern_frozenset_of_ids
         return intern_frozenset_of_ids(result)
 
-    def outer_params(self, domains=None):
-        if domains is None:
-            domains = self.domains
-
-        all_inames = set()
-        all_params = set()
-        for dom in domains:
-            all_inames.update(dom.get_var_names(dim_type.set))
-            all_params.update(dom.get_var_names(dim_type.param))
-
-        from loopy.tools import intern_frozenset_of_ids
-        return intern_frozenset_of_ids(all_params-all_inames)
+    def outer_params(self):
+        from loopy.kernel.tools import get_outer_params
+        return get_outer_params(self.domains)
 
     @memoize_method
     def all_insn_inames(self):
