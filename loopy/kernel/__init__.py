@@ -1603,11 +1603,9 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
     # }}}
 
-    def copy(self, **kwargs):
+    def get_copy_kwargs(self, **kwargs):
         if "iname_to_tags" in kwargs:
-            if "inames" in kwargs:
-                raise LoopyError("Cannot pass both `inames` and `iname_to_tags` to "
-                        "LoopKernel.copy")
+            assert "inames" not in kwargs
             iname_to_tags = kwargs["iname_to_tags"]
             domains = kwargs.get("domains", self.domains)
             kwargs["inames"] = {name: Iname(name,
@@ -1624,17 +1622,25 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
             assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
 
+        if "instructions" in kwargs:
+            # Avoid carrying over an invalid cache when instructions are
+            # modified.
+            kwargs["_cached_written_variables"] = None
+
+        return super().get_copy_kwargs(**kwargs)
+
+    def copy(self, **kwargs):
+        if "iname_to_tags" in kwargs:
+            if "inames" in kwargs:
+                raise LoopyError("Cannot pass both `inames` and `iname_to_tags` to "
+                        "LoopKernel.copy")
+
         if "schedule" in kwargs:
             if "linearization" in kwargs:
                 raise LoopyError("Cannot pass both `schedule` and "
                                  "`linearization` to LoopKernel.copy")
 
             kwargs["linearization"] = None
-
-        if "instructions" in kwargs:
-            # Avoid carrying over an invalid cache when instructions are
-            # modified.
-            kwargs["_cached_written_variables"] = None
 
         from pytools.tag import normalize_tags, check_tag_uniqueness
         tags = kwargs.pop("tags", _not_provided)
