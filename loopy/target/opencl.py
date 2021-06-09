@@ -242,7 +242,7 @@ class OpenCLCallable(ScalarCallable):
                      if id >= 0])
 
             if dtype.kind == "c":
-                raise LoopyTypeError("%s does not support complex numbers")
+                raise LoopyTypeError(f"'{name}' does not support complex numbers")
 
             dtype = NumpyType(dtype)
             return (
