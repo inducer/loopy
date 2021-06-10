@@ -1950,7 +1950,8 @@ def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0
             elif isinstance(sched_item, RunInstruction):
                 for dep in dep_tracker.gen_dependencies_with_target_at(
                         sched_item.insn_id):
-                    append_barrier_or_raise_error(result, dep, verify_only)
+                    append_barrier_or_raise_error(
+                        result, dep, verify_only, kernel.options.use_dependencies_v2)
                     dep_tracker.discard_all_sources()
                     break
                 result.append(sched_item)
