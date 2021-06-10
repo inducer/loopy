@@ -27,7 +27,7 @@ from pymbolic.mapper import RecursiveMapper, IdentityMapper
 from pymbolic.mapper.stringifier import (PREC_NONE, PREC_CALL, PREC_PRODUCT,
         PREC_SHIFT,
         PREC_UNARY, PREC_LOGICAL_OR, PREC_LOGICAL_AND,
-        PREC_BITWISE_AND, PREC_BITWISE_OR)
+        PREC_BITWISE_AND, PREC_BITWISE_OR, PREC_BITWISE_XOR)
 
 import islpy as isl
 import pymbolic.primitives as p
@@ -690,8 +690,8 @@ class CExpressionToCodeMapper(RecursiveMapper):
 
     def map_bitwise_xor(self, expr, enclosing_prec):
         return self.parenthesize_if_needed(
-                self.join_rec(" ^ ", expr.children, PREC_BITWISE_OR),
-                enclosing_prec, PREC_BITWISE_OR)
+                self.join_rec(" ^ ", expr.children, PREC_BITWISE_XOR),
+                enclosing_prec, PREC_BITWISE_XOR)
 
     def map_sum(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_SUM
