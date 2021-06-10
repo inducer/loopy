@@ -688,6 +688,11 @@ class CExpressionToCodeMapper(RecursiveMapper):
                 self.join_rec(" | ", expr.children, PREC_BITWISE_OR),
                 enclosing_prec, PREC_BITWISE_OR)
 
+    def map_bitwise_xor(self, expr, enclosing_prec):
+        return self.parenthesize_if_needed(
+                self.join_rec(" ^ ", expr.children, PREC_BITWISE_OR),
+                enclosing_prec, PREC_BITWISE_OR)
+
     def map_sum(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_SUM
 
