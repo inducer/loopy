@@ -214,11 +214,16 @@ def find_unsatisfied_dependencies(
     #  (stmt_id_before2, stmt_id_after2): [dep1, dep2, ...],
     #  ...}
 
+    from loopy.kernel.instruction import BarrierInstruction
+    # TODO (fix) for now, don't check deps on/by barriers
     for stmt_after in knl.instructions:
-        for before_id, dep_list in stmt_after.dependencies.items():
-            # (don't compare dep maps to maps found; duplicate deps should be rare)
-            stmt_pairs_to_deps.setdefault(
-                (before_id, stmt_after.id), []).extend(dep_list)
+        if not isinstance(stmt_after, BarrierInstruction):
+            for before_id, dep_list in stmt_after.dependencies.items():
+                if not isinstance(knl.id_to_insn[before_id], BarrierInstruction):
+                    # (don't compare dep maps to maps found;
+                    # duplicate deps should be rare)
+                    stmt_pairs_to_deps.setdefault(
+                        (before_id, stmt_after.id), []).extend(dep_list)
     # }}}
 
     # {{{ Get statement instance orderings
