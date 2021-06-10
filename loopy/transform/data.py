@@ -141,7 +141,7 @@ class _not_provided:  # noqa: N801
 
 
 def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
-        sweep_inames=[], dim_arg_names=None,
+        sweep_inames=None, dim_arg_names=None,
 
         # "None" is a valid value here, distinct from the default.
         default_tag=_not_provided,
@@ -241,6 +241,8 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
     This function internally uses :func:`extract_subst` and :func:`precompute`.
     """
     assert isinstance(kernel, LoopKernel)
+    if sweep_inames is None:
+        sweep_inames = []
 
     # {{{ fish indexing out of var_name and into footprint_subscripts
 

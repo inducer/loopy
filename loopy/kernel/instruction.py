@@ -889,8 +889,11 @@ class Assignment(MultiAssignmentBase):
             within_inames_is_final=None,
             within_inames=None,
             tags=None,
-            temp_var_type=Optional(), atomicity=(),
+            temp_var_type=None, atomicity=(),
             priority=0, predicates=frozenset()):
+
+        if temp_var_type is None:
+            temp_var_type = Optional()
 
         super().__init__(
                 id=id,
@@ -1394,7 +1397,7 @@ class CInstruction(InstructionBase):
                 | frozenset(self.read_variables))
 
         from loopy.symbolic import get_dependencies
-        for name, iname_expr in self.iname_exprs:
+        for _name, iname_expr in self.iname_exprs:
             result = result | get_dependencies(iname_expr)
 
         for subscript_deps in self.assignee_subscript_deps():

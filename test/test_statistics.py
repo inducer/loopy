@@ -943,7 +943,7 @@ def test_count_granularity_val_checks():
         lp.MemAccess(count_granularity=None)
         assert True
         lp.MemAccess(count_granularity="bushel")
-        assert False
+        raise AssertionError()
     except ValueError:
         assert True
 
@@ -954,7 +954,7 @@ def test_count_granularity_val_checks():
         lp.Op(count_granularity=None)
         assert True
         lp.Op(count_granularity="bushel")
-        assert False
+        raise AssertionError()
     except ValueError:
         assert True
 

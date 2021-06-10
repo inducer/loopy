@@ -157,13 +157,13 @@ class LivenessAnalysis:
     def print_liveness(self):
         print(75 * "-")
         print("LIVE IN:")
-        for sched_idx, sched_item in enumerate(self.schedule):
+        for sched_idx in range(len(self.schedule)):
             print("{item}: {{{vars}}}".format(
                 item=sched_idx,
                 vars=", ".join(sorted(self[sched_idx].live_in))))
         print(75 * "-")
         print("LIVE OUT:")
-        for sched_idx, sched_item in enumerate(self.schedule):
+        for sched_idx in range(len(self.schedule)):
             print("{item}: {{{vars}}}".format(
                 item=sched_idx,
                 vars=", ".join(sorted(self[sched_idx].live_out))))
@@ -329,7 +329,7 @@ class TemporarySaver:
         within_subkernel = False
         result = {}
 
-        for sched_item_idx, sched_item in enumerate(self.kernel.linearization):
+        for sched_item in self.kernel.linearization:
             if isinstance(sched_item, CallKernel):
                 within_subkernel = True
                 result[sched_item.kernel_name] = frozenset(current_outer_inames)

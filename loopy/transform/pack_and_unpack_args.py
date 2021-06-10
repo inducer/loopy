@@ -250,8 +250,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
 
                 updated_swept_inames = []
 
-                for i, _ in enumerate(
-                        in_knl_callable.arg_id_to_descr[arg_id].shape):
+                for _ in in_knl_callable.arg_id_to_descr[arg_id].shape:
                     updated_swept_inames.append(var(vng("i_packsweep_"+arg)))
 
                 ctx = kernel.isl_context

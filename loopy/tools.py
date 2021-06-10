@@ -209,7 +209,9 @@ def remove_common_indentation(code, require_leading_newline=True,
         return code
 
     # accommodate pyopencl-ish syntax highlighting
-    code = code.lstrip("//CL//")
+    cl_prefix = "//CL//"
+    if code.startswith(cl_prefix):
+        code = code[len(cl_prefix):]
 
     if require_leading_newline and not code.startswith("\n"):
         return code
@@ -262,10 +264,15 @@ def remove_common_indentation(code, require_leading_newline=True,
 
 def build_ispc_shared_lib(
         cwd, ispc_sources, cxx_sources,
-        ispc_options=[], cxx_options=[],
+        ispc_options=None, cxx_options=None,
         ispc_bin="ispc",
         cxx_bin="g++",
         quiet=True):
+    if ispc_options is None:
+        ispc_options = []
+    if cxx_options is None:
+        cxx_options = []
+
     from os.path import join
 
     ispc_source_names = []

@@ -799,7 +799,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 elif lhs_dtype.numpy_dtype == np.float64:
                     ctype = "long"
                 else:
-                    assert False
+                    raise AssertionError()
 
                 from loopy.kernel.data import (TemporaryVariable, ArrayArg)
                 if (

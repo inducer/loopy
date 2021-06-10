@@ -203,7 +203,7 @@ def replace_instruction_ids(kernel, replacements):
 
     new_insns = []
 
-    for i, insn in enumerate(kernel.instructions):
+    for insn in kernel.instructions:
         changed = False
         new_depends_on = list(insn.depends_on)
         extra_depends_on = []

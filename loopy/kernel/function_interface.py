@@ -639,7 +639,7 @@ class ScalarCallable(InKernelCallable):
                                                                par_dtypes,
                                                                arg_dtypes)]
 
-        for i, (a, tgt_dtype) in enumerate(zip(assignees, assignee_dtypes)):
+        for a, tgt_dtype in zip(assignees, assignee_dtypes):
             if tgt_dtype != expression_to_code_mapper.infer_type(a):
                 raise LoopyError("Type Mismatch in function %s. Expected: %s"
                         "Got: %s" % (self.name, tgt_dtype,

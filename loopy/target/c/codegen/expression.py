@@ -275,7 +275,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 return result
 
         else:
-            assert False
+            raise AssertionError()
 
     def map_linear_subscript(self, expr, type_context):
         from pymbolic.primitives import Variable

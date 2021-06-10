@@ -175,7 +175,7 @@ class ISPCTarget(CFamilyTarget):
         gsize, lsize = kernel.get_grid_size_upper_bounds_as_exprs(
                 callables_table)
         if len(lsize) > 1:
-            for i, ls_i in enumerate(lsize[1:]):
+            for ls_i in lsize[1:]:
                 if ls_i != 1:
                     raise LoopyError("local axis %d (0-based) "
                             "has length > 1, which is unsupported "
