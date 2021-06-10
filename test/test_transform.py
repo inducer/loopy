@@ -858,6 +858,24 @@ def test_prefetch_with_within(ctx_factory):
     lp.auto_test_vs_ref(ref_t_unit, ctx_factory(), t_unit)
 
 
+def test_partition_into_convex_pieces(ctx_factory):
+    from loopy.transform.iname import _partition_into_convex_pieces
+    import islpy as isl
+
+    knl = lp.make_kernel(
+        ["{[i, j]: 0<=i, j<10}",
+         "[i] -> {[k]: 0<=k<=i}"],
+        """
+        y[i, j, k] = i*j+k
+        """)
+    ref_knl = knl
+
+    knl = _partition_into_convex_pieces(knl, isl.BasicSet("[j]->{[i]: 0<=i<j}"),
+                                        "top_i", ("k", ), ("top_k", ), "before")
+
+    lp.auto_test_vs_ref(ref_knl, ctx_factory(), knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
