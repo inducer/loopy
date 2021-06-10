@@ -2050,4 +2050,25 @@ def get_call_graph(t_unit, only_kernel_callables=False):
 
 # }}}
 
+
+# {{{ get_outer_params
+
+def get_outer_params(domains):
+    """
+    Returns names of dims that appear only as params in *domains*.
+
+    :arg domains: An instance of :class:`list` of :class:`isl.BasicSet`.
+    """
+    all_inames = set()
+    all_params = set()
+    for dom in domains:
+        all_inames.update(dom.get_var_names(dim_type.set))
+        all_params.update(dom.get_var_names(dim_type.param))
+
+    from loopy.tools import intern_frozenset_of_ids
+    return intern_frozenset_of_ids(all_params-all_inames)
+
+# }}}
+
+
 # vim: foldmethod=marker
