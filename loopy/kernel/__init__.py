@@ -1605,7 +1605,14 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
     def get_copy_kwargs(self, **kwargs):
         if "iname_to_tags" in kwargs:
-            assert "inames" not in kwargs
+            if "inames" in kwargs:
+                raise LoopyError("Cannot pass both `inames` and `iname_to_tags` to "
+                        "LoopKernel.get_copy_kwargs")
+
+            warn("Providing iname_to_tags is deprecated, pass inames instead. "
+                    "Will be unsupported in 2022.",
+                    DeprecationWarning, stacklevel=2)
+
             iname_to_tags = kwargs["iname_to_tags"]
             domains = kwargs.get("domains", self.domains)
             kwargs["inames"] = {name: Iname(name,
