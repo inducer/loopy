@@ -85,9 +85,36 @@ def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
 
     new_kernel = kernel.copy(instructions=kernel.instructions + [barrier_to_add])
     if insn_after is not None:
+        # TODO this should be a new dependency
         new_kernel = add_dependency(kernel=new_kernel,
                                  insn_match=insn_after,
                                  depends_on="id:"+id)
+
+    for insn_before_id in insns_before:
+        # make v2 dep:
+        from loopy.schedule.checker.utils import (
+            append_mark_to_strings,
+            make_dep_map,
+        )
+        from loopy.schedule.checker.schedule import BEFORE_MARK
+        inames_before = new_kernel.id_to_insn[insn_before_id].within_inames
+        inames_before_marked = append_mark_to_strings(
+            inames_before, BEFORE_MARK)
+
+        inames_after = set(within_inames) if within_inames else set()
+
+        shared_inames = inames_after & inames_before
+
+        in_space_str = ", ".join(inames_before_marked)
+        out_space_str = ", ".join(inames_after)
+        constraint_str = " and ".join([
+            "{0}{1} = {0}".format(iname, BEFORE_MARK) for iname in shared_inames])
+
+        dep_v2 = make_dep_map(
+            f"{{ [{in_space_str}] -> [{out_space_str}] : {constraint_str} }}",
+            knl_with_domains=new_kernel)
+        from loopy import add_dependency_v2
+        new_kernel = add_dependency_v2(new_kernel, id, insn_before_id, dep_v2)
 
     return new_kernel
 
