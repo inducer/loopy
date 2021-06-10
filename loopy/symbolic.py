@@ -2079,7 +2079,7 @@ class AffineConditionToISLSetMapper(IdentityMapper):
         elif expr.operator == "<":
             cnst = isl.Constraint.inequality_from_aff(right_aff-left_aff-1)
         else:
-            assert False
+            raise AssertionError()
 
         return isl.Set.universe(self.space).add_constraint(cnst)
 

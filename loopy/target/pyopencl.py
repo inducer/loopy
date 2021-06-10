@@ -487,7 +487,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
         if expr.exponent in [2, 3, 4]:
             value = expr.base
-            for i in range(expr.exponent-1):
+            for _i in range(expr.exponent-1):
                 value = value * expr.base
             return self.rec(value, type_context)
         else:

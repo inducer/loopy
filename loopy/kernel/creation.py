@@ -2101,7 +2101,7 @@ def realize_slices_array_inputs_as_sub_array_refs(kernel):
 
 # {{{ kernel creation top-level
 
-def make_function(domains, instructions, kernel_data=["..."], **kwargs):
+def make_function(domains, instructions, kernel_data=None, **kwargs):
     """User-facing kernel creation entrypoint.
 
     :arg domains:
@@ -2215,6 +2215,8 @@ def make_function(domains, instructions, kernel_data=["..."], **kwargs):
             logger,
             "%s: instantiate" % kwargs.get("name", "(unnamed)"))
 
+    if kernel_data is None:
+        kernel_data = [...]
     defines = kwargs.pop("defines", {})
     default_order = kwargs.pop("default_order", "C")
     default_offset = kwargs.pop("default_offset", 0)

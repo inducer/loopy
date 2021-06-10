@@ -1413,7 +1413,7 @@ def pre_codegen_checks(t_unit):
         for e in t_unit.entrypoints:
             pre_codegen_entrypoint_checks(t_unit[e], t_unit.callables_table)
 
-        for name, clbl in t_unit.callables_table.items():
+        for clbl in t_unit.callables_table.values():
             if isinstance(clbl, CallableKernel):
                 pre_codegen_callable_checks(clbl.subkernel, t_unit.callables_table)
     except Exception:

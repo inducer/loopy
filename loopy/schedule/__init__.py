@@ -132,7 +132,7 @@ def gather_schedule_block(schedule, start_idx):
 
         i += 1
 
-    assert False
+    raise AssertionError()
 
 
 def generate_sub_sched_items(schedule, start_idx):
@@ -157,7 +157,7 @@ def generate_sub_sched_items(schedule, start_idx):
 
         i += 1
 
-    assert False
+    raise AssertionError()
 
 
 def get_insn_ids_for_block_at(schedule, start_idx):
@@ -241,7 +241,7 @@ def find_loop_nest_around_map(kernel):
             if iname_to_insns[inner_iname] < iname_to_insns[outer_iname]:
                 result[inner_iname].add(outer_iname)
 
-    for dom_idx, dom in enumerate(kernel.domains):
+    for dom in kernel.domains:
         for outer_iname in dom.get_var_names(isl.dim_type.param):
             if outer_iname not in all_inames:
                 continue
@@ -470,7 +470,7 @@ def dump_schedule(kernel, schedule):
             lines.append(indent + "... %sbarrier" %
                          sched_item.synchronization_kind[0])
         else:
-            assert False
+            raise AssertionError()
 
     return "\n".join(
             "% 4d: %s" % (i, line)
@@ -1929,7 +1929,7 @@ class MinRecursionLimitForScheduling(MinRecursionLimit):
 
 # {{{ main scheduling entrypoint
 
-def generate_loop_schedules(kernel, callables_table, debug_args={}):
+def generate_loop_schedules(kernel, callables_table, debug_args=None):
     """
     .. warning::
 
@@ -1940,13 +1940,18 @@ def generate_loop_schedules(kernel, callables_table, debug_args={}):
         generator chain may not be successfully garbage-collected and cause an
         internal error in the Python runtime.
     """
+    if debug_args is None:
+        debug_args = {}
 
     with MinRecursionLimitForScheduling(kernel):
         yield from generate_loop_schedules_inner(kernel,
                 callables_table, debug_args=debug_args)
 
 
-def generate_loop_schedules_inner(kernel, callables_table, debug_args={}):
+def generate_loop_schedules_inner(kernel, callables_table, debug_args=None):
+    if debug_args is None:
+        debug_args = {}
+
     from loopy.kernel import KernelState
     if kernel.state not in (KernelState.PREPROCESSED, KernelState.LINEARIZED):
         raise LoopyError("cannot schedule a kernel that has not been "

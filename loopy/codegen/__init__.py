@@ -792,7 +792,7 @@ def generate_code_v2(program):
 
     # {{{ collect preambles
 
-    for func_id, clbl in program.callables_table.items():
+    for clbl in program.callables_table.values():
         device_preambles.extend(list(clbl.generate_preambles(program.target)))
 
     # }}}
