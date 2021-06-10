@@ -190,10 +190,13 @@ def make_dep_map(s, self_dep=False, knl_with_domains=None):
         inames_in_dom_marked = append_mark_to_isl_map_var_names(
             inames_in_dom, dt.set, BEFORE_MARK)
 
+        # align spaces adds the stmt var
         inames_in_dom_marked_aligned = isl.align_spaces(
-            inames_in_dom_marked, map_with_stmts.domain())
+            inames_in_dom_marked, map_with_stmts.domain(),
+            obj_bigger_ok=True)  # e.g., params might exist
         inames_out_dom_aligned = isl.align_spaces(
-            inames_out_dom, map_with_stmts.range())
+            inames_out_dom, map_with_stmts.range(),
+            obj_bigger_ok=True)  # e.g., params might exist
 
         map_with_stmts = map_with_stmts.intersect_range(
             inames_out_dom_aligned
