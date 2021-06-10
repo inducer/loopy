@@ -822,6 +822,10 @@ class MultiAssignmentBase(InstructionBase):
 
 # {{{ instruction: assignment
 
+class _not_provided:  # noqa: N801
+    pass
+
+
 class Assignment(MultiAssignmentBase):
     """
     .. attribute:: assignee
@@ -889,10 +893,10 @@ class Assignment(MultiAssignmentBase):
             within_inames_is_final=None,
             within_inames=None,
             tags=None,
-            temp_var_type=None, atomicity=(),
+            temp_var_type=_not_provided, atomicity=(),
             priority=0, predicates=frozenset()):
 
-        if temp_var_type is None:
+        if temp_var_type is _not_provided:
             temp_var_type = Optional()
 
         super().__init__(
