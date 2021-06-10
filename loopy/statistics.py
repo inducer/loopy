@@ -450,7 +450,7 @@ class ToCountMap:
 
         total = self._zero()
 
-        for k, v in self.count_map.items():
+        for v in self.count_map.values():
             total = v + total
 
         return total
@@ -478,7 +478,7 @@ class ToCountPolynomialMap(ToCountMap):
 
         space_param_tuple = _get_param_tuple(space)
 
-        for key, val in count_map.items():
+        for val in count_map.values():
             if isinstance(val, isl.PwQPolynomial):
                 assert val.dim(dim_type.out) == 1
             elif isinstance(val, GuardedPwQPolynomial):
@@ -1163,7 +1163,7 @@ def _get_lid_and_gid_strides(knl, array, index):
         else:
             dim_tags = array.dim_tags
 
-        for tag, iname in tag_to_iname_dict.items():
+        for tag in tag_to_iname_dict:
             total_iname_stride = 0
             # find total stride of this iname for each axis
             for idx, axis_tag in zip(index, dim_tags):
@@ -1621,7 +1621,7 @@ def _get_insn_count(knl, callables_table, insn_id, subgroup_size,
                          "get_insn_count: No count granularity passed, "
                          "assuming %s granularity."
                          % (CountGranularity.WORKITEM))
-        count_granularity == CountGranularity.WORKITEM
+        count_granularity = CountGranularity.WORKITEM
 
     if count_granularity == CountGranularity.WORKITEM:
         return count_insn_runs(
@@ -2153,8 +2153,7 @@ def _gather_access_footprints_for_single_kernel(kernel, ignore_uncountable):
         afg = AccessFootprintGatherer(kernel, domain,
                 ignore_uncountable=ignore_uncountable)
 
-        for assignee in insn.assignees:
-            write_footprints.append(afg(insn.assignees))
+        write_footprints.append(afg(insn.assignees))
         read_footprints.append(afg(insn.expression))
 
     return write_footprints, read_footprints

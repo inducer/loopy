@@ -332,7 +332,7 @@ def build_loop_nest(codegen_state, schedule_index):
                     check_inames, self.impl_domain, self.kernel.cache_manager)
 
     def build_insn_group(sched_index_info_entries, codegen_state,
-            done_group_lengths=set()):
+            done_group_lengths=frozenset()):
         """
         :arg done_group_lengths: A set of group lengths (integers) that grows
             from empty to include the longest found group and downwards with every

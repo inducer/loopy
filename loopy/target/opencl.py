@@ -242,7 +242,7 @@ class OpenCLCallable(ScalarCallable):
                      if id >= 0])
 
             if dtype.kind == "c":
-                raise LoopyTypeError("%s does not support complex numbers")
+                raise LoopyTypeError(f"'{name}' does not support complex numbers")
 
             dtype = NumpyType(dtype)
             return (
@@ -799,7 +799,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 elif lhs_dtype.numpy_dtype == np.float64:
                     ctype = "long"
                 else:
-                    assert False
+                    raise AssertionError()
 
                 from loopy.kernel.data import (TemporaryVariable, ArrayArg)
                 if (

@@ -133,7 +133,7 @@ class LoopyDiffMapper(DifferentiationMapper, RuleAwareIdentityMapper):
             elif len(conds) > 1:
                 and_conds = p.LogicalAnd(tuple(conds))
             else:
-                assert False
+                raise AssertionError()
 
             return p.If(and_conds, 1, 0)
 
@@ -370,7 +370,7 @@ class DifferentiationContext:
 # {{{ entrypoint
 
 def diff_kernel(kernel, diff_outputs, by, diff_iname_prefix="diff_i",
-        batch_axes_in_by=frozenset(), copy_outputs=set()):
+        batch_axes_in_by=frozenset(), copy_outputs=frozenset()):
     """
 
     :arg batch_axes_in_by: a :class:`set` of axis indices in the variable named *by*

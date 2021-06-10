@@ -46,7 +46,7 @@ from warnings import warn
 
 class _UniqueVarNameGenerator(UniqueNameGenerator):
 
-    def __init__(self, existing_names=set(), forced_prefix=""):
+    def __init__(self, existing_names=frozenset(), forced_prefix=""):
         super().__init__(existing_names, forced_prefix)
         array_prefix_pattern = re.compile("(.*)_s[0-9]+$")
 
@@ -264,7 +264,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             inames=None,
             iname_to_tags=None,
             substitutions=None,
-            symbol_manglers=[],
+            symbol_manglers=None,
 
             iname_slab_increments=None,
             loop_priority=frozenset(),
@@ -301,6 +301,8 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             temporary_variables = {}
         if substitutions is None:
             substitutions = {}
+        if symbol_manglers is None:
+            symbol_manglers = []
         if iname_slab_increments is None:
             iname_slab_increments = {}
 
@@ -440,7 +442,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         return UniqueNameGenerator(used_ids)
 
     def make_unique_instruction_id(self, insns=None, based_on="insn",
-            extra_used_ids=set()):
+            extra_used_ids=frozenset()):
         if insns is None:
             insns = self.instructions
 
@@ -547,7 +549,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             else:
                 parent = None
 
-            for i in range(discard_level_count):
+            for _i in range(discard_level_count):
                 assert parent is not None
                 parent = result[parent]
 
@@ -574,7 +576,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         result = []
 
         ppd = self.parents_per_domain()
-        for dom, parent in zip(self.domains, ppd):
+        for parent in ppd:
             # keep walking up tree to find *all* parents
             dom_result = []
             while parent is not None:
@@ -600,7 +602,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         for dom in self.domains:
             return dom.get_ctx()
 
-        assert False
+        raise AssertionError()
 
     @memoize_method
     def combine_domains(self, domains):
@@ -1444,7 +1446,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                 result[arg.name] = arg
                 continue
 
-            for index, sub_arg_name in subscripts_and_names:
+            for _index, sub_arg_name in subscripts_and_names:
                 result[sub_arg_name] = arg
 
         return result

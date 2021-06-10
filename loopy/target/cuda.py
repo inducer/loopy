@@ -492,7 +492,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                     elif lhs_dtype.numpy_dtype == np.float64:
                         ctype = "long"
                     else:
-                        assert False
+                        raise AssertionError()
 
                     old_val = "*(%s *) &" % ctype + old_val
                     new_val = "*(%s *) &" % ctype + new_val

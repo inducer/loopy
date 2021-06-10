@@ -173,11 +173,16 @@ class TranslationUnit(ImmutableRecord):
     """
     def __init__(self,
             entrypoints=frozenset(),
-            callables_table=pmap(),
+            callables_table=None,
             target=None,
-            func_id_to_in_knl_callable_mappers=[]):
+            func_id_to_in_knl_callable_mappers=None):
 
         # {{{ sanity checks
+
+        if callables_table is None:
+            callables_table = pmap()
+        if func_id_to_in_knl_callable_mappers is None:
+            func_id_to_in_knl_callable_mappers = []
 
         assert isinstance(callables_table, collections.abc.Mapping)
         assert isinstance(entrypoints, frozenset)
@@ -462,8 +467,10 @@ class CallablesInferenceContext(ImmutableRecord):
     """
     def __init__(self, callables,
                  clbl_name_gen,
-                 renames=collections.defaultdict(frozenset),
+                 renames=None,
                  new_entrypoints=frozenset()):
+        if renames is None:
+            renames = collections.defaultdict(frozenset)
         assert isinstance(callables, collections.abc.Mapping)
 
         super().__init__(callables=dict(callables),

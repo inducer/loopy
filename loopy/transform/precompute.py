@@ -258,9 +258,9 @@ class _not_provided:  # noqa: N801
 
 
 def precompute_for_single_kernel(kernel, callables_table, subst_use,
-        sweep_inames=[], within=None, storage_axes=None, temporary_name=None,
+        sweep_inames=None, within=None, storage_axes=None, temporary_name=None,
         precompute_inames=None, precompute_outer_inames=None,
-        storage_axis_to_tag={},
+        storage_axis_to_tag=None,
 
         # "None" is a valid value here, distinct from the default.
         default_tag=_not_provided,
@@ -392,6 +392,11 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
                 % ", ".join(kwargs.keys()))
 
     # {{{ check, standardize arguments
+
+    if sweep_inames is None:
+        sweep_inames = []
+    if storage_axis_to_tag is None:
+        storage_axis_to_tag = {}
 
     if isinstance(sweep_inames, str):
         sweep_inames = [iname.strip() for iname in sweep_inames.split(",")]

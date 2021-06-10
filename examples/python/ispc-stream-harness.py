@@ -136,7 +136,7 @@ def main():
 
         start_time = time()
 
-        for irun in range(NRUNS):
+        for _irun in range(NRUNS):
             call_kernel()
 
         elapsed = time() - start_time

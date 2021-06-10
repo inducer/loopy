@@ -212,10 +212,23 @@ class CCompiler:
     """
 
     def __init__(self, toolchain=None,
-                 cc="gcc", cflags="-std=c99 -O3 -fPIC".split(),
-                 ldflags="-shared".split(), libraries=[],
-                 include_dirs=[], library_dirs=[], defines=[],
+                 cc="gcc", cflags=None,
+                 ldflags=None, libraries=None,
+                 include_dirs=None, library_dirs=None, defines=None,
                  source_suffix="c"):
+        if cflags is None:
+            cflags = "-std=c99 -O3 -fPIC".split()
+        if ldflags is None:
+            ldflags = "-shared".split()
+        if libraries is None:
+            libraries = []
+        if include_dirs is None:
+            include_dirs = []
+        if library_dirs is None:
+            library_dirs = []
+        if defines is None:
+            defines = []
+
         # try to get a default toolchain
         # or subclass supplied version if available
         self.toolchain = toolchain
@@ -289,9 +302,9 @@ class CPlusPlusCompiler(CCompiler):
     """Subclass of CCompiler to invoke a C++ compiler."""
 
     def __init__(self, toolchain=None,
-                 cc="g++", cflags="-std=c++98 -O3 -fPIC".split(),
-                 ldflags=[], libraries=[],
-                 include_dirs=[], library_dirs=[], defines=[],
+                 cc="g++", cflags=None,
+                 ldflags=None, libraries=None,
+                 include_dirs=None, library_dirs=None, defines=None,
                  source_suffix="cpp"):
 
         super().__init__(

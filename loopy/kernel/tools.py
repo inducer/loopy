@@ -1143,7 +1143,7 @@ class SetTrie:
         if len(key) == 0:
             return
 
-        for child_key, child in self.children.items():
+        for child_key, child in self.children.items():  # noqa: B007
             common = child_key & key
             if common:
                 break
@@ -1539,7 +1539,7 @@ def stringify_instruction_list(kernel):
             elif not is_in_new and is_in_current:
                 removed.append(iname)
             else:
-                assert False
+                raise AssertionError()
 
         if removed:
             indent_level[0] -= indent_increment * len(removed)
@@ -1550,7 +1550,8 @@ def stringify_instruction_list(kernel):
 
         current_inames[0] = new_inames
 
-    for insn, (arrows, extender) in zip(printed_insn_order, arrows_and_extenders):
+    for insn, (arrows, extender) in zip(  # noqa: B007
+            printed_insn_order, arrows_and_extenders):
         if isinstance(insn, lp.MultiAssignmentBase):
             lhs = ", ".join(str(a) for a in insn.assignees)
             rhs = str(insn.expression)

@@ -115,7 +115,7 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
     common_factors = []
 
     def find_unifiable_cf_index(index_key):
-        for i, (key, val) in enumerate(common_factors):
+        for i, (key, _val) in enumerate(common_factors):
             unif = UnidirectionalUnifier(
                     lhs_mapping_candidates=get_dependencies(key))
 

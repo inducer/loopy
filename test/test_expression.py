@@ -129,7 +129,7 @@ def make_random_fp_expression(prefix, var_values, size, use_complex):
                 make_random_fp_expression(prefix, var_values, size, use_complex),
                 make_random_fp_expression(prefix, var_values, size, use_complex))
     else:
-        assert False
+        raise AssertionError()
 
 
 def make_random_int_value(nonneg):
@@ -207,7 +207,7 @@ def make_nonzero_random_int_expression(prefix, var_values, size, nonneg):
 
             return result
 
-    assert False
+    raise AssertionError()
 
 
 def generate_random_fuzz_examples(expr_type):
@@ -275,7 +275,7 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target):
     elif expr_type in ["int", "int_nonneg"]:
         result_type = np.int64
     else:
-        assert False
+        raise AssertionError()
 
     var_names = []
 
@@ -359,7 +359,7 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target):
         elif expr_type in ["int", "int_nonneg"]:
             err = abs(ref_value-lp_value)
         else:
-            assert False
+            raise AssertionError()
 
         if abs(err) > 1e-10:
             print(80*"-")

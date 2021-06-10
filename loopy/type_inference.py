@@ -586,7 +586,10 @@ class TypeInferenceMapper(CombineMapper):
 # {{{ TypeReader
 
 class TypeReader(TypeInferenceMapper):
-    def __init__(self, kernel, callables, new_assignments={}):
+    def __init__(self, kernel, callables, new_assignments=None):
+        if new_assignments is None:
+            new_assignments = {}
+
         self.kernel = kernel
         self.callables = callables
         self.new_assignments = new_assignments

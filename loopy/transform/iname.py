@@ -601,7 +601,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
             isl.Constraint.equality_from_aff(
                 iname_rel_aff(new_domain.get_space(), new_iname, "==", joint_aff)))
 
-    for i, iname in enumerate(inames):
+    for iname in inames:
         iname_to_dim = new_domain.get_space().get_var_dict()
         iname_dt, iname_idx = iname_to_dim[iname]
 
@@ -850,11 +850,13 @@ class _InameDuplicator(RuleAwareIdentityMapper):
 
 @for_each_kernel
 def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
-        tags={}):
+        tags=None):
     """
     :arg within: a stack match as understood by
         :func:`loopy.match.parse_stack_match`.
     """
+    if tags is None:
+        tags = {}
 
     # {{{ normalize arguments, find unique new_inames
 
@@ -1328,7 +1330,7 @@ class _ReductionSplitter(RuleAwareIdentityMapper):
                             expr.allow_simultaneous),
                         expr.allow_simultaneous)
             else:
-                assert False
+                raise AssertionError()
         else:
             return super().map_reduction(expr, expn_state)
 
