@@ -2028,20 +2028,28 @@ def _insn_ids_reaching_end(schedule, kind, reverse):
     return insn_ids_alive_at_scope[-1]
 
 
-def append_barrier_or_raise_error(schedule, dep, verify_only):
+def append_barrier_or_raise_error(
+        schedule, dep, verify_only, use_dependencies_v2=False):
     if verify_only:
-        from loopy.diagnostic import MissingBarrierError
-        raise MissingBarrierError(
-                "Dependency '%s' (for variable '%s') "
-                "requires synchronization "
-                "by a %s barrier (add a 'no_sync_with' "
-                "instruction option to state that no "
-                "synchronization is needed)"
-                % (
-                    dep.dep_descr.format(
-                        tgt=dep.target.id, src=dep.source.id),
-                    dep.variable,
-                    dep.var_kind))
+        err_str = (
+            "Dependency '%s' (for variable '%s') "
+            "requires synchronization "
+            "by a %s barrier (add a 'no_sync_with' "
+            "instruction option to state that no "
+            "synchronization is needed)"
+            % (
+                dep.dep_descr.format(
+                    tgt=dep.target.id, src=dep.source.id),
+                dep.variable,
+                dep.var_kind))
+        # TODO need to update all this with v2 deps. For now, make this a warning.
+        # Do full fix for this later
+        if use_dependencies_v2:
+            from warnings import warn
+            warn(err_str)
+        else:
+            from loopy.diagnostic import MissingBarrierError
+            raise MissingBarrierError(err_str)
     else:
         comment = "for {} ({})".format(
                 dep.variable, dep.dep_descr.format(
@@ -2108,7 +2116,8 @@ def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0
                 for dep in chain.from_iterable(
                         dep_tracker.gen_dependencies_with_target_at(insn)
                         for insn in loop_head):
-                    append_barrier_or_raise_error(result, dep, verify_only)
+                    append_barrier_or_raise_error(
+                        result, dep, verify_only, kernel.options.use_dependencies_v2)
                     # This barrier gets inserted outside the loop, hence it is
                     # executed unconditionally and so kills all sources before
                     # the loop.
