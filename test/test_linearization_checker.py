@@ -2499,6 +2499,74 @@ def test_map_domain_with_stencil_dependencies():
 
 # }}}
 
+
+# {{{ test_add_prefetch_with_dependencies
+
+def test_add_prefetch_with_dependencies():
+
+    lp.set_caching_enabled(False)
+    knl = lp.make_kernel(
+        "[p] -> { [i,j,k,m] : 0 <= i,j < p and 0 <= k,m < 16}",
+        """
+        for i,j,k,m
+            a[i+1,j+1,k+1,m+1] = a[i,j,k,m]  {id=stmt}
+        end
+        """,
+        name="example",
+        assumptions="p >= 1",
+        lang_version=(2018, 2)
+        )
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+
+    dep_init = make_dep_map(
+        "{ [i',j',k',m'] -> [i,j,k,m] : "
+        "i' + 1 = i and j' + 1 = j and k' + 1 = k and m' + 1 = m }",
+        self_dep=True, knl_with_domains=knl)
+    knl = lp.add_dependency_v2(knl, "stmt", "stmt", dep_init)
+
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {"stmt": {"stmt": [dep_init, ]}},
+        return_unsatisfied=True)
+
+    assert not unsatisfied_deps
+
+    knl = lp.add_prefetch(
+        knl, "a", sweep_inames=["k", "m"],
+        fetch_outer_inames=frozenset({"i", "j"}),
+        # dim_arg_names=["k_fetch", "m_fetch"],  # TODO not sure why these don't work
+        )
+
+    # create expected deps
+    dep_stmt_on_fetch_exp = make_dep_map(
+        "{ [i',j',a_dim_2',a_dim_3'] -> [i,j,k,m] : "
+        "i' = i and j' = j }",
+        knl_with_domains=knl)
+    dep_fetch_on_stmt_exp = make_dep_map(
+        "{ [i',j',k',m'] -> [i,j,a_dim_2,a_dim_3] : "
+        "i' + 1 = i and j' + 1 = j "
+        "and 0 <= k',m' < 15 "
+        "}",
+        knl_with_domains=knl)
+    # (make_dep_map will set k',m' upper bound to 16, so add manually^)
+
+    # Why is this necessary to avoid dependency cycle?
+    knl.id_to_insn["a_fetch_rule"].depends_on_is_final = True
+
+    # Compare deps and make sure they are satisfied
+    unsatisfied_deps = _compare_dependencies(
+        knl,
+        {
+            "stmt": {"stmt": [dep_init], "a_fetch_rule": [dep_stmt_on_fetch_exp]},
+            "a_fetch_rule": {"stmt": [dep_fetch_on_stmt_exp]},
+        },
+        return_unsatisfied=True)
+
+    assert not unsatisfied_deps
+
+# }}}
+
 # }}}
 
 
