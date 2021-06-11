@@ -295,9 +295,6 @@ def _split_iname_backend(kernel, iname_to_split,
 
     # }}}
 
-    iname_slab_increments = kernel.iname_slab_increments.copy()
-    iname_slab_increments[outer_iname] = slabs
-
     new_priorities = []
     for prio in kernel.loop_priority:
         new_prio = ()
@@ -310,7 +307,6 @@ def _split_iname_backend(kernel, iname_to_split,
 
     kernel = kernel.copy(
             domains=new_domains,
-            iname_slab_increments=iname_slab_increments,
             instructions=new_insns,
             applied_iname_rewrites=applied_iname_rewrites,
             loop_priority=frozenset(new_priorities))
@@ -334,6 +330,60 @@ def _split_iname_backend(kernel, iname_to_split,
     for existing_tag in existing_tags:
         kernel = tag_inames(kernel,
                 {outer_iname: existing_tag, inner_iname: existing_tag})
+
+    # {{{ implement slabs
+
+    if slabs != (0, 0):
+        from loopy.diagnostic import warn_with_kernel
+        from loopy.isl_helpers import make_slab
+        warn_with_kernel(kernel, "slabs_deprecation",
+                         "Passing slabs to split_iname is deprecated, use"
+                         " lp.transform.iname._partition_into_convex_pieces.")
+        # CAUTION: Yes, the bounds computation maybe wrong. That's the reason
+        # the caller is encouraged to use '_partition_into_convex_pieces' directly
+        bounds = kernel.get_iname_bounds(outer_iname)
+
+        if slabs[0] != 0:
+            sub_domain_space = (bounds.lower_bound_pw_aff.get_domain_space()
+                                .add_dims(isl.dim_type.set, 1)
+                                .set_dim_name(isl.dim_type.set, 0, outer_iname))
+            sub_domain = make_slab(sub_domain_space, outer_iname,
+                                   bounds.lower_bound_pw_aff,
+                                   bounds.lower_bound_pw_aff+slabs[0])
+
+            new_iname = vng(f"{outer_iname}_slab1")
+            kernel = _partition_into_convex_pieces(kernel,
+                                                   sub_domain,
+                                                   new_iname,
+                                                   (inner_iname,),
+                                                   (vng(f"{inner_iname}_slab1"),),
+                                                   new_loops_position="before",
+                                                   within=within)
+
+            kernel = tag_inames(kernel, {new_iname: outer_tag})
+
+        if slabs[1] != 0:
+            sub_domain_space = (bounds.upper_bound_pw_aff.get_domain_space()
+                                .add_dims(isl.dim_type.set, 1)
+                                .set_dim_name(isl.dim_type.set, 0, outer_iname)
+                                )
+            sub_domain = make_slab(sub_domain_space,
+                                   outer_iname,
+                                   bounds.upper_bound_pw_aff+1-slabs[1],
+                                   bounds.upper_bound_pw_aff+1)
+            new_iname = vng(f"{outer_iname}_slab2")
+
+            kernel = _partition_into_convex_pieces(kernel,
+                                                   sub_domain,
+                                                   new_iname,
+                                                   (inner_iname,),
+                                                   (vng(f"{inner_iname}_slab2"),),
+                                                   new_loops_position="after",
+                                                   within=within)
+
+            kernel = tag_inames(kernel, {new_iname: outer_tag})
+
+    # }}}
 
     kernel = tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
     kernel = remove_unused_inames(kernel, [iname_to_split])
@@ -2109,14 +2159,8 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
                     else:
                         raise NotImplementedError
 
-            dom = dom.drop_unused_params()
-
-            if not (frozenset(dom.get_var_names(isl.dim_type.param))
-                    <= allowed_dim_params):
-                spurious_deps = (frozenset(dom.get_var_names(isl.dim_type.param))
-                                 - allowed_dim_params)
-                raise LoopyError("domain containing inner inames depends on "
-                                 f"{spurious_deps} => not allowed.")
+            dom = dom.project_out_except(types=[isl.dim_type.param],
+                                         names=allowed_dim_params)
 
             new_domains += [dom]
 
