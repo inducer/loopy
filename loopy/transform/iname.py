@@ -351,16 +351,18 @@ def _split_iname_backend(kernel, iname_to_split,
                                    bounds.lower_bound_pw_aff,
                                    bounds.lower_bound_pw_aff+slabs[0])
 
-            new_iname = vng(f"{outer_iname}_slab1")
+            new_outer_iname = vng(f"{outer_iname}_slab1")
+            new_inner_iname = vng(f"{inner_iname}_slab1")
             kernel = _partition_into_convex_pieces(kernel,
                                                    sub_domain,
-                                                   new_iname,
+                                                   new_outer_iname,
                                                    (inner_iname,),
-                                                   (vng(f"{inner_iname}_slab1"),),
+                                                   (new_inner_iname,),
                                                    new_loops_position="before",
                                                    within=within)
 
-            kernel = tag_inames(kernel, {new_iname: outer_tag})
+            kernel = tag_inames(kernel, {new_outer_iname: outer_tag,
+                                         new_inner_iname: inner_tag})
 
         if slabs[1] != 0:
             sub_domain_space = (bounds.upper_bound_pw_aff.get_domain_space()
@@ -371,17 +373,19 @@ def _split_iname_backend(kernel, iname_to_split,
                                    outer_iname,
                                    bounds.upper_bound_pw_aff+1-slabs[1],
                                    bounds.upper_bound_pw_aff+1)
-            new_iname = vng(f"{outer_iname}_slab2")
+            new_outer_iname = vng(f"{outer_iname}_slab2")
+            new_inner_iname = vng(f"{inner_iname}_slab2")
 
             kernel = _partition_into_convex_pieces(kernel,
                                                    sub_domain,
-                                                   new_iname,
+                                                   new_outer_iname,
                                                    (inner_iname,),
-                                                   (vng(f"{inner_iname}_slab2"),),
+                                                   (new_inner_iname,),
                                                    new_loops_position="after",
                                                    within=within)
 
-            kernel = tag_inames(kernel, {new_iname: outer_tag})
+            kernel = tag_inames(kernel, {new_outer_iname: outer_tag,
+                                         new_inner_iname: inner_tag})
 
     # }}}
 
