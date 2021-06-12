@@ -616,16 +616,16 @@ def test_inlining_with_indirections(ctx_factory):
     t_unit = lp.make_kernel(
             "{ : }",
             """
-            y[:] = ones_and_zeros(map[:])
+            y[:] = ones_and_zeros(mymap[:])
             """, [lp.GlobalArg("y", shape=6, dtype=lp.auto),
-                  lp.GlobalArg("map", dtype=np.int32, shape=3)])
+                  lp.GlobalArg("mymap", dtype=np.int32, shape=3)])
 
     t_unit = lp.merge([t_unit, ones_and_zeros])
     t_unit = lp.inline_callable_kernel(t_unit, "ones_and_zeros")
 
     map_in = np.arange(3).astype(np.int32)
 
-    evt, (out, ) = t_unit(queue, map=map_in)
+    evt, (out, ) = t_unit(queue, mymap=map_in)
 
     expected_out = np.array([1, 1, 1, 0, 0, 0]).astype(np.float32)
     assert (expected_out == out).all()
