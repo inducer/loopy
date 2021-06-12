@@ -146,7 +146,8 @@ class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
 
             flatten_index += sum(
                 idx * tag.stride
-                for idx, tag in zip(expr.index_tuple, callee_arg.dim_tags))
+                for idx, tag in zip(self.rec(expr.index_tuple, expn_state),
+                                    callee_arg.dim_tags))
 
             flatten_index = simplify_via_aff(flatten_index)
 
