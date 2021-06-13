@@ -200,6 +200,7 @@ class TranslationUnit(ImmutableRecord):
                     func_id_to_in_knl_callable_mappers))
 
         self._program_executor_cache = {}
+        self._hash_value = None
 
     hash_fields = (
             "entrypoints",
@@ -350,11 +351,15 @@ class TranslationUnit(ImmutableRecord):
         self._program_executor_cache = {}
 
     def __hash__(self):
+        if self._hash_value is not None:
+            return self._hash_value
+
         from loopy.tools import LoopyKeyBuilder
         from pytools.persistent_dict import new_hash
         key_hash = new_hash()
         self.update_persistent_hash(key_hash, LoopyKeyBuilder())
-        return hash(key_hash.digest())
+        self._hash_value = hash(key_hash.digest())
+        return self._hash_value
 
 
 class Program(TranslationUnit):
