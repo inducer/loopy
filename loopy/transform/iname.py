@@ -2024,7 +2024,7 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
         the domain.
     """
     from collections.abc import Sequence
-    from loopy.match import Iname, parse_stack_match
+    from loopy.match import Id, Or, Iname, parse_stack_match
     from pymbolic.primitives import Variable
     from pymbolic.mapper.substitutor import make_subst_func
 
@@ -2085,8 +2085,10 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
 
     ing = kernel.get_instruction_id_generator()
 
-    insns_to_copy = [kernel.id_to_insn[id_]
-                     for id_ in kernel.iname_to_insns()[iname_to_partition]]
+    insns_to_copy = [insn
+                     for insn in kernel.instructions
+                     if iname_to_partition in (insn.within_inames
+                                               | insn.reduction_inames())]
 
     new_insns = [insn.copy(id=ing(f"_part_{iname_to_partition}_{insn.id}"),
                            within_inames=map_old_inames_to_new_inames(insn
@@ -2106,8 +2108,8 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
                                             within=within,
                                             subst_func=subst_func)
     kernel = subst_map.map_kernel(kernel,
-                                  within=(lambda knl, insn, *args:
-                                          new_iname in insn.within_inames),
+                                  within=parse_stack_match(Or(tuple(
+                                      Id(insn.id) for insn in new_insns))),
                                   map_tvs=False, map_args=False)
     kernel = rule_mapping_context.finish_kernel(kernel)
 
@@ -2175,13 +2177,16 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
     from loopy.transform.instruction import add_dependency
 
     if new_loops_position == "before":
-        kernel = add_dependency(kernel, Iname(iname_to_partition),
-                                Iname(new_iname), raise_if_no_deps_added=False)
+        kernel = add_dependency(kernel,
+                                Iname(iname_to_partition),
+                                Iname(new_iname),
+                                raise_if_no_deps_added=True)
     else:
         assert new_loops_position == "after"
-        kernel = add_dependency(kernel, Iname(new_iname),
+        kernel = add_dependency(kernel,
+                                Iname(new_iname),
                                 Iname(iname_to_partition),
-                                raise_if_no_deps_added=False)
+                                raise_if_no_deps_added=True)
 
     return kernel
 
