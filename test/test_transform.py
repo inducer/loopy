@@ -23,6 +23,8 @@ THE SOFTWARE.
 import sys
 import numpy as np
 import loopy as lp
+from pytools.tag import Tag
+
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
@@ -768,30 +770,43 @@ def test_tag_iname_with_match_pattern():
     assert str(i1_tag) == "unr"
 
 
+# {{{ custom iname tags
+
+class ElementLoopTag(Tag):
+    def __str__(self):
+        return "iel"
+
+
+class DOFLoopTag(Tag):
+    def __str__(self):
+        return "idof"
+
+
 def test_custom_iname_tag():
-    from pytools.tag import Tag
-
-    class ElementLoopTag(Tag):
-        def __str__(self):
-            return "iel"
-
-    class DOFLoopTag(Tag):
-        def __str__(self):
-            return "idof"
-
-    knl = lp.make_kernel(
+    t_unit = lp.make_kernel(
             "{[ifuzz0, ifuzz1]: 0<=ifuzz0<100 and 0<=ifuzz1<32}",
             """
             out_dofs[ifuzz0, ifuzz1] = 2*in_dofs[ifuzz0, ifuzz1]
             """)
-    knl = lp.tag_inames(knl, {"ifuzz0": ElementLoopTag(), "ifuzz1": DOFLoopTag()})
+    t_unit = lp.add_and_infer_dtypes(t_unit, {"in_dofs": np.float64})
+    t_unit = lp.tag_inames(t_unit,
+            {"ifuzz0": ElementLoopTag(), "ifuzz1": DOFLoopTag()})
 
-    knl = knl["loopy_kernel"]
+    knl = t_unit.default_entrypoint
     ifuzz0_tag, = knl.inames["ifuzz0"].tags
     ifuzz1_tag, = knl.inames["ifuzz1"].tags
 
     assert str(ifuzz0_tag) == "iel"
     assert str(ifuzz1_tag) == "idof"
+
+    lp.generate_code_v2(t_unit)
+
+    t_unit = lp.tag_inames(t_unit, {"ifuzz0": "g.0", "ifuzz1": "l.0"})
+    assert len(t_unit.default_entrypoint.inames["ifuzz0"].tags) == 2
+
+    lp.generate_code_v2(t_unit)
+
+# }}}
 
 
 if __name__ == "__main__":
