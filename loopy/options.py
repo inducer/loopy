@@ -273,7 +273,8 @@ class Options(ImmutableRecord):
 
     # }}}
 
-    def update(self, other):
+    # only used internally on new copies of Options
+    def _update(self, other):
         for f in self.__class__.fields:
             setattr(self, f, getattr(self, f) or getattr(other, f))
 
