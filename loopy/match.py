@@ -304,7 +304,9 @@ class InKernel(GlobMatchExpressionBase):
 class Iname(GlobMatchExpressionBase):
     def __call__(self, kernel, matchable):
         return any(self.re.match(name)
-                for name in matchable.within_inames)
+                for name in (matchable.within_inames
+                             | matchable.reduction_inames()
+                             | matchable.sub_array_ref_inames()))
 
 # }}}
 
