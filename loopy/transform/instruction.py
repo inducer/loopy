@@ -97,12 +97,17 @@ def set_instruction_priority(kernel, insn_match, priority):
 # {{{ add_dependency
 
 @for_each_kernel
-def add_dependency(kernel, insn_match, depends_on):
+def add_dependency(kernel, insn_match, depends_on,
+                   raise_if_no_deps_added=True):
     """Add the instruction dependency *dependency* to the instructions matched
     by *insn_match*.
 
     *insn_match* and *depends_on* may be any instruction id match understood by
     :func:`loopy.match.parse_match`.
+
+    :arg raise_if_no_deps_added: A :class:`bool`. If *True* then a
+        :class:`LoopyError` would be raised if no new dependencies are added to
+        *kernel*. If *False* no dependencies added is passed silently.
 
     .. versionchanged:: 2016.3
 
@@ -118,8 +123,11 @@ def add_dependency(kernel, insn_match, depends_on):
                     depends_on))
 
     if not added_deps:
-        raise LoopyError("no instructions found matching '%s' "
-                "(to add as dependencies)" % depends_on)
+        if raise_if_no_deps_added:
+            raise LoopyError("no instructions found matching '%s' "
+                    "(to add as dependencies)" % depends_on)
+        else:
+            return kernel
 
     matched = [False]
 
@@ -136,8 +144,12 @@ def add_dependency(kernel, insn_match, depends_on):
     result = map_instructions(kernel, insn_match, add_dep)
 
     if not matched[0]:
-        raise LoopyError("no instructions found matching '%s' "
-                "(to which dependencies would be added)" % insn_match)
+        if raise_if_no_deps_added:
+            raise LoopyError("no instructions found matching '%s' "
+                    "(to which dependencies would be added)" % insn_match)
+        else:
+            assert kernel == result
+            return kernel
 
     return result
 
