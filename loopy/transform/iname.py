@@ -2176,10 +2176,12 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
 
     if new_loops_position == "before":
         kernel = add_dependency(kernel, Iname(iname_to_partition),
-                                Iname(new_iname))
+                                Iname(new_iname), raise_if_no_deps_added=False)
     else:
         assert new_loops_position == "after"
-        kernel = add_dependency(kernel, Iname(new_iname), Iname(iname_to_partition))
+        kernel = add_dependency(kernel, Iname(new_iname),
+                                Iname(iname_to_partition),
+                                raise_if_no_deps_added=False)
 
     return kernel
 
