@@ -1052,9 +1052,9 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
     from loopy.transform.iname import tag_inames
     kernel = tag_inames(kernel, new_iname_to_tag)
 
-    from loopy.kernel.data import AutoFitLocalIndexTag, filter_iname_tags_by_type
+    from loopy.kernel.data import AutoFitLocalInameTag, filter_iname_tags_by_type
 
-    if filter_iname_tags_by_type(new_iname_to_tag.values(), AutoFitLocalIndexTag):
+    if filter_iname_tags_by_type(new_iname_to_tag.values(), AutoFitLocalInameTag):
         from loopy.kernel.tools import assign_automatic_axes
         kernel = assign_automatic_axes(kernel, callables_table)
 

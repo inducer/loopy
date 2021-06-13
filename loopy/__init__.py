@@ -343,7 +343,7 @@ def set_options(kernel, *args, **kwargs):
         arg, = args
 
         from loopy.options import make_options
-        new_opt.update(make_options(arg))
+        new_opt._update(make_options(arg))
 
     return kernel.copy(options=new_opt)
 

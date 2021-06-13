@@ -400,14 +400,14 @@ class TemporarySaver:
                 if not tags:
                     continue
 
-                from loopy.kernel.data import (GroupIndexTag, LocalIndexTag,
+                from loopy.kernel.data import (GroupInameTag, LocalInameTag,
                         ConcurrentTag, filter_iname_tags_by_type)
 
-                if filter_iname_tags_by_type(tags, GroupIndexTag):
-                    tag, = filter_iname_tags_by_type(tags, GroupIndexTag, 1)
+                if filter_iname_tags_by_type(tags, GroupInameTag):
+                    tag, = filter_iname_tags_by_type(tags, GroupInameTag, 1)
                     my_group_tags.append(tag)
-                elif filter_iname_tags_by_type(tags, LocalIndexTag):
-                    tag, = filter_iname_tags_by_type(tags, LocalIndexTag, 1)
+                elif filter_iname_tags_by_type(tags, LocalInameTag):
+                    tag, = filter_iname_tags_by_type(tags, LocalInameTag, 1)
                     my_local_tags.append(tag)
                 elif filter_iname_tags_by_type(tags, ConcurrentTag):
                     raise LoopyError(
@@ -673,8 +673,8 @@ class TemporarySaver:
             if orig_temporary.address_space == AddressSpace.LOCAL:
                 # If the temporary has local scope, then loads / stores can
                 # be done in parallel.
-                from loopy.kernel.data import AutoFitLocalIndexTag
-                iname_to_tags[new_iname] = frozenset([AutoFitLocalIndexTag()])
+                from loopy.kernel.data import AutoFitLocalInameTag
+                iname_to_tags[new_iname] = frozenset([AutoFitLocalInameTag()])
 
             dim_inames.append(new_iname)
 

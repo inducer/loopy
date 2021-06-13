@@ -1127,16 +1127,16 @@ def _get_lid_and_gid_strides(knl, array, index):
     from loopy.symbolic import get_dependencies
     my_inames = get_dependencies(index) & knl.all_inames()
 
-    from loopy.kernel.data import (LocalIndexTag, GroupIndexTag,
+    from loopy.kernel.data import (LocalInameTag, GroupInameTag,
                                    filter_iname_tags_by_type)
     lid_to_iname = {}
     gid_to_iname = {}
     for iname in my_inames:
-        tags = knl.iname_tags_of_type(iname, (GroupIndexTag, LocalIndexTag))
+        tags = knl.iname_tags_of_type(iname, (GroupInameTag, LocalInameTag))
         if tags:
             tag, = filter_iname_tags_by_type(
-                tags, (GroupIndexTag, LocalIndexTag), 1)
-            if isinstance(tag, LocalIndexTag):
+                tags, (GroupInameTag, LocalInameTag), 1)
+            if isinstance(tag, LocalInameTag):
                 lid_to_iname[tag.axis] = iname
             else:
                 gid_to_iname[tag.axis] = iname
@@ -1547,15 +1547,15 @@ def get_unused_hw_axes_factor(knl, callables_table, insn, disregard_local_axes):
     g_used = set()
     l_used = set()
 
-    from loopy.kernel.data import LocalIndexTag, GroupIndexTag
+    from loopy.kernel.data import LocalInameTag, GroupInameTag
     for iname in insn.within_inames:
         tags = knl.iname_tags_of_type(iname,
-                              (LocalIndexTag, GroupIndexTag), max_num=1)
+                              (LocalInameTag, GroupInameTag), max_num=1)
         if tags:
             tag, = tags
-            if isinstance(tag, LocalIndexTag):
+            if isinstance(tag, LocalInameTag):
                 l_used.add(tag.axis)
-            elif isinstance(tag, GroupIndexTag):
+            elif isinstance(tag, GroupInameTag):
                 g_used.add(tag.axis)
 
     def mult_grid_factor(used_axes, size):
@@ -1597,10 +1597,10 @@ def count_insn_runs(knl, callables_table, insn, count_redundant_work,
     insn_inames = insn.within_inames
 
     if disregard_local_axes:
-        from loopy.kernel.data import LocalIndexTag
+        from loopy.kernel.data import LocalInameTag
         insn_inames = frozenset(
                 [iname for iname in insn_inames
-                    if not knl.iname_tags_of_type(iname, LocalIndexTag)])
+                    if not knl.iname_tags_of_type(iname, LocalInameTag)])
 
     c = count_inames_domain(knl, insn_inames)
 

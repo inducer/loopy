@@ -190,7 +190,7 @@ def find_temporary_address_space(kernel):
     logger.debug("%s: find temporary address space" % kernel.name)
 
     new_temp_vars = {}
-    from loopy.kernel.data import (LocalIndexTagBase, GroupIndexTag,
+    from loopy.kernel.data import (LocalInameTagBase, GroupInameTag,
             AddressSpace)
     import loopy as lp
 
@@ -238,16 +238,16 @@ def find_temporary_address_space(kernel):
             #   than are reflected in the assignee indices.
 
             locparallel_compute_inames = _get_compute_inames_tagged(
-                    kernel, insn, LocalIndexTagBase)
+                    kernel, insn, LocalInameTagBase)
 
             locparallel_assignee_inames = _get_assignee_inames_tagged(
-                    kernel, insn, LocalIndexTagBase, tv_names)
+                    kernel, insn, LocalInameTagBase, tv_names)
 
             grpparallel_compute_inames = _get_compute_inames_tagged(
-                    kernel, insn, GroupIndexTag)
+                    kernel, insn, GroupInameTag)
 
             grpparallel_assignee_inames = _get_assignee_inames_tagged(
-                    kernel, insn, GroupIndexTag, temp_var.name)
+                    kernel, insn, GroupInameTag, temp_var.name)
 
             assert locparallel_assignee_inames <= locparallel_compute_inames
             assert grpparallel_assignee_inames <= grpparallel_compute_inames
@@ -321,7 +321,7 @@ def _classify_reduction_inames(kernel, inames):
     nonlocal_par = []
 
     from loopy.kernel.data import (
-            LocalIndexTagBase, UnrolledIlpTag, UnrollTag,
+            LocalInameTagBase, UnrolledIlpTag, UnrollTag,
             ConcurrentTag, filter_iname_tags_by_type)
 
     for iname in inames:
@@ -332,7 +332,7 @@ def _classify_reduction_inames(kernel, inames):
             # them as sequential.
             sequential.append(iname)
 
-        elif filter_iname_tags_by_type(iname_tags, LocalIndexTagBase):
+        elif filter_iname_tags_by_type(iname_tags, LocalInameTagBase):
             local_par.append(iname)
 
         elif filter_iname_tags_by_type(iname_tags, ConcurrentTag):
@@ -1202,9 +1202,9 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
         outer_insn_inames = insn.within_inames
 
-        from loopy.kernel.data import LocalIndexTagBase
+        from loopy.kernel.data import LocalInameTagBase
         outer_local_inames = tuple(oiname for oiname in outer_insn_inames
-                if kernel.iname_tags_of_type(oiname, LocalIndexTagBase))
+                if kernel.iname_tags_of_type(oiname, LocalInameTagBase))
 
         from pymbolic import var
         outer_local_iname_vars = tuple(
@@ -1569,9 +1569,9 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
         outer_insn_inames = insn.within_inames
 
-        from loopy.kernel.data import LocalIndexTagBase
+        from loopy.kernel.data import LocalInameTagBase
         outer_local_inames = tuple(oiname for oiname in outer_insn_inames
-                if kernel.iname_tags_of_type(oiname, LocalIndexTagBase)
+                if kernel.iname_tags_of_type(oiname, LocalInameTagBase)
                 and oiname != sweep_iname)
 
         from pymbolic import var
@@ -2394,9 +2394,9 @@ def _preprocess_single_kernel(kernel, callables_table, device=None):
 
     # {{{ check that there are no l.auto-tagged inames
 
-    from loopy.kernel.data import AutoLocalIndexTagBase
+    from loopy.kernel.data import AutoLocalInameTagBase
     for name, iname in kernel.inames.items():
-        if (filter_iname_tags_by_type(iname.tags, AutoLocalIndexTagBase)
+        if (filter_iname_tags_by_type(iname.tags, AutoLocalInameTagBase)
                  and name in kernel.all_inames()):
             raise LoopyError("kernel with automatically-assigned "
                     "local axes passed to preprocessing")
