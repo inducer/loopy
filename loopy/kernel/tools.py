@@ -720,10 +720,10 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 
     # {{{ figure out automatic-axis inames
 
-    from loopy.kernel.data import AutoLocalIndexTagBase
+    from loopy.kernel.data import AutoLocalInameTagBase
     auto_axis_inames = {
         iname for iname in insn.within_inames
-        if kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase)}
+        if kernel.iname_tags_of_type(iname, AutoLocalInameTagBase)}
 
     # }}}
 
@@ -798,7 +798,7 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
     # TODO: do the tag removal rigorously, might be easier after switching
     # to set() from tuple()
 
-    from loopy.kernel.data import (AutoLocalIndexTagBase, LocalIndexTag,
+    from loopy.kernel.data import (AutoLocalInameTagBase, LocalInameTag,
                                    filter_iname_tags_by_type)
 
     # Realize that at this point in time, axis lengths are already
@@ -827,7 +827,7 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
             new_inames[iname] = kernel.inames[iname].copy(
                     tags=frozenset(tag
                         for tag in kernel.inames[iname].tags
-                        if not isinstance(tag, AutoLocalIndexTagBase)))
+                        if not isinstance(tag, AutoLocalInameTagBase)))
             return assign_automatic_axes(
                     kernel.copy(inames=new_inames),
                     callables_table,
@@ -868,7 +868,7 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
         if axis is None:
             new_tag = None
         else:
-            new_tag = LocalIndexTag(axis)
+            new_tag = LocalInameTag(axis)
             if desired_length > local_size[axis]:
                 from loopy import untag_inames
                 from loopy.transform.iname import split_iname
@@ -878,14 +878,14 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
 
                 return assign_automatic_axes(
                         split_iname(
-                            untag_inames(kernel, iname, AutoLocalIndexTagBase),
+                            untag_inames(kernel, iname, AutoLocalInameTagBase),
                             iname, inner_length=local_size[axis],
                             outer_tag=None, inner_tag=new_tag,
                             do_tagged_check=False),
                         callables_table=callables_table,
                         axis=recursion_axis, local_size=local_size)
 
-        if not kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase):
+        if not kernel.iname_tags_of_type(iname, AutoLocalInameTagBase):
             raise LoopyError("trying to reassign '%s'" % iname)
 
         if new_tag:
@@ -894,7 +894,7 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
             new_tag_set = frozenset()
         new_tags = (
                 frozenset(tag for tag in kernel.inames[iname].tags
-                    if not isinstance(tag, AutoLocalIndexTagBase))
+                    if not isinstance(tag, AutoLocalInameTagBase))
                 | new_tag_set)
         new_inames = kernel.inames.copy()
         new_inames[iname] = kernel.inames[iname].copy(tags=new_tags)
@@ -916,7 +916,7 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
 
         auto_axis_inames = [
             iname for iname in insn.within_inames
-            if kernel.iname_tags_of_type(iname, AutoLocalIndexTagBase)]
+            if kernel.iname_tags_of_type(iname, AutoLocalInameTagBase)]
 
         if not auto_axis_inames:
             continue
@@ -924,7 +924,7 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
         assigned_local_axes = set()
 
         for iname in insn.within_inames:
-            tags = kernel.iname_tags_of_type(iname, LocalIndexTag, max_num=1)
+            tags = kernel.iname_tags_of_type(iname, LocalInameTag, max_num=1)
             if tags:
                 tag, = tags
                 assigned_local_axes.add(tag.axis)
@@ -938,7 +938,7 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
                     for iname in iname_ranking:
                         prev_tags = kernel.iname_tags(iname)
                         if filter_iname_tags_by_type(
-                                prev_tags, AutoLocalIndexTagBase):
+                                prev_tags, AutoLocalInameTagBase):
                             return assign_axis(axis, iname, axis)
 
         else:

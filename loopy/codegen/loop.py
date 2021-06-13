@@ -232,8 +232,8 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
         hw_inames_left=None):
     kernel = codegen_state.kernel
 
-    from loopy.kernel.data import (UniqueTag, HardwareConcurrentTag,
-                LocalIndexTag, GroupIndexTag, VectorizeTag)
+    from loopy.kernel.data import (UniqueInameTag, HardwareConcurrentTag,
+                LocalInameTag, GroupInameTag, VectorizeTag)
 
     from loopy.schedule import get_insn_ids_for_block_at
     insn_ids_for_block = get_insn_ids_for_block_at(kernel.linearization,
@@ -259,18 +259,18 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
 
     from loopy.symbolic import GroupHardwareAxisIndex, LocalHardwareAxisIndex
 
-    tag, = kernel.iname_tags_of_type(iname, UniqueTag, max_num=1, min_num=1)
+    tag, = kernel.iname_tags_of_type(iname, UniqueInameTag, max_num=1, min_num=1)
 
-    if isinstance(tag, GroupIndexTag):
+    if isinstance(tag, GroupInameTag):
         hw_axis_expr = GroupHardwareAxisIndex(tag.axis)
-    elif isinstance(tag, LocalIndexTag):
+    elif isinstance(tag, LocalInameTag):
         hw_axis_expr = LocalHardwareAxisIndex(tag.axis)
     else:
         raise RuntimeError("unexpected hw tag type")
 
     other_inames_with_same_tag = [
         other_iname for other_iname in kernel.all_inames()
-        if (kernel.iname_tags_of_type(other_iname, UniqueTag)
+        if (kernel.iname_tags_of_type(other_iname, UniqueInameTag)
             and other_iname != iname
             and any(_tag.key == tag.key
                     for _tag in kernel.iname_tags(other_iname)
@@ -278,9 +278,9 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
 
     # {{{ 'implement' hardware axis boundaries
 
-    if isinstance(tag, LocalIndexTag):
+    if isinstance(tag, LocalInameTag):
         hw_axis_size = local_size[tag.axis]
-    elif isinstance(tag, GroupIndexTag):
+    elif isinstance(tag, GroupInameTag):
         hw_axis_size = global_size[tag.axis]
     else:
         raise RuntimeError("unknown hardware parallel tag")

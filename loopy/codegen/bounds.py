@@ -75,10 +75,10 @@ def get_usable_inames_for_conditional(kernel, sched_index, op_cache_manager):
     #  - local indices may not be used in conditionals that cross barriers.
     #  - ILP indices and vector lane indices are not available in loop
     #    bounds, they only get defined at the innermost level of nesting.
-    from loopy.kernel.data import VectorizeTag, LocalIndexTagBase, IlpBaseTag
+    from loopy.kernel.data import VectorizeTag, LocalInameTagBase, IlpBaseTag
     usable_parallel_inames_in_subkernel = frozenset(iname
             for iname in parallel_inames_in_subkernel
-            if (not (kernel.iname_tags_of_type(iname, LocalIndexTagBase)
+            if (not (kernel.iname_tags_of_type(iname, LocalInameTagBase)
                          and crosses_barrier)
                 and not kernel.iname_tags_of_type(iname, VectorizeTag)
                 and not kernel.iname_tags_of_type(iname, IlpBaseTag)))
