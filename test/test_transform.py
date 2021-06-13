@@ -826,29 +826,29 @@ def test_remove_instructions_with_recursive_deps():
 
 
 def test_prefetch_with_within(ctx_factory):
-    knl = lp.make_kernel(
+    t_unit = lp.make_kernel(
             "{[i, j, k]: 0<=i<100 and 0<=j,k<256}",
             """
             f[j] = 3.14 * j {id=set_f}
             ... gbarrier {id=insn_gbar}
             y[i, k] = f[k] * x[i, k] {id=set_y}
-            """, [lp.GlobalArg('x', shape=lp.auto, dtype=float), '...'],
+            """, [lp.GlobalArg("x", shape=lp.auto, dtype=float), "..."],
             seq_dependencies=True)
 
-    ref_knl = knl
+    ref_t_unit = t_unit
 
-    knl = lp.split_iname(knl, 'j', 32, inner_tag="l.0", outer_tag="g.0")
-    knl = lp.split_iname(knl, 'i', 32, inner_tag="l.0", outer_tag="g.0")
+    t_unit = lp.split_iname(t_unit, "j", 32, inner_tag="l.0", outer_tag="g.0")
+    t_unit = lp.split_iname(t_unit, "i", 32, inner_tag="l.0", outer_tag="g.0")
 
-    knl = lp.add_prefetch(knl, 'f', prefetch_insn_id='f_prftch', within='id:set_y',
-            sweep_inames='k',
-            dim_arg_names='iprftch',
-            default_tag=None,
-            temporary_address_space=lp.AddressSpace.LOCAL)
-    knl = lp.add_dependency(knl, 'id:f_prftch', 'id:insn_gbar')
-    knl = lp.split_iname(knl, 'iprftch', 32, inner_tag="l.0")
+    t_unit = lp.add_prefetch(t_unit, "f", prefetch_insn_id="f_prftch",
+                             within="id:set_y", sweep_inames="k",
+                             dim_arg_names="iprftch", default_tag=None,
+                             temporary_address_space=lp.AddressSpace.LOCAL,
+                             fetch_outer_inames=frozenset({"i_outer"}))
+    t_unit = lp.add_dependency(t_unit, "id:f_prftch", "id:insn_gbar")
+    t_unit = lp.split_iname(t_unit, "iprftch", 32, inner_tag="l.0")
 
-    lp.auto_test_vs_ref(ref_knl, ctx_factory(), knl)
+    lp.auto_test_vs_ref(ref_t_unit, ctx_factory(), t_unit)
 
 
 if __name__ == "__main__":
