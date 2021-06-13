@@ -106,7 +106,12 @@ def generate_code_for_sched_index(codegen_state, sched_index):
             return codegen_result
 
     elif isinstance(sched_item, EnterLoop):
-        tags = kernel.iname_tags(sched_item.iname)
+        from loopy.kernel.data import (UnrolledIlpTag, UnrollTag,
+                ForceSequentialTag, LoopedIlpTag, VectorizeTag,
+                InameImplementationTag,
+                InOrderSequentialSequentialTag, filter_iname_tags_by_type)
+
+        tags = kernel.iname_tags_of_type(sched_item.iname, InameImplementationTag)
         tags = tuple(tag for tag in tags if tag)
 
         from loopy.codegen.loop import (
@@ -114,9 +119,6 @@ def generate_code_for_sched_index(codegen_state, sched_index):
                 generate_vectorize_loop,
                 generate_sequential_loop_dim_code)
 
-        from loopy.kernel.data import (UnrolledIlpTag, UnrollTag,
-                ForceSequentialTag, LoopedIlpTag, VectorizeTag,
-                InOrderSequentialSequentialTag, filter_iname_tags_by_type)
         if filter_iname_tags_by_type(tags, (UnrollTag, UnrolledIlpTag)):
             func = generate_unroll_loop
         elif filter_iname_tags_by_type(tags, VectorizeTag):
