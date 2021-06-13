@@ -733,7 +733,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         *min_num*.
 
         :arg tags: An iterable of tags.
-        :arg tag_type_or_types: a subclass of :class:`loopy.kernel.data.IndexTag`.
+        :arg tag_type_or_types: a subclass of :class:`loopy.kernel.data.InameTag`.
         :arg max_num: the maximum number of tags expected to be found.
         :arg min_num: the minimum number of tags expected to be found.
         """
@@ -1079,25 +1079,25 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         # }}}
 
         from loopy.kernel.data import (
-                GroupIndexTag, LocalIndexTag,
-                AutoLocalIndexTagBase)
+                GroupInameTag, LocalInameTag,
+                AutoLocalInameTagBase)
 
         for iname in all_inames_by_insns:
             tags = self.iname_tags_of_type(
                     iname,
-                    (AutoLocalIndexTagBase, GroupIndexTag, LocalIndexTag), max_num=1)
+                    (AutoLocalInameTagBase, GroupInameTag, LocalInameTag), max_num=1)
 
             if not tags:
                 continue
 
             tag, = tags
 
-            if isinstance(tag, AutoLocalIndexTagBase) and not ignore_auto:
+            if isinstance(tag, AutoLocalInameTagBase) and not ignore_auto:
                 raise RuntimeError("cannot find grid sizes if automatic "
                         "local index tags are present")
-            elif isinstance(tag, GroupIndexTag):
+            elif isinstance(tag, GroupInameTag):
                 tgt_dict = global_sizes
-            elif isinstance(tag, LocalIndexTag):
+            elif isinstance(tag, LocalInameTag):
                 tgt_dict = local_sizes
             else:
                 continue
@@ -1111,7 +1111,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             try:
                 # insist block size is constant
                 size_as_aff = static_max_of_pw_aff(size,
-                        constants_only=isinstance(tag, LocalIndexTag),
+                        constants_only=isinstance(tag, LocalInameTag),
                         context=self.assumptions)
                 size = isl.PwAff.from_aff(size_as_aff)
             except StaticValueFindingError:

@@ -24,6 +24,7 @@ THE SOFTWARE.
 """
 
 
+import sys
 from sys import intern
 import numpy as np  # noqa
 from pytools import ImmutableRecord
@@ -51,17 +52,17 @@ __doc__ = """
 
 .. autofunction:: filter_iname_tags_by_type
 
-.. autoclass:: IndexTag
+.. autoclass:: InameImplementationTag
 
 .. autoclass:: ConcurrentTag
 
-.. autoclass:: UniqueTag
+.. autoclass:: UniqueInameTag
 
 .. autoclass:: AxisTag
 
-.. autoclass:: LocalIndexTag
+.. autoclass:: LocalInameTag
 
-.. autoclass:: GroupIndexTag
+.. autoclass:: GroupInameTag
 
 .. autoclass:: VectorizeTag
 
@@ -82,14 +83,13 @@ class auto:  # noqa
 
 # {{{ iname tags
 
-
 def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
     """Return a subset of *tags* that matches type *tag_type*. Raises exception
     if the number of tags found were greater than *max_num* or less than
     *min_num*.
 
     :arg tags: An iterable of tags.
-    :arg tag_type: a subclass of :class:`loopy.kernel.data.IndexTag`.
+    :arg tag_type: a subclass of :class:`loopy.kernel.data.InameImplementationTag`.
     :arg max_num: the maximum number of tags expected to be found.
     :arg min_num: the minimum number of tags expected to be found.
     """
@@ -113,7 +113,7 @@ def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
     return result
 
 
-class IndexTag(ImmutableRecord, UniqueTagBase):
+class InameImplementationTag(ImmutableRecord, UniqueTagBase):
     __slots__ = []
 
     def __hash__(self):
@@ -139,7 +139,7 @@ class IndexTag(ImmutableRecord, UniqueTagBase):
         return type(self).__name__
 
 
-class ConcurrentTag(IndexTag):
+class ConcurrentTag(InameImplementationTag):
     pass
 
 
@@ -152,11 +152,11 @@ ParallelTag = ConcurrentTag
 HardwareParallelTag = HardwareConcurrentTag
 
 
-class UniqueTag(IndexTag):
+class UniqueInameTag(InameImplementationTag):
     pass
 
 
-class AxisTag(UniqueTag):
+class AxisTag(UniqueInameTag):
     __slots__ = ["axis"]
 
     def __init__(self, axis):
@@ -172,25 +172,25 @@ class AxisTag(UniqueTag):
                 self.print_name, self.axis)
 
 
-class GroupIndexTag(HardwareConcurrentTag, AxisTag):
+class GroupInameTag(HardwareConcurrentTag, AxisTag):
     print_name = "g"
 
 
-class LocalIndexTagBase(HardwareConcurrentTag):
+class LocalInameTagBase(HardwareConcurrentTag):
     pass
 
 
-class LocalIndexTag(LocalIndexTagBase, AxisTag):
+class LocalInameTag(LocalInameTagBase, AxisTag):
     print_name = "l"
 
 
-class AutoLocalIndexTagBase(LocalIndexTagBase):
+class AutoLocalInameTagBase(LocalInameTagBase):
     @property
     def key(self):
         return type(self).__name__
 
 
-class AutoFitLocalIndexTag(AutoLocalIndexTagBase):
+class AutoFitLocalInameTag(AutoLocalInameTagBase):
     def __str__(self):
         return "l.auto"
 
@@ -213,22 +213,22 @@ class LoopedIlpTag(IlpBaseTag):
 # }}}
 
 
-class VectorizeTag(UniqueTag, HardwareConcurrentTag):
+class VectorizeTag(UniqueInameTag, HardwareConcurrentTag):
     def __str__(self):
         return "vec"
 
 
-class UnrollTag(IndexTag):
+class UnrollTag(InameImplementationTag):
     def __str__(self):
         return "unr"
 
 
-class ForceSequentialTag(IndexTag):
+class ForceSequentialTag(InameImplementationTag):
     def __str__(self):
         return "forceseq"
 
 
-class InOrderSequentialSequentialTag(IndexTag):
+class InOrderSequentialSequentialTag(InameImplementationTag):
     def __str__(self):
         return "ord"
 
@@ -257,13 +257,13 @@ def parse_tag(tag):
     elif tag == "ilp.seq":
         return LoopedIlpTag()
     elif tag.startswith("g."):
-        return GroupIndexTag(int(tag[2:]))
+        return GroupInameTag(int(tag[2:]))
     elif tag.startswith("l."):
         axis = tag[2:]
         if axis == "auto":
-            return AutoFitLocalIndexTag()
+            return AutoFitLocalInameTag()
         else:
-            return LocalIndexTag(int(axis))
+            return LocalInameTag(int(axis))
     else:
         raise ValueError("cannot parse tag: %s" % tag)
 
@@ -820,9 +820,9 @@ class TemporaryVariable(ArrayBase):
 def iname_tag_to_temp_var_scope(iname_tag):
     iname_tag = parse_tag(iname_tag)
 
-    if isinstance(iname_tag, GroupIndexTag):
+    if isinstance(iname_tag, GroupInameTag):
         return AddressSpace.GLOBAL
-    elif isinstance(iname_tag, LocalIndexTag):
+    elif isinstance(iname_tag, LocalInameTag):
         return AddressSpace.LOCAL
     else:
         return AddressSpace.PRIVATE
@@ -902,8 +902,9 @@ class Iname(Taggable):
 
     This class records the metadata attached to an iname as instances of
     :class:pytools.tag.Tag`. A tag maybe a builtin tag like
-    :class:`loopy.kernel.data.IndexTag` or a user-defined custom tag. Custom tags
-    may be attached to inames to be used in targeting later during transformations.
+    :class:`loopy.kernel.data.InameImplementationTag` or a user-defined custom
+    tag. Custom tags may be attached to inames to be used in targeting later
+    during transformations.
 
     .. attribute:: name
 
@@ -940,6 +941,40 @@ class Iname(Taggable):
                 type(self) == type(other)
                 and self.name == other.name
                 and self.tags == other.tags)
+
+# }}}
+
+
+# {{{ deprecation helpers
+
+_old_to_new = {
+        "IndexTag": "InameImplementationTag",
+        "GroupIndexTag": "GroupInameTag",
+        "LocalIndexTagBase": "LocalInameTagBase",
+        "LocalIndexTag": "LocalInameTag",
+        "UniqueTag": "UniqueInameTag",
+        }
+
+if sys.version_info < (3, 7):
+    _glb = globals()
+    for _old, _new in _old_to_new.items():
+        setattr(_glb, _old, getattr(_glb, _new))
+
+    del _old
+    del _new
+    del _glb
+else:
+    def __getattr__(name):
+        new_name = _old_to_new.get(name)
+        if new_name is None:
+            raise AttributeError(name)
+        else:
+            from warnings import warn
+            warn(f"loopy.kernel.data.{name} is deprecated. "
+                    f"Use loopy.kernel.data.{new_name} instead. "
+                    "The old name will stop working in 2022.",
+                    DeprecationWarning, stacklevel=2)
+            return globals()[new_name]
 
 # }}}
 

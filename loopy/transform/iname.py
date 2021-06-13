@@ -658,7 +658,8 @@ def untag_inames(kernel, iname_to_untag, tag_type):
     Remove tags on *iname_to_untag* which matches *tag_type*.
 
     :arg iname_to_untag: iname as string.
-    :arg tag_type: a subclass of :class:`loopy.kernel.data.IndexTag`.
+    :arg tag_type: a subclass of :class:`pytools.tag.Tag`, for example a
+        subclass of :class:`loopy.kernel.data.InameImplementationTag`.
 
     .. versionadded:: 2018.1
     """
@@ -682,10 +683,11 @@ def tag_inames(kernel, iname_to_tag, force=False,
     """Tag an iname
 
     :arg iname_to_tag: a list of tuples ``(iname, new_tag)``. *new_tag* is given
-        as an instance of a subclass of :class:`loopy.kernel.data.IndexTag` or an
-        iterable of which, or as a string as shown in :ref:`iname-tags`. May also
-        be a dictionary for backwards compatibility. *iname* may also be a wildcard
-        using ``*`` and ``?``.
+        as an instance of a subclass of :class:`pytools.tag.Tag`, for example a
+        subclass of :class:`loopy.kernel.data.InameImplementationTag`.
+        May also be iterable of which, or as a string as shown in
+        :ref:`iname-tags`. May also be a dictionary for backwards
+        compatibility. *iname* may also be a wildcard using ``*`` and ``?``.
 
     .. versionchanged:: 2016.3
 
@@ -1619,17 +1621,17 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
         :func:`loopy.match.parse_match`.
     :arg kind: may be "l" or "g", or the corresponding tag class name
 
-    :returns: an :class:`loopy.kernel.data.GroupIndexTag` or
-        :class:`loopy.kernel.data.LocalIndexTag` that is not being used within
+    :returns: an :class:`loopy.kernel.data.GroupInameTag` or
+        :class:`loopy.kernel.data.LocalInameTag` that is not being used within
         the instructions matched by *insn_match*.
     """
     used_axes = set()
 
-    from loopy.kernel.data import GroupIndexTag, LocalIndexTag
+    from loopy.kernel.data import GroupInameTag, LocalInameTag
 
     if isinstance(kind, str):
         found = False
-        for cls in [GroupIndexTag, LocalIndexTag]:
+        for cls in [GroupInameTag, LocalInameTag]:
             if kind == cls.print_name:
                 kind = cls
                 found = True
@@ -1789,8 +1791,8 @@ def add_inames_to_insn(kernel, inames, insn_match):
     :arg insn_match: An instruction match as understood by
         :func:`loopy.match.parse_match`.
 
-    :returns: an :class:`loopy.kernel.data.GroupIndexTag` or
-        :class:`loopy.kernel.data.LocalIndexTag` that is not being used within
+    :returns: an :class:`loopy.kernel.data.GroupInameTag` or
+        :class:`loopy.kernel.data.LocalInameTag` that is not being used within
         the instructions matched by *insn_match*.
 
     .. versionadded:: 2016.3
@@ -1824,8 +1826,8 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
     """
     Returns a kernel with inames added to each instruction
     corresponding to any hardware-parallel iname tags
-    (:class:`loopy.kernel.data.GroupIndexTag`,
-    :class:`loopy.kernel.data.LocalIndexTag`) unused
+    (:class:`loopy.kernel.data.GroupInameTag`,
+    :class:`loopy.kernel.data.LocalInameTag`) unused
     in the instruction but used elsewhere in the kernel.
 
     Current limitations:
@@ -1837,22 +1839,22 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
     :arg within: An instruction match as understood by
         :func:`loopy.match.parse_match`.
     """
-    from loopy.kernel.data import (LocalIndexTag, GroupIndexTag,
-            AutoFitLocalIndexTag)
+    from loopy.kernel.data import (LocalInameTag, GroupInameTag,
+            AutoFitLocalInameTag)
 
     n_local_axes = max([tag.axis
         for iname in kernel.inames.values()
         for tag in iname.tags
-        if isinstance(tag, LocalIndexTag)],
+        if isinstance(tag, LocalInameTag)],
         default=-1) + 1
 
     n_group_axes = max([tag.axis
         for iname in kernel.inames.values()
         for tag in iname.tags
-        if isinstance(tag, GroupIndexTag)],
+        if isinstance(tag, GroupInameTag)],
         default=-1) + 1
 
-    contains_auto_local_tag = any([isinstance(tag, AutoFitLocalIndexTag)
+    contains_auto_local_tag = any([isinstance(tag, AutoFitLocalInameTag)
         for iname in kernel.inames.values()
         for tag in iname.tags])
 
@@ -1870,7 +1872,7 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
     group_axes_to_inames = []
 
     for i in range(n_local_axes):
-        ith_local_axes_tag = LocalIndexTag(i)
+        ith_local_axes_tag = LocalInameTag(i)
         inames = [name
                 for name, iname in kernel.inames.items()
                 if ith_local_axes_tag in iname.tags]
@@ -1880,7 +1882,7 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
         local_axes_to_inames.append(inames[0] if len(inames) == 1 else None)
 
     for i in range(n_group_axes):
-        ith_group_axes_tag = GroupIndexTag(i)
+        ith_group_axes_tag = GroupInameTag(i)
         inames = [name
                 for name, iname in kernel.inames.items()
                 if ith_group_axes_tag in iname.tags]
@@ -1901,9 +1903,9 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
             within_tags = frozenset().union(*(kernel.inames[iname].tags
                 for iname in insn.within_inames))
             missing_local_axes = [i for i in range(n_local_axes)
-                    if LocalIndexTag(i) not in within_tags]
+                    if LocalInameTag(i) not in within_tags]
             missing_group_axes = [i for i in range(n_group_axes)
-                    if GroupIndexTag(i) not in within_tags]
+                    if GroupInameTag(i) not in within_tags]
 
             for axis in missing_local_axes:
                 iname = local_axes_to_inames[axis]
