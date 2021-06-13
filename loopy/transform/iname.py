@@ -240,7 +240,13 @@ def _split_iname_backend(kernel, iname_to_split,
 
     # }}}
 
-    existing_tags = kernel.iname_tags(iname_to_split)
+    # Split inames do not inherit tags from their 'parent' inames.
+    # FIXME: They *should* receive a tag that indicates that they descend from
+    # an iname tagged in a certain way.
+    from loopy.kernel.data import InameImplementationTag
+    existing_tags = [tag
+            for tag in kernel.iname_tags(iname_to_split)
+            if isinstance(tag, InameImplementationTag)]
     from loopy.kernel.data import ForceSequentialTag, filter_iname_tags_by_type
     if (do_tagged_check and existing_tags
             and not filter_iname_tags_by_type(existing_tags, ForceSequentialTag)):
@@ -365,6 +371,8 @@ def split_iname(kernel, split_iname, inner_length,
         *inner_iname*.
     :arg within: a stack match as understood by
         :func:`loopy.match.parse_match`.
+
+    Split inames do not inherit tags from their 'parent' inames.
     """
     assert isinstance(kernel, LoopKernel)
 
@@ -397,6 +405,8 @@ def chunk_iname(kernel, split_iname, num_chunks,
 
     :arg within: a stack match as understood by
         :func:`loopy.match.parse_stack_match`.
+
+    Split inames do not inherit tags from their 'parent' inames.
 
     .. versionadded:: 2016.2
     """
