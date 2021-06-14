@@ -666,10 +666,10 @@ class Op(ImmutableRecord):
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
         if self.kernel_name is not None:
-            return (f'Op("{self.dtype}", "{self.name}", "{self.count_granularity}",'
+            return (f"Op({self.dtype}, {self.name}, {self.count_granularity},"
                     f' "{self.kernel_name}")')
         else:
-            return f'Op("{self.dtype}", "{self.name}", "{self.count_granularity}")'
+            return f"Op({self.dtype}, {self.name}, {self.count_granularity})"
 
 # }}}
 
@@ -809,9 +809,9 @@ class MemAccess(ImmutableRecord):
                 sorted(self.gid_strides.items())),
             self.direction,
             self.variable,
-            self.variable_tags,
+            "None" if not self.variable_tags else str(self.variable_tags),
             self.count_granularity,
-            self.kernel_name)
+            repr(self.kernel_name))
 # }}}
 
 
