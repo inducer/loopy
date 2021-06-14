@@ -248,7 +248,6 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
 # {{{ kernel executor
 
-
 class PyOpenCLKernelExecutor(KernelExecutorBase):
     """An object connecting a kernel to a :class:`pyopencl.Context`
     for execution.
@@ -362,7 +361,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
         assert entrypoint is not None
 
         if self.packing_controller is not None:
-            kwargs = self.packing_controller.unpack(kwargs)
+            kwargs = self.packing_controller(kwargs)
 
         translation_unit_info = self.translation_unit_info(entrypoint,
                 self.arg_to_dtype_set(kwargs))

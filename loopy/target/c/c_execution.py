@@ -498,7 +498,7 @@ class CKernelExecutor(KernelExecutorBase):
         assert entrypoint is not None
 
         if self.packing_controller is not None:
-            kwargs = self.packing_controller.unpack(kwargs)
+            kwargs = self.packing_controller(kwargs)
 
         program_info = self.program_info(entrypoint,
                 self.arg_to_dtype_set(kwargs))
