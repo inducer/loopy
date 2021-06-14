@@ -65,7 +65,7 @@ class ArrayArgDescriptor(ImmutableRecord):
     :meth:`InKernelCallable.with_descrs`, used for
     matching shape and address space of caller and callee kernels.
 
-    ..attribute:: shape
+    .. attribute:: shape
 
         Shape of the array.
 
