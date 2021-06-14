@@ -302,7 +302,7 @@ class TranslationUnit(ImmutableRecord):
             return self[entrypoint]
         else:
             raise ValueError("TranslationUnit has multiple possible entrypoints."
-                             " The default entry point kernel is not uniquely"
+                             " The default entrypoint kernel is not uniquely"
                              " determined.")
 
     def __call__(self, *args, **kwargs):
@@ -315,13 +315,19 @@ class TranslationUnit(ImmutableRecord):
         """
         entrypoint = kwargs.get("entrypoint", None)
         if entrypoint is None:
-            entrypoint = self.default_entrypoint.name
+            if len(self.entrypoints) == 1:
+                entrypoint, = self.entrypoints
+            else:
+                raise ValueError("TranslationUnit has multiple possible entrypoints."
+                                 " The default entrypoint kernel is not uniquely"
+                                 " determined.")
 
-        if entrypoint not in self.entrypoints:
-            raise LoopyError(f"'{entrypoint}' not in list of possible entrypoints "
-                    "for the program. "
-                    "Maybe you want to invoke 'with_entrypoints' before "
-                    "calling the program?")
+        else:
+            if entrypoint not in self.entrypoints:
+                raise LoopyError(f"'{entrypoint}' not in list of possible "
+                        "entrypoints for the translation unit. "
+                        "Maybe you want to invoke 'with_entrypoints' before "
+                        "calling the translation unit?")
 
         kwargs["entrypoint"] = entrypoint
 
