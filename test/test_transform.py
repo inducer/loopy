@@ -827,13 +827,16 @@ def test_remove_instructions_with_recursive_deps():
 
 def test_prefetch_with_within(ctx_factory):
     t_unit = lp.make_kernel(
-            "{[i, j, k]: 0<=i<100 and 0<=j,k<256}",
+            ["{[j]: 0<=j<256}",
+             "{[i, k]: 0<=i<100 and 0<=k<128}"],
             """
             f[j] = 3.14 * j {id=set_f}
+            f[j] = 2 * f[j] {id=update_f, nosync=set_f}
             ... gbarrier {id=insn_gbar}
             y[i, k] = f[k] * x[i, k] {id=set_y}
-            """, [lp.GlobalArg("x", shape=lp.auto, dtype=float), "..."],
-            seq_dependencies=True)
+            """, [lp.GlobalArg("x", shape=lp.auto, dtype=float), ...],
+            seq_dependencies=True,
+            name="myknl")
 
     ref_t_unit = t_unit
 
@@ -844,9 +847,13 @@ def test_prefetch_with_within(ctx_factory):
                              within="id:set_y", sweep_inames="k",
                              dim_arg_names="iprftch", default_tag=None,
                              temporary_address_space=lp.AddressSpace.LOCAL,
+                             temporary_name="foo",
                              fetch_outer_inames=frozenset({"i_outer"}))
     t_unit = lp.add_dependency(t_unit, "id:f_prftch", "id:insn_gbar")
     t_unit = lp.split_iname(t_unit, "iprftch", 32, inner_tag="l.0")
+
+    # test that 'f' is only prefetched in set_y
+    assert t_unit["myknl"].temporary_variables["foo"].shape == (128,)
 
     lp.auto_test_vs_ref(ref_t_unit, ctx_factory(), t_unit)
 
