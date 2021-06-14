@@ -360,12 +360,13 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
         allocator = kwargs.pop("allocator", None)
         wait_for = kwargs.pop("wait_for", None)
         out_host = kwargs.pop("out_host", None)
+        entrypoint = kwargs.pop("entrypoint")
 
-        kwargs = self.packing_controller.unpack(kwargs)
+        if self.packing_controller is not None:
+            kwargs = self.packing_controller.unpack(kwargs)
 
-        translation_unit_info = self.translation_unit_info(kwargs["entrypoint"],
+        translation_unit_info = self.translation_unit_info(entrypoint,
                 self.arg_to_dtype_set(kwargs))
-        kwargs.pop("entrypoint")
 
         return translation_unit_info.invoker(
                 translation_unit_info.cl_kernels, queue, allocator, wait_for,
