@@ -2481,9 +2481,6 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     from loopy.kernel.tools import infer_args_are_input_output
     knl = infer_args_are_input_output(knl)
 
-    from loopy.preprocess import prepare_for_caching
-    knl = prepare_for_caching(knl)
-
     creation_plog.done()
 
     from loopy.translation_unit import make_program

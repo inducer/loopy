@@ -779,11 +779,7 @@ class KernelExecutorBase:
     def get_typed_and_scheduled_translation_unit(self, entrypoint, arg_to_dtype_set):
         from loopy import CACHING_ENABLED
 
-        from loopy.preprocess import prepare_for_caching
-        # prepare_for_caching() gets run by preprocess, but the kernel at this
-        # stage is not guaranteed to be preprocessed.
-        cacheable_program = prepare_for_caching(self.program)
-        cache_key = (type(self).__name__, cacheable_program, arg_to_dtype_set)
+        cache_key = (type(self).__name__, self.program, arg_to_dtype_set)
 
         if CACHING_ENABLED:
             try:

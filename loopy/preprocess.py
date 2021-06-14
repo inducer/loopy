@@ -41,7 +41,6 @@ from loopy.symbolic import RuleAwareIdentityMapper, ReductionCallbackMapper
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
-from loopy.kernel import LoopKernel
 from loopy.translation_unit import TranslationUnit
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
@@ -51,62 +50,13 @@ from functools import partial
 
 # {{{ prepare for caching
 
-def prepare_for_caching_inner(kernel):
-    import loopy as lp
-    from loopy.types import OpaqueType
-    new_args = []
-
-    tgt = kernel.target
-
-    for arg in kernel.args:
-        dtype = arg.dtype
-        if (dtype is not None
-                and not isinstance(dtype, OpaqueType)
-                and dtype is not lp.auto
-                and dtype.target is not tgt):
-            arg = arg.copy(dtype=dtype.with_target(tgt), target=tgt)
-
-        new_args.append(arg)
-
-    new_temporary_variables = {}
-    for name, temp in kernel.temporary_variables.items():
-        dtype = temp.dtype
-        if dtype is not None and dtype is not lp.auto and dtype.target is not tgt:
-            temp = temp.copy(dtype=dtype.with_target(tgt), target=tgt)
-
-        new_temporary_variables[name] = temp
-
-    kernel = kernel.copy(
-            args=new_args,
-            temporary_variables=new_temporary_variables)
-
-    return kernel
-
-
 def prepare_for_caching(program):
-    if isinstance(program, LoopKernel):
-        return prepare_for_caching_inner(program)
+    from warnings import warn
+    warn("prepare_for_caching is deprecated and no longer needed. "
+            "It will stop working in 2022.",
+            DeprecationWarning, stacklevel=2)
 
-    assert isinstance(program, TranslationUnit)
-    tgt = program.target
-
-    new_clbls = {}
-    for name, clbl in program.callables_table.items():
-        if clbl.arg_id_to_dtype is not None:
-            arg_id_to_dtype = {id: dtype.with_target(tgt)
-                               for id, dtype in clbl.arg_id_to_dtype.items()}
-            clbl = clbl.copy(arg_id_to_dtype=arg_id_to_dtype)
-        if isinstance(clbl, ScalarCallable):
-            pass
-        elif isinstance(clbl, CallableKernel):
-            subknl = prepare_for_caching_inner(clbl.subkernel)
-            clbl = clbl.copy(subkernel=subknl)
-        else:
-            raise NotImplementedError(type(clbl))
-
-        new_clbls[name] = clbl
-
-    return program.copy(callables_table=new_clbls)
+    return program
 
 # }}}
 
@@ -2535,11 +2485,6 @@ def preprocess_program(program, device=None):
     # towards in order to pickle and unpickle them. This is the first pass that
     # uses caching, so we need to be ready to pickle. This means propagating
     # this target information.
-
-    if CACHING_ENABLED:
-        input_program = prepare_for_caching(input_program)
-
-    program = prepare_for_caching(program)
 
     # }}}
 

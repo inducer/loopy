@@ -708,10 +708,9 @@ def generate_code_v2(program):
     # {{{ cache retrieval
 
     from loopy import CACHING_ENABLED
-    from loopy.preprocess import prepare_for_caching
 
     if CACHING_ENABLED:
-        input_program = prepare_for_caching(program)
+        input_program = program
         try:
             result = code_gen_cache[input_program]
             logger.debug(f"TranslationUnit with entrypoints {program.entrypoints}:"
