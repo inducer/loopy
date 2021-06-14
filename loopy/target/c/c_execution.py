@@ -485,7 +485,7 @@ class CKernelExecutor(KernelExecutorBase):
 
     # }}}
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, entrypoint=None, **kwargs):
         """
         :returns: ``(None, output)`` the output is a tuple of output arguments
             (arguments that are written as part of the kernel). The order is given
@@ -495,13 +495,13 @@ class CKernelExecutor(KernelExecutorBase):
             :class:`dict` instead, with keys of argument names and values
             of the returned arrays.
         """
+        assert entrypoint is not None
 
         if self.packing_controller is not None:
             kwargs = self.packing_controller.unpack(kwargs)
 
-        program_info = self.program_info(kwargs["entrypoint"],
+        program_info = self.program_info(entrypoint,
                 self.arg_to_dtype_set(kwargs))
-        kwargs.pop("entrypoint")
 
         return program_info.invoker(
                 program_info.c_kernels, *args, **kwargs)
