@@ -59,32 +59,10 @@ class SeparateArrayPackingController:
     It also repacks outgoing arrays of this type back into an object array.
     """
 
-    def __init__(self, program, entrypoint):
+    def __init__(self, packing_info):
+        self.packing_info = packing_info
 
-        # map from arg name
-        self.packing_info = {}
-
-        from loopy.kernel.array import ArrayBase
-        for arg in program[entrypoint].args:
-            if not isinstance(arg, ArrayBase):
-                continue
-
-            if arg.shape is None or arg.dim_tags is None:
-                continue
-
-            subscripts_and_names = arg.subscripts_and_names()
-
-            if subscripts_and_names is None:
-                continue
-
-            self.packing_info[arg.name] = _PackingInfo(
-                    name=arg.name,
-                    sep_shape=arg.sep_shape(),
-                    subscripts_and_names=subscripts_and_names,
-                    is_written=arg.name in
-                    program[entrypoint].get_written_variables())
-
-    def unpack(self, kernel_kwargs):
+    def __call__(self, kernel_kwargs):
         if not self.packing_info:
             return kernel_kwargs
 
@@ -101,21 +79,33 @@ class SeparateArrayPackingController:
 
         return kernel_kwargs
 
-    def pack(self, outputs):
-        if not self.packing_info:
-            return outputs
 
-        for packing_info in self.packing_info.values():
-            if not packing_info.is_written:
-                continue
+def make_packing_controller(program, entrypoint):
+    packing_info = {}
+    from loopy.kernel.array import ArrayBase
+    for arg in program[entrypoint].args:
+        if not isinstance(arg, ArrayBase):
+            continue
 
-            result = outputs[packing_info.name] = \
-                    np.zeros(packing_info.sep_shape, dtype=np.object)
+        if arg.shape is None or arg.dim_tags is None:
+            continue
 
-            for index, unpacked_name in packing_info.subscripts_and_names:
-                result[index] = outputs.pop(unpacked_name)
+        subscripts_and_names = arg.subscripts_and_names()
 
-        return outputs
+        if subscripts_and_names is None:
+            continue
+
+        packing_info[arg.name] = _PackingInfo(
+                name=arg.name,
+                sep_shape=arg.sep_shape(),
+                subscripts_and_names=subscripts_and_names,
+                is_written=arg.name in
+                program[entrypoint].get_written_variables())
+
+    if packing_info:
+        return SeparateArrayPackingController(packing_info)
+    else:
+        return None
 
 # }}}
 
@@ -742,8 +732,7 @@ class KernelExecutorBase:
         self.program = program
         self.entrypoint = entrypoint
 
-        self.packing_controller = SeparateArrayPackingController(program,
-                entrypoint)
+        self.packing_controller = make_packing_controller(program, entrypoint)
 
         self.output_names = tuple(arg.name for arg in self.program[entrypoint].args
                 if arg.is_output)

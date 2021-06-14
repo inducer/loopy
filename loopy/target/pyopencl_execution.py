@@ -248,7 +248,6 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
 # {{{ kernel executor
 
-
 class PyOpenCLKernelExecutor(KernelExecutorBase):
     """An object connecting a kernel to a :class:`pyopencl.Context`
     for execution.
@@ -330,7 +329,9 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
                     entrypoint],
                 invoker=self.get_invoker(program, entrypoint, codegen_result))
 
-    def __call__(self, queue, **kwargs):
+    def __call__(self, queue, *,
+            allocator=None, wait_for=None, out_host=None, entrypoint=None,
+            **kwargs):
         """
         :arg allocator: a callable passed a byte count and returning
             a :class:`pyopencl.Buffer`. A :mod:`pyopencl` allocator
@@ -357,15 +358,13 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
             of the returned arrays.
         """
 
-        allocator = kwargs.pop("allocator", None)
-        wait_for = kwargs.pop("wait_for", None)
-        out_host = kwargs.pop("out_host", None)
+        assert entrypoint is not None
 
-        kwargs = self.packing_controller.unpack(kwargs)
+        if self.packing_controller is not None:
+            kwargs = self.packing_controller(kwargs)
 
-        translation_unit_info = self.translation_unit_info(kwargs["entrypoint"],
+        translation_unit_info = self.translation_unit_info(entrypoint,
                 self.arg_to_dtype_set(kwargs))
-        kwargs.pop("entrypoint")
 
         return translation_unit_info.invoker(
                 translation_unit_info.cl_kernels, queue, allocator, wait_for,
