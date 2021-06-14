@@ -65,7 +65,7 @@ class ArrayArgDescriptor(ImmutableRecord):
     :meth:`InKernelCallable.with_descrs`, used for
     matching shape and address space of caller and callee kernels.
 
-    ..attribute:: shape
+    .. attribute:: shape
 
         Shape of the array.
 
@@ -125,7 +125,7 @@ class ArrayArgDescriptor(ImmutableRecord):
 
     def depends_on(self):
         """
-        Returns class:`frozenset` of all the variable names the
+        Returns :class:`frozenset` of all the variable names the
         :class:`ArrayArgDescriptor` depends on.
         """
         from loopy.kernel.data import auto
