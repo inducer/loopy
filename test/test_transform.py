@@ -876,6 +876,21 @@ def test_partition_into_convex_pieces(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx_factory(), knl)
 
 
+def test_double_split_and_slab(ctx_factory):
+    t_unit = lp.make_kernel(
+        "{[i]: 0<=i<100}",
+        """
+        y[i] = i
+        """)
+
+    ref_t_unit = t_unit
+
+    t_unit = lp.split_iname(t_unit, "i", 6, inner_tag="l.0")
+    t_unit = lp.split_iname(t_unit, "i_outer", 4, outer_tag="g.0", slabs=(0, 1))
+
+    lp.auto_test_vs_ref(ref_t_unit, ctx_factory(), t_unit)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
