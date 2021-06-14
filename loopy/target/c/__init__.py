@@ -100,7 +100,7 @@ def c99_preamble_generator(preamble_info):
         yield("10_complex", "#include <complex.h>")
 
 
-def _preamble_generator(preamble_info, func_qualifier='inline'):
+def _preamble_generator(preamble_info, func_qualifier="inline"):
     integer_type_names = ["int8", "int16", "int32", "int64"]
 
     def_integer_types_macro = ("03_def_integer_types", r"""
@@ -654,7 +654,7 @@ def get_c_callables():
 
 class CFamilyASTBuilder(ASTBuilderBase):
 
-    preamble_function_qualifier = 'inline'
+    preamble_function_qualifier = "inline"
 
     # {{{ library
 
