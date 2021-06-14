@@ -125,7 +125,7 @@ class ArrayArgDescriptor(ImmutableRecord):
 
     def depends_on(self):
         """
-        Returns class:`frozenset` of all the variable names the
+        Returns :class:`frozenset` of all the variable names the
         :class:`ArrayArgDescriptor` depends on.
         """
         from loopy.kernel.data import auto
