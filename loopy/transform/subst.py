@@ -42,12 +42,14 @@ class ExprDescriptor(ImmutableRecord):
 
 # {{{ extract_subst
 
-def extract_subst(kernel, subst_name, template, parameters=()):
+def extract_subst(kernel, subst_name, template, parameters=(), within=None):
     """
     :arg subst_name: The name of the substitution rule to be created.
     :arg template: Unification template expression.
     :arg parameters: An iterable of parameters used in
         *template*, or a comma-separated string of the same.
+    :arg within: An instance of :class:`loopy.match.MatchExpressionBase` or
+        :class:`str` as understood by :func:`loopy.match.parse_match`.
 
     All targeted subexpressions must match ('unify with') *template*
     The template may contain '*' wildcards that will have to match exactly across all
@@ -71,6 +73,9 @@ def extract_subst(kernel, subst_name, template, parameters=()):
     if isinstance(parameters, str):
         parameters = tuple(
                 s.strip() for s in parameters.split(","))
+
+    from loopy.match import parse_match
+    within = parse_match(within)
 
     var_name_gen = kernel.get_var_name_generator()
 
@@ -122,7 +127,7 @@ def extract_subst(kernel, subst_name, template, parameters=()):
 
     from loopy.kernel.instruction import MultiAssignmentBase
     for insn in kernel.instructions:
-        if isinstance(insn, MultiAssignmentBase):
+        if isinstance(insn, MultiAssignmentBase) and within(kernel, insn):
             dfmapper(insn.assignees)
             dfmapper(insn.expression)
 
@@ -181,9 +186,11 @@ def extract_subst(kernel, subst_name, template, parameters=()):
             raise ValueError("assignment LHS not understood")
 
     for insn in kernel.instructions:
-        new_insns.append(
-                insn.with_transformed_expressions(
-                    cbmapper, assignee_f=transform_assignee))
+        if within(kernel, insn):
+            new_insns.append(insn.with_transformed_expressions(
+                cbmapper, assignee_f=transform_assignee))
+        else:
+            new_insns.append(insn)
 
     from loopy.kernel.data import SubstitutionRule
     new_substs = {
