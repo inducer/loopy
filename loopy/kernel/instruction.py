@@ -222,6 +222,7 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     def __init__(self, id, depends_on, depends_on_is_final,
             dependencies,
+            non_linearizing_deps,
             groups, conflicts_with_groups,
             no_sync_with,
             within_inames_is_final, within_inames,
@@ -253,6 +254,9 @@ class InstructionBase(ImmutableRecord, Taggable):
 
         if dependencies is None:
             dependencies = {}
+        # TODO dependee ids for deps that don't affect cartoon dag
+        if non_linearizing_deps is None:
+            non_linearizing_deps = set()
 
         if groups is None:
             groups = frozenset()
@@ -311,6 +315,7 @@ class InstructionBase(ImmutableRecord, Taggable):
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
                 dependencies=dependencies,
+                non_linearizing_deps=non_linearizing_deps,  # TODO
                 no_sync_with=no_sync_with,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 within_inames_is_final=within_inames_is_final,
@@ -405,6 +410,9 @@ class InstructionBase(ImmutableRecord, Taggable):
             result.append("dep="+":".join(self.depends_on))
         if self.dependencies:
             result.append("dependencies="+":".join(self.dependencies.keys()))
+        if self.non_linearizing_deps:
+            result.append(
+                "non_linearizing_deps="+":".join(self.non_linearizing_deps))
         if self.no_sync_with:
             result.append("nosync="+":".join(
                     "%s@%s" % entry for entry in self.no_sync_with))
@@ -475,6 +483,7 @@ class InstructionBase(ImmutableRecord, Taggable):
             self.id = intern(self.id)
         self.depends_on = intern_frozenset_of_ids(self.depends_on)
         # TODO something with dependencies?
+        # TODO something with non_linearizing_deps?
         self.groups = intern_frozenset_of_ids(self.groups)
         self.conflicts_with_groups = (
                 intern_frozenset_of_ids(self.conflicts_with_groups))
@@ -883,6 +892,7 @@ class Assignment(MultiAssignmentBase):
             depends_on=None,
             depends_on_is_final=None,
             dependencies=None,
+            non_linearizing_deps=None,  # TODO
             groups=None,
             conflicts_with_groups=None,
             no_sync_with=None,
@@ -897,6 +907,7 @@ class Assignment(MultiAssignmentBase):
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
                 dependencies=dependencies,
+                non_linearizing_deps=non_linearizing_deps,  # TODO
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
@@ -1033,6 +1044,7 @@ class CallInstruction(MultiAssignmentBase):
             depends_on=None,
             depends_on_is_final=None,
             dependencies=None,
+            non_linearizing_deps=None,  # TODO
             groups=None,
             conflicts_with_groups=None,
             no_sync_with=None,
@@ -1047,6 +1059,7 @@ class CallInstruction(MultiAssignmentBase):
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
                 dependencies=dependencies,
+                non_linearizing_deps=non_linearizing_deps,  # TODO
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
@@ -1234,6 +1247,7 @@ class CInstruction(InstructionBase):
             depends_on=None,
             depends_on_is_final=None,
             dependencies=None,
+            non_linearizing_deps=None,  # TODO
             groups=None,
             conflicts_with_groups=None,
             no_sync_with=None,
@@ -1257,6 +1271,7 @@ class CInstruction(InstructionBase):
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
                 dependencies=dependencies,
+                non_linearizing_deps=non_linearizing_deps,  # TODO
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
@@ -1402,7 +1417,8 @@ class NoOpInstruction(_DataObliviousInstruction):
             id=None,
             depends_on=None,
             depends_on_is_final=None,
-            dependencies=None,
+            dependencies=None,  # TODO
+            non_linearizing_deps=None,
             groups=None,
             conflicts_with_groups=None,
             no_sync_with=None,
@@ -1416,6 +1432,7 @@ class NoOpInstruction(_DataObliviousInstruction):
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
                 dependencies=dependencies,
+                non_linearizing_deps=non_linearizing_deps,  # TODO
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
@@ -1470,7 +1487,8 @@ class BarrierInstruction(_DataObliviousInstruction):
             id,
             depends_on=None,
             depends_on_is_final=None,
-            dependencies=None,
+            dependencies=None,  # TODO
+            non_linearizing_deps=None,
             groups=None,
             conflicts_with_groups=None,
             no_sync_with=None,
@@ -1490,6 +1508,7 @@ class BarrierInstruction(_DataObliviousInstruction):
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
                 dependencies=dependencies,
+                non_linearizing_deps=non_linearizing_deps,  # TODO
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
