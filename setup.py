@@ -89,7 +89,7 @@ setup(name="loopy",
           "genpy>=2016.1.2",
 
           # https://github.com/inducer/loopy/pull/419
-          "numpy>=1.8",
+          "numpy>=1.19",
 
           "cgen>=2016.1",
           "islpy>=2019.1",
