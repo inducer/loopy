@@ -12,7 +12,7 @@ Resolving and specialization
 
 In :mod:`loopy`, a :class:`loopy.TranslationUnit` is a collection of callables
 and entrypoints. Callables are of type
-:class`:loopy.kernel.function_interface.InKernelCallable`. Functions start life
+:class:`loopy.kernel.function_interface.InKernelCallable`. Functions start life
 as simple :class:`pymbolic.primitives.Call` nodes. Call resolution turns the function
 identifiers in those calls into :class:`~loopy.symbolic.ResolvedFunction` objects.
 Each resolved function has an entry in :attr:`TranslationUnit.callables_table`.
