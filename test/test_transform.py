@@ -253,6 +253,7 @@ def test_alias_temporaries(ctx_factory):
 
 
 def test_vectorize(ctx_factory):
+    pytest.xfail("https://github.com/inducer/loopy/issues/418/")
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
