@@ -2666,7 +2666,7 @@ class AccessRangeOverlapChecker:
 
 # {{{ check for write races in accesses
 
-def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl):
+def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl, callables_table):
     """
     Returns *True* if the execution instances of *insn_a* and *insn_b*, accessing
     the same variable via access maps *map_a* and *map_b*, result in an access race.
@@ -2679,7 +2679,8 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl):
     from loopy.kernel.data import (filter_iname_tags_by_type,
             HardwareConcurrentTag)
 
-    gsize, lsize = knl.get_grid_size_upper_bounds()
+    gsize, lsize = knl.get_grid_size_upper_bounds(callables_table,
+                                                  return_dict=True)
 
     # {{{ Step 1: Preprocess the maps
 
@@ -2714,13 +2715,13 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl):
                         HardwareConcurrentTag)
                 map_ = map_.set_dim_name(dt, pos, str(tag))
 
-        for i_l in range(len(lsize)):
+        for i_l in lsize:
             if f"l.{i_l}" not in map_.get_var_dict():
                 ndim = map_.dim(isl.dim_type.in_)
                 map_ = map_.add_dims(isl.dim_type.in_, 1)
                 map_ = map_.set_dim_name(isl.dim_type.in_, ndim, f"l.{i_l}")
 
-        for i_g in range(len(gsize)):
+        for i_g in gsize:
             if f"g.{i_g}" not in map_.get_var_dict():
                 ndim = map_.dim(isl.dim_type.in_)
                 map_ = map_.add_dims(isl.dim_type.in_, 1)
@@ -2771,7 +2772,7 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl):
     space = set_a.space
     unequal_global_id_set = isl.Set.empty(set_a.get_space())
 
-    for i_l in range(len(lsize)):
+    for i_l in lsize:
         lid_a = p.Variable(f"l.{i_l}.A")
         lid_b = p.Variable(f"l.{i_l}.B")
         unequal_global_id_set |= (
@@ -2779,7 +2780,7 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl):
                     p.Comparison(lid_a, "!=", lid_b))
                 )
 
-    for i_g in range(len(gsize)):
+    for i_g in gsize:
         gid_a = p.Variable(f"g.{i_g}.A")
         gid_b = p.Variable(f"g.{i_g}.B")
         unequal_global_id_set |= (
@@ -2795,8 +2796,9 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl):
 class WriteRaceChecker:
     """Used for checking for overlap between access ranges of instructions."""
 
-    def __init__(self, kernel):
+    def __init__(self, kernel, callables_table):
         self.kernel = kernel
+        self.callables_table = callables_table
 
     @property
     @memoize_method
@@ -2867,7 +2869,8 @@ class WriteRaceChecker:
             return True
 
         return _check_for_access_races(insn1_amap, self.kernel.id_to_insn[insn1],
-                insn2_amap, self.kernel.id_to_insn[insn2], self.kernel)
+                                       insn2_amap, self.kernel.id_to_insn[insn2],
+                                       self.kernel, self.callables_table)
 
 # }}}
 
