@@ -870,8 +870,10 @@ def test_partition_into_convex_pieces(ctx_factory):
         """)
     ref_knl = knl
 
-    knl = _partition_into_convex_pieces(knl, isl.BasicSet("[j]->{[i]: 0<=i<j}"),
-                                        "top_i", ("k", ), ("top_k", ), "before")
+    knl = _partition_into_convex_pieces(knl,
+                                        isl.BasicSet("[j]->{[i]: 0<=i<j}"),
+                                        "top_i",
+                                        "before")
 
     lp.auto_test_vs_ref(ref_knl, ctx_factory(), knl)
 
