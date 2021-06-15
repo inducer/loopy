@@ -331,6 +331,9 @@ def _split_iname_backend(kernel, iname_to_split,
         kernel = tag_inames(kernel,
                 {outer_iname: existing_tag, inner_iname: existing_tag})
 
+    kernel = tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
+    kernel = remove_unused_inames(kernel, [iname_to_split])
+
     # {{{ implement slabs
 
     if slabs != (0, 0):
@@ -351,18 +354,11 @@ def _split_iname_backend(kernel, iname_to_split,
                                    bounds.lower_bound_pw_aff,
                                    bounds.lower_bound_pw_aff+slabs[0])
 
-            new_outer_iname = vng(f"{outer_iname}_slab1")
-            new_inner_iname = vng(f"{inner_iname}_slab1")
             kernel = _partition_into_convex_pieces(kernel,
                                                    sub_domain,
-                                                   new_outer_iname,
-                                                   (inner_iname,),
-                                                   (new_inner_iname,),
+                                                   vng(f"{outer_iname}_slab1"),
                                                    new_loops_position="before",
                                                    within=within)
-
-            kernel = tag_inames(kernel, {new_outer_iname: outer_tag,
-                                         new_inner_iname: inner_tag})
 
         if slabs[1] != 0:
             sub_domain_space = (bounds.upper_bound_pw_aff.get_domain_space()
@@ -373,24 +369,14 @@ def _split_iname_backend(kernel, iname_to_split,
                                    outer_iname,
                                    bounds.upper_bound_pw_aff+1-slabs[1],
                                    bounds.upper_bound_pw_aff+1)
-            new_outer_iname = vng(f"{outer_iname}_slab2")
-            new_inner_iname = vng(f"{inner_iname}_slab2")
 
             kernel = _partition_into_convex_pieces(kernel,
                                                    sub_domain,
-                                                   new_outer_iname,
-                                                   (inner_iname,),
-                                                   (new_inner_iname,),
+                                                   vng(f"{outer_iname}_slab2"),
                                                    new_loops_position="after",
                                                    within=within)
 
-            kernel = tag_inames(kernel, {new_outer_iname: outer_tag,
-                                         new_inner_iname: inner_tag})
-
     # }}}
-
-    kernel = tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
-    kernel = remove_unused_inames(kernel, [iname_to_split])
 
     return kernel
 
@@ -2003,8 +1989,9 @@ def _align_and_complement(domain, universe):
 
 @for_each_kernel
 def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
-                                  inner_inames=(), new_inner_inames=(),
-                                  new_loops_position=None, within=None):
+                                  new_loops_position=None, inner_inames=None,
+                                  new_inner_inames=None, within=None,
+                                  propagate_tags=True):
     """
     :arg sub_domain: An instance of :class:`islpy.BasicSet` denoting the domain
         that's supposed to be `split <https://en.wikipedia.org/wiki/Loop_splitting>`.
@@ -2013,7 +2000,9 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
     :arg new_iname: A :class`str` denoting the name of the iname corresponding
         to *sub_domain*.
     :arg inner_inames: A sequence of inames that are nested within the iname
-        to be partitioned.
+        to be partitioned. If *None*, then the inner inames are guessed as
+        those inames whose instruction cover is a subset of the instruction
+        cover of *iname_to_partition*.
     :arg new_inner_inames: A sequence of :class:`str` (one for each
         *inner_inames*) denoting the name by which the inner iname must be
         referred in the new_iname.
@@ -2027,13 +2016,28 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
     from loopy.match import Id, Or, Iname, parse_stack_match
     from pymbolic.primitives import Variable
     from pymbolic.mapper.substitutor import make_subst_func
+    vng = kernel.get_var_name_generator()
+
+    if sub_domain.dim(isl.dim_type.set) != 1:
+        raise LoopyError("subdomain must have exactly one set dim.")
+
+    iname_to_partition, = sub_domain.get_var_names(isl.dim_type.set)
+
+    if inner_inames is None:
+        assert new_inner_inames is None
+        inner_inames = tuple(iname
+                             for iname, insns in kernel.iname_to_insns().items()
+                             if ((insns
+                                  <= kernel.iname_to_insns()[iname_to_partition])
+                                 and iname != iname_to_partition))
+
+    if new_inner_inames is None:
+        new_inner_inames = tuple(vng(f"_slab_{iname}")
+                                 for iname in inner_inames)
 
     within = parse_stack_match(within)
 
     # {{{ sanity checks
-
-    if sub_domain.dim(isl.dim_type.set) != 1:
-        raise LoopyError("subdomain must have exactly one set dim.")
 
     if not isinstance(inner_inames, Sequence):
         raise LoopyError("'inner_inames' expected to be a Sequence type, got"
@@ -2049,8 +2053,6 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
                          f"got '{new_loops_position}'.")
 
     # }}}
-
-    iname_to_partition, = sub_domain.get_var_names(isl.dim_type.set)
 
     if iname_to_partition not in kernel.all_inames():
         raise LoopyError(f"sub_domain dim '{iname_to_partition}' not an iname.")
@@ -2100,8 +2102,7 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
 
     # rename all references to inames in new_insns:
     rule_mapping_context = SubstitutionRuleMappingContext(kernel.substitutions,
-                                                          kernel
-                                                          .get_var_name_generator())
+                                                          vng)
     subst_func = make_subst_func({k: Variable(v)
                                   for k, v in rename_map.items()})
     subst_map = RuleAwareSubstitutionMapper(rule_mapping_context,
@@ -2187,6 +2188,14 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
                                 Iname(new_iname),
                                 Iname(iname_to_partition),
                                 raise_if_no_deps_added=True)
+
+    if propagate_tags:
+        kernel = tag_inames(kernel, {new_iname:
+                                     kernel.inames[iname_to_partition].tags})
+        for new_inner_iname, inner_iname in zip(new_inner_inames,
+                                                inner_inames):
+            kernel = tag_inames(kernel,
+                                {new_inner_iname: kernel.inames[inner_iname].tags})
 
     return kernel
 
