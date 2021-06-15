@@ -87,9 +87,18 @@ def filter_deps_by_intersection_with_SAME(knl):
 
             for dependee_id, dep_maps in stmt.dependencies.items():
 
+                # Continue if we've been told to ignore this dependee
+                if stmt.non_linearizing_deps is None:
+                    dependees_to_ignore = set()
+                else:
+                    dependees_to_ignore = stmt.non_linearizing_deps
+                if dependee_id in dependees_to_ignore:
+                    # TODO better fix for this...?
+                    continue
+
                 # Continue if we already have this pair
-                if dependee_id in deps_filtered.keys() and (
-                        depender_id in deps_filtered[dependee_id]):
+                if depender_id in deps_filtered.keys() and (
+                        dependee_id in deps_filtered[depender_id]):
                     continue
 
                 for dep_map in dep_maps:
