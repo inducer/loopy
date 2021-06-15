@@ -2029,7 +2029,7 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
                              for iname, insns in kernel.iname_to_insns().items()
                              if ((insns
                                   <= kernel.iname_to_insns()[iname_to_partition])
-                                 and iname != iname_to_partition))
+                                 and iname not in sub_domain.get_var_dict()))
 
     if new_inner_inames is None:
         new_inner_inames = tuple(vng(f"_slab_{iname}")
