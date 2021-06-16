@@ -1529,7 +1529,7 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                             bigger, smaller, ", ".join(point_axes)))
                 lines.append(
                         "gist of constraints in {} but not {}: {}".format(
-                            smaller, bigger, gist_domain))
+                            bigger, smaller, gist_domain))
 
             if code is not None:
                 print(79*"-")
