@@ -842,6 +842,7 @@ def reduction_arg_to_subst_rule(
 # {{{ add_padding_to_avoid_bank_conflicts
 
 # experimental not exported/documented for now
+@for_each_kernel
 def add_padding_to_avoid_bank_conflicts(kernel, device):
     import pyopencl as cl
     import pyopencl.characterize as cl_char
