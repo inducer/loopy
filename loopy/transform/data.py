@@ -151,7 +151,9 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
         temporary_address_space=None, temporary_scope=None,
         footprint_subscripts=None,
         fetch_bounding_box=False,
-        fetch_outer_inames=None):
+        fetch_outer_inames=None,
+        prefetch_insn_id=None,
+        within=None):
     """Prefetch all accesses to the variable *var_name*, with all accesses
     being swept through *sweep_inames*.
 
@@ -238,6 +240,13 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
     :arg fetch_outer_inames: The inames within which the fetch
         instruction is nested. If *None*, make an educated guess.
 
+    :arg fetch_insn_id: The ID of the instruction generated to perform the
+        prefetch.
+
+    :arg within: a stack match as understood by
+        :func:`loopy.match.parse_stack_match` to select the instructions where
+        *var_name* is to be prefetched.
+
     This function internally uses :func:`extract_subst` and :func:`precompute`.
     """
     assert isinstance(kernel, LoopKernel)
@@ -318,7 +327,8 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
     # }}}
 
     from loopy.transform.subst import extract_subst
-    kernel = extract_subst(kernel, rule_name, uni_template, parameters)
+    kernel = extract_subst(kernel, rule_name, uni_template, parameters,
+            within=within)
 
     if isinstance(sweep_inames, str):
         sweep_inames = [s.strip() for s in sweep_inames.split(",")]
@@ -343,7 +353,9 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
             temporary_name=temporary_name,
             temporary_address_space=temporary_address_space,
             temporary_scope=temporary_scope,
-            precompute_outer_inames=fetch_outer_inames)
+            precompute_outer_inames=fetch_outer_inames,
+            compute_insn_id=prefetch_insn_id,
+            within=within)
 
     # {{{ remove inames that were temporarily added by slice sweeps
 

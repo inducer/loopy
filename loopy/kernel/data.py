@@ -958,7 +958,7 @@ _old_to_new = {
 if sys.version_info < (3, 7):
     _glb = globals()
     for _old, _new in _old_to_new.items():
-        setattr(_glb, _old, getattr(_glb, _new))
+        _glb[_old] = _glb[_new]
 
     del _old
     del _new

@@ -146,22 +146,75 @@ def add_dependency(kernel, insn_match, depends_on):
 
 # {{{ remove_instructions
 
+def _toposort_of_subset_of_insns(kernel, subset_insns):
+    """
+    Returns a :class:`list` of insn ids which is a topological sort of insn
+    deps in *subset_insns*.
+
+    :arg subset_insns: a :class:`frozenset` of insn ids that are a subset of
+        kernel over which we wish to compute the topological sort.
+    """
+    dag = {insn_id: set(kernel.id_to_insn[insn_id].depends_on
+                        & subset_insns)
+           for insn_id in subset_insns}
+
+    from pytools.graph import compute_topological_order
+
+    return compute_topological_order(dag)[::-1]
+
+
 @for_each_kernel
 def remove_instructions(kernel, insn_ids):
     """Return a new kernel with instructions in *insn_ids* removed.
 
-    Dependencies across (one, for now) deleted isntructions are propagated.
-    Behavior is undefined for now for chains of dependencies within the
-    set of deleted instructions.
+    Dependencies across deleted instructions are transitively propagated i.e.
+    if insn_a depends on insn_b that depends on insn_c and  'insn_b' is to be
+    removed then the returned kernel will have a dependency from 'insn_a' to
+    'insn_c'.
 
     This also updates *no_sync_with* for all instructions.
+
+    :arg insn_ids: An instance of :class:`set` or :class:`str` as
+        understood by :func:`loopy.match.parse_match` or
+        :class:`loopy.match.MatchExpressionBase`.
     """
+    from functools import reduce
 
     if not insn_ids:
         return kernel
 
+    from loopy.match import MatchExpressionBase
+
+    if isinstance(insn_ids, str):
+        from loopy.match import parse_match
+        insn_ids = parse_match(insn_ids)
+    if isinstance(insn_ids, MatchExpressionBase):
+        within = insn_ids
+
+        insn_ids = set([insn.id for insn in kernel.instructions if
+            within(kernel, insn)])
+
     assert isinstance(insn_ids, set)
     id_to_insn = kernel.id_to_insn
+
+    # {{{ for each insn_id to be removed get deps in terms of remaining insns
+
+    # transitive_deps: mapping from insn_id (referred as I) to be removed to
+    # frozenset of insn_ids that won't be removed (referred as R(I)). 'R(I)' are
+    # the transitive dependencies of 'I' that won't be removed.
+
+    transitive_deps = {}
+    insns_not_to_be_removed = frozenset(id_to_insn) - insn_ids
+
+    for insn_id in _toposort_of_subset_of_insns(kernel, insn_ids):
+        assert id_to_insn[insn_id].depends_on <= (insns_not_to_be_removed
+                                                  | frozenset(transitive_deps))
+        transitive_deps[insn_id] = reduce(frozenset.union,
+                                          (transitive_deps.get(d, frozenset([d]))
+                                           for d in id_to_insn[insn_id].depends_on),
+                                          frozenset())
+
+    # }}}
 
     new_insns = []
     for insn in kernel.instructions:
@@ -169,19 +222,19 @@ def remove_instructions(kernel, insn_ids):
             continue
 
         # transitively propagate dependencies
-        # (only one level for now)
         if insn.depends_on is None:
             depends_on = frozenset()
         else:
             depends_on = insn.depends_on
 
-        new_deps = depends_on - insn_ids
+        new_deps = reduce(frozenset.union,
+                          (transitive_deps.get(d, frozenset([d]))
+                           for d in depends_on),
+                          frozenset())
 
-        for dep_id in depends_on & insn_ids:
-            new_deps = new_deps | id_to_insn[dep_id].depends_on
+        assert (new_deps & insn_ids) == frozenset()
 
         # update no_sync_with
-
         new_no_sync_with = frozenset((insn_id, scope)
                 for insn_id, scope in insn.no_sync_with
                 if insn_id not in insn_ids)
