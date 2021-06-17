@@ -29,171 +29,12 @@ from loopy.target.opencl import (OpenCLTarget, OpenCLCASTBuilder,
         ExpressionToOpenCLCExpressionMapper)
 from loopy.target.python import PythonASTBuilderBase
 from loopy.types import NumpyType
-from loopy.diagnostic import LoopyError, warn_with_kernel, LoopyTypeError
+from loopy.diagnostic import LoopyError, LoopyTypeError
 from warnings import warn
 from loopy.kernel.function_interface import ScalarCallable
 
 import logging
 logger = logging.getLogger(__name__)
-
-
-# {{{ temp storage adjust for bank conflict
-
-def adjust_local_temp_var_storage(kernel, device):
-    import pyopencl as cl
-    import pyopencl.characterize as cl_char
-
-    logger.debug("%s: adjust temp var storage" % kernel.name)
-
-    new_temp_vars = {}
-
-    from loopy.kernel.data import AddressSpace
-
-    lmem_size = cl_char.usable_local_mem_size(device)
-    for temp_var in kernel.temporary_variables.values():
-        if temp_var.address_space != AddressSpace.LOCAL:
-            new_temp_vars[temp_var.name] = \
-                    temp_var.copy(storage_shape=temp_var.shape)
-            continue
-
-        if not temp_var.shape:
-            # scalar, no need to mess with storage shape
-            new_temp_vars[temp_var.name] = temp_var
-            continue
-
-        other_loctemp_nbytes = [
-                tv.nbytes
-                for tv in kernel.temporary_variables.values()
-                if tv.address_space == AddressSpace.LOCAL
-                and tv.name != temp_var.name]
-
-        storage_shape = temp_var.storage_shape
-
-        if storage_shape is None:
-            storage_shape = temp_var.shape
-
-        storage_shape = list(storage_shape)
-
-        # sizes of all dims except the last one, which we may change
-        # below to avoid bank conflicts
-        from pytools import product
-
-        if device.local_mem_type == cl.device_local_mem_type.GLOBAL:
-            # FIXME: could try to avoid cache associativity disasters
-            new_storage_shape = storage_shape
-
-        elif device.local_mem_type == cl.device_local_mem_type.LOCAL:
-            min_mult = cl_char.local_memory_bank_count(device)
-            good_incr = None
-            new_storage_shape = storage_shape
-            min_why_not = None
-
-            for increment in range(storage_shape[-1]//2):
-
-                test_storage_shape = storage_shape[:]
-                test_storage_shape[-1] = test_storage_shape[-1] + increment
-                new_mult, why_not = cl_char.why_not_local_access_conflict_free(
-                        device, temp_var.dtype.itemsize,
-                        temp_var.shape, test_storage_shape)
-
-                # will choose smallest increment 'automatically'
-                if new_mult < min_mult:
-                    new_lmem_use = (sum(other_loctemp_nbytes)
-                            + temp_var.dtype.itemsize*product(test_storage_shape))
-                    if new_lmem_use < lmem_size:
-                        new_storage_shape = test_storage_shape
-                        min_mult = new_mult
-                        min_why_not = why_not
-                        good_incr = increment
-
-            if min_mult != 1:
-                from warnings import warn
-                from loopy.diagnostic import LoopyAdvisory
-                warn("could not find a conflict-free mem layout "
-                        "for local variable '%s' "
-                        "(currently: %dx conflict, increment: %s, reason: %s)"
-                        % (temp_var.name, min_mult, good_incr, min_why_not),
-                        LoopyAdvisory)
-        else:
-            from warnings import warn
-            warn("unknown type of local memory")
-
-            new_storage_shape = storage_shape
-
-        new_temp_vars[temp_var.name] = temp_var.copy(
-                storage_shape=tuple(new_storage_shape))
-
-    return kernel.copy(temporary_variables=new_temp_vars)
-
-# }}}
-
-
-# {{{ check sizes against device properties
-
-def check_sizes(kernel, callables_table, device):
-    import loopy as lp
-
-    from loopy.diagnostic import LoopyAdvisory, LoopyError
-
-    if device is None:
-        warn_with_kernel(kernel, "no_device_in_pre_codegen_checks",
-                "No device parameter was passed to the PyOpenCLTarget. "
-                "Perhaps you want to pass a device to benefit from "
-                "additional checking.", LoopyAdvisory)
-        return
-
-    parameters = {}
-    for arg in kernel.args:
-        if isinstance(arg, lp.ValueArg) and arg.approximately is not None:
-            parameters[arg.name] = arg.approximately
-
-    glens, llens = (
-            kernel.get_grid_size_upper_bounds_as_exprs(callables_table))
-
-    if (max(len(glens), len(llens))
-            > device.max_work_item_dimensions):
-        raise LoopyError("too many work item dimensions")
-
-    from pymbolic import evaluate
-    from pymbolic.mapper.evaluator import UnknownVariableError
-    try:
-        glens = evaluate(glens, parameters)
-        llens = evaluate(llens, parameters)
-    except UnknownVariableError as name:
-        from warnings import warn
-        warn("could not check axis bounds because no value "
-                "for variable '%s' was passed to check_kernels()"
-                % name, LoopyAdvisory)
-    else:
-        for i in range(len(llens)):
-            if llens[i] > device.max_work_item_sizes[i]:
-                raise LoopyError("group axis %d too big" % i)
-
-        from pytools import product
-        if product(llens) > device.max_work_group_size:
-            raise LoopyError("work group too big")
-
-    local_mem_use = kernel.local_mem_use()
-
-    from pyopencl.characterize import usable_local_mem_size
-    import numbers
-    if isinstance(local_mem_use, numbers.Integral):
-        if local_mem_use > usable_local_mem_size(device):
-            raise LoopyError("using too much local memory")
-    else:
-        warn_with_kernel(kernel, "non_constant_local_mem",
-                "The amount of local memory used by the kernel "
-                "is not a constant. This will likely cause problems.")
-
-    from loopy.kernel.data import ConstantArg
-    const_arg_count = sum(
-            1 for arg in kernel.args
-            if isinstance(arg, ConstantArg))
-
-    if const_arg_count > device.max_constant_args:
-        raise LoopyError("too many constant arguments")
-
-# }}}
 
 
 # {{{ pyopencl function scopers
@@ -535,79 +376,23 @@ class PyOpenCLTarget(OpenCLTarget):
                     "generates invoker code that requires PyOpenCL 2021.2 "
                     "or newer.")
 
-        self.device = device
+        if device is not None:
+            warn("Passing device is deprecated, it will stop working in 2022.",
+                    DeprecationWarning, stacklevel=2)
+
         self.pyopencl_module_name = pyopencl_module_name
+
+    @property
+    def device(self):
+        warn("PyOpenCLTarget.device is deprecated, it will stop working in 2022.",
+                DeprecationWarning, stacklevel=2)
+        return None
 
     # NB: Not including 'device', as that is handled specially here.
     hash_fields = OpenCLTarget.hash_fields + (
             "pyopencl_module_name",)
     comparison_fields = OpenCLTarget.comparison_fields + (
             "pyopencl_module_name",)
-
-    def __eq__(self, other):
-        if not super().__eq__(other):
-            return False
-
-        if (self.device is None) != (other.device is None):
-            return False
-
-        if self.device is not None:
-            assert other.device is not None
-            return (self.device.hashable_model_and_version_identifier
-                    == other.device.hashable_model_and_version_identifier)
-        else:
-            assert other.device is None
-            return True
-
-    def update_persistent_hash(self, key_hash, key_builder):
-        super().update_persistent_hash(key_hash, key_builder)
-        key_builder.rec(key_hash, getattr(
-            self.device, "hashable_model_and_version_identifier", None))
-
-    def __getstate__(self):
-        dev_id = None
-        if self.device is not None:
-            dev_id = self.device.hashable_model_and_version_identifier
-
-        return {
-                "device_id": dev_id,
-                "atomics_flavor": self.atomics_flavor,
-                "use_int8_for_bool": self.use_int8_for_bool,
-                "fortran_abi": self.fortran_abi,
-                "pyopencl_module_name": self.pyopencl_module_name,
-                }
-
-    def __setstate__(self, state):
-        self.atomics_flavor = state["atomics_flavor"]
-        self.use_int8_for_bool = state["use_int8_for_bool"]
-        self.fortran_abi = state["fortran_abi"]
-        self.pyopencl_module_name = state["pyopencl_module_name"]
-
-        dev_id = state["device_id"]
-        if dev_id is None:
-            self.device = None
-        else:
-            import pyopencl as cl
-            matches = [
-                dev
-                for plat in cl.get_platforms()
-                for dev in plat.get_devices()
-                if dev.hashable_model_and_version_identifier == dev_id]
-
-            if matches:
-                self.device = matches[0]
-            else:
-                raise LoopyError(
-                        "cannot unpickle device '%s': not found"
-                        % dev_id)
-
-    def preprocess(self, kernel):
-        if self.device is not None:
-            kernel = adjust_local_temp_var_storage(kernel, self.device)
-        return kernel
-
-    def pre_codegen_entrypoint_check(self, kernel, callables_table):
-        check_sizes(kernel, callables_table, self.device)
 
     def get_host_ast_builder(self):
         return PyOpenCLPythonASTBuilder(self)
@@ -676,7 +461,10 @@ class PyOpenCLTarget(OpenCLTarget):
                 entrypoint=kwargs.pop("entrypoint"))
 
     def with_device(self, device):
-        return type(self)(device)
+        from warnings import warn
+        warn("PyOpenCLTarget.with_device is deprecated, it will "
+                "stop working in 2022.", DeprecationWarning, stacklevel=2)
+        return self
 
 # }}}
 
@@ -688,44 +476,6 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
 
     import loopy as lp
     from loopy.kernel.array import ArrayBase
-
-    # {{{ arg counting bug handling
-
-    # For example:
-    # https://github.com/pocl/pocl/issues/197
-    # (but Apple CPU has a similar bug)
-
-    work_around_arg_count_bug = False
-    warn_about_arg_count_bug = False
-
-    try:
-        from pyopencl.characterize import has_struct_arg_count_bug
-
-    except ImportError:
-        count_bug_per_dev = [False]*len(devices)
-
-    else:
-        count_bug_per_dev = [
-                has_struct_arg_count_bug(dev)
-                if dev is not None else False
-                for dev in devices]
-
-    if any(dev is None for dev in devices):
-        warn("{knl_name}: device not supplied to PyOpenCLTarget--"
-                "workarounds for broken OpenCL implementations "
-                "(such as those relating to complex numbers) "
-                "may not be enabled when needed. To avoid this, "
-                "pass target=lp.PyOpenCLTarget(dev) when creating "
-                "the kernel."
-                .format(knl_name=kernel.name))
-
-    if any(count_bug_per_dev):
-        if all(count_bug_per_dev):
-            work_around_arg_count_bug = True
-        else:
-            warn_about_arg_count_bug = True
-
-    # }}}
 
     cl_arg_idx = 0
     arg_idx_to_cl_arg_idx = {}
@@ -778,13 +528,6 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
 
             dtype = idi.dtype
 
-            if warn_about_arg_count_bug:
-                warn("{knl_name}: arguments include complex numbers, and "
-                        "some (but not all) of the target devices mishandle "
-                        "struct kernel arguments (hence the workaround is "
-                        "disabled".format(
-                            knl_name=kernel.name))
-
             if dtype.numpy_dtype == np.complex64:
                 arg_char = "f"
             elif dtype.numpy_dtype == np.complex128:
@@ -792,20 +535,11 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
             else:
                 raise TypeError("unexpected complex type: %s" % dtype)
 
-            if (work_around_arg_count_bug
-                    and dtype.numpy_dtype == np.complex128
-                    and fp_arg_count + 2 <= 8):
-                add_buf_arg(cl_arg_idx, arg_char, f"{idi.name}.real")
-                cl_arg_idx += 1
-
-                add_buf_arg(cl_arg_idx, arg_char, f"{idi.name}.imag")
-                cl_arg_idx += 1
-            else:
-                buf_indices_and_args.append(cl_arg_idx)
-                buf_indices_and_args.append(
-                    f"_lpy_pack('{arg_char}{arg_char}', "
-                    f"{idi.name}.real, {idi.name}.imag)")
-                cl_arg_idx += 1
+            buf_indices_and_args.append(cl_arg_idx)
+            buf_indices_and_args.append(
+                f"_lpy_pack('{arg_char}{arg_char}', "
+                f"{idi.name}.real, {idi.name}.imag)")
+            cl_arg_idx += 1
 
             fp_arg_count += 2
 

@@ -252,9 +252,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
 
     from loopy import CACHING_ENABLED
 
-    from loopy.preprocess import prepare_for_caching
-    key_kernel = prepare_for_caching(kernel)
-    cache_key = (key_kernel, var_name,
+    cache_key = (kernel, var_name,
             tuple(buffer_inames),
             PymbolicExpressionHashWrapper(init_expression),
             PymbolicExpressionHashWrapper(store_expression), within,
@@ -546,9 +544,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
     kernel = assign_automatic_axes(kernel, callables_table)
 
     if CACHING_ENABLED:
-        from loopy.preprocess import prepare_for_caching
-        buffer_array_cache.store_if_not_present(
-                cache_key, prepare_for_caching(kernel))
+        buffer_array_cache.store_if_not_present(cache_key, kernel)
 
     return kernel
 

@@ -851,4 +851,95 @@ def reduction_arg_to_subst_rule(
 # }}}
 
 
+# {{{ add_padding_to_avoid_bank_conflicts
+
+# experimental not exported/documented for now
+@for_each_kernel
+def add_padding_to_avoid_bank_conflicts(kernel, device):
+    import pyopencl as cl
+    import pyopencl.characterize as cl_char
+
+    new_temp_vars = {}
+
+    from loopy.kernel.data import AddressSpace
+
+    lmem_size = cl_char.usable_local_mem_size(device)
+    for temp_var in kernel.temporary_variables.values():
+        if temp_var.address_space != AddressSpace.LOCAL:
+            new_temp_vars[temp_var.name] = \
+                    temp_var.copy(storage_shape=temp_var.shape)
+            continue
+
+        if not temp_var.shape:
+            # scalar, no need to mess with storage shape
+            new_temp_vars[temp_var.name] = temp_var
+            continue
+
+        other_loctemp_nbytes = [
+                tv.nbytes
+                for tv in kernel.temporary_variables.values()
+                if tv.address_space == AddressSpace.LOCAL
+                and tv.name != temp_var.name]
+
+        storage_shape = temp_var.storage_shape
+
+        if storage_shape is None:
+            storage_shape = temp_var.shape
+
+        storage_shape = list(storage_shape)
+
+        # sizes of all dims except the last one, which we may change
+        # below to avoid bank conflicts
+        from pytools import product
+
+        if device.local_mem_type == cl.device_local_mem_type.GLOBAL:
+            # FIXME: could try to avoid cache associativity disasters
+            new_storage_shape = storage_shape
+
+        elif device.local_mem_type == cl.device_local_mem_type.LOCAL:
+            min_mult = cl_char.local_memory_bank_count(device)
+            good_incr = None
+            new_storage_shape = storage_shape
+            min_why_not = None
+
+            for increment in range(storage_shape[-1]//2):
+
+                test_storage_shape = storage_shape[:]
+                test_storage_shape[-1] = test_storage_shape[-1] + increment
+                new_mult, why_not = cl_char.why_not_local_access_conflict_free(
+                        device, temp_var.dtype.itemsize,
+                        temp_var.shape, test_storage_shape)
+
+                # will choose smallest increment 'automatically'
+                if new_mult < min_mult:
+                    new_lmem_use = (sum(other_loctemp_nbytes)
+                            + temp_var.dtype.itemsize*product(test_storage_shape))
+                    if new_lmem_use < lmem_size:
+                        new_storage_shape = test_storage_shape
+                        min_mult = new_mult
+                        min_why_not = why_not
+                        good_incr = increment
+
+            if min_mult != 1:
+                from warnings import warn
+                from loopy.diagnostic import LoopyAdvisory
+                warn("could not find a conflict-free mem layout "
+                        "for local variable '%s' "
+                        "(currently: %dx conflict, increment: %s, reason: %s)"
+                        % (temp_var.name, min_mult, good_incr, min_why_not),
+                        LoopyAdvisory)
+        else:
+            from warnings import warn
+            warn("unknown type of local memory")
+
+            new_storage_shape = storage_shape
+
+        new_temp_vars[temp_var.name] = temp_var.copy(
+                storage_shape=tuple(new_storage_shape))
+
+    return kernel.copy(temporary_variables=new_temp_vars)
+
+# }}}
+
+
 # vim: foldmethod=marker
