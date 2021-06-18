@@ -794,6 +794,10 @@ the only iteration for which ``i_inner + 4*i_outer`` can become larger than
 *n*, only the (now separate) code for that iteration contains conditionals,
 enabling some cost savings:
 
+.. testsetup::
+   >>> orig_knl = orig_knl.with_kernel(orig_knl["loopy_kernel"]
+   ...                                 .copy(silenced_warnings=["slabs_deprecation"]))
+
 .. doctest::
 
     >>> knl = orig_knl
@@ -803,7 +807,6 @@ enabling some cost savings:
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
-      /* bulk slab for 'i_outer' */
       for (int i_outer = 0; i_outer <= -2 + (3 + n) / 4; ++i_outer)
       {
         a[4 * i_outer] = 0.0f;
@@ -811,20 +814,17 @@ enabling some cost savings:
         a[2 + 4 * i_outer] = 0.0f;
         a[3 + 4 * i_outer] = 0.0f;
       }
-      /* final slab for 'i_outer' */
       {
-        int const i_outer = -1 + n + -1 * ((3 * n) / 4);
+        int const i_outer_slab2 = -1 + n + -1 * ((3 * n) / 4);
     <BLANKLINE>
-        if (-1 + n >= 0)
-        {
-          a[4 * i_outer] = 0.0f;
-          if (-2 + -4 * i_outer + n >= 0)
-            a[1 + 4 * i_outer] = 0.0f;
-          if (-3 + -4 * i_outer + n >= 0)
-            a[2 + 4 * i_outer] = 0.0f;
-          if (4 + 4 * i_outer + -1 * n == 0)
-            a[3 + 4 * i_outer] = 0.0f;
-        }
+        if (i_outer_slab2 >= 0)
+          a[4 * i_outer_slab2] = 0.0f;
+        if (i_outer_slab2 >= 0 && -2 + -4 * i_outer_slab2 + n >= 0)
+          a[1 + 4 * i_outer_slab2] = 0.0f;
+        if (i_outer_slab2 >= 0 && -3 + -4 * i_outer_slab2 + n >= 0)
+          a[2 + 4 * i_outer_slab2] = 0.0f;
+        if (4 + 4 * i_outer_slab2 + -1 * n == 0 && -4 + n >= 0)
+          a[3 + 4 * i_outer_slab2] = 0.0f;
       }
     ...
 
