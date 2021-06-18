@@ -23,6 +23,12 @@ THE SOFTWARE.
 
 from pytools import MovedFunctionDeprecationWrapper
 
+__doc__ = """
+.. currentmodule:: loopy.diagnostic
+
+.. autoclass:: LoopyError
+"""
+
 
 # {{{ warnings
 

@@ -106,8 +106,9 @@ def add_dependency(kernel, insn_match, depends_on,
     :func:`loopy.match.parse_match`.
 
     :arg raise_if_no_deps_added: A :class:`bool`. If *True* then a
-        :class:`LoopyError` would be raised if no new dependencies are added to
-        *kernel*. If *False* no dependencies added is passed silently.
+        :class:`~loopy.diagnostic.LoopyError` would be raised if no new
+        dependencies are added to *kernel*. If *False* no dependencies added is
+        passed silently.
 
     .. versionchanged:: 2016.3
 
