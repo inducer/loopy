@@ -181,7 +181,7 @@ jobs:
                 cd /home/firedrake/firedrake/src/firedrake
 
                 # helps with tmate debugging
-                sudo chown -R $(whoami) /__w/temp || true
+                sudo chmod a+rwX -R $(whoami) /__w/temp || true
 
                 # pytest --tb=native -rsxw --durations=10 --capture=no -m 'not parallel' tests/multigrid/
         -   uses: mxschmitt/action-tmate@v3
