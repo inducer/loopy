@@ -1987,6 +1987,58 @@ def _align_and_complement(domain, universe):
     return domain.complement() & universe
 
 
+class ReductionDuplicationMapper(RuleAwareIdentityMapper):
+
+    def __init__(self, rule_mapping_context, within,
+                 iname_to_new_iname, position):
+        super().__init__(rule_mapping_context)
+
+        self.within = within
+        self.iname_to_new_iname = iname_to_new_iname
+        self.position = position
+
+    def map_reduction(self, expr, expn_state):
+        from loopy.library.reduction import (SumReductionOperation,
+                                             ProductReductionOperation)
+        from loopy.symbolic import Reduction
+        from pymbolic.mapper.substitutor import substitute
+        import pymbolic.primitives as prim
+
+        inames_to_partition = {k: v for k, v in self.iname_to_new_iname.items()
+                               if (k in expr.inames
+                                   and k not in expn_state.arg_context)}
+        if (inames_to_partition
+                and self.within(
+                    expn_state.kernel,
+                    expn_state.instruction,
+                    expn_state.stack)):
+
+            new_redn = Reduction(expr.operation,
+                                 tuple(inames_to_partition.get(i, i)
+                                       for i in expr.inames),
+                                 substitute(expr.expr,
+                                            {k: prim.Variable(v)
+                                             for k, v in inames_to_partition.items()}
+                                            ),
+                                 expr.allow_simultaneous)
+            if isinstance(expr.operation, SumReductionOperation):
+                if self.position == "before":
+                    return new_redn + expr
+                else:
+                    assert self.position == "after"
+                    return expr + new_redn
+            elif isinstance(expr.operation, ProductReductionOperation):
+                if self.position == "before":
+                    return new_redn * expr
+                else:
+                    assert self.position == "after"
+                    return expr * new_redn
+            else:
+                raise NotImplementedError(expr.operation)
+        else:
+            return super().map_reduction(expr, expn_state)
+
+
 @for_each_kernel
 def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
                                   new_loops_position=None, inner_inames=None,
@@ -2016,6 +2068,8 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
     from loopy.match import Id, Or, Iname, parse_stack_match
     from pymbolic.primitives import Variable
     from pymbolic.mapper.substitutor import make_subst_func
+    from functools import reduce
+
     vng = kernel.get_var_name_generator()
 
     if sub_domain.dim(isl.dim_type.set) != 1:
@@ -2052,10 +2106,26 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
         raise LoopyError("new_loops_position can be 'before' or 'after', "
                          f"got '{new_loops_position}'.")
 
-    # }}}
-
     if iname_to_partition not in kernel.all_inames():
         raise LoopyError(f"sub_domain dim '{iname_to_partition}' not an iname.")
+
+    if not (kernel.iname_to_insns()[iname_to_partition]
+            >= reduce(frozenset.union,
+                      (kernel.iname_to_insns()[iname]
+                       for iname in inner_inames),
+                      frozenset())):
+        raise LoopyError(f"Provided inner inames: '{inner_inames}' "
+                         "violate the criterion that they must nest inside "
+                         f"'{iname_to_partition}'.")
+
+    if iname_to_partition in reduce(frozenset.union,
+                                    (insn.sub_array_ref_inames()
+                                     for insn in kernel.instructions),
+                                    frozenset()):
+        raise NotImplementedError(f"{iname_to_partition} is a sub-array-ref inames,"
+                                  " not yet supported.")
+
+    # }}}
 
     iname_to_partition_dom = kernel.get_inames_domain(iname_to_partition)
     sub_domain_complement = _align_and_complement(sub_domain,
@@ -2066,17 +2136,6 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
                          f"'{sub_domain_complement}' => not allowed.")
 
     # {{{ adding instruction corresponding to the new loops
-
-    from functools import reduce
-
-    if not (kernel.iname_to_insns()[iname_to_partition]
-            >= reduce(frozenset.union,
-                      (kernel.iname_to_insns()[iname]
-                       for iname in inner_inames),
-                      frozenset())):
-        raise LoopyError(f"Provided inner inames: '{inner_inames}' "
-                         "violate the criterion that they must nest inside "
-                         f"'{iname_to_partition}'.")
 
     rename_map = dict([(iname_to_partition, new_iname)] + list(zip(inner_inames,
                                                                    new_inner_inames))
@@ -2089,8 +2148,7 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
 
     insns_to_copy = [insn
                      for insn in kernel.instructions
-                     if iname_to_partition in (insn.within_inames
-                                               | insn.reduction_inames())]
+                     if iname_to_partition in insn.within_inames]
 
     new_insns = [insn.copy(id=ing(f"_part_{iname_to_partition}_{insn.id}"),
                            within_inames=map_old_inames_to_new_inames(insn
@@ -2112,6 +2170,19 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
                                   within=parse_stack_match(Or(tuple(
                                       Id(insn.id) for insn in new_insns))),
                                   map_tvs=False, map_args=False)
+    kernel = rule_mapping_context.finish_kernel(kernel)
+
+    # }}}
+
+    # {{{ duplicate reduction nodes
+
+    rule_mapping_context = SubstitutionRuleMappingContext(kernel.substitutions,
+                                                          vng)
+    redn_duplicator = ReductionDuplicationMapper(rule_mapping_context,
+                                                 within,
+                                                 rename_map,
+                                                 new_loops_position)
+    kernel = redn_duplicator.map_kernel(kernel)
     kernel = rule_mapping_context.finish_kernel(kernel)
 
     # }}}
@@ -2181,13 +2252,13 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
         kernel = add_dependency(kernel,
                                 Iname(iname_to_partition),
                                 Iname(new_iname),
-                                raise_if_no_deps_added=True)
+                                raise_if_no_deps_added=False)
     else:
         assert new_loops_position == "after"
         kernel = add_dependency(kernel,
                                 Iname(new_iname),
                                 Iname(iname_to_partition),
-                                raise_if_no_deps_added=True)
+                                raise_if_no_deps_added=False)
 
     if propagate_tags:
         kernel = tag_inames(kernel, {new_iname:
