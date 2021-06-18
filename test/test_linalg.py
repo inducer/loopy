@@ -368,7 +368,7 @@ def test_rank_one(ctx_factory):
             variant_1,
             variant_2,
             variant_3,
-            variant_4
+            # variant_4 TODO: (https://github.com/inducer/issues/421/)
             ]:
         lp.auto_test_vs_ref(seq_knl, ctx, variant(knl),
                 op_count=[np.dtype(dtype).itemsize*n**2/1e9], op_label=["GBytes"],
