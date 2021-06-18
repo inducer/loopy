@@ -166,4 +166,17 @@ jobs:
                 build_py_project_in_conda_env
                 test_py_project
 
+    downstream_firedrake:
+        runs-on: ubuntu-latest
+        container:
+            image: 'firedrakeproject/firedrake'
+        steps:
+        -   uses: actions/checkout@v1
+        -   name: "Main script"
+            run: |
+                . /home/firedrake/firedrake/bin/activate
+                pip install .
+                cd /home/firedrake/firedrake
+                pytest -m 'not parallel' tests/multigrid/
+
 # vim: sw=4
