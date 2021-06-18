@@ -893,10 +893,6 @@ def test_non1_step_slices(ctx_factory, start, inline):
 
     t_unit = lp.set_options(t_unit, "return_dict")
 
-    # check_bounds isn't smart enough to pass assumptions from caller to callee
-    # during check_bounds
-    t_unit = lp.set_options(t_unit, enforce_array_accesses_within_bounds="no_check")
-
     if inline:
         t_unit = lp.inline_callable_kernel(t_unit, "squared_arange")
 
@@ -904,6 +900,37 @@ def test_non1_step_slices(ctx_factory, start, inline):
 
     np.testing.assert_allclose(out_dict["X"].get(), expected_out1)
     np.testing.assert_allclose(out_dict["Y"].get(), expected_out2)
+
+
+def test_check_bounds_with_caller_assumptions(ctx_factory):
+    import islpy as isl
+    from loopy.diagnostic import LoopyIndexError
+
+    arange = lp.make_function(
+        "{[i]: 0<=i<n}",
+        """
+
+        y[i] = i
+        """, name="arange")
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<20}",
+        """
+        [i]: Y[i] = arange(N)
+        """,
+        [lp.GlobalArg("Y", shape=(20,)), lp.ValueArg("N", dtype=np.int32)],
+        name="epoint")
+
+    knl = lp.merge([knl, arange])
+
+    with pytest.raises(LoopyIndexError):
+        lp.generate_code_v2(knl)
+
+    knl = knl.with_kernel(lp.assume(knl.default_entrypoint,
+                                    isl.BasicSet("[N] -> { : N <= 20}")))
+
+    lp.auto_test_vs_ref(knl, ctx_factory(),
+                        parameters={"N": 15})
 
 
 if __name__ == "__main__":
