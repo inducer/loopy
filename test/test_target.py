@@ -325,6 +325,7 @@ def test_target_invalid_type_cast():
 
 
 def test_ispc_streaming_stores():
+    pytest.xfail("https://github.com/inducer/loopy/issues/421")
     stream_dtype = np.float32
     index_dtype = np.int32
 

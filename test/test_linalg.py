@@ -65,6 +65,7 @@ from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_axpy(ctx_factory):
+    pytest.xfail("https://github.com/inducer/loopy/issues/421")
     logging.basicConfig(level="INFO")
     ctx = ctx_factory()
 
@@ -198,6 +199,7 @@ def test_plain_matrix_mul(ctx_factory):
 
 
 def test_variable_size_matrix_mul(ctx_factory):
+    pytest.xfail("https://github.com/inducer/loopy/issues/421")
     ctx = ctx_factory()
 
     if (not ctx.devices[0].image_support

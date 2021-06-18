@@ -372,6 +372,7 @@ def test_stencil(ctx_factory):
 
 
 def test_stencil_with_overfetch(ctx_factory):
+    pytest.xfail("https://github.com/inducer/loopy/issues/421")
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
