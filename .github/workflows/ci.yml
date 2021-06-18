@@ -167,6 +167,7 @@ jobs:
                 test_py_project
 
     downstream_firedrake:
+        name: Tests for downstream project Firedrake
         runs-on: ubuntu-latest
         container:
             image: 'firedrakeproject/firedrake'
