@@ -178,12 +178,18 @@ jobs:
                 sudo chown -R $(whoami) /github/home || true
                 . /home/firedrake/firedrake/bin/activate
                 pip install .
+
                 cd /home/firedrake/firedrake/src/firedrake
 
+                # patch so exception messages get shown
+                curl -L https://gist.githubusercontent.com/inducer/17d7134ace215f0df1f3627eac4195c7/raw/63edfaf2ec8bf06987896569a4f24264df490e9e/firedrake-debug-patch.diff | patch -p1
+
+                pytest --tb=native -rsxw --durations=10 --capture=no -m 'not parallel' tests/multigrid/
+        -   name: "Prepare for tmate"
+            run: |
                 # helps with tmate debugging
                 sudo chmod a+rwX -R $(whoami) /__w/_temp || true
-
-                # pytest --tb=native -rsxw --durations=10 --capture=no -m 'not parallel' tests/multigrid/
-        -   uses: mxschmitt/action-tmate@v3
+                
+        # -   uses: mxschmitt/action-tmate@v3
 
 # vim: sw=4
