@@ -179,6 +179,6 @@ jobs:
                 . /home/firedrake/firedrake/bin/activate
                 pip install .
                 cd /home/firedrake/firedrake/src/firedrake
-                pytest -m 'not parallel' tests/multigrid/
+                pytest --tb=native -rsxw --durations=10 --capture=no -m 'not parallel' tests/multigrid/
 
 # vim: sw=4
