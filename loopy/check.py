@@ -510,6 +510,38 @@ def check_for_data_dependent_parallel_bounds(kernel):
 
 # {{{ check access bounds
 
+# {{{ helpers for _AccessCheckMapper
+
+
+def _align_and_intersect(d1, d2):
+    d1, d2 = isl.align_two(d1, d2)
+    return (d1 & d2).params()
+
+
+def _align_and_intersect_with_caller_assumption(callee_assumptions,
+                                                caller_assumptions):
+
+    for name, (dt, pos) in caller_assumptions.get_var_dict().items():
+        caller_assumptions = caller_assumptions.set_dim_name(
+            dt, pos, f"_lp_caller_{name}")
+
+    return _align_and_intersect(callee_assumptions,
+                                caller_assumptions)
+
+
+def _mark_variables_from_caller(expr):
+    from loopy.symbolic import SubstitutionMapper
+    import pymbolic.primitives as prim
+
+    def subst_func(x):
+        if isinstance(x, prim.Variable):
+            return prim.Variable(f"_lp_caller_{x.name}")
+
+    return SubstitutionMapper(subst_func)(expr)
+
+# }}}
+
+
 class _AccessCheckMapper(WalkMapper):
     def __init__(self, kernel, callables_table):
         self.kernel = kernel
@@ -602,11 +634,79 @@ class _AccessCheckMapper(WalkMapper):
         self.rec(expr.then, domain & then_set, insn_id)
         self.rec(expr.else_, domain & else_set, insn_id)
 
+    def map_call(self, expr, domain, insn_id):
+        # perform access checks on the call arguments
+        super().map_call(expr, domain, insn_id)
 
+        import pymbolic.primitives as prim
+        from loopy.kernel.function_interface import (CallableKernel,
+                                                     get_kw_pos_association)
+        from loopy.symbolic import (guarded_aff_from_expr,
+                                    get_dependencies)
+        from loopy.diagnostic import ExpressionToAffineConversionError
+
+        if (isinstance(expr.function, ResolvedFunction)
+            and isinstance(self.callables_table[expr.function.name],
+                           CallableKernel)):
+
+            subkernel = self.callables_table[expr.function.name].subkernel
+
+            # The plan here is to add the constraints coming from the values
+            # args passed at a call-site as assumptions to the callee. To avoid
+            # variable-naming collision between the caller and callee, we
+            # prepend all the caller variable by "_lp_caller_".
+
+            # {{{ get bset from kwargs
+
+            kw_to_pos, _ = get_kw_pos_association(subkernel)
+
+            arg_id_to_arg = self.kernel.id_to_insn[insn_id].arg_id_to_arg()
+
+            kwargs = {k: _mark_variables_from_caller(arg_id_to_arg[kw_to_pos[k]])
+                      for k in subkernel.get_unwritten_value_args()}
+
+            kw_space = isl.Space.create_from_names(
+                subkernel.isl_context, set=[],
+                params=(get_dependencies(tuple(kwargs.values()))
+                        | set(kwargs.keys())))
+
+            extra_assumptions = isl.BasicSet.universe(kw_space).params()
+
+            for kw, arg in kwargs.items():
+                try:
+                    aff = guarded_aff_from_expr(extra_assumptions.space,
+                                                prim.Variable(kw) - arg)
+                except ExpressionToAffineConversionError:
+                    # arg expression not affine => don't add any constraints
+                    # corresponding to it
+                    continue
+
+                extra_assumptions = (extra_assumptions
+                                     .add_constraint(isl.Constraint
+                                                     .equality_from_aff(aff)))
+
+            # take into account caller's assumptions
+            extra_assumptions = _align_and_intersect_with_caller_assumption(
+                extra_assumptions, self.kernel.assumptions)
+
+            # project out the assumptions on caller's variables as they don't
+            # bear any semantic meaning in the callee.
+            extra_assumptions = extra_assumptions.project_out_except(
+                types=[isl.dim_type.param],
+                names=subkernel.get_unwritten_value_args())
+
+            subkernel = subkernel.copy(
+                assumptions=_align_and_intersect(subkernel.assumptions,
+                                                 extra_assumptions))
+
+            # }}}
+
+            _check_bounds_inner_rec(subkernel, self.callables_table)
 
 
 def _check_bounds_inner(kernel, callables_table):
     from loopy.kernel.instruction import get_insn_domain
+
     temp_var_names = set(kernel.temporary_variables)
     acm = _AccessCheckMapper(kernel, callables_table)
     kernel_assumptions_is_universe = kernel.assumptions.is_universe()
