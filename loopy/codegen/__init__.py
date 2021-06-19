@@ -36,7 +36,7 @@ from loopy.version import DATA_MODEL_VERSION
 from loopy.symbolic import CombineMapper
 from functools import reduce
 
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.kernel.function_interface import CallableKernel
 
 from pytools import ProcessLogger
 
@@ -736,22 +736,8 @@ def generate_code_v2(program):
     from loopy.type_inference import infer_unknown_types
     program = infer_unknown_types(program, expect_completion=True)
 
-    new_callables = {}
-
-    for name, clbl in program.callables_table.items():
-        if isinstance(clbl, CallableKernel):
-            from loopy.schedule import get_one_linearized_kernel
-            knl = clbl.subkernel
-            if knl.linearization is None:
-                knl = get_one_linearized_kernel(
-                            knl, program.callables_table)
-            new_callables[name] = clbl.copy(subkernel=knl)
-        elif isinstance(clbl, ScalarCallable):
-            new_callables[name] = clbl
-        else:
-            raise NotImplementedError(type(clbl))
-
-    program = program.copy(callables_table=new_callables)
+    from loopy.schedule import linearize
+    program = linearize(program)
 
     # Why diverge? Generated code for a non-entrypoint kernel and an entrypoint
     # kernel isn't same for a general loopy target. For example in OpenCL, a

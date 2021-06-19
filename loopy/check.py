@@ -30,6 +30,7 @@ from loopy.type_inference import TypeReader
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
                                       CInstruction, _DataObliviousInstruction,
                                       NoOpInstruction)
+from loopy.translation_unit import for_each_kernel
 from pytools import memoize_method
 
 from collections import defaultdict
@@ -123,6 +124,7 @@ class UnresolvedCallCollector(CombineMapper):
     map_type_cast = map_constant
 
 
+@for_each_kernel
 def check_functions_are_resolved(kernel):
     """ Checks if all call nodes in the *kernel* expression have been
     resolved.
@@ -169,10 +171,15 @@ class SubscriptIndicesIsIntChecker(TypeReader):
         return self.rec(expr.aggregate)
 
 
-def check_for_integer_subscript_indices(kernel, callables_table):
-    """
-    Checks is every array access is of type :class:`int`.
-    """
+def _check_for_integer_subscript_indices_inner(kernel, callables_table):
+
+    from loopy.kernel.data import auto
+    if any(arg.dtype in [None, auto] for arg in kernel.args) or (
+            any(tv.dtype in [None, auto]
+                for tv in kernel.temporary_variables.values())):
+        # some types are not resolved => do not check.
+        return
+
     from pymbolic.primitives import Subscript
     idx_int_checker = SubscriptIndicesIsIntChecker(kernel, callables_table)
     for insn in kernel.instructions:
@@ -188,6 +195,23 @@ def check_for_integer_subscript_indices(kernel, callables_table):
                 type(insn).__name__))
 
 
+def check_for_integer_subscript_indices(t_unit):
+    """
+    Checks if every array access is of type :class:`int`.
+    """
+    from loopy.kernel.function_interface import (CallableKernel,
+                                                 ScalarCallable)
+    for clbl in t_unit.callables_table.values():
+        if isinstance(clbl, CallableKernel):
+            _check_for_integer_subscript_indices_inner(clbl.subkernel,
+                                                       t_unit.callables_table)
+        elif isinstance(clbl, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError(type(clbl).__name__)
+
+
+@for_each_kernel
 def check_sub_array_ref_inames_not_within_or_redn_inames(kernel):
     all_within_inames = frozenset().union(*(insn.within_inames
                                             for insn in kernel.instructions))
@@ -209,6 +233,7 @@ def check_sub_array_ref_inames_not_within_or_redn_inames(kernel):
                          " illegal.")
 
 
+@for_each_kernel
 def check_insn_attributes(kernel):
     """
     Check for legality of attributes of every instruction in *kernel*.
@@ -242,6 +267,7 @@ def check_insn_attributes(kernel):
                        ", ".join(no_sync_with_scopes - VALID_NOSYNC_SCOPES)))
 
 
+@for_each_kernel
 def check_for_duplicate_insn_ids(knl):
     """
     Check if multiple instructions of *knl* have the same
@@ -257,6 +283,7 @@ def check_for_duplicate_insn_ids(knl):
         insn_ids.add(insn.id)
 
 
+@for_each_kernel
 def check_loop_priority_inames_known(kernel):
     """
     Checks if the inames in :attr:`loopy.LoopKernel.loop_priority` are part of
@@ -268,6 +295,7 @@ def check_loop_priority_inames_known(kernel):
                 raise LoopyError("unknown iname '%s' in loop priorities" % iname)
 
 
+@for_each_kernel
 def check_multiple_tags_allowed(kernel):
     """
     Checks if a multiple tags of an iname are compatible.
@@ -285,11 +313,7 @@ def check_multiple_tags_allowed(kernel):
                                  "tags: {}".format(iname.name, iname.tags))
 
 
-def check_for_double_use_of_hw_axes(kernel, callables_table):
-    """
-    Check if any instruction of *kernel* is within multiple inames tagged with
-    the same hw axis tag.
-    """
+def _check_for_double_use_of_hw_axes_inner(kernel, callables_table):
     from loopy.kernel.data import UniqueInameTag, GroupInameTag, LocalInameTag
     from loopy.kernel.instruction import CallInstruction
     from loopy.symbolic import ResolvedFunction
@@ -313,6 +337,24 @@ def check_for_double_use_of_hw_axes(kernel, callables_table):
                 insn_tag_keys.add(key)
 
 
+def check_for_double_use_of_hw_axes(t_unit):
+    """
+    Check if any instruction of *kernel* is within multiple inames tagged with
+    the same hw axis tag.
+    """
+    from loopy.kernel.function_interface import (CallableKernel,
+                                                 ScalarCallable)
+    for clbl in t_unit.callables_table.values():
+        if isinstance(clbl, CallableKernel):
+            _check_for_double_use_of_hw_axes_inner(clbl.subkernel,
+                                                   t_unit.callables_table)
+        elif isinstance(clbl, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError(type(clbl).__name__)
+
+
+@for_each_kernel
 def check_for_inactive_iname_access(kernel):
     """
     Check if any instruction accesses an iname but is not within it.
@@ -330,6 +372,7 @@ def check_for_inactive_iname_access(kernel):
                                   - insn.within_inames), kernel.name))
 
 
+@for_each_kernel
 def check_for_unused_inames(kernel):
     """
     Check if there are any unused inames in the kernel.
@@ -372,6 +415,7 @@ def _is_racing_iname_tag(tv, tag):
                 "temporary variable '%s'" % tv.name)
 
 
+@for_each_kernel
 def check_for_write_races(kernel):
     """
     Check if any memory accesses lead to write races.
@@ -420,6 +464,7 @@ def check_for_write_races(kernel):
                         WriteRaceConditionWarning)
 
 
+@for_each_kernel
 def check_for_orphaned_user_hardware_axes(kernel):
     from loopy.kernel.data import LocalInameTag
     for axis in kernel.local_sizes:
@@ -437,6 +482,7 @@ def check_for_orphaned_user_hardware_axes(kernel):
                     "has no iname mapped to it" % axis)
 
 
+@for_each_kernel
 def check_for_data_dependent_parallel_bounds(kernel):
     """
     Check that inames tagged as hw axes have bounds that are known at kernel
@@ -464,9 +510,41 @@ def check_for_data_dependent_parallel_bounds(kernel):
 
 # {{{ check access bounds
 
+# {{{ helpers for _AccessCheckMapper
+
+def _align_and_intersect(d1, d2):
+    d1, d2 = isl.align_two(d1, d2)
+    return (d1 & d2).params()
+
+
+def _align_and_intersect_with_caller_assumption(callee_assumptions,
+                                                caller_assumptions):
+
+    for name, (dt, pos) in caller_assumptions.get_var_dict().items():
+        caller_assumptions = caller_assumptions.set_dim_name(
+            dt, pos, f"_lp_caller_{name}")
+
+    return _align_and_intersect(callee_assumptions,
+                                caller_assumptions)
+
+
+def _mark_variables_from_caller(expr):
+    from loopy.symbolic import SubstitutionMapper
+    import pymbolic.primitives as prim
+
+    def subst_func(x):
+        if isinstance(x, prim.Variable):
+            return prim.Variable(f"_lp_caller_{x.name}")
+
+    return SubstitutionMapper(subst_func)(expr)
+
+# }}}
+
+
 class _AccessCheckMapper(WalkMapper):
-    def __init__(self, kernel):
+    def __init__(self, kernel, callables_table):
         self.kernel = kernel
+        self.callables_table = callables_table
 
     @memoize_method
     def _make_slab(self, space, iname, start, stop):
@@ -555,11 +633,84 @@ class _AccessCheckMapper(WalkMapper):
         self.rec(expr.then, domain & then_set, insn_id)
         self.rec(expr.else_, domain & else_set, insn_id)
 
+    def map_call(self, expr, domain, insn_id):
+        # perform access checks on the call arguments
+        super().map_call(expr, domain, insn_id)
 
-def _check_bounds_inner(kernel):
+        import pymbolic.primitives as prim
+        from loopy.kernel.function_interface import (CallableKernel,
+                                                     get_kw_pos_association)
+        from loopy.symbolic import (guarded_aff_from_expr,
+                                    get_dependencies)
+        from loopy.diagnostic import ExpressionToAffineConversionError
+
+        if (isinstance(expr.function, ResolvedFunction)
+            and isinstance(self.callables_table[expr.function.name],
+                           CallableKernel)):
+
+            subkernel = self.callables_table[expr.function.name].subkernel
+
+            # The plan here is to add the constraints coming from the values
+            # args passed at a call-site as assumptions to the callee. To avoid
+            # variable-naming collision between the caller and callee, we
+            # prepend all the caller variable by "_lp_caller_".
+
+            # {{{ get bset from kwargs
+
+            kw_to_pos, _ = get_kw_pos_association(subkernel)
+
+            arg_id_to_arg = self.kernel.id_to_insn[insn_id].arg_id_to_arg()
+
+            kwargs = {k: _mark_variables_from_caller(arg_id_to_arg[kw_to_pos[k]])
+                      for k in subkernel.get_unwritten_value_args()}
+
+            kw_space = isl.Space.create_from_names(
+                subkernel.isl_context, set=[],
+                params=(get_dependencies(tuple(kwargs.values()))
+                        | set(kwargs.keys())))
+
+            extra_assumptions = isl.BasicSet.universe(kw_space).params()
+
+            for kw, arg in kwargs.items():
+                try:
+                    aff = guarded_aff_from_expr(extra_assumptions.space,
+                                                prim.Variable(kw) - arg)
+                except ExpressionToAffineConversionError:
+                    # arg expression not affine => don't add any constraints
+                    # corresponding to it
+                    continue
+
+                extra_assumptions = (extra_assumptions
+                                     .add_constraint(isl.Constraint
+                                                     .equality_from_aff(aff)))
+
+            # FIXME: caller inames could be arguments => should take that into
+            # account as well
+
+            # take into account caller's assumptions
+            extra_assumptions = _align_and_intersect_with_caller_assumption(
+                extra_assumptions, self.kernel.assumptions)
+
+            # project out the assumptions on caller's variables as they don't
+            # bear any semantic meaning in the callee.
+            extra_assumptions = extra_assumptions.project_out_except(
+                types=[isl.dim_type.param],
+                names=subkernel.get_unwritten_value_args())
+
+            subkernel = subkernel.copy(
+                assumptions=_align_and_intersect(subkernel.assumptions,
+                                                 extra_assumptions))
+
+            # }}}
+
+            _check_bounds_inner_rec(subkernel, self.callables_table)
+
+
+def _check_bounds_inner(kernel, callables_table):
     from loopy.kernel.instruction import get_insn_domain
+
     temp_var_names = set(kernel.temporary_variables)
-    acm = _AccessCheckMapper(kernel)
+    acm = _AccessCheckMapper(kernel, callables_table)
     kernel_assumptions_is_universe = kernel.assumptions.is_universe()
     for insn in kernel.instructions:
         domain = get_insn_domain(insn, kernel)
@@ -581,10 +732,7 @@ def _check_bounds_inner(kernel):
         insn.with_transformed_expressions(run_acm)
 
 
-def check_bounds(kernel):
-    """
-    Performs out-of-bound check for every array access.
-    """
+def _check_bounds_inner_rec(kernel, callables_table):
     if kernel.options.enforce_array_accesses_within_bounds not in [
             "no_check",
             True,
@@ -599,20 +747,30 @@ def check_bounds(kernel):
     from pytools import ProcessLogger
     with ProcessLogger(logger, "%s: check array access within bounds" % kernel.name):
         if kernel.options.enforce_array_accesses_within_bounds:
-            _check_bounds_inner(kernel)
+            _check_bounds_inner(kernel, callables_table)
         else:
             from loopy.diagnostic import LoopyIndexError
             try:
-                _check_bounds_inner(kernel)
+                _check_bounds_inner(kernel, callables_table)
             except LoopyIndexError as e:
                 from loopy.diagnostic import warn_with_kernel
                 warn_with_kernel(kernel, "array_access_out_of_bounds", str(e))
+
+
+def check_bounds(t_unit):
+    """
+    Performs out-of-bound check for every array access.
+    """
+    for epoint in t_unit.entrypoints:
+        _check_bounds_inner_rec(t_unit[epoint],
+                                t_unit.callables_table)
 
 # }}}
 
 
 # {{{ check write destinations
 
+@for_each_kernel
 def check_write_destinations(kernel):
     for insn in kernel.instructions:
         for wvar in insn.assignee_var_names():
@@ -640,6 +798,7 @@ def check_write_destinations(kernel):
 
 # {{{ check_has_schedulable_iname_nesting
 
+@for_each_kernel
 def check_has_schedulable_iname_nesting(kernel):
     from loopy.transform.iname import (has_schedulable_iname_nesting,
             get_iname_duplication_options)
@@ -910,6 +1069,7 @@ def _check_variable_access_ordered_inner(kernel):
     # }}}
 
 
+@for_each_kernel
 def check_variable_access_ordered(kernel):
     """Checks that between each write to a variable and all other accesses to
     the variable there is either:
@@ -947,45 +1107,41 @@ def check_variable_access_ordered(kernel):
 # }}}
 
 
-def pre_schedule_checks(kernel, callables_table):
+def pre_schedule_checks(t_unit):
     try:
-        logger.debug("%s: pre-schedule check: start" % kernel.name)
+        logger.debug("pre-schedule checks start for entrypoints: "
+                     f"{t_unit.entrypoints}.")
 
-        from loopy.kernel.data import auto
-        if all(arg.dtype not in [None, auto] for arg in kernel.args) and (
-                all(tv.dtype not in [None, auto] for tv in
-                    kernel.temporary_variables.values())):
-            # only check if all types are known
-            check_for_integer_subscript_indices(kernel, callables_table)
+        check_for_integer_subscript_indices(t_unit)
 
-        check_functions_are_resolved(kernel)
+        check_functions_are_resolved(t_unit)
         # Ordering restriction:
         # check_sub_array_ref_inames_not_within_or_redn_inames should be done
         # before check_bounds. See: BatchedAccessMapMapper.map_sub_array_ref.
-        check_sub_array_ref_inames_not_within_or_redn_inames(kernel)
-        check_for_duplicate_insn_ids(kernel)
-        check_for_orphaned_user_hardware_axes(kernel)
-        check_for_double_use_of_hw_axes(kernel, callables_table)
-        check_insn_attributes(kernel)
-        check_loop_priority_inames_known(kernel)
-        check_multiple_tags_allowed(kernel)
-        check_for_inactive_iname_access(kernel)
-        check_for_unused_inames(kernel)
-        check_for_write_races(kernel)
-        check_for_data_dependent_parallel_bounds(kernel)
-        check_bounds(kernel)
-        check_write_destinations(kernel)
-        check_has_schedulable_iname_nesting(kernel)
-        check_variable_access_ordered(kernel)
+        check_sub_array_ref_inames_not_within_or_redn_inames(t_unit)
+        check_for_duplicate_insn_ids(t_unit)
+        check_for_orphaned_user_hardware_axes(t_unit)
+        check_for_double_use_of_hw_axes(t_unit)
+        check_insn_attributes(t_unit)
+        check_loop_priority_inames_known(t_unit)
+        check_multiple_tags_allowed(t_unit)
+        check_for_inactive_iname_access(t_unit)
+        check_for_unused_inames(t_unit)
+        check_for_write_races(t_unit)
+        check_for_data_dependent_parallel_bounds(t_unit)
+        check_bounds(t_unit)
+        check_write_destinations(t_unit)
+        check_has_schedulable_iname_nesting(t_unit)
+        check_variable_access_ordered(t_unit)
 
-        logger.debug("%s: pre-schedule check: done" % kernel.name)
+        logger.debug("pre-schedule checks done")
     except KeyboardInterrupt:
         raise
     except Exception:
         print(75*"=")
-        print("failing kernel during pre-schedule check:")
+        print("failing translation unit during pre-schedule check:")
         print(75*"=")
-        print(kernel)
+        print(t_unit)
         print(75*"=")
         raise
 
