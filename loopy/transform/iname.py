@@ -1989,11 +1989,12 @@ def _align_and_complement(domain, universe):
 
 class ReductionDuplicationMapper(RuleAwareIdentityMapper):
 
-    def __init__(self, rule_mapping_context, within,
+    def __init__(self, rule_mapping_context, within, iname_to_partition,
                  iname_to_new_iname, position):
         super().__init__(rule_mapping_context)
 
         self.within = within
+        self.iname_to_partition = iname_to_partition
         self.iname_to_new_iname = iname_to_new_iname
         self.position = position
 
@@ -2004,21 +2005,22 @@ class ReductionDuplicationMapper(RuleAwareIdentityMapper):
         from pymbolic.mapper.substitutor import substitute
         import pymbolic.primitives as prim
 
-        inames_to_partition = {k: v for k, v in self.iname_to_new_iname.items()
-                               if (k in expr.inames
-                                   and k not in expn_state.arg_context)}
-        if (inames_to_partition
+        if (self.iname_to_partition in expr.inames
+                and self.iname_to_partition not in expn_state.arg_context
                 and self.within(
                     expn_state.kernel,
-                    expn_state.instruction,
-                    expn_state.stack)):
+                    expn_state.instruction)):
+            rename_map = {k: v
+                          for k, v in self.iname_to_new_iname.items()
+                          if (k in expr.inames
+                              and k not in expn_state.arg_context)}
 
             new_redn = Reduction(expr.operation,
-                                 tuple(inames_to_partition.get(i, i)
+                                 tuple(rename_map.get(i, i)
                                        for i in expr.inames),
                                  substitute(expr.expr,
                                             {k: prim.Variable(v)
-                                             for k, v in inames_to_partition.items()}
+                                             for k, v in rename_map.items()}
                                             ),
                                  expr.allow_simultaneous)
             if isinstance(expr.operation, SumReductionOperation):
@@ -2180,6 +2182,7 @@ def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
                                                           vng)
     redn_duplicator = ReductionDuplicationMapper(rule_mapping_context,
                                                  within,
+                                                 iname_to_partition,
                                                  rename_map,
                                                  new_loops_position)
     kernel = redn_duplicator.map_kernel(kernel)
