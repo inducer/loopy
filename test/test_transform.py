@@ -858,6 +858,27 @@ def test_prefetch_with_within(ctx_factory):
     lp.auto_test_vs_ref(ref_t_unit, ctx_factory(), t_unit)
 
 
+def test_privatize_with_nonzero_lbound(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[j]:10<=j<14}",
+        """
+        for j
+            <> tmp = j
+            out[j] = tmp
+        end
+        """,
+        name="arange_10_to_14",
+        seq_dependencies=True)
+
+    knl = lp.privatize_temporaries_with_inames(knl, {"j"})
+    assert knl["arange_10_to_14"].temporary_variables["tmp"].shape == (4,)
+    _, (out, ) = knl(queue)
+    np.testing.assert_allclose(out.get()[10:14], np.arange(10, 14))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
