@@ -2007,9 +2007,9 @@ class ReductionDuplicationMapper(RuleAwareIdentityMapper):
 
         if (self.iname_to_partition in expr.inames
                 and self.iname_to_partition not in expn_state.arg_context
-                and self.within(
-                    expn_state.kernel,
-                    expn_state.instruction)):
+                and self.within(expn_state.kernel,
+                                expn_state.instruction,
+                                expn_state.stack)):
             rename_map = {k: v
                           for k, v in self.iname_to_new_iname.items()
                           if (k in expr.inames
