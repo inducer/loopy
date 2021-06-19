@@ -295,9 +295,9 @@ def test_ilp_write_race_detection_global(ctx_factory):
     with lp.CacheMode(False):
         from loopy.diagnostic import WriteRaceConditionWarning
         from warnings import catch_warnings
+        from loopy.schedule import linearize
         with catch_warnings(record=True) as warn_list:
-            list(lp.generate_loop_schedules(knl["loopy_kernel"],
-                    knl.callables_table))
+            linearize(knl)
 
             assert any(isinstance(w.message, WriteRaceConditionWarning)
                     for w in warn_list)
@@ -2071,11 +2071,10 @@ def test_unscheduled_insn_detection():
         "...")
 
     prog = lp.preprocess_kernel(prog)
-    knl = lp.get_one_linearized_kernel(prog["loopy_kernel"], prog.callables_table)
-    prog = prog.with_kernel(knl)
+    prog = lp.linearize(prog)
     insn1, = lp.find_instructions(prog, "id:insn1")
     insns = prog["loopy_kernel"].instructions[:]
-    insns.append(insn1.copy(id="insn2"))
+    insns.append(insn1.copy(id="insn2", depends_on=frozenset({"insn1"})))
     prog = prog.with_kernel(prog["loopy_kernel"].copy(instructions=insns))
 
     from loopy.diagnostic import UnscheduledInstructionError
