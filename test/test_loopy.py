@@ -728,6 +728,8 @@ def test_arg_shape_uses_assumptions(ctx_factory):
 
 
 def test_slab_decomposition_does_not_double_execute(ctx_factory):
+    pytest.xfail("Yet another loopy codegen fail, "
+                 "https://github.com/inducer/loopy/issues/421")
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 

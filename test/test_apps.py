@@ -223,8 +223,9 @@ def test_rob_stroud_bernstein(ctx_factory):
 
     knl = lp.fix_parameters(knl, nqp1d=7, deg=4)
     knl = lp.split_iname(knl, "el", 16, inner_tag="l.0")
-    knl = lp.split_iname(knl, "el_outer", 2, outer_tag="g.0", inner_tag="ilp",
-            slabs=(0, 1))
+    knl = lp.split_iname(knl, "el_outer", 2, outer_tag="g.0",
+                         inner_tag="ilp")
+
     knl = lp.tag_inames(knl, dict(i2="l.1", alpha1="unr", alpha2="unr"))
     knl = lp.add_dtypes(knl, dict(
                 qpts=np.float32,
@@ -371,6 +372,7 @@ def test_stencil(ctx_factory):
 
 
 def test_stencil_with_overfetch(ctx_factory):
+    pytest.xfail("https://github.com/inducer/loopy/issues/421")
     ctx = ctx_factory()
 
     knl = lp.make_kernel(

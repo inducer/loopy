@@ -53,3 +53,9 @@ Schedule
 --------
 
 .. automodule:: loopy.schedule
+
+
+Error types
+-----------
+
+.. automodule:: loopy.diagnostic

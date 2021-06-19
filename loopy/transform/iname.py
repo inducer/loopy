@@ -295,9 +295,6 @@ def _split_iname_backend(kernel, iname_to_split,
 
     # }}}
 
-    iname_slab_increments = kernel.iname_slab_increments.copy()
-    iname_slab_increments[outer_iname] = slabs
-
     new_priorities = []
     for prio in kernel.loop_priority:
         new_prio = ()
@@ -310,7 +307,6 @@ def _split_iname_backend(kernel, iname_to_split,
 
     kernel = kernel.copy(
             domains=new_domains,
-            iname_slab_increments=iname_slab_increments,
             instructions=new_insns,
             applied_iname_rewrites=applied_iname_rewrites,
             loop_priority=frozenset(new_priorities))
@@ -337,6 +333,50 @@ def _split_iname_backend(kernel, iname_to_split,
 
     kernel = tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
     kernel = remove_unused_inames(kernel, [iname_to_split])
+
+    # {{{ implement slabs
+
+    if slabs != (0, 0):
+        from loopy.diagnostic import warn_with_kernel
+        from loopy.isl_helpers import make_slab
+        warn_with_kernel(kernel, "slabs_deprecation",
+                         "Passing slabs to split_iname is deprecated, use"
+                         " lp.transform.iname._partition_into_convex_pieces.")
+        # CAUTION: Yes, the bounds computation maybe wrong. That's the reason
+        # the caller is encouraged to use '_partition_into_convex_pieces' directly
+        bounds = kernel.get_iname_bounds(outer_iname)
+
+        if slabs[0] != 0:
+            sub_domain_space = (bounds.lower_bound_pw_aff.get_domain_space()
+                                .add_dims(isl.dim_type.set, 1)
+                                .set_dim_name(isl.dim_type.set, 0, outer_iname))
+            sub_domain = make_slab(sub_domain_space, outer_iname,
+                                   bounds.lower_bound_pw_aff,
+                                   bounds.lower_bound_pw_aff+slabs[0])
+
+            kernel = _partition_into_convex_pieces(kernel,
+                                                   sub_domain,
+                                                   vng(f"{outer_iname}_slab1"),
+                                                   new_loops_position="before",
+                                                   within=within)
+
+        if slabs[1] != 0:
+            sub_domain_space = (bounds.upper_bound_pw_aff.get_domain_space()
+                                .add_dims(isl.dim_type.set, 1)
+                                .set_dim_name(isl.dim_type.set, 0, outer_iname)
+                                )
+            sub_domain = make_slab(sub_domain_space,
+                                   outer_iname,
+                                   bounds.upper_bound_pw_aff+1-slabs[1],
+                                   bounds.upper_bound_pw_aff+1)
+
+            kernel = _partition_into_convex_pieces(kernel,
+                                                   sub_domain,
+                                                   vng(f"{outer_iname}_slab2"),
+                                                   new_loops_position="after",
+                                                   within=within)
+
+    # }}}
 
     return kernel
 
@@ -1940,5 +1980,298 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
         new_insns.append(insn)
 
     return kernel.copy(instructions=new_insns)
+
+
+def _align_and_complement(domain, universe):
+    domain, universe = isl.align_two(domain, universe)
+    return domain.complement() & universe
+
+
+class ReductionDuplicationMapper(RuleAwareIdentityMapper):
+
+    def __init__(self, rule_mapping_context, within, iname_to_partition,
+                 iname_to_new_iname, position):
+        super().__init__(rule_mapping_context)
+
+        self.within = within
+        self.iname_to_partition = iname_to_partition
+        self.iname_to_new_iname = iname_to_new_iname
+        self.position = position
+
+    def map_reduction(self, expr, expn_state):
+        from loopy.library.reduction import (SumReductionOperation,
+                                             ProductReductionOperation)
+        from loopy.symbolic import Reduction
+        from pymbolic.mapper.substitutor import substitute
+        import pymbolic.primitives as prim
+
+        if (self.iname_to_partition in expr.inames
+                and self.iname_to_partition not in expn_state.arg_context
+                and self.within(expn_state.kernel,
+                                expn_state.instruction,
+                                expn_state.stack)):
+            rename_map = {k: v
+                          for k, v in self.iname_to_new_iname.items()
+                          if (k in expr.inames
+                              and k not in expn_state.arg_context)}
+
+            new_redn = Reduction(expr.operation,
+                                 tuple(rename_map.get(i, i)
+                                       for i in expr.inames),
+                                 substitute(expr.expr,
+                                            {k: prim.Variable(v)
+                                             for k, v in rename_map.items()}
+                                            ),
+                                 expr.allow_simultaneous)
+            if isinstance(expr.operation, SumReductionOperation):
+                if self.position == "before":
+                    return new_redn + expr
+                else:
+                    assert self.position == "after"
+                    return expr + new_redn
+            elif isinstance(expr.operation, ProductReductionOperation):
+                if self.position == "before":
+                    return new_redn * expr
+                else:
+                    assert self.position == "after"
+                    return expr * new_redn
+            else:
+                raise NotImplementedError(expr.operation)
+        else:
+            return super().map_reduction(expr, expn_state)
+
+
+@for_each_kernel
+def _partition_into_convex_pieces(kernel, sub_domain, new_iname,
+                                  new_loops_position=None, inner_inames=None,
+                                  new_inner_inames=None, within=None,
+                                  propagate_tags=True):
+    """
+    :arg sub_domain: An instance of :class:`islpy.BasicSet` denoting the domain
+        that's supposed to be `split <https://en.wikipedia.org/wiki/Loop_splitting>`.
+        *sub_domain* must have exactly one set-dim corresponding to the single
+        loop that's supposed to be partitioned.
+    :arg new_iname: A :class`str` denoting the name of the iname corresponding
+        to *sub_domain*.
+    :arg inner_inames: A sequence of inames that are nested within the iname
+        to be partitioned. If *None*, then the inner inames are guessed as
+        those inames whose instruction cover is a subset of the instruction
+        cover of *iname_to_partition*.
+    :arg new_inner_inames: A sequence of :class:`str` (one for each
+        *inner_inames*) denoting the name by which the inner iname must be
+        referred in the new_iname.
+    :arg new_loops_position: Can be either ``"before"`` or ``"after"``. If
+        ``"before"``, the statement instances corresponding to *sub_domain* are
+        executed before the rest of the domain, if ``"after"`` the statement
+        instances corresponding to *sub_domain* are executed after the rest of
+        the domain.
+    """
+    from collections.abc import Sequence
+    from loopy.match import Id, Or, Iname, parse_stack_match
+    from pymbolic.primitives import Variable
+    from pymbolic.mapper.substitutor import make_subst_func
+    from functools import reduce
+
+    vng = kernel.get_var_name_generator()
+
+    if sub_domain.dim(isl.dim_type.set) != 1:
+        raise LoopyError("subdomain must have exactly one set dim.")
+
+    iname_to_partition, = sub_domain.get_var_names(isl.dim_type.set)
+
+    if inner_inames is None:
+        assert new_inner_inames is None
+        inner_inames = tuple(iname
+                             for iname, insns in kernel.iname_to_insns().items()
+                             if ((insns
+                                  <= kernel.iname_to_insns()[iname_to_partition])
+                                 and iname not in sub_domain.get_var_dict()))
+
+    if new_inner_inames is None:
+        new_inner_inames = tuple(vng(f"_slab_{iname}")
+                                 for iname in inner_inames)
+
+    within = parse_stack_match(within)
+
+    # {{{ sanity checks
+
+    if not isinstance(inner_inames, Sequence):
+        raise LoopyError("'inner_inames' expected to be a Sequence type, got"
+                         f" '{type(inner_inames)}'.")
+
+    if len(inner_inames) != len(new_inner_inames):
+        raise LoopyError(f"Length of inner inames ({len(inner_inames)}) "
+                         f"does not  match length of "
+                         f"new_inner_inames ({len(new_inner_inames)}).")
+
+    if new_loops_position not in {"before", "after"}:
+        raise LoopyError("new_loops_position can be 'before' or 'after', "
+                         f"got '{new_loops_position}'.")
+
+    if iname_to_partition not in kernel.all_inames():
+        raise LoopyError(f"sub_domain dim '{iname_to_partition}' not an iname.")
+
+    if not (kernel.iname_to_insns()[iname_to_partition]
+            >= reduce(frozenset.union,
+                      (kernel.iname_to_insns()[iname]
+                       for iname in inner_inames),
+                      frozenset())):
+        raise LoopyError(f"Provided inner inames: '{inner_inames}' "
+                         "violate the criterion that they must nest inside "
+                         f"'{iname_to_partition}'.")
+
+    if iname_to_partition in reduce(frozenset.union,
+                                    (insn.sub_array_ref_inames()
+                                     for insn in kernel.instructions),
+                                    frozenset()):
+        raise NotImplementedError(f"{iname_to_partition} is a sub-array-ref inames,"
+                                  " not yet supported.")
+
+    # }}}
+
+    iname_to_partition_dom = kernel.get_inames_domain(iname_to_partition)
+    sub_domain_complement = _align_and_complement(sub_domain,
+                                                  iname_to_partition_dom)
+
+    if sub_domain_complement.n_basic_set() != 1:
+        raise LoopyError("Obtained non-convex complement: "
+                         f"'{sub_domain_complement}' => not allowed.")
+
+    # {{{ adding instruction corresponding to the new loops
+
+    rename_map = dict([(iname_to_partition, new_iname)] + list(zip(inner_inames,
+                                                                   new_inner_inames))
+                      )
+
+    def map_old_inames_to_new_inames(inames):
+        return frozenset(rename_map.get(iname, iname) for iname in inames)
+
+    ing = kernel.get_instruction_id_generator()
+
+    insns_to_copy = [insn
+                     for insn in kernel.instructions
+                     if iname_to_partition in insn.within_inames]
+
+    new_insns = [insn.copy(id=ing(f"_part_{iname_to_partition}_{insn.id}"),
+                           within_inames=map_old_inames_to_new_inames(insn
+                                                                      .within_inames)
+                           )
+                 for insn in insns_to_copy]
+
+    kernel = kernel.copy(instructions=kernel.instructions+new_insns)
+
+    # rename all references to inames in new_insns:
+    rule_mapping_context = SubstitutionRuleMappingContext(kernel.substitutions,
+                                                          vng)
+    subst_func = make_subst_func({k: Variable(v)
+                                  for k, v in rename_map.items()})
+    subst_map = RuleAwareSubstitutionMapper(rule_mapping_context,
+                                            within=within,
+                                            subst_func=subst_func)
+    kernel = subst_map.map_kernel(kernel,
+                                  within=parse_stack_match(Or(tuple(
+                                      Id(insn.id) for insn in new_insns))),
+                                  map_tvs=False, map_args=False)
+    kernel = rule_mapping_context.finish_kernel(kernel)
+
+    # }}}
+
+    # {{{ duplicate reduction nodes
+
+    rule_mapping_context = SubstitutionRuleMappingContext(kernel.substitutions,
+                                                          vng)
+    redn_duplicator = ReductionDuplicationMapper(rule_mapping_context,
+                                                 within,
+                                                 iname_to_partition,
+                                                 rename_map,
+                                                 new_loops_position)
+    kernel = redn_duplicator.map_kernel(kernel)
+    kernel = rule_mapping_context.finish_kernel(kernel)
+
+    # }}}
+
+    # {{{ manipulating domains
+
+    new_domains = kernel.domains[:]
+    sub_domain_complement, = sub_domain_complement.get_basic_sets()
+
+    new_domains[kernel
+                .get_home_domain_index(iname_to_partition)] = (
+                    sub_domain_complement)
+
+    # {{{ add new domains corresponding the "new loops"
+
+    sub_domain = sub_domain.set_dim_name(isl.dim_type.set, 0, new_iname)
+    new_domains += [sub_domain]
+
+    allowed_dim_params = (frozenset(sub_domain.get_var_names(dim_type.param))
+                          | frozenset([new_iname])
+                          | kernel.get_unwritten_value_args()
+                          | frozenset(inner_inames))
+
+    for dom in kernel.domains:
+        if set(dom.get_var_dict()) & frozenset(inner_inames):
+            for name in dom.get_var_dict():
+                dt, pos = dom.get_var_dict()[name]
+
+                if name in rename_map:
+                    dom = dom.set_dim_name(dt, pos, rename_map[name])
+
+                if name in inner_inames:
+                    if dt == isl.dim_type.param:
+                        # {{{ sanity check
+
+                        if not (dom.get_var_names(isl.dim_type.set)
+                                <= inner_inames):
+                            raise LoopyError("inames other that inner inames "
+                                             f"({inner_inames}) found to be "
+                                             f"nested inside iname '{name}'.")
+
+                        # }}}
+                    elif dt == isl.dim_type.set:
+                        pass
+                    else:
+                        raise NotImplementedError
+                else:
+                    if dt == isl.dim_type.param:
+                        pass
+                    elif dt == isl.dim_type.set:
+                        dom = dom.move_dims(dim_type.param, 0, dt, pos, 1)
+                    else:
+                        raise NotImplementedError
+
+            dom = dom.project_out_except(types=[isl.dim_type.param],
+                                         names=allowed_dim_params)
+
+            new_domains += [dom]
+
+    kernel = kernel.copy(domains=new_domains)
+
+    # }}}
+
+    from loopy.transform.instruction import add_dependency
+
+    if new_loops_position == "before":
+        kernel = add_dependency(kernel,
+                                Iname(iname_to_partition),
+                                Iname(new_iname),
+                                raise_if_no_deps_added=False)
+    else:
+        assert new_loops_position == "after"
+        kernel = add_dependency(kernel,
+                                Iname(new_iname),
+                                Iname(iname_to_partition),
+                                raise_if_no_deps_added=False)
+
+    if propagate_tags:
+        kernel = tag_inames(kernel, {new_iname:
+                                     kernel.inames[iname_to_partition].tags})
+        for new_inner_iname, inner_iname in zip(new_inner_inames,
+                                                inner_inames):
+            kernel = tag_inames(kernel,
+                                {new_inner_iname: kernel.inames[inner_iname].tags})
+
+    return kernel
+
 
 # vim: foldmethod=marker

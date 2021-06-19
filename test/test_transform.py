@@ -253,6 +253,7 @@ def test_alias_temporaries(ctx_factory):
 
 
 def test_vectorize(ctx_factory):
+    pytest.xfail("https://github.com/inducer/loopy/issues/418/")
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -854,6 +855,41 @@ def test_prefetch_with_within(ctx_factory):
 
     # test that 'f' is only prefetched in set_y
     assert t_unit["myknl"].temporary_variables["foo"].shape == (128,)
+
+    lp.auto_test_vs_ref(ref_t_unit, ctx_factory(), t_unit)
+
+
+def test_partition_into_convex_pieces(ctx_factory):
+    from loopy.transform.iname import _partition_into_convex_pieces
+    import islpy as isl
+
+    knl = lp.make_kernel(
+        ["{[i, j]: 0<=i, j<10}",
+         "[i] -> {[k]: 0<=k<=i}"],
+        """
+        y[i, j, k] = i*j+k
+        """)
+    ref_knl = knl
+
+    knl = _partition_into_convex_pieces(knl,
+                                        isl.BasicSet("[j]->{[i]: 0<=i<j}"),
+                                        "top_i",
+                                        "before")
+
+    lp.auto_test_vs_ref(ref_knl, ctx_factory(), knl)
+
+
+def test_double_split_and_slab(ctx_factory):
+    t_unit = lp.make_kernel(
+        "{[i]: 0<=i<100}",
+        """
+        y[i] = i
+        """)
+
+    ref_t_unit = t_unit
+
+    t_unit = lp.split_iname(t_unit, "i", 6, inner_tag="l.0")
+    t_unit = lp.split_iname(t_unit, "i_outer", 4, outer_tag="g.0", slabs=(0, 1))
 
     lp.auto_test_vs_ref(ref_t_unit, ctx_factory(), t_unit)
 

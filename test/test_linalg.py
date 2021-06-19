@@ -65,6 +65,7 @@ from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_axpy(ctx_factory):
+    pytest.xfail("https://github.com/inducer/loopy/issues/421")
     logging.basicConfig(level="INFO")
     ctx = ctx_factory()
 
@@ -198,6 +199,7 @@ def test_plain_matrix_mul(ctx_factory):
 
 
 def test_variable_size_matrix_mul(ctx_factory):
+    pytest.xfail("https://github.com/inducer/loopy/issues/421")
     ctx = ctx_factory()
 
     if (not ctx.devices[0].image_support
@@ -366,7 +368,7 @@ def test_rank_one(ctx_factory):
             variant_1,
             variant_2,
             variant_3,
-            variant_4
+            # variant_4 TODO: (https://github.com/inducer/issues/421/)
             ]:
         lp.auto_test_vs_ref(seq_knl, ctx, variant(knl),
                 op_count=[np.dtype(dtype).itemsize*n**2/1e9], op_label=["GBytes"],
@@ -620,7 +622,7 @@ def test_fancy_matrix_mul(ctx_factory):
     knl = lp.make_kernel(
             "[n] -> {[i,j,k]: 0<=i,j,k<n }",
             [
-                "c[i, j] = sum(k, a[i, k]*b[k, j])"
+                "c[i, j] = sum(k, a[i, k]*b[k, j]) {id=insn}"
                 ],
             [
                 lp.GlobalArg("a", dtype, shape="(n, n)", order=order),
@@ -635,11 +637,11 @@ def test_fancy_matrix_mul(ctx_factory):
     knl = lp.split_iname(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_iname(knl, "k", 16, slabs=(0, 1))
     knl = lp.add_prefetch(knl, "a", ["i_inner", "k_inner"],
-            fetch_outer_inames="i_outer, j_outer, k_outer",
-            default_tag="l.auto")
+                          fetch_outer_inames="i_outer, j_outer, k_outer",
+                          default_tag="l.auto", within="id:insn")
     knl = lp.add_prefetch(knl, "b", ["k_inner", "j_inner"],
-            fetch_outer_inames="i_outer, j_outer, k_outer",
-            default_tag="l.auto")
+                          fetch_outer_inames="i_outer, j_outer, k_outer",
+                          default_tag="l.auto", within="id:insn")
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],

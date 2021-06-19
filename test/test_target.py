@@ -274,8 +274,8 @@ def test_numba_cuda_target():
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0")
     knl = lp.split_iname(knl, "j", 128, inner_tag="l.0", slabs=(0, 1))
     knl = lp.add_prefetch(knl, "X[i,:]",
-            fetch_outer_inames="i_inner, i_outer, j_inner",
-            default_tag="l.auto")
+                          fetch_outer_inames="i_inner, i_outer, j_inner",
+                          default_tag="l.auto",  within="id:insn")
     knl = lp.fix_parameters(knl, N=3)
     knl = lp.prioritize_loops(knl, "i_inner,j_outer")
     knl = lp.tag_inames(knl, "k:unr")
@@ -325,6 +325,7 @@ def test_target_invalid_type_cast():
 
 
 def test_ispc_streaming_stores():
+    pytest.xfail("https://github.com/inducer/loopy/issues/421")
     stream_dtype = np.float32
     index_dtype = np.int32
 
