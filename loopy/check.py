@@ -684,6 +684,9 @@ class _AccessCheckMapper(WalkMapper):
                                      .add_constraint(isl.Constraint
                                                      .equality_from_aff(aff)))
 
+            # FIXME: caller inames could be arguments => should take that into
+            # account as well
+
             # take into account caller's assumptions
             extra_assumptions = _align_and_intersect_with_caller_assumption(
                 extra_assumptions, self.kernel.assumptions)
