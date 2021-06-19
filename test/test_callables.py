@@ -909,7 +909,6 @@ def test_check_bounds_with_caller_assumptions(ctx_factory):
     arange = lp.make_function(
         "{[i]: 0<=i<n}",
         """
-
         y[i] = i
         """, name="arange")
 

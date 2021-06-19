@@ -512,7 +512,6 @@ def check_for_data_dependent_parallel_bounds(kernel):
 
 # {{{ helpers for _AccessCheckMapper
 
-
 def _align_and_intersect(d1, d2):
     d1, d2 = isl.align_two(d1, d2)
     return (d1 & d2).params()
