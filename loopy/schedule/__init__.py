@@ -1531,7 +1531,7 @@ class DependencyTracker:
         self.reverse = reverse
         self.var_kind = var_kind
 
-        from loopy.symbolic import WriteRaceChecker
+        from loopy.schedule.tools import WriteRaceChecker
         self.write_race_checker = WriteRaceChecker(kernel, callables_table)
 
         if var_kind == "local":
