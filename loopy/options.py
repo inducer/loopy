@@ -182,7 +182,7 @@ class Options(ImmutableRecord):
 
         If equal to ``"no_check"``, then no check is performed.
 
-    .. attribute:: insert_additional_gbarriers
+    .. attribute:: insert_gbarriers
 
         If *True*, based on the memory dependency between variables in the
         global address space loopy will insert global barriers to avoid
@@ -256,8 +256,8 @@ class Options(ImmutableRecord):
                     "enforce_variable_access_ordered", True),
                 enforce_array_accesses_within_bounds=kwargs.get(
                     "enforce_array_accesses_within_bounds", True),
-                insert_additional_gbarriers=kwargs.get(
-                    "insert_additional_gbarriers", False),
+                insert_gbarriers=kwargs.get(
+                    "insert_gbarriers", False),
                 )
 
     # {{{ legacy compatibility
