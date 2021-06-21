@@ -932,6 +932,34 @@ def test_check_bounds_with_caller_assumptions(ctx_factory):
                         parameters={"N": 15})
 
 
+def test_callee_with_auto_offset(ctx_factory):
+
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    arange = lp.make_function(
+        "{[i]: 0<=i<7}",
+        """
+        y[i] = 2*y[i]
+        """,
+        [lp.GlobalArg("y",  offset=lp.auto)],
+        name="dosify")
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<7}",
+        """
+        [i]: y[i] = dosify([i]: y[i])
+        """,
+        [lp.GlobalArg("y", offset=3, shape=10)])
+
+    knl = lp.merge([knl, arange])
+
+    y = np.arange(10)
+    knl(queue, y=y)
+    np.testing.assert_allclose(y[:3], np.arange(3))
+    np.testing.assert_allclose(y[3:], 2*np.arange(3, 10))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
