@@ -480,6 +480,20 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
 
     codegen_plog = ProcessLogger(logger, f"{kernel.name}: generate code")
 
+    # {{{ pre-codegen-process of non-entrypoint kernel
+
+    if not is_entrypoint:
+        from loopy.kernel.array import ArrayBase
+        from loopy.kernel.data import auto
+
+        new_args = [arg.copy(offset=0 if arg.offset is auto else arg.offset)
+                    if isinstance(arg, ArrayBase)
+                    else arg
+                    for arg in kernel.args]
+        kernel = kernel.copy(args=new_args)
+
+    # }}}
+
     # {{{ examine arg list
 
     from loopy.kernel.data import ValueArg
