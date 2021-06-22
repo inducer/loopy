@@ -52,7 +52,7 @@ class DTypeRegistryWrapperWithInt8ForBool(DTypeRegistryWrapper):
         from loopy.types import NumpyType
         if isinstance(dtype, NumpyType) and dtype.dtype == np.bool8:
             return self.wrapped_registry.dtype_to_ctype(
-                    NumpyType(np.int8, dtype.target))
+                    NumpyType(np.int8))
         return self.wrapped_registry.dtype_to_ctype(dtype)
 
 
