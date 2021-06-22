@@ -416,6 +416,40 @@ def test_opencl_support_for_bool(ctx_factory):
     np.testing.assert_equal(out, np.tile(np.array([0, 1], dtype=np.bool8), 5))
 
 
+def test_opencl_funcs_resolve_and_run(ctx_factory):
+    from loopy.target.opencl import UNARY_FUNCS, _CL_SIMPLE_MULTI_ARG_FUNCTIONS
+
+    knl = lp.make_kernel(
+        "{:}",
+        "\n".join(f"f[{i}] = {func}(.2341)" for i, func in enumerate(UNARY_FUNCS)),
+    )
+
+    cl_ctx = ctx_factory()
+    _ = knl(cl.CommandQueue(cl_ctx), f=np.zeros(len(UNARY_FUNCS)))
+
+    BINARY_FUNCS = {func for func, val in _CL_SIMPLE_MULTI_ARG_FUNCTIONS.items()
+                    if val == 2}
+
+    knl = lp.make_kernel(
+        "{:}",
+        "\n".join(f"f[{i}] = {func}(.2341, .5321)"
+                  for i, func in enumerate(BINARY_FUNCS)),
+    )
+
+    _ = knl(cl.CommandQueue(cl_ctx), f=np.zeros(len(BINARY_FUNCS)))
+
+    TERNARY_FUNCS = {func for func, val in _CL_SIMPLE_MULTI_ARG_FUNCTIONS.items()
+                     if val == 3}
+
+    knl = lp.make_kernel(
+        "{:}",
+        "\n".join(f"f[{i}] = {func}(.2341, .5321, .912)"
+                  for i, func in enumerate(TERNARY_FUNCS)),
+    )
+
+    _ = knl(cl.CommandQueue(cl_ctx), f=np.zeros(len(TERNARY_FUNCS)))
+
+
 def test_nan_support(ctx_factory):
     from loopy.symbolic import parse
     ctx = ctx_factory()
