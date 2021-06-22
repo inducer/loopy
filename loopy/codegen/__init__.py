@@ -245,14 +245,16 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
     from loopy.schedule.tree import (make_schedule_tree,
                                      insert_predicates_into_schedule)
     kernel = make_schedule_tree(kernel)
-    kernel, unvectorizable_inames = insert_predicates_into_schedule(kernel)
+    kernel, unvectorizable_inames = insert_predicates_into_schedule(kernel,
+                                                                    callables_table)
 
     # }}}
 
     from loopy.codegen.result import get_idis_for_kernel, CodeGenMapper
-    codegen_mapper = CodeGenMapper(kernel, unvectorizable_inames)
+    codegen_mapper = CodeGenMapper(kernel, callables_table, is_entrypoint,
+                                   unvectorizable_inames)
 
-    codegen_result = codegen_mapper(kernel.schedule)
+    codegen_result = codegen_mapper(kernel.linearization)
 
     seen_dtypes = (codegen_mapper.device_ast_builder.seen_dtypes
                    | codegen_mapper.host_ast_builder.seen_dtypes)
@@ -471,7 +473,7 @@ def generate_code_v2(program):
             implemented_data_infos[func_id] = cgr.implemented_data_info
         else:
             assert len(cgr.device_programs) == 1
-            callee_fdecls.append(cgr.device_programs[0].ast.fdecl)
+            callee_fdecls.append(cgr.device_programs[0].ast.contents[0].fdecl)
 
         device_programs.extend(cgr.device_programs)
         device_preambles.extend(cgr.device_preambles)

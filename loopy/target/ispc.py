@@ -230,8 +230,9 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # {{{ top-level codegen
 
-    def get_function_declaration(self, kernel, name, implemented_data_info,
-                                 is_generating_device_code):
+    def get_function_declaration(self, kernel, callables_table, name,
+                                 implemented_data_info,
+                                 is_generating_device_code, is_entrypoint):
         from cgen import (FunctionDeclaration, Value)
         from cgen.ispc import ISPCExport, ISPCTask
 
@@ -254,8 +255,10 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # }}}
 
-    def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},
+    def get_kernel_call(self, kernel, callables_table, name,
+                        implemented_data_info, extra_args):
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map={},
                                                  vectorization_info=None)
 
         from loopy.schedule.tree import get_insns_in_function
@@ -263,7 +266,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         from cgen import Statement as S, Block
 
         gsize, lsize = kernel.get_grid_sizes_for_insn_ids_as_exprs(
-            get_insns_in_function(kernel, name))
+            get_insns_in_function(kernel, name), callables_table)
 
         result = []
         if lsize:
@@ -288,9 +291,11 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # {{{ code generation guts
 
-    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map,
+    def get_expression_to_c_expression_mapper(self, kernel, callables_table,
+                                              var_subst_map,
                                               vectorization_info):
-        return ExprToISPCExprMapper(kernel, self, var_subst_map, vectorization_info)
+        return ExprToISPCExprMapper(kernel, callables_table, self,
+                                    var_subst_map, vectorization_info)
 
     def add_vector_access(self, access_expr, index):
         return access_expr[index]
@@ -309,7 +314,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         else:
             raise LoopyError("unknown barrier kind")
 
-    def get_temporary_decl(self, kernel, temp_var, decl_info):
+    def get_temporary_decl(self, kernel, callables_table, temp_var, decl_info):
         from loopy.target.c import POD  # uses the correct complex type
         temp_var_decl = POD(self.target.dtype_to_typename(decl_info.dtype),
                             decl_info.dtype, decl_info.name)
@@ -325,7 +330,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
         if shape:
             from cgen import ArrayOf
-            ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},
+            ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                     var_subst_map={},
                                                      vectorization_info=None)
             temp_var_decl = ArrayOf(
                     temp_var_decl,

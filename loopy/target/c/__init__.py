@@ -761,12 +761,13 @@ class CFamilyASTBuilder(ASTBuilderBase):
                     [self.idi_to_cgen_declarator(kernel, idi)
                      for idi in implemented_data_info]))
 
-    def emit_array_literal(self, kernel, array, value):
+    def emit_array_literal(self, kernel, callables_table, array, value):
         """
         :arg ary: An instance of :class:`loopy.kernel.array.ArrayBase`.
         """
         data = generate_linearized_array(array, value)
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map={},
                                                  vectorization_info=None)
 
         from loopy.expression import dtype_to_type_context
@@ -780,17 +781,19 @@ class CFamilyASTBuilder(ASTBuilderBase):
                         ecm.map_constant(d_i, type_context)
                         for d_i in data)))
 
-    def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
+    def get_kernel_call(self, kernel, callables_table, name,
+                        implemented_data_info, extra_args):
         return self.emit_blank_line()
 
-    def get_temporary_decls(self, kernel, subkernel_name):
+    def get_temporary_decls(self, kernel, callables_table, subkernel_name):
         if subkernel_name is None:
             # => host program => no temp dels
             return []
 
         from loopy.kernel.data import AddressSpace
 
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map={},
                                                  vectorization_info=None)
         base_storage_decls = []
         temp_decls = []
@@ -823,13 +826,13 @@ class CFamilyASTBuilder(ASTBuilderBase):
                             tv.name in sub_knl_temps):
                         decl = self.wrap_temporary_decl(
                                 self.get_temporary_decl(
-                                    kernel, tv, idi),
+                                    kernel, callables_table, tv, idi),
                                 tv.address_space)
 
                         if tv.initializer is not None:
                             assert tv.read_only
                             decl = Initializer(decl, self.emit_array_literal(
-                                kernel, tv, tv.initializer))
+                                kernel, callables_table, tv, tv.initializer))
 
                         temp_decls.append(decl)
 
@@ -973,7 +976,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
         from loopy.target.c.codegen.expression import CExpressionToCodeMapper
         return CExpressionToCodeMapper()
 
-    def get_temporary_decl(self, kernel, temp_var, decl_info):
+    def get_temporary_decl(self, kernel, callables_table, temp_var, decl_info):
         temp_var_decl = POD(self.target.dtype_to_typename(decl_info.dtype),
                             decl_info.dtype, decl_info.name)
 
@@ -983,7 +986,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
         if decl_info.shape:
             from cgen import ArrayOf
-            ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},
+            ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                     var_subst_map={},
                                                      vectorization_info=None)
             temp_var_decl = ArrayOf(temp_var_decl,
                     ecm(p.flattened_product(decl_info.shape),
@@ -1048,9 +1052,11 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
         return arg_decl
 
-    def emit_assignment(self, kernel, insn, var_subst_map, vectorization_info):
+    def emit_assignment(self, kernel, callables_table, insn, var_subst_map,
+                        vectorization_info):
 
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map,
                                                  vectorization_info)
 
         assignee_var_name, = insn.assignee_var_names()
@@ -1084,17 +1090,18 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
         elif isinstance(lhs_atomicity, AtomicInit):
             self.seen_atomic_dtypes.add(lhs_dtype)
-            return self.emit_atomic_init(
-                    kernel, var_subst_map, lhs_atomicity, lhs_var,
-                    insn.assignee, insn.expression,
-                    lhs_dtype, rhs_type_context)
+            return self.emit_atomic_init(kernel, callables_table,
+                                         var_subst_map, lhs_atomicity, lhs_var,
+                                         insn.assignee, insn.expression,
+                                         lhs_dtype, rhs_type_context)
 
         elif isinstance(lhs_atomicity, AtomicUpdate):
             self.seen_atomic_dtypes.add(lhs_dtype)
-            return self.emit_atomic_update(
-                    kernel, var_subst_map, lhs_atomicity, lhs_var,
-                    insn.assignee, insn.expression,
-                    lhs_dtype, rhs_type_context)
+            return self.emit_atomic_update(kernel, callables_table,
+                                           var_subst_map, lhs_atomicity,
+                                           lhs_var, insn.assignee,
+                                           insn.expression, lhs_dtype,
+                                           rhs_type_context)
 
         else:
             raise ValueError("unexpected lhs atomicity type: %s"
@@ -1136,7 +1143,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
     def emit_multiple_assignment(self, kernel, callables_table, insn,
                                  var_subst_map, vectorization_info):
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map,
                                                  vectorization_info)
 
         func_id = insn.expression.function.name
@@ -1166,9 +1174,10 @@ class CFamilyASTBuilder(ASTBuilderBase):
                     CExpression(self.get_c_expression_to_code_mapper(),
                                 in_knl_callable_as_call))
 
-    def emit_sequential_loop(self, kernel, iname, iname_dtype, lbound, ubound,
-                             inner, var_subst_map):
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+    def emit_sequential_loop(self, kernel, callables_table, iname, iname_dtype,
+                             lbound, ubound, inner, var_subst_map):
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map,
                                                  vectorization_info=None)
 
         from pymbolic import var
@@ -1213,10 +1222,12 @@ class CFamilyASTBuilder(ASTBuilderBase):
     def can_implement_conditionals(self):
         return True
 
-    def emit_if(self, kernel, condition, ast, var_subst_map, vectorization_info):
+    def emit_if(self, kernel, callables_table, condition, ast, var_subst_map,
+                vectorization_info):
         assert vectorization_info is None, "cannot be vectorizable if we see an if"
         from cgen import If
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map,
                                                  vectorization_info=None)
         return If(ecm(condition), ast)
 

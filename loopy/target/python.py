@@ -29,15 +29,16 @@ from loopy.type_inference import TypeReader
 from loopy.kernel.data import ValueArg
 from loopy.diagnostic import LoopyError  # noqa
 from loopy.target import ASTBuilderBase
-from genpy import Suite, Collection
+from genpy import Suite
 
 
 # {{{ expression to code
 
 class ExpressionToPythonMapper(StringifyMapper):
-    def __init__(self, kernel, ast_builder, var_subst_map, vectorization_info,
-                 type_inf_mapper=None):
+    def __init__(self, kernel, callables_table, ast_builder, var_subst_map,
+                 vectorization_info, type_inf_mapper=None):
         self.kernel = kernel
+        self.callables_table = callables_table
         self.ast_builder = ast_builder
         self.var_subst_map = var_subst_map
 
@@ -48,7 +49,7 @@ class ExpressionToPythonMapper(StringifyMapper):
 
         if type_inf_mapper is None:
             type_inf_mapper = TypeReader(self.kernel,
-                    self.codegen_state.callables_table)
+                    self.callables_table)
         self.type_inf_mapper = type_inf_mapper
 
         self.seen_functions = set()
@@ -85,15 +86,13 @@ class ExpressionToPythonMapper(StringifyMapper):
     def map_call(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_NONE
 
-        identifier_name = self.codegen_state.callables_table[
-                expr.function.name].name
+        identifier_name = self.callables_table[expr.function.name].name
 
         if identifier_name in ["indexof", "indexof_vec"]:
             raise LoopyError(
                     "indexof, indexof_vec not yet supported in Python")
 
-        clbl = self.codegen_state.callables_table[
-                expr.function.name]
+        clbl = self.callables_table[expr.function.name]
 
         str_parameters = None
         number_of_assignees = len([key for key in
@@ -165,7 +164,8 @@ class PythonASTBuilderBase(ASTBuilderBase):
         import genpy
         return genpy
 
-    def get_function_declaration(self, kernel, name, implemented_data_info,
+    def get_function_declaration(self, kernel, callables_table, name,
+                                 implemented_data_info,
                                  is_generating_device_code):
         return None
 
@@ -180,8 +180,9 @@ class PythonASTBuilderBase(ASTBuilderBase):
                 [idi.name for idi in implemented_data_info],
                 function_body)
 
-    def get_temporary_decls(self, kernel, subkernel_name):
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map={},
+    def get_temporary_decls(self, kernel, callables_table, subkernel_name):
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map={},
                                                  vectorization_info=None)
 
         result = []
@@ -207,10 +208,10 @@ class PythonASTBuilderBase(ASTBuilderBase):
 
         return result
 
-    def get_expression_to_code_mapper(self, kernel, var_subst_map,
-                                      vectorization_info):
-        return ExpressionToPythonMapper(kernel, self, var_subst_map,
-                                        vectorization_info)
+    def get_expression_to_code_mapper(self, kernel, callables_table,
+                                      var_subst_map, vectorization_info):
+        return ExpressionToPythonMapper(kernel, callables_table, self,
+                                        var_subst_map, vectorization_info)
 
     @property
     def ast_base_class(self):
@@ -236,9 +237,10 @@ class PythonASTBuilderBase(ASTBuilderBase):
         from genpy import Collection
         return Collection
 
-    def emit_sequential_loop(self, kernel, iname, iname_dtype,
+    def emit_sequential_loop(self, kernel, callables_table, iname, iname_dtype,
                              lbound, ubound, inner, var_subst_map):
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map,
                                                  vectorization_info=None)
 
         from pymbolic.mapper.stringifier import PREC_NONE, PREC_SUM
@@ -276,16 +278,19 @@ class PythonASTBuilderBase(ASTBuilderBase):
     def can_implement_conditionals(self):
         return True
 
-    def emit_if(self, kernel, condition, ast, var_subst_map, vectorization_info):
+    def emit_if(self, kernel, callables_table, condition, ast, var_subst_map,
+                vectorization_info):
         assert vectorization_info is None
         from genpy import If
         from pymbolic.mapper.stringifier import PREC_NONE
 
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map,
                                                  vectorization_info)
         return If(ecm(condition, prec=PREC_NONE), ast)
 
-    def emit_assignment(self, kernel, insn, var_subst_map, vectorization_info):
+    def emit_assignment(self, kernel, callables_table, insn, var_subst_map,
+                        vectorization_info):
         if insn.atomicity:
             raise NotImplementedError("atomic ops in Python")
 
@@ -295,7 +300,8 @@ class PythonASTBuilderBase(ASTBuilderBase):
         from pymbolic.mapper.stringifier import PREC_NONE
         from genpy import Assign
 
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map,
                                                  vectorization_info)
 
         return Assign(

@@ -23,7 +23,7 @@ THE SOFTWARE.
 import pymbolic.primitives as prim
 import loopy.schedule as schedule
 import islpy as isl
-from typing import List, Union, Any, Optional, Tuple, FrozenSet
+from typing import List, Union, Any, Optional, Mapping, FrozenSet
 from dataclasses import dataclass, field
 from functools import reduce
 from islpy import dim_type
@@ -260,7 +260,7 @@ def make_schedule_tree(kernel):
     # bob: the schedule builder
     bob = ScheduleTreeBuilder.new()
 
-    for sched_item in kernel.schedule:
+    for sched_item in kernel.linearization:
         if isinstance(sched_item, schedule.CallKernel):
             bob.make_and_enter_function(sched_item.kernel_name,
                                         sched_item.extra_args,
@@ -283,7 +283,7 @@ def make_schedule_tree(kernel):
         else:
             raise NotImplementedError(type(sched_item))
 
-    kernel = kernel.copy(schedule=bob.exit())
+    kernel = kernel.copy(linearization=bob.exit())
     return kernel
 
 # }}}
@@ -466,13 +466,11 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
     If *domain* contains any inames going along hardware inames account for
     those in *implemented_domain*.
 
-    :arg gsize: A tuple of :class:`isl.PwAff` denoting the size of the
-
     :returns: An instance of :class:`isl.BasicSet` that includes constraints
         from *implemented_domain* and constraints arising from constraining
         hardware inames in *domain* to their corresponding
     """
-    from loopy.kernel.data import AxisTag, GroupIndexTag, LocalIndexTag
+    from loopy.kernel.data import AxisTag, GroupInameTag, LocalInameTag
     from loopy.isl_helpers import make_slab
 
     for dim_name in domain.get_var_dict():
@@ -482,12 +480,12 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
                 continue
 
             tag, = kernel.iname_tags_of_type(dim_name, AxisTag)
-            assert isinstance(tag, (GroupIndexTag, LocalIndexTag))
+            assert isinstance(tag, (GroupInameTag, LocalInameTag))
 
             lbound = kernel.get_iname_bounds(dim_name).lower_bound_pw_aff
             size = (gsize[tag.axis]
 
-                    if isinstance(tag, GroupIndexTag)
+                    if isinstance(tag, GroupInameTag)
 
                     else
 
@@ -519,8 +517,8 @@ def _implement_hw_axes_in_domains(implemented_domain, domain,
 class PolyhedronLoopifierContext:
     implemented_domain: isl.BasicSet
     hw_inames: FrozenSet[str]
-    gsize: Optional[Tuple[prim.Expression, ...]] = None
-    lsize: Optional[Tuple[prim.Expression, ...]] = None
+    gsize: Optional[Mapping[int, prim.Expression]] = None
+    lsize: Optional[Mapping[int, prim.Expression]] = None
 
     def copy(self, *, implemented_domain=None, hw_inames=None, gsize=None,
              lsize=None):
@@ -541,8 +539,9 @@ class PolyhedronLoopifierContext:
 
 
 class PolyhedronLoopifier(IdentityMapper):
-    def __init__(self, kernel):
+    def __init__(self, kernel, callables_table):
         self.kernel = kernel
+        self.callables_table = callables_table
 
     def map_schedule(self, expr):
         impl_domain = self.kernel.assumptions
@@ -556,7 +555,7 @@ class PolyhedronLoopifier(IdentityMapper):
         # get the implemented domain for the insn ids in this kernel
         # Shouldn't be difficult to write a combine mapper for it.
         gsize, lsize = self.kernel.get_grid_sizes_for_insn_ids(
-            InstructionGatherer()(expr))
+            InstructionGatherer()(expr), self.callables_table, return_dict=True)
 
         hw_inames = get_all_inames_tagged_with(self.kernel, expr.name, AxisTag)
 
@@ -778,8 +777,8 @@ class Unroller(PolyhedronLoopifier):
         usual suspects tagged with 'unr`. One use-case could be unrolling could
         be a fallback implementation for other iname implementations.
     """
-    def __init__(self, kernel, extra_unroll_inames):
-        super().__init__(kernel)
+    def __init__(self, kernel, callables_table, extra_unroll_inames):
+        super().__init__(kernel, callables_table)
         self.extra_unroll_inames = extra_unroll_inames
 
     def map_polyhedral_loop(self, expr, context):
@@ -860,8 +859,8 @@ class BarrieredLoopsCollector(CombineMapper):
 
 
 class PredicateInsertionMapper(PolyhedronLoopifier):
-    def __init__(self, kernel, loops_containing_barrier):
-        super().__init__(kernel)
+    def __init__(self, kernel, callables_table, loops_containing_barrier):
+        super().__init__(kernel, callables_table)
         self.loops_containing_barriers = loops_containing_barrier
 
     def map_instruction_block(self, expr, context):
@@ -1067,17 +1066,17 @@ def homogenize_instruction_blocks(kernel):
     # TODO: Could be generalized by taking the homogenization criterion as an
     # argument.
 
-    new_schedule = InstructionBlockHomogenizer(kernel)(kernel.schedule)
-    return kernel.copy(schedule=new_schedule)
+    new_schedule = InstructionBlockHomogenizer(kernel)(kernel.linearization)
+    return kernel.copy(linearization=new_schedule)
 
 
-def insert_predicates_into_schedule(kernel):
+def insert_predicates_into_schedule(kernel, callables_table):
     if (kernel.iname_slab_increments
             and (set(kernel.iname_slab_increments.values()) != {(0, 0)})):
         raise NotImplementedError
 
     assert kernel.state >= KernelState.LINEARIZED
-    assert isinstance(kernel.schedule, Schedule)
+    assert isinstance(kernel.linearization, Schedule)
 
     # {{{ preprocessing before beginning the predicate insertion.
 
@@ -1085,22 +1084,23 @@ def insert_predicates_into_schedule(kernel):
 
     # }}}
 
-    schedule = PolyhedronLoopifier(kernel)(kernel.schedule)
-    schedule = EmptyLoopRemover(kernel)(schedule)
+    schedule = PolyhedronLoopifier(kernel, callables_table)(kernel.linearization)
+    schedule = EmptyLoopRemover(kernel, callables_table)(schedule)
 
     unvectorizable_inames = UnvectorizableInamesCollector(kernel)(schedule)
     # TODO: (For now) unvectorizable inames always fallback to unrolling this
     # should be selected based on the target.
-    schedule = Unroller(kernel, unvectorizable_inames)(schedule)
+    schedule = Unroller(kernel, callables_table, unvectorizable_inames)(schedule)
     loops_containing_barrier = BarrieredLoopsCollector()(schedule)
-    schedule = PredicateInsertionMapper(kernel, loops_containing_barrier)(schedule)
-    return kernel.copy(schedule=schedule), unvectorizable_inames
+    schedule = PredicateInsertionMapper(kernel, callables_table,
+                                        loops_containing_barrier)(schedule)
+    return kernel.copy(linearization=schedule), unvectorizable_inames
 
 
 @memoize_on_first_arg
 def get_insns_in_function(kernel, name):
     function, = [fn
-                 for fn in FunctionCollector()(kernel.schedule)
+                 for fn in FunctionCollector()(kernel.linearization)
                  if fn.name == name]
     return InstructionGatherer()(function)
 

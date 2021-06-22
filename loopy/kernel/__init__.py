@@ -708,11 +708,11 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                 # these should not both be present
                 raise ValueError(
                     "received both `schedule` and `linearization` args, "
-                    "'LoopKernel.linearization' is deprecated. "
+                    "'LoopKernel.schedule' is deprecated. "
                     "Use 'LoopKernel.linearization'.")
         elif schedule is not None:
             warn(
-                "'LoopKernel.linearization' is deprecated. "
+                "'LoopKernel.schedule' is deprecated. "
                 "Use 'LoopKernel.linearization'.",
                 DeprecationWarning, stacklevel=2)
             linearization = schedule
@@ -994,7 +994,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
     @property
     def schedule(self):
         warn(
-                "LoopKernel.linearization is deprecated. "
+                "LoopKernel.schedule is deprecated. "
                 "Call LoopKernel.linearization instead, "
                 "will be unsupported in 2022.",
                 DeprecationWarning, stacklevel=2)
@@ -1911,14 +1911,16 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             domains = kwargs.get("domains", self.domains)
             kwargs["inames"] = make_iname_dict({k: Iname(k, v)
                                                 for k, v in iname_to_tags.items()},
-                                               self.domains.set_dims)
+                                               domains.set_dims)
             del kwargs["iname_to_tags"]
 
         if "domains" in kwargs:
             inames = kwargs.get("inames", self.inames)
             domains = kwargs["domains"]
-            kwargs["inames"] = {name: inames.get(name, Iname(name, frozenset()))
-                                for name in _get_inames_from_domains(domains)}
+            kwargs["inames"] = make_iname_dict({k: Iname(k, v.tags)
+                                                for k, v in inames.items()
+                                                if v.tags},
+                                                domains.set_dims)
 
             assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
 

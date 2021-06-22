@@ -608,9 +608,11 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                                  is_generating_device_code, is_entrypoint):
         assert is_generating_device_code
 
-        fdecl = super().get_function_declaration(kernel, name,
+        fdecl = super().get_function_declaration(kernel, callables_table,
+                                                 name,
                                                  implemented_data_info,
-                                                 is_generating_device_code)
+                                                 is_generating_device_code,
+                                                 is_entrypoint)
 
         from loopy.target.c import FunctionDeclarationWrapper
         assert isinstance(fdecl, FunctionDeclarationWrapper)
@@ -653,9 +655,11 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     # {{{ code generation guts
 
-    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map,
+    def get_expression_to_c_expression_mapper(self, kernel, callables_table,
+                                              var_subst_map,
                                               vectorization_info):
-        return ExpressionToOpenCLCExpressionMapper(kernel, self, var_subst_map,
+        return ExpressionToOpenCLCExpressionMapper(kernel, callables_table,
+                                                   self, var_subst_map,
                                                    vectorization_info)
 
     def add_vector_access(self, access_expr, index):
@@ -744,23 +748,26 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     # {{{
 
-    def emit_atomic_init(self, kernel, var_subst_map, lhs_atomicity, lhs_var,
-            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
+    def emit_atomic_init(self, kernel, callables_table, var_subst_map,
+                         lhs_atomicity, lhs_var, lhs_expr, rhs_expr, lhs_dtype,
+                         rhs_type_context):
         # for the CL1 flavor, this is as simple as a regular update with whatever
         # the RHS value is...
 
-        return self.emit_atomic_update(kernel, var_subst_map, lhs_atomicity, lhs_var,
-            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context)
+        return self.emit_atomic_update(kernel, callables_table, var_subst_map,
+                                       lhs_atomicity, lhs_var, lhs_expr,
+                                       rhs_expr, lhs_dtype, rhs_type_context)
 
     # }}}
 
     # {{{ code generation for atomic update
 
-    def emit_atomic_update(self, kernel, var_subst_map, lhs_atomicity, lhs_var,
-            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
+    def emit_atomic_update(self, kernel, callables_table, var_subst_map,
+                           lhs_atomicity, lhs_var, lhs_expr, rhs_expr,
+                           lhs_dtype, rhs_type_context):
         from pymbolic.mapper.stringifier import PREC_NONE
 
-        ecm = self.get_expression_to_code_mapper(kernel,
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
                                                  var_subst_map=var_subst_map,
                                                  vectorization_info=None)
 

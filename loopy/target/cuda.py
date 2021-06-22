@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 import numpy as np
 
-from pytools import memoize_method
+from pytools import memoize_method, UniqueNameGenerator
 
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
@@ -309,6 +309,10 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
     preamble_function_qualifier = "inline __device__"
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.var_name_generator = UniqueNameGenerator()
+
     # {{{ library
 
     @property
@@ -324,9 +328,10 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     def get_function_declaration(self, kernel, callables_table, name,
                                  implemented_data_info,
                                  is_generating_device_code, is_entrypoint):
-        fdecl = super().get_function_declaration(kernel, name,
+        fdecl = super().get_function_declaration(kernel, callables_table, name,
                                                  implemented_data_info,
-                                                 is_generating_device_code)
+                                                 is_generating_device_code,
+                                                 is_entrypoint)
 
         from loopy.target.c import FunctionDeclarationWrapper
         assert isinstance(fdecl, FunctionDeclarationWrapper)
@@ -364,9 +369,11 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
     # {{{ code generation guts
 
-    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map,
+    def get_expression_to_c_expression_mapper(self, kernel, callables_table,
+                                              var_subst_map,
                                               vectorization_info):
-        return ExpressionToCudaCExpressionMapper(kernel, self, var_subst_map,
+        return ExpressionToCudaCExpressionMapper(kernel, callables_table, self,
+                                                 var_subst_map,
                                                  vectorization_info)
 
     _VEC_AXES = "xyzw"
@@ -443,8 +450,9 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
     # {{{ code generation for atomic update
 
-    def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
-            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
+    def emit_atomic_update(self, kernel, callables_table, var_subst_map,
+                           lhs_atomicity, lhs_var, lhs_expr, rhs_expr,
+                           lhs_dtype, rhs_type_context):
 
         from pymbolic.primitives import Sum
         from cgen import Statement
@@ -454,7 +462,9 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                 np.int32, np.int64, np.float32, np.float64]:
             # atomicAdd
             if isinstance(rhs_expr, Sum):
-                ecm = self.get_expression_to_code_mapper(codegen_state)
+                ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                         var_subst_map=var_subst_map,
+                                                         vectorization_info=None)
 
                 new_rhs_expr = Sum(tuple(c for c in rhs_expr.children
                                          if c != lhs_expr))
@@ -466,11 +476,11 @@ class CUDACASTBuilder(CFamilyASTBuilder):
             else:
                 from cgen import Block, DoWhile, Assign
                 from loopy.target.c import POD
-                old_val_var = codegen_state.var_name_generator("loopy_old_val")
-                new_val_var = codegen_state.var_name_generator("loopy_new_val")
+                old_val_var = self.var_name_generator("loopy_old_val")
+                new_val_var = self.var_name_generator("loopy_new_val")
 
                 from loopy.kernel.data import TemporaryVariable
-                ecm = codegen_state.expression_to_code_mapper.with_assignments(
+                ecm = self.expression_to_code_mapper.with_assignments(
                         {
                             old_val_var: TemporaryVariable(old_val_var, lhs_dtype),
                             new_val_var: TemporaryVariable(new_val_var, lhs_dtype),

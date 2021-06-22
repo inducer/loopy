@@ -192,17 +192,19 @@ class ASTBuilderBase:
                                 function_decl, function_body):
         raise NotImplementedError
 
-    def get_function_declaration(self, kernel, name, implemented_data_info,
+    def get_function_declaration(self, kernel, callables_table, name,
+                                 implemented_data_info,
                                  is_generating_device_code):
         raise NotImplementedError
 
     def generate_top_of_body(self, kernel):
         return []
 
-    def get_temporary_decls(self, kernel, subkernel_name):
+    def get_temporary_decls(self, kernel, callables_table, subkernel_name):
         raise NotImplementedError
 
-    def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
+    def get_kernel_call(self, kernel, callables_table, name,
+                        implemented_data_info, extra_args):
         raise NotImplementedError
 
     @property
@@ -244,20 +246,21 @@ class ASTBuilderBase:
     def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
         raise NotImplementedError()
 
-    def emit_array_literal(self, kernel, array, value):
+    def emit_array_literal(self, kernel, callables_table, array, value):
         """
         :arg ary: An instance of :class:`loopy.kernel.array.ArrayBase`.
         """
         raise NotImplementedError
 
-    def emit_assignment(self, kernel, insn, var_subst_map, vectorization_info):
+    def emit_assignment(self, kernel, callables_table, insn, var_subst_map,
+                        vectorization_info):
         raise NotImplementedError()
 
-    def emit_multiple_assignment(self, kernel, insn, var_subst_map,
+    def emit_multiple_assignment(self, kernel, callables_table, insn, var_subst_map,
                                  vectorization_info):
         raise NotImplementedError()
 
-    def emit_sequential_loop(self, kernel, iname, iname_dtype,
+    def emit_sequential_loop(self, kernel, callables_table, iname, iname_dtype,
                              lbound, ubound, inner):
         raise NotImplementedError()
 
@@ -265,7 +268,8 @@ class ASTBuilderBase:
     def can_implement_conditionals(self):
         return False
 
-    def emit_if(self, kernel, condition, ast, var_subst_map, vectorization_info):
+    def emit_if(self, kernel, callables_table, condition, ast, var_subst_map,
+                vectorization_info):
         raise NotImplementedError()
 
     def emit_initializer(self, decl, val):
@@ -315,18 +319,20 @@ class DummyHostASTBuilder(ASTBuilderBase):
                                 function_decl, function_body):
         return function_body
 
-    def get_function_declaration(self, kernel, name, implemented_data_info,
-                                 is_generating_device_code):
+    def get_function_declaration(self, kernel, callables_table, name,
+                                 implemented_data_info,
+                                 is_generating_device_code, is_entrypoint):
         return None
 
-    def get_temporary_decls(self, kernel, subkernel_name):
+    def get_temporary_decls(self, kernel, callables_table, subkernel_name):
         return []
 
     def get_expression_to_code_mapper(self, kernel, var_subst_map,
                                       vectorization_info):
         return _DummyExpressionToCodeMapper()
 
-    def get_kernel_call(self, kernel, name, implemented_data_info, extra_args):
+    def get_kernel_call(self, kernel, callables_table, name,
+                        implemented_data_info, extra_args):
         return _DummyASTBlock([])
 
     @property

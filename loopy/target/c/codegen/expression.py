@@ -473,7 +473,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
     def map_call(self, expr, type_context):
         return (
-                self.codegen_state.callables_table[
+                self.callables_table[
                     expr.function.name].emit_call(
                         expression_to_code_mapper=self,
                     expression=expr,
@@ -531,10 +531,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                                   self.rec(expr.exponent, type_context))
         else:
             from loopy.codegen import SeenFunction
-            clbl = self.codegen_state.ast_builder.known_callables["pow"]
+            clbl = self.ast_builder.known_callables["pow"]
             clbl = clbl.with_types({0: tgt_dtype, 1: exponent_dtype},
-                    self.codegen_state.callables_table)[0]
-            self.codegen_state.seen_functions.add(
+                    self.callables_table)[0]
+            self.ast_builder.seen_functions.add(
                     SeenFunction(
                         clbl.name, clbl.name_in_target,
                         (base_dtype, exponent_dtype),

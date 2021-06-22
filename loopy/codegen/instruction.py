@@ -29,10 +29,10 @@ from loopy.diagnostic import LoopyError
 from pymbolic.mapper.stringifier import PREC_NONE
 
 
-def generate_assignment_instruction_code(kernel, insn, ast_builder,
-                                         hw_inames_expr, vinfo):
-    ecm = ast_builder.get_expression_to_code_mapper(kernel, hw_inames_expr,
-                                                    vinfo)
+def generate_assignment_instruction_code(kernel, callables_table, insn,
+                                         ast_builder, hw_inames_expr, vinfo):
+    ecm = ast_builder.get_expression_to_code_mapper(kernel, callables_table,
+                                                    hw_inames_expr, vinfo)
 
     from pymbolic.primitives import Variable, Subscript, Lookup
     from loopy.symbolic import LinearSubscript
@@ -58,7 +58,8 @@ def generate_assignment_instruction_code(kernel, insn, ast_builder,
 
     del lhs
 
-    result = ast_builder.emit_assignment(kernel, insn, hw_inames_expr, vinfo)
+    result = ast_builder.emit_assignment(kernel, callables_table, insn,
+                                         hw_inames_expr, vinfo)
 
     # {{{ tracing
 
@@ -127,10 +128,10 @@ def generate_assignment_instruction_code(kernel, insn, ast_builder,
     return result
 
 
-def generate_call_code(kernel, insn, ast_builder,
+def generate_call_code(kernel, callables_table, insn, ast_builder,
                        hw_inames_expr, vinfo):
-    result = ast_builder.emit_multiple_assignment(kernel, insn, hw_inames_expr,
-                                                  vinfo)
+    result = ast_builder.emit_multiple_assignment(kernel, callables_table,
+                                                  insn, hw_inames_expr, vinfo)
 
     # {{{ vectorization handling
 
@@ -150,10 +151,10 @@ def generate_call_code(kernel, insn, ast_builder,
     return result
 
 
-def generate_c_instruction_code(kernel, insn, ast_builder,
+def generate_c_instruction_code(kernel, callables_table, insn, ast_builder,
                                 hw_inames_expr, vinfo):
-    ecm = ast_builder.get_expression_to_code_mapper(kernel, hw_inames_expr,
-                                                    vinfo)
+    ecm = ast_builder.get_expression_to_code_mapper(kernel, callables_table,
+                                                    hw_inames_expr, vinfo)
 
     assert vinfo is None
 
@@ -182,7 +183,7 @@ def generate_c_instruction_code(kernel, insn, ast_builder,
     return Block(body)
 
 
-def generate_nop_instruction_code(kernel, insn, ast_builder,
+def generate_nop_instruction_code(kernel, callables_table, insn, ast_builder,
                                   hw_inames_expr, vinfo):
     assert vinfo is None
     return ast_builder.emit_comment("no-op (insn=%s)" % (insn.id))

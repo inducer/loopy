@@ -211,8 +211,11 @@ class CodeGenerationContext:
 
 
 class CodeGenMapper(CombineMapper):
-    def __init__(self, kernel, unvectorizable_inames):
+    def __init__(self, kernel, callables_table, is_entrypoint,
+                 unvectorizable_inames):
         self.kernel = kernel
+        self.callables_table = callables_table
+        self.is_entrypoint = is_entrypoint
         self.unvectorizable_inames = unvectorizable_inames
         self.host_ast_builder = kernel.target.get_host_ast_builder()
         self.device_ast_builder = kernel.target.get_device_ast_builder()
@@ -266,7 +269,7 @@ class CodeGenMapper(CombineMapper):
         # {{{ emit global temporary declarations/initializations
 
         tv_init_host_asts = self.host_ast_builder.get_temporary_decls(
-            self.kernel, subkernel_name=None)
+            self.kernel, self.callables_table, subkernel_name=None)
 
         tv_init_device_asts = []
         for tv in sorted((tv for tv in self.kernel.temporary_variables.values()
@@ -278,11 +281,12 @@ class CodeGenMapper(CombineMapper):
                 decl_info, = tv.decl_info(self.kernel.target,
                                           index_dtype=self.kernel.index_dtype)
                 decl = self.device_ast_builder.wrap_global_constant(
-                    self.device_ast_builder.get_temporary_decl(self.kernel, tv,
+                    self.device_ast_builder.get_temporary_decl(self.kernel,
+                                                               self.callables_table,
+                                                               tv,
                                                                decl_info))
-                rhs = self.device_ast_builder.emit_array_literal(self.kernel,
-                                                                 tv,
-                                                                 tv.initializer)
+                rhs = self.device_ast_builder.emit_array_literal(
+                    self.kernel, self.callables_table, tv, tv.initializer)
                 init_ast = self.device_ast_builder.emit_initializer(decl, rhs)
 
                 tv_init_device_asts.append(init_ast)
@@ -297,27 +301,36 @@ class CodeGenMapper(CombineMapper):
 
         # }}}
 
-        host_fn_body_ast = self.host_ast_builder.ast_block_class(host_tgt_prelude
-                                                                 + tv_init_host_asts
-                                                                 + host_ast)
-
         idis = get_idis_for_kernel(self.kernel)
-        host_fn_name = (self.kernel.target.host_program_name_prefix
-                        + self.kernel.name
-                        + self.kernel.target.host_program_name_suffix)
-        host_fn_decl = (self
-                        .host_ast_builder
-                        .get_function_declaration(self.kernel, host_fn_name, idis,
-                                                  is_generating_device_code=True))
-        host_fn_ast = (self
-                      .host_ast_builder
-                      .get_function_definition(self.kernel, host_fn_name, idis,
-                                               host_fn_decl, host_fn_body_ast))
 
-        host_prog = GeneratedProgram(name=host_fn_name, is_device_program=False,
-                                     ast=host_fn_ast)
+        if self.is_entrypoint:
+            host_fn_body_ast = self.host_ast_builder.ast_block_class(
+                host_tgt_prelude + tv_init_host_asts + host_ast)
 
-        return CodeGenerationResult(host_prog, device_programs, idis)
+            host_fn_name = (self.kernel.target.host_program_name_prefix
+                            + self.kernel.name
+                            + self.kernel.target.host_program_name_suffix)
+            host_fn_decl = (self
+                            .host_ast_builder
+                            .get_function_declaration(self.kernel,
+                                                      self.callables_table,
+                                                      host_fn_name, idis,
+                                                      is_generating_device_code=True,
+                                                      is_entrypoint=True)
+                            )
+            host_fn_ast = (self
+                           .host_ast_builder
+                           .get_function_definition(self.kernel, host_fn_name,
+                                                    idis, host_fn_decl,
+                                                    host_fn_body_ast))
+
+            host_prog = GeneratedProgram(name=host_fn_name, is_device_program=False,
+                                         ast=host_fn_ast)
+            return CodeGenerationResult(host_prog, device_programs, idis)
+        else:
+            return CodeGenerationResult(host_program=None,
+                                        device_programs=device_programs,
+                                        implemented_data_info=idis)
 
     def map_function(self, expr, context):
         from loopy.codegen.control import synthesize_idis_for_extra_args
@@ -326,20 +339,26 @@ class CodeGenMapper(CombineMapper):
         # {{{ Host-side: call the kernel
 
         from loopy.schedule.tree import InstructionGatherer
-        gsize, lsize = self.kernel.get_grid_sizes_for_insn_ids_as_exprs(
-            InstructionGatherer()(expr))
         idis = (get_idis_for_kernel(self.kernel)
                 + synthesize_idis_for_extra_args(self.kernel, expr))
 
         dev_fn_decl = (self
                        .device_ast_builder
-                       .get_function_declaration(self.kernel, expr.name, idis,
-                                                 is_generating_device_code=True))
-        host_ast = self.host_ast_builder.get_kernel_call(self.kernel,
-                                                         expr.name, idis,
-                                                         # 'idis' include the
-                                                         # "extra_args"
-                                                         extra_args=[])
+                       .get_function_declaration(self.kernel,
+                                                 self.callables_table,
+                                                 expr.name, idis,
+                                                 is_generating_device_code=True,
+                                                 is_entrypoint=self.is_entrypoint))
+
+        if self.is_entrypoint:
+            host_ast = [self.host_ast_builder.get_kernel_call(self.kernel,
+                                                              self.callables_table,
+                                                              expr.name, idis,
+                                                              # 'idis' include the
+                                                              # "extra_args"
+                                                              extra_args=[])]
+        else:
+            host_ast = []
 
         # }}}
 
@@ -348,7 +367,7 @@ class CodeGenMapper(CombineMapper):
         # {{{ record the iname_exprs for downstream elements
 
         from functools import reduce
-        from loopy.kernel.data import GroupIndexTag, LocalIndexTag
+        from loopy.kernel.data import GroupInameTag, LocalInameTag
         from loopy.isl_helpers import static_min_of_pw_aff
         from loopy.symbolic import (GroupHardwareAxisIndex,
                                     LocalHardwareAxisIndex,
@@ -360,23 +379,23 @@ class CodeGenMapper(CombineMapper):
                             frozenset())
 
         def _hw_iname_expr(iname):
-            tag, = self.kernel.iname_tags_of_type(iname, (GroupIndexTag,
-                                                          LocalIndexTag))
+            tag, = self.kernel.iname_tags_of_type(iname, (GroupInameTag,
+                                                          LocalInameTag))
             lbound = static_min_of_pw_aff(self
                                           .kernel.get_iname_bounds(iname)
                                           .lower_bound_pw_aff,
                                           constants_only=False)
 
             return pw_aff_to_expr(lbound) + (GroupHardwareAxisIndex(tag.axis)
-                                             if isinstance(tag, GroupIndexTag)
+                                             if isinstance(tag, GroupInameTag)
                                              else
                                              LocalHardwareAxisIndex(tag.axis))
 
         iname_exprs = {iname: _hw_iname_expr(iname)
                        for iname in all_inames
                        if self.kernel.iname_tags_of_type(iname,
-                                                         (LocalIndexTag,
-                                                          GroupIndexTag))}
+                                                         (LocalInameTag,
+                                                          GroupInameTag))}
 
         # }}}
 
@@ -384,12 +403,15 @@ class CodeGenMapper(CombineMapper):
 
         dev_fn_decl = (self
                        .device_ast_builder
-                       .get_function_declaration(self.kernel, expr.name, idis,
-                                                 is_generating_device_code=True))
+                       .get_function_declaration(self.kernel,
+                                                 self.callables_table,
+                                                 expr.name, idis,
+                                                 is_generating_device_code=True,
+                                                 is_entrypoint=self.is_entrypoint))
 
         tgt_prelude = self.device_ast_builder.generate_top_of_body(self.kernel)
-        temp_decls_asts = self.device_ast_builder.get_temporary_decls(self.kernel,
-                                                                      expr.name)
+        temp_decls_asts = self.device_ast_builder.get_temporary_decls(
+                self.kernel, self.callables_table, expr.name)
         children_res = self.combine([self.rec(child, dwnstrm_ctx)
                                      for child in expr.children])
         dev_fn_body_ast = self.device_ast_builder.ast_block_class(tgt_prelude
@@ -408,7 +430,7 @@ class CodeGenMapper(CombineMapper):
 
         # }}}
 
-        return CodeGenMapperAccumulator([host_ast], [dev_prog])
+        return CodeGenMapperAccumulator(host_ast, [dev_prog])
 
     # {{{ for loop
 
@@ -458,12 +480,14 @@ class CodeGenMapper(CombineMapper):
 
             if expr.upper_bound != expr.lower_bound:
                 loop_body = ast_builder.ast_block_class(body_ast)
-                loop_ast = [ast_builder.emit_sequential_loop(self.kernel, expr.iname,
-                                                            self.kernel.index_dtype,
-                                                            expr.lower_bound,
-                                                            expr.upper_bound,
-                                                            loop_body,
-                                                            context.iname_exprs)]
+                loop_ast = [ast_builder.emit_sequential_loop(self.kernel,
+                                                             self.callables_table,
+                                                             expr.iname,
+                                                             self.kernel.index_dtype,
+                                                             expr.lower_bound,
+                                                             expr.upper_bound,
+                                                             loop_body,
+                                                             context.iname_exprs)]
             else:
                 # special case: if ubound == lbound => just have the body
                 loop_ast = body_ast
@@ -488,7 +512,8 @@ class CodeGenMapper(CombineMapper):
                                               if context.in_device
                                               else children_res.host_ast)
 
-        if_ast = ast_builder.emit_if(self.kernel, expr.condition, if_body,
+        if_ast = ast_builder.emit_if(self.kernel, self.callables_table,
+                                     expr.condition, if_body,
                                      context.iname_exprs,
                                      context.vectorization_info)
 
@@ -532,26 +557,34 @@ class CodeGenMapper(CombineMapper):
         insn = self.kernel.id_to_insn[expr.insn_id]
 
         if isinstance(insn, CallInstruction):
-            insn_ast = generate_call_code(self.kernel, insn,
+            insn_ast = generate_call_code(self.kernel,
+                                          self.callables_table,
+                                          insn,
                                           ast_builder,
                                           context.iname_exprs,
                                           (context
                                            .vectorization_info))
         elif isinstance(insn, Assignment):
-            insn_ast = generate_assignment_instruction_code(self.kernel, insn,
+            insn_ast = generate_assignment_instruction_code(self.kernel,
+                                                            self.callables_table,
+                                                            insn,
                                                             ast_builder,
                                                             (context
                                                              .iname_exprs),
                                                             (context
                                                              .vectorization_info))
         elif isinstance(insn, CInstruction):
-            insn_ast = generate_c_instruction_code(self.kernel, insn,
+            insn_ast = generate_c_instruction_code(self.kernel,
+                                                   self.callables_table,
+                                                   insn,
                                                    ast_builder,
                                                    context.iname_exprs,
                                                    (context
                                                     .vectorization_info))
         elif isinstance(insn, NoOpInstruction):
-            insn_ast = generate_nop_instruction_code(self.kernel, insn,
+            insn_ast = generate_nop_instruction_code(self.kernel,
+                                                     self.callables_table,
+                                                     insn,
                                                      ast_builder,
                                                      context.iname_exprs,
                                                      (context
