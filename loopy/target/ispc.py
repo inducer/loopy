@@ -385,9 +385,11 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         from cgen.ispc import ISPCUniform
         return ISPCUniform(result)
 
-    def emit_assignment(self, kernel, insn, var_subst_map, vectorization_info):
+    def emit_assignment(self, kernel, callables_table, insn, var_subst_map,
+                        vectorization_info):
 
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map,
                                                  vectorization_info)
 
         assignee_var_name, = insn.assignee_var_names()
@@ -502,14 +504,15 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         from cgen import Assign
         return Assign(ecm(lhs, prec=PREC_NONE, type_context=None), rhs_code)
 
-    def emit_sequential_loop(self, kernel, iname, iname_dtype,
+    def emit_sequential_loop(self, kernel, callables_table, iname, iname_dtype,
                              lbound, ubound, inner, var_subst_map):
         from loopy.target.c import POD
         from pymbolic.mapper.stringifier import PREC_NONE
         from cgen import For, InlineInitializer
         from cgen.ispc import ISPCUniform
 
-        ecm = self.get_expression_to_code_mapper(kernel, var_subst_map,
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map,
                                                  vectorization_info=None)
 
         return For(

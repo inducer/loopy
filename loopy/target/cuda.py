@@ -480,7 +480,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                 new_val_var = self.var_name_generator("loopy_new_val")
 
                 from loopy.kernel.data import TemporaryVariable
-                ecm = self.expression_to_code_mapper.with_assignments(
+                ecm = ecm.with_assignments(
                         {
                             old_val_var: TemporaryVariable(old_val_var, lhs_dtype),
                             new_val_var: TemporaryVariable(new_val_var, lhs_dtype),

@@ -166,7 +166,7 @@ class PythonASTBuilderBase(ASTBuilderBase):
 
     def get_function_declaration(self, kernel, callables_table, name,
                                  implemented_data_info,
-                                 is_generating_device_code):
+                                 is_generating_device_code, is_entrypoint):
         return None
 
     def get_function_definition(self, kernel, name, implemented_data_info,

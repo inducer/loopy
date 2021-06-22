@@ -167,9 +167,10 @@ class NumbaCudaASTBuilder(NumbaBaseASTBuilder):
     def get_python_function_decorators(self):
         return ("@_lpy_ncu.jit",)
 
-    def get_expression_to_code_mapper(self, kernel, var_subst_map,
-                                      vectorization_info):
-        return NumbaCudaExpressionToPythonMapper(kernel, self, var_subst_map,
+    def get_expression_to_code_mapper(self, kernel, callables_table,
+                                      var_subst_map, vectorization_info):
+        return NumbaCudaExpressionToPythonMapper(kernel, callables_table, self,
+                                                 var_subst_map,
                                                  vectorization_info)
 
 

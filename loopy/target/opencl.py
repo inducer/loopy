@@ -913,9 +913,12 @@ class VolatileMemExpressionToOpenCLCExpressionMapper(
 
 
 class VolatileMemOpenCLCASTBuilder(OpenCLCASTBuilder):
-    def get_expression_to_c_expression_mapper(self, kernel, var_subst_map,
+    def get_expression_to_c_expression_mapper(self, kernel, callables_table,
+                                              var_subst_map,
                                               vectorization_info):
-        return VolatileMemExpressionToOpenCLCExpressionMapper(kernel, self,
+        return VolatileMemExpressionToOpenCLCExpressionMapper(kernel,
+                                                              callables_table,
+                                                              self,
                                                               var_subst_map,
                                                               vectorization_info)
 
