@@ -396,26 +396,11 @@ class InKernelCallable(ImmutableRecord):
 
         :arg target: An instance of :class:`loopy.target.TargetBase`.
         """
+        from warnings import warn
+        warn("InKernelCallable.with_target is deprecated, will be removed in "
+             "2022.", DeprecationWarning, stacklevel=2)
 
-        if target is None:
-            raise LoopyError("target cannot be None for with_target")
-
-        def with_target_if_not_None(dtype):
-            """
-            Returns a copy of :arg:`dtype` associated with the target. If
-            ``dtype`` is *None* returns *None*.
-            """
-            if dtype:
-                return dtype.with_target(target)
-            else:
-                return None
-
-        new_arg_id_to_dtype = None
-        if self.arg_id_to_dtype is not None:
-            new_arg_id_to_dtype = {id: with_target_if_not_None(dtype)
-                                   for id, dtype in self.arg_id_to_dtype.items()}
-
-        return self.copy(arg_id_to_dtype=new_arg_id_to_dtype)
+        return self
 
     def is_ready_for_codegen(self):
 

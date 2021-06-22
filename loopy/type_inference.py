@@ -424,8 +424,6 @@ class TypeInferenceMapper(CombineMapper):
                                               .with_types(arg_id_to_dtype,
                                                           self.clbl_inf_ctx))
 
-        in_knl_callable = in_knl_callable.with_target(self.kernel.target)
-
         # storing the type specialized function so that it can be used for
         # later use
         self.clbl_inf_ctx, new_function_id = (
@@ -870,8 +868,6 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
             failed = not result
             if not failed:
                 new_dtype, = result
-                if new_dtype.target is None:
-                    new_dtype = new_dtype.with_target(kernel.target)
 
                 debug("     success: %s", new_dtype)
                 if new_dtype != item.dtype:
@@ -1076,7 +1072,7 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
 
     reduction_dtypes = expr.operation.result_dtypes(*arg_dtypes)
     reduction_dtypes = tuple(
-            dt.with_target(kernel.target)
+            dt
             if dt is not lp.auto else dt
             for dt in reduction_dtypes)
 
