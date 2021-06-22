@@ -870,7 +870,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         result = []
         hdm = self._get_home_domain_map()
 
-        for idom, dom in enumerate(self.domains):
+        for dom in self.domains:
             idom_param_vars = (frozenset(dom.get_var_names(dim_type.param))
                                - self.get_unwritten_value_args())
             # outer_inames: inames that must be nested outside the 'set dims'

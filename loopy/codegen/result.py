@@ -101,7 +101,11 @@ class CodeGenerationResult(ImmutableRecord):
         Only added at the very end of code generation.
     """
     def __init__(self, host_program, device_programs, implemented_data_info,
-                 host_preambles=[], device_preambles=[]):
+                 host_preambles=None, device_preambles=None):
+        if host_preambles is None:
+            host_preambles = []
+        if device_preambles is None:
+            device_preambles = []
         super().__init__(host_program=host_program,
                          device_programs=device_programs,
                          implemented_data_info=implemented_data_info,
