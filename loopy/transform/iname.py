@@ -1225,6 +1225,7 @@ def get_used_inames(kernel):
     return used_inames
 
 
+@for_each_kernel
 def remove_unused_inames(kernel, inames=None):
     """Delete those among *inames* that are unused, i.e. project them
     out of the domain. If these inames pose implicit restrictions on
