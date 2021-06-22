@@ -155,12 +155,38 @@ def _register_vector_types(dtype_registry):
 
 # {{{ function mangler
 
-_CL_SIMPLE_MULTI_ARG_FUNCTIONS = {
-        "rsqrt": 1,
-        "clamp": 3,
-        "atan2": 2,
-        }
+UNARY_FUNCS = {
+    "acos", "acosh", "acospi", "asin", "asinh", "asinpi", "atan", "atanh", "atanpi",
+    "cbrt", "ceil", "cos", "cosh", "cospi", "erfc", "erf", "exp", "exp2", "exp10",
+    "expm1", "fabs", "floor", "lgamma", "log", "log2", "log10", "log1p", "logb",
+    "rint", "round", "rsqrt", "sin", "sinh", "sinpi", "sqrt", "tan", "tanh",
+    "tanpi", "tgamma", "trunc", "degrees", "radians", "sign",
+}
 
+# commented-out functions are special cased below
+_CL_SIMPLE_MULTI_ARG_FUNCTIONS = {
+    "atan2": 2,
+    "atan2pi": 2,
+    "copysign": 2,
+    "fdim": 2,
+    "fmax": 2,
+    "fmin": 2,
+    "fmod": 2,
+    "hypot": 2,
+    "maxmag": 2,
+    "minmag": 2,
+    "nextafter": 2,
+    # "pow": 2,
+    "powr": 2,
+    "remainder": 2,
+    # "max": 2,
+    # "min": 2,
+    "step": 2,
+    "fma": 3,
+    "mad": 3,
+    "clamp": 3,
+    "mix": 3,
+}
 
 VECTOR_LITERAL_FUNCS = {
         "make_%s%d" % (name, count): (name, dtype, count)
@@ -190,10 +216,7 @@ class OpenCLCallable(ScalarCallable):
         name = self.name
 
         # unary functions
-        if name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
-                    "tan", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor",
-                    "erf", "erfc"]:
-
+        if name in UNARY_FUNCS:
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 0:
                     raise LoopyError(f"'{name}' can take only one argument.")
@@ -359,12 +382,10 @@ def get_opencl_callables():
     *identifier* is known in OpenCL.
     """
     opencl_function_ids = (
-            {"max", "min", "dot", "pow", "abs", "acos", "asin",
-            "atan", "cos", "cosh", "sin", "sinh", "pow", "atan2", "tanh", "exp",
-            "log", "log10", "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
-            "fabs", "tan", "erf", "erfc"}
-            | set(_CL_SIMPLE_MULTI_ARG_FUNCTIONS)
-            | set(VECTOR_LITERAL_FUNCS))
+        set(UNARY_FUNCS)
+        | {"min", "max", "pow", "dot", "abs"}
+        | set(_CL_SIMPLE_MULTI_ARG_FUNCTIONS)
+        | set(VECTOR_LITERAL_FUNCS))
 
     return {id_: OpenCLCallable(name=id_) for id_ in
         opencl_function_ids}
