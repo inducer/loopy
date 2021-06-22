@@ -320,7 +320,8 @@ class TranslationUnit(ImmutableRecord):
             else:
                 raise ValueError("TranslationUnit has multiple possible entrypoints."
                                  " The default entrypoint kernel is not uniquely"
-                                 " determined.")
+                                 " determined. You may explicitly specify an "
+                                 " entrypoint using the 'entrypoint' kwarg.")
 
         else:
             if entrypoint not in self.entrypoints:
