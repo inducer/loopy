@@ -219,36 +219,6 @@ class OpenCLCallable(ScalarCallable):
                         arg_id_to_dtype={0: NumpyType(dtype), -1:
                             NumpyType(dtype)}),
                     callables_table)
-        # binary functions
-        elif name in ["fmax", "fmin", "atan2", "copysign"]:
-
-            for id in arg_id_to_dtype:
-                if not -1 <= id <= 1:
-                    #FIXME: Do we need to raise here?:
-                    #   The pattern we generally follow is that if we don't find
-                    #   a function, then we just return None
-                    raise LoopyError("%s can take only two arguments." % name)
-
-            if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
-                    arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
-                # the types provided aren't mature enough to specialize the
-                # callable
-                return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                        callables_table)
-
-            dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                     if id >= 0])
-
-            if dtype.kind == "c":
-                raise LoopyTypeError(f"'{name}' does not support complex numbers")
-
-            dtype = NumpyType(dtype)
-            return (
-                    self.copy(name_in_target=name,
-                        arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
-                    callables_table)
 
         elif name in ["max", "min"]:
             for id in arg_id_to_dtype:
@@ -340,11 +310,10 @@ class OpenCLCallable(ScalarCallable):
                         arg_id_to_dtype.items() if id >= 0])
 
             if dtype.kind == "c":
-                raise LoopyError("%s does not support complex numbers"
-                        % name)
+                raise LoopyTypeError("%s does not support complex numbers" % name)
 
-            updated_arg_id_to_dtype = {id: NumpyType(dtype) for id in range(-1,
-                num_args)}
+            dtype = NumpyType(dtype)
+            updated_arg_id_to_dtype = {id: dtype for id in range(-1, num_args)}
 
             return (
                     self.copy(name_in_target=name,
