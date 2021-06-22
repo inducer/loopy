@@ -427,27 +427,27 @@ def test_opencl_funcs_resolve_and_run(ctx_factory):
     cl_ctx = ctx_factory()
     _ = knl(cl.CommandQueue(cl_ctx), f=np.zeros(len(UNARY_FUNCS)))
 
-    BINARY_FUNCS = {func for func, val in _CL_SIMPLE_MULTI_ARG_FUNCTIONS.items()
+    binary_funcs = {func for func, val in _CL_SIMPLE_MULTI_ARG_FUNCTIONS.items()
                     if val == 2}
 
     knl = lp.make_kernel(
         "{:}",
         "\n".join(f"f[{i}] = {func}(.2341, .5321)"
-                  for i, func in enumerate(BINARY_FUNCS)),
+                  for i, func in enumerate(binary_funcs)),
     )
 
-    _ = knl(cl.CommandQueue(cl_ctx), f=np.zeros(len(BINARY_FUNCS)))
+    _ = knl(cl.CommandQueue(cl_ctx), f=np.zeros(len(binary_funcs)))
 
-    TERNARY_FUNCS = {func for func, val in _CL_SIMPLE_MULTI_ARG_FUNCTIONS.items()
+    ternary_funcs = {func for func, val in _CL_SIMPLE_MULTI_ARG_FUNCTIONS.items()
                      if val == 3}
 
     knl = lp.make_kernel(
         "{:}",
         "\n".join(f"f[{i}] = {func}(.2341, .5321, .912)"
-                  for i, func in enumerate(TERNARY_FUNCS)),
+                  for i, func in enumerate(ternary_funcs)),
     )
 
-    _ = knl(cl.CommandQueue(cl_ctx), f=np.zeros(len(TERNARY_FUNCS)))
+    _ = knl(cl.CommandQueue(cl_ctx), f=np.zeros(len(ternary_funcs)))
 
 
 def test_nan_support(ctx_factory):
