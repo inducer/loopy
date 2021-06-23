@@ -115,6 +115,9 @@ intersphinx_mapping = {
 
 autoclass_content = "class"
 
+copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
+copybutton_prompt_is_regexp = True
+
 import sys
 import inspect
 import pkg_resources
