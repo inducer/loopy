@@ -10,7 +10,7 @@ import os
 extensions = [
         "sphinx.ext.autodoc",
         "sphinx.ext.intersphinx",
-        "sphinx.ext.viewcode",
+        "sphinx.ext.linkcode",
         "sphinx.ext.doctest",
         "sphinx_copybutton",
         ]
@@ -114,3 +114,49 @@ intersphinx_mapping = {
     }
 
 autoclass_content = "class"
+
+import sys
+import inspect
+import pkg_resources
+
+linkcode_revision = "main"
+linkcode_url = f"https://github.com/inducer/{project}/blob/" \
+               + linkcode_revision + "/{filepath}#L{linestart}-L{linestop}"
+
+
+def linkcode_resolve(domain, info):
+    if domain != 'py' or not info['module']:
+        return None
+
+    modname = info['module']
+    topmodulename = modname.split('.')[0]
+    fullname = info['fullname']
+
+    submod = sys.modules.get(modname)
+    if submod is None:
+        return None
+
+    obj = submod
+    for part in fullname.split('.'):
+        try:
+            obj = getattr(obj, part)
+        except Exception:
+            return None
+
+    try:
+        modpath = pkg_resources.require(topmodulename)[0].location
+        filepath = os.path.relpath(inspect.getsourcefile(obj), modpath)
+        if filepath is None:
+            return
+    except Exception:
+        return None
+
+    try:
+        source, lineno = inspect.getsourcelines(obj)
+    except OSError:
+        return None
+    else:
+        linestart, linestop = lineno, lineno + len(source) - 1
+
+    return linkcode_url.format(
+        filepath=filepath, linestart=linestart, linestop=linestop)
