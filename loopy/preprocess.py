@@ -1287,6 +1287,8 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
         prev_id = transfer_id
         bound = size
 
+        stage_exec_iname = None
+
         istage = 0
         while cur_size > 1:
 
@@ -1334,7 +1336,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
         new_insn_add_depends_on.add(prev_id)
         new_insn_add_no_sync_with.add((prev_id, "any"))
-        new_insn_add_within_inames.add(base_exec_iname or stage_exec_iname)
+        new_insn_add_within_inames.add(stage_exec_iname or base_exec_iname)
 
         if nresults == 1:
             assert len(acc_vars) == 1
