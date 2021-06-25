@@ -465,6 +465,43 @@ def test_opencl_emits_ternary_operators_correctly(ctx_factory, target):
     assert out_dict["y3"] == 128
 
 
+@pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_inf_support(ctx_factory, target, dtype):
+    from loopy.symbolic import parse
+    import math
+    # See: https://github.com/inducer/loopy/issues/443 for some laughs
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{:}",
+        [lp.Assignment(parse("out_inf"),
+                       math.inf),
+         lp.Assignment(parse("out_neginf"),
+                       -math.inf)],
+        [lp.GlobalArg("out_inf", shape=lp.auto,
+                      dtype=dtype),
+         lp.GlobalArg("out_neginf", shape=lp.auto,
+                      dtype=dtype)
+         ], target=target())
+
+    knl = lp.set_options(knl, "return_dict")
+
+    if target == lp.PyOpenCLTarget:
+        _, out_dict = knl(queue)
+        out_dict = {k: v.get() for k, v in out_dict.items()}
+    elif target == lp.ExecutableCTarget:
+        from testlib import CMathPreamble
+        knl = lp.register_preamble_generators(knl, [CMathPreamble()])
+        _, out_dict = knl()
+    else:
+        raise NotImplementedError("unsupported target")
+
+    assert np.isinf(out_dict["out_inf"])
+    assert np.isneginf(out_dict["out_neginf"])
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
