@@ -492,8 +492,6 @@ def test_inf_support(ctx_factory, target, dtype):
         _, out_dict = knl(queue)
         out_dict = {k: v.get() for k, v in out_dict.items()}
     elif target == lp.ExecutableCTarget:
-        from testlib import CMathPreamble
-        knl = lp.register_preamble_generators(knl, [CMathPreamble()])
         _, out_dict = knl()
     else:
         raise NotImplementedError("unsupported target")

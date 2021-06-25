@@ -1,6 +1,5 @@
 import loopy as lp
 import numpy as np
-from dataclasses import dataclass
 
 
 # {{{ test_barrier_in_overridden_get_grid_size_expanded_kernel
@@ -54,12 +53,5 @@ class Log2Callable(lp.ScalarCallable):
 
 
 # }}}
-
-
-@dataclass(frozen=True, eq=True)
-class CMathPreamble:
-    def __call__(self, preamble_info):
-        yield("99_math_h", r"#include <math.h>")
-        return
 
 # vim: foldmethod=marker
