@@ -405,6 +405,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             return real + imag*iota
         elif np.isnan(expr):
             return p.Variable("NAN")
+        elif np.isneginf(expr):
+            return -p.Variable("INFINITY")
+        elif np.isinf(expr):
+            return p.Variable("INFINITY")
         elif isinstance(expr, np.generic):
             # Explicitly typed: Generated code must reflect type exactly.
 
@@ -433,7 +437,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 raise LoopyError("do not know how to generate code for "
                         "constant of numpy type '%s'" % type(expr).__name__)
 
-        else:
+        elif np.isfinite(expr):
             if type_context == "f":
                 return Literal(repr(np.float32(expr))+"f")
             elif type_context == "d":
@@ -443,9 +447,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             else:
                 if is_integer(expr):
                     return int(expr)
-
                 raise RuntimeError("don't know how to generate code "
                         "for constant '%s'" % expr)
+        else:
+            raise LoopyError("don't know how to generate code "
+                             "for constant '%s'" % expr)
 
     def map_call(self, expr, type_context):
         return (
