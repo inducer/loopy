@@ -173,7 +173,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
 
         from cgen import Statement as S  # noqa
 
-        gs, ls = kernel.get_grid_size_upper_bounds()
+        gs, ls = kernel.get_grid_size_upper_bounds(codegen_state.callables_table)
 
         printf_format = "{}.{}[{}][{}]: {}".format(
                 kernel.name,
