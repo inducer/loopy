@@ -173,7 +173,8 @@ jobs:
             image: 'firedrakeproject/firedrake'
         steps:
         -   uses: actions/checkout@v2
-            submodules: true
+            with:
+                submodules: true
         -   name: "Main script"
             run: |
                 sudo chown -R $(whoami) /github/home || true
