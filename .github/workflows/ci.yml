@@ -192,7 +192,7 @@ jobs:
                 # patch so exception messages get shown
                 curl -L https://gist.githubusercontent.com/inducer/17d7134ace215f0df1f3627eac4195c7/raw/63edfaf2ec8bf06987896569a4f24264df490e9e/firedrake-debug-patch.diff | patch -p1
 
-                pytest --tb=native -rsxw --durations=10 --capture=no -m 'not parallel' tests/multigrid/
+                pytest --tb=native -rsxw --durations=10 -m 'not parallel' tests/multigrid/
 
         -   name: "Prepare for tmate"
             run: |
