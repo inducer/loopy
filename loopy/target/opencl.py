@@ -830,9 +830,9 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 cast_str = f"({var_kind} {ctype} *) "
 
             return Block([
-                POD(self, NumpyType(lhs_dtype.dtype, target=self.target),
+                POD(self, NumpyType(lhs_dtype.dtype),
                     old_val_var),
-                POD(self, NumpyType(lhs_dtype.dtype, target=self.target),
+                POD(self, NumpyType(lhs_dtype.dtype),
                     new_val_var),
                 DoWhile(
                     "%(func_name)s("
