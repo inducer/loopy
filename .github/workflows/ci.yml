@@ -178,7 +178,7 @@ jobs:
                 sudo chown -R $(whoami) /github/home || true
                 . /home/firedrake/firedrake/bin/activate
 
-                pip uninstall -f loopy
+                pip uninstall -y loopy
                 pip install --editable .
 
                 cd /home/firedrake/firedrake/src/firedrake
