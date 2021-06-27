@@ -172,7 +172,8 @@ jobs:
         container:
             image: 'firedrakeproject/firedrake'
         steps:
-        -   uses: actions/checkout@v1
+        -   uses: actions/checkout@v2
+            submodules: true
         -   name: "Main script"
             run: |
                 sudo chown -R $(whoami) /github/home || true
@@ -180,7 +181,6 @@ jobs:
 
                 . /home/firedrake/firedrake/bin/activate
 
-                pip uninstall -y loopy
                 pip install --editable .
 
                 cd /home/firedrake/firedrake/src/firedrake
