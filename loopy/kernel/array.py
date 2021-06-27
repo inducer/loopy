@@ -738,7 +738,7 @@ class ArrayBase(ImmutableRecord, Taggable):
 
         from loopy.types import to_loopy_type
         dtype = to_loopy_type(dtype, allow_auto=True, allow_none=True,
-                for_atomic=for_atomic, target=target)
+                for_atomic=for_atomic)
 
         if dtype is lp.auto:
             from warnings import warn
