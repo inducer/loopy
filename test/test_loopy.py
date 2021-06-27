@@ -893,52 +893,32 @@ def test_atomic(ctx_factory, dtype):
 def test_atomic_load(ctx_factory, dtype):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
-    from loopy.kernel.data import AddressSpace
+
+    dtype = np.float64
     n = 10
-    vec_width = 4
-
-    if (
-            np.dtype(dtype).itemsize == 8
-            and "cl_khr_int64_base_atomics" not in ctx.devices[0].extensions):
-        pytest.skip("64-bit atomics not supported on device")
-
-    import pyopencl.version  # noqa
-    if (
-            cl.version.VERSION < (2015, 2)
-            and dtype == np.int64):
-        pytest.skip("int64 RNG not supported in PyOpenCL < 2015.2")
 
     knl = lp.make_kernel(
-            "{ [i,j]: 0<=i,j<n}",
+            "{ [j]: 0<=j<n}",
             """
             for j
-                <> upper = 0  {id=init_upper}
-                <> lower = 0  {id=init_lower}
                 temp = 0 {id=init, atomic}
-                for i
-                    upper = upper + i * a[i] {id=sum0,dep=init_upper}
-                    lower = lower - b[i] {id=sum1,dep=init_lower}
-                end
-                temp = temp + lower {id=temp_sum, dep=sum*:init, atomic,\
-                                           nosync=init}
+                ... lbarrier {id=lb1, dep=init}
+                temp = temp + 1 {id=temp_sum, dep=lb1, atomic}
                 ... lbarrier {id=lb2, dep=temp_sum}
-                out[j] = upper / temp {id=final, dep=lb2, atomic,\
-                                           nosync=init:temp_sum}
+                out[j] = temp {id=final, dep=lb2, atomic,nosync=init:temp_sum}
             end
             """,
             [
                 lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
-                lp.GlobalArg("a", dtype, shape=lp.auto),
-                lp.GlobalArg("b", dtype, shape=lp.auto),
                 lp.TemporaryVariable("temp", dtype, for_atomic=True,
-                                     address_space=AddressSpace.LOCAL),
+                                     address_space=lp.AddressSpace.LOCAL),
                 "..."
                 ],
-            silenced_warnings=["write_race(init)", "write_race(temp_sum)"])
+            silenced_warnings=["write_race(temp_sum)", "write_race(init)"])
     knl = lp.fix_parameters(knl, n=n)
-    knl = lp.split_iname(knl, "j", vec_width, inner_tag="l.0")
-    _, out = knl(queue, a=np.arange(n, dtype=dtype), b=np.arange(n, dtype=dtype))
-    assert np.allclose(out, np.full_like(out, ((1 - 2 * n) / 3.0)))
+    knl = lp.tag_inames(knl, {"j": "l.0"})
+    _, (out,) = knl(queue)
+    assert (out.get() == n).all()
 
 
 @pytest.mark.parametrize("dtype", [np.int32, np.int64, np.float32, np.float64])
