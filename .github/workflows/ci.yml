@@ -176,6 +176,8 @@ jobs:
         -   name: "Main script"
             run: |
                 sudo chown -R $(whoami) /github/home || true
+                sudo chown -R $(whoami) /__w/loopy/ || true
+
                 . /home/firedrake/firedrake/bin/activate
 
                 pip uninstall -y loopy
