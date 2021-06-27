@@ -212,6 +212,10 @@ class OpaqueType(LoopyType):
 
 def to_loopy_type(dtype, allow_auto=False, allow_none=False, for_atomic=False,
         target=None):
+    if target is not None:
+        warn("Passing target is deprecated and will stop working in 2022.",
+                DeprecationWarning, stacklevel=2)
+
     from loopy.kernel.data import auto
     if dtype is None:
         if allow_none:
@@ -232,9 +236,6 @@ def to_loopy_type(dtype, allow_auto=False, allow_none=False, for_atomic=False,
             numpy_dtype = np.dtype(dtype)
         except Exception:
             pass
-
-    if numpy_dtype is None and target is not None and isinstance(dtype, str):
-        numpy_dtype = target.get_dtype_registry().get_or_register_dtype(dtype)
 
     if isinstance(dtype, LoopyType):
         if for_atomic:

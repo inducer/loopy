@@ -36,7 +36,7 @@ from loopy.version import DATA_MODEL_VERSION
 from loopy.symbolic import CombineMapper
 from functools import reduce
 
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.kernel.function_interface import CallableKernel
 
 from pytools import ProcessLogger
 
@@ -480,6 +480,20 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
 
     codegen_plog = ProcessLogger(logger, f"{kernel.name}: generate code")
 
+    # {{{ pre-codegen-process of non-entrypoint kernel
+
+    if not is_entrypoint:
+        from loopy.kernel.array import ArrayBase
+        from loopy.kernel.data import auto
+
+        new_args = [arg.copy(offset=0 if arg.offset is auto else arg.offset)
+                    if isinstance(arg, ArrayBase)
+                    else arg
+                    for arg in kernel.args]
+        kernel = kernel.copy(args=new_args)
+
+    # }}}
+
     # {{{ examine arg list
 
     from loopy.kernel.data import ValueArg
@@ -736,22 +750,8 @@ def generate_code_v2(program):
     from loopy.type_inference import infer_unknown_types
     program = infer_unknown_types(program, expect_completion=True)
 
-    new_callables = {}
-
-    for name, clbl in program.callables_table.items():
-        if isinstance(clbl, CallableKernel):
-            from loopy.schedule import get_one_linearized_kernel
-            knl = clbl.subkernel
-            if knl.linearization is None:
-                knl = get_one_linearized_kernel(
-                            knl, program.callables_table)
-            new_callables[name] = clbl.copy(subkernel=knl)
-        elif isinstance(clbl, ScalarCallable):
-            new_callables[name] = clbl
-        else:
-            raise NotImplementedError(type(clbl))
-
-    program = program.copy(callables_table=new_callables)
+    from loopy.schedule import linearize
+    program = linearize(program)
 
     # Why diverge? Generated code for a non-entrypoint kernel and an entrypoint
     # kernel isn't same for a general loopy target. For example in OpenCL, a

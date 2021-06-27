@@ -89,6 +89,16 @@ class DTypeRegistryWrapper:
 
 # {{{ preamble generator
 
+class InfOrNanInExpressionRecorder(IdentityMapper):
+    def __init__(self):
+        self.saw_inf_or_nan = False
+
+    def map_constant(self, expr):
+        if (np.isinf(expr) or np.isnan(expr) or np.isnan(expr)):
+            self.saw_inf_or_nan = True
+        return super().map_constant(expr)
+
+
 def c99_preamble_generator(preamble_info):
     if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
         yield("10_stdint", "#include <stdint.h>")
@@ -98,6 +108,18 @@ def c99_preamble_generator(preamble_info):
         yield("10_stdbool", "#include <stdbool.h>")
     if any(dtype.is_complex() for dtype in preamble_info.seen_dtypes):
         yield("10_complex", "#include <complex.h>")
+
+    # {{{ emit math.h
+
+    inf_or_nan_recorder = InfOrNanInExpressionRecorder()
+
+    for insn in preamble_info.codegen_state.kernel.instructions:
+        insn.with_transformed_expressions(inf_or_nan_recorder)
+
+    if inf_or_nan_recorder.saw_inf_or_nan:
+        yield("10_math", "#include <math.h>")
+
+    # }}}
 
 
 def _preamble_generator(preamble_info, func_qualifier="inline"):
