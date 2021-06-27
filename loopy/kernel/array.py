@@ -872,6 +872,9 @@ class ArrayBase(ImmutableRecord, Taggable):
             warn("dim_names is not a tuple when calling ArrayBase constructor",
                     DeprecationWarning, stacklevel=2)
 
+        if tags is None:
+            tags = frozenset()
+
         if target is not None:
             warn("Passing target is deprecated and will stop working in 2022.",
                     DeprecationWarning, stacklevel=2)
