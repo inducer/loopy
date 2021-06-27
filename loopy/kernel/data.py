@@ -518,6 +518,9 @@ class ValueArg(KernelArgument, Taggable):
             application.
         """
 
+        if tags is None:
+            tags = frozenset()
+
         KernelArgument.__init__(self, name=name,
                 dtype=dtype,
                 approximately=approximately,
