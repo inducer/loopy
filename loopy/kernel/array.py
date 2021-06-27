@@ -902,6 +902,9 @@ class ArrayBase(ImmutableRecord, Taggable):
                 and isee(self.offset, other.offset)
                 and self.dim_names == other.dim_names
                 and self.order == other.order
+                and self.alignment == other.alignment
+                and self.for_atomic == other.for_atomic
+                and self.tags == other.tags
                 )
 
     def target(self):
@@ -975,13 +978,16 @@ class ArrayBase(ImmutableRecord, Taggable):
         :class:`pytools.persistent_dict.PersistentDict`.
         """
 
-        key_builder.rec(key_hash, type(self).__name__.encode("utf-8"))
+        key_builder.rec(key_hash, type(self).__name__)
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.dtype)
         self.update_persistent_hash_for_shape(key_hash, key_builder, self.shape)
         key_builder.rec(key_hash, self.dim_tags)
         key_builder.rec(key_hash, self.offset)
         key_builder.rec(key_hash, self.dim_names)
+        key_builder.rec(key_hash, self.order)
+        key_builder.rec(key_hash, self.alignment)
+        key_builder.rec(key_hash, self.tags)
 
     def num_target_axes(self):
         target_axes = set()
