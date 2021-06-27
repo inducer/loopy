@@ -173,12 +173,12 @@ jobs:
             image: 'firedrakeproject/firedrake'
         steps:
         -   uses: actions/checkout@v2
-            with:
-                submodules: true
         -   name: "Main script"
             run: |
                 sudo chown -R $(whoami) /github/home || true
                 sudo chown -R $(whoami) /__w/loopy/ || true
+
+                git submodules update --init
 
                 . /home/firedrake/firedrake/bin/activate
 
