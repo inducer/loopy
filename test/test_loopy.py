@@ -62,10 +62,12 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
             out[i] = a[i]+cnst[i]{id=first}
             out[ii] = 2*out[ii]+cnst[ii]{id=second}
             """,
-            [lp.TemporaryVariable(
-                "cnst", initializer=cnst,
-                scope=lp.AddressSpace.GLOBAL,
-                read_only=True), "..."])
+            [
+                lp.TemporaryVariable(
+                    "cnst", initializer=cnst, scope=lp.AddressSpace.GLOBAL,
+                    read_only=True),
+                lp.GlobalArg("out", is_input=False, shape=lp.auto),
+                "..."])
     knl = lp.fix_parameters(knl, n=16)
     knl = lp.add_barrier(knl, "id:first", "id:second")
 
@@ -1472,7 +1474,11 @@ def test_finite_difference_expr_subst(ctx_factory):
     fin_diff_knl = lp.make_kernel(
         "{[i]: 1<=i<=n}",
         "out[i] = -(f[i+1] - f[i-1])/h",
-        [lp.GlobalArg("out", shape="n+2"), "..."])
+        [
+            lp.GlobalArg("out", shape="n+2"),
+            lp.GlobalArg("f", is_input=False, is_output=True, shape=lp.auto),
+            "..."
+        ])
 
     flux_knl = lp.make_kernel(
         "{[j]: 1<=j<=n}",

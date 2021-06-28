@@ -425,6 +425,7 @@ def test_nan_support(ctx_factory):
         [lp.Assignment(parse("a"), np.nan),
          lp.Assignment(parse("b"), parse("isnan(a)")),
          lp.Assignment(parse("c"), parse("isnan(3.14)"))],
+        [lp.GlobalArg("a", is_input=False, shape=tuple()), ...],
         seq_dependencies=True)
 
     knl = lp.set_options(knl, "return_dict")
