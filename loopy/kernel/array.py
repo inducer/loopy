@@ -24,6 +24,7 @@ THE SOFTWARE.
 """
 
 import re
+from warnings import warn
 
 from pytools import ImmutableRecord, memoize_method
 from pytools.tag import Taggable
@@ -569,7 +570,6 @@ def _pymbolic_parse_if_necessary(x):
 def _parse_shape_or_strides(x):
     import loopy as lp
     if x == "auto":
-        from warnings import warn
         warn("use of 'auto' as a shape or stride won't work "
                 "any more--use loopy.auto instead",
                 stacklevel=3)
@@ -738,10 +738,9 @@ class ArrayBase(ImmutableRecord, Taggable):
 
         from loopy.types import to_loopy_type
         dtype = to_loopy_type(dtype, allow_auto=True, allow_none=True,
-                for_atomic=for_atomic, target=target)
+                for_atomic=for_atomic)
 
         if dtype is lp.auto:
-            from warnings import warn
             warn("Argument/temporary data type for '%s' should be None if "
                     "unspecified, not auto. This usage will be disallowed in 2018."
                     % name,
@@ -870,8 +869,14 @@ class ArrayBase(ImmutableRecord, Taggable):
             kwargs["strides"] = strides
 
         if dim_names is not None and not isinstance(dim_names, tuple):
-            from warnings import warn
             warn("dim_names is not a tuple when calling ArrayBase constructor",
+                    DeprecationWarning, stacklevel=2)
+
+        if tags is None:
+            tags = frozenset()
+
+        if target is not None:
+            warn("Passing target is deprecated and will stop working in 2022.",
                     DeprecationWarning, stacklevel=2)
 
         ImmutableRecord.__init__(self,
@@ -884,7 +889,6 @@ class ArrayBase(ImmutableRecord, Taggable):
                 order=order,
                 alignment=alignment,
                 for_atomic=for_atomic,
-                target=target,
                 tags=tags,
                 **kwargs)
 
@@ -901,7 +905,16 @@ class ArrayBase(ImmutableRecord, Taggable):
                 and isee(self.offset, other.offset)
                 and self.dim_names == other.dim_names
                 and self.order == other.order
+                and self.alignment == other.alignment
+                and self.for_atomic == other.for_atomic
+                and self.tags == other.tags
                 )
+
+    def target(self):
+        warn("Array.target is deprecated and will go away in 2022.",
+                DeprecationWarning, stacklevel=2)
+
+        return None
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -968,13 +981,16 @@ class ArrayBase(ImmutableRecord, Taggable):
         :class:`pytools.persistent_dict.PersistentDict`.
         """
 
-        key_builder.rec(key_hash, type(self).__name__.encode("utf-8"))
+        key_builder.rec(key_hash, type(self).__name__)
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.dtype)
         self.update_persistent_hash_for_shape(key_hash, key_builder, self.shape)
         key_builder.rec(key_hash, self.dim_tags)
         key_builder.rec(key_hash, self.offset)
         key_builder.rec(key_hash, self.dim_names)
+        key_builder.rec(key_hash, self.order)
+        key_builder.rec(key_hash, self.alignment)
+        key_builder.rec(key_hash, self.tags)
 
     def num_target_axes(self):
         target_axes = set()
