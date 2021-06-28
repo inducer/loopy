@@ -440,13 +440,12 @@ def opencl_preamble_generator(preamble_info):
 # {{{ expression mapper
 
 class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
-    def wrap_in_typecast_lazy(self, actual_dtype, needed_dtype, s):
-        _actual = actual_dtype()
-        if needed_dtype.dtype.kind == "b" and _actual.dtype.kind == "f":
+    def wrap_in_typecast(self, actual_dtype, needed_dtype, s):
+        if needed_dtype.dtype.kind == "b" and actual_dtype.dtype.kind == "f":
             # CL does not perform implicit conversion from float-type to a bool.
             from pymbolic.primitives import Comparison
             return Comparison(s, "!=", 0)
-        elif _actual != needed_dtype:
+        elif actual_dtype != needed_dtype:
             # type cast for binary functions with mixed input types
             # implemented manually rather than via self.rec(TypeCast(...))
             # to avoid recursing on s
@@ -454,7 +453,7 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
             cast = var("(%s)" % registry.dtype_to_ctype(needed_dtype))
             return cast(s)
 
-        return super().wrap_in_typecast_lazy(actual_dtype, needed_dtype, s)
+        return super().wrap_in_typecast(actual_dtype, needed_dtype, s)
 
     def map_group_hw_index(self, expr, type_context):
         return var("gid")(expr.axis)

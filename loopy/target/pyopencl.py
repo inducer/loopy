@@ -163,13 +163,6 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
         else:
             raise RuntimeError
 
-    def wrap_in_typecast_lazy(self, actual_type_func, needed_dtype, s):
-        if needed_dtype.is_complex():
-            return self.wrap_in_typecast(actual_type_func(), needed_dtype, s)
-        else:
-            return super().wrap_in_typecast_lazy(actual_type_func,
-                                                 needed_dtype, s)
-
     def wrap_in_typecast(self, actual_type, needed_dtype, s):
         if (actual_type.is_complex() and needed_dtype.is_complex()
                 and actual_type != needed_dtype):
