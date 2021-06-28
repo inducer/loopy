@@ -3137,6 +3137,23 @@ def test_split_iname_with_multiple_dim_params(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
+@pytest.mark.parametrize("opt_name",
+        ["trace_assignments", "trace_assignment_values"])
+def test_trace_assignments(ctx_factory, opt_name):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i,j<2}",
+        """
+        foo[i,j] = i+j
+        """)
+    knl = lp.tag_inames(knl, {"i": "g.0", "j": "l.0"})
+    knl = lp.set_options(knl, **{opt_name: True})
+
+    knl(queue)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
