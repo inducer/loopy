@@ -163,6 +163,9 @@ def generate_assignment_instruction_code(codegen_state, insn):
     # {{{ tracing
 
     lhs_dtype = codegen_state.kernel.get_var_descriptor(assignee_var_name).dtype
+    if isinstance(insn.assignee, Lookup):
+        from loopy.types import NumpyType
+        lhs_dtype = NumpyType(lhs_dtype.numpy_dtype.fields[insn.assignee.name][0])
 
     if kernel.options.trace_assignments or kernel.options.trace_assignment_values:
         if codegen_state.vectorization_info and is_vector:

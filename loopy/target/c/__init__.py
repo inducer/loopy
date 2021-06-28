@@ -1039,6 +1039,10 @@ class CFamilyASTBuilder(ASTBuilderBase):
         lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
         lhs_dtype = lhs_var.dtype
 
+        if isinstance(insn.assignee, p.Lookup):
+            lhs_dtype = NumpyType(
+                lhs_dtype.numpy_dtype.fields[insn.assignee.name][0])
+
         if insn.atomicity is not None:
             lhs_atomicity = [
                     a for a in insn.atomicity if a.var_name == assignee_var_name]
