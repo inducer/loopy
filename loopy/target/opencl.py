@@ -176,7 +176,7 @@ _CL_SIMPLE_MULTI_ARG_FUNCTIONS = {
     "maxmag": 2,
     "minmag": 2,
     "nextafter": 2,
-    # "pow": 2,
+    "pow": 2,
     "powr": 2,
     "remainder": 2,
     # "max": 2,
@@ -289,30 +289,6 @@ class OpenCLCallable(ScalarCallable):
                         NumpyType(scalar_dtype), 0: dtype, 1: dtype}),
                     callables_table)
 
-        elif name == "pow":
-            for id in arg_id_to_dtype:
-                if not -1 <= id <= 1:
-                    raise LoopyError(f"'{name}' can take only 2 arguments.")
-
-            common_dtype = np.find_common_type(
-                    [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                        if (id >= 0 and dtype is not None)])
-
-            if common_dtype == np.float64:
-                name = "powf64"
-            elif common_dtype == np.float32:
-                name = "powf32"
-            else:
-                raise LoopyTypeError(f"'pow' does not support type {dtype}.")
-
-            result_dtype = NumpyType(common_dtype)
-
-            return (
-                    self.copy(name_in_target=name,
-                              arg_id_to_dtype={-1: result_dtype,
-                                               0: common_dtype, 1: common_dtype}),
-                    callables_table)
-
         elif name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
             num_args = _CL_SIMPLE_MULTI_ARG_FUNCTIONS[name]
             for id in arg_id_to_dtype:
@@ -349,7 +325,7 @@ class OpenCLCallable(ScalarCallable):
             for id in arg_id_to_dtype:
                 if not -1 <= id < count:
                     raise LoopyError("%s can take only %d arguments." % (name,
-                            num_args))
+                            count))
 
             for i in range(count):
                 if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
@@ -458,31 +434,25 @@ def opencl_preamble_generator(preamble_info):
                 """ % dict(idx_ctype=kernel.target.dtype_to_typename(
                     kernel.index_dtype))))
 
-    for func in preamble_info.seen_functions:
-        if func.name == "pow" and func.c_name == "powf32":
-            yield("08_clpowf32", """
-            inline float powf32(float x, float y) {
-              return pow(x, y);
-            }""")
-
-        if func.name == "pow" and func.c_name == "powf64":
-            yield("08_clpowf64", """
-            inline double powf64(double x, double y) {
-              return pow(x, y);
-            }""")
-
 # }}}
 
 
 # {{{ expression mapper
 
 class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
-
     def wrap_in_typecast_lazy(self, actual_dtype, needed_dtype, s):
-        if needed_dtype.dtype.kind == "b" and actual_dtype().dtype.kind == "f":
+        _actual = actual_dtype()
+        if needed_dtype.dtype.kind == "b" and _actual.dtype.kind == "f":
             # CL does not perform implicit conversion from float-type to a bool.
             from pymbolic.primitives import Comparison
             return Comparison(s, "!=", 0)
+        elif _actual != needed_dtype:
+            # type cast for binary functions with mixed input types
+            # implemented manually rather than via self.rec(TypeCast(...))
+            # to avoid recursing on s
+            registry = self.codegen_state.ast_builder.target.get_dtype_registry()
+            cast = var("(%s)" % registry.dtype_to_ctype(needed_dtype))
+            return cast(s)
 
         return super().wrap_in_typecast_lazy(actual_dtype, needed_dtype, s)
 

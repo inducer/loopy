@@ -513,6 +513,41 @@ def test_opencl_math_funcs(ctx_factory, dtype):
             assert np.allclose(np_result, result), func
 
 
+def test_cl_funcs_with_mixed_input_dtypes(ctx_factory):
+    cl_ctx = ctx_factory()
+    queue = cl.CommandQueue(cl_ctx)
+
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        f[0] = pow(x, y)
+        f[1] = atan2(x, y)
+        """,
+        options=lp.Options(write_cl=True),
+    )
+
+    x = np.array(1.923, dtype="float64")
+    y = np.array(.523, dtype="float32")
+    z = np.array(3, dtype="int")
+
+    _, (result,) = knl(queue, x=x, y=y)
+
+    assert np.allclose(result.get(), [np.power(x, y), np.arctan(x/y)])
+
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        f[0] = fma(x, y, z)
+        f[1] = mix(x, y, z)
+        """,
+        options=lp.Options(write_cl=True),
+    )
+
+    _, (result,) = knl(queue, x=x, y=y, z=z)
+
+    assert np.allclose(result.get(), [x * y + z, x + (y - x) * z])
+
+
 def test_nan_support(ctx_factory):
     from loopy.symbolic import parse
     ctx = ctx_factory()
