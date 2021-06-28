@@ -734,12 +734,24 @@ class KernelExecutorBase:
 
         self.packing_controller = make_packing_controller(program, entrypoint)
 
-        self.output_names = tuple(arg.name for arg in self.program[entrypoint].args
-                if arg.is_output)
+        kernel = self.program[entrypoint]
+        self.output_names = set(arg.name for arg in kernel.args if arg.is_output)
+
+        from loopy import ArrayArg
+        self.input_array_names = set(
+            arg.name for arg in kernel.args
+            if arg.is_input and isinstance(arg, ArrayArg))
 
         self.has_runtime_typed_args = any(
-                arg.dtype is None
-                for arg in program[entrypoint].args)
+            arg.dtype is None for arg in kernel.args)
+
+    def check_for_required_arguments(self, input_args):
+        if not self.input_array_names.issubset(set(input_args)):
+            missing_args = self.input_array_names - set(input_args)
+            kernel = self.program[self.entrypoint]
+            raise LoopyError(
+                f"Kernel {kernel.name}() missing required array arguments: "
+                + ", ".join(missing_args))
 
     def get_typed_and_scheduled_translation_unit_uncached(
             self, entrypoint, arg_to_dtype_set):
