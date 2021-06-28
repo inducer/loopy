@@ -508,17 +508,24 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             clbl = self.codegen_state.ast_builder.known_callables["pow"]
             clbl = clbl.with_types({0: tgt_dtype, 1: exponent_dtype},
                     self.codegen_state.callables_table)[0]
+
             self.codegen_state.seen_functions.add(
                     SeenFunction(
                         clbl.name, clbl.name_in_target,
                         (base_dtype, exponent_dtype),
                         (tgt_dtype,)))
 
-            needed_base_dtype = clbl.arg_id_to_dtype[0]
-            needed_exponent_dtype = clbl.arg_id_to_dtype[1]
+            common_dtype = np.find_common_type(
+                [], [dtype.numpy_dtype for id, dtype in clbl.arg_id_to_dtype.items()
+                     if (id >= 0 and dtype is not None)])
+            from loopy.types import NumpyType
+            dtype = NumpyType(common_dtype)
+            inner_type_context = dtype_to_type_context(
+                    self.kernel.target, dtype)
+
             return var(clbl.name_in_target)(
-                self.rec(expr.base, type_context, needed_base_dtype),
-                self.rec(expr.exponent, type_context, needed_exponent_dtype)
+                self.rec(expr.base, inner_type_context, dtype),
+                self.rec(expr.exponent, inner_type_context, dtype)
             )
 
     # }}}
