@@ -178,8 +178,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             return p.Variable("%s_fromreal" % self.complex_type_name(needed_dtype))(
                     s)
         else:
-            return super().wrap_in_typecast_lazy(actual_type,
-                                                 needed_dtype, s)
+            return super().wrap_in_typecast(actual_type, needed_dtype, s)
 
     def map_sum(self, expr, type_context):
         # I've added 'type_context == "i"' because of the following
