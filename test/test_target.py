@@ -503,7 +503,6 @@ def test_inf_support(ctx_factory, target, dtype):
 
 
 def test_input_args_are_required(ctx_factory):
-    from loopy.symbolic import parse
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
