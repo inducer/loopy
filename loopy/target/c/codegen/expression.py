@@ -513,8 +513,13 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         clbl.name, clbl.name_in_target,
                         (base_dtype, exponent_dtype),
                         (tgt_dtype,)))
-            return var(clbl.name_in_target)(self.rec(expr.base, type_context),
-                    self.rec(expr.exponent, type_context))
+
+            needed_base_dtype = clbl.arg_id_to_dtype[0]
+            needed_exponent_dtype = clbl.arg_id_to_dtype[1]
+            return var(clbl.name_in_target)(
+                self.rec(expr.base, type_context, needed_base_dtype),
+                self.rec(expr.exponent, type_context, needed_exponent_dtype)
+            )
 
     # }}}
 
