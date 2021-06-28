@@ -416,38 +416,101 @@ def test_opencl_support_for_bool(ctx_factory):
     np.testing.assert_equal(out, np.tile(np.array([0, 1], dtype=np.bool8), 5))
 
 
-def test_opencl_funcs_resolve_and_run(ctx_factory):
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_opencl_math_funcs(ctx_factory, dtype):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
     from loopy.target.opencl import UNARY_FUNCS, _CL_SIMPLE_MULTI_ARG_FUNCTIONS
 
-    knl = lp.make_kernel(
-        "{:}",
-        "\n".join(f"f[{i}] = {func}(.2341)" for i, func in enumerate(UNARY_FUNCS)),
-    )
+    test_func = {}
+    test_func["asin"] = np.arcsin
+    test_func["acos"] = np.arccos
+    test_func["atan"] = np.arctan
+    test_func["asinh"] = np.arcsinh
+    test_func["acosh"] = np.arccosh
+    test_func["atanh"] = np.arctanh
+    test_func["rsqrt"] = lambda x: 1 / np.sqrt(x)
+    test_func["sinpi"] = lambda x: np.sin(np.pi * x)
+    test_func["cospi"] = lambda x: np.cos(np.pi * x)
+    test_func["tanpi"] = lambda x: np.tan(np.pi * x)
+    test_func["asinpi"] = lambda x: np.arcsin(x) / np.pi
+    test_func["acospi"] = lambda x: np.arccos(x) / np.pi
+    test_func["atanpi"] = lambda x: np.arctan(x) / np.pi
+    test_func["exp10"] = lambda x: np.power(10., x)
 
-    cl_ctx = ctx_factory()
-    _ = knl(cl.CommandQueue(cl_ctx), f=np.zeros(len(UNARY_FUNCS)))
+    test_func["fdim"] = lambda x, y: max(0., x - y)
+    test_func["maxmag"] = lambda x, y: max(np.abs(x), np.abs(y))
+    test_func["minmag"] = lambda x, y: min(np.abs(x), np.abs(y))
+    test_func["pow"] = test_func["powr"] = np.power
+    test_func["step"] = lambda x, y: np.heaviside(y - x, 0)
+    test_func["atan2"] = lambda x, y: np.arctan(x / y)
+    test_func["atan2pi"] = lambda x, y: np.arctan(x / y) / np.pi
+
+    test_func["clamp"] = np.clip
+    test_func["fma"] = test_func["mad"] = lambda x, y, z: x * y + z
+    test_func["mix"] = lambda x, y, z: x + (y - x) * z
+
+    for func in ["erf", "erfc", "tgamma", "lgamma", "logb"]:
+        test_func[func] = lambda x: None
+
+    for func in (UNARY_FUNCS | _CL_SIMPLE_MULTI_ARG_FUNCTIONS.keys()):
+        if func not in test_func:
+            test_func[func] = getattr(np, func)
+
+    for func in UNARY_FUNCS:
+        if func in {"atanh", "asinpi", "asin", "acos", "acospi"}:
+            x = np.array(.43, dtype=dtype)
+        else:
+            x = np.array(1.43, dtype=dtype)
+
+        knl = lp.make_kernel(
+            "{:}",
+            f"f = {func}(x)"
+        )
+
+        _, (result,) = knl(queue, x=x)
+        result = result.get()
+        np_result = test_func[func](x)
+        if np_result is not None:
+            assert np.allclose(np_result, result), func
 
     binary_funcs = {func for func, val in _CL_SIMPLE_MULTI_ARG_FUNCTIONS.items()
                     if val == 2}
 
-    knl = lp.make_kernel(
-        "{:}",
-        "\n".join(f"f[{i}] = {func}(.2341, .5321)"
-                  for i, func in enumerate(binary_funcs)),
-    )
+    for func in binary_funcs:
+        x = np.array(1.43, dtype=dtype)
+        y = np.array(.341, dtype=dtype)
 
-    _ = knl(cl.CommandQueue(cl_ctx), f=np.zeros(len(binary_funcs)))
+        knl = lp.make_kernel(
+            "{:}",
+            f"f = {func}(x, y)"
+        )
+
+        _, (result,) = knl(queue, x=x, y=y)
+        result = result.get()
+        np_result = test_func[func](x, y)
+        if np_result is not None:
+            assert np.allclose(np_result, result), func
 
     ternary_funcs = {func for func, val in _CL_SIMPLE_MULTI_ARG_FUNCTIONS.items()
-                     if val == 3}
+                    if val == 3}
 
-    knl = lp.make_kernel(
-        "{:}",
-        "\n".join(f"f[{i}] = {func}(.2341, .5321, .912)"
-                  for i, func in enumerate(ternary_funcs)),
-    )
+    for func in ternary_funcs:
+        x = np.array(1.43, dtype=dtype)
+        y = np.array(.341, dtype=dtype)
+        z = np.array(1.0123, dtype=dtype)
 
-    _ = knl(cl.CommandQueue(cl_ctx), f=np.zeros(len(ternary_funcs)))
+        knl = lp.make_kernel(
+            "{:}",
+            f"f = {func}(x, y, z)"
+        )
+
+        _, (result,) = knl(queue, x=x, y=y, z=z)
+        result = result.get()
+        np_result = test_func[func](x, y, z)
+        if np_result is not None:
+            assert np.allclose(np_result, result), func
 
 
 def test_nan_support(ctx_factory):
