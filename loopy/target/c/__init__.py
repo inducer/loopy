@@ -1178,6 +1178,10 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
     def emit_sequential_loop(self, kernel, callables_table, iname, iname_dtype,
                              lbound, ubound, inner, var_subst_map):
+        from cgen import Block
+        if isinstance(inner, Block) and len(inner.contents) == 1:
+            inner, = inner.contents
+
         ecm = self.get_expression_to_code_mapper(kernel, callables_table,
                                                  var_subst_map,
                                                  vectorization_info=None)
@@ -1227,7 +1231,10 @@ class CFamilyASTBuilder(ASTBuilderBase):
     def emit_if(self, kernel, callables_table, condition, ast, var_subst_map,
                 vectorization_info):
         assert vectorization_info is None, "cannot be vectorizable if we see an if"
-        from cgen import If
+        from cgen import If, Block
+        if isinstance(ast, Block) and len(ast.contents) == 1:
+            ast, = ast.contents
+
         ecm = self.get_expression_to_code_mapper(kernel, callables_table,
                                                  var_subst_map,
                                                  vectorization_info=None)
