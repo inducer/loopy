@@ -1316,13 +1316,23 @@ class GlobalMemAccessCounter(MemAccessCounterBase):
         except AttributeError:
             var_tags = frozenset()
 
+        is_temp = False
         if name in self.knl.arg_dict:
             array = self.knl.arg_dict[name]
+        elif name in self.knl.temporary_variables:
+            # this a temporary variable, but might have global address space
+            from loopy.kernel.data import AddressSpace
+            array = self.knl.temporary_variables[name]
+            if array.address_space != AddressSpace.GLOBAL:
+                # this is a temporary variable
+                return self.rec(expr.index)
+            # this is a temporary variable with global address space
+            is_temp = True
         else:
             # this is a temporary variable
             return self.rec(expr.index)
 
-        if not isinstance(array, lp.ArrayArg):
+        if (not is_temp) and not isinstance(array, lp.ArrayArg):
             # this array is not in global memory
             return self.rec(expr.index)
 
