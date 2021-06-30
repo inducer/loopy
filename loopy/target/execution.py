@@ -745,8 +745,8 @@ class KernelExecutorBase:
         self.has_runtime_typed_args = any(
             arg.dtype is None for arg in kernel.args)
 
-    def check_for_required_arguments(self, input_args):
-        if not self.input_array_names.issubset(set(input_args)):
+    def check_for_required_array_arguments(self, input_args):
+        if not self.input_array_names <= set(input_args):
             missing_args = self.input_array_names - set(input_args)
             kernel = self.program[self.entrypoint]
             raise LoopyError(
