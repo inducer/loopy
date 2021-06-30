@@ -113,7 +113,7 @@ def c99_preamble_generator(preamble_info):
 
     inf_or_nan_recorder = InfOrNanInExpressionRecorder()
 
-    for insn in preamble_info.codegen_state.kernel.instructions:
+    for insn in preamble_info.kernel.instructions:
         insn.with_transformed_expressions(inf_or_nan_recorder)
 
     if inf_or_nan_recorder.saw_inf_or_nan:
