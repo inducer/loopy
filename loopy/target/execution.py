@@ -746,6 +746,12 @@ class KernelExecutorBase:
             arg.dtype is None for arg in kernel.args)
 
     def check_for_required_array_arguments(self, input_args):
+        # Formerly, the first exception raised when a required argument is not
+        # passed was often at type inference. This exists to raise a more meaningful
+        # message in such scenarios. Since type inference precedes compilation, this
+        # check cannot be deferred to the generated invoker code.
+        # See discussion at github.com/inducer/loopy/pull/160#issuecomment-867761204
+        # and links therin for context.
         if not self.input_array_names <= set(input_args):
             missing_args = self.input_array_names - set(input_args)
             kernel = self.program[self.entrypoint]
