@@ -455,7 +455,7 @@ class PyOpenCLTarget(OpenCLTarget):
     def get_kernel_executor_cache_key(self, queue, **kwargs):
         return queue.context
 
-    def preprocess_translation_unit_before_codegen(self, t_unit, epoint,
+    def preprocess_translation_unit_for_passed_args(self, t_unit, epoint,
                                                    passed_args_dict):
 
         # {{{ ValueArgs -> GlobalArgs if passed as array shapes
@@ -490,9 +490,9 @@ class PyOpenCLTarget(OpenCLTarget):
         from loopy.target.pyopencl_execution import PyOpenCLKernelExecutor
 
         epoint = kwargs.pop("entrypoint")
-        program = self.preprocess_translation_unit_before_codegen(program,
-                                                                  epoint,
-                                                                  kwargs)
+        program = self.preprocess_translation_unit_for_passed_args(program,
+                                                                   epoint,
+                                                                   kwargs)
 
         return PyOpenCLKernelExecutor(queue.context, program,
                                       entrypoint=epoint)
