@@ -439,15 +439,9 @@ class CodeGenMapper(CombineMapper):
     # {{{ for loop
 
     def map_for(self, expr, context):
-        from loopy.kernel.data import (UnrolledIlpTag, UnrollTag,
-                                       VectorizeTag, LoopedIlpTag,
-                                       ForceSequentialTag,
-                                       InOrderSequentialSequentialTag)
+        from loopy.kernel.data import VectorizeTag
 
-        unr_tags = (UnrolledIlpTag, UnrollTag)
         vec_tags = (VectorizeTag, )
-        seq_tags = (LoopedIlpTag, ForceSequentialTag,
-                    InOrderSequentialSequentialTag)
         ast_builder = self.device_ast_builder if context.in_device else self.host_ast_builder  # noqa: E501
 
         if (self.kernel.iname_tags_of_type(expr.iname, vec_tags)
@@ -462,9 +456,6 @@ class CodeGenMapper(CombineMapper):
             return self.combine([self.rec(child, dwnstrm_ctx)
                                  for child in expr.children])
         else:
-            assert (len(self.kernel.inames[expr.iname].tags) == 0
-                    or self.kernel.iname_tags_of_type(expr.iname,
-                                                      seq_tags+unr_tags+vec_tags))
             assert expr.step == 1
 
             if expr.upper_bound != expr.lower_bound:
