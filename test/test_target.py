@@ -465,6 +465,30 @@ def test_opencl_emits_ternary_operators_correctly(ctx_factory, target):
     assert out_dict["y3"] == 128
 
 
+def test_scalar_array_take_offset(ctx_factory):
+    import pyopencl.array as cla
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        y = 133*x
+        """,
+        [lp.GlobalArg("x", shape=(), offset=lp.auto),
+         ...])
+
+    x_in_base = cla.arange(cq, 42, dtype=np.int32)
+    x_in = cla.Array(cq, shape=(),
+                     dtype=x_in_base.dtype,
+                     data=x_in_base.data,
+                     offset=13 * x_in_base.dtype.itemsize)
+
+    evt, (out,) = knl(cq, x=x_in)
+    np.testing.assert_allclose(out.get(), 1729)
+
+
 @pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 def test_inf_support(ctx_factory, target, dtype):
