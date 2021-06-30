@@ -74,19 +74,20 @@ def generate_assignment_instruction_code(kernel, callables_table, insn,
 
         from cgen import Statement as S  # noqa
 
-        gs, ls = kernel.get_grid_size_upper_bounds(callables_table)
+        gs, ls = kernel.get_grid_size_upper_bounds(callables_table,
+                                                   return_dict=True)
 
         printf_format = "{}.{}[{}][{}]: {}".format(
                 kernel.name,
                 insn.id,
-                ", ".join("gid%d=%%d" % i for i in range(len(gs))),
-                ", ".join("lid%d=%%d" % i for i in range(len(ls))),
+                ", ".join("gid%d=%%d" % i for i in gs),
+                ", ".join("lid%d=%%d" % i for i in ls),
                 assignee_var_name)
 
         printf_args = (
-                ["gid(%d)" % i for i in range(len(gs))]
+                ["gid(%d)" % i for i in gs]
                 +
-                ["lid(%d)" % i for i in range(len(ls))]
+                ["lid(%d)" % i for i in ls]
                 )
 
         if assignee_indices:
