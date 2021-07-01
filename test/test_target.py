@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from loopy.diagnostic import LoopyError
 import sys
 import numpy as np
 import loopy as lp
@@ -424,6 +425,7 @@ def test_nan_support(ctx_factory):
         [lp.Assignment(parse("a"), np.nan),
          lp.Assignment(parse("b"), parse("isnan(a)")),
          lp.Assignment(parse("c"), parse("isnan(3.14)"))],
+        [lp.GlobalArg("a", is_input=False, shape=tuple()), ...],
         seq_dependencies=True)
 
     knl = lp.set_options(knl, "return_dict")
@@ -519,6 +521,49 @@ def test_inf_support(ctx_factory, target, dtype):
 
     assert np.isinf(out_dict["out_inf"])
     assert np.isneginf(out_dict["out_neginf"])
+
+
+def test_input_args_are_required(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl1 = lp.make_kernel(
+        "{ [i]: 0<=i<2 }",
+        """
+        g[i] = f[i] + 1.5
+        """,
+        [lp.GlobalArg("f, g", dtype="float64"), ...]
+    )
+
+    knl2 = lp.make_kernel(
+        "{ [i]: 0<=i<n }",
+        "g[i] = 3 * f[i] + g[i]",
+    )
+
+    f = np.zeros(2)
+    g = np.zeros(2)
+
+    for knl in [knl1, knl2]:
+        with pytest.raises(LoopyError):
+            _ = knl(queue)
+            _ = knl(queue, g=g)
+
+    _ = knl1(queue, f=f)
+    _ = knl1(queue, f=f, g=g)
+
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<2 }",
+        """
+        f[i] = 3.
+        g[i] = f[i] + 1.5
+        """,
+        [lp.GlobalArg("f, g", dtype="float64"), ...]
+    )
+
+    # FIXME: this should not raise!
+    # https://github.com/inducer/loopy/issues/450
+    with pytest.raises(LoopyError):
+        _ = knl(queue)
 
 
 def test_pyopencl_execution_accepts_device_scalars(ctx_factory):

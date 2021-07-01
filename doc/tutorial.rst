@@ -306,7 +306,8 @@ argument:
     ...     """
     ...     out[j,i] = a[i,j]
     ...     out[i,j] = 2*out[i,j]
-    ...     """)
+    ...     """,
+    ...     [lp.GlobalArg("out", shape=lp.auto, is_input=False), ...])
 
 loopy's programming model is completely *unordered* by default. This means
 that:
@@ -333,7 +334,9 @@ an explicit dependency:
     ...     """
     ...     out[j,i] = a[i,j] {id=transpose}
     ...     out[i,j] = 2*out[i,j]  {dep=transpose}
-    ...     """, name="transpose_and_dbl")
+    ...     """,
+    ...     [lp.GlobalArg("out", shape=lp.auto, is_input=False), ...],
+    ...     name="transpose_and_dbl")
 
 ``{id=transpose}`` assigns the identifier *transpose* to the first
 instruction, and ``{dep=transpose}`` declares a dependency of the second
@@ -394,7 +397,7 @@ Let us take a look at the generated code for the above kernel:
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
     <BLANKLINE>
-    __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) transpose_and_dbl(__global float const *__restrict__ a, int const n, __global float *__restrict__ out)
+    __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) transpose_and_dbl(__global float *__restrict__ out, __global float const *__restrict__ a, int const n)
     {
       for (int i = 0; i <= -1 + n; ++i)
         for (int j = 0; j <= -1 + n; ++j)
@@ -430,7 +433,8 @@ with identical bounds, for the use of the transpose:
     ...     """
     ...     out[j,i] = a[i,j] {id=transpose}
     ...     out[ii,jj] = 2*out[ii,jj]  {dep=transpose}
-    ...     """)
+    ...     """,
+    ...     [lp.GlobalArg("out", shape=lp.auto, is_input=False), ...])
     >>> knl = lp.prioritize_loops(knl, "i,j,ii,jj")
 
 :func:`loopy.duplicate_inames` can be used to achieve the same goal.
@@ -443,7 +447,7 @@ Now the intended code is generated and our test passes.
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
     <BLANKLINE>
-    __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *__restrict__ a, int const n, __global float *__restrict__ out)
+    __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float *__restrict__ out, __global float const *__restrict__ a, int const n)
     {
       for (int i = 0; i <= -1 + n; ++i)
         for (int j = 0; j <= -1 + n; ++j)

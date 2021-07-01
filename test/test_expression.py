@@ -399,7 +399,9 @@ def test_indexof(ctx_factory):
 
     knl = lp.make_kernel(
          """ { [i,j]: 0<=i,j<5 } """,
-         """ out[i,j] = indexof(out[i,j])""")
+         """ out[i,j] = indexof(out[i,j])""",
+         [lp.GlobalArg("out", is_input=False, shape=lp.auto)]
+    )
 
     knl = lp.set_options(knl, write_cl=True)
 
@@ -508,6 +510,11 @@ def test_complex_support(ctx_factory, target):
             out_sum = sum(i1, 1.0*i1 + i1*1jf)*sum(i2, 1.0*i2 + i2*1jf)
             conj_out_sum = conj(out_sum)
             """,
+            [
+                lp.GlobalArg("out_sum, euler1, real_plus_complex",
+                            is_input=False, shape=lp.auto),
+                ...
+            ],
             target=target(),
             seq_dependencies=True)
     knl = lp.set_options(knl, "return_dict")
