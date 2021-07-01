@@ -734,12 +734,32 @@ class KernelExecutorBase:
 
         self.packing_controller = make_packing_controller(program, entrypoint)
 
-        self.output_names = tuple(arg.name for arg in self.program[entrypoint].args
-                if arg.is_output)
+        kernel = self.program[entrypoint]
+        self.output_names = set(arg.name for arg in kernel.args if arg.is_output)
+
+        from loopy import ArrayArg
+        self.input_array_names = set(
+            arg.name for arg in kernel.args
+            if arg.is_input and isinstance(arg, ArrayArg))
 
         self.has_runtime_typed_args = any(
-                arg.dtype is None
-                for arg in program[entrypoint].args)
+            arg.dtype is None for arg in kernel.args)
+
+    def check_for_required_array_arguments(self, input_args):
+        # Formerly, the first exception raised when a required argument is not
+        # passed was often at type inference. This exists to raise a more meaningful
+        # message in such scenarios. Since type inference precedes compilation, this
+        # check cannot be deferred to the generated invoker code.
+        # See discussion at github.com/inducer/loopy/pull/160#issuecomment-867761204
+        # and links therin for context.
+        if not self.input_array_names <= set(input_args):
+            missing_args = self.input_array_names - set(input_args)
+            kernel = self.program[self.entrypoint]
+            raise LoopyError(
+                f"Kernel {kernel.name}() missing required array input arguments: "
+                f"{', '.join(missing_args)}. "
+                "If this is a surprise, maybe you need to add is_input=False to "
+                "you argument.")
 
     def get_typed_and_scheduled_translation_unit_uncached(
             self, entrypoint, arg_to_dtype_set):

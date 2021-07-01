@@ -355,6 +355,9 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         assert entrypoint is not None
 
+        if __debug__:
+            self.check_for_required_array_arguments(kwargs.keys())
+
         if self.packing_controller is not None:
             kwargs = self.packing_controller(kwargs)
 

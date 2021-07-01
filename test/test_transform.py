@@ -176,7 +176,12 @@ def test_add_barrier(ctx_factory):
             """
             out[j, i] = a[i, j]{id=transpose}
             out[ii, jj] = 2*out[ii, jj]{id=double}
-            """)
+            """,
+            [
+                lp.GlobalArg("out", is_input=False, shape=lp.auto),
+                ...
+            ]
+    )
     a = np.random.randn(16, 16)
     knl = lp.add_barrier(knl, "id:transpose", "id:double", "gb1")
 

@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from loopy.diagnostic import LoopyError
 import sys
 import numpy as np
 import loopy as lp
@@ -556,6 +557,7 @@ def test_nan_support(ctx_factory):
         [lp.Assignment(parse("a"), np.nan),
          lp.Assignment(parse("b"), parse("isnan(a)")),
          lp.Assignment(parse("c"), parse("isnan(3.14)"))],
+        [lp.GlobalArg("a", is_input=False, shape=tuple()), ...],
         seq_dependencies=True)
 
     knl = lp.set_options(knl, "return_dict")
@@ -597,6 +599,27 @@ def test_opencl_emits_ternary_operators_correctly(ctx_factory, target):
     assert out_dict["y3"] == 128
 
 
+def test_scalar_array_take_offset(ctx_factory):
+    import pyopencl.array as cla
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        y = 133*x
+        """,
+        [lp.GlobalArg("x", shape=(), offset=lp.auto),
+         ...])
+
+    x_in_base = cla.arange(cq, 42, dtype=np.int32)
+    x_in = x_in_base[13]
+
+    evt, (out,) = knl(cq, x=x_in)
+    np.testing.assert_allclose(out.get(), 1729)
+
+
 @pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 def test_inf_support(ctx_factory, target, dtype):
@@ -630,6 +653,65 @@ def test_inf_support(ctx_factory, target, dtype):
 
     assert np.isinf(out_dict["out_inf"])
     assert np.isneginf(out_dict["out_neginf"])
+
+
+def test_input_args_are_required(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl1 = lp.make_kernel(
+        "{ [i]: 0<=i<2 }",
+        """
+        g[i] = f[i] + 1.5
+        """,
+        [lp.GlobalArg("f, g", dtype="float64"), ...]
+    )
+
+    knl2 = lp.make_kernel(
+        "{ [i]: 0<=i<n }",
+        "g[i] = 3 * f[i] + g[i]",
+    )
+
+    f = np.zeros(2)
+    g = np.zeros(2)
+
+    for knl in [knl1, knl2]:
+        with pytest.raises(LoopyError):
+            _ = knl(queue)
+            _ = knl(queue, g=g)
+
+    _ = knl1(queue, f=f)
+    _ = knl1(queue, f=f, g=g)
+
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<2 }",
+        """
+        f[i] = 3.
+        g[i] = f[i] + 1.5
+        """,
+        [lp.GlobalArg("f, g", dtype="float64"), ...]
+    )
+
+    # FIXME: this should not raise!
+    # https://github.com/inducer/loopy/issues/450
+    with pytest.raises(LoopyError):
+        _ = knl(queue)
+
+
+def test_pyopencl_execution_accepts_device_scalars(ctx_factory):
+    import pyopencl.array as cla
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel("{:}",
+                         """
+                         y = 2*x
+                         """)
+
+    evt, (out,) = knl(cq, x=cla.to_device(cq, np.asarray(21)))
+
+    np.testing.assert_allclose(out.get(), 42)
 
 
 if __name__ == "__main__":
