@@ -480,10 +480,7 @@ def test_scalar_array_take_offset(ctx_factory):
          ...])
 
     x_in_base = cla.arange(cq, 42, dtype=np.int32)
-    x_in = cla.Array(cq, shape=(),
-                     dtype=x_in_base.dtype,
-                     data=x_in_base.data,
-                     offset=13 * x_in_base.dtype.itemsize)
+    x_in = x_in_base[13]
 
     evt, (out,) = knl(cq, x=x_in)
     np.testing.assert_allclose(out.get(), 1729)
