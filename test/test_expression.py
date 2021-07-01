@@ -416,16 +416,14 @@ def test_indexof_vec(ctx_factory):
     queue = cl.CommandQueue(ctx)
 
     if (
-            # Accurate as of 2015-10-08
-            ctx.devices[0].platform.name.startswith("Portable")
-            or
             # Accurate as of 2019-11-04
             ctx.devices[0].platform.name.startswith("Intel")):
         pytest.skip("target ICD miscompiles vector code")
 
     knl = lp.make_kernel(
          """ { [i,j,k]: 0<=i,j,k<4 } """,
-         """ out[i,j,k] = indexof_vec(out[i,j,k])""")
+         """ out[i,j,k] = indexof_vec(out[i,j,k])""",
+         [lp.GlobalArg("out", shape=lp.auto, is_input=False)])
 
     knl = lp.tag_inames(knl, {"i": "vec"})
     knl = lp.tag_data_axes(knl, "out", "vec,c,c")
