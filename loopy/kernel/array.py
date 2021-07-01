@@ -1275,6 +1275,29 @@ class AccessInfo(ImmutableRecord):
     """
 
 
+def _apply_offset(sub, array_name, ary):
+    """
+    Helper for :func:`get_access_info`.
+    Augments *ary*'s subscript index expression (*sub*) with its offset info.
+
+    :arg ary: An instance of :class:`ArrayBase`.
+    :arg array_name: Name to reference *ary* by.
+    """
+    import loopy as lp
+    from pymbolic import var
+
+    if ary.offset:
+        if ary.offset is lp.auto:
+            return var(array_name+"_offset") + sub
+        elif isinstance(ary.offset, str):
+            return var(ary.offset) + sub
+        else:
+            # assume it's an expression
+            return ary.offset + sub
+    else:
+        return sub
+
+
 def get_access_info(target, ary, index, eval_expr, vectorization_info):
     """
     :arg ary: an object of type :class:`ArrayBase`
@@ -1304,20 +1327,6 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
 
         return result
 
-    def apply_offset(sub):
-        import loopy as lp
-
-        if ary.offset:
-            if ary.offset is lp.auto:
-                return var(array_name+"_offset") + sub
-            elif isinstance(ary.offset, str):
-                return var(ary.offset) + sub
-            else:
-                # assume it's an expression
-                return ary.offset + sub
-        else:
-            return sub
-
     if not isinstance(index, tuple):
         index = (index,)
 
@@ -1333,7 +1342,7 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
 
         return AccessInfo(
                 array_name=array_name,
-                subscripts=(apply_offset(index[0]),),
+                subscripts=(_apply_offset(index[0], array_name, ary),),
                 vector_index=None)
 
     if len(ary.dim_tags) != len(index):
@@ -1405,7 +1414,7 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
         if num_target_axes > 1:
             raise NotImplementedError("offsets for multiple image axes")
 
-        subscripts[0] = apply_offset(subscripts[0])
+        subscripts[0] = _apply_offset(subscripts[0], array_name, ary)
 
     return AccessInfo(
             array_name=array_name,
