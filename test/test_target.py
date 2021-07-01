@@ -521,6 +521,22 @@ def test_inf_support(ctx_factory, target, dtype):
     assert np.isneginf(out_dict["out_neginf"])
 
 
+def test_pyopencl_execution_accepts_device_scalars(ctx_factory):
+    import pyopencl.array as cla
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel("{:}",
+                         """
+                         y = 2*x
+                         """)
+
+    evt, (out,) = knl(cq, x=cla.to_device(cq, np.asarray(21)))
+
+    np.testing.assert_allclose(out.get(), 42)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
