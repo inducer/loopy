@@ -756,8 +756,10 @@ class KernelExecutorBase:
             missing_args = self.input_array_names - set(input_args)
             kernel = self.program[self.entrypoint]
             raise LoopyError(
-                f"Kernel {kernel.name}() missing required array arguments: "
-                + ", ".join(missing_args))
+                f"Kernel {kernel.name}() missing required array input arguments: "
+                f"{', '.join(missing_args)}. "
+                "If this is a surprise, maybe you need to add is_input=False to "
+                "you argument.")
 
     def get_typed_and_scheduled_translation_unit_uncached(
             self, entrypoint, arg_to_dtype_set):
