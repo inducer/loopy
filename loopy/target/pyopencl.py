@@ -453,7 +453,6 @@ class PyOpenCLTarget(OpenCLTarget):
         # {{{ ValueArgs -> GlobalArgs if passed as array shapes
 
         from loopy.kernel.data import ValueArg, GlobalArg
-        import numpy as np
         import pyopencl.array as cla
 
         knl = t_unit[epoint]
@@ -462,8 +461,7 @@ class PyOpenCLTarget(OpenCLTarget):
         for arg in knl.args:
             if isinstance(arg, ValueArg):
                 if (arg.name in passed_args_dict
-                        and isinstance(passed_args_dict[arg.name], (cla.Array,
-                                                                    np.ndarray))
+                        and isinstance(passed_args_dict[arg.name], cla.Array)
                         and passed_args_dict[arg.name].shape == ()):
                     arg = GlobalArg(name=arg.name, dtype=arg.dtype, shape=(),
                                     is_output=False, is_input=True)
