@@ -471,7 +471,7 @@ def test_opencl_math_funcs(ctx_factory, dtype):
         )
 
         _, (result,) = knl(queue, x=x)
-        result = result
+        result = result.get()
         np_result = test_func[func](x)
         if np_result is not None:
             assert np.allclose(np_result, result), func
@@ -489,7 +489,7 @@ def test_opencl_math_funcs(ctx_factory, dtype):
         )
 
         _, (result,) = knl(queue, x=x, y=y)
-        result = result
+        result = result.get()
         np_result = test_func[func](x, y)
         if np_result is not None:
             assert np.allclose(np_result, result), func
@@ -508,7 +508,7 @@ def test_opencl_math_funcs(ctx_factory, dtype):
         )
 
         _, (result,) = knl(queue, x=x, y=y, z=z)
-        result = result
+        result = result.get()
         np_result = test_func[func](x, y, z)
         if np_result is not None:
             assert np.allclose(np_result, result), func
@@ -533,7 +533,7 @@ def test_cl_funcs_with_mixed_input_dtypes(ctx_factory):
 
     _, (result,) = knl(queue, x=x, y=y)
 
-    assert np.allclose(result, [np.power(x, y), np.arctan(x/y)])
+    assert np.allclose(result.get(), [np.power(x, y), np.arctan(x/y)])
 
     knl = lp.make_kernel(
         "{:}",
@@ -546,7 +546,7 @@ def test_cl_funcs_with_mixed_input_dtypes(ctx_factory):
 
     _, (result,) = knl(queue, x=x, y=y, z=z)
 
-    assert np.allclose(result, [x * y + z, x + (y - x) * z])
+    assert np.allclose(result.get(), [x * y + z, x + (y - x) * z])
 
 
 def test_nan_support(ctx_factory):
