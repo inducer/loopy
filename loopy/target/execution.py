@@ -759,7 +759,7 @@ class KernelExecutorBase:
                 f"Kernel {kernel.name}() missing required array input arguments: "
                 f"{', '.join(missing_args)}. "
                 "If this is a surprise, maybe you need to add is_input=False to "
-                "you argument.")
+                "your argument.")
 
     def get_typed_and_scheduled_translation_unit_uncached(
             self, entrypoint, arg_to_dtype_set):
