@@ -715,7 +715,8 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
         from loopy.kernel import make_loop_kernel_domains
         kernel = (kernel
-                  .copy(domains=make_loop_kernel_domains(domains_after_combining)))
+                  .copy(domains=(make_loop_kernel_domains(domains_after_combining)
+                                 .with_inames(kernel.inames))))
 
         # }}}
 

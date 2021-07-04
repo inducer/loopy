@@ -418,6 +418,14 @@ class LoopKernelDomains:
         for field in fields(self):
             key_builder.rec(key_hash, getattr(self, field.name))
 
+    def with_inames(self, inames):
+        assert isinstance(inames, PMap)
+        assert set(inames.keys()) == self.set_dims
+        return LoopKernelDomains(_domains=self._domains,
+                                 inames=inames,
+                                 home_domain_map=self.home_domain_map,
+                                 param_to_idoms=self.param_to_idoms)
+
     def with_iname(self, iname):
         assert isinstance(iname, Iname)
         if iname.name not in self.set_dims:
