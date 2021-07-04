@@ -43,6 +43,7 @@ from pyrsistent import pmap, pvector, PVector, PMap
 from typing import FrozenSet
 from dataclasses import dataclass, fields
 from warnings import warn
+from functools import reduce
 
 
 # {{{ unique var names
@@ -270,6 +271,7 @@ class LoopKernelDomains:
     _domains: PVector
     param_to_idoms: PMap
     home_domain_map: PMap
+    inames: PMap
 
     def __getitem__(self, key):
         return self._domains[key]
@@ -288,24 +290,26 @@ class LoopKernelDomains:
                                           | frozenset([idom]))
 
         hdm_update = {k: idom for k in dom.get_var_names(dim_type.set)}
+        inames_update = {k: Iname(k, frozenset())
+                         for k in dom.get_var_names(dim_type.set)}
 
         return LoopKernelDomains(_domains=self._domains.append(dom),
                                  param_to_idoms=(self.param_to_idoms
                                                  .update(param_to_idoms_update)),
                                  home_domain_map=(self.home_domain_map
                                                   .update(hdm_update)
-                                                  ))
+                                                  ),
+                                 inames=(self.inames.update(inames_update)))
 
     def swap(self, idom, domain):
         """
         Returns a copy of *self* with its *idom*-th domain replaced with
         *domain*.
         """
+        assert domain.get_ctx() == isl.DEFAULT_CONTEXT
 
         if domain is self._domains[idom]:
             return self
-
-        from functools import reduce
 
         # {{{ swap dim names in home_domain_map
 
@@ -315,6 +319,15 @@ class LoopKernelDomains:
                      reduce(lambda acc, y: acc.remove(y),
                             self._domains[idom].get_var_names(dim_type.set),
                             self.home_domain_map))
+
+        inames = reduce(lambda acc, y: acc.set(y,
+                                               self.inames.get(y,
+                                                               Iname(y, frozenset()))
+                                               ),
+                        domain.get_var_names(dim_type.set),
+                        reduce(lambda acc, y: acc.remove(y),
+                               self._domains[idom].get_var_names(dim_type.set),
+                               self.inames))
         # }}}
 
         param_to_idoms = self.param_to_idoms
@@ -348,7 +361,8 @@ class LoopKernelDomains:
 
         return LoopKernelDomains(_domains=new_domains,
                                  home_domain_map=hdm,
-                                 param_to_idoms=param_to_idoms)
+                                 param_to_idoms=param_to_idoms,
+                                 inames=inames)
 
     def delete(self, idom):
         """
@@ -361,7 +375,6 @@ class LoopKernelDomains:
             of calling :meth:`LoopKernelDomains.delete` and
             :meth:`LoopKernelDomains.insert`.
         """
-        from functools import reduce
         new_domains = self._domains.delete(idom)
 
         param_to_idoms = self.param_to_idoms
@@ -413,9 +426,14 @@ class LoopKernelDomains:
 
         # }}}
 
+        inames = reduce(lambda acc, x: acc.remove(x),
+                        self._domains[idom].get_var_names(dim_type.set),
+                        self.inames)
+
         return LoopKernelDomains(_domains=new_domains,
                                  home_domain_map=hdm,
-                                 param_to_idoms=param_to_idoms)
+                                 param_to_idoms=param_to_idoms,
+                                 inames=inames)
 
     def insert(self, idom, domain):
         """
@@ -425,7 +443,6 @@ class LoopKernelDomains:
         raise NotImplementedError
 
     def extend(self, domains):
-        from functools import reduce
         return reduce(lambda x, y: x.append(y), domains, self)
 
     def __add__(self, other):
@@ -435,6 +452,7 @@ class LoopKernelDomains:
         return NotImplemented
 
     def __radd__(self, other):
+
         if not isinstance(other, (list, PVector)):
             return NotImplemented
 
@@ -450,16 +468,20 @@ class LoopKernelDomains:
 
         # }}}
 
+        inames = self.inames
+
         for idom, dom in enumerate(other):
             for dim in dom.get_var_names(dim_type.set):
                 home_domain_map[dim] = idom
+                inames = inames.set(dim, Iname(dim))
 
             for dim in dom.get_var_names(dim_type.param):
                 param_to_idoms[dim] = idom
 
         return LoopKernelDomains(_domains=other+self._domains,
                                  param_to_idoms=pmap(param_to_idoms),
-                                 home_domain_map=pmap(home_domain_map))
+                                 home_domain_map=pmap(home_domain_map),
+                                 inames=inames)
 
     def __iter__(self):
         return iter(self._domains)
@@ -486,8 +508,20 @@ class LoopKernelDomains:
         for field in fields(self):
             key_builder.rec(key_hash, getattr(self, field.name))
 
+    def with_iname(self, iname):
+        assert isinstance(iname, Iname)
+        if iname.name not in self.set_dims:
+            raise LoopyError(f"Cannot set unknown iname {iname.name}.")
+
+        return LoopKernelDomains(_domains=self._domains,
+                                 inames=self.inames.set(iname.name, iname),
+                                 home_domain_map=self.home_domain_map,
+                                 param_to_idoms=self.param_to_idoms)
+
 
 def make_loop_kernel_domains(domains):
+    assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT
+               for dom in domains)
     param_to_idoms = defaultdict(frozenset)
     for idom, dom in enumerate(domains):
         for var in dom.get_var_names(dim_type.param):
@@ -497,9 +531,13 @@ def make_loop_kernel_domains(domains):
                             for i_domain, dom in enumerate(domains)
                             for iname in dom.get_var_names(dim_type.set)})
 
+    inames = pmap({iname: Iname(iname)
+                   for iname in home_domain_map})
+
     return LoopKernelDomains(_domains=pvector(domains),
                              param_to_idoms=pmap(param_to_idoms),
-                             home_domain_map=home_domain_map)
+                             home_domain_map=home_domain_map,
+                             inames=inames)
 
 
 class _not_provided:  # noqa: N801
@@ -664,19 +702,33 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             from loopy.kernel.tools import SetOperationCacheManager
             cache_manager = SetOperationCacheManager()
 
-        if iname_to_tags is not None:
-            warn("Providing iname_to_tags is deprecated, pass inames instead. "
-                    "Will be unsupported in 2022.",
-                    DeprecationWarning, stacklevel=2)
+        assert isinstance(domains, LoopKernelDomains)
 
+        if inames is not None:
+            warn("Providing inames is deprecated, pass iname tags with domains"
+                 " instead. Will be unsupported in 2022.",
+                 DeprecationWarning, stacklevel=2)
+
+            domains = reduce(lambda acc, iname: acc.with_iname(iname),
+                             inames.values(),
+                             domains)
+
+        if iname_to_tags is not None:
             if inames is not None:
                 raise LoopyError("Cannot provide both iname_to_tags and inames to "
                         "LoopKernel.__init__")
 
-            inames = make_iname_dict({k: Iname(v) for k, v in iname_to_tags.items()},
-                                     self.domain.set_dims)
+            warn("Providing iname_to_tags is deprecated, pass inames instead. "
+                    "Will be unsupported in 2022.",
+                    DeprecationWarning, stacklevel=2)
 
-        assert isinstance(inames, InameDict)
+            domains = reduce(lambda acc, iname: acc.with_iname(
+                                                    Iname(iname,
+                                                          (iname_to_tags
+                                                           .get(iname, frozenset()))
+                                                          )),
+                             domains.set_dims,
+                             domains)
 
         if index_dtype is None:
             index_dtype = np.int32
@@ -733,7 +785,6 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                 silenced_warnings=silenced_warnings,
                 temporary_variables=temporary_variables,
                 local_sizes=local_sizes,
-                inames=inames,
                 substitutions=substitutions,
                 cache_manager=cache_manager,
                 applied_iname_rewrites=applied_iname_rewrites,
@@ -1039,7 +1090,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         """
         Returns a :class:`frozenset` of the names of all the inames in the kernel.
         """
-        return frozenset(self.inames.keys())
+        return self.domains.set_dims
 
     @memoize_method
     def all_params(self):
@@ -1830,7 +1881,6 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             "assumptions",
             "local_sizes",
             "temporary_variables",
-            "inames",
             "substitutions",
             "iname_slab_increments",
             "loop_priority",
@@ -1897,33 +1947,11 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
     # }}}
 
+    @property
+    def inames(self):
+        return self.domains.inames
+
     def get_copy_kwargs(self, **kwargs):
-        if "iname_to_tags" in kwargs:
-            if "inames" in kwargs:
-                raise LoopyError("Cannot pass both `inames` and `iname_to_tags` to "
-                        "LoopKernel.get_copy_kwargs")
-
-            warn("Providing iname_to_tags is deprecated, pass inames instead. "
-                    "Will be unsupported in 2022.",
-                    DeprecationWarning, stacklevel=2)
-
-            iname_to_tags = kwargs["iname_to_tags"]
-            domains = kwargs.get("domains", self.domains)
-            kwargs["inames"] = make_iname_dict({k: Iname(k, v)
-                                                for k, v in iname_to_tags.items()},
-                                               domains.set_dims)
-            del kwargs["iname_to_tags"]
-
-        if "domains" in kwargs:
-            inames = kwargs.get("inames", self.inames)
-            domains = kwargs["domains"]
-            kwargs["inames"] = make_iname_dict({k: Iname(k, v.tags)
-                                                for k, v in inames.items()
-                                                if v.tags},
-                                                domains.set_dims)
-
-            assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
-
         if "instructions" in kwargs:
             # Avoid carrying over an invalid cache when instructions are
             # modified.
@@ -1950,6 +1978,10 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             kwargs["tags"] = check_tag_uniqueness(normalize_tags(tags))
 
         return super().copy(**kwargs)
+
+    def with_iname(self, iname):
+        new_domains = self.domains.with_iname(iname)
+        return self.copy(domains=new_domains)
 
 # }}}
 

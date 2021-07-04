@@ -799,7 +799,6 @@ def tag_inames(kernel, iname_to_tag, force=False,
 
     # }}}
 
-    knl_inames = kernel.inames.copy()
     for name, new_tag in iname_to_tag.items():
         if not new_tag:
             continue
@@ -807,9 +806,9 @@ def tag_inames(kernel, iname_to_tag, force=False,
         if name not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % name)
 
-        knl_inames = knl_inames.set(name, knl_inames[name].tagged(new_tag))
+        kernel = kernel.with_iname(kernel.inames[name].tagged(new_tag))
 
-    return kernel.copy(inames=knl_inames)
+    return kernel
 
 # }}}
 
@@ -1307,9 +1306,7 @@ def remove_unused_inames(kernel, inames=None):
     # {{{ remove them
 
     domains = kernel.domains
-    new_inames = kernel.inames
     for iname in unused_inames:
-        new_inames = new_inames.remove(iname)
 
         # {{{ easy update: iname is only a set dim
 
@@ -1333,8 +1330,7 @@ def remove_unused_inames(kernel, inames=None):
 
             domains = domains.swap(idom, dom)
 
-    kernel = kernel.copy(domains=domains,
-                         inames=new_inames)
+    kernel = kernel.copy(domains=domains)
 
     # }}}
 

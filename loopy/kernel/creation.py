@@ -2431,9 +2431,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
             raise LoopyError("assumptions must be either 'str' or BasicSet")
 
     # }}}
-    from loopy.kernel import (_get_inames_from_domains,
-                              make_loop_kernel_domains, make_iname_dict)
-    inames = make_iname_dict({}, _get_inames_from_domains(domains))
+    from loopy.kernel import make_loop_kernel_domains
 
     arg_guesser = ArgumentGuesser(domains, instructions,
             temporary_variables, substitutions,
@@ -2454,7 +2452,6 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
             options=options,
             target=target,
             tags=tags,
-            inames=inames,
             assumptions=assumptions,
             **kwargs)
 
