@@ -49,10 +49,13 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             ]
         super().__init__(system_args)
 
-    def python_dtype_str(self, dtype):
+    def python_dtype_str_inner(self, dtype):
         import pyopencl.tools as cl_tools
         if dtype.isbuiltin:
-            return "_lpy_np."+dtype.name
+            name = dtype.name
+            if dtype.name == "bool":
+                name = "bool8"
+            return f"_lpy_np.dtype(_lpy_np.{name})"
         else:
             return ('_lpy_cl_tools.get_or_register_dtype("%s")'
                     % cl_tools.dtype_to_ctype(dtype))
@@ -90,47 +93,44 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         from pymbolic import var
 
         num_axes = len(arg.strides)
-        for i in range(num_axes):
-            gen("_lpy_shape_%d = %s" % (i, strify(arg.unvec_shape[i])))
 
         itemsize = kernel_arg.dtype.numpy_dtype.itemsize
         for i in range(num_axes):
-            gen("_lpy_strides_%d = %s" % (i, strify(
-                itemsize*arg.unvec_strides[i])))
+            gen("_lpy_ustrides_%d = %s" % (i, strify(
+                arg.unvec_strides[i])))
 
         if not skip_arg_checks:
             for i in range(num_axes):
-                gen("assert _lpy_strides_%d > 0, "
+                gen("assert _lpy_ustrides_%d > 0, "
                         "\"'%s' has negative stride in axis %d\""
                         % (i, arg.name, i))
 
-        sym_strides = tuple(
-                var("_lpy_strides_%d" % i)
+        sym_ustrides = tuple(
+                var("_lpy_ustrides_%d" % i)
                 for i in range(num_axes))
         sym_shape = tuple(
-                var("_lpy_shape_%d" % i)
+                arg.unvec_shape[i]
                 for i in range(num_axes))
 
-        alloc_size_expr = (sum(astrd*(alen-1)
-            for alen, astrd in zip(sym_shape, sym_strides))
-            + itemsize)
+        size_expr = (sum(astrd*(alen-1)
+            for alen, astrd in zip(sym_shape, sym_ustrides))
+            + 1)
 
-        gen("_lpy_alloc_size = %s" % strify(alloc_size_expr))
-        gen("%(name)s = _lpy_cl_array.Array(queue, %(shape)s, "
-                "%(dtype)s, strides=%(strides)s, "
-                "data=allocator(_lpy_alloc_size), allocator=allocator)"
-                % dict(
-                    name=arg.name,
-                    shape=strify(sym_shape),
-                    strides=strify(sym_strides),
-                    dtype=self.python_dtype_str(kernel_arg.dtype.numpy_dtype)))
+        gen("_lpy_size = %s" % strify(size_expr))
+        sym_strides = tuple(itemsize*s_i for s_i in sym_ustrides)
 
-        if not skip_arg_checks:
-            for i in range(num_axes):
-                gen("del _lpy_shape_%d" % i)
-                gen("del _lpy_strides_%d" % i)
-            gen("del _lpy_alloc_size")
-            gen("")
+        dtype_name = self.python_dtype_str(gen, kernel_arg.dtype.numpy_dtype)
+        gen(f"{arg.name} = _lpy_cl_array.Array(None, {strify(sym_shape)}, "
+                f"{dtype_name}, strides={strify(sym_strides)}, "
+                f"data=allocator({strify(itemsize * var('_lpy_size'))}), "
+                "allocator=allocator, "
+                "_fast=True, _size=_lpy_size, "
+                "_context=queue.context, _queue=queue)")
+
+        for i in range(num_axes):
+            gen("del _lpy_ustrides_%d" % i)
+        gen("del _lpy_size")
+        gen("")
 
     # }}}
 
@@ -248,7 +248,6 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
 # {{{ kernel executor
 
-
 class PyOpenCLKernelExecutor(KernelExecutorBase):
     """An object connecting a kernel to a :class:`pyopencl.Context`
     for execution.
@@ -257,7 +256,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
     .. automethod:: __call__
     """
 
-    def __init__(self, context, kernel):
+    def __init__(self, context, program, entrypoint):
         """
         :arg context: a :class:`pyopencl.Context`
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
@@ -266,64 +265,68 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
             specific arguments.
         """
 
-        super().__init__(kernel)
+        super().__init__(program, entrypoint)
 
         self.context = context
 
-        from loopy.target.pyopencl import PyOpenCLTarget
-        if isinstance(kernel.target, PyOpenCLTarget):
-            self.kernel = kernel.copy(target=(
-                kernel.target.with_device(context.devices[0])))
-
-    def get_invoker_uncached(self, kernel, codegen_result):
+    def get_invoker_uncached(self, program, entrypoint, codegen_result):
         generator = PyOpenCLExecutionWrapperGenerator()
-        return generator(kernel, codegen_result)
+        return generator(program, entrypoint, codegen_result)
 
     def get_wrapper_generator(self):
         return PyOpenCLExecutionWrapperGenerator()
 
     @memoize_method
-    def kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
-        kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype_set)
+    def translation_unit_info(self, entrypoint, arg_to_dtype_set=frozenset(),
+            all_kwargs=None):
+        program = self.get_typed_and_scheduled_translation_unit(
+                entrypoint, arg_to_dtype_set)
 
+        # FIXME: now just need to add the types to the arguments
         from loopy.codegen import generate_code_v2
         from loopy.target.execution import get_highlighted_code
-        codegen_result = generate_code_v2(kernel)
+        codegen_result = generate_code_v2(program)
 
         dev_code = codegen_result.device_code()
 
-        if self.kernel.options.write_cl:
+        if program[entrypoint].options.write_cl:
+            #FIXME: redirect to "translation unit" level option as well.
             output = dev_code
-            if self.kernel.options.highlight_cl:
+            if self.program[entrypoint].options.highlight_cl:
                 output = get_highlighted_code(output)
 
-            if self.kernel.options.write_cl is True:
+            if self.program[entrypoint].options.write_cl is True:
                 print(output)
             else:
-                with open(self.kernel.options.write_cl, "w") as outf:
+                with open(self.program[entrypoint].options.write_cl, "w") as outf:
                     outf.write(output)
 
-        if self.kernel.options.edit_cl:
+        if program[entrypoint].options.edit_cl:
+            #FIXME: redirect to "translation unit" level option as well.
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.cl")
 
         import pyopencl as cl
 
+        #FIXME: redirect to "translation unit" level option as well.
         cl_program = (
                 cl.Program(self.context, dev_code)
-                .build(options=kernel.options.cl_build_options))
+                .build(options=program[entrypoint].options.cl_build_options))
 
         cl_kernels = _Kernels()
-        for dp in codegen_result.device_programs:
-            setattr(cl_kernels, dp.name, getattr(cl_program, dp.name))
+        for dp in cl_program.kernel_names.split(";"):
+            setattr(cl_kernels, dp, getattr(cl_program, dp))
 
         return _KernelInfo(
-                kernel=kernel,
+                program=program,
                 cl_kernels=cl_kernels,
-                implemented_data_info=codegen_result.implemented_data_info,
-                invoker=self.get_invoker(kernel, codegen_result))
+                implemented_data_info=codegen_result.implemented_data_infos[
+                    entrypoint],
+                invoker=self.get_invoker(program, entrypoint, codegen_result))
 
-    def __call__(self, queue, **kwargs):
+    def __call__(self, queue, *,
+            allocator=None, wait_for=None, out_host=None, entrypoint=None,
+            **kwargs):
         """
         :arg allocator: a callable passed a byte count and returning
             a :class:`pyopencl.Buffer`. A :mod:`pyopencl` allocator
@@ -350,16 +353,19 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
             of the returned arrays.
         """
 
-        allocator = kwargs.pop("allocator", None)
-        wait_for = kwargs.pop("wait_for", None)
-        out_host = kwargs.pop("out_host", None)
+        assert entrypoint is not None
 
-        kwargs = self.packing_controller.unpack(kwargs)
+        if __debug__:
+            self.check_for_required_array_arguments(kwargs.keys())
 
-        kernel_info = self.kernel_info(self.arg_to_dtype_set(kwargs))
+        if self.packing_controller is not None:
+            kwargs = self.packing_controller(kwargs)
 
-        return kernel_info.invoker(
-                kernel_info.cl_kernels, queue, allocator, wait_for,
+        translation_unit_info = self.translation_unit_info(entrypoint,
+                self.arg_to_dtype_set(kwargs))
+
+        return translation_unit_info.invoker(
+                translation_unit_info.cl_kernels, queue, allocator, wait_for,
                 out_host, **kwargs)
 
 # }}}

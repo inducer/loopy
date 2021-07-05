@@ -24,6 +24,7 @@ THE SOFTWARE.
 """
 
 import re
+from warnings import warn
 
 from pytools import ImmutableRecord, memoize_method
 from pytools.tag import Taggable
@@ -88,6 +89,9 @@ class _StrideArrayDimTagBase(ArrayDimImplementationTag):
         :class:`ComputedStrideArrayDimTag` instances may occur.
     """
 
+    def depends_on(self):
+        raise NotImplementedError()
+
 
 class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
     """An arg dimension implementation tag for a fixed (potentially
@@ -145,6 +149,14 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
 
         return self.copy(stride=mapper(self.stride))
 
+    def depends_on(self):
+        from loopy.kernel.data import auto
+        from loopy.symbolic import DependencyMapper
+        if self.stride is auto:
+            return frozenset()
+
+        return DependencyMapper(composite_leaves=auto)(self.stride)
+
 
 class ComputedStrideArrayDimTag(_StrideArrayDimTagBase):
     """
@@ -179,6 +191,9 @@ class ComputedStrideArrayDimTag(_StrideArrayDimTagBase):
     def map_expr(self, mapper):
         return self
 
+    def depends_on(self):
+        return frozenset()
+
 
 class SeparateArrayArrayDimTag(ArrayDimImplementationTag):
     def stringify(self, include_target_axis):
@@ -190,6 +205,9 @@ class SeparateArrayArrayDimTag(ArrayDimImplementationTag):
     def map_expr(self, mapper):
         return self
 
+    def depends_on(self):
+        return frozenset()
+
 
 class VectorArrayDimTag(ArrayDimImplementationTag):
     def stringify(self, include_target_axis):
@@ -200,6 +218,9 @@ class VectorArrayDimTag(ArrayDimImplementationTag):
 
     def map_expr(self, mapper):
         return self
+
+    def depends_on(self):
+        return frozenset()
 
 
 NESTING_LEVEL_RE = re.compile(r"^N([-0-9]+)(?::(.*)|)$")
@@ -549,7 +570,6 @@ def _pymbolic_parse_if_necessary(x):
 def _parse_shape_or_strides(x):
     import loopy as lp
     if x == "auto":
-        from warnings import warn
         warn("use of 'auto' as a shape or stride won't work "
                 "any more--use loopy.auto instead",
                 stacklevel=3)
@@ -718,10 +738,9 @@ class ArrayBase(ImmutableRecord, Taggable):
 
         from loopy.types import to_loopy_type
         dtype = to_loopy_type(dtype, allow_auto=True, allow_none=True,
-                for_atomic=for_atomic, target=target)
+                for_atomic=for_atomic)
 
         if dtype is lp.auto:
-            from warnings import warn
             warn("Argument/temporary data type for '%s' should be None if "
                     "unspecified, not auto. This usage will be disallowed in 2018."
                     % name,
@@ -850,8 +869,14 @@ class ArrayBase(ImmutableRecord, Taggable):
             kwargs["strides"] = strides
 
         if dim_names is not None and not isinstance(dim_names, tuple):
-            from warnings import warn
             warn("dim_names is not a tuple when calling ArrayBase constructor",
+                    DeprecationWarning, stacklevel=2)
+
+        if tags is None:
+            tags = frozenset()
+
+        if target is not None:
+            warn("Passing target is deprecated and will stop working in 2022.",
                     DeprecationWarning, stacklevel=2)
 
         ImmutableRecord.__init__(self,
@@ -880,7 +905,16 @@ class ArrayBase(ImmutableRecord, Taggable):
                 and isee(self.offset, other.offset)
                 and self.dim_names == other.dim_names
                 and self.order == other.order
+                and self.alignment == other.alignment
+                and self.for_atomic == other.for_atomic
+                and self.tags == other.tags
                 )
+
+    def target(self):
+        warn("Array.target is deprecated and will go away in 2022.",
+                DeprecationWarning, stacklevel=2)
+
+        return None
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -947,13 +981,16 @@ class ArrayBase(ImmutableRecord, Taggable):
         :class:`pytools.persistent_dict.PersistentDict`.
         """
 
-        key_builder.rec(key_hash, type(self).__name__.encode("utf-8"))
+        key_builder.rec(key_hash, type(self).__name__)
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.dtype)
         self.update_persistent_hash_for_shape(key_hash, key_builder, self.shape)
         key_builder.rec(key_hash, self.dim_tags)
         key_builder.rec(key_hash, self.offset)
         key_builder.rec(key_hash, self.dim_names)
+        key_builder.rec(key_hash, self.order)
+        key_builder.rec(key_hash, self.alignment)
+        key_builder.rec(key_hash, self.tags)
 
     def num_target_axes(self):
         target_axes = set()
@@ -1238,6 +1275,29 @@ class AccessInfo(ImmutableRecord):
     """
 
 
+def _apply_offset(sub, array_name, ary):
+    """
+    Helper for :func:`get_access_info`.
+    Augments *ary*'s subscript index expression (*sub*) with its offset info.
+
+    :arg ary: An instance of :class:`ArrayBase`.
+    :arg array_name: Name to reference *ary* by.
+    """
+    import loopy as lp
+    from pymbolic import var
+
+    if ary.offset:
+        if ary.offset is lp.auto:
+            return var(array_name+"_offset") + sub
+        elif isinstance(ary.offset, str):
+            return var(ary.offset) + sub
+        else:
+            # assume it's an expression
+            return ary.offset + sub
+    else:
+        return sub
+
+
 def get_access_info(target, ary, index, eval_expr, vectorization_info):
     """
     :arg ary: an object of type :class:`ArrayBase`
@@ -1267,20 +1327,6 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
 
         return result
 
-    def apply_offset(sub):
-        import loopy as lp
-
-        if ary.offset:
-            if ary.offset is lp.auto:
-                return var(array_name+"_offset") + sub
-            elif isinstance(ary.offset, str):
-                return var(ary.offset) + sub
-            else:
-                # assume it's an expression
-                return ary.offset + sub
-        else:
-            return sub
-
     if not isinstance(index, tuple):
         index = (index,)
 
@@ -1296,7 +1342,7 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
 
         return AccessInfo(
                 array_name=array_name,
-                subscripts=(apply_offset(index[0]),),
+                subscripts=(_apply_offset(index[0], array_name, ary),),
                 vector_index=None)
 
     if len(ary.dim_tags) != len(index):
@@ -1368,7 +1414,7 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
         if num_target_axes > 1:
             raise NotImplementedError("offsets for multiple image axes")
 
-        subscripts[0] = apply_offset(subscripts[0])
+        subscripts[0] = _apply_offset(subscripts[0], array_name, ary)
 
     return AccessInfo(
             array_name=array_name,

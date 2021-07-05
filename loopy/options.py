@@ -24,6 +24,7 @@ THE SOFTWARE.
 from pytools import ImmutableRecord
 import re
 import os
+from warnings import warn
 
 
 ALLOW_TERMINAL_COLORS = True
@@ -45,7 +46,6 @@ def _apply_legacy_map(lmap, kwargs):
         else:
             if lmap_value is None:
                 # ignore this
-                from warnings import warn
                 warn("option '%s' is deprecated and was ignored" % name,
                         DeprecationWarning)
                 continue
@@ -55,6 +55,9 @@ def _apply_legacy_map(lmap, kwargs):
                 raise TypeError("may not pass a value for both '%s' and '%s'"
                         % (name, new_name))
 
+            warn(f"Loopy option '{name}' is deprecated. '{new_name}' should be "
+                    "used instead. The old option will stop working in 2022.",
+                    DeprecationWarning)
             if translator is not None:
                 val = translator(val)
 
@@ -170,6 +173,14 @@ class Options(ImmutableRecord):
         to variables.
 
         If equal to ``"no_check"``, then no check is performed.
+
+    .. attribute:: enforce_array_accesses_within_bounds
+
+        If *True*, require that :func:`~loopy.check.check_bounds` passes. If
+        *False*, then :func:`~loopy.check.check_bounds` raises a warning for
+        any out-of-bounds accesses.
+
+        If equal to ``"no_check"``, then no check is performed.
     """
 
     _legacy_options_map = {
@@ -234,6 +245,8 @@ class Options(ImmutableRecord):
 
                 enforce_variable_access_ordered=kwargs.get(
                     "enforce_variable_access_ordered", True),
+                enforce_array_accesses_within_bounds=kwargs.get(
+                    "enforce_array_accesses_within_bounds", True),
                 )
 
     # {{{ legacy compatibility
@@ -260,7 +273,8 @@ class Options(ImmutableRecord):
 
     # }}}
 
-    def update(self, other):
+    # only used internally on new copies of Options
+    def _update(self, other):
         for f in self.__class__.fields:
             setattr(self, f, getattr(self, f) or getattr(other, f))
 

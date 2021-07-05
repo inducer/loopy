@@ -42,6 +42,25 @@ _and = intern("and")
 _or = intern("or")
 
 
+def tuple_to_complex_literal(expr):
+    if len(expr) != 2:
+        raise TranslationError("complex literals must have "
+                "two entries")
+
+    r, i = expr
+
+    r = np.array(r)[()]
+    i = np.array(i)[()]
+
+    dtype = (r.dtype.type(0) + i.dtype.type(0))
+    if dtype == np.float32:
+        dtype = np.complex64
+    else:
+        dtype = np.complex128
+
+    return dtype(float(r) + float(i)*1j)
+
+
 # {{{ expression parser
 
 class FortranExpressionParser(ExpressionParserBase):
@@ -176,24 +195,31 @@ class FortranExpressionParser(ExpressionParserBase):
             left_exp, did_something = ExpressionParserBase.parse_postfix(
                     self, pstate, min_precedence, left_exp)
 
-            if isinstance(left_exp, tuple) and min_precedence < self._PREC_FUNC_ARGS:
-                # this must be a complex literal
-                if len(left_exp) != 2:
-                    raise TranslationError("complex literals must have "
-                            "two entries")
-
-                r, i = left_exp
-
-                dtype = (r.dtype.type(0) + i.dtype.type(0))
-                if dtype == np.float32:
-                    dtype = np.complex64
-                else:
-                    dtype = np.complex128
-
-                left_exp = dtype(float(r) + float(i)*1j)
-
         return left_exp, did_something
 
+    def parse_expression(self, pstate, min_precedence=0):
+        left_exp = self.parse_prefix(pstate)
+
+        did_something = True
+        while did_something:
+            did_something = False
+            if pstate.is_at_end():
+                return left_exp
+
+            result = self.parse_postfix(
+                    pstate, min_precedence, left_exp)
+            left_exp, did_something = result
+
+        from pymbolic.parser import FinalizedTuple
+        if isinstance(left_exp, FinalizedTuple):
+            # View all tuples that survive parsing as complex literals
+            # "FinalizedTuple" indicates that this tuple was enclosed
+            # in parens.
+            return tuple_to_complex_literal(left_exp)
+
+        return left_exp
+
 # }}}
+
 
 # vim: foldmethod=marker

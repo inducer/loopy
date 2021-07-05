@@ -27,7 +27,7 @@ from pymbolic.mapper import RecursiveMapper, IdentityMapper
 from pymbolic.mapper.stringifier import (PREC_NONE, PREC_CALL, PREC_PRODUCT,
         PREC_SHIFT,
         PREC_UNARY, PREC_LOGICAL_OR, PREC_LOGICAL_AND,
-        PREC_BITWISE_AND, PREC_BITWISE_OR)
+        PREC_BITWISE_AND, PREC_BITWISE_OR, PREC_BITWISE_XOR)
 
 import islpy as isl
 import pymbolic.primitives as p
@@ -35,9 +35,9 @@ from pymbolic import var
 
 
 from loopy.expression import dtype_to_type_context
-from loopy.type_inference import TypeInferenceMapper
+from loopy.type_inference import TypeReader
 
-from loopy.diagnostic import LoopyError, LoopyWarning
+from loopy.diagnostic import LoopyError
 from loopy.tools import is_integer
 from loopy.types import LoopyType
 from loopy.target.c import CExpression
@@ -62,7 +62,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         self.codegen_state = codegen_state
 
         if type_inf_mapper is None:
-            type_inf_mapper = TypeInferenceMapper(self.kernel)
+            type_inf_mapper = TypeReader(self.kernel,
+                    self.codegen_state.callables_table)
         self.type_inf_mapper = type_inf_mapper
 
         self.allow_complex = codegen_state.allow_complex
@@ -101,12 +102,20 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     def wrap_in_typecast(self, actual_type, needed_dtype, s):
         return s
 
+    def wrap_in_typecast_lazy(self, actual_type_func, needed_dtype, s):
+        """This is similar to *wrap_in_typecast*, but takes a function for
+        the actual type argument instead of a type. This can be helpful
+        when actual type argument is expensive to calculate and is not
+        needed in some cases.
+        """
+        return s
+
     def rec(self, expr, type_context=None, needed_dtype=None):
         if needed_dtype is None:
             return RecursiveMapper.rec(self, expr, type_context)
 
-        return self.wrap_in_typecast(
-                self.infer_type(expr), needed_dtype,
+        return self.wrap_in_typecast_lazy(
+                lambda: self.infer_type(expr), needed_dtype,
                 RecursiveMapper.rec(self, expr, type_context))
 
     def __call__(self, expr, prec=None, type_context=None, needed_dtype=None):
@@ -142,8 +151,17 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             if isinstance(arg, ArrayBase):
                 if arg.shape == ():
                     if arg.offset:
-                        # FIXME
-                        raise NotImplementedError("in-memory scalar with offset")
+
+                        from loopy.kernel.array import _apply_offset
+                        from loopy.symbolic import simplify_using_aff
+
+                        subscript = _apply_offset(0, expr.name, arg)
+                        result = self.make_subscript(
+                                arg,
+                                var(expr.name),
+                                simplify_using_aff(
+                                    self.kernel, self.rec(subscript, "i")))
+                        return result
                     else:
                         return var(expr.name)[0]
                 else:
@@ -167,6 +185,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
     def map_tagged_variable(self, expr, type_context):
         return var(expr.name)
+
+    def map_sub_array_ref(self, expr, type_context):
+        from loopy.symbolic import get_start_subscript_from_sar
+        return var("&")(self.rec(get_start_subscript_from_sar(expr, self.kernel),
+            type_context))
 
     def map_subscript(self, expr, type_context):
         def base_impl(expr, type_context):
@@ -261,7 +284,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 return result
 
         else:
-            assert False
+            raise AssertionError()
 
     def map_linear_subscript(self, expr, type_context):
         from pymbolic.primitives import Variable
@@ -355,9 +378,12 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 "loopy_mod", operator.mod, expr, type_context)
 
     def map_if(self, expr, type_context):
+        from loopy.types import to_loopy_type
         result_type = self.infer_type(expr)
         return type(expr)(
-                self.rec(expr.condition, "i"),
+                self.rec(expr.condition, type_context,
+                         to_loopy_type(np.bool8,
+                                       target=self.kernel.target)),
                 self.rec(expr.then, type_context, result_type),
                 self.rec(expr.else_, type_context, result_type),
                 )
@@ -388,6 +414,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             return real + imag*iota
         elif np.isnan(expr):
             return p.Variable("NAN")
+        elif np.isneginf(expr):
+            return -p.Variable("INFINITY")
+        elif np.isinf(expr):
+            return p.Variable("INFINITY")
         elif isinstance(expr, np.generic):
             # Explicitly typed: Generated code must reflect type exactly.
 
@@ -416,7 +446,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 raise LoopyError("do not know how to generate code for "
                         "constant of numpy type '%s'" % type(expr).__name__)
 
-        else:
+        elif np.isfinite(expr):
             if type_context == "f":
                 return Literal(repr(np.float32(expr))+"f")
             elif type_context == "d":
@@ -426,109 +456,19 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             else:
                 if is_integer(expr):
                     return int(expr)
-
                 raise RuntimeError("don't know how to generate code "
                         "for constant '%s'" % expr)
+        else:
+            raise LoopyError("don't know how to generate code "
+                             "for constant '%s'" % expr)
 
     def map_call(self, expr, type_context):
-        from pymbolic.primitives import Variable, Subscript
-
-        identifier = expr.function
-
-        # {{{ implement indexof, indexof_vec
-
-        if identifier.name in ["indexof", "indexof_vec"]:
-            if len(expr.parameters) != 1:
-                raise LoopyError("%s takes exactly one argument" % identifier.name)
-            arg, = expr.parameters
-            if not isinstance(arg, Subscript):
-                raise LoopyError(
-                        "argument to %s must be a subscript" % identifier.name)
-
-            ary = self.find_array(arg)
-
-            from loopy.kernel.array import get_access_info
-            from pymbolic import evaluate
-            access_info = get_access_info(self.kernel.target, ary, arg.index,
-                    lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
-                    self.codegen_state.vectorization_info)
-
-            from loopy.kernel.data import ImageArg
-            if isinstance(ary, ImageArg):
-                raise LoopyError("%s does not support images" % identifier.name)
-
-            if identifier.name == "indexof":
-                return access_info.subscripts[0]
-            elif identifier.name == "indexof_vec":
-                from loopy.kernel.array import VectorArrayDimTag
-                ivec = None
-                for iaxis, dim_tag in enumerate(ary.dim_tags):
-                    if isinstance(dim_tag, VectorArrayDimTag):
-                        ivec = iaxis
-
-                if ivec is None:
-                    return access_info.subscripts[0]
-                else:
-                    return (
-                        access_info.subscripts[0]*ary.shape[ivec]
-                        + access_info.vector_index)
-
-            else:
-                raise RuntimeError("should not get here")
-
-        # }}}
-
-        if isinstance(identifier, Variable):
-            identifier = identifier.name
-
-        par_dtypes = tuple(self.infer_type(par) for par in expr.parameters)
-
-        processed_parameters = None
-
-        mangle_result = self.kernel.mangle_function(
-                identifier, par_dtypes,
-                ast_builder=self.codegen_state.ast_builder)
-
-        if mangle_result is None:
-            raise RuntimeError("function '%s' unknown--"
-                    "maybe you need to register a function mangler?"
-                    % identifier)
-
-        if len(mangle_result.result_dtypes) != 1:
-            raise LoopyError("functions with more or fewer than one return value "
-                    "may not be used in an expression")
-
-        if mangle_result.arg_dtypes is not None:
-            processed_parameters = tuple(
-                    self.rec(par,
-                        dtype_to_type_context(self.kernel.target, tgt_dtype),
-                        tgt_dtype)
-                    for par, par_dtype, tgt_dtype in zip(
-                        expr.parameters, par_dtypes, mangle_result.arg_dtypes))
-
-        else:
-            # /!\ FIXME For some functions (e.g. 'sin'), it makes sense to
-            # propagate the type context here. But for many others, it does
-            # not. Using the inferred type as a stopgap for now.
-            processed_parameters = tuple(
-                    self.rec(par,
-                        type_context=dtype_to_type_context(
-                            self.kernel.target, par_dtype))
-                    for par, par_dtype in zip(expr.parameters, par_dtypes))
-
-            from warnings import warn
-            warn("Calling function '%s' with unknown C signature--"
-                    "return CallMangleInfo.arg_dtypes"
-                    % identifier, LoopyWarning)
-
-        from loopy.codegen import SeenFunction
-        self.codegen_state.seen_functions.add(
-                SeenFunction(identifier,
-                    mangle_result.target_name,
-                    mangle_result.arg_dtypes or par_dtypes,
-                    mangle_result.result_dtypes))
-
-        return var(mangle_result.target_name)(*processed_parameters)
+        return (
+                self.codegen_state.callables_table[
+                    expr.function.name].emit_call(
+                        expression_to_code_mapper=self,
+                    expression=expr,
+                    target=self.kernel.target))
 
     # {{{ deal with complex-valued variables
 
@@ -555,6 +495,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
     def map_power(self, expr, type_context):
         tgt_dtype = self.infer_type(expr)
+        base_dtype = self.infer_type(expr.base)
         exponent_dtype = self.infer_type(expr.exponent)
 
         from pymbolic.primitives import is_constant, is_zero
@@ -576,10 +517,21 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         "int_pow", func_name,
                         (tgt_dtype, exponent_dtype),
                         (tgt_dtype, )))
+            # FIXME: This need some more callables to be registered.
             return var(func_name)(self.rec(expr.base, type_context),
                                   self.rec(expr.exponent, type_context))
         else:
-            return self.rec(var("pow")(expr.base, expr.exponent), type_context)
+            from loopy.codegen import SeenFunction
+            clbl = self.codegen_state.ast_builder.known_callables["pow"]
+            clbl = clbl.with_types({0: tgt_dtype, 1: exponent_dtype},
+                    self.codegen_state.callables_table)[0]
+            self.codegen_state.seen_functions.add(
+                    SeenFunction(
+                        clbl.name, clbl.name_in_target,
+                        (base_dtype, exponent_dtype),
+                        (tgt_dtype,)))
+            return var(clbl.name_in_target)(self.rec(expr.base, type_context),
+                    self.rec(expr.exponent, type_context))
 
     # }}}
 
@@ -750,6 +702,11 @@ class CExpressionToCodeMapper(RecursiveMapper):
         return self.parenthesize_if_needed(
                 self.join_rec(" | ", expr.children, PREC_BITWISE_OR),
                 enclosing_prec, PREC_BITWISE_OR)
+
+    def map_bitwise_xor(self, expr, enclosing_prec):
+        return self.parenthesize_if_needed(
+                self.join_rec(" ^ ", expr.children, PREC_BITWISE_XOR),
+                enclosing_prec, PREC_BITWISE_XOR)
 
     def map_sum(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_SUM

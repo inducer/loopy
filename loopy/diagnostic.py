@@ -48,7 +48,7 @@ class WriteRaceConditionWarning(LoopyWarning):
 # }}}
 
 
-def warn_with_kernel(kernel, id, text, type=LoopyWarning):
+def warn_with_kernel(kernel, id, text, type=LoopyWarning, stacklevel=None):
     from fnmatch import fnmatchcase
     for sw in kernel.silenced_warnings:
         if fnmatchcase(id, sw):
@@ -57,8 +57,12 @@ def warn_with_kernel(kernel, id, text, type=LoopyWarning):
     text += (" (add '%s' to silenced_warnings kernel attribute to disable)"
             % id)
 
+    if stacklevel is None:
+        stacklevel = 2
+    else:
+        stacklevel = stacklevel + 1
     from warnings import warn
-    warn(f"in kernel {kernel.name}: {text}", type, stacklevel=2)
+    warn(f"in kernel {kernel.name}: {text}", type, stacklevel=stacklevel)
 
 
 warn = MovedFunctionDeprecationWrapper(warn_with_kernel)
@@ -67,6 +71,10 @@ warn = MovedFunctionDeprecationWrapper(warn_with_kernel)
 # {{{ errors
 
 class LoopyError(RuntimeError):
+    pass
+
+
+class LoopyIndexError(LoopyError):
     pass
 
 
@@ -111,6 +119,11 @@ class LoopyTypeError(LoopyError):
 
 
 class ExpressionNotAffineError(LoopyError):
+    """
+    Raised when an expression is not quasi-affine. See
+    `ISL manual <http://isl.gforge.inria.fr//user.html#Primitive-Functions>`_
+    for then definition of a quasi-affine expression.
+    """
     pass
 
 

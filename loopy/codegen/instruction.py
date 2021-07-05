@@ -29,24 +29,29 @@ dim_type = isl.dim_type
 from loopy.codegen import Unvectorizable
 from loopy.codegen.result import CodeGenerationResult
 from pymbolic.mapper.stringifier import PREC_NONE
+from pytools import memoize_on_first_arg
+
+
+@memoize_on_first_arg
+def _get_new_implemented_domain(kernel, chk_domain, implemented_domain):
+
+    chk_domain, implemented_domain = isl.align_two(
+            chk_domain, implemented_domain)
+    chk_domain = chk_domain.gist(implemented_domain)
+
+    new_implemented_domain = implemented_domain & chk_domain
+    return chk_domain, new_implemented_domain
 
 
 def to_codegen_result(
         codegen_state, insn_id, domain, check_inames, required_preds, ast):
-    # {{{ get bounds check
-
     chk_domain = isl.Set.from_basic_set(domain)
     chk_domain = chk_domain.remove_redundancies()
     chk_domain = codegen_state.kernel.cache_manager.eliminate_except(chk_domain,
             check_inames, (dim_type.set,))
 
-    chk_domain, implemented_domain = isl.align_two(
-            chk_domain, codegen_state.implemented_domain)
-    chk_domain = chk_domain.gist(implemented_domain)
-
-    # }}}
-
-    new_implemented_domain = implemented_domain & chk_domain
+    chk_domain, new_implemented_domain = _get_new_implemented_domain(
+            codegen_state.kernel, chk_domain, codegen_state.implemented_domain)
 
     if chk_domain.is_empty():
         return None
@@ -168,7 +173,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
 
         from cgen import Statement as S  # noqa
 
-        gs, ls = kernel.get_grid_size_upper_bounds()
+        gs, ls = kernel.get_grid_size_upper_bounds(codegen_state.callables_table)
 
         printf_format = "{}.{}[{}][{}]: {}".format(
                 kernel.name,

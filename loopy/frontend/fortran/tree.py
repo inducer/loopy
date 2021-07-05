@@ -23,6 +23,14 @@ THE SOFTWARE.
 import re
 
 from loopy.diagnostic import LoopyError
+from loopy.symbolic import IdentityMapper, FortranDivision
+
+
+class DivisionToFortranDivisionMapper(IdentityMapper):
+    def map_quotient(self, expr):
+        return FortranDivision(
+                self.rec(expr.numerator),
+                self.rec(expr.denominator))
 
 
 class FTreeWalkerBase:
@@ -52,7 +60,9 @@ class FTreeWalkerBase:
 
     ENTITY_RE = re.compile(
             r"^(?P<name>[_0-9a-zA-Z]+)\s*"
-            r"(\((?P<shape>[-+*/0-9:a-zA-Z, \t]+)\))?$")
+            r"(\((?P<shape>[-+*/0-9:a-zA-Z, \t]+)\))?"
+            r"(\s*=\s*(?P<initializer>.+))?"
+            "$")
 
     def parse_dimension_specs(self, node, dim_decls):
         def parse_bounds(bounds_str):
@@ -75,7 +85,31 @@ class FTreeWalkerBase:
             else:
                 shape = None
 
-            yield name, shape
+            init_str = groups["initializer"]
+            if init_str:
+                init_str = init_str.replace("(/", "[")
+                init_str = init_str.replace("/)", "]")
+                init_expr = self.parse_expr(node, init_str)
+
+                from numbers import Number
+                if isinstance(init_expr, Number):
+                    initializer = init_expr
+                elif isinstance(init_expr, list):
+                    for i, item in enumerate(init_expr):
+                        if not isinstance(item, Number):
+                            raise LoopyError("unexpected type of "
+                                    "item %d in initializer: %s"
+                                    % (i+1, type(init_expr).__name__))
+                    initializer = init_expr
+
+                else:
+                    raise LoopyError("unexpected type of initializer: %s"
+                            % type(init_expr).__name__)
+
+            else:
+                initializer = None
+
+            yield name, shape, initializer
 
     def __call__(self, expr, *args, **kwargs):
         return self.rec(expr, *args, **kwargs)
@@ -84,7 +118,8 @@ class FTreeWalkerBase:
 
     def parse_expr(self, node, expr_str, **kwargs):
         try:
-            return self.expr_parser(expr_str, **kwargs)
+            return DivisionToFortranDivisionMapper()(
+                    self.expr_parser(expr_str, **kwargs))
         except Exception as e:
             raise LoopyError(
                     "Error parsing expression '%s' on line %d of '%s': %s"

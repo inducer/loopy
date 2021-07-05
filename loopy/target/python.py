@@ -23,15 +23,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
-
 from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import StringifyMapper
-from loopy.type_inference import TypeInferenceMapper
+from loopy.type_inference import TypeReader
 from loopy.kernel.data import ValueArg
 from loopy.diagnostic import LoopyError  # noqa
 from loopy.target import ASTBuilderBase
-from genpy import Suite
+from genpy import Suite, Collection
 
 
 # {{{ expression to code
@@ -42,7 +40,8 @@ class ExpressionToPythonMapper(StringifyMapper):
         self.codegen_state = codegen_state
 
         if type_inf_mapper is None:
-            type_inf_mapper = TypeInferenceMapper(self.kernel)
+            type_inf_mapper = TypeReader(self.kernel,
+                    self.codegen_state.callables_table)
         self.type_inf_mapper = type_inf_mapper
 
     def handle_unsupported_expression(self, victim, enclosing_prec):
@@ -80,48 +79,30 @@ class ExpressionToPythonMapper(StringifyMapper):
                 expr, enclosing_prec)
 
     def map_call(self, expr, enclosing_prec):
-        from pymbolic.primitives import Variable
         from pymbolic.mapper.stringifier import PREC_NONE
 
-        identifier = expr.function
+        identifier_name = self.codegen_state.callables_table[
+                expr.function.name].name
 
-        if identifier.name in ["indexof", "indexof_vec"]:
+        if identifier_name in ["indexof", "indexof_vec"]:
             raise LoopyError(
                     "indexof, indexof_vec not yet supported in Python")
 
-        if isinstance(identifier, Variable):
-            identifier = identifier.name
-
-        par_dtypes = tuple(self.type_inf_mapper(par) for par in expr.parameters)
+        clbl = self.codegen_state.callables_table[
+                expr.function.name]
 
         str_parameters = None
+        number_of_assignees = len([key for key in
+            clbl.arg_id_to_dtype.keys() if key < 0])
 
-        mangle_result = self.kernel.mangle_function(
-                identifier, par_dtypes,
-                ast_builder=self.codegen_state.ast_builder)
-
-        if mangle_result is None:
-            raise RuntimeError("function '%s' unknown--"
-                    "maybe you need to register a function mangler?"
-                    % identifier)
-
-        if len(mangle_result.result_dtypes) != 1:
+        if number_of_assignees != 1:
             raise LoopyError("functions with more or fewer than one return value "
                     "may not be used in an expression")
 
-        str_parameters = [
-                self.rec(par, PREC_NONE)
-                for par, par_dtype, tgt_dtype in zip(
-                    expr.parameters, par_dtypes, mangle_result.arg_dtypes)]
+        str_parameters = [self.rec(par, PREC_NONE) for par in expr.parameters]
 
-        from loopy.codegen import SeenFunction
-        self.codegen_state.seen_functions.add(
-                SeenFunction(identifier,
-                    mangle_result.target_name,
-                    mangle_result.arg_dtypes or par_dtypes,
-                    mangle_result.result_dtypes))
-
-        return "{}({})".format(mangle_result.target_name, ", ".join(str_parameters))
+        return "{}({})".format(clbl.name_in_target,
+                               ", ".join(str_parameters))
 
     def map_group_hw_index(self, expr, enclosing_prec):
         raise LoopyError("plain Python does not have group hw axes")
@@ -147,32 +128,7 @@ class ExpressionToPythonMapper(StringifyMapper):
 # }}}
 
 
-# {{{ genpy extensions
-
-class Collection(Suite):
-    def generate(self):
-        for item in self.contents:
-            yield from item.generate()
-
-# }}}
-
-
 # {{{ ast builder
-
-def _numpy_single_arg_function_mangler(kernel, name, arg_dtypes):
-    if (not isinstance(name, str)
-            or not hasattr(np, name)
-            or len(arg_dtypes) != 1):
-        return None
-
-    arg_dtype, = arg_dtypes
-
-    from loopy.kernel.data import CallMangleInfo
-    return CallMangleInfo(
-            target_name="_lpy_np."+name,
-            result_dtypes=(arg_dtype,),
-            arg_dtypes=arg_dtypes)
-
 
 def _base_python_preamble_generator(preamble_info):
     yield ("00_future", "from __future__ import division, print_function\n")
@@ -185,19 +141,25 @@ class PythonASTBuilderBase(ASTBuilderBase):
     """A Python host AST builder for integration with PyOpenCL.
     """
 
-    # {{{ code generation guts
-
-    def function_manglers(self):
-        return (
-                super().function_manglers() + [
-                    _numpy_single_arg_function_mangler,
-                    ])
+    @property
+    def known_callables(self):
+        from loopy.target.c import get_c_callables
+        callables = super().known_callables
+        callables.update(get_c_callables())
+        return callables
 
     def preamble_generators(self):
         return (
                 super().preamble_generators() + [
                     _base_python_preamble_generator
                     ])
+
+    # {{{ code generation guts
+
+    @property
+    def ast_module(self):
+        import genpy
+        return genpy
 
     def get_function_declaration(self, codegen_state, codegen_result,
             schedule_index):
@@ -234,7 +196,10 @@ class PythonASTBuilderBase(ASTBuilderBase):
                             "_lpy_np.empty(%s, dtype=%s)"
                             % (
                                 ecm(tv.shape, PREC_NONE, "i"),
-                                "_lpy_np."+tv.dtype.numpy_dtype.name
+                                "_lpy_np."+(
+                                    tv.dtype.numpy_dtype.name
+                                    if tv.dtype.numpy_dtype.name != "bool"
+                                    else "bool8")
                                 )))
 
         return result

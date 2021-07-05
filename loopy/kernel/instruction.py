@@ -333,6 +333,9 @@ class InstructionBase(ImmutableRecord, Taggable):
     def reduction_inames(self):
         raise NotImplementedError
 
+    def sub_array_ref_inames(self):
+        raise NotImplementedError
+
     def assignee_var_names(self):
         """Return a tuple of assignee variable names, one
         for each quantity being assigned to.
@@ -389,6 +392,7 @@ class InstructionBase(ImmutableRecord, Taggable):
 
         return result
 
+    @memoize_method
     def dependency_names(self):
         return self.read_dependency_names() | self.write_dependency_names()
 
@@ -477,7 +481,7 @@ class InstructionBase(ImmutableRecord, Taggable):
 
 def _get_assignee_var_name(expr):
     from pymbolic.primitives import Variable, Subscript, Lookup
-    from loopy.symbolic import LinearSubscript
+    from loopy.symbolic import LinearSubscript, SubArrayRef
 
     if isinstance(expr, Lookup):
         expr = expr.aggregate
@@ -496,13 +500,20 @@ def _get_assignee_var_name(expr):
         assert isinstance(agg, Variable)
 
         return agg.name
+
+    elif isinstance(expr, SubArrayRef):
+        agg = expr.subscript.aggregate
+        assert isinstance(agg, Variable)
+
+        return agg.name
+
     else:
         raise RuntimeError("invalid lvalue '%s'" % expr)
 
 
 def _get_assignee_subscript_deps(expr):
     from pymbolic.primitives import Variable, Subscript, Lookup
-    from loopy.symbolic import LinearSubscript, get_dependencies
+    from loopy.symbolic import LinearSubscript, get_dependencies, SubArrayRef
 
     if isinstance(expr, Lookup):
         expr = expr.aggregate
@@ -513,6 +524,9 @@ def _get_assignee_subscript_deps(expr):
         return get_dependencies(expr.index)
     elif isinstance(expr, LinearSubscript):
         return get_dependencies(expr.index)
+    elif isinstance(expr, SubArrayRef):
+        return get_dependencies(expr.subscript.index) - (
+                frozenset(iname.name for iname in expr.swept_inames))
     else:
         raise RuntimeError("invalid lvalue '%s'" % expr)
 
@@ -804,23 +818,22 @@ class MultiAssignmentBase(InstructionBase):
 
     @memoize_method
     def reduction_inames(self):
-        def map_reduction(expr, rec):
-            rec(expr.expr)
-            for iname in expr.inames:
-                result.add(iname)
+        from loopy.symbolic import get_reduction_inames
+        return get_reduction_inames(self.expression)
 
-        from loopy.symbolic import ReductionCallbackMapper
-        cb_mapper = ReductionCallbackMapper(map_reduction)
-
-        result = set()
-        cb_mapper(self.expression)
-
-        return result
+    @memoize_method
+    def sub_array_ref_inames(self):
+        from loopy.symbolic import get_sub_array_ref_swept_inames
+        return get_sub_array_ref_swept_inames((self.assignees, self.expression))
 
 # }}}
 
 
 # {{{ instruction: assignment
+
+class _not_provided:  # noqa: N801
+    pass
+
 
 class Assignment(MultiAssignmentBase):
     """
@@ -890,8 +903,11 @@ class Assignment(MultiAssignmentBase):
             within_inames_is_final=None,
             within_inames=None,
             tags=None,
-            temp_var_type=Optional(), atomicity=(),
+            temp_var_type=_not_provided, atomicity=(),
             priority=0, predicates=frozenset()):
+
+        if temp_var_type is _not_provided:
+            temp_var_type = Optional()
 
         super().__init__(
                 id=id,
@@ -936,11 +952,28 @@ class Assignment(MultiAssignmentBase):
         if assignee_f is None:
             assignee_f = f
 
+        assignee = assignee_f(self.assignee)
+        expression = f(self.expression)
+        predicates = []
+        changed_predicates = False
+        for pred in self.predicates:
+            new_pred = f(pred)
+            if new_pred is not pred:
+                changed_predicates = True
+            predicates.append(new_pred)
+        if changed_predicates:
+            predicates = frozenset(predicates)
+        else:
+            predicates = self.predicates
+
+        if assignee is self.assignee and expression is self.expression and \
+                predicates is self.predicates:
+            return self
+
         return self.copy(
-                assignee=assignee_f(self.assignee),
-                expression=f(self.expression),
-                predicates=frozenset(
-                    f(pred) for pred in self.predicates))
+                assignee=assignee,
+                expression=expression,
+                predicates=predicates)
 
     # }}}
 
@@ -1040,7 +1073,8 @@ class CallInstruction(MultiAssignmentBase):
 
         from pymbolic.primitives import Call
         from loopy.symbolic import Reduction
-        if not isinstance(expression, (Call, Reduction)) and expression is not None:
+        if not isinstance(expression, (Call, Reduction)) and (
+                expression is not None):
             raise LoopyError("'expression' argument to CallInstruction "
                     "must be a function call")
 
@@ -1056,9 +1090,10 @@ class CallInstruction(MultiAssignmentBase):
             expression = parse(expression)
 
         from pymbolic.primitives import Variable, Subscript
-        from loopy.symbolic import LinearSubscript
+        from loopy.symbolic import LinearSubscript, SubArrayRef
         for assignee in assignees:
-            if not isinstance(assignee, (Variable, Subscript, LinearSubscript)):
+            if not isinstance(assignee, (Variable, Subscript, LinearSubscript,
+                    SubArrayRef)):
                 raise LoopyError("invalid lvalue '%s'" % assignee)
 
         self.assignees = assignees
@@ -1086,11 +1121,31 @@ class CallInstruction(MultiAssignmentBase):
         if assignee_f is None:
             assignee_f = f
 
+        assignees = assignee_f(self.assignees)
+        expression = f(self.expression)
+        predicates = []
+        changed_predicates = False
+        for pred in self.predicates:
+            new_pred = f(pred)
+            if new_pred is not pred:
+                changed_predicates = True
+            predicates.append(new_pred)
+        if changed_predicates:
+            predicates = frozenset(predicates)
+        else:
+            predicates = self.predicates
+
+        if len(assignees) == len(self.assignees) and \
+                all(assignee is orig_assignee for assignee, orig_assignee in
+                    zip(assignees, self.assignees)) \
+                and expression is self.expression and \
+                predicates is self.predicates:
+            return self
+
         return self.copy(
-                assignees=assignee_f(self.assignees),
-                expression=f(self.expression),
-                predicates=frozenset(
-                    f(pred) for pred in self.predicates))
+                assignees=assignees,
+                expression=expression,
+                predicates=predicates)
 
     # }}}
 
@@ -1107,6 +1162,17 @@ class CallInstruction(MultiAssignmentBase):
             result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
         return result
 
+    def arg_id_to_arg(self):
+        """:returns: a :class:`dict` mapping argument identifiers (non-negative numbers
+            for positional arguments and negative numbers
+            for assignees) to their respective values
+        """
+        arg_id_to_arg = dict(enumerate(self.expression.parameters))
+        for i, arg in enumerate(self.assignees):
+            arg_id_to_arg[-i-1] = arg
+
+        return arg_id_to_arg
+
     @property
     def atomicity(self):
         # Function calls can impossibly be atomic, and even the result assignment
@@ -1117,33 +1183,117 @@ class CallInstruction(MultiAssignmentBase):
 # }}}
 
 
+def subscript_contains_slice(subscript):
+    """Return *True* if the *subscript* contains an instance of
+    :class:`pymbolic.primitives.Slice` as of its indices.
+    """
+    from pymbolic.primitives import Subscript, Slice
+    assert isinstance(subscript, Subscript)
+    return any(isinstance(index, Slice) for index in subscript.index_tuple)
+
+
+def is_array_call(assignees, expression):
+    """
+    Returns *True* is the instruction is an array call.
+
+    An array call is a function call applied to array type objects. If any of
+    the arguemnts or assignees to the function is an array,
+    :meth:`is_array_call` will return *True*.
+    """
+    from pymbolic.primitives import Call, Subscript
+    from loopy.symbolic import SubArrayRef
+
+    if not isinstance(expression, Call):
+        return False
+
+    for par in expression.parameters+assignees:
+        if isinstance(par, SubArrayRef):
+            return True
+        elif isinstance(par, Subscript):
+            if subscript_contains_slice(par):
+                return True
+
+    # did not encounter SubArrayRef/Slice, hence must be a normal call
+    return False
+
+
+def modify_assignee_for_array_call(assignee):
+    """
+    Converts the assignee subscript or variable as a SubArrayRef.
+    """
+    from pymbolic.primitives import Subscript, Variable
+    from loopy.symbolic import SubArrayRef
+    if isinstance(assignee, SubArrayRef):
+        return assignee
+    elif isinstance(assignee, Subscript):
+        if subscript_contains_slice(assignee):
+            # Slice subscripted array are treated as SubArrayRef in the kernel
+            # Hence, making the behavior similar to that of `SubArrayref`
+            return assignee
+        else:
+            return SubArrayRef((), assignee)
+    elif isinstance(assignee, Variable):
+        return SubArrayRef((), Subscript(assignee, 0))
+    else:
+        raise LoopyError("ArrayCall only takes Variable, Subscript or "
+                "SubArrayRef as its inputs")
+
+
 def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
+
     if temp_var_types is None:
         temp_var_types = (Optional(),) * len(assignees)
 
-    if len(assignees) == 1:
+    if len(assignees) != 1 or is_array_call(assignees, expression):
+        atomicity = kwargs.pop("atomicity", ())
+        if atomicity:
+            raise LoopyError("atomic operations with more than one "
+                    "left-hand side not supported")
+
+        from pymbolic.primitives import Call
+        from loopy.symbolic import Reduction
+        if not isinstance(expression, (Call, Reduction)):
+            raise LoopyError("right-hand side in multiple assignment must be "
+                    "function call or reduction, got: '%s'" % expression)
+
+        if not is_array_call(assignees, expression):
+            return CallInstruction(
+                    assignees=assignees,
+                    expression=expression,
+                    temp_var_types=temp_var_types,
+                    **kwargs)
+        else:
+            # In the case of an array call, it is important to have each
+            # assignee as an instance of SubArrayRef. If not given as a
+            # SubArrayRef
+            return CallInstruction(
+                    assignees=tuple(modify_assignee_for_array_call(
+                        assignee) for assignee in assignees),
+                    expression=expression,
+                    temp_var_types=temp_var_types,
+                    **kwargs)
+    else:
+        def _is_array(expr):
+            from loopy.symbolic import SubArrayRef
+            from pymbolic.primitives import (Subscript, Slice)
+            if isinstance(expr, SubArrayRef):
+                return True
+            if isinstance(expr, Subscript):
+                return any(isinstance(idx, Slice) for idx in
+                        expr.index_tuple)
+            return False
+
+        from loopy.symbolic import DependencyMapper
+        if any(_is_array(dep) for dep in DependencyMapper()((assignees,
+                expression))):
+            raise LoopyError("Array calls only supported as instructions"
+                    " with function call as RHS for now.")
+
         return Assignment(
                 assignee=assignees[0],
                 expression=expression,
                 temp_var_type=temp_var_types[0],
                 **kwargs)
-
-    atomicity = kwargs.pop("atomicity", ())
-    if atomicity:
-        raise LoopyError("atomic operations with more than one "
-                "left-hand side not supported")
-
-    from pymbolic.primitives import Call
-    from loopy.symbolic import Reduction
-    if not isinstance(expression, (Call, Reduction)):
-        raise LoopyError("right-hand side in multiple assignment must be "
-                "function call or reduction, got: '%s'" % expression)
-
-    return CallInstruction(
-            assignees=assignees,
-            expression=expression,
-            temp_var_types=temp_var_types,
-            **kwargs)
 
 
 # {{{ c instruction
@@ -1264,7 +1414,7 @@ class CInstruction(InstructionBase):
                 | frozenset(self.read_variables))
 
         from loopy.symbolic import get_dependencies
-        for name, iname_expr in self.iname_exprs:
+        for _name, iname_expr in self.iname_exprs:
             result = result | get_dependencies(iname_expr)
 
         for subscript_deps in self.assignee_subscript_deps():
@@ -1274,6 +1424,9 @@ class CInstruction(InstructionBase):
 
     def reduction_inames(self):
         return set()
+
+    def sub_array_ref_inames(self):
+        return frozenset()
 
     def assignee_var_names(self):
         return tuple(_get_assignee_var_name(expr) for expr in self.assignees)
@@ -1320,6 +1473,9 @@ class _DataObliviousInstruction(InstructionBase):
     # read_dependency_names inherited
 
     def reduction_inames(self):
+        return frozenset()
+
+    def sub_array_ref_inames(self):
         return frozenset()
 
     def assignee_var_names(self):

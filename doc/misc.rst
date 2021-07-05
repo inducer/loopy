@@ -332,7 +332,7 @@ This list is always growing, but here are a few pointers:
 
 * Interface with your own library functions
 
-  Use :func:`loopy.register_function_manglers`.
+  See :ref:`func-interface` for details.
 
 * Loop collapse
 
@@ -464,14 +464,15 @@ Email the friendly folks on the `loopy mailing list <https://lists.tiker.net/lis
 Acknowledgments
 ===============
 
-Andreas Klöckner's work on :mod:`loopy` was supported in part by
+Work on loopy was supported in part by
 
-* US Navy ONR grant number N00014-14-1-0117
-* the US National Science Foundation under grant numbers DMS-1418961 and CCF-1524433.
+- the Department of Energy, National Nuclear Security Administration, under Award Number DE-NA0003963,
+- the US Navy ONR, under grant number N00014-14-1-0117, and
+- the US National Science Foundation under grant numbers DMS-1418961, CCF-1524433, DMS-1654756, SHF-1911019, and OAC-1931577.
 
-AK also gratefully acknowledges a hardware gift from Nvidia Corporation.  The
-views and opinions expressed herein do not necessarily reflect those of the
-funding agencies.
+AK also gratefully acknowledges a hardware gift from Nvidia Corporation.
+
+The views and opinions expressed herein do not necessarily reflect those of the funding agencies.
 
 Cross-References to Other Documentation
 =======================================
@@ -485,3 +486,12 @@ Cross-References to Other Documentation
 .. class:: complex128
 
     See :class:`numpy.generic`.
+
+Type Variables
+--------------
+
+.. currentmodule:: loopy
+
+.. class:: T_co
+
+    A covariant type variable used in, e.g. :meth:`pytools.tag.Taggable.copy`.

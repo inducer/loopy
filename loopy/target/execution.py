@@ -22,7 +22,8 @@ THE SOFTWARE.
 
 
 import numpy as np
-from pytools import ImmutableRecord, memoize_method
+from abc import ABC, abstractmethod
+from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 from pytools.py_codegen import (
         Indentation, PythonFunctionGenerator)
@@ -58,30 +59,10 @@ class SeparateArrayPackingController:
     It also repacks outgoing arrays of this type back into an object array.
     """
 
-    def __init__(self, kernel):
-        # map from arg name
-        self.packing_info = {}
+    def __init__(self, packing_info):
+        self.packing_info = packing_info
 
-        from loopy.kernel.array import ArrayBase
-        for arg in kernel.args:
-            if not isinstance(arg, ArrayBase):
-                continue
-
-            if arg.shape is None or arg.dim_tags is None:
-                continue
-
-            subscripts_and_names = arg.subscripts_and_names()
-
-            if subscripts_and_names is None:
-                continue
-
-            self.packing_info[arg.name] = _PackingInfo(
-                    name=arg.name,
-                    sep_shape=arg.sep_shape(),
-                    subscripts_and_names=subscripts_and_names,
-                    is_written=arg.name in kernel.get_written_variables())
-
-    def unpack(self, kernel_kwargs):
+    def __call__(self, kernel_kwargs):
         if not self.packing_info:
             return kernel_kwargs
 
@@ -98,28 +79,40 @@ class SeparateArrayPackingController:
 
         return kernel_kwargs
 
-    def pack(self, outputs):
-        if not self.packing_info:
-            return outputs
 
-        for packing_info in self.packing_info.values():
-            if not packing_info.is_written:
-                continue
+def make_packing_controller(program, entrypoint):
+    packing_info = {}
+    from loopy.kernel.array import ArrayBase
+    for arg in program[entrypoint].args:
+        if not isinstance(arg, ArrayBase):
+            continue
 
-            result = outputs[packing_info.name] = \
-                    np.zeros(packing_info.sep_shape, dtype=np.object)
+        if arg.shape is None or arg.dim_tags is None:
+            continue
 
-            for index, unpacked_name in packing_info.subscripts_and_names:
-                result[index] = outputs.pop(unpacked_name)
+        subscripts_and_names = arg.subscripts_and_names()
 
-        return outputs
+        if subscripts_and_names is None:
+            continue
+
+        packing_info[arg.name] = _PackingInfo(
+                name=arg.name,
+                sep_shape=arg.sep_shape(),
+                subscripts_and_names=subscripts_and_names,
+                is_written=arg.name in
+                program[entrypoint].get_written_variables())
+
+    if packing_info:
+        return SeparateArrayPackingController(packing_info)
+    else:
+        return None
 
 # }}}
 
 
 # {{{ ExecutionWrapperGeneratorBase
 
-class ExecutionWrapperGeneratorBase:
+class ExecutionWrapperGeneratorBase(ABC):
     """
     A set of common methods for generating a wrapper
     for execution
@@ -129,8 +122,25 @@ class ExecutionWrapperGeneratorBase:
     def __init__(self, system_args):
         self.system_args = system_args[:]
 
-    def python_dtype_str(self, dtype):
-        raise NotImplementedError()
+        from pytools import UniqueNameGenerator
+        self.dtype_name_generator = UniqueNameGenerator(forced_prefix="_lpy_dtype_")
+        self.dtype_str_to_name = {}
+
+    @abstractmethod
+    def python_dtype_str_inner(self, dtype):
+        pass
+
+    def python_dtype_str(self, gen, numpy_dtype):
+        dtype_str = self.python_dtype_str_inner(numpy_dtype)
+        try:
+            return self.dtype_str_to_name[dtype_str]
+        except KeyError:
+            pass
+
+        dtype_name = self.dtype_name_generator()
+        gen.add_to_preamble(f"{dtype_name} = _lpy_np.dtype({dtype_str})")
+        self.dtype_str_to_name[dtype_str] = dtype_name
+        return dtype_name
 
     # {{{ invoker generation
 
@@ -140,7 +150,7 @@ class ExecutionWrapperGeneratorBase:
     # {{{ integer arg finding from shapes
 
     def generate_integer_arg_finding_from_shapes(
-            self, gen, kernel, implemented_data_info):
+            self, gen, program, implemented_data_info):
         # a mapping from integer argument names to a list of tuples
         # (arg_name, expression), where expression is a
         # unary function of kernel.arg_dict[arg_name]
@@ -165,7 +175,8 @@ class ExecutionWrapperGeneratorBase:
                     if len(deps) == 1:
                         integer_arg_var, = deps
 
-                        if kernel.arg_dict[integer_arg_var.name].dtype.is_integral():
+                        if program.arg_dict[
+                                integer_arg_var.name].dtype.is_integral():
                             from pymbolic.algorithm import solve_affine_equations_for
                             try:
                                 # friggin' overkill :)
@@ -212,7 +223,7 @@ class ExecutionWrapperGeneratorBase:
     # {{{ integer arg finding from offsets
 
     def generate_integer_arg_finding_from_offsets(self, gen, kernel,
-                                                  implemented_data_info):
+            implemented_data_info):
         options = kernel.options
 
         gen("# {{{ find integer arguments from offsets")
@@ -381,7 +392,7 @@ class ExecutionWrapperGeneratorBase:
 
         expect_no_more_arguments = False
 
-        for arg_idx, arg in enumerate(implemented_data_info):
+        for arg in implemented_data_info:
             is_written = arg.base_name in kernel.get_written_variables()
             kernel_arg = kernel.impl_arg_to_arg.get(arg.name)
 
@@ -463,7 +474,7 @@ class ExecutionWrapperGeneratorBase:
                 with Indentation(gen):
                     gen("if %s.dtype != %s:"
                             % (arg.name, self.python_dtype_str(
-                                kernel_arg.dtype.numpy_dtype)))
+                                gen, kernel_arg.dtype.numpy_dtype)))
                     with Indentation(gen):
                         gen("raise TypeError(\"dtype mismatch on argument '%s' "
                                 '(got: %%s, expected: %s)" %% %s.dtype)'
@@ -616,7 +627,7 @@ class ExecutionWrapperGeneratorBase:
     def generate_host_code(self, gen, codegen_result):
         raise NotImplementedError
 
-    def __call__(self, kernel, codegen_result):
+    def __call__(self, program, entrypoint, codegen_result):
         """
         Generates the wrapping python invoker for this execution target
 
@@ -628,12 +639,12 @@ class ExecutionWrapperGeneratorBase:
             kernel
         """
 
-        options = kernel.options
-        implemented_data_info = codegen_result.implemented_data_info
+        options = program[entrypoint].options
+        implemented_data_info = codegen_result.implemented_data_infos[entrypoint]
 
         from loopy.kernel.data import KernelArgument
         gen = PythonFunctionGenerator(
-                "invoke_%s_loopy_kernel" % kernel.name,
+                "invoke_%s_loopy_kernel" % entrypoint,
                 self.system_args + [
                     "%s=None" % idi.name
                     for idi in implemented_data_info
@@ -648,21 +659,24 @@ class ExecutionWrapperGeneratorBase:
         self.initialize_system_args(gen)
 
         self.generate_integer_arg_finding_from_shapes(
-            gen, kernel, implemented_data_info)
+            gen, program[entrypoint], implemented_data_info)
         self.generate_integer_arg_finding_from_offsets(
-            gen, kernel, implemented_data_info)
+            gen, program[entrypoint], implemented_data_info)
         self.generate_integer_arg_finding_from_strides(
-            gen, kernel, implemented_data_info)
+            gen, program[entrypoint], implemented_data_info)
         self.generate_value_arg_check(
-            gen, kernel, implemented_data_info)
-
+            gen, program[entrypoint], implemented_data_info)
         args = self.generate_arg_setup(
-            gen, kernel, implemented_data_info, options)
+            gen, program[entrypoint], implemented_data_info, options)
 
-        self.generate_invocation(gen, codegen_result.host_program.name, args,
-                kernel, implemented_data_info)
+        #FIXME: should we make this as a dict as well.
+        host_program_name = codegen_result.host_programs[entrypoint].name
 
-        self.generate_output_handler(gen, options, kernel, implemented_data_info)
+        self.generate_invocation(gen, host_program_name, args,
+                program[entrypoint], implemented_data_info)
+
+        self.generate_output_handler(gen, options, program[entrypoint],
+                implemented_data_info)
 
         if options.write_wrapper:
             output = gen.get()
@@ -696,7 +710,7 @@ typed_and_scheduled_cache = WriteOncePersistentDict(
 
 
 invoker_cache = WriteOncePersistentDict(
-        "loopy-invoker-cache-v1-"+DATA_MODEL_VERSION,
+        "loopy-invoker-cache-v10-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
 
@@ -710,64 +724,82 @@ class KernelExecutorBase:
     .. automethod:: __call__
     """
 
-    def __init__(self, kernel):
+    def __init__(self, program, entrypoint):
         """
         :arg kernel: a loopy.LoopKernel
         """
 
-        self.kernel = kernel
+        self.program = program
+        self.entrypoint = entrypoint
 
-        self.packing_controller = SeparateArrayPackingController(kernel)
+        self.packing_controller = make_packing_controller(program, entrypoint)
 
-        self.output_names = tuple(arg.name for arg in self.kernel.args
-                if arg.name in self.kernel.get_written_variables())
+        kernel = self.program[entrypoint]
+        self.output_names = set(arg.name for arg in kernel.args if arg.is_output)
+
+        from loopy import ArrayArg
+        self.input_array_names = set(
+            arg.name for arg in kernel.args
+            if arg.is_input and isinstance(arg, ArrayArg))
 
         self.has_runtime_typed_args = any(
-                arg.dtype is None
-                for arg in kernel.args)
+            arg.dtype is None for arg in kernel.args)
 
-    def get_typed_and_scheduled_kernel_uncached(self, arg_to_dtype_set):
+    def check_for_required_array_arguments(self, input_args):
+        # Formerly, the first exception raised when a required argument is not
+        # passed was often at type inference. This exists to raise a more meaningful
+        # message in such scenarios. Since type inference precedes compilation, this
+        # check cannot be deferred to the generated invoker code.
+        # See discussion at github.com/inducer/loopy/pull/160#issuecomment-867761204
+        # and links therin for context.
+        if not self.input_array_names <= set(input_args):
+            missing_args = self.input_array_names - set(input_args)
+            kernel = self.program[self.entrypoint]
+            raise LoopyError(
+                f"Kernel {kernel.name}() missing required array input arguments: "
+                f"{', '.join(missing_args)}. "
+                "If this is a surprise, maybe you need to add is_input=False to "
+                "your argument.")
+
+    def get_typed_and_scheduled_translation_unit_uncached(
+            self, entrypoint, arg_to_dtype_set):
         from loopy.kernel.tools import add_dtypes
+        from loopy.kernel import KernelState
+        from loopy.translation_unit import resolve_callables
 
-        kernel = self.kernel
+        program = resolve_callables(self.program)
 
         if arg_to_dtype_set:
             var_to_dtype = {}
+            entry_knl = program[entrypoint]
             for var, dtype in arg_to_dtype_set:
-                try:
-                    dest_name = kernel.impl_arg_to_arg[var].name
-                except KeyError:
+                if var in entry_knl.impl_arg_to_arg:
+                    dest_name = entry_knl.impl_arg_to_arg[var].name
+                else:
                     dest_name = var
 
-                try:
-                    var_to_dtype[dest_name] = dtype
-                except KeyError:
-                    raise LoopyError("cannot set type for '%s': "
-                            "no known variable/argument with that name"
-                            % var)
+                var_to_dtype[dest_name] = dtype
 
-            kernel = add_dtypes(kernel, var_to_dtype)
+            program = program.with_kernel(add_dtypes(entry_knl, var_to_dtype))
 
             from loopy.type_inference import infer_unknown_types
-            kernel = infer_unknown_types(kernel, expect_completion=True)
+            program = infer_unknown_types(program, expect_completion=True)
 
-        if kernel.schedule is None:
-            from loopy.preprocess import preprocess_kernel
-            kernel = preprocess_kernel(kernel)
+        if program.state < KernelState.LINEARIZED:
+            from loopy.preprocess import preprocess_program
+            program = preprocess_program(program)
 
-            from loopy.schedule import get_one_scheduled_kernel
-            kernel = get_one_scheduled_kernel(kernel)
+            from loopy.schedule import get_one_linearized_kernel
+            for e in program.entrypoints:
+                program = program.with_kernel(
+                    get_one_linearized_kernel(program[e], program.callables_table))
 
-        return kernel
+        return program
 
-    def get_typed_and_scheduled_kernel(self, arg_to_dtype_set):
+    def get_typed_and_scheduled_translation_unit(self, entrypoint, arg_to_dtype_set):
         from loopy import CACHING_ENABLED
 
-        from loopy.preprocess import prepare_for_caching
-        # prepare_for_caching() gets run by preprocess, but the kernel at this
-        # stage is not guaranteed to be preprocessed.
-        cacheable_kernel = prepare_for_caching(self.kernel)
-        cache_key = (type(self).__name__, cacheable_kernel, arg_to_dtype_set)
+        cache_key = (type(self).__name__, self.program, arg_to_dtype_set)
 
         if CACHING_ENABLED:
             try:
@@ -775,9 +807,11 @@ class KernelExecutorBase:
             except KeyError:
                 pass
 
-        logger.debug("%s: typed-and-scheduled cache miss" % self.kernel.name)
+        logger.debug("%s: typed-and-scheduled cache miss" %
+                self.program.entrypoints)
 
-        kernel = self.get_typed_and_scheduled_kernel_uncached(arg_to_dtype_set)
+        kernel = self.get_typed_and_scheduled_translation_unit_uncached(entrypoint,
+                arg_to_dtype_set)
 
         if CACHING_ENABLED:
             typed_and_scheduled_cache.store_if_not_present(cache_key, kernel)
@@ -785,10 +819,11 @@ class KernelExecutorBase:
         return kernel
 
     def arg_to_dtype_set(self, kwargs):
+        kwargs = kwargs.copy()
         if not self.has_runtime_typed_args:
             return None
 
-        impl_arg_to_arg = self.kernel.impl_arg_to_arg
+        impl_arg_to_arg = self.program[self.entrypoint].impl_arg_to_arg
         arg_to_dtype = {}
         for arg_name, val in kwargs.items():
             arg = impl_arg_to_arg.get(arg_name, None)
@@ -809,18 +844,18 @@ class KernelExecutorBase:
 
     # {{{ debugging aids
 
-    def get_highlighted_code(self, arg_to_dtype=None, code=None):
+    def get_highlighted_code(self, entrypoint, arg_to_dtype=None, code=None):
         if code is None:
-            code = self.get_code(arg_to_dtype)
+            code = self.get_code(entrypoint, arg_to_dtype)
         return get_highlighted_code(code)
 
-    def get_code(self, arg_to_dtype=None):
+    def get_code(self, entrypoint, arg_to_dtype=None):
         def process_dtype(dtype):
             if isinstance(dtype, type) and issubclass(dtype, np.generic):
                 dtype = np.dtype(dtype)
             if isinstance(dtype, np.dtype):
                 from loopy.types import NumpyType
-                dtype = NumpyType(dtype, self.kernel.target)
+                dtype = NumpyType(dtype, self.program.target)
 
             return dtype
 
@@ -828,22 +863,20 @@ class KernelExecutorBase:
             arg_to_dtype = frozenset(
                     (k, process_dtype(v)) for k, v in arg_to_dtype.items())
 
-        kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype)
+        kernel = self.get_typed_and_scheduled_translation_unit(
+                entrypoint, arg_to_dtype)
 
         from loopy.codegen import generate_code_v2
         code = generate_code_v2(kernel)
         return code.device_code()
 
-    def get_invoker_uncached(self, kernel, *args):
+    def get_invoker_uncached(self, program, entrypoint, *args):
         raise NotImplementedError()
 
-    def get_wrapper_generator(self):
-        raise NotImplementedError()
-
-    def get_invoker(self, kernel, *args):
+    def get_invoker(self, program, entrypoint, *args):
         from loopy import CACHING_ENABLED
 
-        cache_key = (self.__class__.__name__, kernel)
+        cache_key = (self.__class__.__name__, (program, entrypoint))
 
         if CACHING_ENABLED:
             try:
@@ -851,9 +884,9 @@ class KernelExecutorBase:
             except KeyError:
                 pass
 
-        logger.debug("%s: invoker cache miss" % kernel.name)
+        logger.debug("%s: invoker cache miss" % entrypoint)
 
-        invoker = self.get_invoker_uncached(kernel, *args)
+        invoker = self.get_invoker_uncached(program, entrypoint, *args)
 
         if CACHING_ENABLED:
             invoker_cache.store_if_not_present(cache_key, invoker)
@@ -863,10 +896,6 @@ class KernelExecutorBase:
     # }}}
 
     # {{{ call and info generator
-
-    @memoize_method
-    def kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
-        raise NotImplementedError()
 
     def __call__(self, queue, **kwargs):
         raise NotImplementedError()

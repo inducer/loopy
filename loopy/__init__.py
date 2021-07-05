@@ -24,12 +24,9 @@ THE SOFTWARE.
 from loopy.symbolic import (
         TaggedVariable, Reduction, LinearSubscript, TypeCast)
 from loopy.diagnostic import LoopyError, LoopyWarning
-
+from loopy.translation_unit import for_each_kernel
 
 # {{{ imported user interface
-
-from loopy.library.function import (
-        default_function_mangler, single_arg_function_mangler)
 
 from loopy.kernel.instruction import (
         LegacyStringInstructionTag, UseStreamingStoreTag,
@@ -47,6 +44,10 @@ from loopy.kernel.data import (
         TemporaryVariable,
         SubstitutionRule,
         CallMangleInfo)
+from loopy.kernel.function_interface import (
+        CallableKernel, ScalarCallable)
+from loopy.translation_unit import (
+        TranslationUnit, Program,  make_program)
 
 from loopy.kernel import LoopKernel, KernelState, kernel_state
 from loopy.kernel.tools import (
@@ -59,7 +60,7 @@ from loopy.kernel.tools import (
         get_subkernels,
         get_subkernel_to_insn_id_map)
 from loopy.types import to_loopy_type
-from loopy.kernel.creation import make_kernel, UniqueName
+from loopy.kernel.creation import make_kernel, UniqueName, make_function
 from loopy.library.reduction import register_reduction_parser
 
 # {{{ import transforms
@@ -115,16 +116,22 @@ from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.add_barrier import add_barrier
+from loopy.transform.callable import (register_callable,
+        merge, inline_callable_kernel, rename_callable)
+from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
+
 # }}}
 
 from loopy.type_inference import infer_unknown_types
-from loopy.preprocess import preprocess_kernel, realize_reduction
+from loopy.preprocess import (preprocess_kernel, realize_reduction,
+        preprocess_program, infer_arg_descr)
 from loopy.schedule import (
-    generate_loop_schedules, get_one_scheduled_kernel, get_one_linearized_kernel)
-from loopy.statistics import (ToCountMap, CountGranularity,
+    generate_loop_schedules, get_one_scheduled_kernel,
+    get_one_linearized_kernel, linearize)
+from loopy.statistics import (ToCountMap, ToCountPolynomialMap, CountGranularity,
         stringify_stats_mapping, Op, MemAccess, get_op_map, get_mem_access_map,
         get_synchronization_map, gather_access_footprints,
-        gather_access_footprint_bytes)
+        gather_access_footprint_bytes, Sync)
 from loopy.codegen import (
         PreambleInfo,
         generate_code, generate_code_v2, generate_body)
@@ -167,6 +174,10 @@ __all__ = [
         "CallInstruction", "CInstruction", "NoOpInstruction",
         "BarrierInstruction",
 
+        "ScalarCallable", "CallableKernel",
+
+        "TranslationUnit", "make_program", "Program",
+
         "KernelArgument",
         "ValueArg", "ArrayArg", "GlobalArg", "ConstantArg", "ImageArg",
         "AddressSpace", "temp_var_scope",   # temp_var_scope is deprecated
@@ -174,9 +185,7 @@ __all__ = [
         "SubstitutionRule",
         "CallMangleInfo",
 
-        "default_function_mangler", "single_arg_function_mangler",
-
-        "make_kernel", "UniqueName",
+        "make_kernel", "UniqueName", "make_function",
 
         "register_reduction_parser",
 
@@ -229,6 +238,13 @@ __all__ = [
 
         "add_barrier",
 
+        "register_callable",
+        "merge",
+
+        "inline_callable_kernel", "rename_callable",
+
+        "pack_and_unpack_args_for_call",
+
         # }}}
 
         "get_dot_dependency_graph",
@@ -244,17 +260,22 @@ __all__ = [
 
         "infer_unknown_types",
 
-        "preprocess_kernel", "realize_reduction",
+        "preprocess_kernel", "realize_reduction", "preprocess_program",
+        "infer_arg_descr",
+
         "generate_loop_schedules",
         "get_one_scheduled_kernel", "get_one_linearized_kernel",
+        "linearize",
+
         "GeneratedProgram", "CodeGenerationResult",
         "PreambleInfo",
         "generate_code", "generate_code_v2", "generate_body",
 
-        "ToCountMap", "CountGranularity", "stringify_stats_mapping", "Op",
-        "MemAccess",  "get_op_map", "get_mem_access_map",
-        "get_synchronization_map", "gather_access_footprints",
-        "gather_access_footprint_bytes",
+        "ToCountMap", "ToCountPolynomialMap", "CountGranularity",
+        "stringify_stats_mapping", "Op", "MemAccess", "get_op_map",
+        "get_mem_access_map", "get_synchronization_map",
+        "gather_access_footprints", "gather_access_footprint_bytes",
+        "Sync",
 
         "CompiledKernel",
 
@@ -280,11 +301,11 @@ __all__ = [
 
         "register_preamble_generators",
         "register_symbol_manglers",
-        "register_function_manglers",
 
         "set_caching_enabled",
         "CacheMode",
         "make_copy_kernel",
+        "make_einsum",
 
         # }}}
         ]
@@ -294,6 +315,7 @@ __all__ = [
 
 # {{{ set_options
 
+@for_each_kernel
 def set_options(kernel, *args, **kwargs):
     """Return a new kernel with the options given as keyword arguments, or from
     a string representation passed in as the first (and only) positional
@@ -301,6 +323,7 @@ def set_options(kernel, *args, **kwargs):
 
     See also :class:`Options`.
     """
+    assert isinstance(kernel, LoopKernel)
 
     if args and kwargs:
         raise TypeError("cannot pass both positional and keyword arguments")
@@ -323,7 +346,7 @@ def set_options(kernel, *args, **kwargs):
         arg, = args
 
         from loopy.options import make_options
-        new_opt.update(make_options(arg))
+        new_opt._update(make_options(arg))
 
     return kernel.copy(options=new_opt)
 
@@ -332,6 +355,7 @@ def set_options(kernel, *args, **kwargs):
 
 # {{{ library registration
 
+@for_each_kernel
 def register_preamble_generators(kernel, preamble_generators):
     """
     :arg manglers: list of functions of signature ``(preamble_info)``
@@ -356,6 +380,7 @@ def register_preamble_generators(kernel, preamble_generators):
     return kernel.copy(preamble_generators=new_pgens)
 
 
+@for_each_kernel
 def register_symbol_manglers(kernel, manglers):
     from loopy.tools import unpickles_equally
 
@@ -371,28 +396,6 @@ def register_symbol_manglers(kernel, manglers):
             new_manglers.insert(0, m)
 
     return kernel.copy(symbol_manglers=new_manglers)
-
-
-def register_function_manglers(kernel, manglers):
-    """
-    :arg manglers: list of functions of signature ``(kernel, name, arg_dtypes)``
-        returning a :class:`loopy.CallMangleInfo`.
-    :returns: *kernel* with *manglers* registered
-    """
-    from loopy.tools import unpickles_equally
-
-    new_manglers = kernel.function_manglers[:]
-    for m in manglers:
-        if m not in new_manglers:
-            if not unpickles_equally(m):
-                raise LoopyError("mangler '%s' does not "
-                        "compare equally after being upickled "
-                        "and would disrupt loopy's caches"
-                        % m)
-
-            new_manglers.insert(0, m)
-
-    return kernel.copy(function_manglers=new_manglers)
 
 # }}}
 
@@ -438,7 +441,7 @@ class CacheMode:
 # {{{ make copy kernel
 
 def make_copy_kernel(new_dim_tags, old_dim_tags=None):
-    """Returns a :class:`LoopKernel` that changes the data layout
+    """Returns a :class:`loopy.TranslationUnit` that changes the data layout
     of a variable (called "input") to the new layout specified by
     *new_dim_tags* from the one specified by *old_dim_tags*.
     *old_dim_tags* defaults to an all-C layout of the same rank
@@ -464,7 +467,7 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
             f"0<={ind}<{shape_i}"
             for ind, shape_i in zip(indices, shape))
 
-    set_str = "{{[{}]: {}}}".format(
+    set_str = "{{[{}]: {} }}".format(
                 commad_indices,
                 bounds
                 )
@@ -483,6 +486,78 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
             result = tag_inames(result, {indices[i]: "unr"})
 
     return result
+
+# }}}
+
+
+# {{{ einsum
+
+def make_einsum(spec, arg_names, **knl_creation_kwargs):
+    r"""Returns a :class:`LoopKernel` for evaluating array-based
+    operations using Einstein summation convention.
+
+    :param spec: a string denoting the subscripts for
+        summation as a comma-separated list of subscript labels.
+        This follows the usual :func:`numpy.einsum` convention.
+        Note that the explicit indicator `->` for the precise output
+        form is required.
+    :param arg_names: a sequence of string types denoting
+        the names of the array operands.
+    :param \**knl_creation_kwargs: keyword arguments for kernel creation.
+        See :func:`make_kernel` for a list of acceptable keyword
+        parameters.
+
+    .. note::
+
+        No attempt is being made to reduce the complexity
+        of the resulting expression. This should be dealt with
+        as part of a separate transformation.
+    """
+    arg_spec, out_spec = spec.split("->")
+    arg_specs = arg_spec.split(",")
+
+    if len(arg_names) != len(arg_specs):
+        raise ValueError(
+            f"Number of arg names ({arg_names}) should match the number "
+            f"of arg specs: {arg_specs}. Length of arg names is {len(arg_names)}; "
+            f"expecting {len(arg_specs)} arg names."
+        )
+
+    out_indices = set(out_spec)
+    if len(out_indices) != len(out_spec):
+        raise ValueError(
+            f"Output subscripts '{out_spec}' does not contain all unique indices."
+        )
+
+    all_indices = {
+        idx
+        for argsp in arg_specs
+        for idx in argsp} | out_indices
+
+    sum_indices = all_indices - out_indices
+
+    from pymbolic import var
+    lhs = var("out")[tuple(var(i) for i in out_spec)]
+
+    rhs = 1
+    for arg_name, argsp in zip(arg_names, arg_specs):
+        rhs = rhs * var(arg_name)[tuple(var(i) for i in argsp)]
+
+    if sum_indices:
+        rhs = Reduction("sum", tuple(var(idx) for idx in sum_indices), rhs)
+
+    constraints = " and ".join(
+        "0 <= %s < N%s" % (idx, idx)
+        for idx in all_indices
+        )
+
+    if "name" not in knl_creation_kwargs:
+        knl_creation_kwargs["name"] = "einsum%dto%d_kernel" % (
+                len(all_indices), len(out_indices))
+
+    return make_kernel("{[%s]: %s}" % (",".join(all_indices), constraints),
+                       [Assignment(lhs, rhs)],
+                       **knl_creation_kwargs)
 
 # }}}
 

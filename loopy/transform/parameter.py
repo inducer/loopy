@@ -25,6 +25,9 @@ from loopy.symbolic import (RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
 import islpy as isl
 
+from loopy.translation_unit import for_each_kernel
+from loopy.kernel import LoopKernel
+
 __doc__ = """
 
 .. currentmodule:: loopy
@@ -37,6 +40,7 @@ __doc__ = """
 
 # {{{ assume
 
+@for_each_kernel
 def assume(kernel, assumptions):
     """Include an assumption about :ref:`domain-parameters` in the kernel, e.g.
     `n mod 4 = 0`.
@@ -64,7 +68,7 @@ def assume(kernel, assumptions):
 
 # {{{ fix_parameter
 
-def _fix_parameter(kernel, name, value):
+def _fix_parameter(kernel, name, value, within=None):
     def process_set(s):
         var_dict = s.get_var_dict()
 
@@ -114,7 +118,7 @@ def _fix_parameter(kernel, name, value):
         new_temp_vars[tv.name] = tv.map_exprs(map_expr)
 
     from loopy.match import parse_stack_match
-    within = parse_stack_match(None)
+    within = parse_stack_match(within)
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
@@ -122,7 +126,7 @@ def _fix_parameter(kernel, name, value):
             rule_mapping_context, subst_func, within=within)
     return (
             rule_mapping_context.finish_kernel(
-                esubst_map.map_kernel(kernel))
+                esubst_map.map_kernel(kernel, within=within))
             .copy(
                 domains=new_domains,
                 args=new_args,
@@ -131,6 +135,7 @@ def _fix_parameter(kernel, name, value):
                 ))
 
 
+@for_each_kernel
 def fix_parameters(kernel, **value_dict):
     """Fix the values of the arguments to specific constants.
 
@@ -138,9 +143,12 @@ def fix_parameters(kernel, **value_dict):
     to be *value*. *name* may refer to :ref:`domain-parameters` or
     :ref:`arguments`.
     """
+    assert isinstance(kernel, LoopKernel)
+
+    within = value_dict.pop("within", None)
 
     for name, value in value_dict.items():
-        kernel = _fix_parameter(kernel, name, value)
+        kernel = _fix_parameter(kernel, name, value, within)
 
     return kernel
 

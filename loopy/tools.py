@@ -35,6 +35,17 @@ def is_integer(obj):
     return isinstance(obj, (int, np.integer))
 
 
+def update_persistent_hash(obj, key_hash, key_builder):
+    """
+    Custom hash computation function for use with
+    :class:`pytools.persistent_dict.PersistentDict`.
+
+    Only works in conjunction with :class:`loopy.tools.KeyBuilder`.
+    """
+    for field_name in obj.hash_fields:
+        key_builder.rec(key_hash, getattr(obj, field_name))
+
+
 # {{{ custom KeyBuilder subclass
 
 class PersistentHashWalkMapper(LoopyWalkMapper, PersistentHashWalkMapperBase):
@@ -51,6 +62,13 @@ class PersistentHashWalkMapper(LoopyWalkMapper, PersistentHashWalkMapperBase):
 
         self.key_hash.update(type(expr.operation).__name__.encode("utf-8"))
         self.rec(expr.expr, *args)
+
+    def map_foreign(self, expr, *args, **kwargs):
+        """Mapper method dispatch for non-:mod:`pymbolic` objects."""
+        if expr is None:
+            self.key_hash.update(b"<None>")
+        else:
+            PersistentHashWalkMapperBase.map_foreign(self, expr, *args, **kwargs)
 
 
 class LoopyKeyBuilder(KeyBuilderBase):
@@ -71,6 +89,11 @@ class LoopyKeyBuilder(KeyBuilderBase):
                 for k, v in key.items()))
 
     update_for_defaultdict = update_for_dict
+
+    def update_for_frozenset(self, key_hash, key):
+        for set_key in sorted(key,
+                key=lambda obj: type(obj).__name__ + str(obj)):
+            self.rec(key_hash, set_key)
 
     def update_for_BasicSet(self, key_hash, key):  # noqa
         from islpy import Printer
@@ -98,6 +121,8 @@ class LoopyKeyBuilder(KeyBuilderBase):
             self.update_for_NoneType(key_hash, key)
         else:
             PersistentHashWalkMapper(key_hash)(key)
+
+    update_for_PMap = update_for_dict  # noqa: N815
 
 
 class PymbolicExpressionHashWrapper:
@@ -184,7 +209,9 @@ def remove_common_indentation(code, require_leading_newline=True,
         return code
 
     # accommodate pyopencl-ish syntax highlighting
-    code = code.lstrip("//CL//")
+    cl_prefix = "//CL//"
+    if code.startswith(cl_prefix):
+        code = code[len(cl_prefix):]
 
     if require_leading_newline and not code.startswith("\n"):
         return code
@@ -237,10 +264,15 @@ def remove_common_indentation(code, require_leading_newline=True,
 
 def build_ispc_shared_lib(
         cwd, ispc_sources, cxx_sources,
-        ispc_options=[], cxx_options=[],
+        ispc_options=None, cxx_options=None,
         ispc_bin="ispc",
         cxx_bin="g++",
         quiet=True):
+    if ispc_options is None:
+        ispc_options = []
+    if cxx_options is None:
+        cxx_options = []
+
     from os.path import join
 
     ispc_source_names = []
