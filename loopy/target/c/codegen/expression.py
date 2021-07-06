@@ -21,6 +21,7 @@ THE SOFTWARE.
 """
 
 
+from loopy.symbolic import Literal
 import numpy as np
 
 from pymbolic.mapper import RecursiveMapper, IdentityMapper
@@ -372,10 +373,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     def map_if(self, expr, type_context):
         from loopy.types import to_loopy_type
         result_type = self.infer_type(expr)
+        cond_type = to_loopy_type(
+            np.int8 if self.kernel.target.use_int8_for_bool else np.bool8)
         return type(expr)(
-                self.rec(expr.condition, type_context,
-                         to_loopy_type(np.bool8,
-                                       target=self.kernel.target)),
+                self.rec(expr.condition, type_context, cond_type),
                 self.rec(expr.then, type_context, result_type),
                 self.rec(expr.else_, type_context, result_type),
                 )

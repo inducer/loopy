@@ -404,8 +404,9 @@ class CFamilyTarget(TargetBase):
     usable as a common base for C99, C++, OpenCL, CUDA, and the like.
     """
 
-    hash_fields = TargetBase.hash_fields + ("fortran_abi",)
-    comparison_fields = TargetBase.comparison_fields + ("fortran_abi",)
+    hash_fields = TargetBase.hash_fields + ("fortran_abi", "use_int8_for_bool")
+    comparison_fields = (TargetBase.comparison_fields
+                         + ("fortran_abi", "use_int8_for_bool"))
 
     def __init__(self, fortran_abi=False):
         self.fortran_abi = fortran_abi

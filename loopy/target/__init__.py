@@ -61,6 +61,7 @@ class TargetBase:
 
     hash_fields = ()
     comparison_fields = ()
+    use_int8_for_bool = False
 
     def update_persistent_hash(self, key_hash, key_builder):
         key_hash.update(type(self).__name__.encode())
