@@ -437,9 +437,12 @@ class LoopKernelDomains:
                                  param_to_idoms=self.param_to_idoms)
 
 
-def make_loop_kernel_domains(domains):
+def make_loop_kernel_domains(domains, inames=None):
     assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT
                for dom in domains)
+    if inames is None:
+        inames = {}
+
     param_to_idoms = defaultdict(frozenset)
     for idom, dom in enumerate(domains):
         for var in dom.get_var_names(dim_type.param):
@@ -449,7 +452,7 @@ def make_loop_kernel_domains(domains):
                             for i_domain, dom in enumerate(domains)
                             for iname in dom.get_var_names(dim_type.set)})
 
-    inames = pmap({iname: Iname(iname)
+    inames = pmap({iname: inames.get(iname, Iname(iname))
                    for iname in home_domain_map})
 
     return LoopKernelDomains(_domains=pvector(domains),
