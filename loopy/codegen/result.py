@@ -179,6 +179,63 @@ def get_idis_for_kernel(kernel):
     return implemented_data_info
 
 
+def _filter_idis_for_function(idis, kernel, function):
+    from functools import reduce
+    from loopy.schedule.tree import Function, InstructionGatherer
+    from loopy.kernel.array import ArrayBase
+    from loopy.kernel.data import InameArg
+    import islpy as isl
+    assert isinstance(function, Function)
+
+    name2idi = {idi.name: idi for idi in idis}
+    insn_ids = InstructionGatherer()(function)
+
+    vars_accessed = reduce(frozenset.union,
+                           (kernel.id_to_insn[insn_id].dependency_names()
+                            for insn_id in insn_ids),
+                           frozenset())
+
+    # {{{ deps from vars' shape expressions
+
+    shape_expr_deps = set()
+
+    for var_name in vars_accessed:
+        var = (kernel
+               .arg_dict.get(var_name,
+                             kernel.temporary_variables.get(var_name)))
+        if isinstance(var, ArrayBase):
+            shape_expr_deps.update(var.depends_on())
+
+    # }}}
+
+    # {{{ domain_deps
+
+    inames_in_fn = reduce(frozenset.union,
+                          (kernel.insn_inames(insn_id)
+                           for insn_id in insn_ids),
+                          frozenset())
+    idoms = {kernel.get_home_domain_index(iname)
+             for iname in inames_in_fn}
+    dom_deps = reduce(frozenset.union,
+                      (kernel.domains[idom].get_var_names(isl.dim_type.param)
+                       for idom in idoms),
+                      frozenset())
+
+    # }}}
+
+    all_deps = vars_accessed | shape_expr_deps | dom_deps
+
+    return [idi
+            for idi in idis
+            if (idi.name in all_deps
+                or idi.arg_class is InameArg
+                or idi.base_name in all_deps
+                or (idi.offset_for_name is not None
+                    and name2idi[idi.offset_for_name].base_name in all_deps)
+                or (idi.stride_for_name_and_axis is not None
+                    and idi.stride_for_name_and_axis[0] in all_deps))]
+
+
 # {{{ program generation top-level
 
 @dataclass(frozen=True)
@@ -345,6 +402,11 @@ class CodeGenMapper(CombineMapper):
         from loopy.schedule.tree import InstructionGatherer
         idis = (get_idis_for_kernel(self.kernel)
                 + synthesize_idis_for_extra_args(self.kernel, expr))
+
+        if self.is_entrypoint:
+            # filter idis iff the function is an entrypoint. For non-entrypoint
+            # kernels the callsite isn't handled here.
+            idis = _filter_idis_for_function(idis, self.kernel, expr)
 
         dev_fn_decl = (self
                        .device_ast_builder
