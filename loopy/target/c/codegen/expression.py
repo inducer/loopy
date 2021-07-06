@@ -21,7 +21,6 @@ THE SOFTWARE.
 """
 
 
-from loopy.symbolic import Literal
 import numpy as np
 
 from pymbolic.mapper import RecursiveMapper, IdentityMapper
