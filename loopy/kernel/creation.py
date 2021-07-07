@@ -2236,7 +2236,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
     if target is None:
         from loopy import _DEFAULT_TARGET
-        target = _DEFAULT_TARGET
+        target = _DEFAULT_TARGET()
 
     if flags is not None:
         if options is not None:

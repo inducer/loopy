@@ -71,22 +71,22 @@ def main():
 
     if args.target == "opencl":
         from loopy.target.opencl import OpenCLTarget
-        target = OpenCLTarget()
+        target = OpenCLTarget
     elif args.target == "ispc":
         from loopy.target.ispc import ISPCTarget
-        target = ISPCTarget()
+        target = ISPCTarget
     elif args.target == "ispc-occa":
         from loopy.target.ispc import ISPCTarget
-        target = ISPCTarget(occa_mode=True)
+        target = lambda: ISPCTarget(occa_mode=True)  # noqa: E731
     elif args.target == "c":
         from loopy.target.c import CTarget
-        target = CTarget()
+        target = CTarget
     elif args.target == "c-fortran":
         from loopy.target.c import CTarget
-        target = CTarget(fortran_abi=True)
+        target = lambda: CTarget(fortran_abi=True)  # noqa: E731
     elif args.target == "cuda":
         from loopy.target.cuda import CudaTarget
-        target = CudaTarget()
+        target = CudaTarget
     else:
         raise ValueError("unknown target: %s" % target)
 
