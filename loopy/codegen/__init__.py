@@ -135,7 +135,7 @@ class ImplementedDataInfo(ImmutableRecord):
 
 # {{{ code generation state
 
-class Unvectorizable(Exception):
+class UnvectorizableError(Exception):
     pass
 
 
@@ -375,7 +375,7 @@ class CodeGenerationState:
         """If *self* is in a vectorizing state (:attr:`vectorization_info` is
         not None), tries to call func (which must be a callable accepting a
         single :class:`CodeGenerationState` argument). If this fails with
-        :exc:`Unvectorizable`, it unrolls the vectorized loop instead.
+        :exc:`UnvectorizableError`, it unrolls the vectorized loop instead.
 
         *func* should return a :class:`GeneratedCode` instance.
 
@@ -387,7 +387,7 @@ class CodeGenerationState:
 
         try:
             return func(self)
-        except Unvectorizable as e:
+        except UnvectorizableError as e:
             warn(self.kernel, "vectorize_failed",
                     "Vectorization of '%s' failed because '%s'"
                     % (what, e))

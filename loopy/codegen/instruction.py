@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 import islpy as isl
 dim_type = isl.dim_type
-from loopy.codegen import Unvectorizable
+from loopy.codegen import UnvectorizableError
 from loopy.codegen.result import CodeGenerationResult
 from pymbolic.mapper.stringifier import PREC_NONE
 from pytools import memoize_on_first_arg
@@ -115,7 +115,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
 
     if codegen_state.vectorization_info:
         if insn.atomicity:
-            raise Unvectorizable("atomic operation")
+            raise UnvectorizableError("atomic operation")
 
         vinfo = codegen_state.vectorization_info
         vcheck = VectorizabilityChecker(
@@ -124,7 +124,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
         rhs_is_vector = vcheck(insn.expression)
 
         if not lhs_is_vector and rhs_is_vector:
-            raise Unvectorizable(
+            raise UnvectorizableError(
                     "LHS is scalar, RHS is vector, cannot assign")
 
         is_vector = lhs_is_vector
@@ -166,7 +166,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
 
     if kernel.options.trace_assignments or kernel.options.trace_assignment_values:
         if codegen_state.vectorization_info and is_vector:
-            raise Unvectorizable("tracing does not support vectorization")
+            raise UnvectorizableError("tracing does not support vectorization")
 
         from pymbolic.mapper.stringifier import PREC_NONE
         lhs_code = codegen_state.expression_to_code_mapper(insn.assignee, PREC_NONE)
@@ -234,7 +234,7 @@ def generate_call_code(codegen_state, insn):
 
     if codegen_state.vectorization_info:
         if insn.atomicity:
-            raise Unvectorizable("atomic operation")
+            raise UnvectorizableError("atomic operation")
 
     # }}}
 
@@ -255,7 +255,7 @@ def generate_c_instruction_code(codegen_state, insn):
     kernel = codegen_state.kernel
 
     if codegen_state.vectorization_info is not None:
-        raise Unvectorizable("C instructions cannot be vectorized")
+        raise UnvectorizableError("C instructions cannot be vectorized")
 
     body = []
 
@@ -285,7 +285,7 @@ def generate_c_instruction_code(codegen_state, insn):
 
 def generate_nop_instruction_code(codegen_state, insn):
     if codegen_state.vectorization_info is not None:
-        raise Unvectorizable("C instructions cannot be vectorized")
+        raise UnvectorizableError("C instructions cannot be vectorized")
     return codegen_state.ast_builder.emit_comment(
         "no-op (insn=%s)" % (insn.id))
 
