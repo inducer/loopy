@@ -553,10 +553,11 @@ class _AccessCheckMapper(WalkMapper):
 
     @memoize_method
     def _get_access_range(self, domain, subscript):
-        from loopy.symbolic import (get_access_map, UnableToDetermineAccessRange)
+        from loopy.symbolic import (get_access_map,
+                                    UnableToDetermineAccessRangeError)
         try:
             return get_access_map(domain, subscript).range()
-        except UnableToDetermineAccessRange:
+        except UnableToDetermineAccessRangeError:
             return None
 
     def map_subscript(self, expr, domain, insn_id):

@@ -2263,7 +2263,7 @@ class PrimeAdder(IdentityMapper):
 
 # {{{ get access range
 
-class UnableToDetermineAccessRange(Exception):
+class UnableToDetermineAccessRangeError(Exception):
     pass
 
 
@@ -2341,7 +2341,7 @@ def get_access_map(domain, subscript, assumptions=None, shape=None,
 
             if shape_aff is None:
                 # failed to convert shape[idim] to aff
-                raise UnableToDetermineAccessRange(
+                raise UnableToDetermineAccessRangeError(
                         "unable to determine access range of subscript: [%s] "
                         "(encountered %s: %s)"
                         % (", ".join(str(si) for si in subscript),
@@ -2432,7 +2432,7 @@ class BatchedAccessMapMapper(WalkMapper):
                     domain, subscript, self.kernel.assumptions,
                     shape=descriptor.shape if self._overestimate else None,
                     allowed_constant_names=self.kernel.get_unwritten_value_args())
-        except UnableToDetermineAccessRange:
+        except UnableToDetermineAccessRangeError:
             self.bad_subscripts[arg_name].append(expr)
             return
 

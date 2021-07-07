@@ -25,7 +25,7 @@ import numpy as np
 
 from pymbolic.mapper import RecursiveMapper
 
-from loopy.codegen import Unvectorizable
+from loopy.codegen import UnvectorizableError
 from loopy.diagnostic import LoopyError
 
 
@@ -58,7 +58,8 @@ def dtype_to_type_context(target, dtype):
 class VectorizabilityChecker(RecursiveMapper):
     """The return value from this mapper is a :class:`bool` indicating whether
     the result of the expression is vectorized along :attr:`vec_iname`.
-    If the expression is not vectorizable, the mapper raises :class:`Unvectorizable`.
+    If the expression is not vectorizable, the mapper raises
+    :class:`UnvectorizableError`.
 
     .. attribute:: vec_iname
     """
@@ -93,7 +94,7 @@ class VectorizabilityChecker(RecursiveMapper):
         rec_pars = [
                 self.rec(child) for child in expr.parameters]
         if any(rec_pars):
-            raise Unvectorizable("fucntion calls cannot yet be vectorized")
+            raise UnvectorizableError("fucntion calls cannot yet be vectorized")
 
         return False
 
@@ -125,14 +126,14 @@ class VectorizabilityChecker(RecursiveMapper):
                     and isinstance(index[i], Variable)
                     and index[i].name == self.vec_iname):
                 if var.shape[i] != self.vec_iname_length:
-                    raise Unvectorizable("vector length was mismatched")
+                    raise UnvectorizableError("vector length was mismatched")
 
                 if possible is None:
                     possible = True
 
             else:
                 if self.vec_iname in get_dependencies(index[i]):
-                    raise Unvectorizable("vectorizing iname '%s' occurs in "
+                    raise UnvectorizableError("vectorizing iname '%s' occurs in "
                             "unvectorized subscript axis %d (1-based) of "
                             "expression '%s'"
                             % (self.vec_iname, i+1, expr))
@@ -146,7 +147,7 @@ class VectorizabilityChecker(RecursiveMapper):
     def map_variable(self, expr):
         if expr.name == self.vec_iname:
             # Technically, this is doable. But we're not going there.
-            raise Unvectorizable()
+            raise UnvectorizableError()
 
         # A single variable is always a scalar.
         return False
@@ -155,7 +156,7 @@ class VectorizabilityChecker(RecursiveMapper):
 
     def map_lookup(self, expr):
         if self.rec(expr.aggregate):
-            raise Unvectorizable()
+            raise UnvectorizableError()
 
         return False
 
@@ -163,17 +164,17 @@ class VectorizabilityChecker(RecursiveMapper):
         # FIXME: These actually can be vectorized:
         # https://www.khronos.org/registry/cl/sdk/1.0/docs/man/xhtml/relationalFunctions.html
 
-        raise Unvectorizable()
+        raise UnvectorizableError()
 
     def map_logical_not(self, expr):
-        raise Unvectorizable()
+        raise UnvectorizableError()
 
     map_logical_and = map_logical_not
     map_logical_or = map_logical_not
 
     def map_reduction(self, expr):
         # FIXME: Do this more carefully
-        raise Unvectorizable()
+        raise UnvectorizableError()
 
 # }}}
 
