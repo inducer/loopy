@@ -138,6 +138,14 @@ class VariableAccessNotOrdered(LoopyError):
 class DependencyCycleFound(LoopyError):
     pass
 
+
+class UnableToDetermineAccessRangeError(Exception):
+    pass
+
+
+class ScheduleDebugInputError(Exception):
+    pass
+
 # }}}
 
 
