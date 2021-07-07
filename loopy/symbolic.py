@@ -57,7 +57,9 @@ from pymbolic.mapper.constant_folder import \
 
 from pymbolic.parser import Parser as ParserBase
 from loopy.diagnostic import LoopyError
-from loopy.diagnostic import ExpressionToAffineConversionError
+from loopy.diagnostic import (ExpressionToAffineConversionError,
+                              UnableToDetermineAccessRangeError)
+
 
 import islpy as isl
 from islpy import dim_type
@@ -2263,8 +2265,13 @@ class PrimeAdder(IdentityMapper):
 
 # {{{ get access range
 
-class UnableToDetermineAccessRangeError(Exception):
-    pass
+class UnableToDetermineAccessRange(UnableToDetermineAccessRangeError):
+    def __init__(self, *args, **kwargs):
+        from warnings import warn
+        warn("UnableToDetermineAccessRange renamed to"
+             " UnableToDetermineAccessRangeError,  will be unsupported in"
+             " 2022.", DeprecationWarning, stacklevel=2)
+        super().__init__(*args, **kwargs)
 
 
 def get_access_map(domain, subscript, assumptions=None, shape=None,

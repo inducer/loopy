@@ -24,7 +24,8 @@ THE SOFTWARE.
 from pytools import ImmutableRecord
 import sys
 import islpy as isl
-from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
+from loopy.diagnostic import (warn_with_kernel, LoopyError,
+                              ScheduleDebugInputError)
 
 from pytools import MinRecursionLimit, ProcessLogger
 
@@ -536,8 +537,13 @@ class ScheduleDebugger:
         self.start_time = time()
 
 
-class ScheduleDebugInputError(Exception):
-    pass
+class ScheduleDebugInput(ScheduleDebugInputError):
+    def __init__(self, *args, **kwargs):
+        from warnings import warn
+        warn("ScheduleDebugInput renamed to"
+             " ScheduleDebugInputError,  will be unsupported in"
+             " 2022.", DeprecationWarning, stacklevel=2)
+        super().__init__(*args, **kwargs)
 
 # }}}
 
