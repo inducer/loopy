@@ -536,7 +536,7 @@ class ScheduleDebugger:
         self.start_time = time()
 
 
-class ScheduleDebugInput(Exception):
+class ScheduleDebugInputError(Exception):
     pass
 
 # }}}
@@ -1407,7 +1407,7 @@ def generate_loop_schedules_internal(
                 "or enter a number to examine schedules of a "
                 "different length:")
         if inp:
-            raise ScheduleDebugInput(inp)
+            raise ScheduleDebugInputError(inp)
 
     if (
             not sched_state.active_inames
@@ -2055,7 +2055,7 @@ def generate_loop_schedules_inner(kernel, callables_table, debug_args=None):
                             sched_state, debug=debug, **schedule_gen_kwargs):
                         pass
 
-                except ScheduleDebugInput as e:
+                except ScheduleDebugInputError as e:
                     debug.debug_length = int(str(e))
                     continue
 
