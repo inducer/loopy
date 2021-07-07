@@ -578,10 +578,10 @@ def _set_up_default_target():
         import pyopencl  # noqa
     except ImportError:
         from loopy.target.opencl import OpenCLTarget
-        target = OpenCLTarget()
+        target = OpenCLTarget
     else:
         from loopy.target.pyopencl import PyOpenCLTarget
-        target = PyOpenCLTarget()
+        target = PyOpenCLTarget
 
     set_default_target(target)
 
