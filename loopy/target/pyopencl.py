@@ -679,6 +679,9 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
     def get_temporary_decls(self, codegen_state, schedule_state):
         from genpy import Assign, Comment, Line
+        from collections import defaultdict
+        from numbers import Number
+        import pymbolic.primitives as prim
 
         def alloc_nbytes(tv):
             from functools import reduce
@@ -692,17 +695,50 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         if not global_temporaries:
             return []
 
-        return [
-            Comment("{{{ allocate global temporaries"),
-            Line()] + [
-            Assign(tv.name, "allocator(%s)" %
-                ecm(alloc_nbytes(tv), PREC_NONE, "i"))
-                for tv in global_temporaries] + [
-            Assign("_global_temporaries", "[{tvs}]".format(tvs=", ".join(
-                tv.name for tv in global_temporaries)))] + [
-            Line(),
-            Comment("}}}"),
-            Line()]
+        # {{{ allocate space for the base_storage
+
+        base_storage_sizes = defaultdict(set)
+
+        for tv in global_temporaries:
+            if tv.base_storage:
+                base_storage_sizes[tv.base_storage].add(tv.nbytes)
+
+        # }}}
+
+        allocated_var_names = []
+        code_lines = []
+        code_lines.append(Line())
+        code_lines.append(Comment("{{{ allocate global temporaries"))
+        code_lines.append(Line())
+
+        for name, sizes in base_storage_sizes.items():
+            if all(isinstance(s, Number) for s in sizes):
+                size = max(sizes)
+            else:
+                size = prim.Max(tuple(sizes))
+
+            allocated_var_names.append(name)
+            code_lines.append(Assign(name,
+                                     f"allocator({ecm(size, PREC_NONE, 'i')})"))
+
+        for tv in global_temporaries:
+            if tv.base_storage:
+                assert tv.base_storage in base_storage_sizes
+                code_lines.append(Assign(tv.name, tv.base_storage))
+            else:
+                nbytes_str = ecm(tv.nbytes, PREC_NONE, "i")
+                allocated_var_names.append(tv.name)
+                code_lines.append(Assign(tv.name,
+                                         f"allocator({nbytes_str})"))
+
+        code_lines.append(Assign("_global_temporaries", "[{tvs}]".format(
+            tvs=", ".join(tv for tv in allocated_var_names))))
+
+        code_lines.append(Line())
+        code_lines.append(Comment("}}}"))
+        code_lines.append(Line())
+
+        return code_lines
 
     def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
         ecm = self.get_expression_to_code_mapper(codegen_state)
