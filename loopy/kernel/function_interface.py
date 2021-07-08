@@ -888,7 +888,7 @@ class CallableKernel(InKernelCallable):
         gsize, lsize = self.subkernel.get_grid_size_upper_bounds(callables_table,
                                                                  return_dict=True)
 
-        subst_dict = {i: val
+        subst_dict = {pos_to_kw[i]: val
                       for i, val in arg_id_to_arg.items()
                       if isinstance(self.subkernel.arg_dict[pos_to_kw[i]],
                                     ValueArg)}

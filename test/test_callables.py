@@ -960,6 +960,30 @@ def test_callee_with_auto_offset(ctx_factory):
     np.testing.assert_allclose(y[3:], 2*np.arange(3, 10))
 
 
+def test_callee_with_parameter_and_grid(ctx_factory):
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    callee = lp.make_function(
+        "{[i]: 0<=i<n}",
+        """
+        y[i] = i
+        """, name="arange")
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        [i]: y[i] = arange(10)
+        """)
+
+    knl = lp.merge([callee, knl])
+    knl = lp.split_iname(knl, "i", 2,
+                         outer_tag="g.0", within="in_kernel:arange")
+
+    evt, (out,) = knl(cq)
+    np.testing.assert_allclose(out.get(), np.arange(10))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
