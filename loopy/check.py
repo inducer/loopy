@@ -1306,8 +1306,10 @@ def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
     from loopy.kernel.data import AddressSpace
     from loopy.kernel.tools import get_subkernels
 
+    globally_defined_base_storage = set()
+
     for subkernel in get_subkernels(kernel):
-        defined_base_storage = set()
+        locally_defined_base_storage = set()
 
         from loopy.schedule.tools import (
                 temporaries_written_in_subkernel, temporaries_read_in_subkernel)
@@ -1315,7 +1317,11 @@ def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
         for temporary in temporaries_written_in_subkernel(kernel, subkernel):
             tval = kernel.temporary_variables[temporary]
             if tval.base_storage is not None:
-                defined_base_storage.add(tval.base_storage)
+                if tval.address_space in (AddressSpace.PRIVATE, AddressSpace.LOCAL):
+                    locally_defined_base_storage.add(tval.base_storage)
+                else:
+                    assert tval.address_space == AddressSpace.GLOBAL
+                    globally_defined_base_storage.add(tval.base_storage)
 
         for temporary in (
                 temporaries_read_in_subkernel(kernel, subkernel) -
@@ -1327,7 +1333,8 @@ def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
 
             # For aliased temporaries, check if there is an aliased definition.
             if tval.base_storage is not None:
-                if tval.base_storage not in defined_base_storage:
+                if tval.base_storage not in (locally_defined_base_storage
+                                             | globally_defined_base_storage):
                     from loopy.diagnostic import MissingDefinitionError
                     raise MissingDefinitionError("temporary variable '%s' gets "
                             "used in subkernel '%s' and neither it nor its "
