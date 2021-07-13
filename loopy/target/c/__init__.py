@@ -848,6 +848,10 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
             else:
                 assert tv.initializer is None
+                if (tv.address_space == AddressSpace.GLOBAL
+                        and codegen_state.is_generating_device_code):
+                    # global temps trigger no codegen in the device code
+                    continue
 
                 offset = 0
                 base_storage_sizes.setdefault(tv.base_storage, []).append(

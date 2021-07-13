@@ -714,6 +714,52 @@ def test_pyopencl_execution_accepts_device_scalars(ctx_factory):
     np.testing.assert_allclose(out.get(), 42)
 
 
+def test_pyopencl_target_with_global_temps_with_base_storage(ctx_factory):
+    from pyopencl.tools import ImmediateAllocator
+
+    class RecordingAllocator(ImmediateAllocator):
+        def __init__(self, queue):
+            super().__init__(queue)
+            self.allocated_nbytes = 0
+
+        def __call__(self, size):
+            self.allocated_nbytes += size
+            return super().__call__(size)
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i, j]: 0<=i, j<10}",
+        """
+        tmp1[i] = 2*i    {id=w_tmp1}
+        y[i] = tmp1[i] {nosync=w_tmp1}
+        ... gbarrier
+        tmp2[j] = 3*j    {id=w_tmp2}
+        z[j] = tmp2[j] {nosync=w_tmp2}
+        """,
+        [lp.TemporaryVariable("tmp1",
+                            base_storage="base",
+                            address_space=lp.AddressSpace.GLOBAL),
+        lp.TemporaryVariable("tmp2",
+                            base_storage="base",
+                            address_space=lp.AddressSpace.GLOBAL),
+        ...],
+        seq_dependencies=True)
+    knl = lp.tag_inames(knl, {"i": "g.0", "j": "g.0"})
+    knl = lp.set_options(knl, "return_dict")
+
+    my_allocator = RecordingAllocator(cq)
+    _, out = knl(cq, allocator=my_allocator)
+
+    np.testing.assert_allclose(out["y"].get(), 2*np.arange(10))
+    np.testing.assert_allclose(out["z"].get(), 3*np.arange(10))
+    assert my_allocator.allocated_nbytes == (40    # base
+                                             + 40  # y
+                                             + 40  # z
+                                             )
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
