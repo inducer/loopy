@@ -76,7 +76,6 @@ def test_lexschedule_creation():
             e[t] = f[t]  {id=insn_d, dep=insn_c}
         end
         """,
-        name="example",
         assumptions="pi,pj,pk,pt >= 1",
         )
     knl = lp.add_and_infer_dtypes(
@@ -87,7 +86,7 @@ def test_lexschedule_creation():
 
     # get a linearization
     knl = preprocess_kernel(knl)
-    knl = get_one_linearized_kernel(knl)
+    knl = get_one_linearized_kernel(knl["loopy_kernel"], knl.callables_table)
     linearization_items = knl.linearization
 
     def _lex_space_string(dim_vals):
