@@ -78,7 +78,7 @@ def test_empty_reduction(ctx_factory):
             "a[i] = sum(j, j)",
             )
 
-    knl = lp.realize_reduction(knl)
+    knl = lp.preprocess_kernel(knl)
     print(knl)
 
     knl = lp.set_options(knl, write_cl=True)
@@ -107,11 +107,9 @@ def test_nested_dependent_reduction(ctx_factory):
                 lp.GlobalArg("ell", np.int32, ("n",)),
                 ])
 
-    cknl = lp.CompiledKernel(ctx, knl)
-
     n = 330
     ell = np.arange(n, dtype=np.int32)
-    evt, (a,) = cknl(queue, ell=ell, n=n, out_host=True)
+    evt, (a,) = knl(queue, ell=ell, n=n, out_host=True)
 
     tgt_result = (2*ell-1)*2*ell/2
     assert (a == tgt_result).all()
@@ -142,10 +140,10 @@ def test_multi_nested_dependent_reduction(ctx_factory):
                 lp.ValueArg("ntgts", np.int32),
                 lp.ValueArg("nboxes", np.int32),
                 ],
-            assumptions="ntgts>=1")
+            assumptions="ntgts>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
-    cknl = lp.CompiledKernel(ctx, knl)
-    print(cknl.get_code())
+    print(lp.generate_code_v2(knl).device_code())
     # FIXME: Actually test functionality.
 
 
@@ -175,10 +173,10 @@ def test_recursive_nested_dependent_reduction(ctx_factory):
                 lp.ValueArg("ntgts", np.int32),
                 lp.ValueArg("nboxes", np.int32),
                 ],
-            assumptions="ntgts>=1")
+            assumptions="ntgts>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
-    cknl = lp.CompiledKernel(ctx, knl)
-    print(cknl.get_code())
+    print(lp.generate_code_v2(knl).device_code())
     # FIXME: Actually test functionality.
 
 
@@ -274,6 +272,7 @@ def test_global_mc_parallel_reduction(ctx_factory, size):
             """)
 
     ref_knl = knl
+    ref_knl = lp.add_dtypes(ref_knl, {"n": np.int32})
 
     gsize = 128
     knl = lp.split_iname(knl, "i", gsize * 20)
@@ -285,7 +284,7 @@ def test_global_mc_parallel_reduction(ctx_factory, size):
     knl = lp.precompute(knl, "red_i_outer_arg", "i_outer",
             temporary_address_space=lp.AddressSpace.GLOBAL,
             default_tag="l.auto")
-    knl = lp.realize_reduction(knl)
+    knl = lp.preprocess_kernel(knl)
     knl = lp.add_dependency(
             knl, "writes:acc_i_outer",
             "id:red_i_outer_arg_barrier")
@@ -410,7 +409,6 @@ def test_parallel_multi_output_reduction(ctx_factory):
                 """)
     knl = lp.tag_inames(knl, dict(i="l.0"))
     knl = lp.add_dtypes(knl, dict(a=np.float64))
-    knl = lp.realize_reduction(knl)
 
     ctx = ctx_factory()
 

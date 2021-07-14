@@ -61,12 +61,12 @@ class LivenessAnalysis:
 
     def __init__(self, kernel):
         self.kernel = kernel
-        self.schedule = self.kernel.schedule
+        self.schedule = kernel.linearization
 
     @memoize_method
     def get_successor_relation(self):
         successors = {}
-        block_bounds = get_block_boundaries(self.kernel.schedule)
+        block_bounds = get_block_boundaries(self.kernel.linearization)
 
         for idx, (item, next_item) in enumerate(zip(
                 reversed(self.schedule),
@@ -157,13 +157,13 @@ class LivenessAnalysis:
     def print_liveness(self):
         print(75 * "-")
         print("LIVE IN:")
-        for sched_idx, sched_item in enumerate(self.schedule):
+        for sched_idx in range(len(self.schedule)):
             print("{item}: {{{vars}}}".format(
                 item=sched_idx,
                 vars=", ".join(sorted(self[sched_idx].live_in))))
         print(75 * "-")
         print("LIVE OUT:")
-        for sched_idx, sched_item in enumerate(self.schedule):
+        for sched_idx in range(len(self.schedule)):
             print("{item}: {{{vars}}}".format(
                 item=sched_idx,
                 vars=", ".join(sorted(self[sched_idx].live_out))))
@@ -232,8 +232,9 @@ class TemporarySaver:
         def new_shape(self):
             return self.hw_dims + self.non_hw_dims
 
-    def __init__(self, kernel):
+    def __init__(self, kernel, callables_table):
         self.kernel = kernel
+        self.callables_table = callables_table
         self.var_name_gen = kernel.get_var_name_generator()
         self.insn_name_gen = kernel.get_instruction_id_generator()
 
@@ -313,7 +314,7 @@ class TemporarySaver:
     def subkernel_to_slice_indices(self):
         result = {}
 
-        for sched_item_idx, sched_item in enumerate(self.kernel.schedule):
+        for sched_item_idx, sched_item in enumerate(self.kernel.linearization):
             if isinstance(sched_item, CallKernel):
                 start_idx = sched_item_idx
             elif isinstance(sched_item, ReturnFromKernel):
@@ -328,7 +329,7 @@ class TemporarySaver:
         within_subkernel = False
         result = {}
 
-        for sched_item_idx, sched_item in enumerate(self.kernel.schedule):
+        for sched_item in self.kernel.linearization:
             if isinstance(sched_item, CallKernel):
                 within_subkernel = True
                 result[sched_item.kernel_name] = frozenset(current_outer_inames)
@@ -353,14 +354,14 @@ class TemporarySaver:
 
         try:
             pre_barrier = next(item for item in
-                self.kernel.schedule[subkernel_start::-1]
+                self.kernel.linearization[subkernel_start::-1]
                 if is_global_barrier(item)).originating_insn_id
         except StopIteration:
             pre_barrier = None
 
         try:
             post_barrier = next(item for item in
-                self.kernel.schedule[subkernel_end:]
+                self.kernel.linearization[subkernel_end:]
                 if is_global_barrier(item)).originating_insn_id
         except StopIteration:
             post_barrier = None
@@ -399,14 +400,14 @@ class TemporarySaver:
                 if not tags:
                     continue
 
-                from loopy.kernel.data import (GroupIndexTag, LocalIndexTag,
+                from loopy.kernel.data import (GroupInameTag, LocalInameTag,
                         ConcurrentTag, filter_iname_tags_by_type)
 
-                if filter_iname_tags_by_type(tags, GroupIndexTag):
-                    tag, = filter_iname_tags_by_type(tags, GroupIndexTag, 1)
+                if filter_iname_tags_by_type(tags, GroupInameTag):
+                    tag, = filter_iname_tags_by_type(tags, GroupInameTag, 1)
                     my_group_tags.append(tag)
-                elif filter_iname_tags_by_type(tags, LocalIndexTag):
-                    tag, = filter_iname_tags_by_type(tags, LocalIndexTag, 1)
+                elif filter_iname_tags_by_type(tags, LocalInameTag):
+                    tag, = filter_iname_tags_by_type(tags, LocalInameTag, 1)
                     my_local_tags.append(tag)
                 elif filter_iname_tags_by_type(tags, ConcurrentTag):
                     raise LoopyError(
@@ -436,7 +437,8 @@ class TemporarySaver:
             return (), ()
 
         group_sizes, local_sizes = (
-            self.kernel.get_grid_sizes_for_insn_ids_as_exprs(accessor_insn_ids))
+            self.kernel.get_grid_sizes_for_insn_ids_as_exprs(accessor_insn_ids,
+                self.callables_table))
 
         if temporary.address_space == lp.AddressSpace.LOCAL:
             # Elide local axes in the save slot for local temporaries.
@@ -623,7 +625,7 @@ class TemporarySaver:
                     kernel = lp.add_nosync(kernel, "global", source, sink)
 
         from loopy.kernel.tools import assign_automatic_axes
-        return assign_automatic_axes(kernel)
+        return assign_automatic_axes(kernel, self.callables_table)
 
     def save(self, temporary, subkernel):
         self.save_or_reload_impl(temporary, subkernel, "save")
@@ -671,8 +673,8 @@ class TemporarySaver:
             if orig_temporary.address_space == AddressSpace.LOCAL:
                 # If the temporary has local scope, then loads / stores can
                 # be done in parallel.
-                from loopy.kernel.data import AutoFitLocalIndexTag
-                iname_to_tags[new_iname] = frozenset([AutoFitLocalIndexTag()])
+                from loopy.kernel.data import AutoFitLocalInameTag
+                iname_to_tags[new_iname] = frozenset([AutoFitLocalInameTag()])
 
             dim_inames.append(new_iname)
 
@@ -717,7 +719,7 @@ class TemporarySaver:
 
 # {{{ auto save and reload across kernel calls
 
-def save_and_reload_temporaries(kernel):
+def save_and_reload_temporaries(program, entrypoint=None):
     """
     Add instructions to save and reload temporary variables that are live
     across kernel calls.
@@ -740,13 +742,28 @@ def save_and_reload_temporaries(kernel):
 
     :returns: The resulting kernel
     """
-    liveness = LivenessAnalysis(kernel)
-    saver = TemporarySaver(kernel)
+    if entrypoint is None:
+        if len(program.entrypoints) != 1:
+            raise LoopyError("Missing argument 'entrypoint'.")
+        entrypoint = list(program.entrypoints)[0]
+
+    knl = program[entrypoint]
+
+    if not knl.linearization:
+        program = lp.preprocess_program(program)
+        from loopy.schedule import get_one_linearized_kernel
+        knl = get_one_linearized_kernel(program[entrypoint],
+                program.callables_table)
+
+    assert knl.linearization is not None
+
+    liveness = LivenessAnalysis(knl)
+    saver = TemporarySaver(knl, program.callables_table)
 
     from loopy.schedule.tools import (
         temporaries_read_in_subkernel, temporaries_written_in_subkernel)
 
-    for sched_idx, sched_item in enumerate(kernel.schedule):
+    for sched_idx, sched_item in enumerate(knl.linearization):
 
         if isinstance(sched_item, CallKernel):
             # Any written temporary that is live-out needs to be read into
@@ -757,8 +774,9 @@ def save_and_reload_temporaries(kernel):
             else:
                 subkernel = sched_item.kernel_name
                 interesting_temporaries = (
-                    temporaries_read_in_subkernel(kernel, subkernel)
-                    | temporaries_written_in_subkernel(kernel, subkernel))
+                    temporaries_read_in_subkernel(knl, subkernel)
+                    | temporaries_written_in_subkernel(knl,
+                                                       subkernel))
 
             for temporary in liveness[sched_idx].live_out & interesting_temporaries:
                 logger.info("reloading {} at entry of {}"
@@ -766,20 +784,20 @@ def save_and_reload_temporaries(kernel):
                 saver.reload(temporary, sched_item.kernel_name)
 
         elif isinstance(sched_item, ReturnFromKernel):
-            if sched_idx == len(kernel.schedule) - 1:
+            if sched_idx == len(knl.linearization) - 1:
                 # Kernel exit: nothing live
                 interesting_temporaries = set()
             else:
                 subkernel = sched_item.kernel_name
                 interesting_temporaries = (
-                    temporaries_written_in_subkernel(kernel, subkernel))
+                    temporaries_written_in_subkernel(knl, subkernel))
 
             for temporary in liveness[sched_idx].live_in & interesting_temporaries:
                 logger.info("saving {} before return of {}"
                         .format(temporary, sched_item.kernel_name))
                 saver.save(temporary, sched_item.kernel_name)
 
-    return saver.finish()
+    return program.with_kernel(saver.finish())
 
 # }}}
 

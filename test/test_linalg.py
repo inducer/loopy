@@ -149,6 +149,8 @@ def test_transpose(ctx_factory):
     knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
             default_tag="l.auto")
 
+    from loopy.transform.data import add_padding_to_avoid_bank_conflicts
+    knl = add_padding_to_avoid_bank_conflicts(knl, ctx.devices[0])
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[dtype.itemsize*n**2*2/1e9], op_label=["GByte"],
             parameters={})

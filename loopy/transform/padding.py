@@ -24,6 +24,12 @@ THE SOFTWARE.
 from pytools import MovedFunctionDeprecationWrapper
 from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 
+from loopy.translation_unit import (for_each_kernel,
+                                    TranslationUnit)
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel
+from loopy.diagnostic import LoopyError
+
 
 class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, arg_names, handler):
@@ -40,7 +46,9 @@ class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
 
 # {{{ split_array_dim (deprecated since June 2016)
 
-def split_array_dim(kernel, arrays_and_axes, count, auto_split_inames=True,
+@for_each_kernel
+def split_array_dim(kernel, arrays_and_axes, count,
+        auto_split_inames=True,
         split_kwargs=None):
     """
     :arg arrays_and_axes: a list of tuples *(array, axis_nr)* indicating
@@ -242,7 +250,7 @@ def split_array_dim(kernel, arrays_and_axes, count, auto_split_inames=True,
     return kernel
 
 
-split_arg_axis = MovedFunctionDeprecationWrapper(split_array_dim)
+split_arg_axis = (MovedFunctionDeprecationWrapper(split_array_dim))
 
 # }}}
 
@@ -366,7 +374,9 @@ def _split_array_axis_inner(kernel, array_name, axis_nr, count, order="C"):
     return kernel
 
 
-def split_array_axis(kernel, array_names, axis_nr, count, order="C"):
+@for_each_kernel
+def split_array_axis(kernel, array_names, axis_nr, count,
+        order="C"):
     """
     :arg array: a list of names of temporary variables or arguments. May
         also be a comma-separated string of these.
@@ -384,6 +394,7 @@ def split_array_axis(kernel, array_names, axis_nr, count, order="C"):
         ``loopy.split_array_dim`` that had the role of this function in
         versions prior to 2016.2.
     """
+    assert isinstance(kernel, LoopKernel)
 
     if isinstance(array_names, str):
         array_names = [i.strip() for i in array_names.split(",") if i.strip()]
@@ -399,6 +410,15 @@ def split_array_axis(kernel, array_names, axis_nr, count, order="C"):
 # {{{ find_padding_multiple
 
 def find_padding_multiple(kernel, variable, axis, align_bytes, allowed_waste=0.1):
+    if isinstance(kernel, TranslationUnit):
+        kernel_names = [i for i, clbl in kernel.callables_table.items()
+                if isinstance(clbl, CallableKernel)]
+        if len(kernel_names) > 1:
+            raise LoopyError()
+        return find_padding_multiple(kernel[kernel_names[0]], variable, axis,
+                align_bytes, allowed_waste)
+    assert isinstance(kernel, LoopKernel)
+
     arg = kernel.arg_dict[variable]
 
     if arg.dim_tags is None:
@@ -436,6 +456,7 @@ def find_padding_multiple(kernel, variable, axis, align_bytes, allowed_waste=0.1
 
 # {{{ add_padding
 
+@for_each_kernel
 def add_padding(kernel, variable, axis, align_bytes):
     arg_to_idx = {arg.name: i for i, arg in enumerate(kernel.args)}
     arg_idx = arg_to_idx[variable]

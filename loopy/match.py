@@ -50,6 +50,7 @@ Match expressions
 .. autoclass:: Tagged
 .. autoclass:: Writes
 .. autoclass:: Reads
+.. autoclass:: InKernel
 .. autoclass:: Iname
 """
 
@@ -74,6 +75,7 @@ _id = intern("_id")
 _tag = intern("_tag")
 _writes = intern("_writes")
 _reads = intern("_reads")
+_in_kernel = intern("_in_kernel")
 _iname = intern("_iname")
 
 _whitespace = intern("_whitespace")
@@ -93,13 +95,14 @@ _LEX_TABLE = [
     (_tag, RE(r"tag:([\w?*]+)")),
     (_writes, RE(r"writes:([\w?*]+)")),
     (_reads, RE(r"reads:([\w?*]+)")),
+    (_in_kernel, RE(r"in_kernel:([\w?*]+)")),
     (_iname, RE(r"iname:([\w?*]+)")),
 
     (_whitespace, RE("[ \t]+")),
     ]
 
 
-_TERMINALS = ([_id, _tag, _writes, _reads, _iname])
+_TERMINALS = ([_id, _tag, _writes, _reads, _in_kernel, _iname])
 
 # {{{ operator precedence
 
@@ -293,6 +296,11 @@ class Reads(GlobMatchExpressionBase):
                 for name in matchable.read_dependency_names())
 
 
+class InKernel(GlobMatchExpressionBase):
+    def __call__(self, kernel, matchable):
+        return self.re.match(kernel.name)
+
+
 class Iname(GlobMatchExpressionBase):
     def __call__(self, kernel, matchable):
         return any(self.re.match(name)
@@ -328,6 +336,10 @@ def parse_match(expr):
             return result
         elif next_tag is _reads:
             result = Reads(pstate.next_match_obj().group(1))
+            pstate.advance()
+            return result
+        elif next_tag is _in_kernel:
+            result = InKernel(pstate.next_match_obj().group(1))
             pstate.advance()
             return result
         elif next_tag is _iname:

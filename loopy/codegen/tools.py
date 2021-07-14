@@ -47,7 +47,7 @@ class KernelProxyForCodegenOperationCacheManager:
     :class:`CodegenOperationCacheManager`.
     """
     instructions: List[InstructionBase]
-    schedule: List[ScheduleItem]
+    linearization: List[ScheduleItem]
     inames: Dict[str, Iname]
 
     @property
@@ -73,7 +73,7 @@ class KernelProxyForCodegenOperationCacheManager:
         # relevant to CodegenOperationCacheManager
         return (self.inames == other.inames
                 and self.instructions == other.instructions
-                and self.schedule == other.schedule)
+                and self.linearization == other.linearization)
 
 
 class CodegenOperationCacheManager:
@@ -96,7 +96,7 @@ class CodegenOperationCacheManager:
         assert isinstance(kernel, LoopKernel)
         return CodegenOperationCacheManager(
                 KernelProxyForCodegenOperationCacheManager(kernel.instructions,
-                            kernel.schedule,
+                            kernel.linearization,
                             kernel.inames))
 
     def with_kernel(self, kernel):
@@ -121,12 +121,12 @@ class CodegenOperationCacheManager:
         """
         active_inames = []
 
-        for i in range(len(self.kernel_proxy.schedule)):
+        for i in range(len(self.kernel_proxy.linearization)):
             if i == 0:
                 active_inames.append(frozenset())
                 continue
 
-            sched_item = self.kernel_proxy.schedule[i-1]
+            sched_item = self.kernel_proxy.linearization[i-1]
             if isinstance(sched_item, EnterLoop):
                 active_inames.append(active_inames[i-1]
                         | frozenset([sched_item.iname]))
@@ -149,12 +149,12 @@ class CodegenOperationCacheManager:
         """
         callkernel_index = []
 
-        for i in range(len(self.kernel_proxy.schedule)):
+        for i in range(len(self.kernel_proxy.linearization)):
             if i == 0:
                 callkernel_index.append(None)
                 continue
 
-            sched_item = self.kernel_proxy.schedule[i-1]
+            sched_item = self.kernel_proxy.linearization[i-1]
 
             if isinstance(sched_item, CallKernel):
                 callkernel_index.append(i-1)
@@ -175,13 +175,14 @@ class CodegenOperationCacheManager:
         """
         has_barrier_within = []
 
-        for sched_idx, sched_item in enumerate(self.kernel_proxy.schedule):
+        for sched_idx, sched_item in enumerate(self.kernel_proxy.linearization):
             if isinstance(sched_item, BeginBlockItem):
                 # TODO: calls to "gather_schedule_block" can be amortized
-                _, endblock_index = gather_schedule_block(self.kernel_proxy.schedule,
-                        sched_idx)
+                _, endblock_index = gather_schedule_block(self.kernel_proxy
+                                                          .linearization,
+                                                          sched_idx)
                 has_barrier_within.append(any(
-                        isinstance(self.kernel_proxy.schedule[i], Barrier)
+                        isinstance(self.kernel_proxy.linearization[i], Barrier)
                         for i in range(sched_idx+1, endblock_index)))
             elif isinstance(sched_item, Barrier):
                 has_barrier_within.append(True)
@@ -196,20 +197,22 @@ class CodegenOperationCacheManager:
         Cached variant of :func:`loopy.schedule.get_insn_ids_for_block_at`.
         """
         from loopy.schedule import get_insn_ids_for_block_at
-        return get_insn_ids_for_block_at(self.kernel_proxy.schedule, sched_index)
+        return get_insn_ids_for_block_at(self.kernel_proxy.linearization,
+                                         sched_index)
 
     @memoize_method
     def get_parallel_inames_in_a_callkernel(self, callkernel_index):
         """
         Returns a :class:`frozenset` of parallel inames in a callkernel
 
-        :arg callkernel_index: Index of the :class:`loopy.schedule.CallKernel` in
-            the :attr:`CodegenOperationCacheManager.kernel_proxy`'s schedule, whose
-            parallel inames are to be found.
+        :arg callkernel_index: Index of the :class:`loopy.schedule.CallKernel`
+            in the :attr:`CodegenOperationCacheManager.kernel_proxy`'s
+            schedule, whose parallel inames are to be found.
         """
 
         from loopy.kernel.data import ConcurrentTag
-        assert isinstance(self.kernel_proxy.schedule[callkernel_index], CallKernel)
+        assert isinstance(self.kernel_proxy.linearization[callkernel_index],
+                          CallKernel)
         insn_ids_in_subkernel = self.get_insn_ids_for_block_at(callkernel_index)
 
         inames_in_subkernel = {iname

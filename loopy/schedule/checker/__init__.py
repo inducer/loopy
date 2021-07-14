@@ -72,8 +72,11 @@ def get_pairwise_statement_orderings(
         ...         "b[k] = k+a[0]  {id=stmt_b,dep=stmt_a}",
         ...     ])
         >>> knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
+        >>> # Preprocess
+        >>> knl = lp.preprocess_kernel(knl)
         >>> # Get a linearization
-        >>> knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+        >>> knl = lp.get_one_linearized_kernel(
+        ...     knl["loopy_kernel"], knl.callables_table)
         >>> # Get pairwise order info -----------------------------------------------
         >>> from loopy.schedule.checker import get_pairwise_statement_orderings
         >>> sio_dict = get_pairwise_statement_orderings(

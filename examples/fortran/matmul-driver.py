@@ -11,7 +11,7 @@ def main():
     with open(fn) as inf:
         source = inf.read()
 
-    dgemm, = lp.parse_transformed_fortran(source, filename=fn)
+    dgemm = lp.parse_transformed_fortran(source, filename=fn)
 
     ctx = cl.create_some_context()
     queue = cl.CommandQueue(ctx)

@@ -11,9 +11,9 @@ k = lp.make_kernel([
         <> length = rowend - rowstart
         y[i] = sum(j, values[rowstart+j] * x[colindices[rowstart + j]])
     end
-    """)
+    """, name="spmv")
 
 k = lp.add_and_infer_dtypes(k, {
-    "values,x": np.float64, "rowstarts,colindices": k.index_dtype
+    "values,x": np.float64, "rowstarts,colindices": k["spmv"].index_dtype
     })
-print(lp.generate_code(k)[0])
+print(lp.generate_code_v2(k).device_code())
