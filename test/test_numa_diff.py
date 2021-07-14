@@ -57,12 +57,10 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
 
     source = source.replace("datafloat", "real*4")
 
-    hsv_r, hsv_s = [
-           knl for knl in lp.parse_fortran(
-               source, filename, seq_dependencies=False,
-               all_names_known=False)
-           if "KernelR" in knl.name or "KernelS" in knl.name
-           ]
+    program = lp.parse_fortran(source, filename, seq_dependencies=False)
+
+    hsv_r, hsv_s = program["strongVolumeKernelR"], program["strongVolumeKernelS"]
+
     hsv_r = lp.tag_instructions(hsv_r, "rknl")
     hsv_s = lp.tag_instructions(hsv_s, "sknl")
     hsv = lp.fuse_kernels([hsv_r, hsv_s], ["_r", "_s"])
@@ -233,6 +231,14 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
 
     hsv = tap_hsv
 
+    hsv = lp.set_options(hsv,
+            cl_build_options=[
+                 "-cl-denorms-are-zero",
+                 "-cl-fast-relaxed-math",
+                 "-cl-finite-math-only",
+                 "-cl-mad-enable",
+                 "-cl-no-signed-zeros"])
+
     if 1:
         print("OPS")
         op_map = lp.get_op_map(hsv, subgroup_size=32)
@@ -242,15 +248,9 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
         gmem_map = lp.get_mem_access_map(hsv, subgroup_size=32).to_bytes()
         print(lp.stringify_stats_mapping(gmem_map))
 
-    hsv = lp.set_options(hsv, cl_build_options=[
-         "-cl-denorms-are-zero",
-         "-cl-fast-relaxed-math",
-         "-cl-finite-math-only",
-         "-cl-mad-enable",
-         "-cl-no-signed-zeros",
-         ])
-
-    hsv = hsv.copy(name="horizontalStrongVolumeKernel")
+    # FIXME: renaming's a bit tricky in this program model.
+    # add a simple transformation for it
+    # hsv = hsv.copy(name="horizontalStrongVolumeKernel")
 
     results = lp.auto_test_vs_ref(ref_hsv, ctx, hsv, parameters=dict(elements=300),
             quiet=True)

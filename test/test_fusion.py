@@ -134,7 +134,7 @@ def test_write_block_matrix_fusion(ctx_factory):
         knl = lp.rename_argument(write_into_mat_prg(), "mat", f"mat_{idx}")
         kwargs[f"mat_{idx}"] = mat
 
-        for iname in knl.all_inames():
+        for iname in knl.default_entrypoint.all_inames():
             knl = lp.rename_iname(knl, iname, f"{iname}_{idx}")
 
         knl = lp.rename_argument(knl, "ndofs", f"ndofs_{idx}")

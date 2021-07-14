@@ -42,7 +42,9 @@ Please check :ref:`installation` to get started.
     tutorial
     ref_creation
     ref_kernel
+    ref_translation_unit
     ref_transform
+    ref_call
     ref_other
     misc
     ref_internals

@@ -332,7 +332,7 @@ This list is always growing, but here are a few pointers:
 
 * Interface with your own library functions
 
-  Use :func:`loopy.register_function_manglers`.
+  See :ref:`func-interface` for details.
 
 * Loop collapse
 

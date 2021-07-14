@@ -26,6 +26,10 @@ from islpy import dim_type
 from loopy.kernel.data import ImageArg
 
 from pytools import MovedFunctionDeprecationWrapper
+from loopy.translation_unit import (TranslationUnit,
+                                    for_each_kernel)
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 
 # {{{ convenience: add_prefetch
@@ -136,7 +140,8 @@ class _not_provided:  # noqa: N801
     pass
 
 
-def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
+def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
+        sweep_inames=None, dim_arg_names=None,
 
         # "None" is a valid value here, distinct from the default.
         default_tag=_not_provided,
@@ -146,7 +151,9 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         temporary_address_space=None, temporary_scope=None,
         footprint_subscripts=None,
         fetch_bounding_box=False,
-        fetch_outer_inames=None):
+        fetch_outer_inames=None,
+        prefetch_insn_id=None,
+        within=None):
     """Prefetch all accesses to the variable *var_name*, with all accesses
     being swept through *sweep_inames*.
 
@@ -233,8 +240,18 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     :arg fetch_outer_inames: The inames within which the fetch
         instruction is nested. If *None*, make an educated guess.
 
+    :arg fetch_insn_id: The ID of the instruction generated to perform the
+        prefetch.
+
+    :arg within: a stack match as understood by
+        :func:`loopy.match.parse_stack_match` to select the instructions where
+        *var_name* is to be prefetched.
+
     This function internally uses :func:`extract_subst` and :func:`precompute`.
     """
+    assert isinstance(kernel, LoopKernel)
+    if sweep_inames is None:
+        sweep_inames = []
 
     # {{{ fish indexing out of var_name and into footprint_subscripts
 
@@ -310,7 +327,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     # }}}
 
     from loopy.transform.subst import extract_subst
-    kernel = extract_subst(kernel, rule_name, uni_template, parameters)
+    kernel = extract_subst(kernel, rule_name, uni_template, parameters,
+            within=within)
 
     if isinstance(sweep_inames, str):
         sweep_inames = [s.strip() for s in sweep_inames.split(",")]
@@ -327,15 +345,17 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     # precompute module, but precompute acutally uses that to adjust its
     # warning message.
 
-    from loopy.transform.precompute import precompute
-    new_kernel = precompute(kernel, subst_use, sweep_inames,
-            precompute_inames=dim_arg_names,
+    from loopy.transform.precompute import precompute_for_single_kernel
+    new_kernel = precompute_for_single_kernel(kernel, callables_table,
+            subst_use, sweep_inames, precompute_inames=dim_arg_names,
             default_tag=default_tag, dtype=var_descr.dtype,
             fetch_bounding_box=fetch_bounding_box,
             temporary_name=temporary_name,
             temporary_address_space=temporary_address_space,
             temporary_scope=temporary_scope,
-            precompute_outer_inames=fetch_outer_inames)
+            precompute_outer_inames=fetch_outer_inames,
+            compute_insn_id=prefetch_insn_id,
+            within=within)
 
     # {{{ remove inames that were temporarily added by slice sweeps
 
@@ -362,11 +382,35 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     else:
         return new_kernel
 
+
+def add_prefetch(program, *args, **kwargs):
+    assert isinstance(program, TranslationUnit)
+
+    new_callables = {}
+    for func_id, in_knl_callable in program.callables_table.items():
+        if isinstance(in_knl_callable, CallableKernel):
+            new_subkernel = add_prefetch_for_single_kernel(
+                    in_knl_callable.subkernel, program.callables_table,
+                    *args, **kwargs)
+            in_knl_callable = in_knl_callable.copy(
+                    subkernel=new_subkernel)
+
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown type of callable %s." % (
+                type(in_knl_callable).__name__))
+
+        new_callables[func_id] = in_knl_callable
+
+    return program.copy(callables_table=new_callables)
+
 # }}}
 
 
 # {{{ change variable kinds
 
+@for_each_kernel
 def change_arg_to_image(kernel, name):
     new_args = []
     for arg in kernel.args:
@@ -384,6 +428,7 @@ def change_arg_to_image(kernel, name):
 
 # {{{ tag array axes
 
+@for_each_kernel
 def tag_array_axes(kernel, ary_names, dim_tags):
     """
     :arg dim_tags: a tuple of
@@ -422,13 +467,15 @@ def tag_array_axes(kernel, ary_names, dim_tags):
     return kernel
 
 
-tag_data_axes = MovedFunctionDeprecationWrapper(tag_array_axes)
+tag_data_axes = (
+        MovedFunctionDeprecationWrapper(tag_array_axes))
 
 # }}}
 
 
 # {{{ set_array_axis_names
 
+@for_each_kernel
 def set_array_axis_names(kernel, ary_names, dim_names):
     """
     .. versionchanged:: 2016.2
@@ -453,13 +500,15 @@ def set_array_axis_names(kernel, ary_names, dim_names):
     return kernel
 
 
-set_array_dim_names = MovedFunctionDeprecationWrapper(set_array_axis_names)
+set_array_dim_names = (MovedFunctionDeprecationWrapper(
+    set_array_axis_names))
 
 # }}}
 
 
 # {{{ remove_unused_arguments
 
+@for_each_kernel
 def remove_unused_arguments(kernel):
     new_args = []
 
@@ -501,6 +550,7 @@ def remove_unused_arguments(kernel):
 
 # {{{ alias_temporaries
 
+@for_each_kernel
 def alias_temporaries(kernel, names, base_name_prefix=None,
         synchronize_for_exclusive_use=True):
     """Sets all temporaries given by *names* to be backed by a single piece of
@@ -585,11 +635,14 @@ def alias_temporaries(kernel, names, base_name_prefix=None,
 
 # {{{ set argument order
 
+@for_each_kernel
 def set_argument_order(kernel, arg_names):
     """
     :arg arg_names: A list (or comma-separated string) or argument
         names. All arguments must be in this list.
     """
+    #FIXME: @inducer -- shoulld this only affect the root kernel, or should it
+    # take a within?
 
     if isinstance(arg_names, str):
         arg_names = arg_names.split(",")
@@ -618,6 +671,7 @@ def set_argument_order(kernel, arg_names):
 
 # {{{ rename argument
 
+@for_each_kernel
 def rename_argument(kernel, old_name, new_name, existing_ok=False):
     """
     .. versionadded:: 2016.2
@@ -691,6 +745,7 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 
 # {{{ set temporary scope
 
+@for_each_kernel
 def set_temporary_scope(kernel, temp_var_names, scope):
     """
     :arg temp_var_names: a container with membership checking,
@@ -732,6 +787,7 @@ def set_temporary_scope(kernel, temp_var_names, scope):
 
 # {{{ reduction_arg_to_subst_rule
 
+@for_each_kernel
 def reduction_arg_to_subst_rule(
         kernel, inames, insn_match=None, subst_rule_name=None):
     if isinstance(inames, str):
@@ -791,6 +847,97 @@ def reduction_arg_to_subst_rule(
     return kernel.copy(
             instructions=new_insns,
             substitutions=substs)
+
+# }}}
+
+
+# {{{ add_padding_to_avoid_bank_conflicts
+
+# experimental not exported/documented for now
+@for_each_kernel
+def add_padding_to_avoid_bank_conflicts(kernel, device):
+    import pyopencl as cl
+    import pyopencl.characterize as cl_char
+
+    new_temp_vars = {}
+
+    from loopy.kernel.data import AddressSpace
+
+    lmem_size = cl_char.usable_local_mem_size(device)
+    for temp_var in kernel.temporary_variables.values():
+        if temp_var.address_space != AddressSpace.LOCAL:
+            new_temp_vars[temp_var.name] = \
+                    temp_var.copy(storage_shape=temp_var.shape)
+            continue
+
+        if not temp_var.shape:
+            # scalar, no need to mess with storage shape
+            new_temp_vars[temp_var.name] = temp_var
+            continue
+
+        other_loctemp_nbytes = [
+                tv.nbytes
+                for tv in kernel.temporary_variables.values()
+                if tv.address_space == AddressSpace.LOCAL
+                and tv.name != temp_var.name]
+
+        storage_shape = temp_var.storage_shape
+
+        if storage_shape is None:
+            storage_shape = temp_var.shape
+
+        storage_shape = list(storage_shape)
+
+        # sizes of all dims except the last one, which we may change
+        # below to avoid bank conflicts
+        from pytools import product
+
+        if device.local_mem_type == cl.device_local_mem_type.GLOBAL:
+            # FIXME: could try to avoid cache associativity disasters
+            new_storage_shape = storage_shape
+
+        elif device.local_mem_type == cl.device_local_mem_type.LOCAL:
+            min_mult = cl_char.local_memory_bank_count(device)
+            good_incr = None
+            new_storage_shape = storage_shape
+            min_why_not = None
+
+            for increment in range(storage_shape[-1]//2):
+
+                test_storage_shape = storage_shape[:]
+                test_storage_shape[-1] = test_storage_shape[-1] + increment
+                new_mult, why_not = cl_char.why_not_local_access_conflict_free(
+                        device, temp_var.dtype.itemsize,
+                        temp_var.shape, test_storage_shape)
+
+                # will choose smallest increment 'automatically'
+                if new_mult < min_mult:
+                    new_lmem_use = (sum(other_loctemp_nbytes)
+                            + temp_var.dtype.itemsize*product(test_storage_shape))
+                    if new_lmem_use < lmem_size:
+                        new_storage_shape = test_storage_shape
+                        min_mult = new_mult
+                        min_why_not = why_not
+                        good_incr = increment
+
+            if min_mult != 1:
+                from warnings import warn
+                from loopy.diagnostic import LoopyAdvisory
+                warn("could not find a conflict-free mem layout "
+                        "for local variable '%s' "
+                        "(currently: %dx conflict, increment: %s, reason: %s)"
+                        % (temp_var.name, min_mult, good_incr, min_why_not),
+                        LoopyAdvisory)
+        else:
+            from warnings import warn
+            warn("unknown type of local memory")
+
+            new_storage_shape = storage_shape
+
+        new_temp_vars[temp_var.name] = temp_var.copy(
+                storage_shape=tuple(new_storage_shape))
+
+    return kernel.copy(temporary_variables=new_temp_vars)
 
 # }}}
 
