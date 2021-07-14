@@ -65,7 +65,7 @@ def _align_and_compare_maps(maps):
         assert map1_aligned == map2
 
 
-def _lex_point_string(dim_vals, lid_inames=[], gid_inames=[]):
+def _lex_point_string(dim_vals, lid_inames=(), gid_inames=()):
     # Return a string describing a point in a lex space
     # by assigning values to lex dimension variables
     # (used to create maps below)
