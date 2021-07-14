@@ -109,7 +109,7 @@ def generate_pairwise_schedules(
         knl,
         linearization_items,
         insn_id_pairs,
-        loops_to_ignore=set(),
+        loops_to_ignore=frozenset(),
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
