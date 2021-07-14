@@ -68,8 +68,11 @@ def get_schedules_for_statement_pairs(
         >>> knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
         >>> knl = lp.prioritize_loops(knl, "i,j")
         >>> knl = lp.prioritize_loops(knl, "i,k")
+        >>> # Preprocess
+        >>> knl = lp.preprocess_kernel(knl)
         >>> # Get a linearization
-        >>> knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+        >>> knl = lp.get_one_linearized_kernel(
+        ...     knl["loopy_kernel"], knl.callables_table)
         >>> # Get a pairwise schedule -----------------------------------------------
         >>> from loopy.schedule.checker import get_schedules_for_statement_pairs
         >>> # Get two maps ----------------------------------------------------------
