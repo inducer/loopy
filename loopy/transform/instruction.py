@@ -146,6 +146,7 @@ def add_dependency(kernel, insn_match, depends_on):
 
 # {{{ add_dependency_v2
 
+@for_each_kernel
 def add_dependency_v2(
         kernel, stmt_id, depends_on_id, new_dependency):
     """Add the statement instance dependency `new_dependency` to the statement with
