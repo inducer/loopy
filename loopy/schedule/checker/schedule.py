@@ -532,6 +532,31 @@ def get_pairwise_statement_orderings_inner(
                 if lin_item.synchronization_kind == sync_kind:
                     next_blex_tuple[-1] += 1
 
+                lp_stmt_id = lin_item.originating_insn_id
+
+                if lp_stmt_id is None:
+                    # Barriers without stmt ids were inserted as a result of a
+                    # dependency. They don't themselves have dependencies.
+                    # Don't map this barrier to a blex tuple.
+                    continue
+
+                # This barrier has a stmt id.
+                # If it was included in listed stmts, process it.
+                # Otherwise, there's nothing left to do (we've already
+                # incremented next_blex_tuple if necessary, and this barrier
+                # does not need to be assigned to a designated point in blex
+                # time)
+                if lp_stmt_id in all_stmt_ids:
+                    # If sync scope matches, give this barrier its own point in
+                    # lex time and update blex tuple after barrier.
+                    # Otherwise, add stmt->blex pair to stmt_inst_to_blex, but
+                    # don't update the blex tuple (just like with any other
+                    # stmt)
+                    if lin_item.synchronization_kind == sync_kind:
+                        stmt_inst_to_blex[lp_stmt_id] = tuple(next_blex_tuple)
+                        next_blex_tuple[-1] += 1
+                    else:
+                        stmt_inst_to_blex[lp_stmt_id] = tuple(next_blex_tuple)
             else:
                 from loopy.schedule import (CallKernel, ReturnFromKernel)
                 # No action needed for these types of linearization item
