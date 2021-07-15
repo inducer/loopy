@@ -1345,21 +1345,19 @@ def test_add_dependency_v2():
         b[i] = a[i]  {id=stmt_b, dep=stmt_a}
         c[i] = b[i]  {id=stmt_c, dep=stmt_b}
         """,
-        name="example",
-        assumptions=assumptions_str,
         lang_version=(2018, 2)
         )
     knl = lp.add_and_infer_dtypes(
             knl, {"a": np.float32, "b": np.float32, "c": np.float32})
 
-    for stmt in knl.instructions:
+    for stmt in knl["loopy_kernel"].instructions:
         assert not stmt.dependencies
 
     # Add a dependency to stmt_b
     dep_b_on_a = make_dep_map(
         "[pi] -> {{ [i'] -> [i] : i > i' "
         "and {0} }}".format(assumptions_str),
-        self_dep=False, knl_with_domains=knl)
+        self_dep=False, knl_with_domains=knl["loopy_kernel"])
 
     # test make_dep_map while we're here:
     dep_b_on_a_test = _isl_map_with_marked_dims(
@@ -1374,7 +1372,7 @@ def test_add_dependency_v2():
 
     knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a)
 
-    for stmt in knl.instructions:
+    for stmt in knl["loopy_kernel"].instructions:
         if stmt.id == "stmt_b":
             assert stmt.dependencies == {
                 "stmt_a": [dep_b_on_a, ],
@@ -1386,7 +1384,7 @@ def test_add_dependency_v2():
     dep_b_on_a_2 = make_dep_map(
         "[pi] -> {{ [i'] -> [i] : i = i' "
         "and {0}}}".format(assumptions_str),
-        self_dep=False, knl_with_domains=knl)
+        self_dep=False, knl_with_domains=knl["loopy_kernel"])
 
     # test make_dep_map while we're here:
     dep_b_on_a_2_test = _isl_map_with_marked_dims(
@@ -1401,7 +1399,7 @@ def test_add_dependency_v2():
 
     knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a_2)
 
-    for stmt in knl.instructions:
+    for stmt in knl["loopy_kernel"].instructions:
         if stmt.id == "stmt_b":
             assert stmt.dependencies == {
                 "stmt_a": [dep_b_on_a, dep_b_on_a_2],
@@ -1432,7 +1430,7 @@ def test_add_dependency_v2():
     knl = lp.add_dependency_v2(knl, "stmt_c", "stmt_a", dep_c_on_a)
     knl = lp.add_dependency_v2(knl, "stmt_c", "stmt_b", dep_c_on_b)
 
-    for stmt in knl.instructions:
+    for stmt in knl["loopy_kernel"].instructions:
         if stmt.id == "stmt_b":
             assert stmt.dependencies == {
                 "stmt_a": [dep_b_on_a, dep_b_on_a_2],
@@ -1481,18 +1479,17 @@ def test_make_dep_map():
         a[i,j] = 3.14  {id=stmt_a}
         b[k] = a[i,k]  {id=stmt_b, dep=stmt_a}
         """,
-        name="example",
         lang_version=(2018, 2)
         )
     knl = lp.add_and_infer_dtypes(knl, {"a,b": np.float32})
 
-    for stmt in knl.instructions:
+    for stmt in knl["loopy_kernel"].instructions:
         assert not stmt.dependencies
 
     # Add a dependency to stmt_b
     dep_b_on_a = make_dep_map(
         "[n] -> { [i',j'] -> [i,k] : i > i' and j' < k}",
-        self_dep=False, knl_with_domains=knl)
+        self_dep=False, knl_with_domains=knl["loopy_kernel"])
 
     # Create expected dep
     dep_b_on_a_test = _isl_map_with_marked_dims(
@@ -1551,7 +1548,6 @@ def test_new_dependencies_finite_diff():
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
         proc_knl, lin_items)
 
-    print(lp.generate_code_v2(lin_knl).device_code())
     assert not unsatisfied_deps
 
     # Make sure dep checking also works with just linearized kernel
@@ -1572,7 +1568,6 @@ def test_new_dependencies_finite_diff():
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
         proc_knl, lin_items)
 
-    print(lp.generate_code_v2(lin_knl).device_code())
     assert len(unsatisfied_deps) == 1
 
     # }}}
@@ -1589,7 +1584,6 @@ def test_new_dependencies_finite_diff():
     # Without a barrier, deps not satisfied
     # Make sure there is no barrier, and that unsatisfied deps are caught
     from loopy.schedule import Barrier
-    print(lp.generate_code_v2(lin_knl).device_code())
     for lin_item in lin_items:
         assert not isinstance(lin_item, Barrier)
 
@@ -1616,7 +1610,6 @@ def test_new_dependencies_finite_diff():
 
     # Make sure deps are satisfied
     lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
-    print(lp.generate_code_v2(lin_knl).device_code())
 
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
         proc_knl, lin_items)
