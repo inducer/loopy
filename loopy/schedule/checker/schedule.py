@@ -194,7 +194,7 @@ def get_pairwise_statement_orderings_inner(
         knl,
         lin_items,
         stmt_id_pairs,
-        loops_to_ignore=set(),
+        loops_to_ignore=frozenset(),
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
@@ -239,7 +239,7 @@ def get_pairwise_statement_orderings_inner(
     """
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
-    from loopy.kernel.data import (LocalIndexTag, GroupIndexTag)
+    from loopy.kernel.data import (LocalInameTag, GroupInameTag)
     from loopy.schedule.checker.lexicographic_order_map import (
         create_lex_order_map,
         get_statement_ordering_map,
@@ -368,16 +368,16 @@ def get_pairwise_statement_orderings_inner(
     gid_lex_dim_names = set()
     par_iname_constraint_dicts = {}
     for iname in knl.all_inames():
-        ltag = knl.iname_tags_of_type(iname, LocalIndexTag)
+        ltag = knl.iname_tags_of_type(iname, LocalInameTag)
         if ltag:
             assert len(ltag) == 1  # (should always be true)
             ltag_var = LTAG_VAR_NAMES[ltag.pop().axis]
             lid_lex_dim_names.add(ltag_var)
             par_iname_constraint_dicts[iname] = {1: 0, iname: 1, ltag_var: -1}
 
-            continue  # Shouldn't be any GroupIndexTags
+            continue  # Shouldn't be any GroupInameTags
 
-        gtag = knl.iname_tags_of_type(iname, GroupIndexTag)
+        gtag = knl.iname_tags_of_type(iname, GroupInameTag)
         if gtag:
             assert len(gtag) == 1  # (should always be true)
             gtag_var = GTAG_VAR_NAMES[gtag.pop().axis]

@@ -171,10 +171,11 @@ class ISPCTarget(CFamilyTarget):
     host_program_name_suffix = ""
     device_program_name_suffix = "_inner"
 
-    def pre_codegen_check(self, kernel):
-        gsize, lsize = kernel.get_grid_size_upper_bounds_as_exprs()
+    def pre_codegen_entrypoint_check(self, kernel, callables_table):
+        gsize, lsize = kernel.get_grid_size_upper_bounds_as_exprs(
+                callables_table)
         if len(lsize) > 1:
-            for i, ls_i in enumerate(lsize[1:]):
+            for ls_i in lsize[1:]:
                 if ls_i != 1:
                     raise LoopyError("local axis %d (0-based) "
                             "has length > 1, which is unsupported "
@@ -425,15 +426,15 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
             new_terms = []
 
-            from loopy.kernel.data import LocalIndexTag, filter_iname_tags_by_type
+            from loopy.kernel.data import LocalInameTag, filter_iname_tags_by_type
             from loopy.symbolic import get_dependencies
 
             saw_l0 = False
             for term in terms:
                 if (isinstance(term, Variable)
-                            and kernel.iname_tags_of_type(term.name, LocalIndexTag)):
+                            and kernel.iname_tags_of_type(term.name, LocalInameTag)):
                     tag, = kernel.iname_tags_of_type(
-                        term.name, LocalIndexTag, min_num=1, max_num=1)
+                        term.name, LocalInameTag, min_num=1, max_num=1)
                     if tag.axis == 0:
                         if saw_l0:
                             raise LoopyError(
@@ -445,9 +446,9 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                     for dep in get_dependencies(term):
                         if dep in kernel.all_inames() and (
                                 filter_iname_tags_by_type(kernel.inames[dep].tags,
-                                    LocalIndexTag)):
+                                    LocalInameTag)):
                             tag, = filter_iname_tags_by_type(
-                                kernel.inames[dep].tags, LocalIndexTag, 1)
+                                kernel.inames[dep].tags, LocalInameTag, 1)
                             if tag.axis == 0:
                                 raise LoopyError(
                                     "streaming store must have stride 1 in "
@@ -464,7 +465,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                         "data type")
 
             rhs_has_programindex = any(
-                isinstance(tag, LocalIndexTag) and tag.axis == 0
+                isinstance(tag, LocalInameTag) and tag.axis == 0
                 for tag in kernel.iname_tags(dep)
                 for dep in get_dependencies(insn.expression))
 

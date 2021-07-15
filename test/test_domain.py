@@ -56,20 +56,15 @@ def test_assume(ctx_factory):
     knl = lp.make_kernel(
             "{[i]: 0<=i<n}",
             "a[i] = a[i] + 1",
-            [lp.GlobalArg("a", np.float32, shape="n"), "..."])
+            [lp.GlobalArg("a", np.float32, shape="n"), "..."],
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     knl = lp.split_iname(knl, "i", 16)
     knl = lp.prioritize_loops(knl, "i_outer,i_inner")
     knl = lp.assume(knl, "n mod 16 = 0")
     knl = lp.assume(knl, "n > 10")
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    kernel_gen = lp.generate_loop_schedules(knl)
-
-    for gen_knl in kernel_gen:
-        print(gen_knl)
-        compiled = lp.CompiledKernel(ctx, gen_knl)
-        print(compiled.get_code())
-        assert "if" not in compiled.get_code()
+    code = lp.generate_code_v2(knl).device_code()
+    assert "if" not in code
 
 
 def test_divisibility_assumption(ctx_factory):
@@ -85,16 +80,14 @@ def test_divisibility_assumption(ctx_factory):
                 lp.GlobalArg("b", np.float32, shape=("n",)),
                 lp.ValueArg("n", np.int32),
                 ],
-            assumptions="n>=1 and (exists zz: n = 16*zz)")
+            assumptions="n>=1 and (exists zz: n = 16*zz)",
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     ref_knl = knl
 
     knl = lp.split_iname(knl, "i", 16)
-
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    for k in lp.generate_loop_schedules(knl):
-        code = lp.generate_code(k)
-        assert "if" not in code
+    code = lp.generate_code_v2(knl).device_code()
+    assert "if" not in code
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
             parameters={"n": 16**3})
@@ -113,16 +106,12 @@ def test_eq_constraint(ctx_factory):
             [
                 lp.GlobalArg("a", np.float32, shape=(1000,)),
                 lp.GlobalArg("b", np.float32, shape=(1000,))
-                ])
+                ],
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0")
     knl = lp.split_iname(knl, "i_inner", 16, outer_tag=None, inner_tag="l.0")
-
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-    kernel_gen = lp.generate_loop_schedules(knl)
-
-    for knl in kernel_gen:
-        print(lp.generate_code(knl))
+    print(lp.generate_code_v2(knl).device_code())
 
 
 def test_dependent_loop_bounds(ctx_factory):
@@ -145,12 +134,10 @@ def test_dependent_loop_bounds(ctx_factory):
                 lp.GlobalArg("a_sum", dtype, shape=lp.auto),
                 lp.ValueArg("n", np.int32),
                 ],
-            assumptions="n>=1 and row_len>=1")
+            assumptions="n>=1 and row_len>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
-    cknl = lp.CompiledKernel(ctx, knl)
-    print("---------------------------------------------------")
-    print(cknl.get_highlighted_code())
-    print("---------------------------------------------------")
+    print(lp.generate_code_v2(knl).device_code())
 
 
 def test_dependent_loop_bounds_2(ctx_factory):
@@ -174,14 +161,13 @@ def test_dependent_loop_bounds_2(ctx_factory):
                 lp.GlobalArg("ax", dtype, shape=lp.auto),
                 lp.ValueArg("n", np.int32),
                 ],
-            assumptions="n>=1 and row_len>=1")
+            assumptions="n>=1 and row_len>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0",
             inner_tag="l.0")
-    cknl = lp.CompiledKernel(ctx, knl)
-    print("---------------------------------------------------")
-    print(cknl.get_highlighted_code())
-    print("---------------------------------------------------")
+
+    print(lp.generate_code_v2(knl).device_code())
 
 
 def test_dependent_loop_bounds_3(ctx_factory):
@@ -206,25 +192,22 @@ def test_dependent_loop_bounds_3(ctx_factory):
                 lp.GlobalArg("a_row_lengths", np.int32, shape=lp.auto),
                 lp.GlobalArg("a", dtype, shape=("n,n"), order="C"),
                 lp.ValueArg("n", np.int32),
-                ])
+                ],
+            target=lp.PyOpenCLTarget(ctx.devices[0]),
+            name="loopy_kernel")
 
-    assert knl.parents_per_domain()[1] == 0
+    assert knl["loopy_kernel"].parents_per_domain()[1] == 0
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0",
             inner_tag="l.0")
 
-    cknl = lp.CompiledKernel(ctx, knl)
-    print("---------------------------------------------------")
-    print(cknl.get_highlighted_code())
-    print("---------------------------------------------------")
+    print(lp.generate_code_v2(knl).device_code())
 
     knl_bad = lp.split_iname(knl, "jj", 128, outer_tag="g.1",
             inner_tag="l.1")
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
-
     with pytest.raises(RuntimeError):
-        list(lp.generate_loop_schedules(knl_bad))
+        list(lp.generate_code_v2(knl_bad))
 
 
 def test_dependent_loop_bounds_4():
@@ -280,17 +263,17 @@ def test_independent_multi_domain(ctx_factory):
                 lp.GlobalArg("a", dtype, shape=("n"), order="C"),
                 lp.GlobalArg("b", dtype, shape=("n"), order="C"),
                 lp.ValueArg("n", np.int32),
-                ])
+                ],
+            name="loopy_kernel")
 
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0",
             inner_tag="l.0")
     knl = lp.split_iname(knl, "j", 16, outer_tag="g.0",
             inner_tag="l.0")
-    assert knl.parents_per_domain() == 2*[None]
+    assert knl["loopy_kernel"].parents_per_domain() == 2*[None]
 
     n = 50
-    cknl = lp.CompiledKernel(ctx, knl)
-    evt, (a, b) = cknl(queue, n=n, out_host=True)
+    evt, (a, b) = knl(queue, n=n, out_host=True)
 
     assert a.shape == (50,)
     assert b.shape == (50,)
@@ -394,10 +377,11 @@ def test_triangle_domain(ctx_factory):
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n and i <= j}",
             "a[i,j] = 17",
-            assumptions="n>=1")
+            assumptions="n>=1",
+            target=lp.PyOpenCLTarget(ctx.devices[0]))
 
     print(knl)
-    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
+    print(lp.generate_code_v2(knl).device_code())
 
 
 if __name__ == "__main__":

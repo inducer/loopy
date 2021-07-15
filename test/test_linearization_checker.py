@@ -66,7 +66,7 @@ def _align_and_compare_maps(maps):
         assert map1_aligned == map2
 
 
-def _lex_point_string(dim_vals, lid_inames=[], gid_inames=[]):
+def _lex_point_string(dim_vals, lid_inames=(), gid_inames=()):
     # Return a string describing a point in a lex space
     # by assigning values to lex dimension variables
     # (used to create maps below)
@@ -140,12 +140,13 @@ def _check_orderings_for_stmt_pair(
     _align_and_compare_maps(maps_to_compare)
 
 
-def _process_and_linearize(knl):
+def _process_and_linearize(knl, knl_name="loopy_kernel"):
     # Return linearization items along with the preprocessed kernel and
     # linearized kernel
     proc_knl = preprocess_kernel(knl)
-    lin_knl = get_one_linearized_kernel(proc_knl)
-    return lin_knl.linearization, proc_knl, lin_knl
+    lin_knl = get_one_linearized_kernel(
+        proc_knl[knl_name], proc_knl.callables_table)
+    return lin_knl.linearization, proc_knl[knl_name], lin_knl
 
 # }}}
 
@@ -181,7 +182,6 @@ def test_intra_thread_pairwise_schedule_creation():
             e[t] = f[t]  {id=stmt_d, dep=stmt_c}
         end
         """,
-        name="example",
         assumptions="pi,pj,pk,pt >= 1",
         )
     knl = lp.add_and_infer_dtypes(
@@ -405,7 +405,6 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
             end
         end
         """,
-        name="example",
         assumptions="pi,pj >= 1",
         lang_version=(2018, 2)
         )
@@ -538,7 +537,6 @@ def test_intra_thread_statement_instance_ordering():
             e[t] = f[t]  {id=stmt_d, dep=stmt_c}
         end
         """,
-        name="example",
         assumptions="pi,pj,pk,pt >= 1",
         lang_version=(2018, 2)
         )
@@ -683,7 +681,6 @@ def test_statement_instance_ordering_with_hw_par_tags():
             end
         end
         """,
-        name="example",
         assumptions="pi,pj >= 1",
         lang_version=(2018, 2)
         )
@@ -704,7 +701,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
         )
 
     # Create string for representing parallel iname condition in sio
-    conc_inames, _ = partition_inames_by_concurrency(knl)
+    conc_inames, _ = partition_inames_by_concurrency(knl["loopy_kernel"])
     par_iname_condition = " and ".join(
         "{0} = {0}'".format(iname) for iname in conc_inames)
 
@@ -766,7 +763,6 @@ def test_sios_and_schedules_with_barriers():
             end
         end
         """,
-        name="funky",
         assumptions=assumptions,
         lang_version=(2018, 2)
         )
@@ -1296,7 +1292,6 @@ def test_sios_with_matmul():
             [
                 "c[i, j] = sum(k, a[i, k]*b[k, j])"
             ],
-            name="matmul",
             assumptions="n,m,ell >= 1",
             lang_version=(2018, 2),
             )

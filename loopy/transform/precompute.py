@@ -27,6 +27,8 @@ from loopy.symbolic import (get_dependencies,
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
 from pymbolic.mapper.substitutor import make_subst_func
+from loopy.translation_unit import TranslationUnit
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 import numpy as np
 
 from pymbolic import var
@@ -255,10 +257,10 @@ class _not_provided:  # noqa: N801
     pass
 
 
-def precompute(kernel, subst_use, sweep_inames=[], within=None,
-        storage_axes=None, temporary_name=None, precompute_inames=None,
-        precompute_outer_inames=None,
-        storage_axis_to_tag={},
+def precompute_for_single_kernel(kernel, callables_table, subst_use,
+        sweep_inames=None, within=None, storage_axes=None, temporary_name=None,
+        precompute_inames=None, precompute_outer_inames=None,
+        storage_axis_to_tag=None,
 
         # "None" is a valid value here, distinct from the default.
         default_tag=_not_provided,
@@ -352,6 +354,18 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     Trivial storage axes (i.e. axes of length 1 with respect to the sweep) are
     eliminated.
     """
+    if isinstance(kernel, TranslationUnit):
+        kernel_names = [i for i, clbl in
+                kernel.callables_table.items() if isinstance(clbl,
+                    CallableKernel)]
+        if len(kernel_names) != 1:
+            raise LoopyError()
+
+        return kernel.with_kernel(precompute(kernel[kernel_names[0]],
+            subst_use, sweep_inames, within, storage_axes, temporary_name,
+            precompute_inames, precompute_outer_inames, storage_axis_to_tag,
+            default_tag, dtype, fetch_bounding_box, temporary_address_space,
+            compute_insn_id, kernel.callables_table, **kwargs))
 
     # {{{ unify temporary_address_space / temporary_scope
 
@@ -378,6 +392,11 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 % ", ".join(kwargs.keys()))
 
     # {{{ check, standardize arguments
+
+    if sweep_inames is None:
+        sweep_inames = []
+    if storage_axis_to_tag is None:
+        storage_axis_to_tag = {}
 
     if isinstance(sweep_inames, str):
         sweep_inames = [iname.strip() for iname in sweep_inames.split(",")]
@@ -1030,15 +1049,34 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # }}}
 
-    from loopy import tag_inames
+    from loopy.transform.iname import tag_inames
     kernel = tag_inames(kernel, new_iname_to_tag)
 
-    from loopy.kernel.data import AutoFitLocalIndexTag, filter_iname_tags_by_type
+    from loopy.kernel.data import AutoFitLocalInameTag, filter_iname_tags_by_type
 
-    if filter_iname_tags_by_type(new_iname_to_tag.values(), AutoFitLocalIndexTag):
+    if filter_iname_tags_by_type(new_iname_to_tag.values(), AutoFitLocalInameTag):
         from loopy.kernel.tools import assign_automatic_axes
-        kernel = assign_automatic_axes(kernel)
+        kernel = assign_automatic_axes(kernel, callables_table)
 
     return kernel
+
+
+def precompute(program, *args, **kwargs):
+    assert isinstance(program, TranslationUnit)
+    new_callables = {}
+
+    for func_id, clbl in program.callables_table.items():
+        if isinstance(clbl, CallableKernel):
+            knl = precompute_for_single_kernel(clbl.subkernel,
+                    program.callables_table, *args, **kwargs)
+            clbl = clbl.copy(subkernel=knl)
+        elif isinstance(clbl, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError()
+
+        new_callables[func_id] = clbl
+
+    return program.copy(callables_table=new_callables)
 
 # vim: foldmethod=marker
