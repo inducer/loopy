@@ -552,8 +552,6 @@ class PolyhedronLoopifier(IdentityMapper):
 
     def map_function(self, expr, context):
         from loopy.kernel.data import AxisTag
-        # get the implemented domain for the insn ids in this kernel
-        # Shouldn't be difficult to write a combine mapper for it.
         gsize, lsize = self.kernel.get_grid_sizes_for_insn_ids(
             InstructionGatherer()(expr), self.callables_table, return_dict=True)
 
