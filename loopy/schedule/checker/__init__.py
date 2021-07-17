@@ -44,7 +44,7 @@ def get_pairwise_statement_orderings(
         this routine during linearization, a truncated (i.e. partial)
         linearization may be passed through this argument.
 
-    :arg stmt_id_pairs: A list containing pairs of statement identifiers.
+    :arg stmt_id_pairs: A sequence containing pairs of statement identifiers.
 
     :returns: A dictionary mapping each two-tuple of statement identifiers
         provided in `stmt_id_pairs` to a :class:`collections.namedtuple`
