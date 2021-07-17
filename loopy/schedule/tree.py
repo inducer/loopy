@@ -664,7 +664,7 @@ class UnvectorizableInamesCollector(CombineMapper):
         from loopy.diagnostic import warn
         from loopy.symbolic import pw_aff_to_expr
         from loopy.expression import VectorizabilityChecker
-        from loopy.codegen import Unvectorizable
+        from loopy.codegen import UnvectorizableError
         from loopy.kernel.instruction import MultiAssignmentBase
 
         if self.kernel.iname_tags_of_type(expr.iname, VectorizeTag):
@@ -731,7 +731,7 @@ class UnvectorizableInamesCollector(CombineMapper):
                     try:
                         lhs_is_vector = vcheck(insn.assignee)
                         rhs_is_vector = vcheck(insn.expression)
-                    except Unvectorizable as e:
+                    except UnvectorizableError as e:
                         warn(self.kernel, "vectorize_failed",
                              f"Vectorization of '{expr.iname}' failed due to '{e}'"
                              f" in '{insn.id}'.")
