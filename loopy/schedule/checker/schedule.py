@@ -224,18 +224,14 @@ def get_pairwise_statement_orderings_inner(
         access tags.
 
     :returns: A dictionary mapping each two-tuple of statement identifiers
-        provided in `stmt_id_pairs` to a :class:`collections.namedtuple`
+        provided in `stmt_id_pairs` to a :class:`StatementOrdering`
         containing the intra-thread SIO (`sio_intra_thread`), intra-group SIO
-        (`sio_intra_group`), and global SIO (`sio_global`), each realized
-        as an :class:`islpy.Map` from each instance of the first
-        statement to all instances of the second statement that occur later,
-        as well as the intra-thread pairwise schedule (`pwsched_intra_thread`),
-        intra-group pairwise schedule (`pwsched_intra_group`), and the global
-        pairwise schedule (`pwsched_global`), each containing a pair of
-        mappings from statement instances to points in a lexicographic
-        ordering, one for each statement. Note that a pairwise schedule
-        alone cannot be used to reproduce the corresponding SIO without the
-        corresponding (unique) lexicographic order map, which is not returned.
+        (`sio_intra_group`), global SIO (`sio_global`), intra-thread pairwise
+        schedule (`pwsched_intra_thread`), intra-group pairwise schedule
+        (`pwsched_intra_group`), and the global pairwise schedule
+        (`pwsched_global`). Note that a pairwise schedule alone cannot be used
+        to reproduce the corresponding SIO without the corresponding
+        lexicographic order map, which is not returned.
     """
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
@@ -827,6 +823,19 @@ def get_pairwise_statement_orderings_inner(
     # }}}
 
     pairwise_sios = {}
+
+    """Create :class:`StatementOrdering` containing the
+    intra-thread SIO (`sio_intra_thread`),
+    intra-group SIO (`sio_intra_group`),
+    global SIO (`sio_global`),
+    intra-thread pairwise schedule (`pwsched_intra_thread`),
+    intra-group pairwise schedule (`pwsched_intra_group`),
+    and the global pairwise schedule (`pwsched_global`),
+    Each SIO is realized as an :class:`islpy.Map` from each instance of the
+    first statement to all instances of the second statement that occur later.
+    Each pairwise schedule contains a pair of mappings from statement
+    instances to points in a lexicographic ordering, one for each statement.
+    """
     from collections import namedtuple
     StatementOrdering = namedtuple(
         "StatementOrdering",
