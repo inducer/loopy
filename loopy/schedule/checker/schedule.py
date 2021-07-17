@@ -151,7 +151,7 @@ def _simplify_lex_dims(tup0, tup1):
 
 class SpecialLexPointWRTLoop:
     """Strings identifying a particular point or set of points in a
-        lexicographic ordering of statements, specified relative to a loop.
+    lexicographic ordering of statements, specified relative to a loop.
 
     .. attribute:: PRE
        A :class:`str` indicating the last lexicographic point that
