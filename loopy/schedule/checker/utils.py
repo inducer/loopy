@@ -265,7 +265,7 @@ def get_EnterLoop_inames(linearization_items):
 def create_elementwise_comparison_conjunction_set(
         names0, names1, islvars, op="eq"):
     """Create a set constrained by the conjunction of conditions comparing
-       `names0` to `names1`.
+    `names0` to `names1`.
 
     :arg names0: A list of :class:`str` representing variable names.
 
