@@ -25,7 +25,7 @@ from loopy.codegen import VectorizationInfo
 from loopy.schedule.tree import CombineMapper
 from dataclasses import dataclass
 from typing import Optional, Any, List, Union, Mapping
-from pytools import ImmutableRecord
+from pytools import ImmutableRecord, memoize_on_first_arg
 
 
 def process_preambles(preambles):
@@ -145,6 +145,7 @@ class CodeGenerationResult(ImmutableRecord):
 # }}}
 
 
+@memoize_on_first_arg
 def get_idis_for_kernel(kernel):
     """
     Returns a :class:`list` of :class:`~loopy.codegen.ImplementedDataInfo` for
