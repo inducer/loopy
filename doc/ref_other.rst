@@ -44,3 +44,4 @@ following always works::
 
 .. autofunction:: show_dependency_graph
 
+.. autofunction:: t_unit_to_python
