@@ -681,6 +681,11 @@ class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
     def __getinitargs__(self):
         return self.name, self.tags
 
+    def copy(self, *, name=None, tags=None):
+        name = self.name if name is None else name
+        tags = self.tags if tags is None else tags
+        return TaggedVariable(name, tags)
+
     mapper_method = intern("map_tagged_variable")
 
 

@@ -3168,6 +3168,30 @@ def test_tunit_to_python():
     lp.t_unit_to_python(t_unit)  # contains check to assert roundtrip equivalence
 
 
+def test_global_tv_with_base_storage_across_gbarrier(ctx_factory):
+    # see https://github.com/inducer/loopy/pull/466 for context
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    t_unit = lp.make_kernel(
+        "{[i,j]: 0<=i,j<10}",
+        """
+        tmp[i] = i
+        ... gbarrier
+        out[j] = tmp[9-j]
+        """,
+        [lp.TemporaryVariable("tmp",
+                              address_space=lp.AddressSpace.GLOBAL,
+                              base_storage="base"),
+         ...],
+        seq_dependencies=True)
+
+    t_unit = lp.tag_inames(t_unit, {"i": "g.0", "j": "g.0"})
+
+    _, (out,) = t_unit(cq)
+    np.testing.assert_allclose(out.get(), np.arange(9, -1, -1))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

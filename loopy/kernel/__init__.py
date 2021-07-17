@@ -1054,7 +1054,8 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         from loopy.kernel.instruction import CallInstruction
         from loopy.symbolic import ResolvedFunction
 
-        for insn in self.instructions:
+        for insn_id in insn_ids:
+            insn = self.id_to_insn[insn_id]
             # TODO: This might be unsafe as call-sites must be resolved to get
             # any hardware axes size constraints they might impose. However,
             # transforms like 'precompute' use this method and callables might
