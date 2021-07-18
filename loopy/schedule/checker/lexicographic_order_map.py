@@ -27,7 +27,7 @@ import islpy as isl
 def get_statement_ordering_map(
         sched_before, sched_after, lex_map, before_mark):
     """Return a statement ordering represented as a map from each statement
-        instance to all statement instances occurring later.
+    instance to all statement instances occurring later.
 
     :arg sched_before: An :class:`islpy.Map` representing a schedule
         as a mapping from statement instances (for one particular statement)
@@ -77,9 +77,9 @@ def get_lex_order_set(
         islvars=None,
         ):
     """Return an :class:`islpy.Set` representing a lexicographic ordering
-        over a space with the number of dimensions provided in `dim_names`
-        (the set itself will have twice this many dimensions in order to
-        represent the ordering as before-after pairs of points).
+    over a space with the number of dimensions provided in `dim_names`
+    (the set itself will have twice this many dimensions in order to
+    represent the ordering as before-after pairs of points).
 
     :arg dim_names: A list of :class:`str` variable names to be used
         to describe lexicographic space dimensions for a point in a lexicographic
@@ -160,7 +160,7 @@ def create_lex_order_map(
         in_dim_mark,
         ):
     """Return a map from each point in a lexicographic ordering to every
-        point that occurs later in the lexicographic ordering.
+    point that occurs later in the lexicographic ordering.
 
     :arg dim_names: A list of :class:`str` variable names for the
         lexicographic space dimensions.
