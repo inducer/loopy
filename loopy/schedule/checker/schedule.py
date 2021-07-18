@@ -193,12 +193,9 @@ class SpecialLexPointWRTLoop:
 
 @dataclass
 class StatementOrdering:
-    r"""A container for mappings used to describe the ordering of statement
-    instances for a pair of statements. These include the intra-thread SIO
-    (`sio_intra_thread`), intra-group SIO (`sio_intra_group`), and global SIO
-    (`sio_global`), each realized as an :class:`islpy.Map` from each instance
-    of the first statement to all instances of the second statement that occur
-    later.
+    r"""A container for the three statement instance orderings (described
+    below) used to formalize the ordering of statement instances for a pair of
+    statements.
 
     Also included (mostly for testing and debugging) are the
     intra-thread pairwise schedule (`pwsched_intra_thread`), intra-group
@@ -230,10 +227,23 @@ def get_pairwise_statement_orderings_inner(
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
-    instances are executed. For each pair, represent this relative ordering as
-    a ``statement instance ordering`` (SIO): a map from each instance of the
-    first statement to all instances of the second statement that occur
-    later.
+    instances are executed. For each pair, represent this relative ordering
+    using three ``statement instance orderings`` (SIOs):
+
+    - The intra-thread SIO: A :class:`islpy.Map` from each instance of the
+      first statement to all instances of the second statement that occur
+      later, such that both statement instances in each before-after pair are
+      executed within the same work-item (thread).
+
+    - The intra-group SIO: A :class:`islpy.Map` from each instance of the first
+      statement to all instances of the second statement that occur later, such
+      that both statement instances in each before-after pair are executed
+      within the same work-group (though potentially by different work-items).
+
+    - The global SIO: A :class:`islpy.Map` from each instance of the first
+      statement to all instances of the second statement that occur later, even
+      if the two statement instances in a given before-after pair are executed
+      within different work-groups.
 
     :arg knl: A preprocessed :class:`loopy.kernel.LoopKernel` containing the
         linearization items that will be used to create the SIOs. This
@@ -256,14 +266,8 @@ def get_pairwise_statement_orderings_inner(
         access tags.
 
     :returns: A dictionary mapping each two-tuple of statement identifiers
-        provided in `stmt_id_pairs` to a :class:`StatementOrdering`
-        containing the intra-thread SIO (`sio_intra_thread`), intra-group SIO
-        (`sio_intra_group`), global SIO (`sio_global`), intra-thread pairwise
-        schedule (`pwsched_intra_thread`), intra-group pairwise schedule
-        (`pwsched_intra_group`), and the global pairwise schedule
-        (`pwsched_global`). Note that a pairwise schedule alone cannot be used
-        to reproduce the corresponding SIO without the corresponding
-        lexicographic order map, which is not returned.
+        provided in `stmt_id_pairs` to a :class:`StatementOrdering`, which
+        contains the three SIOs described above.
     """
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
