@@ -92,7 +92,7 @@ def _create_lex_order_set(
     :arg islvars: A dictionary mapping variable names in `dim_names` to
         :class:`islpy.PwAff` instances that represent each of the variables
         (islvars may be produced by `islpy.make_zero_and_vars`).
-        The key '0' is also include and represents a :class:`islpy.PwAff` zero
+        The key '0' is also included and represents a :class:`islpy.PwAff` zero
         constant. This dictionary defines the space to be used for the set and
         must also include versions of `dim_names` with the `in_dim_mark`
         appended. If no value is passed, the dictionary will be made using
