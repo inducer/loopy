@@ -71,7 +71,7 @@ def get_statement_ordering_map(
         sio, isl.dim_type.in_, before_mark)
 
 
-def get_lex_order_set(
+def _create_lex_order_set(
         dim_names,
         in_dim_mark,
         islvars=None,
@@ -186,7 +186,7 @@ def create_lex_order_map(
     dim_type = isl.dim_type
 
     # First, get a set representing the lexicographic ordering.
-    lex_order_set = get_lex_order_set(
+    lex_order_set = _create_lex_order_set(
         dim_names,
         in_dim_mark=in_dim_mark,
         )
