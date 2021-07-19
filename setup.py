@@ -90,7 +90,7 @@ setup(name="loopy",
 
           # https://github.com/inducer/loopy/pull/419
           "numpy>=1.19",
-          "dataclasses>=0.7;python_version<='3.6'"
+          "dataclasses>=0.7;python_version<='3.6'",
 
           "cgen>=2016.1",
           "islpy>=2019.1",
