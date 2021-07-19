@@ -512,7 +512,8 @@ def get_pairwise_statement_orderings_inner(
                         slex.TOP: tuple(next_blex_tuple),
                         slex.FIRST: tuple(first_iter_blex_pt),
                         }
-                    # (make sure ^these are copies)
+                    # (copy these three blex points when creating dict because
+                    # the lists will continue to be updated)
 
                     # Store any new params found
                     blex_order_map_params |= set(lbound.get_var_names(dt.param))
@@ -548,7 +549,8 @@ def get_pairwise_statement_orderings_inner(
                         last_iter_blex_pt)
                     blex_exclusion_info[leave_iname][slex.POST] = tuple(
                         next_blex_tuple)
-                    # (make sure ^these are copies)
+                    # (copy these three blex points when creating dict because
+                    # the lists will continue to be updated)
 
                     # Store any new params found
                     blex_order_map_params |= set(ubound.get_var_names(dt.param))
