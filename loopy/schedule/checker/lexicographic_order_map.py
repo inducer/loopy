@@ -74,7 +74,7 @@ def get_statement_ordering_map(
 def _create_lex_order_set(
         dim_names,
         in_dim_mark,
-        islvars=None,
+        var_name_to_pwaff=None,
         ):
     """Return an :class:`islpy.Set` representing a lexicographic ordering
     over a space with the number of dimensions provided in `dim_names`
@@ -89,9 +89,9 @@ def _create_lex_order_set(
         distinguish corresponding dimensions in before-after pairs of points.
         (see example below)
 
-    :arg islvars: A dictionary mapping variable names in `dim_names` to
+    :arg var_name_to_pwaff: A dictionary mapping variable names in `dim_names` to
         :class:`islpy.PwAff` instances that represent each of the variables
-        (islvars may be produced by `islpy.make_zero_and_vars`).
+        (var_name_to_pwaff may be produced by `islpy.make_zero_and_vars`).
         The key '0' is also included and represents a :class:`islpy.PwAff` zero
         constant. This dictionary defines the space to be used for the set and
         must also include versions of `dim_names` with the `in_dim_mark`
@@ -121,33 +121,36 @@ def _create_lex_order_set(
 
     in_dim_names = append_mark_to_strings(dim_names, mark=in_dim_mark)
 
-    # If no islvars passed, make them using the names provided
+    # If no var_name_to_pwaff passed, make them using the names provided
     # (make sure to pass var names in desired order of space dims)
-    if islvars is None:
-        islvars = isl.make_zero_and_vars(
+    if var_name_to_pwaff is None:
+        var_name_to_pwaff = isl.make_zero_and_vars(
             in_dim_names+dim_names,
             [])
 
     # Initialize set with constraint i0' < i0
-    lex_order_set = islvars[in_dim_names[0]].lt_set(islvars[dim_names[0]])
+    lex_order_set = var_name_to_pwaff[in_dim_names[0]].lt_set(
+        var_name_to_pwaff[dim_names[0]])
 
     # For each dim d, starting with d=1, equality_conj_set will be constrained
     # by d equalities, e.g., (i0' = i0 and i1' = i1 and ... i(d-1)' = i(d-1)).
-    equality_conj_set = islvars[0].eq_set(islvars[0])  # initialize to 'true'
+    equality_conj_set = var_name_to_pwaff[0].eq_set(
+        var_name_to_pwaff[0])  # initialize to 'true'
 
     for i in range(1, len(in_dim_names)):
 
         # Add the next equality constraint to equality_conj_set
         equality_conj_set = equality_conj_set & \
-            islvars[in_dim_names[i-1]].eq_set(islvars[dim_names[i-1]])
+            var_name_to_pwaff[in_dim_names[i-1]].eq_set(
+                var_name_to_pwaff[dim_names[i-1]])
 
         # Create a set constrained by adding a less-than constraint for this dim,
         # e.g., (i1' < i1), to the current equality conjunction set.
         # For each dim d, starting with d=1, this full conjunction will have
         # d equalities and one inequality, e.g.,
         # (i0' = i0 and i1' = i1 and ... i(d-1)' = i(d-1) and id' < id)
-        full_conj_set = islvars[in_dim_names[i]].lt_set(
-            islvars[dim_names[i]]) & equality_conj_set
+        full_conj_set = var_name_to_pwaff[in_dim_names[i]].lt_set(
+            var_name_to_pwaff[dim_names[i]]) & equality_conj_set
 
         # Union this new constraint with the current lex_order_set
         lex_order_set = lex_order_set | full_conj_set
