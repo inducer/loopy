@@ -976,3 +976,5 @@ def get_pairwise_statement_orderings_inner(
     return pairwise_sios
 
 # }}}
+
+# vim: foldmethod=marker

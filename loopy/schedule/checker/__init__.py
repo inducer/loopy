@@ -142,3 +142,5 @@ def get_pairwise_statement_orderings(
     # }}}
 
 # }}}
+
+# vim: foldmethod=marker
