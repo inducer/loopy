@@ -726,6 +726,270 @@ def test_statement_instance_ordering_with_hw_par_tags():
 # }}}
 
 
+# {{{ test_statement_instance_ordering_of_barriers()
+
+def test_statement_instance_ordering_of_barriers():
+    from loopy.schedule.checker import (
+        get_pairwise_statement_orderings,
+    )
+    from loopy.schedule.checker.utils import (
+        partition_inames_by_concurrency,
+    )
+
+    # Example kernel
+    knl = lp.make_kernel(
+        [
+            "{[i,ii]: 0<=i,ii<pi}",
+            "{[j,jj]: 0<=j,jj<pj}",
+        ],
+        """
+        for i
+            for ii
+                ... gbarrier {id=gbar}
+                for j
+                    for jj
+                        <>temp = b[i,ii,j,jj]  {id=stmt_a,dep=gbar}
+                        ... lbarrier {id=lbar0,dep=stmt_a}
+                        a[i,ii,j,jj] = temp + 1  {id=stmt_b,dep=lbar0}
+                        ... lbarrier {id=lbar1,dep=stmt_b}
+                    end
+                end
+            end
+        end
+        <>temp2 = 0.5  {id=stmt_c,dep=lbar1}
+        """,
+        assumptions="pi,pj >= 1",
+        lang_version=(2018, 2)
+        )
+    knl = lp.add_and_infer_dtypes(knl, {"a,b": np.float32})
+    knl = lp.tag_inames(knl, {"j": "l.0", "i": "g.0"})
+    knl = lp.prioritize_loops(knl, "ii,jj")
+
+    # Get a linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
+
+    # Get pairwise schedules
+    stmt_id_pairs = [
+        ("stmt_a", "stmt_b"),
+        ("gbar", "stmt_a"),
+        ("stmt_b", "lbar1"),
+        ("lbar1", "stmt_c"),
+        ]
+    pworders = get_pairwise_statement_orderings(
+        lin_knl,
+        lin_items,
+        stmt_id_pairs,
+        )
+
+    # Create string for representing parallel iname SAME condition in sio
+    conc_inames, _ = partition_inames_by_concurrency(knl["loopy_kernel"])
+    par_iname_condition = " and ".join(
+        "{0} = {0}'".format(iname) for iname in conc_inames)
+
+    # {{{ Intra-thread relationship between stmt_a and stmt_b
+
+    sio_intra_thread_exp = _isl_map_with_marked_dims(
+        "[pi, pj] -> {{ "
+        "[{0}'=0, i', ii', j', jj'] -> [{0}=1, i, ii, j, jj] : "
+        "0 <= i,ii,i',ii' < pi and 0 <= j,jj,j',jj' < pj "
+        "and (ii > ii' or (ii = ii' and jj >= jj')) "
+        "and {1} "
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            par_iname_condition,
+            )
+        )
+
+    _check_orderings_for_stmt_pair(
+        "stmt_a", "stmt_b", pworders,
+        sio_intra_thread_exp=sio_intra_thread_exp)
+
+    # }}}
+
+    # {{{ Relationship between gbar and stmt_a
+
+    # intra-thread case
+
+    sio_intra_thread_exp = _isl_map_with_marked_dims(
+        "[pi, pj] -> {{ "
+        "[{0}'=0, i', ii'] -> [{0}=1, i, ii, j, jj] : "
+        "0 <= i,ii,i',ii' < pi and 0 <= j,jj < pj "  # domains
+        "and i = i' "  # parallel inames must be same
+        "and ii >= ii' "  # before->after condtion
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            )
+        )
+
+    # intra-group case
+    # TODO figure out what this should be
+    """
+    sio_intra_group_exp = _isl_map_with_marked_dims(
+        "[pi, pj] -> {{ "
+        "[{0}'=0, i', ii'] -> [{0}=1, i, ii, j, jj] : "
+        "0 <= i,ii,i',ii' < pi and 0 <= j,jj < pj "  # domains
+        "and i = i' "  # GID inames must be same
+        "and (ii > ii' or (ii = ii' and jj = 0))"  # before->after condtion
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            )
+        )
+    """
+
+    # global case
+
+    sio_global_exp = _isl_map_with_marked_dims(
+        "[pi, pj] -> {{ "
+        "[{0}'=0, i', ii'] -> [{0}=1, i, ii, j, jj] : "
+        "0 <= i,ii,i',ii' < pi and 0 <= j,jj < pj "  # domains
+        "and ii >= ii' "  # before->after condtion
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            )
+        )
+
+    _check_orderings_for_stmt_pair(
+        "gbar", "stmt_a", pworders,
+        sio_intra_thread_exp=sio_intra_thread_exp,
+        # sio_intra_group_exp=sio_intra_group_exp,
+        sio_global_exp=sio_global_exp)
+
+    # }}}
+
+    # {{{ Relationship between stmt_b and lbar1
+
+    # intra thread case
+
+    sio_intra_thread_exp = _isl_map_with_marked_dims(
+        "[pi, pj] -> {{ "
+        "[{0}'=0, i', ii', j', jj'] -> [{0}=1, i, ii, j, jj] : "
+        "0 <= i,ii,i',ii' < pi and 0 <= j,jj,j',jj' < pj "  # domains
+        "and i = i' and j = j'"  # parallel inames must be same
+        "and (ii > ii' or (ii = ii' and jj >= jj'))"  # before->after condtion
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            )
+        )
+
+    # intra-group case
+
+    sio_intra_group_exp = _isl_map_with_marked_dims(
+        "[pi, pj] -> {{ "
+        "[{0}'=0, i', ii', j', jj'] -> [{0}=1, i, ii, j, jj] : "
+        "0 <= i,ii,i',ii' < pi and 0 <= j,jj,j',jj' < pj "  # domains
+        "and i = i' "  # GID parallel inames must be same
+        "and (ii > ii' or (ii = ii' and jj >= jj'))"  # before->after condtion
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            )
+        )
+
+    # global case
+
+    sio_global_exp = _isl_map_with_marked_dims(
+        "[pi, pj] -> {{ "
+        "[{0}'=0, i', ii', j', jj'] -> [{0}=1, i, ii, j, jj] : "
+        "0 <= i,ii,i',ii' < pi and 0 <= j,jj,j',jj' < pj "  # domains
+        "and ii > ii'"  # before->after condtion
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            )
+        )
+
+    _check_orderings_for_stmt_pair(
+        "stmt_b", "lbar1", pworders,
+        sio_intra_thread_exp=sio_intra_thread_exp,
+        sio_intra_group_exp=sio_intra_group_exp,
+        sio_global_exp=sio_global_exp,
+        )
+
+    # }}}
+
+    # {{{ Relationship between stmt_a and stmt_b
+
+    # intra thread case
+
+    sio_intra_thread_exp = _isl_map_with_marked_dims(
+        "[pi, pj] -> {{ "
+        "[{0}'=0, i', ii', j', jj'] -> [{0}=1, i, ii, j, jj] : "
+        "0 <= i,ii,i',ii' < pi and 0 <= j,jj,j',jj' < pj "  # domains
+        "and i = i' and j = j'"  # parallel inames must be same
+        "and (ii > ii' or (ii = ii' and jj >= jj'))"  # before->after condtion
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            )
+        )
+
+    # intra-group case
+
+    sio_intra_group_exp = _isl_map_with_marked_dims(
+        "[pi, pj] -> {{ "
+        "[{0}'=0, i', ii', j', jj'] -> [{0}=1, i, ii, j, jj] : "
+        "0 <= i,ii,i',ii' < pi and 0 <= j,jj,j',jj' < pj "  # domains
+        "and i = i' "  # GID parallel inames must be same
+        "and (ii > ii' or (ii = ii' and jj >= jj'))"  # before->after condtion
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            )
+        )
+
+    _check_orderings_for_stmt_pair(
+        "stmt_a", "stmt_b", pworders,
+        sio_intra_thread_exp=sio_intra_thread_exp,
+        sio_intra_group_exp=sio_intra_group_exp,
+        )
+
+    # }}}
+
+    # {{{ Relationship between lbar1 and stmt_c
+
+    # intra thread case
+
+    sio_intra_thread_exp = _isl_map_with_marked_dims(
+        "[pi, pj] -> {{ "
+        "[{0}'=0, i', ii', j', jj'] -> [{0}=1] : "
+        "0 <= i',ii' < pi and 0 <= j',jj' < pj "  # domains
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            )
+        )
+
+    # intra-group case
+
+    sio_intra_group_exp = _isl_map_with_marked_dims(
+        "[pi, pj] -> {{ "
+        "[{0}'=0, i', ii', j', jj'] -> [{0}=1] : "
+        "0 <= i',ii' < pi and 0 <= j',jj' < pj "  # domains
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            )
+        )
+
+    # global case
+
+    # (only happens before if not last iteration of ii
+    sio_global_exp = _isl_map_with_marked_dims(
+        "[pi, pj] -> {{ "
+        "[{0}'=0, i', ii', j', jj'] -> [{0}=1] : "
+        "0 <= i',ii' < pi and 0 <= j',jj' < pj "  # domains
+        "and ii' < pi-1"
+        "}}".format(
+            STATEMENT_VAR_NAME,
+            )
+        )
+
+    _check_orderings_for_stmt_pair(
+        "lbar1", "stmt_c", pworders,
+        sio_intra_thread_exp=sio_intra_thread_exp,
+        sio_intra_group_exp=sio_intra_group_exp,
+        sio_global_exp=sio_global_exp,
+        )
+
+    # }}}
+
+# }}}
+
+
 # {{{ test_sios_and_schedules_with_barriers()
 
 def test_sios_and_schedules_with_barriers():

@@ -246,13 +246,24 @@ def create_symbolic_map_from_tuples(
         on these values.
 
     """
-    # TODO allow None for domains
+    # FIXME allow None for domains
 
     space_out_names = space.get_var_names(dt.out)
     space_in_names = space.get_var_names(dt.in_)
 
+    def _conjunction_of_dim_eq_conditions(dim_names, values, var_name_to_pwaff):
+        condition = var_name_to_pwaff[0].eq_set(var_name_to_pwaff[0])
+        for dim_name, val in zip(dim_names, values):
+            if isinstance(val, int):
+                condition = condition \
+                    & var_name_to_pwaff[dim_name].eq_set(var_name_to_pwaff[0]+val)
+            else:
+                condition = condition \
+                    & var_name_to_pwaff[dim_name].eq_set(var_name_to_pwaff[val])
+        return condition
+
     # Get islvars from space
-    islvars = isl.affs_from_space(
+    var_name_to_pwaff = isl.affs_from_space(
         space.move_dims(
             dt.out, 0,
             dt.in_, 0,
@@ -260,20 +271,9 @@ def create_symbolic_map_from_tuples(
             ).range()
         )
 
-    def _conjunction_of_dim_eq_conditions(dim_names, values, islvars):
-        condition = islvars[0].eq_set(islvars[0])
-        for dim_name, val in zip(dim_names, values):
-            if isinstance(val, int):
-                condition = condition \
-                    & islvars[dim_name].eq_set(islvars[0]+val)
-            else:
-                condition = condition \
-                    & islvars[dim_name].eq_set(islvars[val])
-        return condition
-
     # Initialize union of maps to empty
     union_of_maps = isl.Map.from_domain(
-        islvars[0].eq_set(islvars[0]+1)  # 0 == 1 (false)
+        var_name_to_pwaff[0].eq_set(var_name_to_pwaff[0]+1)  # 0 == 1 (false)
         ).move_dims(
             dt.out, 0, dt.in_, len(space_in_names), len(space_out_names))
 
@@ -282,11 +282,11 @@ def create_symbolic_map_from_tuples(
 
         # Set values for 'in' dimension using tuple vals
         condition = _conjunction_of_dim_eq_conditions(
-            space_in_names, tup_in, islvars)
+            space_in_names, tup_in, var_name_to_pwaff)
 
         # Set values for 'out' dimension using tuple vals
         condition = condition & _conjunction_of_dim_eq_conditions(
-            space_out_names, tup_out, islvars)
+            space_out_names, tup_out, var_name_to_pwaff)
 
         # Convert set to map by moving dimensions around
         map_from_set = isl.Map.from_domain(condition)
@@ -334,35 +334,35 @@ def get_EnterLoop_inames(linearization_items):
 
 
 def create_elementwise_comparison_conjunction_set(
-        names0, names1, islvars, op="eq"):
+        names0, names1, var_name_to_pwaff, op="eq"):
     """Create a set constrained by the conjunction of conditions comparing
-       `names0` to `names1`.
+    `names0` to `names1`.
 
     :arg names0: A list of :class:`str` representing variable names.
 
     :arg names1: A list of :class:`str` representing variable names.
 
-    :arg islvars: A dictionary from variable names to :class:`islpy.PwAff`
+    :arg var_name_to_pwaff: A dictionary from variable names to :class:`islpy.PwAff`
         instances that represent each of the variables
-        (islvars may be produced by `islpy.make_zero_and_vars`). The key
+        (var_name_to_pwaff may be produced by `islpy.make_zero_and_vars`). The key
         '0' is also include and represents a :class:`islpy.PwAff` zero constant.
 
     :arg op: A :class:`str` describing the operator to use when creating
         the set constraints. Options: `eq` for `=`, `lt` for `<`
 
-    :returns: A set involving `islvars` cosntrained by the constraints
+    :returns: A set involving `var_name_to_pwaff` cosntrained by the constraints
         `{names0[0] <op> names1[0] and names0[1] <op> names1[1] and ...}`.
 
     """
 
     # initialize set with constraint that is always true
-    conj_set = islvars[0].eq_set(islvars[0])
+    conj_set = var_name_to_pwaff[0].eq_set(var_name_to_pwaff[0])
     for n0, n1 in zip(names0, names1):
         if op == "eq":
-            conj_set = conj_set & islvars[n0].eq_set(islvars[n1])
+            conj_set = conj_set & var_name_to_pwaff[n0].eq_set(var_name_to_pwaff[n1])
         elif op == "ne":
-            conj_set = conj_set & islvars[n0].ne_set(islvars[n1])
+            conj_set = conj_set & var_name_to_pwaff[n0].ne_set(var_name_to_pwaff[n1])
         elif op == "lt":
-            conj_set = conj_set & islvars[n0].lt_set(islvars[n1])
+            conj_set = conj_set & var_name_to_pwaff[n0].lt_set(var_name_to_pwaff[n1])
 
     return conj_set

@@ -21,6 +21,7 @@ THE SOFTWARE.
 """
 
 import islpy as isl
+from dataclasses import dataclass
 dt = isl.dim_type.set
 
 
@@ -151,31 +152,31 @@ def _simplify_lex_dims(tup0, tup1):
 
 class SpecialLexPointWRTLoop:
     """Strings identifying a particular point or set of points in a
-        lexicographic ordering of statements, specified relative to a loop.
+    lexicographic ordering of statements, specified relative to a loop.
 
     .. attribute:: PRE
-       A :class:`str` indicating the last lexicographic point that
-       precedes the loop.
+        A :class:`str` indicating the last lexicographic point that
+        precedes the loop.
 
     .. attribute:: FIRST
-       A :class:`str` indicating the first lexicographic point in the
-       first loop iteration (i.e., with the iname set to its min. val).
+        A :class:`str` indicating the first lexicographic point in the
+        first loop iteration (i.e., with the iname set to its min. val).
 
     .. attribute:: TOP
-       A :class:`str` indicating the first lexicographic point in
-       an arbitrary loop iteration.
+        A :class:`str` indicating the first lexicographic point in
+        an arbitrary loop iteration.
 
     .. attribute:: BOTTOM
-       A :class:`str` indicating the last lexicographic point in
-       an arbitrary loop iteration.
+        A :class:`str` indicating the last lexicographic point in
+        an arbitrary loop iteration.
 
     .. attribute:: LAST
-       A :class:`str` indicating the last lexicographic point in the
-       last loop iteration (i.e., with the iname set to its max val).
+        A :class:`str` indicating the last lexicographic point in the
+        last loop iteration (i.e., with the iname set to its max val).
 
     .. attribute:: POST
-       A :class:`str` indicating the first lexicographic point that
-       follows the loop.
+        A :class:`str` indicating the first lexicographic point that
+        follows the loop.
     """
 
     PRE = "pre"
@@ -184,6 +185,34 @@ class SpecialLexPointWRTLoop:
     BOTTOM = "bottom"
     LAST = "last"
     POST = "post"
+
+# }}}
+
+
+# {{{ class StatementOrdering
+
+@dataclass
+class StatementOrdering:
+    r"""A container for the three statement instance orderings (described
+    below) used to formalize the ordering of statement instances for a pair of
+    statements.
+
+    Also included (mostly for testing and debugging) are the
+    intra-thread pairwise schedule (`pwsched_intra_thread`), intra-group
+    pairwise schedule (`pwsched_intra_group`), and global pairwise schedule
+    (`pwsched_global`), each containing a pair of mappings from statement
+    instances to points in a lexicographic ordering, one for each statement.
+    Each SIO is created by composing the two mappings in the corresponding
+    pairwise schedule with an associated mapping defining the ordering of
+    points in the lexicographical space (not included).
+    """
+
+    sio_intra_thread: isl.Map
+    sio_intra_group: isl.Map
+    sio_global: isl.Map
+    pwsched_intra_thread: tuple
+    pwsched_intra_group: tuple
+    pwsched_global: tuple
 
 # }}}
 
@@ -198,10 +227,23 @@ def get_pairwise_statement_orderings_inner(
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
-    instances are executed. For each pair, represent this relative ordering as
-    a ``statement instance ordering`` (SIO): a map from each instance of the
-    first statement to all instances of the second statement that occur
-    later.
+    instances are executed. For each pair, represent this relative ordering
+    using three ``statement instance orderings`` (SIOs):
+
+    - The intra-thread SIO: A :class:`islpy.Map` from each instance of the
+      first statement to all instances of the second statement that occur
+      later, such that both statement instances in each before-after pair are
+      executed within the same work-item (thread).
+
+    - The intra-group SIO: A :class:`islpy.Map` from each instance of the first
+      statement to all instances of the second statement that occur later, such
+      that both statement instances in each before-after pair are executed
+      within the same work-group (though potentially by different work-items).
+
+    - The global SIO: A :class:`islpy.Map` from each instance of the first
+      statement to all instances of the second statement that occur later, even
+      if the two statement instances in a given before-after pair are executed
+      within different work-groups.
 
     :arg knl: A preprocessed :class:`loopy.kernel.LoopKernel` containing the
         linearization items that will be used to create the SIOs. This
@@ -224,18 +266,8 @@ def get_pairwise_statement_orderings_inner(
         access tags.
 
     :returns: A dictionary mapping each two-tuple of statement identifiers
-        provided in `stmt_id_pairs` to a :class:`collections.namedtuple`
-        containing the intra-thread SIO (`sio_intra_thread`), intra-group SIO
-        (`sio_intra_group`), and global SIO (`sio_global`), each realized
-        as an :class:`islpy.Map` from each instance of the first
-        statement to all instances of the second statement that occur later,
-        as well as the intra-thread pairwise schedule (`pwsched_intra_thread`),
-        intra-group pairwise schedule (`pwsched_intra_group`), and the global
-        pairwise schedule (`pwsched_global`), each containing a pair of
-        mappings from statement instances to points in a lexicographic
-        ordering, one for each statement. Note that a pairwise schedule
-        alone cannot be used to reproduce the corresponding SIO without the
-        corresponding (unique) lexicographic order map, which is not returned.
+        provided in `stmt_id_pairs` to a :class:`StatementOrdering`, which
+        contains the three SIOs described above.
     """
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
@@ -480,7 +512,8 @@ def get_pairwise_statement_orderings_inner(
                         slex.TOP: tuple(next_blex_tuple),
                         slex.FIRST: tuple(first_iter_blex_pt),
                         }
-                    # (make sure ^these are copies)
+                    # (copy these three blex points when creating dict because
+                    # the lists will continue to be updated)
 
                     # Store any new params found
                     blex_order_map_params |= set(lbound.get_var_names(dt.param))
@@ -516,7 +549,8 @@ def get_pairwise_statement_orderings_inner(
                         last_iter_blex_pt)
                     blex_exclusion_info[leave_iname][slex.POST] = tuple(
                         next_blex_tuple)
-                    # (make sure ^these are copies)
+                    # (copy these three blex points when creating dict because
+                    # the lists will continue to be updated)
 
                     # Store any new params found
                     blex_order_map_params |= set(ubound.get_var_names(dt.param))
@@ -532,6 +566,31 @@ def get_pairwise_statement_orderings_inner(
                 if lin_item.synchronization_kind == sync_kind:
                     next_blex_tuple[-1] += 1
 
+                lp_stmt_id = lin_item.originating_insn_id
+
+                if lp_stmt_id is None:
+                    # Barriers without stmt ids were inserted as a result of a
+                    # dependency. They don't themselves have dependencies.
+                    # Don't map this barrier to a blex tuple.
+                    continue
+
+                # This barrier has a stmt id.
+                # If it was included in listed stmts, process it.
+                # Otherwise, there's nothing left to do (we've already
+                # incremented next_blex_tuple if necessary, and this barrier
+                # does not need to be assigned to a designated point in blex
+                # time)
+                if lp_stmt_id in all_stmt_ids:
+                    # If sync scope matches, give this barrier its own point in
+                    # lex time and update blex tuple after barrier.
+                    # Otherwise, add stmt->blex pair to stmt_inst_to_blex, but
+                    # don't update the blex tuple (just like with any other
+                    # stmt)
+                    if lin_item.synchronization_kind == sync_kind:
+                        stmt_inst_to_blex[lp_stmt_id] = tuple(next_blex_tuple)
+                        next_blex_tuple[-1] += 1
+                    else:
+                        stmt_inst_to_blex[lp_stmt_id] = tuple(next_blex_tuple)
             else:
                 from loopy.schedule import (CallKernel, ReturnFromKernel)
                 # No action needed for these types of linearization item
@@ -802,15 +861,6 @@ def get_pairwise_statement_orderings_inner(
     # }}}
 
     pairwise_sios = {}
-    from collections import namedtuple
-    StatementOrdering = namedtuple(
-        "StatementOrdering",
-        [
-            "sio_intra_thread", "pwsched_intra_thread",
-            "sio_intra_group", "pwsched_intra_group",
-            "sio_global", "pwsched_global",
-        ])
-    # ("sio" = statement instance ordering; "pwsched" = pairwise schedule)
 
     for stmt_ids in stmt_id_pairs:
         # Determine integer IDs that will represent each statement in mapping
@@ -894,6 +944,9 @@ def get_pairwise_statement_orderings_inner(
                 in zip(stmt_ids, blex_tuples_padded, int_sids)
                 ]
 
+            # Note that for the intra-group case, we already constrained GID
+            # 'before' to equal GID 'after' earlier in _gather_blex_ordering_info()
+
             # Create statement instance ordering
             sio_par = get_statement_ordering_map(
                 *par_sched_maps,  # note, func accepts exactly two maps
@@ -913,10 +966,10 @@ def get_pairwise_statement_orderings_inner(
         # Store sched maps along with SIOs
         pairwise_sios[tuple(stmt_ids)] = StatementOrdering(
             sio_intra_thread=sio_intra_thread,
-            pwsched_intra_thread=tuple(intra_thread_sched_maps),
             sio_intra_group=sio_intra_group,
-            pwsched_intra_group=tuple(pwsched_intra_group),
             sio_global=sio_global,
+            pwsched_intra_thread=tuple(intra_thread_sched_maps),
+            pwsched_intra_group=tuple(pwsched_intra_group),
             pwsched_global=tuple(pwsched_global),
             )
 
@@ -925,3 +978,5 @@ def get_pairwise_statement_orderings_inner(
     return pairwise_sios
 
 # }}}
+
+# vim: foldmethod=marker
