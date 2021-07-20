@@ -433,111 +433,16 @@ def _gather_blex_ordering_info(
         ).domain()
     blex_set_affs = isl.affs_from_space(blex_set_template.space)
 
-    # {{{ _create_excluded_map_for_iname
+    # {{{ Create blex map to subtract for each iname in blex_exclusion_info
 
-    def _create_excluded_map_for_iname(iname, key_lex_tuples):
-        """Create the blex->blex pairs that must be subtracted from the
-        initial blex order map for this particular loop using the 6 blex
-        tuples in the key_lex_tuples:
-        PRE->FIRST, BOTTOM(iname')->TOP(iname'+1), LAST->POST
-        """
-        # (Vars from outside func used here:
-        # blex_set_affs, blex_set_template, iname_to_blex_var,
-        # n_seq_blex_dims, seq_blex_dim_names,
-        # seq_blex_dim_names_prime)
-
-        # Note:
-        # only key_lex_tuples[slex.FIRST] & key_lex_tuples[slex.LAST] are pwaffs
-
-        # {{{ _create_blex_set_from_tuple_pair
-
-        def _create_blex_set_from_tuple_pair(before, after, wrap_cond=False):
-            """Given a before->after tuple pair in the key_lex_tuples, which may
-            have dim vals described by ints, strings (inames), and pwaffs,
-            create an ISL set in blex space that can be converted into
-            the ISL map to be subtracted
-            """
-            # (Vars from outside func used here:
-            # iname, blex_set_affs, blex_set_template, iname_to_blex_var,
-            # n_seq_blex_dims, seq_blex_dim_names,
-            # seq_blex_dim_names_prime)
-
-            # Start with a set representing blex_order_map space
-            blex_set = blex_set_template.copy()
-
-            # Add marks to inames in the 'before' tuple
-            # (all strings should be inames)
-            before_prime = tuple(
-                v+BEFORE_MARK if isinstance(v, str) else v for v in before)
-            before_padded = _pad_tuple_with_zeros(before_prime, n_seq_blex_dims)
-            after_padded = _pad_tuple_with_zeros(after, n_seq_blex_dims)
-
-            # Assign vals in the tuple to dims in the ISL set
-            for dim_name, dim_val in zip(
-                    seq_blex_dim_names_prime+seq_blex_dim_names,
-                    before_padded+after_padded):
-
-                if isinstance(dim_val, int):
-                    # Set idx to int val
-                    blex_set &= blex_set_affs[dim_name].eq_set(
-                        blex_set_affs[0]+dim_val)
-                elif isinstance(dim_val, str):
-                    # This is an iname, set idx to corresponding blex var
-                    blex_set &= blex_set_affs[dim_name].eq_set(
-                        blex_set_affs[iname_to_blex_var[dim_val]])
-                else:
-                    # This is a pwaff iname bound, align and intersect
-                    assert isinstance(dim_val, isl.PwAff)
-                    pwaff_aligned = isl.align_spaces(dim_val, blex_set_affs[0])
-                    # (doesn't matter which blex_set_affs item we align to^)
-                    blex_set &= blex_set_affs[dim_name].eq_set(pwaff_aligned)
-
-            if wrap_cond:
-                # This is the BOTTOM->TOP pair, add condition i = i' + 1
-                blex_set &= blex_set_affs[iname_to_blex_var[iname]].eq_set(
-                    blex_set_affs[iname_to_blex_var[iname+BEFORE_MARK]] + 1)
-
-            return blex_set
-
-        # }}} end _create_blex_set_from_tuple_pair()
-
-        # Create pairs to be subtracted
-        # (set will be converted to map)
-
-        # Enter loop case: PRE->FIRST
-        full_blex_set = _create_blex_set_from_tuple_pair(
-            key_lex_tuples[slex.PRE], key_lex_tuples[slex.FIRST])
-        # Wrap loop case: BOTTOM(iname')->TOP(iname'+1)
-        full_blex_set |= _create_blex_set_from_tuple_pair(
-            key_lex_tuples[slex.BOTTOM], key_lex_tuples[slex.TOP],
-            wrap_cond=True)
-        # Leave loop case: LAST->POST
-        full_blex_set |= _create_blex_set_from_tuple_pair(
-            key_lex_tuples[slex.LAST], key_lex_tuples[slex.POST])
-
-        # Add condition to fix iteration value for *surrounding* loops (j = j')
-        for surrounding_iname in key_lex_tuples[slex.PRE][1::2]:
-            s_blex_var = iname_to_blex_var[surrounding_iname]
-            full_blex_set &= blex_set_affs[s_blex_var].eq_set(
-                blex_set_affs[s_blex_var+BEFORE_MARK])
-
-        # Convert blex set back to map
-        return isl.Map.from_domain(full_blex_set).move_dims(
-            dt.out, 0, dt.in_, n_blex_dims, n_blex_dims)
-
-    # }}} end _create_excluded_map_for_iname()
-
-    # Create map to subtract for each iname
     maps_to_subtract = []
     for iname, key_lex_tuples in blex_exclusion_info.items():
-        # TODO remove after sanity check
-        _old_map_to_subtract = _create_excluded_map_for_iname(iname, key_lex_tuples)
 
-        # {{{ _create_excluded_map_for_iname
+        # {{{ Create blex map to subract for one iname
 
         """Create the blex->blex pairs that must be subtracted from the
         initial blex order map for this particular loop using the 6 blex
-        tuples in the key_lex_tuples:
+        tuples in key_lex_tuples:
         PRE->FIRST, BOTTOM(iname')->TOP(iname'+1), LAST->POST
         """
 
@@ -620,13 +525,13 @@ def _gather_blex_ordering_info(
         map_to_subtract = isl.Map.from_domain(full_blex_set).move_dims(
             dt.out, 0, dt.in_, n_blex_dims, n_blex_dims)
 
-        # }}} end _create_excluded_map_for_iname()
-
-        # TODO remove sanity check
-        assert map_to_subtract == _old_map_to_subtract
-        assert map_to_subtract.get_var_dict() == _old_map_to_subtract.get_var_dict()
+        # }}}
 
         maps_to_subtract.append(map_to_subtract)
+
+    # }}}
+
+    # {{{ Subtract transitive closure of union of blex maps to subtract
 
     if maps_to_subtract:
 
@@ -636,12 +541,12 @@ def _gather_blex_ordering_info(
             map_to_subtract |= other_map
 
         # Get transitive closure of maps
-        map_to_subtract, closure_exact = map_to_subtract.transitive_closure()
+        map_to_subtract_closure, closure_exact = map_to_subtract.transitive_closure()
 
         assert closure_exact  # TODO warn instead?
 
         # Subtract closure from blex order map
-        blex_order_map = blex_order_map - map_to_subtract
+        blex_order_map = blex_order_map - map_to_subtract_closure
 
     # }}}
 
