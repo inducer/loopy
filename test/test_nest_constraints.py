@@ -163,7 +163,8 @@ def test_loop_constraint_string_parsing():
     lp.constrain_loop_nesting(ref_knl, must_nest="k,h,j")
 
     # Handling spaces
-    knl = lp.constrain_loop_nesting(ref_knl, must_nest=("k", "{h }", " { j , i } "))
+    prog = lp.constrain_loop_nesting(ref_knl, must_nest=("k", "{h }", " { j , i } "))
+    knl = prog["loopy_kernel"]
     assert list(knl.loop_nest_constraints.must_nest)[0][0].inames == set("k")
     assert list(knl.loop_nest_constraints.must_nest)[0][1].inames == set("h")
     assert list(knl.loop_nest_constraints.must_nest)[0][2].inames == set(["j", "i"])
@@ -302,7 +303,7 @@ def test_adding_multiple_nest_constraints_to_knl():
     knl = lp.constrain_loop_nesting(
         knl, must_nest=("x", "y"))
 
-    must_nest_knl = knl.loop_nest_constraints.must_nest
+    must_nest_knl = knl["loopy_kernel"].loop_nest_constraints.must_nest
     from loopy.transform.iname import UnexpandedInameSet
     must_nest_expected = set([
         (UnexpandedInameSet(set(["g"], )), UnexpandedInameSet(set(["h", "i"], ))),
@@ -315,7 +316,7 @@ def test_adding_multiple_nest_constraints_to_knl():
         ])
     assert must_nest_knl == must_nest_expected
 
-    must_not_nest_knl = knl.loop_nest_constraints.must_not_nest
+    must_not_nest_knl = knl["loopy_kernel"].loop_nest_constraints.must_not_nest
     must_not_nest_expected = set([
         (UnexpandedInameSet(set(["k", "i"], )), UnexpandedInameSet(set(["k", "i"], ),
             complement=True)),
