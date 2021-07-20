@@ -58,80 +58,80 @@ def test_loop_constraint_string_parsing():
 
     try:
         lp.constrain_loop_nesting(ref_knl, "{g,h,k},{j,i}")
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert "Unrecognized character(s)" in str(e)
 
     try:
         lp.constrain_loop_nesting(ref_knl, "{g,h,i,k},{j}")
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert "Unrecognized character(s)" in str(e)
 
     try:
         lp.constrain_loop_nesting(ref_knl, "{g,{h,i,k}")
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert "Unrecognized character(s)" in str(e)
 
     try:
         lp.constrain_loop_nesting(ref_knl, "{g,~h,i,k}")
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert "Unrecognized character(s)" in str(e)
 
     try:
         lp.constrain_loop_nesting(ref_knl, "{g,#h,i,k}")
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert "Unrecognized character(s)" in str(e)
 
     try:
         lp.constrain_loop_nesting(ref_knl, ("{g,{h}", "i,k"))
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert "Unrecognized character(s)" in str(e)
 
     try:
         lp.constrain_loop_nesting(ref_knl, ("{g,~h}", "i,k"))
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert "Unrecognized character(s)" in str(e)
 
     try:
         lp.constrain_loop_nesting(ref_knl, ("k", "~{g,h}", "{g,h}"))
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert "Complement (~) not allowed" in str(e)
 
     try:
         lp.constrain_loop_nesting(ref_knl, ("k", "{i,j,k}", "{g,h}"))
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert "contains cycle" in str(e)
 
     try:
         lp.constrain_loop_nesting(ref_knl, must_not_nest=("~j,i", "{j,i}"))
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert ("Complements of sets containing multiple inames "
             "must enclose inames in braces") in str(e)
 
     try:
         lp.constrain_loop_nesting(ref_knl, must_nest=("k", "{h}", "{j,i,}"))
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert ("Found 2 inames but expected 3") in str(e)
 
     try:
         lp.constrain_loop_nesting(ref_knl, must_nest=("k", "{h}", "{j, x x, i}"))
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert ("Found 4 inames but expected 3") in str(e)
 
     try:
         lp.constrain_loop_nesting(ref_knl, must_nest="{h}}")
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert (
             "Unrecognized character(s) ['{', '}', '}'] in nest string {h}}"
@@ -139,7 +139,7 @@ def test_loop_constraint_string_parsing():
 
     try:
         lp.constrain_loop_nesting(ref_knl, must_nest="{h i j,,}")
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert(
             "Unrecognized character(s) [\'{\', \'}\'] in nest string {h i j,,}"
@@ -147,7 +147,7 @@ def test_loop_constraint_string_parsing():
 
     try:
         lp.constrain_loop_nesting(ref_knl, must_nest=("{h}}", "i"))
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert (
             "Unrecognized character(s) [\'}\'] in nest string h}"
@@ -171,13 +171,13 @@ def test_loop_constraint_string_parsing():
 
     try:
         knl = lp.constrain_loop_nesting(ref_knl, ("j", "{}"))
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert "Found 0 inames" in str(e)
 
     try:
         knl = lp.constrain_loop_nesting(ref_knl, ("j", ""))
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert "Found 0 inames" in str(e)
 
@@ -349,7 +349,7 @@ def test_incompatible_nest_constraints():
     try:
         knl = lp.constrain_loop_nesting(
             knl, must_nest=("k", "h"))  # (should fail)
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert "Nest constraint conflict detected" in str(e)
 
@@ -360,7 +360,7 @@ def test_incompatible_nest_constraints():
     try:
         knl = lp.constrain_loop_nesting(
             knl, must_nest=("j", "g"))  # (should fail)
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert "Nest constraint cycle detected" in str(e)
 
