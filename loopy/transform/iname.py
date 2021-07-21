@@ -1941,6 +1941,7 @@ def _find_aff_subst_from_map(iname, isl_map):
 
 # TODO swap dt and dim_type
 
+@for_each_kernel
 def map_domain(kernel, isl_map, within=None, rename_after={}):
     # FIXME: Express _split_iname_backend in terms of this
     #   Missing/deleted for now:
