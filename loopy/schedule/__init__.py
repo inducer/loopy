@@ -632,7 +632,7 @@ class SchedulerState(ImmutableRecord):
     """
 
     @property
-    def last_entered_loop(self):
+    def deepest_active_iname(self):
         if self.active_inames:
             return self.active_inames[-1]
         else:
@@ -1088,40 +1088,40 @@ def generate_loop_schedules_internal(
 
     # {{{ see if we're ready to leave the innermost loop
 
-    last_entered_loop = sched_state.last_entered_loop
+    deepest_active_iname = sched_state.deepest_active_iname
 
-    if last_entered_loop is not None:
+    if deepest_active_iname is not None:
         can_leave = True
 
         if (
-                last_entered_loop in sched_state.prescheduled_inames
+                deepest_active_iname in sched_state.prescheduled_inames
                 and not (
                     isinstance(next_preschedule_item, LeaveLoop)
-                    and next_preschedule_item.iname == last_entered_loop)):
+                    and next_preschedule_item.iname == deepest_active_iname)):
             # A prescheduled loop can only be left if the preschedule agrees.
             if debug_mode:
                 print("cannot leave '%s' because of preschedule constraints"
-                      % last_entered_loop)
+                      % deepest_active_iname)
             can_leave = False
-        elif last_entered_loop not in sched_state.breakable_inames:
+        elif deepest_active_iname not in sched_state.breakable_inames:
             # If the iname is not breakable, then check that we've
             # scheduled all the instructions that require it.
 
             for insn_id in sched_state.unscheduled_insn_ids:
                 insn = kernel.id_to_insn[insn_id]
-                if last_entered_loop in insn.within_inames:
+                if deepest_active_iname in insn.within_inames:
                     if debug_mode:
                         print("cannot leave '%s' because '%s' still depends on it"
-                                % (last_entered_loop, format_insn(kernel, insn.id)))
+                              % (deepest_active_iname, format_insn(kernel, insn.id)))
 
                         # check if there's a dependency of insn that needs to be
-                        # outside of last_entered_loop.
+                        # outside of deepest_active_iname.
                         for subdep_id in gen_dependencies_except(kernel, insn_id,
                                 sched_state.scheduled_insn_ids):
                             want = (kernel.insn_inames(subdep_id)
                                     - sched_state.parallel_inames)
                             if (
-                                    last_entered_loop not in want):
+                                    deepest_active_iname not in want):
                                 print(
                                     "%(warn)swarning:%(reset_all)s '%(iname)s', "
                                     "which the schedule is "
@@ -1135,7 +1135,7 @@ def generate_loop_schedules_internal(
                                     % {
                                         "warn": Fore.RED + Style.BRIGHT,
                                         "reset_all": Style.RESET_ALL,
-                                        "iname": last_entered_loop,
+                                        "iname": deepest_active_iname,
                                         "subdep": format_insn_id(kernel, subdep_id),
                                         "dep": format_insn_id(kernel, insn_id),
                                         "subdep_i": format_insn(kernel, subdep_id),
@@ -1162,10 +1162,44 @@ def generate_loop_schedules_internal(
                     if ignore_count:
                         ignore_count -= 1
                     else:
-                        assert sched_item.iname == last_entered_loop
+                        assert sched_item.iname == deepest_active_iname
                         if seen_an_insn:
                             can_leave = True
                         break
+
+            # {{{ Don't leave if doing so would violate must_nest constraints
+
+            # Don't leave if must_nest constraints require that
+            # additional inames be nested inside the current iname
+            if can_leave:
+                must_nest_graph = (
+                    sched_state.kernel.loop_nest_constraints.must_nest_graph
+                    if sched_state.kernel.loop_nest_constraints else None)
+
+                if must_nest_graph:
+                    # get inames that must nest inside the current iname
+                    must_nest_inside = must_nest_graph[deepest_active_iname]
+
+                    if must_nest_inside:
+                        # get scheduled inames that are nested inside current iname
+                        within_deepest_active_iname = False
+                        actually_nested_inside = set()
+                        for sched_item in sched_state.schedule:
+                            if isinstance(sched_item, EnterLoop):
+                                if within_deepest_active_iname:
+                                    actually_nested_inside.add(sched_item.iname)
+                                elif sched_item.iname == deepest_active_iname:
+                                    within_deepest_active_iname = True
+                            elif (isinstance(sched_item, LeaveLoop) and
+                                    sched_item.iname == deepest_active_iname):
+                                break
+
+                        # don't leave if must_nest constraints require that
+                        # additional inames be nested inside the current iname
+                        if not must_nest_inside.issubset(actually_nested_inside):
+                            can_leave = False
+
+            # }}}
 
             if can_leave and not debug_mode:
 
@@ -1173,12 +1207,12 @@ def generate_loop_schedules_internal(
                         sched_state.copy(
                             schedule=(
                                 sched_state.schedule
-                                + (LeaveLoop(iname=last_entered_loop),)),
+                                + (LeaveLoop(iname=deepest_active_iname),)),
                             active_inames=sched_state.active_inames[:-1],
                             insn_ids_to_try=insn_ids_to_try,
                             preschedule=(
                                 sched_state.preschedule
-                                if last_entered_loop
+                                if deepest_active_iname
                                 not in sched_state.prescheduled_inames
                                 else sched_state.preschedule[1:]),
                         ),
@@ -1316,65 +1350,130 @@ def generate_loop_schedules_internal(
 
         # {{{ tier building
 
-        # Build priority tiers. If a schedule is found in the first tier, then
-        # loops in the second are not even tried (and so on).
-        loop_priority_set = set().union(*[set(prio)
-                                          for prio in
-                                          sched_state.kernel.loop_priority])
-        useful_loops_set = set(iname_to_usefulness.keys())
-        useful_and_desired = useful_loops_set & loop_priority_set
+        # Keys of iname_to_usefulness are now inames that get us closer to
+        # scheduling an insn
 
-        if useful_and_desired:
-            wanted = (
-                useful_and_desired
-                - sched_state.ilp_inames
-                - sched_state.vec_inames
-                )
-            priority_tiers = [t for t in
-                              get_priority_tiers(wanted,
-                                                 sched_state.kernel.loop_priority
-                                                 )
-                              ]
+        if sched_state.kernel.loop_nest_constraints:
+            # {{{ Use loop_nest_constraints in determining next_iname_candidates
 
-            # Update the loop priority set, because some constraints may have
-            # have been contradictary.
-            loop_priority_set = set().union(*[set(t) for t in priority_tiers])
+            # Inames not yet entered that would get us closer to scheduling an insn:
+            useful_loops_set = set(iname_to_usefulness.keys())
 
-            priority_tiers.append(
+            from loopy.transform.iname import (
+                check_all_must_not_nests,
+                get_graph_sources,
+            )
+            from pytools.graph import compute_induced_subgraph
+
+            # Since vec_inames must be innermost,
+            # they are not valid canidates unless only vec_inames remain
+            if useful_loops_set - sched_state.vec_inames:
+                useful_loops_set -= sched_state.vec_inames
+
+            # To enter an iname without violating must_nest constraints,
+            # iname must be a source in the induced subgraph of must_nest_graph
+            # containing inames in useful_loops_set
+            must_nest_graph_full = (
+                sched_state.kernel.loop_nest_constraints.must_nest_graph
+                if sched_state.kernel.loop_nest_constraints else None)
+            if must_nest_graph_full:
+                must_nest_graph_useful = compute_induced_subgraph(
+                    must_nest_graph_full,
                     useful_loops_set
-                    - loop_priority_set
+                    )
+                source_inames = get_graph_sources(must_nest_graph_useful)
+            else:
+                source_inames = useful_loops_set
+
+            # Since graph has a key for every iname,
+            # sources should be the only valid iname candidates
+
+            # Check whether entering any source_inames violates
+            # must-not-nest constraints, given the currently active inames
+            must_not_nest_constraints = (
+                sched_state.kernel.loop_nest_constraints.must_not_nest
+                if sched_state.kernel.loop_nest_constraints else None)
+            if must_not_nest_constraints:
+                next_iname_candidates = set()
+                for next_iname in source_inames:
+                    iname_orders_to_check = [
+                        (active_iname, next_iname)
+                        for active_iname in active_inames_set]
+
+                    if check_all_must_not_nests(
+                            iname_orders_to_check, must_not_nest_constraints):
+                        next_iname_candidates.add(next_iname)
+            else:
+                next_iname_candidates = source_inames
+
+            # }}}
+        else:
+            # {{{ old tier building with loop_priority
+
+            # Build priority tiers. If a schedule is found in the first tier, then
+            # loops in the second are not even tried (and so on).
+            loop_priority_set = set().union(*[set(prio)
+                                              for prio in
+                                              sched_state.kernel.loop_priority])
+            useful_loops_set = set(iname_to_usefulness.keys())
+            useful_and_desired = useful_loops_set & loop_priority_set
+
+            if useful_and_desired:
+                wanted = (
+                    useful_and_desired
                     - sched_state.ilp_inames
                     - sched_state.vec_inames
                     )
-        else:
-            priority_tiers = [
-                    useful_loops_set
-                    - sched_state.ilp_inames
-                    - sched_state.vec_inames
-                    ]
+                priority_tiers = [t for t in
+                                  get_priority_tiers(wanted,
+                                                     sched_state.kernel.loop_priority
+                                                     )
+                                  ]
 
-        # vectorization must be the absolute innermost loop
-        priority_tiers.extend([
-            [iname]
-            for iname in sched_state.ilp_inames
-            if iname in useful_loops_set
-            ])
+                # Update the loop priority set, because some constraints may have
+                # have been contradictary.
+                loop_priority_set = set().union(*[set(t) for t in priority_tiers])
 
-        priority_tiers.extend([
-            [iname]
-            for iname in sched_state.vec_inames
-            if iname in useful_loops_set
-            ])
+                priority_tiers.append(
+                        useful_loops_set
+                        - loop_priority_set
+                        - sched_state.ilp_inames
+                        - sched_state.vec_inames
+                        )
+            else:
+                priority_tiers = [
+                        useful_loops_set
+                        - sched_state.ilp_inames
+                        - sched_state.vec_inames
+                        ]
+
+            # vectorization must be the absolute innermost loop
+            priority_tiers.extend([
+                [iname]
+                for iname in sched_state.ilp_inames
+                if iname in useful_loops_set
+                ])
+
+            priority_tiers.extend([
+                [iname]
+                for iname in sched_state.vec_inames
+                if iname in useful_loops_set
+                ])
+
+            # }}}
 
         # }}}
 
-        if debug_mode:
-            print("useful inames: %s" % ",".join(useful_loops_set))
-        else:
-            for tier in priority_tiers:
+        if sched_state.kernel.loop_nest_constraints:
+            # {{{ loop over next_iname_candidates generated w/ loop_nest_constraints
+
+            if debug_mode:
+                print("useful inames: %s" % ",".join(useful_loops_set))
+            else:
                 found_viable_schedule = False
 
-                for iname in sorted(tier,
+                # loop over iname candidates; enter inames and recurse:
+                for iname in sorted(next_iname_candidates,
                         key=lambda iname: (
                             iname_to_usefulness.get(iname, 0),
                             # Sort by iname to achieve deterministic
@@ -1382,6 +1481,7 @@ def generate_loop_schedules_internal(
                             iname),
                         reverse=True):
 
+                    # enter the loop and recurse
                     for sub_sched in generate_loop_schedules_internal(
                             sched_state.copy(
                                 schedule=(
@@ -1395,15 +1495,60 @@ def generate_loop_schedules_internal(
                                 insn_ids_to_try=insn_ids_to_try,
                                 preschedule=(
                                     sched_state.preschedule
-                                    if iname not in sched_state.prescheduled_inames
+                                    if iname not in
+                                    sched_state.prescheduled_inames
                                     else sched_state.preschedule[1:]),
                                 ),
                             debug=debug):
+
                         found_viable_schedule = True
                         yield sub_sched
 
                 if found_viable_schedule:
                     return
+
+            # }}}
+        else:
+            # {{{ old looping over tiers
+
+            if debug_mode:
+                print("useful inames: %s" % ",".join(useful_loops_set))
+            else:
+                for tier in priority_tiers:
+                    found_viable_schedule = False
+
+                    for iname in sorted(tier,
+                            key=lambda iname: (
+                                iname_to_usefulness.get(iname, 0),
+                                # Sort by iname to achieve deterministic
+                                # ordering of generated schedules.
+                                iname),
+                            reverse=True):
+
+                        for sub_sched in generate_loop_schedules_internal(
+                                sched_state.copy(
+                                    schedule=(
+                                        sched_state.schedule
+                                        + (EnterLoop(iname=iname),)),
+                                    active_inames=(
+                                        sched_state.active_inames + (iname,)),
+                                    entered_inames=(
+                                        sched_state.entered_inames
+                                        | frozenset((iname,))),
+                                    insn_ids_to_try=insn_ids_to_try,
+                                    preschedule=(
+                                        sched_state.preschedule
+                                        if iname not in
+                                        sched_state.prescheduled_inames
+                                        else sched_state.preschedule[1:]),
+                                    ),
+                                debug=debug):
+                            found_viable_schedule = True
+                            yield sub_sched
+
+                    if found_viable_schedule:
+                        return
+            # }}}
 
     # }}}
 
@@ -1415,10 +1560,31 @@ def generate_loop_schedules_internal(
         if inp:
             raise ScheduleDebugInputError(inp)
 
+    # {{{ Make sure ALL must_nest_constraints are satisfied
+
+    # (The check above avoids contradicting some must_nest constraints,
+    # but we don't know if all required nestings are present)
+    must_constraints_satisfied = True
+    if sched_state.kernel.loop_nest_constraints:
+        from loopy.transform.iname import (
+            get_iname_nestings,
+            loop_nest_constraints_satisfied,
+        )
+        must_nest_constraints = sched_state.kernel.loop_nest_constraints.must_nest
+        if must_nest_constraints:
+            sched_tiers = get_iname_nestings(sched_state.schedule)
+            must_constraints_satisfied = loop_nest_constraints_satisfied(
+                sched_tiers, must_nest_constraints,
+                must_not_nest_constraints=None,  # (checked upon loop creation)
+                all_inames=kernel.all_inames())
+
+    # }}}
+
     if (
             not sched_state.active_inames
             and not sched_state.unscheduled_insn_ids
-            and not sched_state.preschedule):
+            and not sched_state.preschedule
+            and must_constraints_satisfied):
         # if done, yield result
         debug.log_success(sched_state.schedule)
 
@@ -2133,7 +2299,7 @@ schedule_cache = WriteOncePersistentDict(
         key_builder=LoopyKeyBuilder())
 
 
-def _get_one_scheduled_kernel_inner(kernel, callables_table):
+def _get_one_scheduled_kernel_inner(kernel, callables_table, debug_args=None):
     # This helper function exists to ensure that the generator chain is fully
     # out of scope after the function returns. This allows it to be
     # garbage-collected in the exit handler of the
@@ -2143,7 +2309,8 @@ def _get_one_scheduled_kernel_inner(kernel, callables_table):
     #
     # See https://gitlab.tiker.net/inducer/sumpy/issues/31 for context.
 
-    return next(iter(generate_loop_schedules(kernel, callables_table)))
+    return next(iter(generate_loop_schedules(
+        kernel, callables_table, debug_args=debug_args)))
 
 
 def get_one_scheduled_kernel(kernel, callables_table):
@@ -2155,7 +2322,7 @@ def get_one_scheduled_kernel(kernel, callables_table):
     return get_one_linearized_kernel(kernel, callables_table)
 
 
-def get_one_linearized_kernel(kernel, callables_table):
+def get_one_linearized_kernel(kernel, callables_table, debug_args=None):
     from loopy import CACHING_ENABLED
 
     # must include *callables_table* within the cache key as the preschedule
@@ -2176,7 +2343,7 @@ def get_one_linearized_kernel(kernel, callables_table):
         with ProcessLogger(logger, "%s: schedule" % kernel.name):
             with MinRecursionLimitForScheduling(kernel):
                 result = _get_one_scheduled_kernel_inner(kernel,
-                        callables_table)
+                        callables_table, debug_args=debug_args)
 
     if CACHING_ENABLED and not from_cache:
         schedule_cache.store_if_not_present(sched_cache_key, result)
