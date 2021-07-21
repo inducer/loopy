@@ -87,7 +87,10 @@ class TargetBase:
     def preprocess(self, kernel):
         return kernel
 
-    def pre_codegen_check(self, kernel):
+    def pre_codegen_entrypoint_check(self, kernel, callables_table):
+        pass
+
+    def pre_codegen_callable_check(self, kernel, callables_table):
         pass
 
     # }}}
@@ -157,8 +160,15 @@ class ASTBuilderBase:
 
     # {{{ library
 
-    def function_manglers(self):
-        return []
+    @property
+    def known_callables(self):
+        """
+        Returns a mapping from function ids to corresponding
+        :class:`loopy.kernel.function_interface.InKernelCallable` for the
+        function ids known to *self.target*.
+        """
+        # FIXME: @inducer: Do we need to move this to TargetBase?
+        return {}
 
     def symbol_manglers(self):
         return []
@@ -169,6 +179,10 @@ class ASTBuilderBase:
     # }}}
 
     # {{{ code generation guts
+
+    @property
+    def ast_module(self):
+        raise NotImplementedError()
 
     def get_function_definition(self, codegen_state, codegen_result,
             schedule_index, function_decl, function_body):

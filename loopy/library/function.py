@@ -20,38 +20,109 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-def default_function_mangler(kernel, name, arg_dtypes):
-    from loopy.library.reduction import reduction_function_mangler
-
-    manglers = [reduction_function_mangler, tuple_function_mangler]
-    for mangler in manglers:
-        result = mangler(kernel, name, arg_dtypes)
-        if result is not None:
-            return result
-
-    return None
+from loopy.kernel.function_interface import ScalarCallable
+from loopy.diagnostic import LoopyError
+from loopy.types import NumpyType
+import numpy as np
 
 
-def single_arg_function_mangler(kernel, name, arg_dtypes):
-    if len(arg_dtypes) == 1:
-        dtype, = arg_dtypes
+class MakeTupleCallable(ScalarCallable):
+    def with_types(self, arg_id_to_dtype, callables_table):
+        new_arg_id_to_dtype = arg_id_to_dtype.copy()
+        for i in range(len(arg_id_to_dtype)):
+            if i in arg_id_to_dtype and arg_id_to_dtype[i] is not None:
+                new_arg_id_to_dtype[-i-1] = new_arg_id_to_dtype[i]
 
-        from loopy.kernel.data import CallMangleInfo
-        return CallMangleInfo(name, (dtype,), (dtype,))
+        return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
+            name_in_target="loopy_make_tuple"), callables_table)
 
-    return None
+    def with_descrs(self, arg_id_to_descr, callables_table):
+        from loopy.kernel.function_interface import ValueArgDescriptor
+        new_arg_id_to_descr = {(id, ValueArgDescriptor()):
+            (-id-1, ValueArgDescriptor()) for id in arg_id_to_descr.keys()}
+
+        return (
+                self.copy(arg_id_to_descr=new_arg_id_to_descr),
+                callables_table)
 
 
-def tuple_function_mangler(kernel, name, arg_dtypes):
-    if name == "make_tuple":
-        from loopy.kernel.data import CallMangleInfo
-        return CallMangleInfo(
-                target_name="loopy_make_tuple",
-                result_dtypes=arg_dtypes,
-                arg_dtypes=arg_dtypes)
+class IndexOfCallable(ScalarCallable):
+    def with_types(self, arg_id_to_dtype, callables_table):
+        new_arg_id_to_dtype = {i: dtype
+                               for i, dtype in arg_id_to_dtype.items()
+                               if dtype is not None}
+        new_arg_id_to_dtype[-1] = NumpyType(np.int32)
 
-    return None
+        return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype),
+                callables_table)
+
+    def emit_call(self, expression_to_code_mapper, expression, target):
+        from pymbolic.primitives import Subscript
+
+        if len(expression.parameters) != 1:
+            raise LoopyError("%s takes exactly one argument" % self.name)
+        arg, = expression.parameters
+        if not isinstance(arg, Subscript):
+            raise LoopyError(
+                    "argument to %s must be a subscript" % self.name)
+
+        ary = expression_to_code_mapper.find_array(arg)
+
+        from loopy.kernel.array import get_access_info
+        from pymbolic import evaluate
+        access_info = get_access_info(expression_to_code_mapper.kernel.target,
+                ary, arg.index, lambda expr: evaluate(expr,
+                    expression_to_code_mapper.codegen_state.var_subst_map),
+                expression_to_code_mapper.codegen_state.vectorization_info)
+
+        from loopy.kernel.data import ImageArg
+        if isinstance(ary, ImageArg):
+            raise LoopyError("%s does not support images" % self.name)
+
+        if self.name == "indexof":
+            return access_info.subscripts[0]
+        elif self.name == "indexof_vec":
+            from loopy.kernel.array import VectorArrayDimTag
+            ivec = None
+            for iaxis, dim_tag in enumerate(ary.dim_tags):
+                if isinstance(dim_tag, VectorArrayDimTag):
+                    ivec = iaxis
+
+            if ivec is None:
+                return access_info.subscripts[0]
+            else:
+                return (
+                    access_info.subscripts[0]*ary.shape[ivec]
+                    + access_info.vector_index)
+
+        else:
+            raise RuntimeError("should not get here")
+
+    def emit_call_insn(self, insn, target, expression_to_code_mapper):
+        return self.emit_call(
+                expression_to_code_mapper,
+                insn.expression,
+                target), True
+
+
+def get_loopy_callables():
+    """
+    Returns a mapping from function ids to corresponding
+    :class:`loopy.kernel.function_interface.InKernelCallable` for functions
+    whose interface is provided by :mod:`loopy`. Callables that fall in this
+    category are --
+
+    - reductions leading to function calls like ``argmin``, ``argmax``.
+    - callables that have a predefined meaning in :mod:`loo.py` like
+      ``make_tuple``, ``index_of``, ``indexof_vec``.
+    """
+    known_callables = {
+            "make_tuple": MakeTupleCallable(name="make_tuple"),
+            "indexof": IndexOfCallable(name="indexof"),
+            "indexof_vec": IndexOfCallable(name="indexof_vec"),
+            }
+
+    return known_callables
 
 
 # vim: foldmethod=marker

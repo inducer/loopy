@@ -31,7 +31,6 @@ jobs:
         -   name: "Main Script"
             run: |
                 sed 's/python=3/python=3.7/' .test-conda-env-py3.yml > .test-conda-env.yml
-                CONDA_ENVIRONMENT=.test-conda-env.yml
                 USE_CONDA_BUILD=1
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-pylint.sh
                 . ./prepare-and-run-pylint.sh "$(basename $GITHUB_REPOSITORY)" test/test_*.py
@@ -43,7 +42,6 @@ jobs:
         -   uses: actions/checkout@v2
         -   name: "Main Script"
             run: |
-                CONDA_ENVIRONMENT=.test-conda-env-py3.yml
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
                 . ./build-and-test-py-project-within-miniconda.sh
 
@@ -73,7 +71,6 @@ jobs:
         -   uses: actions/checkout@v2
         -   name: "Main Script"
             run: |
-                CONDA_ENVIRONMENT=.test-conda-env-py3.yml
                 curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
                 export _LOOPY_SKIP_ARG_CHECKS=1
                 . ./build-and-test-py-project-within-miniconda.sh
@@ -85,9 +82,8 @@ jobs:
         -   uses: actions/checkout@v2
         -   name: "Main Script"
             run: |
-                CONDA_ENVIRONMENT=.test-conda-env-py3.yml
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
-                . ./ci-support.sh
+                curl -L -O -k https://tiker.net/ci-support-v0
+                . ./ci-support-v0
                 build_py_project_in_conda_env
                 ( test_py_project )
                 ( test_py_project )
@@ -99,10 +95,9 @@ jobs:
         -   uses: actions/checkout@v2
         -   name: "Main Script"
             run: |
-                CONDA_ENVIRONMENT=.test-conda-env-py3.yml
                 EXTRA_INSTALL="matplotlib ipykernel nbconvert"
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
-                . ./ci-support.sh
+                curl -L -O -k https://tiker.net/ci-support-v0
+                . ./ci-support-v0
                 build_py_project_in_conda_env
 
                 curl -L "https://ci.appveyor.com/api/projects/ispc/ispc/artifacts/build%2Fispc-trunk-linux.tar.gz?job=Environment%3A%20APPVEYOR_BUILD_WORKER_IMAGE%3DUbuntu1604%2C%20LLVM_VERSION%3Dlatest" | tar xfz -
@@ -127,9 +122,8 @@ jobs:
         -   name: "Main Script"
             run: |
                 PROJECT=loopy
-                CONDA_ENVIRONMENT=.test-conda-env-py3.yml
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
-                . ci-support.sh
+                curl -L -O -k https://tiker.net/ci-support-v0
+                . ci-support-v0
                 build_py_project_in_conda_env
                 build_docs
 
@@ -146,22 +140,65 @@ jobs:
             env:
                 DOWNSTREAM_PROJECT: ${{ matrix.downstream_project }}
             run: |
-                git clone "https://github.com/inducer/$DOWNSTREAM_PROJECT.git"
+                curl -L -O https://tiker.net/ci-support-v0
+                . ./ci-support-v0
+
+                # Use "special grudge" for kcv3 and branches targeting it.
+                if [[ "$DOWNSTREAM_PROJECT" = "grudge" ]] && [[ "$GITHUB_HEAD_REF" = "kernel_callables_v3-edit2" || "$GITHUB_BASE_REF" = "kernel_callables_v3-edit2" ]]; then
+                  with_echo git clone "https://github.com/kaushikcfd/$DOWNSTREAM_PROJECT.git" -b "kcv3-e2-compat"
+                else
+                  with_echo git clone "https://github.com/inducer/$DOWNSTREAM_PROJECT.git"
+                fi
                 cd "$DOWNSTREAM_PROJECT"
                 echo "*** $DOWNSTREAM_PROJECT version: $(git rev-parse --short HEAD)"
 
-                sed -i "/egg=loopy/ c git+file://$(readlink -f ..)#egg=loopy" requirements.txt
+                if [[ "$DOWNSTREAM_PROJECT" = "pytential" ]] && [[ "$GITHUB_HEAD_REF" = "kernel_callables_v3-edit2" || "$GITHUB_BASE_REF" = "kernel_callables_v3-edit2" ]]; then
+                  sed -i "/egg=sumpy/ c git+https://github.com/inducer/sumpy.git@loopy-callables#egg=sumpy" requirements.txt
+                fi
 
-                export CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+                transfer_requirements_git_urls ../requirements.txt ./requirements.txt
+                sed -i "/egg=loopy/ c git+file://$(readlink -f ..)#egg=loopy" requirements.txt
+                sed -i "/mpi4py/ d" requirements.txt
 
                 # Avoid slow or complicated tests in downstream projects
                 export PYTEST_ADDOPTS="-k 'not (slowtest or octave or mpi)'"
 
-                sed -i "/mpi4py/ d" requirements.txt
-
-                curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
-                . ./ci-support.sh
                 build_py_project_in_conda_env
                 test_py_project
+
+    downstream_firedrake:
+        name: Tests for downstream project Firedrake
+        runs-on: ubuntu-latest
+        container:
+            image: 'firedrakeproject/firedrake'
+        steps:
+        -   uses: actions/checkout@v1
+        -   name: "Main script"
+            run: |
+                sudo chown -R $(whoami) /github/home || true
+                sudo chown -R $(whoami) /__w/loopy/ || true
+
+                git submodule update --init
+
+                . /home/firedrake/firedrake/bin/activate
+
+                pip install --editable .
+
+                cd /home/firedrake/firedrake/src/firedrake
+
+                # https://github.com/OP2/PyOP2/pull/627
+                (cd ../PyOP2 && git pull https://github.com/OP2/PyOP2.git e56d26f219e962cf9423fc84406a8a0656eb364f)
+
+                # patch so exception messages get shown
+                curl -L https://gist.githubusercontent.com/inducer/17d7134ace215f0df1f3627eac4195c7/raw/63edfaf2ec8bf06987896569a4f24264df490e9e/firedrake-debug-patch.diff | patch -p1
+
+                pytest --tb=native -rsxw --durations=10 -m 'not parallel' tests/multigrid/
+
+        -   name: "Prepare for tmate"
+            run: |
+                # helps with tmate debugging
+                sudo chmod a+rwX -R $(whoami) /__w/_temp || true
+                
+        # -   uses: mxschmitt/action-tmate@v3
 
 # vim: sw=4

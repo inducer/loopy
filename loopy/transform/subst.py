@@ -28,6 +28,9 @@ from loopy.transform.iname import remove_any_newly_unused_inames
 from pytools import ImmutableRecord
 from pymbolic import var
 
+from loopy.translation_unit import (for_each_kernel,
+                                    TranslationUnit)
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 import logging
 logger = logging.getLogger(__name__)
@@ -39,17 +42,29 @@ class ExprDescriptor(ImmutableRecord):
 
 # {{{ extract_subst
 
-def extract_subst(kernel, subst_name, template, parameters=()):
+def extract_subst(kernel, subst_name, template, parameters=(), within=None):
     """
     :arg subst_name: The name of the substitution rule to be created.
     :arg template: Unification template expression.
     :arg parameters: An iterable of parameters used in
         *template*, or a comma-separated string of the same.
+    :arg within: An instance of :class:`loopy.match.MatchExpressionBase` or
+        :class:`str` as understood by :func:`loopy.match.parse_match`.
 
     All targeted subexpressions must match ('unify with') *template*
     The template may contain '*' wildcards that will have to match exactly across all
     unifications.
     """
+
+    if isinstance(kernel, TranslationUnit):
+        kernel_names = [i for i, clbl in
+                kernel.callables_table.items() if isinstance(clbl,
+                    CallableKernel)]
+        if len(kernel_names) != 1:
+            raise LoopyError()
+
+        return kernel.with_kernel(extract_subst(kernel[kernel_names[0]],
+            subst_name, template, parameters))
 
     if isinstance(template, str):
         from pymbolic import parse
@@ -58,6 +73,9 @@ def extract_subst(kernel, subst_name, template, parameters=()):
     if isinstance(parameters, str):
         parameters = tuple(
                 s.strip() for s in parameters.split(","))
+
+    from loopy.match import parse_match
+    within = parse_match(within)
 
     var_name_gen = kernel.get_var_name_generator()
 
@@ -109,7 +127,7 @@ def extract_subst(kernel, subst_name, template, parameters=()):
 
     from loopy.kernel.instruction import MultiAssignmentBase
     for insn in kernel.instructions:
-        if isinstance(insn, MultiAssignmentBase):
+        if isinstance(insn, MultiAssignmentBase) and within(kernel, insn):
             dfmapper(insn.assignees)
             dfmapper(insn.expression)
 
@@ -168,9 +186,11 @@ def extract_subst(kernel, subst_name, template, parameters=()):
             raise ValueError("assignment LHS not understood")
 
     for insn in kernel.instructions:
-        new_insns.append(
-                insn.with_transformed_expressions(
-                    cbmapper, assignee_f=transform_assignee))
+        if within(kernel, insn):
+            new_insns.append(insn.with_transformed_expressions(
+                cbmapper, assignee_f=transform_assignee))
+        else:
+            new_insns.append(insn)
 
     from loopy.kernel.data import SubstitutionRule
     new_substs = {
@@ -189,6 +209,7 @@ def extract_subst(kernel, subst_name, template, parameters=()):
     return kernel.copy(
             instructions=new_insns,
             substitutions=new_substs)
+
 
 # }}}
 
@@ -277,6 +298,7 @@ class AssignmentToSubstChanger(RuleAwareIdentityMapper):
             return var(subst_name)(*index)
 
 
+@for_each_kernel
 @remove_any_newly_unused_inames
 def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         force_retain_argument=False):
@@ -460,6 +482,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 
 # {{{ expand_subst
 
+@for_each_kernel
 def expand_subst(kernel, within=None):
     """
     Returns an instance of :class:`loopy.LoopKernel` with the substitutions
@@ -468,6 +491,7 @@ def expand_subst(kernel, within=None):
     :arg within: a stack match as understood by
         :func:`loopy.match.parse_stack_match`.
     """
+
     if not kernel.substitutions:
         return kernel
 
@@ -500,8 +524,17 @@ def find_rules_matching(kernel, pattern):
     return [r for r in kernel.substitutions if pattern.match(r)]
 
 
-def find_one_rule_matching(kernel, pattern):
-    rules = find_rules_matching(kernel, pattern)
+def find_one_rule_matching(program, pattern):
+    rules = []
+    for in_knl_callable in program.callables_table.values():
+        if isinstance(in_knl_callable, CallableKernel):
+            knl = in_knl_callable.subkernel
+            rules.extend(find_rules_matching(knl, pattern))
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown callable types %s." % (
+                type(in_knl_callable).__name__))
 
     if len(rules) > 1:
         raise ValueError("more than one substitution rule matched '%s'"

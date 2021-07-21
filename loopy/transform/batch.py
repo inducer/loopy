@@ -25,6 +25,9 @@ from loopy.symbolic import (RuleAwareIdentityMapper, SubstitutionRuleMappingCont
 from loopy.kernel.data import ValueArg, ArrayArg
 import islpy as isl
 
+from loopy.translation_unit import for_each_kernel
+
+
 __doc__ = """
 .. currentmodule:: loopy
 
@@ -98,6 +101,7 @@ def _add_unique_dim_name(name, dim_names):
     return (ng(name),) + tuple(dim_names)
 
 
+@for_each_kernel
 def to_batched(kernel, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
         sequential=False):
     """Takes in a kernel that carries out an operation and returns a kernel

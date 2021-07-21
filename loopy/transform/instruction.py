@@ -21,14 +21,38 @@ THE SOFTWARE.
 """
 
 from loopy.diagnostic import LoopyError
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import (ScalarCallable, CallableKernel)
+from loopy.translation_unit import (TranslationUnit,
+                                    for_each_kernel)
 
 
 # {{{ find_instructions
 
-def find_instructions(kernel, insn_match):
+def find_instructions_in_single_kernel(kernel, insn_match):
+    assert isinstance(kernel, LoopKernel)
     from loopy.match import parse_match
     match = parse_match(insn_match)
     return [insn for insn in kernel.instructions if match(kernel, insn)]
+
+
+def find_instructions(program, insn_match):
+    if isinstance(program, LoopKernel):
+        return find_instructions_in_single_kernel(program, insn_match)
+
+    assert isinstance(program, TranslationUnit)
+    insns = []
+    for in_knl_callable in program.callables_table.values():
+        if isinstance(in_knl_callable, CallableKernel):
+            insns += (find_instructions_in_single_kernel(
+                in_knl_callable.subkernel, insn_match))
+        elif isinstance(in_knl_callable, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError("Unknown callable type %s." % (
+                type(in_knl_callable)))
+
+    return insns
 
 # }}}
 
@@ -54,6 +78,7 @@ def map_instructions(kernel, insn_match, f):
 
 # {{{ set_instruction_priority
 
+@for_each_kernel
 def set_instruction_priority(kernel, insn_match, priority):
     """Set the priority of instructions matching *insn_match* to *priority*.
 
@@ -71,6 +96,7 @@ def set_instruction_priority(kernel, insn_match, priority):
 
 # {{{ add_dependency
 
+@for_each_kernel
 def add_dependency(kernel, insn_match, depends_on):
     """Add the instruction dependency *dependency* to the instructions matched
     by *insn_match*.
@@ -88,7 +114,8 @@ def add_dependency(kernel, insn_match, depends_on):
         added_deps = frozenset([depends_on])
     else:
         added_deps = frozenset(
-                dep.id for dep in find_instructions(kernel, depends_on))
+                dep.id for dep in find_instructions_in_single_kernel(kernel,
+                    depends_on))
 
     if not added_deps:
         raise LoopyError("no instructions found matching '%s' "
@@ -119,6 +146,7 @@ def add_dependency(kernel, insn_match, depends_on):
 
 # {{{ add_dependency_v2
 
+@for_each_kernel
 def add_dependency_v2(
         kernel, stmt_id, depends_on_id, new_dependency):
     """Add the statement instance dependency `new_dependency` to the statement with
@@ -171,21 +199,75 @@ def add_dependency_v2(
 
 # {{{ remove_instructions
 
+def _toposort_of_subset_of_insns(kernel, subset_insns):
+    """
+    Returns a :class:`list` of insn ids which is a topological sort of insn
+    deps in *subset_insns*.
+
+    :arg subset_insns: a :class:`frozenset` of insn ids that are a subset of
+        kernel over which we wish to compute the topological sort.
+    """
+    dag = {insn_id: set(kernel.id_to_insn[insn_id].depends_on
+                        & subset_insns)
+           for insn_id in subset_insns}
+
+    from pytools.graph import compute_topological_order
+
+    return compute_topological_order(dag)[::-1]
+
+
+@for_each_kernel
 def remove_instructions(kernel, insn_ids):
     """Return a new kernel with instructions in *insn_ids* removed.
 
-    Dependencies across (one, for now) deleted isntructions are propagated.
-    Behavior is undefined for now for chains of dependencies within the
-    set of deleted instructions.
+    Dependencies across deleted instructions are transitively propagated i.e.
+    if insn_a depends on insn_b that depends on insn_c and  'insn_b' is to be
+    removed then the returned kernel will have a dependency from 'insn_a' to
+    'insn_c'.
 
     This also updates *no_sync_with* for all instructions.
+
+    :arg insn_ids: An instance of :class:`set` or :class:`str` as
+        understood by :func:`loopy.match.parse_match` or
+        :class:`loopy.match.MatchExpressionBase`.
     """
+    from functools import reduce
 
     if not insn_ids:
         return kernel
 
+    from loopy.match import MatchExpressionBase
+
+    if isinstance(insn_ids, str):
+        from loopy.match import parse_match
+        insn_ids = parse_match(insn_ids)
+    if isinstance(insn_ids, MatchExpressionBase):
+        within = insn_ids
+
+        insn_ids = set([insn.id for insn in kernel.instructions if
+            within(kernel, insn)])
+
     assert isinstance(insn_ids, set)
     id_to_insn = kernel.id_to_insn
+
+    # {{{ for each insn_id to be removed get deps in terms of remaining insns
+
+    # transitive_deps: mapping from insn_id (referred as I) to be removed to
+    # frozenset of insn_ids that won't be removed (referred as R(I)). 'R(I)' are
+    # the transitive dependencies of 'I' that won't be removed.
+
+    transitive_deps = {}
+    insns_not_to_be_removed = frozenset(id_to_insn) - insn_ids
+
+    for insn_id in _toposort_of_subset_of_insns(kernel, insn_ids):
+        assert id_to_insn[insn_id].depends_on <= (insns_not_to_be_removed
+                                                  | frozenset(transitive_deps))
+        transitive_deps[insn_id] = reduce(frozenset.union,
+                                          (transitive_deps.get(d, frozenset([d]))
+                                           for d in id_to_insn[insn_id].depends_on),
+                                          frozenset())
+
+    # }}}
 
     new_insns = []
     for insn in kernel.instructions:
@@ -193,19 +275,19 @@ def remove_instructions(kernel, insn_ids):
             continue
 
         # transitively propagate dependencies
-        # (only one level for now)
         if insn.depends_on is None:
             depends_on = frozenset()
         else:
             depends_on = insn.depends_on
 
-        new_deps = depends_on - insn_ids
+        new_deps = reduce(frozenset.union,
+                          (transitive_deps.get(d, frozenset([d]))
+                           for d in depends_on),
+                          frozenset())
 
-        for dep_id in depends_on & insn_ids:
-            new_deps = new_deps | id_to_insn[dep_id].depends_on
+        assert (new_deps & insn_ids) == frozenset()
 
         # update no_sync_with
-
         new_no_sync_with = frozenset((insn_id, scope)
                 for insn_id, scope in insn.no_sync_with
                 if insn_id not in insn_ids)
@@ -227,7 +309,7 @@ def replace_instruction_ids(kernel, replacements):
 
     new_insns = []
 
-    for i, insn in enumerate(kernel.instructions):
+    for insn in kernel.instructions:
         changed = False
         new_depends_on = list(insn.depends_on)
         extra_depends_on = []
@@ -261,6 +343,7 @@ def replace_instruction_ids(kernel, replacements):
 
 # {{{ tag_instructions
 
+@for_each_kernel
 def tag_instructions(kernel, new_tag, within=None):
     from loopy.match import parse_match
     within = parse_match(within)
@@ -283,6 +366,7 @@ def tag_instructions(kernel, new_tag, within=None):
 
 # {{{ add nosync
 
+@for_each_kernel
 def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
         empty_ok=False):
     """Add a *no_sync_with* directive between *source* and *sink*.
@@ -315,18 +399,21 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
         This used to silently pass. This behavior can be restored using
         *empty_ok*.
     """
+    assert isinstance(kernel, LoopKernel)
 
     if isinstance(source, str) and source in kernel.id_to_insn:
         sources = frozenset([source])
     else:
         sources = frozenset(
-                source.id for source in find_instructions(kernel, source))
+                source.id for source in find_instructions_in_single_kernel(
+                    kernel, source))
 
     if isinstance(sink, str) and sink in kernel.id_to_insn:
         sinks = frozenset([sink])
     else:
         sinks = frozenset(
-                sink.id for sink in find_instructions(kernel, sink))
+                sink.id for sink in find_instructions_in_single_kernel(
+                    kernel, sink))
 
     if not sources and not empty_ok:
         raise LoopyError("No match found for source specification '%s'." % source)
@@ -379,6 +466,7 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
 
 # {{{ uniquify_instruction_ids
 
+@for_each_kernel
 def uniquify_instruction_ids(kernel):
     """Converts any ids that are :class:`loopy.UniqueName` or *None* into unique
     strings.
