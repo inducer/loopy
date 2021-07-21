@@ -24,6 +24,8 @@ THE SOFTWARE.
 from loopy.kernel.instruction import BarrierInstruction
 from loopy.match import parse_match
 from loopy.transform.instruction import add_dependency
+from loopy.translation_unit import for_each_kernel
+from loopy.kernel import LoopKernel
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -34,6 +36,7 @@ __doc__ = """
 
 # {{{ add_barrier
 
+@for_each_kernel
 def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
                 tags=None, synchronization_kind="global", mem_kind=None,
                 within_inames=None):
@@ -58,6 +61,8 @@ def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
         within which the barrier will be executed.
 
     """
+
+    assert isinstance(kernel, LoopKernel)
 
     if mem_kind is None:
         mem_kind = synchronization_kind

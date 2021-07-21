@@ -63,32 +63,30 @@ def main():
     parser.add_argument("--target", choices=(
         "opencl", "ispc", "ispc-occa", "c", "c-fortran", "cuda"),
         default="opencl")
-    parser.add_argument("--name")
     parser.add_argument("--transform")
     parser.add_argument("--edit-code", action="store_true")
     parser.add_argument("--occa-defines")
-    parser.add_argument("--occa-add-dummy-arg", action="store_true")
     parser.add_argument("--print-ir", action="store_true")
     args = parser.parse_args()
 
     if args.target == "opencl":
         from loopy.target.opencl import OpenCLTarget
-        target = OpenCLTarget()
+        target = OpenCLTarget
     elif args.target == "ispc":
         from loopy.target.ispc import ISPCTarget
-        target = ISPCTarget()
+        target = ISPCTarget
     elif args.target == "ispc-occa":
         from loopy.target.ispc import ISPCTarget
-        target = ISPCTarget(occa_mode=True)
+        target = lambda: ISPCTarget(occa_mode=True)  # noqa: E731
     elif args.target == "c":
         from loopy.target.c import CTarget
-        target = CTarget()
+        target = CTarget
     elif args.target == "c-fortran":
         from loopy.target.c import CTarget
-        target = CTarget(fortran_abi=True)
+        target = lambda: CTarget(fortran_abi=True)  # noqa: E731
     elif args.target == "cuda":
         from loopy.target.cuda import CudaTarget
-        target = CudaTarget()
+        target = CudaTarget
     else:
         raise ValueError("unknown target: %s" % target)
 
@@ -106,9 +104,11 @@ def main():
                 ".loopy": "loopy",
                 ".floopy": "fortran",
                 ".f90": "fortran",
+                ".F90": "fortran",
                 ".fpp": "fortran",
                 ".f": "fortran",
                 ".f77": "fortran",
+                ".F77": "fortran",
                 }.get(ext)
         with open(args.infile) as infile_fd:
             infile_content = infile_fd.read()
@@ -159,10 +159,7 @@ def main():
             raise RuntimeError("loopy-lang requires 'lp_knl' "
                     "to be defined on exit")
 
-        if args.name is not None:
-            kernel = kernel.copy(name=args.name)
-
-        kernels = [kernel]
+        t_unit = [kernel]
 
     elif lang in ["fortran", "floopy", "fpp"]:
         pre_transform_code = None
@@ -179,69 +176,31 @@ def main():
                         defines_to_python_code(defines_fd.read())
                         + pre_transform_code)
 
-        kernels = lp.parse_transformed_fortran(
+        t_unit = lp.parse_transformed_fortran(
                 infile_content, pre_transform_code=pre_transform_code,
                 filename=args.infile)
-
-        if args.name is not None:
-            kernels = [kernel for kernel in kernels
-                    if kernel.name == args.name]
-
-        if not kernels:
-            raise RuntimeError("no kernels found (name specified: %s)"
-                    % args.name)
 
     else:
         raise RuntimeError("unknown language: '%s'"
                 % args.lang)
 
+    if not isinstance(t_unit, lp.TranslationUnit):
+        # FIXME
+        assert isinstance(t_unit, list)  # of kernels
+        raise NotImplementedError("convert list of kernels to TranslationUnit")
+
     if args.print_ir:
-        for kernel in kernels:
-            print(kernel, file=sys.stderr)
+        print(t_unit, file=sys.stderr)
 
-    if args.occa_add_dummy_arg:
-        new_kernels = []
-        for kernel in kernels:
-            new_args = [
-                    lp.ArrayArg("occa_info", np.int32, shape=None)
-                    ] + kernel.args
-            new_kernels.append(kernel.copy(args=new_args))
-
-        kernels = new_kernels
-        del new_kernels
-
-    codes = []
-    from loopy.codegen import generate_code
-    for kernel in kernels:
-        kernel = lp.preprocess_kernel(kernel)
-        code, impl_arg_info = generate_code(kernel)
-        codes.append(code)
+    t_unit = lp.preprocess_kernel(t_unit)
+    cgr = lp.generate_code_v2(t_unit)
 
     if args.outfile is not None:
         outfile = args.outfile
     else:
         outfile = "-"
 
-    code = "\n\n".join(codes)
-
-    # {{{ edit code if requested
-
-    import os
-    edit_kernel_env = os.environ.get("LOOPY_EDIT_KERNEL")
-    need_edit = args.edit_code
-    if not need_edit and edit_kernel_env is not None:
-        # Do not replace with "any()"--Py2.6/2.7 bug doesn't like
-        # comprehensions in functions with exec().
-
-        for k in kernels:
-            if edit_kernel_env.lower() in k.name.lower():
-                need_edit = True
-
-    if need_edit:
-        from pytools import invoke_editor
-        code = invoke_editor(code, filename="edit.cl")
-
-    # }}}
+    code = cgr.device_code()
 
     if outfile == "-":
         sys.stdout.write(code)

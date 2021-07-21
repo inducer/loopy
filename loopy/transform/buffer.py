@@ -30,6 +30,9 @@ from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder, PymbolicExpressionHashWrapper
 from loopy.version import DATA_MODEL_VERSION
 from loopy.diagnostic import LoopyError
+from loopy.kernel import LoopKernel
+from loopy.translation_unit import TranslationUnit
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 from pymbolic import var
 
@@ -127,10 +130,10 @@ buffer_array_cache = WriteOncePersistentDict(
 
 
 # Adding an argument? also add something to the cache_key below.
-def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
-        store_expression=None, within=None, default_tag="l.auto",
-        temporary_scope=None, temporary_is_local=None,
-        fetch_bounding_box=False):
+def buffer_array_for_single_kernel(kernel, callables_table, var_name,
+        buffer_inames, init_expression=None, store_expression=None,
+        within=None, default_tag="l.auto", temporary_scope=None,
+        temporary_is_local=None, fetch_bounding_box=False):
     """Replace accesses to *var_name* with ones to a temporary, which is
     created and acts as a buffer. To perform this transformation, the access
     footprint to *var_name* is determined and a temporary of a suitable
@@ -165,6 +168,20 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         rectangular (and hence convex) superset of the footprint to be
         fetched.
     """
+
+    if isinstance(kernel, TranslationUnit):
+        kernel_names = [i for i, clbl in
+                kernel.callables_table.items() if isinstance(clbl,
+                    CallableKernel)]
+        if len(kernel_names) != 1:
+            raise LoopyError()
+
+        return kernel.with_kernel(buffer_array(kernel[kernel_names[0]],
+            var_name, buffer_inames, init_expression, store_expression, within,
+            default_tag, temporary_scope, temporary_is_local,
+            fetch_bounding_box, kernel.callables_table))
+
+    assert isinstance(kernel, LoopKernel)
 
     # {{{ unify temporary_scope / temporary_is_local
 
@@ -235,9 +252,8 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
 
     from loopy import CACHING_ENABLED
 
-    from loopy.preprocess import prepare_for_caching
-    key_kernel = prepare_for_caching(kernel)
-    cache_key = (key_kernel, var_name, tuple(buffer_inames),
+    cache_key = (kernel, var_name,
+            tuple(buffer_inames),
             PymbolicExpressionHashWrapper(init_expression),
             PymbolicExpressionHashWrapper(store_expression), within,
             default_tag, temporary_scope, fetch_bounding_box)
@@ -525,13 +541,32 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     kernel = tag_inames(kernel, new_iname_to_tag)
 
     from loopy.kernel.tools import assign_automatic_axes
-    kernel = assign_automatic_axes(kernel)
+    kernel = assign_automatic_axes(kernel, callables_table)
 
     if CACHING_ENABLED:
-        from loopy.preprocess import prepare_for_caching
-        buffer_array_cache.store_if_not_present(
-                cache_key, prepare_for_caching(kernel))
+        buffer_array_cache.store_if_not_present(cache_key, kernel)
 
     return kernel
+
+
+def buffer_array(program, *args, **kwargs):
+    assert isinstance(program, TranslationUnit)
+
+    new_callables = {}
+
+    for func_id, clbl in program.callables_table.items():
+        if isinstance(clbl, CallableKernel):
+            clbl = clbl.copy(
+                    subkernel=buffer_array_for_single_kernel(clbl.subkernel,
+                        program.callables_table, *args, **kwargs))
+        elif isinstance(clbl, ScalarCallable):
+            pass
+        else:
+            raise NotImplementedError()
+
+        new_callables[func_id] = clbl
+
+    return program.copy(callables_table=new_callables)
+
 
 # vim: foldmethod=marker

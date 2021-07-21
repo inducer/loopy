@@ -166,7 +166,8 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                     % ", ".join(f'"{arg.name}": {arg.name}'
                         for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
-                        if arg.base_name in kernel.get_written_variables()))
+                        if arg.base_name in
+                        kernel.get_written_variables()))
         else:
             out_args = [arg
                     for arg in implemented_data_info
@@ -211,10 +212,23 @@ class CCompiler:
     """
 
     def __init__(self, toolchain=None,
-                 cc="gcc", cflags="-std=c99 -O3 -fPIC".split(),
-                 ldflags="-shared".split(), libraries=[],
-                 include_dirs=[], library_dirs=[], defines=[],
+                 cc="gcc", cflags=None,
+                 ldflags=None, libraries=None,
+                 include_dirs=None, library_dirs=None, defines=None,
                  source_suffix="c"):
+        if cflags is None:
+            cflags = "-std=c99 -O3 -fPIC".split()
+        if ldflags is None:
+            ldflags = "-shared".split()
+        if libraries is None:
+            libraries = []
+        if include_dirs is None:
+            include_dirs = []
+        if library_dirs is None:
+            library_dirs = []
+        if defines is None:
+            defines = []
+
         # try to get a default toolchain
         # or subclass supplied version if available
         self.toolchain = toolchain
@@ -288,9 +302,9 @@ class CPlusPlusCompiler(CCompiler):
     """Subclass of CCompiler to invoke a C++ compiler."""
 
     def __init__(self, toolchain=None,
-                 cc="g++", cflags="-std=c++98 -O3 -fPIC".split(),
-                 ldflags=[], libraries=[],
-                 include_dirs=[], library_dirs=[], defines=[],
+                 cc="g++", cflags=None,
+                 ldflags=None, libraries=None,
+                 include_dirs=None, library_dirs=None, defines=None,
                  source_suffix="cpp"):
 
         super().__init__(
@@ -407,7 +421,7 @@ class CKernelExecutor(KernelExecutorBase):
     .. automethod:: __call__
     """
 
-    def __init__(self, kernel, compiler=None):
+    def __init__(self, program, entrypoint, compiler=None):
         """
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
             (a warning will be issued if more than one is returned). If the
@@ -416,58 +430,62 @@ class CKernelExecutor(KernelExecutorBase):
         """
 
         self.compiler = compiler if compiler else CCompiler()
-        super().__init__(kernel)
+        super().__init__(program, entrypoint)
 
-    def get_invoker_uncached(self, kernel, codegen_result):
+    def get_invoker_uncached(self, kernel, entrypoint, codegen_result):
         generator = CExecutionWrapperGenerator()
-        return generator(kernel, codegen_result)
+        return generator(kernel, entrypoint, codegen_result)
 
     def get_wrapper_generator(self):
         return CExecutionWrapperGenerator()
 
     @memoize_method
-    def kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
-        kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype_set)
+    def program_info(self, entrypoint, arg_to_dtype_set=frozenset(),
+            all_kwargs=None):
+        program = self.get_typed_and_scheduled_translation_unit(
+                entrypoint, arg_to_dtype_set)
 
         from loopy.codegen import generate_code_v2
-        codegen_result = generate_code_v2(kernel)
+        codegen_result = generate_code_v2(program)
 
         dev_code = codegen_result.device_code()
         host_code = codegen_result.host_code()
         all_code = "\n".join([dev_code, "", host_code])
 
-        if self.kernel.options.write_cl:
+        if self.program[entrypoint].options.write_cl:
             output = all_code
-            if self.kernel.options.highlight_cl:
+            if self.program[entrypoint].options.highlight_cl:
                 output = get_highlighted_code(output)
 
-            if self.kernel.options.write_cl is True:
+            if self.program[entrypoint].options.write_cl is True:
                 print(output)
             else:
-                with open(self.kernel.options.write_cl, "w") as outf:
+                with open(self.program[entrypoint].options.write_cl, "w") as outf:
                     outf.write(output)
 
-        if self.kernel.options.edit_cl:
+        if self.program[entrypoint].options.edit_cl:
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.c")
             # update code from editor
             all_code = "\n".join([dev_code, "", host_code])
 
         c_kernels = []
+
         for dp in codegen_result.device_programs:
             c_kernels.append(CompiledCKernel(dp,
-                codegen_result.implemented_data_info, all_code, self.kernel.target,
-                self.compiler))
+                codegen_result.implemented_data_infos[entrypoint], all_code,
+                self.program.target, self.compiler))
 
         return _KernelInfo(
-                kernel=kernel,
+                program=program,
                 c_kernels=c_kernels,
-                implemented_data_info=codegen_result.implemented_data_info,
-                invoker=self.get_invoker(kernel, codegen_result))
+                implemented_data_info=codegen_result.implemented_data_infos[
+                    entrypoint],
+                invoker=self.get_invoker(program, entrypoint, codegen_result))
 
     # }}}
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, entrypoint=None, **kwargs):
         """
         :returns: ``(None, output)`` the output is a tuple of output arguments
             (arguments that are written as part of the kernel). The order is given
@@ -477,10 +495,16 @@ class CKernelExecutor(KernelExecutorBase):
             :class:`dict` instead, with keys of argument names and values
             of the returned arrays.
         """
+        assert entrypoint is not None
 
-        kwargs = self.packing_controller.unpack(kwargs)
+        if __debug__:
+            self.check_for_required_array_arguments(kwargs.keys())
 
-        kernel_info = self.kernel_info(self.arg_to_dtype_set(kwargs))
+        if self.packing_controller is not None:
+            kwargs = self.packing_controller(kwargs)
 
-        return kernel_info.invoker(
-                kernel_info.c_kernels, *args, **kwargs)
+        program_info = self.program_info(entrypoint,
+                self.arg_to_dtype_set(kwargs))
+
+        return program_info.invoker(
+                program_info.c_kernels, *args, **kwargs)

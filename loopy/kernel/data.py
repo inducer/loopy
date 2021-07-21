@@ -24,6 +24,7 @@ THE SOFTWARE.
 """
 
 
+import sys
 from sys import intern
 import numpy as np  # noqa
 from pytools import ImmutableRecord
@@ -51,23 +52,25 @@ __doc__ = """
 
 .. autofunction:: filter_iname_tags_by_type
 
-.. autoclass:: IndexTag
+.. autoclass:: InameImplementationTag
 
 .. autoclass:: ConcurrentTag
 
-.. autoclass:: UniqueTag
+.. autoclass:: UniqueInameTag
 
 .. autoclass:: AxisTag
 
-.. autoclass:: LocalIndexTag
+.. autoclass:: LocalInameTag
 
-.. autoclass:: GroupIndexTag
+.. autoclass:: GroupInameTag
 
 .. autoclass:: VectorizeTag
 
 .. autoclass:: UnrollTag
 
 .. autoclass:: Iname
+
+.. autoclass:: KernelArgument
 """
 
 
@@ -80,14 +83,13 @@ class auto:  # noqa
 
 # {{{ iname tags
 
-
 def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
     """Return a subset of *tags* that matches type *tag_type*. Raises exception
     if the number of tags found were greater than *max_num* or less than
     *min_num*.
 
     :arg tags: An iterable of tags.
-    :arg tag_type: a subclass of :class:`loopy.kernel.data.IndexTag`.
+    :arg tag_type: a subclass of :class:`loopy.kernel.data.InameImplementationTag`.
     :arg max_num: the maximum number of tags expected to be found.
     :arg min_num: the minimum number of tags expected to be found.
     """
@@ -111,7 +113,7 @@ def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
     return result
 
 
-class IndexTag(ImmutableRecord, UniqueTagBase):
+class InameImplementationTag(ImmutableRecord, UniqueTagBase):
     __slots__ = []
 
     def __hash__(self):
@@ -137,7 +139,7 @@ class IndexTag(ImmutableRecord, UniqueTagBase):
         return type(self).__name__
 
 
-class ConcurrentTag(IndexTag):
+class ConcurrentTag(InameImplementationTag):
     pass
 
 
@@ -150,11 +152,11 @@ ParallelTag = ConcurrentTag
 HardwareParallelTag = HardwareConcurrentTag
 
 
-class UniqueTag(IndexTag):
+class UniqueInameTag(InameImplementationTag):
     pass
 
 
-class AxisTag(UniqueTag):
+class AxisTag(UniqueInameTag):
     __slots__ = ["axis"]
 
     def __init__(self, axis):
@@ -170,25 +172,25 @@ class AxisTag(UniqueTag):
                 self.print_name, self.axis)
 
 
-class GroupIndexTag(HardwareConcurrentTag, AxisTag):
+class GroupInameTag(HardwareConcurrentTag, AxisTag):
     print_name = "g"
 
 
-class LocalIndexTagBase(HardwareConcurrentTag):
+class LocalInameTagBase(HardwareConcurrentTag):
     pass
 
 
-class LocalIndexTag(LocalIndexTagBase, AxisTag):
+class LocalInameTag(LocalInameTagBase, AxisTag):
     print_name = "l"
 
 
-class AutoLocalIndexTagBase(LocalIndexTagBase):
+class AutoLocalInameTagBase(LocalInameTagBase):
     @property
     def key(self):
         return type(self).__name__
 
 
-class AutoFitLocalIndexTag(AutoLocalIndexTagBase):
+class AutoFitLocalInameTag(AutoLocalInameTagBase):
     def __str__(self):
         return "l.auto"
 
@@ -211,22 +213,22 @@ class LoopedIlpTag(IlpBaseTag):
 # }}}
 
 
-class VectorizeTag(UniqueTag, HardwareConcurrentTag):
+class VectorizeTag(UniqueInameTag, HardwareConcurrentTag):
     def __str__(self):
         return "vec"
 
 
-class UnrollTag(IndexTag):
+class UnrollTag(InameImplementationTag):
     def __str__(self):
         return "unr"
 
 
-class ForceSequentialTag(IndexTag):
+class ForceSequentialTag(InameImplementationTag):
     def __str__(self):
         return "forceseq"
 
 
-class InOrderSequentialSequentialTag(IndexTag):
+class InOrderSequentialSequentialTag(InameImplementationTag):
     def __str__(self):
         return "ord"
 
@@ -255,13 +257,13 @@ def parse_tag(tag):
     elif tag == "ilp.seq":
         return LoopedIlpTag()
     elif tag.startswith("g."):
-        return GroupIndexTag(int(tag[2:]))
+        return GroupInameTag(int(tag[2:]))
     elif tag.startswith("l."):
         axis = tag[2:]
         if axis == "auto":
-            return AutoFitLocalIndexTag()
+            return AutoFitLocalInameTag()
         else:
-            return LocalIndexTag(int(axis))
+            return LocalInameTag(int(axis))
     else:
         raise ValueError("cannot parse tag: %s" % tag)
 
@@ -363,6 +365,8 @@ class KernelArgument(ImmutableRecord):
 
             dtype = None
         kwargs["dtype"] = dtype
+        kwargs["is_output"] = kwargs.pop("is_output", None)
+        kwargs["is_input"] = kwargs.pop("is_input", None)
 
         ImmutableRecord.__init__(self, **kwargs)
 
@@ -375,21 +379,39 @@ class ArrayArg(ArrayBase, KernelArgument):
             An attribute of :class:`AddressSpace` defining the address
             space in which the array resides.
 
-        .. attribute:: is_output_only
+        .. attribute:: is_output
 
-            An instance of :class:`bool`. If set to *True*, recorded to be
-            returned from the kernel.
+            An instance of :class:`bool`. If set to *True*, the array is used to
+            return information to the caller. If set to *False*, the callee does not
+            write to the array during a call.
+
+        .. attribute:: is_input
+
+            An instance of :class:`bool`. If set to *True*, expected to be provided
+            by the caller. If *False*, the callee does not depend on the array
+            at kernel entry.
         """)
 
     allowed_extra_kwargs = [
             "address_space",
-            "is_output_only",
+            "is_output",
+            "is_input",
             "tags"]
 
     def __init__(self, *args, **kwargs):
         if "address_space" not in kwargs:
             raise TypeError("'address_space' must be specified")
-        kwargs["is_output_only"] = kwargs.pop("is_output_only", False)
+
+        is_output_only = kwargs.pop("is_output_only", None)
+        if is_output_only is not None:
+            warn("'is_output_only' is deprecated. Use 'is_output', 'is_input'"
+                    " instead.", DeprecationWarning, stacklevel=2)
+            kwargs["is_output"] = is_output_only
+            kwargs["is_input"] = not is_output_only
+        else:
+            kwargs["is_output"] = kwargs.pop("is_output", None)
+            kwargs["is_input"] = kwargs.pop("is_input", None)
+
         super().__init__(*args, **kwargs)
 
     min_target_axes = 0
@@ -416,7 +438,8 @@ class ArrayArg(ArrayBase, KernelArgument):
         """
         super().update_persistent_hash(key_hash, key_builder)
         key_builder.rec(key_hash, self.address_space)
-        key_builder.rec(key_hash, self.is_output_only)
+        key_builder.rec(key_hash, self.is_output)
+        key_builder.rec(key_hash, self.is_input)
 
 
 # Making this a function prevents incorrect use in isinstance.
@@ -433,6 +456,17 @@ def GlobalArg(*args, **kwargs):
 
 class ConstantArg(ArrayBase, KernelArgument):
     __doc__ = ArrayBase.__doc__
+
+    def __init__(self, *args, **kwargs):
+        if kwargs.pop("address_space", AddressSpace.GLOBAL) != AddressSpace.GLOBAL:
+            raise LoopyError("'address_space' for ConstantArg must be GLOBAL.")
+        super().__init__(*args, **kwargs)
+
+    # Constant Arg cannot be an output
+    is_output = False
+    is_input = True
+    address_space = AddressSpace.GLOBAL
+
     min_target_axes = 0
     max_target_axes = 1
 
@@ -443,8 +477,19 @@ class ConstantArg(ArrayBase, KernelArgument):
 
 class ImageArg(ArrayBase, KernelArgument):
     __doc__ = ArrayBase.__doc__
+
+    def __init__(self, *args, **kwargs):
+        if kwargs.pop("address_space", AddressSpace.GLOBAL) != AddressSpace.GLOBAL:
+            raise LoopyError("'address_space' for ImageArg must be GLOBAL.")
+        super().__init__(*args, **kwargs)
+
     min_target_axes = 1
     max_target_axes = 3
+
+    # ImageArg cannot be an output (for now)
+    is_output = False
+    is_input = True
+    address_space = AddressSpace.GLOBAL
 
     @property
     def dimensions(self):
@@ -466,18 +511,23 @@ class ImageArg(ArrayBase, KernelArgument):
 
 class ValueArg(KernelArgument, Taggable):
     def __init__(self, name, dtype=None, approximately=1000, target=None,
-            is_output_only=False, tags=None):
+            is_output=False, is_input=True, tags=None):
         """
         :arg tags: A an instance of or Iterable of instances of
             :class:`pytools.tag.Tag` intended for consumption by an
             application.
         """
 
+        if tags is None:
+            tags = frozenset()
+
         KernelArgument.__init__(self, name=name,
                 dtype=dtype,
                 approximately=approximately,
                 target=target,
-                is_output_only=is_output_only, tags=tags)
+                is_output=is_output,
+                is_input=is_input,
+                tags=tags)
 
     def __str__(self):
         import loopy as lp
@@ -773,9 +823,9 @@ class TemporaryVariable(ArrayBase):
 def iname_tag_to_temp_var_scope(iname_tag):
     iname_tag = parse_tag(iname_tag)
 
-    if isinstance(iname_tag, GroupIndexTag):
+    if isinstance(iname_tag, GroupInameTag):
         return AddressSpace.GLOBAL
-    elif isinstance(iname_tag, LocalIndexTag):
+    elif isinstance(iname_tag, LocalInameTag):
         return AddressSpace.LOCAL
     else:
         return AddressSpace.PRIVATE
@@ -855,8 +905,9 @@ class Iname(Taggable):
 
     This class records the metadata attached to an iname as instances of
     :class:pytools.tag.Tag`. A tag maybe a builtin tag like
-    :class:`loopy.kernel.data.IndexTag` or a user-defined custom tag. Custom tags
-    may be attached to inames to be used in targeting later during transformations.
+    :class:`loopy.kernel.data.InameImplementationTag` or a user-defined custom
+    tag. Custom tags may be attached to inames to be used in targeting later
+    during transformations.
 
     .. attribute:: name
 
@@ -893,6 +944,40 @@ class Iname(Taggable):
                 type(self) == type(other)
                 and self.name == other.name
                 and self.tags == other.tags)
+
+# }}}
+
+
+# {{{ deprecation helpers
+
+_old_to_new = {
+        "IndexTag": "InameImplementationTag",
+        "GroupIndexTag": "GroupInameTag",
+        "LocalIndexTagBase": "LocalInameTagBase",
+        "LocalIndexTag": "LocalInameTag",
+        "UniqueTag": "UniqueInameTag",
+        }
+
+if sys.version_info < (3, 7):
+    _glb = globals()
+    for _old, _new in _old_to_new.items():
+        _glb[_old] = _glb[_new]
+
+    del _old
+    del _new
+    del _glb
+else:
+    def __getattr__(name):
+        new_name = _old_to_new.get(name)
+        if new_name is None:
+            raise AttributeError(name)
+        else:
+            from warnings import warn
+            warn(f"loopy.kernel.data.{name} is deprecated. "
+                    f"Use loopy.kernel.data.{new_name} instead. "
+                    "The old name will stop working in 2022.",
+                    DeprecationWarning, stacklevel=2)
+            return globals()[new_name]
 
 # }}}
 

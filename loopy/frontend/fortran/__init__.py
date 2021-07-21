@@ -20,7 +20,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
+logger = logging.getLogger(__name__)
+
 from loopy.diagnostic import LoopyError
+from pytools import ProcessLogger
 
 
 def c_preprocess(source, defines=None, filename=None, include_paths=None):
@@ -152,8 +156,9 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
       :func:`parse_fortran`.
     * ``FILENAME``: the file name of the code being processed
 
-    The transform code must define ``RESULT``, conventionally a list of
-    kernels, which is returned from this function unmodified.
+    The transform code must define ``RESULT``, conventionally a list of kernels
+    or a :class:`loopy.TranslationUnit`, which is returned from this function
+    unmodified.
 
     An example of *source* may look as follows::
 
@@ -234,16 +239,67 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
     return proc_dict["RESULT"]
 
 
-def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
-        seq_dependencies=None, auto_dependencies=None, target=None,
-        all_names_known=True):
+def _add_assignees_to_calls(knl, all_kernels):
     """
-    :arg all_names_known: if set to *False*, enter an undocumented mode
-        in which Fortran parsing will try to tolerate unknown names.
-        If used, ``loopy.frontend.fortran.translator.specialize_fortran_division``
-        must be called as soon as all names are known.
-    :returns: a list of :class:`loopy.LoopKernel` objects
+    Returns a copy of *knl* coming from the fortran parser adjusted to the
+    loopy specification that written variables of a call must appear in the
+    assignee.
+
+    :param knl: An instance of :class:`loopy.LoopKernel`, which have incorrect
+        calls to the kernels in *all_kernels* by stuffing both the input and
+        output arguments into parameters.
+
+    :param all_kernels: An instance of :class:`list` of loopy kernels which
+        may be called by *kernel*.
     """
+    new_insns = []
+    subroutine_dict = {kernel.name: kernel for kernel in all_kernels}
+    from loopy.kernel.instruction import (Assignment, CallInstruction,
+            CInstruction, _DataObliviousInstruction,
+            modify_assignee_for_array_call)
+    from pymbolic.primitives import Call, Variable
+
+    for insn in knl.instructions:
+        if isinstance(insn, CallInstruction):
+            if isinstance(insn.expression, Call) and (
+                    insn.expression.function.name in subroutine_dict):
+                assignees = []
+                new_params = []
+                subroutine = subroutine_dict[insn.expression.function.name]
+                for par, arg in zip(insn.expression.parameters, subroutine.args):
+                    if arg.name in subroutine.get_written_variables():
+                        par = modify_assignee_for_array_call(par)
+                        assignees.append(par)
+                    if arg.name in subroutine.get_read_variables():
+                        new_params.append(par)
+                    if arg.name not in (subroutine.get_written_variables() |
+                            subroutine.get_read_variables()):
+                        new_params.append(par)
+
+                new_insns.append(
+                        insn.copy(
+                            assignees=tuple(assignees),
+                            expression=Variable(
+                                insn.expression.function.name)(*new_params)))
+            else:
+                new_insns.append(insn)
+            pass
+        elif isinstance(insn, (Assignment, CInstruction,
+                _DataObliviousInstruction)):
+            new_insns.append(insn)
+        else:
+            raise NotImplementedError(type(insn).__name__)
+
+    return knl.copy(instructions=new_insns)
+
+
+def parse_fortran(source, filename="<floopy code>", free_form=None, strict=None,
+        seq_dependencies=None, auto_dependencies=None, target=None):
+    """
+    :returns: a :class:`loopy.TranslationUnit`
+    """
+
+    parse_plog = ProcessLogger(logger, "parsing fortran file '%s'" % filename)
 
     if seq_dependencies is not None and auto_dependencies is not None:
         raise TypeError(
@@ -256,6 +312,10 @@ def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
 
     if seq_dependencies is None:
         seq_dependencies = True
+    if free_form is None:
+        free_form = True
+    if strict is None:
+        strict = True
 
     import logging
     console = logging.StreamHandler()
@@ -273,11 +333,29 @@ def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
                 "and returned invalid data (Sorry!)")
 
     from loopy.frontend.fortran.translator import F2LoopyTranslator
-    f2loopy = F2LoopyTranslator(
-            filename, target=target, all_names_known=all_names_known)
+    f2loopy = F2LoopyTranslator(filename, target=target)
     f2loopy(tree)
 
-    return f2loopy.make_kernels(seq_dependencies=seq_dependencies)
+    kernels = f2loopy.make_kernels(seq_dependencies=seq_dependencies)
+
+    from loopy.transform.callable import merge
+    prog = merge(kernels)
+    all_kernels = [clbl.subkernel
+                   for clbl in prog.callables_table.values()]
+
+    for knl in all_kernels:
+        prog.with_kernel(_add_assignees_to_calls(knl, all_kernels))
+
+    if len(all_kernels) == 1:
+        # guesssing in the case of only one function
+        prog = prog.with_entrypoints(all_kernels[0].name)
+
+    from loopy.frontend.fortran.translator import specialize_fortran_division
+    prog = specialize_fortran_division(prog)
+
+    parse_plog.done()
+
+    return prog
 
 
 # vim: foldmethod=marker
