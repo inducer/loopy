@@ -2261,7 +2261,6 @@ def test_split_iname_with_dependencies():
         a[i] = 0.1  {id=stmt0}
         b[i] = a[i]  {id=stmt1,dep=stmt0}
         """,
-        name="example",
         assumptions="p >= 1",
         lang_version=(2018, 2)
         )
@@ -2386,7 +2385,6 @@ def test_split_iname_with_dependencies():
         c[i,k,j,m] = 0.1  {id=stmt2}
         d[i,k,j,m] = c[i,k,j,m]  {id=stmt3,dep=stmt2}
         """,
-        name="example",
         assumptions="p >= 1",
         lang_version=(2018, 2)
         )
@@ -2460,7 +2458,6 @@ def test_map_domain_with_only_partial_dep_pair_affected():
         c[x,t] = d[x,t]  {id=stmtc,dep=stmta}
         e[i] = f[i]  {id=stmte,dep=stmtc}
         """,
-        name="wave_equation",
         lang_version=(2018, 2),
         )
     knl = lp.add_and_infer_dtypes(knl, {"b,d,f": np.float32})
@@ -2651,7 +2648,6 @@ def test_map_domain_with_stencil_dependencies():
             + dt**2/dx**2 * (u[ix+1, it+1] - 2*u[ix, it+1] + u[ix-1, it+1])
             - u[ix, it])  {id=stmt}
         """,
-        name="wave_equation",
         #assumptions="nx,nt >= 3",  # works without these (?)
         lang_version=(2018, 2),
         )
@@ -2767,7 +2763,6 @@ def test_add_prefetch_with_dependencies():
             a[i+1,j+1,k+1,m+1] = a[i,j,k,m]  {id=stmt}
         end
         """,
-        name="example",
         assumptions="p >= 1",
         lang_version=(2018, 2)
         )
