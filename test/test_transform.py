@@ -623,14 +623,13 @@ def test_map_domain_vs_split_iname():
     # Create map_domain mapping:
     import islpy as isl
     transform_map = isl.BasicMap(
-        "[nx,nt] -> {[x, t] -> [x_, t_outer, t_inner]: "
-        "x = x_ and "
+        "[nt] -> {[t] -> [t_outer, t_inner]: "
         "0 <= t_inner < 32 and "
         "32*t_outer + t_inner = t and "
         "0 <= 32*t_outer + t_inner < nt}")
 
     # Call map_domain to transform kernel
-    knl_map_dom = lp.map_domain(knl_map_dom, transform_map, rename_after={"x_": "x"})
+    knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
 
     # Prioritize loops (prio should eventually be updated in map_domain?)
     knl_map_dom = lp.prioritize_loops(knl_map_dom, "x, t_outer, t_inner")
