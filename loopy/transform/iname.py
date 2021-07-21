@@ -688,6 +688,27 @@ def check_must_not_nest(all_loop_nests, must_not_nest):
 # }}}
 
 
+# {{{ check_all_must_not_nests
+
+def check_all_must_not_nests(all_loop_nests, must_not_nests):
+    r"""Determine whether all must_not_nest constraints are satisfied by
+    all_loop_nests
+    :arg all_loop_nests: A list of lists of inames, each representing
+        the nesting order of nested loops.
+    :arg must_not_nests: A set of two-tuples of :class:`UnexpandedInameSet`\ s
+        describing nestings that must not appear in all_loop_nests.
+    :returns: A :class:`bool` indicating whether the must_not_nest constraints
+        are satisfied by the provided loop nesting.
+    """
+
+    for must_not_nest in must_not_nests:
+        if not check_must_not_nest(all_loop_nests, must_not_nest):
+            return False
+    return True
+
+# }}}
+
+
 # {{{ loop_nest_constraints_satisfied
 
 def loop_nest_constraints_satisfied(
@@ -784,6 +805,17 @@ def get_iname_nestings(linearization):
                 already_exiting_loops = True
             del current_tiers[-1]
     return nestings
+
+# }}}
+
+
+# {{{ get_graph_sources
+
+def get_graph_sources(graph):
+    sources = set(graph.keys())
+    for non_sources in graph.values():
+        sources -= non_sources
+    return sources
 
 # }}}
 
