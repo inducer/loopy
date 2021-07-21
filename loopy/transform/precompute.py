@@ -1065,7 +1065,8 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
         kernel = assign_automatic_axes(kernel, callables_table)
 
     # {{{ update dependencies
-
+    # FIXME Handle deps in precompute
+    """
     # Get some values that will be useful later
     fetch_stmt_id = compute_insn_id
     fetch_stmt = kernel.id_to_insn[compute_insn_id]
@@ -1123,7 +1124,7 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
                     set(usage_inames))
 
                 non_shared_inames = set(usage_inames) - shared_inames
-                # Remove the inames from old out dims that will not appear in new out dims
+                # Remove inames from old out dims that won't appear in new out dims
                 for non_shared_iname in non_shared_inames:
                     new_dep = remove_dim_by_name(new_dep, dt.out, non_shared_iname)
 
@@ -1171,6 +1172,7 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
         kernel = lp.add_dependency_v2(
             kernel, usage_stmt_id, fetch_stmt_id, dep_usage_on_fetch)
 
+    """
     # }}}
 
     return kernel
