@@ -2494,14 +2494,13 @@ def test_map_domain_with_only_partial_dep_pair_affected():
     # Create map_domain mapping:
     import islpy as isl
     transform_map = isl.BasicMap(
-        "[nx,nt] -> {[x, t] -> [x_, t_outer, t_inner]: "
-        "x = x_ and "
+        "[nt] -> {[t] -> [t_outer, t_inner]: "
         "0 <= t_inner < 32 and "
         "32*t_outer + t_inner = t and "
         "0 <= 32*t_outer + t_inner < nt}")
 
     # Call map_domain to transform kernel
-    knl = lp.map_domain(knl, transform_map, rename_after={"x_": "x"})
+    knl = lp.map_domain(knl, transform_map)
 
     # Prioritize loops (prio should eventually be updated in map_domain?)
     knl = lp.prioritize_loops(knl, "x, t_outer, t_inner")
