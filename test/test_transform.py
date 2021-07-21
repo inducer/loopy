@@ -609,7 +609,6 @@ def test_map_domain_vs_split_iname():
         c[x,t] = d[x,t]  {id=stmtc}
         e[i] = f[i]
         """,
-        name="wave_equation",
         lang_version=(2018, 2),
         )
     knl = lp.add_and_infer_dtypes(knl, {"b,d,f": np.float32})
@@ -638,7 +637,8 @@ def test_map_domain_vs_split_iname():
 
     # Get a linearization
     proc_knl_map_dom = lp.preprocess_kernel(knl_map_dom)
-    lin_knl_map_dom = lp.get_one_linearized_kernel(proc_knl_map_dom)
+    lin_knl_map_dom = lp.get_one_linearized_kernel(
+        proc_knl_map_dom["loopy_kernel"], proc_knl_map_dom.callables_table)
 
     # }}}
 
@@ -648,13 +648,15 @@ def test_map_domain_vs_split_iname():
     knl_split_iname = lp.split_iname(knl_split_iname, "t", 32)
     knl_split_iname = lp.prioritize_loops(knl_split_iname, "x, t_outer, t_inner")
     proc_knl_split_iname = lp.preprocess_kernel(knl_split_iname)
-    lin_knl_split_iname = lp.get_one_linearized_kernel(proc_knl_split_iname)
+    lin_knl_split_iname = lp.get_one_linearized_kernel(
+        proc_knl_split_iname["loopy_kernel"], proc_knl_split_iname.callables_table)
 
     from loopy.schedule.checker.utils import (
         ensure_dim_names_match_and_align,
     )
     for d_map_domain, d_split_iname in zip(
-            knl_map_dom.domains, knl_split_iname.domains):
+            knl_map_dom["loopy_kernel"].domains,
+            knl_split_iname["loopy_kernel"].domains):
         d_map_domain_aligned = ensure_dim_names_match_and_align(
             d_map_domain, d_split_iname)
         assert d_map_domain_aligned == d_split_iname
@@ -724,7 +726,8 @@ def test_map_domain_with_transform_map_missing_dims():
 
     # Get a linearization
     proc_knl_map_dom = lp.preprocess_kernel(knl_map_dom)
-    lin_knl_map_dom = lp.get_one_linearized_kernel(proc_knl_map_dom)
+    lin_knl_map_dom = lp.get_one_linearized_kernel(
+        proc_knl_map_dom["loopy_kernel"], proc_knl_map_dom.callables_table)
 
     # }}}
 
@@ -739,13 +742,15 @@ def test_map_domain_with_transform_map_missing_dims():
     except AttributeError:
         knl_split_iname = lp.prioritize_loops(knl_split_iname, desired_prio)
     proc_knl_split_iname = lp.preprocess_kernel(knl_split_iname)
-    lin_knl_split_iname = lp.get_one_linearized_kernel(proc_knl_split_iname)
+    lin_knl_split_iname = lp.get_one_linearized_kernel(
+        proc_knl_split_iname["loopy_kernel"], proc_knl_split_iname.callables_table)
 
     from loopy.schedule.checker.utils import (
         ensure_dim_names_match_and_align,
     )
     for d_map_domain, d_split_iname in zip(
-            knl_map_dom.domains, knl_split_iname.domains):
+            knl_map_dom["loopy_kernel"].domains,
+            knl_split_iname["loopy_kernel"].domains):
         d_map_domain_aligned = ensure_dim_names_match_and_align(
             d_map_domain, d_split_iname)
         assert d_map_domain_aligned == d_split_iname
