@@ -448,7 +448,7 @@ def test_vec_innermost():
     knl = lp.tag_inames(knl, {"h": "vec"})
     try:
         lp.constrain_loop_nesting(knl, must_nest=("{g,h,i,j}", "{k}"))
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert (
             "iname h tagged with ConcurrentTag, "
@@ -461,7 +461,7 @@ def test_vec_innermost():
     knl = lp.constrain_loop_nesting(knl, must_nest=("{g,h,i,j}", "{k}"))
     try:
         lp.tag_inames(knl, {"h": "vec"})
-        assert False
+        raise AssertionError()
     except ValueError as e:
         assert (
             "cannot tag 'h' as concurrent--iname involved "
@@ -632,7 +632,7 @@ def test_linearization_with_nesting_constraints():
             proc_prog.callables_table,
             debug_args={"interactive": False},
             )
-        assert False
+        raise AssertionError()
     except RuntimeError as e:
         assert "no valid schedules found" in str(e)
 
