@@ -1296,6 +1296,7 @@ class GlobalMemAccessCounter(MemAccessCounterBase):
             array = self.knl.arg_dict[name]
         else:
             # this is a temporary variable
+            # FIXME temporary variable could have global address space
             return self.new_zero_poly_map()
 
         if not isinstance(array, lp.ArrayArg):
@@ -1316,24 +1317,24 @@ class GlobalMemAccessCounter(MemAccessCounterBase):
         except AttributeError:
             var_tags = frozenset()
 
-        is_temp = False
+        is_global_temp = False
         if name in self.knl.arg_dict:
             array = self.knl.arg_dict[name]
         elif name in self.knl.temporary_variables:
-            # this a temporary variable, but might have global address space
+            # This a temporary, but might have global address space
             from loopy.kernel.data import AddressSpace
             array = self.knl.temporary_variables[name]
             if array.address_space != AddressSpace.GLOBAL:
-                # this is a temporary variable
+                # This temporary does not have global address space
                 return self.rec(expr.index)
-            # this is a temporary variable with global address space
-            is_temp = True
+            # This temporary has global address space
+            is_global_temp = True
         else:
-            # this is a temporary variable
+            # This temporary does not have global address space
             return self.rec(expr.index)
 
-        if (not is_temp) and not isinstance(array, lp.ArrayArg):
-            # this array is not in global memory
+        if (not is_global_temp) and not isinstance(array, lp.ArrayArg):
+            # This array is not in global memory
             return self.rec(expr.index)
 
         index_tuple = expr.index  # could be tuple or scalar index
