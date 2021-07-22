@@ -442,6 +442,24 @@ def test_reduction_with_conditional():
     assert code.index("if") < code.index("for")
 
 
+def test_any_all(ctx_factory):
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i, j]: 0<=i,j<10}",
+        """
+        out1 = reduce(any, [i], i == 4)
+        out2 = reduce(all, [j], j == 5)
+        """)
+    knl = lp.set_options(knl, return_dict=True)
+
+    _, out_dict = knl(cq)
+
+    assert out_dict["out1"].get()
+    assert not out_dict["out2"].get()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
