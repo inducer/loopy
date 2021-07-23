@@ -1377,7 +1377,7 @@ def generate_loop_schedules_internal(
             useful_loops_set = set(iname_to_usefulness.keys())
 
             from loopy.transform.iname import (
-                check_all_must_not_nests,
+                loop_nest_constraints_satisfied,
                 get_graph_sources,
             )
             from pytools.graph import compute_induced_subgraph
@@ -1421,8 +1421,9 @@ def generate_loop_schedules_internal(
                         (active_iname, next_iname)
                         for active_iname in active_inames_set]
 
-                    if check_all_must_not_nests(
-                            iname_orders_to_check, must_not_nest_constraints):
+                    if loop_nest_constraints_satisfied(
+                            iname_orders_to_check,
+                            must_not_nest_constraints=must_not_nest_constraints):
                         next_iname_candidates.add(next_iname)
             else:
                 # No must_not_nest constraints were provided
