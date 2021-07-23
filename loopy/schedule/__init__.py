@@ -1170,33 +1170,48 @@ def generate_loop_schedules_internal(
             # {{{ Don't leave if doing so would violate must_nest constraints
 
             # Don't leave if must_nest constraints require that
-            # additional inames be nested inside the current iname
+            # additional inames be nested inside the current iname.
+            # (Check for these inames in the must_nest graph.)
             if can_leave:
                 must_nest_graph = (
                     sched_state.kernel.loop_nest_constraints.must_nest_graph
                     if sched_state.kernel.loop_nest_constraints else None)
 
                 if must_nest_graph:
-                    # get inames that must nest inside the current iname
+
+                    # Get inames that must nest inside the current iname
                     must_nest_inside = must_nest_graph[deepest_active_iname]
 
                     if must_nest_inside:
-                        # get scheduled inames that are nested inside current iname
+                        # {{{ Get inames that are scheduled inside current iname
+
+                        # Iterate through already scheduled loop inames until
+                        # we find deepest_active_iname, then create the set of
+                        # inames that are already scheduled inside it.
+                        already_nested_inside = set()
+
+                        # Switch to flip when we encounter deepest_active_iname
                         within_deepest_active_iname = False
-                        actually_nested_inside = set()
+
                         for sched_item in sched_state.schedule:
                             if isinstance(sched_item, EnterLoop):
                                 if within_deepest_active_iname:
-                                    actually_nested_inside.add(sched_item.iname)
+                                    # Found iname nested inside deepest_active_iname
+                                    already_nested_inside.add(sched_item.iname)
                                 elif sched_item.iname == deepest_active_iname:
+                                    # Found deepest_active_iname
                                     within_deepest_active_iname = True
                             elif (isinstance(sched_item, LeaveLoop) and
                                     sched_item.iname == deepest_active_iname):
+                                # We're leaving deepest_active_iname, and have
+                                # found all deeper inames
                                 break
 
-                        # don't leave if must_nest constraints require that
+                        # }}}
+
+                        # Don't leave if must_nest constraints require that
                         # additional inames be nested inside the current iname
-                        if not must_nest_inside.issubset(actually_nested_inside):
+                        if not must_nest_inside.issubset(already_nested_inside):
                             can_leave = False
 
             # }}}
@@ -1354,7 +1369,9 @@ def generate_loop_schedules_internal(
         # scheduling an insn
 
         if sched_state.kernel.loop_nest_constraints:
+
             # {{{ Use loop_nest_constraints in determining next_iname_candidates
+            # (ensure that candidates don't violate nest constraints)
 
             # Inames not yet entered that would get us closer to scheduling an insn:
             useful_loops_set = set(iname_to_usefulness.keys())
@@ -1370,26 +1387,30 @@ def generate_loop_schedules_internal(
             if useful_loops_set - sched_state.vec_inames:
                 useful_loops_set -= sched_state.vec_inames
 
+            # {{{ Remove iname candidates that would violate must_nest
+
             # To enter an iname without violating must_nest constraints,
             # iname must be a source in the induced subgraph of must_nest_graph
-            # containing inames in useful_loops_set
-            must_nest_graph_full = (
+            # containing inames in useful_loops_set (graph has a key for every
+            # iname; inames without children are still sources)
+            complete_must_nest_graph = (
                 sched_state.kernel.loop_nest_constraints.must_nest_graph
                 if sched_state.kernel.loop_nest_constraints else None)
-            if must_nest_graph_full:
+            if complete_must_nest_graph:
                 must_nest_graph_useful = compute_induced_subgraph(
-                    must_nest_graph_full,
+                    complete_must_nest_graph,
                     useful_loops_set
                     )
                 source_inames = get_graph_sources(must_nest_graph_useful)
             else:
+                # No must_nest constraints were provided, all inames are
+                # childless sources in the non-existant must_nest graph
                 source_inames = useful_loops_set
 
-            # Since graph has a key for every iname,
-            # sources should be the only valid iname candidates
+            # }}}
 
-            # Check whether entering any source_inames violates
-            # must-not-nest constraints, given the currently active inames
+            # {{{ Remove iname candidates that would violate must_not_nest
+
             must_not_nest_constraints = (
                 sched_state.kernel.loop_nest_constraints.must_not_nest
                 if sched_state.kernel.loop_nest_constraints else None)
@@ -1404,11 +1425,16 @@ def generate_loop_schedules_internal(
                             iname_orders_to_check, must_not_nest_constraints):
                         next_iname_candidates.add(next_iname)
             else:
+                # No must_not_nest constraints were provided
                 next_iname_candidates = source_inames
 
             # }}}
+
+            # }}}
+
         else:
-            # {{{ old tier building with loop_priority
+
+            # {{{ Old tier building with loop_priority
 
             # Build priority tiers. If a schedule is found in the first tier, then
             # loops in the second are not even tried (and so on).
@@ -1465,23 +1491,25 @@ def generate_loop_schedules_internal(
         # }}}
 
         if sched_state.kernel.loop_nest_constraints:
-            # {{{ loop over next_iname_candidates generated w/ loop_nest_constraints
+            # {{{ Enter inames in next_iname_candidates
+            # (which were curtailed by nest constraints)
 
             if debug_mode:
                 print("useful inames: %s" % ",".join(useful_loops_set))
             else:
                 found_viable_schedule = False
 
-                # loop over iname candidates; enter inames and recurse:
+                # Loop over iname candidates; enter inames and recurse
+
+                # Sort by iname to achieve deterministic ordering of generated
+                # schedules
                 for iname in sorted(next_iname_candidates,
                         key=lambda iname: (
                             iname_to_usefulness.get(iname, 0),
-                            # Sort by iname to achieve deterministic
-                            # ordering of generated schedules.
                             iname),
                         reverse=True):
 
-                    # enter the loop and recurse
+                    # Enter the loop and recurse
                     for sub_sched in generate_loop_schedules_internal(
                             sched_state.copy(
                                 schedule=(
@@ -1509,7 +1537,7 @@ def generate_loop_schedules_internal(
 
             # }}}
         else:
-            # {{{ old looping over tiers
+            # {{{ Old looping over tiers (ignores nest constraints)
 
             if debug_mode:
                 print("useful inames: %s" % ",".join(useful_loops_set))
@@ -1562,16 +1590,16 @@ def generate_loop_schedules_internal(
 
     # {{{ Make sure ALL must_nest_constraints are satisfied
 
-    # (The check above avoids contradicting some must_nest constraints,
-    # but we don't know if all required nestings are present)
+    # (The check above avoids entering loops that would contradict must_nest
+    # constraints, but we don't know if all required nestings are present)
     must_constraints_satisfied = True
     if sched_state.kernel.loop_nest_constraints:
-        from loopy.transform.iname import (
-            get_iname_nestings,
-            loop_nest_constraints_satisfied,
-        )
         must_nest_constraints = sched_state.kernel.loop_nest_constraints.must_nest
         if must_nest_constraints:
+            from loopy.transform.iname import (
+                get_iname_nestings,
+                loop_nest_constraints_satisfied,
+            )
             sched_tiers = get_iname_nestings(sched_state.schedule)
             must_constraints_satisfied = loop_nest_constraints_satisfied(
                 sched_tiers, must_nest_constraints,
