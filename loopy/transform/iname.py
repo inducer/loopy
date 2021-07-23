@@ -157,7 +157,8 @@ class UnexpandedInameSet(Record):
             return self.inames.copy()
 
     def __lt__(self, other):
-        # FIXME is this function really necessary? If so, what should it return?
+        # FIXME is this function really necessary? (for caching?)
+        # If so, what should it return?
         return self.__hash__() < other.__hash__()
 
     def __hash__(self):
@@ -440,7 +441,7 @@ def constrain_loop_nesting(
 
         # {{{ Update must_nest graph (and check for cycles)
 
-        must_nest_graph_new = update_must_nest_graph(
+        must_nest_graph_new = add_to_must_nest_graph(
             must_nest_graph_old, must_nest_tuple, kernel.all_inames())
 
         # }}}
@@ -539,10 +540,10 @@ def constrain_loop_nesting(
 # }}}
 
 
-# {{{ update_must_nest_graph
+# {{{ add_to_must_nest_graph
 
-def update_must_nest_graph(must_nest_graph, must_nest, all_inames):
-    # Note: there should *not* be any complements in the must_nest tuples
+def add_to_must_nest_graph(must_nest_graph, new_must_nest, all_inames):
+    # Note: there should not be any complements in the new_must_nest tuples
 
     from copy import deepcopy
     new_graph = deepcopy(must_nest_graph)
@@ -551,8 +552,8 @@ def update_must_nest_graph(must_nest_graph, must_nest, all_inames):
     for missing_iname in all_inames - new_graph.keys():
         new_graph[missing_iname] = set()
 
-    # Expand must_nest into (before, after) pairs
-    must_nest_expanded = _expand_iname_sets_in_tuple(must_nest, all_inames)
+    # Expand new_must_nest into (before, after) pairs
+    must_nest_expanded = _expand_iname_sets_in_tuple(new_must_nest, all_inames)
 
     # Update must_nest_graph with new pairs
     for before, after in must_nest_expanded:
@@ -566,10 +567,10 @@ def update_must_nest_graph(must_nest_graph, must_nest, all_inames):
     # Check for inconsistent must_nest constraints by checking for cycle:
     if contains_cycle(new_graph_closure):
         raise ValueError(
-            "update_must_nest_graph: Nest constraint cycle detected. "
+            "add_to_must_nest_graph: Nest constraint cycle detected. "
             "must_nest constraints %s inconsistent with existing "
             "must_nest constraints %s."
-            % (must_nest, must_nest_graph))
+            % (new_must_nest, must_nest_graph))
 
     return new_graph_closure
 
@@ -591,7 +592,7 @@ def _expand_iname_sets_in_tuple(
 
     # Now expand all priority tuples into (before, after) pairs using
     # Cartesian product of all pairs of sets
-    # (Assumes prio_sets length > 1)
+    # (Assumes prio_sets length > 1, which is enforced elsewhere)
     import itertools
     loop_priority_pairs = set()
     for i, before_set in enumerate(positively_defined_iname_sets[:-1]):
@@ -599,7 +600,7 @@ def _expand_iname_sets_in_tuple(
             loop_priority_pairs.update(
                 list(itertools.product(before_set, after_set)))
 
-    # Make sure no priority tuple contains an iname twice
+    # Make sure no priority tuple contains an iname twice (cycle)
     for prio_tuple in loop_priority_pairs:
         if len(set(prio_tuple)) != len(prio_tuple):
             raise ValueError(
