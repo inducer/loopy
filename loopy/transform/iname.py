@@ -617,12 +617,12 @@ def _expand_iname_sets_in_tuple(
 
 # {{{ check_must_nest
 
-def check_must_nest(all_loop_nests, must_nest, all_inames):
+def check_must_nest(all_loop_nests, must_nest):
     r"""Determine whether must_nest constraint is satisfied by
     all_loop_nests
 
-    :arg all_loop_nests: A list of lists of inames, each representing
-        the nesting order of nested loops.
+    :arg all_loop_nests: A sequence of sequences of inames, each representing
+        the order of nested loops.
 
     :arg must_nest: A tuple of :class:`UnexpandedInameSet`\ s describing
         nestings that must appear in all_loop_nests.
@@ -637,17 +637,19 @@ def check_must_nest(all_loop_nests, must_nest, all_inames):
     # FIXME instead of expanding tiers into all pairs up front,
     # create these pairs one at a time so that we can stop as soon as we fail
 
+    # Get all must-nest pairs of inames
     must_nest_expanded = _expand_iname_sets_in_tuple(must_nest)
 
-    # must_nest_expanded contains pairs
     for before, after in must_nest_expanded:
-        found = False
+        correct_pair_found = False
         for nesting in all_loop_nests:
+            # If both before and after are found in the nesting,
+            # and they're ordered correctly, this must-nest pair is satisfied
             if before in nesting and after in nesting and (
                     nesting.index(before) < nesting.index(after)):
-                found = True
+                correct_pair_found = True
                 break
-        if not found:
+        if not correct_pair_found:
             return False
     return True
 
@@ -660,8 +662,8 @@ def check_must_not_nest(all_loop_nests, must_not_nest):
     r"""Determine whether must_not_nest constraint is satisfied by
     all_loop_nests
 
-    :arg all_loop_nests: A list of lists of inames, each representing
-        the nesting order of nested loops.
+    :arg all_loop_nests: A sequence of sequences of inames, each representing
+        the order of nested loops.
 
     :arg must_not_nest: A two-tuple of :class:`UnexpandedInameSet`\ s
         describing nestings that must not appear in all_loop_nests.
@@ -673,12 +675,10 @@ def check_must_not_nest(all_loop_nests, must_not_nest):
     # Note that must_not_nest may only contain two tiers
 
     for nesting in all_loop_nests:
-
-        # Go through each pair in all_loop_nests
+        # Go through each pair in all_loop_nests and check
+        # whether it violates must not nest
         for i, iname_before in enumerate(nesting):
             for iname_after in nesting[i+1:]:
-
-                # Check whether it violates must not nest
                 if (must_not_nest[0].contains(iname_before)
                         and must_not_nest[1].contains(iname_after)):
                     # Stop as soon as we fail
@@ -693,10 +693,13 @@ def check_must_not_nest(all_loop_nests, must_not_nest):
 def check_all_must_not_nests(all_loop_nests, must_not_nests):
     r"""Determine whether all must_not_nest constraints are satisfied by
     all_loop_nests
-    :arg all_loop_nests: A list of lists of inames, each representing
-        the nesting order of nested loops.
+
+    :arg all_loop_nests: A sequence of sequences of inames, each representing
+        the order of nested loops.
+
     :arg must_not_nests: A set of two-tuples of :class:`UnexpandedInameSet`\ s
         describing nestings that must not appear in all_loop_nests.
+
     :returns: A :class:`bool` indicating whether the must_not_nest constraints
         are satisfied by the provided loop nesting.
     """
@@ -715,12 +718,12 @@ def loop_nest_constraints_satisfied(
         all_loop_nests,
         must_nest_constraints=None,
         must_not_nest_constraints=None,
-        all_inames=None):
-    r"""Determine whether must_not_nest constraint is satisfied by
-    all_loop_nests
+        ):
+    r"""Determine whether must_nest and must_not_nest constraints are satisfied
+    by all_loop_nests
 
-    :arg all_loop_nests: A set of lists of inames, each representing
-        the nesting order of loops.
+    :arg all_loop_nests: A sequence of sequences of inames, each representing
+        the order of nested loops.
 
     :arg must_nest_constraints: An iterable of tuples of
         :class:`UnexpandedInameSet`\ s, each describing nestings that must
@@ -738,7 +741,7 @@ def loop_nest_constraints_satisfied(
     if must_nest_constraints:
         for must_nest in must_nest_constraints:
             if not check_must_nest(
-                    all_loop_nests, must_nest, all_inames):
+                    all_loop_nests, must_nest):
                 return False
 
     # Check must-not-nest constraints

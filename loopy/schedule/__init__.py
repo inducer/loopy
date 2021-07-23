@@ -1604,7 +1604,7 @@ def generate_loop_schedules_internal(
             must_constraints_satisfied = loop_nest_constraints_satisfied(
                 sched_tiers, must_nest_constraints,
                 must_not_nest_constraints=None,  # (checked upon loop creation)
-                all_inames=kernel.all_inames())
+                )
 
     # }}}
 
