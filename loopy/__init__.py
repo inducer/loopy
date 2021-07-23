@@ -58,7 +58,8 @@ from loopy.kernel.tools import (
         get_global_barrier_order,
         find_most_recent_global_barrier,
         get_subkernels,
-        get_subkernel_to_insn_id_map)
+        get_subkernel_to_insn_id_map,
+        )
 from loopy.types import to_loopy_type
 from loopy.kernel.creation import make_kernel, UniqueName, make_function
 from loopy.library.reduction import register_reduction_parser
@@ -155,7 +156,7 @@ from loopy.target.pyopencl import PyOpenCLTarget
 from loopy.target.ispc import ISPCTarget
 from loopy.target.numba import NumbaTarget, NumbaCudaTarget
 
-from loopy.tools import Optional
+from loopy.tools import Optional, t_unit_to_python
 
 
 __all__ = [
@@ -259,6 +260,7 @@ __all__ = [
         "find_most_recent_global_barrier",
         "get_subkernels",
         "get_subkernel_to_insn_id_map",
+        "t_unit_to_python",
 
         "to_loopy_type",
 
