@@ -121,7 +121,7 @@ def get_slab_decomposition(kernel, iname):
 def generate_unroll_loop(codegen_state, sched_index):
     kernel = codegen_state.kernel
 
-    iname = kernel.schedule[sched_index].iname
+    iname = kernel.linearization[sched_index].iname
 
     bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
@@ -163,7 +163,7 @@ def generate_unroll_loop(codegen_state, sched_index):
 def generate_vectorize_loop(codegen_state, sched_index):
     kernel = codegen_state.kernel
 
-    iname = kernel.schedule[sched_index].iname
+    iname = kernel.linearization[sched_index].iname
 
     bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
@@ -232,11 +232,12 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
         hw_inames_left=None):
     kernel = codegen_state.kernel
 
-    from loopy.kernel.data import (UniqueTag, HardwareConcurrentTag,
-                LocalIndexTag, GroupIndexTag, VectorizeTag)
+    from loopy.kernel.data import (UniqueInameTag, HardwareConcurrentTag,
+                LocalInameTag, GroupInameTag, VectorizeTag, InameImplementationTag)
 
     from loopy.schedule import get_insn_ids_for_block_at
-    insn_ids_for_block = get_insn_ids_for_block_at(kernel.schedule, schedule_index)
+    insn_ids_for_block = get_insn_ids_for_block_at(kernel.linearization,
+                                                   schedule_index)
 
     if hw_inames_left is None:
         all_inames_by_insns = set()
@@ -251,35 +252,35 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
         return next_func(codegen_state)
 
     global_size, local_size = kernel.get_grid_sizes_for_insn_ids(
-            insn_ids_for_block)
+            insn_ids_for_block, codegen_state.callables_table, return_dict=True)
 
     hw_inames_left = hw_inames_left[:]
     iname = hw_inames_left.pop()
 
     from loopy.symbolic import GroupHardwareAxisIndex, LocalHardwareAxisIndex
 
-    tag, = kernel.iname_tags_of_type(iname, UniqueTag, max_num=1, min_num=1)
+    tag, = kernel.iname_tags_of_type(iname, UniqueInameTag, max_num=1, min_num=1)
 
-    if isinstance(tag, GroupIndexTag):
+    if isinstance(tag, GroupInameTag):
         hw_axis_expr = GroupHardwareAxisIndex(tag.axis)
-    elif isinstance(tag, LocalIndexTag):
+    elif isinstance(tag, LocalInameTag):
         hw_axis_expr = LocalHardwareAxisIndex(tag.axis)
     else:
         raise RuntimeError("unexpected hw tag type")
 
     other_inames_with_same_tag = [
         other_iname for other_iname in kernel.all_inames()
-        if (kernel.iname_tags_of_type(other_iname, UniqueTag)
+        if (kernel.iname_tags_of_type(other_iname, UniqueInameTag)
             and other_iname != iname
             and any(_tag.key == tag.key
-                    for _tag in kernel.iname_tags(other_iname)
-                    if _tag))]
+                    for _tag in kernel.iname_tags_of_type(
+                        other_iname, InameImplementationTag)))]
 
     # {{{ 'implement' hardware axis boundaries
 
-    if isinstance(tag, LocalIndexTag):
+    if isinstance(tag, LocalInameTag):
         hw_axis_size = local_size[tag.axis]
-    elif isinstance(tag, GroupIndexTag):
+    elif isinstance(tag, GroupInameTag):
         hw_axis_size = global_size[tag.axis]
     else:
         raise RuntimeError("unknown hardware parallel tag")
@@ -348,7 +349,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
     kernel = codegen_state.kernel
 
     ecm = codegen_state.expression_to_code_mapper
-    loop_iname = kernel.schedule[sched_index].iname
+    loop_iname = kernel.linearization[sched_index].iname
 
     slabs = get_slab_decomposition(kernel, loop_iname)
 

@@ -37,12 +37,14 @@ from loopy.symbolic import (IdentityMapper, RuleAwareIdentityMapper,
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import LegacyStringInstructionTag
-from pymbolic.primitives import Wildcard
+from pymbolic.primitives import (Wildcard, Slice)
 
 
 # {{{ subscript base shifter
 
-class SubscriptIndexBaseShifter(IdentityMapper):
+class SubscriptIndexAdjuster(IdentityMapper):
+    """Adjust base indices of subscripts and lengths of slices."""
+
     def __init__(self, scope):
         self.scope = scope
 
@@ -60,21 +62,63 @@ class SubscriptIndexBaseShifter(IdentityMapper):
         if not isinstance(subscript, tuple):
             subscript = (subscript,)
 
-        subscript = list(subscript)
-
         if len(dims) != len(subscript):
             raise TranslationError("inconsistent number of indices "
                     "to '%s'" % name)
 
+        new_subscript = []
         for i in range(len(dims)):
             if len(dims[i]) == 2:
-                # has a base index
-                subscript[i] -= dims[i][0]
+                # has an explicit base index
+                base_index, end_index = dims[i]
             elif len(dims[i]) == 1:
-                # base index is 1 implicitly
-                subscript[i] -= 1
+                base_index = 1
+                end_index, = dims[i]
 
-        return expr.aggregate[self.rec(tuple(subscript))]
+            sub_i = subscript[i]
+            if isinstance(sub_i, Slice):
+                start = sub_i.start
+                if start is None:
+                    start = base_index
+
+                step = sub_i.step
+                if step is None:
+                    step = 1
+
+                stop = sub_i.stop
+                if stop is None:
+                    stop = end_index
+
+                if step == 1:
+                    sub_i = Slice((
+                            start - base_index,
+
+                            # FIXME This is only correct for unit strides
+                            stop - base_index + 1,
+
+                            step
+                            ))
+                elif step == -1:
+                    sub_i = Slice((
+                            start - base_index,
+
+                            # FIXME This is only correct for unit strides
+                            stop - base_index - 1,
+
+                            step
+                            ))
+
+                else:
+                    # FIXME
+                    raise NotImplementedError("Fortran slice processing for "
+                            "non-unit strides")
+
+            else:
+                sub_i = sub_i - base_index
+
+            new_subscript.append(sub_i)
+
+        return expr.aggregate[self.rec(tuple(new_subscript))]
 
 # }}}
 
@@ -87,9 +131,6 @@ class Scope:
             arg_names = set()
         self.subprogram_name = subprogram_name
 
-        # map name to data
-        self.data_statements = {}
-
         # map first letter to type
         self.implicit_types = {}
 
@@ -100,7 +141,7 @@ class Scope:
         self.type_map = {}
 
         # map name to data
-        self.data = {}
+        self.data_map = {}
 
         self.arg_names = arg_names
 
@@ -189,10 +230,20 @@ class Scope:
 
         expr = submap(expr)
 
-        subshift = SubscriptIndexBaseShifter(self)
+        subshift = SubscriptIndexAdjuster(self)
         expr = subshift(expr)
 
         return expr
+
+    def written_vars(self):
+        return frozenset().union(*(insn.write_dependency_names()
+                                   for insn in self.instructions))
+
+    def read_vars(self):
+        return (frozenset().union(*(insn.read_dependency_names()
+                                   for insn in self.instructions))
+                | frozenset().union(*(frozenset(bset.get_var_names(dim_type.param))
+                                      for bset in self.index_sets)))
 
 # }}}
 
@@ -214,16 +265,21 @@ class FortranDivisionToFloorDiv(IdentityMapper):
 
 
 class FortranDivisionSpecializer(RuleAwareIdentityMapper):
-    def __init__(self, rule_mapping_context, kernel):
+    def __init__(self, rule_mapping_context, kernel, callables):
         super().__init__(rule_mapping_context)
-        from loopy.type_inference import TypeInferenceMapper
-        self.infer_type = TypeInferenceMapper(kernel)
+        from loopy.type_inference import TypeReader
+        self.infer_type = TypeReader(kernel, callables)
         self.kernel = kernel
 
     def map_fortran_division(self, expr, *args):
         # We remove all these before type inference ever sees them.
-        num_dtype = self.infer_type(expr.numerator).numpy_dtype
-        den_dtype = self.infer_type(expr.denominator).numpy_dtype
+        from loopy.type_inference import TypeInferenceFailure
+
+        try:
+            num_dtype = self.infer_type(expr.numerator).numpy_dtype
+            den_dtype = self.infer_type(expr.denominator).numpy_dtype
+        except TypeInferenceFailure:
+            return super().map_fortran_division(expr, *args)
 
         from pymbolic.primitives import Quotient, FloorDiv
         if num_dtype.kind in "iub" and den_dtype.kind in "iub":
@@ -241,10 +297,31 @@ class FortranDivisionSpecializer(RuleAwareIdentityMapper):
                     self.rec(expr.denominator, *args))
 
 
-def specialize_fortran_division(knl):
+def _specialize_fortran_division_for_kernel(knl, callables):
     rmc = SubstitutionRuleMappingContext(
             knl.substitutions, knl.get_var_name_generator())
-    return FortranDivisionSpecializer(rmc, knl).map_kernel(knl)
+    return FortranDivisionSpecializer(rmc, knl, callables).map_kernel(knl)
+
+
+def specialize_fortran_division(t_unit):
+    from loopy.translation_unit import TranslationUnit, resolve_callables
+    from loopy.kernel.function_interface import CallableKernel
+    from loopy.type_inference import infer_unknown_types
+    assert isinstance(t_unit, TranslationUnit)
+
+    t_unit = resolve_callables(t_unit)
+    t_unit = infer_unknown_types(t_unit)
+    new_callables = {}
+
+    for name, clbl in t_unit.callables_table.items():
+        if isinstance(clbl, CallableKernel):
+            knl = clbl.subkernel
+            clbl = clbl.copy(subkernel=_specialize_fortran_division_for_kernel(
+                    knl, t_unit.callables_table))
+
+        new_callables[name] = clbl
+
+    return t_unit.copy(callables_table=new_callables)
 
 # }}}
 
@@ -252,11 +329,10 @@ def specialize_fortran_division(knl):
 # {{{ translator
 
 class F2LoopyTranslator(FTreeWalkerBase):
-    def __init__(self, filename, target=None, all_names_known=True):
+    def __init__(self, filename, target=None):
         FTreeWalkerBase.__init__(self, filename)
 
         self.target = target
-        self.all_names_known = all_names_known
 
         self.scope_stack = []
 
@@ -273,11 +349,16 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         self.block_nest = []
 
+    def add_instruction(self, insn):
+        scope = self.scope_stack[-1]
+
+        scope.previous_instruction_id = insn.id
+        scope.instructions.append(insn)
+
     def add_expression_instruction(self, lhs, rhs):
         scope = self.scope_stack[-1]
 
-        new_id = intern("insn%d" % self.insn_id_counter)
-        self.insn_id_counter += 1
+        new_id = self.get_insn_id()
 
         from loopy.kernel.data import Assignment
         insn = Assignment(
@@ -288,8 +369,13 @@ class F2LoopyTranslator(FTreeWalkerBase):
                 predicates=frozenset(self.conditions),
                 tags=tuple(self.instruction_tags))
 
-        scope.previous_instruction_id = new_id
-        scope.instructions.append(insn)
+        self.add_instruction(insn)
+
+    def get_insn_id(self):
+        new_id = intern("insn%d" % self.insn_id_counter)
+        self.insn_id_counter += 1
+
+        return new_id
 
     # {{{ map_XXX functions
 
@@ -383,7 +469,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         tp = self.dtype_from_stmt(node)
 
-        for name, shape in self.parse_dimension_specs(node, node.entity_decls):
+        for name, shape, initializer in self.parse_dimension_specs(
+                node, node.entity_decls):
             if shape is not None:
                 assert name not in scope.dim_map
                 scope.dim_map[name] = shape
@@ -391,6 +478,9 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
             assert name not in scope.type_map
             scope.type_map[name] = tp
+
+            assert name not in scope.data_map
+            scope.data_map[name] = initializer
 
         return []
 
@@ -403,7 +493,10 @@ class F2LoopyTranslator(FTreeWalkerBase):
     def map_Dimension(self, node):
         scope = self.scope_stack[-1]
 
-        for name, shape in self.parse_dimension_specs(node, node.items):
+        for name, shape, initializer in self.parse_dimension_specs(node, node.items):
+            if initializer is not None:
+                raise LoopyError("initializer in dimension statement")
+
             if shape is not None:
                 assert name not in scope.dim_map
                 scope.dim_map[name] = shape
@@ -494,18 +587,53 @@ class F2LoopyTranslator(FTreeWalkerBase):
         raise NotImplementedError("goto")
 
     def map_Call(self, node):
-        raise NotImplementedError("call")
+        from loopy.kernel.instruction import _get_assignee_var_name
+        scope = self.scope_stack[-1]
+
+        new_id = self.get_insn_id()
+
+        # {{{ comply with loopy's kernel call requirements
+
+        callee, = (knl for knl in self.kernels
+                   if knl.subprogram_name == node.designator)
+        call_params = [scope.process_expression_for_loopy(self.parse_expr(node,
+                                                                          item))
+                       for item in node.items]
+        callee_read_vars = callee.read_vars()
+        callee_written_vars = callee.written_vars()
+
+        lpy_params = []
+        lpy_assignees = []
+        for param in call_params:
+            name = _get_assignee_var_name(param)
+            if name in callee_read_vars:
+                lpy_params.append(param)
+            if name in callee_written_vars:
+                lpy_assignees.append(param)
+            if name not in (callee_read_vars | callee_written_vars):
+                lpy_params.append(param)
+
+        # }}}
+
+        from pymbolic import var
+
+        from loopy.kernel.data import CallInstruction
+        insn = CallInstruction(
+                tuple(lpy_assignees),
+                var(node.designator)(*lpy_params),
+                within_inames=frozenset(
+                    scope.active_loopy_inames),
+                id=new_id,
+                predicates=frozenset(self.conditions),
+                tags=tuple(self.instruction_tags))
+
+        self.add_instruction(insn)
 
     def map_Return(self, node):
         raise NotImplementedError("return")
 
     def map_ArithmeticIf(self, node):
         raise NotImplementedError("arithmetic-if")
-
-    def map_If(self, node):
-        raise NotImplementedError("if")
-        # node.expr
-        # node.content[0]
 
     def realize_conditional(self, node, context_cond=None):
         scope = self.scope_stack[-1]
@@ -534,6 +662,15 @@ class F2LoopyTranslator(FTreeWalkerBase):
             self.conditions_data.append((None, cond_var))
 
         self.conditions.append(cond_expr)
+
+    def map_If(self, node):
+        self.realize_conditional(node, None)
+
+        for c in node.content:
+            self.rec(c)
+
+        self.conditions_data.pop()
+        self.conditions.pop()
 
     def map_IfThen(self, node):
         self.block_nest.append("if")
@@ -735,6 +872,10 @@ class F2LoopyTranslator(FTreeWalkerBase):
             for arg_name in sub.arg_names:
                 dims = sub.dim_map.get(arg_name)
 
+                if sub.data_map.get(arg_name) is not None:
+                    raise NotImplementedError(
+                            "initializer for argument %s" % arg_name)
+
                 if dims is not None:
                     # default order is set to "F" in kernel creation below
                     kernel_data.append(
@@ -760,15 +901,22 @@ class F2LoopyTranslator(FTreeWalkerBase):
                 if sub.implicit_types is None and dtype is None:
                     continue
 
+                kwargs = {}
+                if sub.data_map.get(var_name) is not None:
+                    kwargs["read_only"] = True
+                    kwargs["address_space"] = lp.AddressSpace.PRIVATE
+                    kwargs["initializer"] = np.array(
+                            sub.data_map[var_name], dtype=dtype)
+
                 kernel_data.append(
                         lp.TemporaryVariable(
                             var_name, dtype=dtype,
-                            shape=sub.get_loopy_shape(var_name)))
+                            shape=sub.get_loopy_shape(var_name),
+                            **kwargs))
 
             # }}}
 
-            from loopy.version import MOST_RECENT_LANGUAGE_VERSION
-            knl = lp.make_kernel(
+            knl = lp.make_function(
                     sub.index_sets,
                     sub.instructions,
                     kernel_data,
@@ -777,14 +925,11 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     index_dtype=self.index_dtype,
                     target=self.target,
                     seq_dependencies=seq_dependencies,
-                    lang_version=MOST_RECENT_LANGUAGE_VERSION
                     )
 
-            if self.all_names_known:
-                knl = specialize_fortran_division(knl)
+            from loopy.loop import merge_loop_domains
+            knl = merge_loop_domains(knl)
 
-            from loopy.loop import fuse_loop_domains
-            knl = fuse_loop_domains(knl)
             knl = lp.fold_constants(knl)
 
             result.append(knl)

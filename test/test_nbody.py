@@ -45,8 +45,8 @@ def test_nbody(ctx_factory):
             "[N] -> {[i,j,k]: 0<=i,j<N and 0<=k<3 }",
             [
                 "axdist(k) := x[i,k]-x[j,k]",
-                "invdist := rsqrt(sum_float32(k, axdist(k)**2))",
-                "pot[i] = sum_float32(j, if(i != j, invdist, 0))",
+                "invdist := rsqrt(sum(k, axdist(k)**2))",
+                "pot[i] = sum(j, if(i != j, invdist, 0))",
             ], [
                 lp.GlobalArg("x", dtype, shape="N,3", order="C"),
                 lp.GlobalArg("pot", dtype, shape="N", order="C"),

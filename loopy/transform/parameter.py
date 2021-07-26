@@ -25,6 +25,9 @@ from loopy.symbolic import (RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
 import islpy as isl
 
+from loopy.translation_unit import for_each_kernel
+from loopy.kernel import LoopKernel
+
 __doc__ = """
 
 .. currentmodule:: loopy
@@ -37,6 +40,7 @@ __doc__ = """
 
 # {{{ assume
 
+@for_each_kernel
 def assume(kernel, assumptions):
     """Include an assumption about :ref:`domain-parameters` in the kernel, e.g.
     `n mod 4 = 0`.
@@ -64,18 +68,8 @@ def assume(kernel, assumptions):
 
 # {{{ fix_parameter
 
-def fix_parameters(kernel, within=None, **value_dict):
-    """Fix the values of the arguments to specific constants.
-
-    *value_dict* consists of *name*/*value* pairs, where *name* will be fixed
-    to be *value*. *name* may refer to :ref:`domain-parameters` or
-    :ref:`arguments`.
-    """
-
-    if not value_dict:
-        return kernel
-
-    def process_set_one_param(s, name, value):
+def _fix_parameter(kernel, name, value, within=None):
+    def process_set(s):
         var_dict = s.get_var_dict()
 
         try:
@@ -93,11 +87,6 @@ def fix_parameters(kernel, within=None, **value_dict):
                     isl.Constraint.equality_from_aff(name_equal_value_aff))
                 .project_out(dt, idx, 1))
 
-        return s
-
-    def process_set(s):
-        for name, value in value_dict.items():
-            s = process_set_one_param(s, name, value)
         return s
 
     new_domains = [process_set(dom) for dom in kernel.domains]
@@ -131,7 +120,7 @@ def fix_parameters(kernel, within=None, **value_dict):
     # }}}
 
     from pymbolic.mapper.substitutor import make_subst_func
-    subst_func = make_subst_func(value_dict)
+    subst_func = make_subst_func({name: value})
 
     from loopy.symbolic import SubstitutionMapper, PartialEvaluationMapper
     subst_map = SubstitutionMapper(subst_func)
@@ -143,7 +132,7 @@ def fix_parameters(kernel, within=None, **value_dict):
     from loopy.kernel.array import ArrayBase
     new_args = []
     for arg in kernel.args:
-        if arg.name in value_dict.keys():
+        if arg.name == name:
             # remove from argument list
             continue
 
@@ -173,6 +162,23 @@ def fix_parameters(kernel, within=None, **value_dict):
                 assumptions=process_set(kernel.assumptions),
                 ))
 
+
+@for_each_kernel
+def fix_parameters(kernel, **value_dict):
+    """Fix the values of the arguments to specific constants.
+
+    *value_dict* consists of *name*/*value* pairs, where *name* will be fixed
+    to be *value*. *name* may refer to :ref:`domain-parameters` or
+    :ref:`arguments`.
+    """
+    assert isinstance(kernel, LoopKernel)
+
+    within = value_dict.pop("within", None)
+
+    for name, value in value_dict.items():
+        kernel = _fix_parameter(kernel, name, value, within)
+
+    return kernel
 
 # }}}
 

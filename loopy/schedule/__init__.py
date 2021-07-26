@@ -24,7 +24,8 @@ THE SOFTWARE.
 from pytools import ImmutableRecord
 import sys
 import islpy as isl
-from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
+from loopy.diagnostic import (warn_with_kernel, LoopyError,
+                              ScheduleDebugInputError)
 
 from pytools import MinRecursionLimit, ProcessLogger
 
@@ -132,7 +133,7 @@ def gather_schedule_block(schedule, start_idx):
 
         i += 1
 
-    assert False
+    raise AssertionError()
 
 
 def generate_sub_sched_items(schedule, start_idx):
@@ -157,7 +158,7 @@ def generate_sub_sched_items(schedule, start_idx):
 
         i += 1
 
-    assert False
+    raise AssertionError()
 
 
 def get_insn_ids_for_block_at(schedule, start_idx):
@@ -169,11 +170,11 @@ def get_insn_ids_for_block_at(schedule, start_idx):
 
 
 def find_used_inames_within(kernel, sched_index):
-    sched_item = kernel.schedule[sched_index]
+    sched_item = kernel.linearization[sched_index]
 
     if isinstance(sched_item, BeginBlockItem):
         loop_contents, _ = gather_schedule_block(
-                kernel.schedule, sched_index)
+                kernel.linearization, sched_index)
         run_insns = [subsched_item
                 for subsched_item in loop_contents
                 if isinstance(subsched_item, RunInstruction)]
@@ -241,7 +242,7 @@ def find_loop_nest_around_map(kernel):
             if iname_to_insns[inner_iname] < iname_to_insns[outer_iname]:
                 result[inner_iname].add(outer_iname)
 
-    for dom_idx, dom in enumerate(kernel.domains):
+    for dom in kernel.domains:
         for outer_iname in dom.get_var_names(isl.dim_type.param):
             if outer_iname not in all_inames:
                 continue
@@ -525,7 +526,7 @@ def dump_schedule(kernel, schedule):
             lines.append(indent + "... %sbarrier" %
                          sched_item.synchronization_kind[0])
         else:
-            assert False
+            raise AssertionError()
 
     return "\n".join(
             "% 4d: %s" % (i, line)
@@ -591,8 +592,13 @@ class ScheduleDebugger:
         self.start_time = time()
 
 
-class ScheduleDebugInput(Exception):
-    pass
+class ScheduleDebugInput(ScheduleDebugInputError):
+    def __init__(self, *args, **kwargs):
+        from warnings import warn
+        warn("ScheduleDebugInput renamed to"
+             " ScheduleDebugInputError,  will be unsupported in"
+             " 2022.", DeprecationWarning, stacklevel=2)
+        super().__init__(*args, **kwargs)
 
 # }}}
 
@@ -1665,7 +1671,7 @@ def generate_loop_schedules_internal(
                 "or enter a number to examine schedules of a "
                 "different length:")
         if inp:
-            raise ScheduleDebugInput(inp)
+            raise ScheduleDebugInputError(inp)
 
     # {{{ make sure ALL must_nest_constraints are satisfied
 
@@ -2029,19 +2035,20 @@ def _insn_ids_reaching_end(schedule, kind, reverse):
 
 
 def append_barrier_or_raise_error(
-        schedule, dep, verify_only, use_dependencies_v2=False):
+        kernel_name, schedule, dep, verify_only, use_dependencies_v2=False):
     if verify_only:
         err_str = (
-            "Dependency '%s' (for variable '%s') "
-            "requires synchronization "
-            "by a %s barrier (add a 'no_sync_with' "
-            "instruction option to state that no "
-            "synchronization is needed)"
-            % (
-                dep.dep_descr.format(
-                    tgt=dep.target.id, src=dep.source.id),
-                dep.variable,
-                dep.var_kind))
+                "%s: Dependency '%s' (for variable '%s') "
+                "requires synchronization "
+                "by a %s barrier (add a 'no_sync_with' "
+                "instruction option to state that no "
+                "synchronization is needed)"
+                % (
+                    kernel_name,
+                    dep.dep_descr.format(
+                        tgt=dep.target.id, src=dep.source.id),
+                    dep.variable,
+                    dep.var_kind))
         # TODO need to update all this with v2 deps. For now, make this a warning.
         # Do full fix for this later
         if use_dependencies_v2:
@@ -2117,7 +2124,8 @@ def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0
                         dep_tracker.gen_dependencies_with_target_at(insn)
                         for insn in loop_head):
                     append_barrier_or_raise_error(
-                        result, dep, verify_only, kernel.options.use_dependencies_v2)
+                            kernel.name, result, dep, verify_only,
+                            kernel.options.use_dependencies_v2)
                     # This barrier gets inserted outside the loop, hence it is
                     # executed unconditionally and so kills all sources before
                     # the loop.
@@ -2150,7 +2158,8 @@ def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0
                 for dep in dep_tracker.gen_dependencies_with_target_at(
                         sched_item.insn_id):
                     append_barrier_or_raise_error(
-                        result, dep, verify_only, kernel.options.use_dependencies_v2)
+                            kernel.name, result, dep, verify_only,
+                            kernel.options.use_dependencies_v2)
                     dep_tracker.discard_all_sources()
                     break
                 result.append(sched_item)
@@ -2216,7 +2225,7 @@ class MinRecursionLimitForScheduling(MinRecursionLimit):
 
 # {{{ main scheduling entrypoint
 
-def generate_loop_schedules(kernel, debug_args={}):
+def generate_loop_schedules(kernel, callables_table, debug_args=None):
     """
     .. warning::
 
@@ -2227,25 +2236,30 @@ def generate_loop_schedules(kernel, debug_args={}):
         generator chain may not be successfully garbage-collected and cause an
         internal error in the Python runtime.
     """
+    if debug_args is None:
+        debug_args = {}
 
     with MinRecursionLimitForScheduling(kernel):
-        yield from generate_loop_schedules_inner(kernel, debug_args=debug_args)
+        yield from generate_loop_schedules_inner(kernel,
+                callables_table, debug_args=debug_args)
 
 
-def generate_loop_schedules_inner(kernel, debug_args={}):
+def generate_loop_schedules_inner(kernel, callables_table, debug_args=None):
+    if debug_args is None:
+        debug_args = {}
+
     from loopy.kernel import KernelState
     if kernel.state not in (KernelState.PREPROCESSED, KernelState.LINEARIZED):
         raise LoopyError("cannot schedule a kernel that has not been "
                 "preprocessed")
 
-    from loopy.check import pre_schedule_checks
-    pre_schedule_checks(kernel)
-
     schedule_count = 0
 
     debug = ScheduleDebugger(**debug_args)
 
-    preschedule = kernel.schedule if kernel.state == KernelState.LINEARIZED else ()
+    preschedule = (kernel.linearization
+                   if kernel.state == KernelState.LINEARIZED
+                   else ())
 
     prescheduled_inames = {
             insn.iname
@@ -2357,7 +2371,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
                             sched_state, debug=debug, **schedule_gen_kwargs):
                         pass
 
-                except ScheduleDebugInput as e:
+                except ScheduleDebugInputError as e:
                     debug.debug_length = int(str(e))
                     continue
 
@@ -2371,7 +2385,8 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             gen_sched = convert_barrier_instructions_to_barriers(
                     kernel, gen_sched)
 
-            gsize, lsize = kernel.get_grid_size_upper_bounds()
+            gsize, lsize = kernel.get_grid_size_upper_bounds(callables_table,
+                                                             return_dict=True)
 
             if (gsize or lsize):
                 if not kernel.options.disable_global_barriers:
@@ -2428,7 +2443,7 @@ schedule_cache = WriteOncePersistentDict(
         key_builder=LoopyKeyBuilder())
 
 
-def _get_one_scheduled_kernel_inner(kernel, debug_args={}):
+def _get_one_scheduled_kernel_inner(kernel, callables_table, debug_args={}):
     # This helper function exists to ensure that the generator chain is fully
     # out of scope after the function returns. This allows it to be
     # garbage-collected in the exit handler of the
@@ -2438,22 +2453,25 @@ def _get_one_scheduled_kernel_inner(kernel, debug_args={}):
     #
     # See https://gitlab.tiker.net/inducer/sumpy/issues/31 for context.
 
-    return next(iter(generate_loop_schedules(kernel, debug_args=debug_args)))
+    return next(iter(generate_loop_schedules(
+        kernel, callables_table, debug_args=debug_args)))
 
 
-def get_one_scheduled_kernel(kernel):
+def get_one_scheduled_kernel(kernel, callables_table):
     warn_with_kernel(
         kernel, "get_one_scheduled_kernel_deprecated",
         "get_one_scheduled_kernel is deprecated. "
         "Use get_one_linearized_kernel instead.",
-        DeprecationWarning)
-    return get_one_linearized_kernel(kernel)
+        DeprecationWarning, stacklevel=2)
+    return get_one_linearized_kernel(kernel, callables_table)
 
 
-def get_one_linearized_kernel(kernel, debug_args={}):
+def get_one_linearized_kernel(kernel, callables_table, debug_args={}):
     from loopy import CACHING_ENABLED
 
-    sched_cache_key = kernel
+    # must include *callables_table* within the cache key as the preschedule
+    # checks depend on it.
+    sched_cache_key = (kernel, callables_table)
     from_cache = False
 
     if CACHING_ENABLED:
@@ -2468,12 +2486,38 @@ def get_one_linearized_kernel(kernel, debug_args={}):
     if not from_cache:
         with ProcessLogger(logger, "%s: schedule" % kernel.name):
             with MinRecursionLimitForScheduling(kernel):
-                result = _get_one_scheduled_kernel_inner(kernel, debug_args)
+                result = _get_one_scheduled_kernel_inner(kernel,
+                        callables_table, debug_args)
 
     if CACHING_ENABLED and not from_cache:
         schedule_cache.store_if_not_present(sched_cache_key, result)
 
     return result
+
+
+def linearize(t_unit):
+    from loopy.kernel.function_interface import (CallableKernel,
+                                                 ScalarCallable)
+    from loopy.check import pre_schedule_checks
+
+    pre_schedule_checks(t_unit)
+
+    new_callables = {}
+
+    for name, clbl in t_unit.callables_table.items():
+        if isinstance(clbl, CallableKernel):
+            from loopy.schedule import get_one_linearized_kernel
+            knl = clbl.subkernel
+            if knl.linearization is None:
+                knl = get_one_linearized_kernel(knl,
+                                                t_unit.callables_table)
+            new_callables[name] = clbl.copy(subkernel=knl)
+        elif isinstance(clbl, ScalarCallable):
+            new_callables[name] = clbl
+        else:
+            raise NotImplementedError(type(clbl))
+
+    return t_unit.copy(callables_table=new_callables)
 
 
 # vim: foldmethod=marker

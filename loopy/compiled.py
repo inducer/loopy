@@ -31,11 +31,11 @@ class CompiledKernel(PyOpenCLKernelExecutor):
     """
     .. automethod:: __call__
     """
-    def __init__(self, context, kernel):
+    def __init__(self, context, kernel, entrypoint):
         from warnings import warn
         warn("CompiledKernel is deprecated. Use LoopKernel.__call__ directly.",
                 DeprecationWarning, stacklevel=2)
 
-        super().__init__(context, kernel)
+        super().__init__(context, kernel, entrypoint)
 
 # }}}

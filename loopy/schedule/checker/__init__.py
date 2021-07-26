@@ -30,10 +30,23 @@ def get_pairwise_statement_orderings(
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
-    instances are executed. For each pair, represent this relative ordering as
-    a ``statement instance ordering`` (SIO): a map from each instance of the
-    first statement to all instances of the second statement that occur
-    later.
+    instances are executed. For each pair, represent this relative ordering
+    using three ``statement instance orderings`` (SIOs):
+
+    - The intra-thread SIO: A :class:`islpy.Map` from each instance of the
+      first statement to all instances of the second statement that occur
+      later, such that both statement instances in each before-after pair are
+      executed within the same work-item (thread).
+
+    - The intra-group SIO: A :class:`islpy.Map` from each instance of the first
+      statement to all instances of the second statement that occur later, such
+      that both statement instances in each before-after pair are executed
+      within the same work-group (though potentially by different work-items).
+
+    - The global SIO: A :class:`islpy.Map` from each instance of the first
+      statement to all instances of the second statement that occur later, even
+      if the two statement instances in a given before-after pair are executed
+      within different work-groups.
 
     :arg knl: A preprocessed :class:`loopy.kernel.LoopKernel` containing the
         linearization items that will be used to create the SIOs.
@@ -44,21 +57,11 @@ def get_pairwise_statement_orderings(
         this routine during linearization, a truncated (i.e. partial)
         linearization may be passed through this argument.
 
-    :arg stmt_id_pairs: A list containing pairs of statement identifiers.
+    :arg stmt_id_pairs: A sequence containing pairs of statement identifiers.
 
     :returns: A dictionary mapping each two-tuple of statement identifiers
-        provided in `stmt_id_pairs` to a :class:`collections.namedtuple`
-        containing the intra-thread SIO (`sio_intra_thread`), intra-group SIO
-        (`sio_intra_group`), and global SIO (`sio_global`), each realized
-        as an :class:`islpy.Map` from each instance of the first
-        statement to all instances of the second statement that occur later,
-        as well as the intra-thread pairwise schedule (`pwsched_intra_thread`),
-        intra-group pairwise schedule (`pwsched_intra_group`), and the global
-        pairwise schedule (`pwsched_global`), each containing a pair of
-        mappings from statement instances to points in a lexicographic
-        ordering, one for each statement. Note that a pairwise schedule
-        alone cannot be used to reproduce the corresponding SIO without the
-        corresponding (unique) lexicographic order map, which is not returned.
+        provided in `stmt_id_pairs` to a :class:`StatementOrdering`, which
+        contains the three SIOs described above.
 
     .. doctest:
 
@@ -72,8 +75,11 @@ def get_pairwise_statement_orderings(
         ...         "b[k] = k+a[0]  {id=stmt_b,dep=stmt_a}",
         ...     ])
         >>> knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
+        >>> # Preprocess
+        >>> knl = lp.preprocess_kernel(knl)
         >>> # Get a linearization
-        >>> knl = lp.get_one_linearized_kernel(lp.preprocess_kernel(knl))
+        >>> knl = lp.get_one_linearized_kernel(
+        ...     knl["loopy_kernel"], knl.callables_table)
         >>> # Get pairwise order info -----------------------------------------------
         >>> from loopy.schedule.checker import get_pairwise_statement_orderings
         >>> sio_dict = get_pairwise_statement_orderings(
@@ -121,7 +127,7 @@ def get_pairwise_statement_orderings(
 
     # }}}
 
-    # {{{ Create two mappings from {statement instance: lex point}
+    # {{{ Create the SIOs
 
     from loopy.schedule.checker.schedule import (
         get_pairwise_statement_orderings_inner
@@ -289,3 +295,5 @@ def find_unsatisfied_dependencies(
     return unsatisfied_deps
 
 # }}}
+
+# vim: foldmethod=marker

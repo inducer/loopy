@@ -22,13 +22,15 @@ THE SOFTWARE.
 
 
 import islpy as isl
+from loopy.translation_unit import for_each_kernel
 
 
 def potential_loop_nest_map(kernel):
     """Returns a dictionary mapping inames to other inames that *could*
     be nested around them.
 
-    :seealso: :func:`loopy.schedule.loop_nest_map`
+    * :seealso: :func:`loopy.schedule.loop_nest_map`
+    * :seealso: :func:`loopy.schedule.find_loop_nest_around_map`
     """
 
     result = {}
@@ -52,7 +54,9 @@ def potential_loop_nest_map(kernel):
     return result
 
 
-def fuse_loop_domains(kernel):
+@for_each_kernel
+def merge_loop_domains(kernel):
+    # FIXME: This should be moved to loopy.transforms.iname
     from loopy.kernel.tools import is_domain_dependent_on_inames
 
     while True:
@@ -60,11 +64,13 @@ def fuse_loop_domains(kernel):
         parents_per_domain = kernel.parents_per_domain()
         all_parents_per_domain = kernel.all_parents_per_domain()
 
+        iname_to_insns = kernel.iname_to_insns()
+
         new_domains = None
 
         for inner_iname, outer_inames in lnm.items():
             for outer_iname in outer_inames:
-                # {{{ check if it's safe to fuse
+                # {{{ check if it's safe to merge
 
                 inner_domain_idx = kernel.get_home_domain_index(inner_iname)
                 outer_domain_idx = kernel.get_home_domain_index(outer_iname)
@@ -72,12 +78,28 @@ def fuse_loop_domains(kernel):
                 if inner_domain_idx == outer_domain_idx:
                     break
 
+                if (not iname_to_insns[inner_iname]
+                        or not iname_to_insns[outer_iname]):
+                    # Inames without instructions occur when used in
+                    # a SubArrayRef. We don't want monster SubArrayRef domains,
+                    # so refuse to merge those.
+                    continue
+
+                if iname_to_insns[inner_iname] != iname_to_insns[outer_iname]:
+                    # The two inames are imperfectly nested. Domain fusion
+                    # might be invalid when the inner loop is empty, leading to
+                    # the outer loop also being empty.
+
+                    # FIXME: Not fully correct, does not consider reductions
+                    # https://gitlab.tiker.net/inducer/loopy/issues/172
+                    continue
+
                 if (
                         outer_domain_idx in all_parents_per_domain[inner_domain_idx]
                         and not
                         outer_domain_idx == parents_per_domain[inner_domain_idx]):
                     # Outer domain is not a direct parent of the inner
-                    # domain. Unable to fuse.
+                    # domain. Unable to merge.
                     continue
 
                 outer_dom = kernel.domains[outer_domain_idx]
@@ -87,7 +109,7 @@ def fuse_loop_domains(kernel):
                 if is_domain_dependent_on_inames(kernel, inner_domain_idx,
                         outer_inames):
                     # Bounds of inner domain depend on outer domain.
-                    # Unable to fuse.
+                    # Unable to merge.
                     continue
 
                 # }}}

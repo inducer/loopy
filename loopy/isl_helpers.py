@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 
-from loopy.diagnostic import StaticValueFindingError
+from loopy.diagnostic import StaticValueFindingError, LoopyError
 
 import islpy as isl
 from islpy import dim_type
@@ -60,7 +60,35 @@ def dump_space(ls):
 
 # {{{ make_slab
 
-def make_slab(space, iname, start, stop):
+def make_slab(space, iname, start, stop, iname_multiplier=1):
+    """
+    Returns an instance of :class:`islpy._isl.BasicSet`, which satisfies the
+    constraint ``start <= iname_multiplier*iname < stop``.
+
+    :arg space: An instance of :class:`islpy._isl.Space`.
+
+    :arg iname:
+
+        Either an instance of :class:`str` as a name of the ``iname`` or a
+        tuple of ``(iname_dt, iname_dx)`` indicating the *iname* in the space.
+
+    :arg start:
+
+        An instance of :class:`int`  or an instance of
+        :class:`islpy._isl.Aff` indicating the lower bound of
+        ``iname_multiplier*iname``(inclusive).
+
+    :arg stop:
+
+        An instance of :class:`int`  or an instance of
+        :class:`islpy._isl.Aff` indicating the upper bound of
+        ``iname_multiplier*iname``.
+
+    :arg iname_multiplier:
+
+        A strictly positive :class:`int` denoting *iname*'s coefficient in the
+        above inequality expression.
+    """
     zero = isl.Aff.zero_on_domain(space)
 
     if isinstance(start, (isl.Aff, isl.PwAff)):
@@ -89,13 +117,16 @@ def make_slab(space, iname, start, stop):
 
     iname_aff = zero.add_coefficient_val(iname_dt, iname_idx, 1)
 
-    result = (isl.BasicSet.universe(space)
-            # start <= iname
-            .add_constraint(isl.Constraint.inequality_from_aff(
-                iname_aff - start))
-            # iname < stop
-            .add_constraint(isl.Constraint.inequality_from_aff(
-                stop-1 - iname_aff)))
+    if iname_multiplier > 0:
+        result = (isl.BasicSet.universe(space)
+                # start <= iname_multiplier*iname
+                .add_constraint(isl.Constraint.inequality_from_aff(
+                    iname_multiplier*iname_aff - start))
+                # iname_multiplier*iname < stop
+                .add_constraint(isl.Constraint.inequality_from_aff(
+                    stop-1 - iname_multiplier*iname_aff)))
+    else:
+        raise LoopyError("iname_multiplier must be strictly positive")
 
     return result
 
@@ -419,11 +450,16 @@ def boxify(cache_manager, domain, box_inames, context):
 
 
 def simplify_via_aff(expr):
-    from loopy.symbolic import aff_from_expr, aff_to_expr, get_dependencies
+    from loopy.symbolic import aff_to_expr, guarded_aff_from_expr, get_dependencies
+    from loopy.diagnostic import ExpressionToAffineConversionError
+
     deps = sorted(get_dependencies(expr))
-    return aff_to_expr(aff_from_expr(
-        isl.Space.create_from_names(isl.DEFAULT_CONTEXT, list(deps)),
-        expr))
+    try:
+        return aff_to_expr(guarded_aff_from_expr(
+            isl.Space.create_from_names(isl.DEFAULT_CONTEXT, list(deps)),
+            expr))
+    except ExpressionToAffineConversionError:
+        return expr
 
 
 def project_out(set, inames):
@@ -570,7 +606,7 @@ def find_max_of_pwaff_with_params(pw_aff, n_allowed_params):
 
 def set_dim_name(obj, dt, pos, name):
     assert isinstance(name, str)
-    if isinstance(obj, isl.PwQPolynomial):
+    if isinstance(obj, (isl.PwQPolynomial, isl.BasicSet)):
         return obj.set_dim_name(dt, pos, name)
     elif isinstance(obj, isl.PwAff):
         # work around missing isl_pw_aff_set_dim_name for now.
