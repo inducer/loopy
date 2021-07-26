@@ -25,7 +25,8 @@ import collections.abc as abc
 import numpy as np
 from pytools import memoize_method
 from pytools.persistent_dict import KeyBuilder as KeyBuilderBase
-from loopy.symbolic import WalkMapper as LoopyWalkMapper
+from loopy.symbolic import (WalkMapper as LoopyWalkMapper,
+                            RuleAwareIdentityMapper)
 from pymbolic.mapper.persistent_hash import (
         PersistentHashWalkMapper as PersistentHashWalkMapperBase)
 from sys import intern
@@ -256,6 +257,14 @@ def remove_common_indentation(code, require_leading_newline=True,
         new_lines.append(line[base_indent:])
 
     return "\n".join(new_lines)
+
+# }}}
+
+
+# {{{ remove_lines_with_only_spaces
+
+def remove_lines_with_only_spaces(code):
+    return "\n".join(line for line in code.split("\n") if set(line) != {" "})
 
 # }}}
 
@@ -638,4 +647,219 @@ def intern_frozenset_of_ids(fs):
     return frozenset(intern(s) for s in fs)
 
 
-# vim: foldmethod=marker
+def _is_generated_t_unit_the_same(python_code, var_name, ref_t_unit):
+    """
+    Helper for :func:`kernel_to_python`. Returns *True* only if the variable
+    referenced by *var_name* in *python_code* is equal to *kernel*, else
+    returns *False*.
+    """
+    reproducer_variables = {}
+    exec(python_code, reproducer_variables)
+    t_unit = reproducer_variables[var_name]
+    return ref_t_unit == t_unit
+
+
+# {{{ CallablesUnresolver
+
+class _CallablesUnresolver(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, callables_table, target):
+        super().__init__(rule_mapping_context)
+        self.callables_table = callables_table
+        self.target = target
+
+    @property
+    @memoize_method
+    def known_callables(self):
+        from loopy.kernel.function_interface import CallableKernel
+        return (frozenset(self.target.get_device_ast_builder().known_callables)
+                | {name
+                   for name, clbl in self.callables_table.items()
+                   if isinstance(clbl, CallableKernel)})
+
+    def map_call(self, expr, expn_state):
+        from loopy.symbolic import ResolvedFunction
+        if isinstance(expr.function, ResolvedFunction):
+            if expr.function.name not in self.known_callables:
+                raise NotImplementedError("User-provided scalar callables not"
+                                          " supported yet.")
+
+            from pymbolic.primitives import Call
+            return Call(expr.function.function, tuple(self.rec(par, expn_state)
+                                                      for par in expr.parameters))
+        else:
+            return super().map_call(expr, expn_state)
+
+
+def _unresolve_callables(kernel, callables_table):
+    from loopy.symbolic import SubstitutionRuleMappingContext
+    from loopy.kernel import KernelState
+
+    vng = kernel.get_var_name_generator()
+    rule_mapping_context = SubstitutionRuleMappingContext(kernel.substitutions,
+                                                          vng)
+    mapper = _CallablesUnresolver(rule_mapping_context,
+                                  callables_table,
+                                  kernel.target)
+    return (rule_mapping_context.finish_kernel(mapper.map_kernel(kernel))
+            .copy(state=KernelState.INITIAL))
+
+# }}}
+
+
+def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
+    from mako.template import Template
+    from loopy.kernel.instruction import MultiAssignmentBase, BarrierInstruction
+
+    options = {}  # options: mapping from insn_id to str of options
+
+    for insn in kernel.instructions:
+        option = f"id={insn.id}, "
+        if insn.depends_on:
+            option += ("dep="+":".join(insn.depends_on)+", ")
+        if insn.tags:
+            option += ("tags="+":".join(insn.tags)+", ")
+
+        if isinstance(insn, MultiAssignmentBase):
+            if insn.atomicity:
+                option += "atomic, "
+        elif isinstance(insn, BarrierInstruction):
+            option += (f"mem_kind={insn.mem_kind}, ")
+        else:
+            pass
+
+        options[insn.id] = option[:-2]  # get rid of the trailing ", "
+
+    make_kernel = "make_kernel" if is_entrypoint else "make_function"
+
+    python_code = r"""
+    <%! import loopy as lp %>
+
+    <%! tv_scope = {0: 'lp.AddressSpace.PRIVATE', 1: 'lp.AddressSpace.LOCAL',
+    2: 'lp.AddressSpace.GLOBAL', lp.auto: 'lp.auto' } %>
+    ${var_name} = lp.${make_kernel}(
+        [
+        % for dom in kernel.domains:
+        "${str(dom)}",
+        % endfor
+        ],
+        '''
+        % for id, opts in options.items():
+        <% insn = kernel.id_to_insn[id] %>
+        % if isinstance(insn, lp.MultiAssignmentBase):
+        ${','.join([str(a) for a in insn.assignees])} = ${insn.expression} {${opts}}
+        % elif isinstance(insn, lp.BarrierInstruction):
+        ... ${insn.synchronization_kind[0]}barrier {${opts}}
+        % elif isinstance(insn, lp.NoOpInstruction):
+        ... nop {${opts}}
+        % else:
+        <% raise NotImplementedError(f"Not implemented for {type(insn)}.")%>
+        % endif
+        %endfor
+        ''', [
+            % for arg in kernel.args:
+            % if isinstance(arg, lp.ValueArg):
+            lp.ValueArg(
+                name="${arg.name}",
+                dtype=${('np.'+arg.dtype.numpy_dtype.name
+                            if arg.dtype else 'lp.auto')}),
+            % else:
+            lp.GlobalArg(
+                name="${arg.name}", dtype=${('np.'+arg.dtype.numpy_dtype.name
+                                                if arg.dtype else 'lp.auto')},
+                shape=${arg.shape}, for_atomic=${arg.for_atomic}),
+            % endif
+            % endfor
+            % for tv in kernel.temporary_variables.values():
+            lp.TemporaryVariable(
+                name="${tv.name}",
+                dtype=${'np.'+tv.dtype.numpy_dtype.name if arg.dtype else 'lp.auto'},
+                shape=${tv.shape}, for_atomic=${tv.for_atomic},
+                address_space=${tv_scope[tv.address_space]},
+                read_only=${tv.read_only},
+                % if tv.initializer is not None:
+                initializer=${"np."+repr(tv.initializer)},
+                % endif
+                ),
+            % endfor
+            ],
+            lang_version=${lp.MOST_RECENT_LANGUAGE_VERSION},
+    % if kernel.iname_slab_increments:
+            iname_slab_increments=${repr(kernel.iname_slab_increments)},
+    % endif
+    % if kernel.applied_iname_rewrites:
+            applied_iname_rewrites=${repr(kernel.applied_iname_rewrites)},
+    % endif
+    % if kernel.name != "loopy_kernel":
+            name="${kernel.name}",
+    % endif
+            )
+
+    % for iname, tags in kernel.iname_to_tags.items():
+    % for tag in tags:
+    ${var_name} = lp.tag_inames(${var_name}, "${"%s:%s" %(iname, tag)}")
+    % endfor
+
+    % endfor
+    """
+
+    python_code = Template(python_code,
+                           strict_undefined=True).render(options=options,
+                                                         kernel=kernel,
+                                                         make_kernel=make_kernel,
+                                                         var_name=var_name)
+    python_code = remove_lines_with_only_spaces(
+            remove_common_indentation(python_code))
+
+    return python_code
+
+
+def t_unit_to_python(t_unit, var_name="t_unit",
+                     return_preamble_and_body_separately=False):
+    """"
+    Returns a :class:`str` of a python code that instantiates *kernel*.
+
+    :arg kernel: An instance of :class:`loopy.LoopKernel`
+    :arg var_name: A :class:`str` of the kernel variable name in the generated
+        python script.
+    :arg return_preamble_and_body_separately: A :class:`bool`.
+        If *True* returns ``(preamble, body)``, where ``preamble`` includes the
+        import statements and ``body`` includes the kernel, translation unit
+        instantiation code.
+
+    .. note::
+
+        The implementation is partially complete and a :class:`AssertionError`
+        is raised if the returned python script does not exactly reproduce
+        *kernel*. Contributions are welcome to fill in the missing voids.
+    """
+    from loopy.kernel.function_interface import CallableKernel
+
+    new_callables = {name: CallableKernel(_unresolve_callables(clbl.subkernel,
+                                                               t_unit
+                                                               .callables_table))
+                     for name, clbl in t_unit.callables_table.items()
+                     if isinstance(clbl, CallableKernel)}
+    t_unit = t_unit.copy(callables_table=new_callables)
+
+    knl_python_code_srcs = [_kernel_to_python(clbl.subkernel,
+                                              name in t_unit.entrypoints,
+                                              f"{name}_knl"
+                                              )
+                            for name, clbl in t_unit.callables_table.items()]
+
+    knl_args = ", ".join(f"{name}_knl" for name in t_unit.callables_table)
+    merge_stmt = f"{var_name} = lp.merge([{knl_args}])"
+
+    preamble_str = "\n".join(["import loopy as lp", "import numpy as np",
+                              "from pymbolic.primitives import *"])
+    body_str = "\n".join(knl_python_code_srcs + ["\n", merge_stmt])
+
+    python_code = "\n".join([preamble_str, "\n", body_str])
+    assert _is_generated_t_unit_the_same(python_code, var_name, t_unit)
+
+    if return_preamble_and_body_separately:
+        return preamble_str, body_str
+    else:
+        return python_code
+
+# vim: fdm=marker
