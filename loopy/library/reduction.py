@@ -150,6 +150,24 @@ class ProductReductionOperation(ScalarReductionOperation):
         return operand1 * operand2, callables_table
 
 
+class AnyReductionOperation(ScalarReductionOperation):
+    def neutral_element(self, dtype, callables_table, target):
+        return False, callables_table
+
+    def __call__(self, dtype, operand1, operand2, callables_table, target):
+        from pymbolic.primitives import LogicalOr
+        return LogicalOr((operand1, operand2)), callables_table
+
+
+class AllReductionOperation(ScalarReductionOperation):
+    def neutral_element(self, dtype, callables_table, target):
+        return True, callables_table
+
+    def __call__(self, dtype, operand1, operand2, callables_table, target):
+        from pymbolic.primitives import LogicalAnd
+        return LogicalAnd((operand1, operand2)), callables_table
+
+
 def get_le_neutral(dtype):
     """Return a number y that satisfies (x <= y) for all y."""
 
@@ -489,6 +507,8 @@ _REDUCTION_OPS = {
         "product": ProductReductionOperation,
         "max": MaxReductionOperation,
         "min": MinReductionOperation,
+        "any": AnyReductionOperation,
+        "all": AllReductionOperation,
         "argmax": ArgMaxReductionOperation,
         "argmin": ArgMinReductionOperation,
         "segmented(sum)": SegmentedSumReductionOperation,

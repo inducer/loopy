@@ -3140,6 +3140,34 @@ def test_trace_assignments(ctx_factory, opt_name):
     knl(queue)
 
 
+def test_tunit_to_python():
+    knl = lp.make_kernel(
+            "{[i, j]: 0<=i,j<n}",
+            """
+            y[i] = sin(x[i])     {id=insn0}
+            z[i] = sin(y[i])     {id=insn1, dep=insn0}
+            w = sum(j, 2 * z[j]) {id=insn2, dep=insn1:insn0}
+            """,
+            name="my_kernel")
+
+    knl = lp.split_iname(knl, "i", 4, inner_tag="l.0", outer_tag="g.0")
+    lp.t_unit_to_python(knl)  # contains check to assert roundtrip equivalence
+
+    mysin = lp.make_function(
+        "{[i, j]: 0<=i<n and 0<=j<m}",
+        """
+        y[i, j] = sin(x[i, j])
+        """, name="my_kernel")
+    t_unit = lp.make_kernel(
+        "{[i, j]: 0<=i, j<10}",
+        """
+        [i, j]: y[i,j] = mysin(10, 10, [i, j]: x[i, j])
+        """)
+
+    t_unit = lp.merge([t_unit, mysin])
+    lp.t_unit_to_python(t_unit)  # contains check to assert roundtrip equivalence
+
+
 def test_global_tv_with_base_storage_across_gbarrier(ctx_factory):
     # see https://github.com/inducer/loopy/pull/466 for context
     ctx = ctx_factory()
